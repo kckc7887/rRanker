@@ -14,6 +14,8 @@
 
 React Native（移动端）
 
+详细的产品阶段、实现优先级与建议技术栈见 [ROADMAP.md](ROADMAP.md)。静态产品概念页见 [demo/index.html](demo/index.html)。
+
 ## 目录
 
 ```
