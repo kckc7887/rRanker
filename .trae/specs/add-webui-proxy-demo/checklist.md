@@ -1,0 +1,26 @@
+# Checklist
+
+- [x] `webui-proxy-demo/` 目录存在，包含 `proxy_manager.py`、`addon.py`、`server.py`、`index.html`、`build.spec`、`build.py`
+- [x] `proxy_manager.py` 能正确设置 Windows 系统代理（修改注册表 + 调用 InternetSetOption 刷新）
+- [x] `proxy_manager.py` 能正确恢复原始代理设置（包括原本就关闭代理的情况）
+- [x] `proxy_manager.py` 保存原始代理设置，不覆盖用户已有配置
+- [x] `addon.py` 能拦截 `wahlap` 域名的 OAuth 回调，提取 r/t/code/state 四参数
+- [x] `addon.py` 能调用 maimai_py 完成五难度并行爬取
+- [x] `addon.py` 把爬取结果通过共享文件或变量传回主进程（不依赖终端输出）
+- [x] `server.py` 启动时自动打开浏览器访问 webUI
+- [x] `server.py` 的 `POST /api/start` 能启动 mitmdump 并设置系统代理
+- [x] `server.py` 的 `GET /api/status` 正确返回六种状态之一
+- [x] `server.py` 的 `POST /api/stop` 能终止 mitmdump 并恢复代理
+- [x] `server.py` 注册了 atexit / signal handler，进程退出时恢复代理
+- [x] `index.html` 有「开始」按钮，点击后调用 `/api/start`
+- [x] `index.html` 每秒轮询 `/api/status` 并根据状态切换 UI
+- [x] `waiting_oauth` 状态下展示 OAuth 链接和操作步骤
+- [x] `done` 状态下渲染成绩列表（曲名、难度、达成率、DX 分、fc/fs/rate）
+- [x] `done` 状态下展示玩家信息（名称、Rating、牌子）
+- [x] `error` 状态下展示错误信息并提供重试
+- [x] `index.html` 有「停止」按钮
+- [x] `build.spec` 配置 `--onefile` 和 `--collect-all mitmproxy --collect-all maimai_py`
+- [x] `build.spec` 包含 `index.html` 数据文件
+- [ ] 打包后的 exe 在无 Python 环境的 Windows 上能双击启动
+- [ ] exe 启动后浏览器自动打开 webUI
+- [ ] 全流程验证：开始 → 代理开启 → OAuth 链接展示 → 爬取 → 成绩列表 → 代理关闭

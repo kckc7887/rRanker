@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>rRanker 舞萌DX 成绩爬取</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --bg-card: #212142;
+    --bg-card-2: #26264a;
+    --bg-row: rgba(255, 255, 255, 0.03);
+    --text: #e0e0e0;
+    --text-muted: #8a8aa8;
+    --accent: #7b2ff7;
+    --accent-light: #9d4edd;
+    --accent-soft: rgba(155, 77, 221, 0.15);
+    --border: rgba(155, 77, 221, 0.22);
+    --danger: #e74c3c;
+    --radius: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  body {
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(123, 47, 247, 0.10), transparent 60%),
+      var(--bg);
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 32px 20px 64px;
+  }
+
+  /* ---------- 标题区 ---------- */
+  .header { text-align: center; margin-bottom: 28px; }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    background: linear-gradient(90deg, var(--accent-light), #c77dff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .header .subtitle {
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
+  /* ---------- 卡片 ---------- */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+  }
+
+  /* ---------- 操作区 ---------- */
+  .actions {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .btn {
+    appearance: none;
+    border: none;
+    border-radius: var(--radius);
+    padding: 11px 30px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-light));
+    box-shadow: 0 2px 8px rgba(123, 47, 247, 0.3);
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(123, 47, 247, 0.45);
+  }
+  .btn-danger {
+    background: linear-gradient(135deg, #c0392b, var(--danger));
+    box-shadow: 0 2px 8px rgba(231, 76, 60, 0.3);
+  }
+  .btn-danger:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(231, 76, 60, 0.45);
+  }
+  .btn:active:not(:disabled) { transform: translateY(0); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn[hidden] { display: none; }
+
+  /* ---------- 状态区 ---------- */
+  #status-area { min-height: 0; }
+  #status-area[hidden] { display: none; }
+
+  .status-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text);
+  }
+  .status-text { font-size: 15px; }
+  .status-text.muted { color: var(--text-muted); }
+
+  .status-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--accent-light);
+  }
+
+  /* ---------- loading ---------- */
+  .spinner {
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    border: 3px solid var(--accent-soft);
+    border-top-color: var(--accent-light);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- OAuth 区 ---------- */
+  .oauth-box { margin-top: 14px; }
+  .oauth-link {
+    display: block;
+    color: var(--accent-light);
+    text-decoration: none;
+    word-break: break-all;
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+  .oauth-link:hover { text-decoration: underline; }
+
+  .copy-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .copy-row input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+  }
+  .copy-row input:focus { border-color: var(--accent-light); }
+  .btn-copy {
+    background: var(--bg-card-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 16px;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+  }
+  .btn-copy:hover { background: var(--accent-soft); border-color: var(--accent-light); }
+
+  .steps {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin-bottom: 14px;
+  }
+  .steps ol { padding-left: 20px; }
+  .steps li { margin: 6px 0; font-size: 14px; }
+
+  .notice {
+    background: rgba(231, 76, 60, 0.08);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    font-size: 13px;
+    color: #f0b8b0;
+  }
+  .notice code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  /* ---------- 错误 ---------- */
+  .error-box .status-title { color: var(--danger); }
+  .error-msg {
+    background: rgba(231, 76, 60, 0.08);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin: 10px 0 16px;
+    font-size: 14px;
+    color: #f0b8b0;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  /* ---------- 成绩区 ---------- */
+  #scores-area[hidden] { display: none; }
+
+  .player-card {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+  .player-field {
+    background: var(--bg-card-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+  }
+  .player-field .label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .player-field .value {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .player-field .value.rating { color: var(--accent-light); }
+
+  .section-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .section-title .count {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  .table-wrap {
+    max-height: 60vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-card);
+  }
+  .table-wrap::-webkit-scrollbar { width: 8px; }
+  .table-wrap::-webkit-scrollbar-track { background: transparent; }
+  .table-wrap::-webkit-scrollbar-thumb {
+    background: var(--accent-soft);
+    border-radius: 4px;
+  }
+
+  table.scores {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  table.scores thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-card-2);
+    color: var(--accent-light);
+    font-weight: 600;
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    z-index: 1;
+  }
+  table.scores tbody td {
+    padding: 9px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    white-space: nowrap;
+  }
+  table.scores tbody tr:nth-child(odd) { background: var(--bg-row); }
+  table.scores tbody tr:hover { background: rgba(155, 77, 221, 0.08); }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .tag-dx { background: rgba(123, 47, 247, 0.25); color: #c77dff; }
+  .tag-std { background: rgba(0, 188, 212, 0.18); color: #4dd0e1; }
+
+  .diff { font-weight: 600; }
+  .diff-0 { color: #66bb6a; }
+  .diff-1 { color: #ffb300; }
+  .diff-2 { color: #ff7043; }
+  .diff-3 { color: #9d4edd; }
+  .diff-4 { color: #ffd54f; }
+
+  .num { font-variant-numeric: tabular-nums; }
+  .upper { font-weight: 600; letter-spacing: 0.5px; }
+  .dash { color: var(--text-muted); }
+
+  /* ---------- 成绩卡片 ---------- */
+  .score-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .score-list::-webkit-scrollbar { width: 8px; }
+  .score-list::-webkit-scrollbar-track { background: transparent; }
+  .score-list::-webkit-scrollbar-thumb {
+    background: var(--accent-soft);
+    border-radius: 4px;
+  }
+
+  .score-card {
+    display: flex;
+    gap: 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 8px;
+    transition: background 0.15s ease;
+  }
+  .score-card:hover { background: var(--bg-card-2); }
+  .score-card .card-cover {
+    flex: 0 0 80px;
+    width: 80px;
+    height: 80px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: var(--bg-card-2);
+  }
+  .score-card .card-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .card-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .diff-tag {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .diff-tag-0 { background: #22bb5c; }
+  .diff-tag-1 { background: #ffb800; color: #1a1a2e; }
+  .diff-tag-2 { background: #ff5c5c; }
+  .diff-tag-3 { background: #cc66ff; }
+  .diff-tag-4 { background: #ffaa00; color: #1a1a2e; }
+  .card-artist {
+    font-size: 13px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .card-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .card-stats .stat .label {
+    color: var(--text-muted);
+    margin-right: 4px;
+  }
+  .card-stats .ra {
+    color: var(--accent-light);
+    font-weight: 600;
+  }
+  .card-stats .ra .label {
+    color: var(--text-muted);
+    margin-right: 4px;
+    font-weight: 400;
+  }
+  .card-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    min-height: 4px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+  .badge-fc { background: rgba(102, 187, 106, 0.25); color: #66bb6a; }
+  .badge-fs { background: rgba(255, 179, 0, 0.25); color: #ffb300; }
+  .badge-rate { background: rgba(155, 77, 221, 0.25); color: #c77dff; }
+
+  /* ---------- 重置按钮 ---------- */
+  .btn-reset {
+    background: linear-gradient(135deg, #2196f3, #1976d2);
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+  }
+  .btn-reset:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(33, 150, 243, 0.45);
+  }
+
+  /* ---------- idle 提示 ---------- */
+  .idle-tips {
+    text-align: center;
+    margin-top: 10px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.8;
+  }
+
+  @media (max-width: 600px) {
+    .container { padding: 20px 12px 48px; }
+    .header h1 { font-size: 22px; }
+    table.scores { font-size: 13px; }
+    table.scores thead th,
+    table.scores tbody td { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>rRanker 舞萌DX 成绩爬取</h1>
+      <p class="subtitle">通过本地代理拦截微信公众号授权，自动爬取舞萌DX 成绩</p>
+    </header>
+
+    <div class="actions" id="actions-area">
+      <button id="start-btn" class="btn btn-primary">开始</button>
+      <button id="stop-btn" class="btn btn-danger" hidden>停止</button>
+      <button id="reset-btn" class="btn btn-reset" hidden>重置</button>
+    </div>
+
+    <div id="status-area" class="card"></div>
+
+    <div id="scores-area" hidden></div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var startBtn = document.getElementById("start-btn");
+  var stopBtn = document.getElementById("stop-btn");
+  var resetBtn = document.getElementById("reset-btn");
+  var actionsArea = document.getElementById("actions-area");
+  var statusArea = document.getElementById("status-area");
+  var scoresArea = document.getElementById("scores-area");
+
+  var pollTimer = null;
+
+  var DIFF = ["BAS", "ADV", "EXP", "MAS", "Re:MAS"];
+
+  /* ---------- 工具 ---------- */
+  function esc(s) {
+    if (s === null || s === undefined) return "";
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function typeLabel(t) {
+    if (t === "dx") return '<span class="tag tag-dx">DX</span>';
+    if (t === "standard") return '<span class="tag tag-std">STD</span>';
+    return '<span class="dash">-</span>';
+  }
+
+  function diffLabel(li) {
+    if (li === null || li === undefined) return '<span class="dash">-</span>';
+    return '<span class="diff diff-' + li + '">' + (DIFF[li] || "-") + "</span>";
+  }
+
+  function upperOrDash(v) {
+    if (v === null || v === undefined || v === "") return '<span class="dash">-</span>';
+    var s = String(v).toLowerCase();
+    // 历史遗留：fsd/fsp 实为 FDX/FDX+（Full Sync DX）
+    if (s === "fsd") s = "fdx";
+    else if (s === "fsp") s = "fdx+";
+    else if (s.endsWith("p") && s !== "p") s = s.slice(0, -1) + "+";
+    return '<span class="upper">' + esc(s.toUpperCase()) + "</span>";
+  }
+
+  function fmtAch(v) {
+    if (v === null || v === undefined) return '<span class="dash">-</span>';
+    var n = Number(v);
+    if (isNaN(n)) return '<span class="dash">-</span>';
+    return '<span class="num">' + n.toFixed(4) + "</span>";
+  }
+
+  function fmtNum(v) {
+    if (v === null || v === undefined) return '<span class="dash">-</span>';
+    return '<span class="num">' + esc(v) + "</span>";
+  }
+
+  /* 落雪 song_id → 封面图用的 lxns_id */
+  function lxnsId(songId) {
+    var id = Number(songId);
+    if (id >= 110000) return id - 110000;
+    if (id >= 100000) return id - 100000;
+    if (id >= 10001) return id - 10000;
+    return id;
+  }
+
+  /* 卡片用带色难度标签 */
+  function diffTag(li) {
+    if (li === null || li === undefined) return "";
+    return '<span class="diff-tag diff-tag-' + li + '">' + (DIFF[li] || "-") + "</span>";
+  }
+
+  /* 卡片用 FC/FS/Rate 徽章：无值返回空字符串 */
+  function badgeOrEmpty(v, cls) {
+    if (v === null || v === undefined || v === "") return "";
+    var s = String(v).toLowerCase();
+    // 历史遗留：fsd/fsp 实为 FDX/FDX+（Full Sync DX）
+    if (s === "fsd") s = "fdx";
+    else if (s === "fsp") s = "fdx+";
+    else if (s.endsWith("p") && s !== "p") s = s.slice(0, -1) + "+";
+    return '<span class="badge ' + cls + '">' + esc(s.toUpperCase()) + "</span>";
+  }
+
+  /* RA = dx_rating，三位整数；无值返回空 */
+  function fmtRA(v) {
+    if (v === null || v === undefined) return "";
+    var n = Number(v);
+    if (isNaN(n)) return "";
+    return '<span class="ra"><span class="label">RA</span>' + n + "</span>";
+  }
+
+  /* ---------- 轮询 ---------- */
+  function startPolling() {
+    stopPolling();
+    pollOnce();
+    pollTimer = setInterval(pollOnce, 1000);
+  }
+
+  function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function pollOnce() {
+    fetch("/api/status").then(function (r) { return r.json(); }).then(function (data) {
+      handleStatus(data);
+    }).catch(function () {
+      /* 网络抖动，忽略，下一轮继续 */
+    });
+  }
+
+  /* ---------- API 调用 ---------- */
+  function startFlow() {
+    startBtn.disabled = true;
+    fetch("/api/start", { method: "POST" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      renderProxyStarting();
+      startPolling();
+    }).catch(function (e) {
+      renderError({ error: "无法连接服务器：" + (e.message || e) });
+      startBtn.disabled = false;
+    });
+  }
+
+  function stopFlow() {
+    stopBtn.disabled = true;
+    fetch("/api/stop", { method: "POST" }).then(function () {
+      /* 继续轮询，后端会回到 idle */
+    }).catch(function () {
+      stopBtn.disabled = false;
+    }).finally(function () {
+      startPolling();
+    });
+  }
+
+  function resetFlow() {
+    if (resetBtn) resetBtn.disabled = true;
+    fetch("/api/reset", { method: "POST" }).then(function () {
+      startPolling();
+    }).catch(function () {
+      startPolling();
+    });
+  }
+
+  /* ---------- 状态分发 ---------- */
+  function handleStatus(data) {
+    var st = data.status;
+    switch (st) {
+      case "idle":           renderIdle(); break;
+      case "proxy_starting": renderProxyStarting(); break;
+      case "waiting_oauth":  renderWaitingOauth(data); break;
+      case "crawling":       renderCrawling(data); break;
+      case "done":           renderDone(data); stopPolling(); break;
+      case "error":          renderError(data); stopPolling(); break;
+      default:               renderIdle();
+    }
+  }
+
+  /* ---------- 渲染：idle ---------- */
+  function renderIdle() {
+    actionsArea.hidden = false;
+    startBtn.hidden = false;
+    startBtn.disabled = false;
+    stopBtn.hidden = true;
+    resetBtn.hidden = true;
+    resetBtn.disabled = false;
+    scoresArea.hidden = true;
+    statusArea.hidden = false;
+    statusArea.innerHTML =
+      '<div class="status-line"><span class="status-text muted">点击开始按钮启动</span></div>' +
+      '<div class="idle-tips">' +
+        "首次使用可能需要安装证书（启动时自动处理）<br>" +
+        "安装证书可能需要管理员权限<br>" +
+        "微信打开链接后报错 502 是正常现象，数据已在后台抓取" +
+      "</div>";
+  }
+
+  /* ---------- 渲染：proxy_starting ---------- */
+  function renderProxyStarting() {
+    actionsArea.hidden = false;
+    startBtn.hidden = false;
+    startBtn.disabled = true;
+    stopBtn.hidden = true;
+    resetBtn.hidden = true;
+    scoresArea.hidden = true;
+    statusArea.hidden = false;
+    statusArea.innerHTML =
+      '<div class="status-line"><span class="spinner"></span>' +
+      '<span class="status-text">正在启动代理…</span></div>';
+  }
+
+  /* ---------- 渲染：waiting_oauth ---------- */
+  function renderWaitingOauth(data) {
+    actionsArea.hidden = false;
+    startBtn.hidden = true;
+    stopBtn.hidden = false;
+    stopBtn.disabled = false;
+    resetBtn.hidden = true;
+    scoresArea.hidden = true;
+    statusArea.hidden = false;
+
+    var url = data.oauth_url || "";
+    statusArea.innerHTML =
+      '<div class="status-title">等待微信授权</div>' +
+      '<div class="oauth-box">' +
+        '<a class="oauth-link" href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + "</a>" +
+        '<div class="copy-row">' +
+          '<input type="text" id="oauth-input" value="' + esc(url) + '" readonly />' +
+          '<button class="btn-copy" id="copy-btn">复制链接</button>' +
+        "</div>" +
+        '<div class="steps"><ol>' +
+          "<li>复制下方链接</li>" +
+          "<li>在 PC 微信内打开该链接（微信聊天框粘贴并发送，点击打开）</li>" +
+          "<li>等待公众号加载，系统会自动拦截并爬取</li>" +
+        "</ol></div>" +
+        '<div class="notice">微信打开链接后报错 502 是正常现象，数据已在后台抓取</div>' +
+      "</div>";
+
+    var copyBtn = document.getElementById("copy-btn");
+    var oauthInput = document.getElementById("oauth-input");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        var txt = oauthInput ? oauthInput.value : url;
+        copyText(txt, copyBtn);
+      });
+    }
+  }
+
+  function copyText(text, btn) {
+    var done = function () {
+      if (btn) {
+        var old = btn.textContent;
+        btn.textContent = "已复制";
+        setTimeout(function () { btn.textContent = old; }, 1500);
+      }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(function () {
+        legacyCopy(text); done();
+      });
+    } else {
+      legacyCopy(text); done();
+    }
+  }
+
+  function legacyCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  /* ---------- 渲染：crawling ---------- */
+  function renderCrawling(data) {
+    actionsArea.hidden = false;
+    startBtn.hidden = true;
+    stopBtn.hidden = false;
+    stopBtn.disabled = false;
+    resetBtn.hidden = true;
+    scoresArea.hidden = true;
+    statusArea.hidden = false;
+    var msg = (data && data.message) ? data.message : "正在爬取成绩…";
+    statusArea.innerHTML =
+      '<div class="status-line"><span class="spinner"></span>' +
+      '<span class="status-text">' + esc(msg) + "</span></div>";
+  }
+
+  /* ---------- 渲染：done ---------- */
+  function renderDone(data) {
+    actionsArea.hidden = false;
+    startBtn.hidden = true;
+    stopBtn.hidden = true;
+    resetBtn.hidden = false;
+    resetBtn.disabled = false;
+    statusArea.hidden = true;
+    scoresArea.hidden = false;
+
+    var p = data.player || {};
+    var scores = (data.scores || []).slice().sort(function (a, b) {
+      // 按 dx_rating 降序，缺失值排末尾
+      var ra = Number(a.dx_rating), rb = Number(b.dx_rating);
+      if (isNaN(ra)) ra = -1;
+      if (isNaN(rb)) rb = -1;
+      return rb - ra;
+    });
+
+    var playerHtml =
+      '<div class="player-card">' +
+        field("玩家名称", p.name) +
+        field("Rating", p.rating, "rating") +
+        field("称号", p.trophy) +
+        field("好友码", p.friend_code) +
+      "</div>";
+
+    var cards = scores.map(function (s) {
+      var coverUrl = "https://assets2.lxns.net/maimai/jacket/" + lxnsId(s.id) + ".png";
+      var stats =
+        '<span class="stat"><span class="label">达成率</span>' + fmtAch(s.achievements) + "</span>" +
+        '<span class="stat"><span class="label">DX分</span>' + fmtNum(s.dx_score) + "</span>" +
+        fmtRA(s.dx_rating);
+      var tags =
+        badgeOrEmpty(s.fc, "badge-fc") +
+        badgeOrEmpty(s.fs, "badge-fs") +
+        badgeOrEmpty(s.rate, "badge-rate");
+      return '<div class="score-card" data-song-id="' + esc(s.id) + '">' +
+        '<img class="card-cover" src="' + esc(coverUrl) + '" alt="" ' +
+          "onerror=\"this.onerror=null;this.style.visibility='hidden'\" />" +
+        '<div class="card-info">' +
+          '<div class="card-title-row">' +
+            '<span class="card-title">' + esc(s.title) + "</span>" +
+            diffTag(s.level_index) +
+          "</div>" +
+          '<div class="card-artist">' + esc(s.artist || "") + "</div>" +
+          '<div class="card-stats">' + stats + "</div>" +
+          '<div class="card-tags">' + tags + "</div>" +
+        "</div>" +
+      "</div>";
+    }).join("");
+
+    scoresArea.innerHTML =
+      playerHtml +
+      '<div class="section-title">成绩列表 <span class="count">共 ' + scores.length + " 条</span></div>" +
+      '<div class="score-list">' + cards + "</div>";
+
+    // 绑定重置按钮
+    if (resetBtn) resetBtn.onclick = resetFlow;
+
+    // 异步加载落雪曲库，匹配 song_id 更新 artist
+    fetch("/api/songs").then(function (r) { return r.json(); }).then(function (data) {
+      var songs = data.songs || {};
+      document.querySelectorAll("[data-song-id]").forEach(function (el) {
+        var sid = el.getAttribute("data-song-id");
+        var s = songs[sid];
+        if (s && s.artist) {
+          var artistEl = el.querySelector(".card-artist");
+          if (artistEl) artistEl.textContent = s.artist;
+        }
+      });
+    }).catch(function () {});
+  }
+
+  function field(label, value, extra) {
+    return '<div class="player-field">' +
+      '<div class="label">' + esc(label) + "</div>" +
+      '<div class="value ' + (extra || "") + '">' +
+        (value === null || value === undefined || value === "" ? '<span class="dash">-</span>' : esc(value)) +
+      "</div></div>";
+  }
+
+  /* ---------- 渲染：error ---------- */
+  function renderError(data) {
+    actionsArea.hidden = false;
+    startBtn.hidden = true;
+    stopBtn.hidden = true;
+    resetBtn.hidden = true;
+    scoresArea.hidden = true;
+    statusArea.hidden = false;
+    var msg = (data && data.error) ? data.error : "发生未知错误";
+    statusArea.innerHTML =
+      '<div class="error-box">' +
+        '<div class="status-title">出错了</div>' +
+        '<div class="error-msg">' + esc(msg) + "</div>" +
+        '<button class="btn btn-primary" id="retry-btn">重试</button>' +
+      "</div>";
+    var retry = document.getElementById("retry-btn");
+    if (retry) retry.addEventListener("click", startFlow);
+  }
+
+  /* ---------- 绑定 ---------- */
+  startBtn.addEventListener("click", startFlow);
+  stopBtn.addEventListener("click", stopFlow);
+
+  /* 初始化：拉一次状态 */
+  pollOnce();
+})();
+</script>
+</body>
+</html>
