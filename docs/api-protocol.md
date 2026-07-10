@@ -15,20 +15,6 @@
 | `/player/import_token` | PUT | cookie 或 Bearer | 刷新导入 token |
 | `/chart_stats` | GET | 无 | 谱面统计 |
 
-## 落雪 (LXNS)
-
-基础: `https://maimai.lxns.net/api/v0/`
-
-| 端点 | 方法 | Auth | 说明 |
-|------|------|------|------|
-| `/maimai/song/list?notes=true` | GET | 无 | 曲库 |
-| `/user/maimai/player/scores` | GET/POST | `Authorization: Bearer {token}` | 查分/上传 |
-| `/user/maimai/player/bests` | GET | Bearer | B50 |
-| `/user/maimai/player` | GET | Bearer | 玩家信息 |
-| `/user/maimai/player/score/history` | GET | Bearer | 单曲历史成绩 |
-| `/oauth/authorize` → `/api/v0/oauth/token` | OAuth2 | client_secret | 获取 access token |
-| `/maimai/trophy/list` 等 | GET | 无 | 收藏品 |
-
 ## 华立公众号爬虫
 
 | 步骤 | 端点 | 说明 |
@@ -40,10 +26,10 @@
 
 ## 数据格式差异
 
-| 字段 | 水鱼 | 落雪 | NET原始 |
-|------|------|------|---------|
-| 歌曲 ID | 直接用 NET musicId (DX>10000) | NET musicId % 10000 | musicId |
-| achievement | 浮点百分比 | 浮点百分比 | 整数×10000 |
-| fc | fc/fcp/ap/app | fc/fcp/ap/ap+ | comboStatus (0-4) |
-| fs | sync/fs/fsp/fsd/fsdp | sync/fs/fsp/fsd/fsdp | syncStatus (0-5) |
-| type | `type: "dx"/"sd"` (上传格式) | `type: "dx"/"standard"` (上传格式) | 内嵌在 musicId (>10000=DX) |
+| 字段 | 水鱼 | NET原始 |
+|------|------|---------|
+| 歌曲 ID | 直接用 NET musicId (DX>10000) | musicId |
+| achievement | 浮点百分比 | 整数×10000 |
+| fc | fc/fcp/ap/app | comboStatus (0-4) |
+| fs | sync/fs/fsp/fsd/fsdp | syncStatus (0-5) |
+| type | `type: "dx"/"sd"` (上传格式) | 内嵌在 musicId (>10000=DX) |
