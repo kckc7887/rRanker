@@ -1,5 +1,7 @@
 # API 协议
 
+> 状态说明：本文件来自 2026-07-10 的本地 PoC 与历史实现记录，只能作为待验证清单，不能直接视为当前生产 API 契约。开始实现 provider 前，必须对每个实际使用的端点重新记录：验证日期、认证方式、请求 schema、成功响应、4xx/5xx、限流与超时行为。当前阶段只实现读取；上传与华立抓取属于 ROADMAP M5。
+
 ## 水鱼 (DivingFish)
 
 基础: `https://www.diving-fish.com/api/maimaidxprober/`
@@ -14,6 +16,14 @@
 | `/player/profile` | GET/POST | cookie 或 Bearer | 获取/设置资料 |
 | `/player/import_token` | PUT | cookie 或 Bearer | 刷新导入 token |
 | `/chart_stats` | GET | 无 | 谱面统计 |
+
+### 开发前验证门禁
+
+- 不在客户端收集或保存水鱼账号密码；优先使用公开查询参数或用户主动提供的 provider token。
+- `/music_data`、`/chart_stats`、`/query/player`、`/player/records` 分别验证，不能假定它们使用相同权限或错误格式。
+- 为每个启用端点保存脱敏成功样例和至少一个失败样例，并用 Zod schema 固化。
+- 上游失败、字段缺失或结构变化时，不覆盖本地最近有效快照。
+- 封面、曲库、别名和统计数据的来源、许可、缓存周期与署名要求在发布前单独确认。
 
 ## 华立公众号爬虫
 
