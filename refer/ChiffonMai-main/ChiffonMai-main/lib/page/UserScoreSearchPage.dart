@@ -1,0 +1,2026 @@
+import 'package:flutter/material.dart';
+import 'package:my_first_flutter_app/utils/CommonWidgetUtil.dart';
+import 'package:my_first_flutter_app/utils/StringUtil.dart';
+import 'package:my_first_flutter_app/utils/ColorUtil.dart';
+import '../service/UserScoreSearchService.dart';
+import '../manager/DivingFish/MaimaiMusicDataManager.dart';
+import 'package:my_first_flutter_app/utils/AppConstants.dart';
+import 'package:my_first_flutter_app/utils/AppTheme.dart';
+import 'SongInfoPage.dart';
+import '../utils/CoverUtil.dart';
+import 'package:my_first_flutter_app/constant/VersionListConstant.dart';
+
+class UserScoreSearchPage extends StatefulWidget {
+  const UserScoreSearchPage({Key? key}) : super(key: key);
+
+  @override
+  _UserScoreSearchPageState createState() => _UserScoreSearchPageState();
+}
+
+class _UserScoreSearchPageState extends State<UserScoreSearchPage> {
+  final UserScoreSearchService _service = UserScoreSearchService();
+  
+  Map<String, dynamic>? _userPlayData;
+  List<dynamic> _sortedSongs = [];
+  List<dynamic> _pagedSongs = [];
+  bool _isLoading = true;
+  Map<String, int>? _stats; // 存储统计数据
+  
+  int _currentPage = 1;
+  int _pageSize = 50;
+  final TextEditingController _pageSizeController = TextEditingController(text: '50');
+  
+  // 筛选按钮相关尺寸变量
+  late double _buttonHorizontalSpacing;
+  late double _buttonVerticalSpacing;
+  late double _buttonBorderRadius;
+  late double _buttonWidth;
+  late double _buttonHeight;
+  late double _buttonFontSize;
+  
+  // 新增小按钮相关尺寸变量
+  late double _smallButtonWidth;
+  late double _smallButtonHeight;
+  late double _smallButtonFontSize;
+  
+  // 当前选中的按钮索引
+  int _selectedButtonIndex = 0;
+  
+  // 缓存DX分达成率，避免重复计算
+  Map<dynamic, double> _dxRateCache = {};
+  
+  // 当前排序方式
+  String _currentSortBy = 'Rating'; // 默认选择Rating
+  
+  // 显示模式：true为曲绘模式，false为列表模式
+  bool _isCoverMode = true;
+  
+  // 筛选条件
+  Map<String, String> _filterConditions = {
+    '版本筛选': '',
+    '定数筛选': '',
+    '难度筛选': '',
+    '达成率筛选': '',
+    '连击/同步筛选': '',
+  };
+  
+  // 版本列表
+  static List<String> _versionList = VersionListConstant.versionOrderList;
+  
+  // 处理版本字符串，使其在前端简化展示
+  static String _formatVersion(String version) {
+    if (version == 'maimai') {
+      return 'maimai';
+    }
+    if (version == 'maimai PLUS') {
+      return 'maimai+';
+    }
+    if (version == 'maimai \u3067\u3089\u3063\u304f\u3059') {
+      return 'DX 2020';
+    }
+    if (version == 'maimai \u3067\u3089\u3063\u304f\u3059 Splash') {
+      return 'DX 2021';
+    }
+    if (version == 'maimai \u3067\u3089\u3063\u304f\u3059 UNiVERSE') {
+      return 'DX 2022';
+    }
+    if (version == 'maimai \u3067\u3089\u3063\u304f\u3059 FESTiVAL') {
+      return 'DX 2023';
+    }
+    if (version == 'maimai \u3067\u3089\u3063\u304f\u3059 BUDDiES') {
+      return 'DX 2024';
+    }
+    if (version == 'maimai \u3067\u3089\u3063\u304f\u3059 PRiSM') {
+      return 'DX 2025';
+    }
+    if (version.contains(' PLUS')) {
+      version = version.replaceFirst(' PLUS', '+');
+    }
+    if (version.contains('maimai') && version != 'maimai') {
+      version = version.replaceFirst('maimai ', '');
+    }
+    if (version.contains('\u3067\u3089\u3063\u304f\u3059')) {
+      version = version.replaceFirst('\u3067\u3089\u3063\u304f\u3059 ', '');
+    }
+    return version;
+  }
+  
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+  
+  // 初始化按钮尺寸变量
+  void _initButtonSizes(double screenWidth) {
+    _buttonHorizontalSpacing = screenWidth * 0.015;
+    _buttonVerticalSpacing = screenWidth * 0.008;
+    _buttonBorderRadius = screenWidth * 0.01;
+    _buttonWidth = screenWidth * 0.28; // 增加按钮宽度，从0.2增加到0.28
+    _buttonHeight = screenWidth * 0.15;
+    _buttonFontSize = screenWidth * 0.035; // 增大字体大小，从0.03增加到0.035
+    
+    // 初始化新增小按钮尺寸
+    _smallButtonWidth = screenWidth * 0.12;
+    _smallButtonHeight = screenWidth * 0.08;
+    _smallButtonFontSize = screenWidth * 0.035;
+  }
+  
+  Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+    
+    try {
+      _userPlayData = await _service.getUserPlayData();
+      if (_userPlayData != null) {
+        // 初始化歌曲缓存，确保星数计算时缓存可用
+        await _service.initSongCache();
+        _sortedSongs = await _service.getSortedSongs(_userPlayData!, _currentSortBy);
+        // 应用筛选条件
+        _sortedSongs = await _service.filterSongs(_sortedSongs, _filterConditions);
+        _updatePagedSongs();
+        // 计算统计数据
+        _stats = await _calculateStats();
+      }
+    } catch (e) {
+      debugPrint('加载数据出错: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+  
+  // 显示排序方式对话框
+  void _showSortDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('选择排序方式'),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<String>(
+                    title: Text('Rating'),
+                    value: 'Rating',
+                    groupValue: _currentSortBy,
+                    onChanged: (value) {
+                      setState(() {
+                        _currentSortBy = value!;
+                      });
+                    },
+                  ),
+                  RadioListTile<String>(
+                    title: Text('达成率'),
+                    value: '达成率',
+                    groupValue: _currentSortBy,
+                    onChanged: (value) {
+                      setState(() {
+                        _currentSortBy = value!;
+                      });
+                    },
+                  ),
+                  RadioListTile<String>(
+                    title: Text('定数'),
+                    value: '定数',
+                    groupValue: _currentSortBy,
+                    onChanged: (value) {
+                      setState(() {
+                        _currentSortBy = value!;
+                      });
+                    },
+                  ),
+                  RadioListTile<String>(
+                    title: Text('DX分数达成率'),
+                    value: 'DX分数达成率',
+                    groupValue: _currentSortBy,
+                    onChanged: (value) {
+                      setState(() {
+                        _currentSortBy = value!;
+                      });
+                    },
+                  ),
+                ],
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              child: Text('取消'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('确认'),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _loadData(); // 重新加载数据
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  // 显示版本筛选对话框
+  void _showVersionFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        String selectedVersion = _filterConditions['版本筛选'] ?? '';
+        return AlertDialog(
+          title: Text('版本筛选'),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Container(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      RadioListTile<String>(
+                        title: Text('全部'),
+                        value: '',
+                        groupValue: selectedVersion,
+                        onChanged: (value) {
+                          setState(() {
+                            selectedVersion = value!;
+                          });
+                        },
+                      ),
+                      ..._versionList.map((version) {
+                        return RadioListTile<String>(
+                          title: Text(_formatVersion(version)),
+                          value: version,
+                          groupValue: selectedVersion,
+                          onChanged: (value) {
+                            setState(() {
+                              selectedVersion = value!;
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              child: Text('取消'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('确认'),
+              onPressed: () {
+                setState(() {
+                  _filterConditions['版本筛选'] = selectedVersion;
+                  _currentPage = 1; // 筛选条件变化时，切换到第1页
+                });
+                Navigator.of(context).pop();
+                _loadData(); // 重新加载数据
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  // 根据定数计算等级显示（x或x+）
+  String _getLevelDisplay(double ds) {
+    if (ds >= 15.0) {
+      return '15';
+    }
+    int integerPart = ds.floor();
+    double decimalPart = ds - integerPart;
+    if (decimalPart <= 0.5) {
+      return '$integerPart';
+    } else {
+      return '${integerPart}+';
+    }
+  }
+  
+  // 获取等级选项（参考 PersonalizedScoreService.getAllLevelOptions）
+  Future<List<String>> _getLevelOptions() async {
+    final musicManager = MaimaiMusicDataManager();
+    final songs = await musicManager.getCachedSongs();
+    
+    Set<String> levels = {};
+    if (songs != null) {
+      for (final song in songs) {
+        if (song.id.length == 6 && int.tryParse(song.id) != null) {
+          continue;
+        }
+        for (final ds in song.ds) {
+          if (ds <= 0) continue;
+          levels.add(_getLevelDisplay(ds));
+        }
+      }
+    }
+    
+    if (levels.isEmpty) {
+      for (int i = 1; i <= 14; i++) {
+        levels.add('$i');
+        levels.add('${i}+');
+      }
+      levels.add('15');
+    }
+    
+    return levels.toList()..sort((a, b) {
+      double parseLevel(String level) {
+        if (level == '15') return 15.0;
+        if (level.endsWith('+')) {
+          return double.parse(level.substring(0, level.length - 1)) + 0.5;
+        }
+        return double.tryParse(level) ?? 0.0;
+      }
+      return parseLevel(b).compareTo(parseLevel(a));
+    });
+  }
+  
+  // 显示定数筛选对话框
+  void _showDsFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final brightness = Theme.of(context).brightness;
+        return FutureBuilder<List<String>>(
+          future: _getLevelOptions(),
+          builder: (context, snapshot) {
+            List<Map<String, String>> quickOptions = [];
+            if (snapshot.hasData) {
+              for (String level in snapshot.data!) {
+                double minDs, maxDs;
+                if (level == '15') {
+                  minDs = 15.0;
+                  maxDs = 15.0;
+                } else if (level.endsWith('+')) {
+                  int base = int.parse(level.substring(0, level.length - 1));
+                  minDs = base + 0.6;
+                  maxDs = base + 0.9;
+                } else {
+                  int base = int.parse(level);
+                  minDs = base.toDouble();
+                  maxDs = base + 0.5;
+                }
+                quickOptions.add({
+                  'label': level,
+                  'min': minDs.toStringAsFixed(1),
+                  'max': maxDs.toStringAsFixed(1),
+                });
+              }
+            }
+            
+            String currentRange = _filterConditions['定数筛选'] ?? '';
+            TextEditingController minController = TextEditingController();
+            TextEditingController maxController = TextEditingController();
+            
+            if (currentRange.contains('-')) {
+              List<String> parts = currentRange.split('-');
+              if (parts.length == 2) {
+                minController.text = parts[0];
+                maxController.text = parts[1];
+              }
+            }
+            
+            return AlertDialog(
+              title: Text('定数筛选'),
+              content: SingleChildScrollView(
+                child: StatefulBuilder(
+                  builder: (BuildContext context, StateSetter setState) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: minController,
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                decoration: InputDecoration(
+                                  labelText: '下界',
+                                  hintText: '1.0',
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 16),
+                            Expanded(
+                              child: TextField(
+                                controller: maxController,
+                                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                decoration: InputDecoration(
+                                  labelText: '上界',
+                                  hintText: '15.0',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Text('最多一位小数，留空表示默认值', style: TextStyle(fontSize: 12, color: AppColors.secondaryText(brightness))),
+                        SizedBox(height: 16),
+                        Text('快捷选项:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: quickOptions.map((option) {
+                            return ElevatedButton(
+                              onPressed: () {
+                                setState(() {
+                                  minController.text = option['min']!;
+                                  maxController.text = option['max']!;
+                                });
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.buttonBackground(brightness),
+                                foregroundColor: AppColors.primaryText(brightness),
+                                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                textStyle: TextStyle(fontSize: 12),
+                              ),
+                              child: Text(option['label']!),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              actions: [
+                TextButton(
+                  child: Text('取消'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+                TextButton(
+                  child: Text('确认'),
+                  onPressed: () {
+                    String minText = minController.text.trim();
+                    String maxText = maxController.text.trim();
+                    String range = '';
+
+                    if (minText.isNotEmpty || maxText.isNotEmpty) {
+                      range = '$minText-$maxText';
+                    }
+
+                    setState(() {
+                      _filterConditions['定数筛选'] = range;
+                      _currentPage = 1;
+                    });
+                    Navigator.of(context).pop();
+                    _loadData();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  
+  // 显示难度筛选对话框
+  void _showDifficultyFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        String selectedDifficulty = _filterConditions['难度筛选'] ?? '';
+        List<String> difficulties = ['', 'BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER', 'UTAGE'];
+        return AlertDialog(
+          title: Text('难度筛选'),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: difficulties.map((difficulty) {
+                  return RadioListTile<String>(
+                    title: Text(difficulty.isEmpty ? '全部' : difficulty),
+                    value: difficulty,
+                    groupValue: selectedDifficulty,
+                    onChanged: (value) {
+                      setState(() {
+                        selectedDifficulty = value!;
+                      });
+                    },
+                  );
+                }).toList(),
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              child: Text('取消'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('确认'),
+              onPressed: () {
+                setState(() {
+                  _filterConditions['难度筛选'] = selectedDifficulty;
+                  _currentPage = 1; // 筛选条件变化时，切换到第1页
+                });
+                Navigator.of(context).pop();
+                _loadData(); // 重新加载数据
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  // 显示达成率筛选对话框
+  void _showAchievementFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final brightness = Theme.of(context).brightness;
+        // 达成率快捷选项
+        List<Map<String, String>> quickOptions = [
+          {'label': 'SSS+', 'min': '100.5', 'max': '101'},
+          {'label': 'SSS', 'min': '100', 'max': '100.4999'},
+          {'label': 'SS+', 'min': '99.5', 'max': '99.9999'},
+          {'label': 'SS', 'min': '99', 'max': '99.4999'},
+          {'label': 'S+', 'min': '98.0', 'max': '98.9999'},
+          {'label': 'S', 'min': '97', 'max': '97.9999'},
+          {'label': 'AAA', 'min': '94', 'max': '96.9999'},
+          {'label': 'AA', 'min': '90', 'max': '93.9999'},
+          {'label': 'A', 'min': '80', 'max': '89.9999'},
+        ];
+        
+        String currentRange = _filterConditions['达成率筛选'] ?? '';
+        TextEditingController minController = TextEditingController();
+        TextEditingController maxController = TextEditingController();
+        
+        // 解析当前范围
+        if (currentRange.contains('-')) {
+          List<String> parts = currentRange.split('-');
+          if (parts.length == 2) {
+            minController.text = parts[0];
+            maxController.text = parts[1];
+          }
+        }
+        
+        return AlertDialog(
+          title: Text('达成率筛选'),
+          content: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (BuildContext context, StateSetter setState) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: minController,
+                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              labelText: '下界',
+                              hintText: '0',
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            controller: maxController,
+                            keyboardType: TextInputType.numberWithOptions(decimal: true),
+                            decoration: InputDecoration(
+                              labelText: '上界',
+                              hintText: '101',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text('最多四位小数，留空表示默认值', style: TextStyle(fontSize: 12, color: AppColors.secondaryText(brightness))),
+                    SizedBox(height: 16),
+                    Text('快捷选项:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: quickOptions.map((option) {
+                        return ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              minController.text = option['min']!;
+                              maxController.text = option['max']!;
+                            });
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.buttonBackground(brightness),
+                            foregroundColor: AppColors.primaryText(brightness),
+                            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            textStyle: TextStyle(fontSize: 12),
+                          ),
+                          child: Text(option['label']!),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: Text('取消'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('确认'),
+              onPressed: () {
+                String minText = minController.text.trim();
+                String maxText = maxController.text.trim();
+                String range = '';
+
+                if (minText.isNotEmpty || maxText.isNotEmpty) {
+                  range = '$minText-$maxText';
+                }
+
+                setState(() {
+                  _filterConditions['达成率筛选'] = range;
+                  _currentPage = 1; // 筛选条件变化时，切换到第1页
+                });
+                Navigator.of(context).pop();
+                _loadData(); // 重新加载数据
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  // 显示连击/同步筛选对话框
+  void _showComboFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        String selectedFilter = _filterConditions['连击/同步筛选'] ?? '';
+        List<String> filters = ['全部', '无连击评价', 'FC', 'FC+', 'AP', 'AP+', '无同步评价', 'SYNC', 'FS', 'FS+', 'FDX', 'FDX+'];
+        List<String> filterValues = ['全部', '无连击评价', 'FC', 'FC+', 'AP', 'AP+', '无同步评价', 'SYNC', 'FS', 'FS+', 'FDX', 'FDX+'];
+        return AlertDialog(
+          title: Text('连击/同步筛选'),
+          content: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              return Container(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(filters.length, (index) {
+                      return RadioListTile<String>(
+                        title: Text(filters[index]),
+                        value: filterValues[index],
+                        groupValue: selectedFilter,
+                        onChanged: (value) {
+                          setState(() {
+                            selectedFilter = value!;
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                ),
+              );
+            },
+          ),
+          actions: [
+            TextButton(
+              child: Text('取消'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              child: Text('确认'),
+              onPressed: () {
+                setState(() {
+                  _filterConditions['连击/同步筛选'] = selectedFilter;
+                  _currentPage = 1; // 筛选条件变化时，切换到第1页
+                });
+                Navigator.of(context).pop();
+                _loadData(); // 重新加载数据
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+  
+  void _updatePagedSongs() {
+    _pagedSongs = _service.getPagedSongs(_sortedSongs, _currentPage, _pageSize);
+  }
+  
+  void _changePage(int page) {
+    setState(() {
+      _currentPage = page;
+      _updatePagedSongs();
+    });
+  }
+  
+  void _changePageSize() {
+    int newPageSize = int.tryParse(_pageSizeController.text) ?? 50;
+    if (newPageSize > 0) {
+      setState(() {
+        _pageSize = newPageSize;
+        _currentPage = 1;
+        _updatePagedSongs();
+      });
+    }
+  }
+  
+  int _getTotalPages() {
+    return (_sortedSongs.length / _pageSize).ceil();
+  }
+
+  // 计算统计数据
+  Future<Map<String, int>> _calculateStats() async {
+    if (_sortedSongs.isEmpty) {
+      return {
+        'total': 0,
+        'sssp': 0,
+        'sss': 0,
+        'fc': 0,
+        'ap': 0,
+        'fs': 0,
+        'fdx': 0,
+        'star5': 0,
+        'star4': 0,
+        'star3': 0,
+        'star2': 0,
+        'star1': 0,
+      };
+    }
+    
+    List<dynamic> records = _sortedSongs;
+    int total = records.length;
+    int sssp = 0; // ≥SSS+
+    int sss = 0;  // ≥SSS
+    int fc = 0;   // FC/FC+
+    int ap = 0;   // AP/AP+
+    int fs = 0;   // FS/FS+
+    int fdx = 0;  // FDX/FDX+
+    int star5 = 0; // 5星
+    int star4 = 0; // 4星
+    int star3 = 0; // 3星
+    int star2 = 0; // 2星
+    int star1 = 0; // 1星
+    
+    // 计算星数时，先缓存DX分达成率，避免重复计算
+    Map<dynamic, double> dxRateMap = {};
+    
+    for (var record in records) {
+      // 统计成绩等级
+      if (record.containsKey('achievements')) {
+        double achievements = double.tryParse(record['achievements'].toString()) ?? 0;
+        if (achievements >= 100.5) {
+          sssp++;
+        } else if (achievements >= 100.0) {
+          sss++;
+        }
+      }
+      
+      // 统计FC/AP
+      if (record.containsKey('fc')) {
+        String fcValue = record['fc'].toString().toLowerCase();
+        if (fcValue == 'fc' || fcValue == 'fcp') {
+          fc++;
+        }
+        if (fcValue == 'ap' || fcValue == 'app') {
+          ap++;
+        }
+      }
+      
+      // 统计FS/FDX
+      if (record.containsKey('fs')) {
+        String fsValue = record['fs'].toString().toLowerCase();
+        if (fsValue == 'fs' || fsValue == 'fsp') {
+          fs++;
+        }
+        if (fsValue == 'fsd' || fsValue == 'fsdp') {
+          fdx++;
+        }
+      }
+    }
+    
+    // 单独计算星数，避免在主循环中阻塞
+    for (var record in records) {
+      // 统计星数
+      if (record.containsKey('dxScore')) {
+        // ignore: unused_local_variable
+        int dxScore = int.tryParse(record['dxScore'].toString()) ?? 0;
+        // 计算DX分达成率
+        double rate;
+        if (dxRateMap.containsKey(record)) {
+          rate = dxRateMap[record]!;
+        } else {
+          rate = await _calculateDXScoreRate(record);
+          dxRateMap[record] = rate;
+        }
+        if (rate >= 0.97) {
+          star5++;
+        } else if (rate >= 0.95) {
+          star4++;
+        } else if (rate >= 0.93) {
+          star3++;
+        } else if (rate >= 0.90) {
+          star2++;
+        } else if (rate >= 0.85) {
+          star1++;
+        }
+      }
+    }
+    
+    return {
+      'total': total,
+      'sssp': sssp,
+      'sss': sss,
+      'fc': fc,
+      'ap': ap,
+      'fs': fs,
+      'fdx': fdx,
+      'star5': star5,
+      'star4': star4,
+      'star3': star3,
+      'star2': star2,
+      'star1': star1,
+    };
+  }
+  
+  // 使用UserScoreSearchService中的方法计算DX分达成率
+  double _calculateDXScoreRate(dynamic record) {
+    return _service.calculateDXScoreRateSync(record);
+  }
+  
+  // 构建星数统计项
+  Widget _buildStarStatItem(String label, int value, String stars, Brightness brightness) {
+    Color textColor = _getStarsColor(stars);
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.tableBorder(brightness)),
+        borderRadius: BorderRadius.circular(6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurface),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 2),
+          Text(
+            value.toString(),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // 获取星星颜色
+  Color _getStarsColor(String stars) {
+    switch (stars) {
+      case '✦ 5':
+        return Colors.yellow;
+      case '✦ 4':
+      case '✦ 3':
+        return Colors.orange;
+      case '✦ 2':
+      case '✦ 1':
+        return Colors.green.shade200;
+      default:
+        return Colors.white;
+    }
+  }
+  
+  // 构建统计项
+  Widget _buildStatItem(String label, int value, Brightness brightness) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.tableBorder(brightness)),
+        borderRadius: BorderRadius.circular(6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurface),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 2),
+          Text(
+            value.toString(),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppColors.linkBlue(brightness),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final brightness = Theme.of(context).brightness;
+    // ignore: unused_local_variable
+    final stats =  _calculateStats();
+    
+    // 初始化按钮尺寸
+    _initButtonSizes(screenWidth);
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: false, // 防止键盘弹出时调整布局
+      body: Stack(
+        children: [
+
+          CommonWidgetUtil.buildCommonBgWidget(),
+          CommonWidgetUtil.buildCommonChiffonBgWidget(context),
+        
+          // 页面内容
+          Column(
+            children: [
+              // 标题栏
+              Container(
+                padding: EdgeInsets.fromLTRB(16, 46, 16, 8),
+                child: Row(
+                  children: [
+                    // 返回按钮
+                    IconButton(
+                      icon: Icon(Icons.arrow_back, color: Theme.of(context).colorScheme.onSurface),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                    ),
+                    // 标题
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          '成绩查询',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: screenWidth * 0.06,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    // 占位，保持标题居中
+                    SizedBox(width: 48),
+                  ],
+                ),
+              ),
+              
+              // 主内容区域
+              Expanded(
+                child: Container(
+                  margin: EdgeInsets.fromLTRB(8, 0, 8, 16), // 进一步减小上边距，从4减小到0
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(AppConstants.borderRadiusSmall),
+                    boxShadow: [AppConstants.defaultShadow(brightness)],
+                  ),
+                  child: _isLoading
+                      ? Center(child: CircularProgressIndicator())
+                      : _userPlayData == null
+                          ? Center(child: Text('没有找到缓存数据', style: TextStyle(color: Theme.of(context).colorScheme.onSurface)))
+                          : Column(
+                              children: [
+                                // 可滚动内容区域
+                                Expanded(
+                                  child: SingleChildScrollView(
+                                    child: Column(
+                                      children: [
+                                        // 统计显示区域
+                                        Container(
+                                          padding: EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            border: Border(bottom: BorderSide(color: AppColors.tableBorder(brightness))),
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              // 第一行统计数据
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                                children: [
+                                                  Expanded(child: _buildStatItem('总谱面数', _stats!['total']!, brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStatItem('SSS+', _stats!['sssp']!, brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStatItem('SSS', _stats!['sss']!, brightness)),
+                                                  SizedBox(width: 8),
+                                                ],
+                                              ),
+                                              SizedBox(height: 8),
+                                              // 第二行统计数据
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                                children: [
+                                                  Expanded(child: _buildStatItem('FC/FC+', _stats!['fc']!, brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStatItem('AP/AP+', _stats!['ap']!, brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStatItem('FS/FS+', _stats!['fs']!, brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStatItem('FDX/FDX+', _stats!['fdx']!, brightness)),
+                                                ],
+                                              ),
+                                              SizedBox(height: 8),
+                                              // 第三行统计数据（星数）
+                                              Row(
+                                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                                children: [
+                                                  Expanded(child: _buildStarStatItem('✦ 5', _stats!['star5']!, '✦ 5', brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStarStatItem('✦ 4', _stats!['star4']!, '✦ 4', brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStarStatItem('✦ 3', _stats!['star3']!, '✦ 3', brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStarStatItem('✦ 2', _stats!['star2']!, '✦ 2', brightness)),
+                                                  SizedBox(width: 8),
+                                                  Expanded(child: _buildStarStatItem('✦ 1', _stats!['star1']!, '✦ 1', brightness)),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        
+                                        // 筛选按钮区域
+                                        Container(
+                                          padding: EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            border: Border(bottom: BorderSide(color: AppColors.tableBorder(brightness))),
+                                          ),
+                                          child: Wrap(
+                                            spacing: _buttonHorizontalSpacing, // 水平间距
+                                            runSpacing: _buttonVerticalSpacing, // 垂直间距
+                                            children: [
+                                              ElevatedButton(
+                                                onPressed: _showSortDialog,
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.buttonBackground(brightness),
+                                                  foregroundColor: AppColors.primaryText(brightness),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(_buttonBorderRadius),
+                                                    side: BorderSide(color: AppColors.buttonBorder(brightness)),
+                                                  ),
+                                                  fixedSize: Size(_buttonWidth, _buttonHeight),
+                                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                                ),
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Text('排序方式', 
+                                                      style: TextStyle(fontSize: _buttonFontSize, color: AppColors.primaryText(brightness)),
+                                                      maxLines: 1,
+                                                    ),
+                                                    SizedBox(height: 2),
+                                                    Text(_currentSortBy,
+                                                      style: TextStyle(fontSize: _buttonFontSize * 0.8, color: AppColors.secondaryText(brightness)),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: _showVersionFilterDialog,
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.buttonBackground(brightness),
+                                                  foregroundColor: AppColors.primaryText(brightness),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(_buttonBorderRadius),
+                                                    side: BorderSide(color: AppColors.buttonBorder(brightness)),
+                                                  ),
+                                                  fixedSize: Size(_buttonWidth, _buttonHeight),
+                                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                                ),
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Text('版本筛选', 
+                                                      style: TextStyle(fontSize: _buttonFontSize, color: AppColors.primaryText(brightness)),
+                                                      maxLines: 1,
+                                                    ),
+                                                    SizedBox(height: 2),
+                                                    Text(_filterConditions['版本筛选'] != null && _filterConditions['版本筛选']!.isNotEmpty
+                                                        ? _formatVersion(_filterConditions['版本筛选']!)
+                                                        : '',
+                                                      style: TextStyle(fontSize: _buttonFontSize * 0.8, color: AppColors.secondaryText(brightness)),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: _showDsFilterDialog,
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.buttonBackground(brightness),
+                                                  foregroundColor: AppColors.primaryText(brightness),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(_buttonBorderRadius),
+                                                    side: BorderSide(color: AppColors.buttonBorder(brightness)),
+                                                  ),
+                                                  fixedSize: Size(_buttonWidth, _buttonHeight),
+                                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                                ),
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Text('定数筛选', 
+                                                      style: TextStyle(fontSize: _buttonFontSize, color: AppColors.primaryText(brightness)),
+                                                      maxLines: 1,
+                                                    ),
+                                                    SizedBox(height: 2),
+                                                    Text(_filterConditions['定数筛选'] ?? '',
+                                                      style: TextStyle(fontSize: _buttonFontSize * 0.8, color: AppColors.secondaryText(brightness)),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: _showDifficultyFilterDialog,
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.buttonBackground(brightness),
+                                                  foregroundColor: AppColors.primaryText(brightness),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(_buttonBorderRadius),
+                                                    side: BorderSide(color: AppColors.buttonBorder(brightness)),
+                                                  ),
+                                                  fixedSize: Size(_buttonWidth, _buttonHeight),
+                                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                                ),
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Text('难度筛选', 
+                                                      style: TextStyle(fontSize: _buttonFontSize, color: AppColors.primaryText(brightness)),
+                                                      maxLines: 1,
+                                                    ),
+                                                    SizedBox(height: 2),
+                                                    Text(_filterConditions['难度筛选'] ?? '',
+                                                      style: TextStyle(fontSize: _buttonFontSize * 0.8, color: AppColors.secondaryText(brightness)),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: _showAchievementFilterDialog,
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.buttonBackground(brightness),
+                                                  foregroundColor: AppColors.primaryText(brightness),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(_buttonBorderRadius),
+                                                    side: BorderSide(color: AppColors.buttonBorder(brightness)),
+                                                  ),
+                                                  fixedSize: Size(_buttonWidth, _buttonHeight),
+                                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                                ),
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Text('达成率筛选', 
+                                                      style: TextStyle(fontSize: _buttonFontSize, color: AppColors.primaryText(brightness)),
+                                                      maxLines: 1,
+                                                    ),
+                                                    SizedBox(height: 2),
+                                                    Text(_filterConditions['达成率筛选'] ?? '',
+                                                      style: TextStyle(fontSize: _buttonFontSize * 0.8, color: AppColors.secondaryText(brightness)),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: _showComboFilterDialog,
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.buttonBackground(brightness),
+                                                  foregroundColor: AppColors.primaryText(brightness),
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(_buttonBorderRadius),
+                                                    side: BorderSide(color: AppColors.buttonBorder(brightness)),
+                                                  ),
+                                                  fixedSize: Size(_buttonWidth, _buttonHeight),
+                                                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                                ),
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    Text('连击/同步筛选', 
+                                                      style: TextStyle(fontSize: _buttonFontSize, color: AppColors.primaryText(brightness)),
+                                                      maxLines: 1,
+                                                    ),
+                                                    SizedBox(height: 2),
+                                                    Text(_filterConditions['连击/同步筛选'] ?? '',
+                                                      style: TextStyle(fontSize: _buttonFontSize * 0.8, color: AppColors.secondaryText(brightness)),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        
+                                        // 每页显示数量设置
+                                        Container(
+                                          padding: EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            border: Border(bottom: BorderSide(color: AppColors.tableBorder(brightness))),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              // 可横向滚动的按钮容器 - 占据更多空间
+                                              Expanded(
+                                                flex: 3, // 增加权重，让容器占据更多空间
+                                                child: SingleChildScrollView(
+                                                  scrollDirection: Axis.horizontal,
+                                                  padding: EdgeInsets.symmetric(vertical: 4),
+                                                  child: Row(
+                                                    children: [
+                                                      ElevatedButton(
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            _selectedButtonIndex = 0;
+                                                          });
+                                                        },
+                                                        style: ElevatedButton.styleFrom(
+                                                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                          minimumSize: Size(_smallButtonWidth, _smallButtonHeight),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          backgroundColor: _selectedButtonIndex == 0 ? AppColors.linkBlue(brightness) : AppColors.buttonBackground(brightness),
+                                                          foregroundColor: _selectedButtonIndex == 0 ? Colors.white : AppColors.primaryText(brightness),
+                                                        ),
+                                                        child: Text('评级',
+                                                          style: TextStyle(
+                                                            fontSize: _smallButtonFontSize,
+                                                            color: _selectedButtonIndex == 0 ? Colors.white : AppColors.primaryText(brightness),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 4),
+                                                      ElevatedButton(
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            _selectedButtonIndex = 1;
+                                                          });
+                                                        },
+                                                        style: ElevatedButton.styleFrom(
+                                                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                          minimumSize: Size(_smallButtonWidth, _smallButtonHeight),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          backgroundColor: _selectedButtonIndex == 1 ? AppColors.linkBlue(brightness) : AppColors.buttonBackground(brightness),
+                                                          foregroundColor: _selectedButtonIndex == 1 ? Colors.white : AppColors.primaryText(brightness),
+                                                        ),
+                                                        child: Text('连击',
+                                                          style: TextStyle(
+                                                            fontSize: _smallButtonFontSize,
+                                                            color: _selectedButtonIndex == 1 ? Colors.white : AppColors.primaryText(brightness),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 4),
+                                                      ElevatedButton(
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            _selectedButtonIndex = 2;
+                                                          });
+                                                        },
+                                                        style: ElevatedButton.styleFrom(
+                                                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                          minimumSize: Size(_smallButtonWidth, _smallButtonHeight),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          backgroundColor: _selectedButtonIndex == 2 ? AppColors.linkBlue(brightness) : AppColors.buttonBackground(brightness),
+                                                          foregroundColor: _selectedButtonIndex == 2 ? Colors.white : AppColors.primaryText(brightness),
+                                                        ),
+                                                        child: Text('同步',
+                                                          style: TextStyle(
+                                                            fontSize: _smallButtonFontSize,
+                                                            color: _selectedButtonIndex == 2 ? Colors.white : AppColors.primaryText(brightness),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 4),
+                                                      ElevatedButton(
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            _selectedButtonIndex = 3;
+                                                          });
+                                                        },
+                                                        style: ElevatedButton.styleFrom(
+                                                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                          minimumSize: Size(_smallButtonWidth, _smallButtonHeight),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          backgroundColor: _selectedButtonIndex == 3 ? AppColors.linkBlue(brightness) : AppColors.buttonBackground(brightness),
+                                                          foregroundColor: _selectedButtonIndex == 3 ? Colors.white : AppColors.primaryText(brightness),
+                                                        ),
+                                                        child: Text('得分',
+                                                          style: TextStyle(
+                                                            fontSize: _smallButtonFontSize,
+                                                            color: _selectedButtonIndex == 3 ? Colors.white : AppColors.primaryText(brightness),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 4),
+                                                      ElevatedButton(
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            _selectedButtonIndex = 4;
+                                                          });
+                                                        },
+                                                        style: ElevatedButton.styleFrom(
+                                                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                          minimumSize: Size(_smallButtonWidth, _smallButtonHeight),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          backgroundColor: _selectedButtonIndex == 4 ? AppColors.linkBlue(brightness) : AppColors.buttonBackground(brightness),
+                                                          foregroundColor: _selectedButtonIndex == 4 ? Colors.white : AppColors.primaryText(brightness),
+                                                        ),
+                                                        child: Text('星数',
+                                                          style: TextStyle(
+                                                            fontSize: _smallButtonFontSize,
+                                                            color: _selectedButtonIndex == 4 ? Colors.white : AppColors.primaryText(brightness),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 4),
+                                                      ElevatedButton(
+                                                        onPressed: () {
+                                                          setState(() {
+                                                            _selectedButtonIndex = 5;
+                                                          });
+                                                        },
+                                                        style: ElevatedButton.styleFrom(
+                                                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                                          minimumSize: Size(_smallButtonWidth, _smallButtonHeight),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(4),
+                                                          ),
+                                                          backgroundColor: _selectedButtonIndex == 5 ? AppColors.linkBlue(brightness) : AppColors.buttonBackground(brightness),
+                                                          foregroundColor: _selectedButtonIndex == 5 ? Colors.white : AppColors.primaryText(brightness),
+                                                        ),
+                                                        child: Text('定数',
+                                                          style: TextStyle(
+                                                            fontSize: _smallButtonFontSize,
+                                                            color: _selectedButtonIndex == 5 ? Colors.white : AppColors.primaryText(brightness),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                              SizedBox(width: 8), // 替换Spacer为固定宽度，让右侧内容更紧凑
+                                              // 每页显示输入框 - 占据较少空间
+                                              Container(
+                                                child: Row(
+                                                  children: [
+                                                    Text('每页显示 ', style: TextStyle(fontSize: 12, color: AppColors.primaryText(brightness))),
+                                                    Container(
+                                                      width: screenWidth * 0.1, // 减小输入框宽度，从0.12减小到0.1
+                                                      height: 24, // 固定高度，减小输入框高度
+                                                      child: TextField(
+                                                        controller: _pageSizeController,
+                                                        keyboardType: TextInputType.number,
+                                                        onSubmitted: (_) => _changePageSize(),
+                                                        decoration: InputDecoration(
+                                                          border: OutlineInputBorder(),
+                                                          contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 0), // 进一步减小内边距
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        
+                                        // 歌曲列表
+                                        Container(
+                                          padding: EdgeInsets.all(8),
+                                          constraints: BoxConstraints(
+                                            minHeight: 300, // 设置最小高度确保内容显示
+                                          ),
+                                          child: _isCoverMode ? _buildCoverGrid() : _buildListGrid(),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                
+                                // 固定的分页控件
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    border: Border(top: BorderSide(color: AppColors.tableBorder(brightness))),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      ElevatedButton(
+                                        onPressed: _currentPage > 1
+                                            ? () => _changePage(_currentPage - 1)
+                                            : null,
+                                        style: ElevatedButton.styleFrom(
+                                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          backgroundColor: AppColors.buttonBackground(brightness),
+                                          foregroundColor: AppColors.primaryText(brightness),
+                                        ),
+                                        child: Text('上一页', style: TextStyle(color: AppColors.primaryText(brightness), fontSize: 12)),
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text('$_currentPage / ${_getTotalPages()}', style: TextStyle(color: AppColors.primaryText(brightness), fontSize: 14)),
+                                      SizedBox(width: 8),
+                                      ElevatedButton(
+                                        onPressed: _currentPage < _getTotalPages()
+                                            ? () => _changePage(_currentPage + 1)
+                                            : null,
+                                        style: ElevatedButton.styleFrom(
+                                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          backgroundColor: AppColors.buttonBackground(brightness),
+                                          foregroundColor: AppColors.primaryText(brightness),
+                                        ),
+                                        child: Text('下一页', style: TextStyle(color: AppColors.primaryText(brightness), fontSize: 12)),
+                                      ),
+                                      SizedBox(width: 8),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _isCoverMode = !_isCoverMode;
+                                          });
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: _isCoverMode ? AppColors.linkBlue(brightness) : AppColors.successGreen(brightness),
+                                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        ),
+                                        child: Text(
+                                          _isCoverMode ? '当前:曲绘' : '当前:列表',
+                                          style: TextStyle(color: Colors.white, fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+  
+  // 构建曲绘网格（5列）
+  Widget _buildCoverGrid() {
+    double screenWidth = MediaQuery.of(context).size.width;
+    
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.all(2),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 5,
+        crossAxisSpacing: 2,
+        mainAxisSpacing: 2,
+        childAspectRatio: 1.0,
+      ),
+      itemCount: _pagedSongs.length,
+      itemBuilder: (context, index) {
+        final song = _pagedSongs[index];
+        final levelIndex = song['level_index'] ?? 0;
+        var borderColor = _service.getBorderColor(levelIndex);
+        
+        final songId = song['song_id']?.toString() ?? '';
+        if (songId.length == 6 && int.tryParse(songId) != null) {
+          borderColor = Color(0xFFFF69B4);
+        }
+        
+        final itemSize = (screenWidth - 4 - (4 * 2)) / 5;
+        
+        String displayText = '';
+        String displaySubText = '';
+        Color displayColor = Colors.white;
+        
+        switch (_selectedButtonIndex) {
+          case 0: // 评级
+            if (song.containsKey('achievements')) {
+              double achievements = double.tryParse(song['achievements'].toString()) ?? 0;
+              if (achievements >= 100.5) {
+                displayText = 'SSS+';
+                displayColor = Colors.yellow;
+              } else if (achievements >= 100.0) {
+                displayText = 'SSS';
+                displayColor = Colors.yellow;
+              } else if (achievements >= 99.5) {
+                displayText = 'SS+';
+                displayColor = Colors.orange;
+              } else if (achievements >= 99.0) {
+                displayText = 'SS';
+                displayColor = Colors.orange;
+              } else if (achievements >= 98.0) {
+                displayText = 'S+';
+                displayColor = Colors.orange;
+              } else if (achievements >= 97.0) {
+                displayText = 'S';
+                displayColor = Colors.orange;
+              } else if (achievements >= 94.0) {
+                displayText = 'AAA';
+                displayColor = Colors.red;
+              } else if (achievements >= 90.0) {
+                displayText = 'AA';
+                displayColor = Colors.red;
+              } else if (achievements >= 80.0) {
+                displayText = 'A';
+                displayColor = Colors.red;
+              } else if (achievements >= 75.0) {
+                displayText = 'BBB';
+                displayColor = Colors.blue;
+              } else if (achievements >= 70.0) {
+                displayText = 'BB';
+                displayColor = Colors.blue;
+              } else if (achievements >= 60.0) {
+                displayText = 'B';
+                displayColor = Colors.blue;
+              } else if (achievements >= 50.0) {
+                displayText = 'C';
+                displayColor = Colors.grey;
+              } else {
+                displayText = 'D';
+                displayColor = Colors.grey;
+              }
+            }
+            break;
+          case 1: // 连击
+            if (song.containsKey('fc')) {
+              String fc = song['fc'].toString().toLowerCase();
+              if (fc == 'app') {
+                displayText = 'AP+';
+                displayColor = Colors.yellow;
+              } else if (fc == 'ap') {
+                displayText = 'AP';
+                displayColor = Colors.orange;
+              } else if (fc == 'fcp') {
+                displayText = 'FC+';
+                displayColor = Colors.green;
+              } else if (fc == 'fc') {
+                displayText = 'FC';
+                displayColor = Colors.blue;
+              }
+            }
+            break;
+          case 2: // 同步
+            if (song.containsKey('fs')) {
+              String fs = song['fs'].toString().toLowerCase();
+              if (fs == 'fsdp') {
+                displayText = 'FDX+';
+                displayColor = Colors.yellow;
+              } else if (fs == 'fsd') {
+                displayText = 'FDX';
+                displayColor = Colors.orange;
+              } else if (fs == 'fsp') {
+                displayText = 'FS+';
+                displayColor = Colors.green;
+              } else if (fs == 'fs') {
+                displayText = 'FS';
+                displayColor = Colors.blue;
+              }
+            }
+            break;
+          case 3: // 得分
+            if (song.containsKey('ra')) {
+              displayText = song['ra'].toString();
+              displayColor = Colors.white;
+            }
+            break;
+          case 4: // 星数
+            if (song.containsKey('dxScore')) {
+              double rate = 0.0;
+              if (_dxRateCache.containsKey(song)) {
+                rate = _dxRateCache[song]!;
+              } else {
+                rate = _calculateDXScoreRate(song);
+                _dxRateCache[song] = rate;
+              }
+              
+              String stars = '';
+              if (rate >= 0.99) {
+                stars = '\u2726 6';
+                displayColor = Colors.yellow;
+              } else if (rate >= 0.98) {
+                stars = '\u2726 5.5';
+                displayColor = Colors.yellow;
+              } else if (rate >= 0.97) {
+                stars = '\u2726 5';
+                displayColor = Colors.yellow;
+              } else if (rate >= 0.95) {
+                stars = '\u2726 4';
+                displayColor = Colors.orange;
+              } else if (rate >= 0.93) {
+                stars = '\u2726 3';
+                displayColor = Colors.orange;
+              } else if (rate >= 0.90) {
+                stars = '\u2726 2';
+                displayColor = Colors.green.shade200;
+              } else if (rate >= 0.85) {
+                stars = '\u2726 1';
+                displayColor = Colors.green.shade200;
+              } else {
+                stars = '\u2726 0';
+                displayColor = Colors.grey.shade300;
+              }
+              
+              displayText = stars;
+              displaySubText = '${(rate * 100).toStringAsFixed(2)}%';
+            }
+            break;
+          case 5: // 定数
+            if (song.containsKey('ds')) {
+              displayText = song['ds'].toString();
+              displayColor = Colors.white;
+            }
+            break;
+        }
+        
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SongInfoPage(
+                  songId: song['song_id'].toString(),
+                  initialLevelIndex: levelIndex,
+                  isDefaultLevelIndex: false,
+                ),
+              ),
+            );
+          },
+          child: Container(
+            width: itemSize,
+            height: itemSize,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Color(borderColor.value),
+                width: 2,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              color: Color(borderColor.value).withOpacity(0.3),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CoverUtil.buildCoverWidgetWithContextRRect(
+                  context,
+                  song['song_id']?.toString() ?? '',
+                  double.infinity
+                ),
+                if (displayText.isNotEmpty)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Center(
+                      child: _selectedButtonIndex == 4 ?
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              displayText,
+                              style: TextStyle(
+                                color: displayColor,
+                                fontSize: itemSize * 0.18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (displaySubText.isNotEmpty)
+                              Text(
+                                displaySubText,
+                                style: TextStyle(
+                                  color: displayColor,
+                                  fontSize: itemSize * 0.15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                          ],
+                        )
+                      :
+                        Text(
+                          displayText,
+                          style: TextStyle(
+                            color: displayColor,
+                            fontSize: itemSize * 0.2,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+  
+  // 构建列表网格（2列）
+  Widget _buildListGrid() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: MediaQuery.of(context).size.width * 0.01,
+        mainAxisSpacing: MediaQuery.of(context).size.width * 0.01,
+        childAspectRatio: 1.75,
+      ),
+      itemCount: _pagedSongs.length,
+      itemBuilder: (context, index) {
+        return _buildListCard(_pagedSongs[index]);
+      },
+    );
+  }
+  
+  // 构建列表卡片（参考Best50Page的卡片样式）
+  Widget _buildListCard(Map<String, dynamic> song) {
+    final brightness = Theme.of(context).brightness;
+    double screenWidth = MediaQuery.of(context).size.width;
+    int songId = int.tryParse(song['song_id']?.toString() ?? '0') ?? 0;
+    int levelIndex = song['level_index'] ?? 0;
+    String type = song['type']?.toString() ?? '';
+    double difficulty = double.tryParse(song['ds']?.toString() ?? '0') ?? 0;
+    String title = song['title']?.toString() ?? '未知歌曲';
+    double achievementRate = double.tryParse(song['achievements']?.toString() ?? '0') ?? 0;
+    int score = song['dxScore'] ?? 0;
+    int rating = song['ra'] ?? 0;
+    String fc = song['fc']?.toString() ?? '';
+    String fs = song['fs']?.toString() ?? '';
+    String rate = song['rate']?.toString() ?? '';
+    
+    Color cardColor;
+    if (songId.toString().length == 6) {
+      cardColor = Color(0xFFFFB3D1);
+    } else {
+      cardColor = ColorUtil.getCardColor(levelIndex);
+    }
+    
+    bool dxMode = type == 'DX';
+    bool isUtage = songId.toString().length == 6;
+    
+    double rateValue = 0.0;
+    if (_dxRateCache.containsKey(song)) {
+      rateValue = _dxRateCache[song]!;
+    } else {
+      rateValue = _calculateDXScoreRate(song);
+      _dxRateCache[song] = rateValue;
+    }
+    
+    String stars = StringUtil.formatStars(rateValue);
+    Color starsColor = ColorUtil.getStarsColor(stars);
+    
+    String fcText = fc.isNotEmpty ? StringUtil.formatFC(fc) : '-';
+    String fsText = fs.isNotEmpty ? StringUtil.formatFS(fs) : '-';
+    String rateText = StringUtil.formatRate(rate);
+    String grade = '$rateText | $fcText | $fsText';
+    
+    double coverSize = screenWidth * 0.12;
+    double songNameFontSize = screenWidth * 0.035;
+    double decimalMainFontSize = screenWidth * 0.04;
+    double decimalSmallFontSize = screenWidth * 0.03;
+    double otherFontSize = screenWidth * 0.025;
+    double gradeFontSize = screenWidth * 0.022;
+    double dxFontSize = screenWidth * 0.025;
+    
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SongInfoPage(
+              songId: songId.toString(),
+              initialLevelIndex: levelIndex,
+              isDefaultLevelIndex: false,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: cardColor,
+          border: Border.all(color: Colors.black, width: 2.0),
+          borderRadius: BorderRadius.circular(8.0),
+        ),
+        padding: EdgeInsets.all(screenWidth * 0.02),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: coverSize,
+                  height: coverSize,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black, width: 1.0),
+                  ),
+                  child: CoverUtil.buildCoverWidgetWithContext(context, songId.toString(), coverSize),
+                ),
+                SizedBox(height: screenWidth * 0.01),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isUtage)
+                      Text(
+                        'UT',
+                        style: TextStyle(
+                          fontSize: dxFontSize,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                    if (dxMode && !isUtage)
+                      Text(
+                        'DX',
+                        style: TextStyle(
+                          fontSize: dxFontSize,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.warningOrange(brightness),
+                        ),
+                      ),
+                    if (!dxMode && !isUtage)
+                      Text(
+                        'ST',
+                        style: TextStyle(
+                          fontSize: dxFontSize,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.linkBlue(brightness),
+                        ),
+                      ),
+                    SizedBox(width: screenWidth * 0.01),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          difficulty.toString().split('.')[0],
+                          style: TextStyle(
+                            fontSize: decimalMainFontSize * 0.9,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            
+                          ),
+                        ),
+                        if (difficulty.toString().split('.').length > 1)
+                          Text(
+                            '.${difficulty.toString().split('.')[1]}',
+                            style: TextStyle(
+                              fontSize: decimalSmallFontSize * 0.9,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            SizedBox(width: screenWidth * 0.02),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: songNameFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                  SizedBox(height: screenWidth * 0.007),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        achievementRate.toStringAsFixed(4).split('.')[0],
+                        style: TextStyle(
+                          fontSize: decimalMainFontSize,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        '.${achievementRate.toStringAsFixed(4).split('.')[1]}%',
+                        style: TextStyle(
+                          fontSize: decimalSmallFontSize,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        '$rating | $score | ',
+                        style: TextStyle(
+                          fontSize: otherFontSize,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        stars,
+                        style: TextStyle(
+                          fontSize: otherFontSize,
+                          color: starsColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    grade,
+                    style: TextStyle(
+                      fontSize: gradeFontSize,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

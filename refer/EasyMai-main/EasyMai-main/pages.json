@@ -1,0 +1,189 @@
+{
+	"pages": [
+		{
+			"path" : "pages/user-center/user-center",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+				//"navigationStyle":"custom",
+				// "hideStatusBar":true,
+				// "hideBottomNavigationIndicator":true
+			}
+		},
+		{
+			"path": "pages/splash/splash",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path" : "pages/index/index",
+			"style" : 
+			{
+				"navigationBarTitleText" : "",
+				"hideStatusBar":true,
+				"hideBottomNavigationIndicator":true
+			}
+		},
+		
+		{
+			"path" : "pages/Test/Test",
+			"style" : 
+			{
+				"navigationBarTitleText" : "",
+				"hideStatusBar":true,
+				"hideBottomNavigationIndicator":true
+			}
+		},
+		
+		{
+			"path" : "pages/maib50/maib50",
+			"style" : 
+			{
+				"navigationBarTitleText" : "",
+				"hideStatusBar":true,
+				"hideBottomNavigationIndicator":true
+			}
+		},
+		
+		{
+			"path" : "pages/song-detail/song-detail",
+			"style" : 
+			{
+				"navigationBarTitleText" : "",
+				"hideStatusBar":true,
+				"hideBottomNavigationIndicator":true
+				
+			}
+		},
+		{
+			"path" : "pages/song-search/song-search",
+			"style" : 
+			{
+				"navigationBarTitleText" : "",
+				"hideStatusBar":true,
+				"hideBottomNavigationIndicator":true
+			}
+		},
+
+		{
+			"path" : "pages/maiupdate/maiupdate",
+			"style" : 
+			{
+				"navigationBarTitleText" : "",
+				"hideStatusBar":true,
+				"hideBottomNavigationIndicator":true
+			}
+		},
+		{
+		      "path": "pages/agreement/agreement",
+		      "style": {
+		        "navigationStyle": "custom"
+		      }
+		},
+		
+		{
+			"path" : "pages/webview/webview",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		
+		{
+			"path" : "pages/webview/update",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		
+	
+		{
+			"path" : "pages/login/login",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/player-records/player-records",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/song-recommend/song-recommend",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/toolbox/toolbox",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/chart-stats/chart-stats",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/rank-calculator/rank-calculator",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/song-lottery/song-lottery",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/favorites/favorites",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path" : "pages/version-map/version-map",
+			"style" : 
+			{
+				"navigationBarTitleText" : ""
+			}
+		},
+		{
+			"path": "pages/maimai-calculator/maimai-calculator",
+			"style": {
+				"navigationBarTitleText": "达成率计算"
+			}
+		}
+	],
+	"globalStyle": {
+		
+		"app-plus":{
+		"bounce":"none" ,// 将回弹属性关掉
+	    "scrollIndicator":"none"
+		}
+	},
+	"condition" : { //模式配置，仅开发期间生效
+		"current": 0, //当前激活的模式(list 的索引项)
+		"list": [
+			{
+				"name": "", //模式名称
+				"path": "", //启动页面，必选
+				"query": "" //启动参数，在页面的onLoad函数里面得到
+			}
+		]
+	}
+}

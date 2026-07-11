@@ -1,0 +1,140 @@
+@import "@/uni.scss";
+
+.modal-container.dark-mode {
+   
+   .modal-overlay {
+     position: absolute;
+     background-color: rgba(0, 0, 0, 0.5);
+   }
+   
+   .modal-content {
+
+     max-width: 600rpx;
+	 background:$dark-card-bg;
+
+     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+     animation: modalShow 0.2s ease;
+     
+     .modal-title {
+ 
+       color:$dark-text-primary;
+     }
+     
+     &.qr-modal {
+       .qr-form {
+
+         
+         .form-item {
+           .label-with-help {
+           
+             
+             .help-icon {
+               color: #94a3b8;
+          
+               
+               &:active {
+                 color: #6366f1;
+                 background: rgba(99, 102, 241, 0.1);
+               }
+             }
+             
+             .form-label {
+               color: #64748b;
+               font-size: 28rpx;
+               font-weight: 500;
+             }
+           }
+           
+           .form-textarea {
+           
+             border: $dark-card-border;
+  
+             background: $dark-element-bg;
+  
+             
+             &:focus {
+               border-color: #818cf8;
+               box-shadow: 0 0 0 4rpx rgba(129, 140, 248, 0.1);
+               background:$dark-element-active-bg;
+          
+             }
+             
+             &:hover {
+               border-color: #818cf8;
+               background:$dark-element-active-bg;
+             }
+             
+             &::placeholder {
+               color: #94a3b8;
+             }
+           }
+           
+           .import-btn {
+            
+             border: 2rpx dashed #e2e8f0;
+     
+             background: #f8fafc;
+       
+             
+             .btn-icon {
+ 
+               color: #64748b;
+             }
+             
+             .btn-text {
+ 
+               color: #64748b;
+           
+             }
+             
+             &:active {
+               background: #f1f5f9;
+               border-color: #818cf8;
+               
+               .btn-icon, .btn-text {
+                 color: #6366f1;
+               }
+             }
+           }
+         }
+       }
+       
+       .modal-buttons {
+       
+         
+         .modal-btn {
+        
+           
+           &.cancel {
+             background: $dark-element-bg;
+             color: $dark-text-primary;
+           }
+           
+           &.confirm {
+             background: $dark-primary-button-bg;
+             color: white;
+             
+             &:active {
+               background:$dark-primary-button-bg;
+             }
+           }
+           
+           &:active {
+             transform: scale(0.98);
+           }
+         }
+       }
+     }
+   }
+ }
+ 
+ @keyframes modalShow {
+   from {
+     opacity: 0;
+     transform: scale(0.95);
+   }
+   to {
+     opacity: 1;
+     transform: scale(1);
+   }
+} 

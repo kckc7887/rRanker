@@ -1,153 +1,148 @@
 # rRanker 产品路线图
 
-> 规划基线：2026-07-11。现实开发环境为一台 Windows 11 PC 和一台 iPhone 17，没有 Mac、没有 Android 真机。规划以这些设备能实际验证的结果为准。
+> 规划基线：2026-07-11。开发环境为 Windows 11 PC + iPhone 17，无 Mac、无 Android 真机，暂不开通 Apple Developer 账号。
 
-## 1. 核心决策
+## 1. 当前产品边界
 
-rRanker 继续使用 React Native/Expo，但不再把“Android 与 iOS 同时拥有本地代理、服务和爬虫”作为首版前提。
+rRanker 先完成所有不涉及“上传成绩到查分器”的功能，爬虫与上传整体后置。
 
-- **产品本体跨平台**：查分、B50、查歌、缓存、计算和收藏使用共用 TypeScript 领域层。
-- **首发验证 iOS 优先**：现有 iPhone 是唯一真机，先完成 iOS 可用产品，再扩大 Android 验证。
-- **数据接入优先 provider**：优先使用许可明确的 API、用户提供的 token 或文件导入。
-- **本地抓取分平台研究**：iOS Network Extension 与 Android `VpnService` 是两项独立原生工程，不进入首版关键路径。
-- **电脑端 Demo 不产品化**：只用于理解数据格式、生成本地样例和保留踩坑记录。
-
-这不是放弃 Android，而是把“共用产品能力”和“平台专属抓取能力”拆开，避免后者阻塞前者。
+- **双端共用产品代码**：React Native/Expo UI、领域逻辑、provider、缓存、计算、收藏和推荐使用同一套 TypeScript 代码。
+- **不运行 localhost 服务**：这里的“本地服务”指 App 进程内的 `services/repositories` 业务层，不是后台 HTTP 服务，因此可以双端复用。
+- **查询与上传分离**：主 App 从水鱼等 provider 读取数据；未来爬虫只负责采集成绩并上传到水鱼/落雪，不作为主 App 的内部数据源。
+- **爬虫完全后置**：当前不实现代理、CA、VPN、抓取、本地上传队列或平台原生模块。
+- **水鱼先行、落雪后接**：先完成水鱼读取能力；项目推进后由用户申请落雪 API，再加入落雪读取和上传 adapter。
+- **当前不付 Apple 年费**：iPhone 使用 Expo Go 做开发验证；TestFlight、正式签名和原生抓取延后。
 
 ## 2. 实现优先级
 
 | 优先级 | 能力 | 完成定义 |
 | --- | --- | --- |
-| P0 | 领域模型与算法 | 固化 Player/Song/Chart/Score/B50；Rating、B35/B15、ID 映射有 fixture 对照测试 |
-| P0 | iOS 只读查分 MVP | iPhone 17 可查看玩家概览、B50、成绩、数据来源与更新时间 |
-| P0 | Provider 数据接入 | 至少一个无需本地代理的真实数据入口可用；token/cookie 使用安全存储 |
-| P0 | 文件导入与离线快照 | provider 不可用时可导入标准 JSON；最近快照可离线打开 |
-| P1 | 查歌与基础工具 | 官方曲名搜索、筛选、Rating 计算和容错计算可用 |
-| P1 | iOS Beta | TestFlight 内部版本完成真实安装、升级和崩溃恢复测试 |
-| P1 | Android 兼容层 | Windows 模拟器构建和核心流程通过；不承诺本地抓取 |
-| P2 | Android 真机 Beta | 有真实 Android 设备或测试者后，完成设备矩阵和 Play 内部测试 |
-| P3 | Android 本地抓取研究 | Kotlin `VpnService` spike；独立验收微信流量、证书、后台服务与商店政策 |
-| P3 | iOS 本地抓取研究 | 获得 Mac/Xcode 后做 Swift Network Extension spike；独立验收 entitlement、签名和真机流量 |
-| P3 | 推荐与谱面分析 | 数据质量和基础使用稳定后再开始 |
+| P0 | 领域模型与算法 | Player/Song/Chart/Score/B50 统一；Rating、B35/B15、ID 映射有固定样例测试 |
+| P0 | 水鱼只读 provider | 曲库、玩家成绩、B50 等实际需要的接口逐项验证；错误与限流有明确降级 |
+| P0 | 双端 UI 骨架 | 同一套页面在 iPhone Expo Go 与 Android Emulator 可运行 |
+| P0 | 查分基础 | 玩家概览、DX Rating、B35/B15、成绩列表、数据来源和更新时间可用 |
+| P1 | 查歌与筛选 | 支持曲名、ID、曲师、谱师、难度、定数、版本等可获得字段的组合查询 |
+| P1 | 本地缓存与离线 | 最近有效快照可离线查看；缓存损坏和 schema 升级可恢复 |
+| P1 | 基础工具箱 | Rating、达成率、容错、牌子进度、版本对照等功能完成 |
+| P2 | 收藏与分享 | 收藏夹、练习清单、结果图片导出等不依赖上传的功能完成 |
+| P2 | 推荐与分析 | 拟合定数、目标 Rating、弱项或标签推荐有透明规则和可验证输入 |
+| P2 | Android 兼容 | Windows 模拟器和云设备通过；有真机后补发布验收 |
+| P3 | 落雪读取 provider | 用户取得 API 后接入，与水鱼统一到 provider 接口 |
+| P4 | 爬虫与上传 | 所有非上传功能稳定后，才分别研究抓取并上传到水鱼/落雪 |
 
 ## 3. 分阶段 ROADMAP
 
-### M0：平台无关底座（约 1 周）
+### M0：领域与数据底座
 
-- 从本地 Demo 输出提取最小脱敏 fixture。
-- 定义统一 schema、provider adapter、错误模型和数据来源信息。
-- 固化 Rating/B50 规则；未知枚举保留原文并降级。
-- 建立 TypeScript 类型检查、算法测试和契约测试。
+- 从本地 Demo 输出提取最小脱敏 fixture，不把真实账号数据放入正式测试集。
+- 定义 `Player`、`Song`、`Chart`、`ScoreRecord`、`Best50Snapshot` 和 `DataSource`。
+- 固化 Rating、B35/B15、难度、FC/FS/rate、SD/DX 和 ID 映射规则。
+- 建立 Zod schema、provider adapter、错误模型、单元测试和契约测试。
 
-验收：Windows 上所有 fixture 通过；同一输入只产生一个确定结果。
+验收：Windows 上同一输入始终得到同一结果；未知字段不崩溃、不静默丢记录。
 
-### M1：iOS 只读 MVP（约 2–3 周）
+### M1：双端查分 MVP
 
-- 建立 Expo/React Native 应用与 development build。
-- 首页、玩家信息、B35/B15、成绩列表、查歌和数据来源说明。
-- 先用 fixture 打通界面，再接第一个 provider。
-- 支持标准 JSON 导入、本地缓存和错误恢复。
-- 不加入代理、CA 证书、VPN 或微信抓取原生代码。
+- 创建 Expo/React Native 工程，只采用 Expo Go 可用能力。
+- 同步实现首页、玩家概览、B50、成绩列表、查歌和设置页。
+- iPhone 17 使用 Expo Go；Android 使用 Windows Android Emulator。
+- 先用 fixture 打通完整 UI，再接经过验证的水鱼只读接口。
+- 本地业务层写成普通 TypeScript 模块，不启动 localhost server。
 
-验收：iPhone 17 上完成首次打开、导入/拉取、离线重开、token 失效和升级安装。
+验收：iOS 与 Android 使用同一 fixture 时，数值、排序、筛选和页面状态一致。
 
-### M2：iOS 可用版本（约 2–4 周）
+### M2：查询与工具箱完整版
 
-- 接入至少一个许可与认证方式明确的成绩 provider。
-- 完成查歌、Rating 计算、筛选、牌子进度或容错计算中的首批工具。
-- 加入安全存储、数据库迁移、隐私说明和脱敏诊断。
-- 通过 TestFlight 内部测试验证分发包，而不是只测 development build。
+- 完成水鱼只读 provider、离线快照、刷新、错误恢复和数据来源展示。
+- 完成歌曲详情、复合搜索、成绩筛选、Rating、达成率、容错、牌子和版本工具。
+- 对封面失败、日文长标题、600+ 成绩、断网、token 失效和空账号做完整处理。
+- 不包含“更新成绩”“上传成绩”“抓取微信”等入口。
 
-验收：核心功能不依赖 Windows 电脑或本地爬虫；TestFlight 安装、更新和回滚路径有记录。
+验收：不使用爬虫也能完成查分器和工具箱的全部基础使用流程。
 
-### M3：Android 兼容版本（约 2 周，M2 后）
+### M3：收藏、分享、推荐与分析
 
-- 在 Windows 使用 Android Studio Emulator 验证布局、导航、存储和 provider。
-- 通过云设备测试扩大系统版本与机型覆盖。
-- 寻找至少 1–3 名 Android 真机测试者，验证键盘、返回键、后台恢复、网络和安装升级。
-- 只复用共用产品能力；不在此阶段实现 `VpnService` 抓取。
+- 收藏夹、练习清单、本地标签和备份恢复。
+- B50/牌子/成绩结果的图片或文件导出。
+- 随机谱面、拟合定数推荐、目标 Rating 推荐和透明的推荐理由。
+- 谱面标签/弱项分析只有在数据来源、许可和准确度可验证时启用。
 
-验收：模拟器、云设备和至少一台真实 Android 通过核心清单后，才进入 Google Play 内部测试。
+验收：所有不涉及向外部查分器上传数据的规划功能均已完成或明确取消。
 
-### M4：平台抓取可行性实验（无固定工期，独立立项）
+### M4：双端稳定与发布准备
 
-Android 实验：
+- iPhone Expo Go 完成长期使用、缓存迁移、网络切换和系统生命周期验证。
+- Android Emulator 覆盖最低支持版本与主流版本；云设备扩大机型覆盖。
+- 获得 Android 真机/测试者后补真机验收。
+- 需要 TestFlight 或正式 iOS 包时，再决定是否开通 Apple Developer 账号。
 
-- 原生 Kotlin `VpnService`，不是 React Native JS 本地服务。
-- 验证用户授权、前台服务、唯一 VPN 占用、进程回收、证书信任和目标 App HTTPS 行为。
-- 必须有 Android 真机；模拟器或云设备不能替代微信完整交互验证。
+验收：共用产品层稳定；所有已知平台差异有明确处理或发布限制。
 
-iOS 实验：
+### M5：爬虫与查分器上传（最后实施）
 
-- 原生 Swift Network Extension / Packet Tunnel app extension。
-- 需要 Apple Developer 账号、Network Extension capability、签名配置和 Xcode 调试。
-- 没有 Mac 时不开始实现；EAS 云构建不能替代所有 entitlement、extension 和 Xcode 调试工作。
-- 即使拿到数据包，也不能假定可以解密第三方 App HTTPS 或通过 App Review。
+爬虫只承担以下职责：
 
-停止条件：任何平台若需要高风险中间人证书、违反平台政策、无法稳定恢复网络，或维护成本高于产品价值，则终止该平台抓取，回退到 provider/token/文件导入。
+```text
+平台抓取器 -> 标准成绩快照 -> 上传适配器 -> 水鱼 / 落雪
+```
 
-### M5：推荐与扩展（基础产品稳定后）
+- 抓取器不得成为主 App 查询、缓存、B50 或推荐的必需依赖。
+- Android 与 iOS 的代理/抓取分别实现，不强求代码互通。
+- 标准成绩快照和上传任务状态可以共用 TypeScript schema。
+- 水鱼上传 adapter 先实现；落雪 adapter 等用户申请并取得 API 后实现。
+- 上传必须具备快照固定、幂等、重试、部分失败、脱敏日志和结果追踪。
+- 若移动端抓取不可行，可取消该平台抓取，不影响主 App 继续发布。
 
-- 收藏与练习清单。
-- 可解释的练习推荐。
-- 谱面结构与音乐偏好分析。
-- 第二个音游 provider，用来验证领域抽象，而不是提前泛化。
+验收：抓取失败不会损坏网络或主 App 数据；上传结果可追溯；同一快照不会重复污染查分器。
 
-## 4. 数据接入策略
+## 4. 架构边界
 
-按以下顺序决策，不并行开工：
+```text
+UI / Screens
+    ↓
+Application Services（TypeScript，双端共用）
+    ↓
+Domain + Repositories（TypeScript，双端共用）
+    ↓
+Provider Adapters / SQLite / SecureStore（接口共用，平台实现由 Expo 负责）
+```
 
-1. **Provider API**：首选。验证认证、许可、限流、字段和失败降级。
-2. **用户主动导入**：token、标准 JSON、系统文件选择器或分享入口。
-3. **已有电脑 Demo**：仅供开发者生成 fixture，不作为普通用户使用前提。
-4. **平台本地抓取**：P3 独立实验；Android/iOS 分别实现和评审。
-5. **云端代抓**：默认不做。涉及用户凭据、Cookie、合规、成本和数据泄露面，除非以后单独立项。
+当前工程不需要本地 HTTP server。只有未来爬虫阶段才可能新增：
+
+- Android 原生 `VpnService` / 抓取模块。
+- iOS 原生 Network Extension / 抓取模块。
+- 共用的标准快照与水鱼/落雪上传 adapter。
 
 ## 5. 技术栈
 
-| 层 | 建议 | 边界 |
+| 层 | 选择 | 当前边界 |
 | --- | --- | --- |
-| 客户端 | React Native + Expo + TypeScript | 正式 scaffold 时锁版本；不假定当前已安装 |
-| 路由 | Expo Router | 页面导航，不承载领域计算 |
-| 请求缓存 | TanStack Query | provider 请求、刷新和错误状态 |
-| 本地数据 | Expo SQLite | 快照、收藏、迁移；凭据不存普通表 |
-| 安全存储 | Expo SecureStore 或等价系统钥匙串封装 | token/cookie；日志中禁止出现明文 |
-| 校验 | Zod | 所有外部数据先校验再映射 |
-| 测试 | Vitest + React Native Testing Library | Windows 执行共用逻辑与组件测试 |
-| iOS 构建 | EAS Build + iPhone development build/TestFlight | 无 Mac 主路径；原生 extension 研究除外 |
-| Android 构建 | Windows + Android Studio Emulator，后续 EAS/Play | 真机到位前不宣称生产可用 |
+| 客户端 | React Native + Expo + TypeScript | UI 与业务逻辑双端共用 |
+| 路由 | Expo Router | 页面导航，不放领域计算 |
+| 请求缓存 | TanStack Query | 水鱼/落雪读取请求、刷新和错误状态 |
+| 本地状态 | Zustand 或等价轻量方案 | 仅保存筛选和 UI 偏好 |
+| 本地数据 | Expo SQLite | 快照、收藏、练习清单和迁移 |
+| 安全存储 | Expo SecureStore | token/cookie；不写普通日志或 SQLite 明文列 |
+| 数据校验 | Zod | 所有 provider 输入先校验再映射 |
+| 测试 | Vitest + React Native Testing Library | Windows 执行共用逻辑和组件测试 |
+| iOS 当前验证 | Expo Go + iPhone 17 | 不覆盖 TestFlight、正式签名和自定义原生模块 |
+| Android 当前验证 | Android Studio Emulator + 云设备 | 无真机前不宣称发布就绪 |
 
-## 6. 当前设备下的测试原则
+## 6. 数据源顺序
 
-- Windows 负责：类型、算法、schema、组件、Android 模拟器和构建。
-- iPhone 17 负责：iOS development build、真实网络、存储、生命周期、权限和 TestFlight。
-- 云设备负责：Android 机型/版本的自动化覆盖，不替代微信、证书、VPN 等交互式真机实验。
-- Mac 负责：仅在未来 iOS 原生 extension、Xcode 崩溃定位或签名问题出现时临时获取，不作为 M0–M3 的日常前提。
+1. 水鱼只读查询与曲库。
+2. 本地离线快照。
+3. 落雪 API 申请成功后加入落雪只读 provider。
+4. 全部非上传功能稳定后，开始水鱼上传。
+5. 落雪 API 权限和协议确认后，加入落雪上传。
 
-详细执行方案见 `docs/mobile-testing.md`。
+不能根据历史 Demo 或参考项目猜测当前 API；每个端点都要用真实请求、响应 schema 和错误样例验证。
 
-## 7. 关键决策门槛
+## 7. 下一步执行顺序
 
-### Apple Developer 账号
-
-- 若愿意开通：可使用 EAS iPhone development build 和 TestFlight，执行本路线。
-- 若暂不开通：只能用 Expo Go 验证其支持范围内的 JS/UI，原生模块、正式签名和 TestFlight 延后。
-
-### Android 发布
-
-- 没有真实 Android 前，只做兼容开发，不承诺发布日期。
-- 获得真实设备或可信测试者后，再决定是否进入 Play 内测。
-
-### 本地抓取
-
-- 不因为电脑 Demo 成功就推断移动端可行。
-- Android 与 iOS 各自需要单独 spike、隐私评审、平台政策检查和停止条件。
-
-## 8. 下一步执行顺序
-
-1. 确认是否开通 Apple Developer 账号；这决定 iPhone development build 与 TestFlight 是否可用。
-2. 提取脱敏 fixture，建立领域模型、B50 和 provider 契约测试。
-3. 创建最小 Expo 工程，以 iPhone 17 完成 fixture 驱动的只读 MVP。
-4. 验证一个无需本地代理的 provider，再加入 JSON 导入兜底。
-5. 完成 iOS TestFlight 内测后再做 Android Emulator 适配。
-6. 有 Android 真机或 Mac/Xcode 后，分别评估两个抓取 spike；在此之前不写抓取生产代码。
+1. 完成领域模型、脱敏 fixture 和 B50/Rating 测试。
+2. 创建 Expo 工程，建立 iPhone Expo Go + Android Emulator 双端 UI 骨架。
+3. 接入并验证水鱼只读 provider。
+4. 依次完成 M2 工具箱与 M3 收藏/推荐/分享。
+5. 完成 M4 双端稳定性验证。
+6. 最后再为 M5 单独设计爬虫和水鱼/落雪上传，不提前写代理代码。

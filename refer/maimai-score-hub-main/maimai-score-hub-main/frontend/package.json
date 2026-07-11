@@ -1,0 +1,45 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "predev": "npm --prefix ../shared run build",
+    "dev": "vite",
+    "prebuild": "npm --prefix ../shared run build",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "lint:check": "eslint . --max-warnings=0",
+    "typecheck": "tsc -b --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@maimai-score-hub/shared": "file:../shared",
+    "@mantine/core": "^8.3.10",
+    "@mantine/hooks": "^8.3.10",
+    "@mantine/notifications": "^8.3.10",
+    "@tabler/icons-react": "^3.28.0",
+    "@ts-rest/core": "^3.52.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.11.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.3.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

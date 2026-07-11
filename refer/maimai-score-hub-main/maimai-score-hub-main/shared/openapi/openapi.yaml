@@ -1,0 +1,3721 @@
+openapi: 3.0.2
+paths:
+  /health:
+    get:
+      tags: &a1
+        - app
+      parameters: []
+      operationId: app.getStatus
+      responses:
+        "200":
+          description: "200"
+  /statistics:
+    get:
+      tags: *a1
+      parameters: []
+      operationId: app.getStatistics
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dxnetJobs:
+                    type: object
+                    properties:
+                      totalCount:
+                        type: integer
+                        minimum: 0
+                      completedCount:
+                        type: integer
+                        minimum: 0
+                      failedCount:
+                        type: integer
+                        minimum: 0
+                      successRate:
+                        type: number
+                      avgDuration:
+                        type: number
+                        nullable: true
+                    required:
+                      - totalCount
+                      - completedCount
+                      - failedCount
+                      - successRate
+                      - avgDuration
+                required:
+                  - dxnetJobs
+  /auth/login-requests:
+    post:
+      tags: &a2
+        - auth
+      parameters: []
+      operationId: auth.loginRequest
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                friendCode:
+                  type: string
+                  minLength: 1
+                method:
+                  type: string
+                  enum:
+                    - bot_sends_request
+                    - user_sends_request
+              required:
+                - friendCode
+                - method
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  authUrl:
+                    type: string
+                  authToken:
+                    type: string
+                  message:
+                    type: string
+                  reused:
+                    type: boolean
+                  botFriendCode:
+                    type: string
+                  createdAt:
+                    type: string
+                  job:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      friendCode:
+                        type: string
+                      jobType:
+                        type: string
+                        enum:
+                          - send_friend_request
+                          - accept_friend_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      priority:
+                        type: integer
+                      botUserFriendCode:
+                        type: string
+                        nullable: true
+                      friendRequestSentAt:
+                        type: string
+                        nullable: true
+                      friendRequestWaitStartedAt:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                        enum:
+                          - queued
+                          - processing
+                          - completed
+                          - failed
+                          - canceled
+                      stage:
+                        type: string
+                        enum:
+                          - send_request
+                          - wait_acceptance
+                          - wait_user_request
+                          - accept_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      profile:
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      scoreProgress:
+                        type: object
+                        properties:
+                          completedDiffs:
+                            type: array
+                            items:
+                              type: integer
+                              minimum: 0
+                              maximum: 14
+                          totalDiffs:
+                            type: integer
+                            minimum: 0
+                        required:
+                          - completedDiffs
+                          - totalDiffs
+                        nullable: true
+                      updateScoreDuration:
+                        type: number
+                        nullable: true
+                      diffsToScrape:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      context:
+                        type: object
+                        additionalProperties: {}
+                        nullable: true
+                      removeFriendAfterComplete:
+                        type: boolean
+                      runAt:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - id
+                      - friendCode
+                      - jobType
+                      - status
+                      - stage
+                      - createdAt
+                      - updatedAt
+                required:
+                  - jobId
+                additionalProperties: true
+  /auth/login-requests/{jobId}:
+    get:
+      tags: *a2
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      operationId: auth.loginStatus
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  done:
+                    type: boolean
+                  status:
+                    type: string
+                  friendCode:
+                    type: string
+                  message:
+                    type: string
+                additionalProperties: true
+  /auth/login-requests/{jobId}/verify:
+    post:
+      tags: *a2
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: auth.verifyLoginRequest
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      friendCode:
+                        type: string
+                      jobType:
+                        type: string
+                        enum:
+                          - send_friend_request
+                          - accept_friend_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      priority:
+                        type: integer
+                      botUserFriendCode:
+                        type: string
+                        nullable: true
+                      friendRequestSentAt:
+                        type: string
+                        nullable: true
+                      friendRequestWaitStartedAt:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                        enum:
+                          - queued
+                          - processing
+                          - completed
+                          - failed
+                          - canceled
+                      stage:
+                        type: string
+                        enum:
+                          - send_request
+                          - wait_acceptance
+                          - wait_user_request
+                          - accept_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      profile:
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      scoreProgress:
+                        type: object
+                        properties:
+                          completedDiffs:
+                            type: array
+                            items:
+                              type: integer
+                              minimum: 0
+                              maximum: 14
+                          totalDiffs:
+                            type: integer
+                            minimum: 0
+                        required:
+                          - completedDiffs
+                          - totalDiffs
+                        nullable: true
+                      updateScoreDuration:
+                        type: number
+                        nullable: true
+                      diffsToScrape:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      context:
+                        type: object
+                        additionalProperties: {}
+                        nullable: true
+                      removeFriendAfterComplete:
+                        type: boolean
+                      runAt:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - id
+                      - friendCode
+                      - jobType
+                      - status
+                      - stage
+                      - createdAt
+                      - updatedAt
+                required:
+                  - job
+  /auth/qr-login:
+    post:
+      tags: *a2
+      parameters: []
+      operationId: auth.loginByQr
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                qrCode:
+                  type: string
+                  minLength: 1
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      friendCode:
+                        type: string
+                      username:
+                        type: string
+                        nullable: true
+                    required:
+                      - friendCode
+                    additionalProperties: true
+                required:
+                  - token
+                  - user
+        "400":
+          description: "400"
+        "404":
+          description: "404"
+        "409":
+          description: "409"
+  /auth/qr-login/{attemptId}:
+    get:
+      tags: *a2
+      parameters:
+        - name: attemptId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: auth.pollLoginByQr
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+        "400":
+          description: "400"
+  /auth/password-login:
+    post:
+      tags: *a2
+      parameters: []
+      operationId: auth.passwordLogin
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                friendCode:
+                  type: string
+                  pattern: ^\d{15}$
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 32
+                  pattern: ^[A-Za-z0-9_]+$
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 72
+              required:
+                - password
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      friendCode:
+                        type: string
+                      username:
+                        type: string
+                        nullable: true
+                    required:
+                      - friendCode
+                    additionalProperties: true
+                required:
+                  - token
+                  - user
+        "400":
+          description: "400"
+        "401":
+          description: "401"
+  /me:
+    get:
+      tags: &a3
+        - users
+      parameters: []
+      operationId: users.profile
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  friendCode:
+                    type: string
+                  username:
+                    type: string
+                    nullable: true
+                  hasPassword:
+                    type: boolean
+                  hasDivingFishImportToken:
+                    type: boolean
+                  hasLxnsImportToken:
+                    type: boolean
+                  profile:
+                    nullable: true
+                  hasCabinetUserId:
+                    type: boolean
+                  autoUpdate:
+                    type: boolean
+                required:
+                  - id
+                  - friendCode
+                additionalProperties: true
+    patch:
+      tags: *a3
+      parameters: []
+      operationId: users.updateProfile
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                divingFishImportToken:
+                  type: string
+                  nullable: true
+                lxnsImportToken:
+                  type: string
+                  nullable: true
+                autoUpdate:
+                  type: boolean
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  friendCode:
+                    type: string
+                  username:
+                    type: string
+                    nullable: true
+                  hasPassword:
+                    type: boolean
+                  hasDivingFishImportToken:
+                    type: boolean
+                  hasLxnsImportToken:
+                    type: boolean
+                  profile:
+                    nullable: true
+                  hasCabinetUserId:
+                    type: boolean
+                  autoUpdate:
+                    type: boolean
+                required:
+                  - id
+                  - friendCode
+                additionalProperties: true
+    delete:
+      tags: *a3
+      parameters: []
+      operationId: users.deleteMe
+      responses:
+        "200":
+          description: "200"
+  /me/password:
+    put:
+      tags: *a3
+      parameters: []
+      operationId: users.setPassword
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 32
+                  pattern: ^[A-Za-z0-9_]+$
+                currentPassword:
+                  type: string
+                  minLength: 1
+                  maxLength: 72
+                newPassword:
+                  type: string
+                  minLength: 8
+                  maxLength: 72
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  friendCode:
+                    type: string
+                  username:
+                    type: string
+                    nullable: true
+                  hasPassword:
+                    type: boolean
+                  hasDivingFishImportToken:
+                    type: boolean
+                  hasLxnsImportToken:
+                    type: boolean
+                  profile:
+                    nullable: true
+                  hasCabinetUserId:
+                    type: boolean
+                  autoUpdate:
+                    type: boolean
+                required:
+                  - id
+                  - friendCode
+                additionalProperties: true
+        "400":
+          description: "400"
+        "401":
+          description: "401"
+        "409":
+          description: "409"
+  /me/prober-tokens/diving-fish:
+    post:
+      tags: *a3
+      parameters: []
+      operationId: users.getDivingFishToken
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  minLength: 1
+                password:
+                  type: string
+                  minLength: 1
+              required:
+                - username
+                - password
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  importToken:
+                    type: string
+                  message:
+                    type: string
+                additionalProperties: true
+  /me/cabinet:
+    put:
+      tags: *a3
+      parameters: []
+      operationId: users.bindCabinetQr
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                qrCode:
+                  type: string
+                  minLength: 1
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - ok
+        "400":
+          description: "400"
+        "409":
+          description: "409"
+    delete:
+      tags: *a3
+      parameters: []
+      operationId: users.unbindCabinet
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - ok
+        "400":
+          description: "400"
+  /me/sync/latest:
+    get:
+      tags: &a4
+        - sync
+      parameters: []
+      operationId: sync.latest
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                  scores:
+                    type: array
+                    items:
+                      nullable: true
+                  autoExportResult:
+                    type: object
+                    properties:
+                      divingFish:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                          message:
+                            type: string
+                        required:
+                          - status
+                        nullable: true
+                      lxns:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                          message:
+                            type: string
+                        required:
+                          - status
+                        nullable: true
+                    nullable: true
+                required:
+                  - id
+                  - createdAt
+                  - updatedAt
+                additionalProperties: true
+                nullable: true
+  /me/sync/latest/exports/diving-fish:
+    post:
+      tags: *a4
+      parameters: []
+      operationId: sync.exportToDivingFish
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exportJobId:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - processing
+                      - completed
+                      - partial_failed
+                      - failed
+                      - skipped
+                  job:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      trigger:
+                        type: string
+                        enum:
+                          - dxnet_update_score
+                          - auto_update_rival
+                          - auto_update_fcfs
+                          - manual
+                      friendCode:
+                        type: string
+                      syncId:
+                        type: string
+                      sourceJobId:
+                        type: string
+                        nullable: true
+                      sourceTaskId:
+                        type: string
+                        nullable: true
+                      targets:
+                        type: array
+                        items:
+                          type: string
+                          enum:
+                            - divingFish
+                            - lxns
+                      status:
+                        type: string
+                        enum:
+                          - queued
+                          - processing
+                          - completed
+                          - partial_failed
+                          - failed
+                          - skipped
+                      attempts:
+                        type: number
+                      result:
+                        type: object
+                        properties:
+                          divingFish:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum:
+                                  - success
+                                  - failed
+                                  - skipped
+                              exported:
+                                type: number
+                              skipped:
+                                type: number
+                              scores:
+                                type: number
+                              message:
+                                type: string
+                              response:
+                                nullable: true
+                            required:
+                              - status
+                            additionalProperties: true
+                            nullable: true
+                          lxns:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum:
+                                  - success
+                                  - failed
+                                  - skipped
+                              exported:
+                                type: number
+                              skipped:
+                                type: number
+                              scores:
+                                type: number
+                              message:
+                                type: string
+                              response:
+                                nullable: true
+                            required:
+                              - status
+                            additionalProperties: true
+                            nullable: true
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      claimedAt:
+                        type: string
+                        nullable: true
+                      completedAt:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - id
+                      - trigger
+                      - friendCode
+                      - syncId
+                      - sourceJobId
+                      - sourceTaskId
+                      - targets
+                      - status
+                      - attempts
+                      - result
+                      - error
+                      - claimedAt
+                      - completedAt
+                      - createdAt
+                      - updatedAt
+                    additionalProperties: true
+                required:
+                  - exportJobId
+                  - status
+                  - job
+  /me/sync/latest/exports/lxns:
+    post:
+      tags: *a4
+      parameters: []
+      operationId: sync.exportToLxns
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exportJobId:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - processing
+                      - completed
+                      - partial_failed
+                      - failed
+                      - skipped
+                  job:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      trigger:
+                        type: string
+                        enum:
+                          - dxnet_update_score
+                          - auto_update_rival
+                          - auto_update_fcfs
+                          - manual
+                      friendCode:
+                        type: string
+                      syncId:
+                        type: string
+                      sourceJobId:
+                        type: string
+                        nullable: true
+                      sourceTaskId:
+                        type: string
+                        nullable: true
+                      targets:
+                        type: array
+                        items:
+                          type: string
+                          enum:
+                            - divingFish
+                            - lxns
+                      status:
+                        type: string
+                        enum:
+                          - queued
+                          - processing
+                          - completed
+                          - partial_failed
+                          - failed
+                          - skipped
+                      attempts:
+                        type: number
+                      result:
+                        type: object
+                        properties:
+                          divingFish:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum:
+                                  - success
+                                  - failed
+                                  - skipped
+                              exported:
+                                type: number
+                              skipped:
+                                type: number
+                              scores:
+                                type: number
+                              message:
+                                type: string
+                              response:
+                                nullable: true
+                            required:
+                              - status
+                            additionalProperties: true
+                            nullable: true
+                          lxns:
+                            type: object
+                            properties:
+                              status:
+                                type: string
+                                enum:
+                                  - success
+                                  - failed
+                                  - skipped
+                              exported:
+                                type: number
+                              skipped:
+                                type: number
+                              scores:
+                                type: number
+                              message:
+                                type: string
+                              response:
+                                nullable: true
+                            required:
+                              - status
+                            additionalProperties: true
+                            nullable: true
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      claimedAt:
+                        type: string
+                        nullable: true
+                      completedAt:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - id
+                      - trigger
+                      - friendCode
+                      - syncId
+                      - sourceJobId
+                      - sourceTaskId
+                      - targets
+                      - status
+                      - attempts
+                      - result
+                      - error
+                      - claimedAt
+                      - completedAt
+                      - createdAt
+                      - updatedAt
+                    additionalProperties: true
+                required:
+                  - exportJobId
+                  - status
+                  - job
+  /me/sync/prober-export-jobs/{exportJobId}:
+    get:
+      tags: *a4
+      parameters:
+        - name: exportJobId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: sync.getProberExportJob
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  trigger:
+                    type: string
+                    enum:
+                      - dxnet_update_score
+                      - auto_update_rival
+                      - auto_update_fcfs
+                      - manual
+                  friendCode:
+                    type: string
+                  syncId:
+                    type: string
+                  sourceJobId:
+                    type: string
+                    nullable: true
+                  sourceTaskId:
+                    type: string
+                    nullable: true
+                  targets:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - divingFish
+                        - lxns
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - processing
+                      - completed
+                      - partial_failed
+                      - failed
+                      - skipped
+                  attempts:
+                    type: number
+                  result:
+                    type: object
+                    properties:
+                      divingFish:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - success
+                              - failed
+                              - skipped
+                          exported:
+                            type: number
+                          skipped:
+                            type: number
+                          scores:
+                            type: number
+                          message:
+                            type: string
+                          response:
+                            nullable: true
+                        required:
+                          - status
+                        additionalProperties: true
+                        nullable: true
+                      lxns:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                            enum:
+                              - success
+                              - failed
+                              - skipped
+                          exported:
+                            type: number
+                          skipped:
+                            type: number
+                          scores:
+                            type: number
+                          message:
+                            type: string
+                          response:
+                            nullable: true
+                        required:
+                          - status
+                        additionalProperties: true
+                        nullable: true
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+                  claimedAt:
+                    type: string
+                    nullable: true
+                  completedAt:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - trigger
+                  - friendCode
+                  - syncId
+                  - sourceJobId
+                  - sourceTaskId
+                  - targets
+                  - status
+                  - attempts
+                  - result
+                  - error
+                  - claimedAt
+                  - completedAt
+                  - createdAt
+                  - updatedAt
+                additionalProperties: true
+  /me/sync/prober-export-jobs:
+    get:
+      tags: *a4
+      parameters: []
+      operationId: sync.listProberExportJobs
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        trigger:
+                          type: string
+                          enum:
+                            - dxnet_update_score
+                            - auto_update_rival
+                            - auto_update_fcfs
+                            - manual
+                        friendCode:
+                          type: string
+                        syncId:
+                          type: string
+                        sourceJobId:
+                          type: string
+                          nullable: true
+                        sourceTaskId:
+                          type: string
+                          nullable: true
+                        targets:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                              - divingFish
+                              - lxns
+                        status:
+                          type: string
+                          enum:
+                            - queued
+                            - processing
+                            - completed
+                            - partial_failed
+                            - failed
+                            - skipped
+                        attempts:
+                          type: number
+                        result:
+                          type: object
+                          properties:
+                            divingFish:
+                              type: object
+                              properties:
+                                status:
+                                  type: string
+                                  enum:
+                                    - success
+                                    - failed
+                                    - skipped
+                                exported:
+                                  type: number
+                                skipped:
+                                  type: number
+                                scores:
+                                  type: number
+                                message:
+                                  type: string
+                                response:
+                                  nullable: true
+                              required:
+                                - status
+                              additionalProperties: true
+                              nullable: true
+                            lxns:
+                              type: object
+                              properties:
+                                status:
+                                  type: string
+                                  enum:
+                                    - success
+                                    - failed
+                                    - skipped
+                                exported:
+                                  type: number
+                                skipped:
+                                  type: number
+                                scores:
+                                  type: number
+                                message:
+                                  type: string
+                                response:
+                                  nullable: true
+                              required:
+                                - status
+                              additionalProperties: true
+                              nullable: true
+                          nullable: true
+                        error:
+                          type: string
+                          nullable: true
+                        claimedAt:
+                          type: string
+                          nullable: true
+                        completedAt:
+                          type: string
+                          nullable: true
+                        createdAt:
+                          type: string
+                        updatedAt:
+                          type: string
+                      required:
+                        - id
+                        - trigger
+                        - friendCode
+                        - syncId
+                        - sourceJobId
+                        - sourceTaskId
+                        - targets
+                        - status
+                        - attempts
+                        - result
+                        - error
+                        - claimedAt
+                        - completedAt
+                        - createdAt
+                        - updatedAt
+                      additionalProperties: true
+                required:
+                  - items
+  /me/dxnet-jobs:
+    post:
+      tags: &a5
+        - job
+      parameters:
+        - name: authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      operationId: job.create
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                jobType:
+                  default: update_score
+                  type: string
+                  enum:
+                    - update_score
+                    - send_friend_request
+                friendshipJobId:
+                  type: string
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                  job:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      friendCode:
+                        type: string
+                      jobType:
+                        type: string
+                        enum:
+                          - send_friend_request
+                          - accept_friend_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      priority:
+                        type: integer
+                      botUserFriendCode:
+                        type: string
+                        nullable: true
+                      friendRequestSentAt:
+                        type: string
+                        nullable: true
+                      friendRequestWaitStartedAt:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                        enum:
+                          - queued
+                          - processing
+                          - completed
+                          - failed
+                          - canceled
+                      stage:
+                        type: string
+                        enum:
+                          - send_request
+                          - wait_acceptance
+                          - wait_user_request
+                          - accept_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      profile:
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      scoreProgress:
+                        type: object
+                        properties:
+                          completedDiffs:
+                            type: array
+                            items:
+                              type: integer
+                              minimum: 0
+                              maximum: 14
+                          totalDiffs:
+                            type: integer
+                            minimum: 0
+                        required:
+                          - completedDiffs
+                          - totalDiffs
+                        nullable: true
+                      updateScoreDuration:
+                        type: number
+                        nullable: true
+                      diffsToScrape:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      context:
+                        type: object
+                        additionalProperties: {}
+                        nullable: true
+                      removeFriendAfterComplete:
+                        type: boolean
+                      runAt:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - id
+                      - friendCode
+                      - jobType
+                      - status
+                      - stage
+                      - createdAt
+                      - updatedAt
+                required:
+                  - jobId
+                  - job
+        "400":
+          description: "400"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    oneOf:
+                      - type: string
+                      - type: array
+                        items:
+                          type: string
+                  recommendedBotFriendCode:
+                    type: string
+                    nullable: true
+  /me/dxnet-jobs/{jobId}:
+    get:
+      tags: *a5
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      operationId: job.getById
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  friendCode:
+                    type: string
+                  jobType:
+                    type: string
+                    enum:
+                      - send_friend_request
+                      - accept_friend_request
+                      - update_score
+                      - get_user_recent_event
+                      - get_full_friend_list
+                  priority:
+                    type: integer
+                  botUserFriendCode:
+                    type: string
+                    nullable: true
+                  friendRequestSentAt:
+                    type: string
+                    nullable: true
+                  friendRequestWaitStartedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - processing
+                      - completed
+                      - failed
+                      - canceled
+                  stage:
+                    type: string
+                    enum:
+                      - send_request
+                      - wait_acceptance
+                      - wait_user_request
+                      - accept_request
+                      - update_score
+                      - get_user_recent_event
+                      - get_full_friend_list
+                  profile:
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+                  scoreProgress:
+                    type: object
+                    properties:
+                      completedDiffs:
+                        type: array
+                        items:
+                          type: integer
+                          minimum: 0
+                          maximum: 14
+                      totalDiffs:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - completedDiffs
+                      - totalDiffs
+                    nullable: true
+                  updateScoreDuration:
+                    type: number
+                    nullable: true
+                  diffsToScrape:
+                    type: array
+                    items:
+                      type: integer
+                    nullable: true
+                  context:
+                    type: object
+                    additionalProperties: {}
+                    nullable: true
+                  removeFriendAfterComplete:
+                    type: boolean
+                  runAt:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - friendCode
+                  - jobType
+                  - status
+                  - stage
+                  - createdAt
+                  - updatedAt
+  /me/dxnet-jobs/active:
+    get:
+      tags: *a5
+      parameters:
+        - name: authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      operationId: job.getActiveByFriendCode
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      friendCode:
+                        type: string
+                      jobType:
+                        type: string
+                        enum:
+                          - send_friend_request
+                          - accept_friend_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      priority:
+                        type: integer
+                      botUserFriendCode:
+                        type: string
+                        nullable: true
+                      friendRequestSentAt:
+                        type: string
+                        nullable: true
+                      friendRequestWaitStartedAt:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                        enum:
+                          - queued
+                          - processing
+                          - completed
+                          - failed
+                          - canceled
+                      stage:
+                        type: string
+                        enum:
+                          - send_request
+                          - wait_acceptance
+                          - wait_user_request
+                          - accept_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      profile:
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      scoreProgress:
+                        type: object
+                        properties:
+                          completedDiffs:
+                            type: array
+                            items:
+                              type: integer
+                              minimum: 0
+                              maximum: 14
+                          totalDiffs:
+                            type: integer
+                            minimum: 0
+                        required:
+                          - completedDiffs
+                          - totalDiffs
+                        nullable: true
+                      updateScoreDuration:
+                        type: number
+                        nullable: true
+                      diffsToScrape:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      context:
+                        type: object
+                        additionalProperties: {}
+                        nullable: true
+                      removeFriendAfterComplete:
+                        type: boolean
+                      runAt:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - id
+                      - friendCode
+                      - jobType
+                      - status
+                      - stage
+                      - createdAt
+                      - updatedAt
+                    nullable: true
+                required:
+                  - job
+  /me/dxnet-jobs/friendship:
+    get:
+      tags: *a5
+      parameters:
+        - name: authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      operationId: job.getFriendshipStatus
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  isFriend:
+                    type: boolean
+                  hasCabinetUserId:
+                    type: boolean
+                  botFriendCode:
+                    type: string
+                    nullable: true
+                  recommendedBotFriendCode:
+                    type: string
+                    nullable: true
+                  availableBotCount:
+                    type: integer
+                    minimum: 0
+                  friendsUpdatedAt:
+                    type: string
+                    nullable: true
+                  checkedAt:
+                    type: string
+                required:
+                  - isFriend
+                  - hasCabinetUserId
+                  - botFriendCode
+                  - recommendedBotFriendCode
+                  - availableBotCount
+                  - friendsUpdatedAt
+                  - checkedAt
+  /me/dxnet-jobs/{jobId}/verify:
+    post:
+      tags: *a5
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      operationId: job.verify
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema: {}
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      friendCode:
+                        type: string
+                      jobType:
+                        type: string
+                        enum:
+                          - send_friend_request
+                          - accept_friend_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      priority:
+                        type: integer
+                      botUserFriendCode:
+                        type: string
+                        nullable: true
+                      friendRequestSentAt:
+                        type: string
+                        nullable: true
+                      friendRequestWaitStartedAt:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                        enum:
+                          - queued
+                          - processing
+                          - completed
+                          - failed
+                          - canceled
+                      stage:
+                        type: string
+                        enum:
+                          - send_request
+                          - wait_acceptance
+                          - wait_user_request
+                          - accept_request
+                          - update_score
+                          - get_user_recent_event
+                          - get_full_friend_list
+                      profile:
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      scoreProgress:
+                        type: object
+                        properties:
+                          completedDiffs:
+                            type: array
+                            items:
+                              type: integer
+                              minimum: 0
+                              maximum: 14
+                          totalDiffs:
+                            type: integer
+                            minimum: 0
+                        required:
+                          - completedDiffs
+                          - totalDiffs
+                        nullable: true
+                      updateScoreDuration:
+                        type: number
+                        nullable: true
+                      diffsToScrape:
+                        type: array
+                        items:
+                          type: integer
+                        nullable: true
+                      context:
+                        type: object
+                        additionalProperties: {}
+                        nullable: true
+                      removeFriendAfterComplete:
+                        type: boolean
+                      runAt:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                    required:
+                      - id
+                      - friendCode
+                      - jobType
+                      - status
+                      - stage
+                      - createdAt
+                      - updatedAt
+                required:
+                  - job
+  /workers/dxnet/jobs/{jobId}:
+    get:
+      tags: *a5
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: job.getWorkerJob
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  friendCode:
+                    type: string
+                  jobType:
+                    type: string
+                    enum:
+                      - send_friend_request
+                      - accept_friend_request
+                      - update_score
+                      - get_user_recent_event
+                      - get_full_friend_list
+                  priority:
+                    type: integer
+                  botUserFriendCode:
+                    type: string
+                    nullable: true
+                  friendRequestSentAt:
+                    type: string
+                    nullable: true
+                  friendRequestWaitStartedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - processing
+                      - completed
+                      - failed
+                      - canceled
+                  stage:
+                    type: string
+                    enum:
+                      - send_request
+                      - wait_acceptance
+                      - wait_user_request
+                      - accept_request
+                      - update_score
+                      - get_user_recent_event
+                      - get_full_friend_list
+                  profile:
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+                  scoreProgress:
+                    type: object
+                    properties:
+                      completedDiffs:
+                        type: array
+                        items:
+                          type: integer
+                          minimum: 0
+                          maximum: 14
+                      totalDiffs:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - completedDiffs
+                      - totalDiffs
+                    nullable: true
+                  updateScoreDuration:
+                    type: number
+                    nullable: true
+                  diffsToScrape:
+                    type: array
+                    items:
+                      type: integer
+                    nullable: true
+                  context:
+                    type: object
+                    additionalProperties: {}
+                    nullable: true
+                  removeFriendAfterComplete:
+                    type: boolean
+                  runAt:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - friendCode
+                  - jobType
+                  - status
+                  - stage
+                  - createdAt
+                  - updatedAt
+    patch:
+      tags: *a5
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: job.patch
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                botUserFriendCode:
+                  type: string
+                  nullable: true
+                status:
+                  type: string
+                  enum:
+                    - queued
+                    - processing
+                    - completed
+                    - failed
+                    - canceled
+                stage:
+                  type: string
+                  enum:
+                    - send_request
+                    - wait_acceptance
+                    - wait_user_request
+                    - accept_request
+                    - update_score
+                    - get_user_recent_event
+                    - get_full_friend_list
+                result:
+                  nullable: true
+                profile:
+                  nullable: true
+                error:
+                  type: string
+                  nullable: true
+                friendRequestSentAt:
+                  type: string
+                  nullable: true
+                friendRequestWaitStartedAt:
+                  type: string
+                  nullable: true
+                runAt:
+                  type: string
+                  nullable: true
+                updatedAt:
+                  type: string
+                scoreProgress:
+                  type: object
+                  properties:
+                    completedDiffs:
+                      type: array
+                      items:
+                        type: integer
+                        minimum: 0
+                        maximum: 14
+                    totalDiffs:
+                      type: integer
+                      minimum: 0
+                  required:
+                    - completedDiffs
+                    - totalDiffs
+                  nullable: true
+                addCompletedDiff:
+                  type: integer
+                  minimum: 0
+                updateScoreDuration:
+                  type: number
+                  nullable: true
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  friendCode:
+                    type: string
+                  jobType:
+                    type: string
+                    enum:
+                      - send_friend_request
+                      - accept_friend_request
+                      - update_score
+                      - get_user_recent_event
+                      - get_full_friend_list
+                  priority:
+                    type: integer
+                  botUserFriendCode:
+                    type: string
+                    nullable: true
+                  friendRequestSentAt:
+                    type: string
+                    nullable: true
+                  friendRequestWaitStartedAt:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - processing
+                      - completed
+                      - failed
+                      - canceled
+                  stage:
+                    type: string
+                    enum:
+                      - send_request
+                      - wait_acceptance
+                      - wait_user_request
+                      - accept_request
+                      - update_score
+                      - get_user_recent_event
+                      - get_full_friend_list
+                  profile:
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+                  scoreProgress:
+                    type: object
+                    properties:
+                      completedDiffs:
+                        type: array
+                        items:
+                          type: integer
+                          minimum: 0
+                          maximum: 14
+                      totalDiffs:
+                        type: integer
+                        minimum: 0
+                    required:
+                      - completedDiffs
+                      - totalDiffs
+                    nullable: true
+                  updateScoreDuration:
+                    type: number
+                    nullable: true
+                  diffsToScrape:
+                    type: array
+                    items:
+                      type: integer
+                    nullable: true
+                  context:
+                    type: object
+                    additionalProperties: {}
+                    nullable: true
+                  removeFriendAfterComplete:
+                    type: boolean
+                  runAt:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - friendCode
+                  - jobType
+                  - status
+                  - stage
+                  - createdAt
+                  - updatedAt
+  /workers/dxnet/bots/{botUserFriendCode}/active-friend-codes:
+    get:
+      tags: *a5
+      parameters:
+        - name: botUserFriendCode
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: job.getActiveByBot
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /workers/dxnet/qr-login/rival-names:
+    get:
+      tags: *a5
+      parameters: []
+      operationId: job.getRunningQrLoginRivalNames
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /workers/dxnet/users/activity:
+    post:
+      tags: *a5
+      parameters: []
+      operationId: job.getUsersActivity
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                friendCodes:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - friendCodes
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    friendCode:
+                      type: string
+                    lastActiveAt:
+                      type: string
+                      nullable: true
+                    cabinetUserId:
+                      type: number
+                      nullable: true
+                  required:
+                    - friendCode
+                    - lastActiveAt
+                    - cabinetUserId
+  /workers/dxnet/jobs/{jobId}/cache/{diff}/{type}:
+    get:
+      tags: *a5
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: diff
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: job.getTempCache
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  songs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        level:
+                          type: string
+                        name:
+                          type: string
+                        score:
+                          type: string
+                          nullable: true
+                        category:
+                          type: string
+                          nullable: true
+                        type:
+                          type: string
+                          enum:
+                            - standard
+                            - dx
+                            - utage
+                        fs:
+                          type: string
+                          nullable: true
+                        fc:
+                          type: string
+                          nullable: true
+                      required:
+                        - level
+                        - name
+                        - score
+                        - category
+                        - type
+                        - fs
+                        - fc
+                required:
+                  - songs
+    put:
+      tags: *a5
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: diff
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: job.setTempCache
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                songs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      level:
+                        type: string
+                      name:
+                        type: string
+                      score:
+                        type: string
+                        nullable: true
+                      category:
+                        type: string
+                        nullable: true
+                      type:
+                        type: string
+                        enum:
+                          - standard
+                          - dx
+                          - utage
+                      fs:
+                        type: string
+                        nullable: true
+                      fc:
+                        type: string
+                        nullable: true
+                    required:
+                      - level
+                      - name
+                      - score
+                      - category
+                      - type
+                      - fs
+                      - fc
+              required:
+                - songs
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required:
+                  - success
+  /catalog/music:
+    get:
+      tags:
+        - music
+      parameters: []
+      operationId: music.listAll
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      oneOf:
+                        - type: string
+                        - type: number
+                    title:
+                      type: string
+                  required:
+                    - id
+                  additionalProperties: true
+  /admin/catalog/music/sync:
+    post:
+      tags: &a6
+        - admin
+      parameters: []
+      operationId: admin.syncMusic
+      responses:
+        "201":
+          description: "201"
+  /admin/dashboard/stats:
+    get:
+      tags: *a6
+      parameters: []
+      operationId: admin.getStats
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userCount:
+                    type: number
+                  musicCount:
+                    type: number
+                  syncCount:
+                    type: number
+                  coverCount:
+                    type: number
+                additionalProperties: true
+  /admin/dashboard/job-stats:
+    get:
+      tags: *a6
+      parameters: []
+      operationId: admin.getJobStats
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /admin/dashboard/job-trend:
+    get:
+      tags: *a6
+      parameters:
+        - name: hours
+          in: query
+          schema:
+            type: string
+      operationId: admin.getJobTrend
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /admin/dashboard/job-error-stats:
+    get:
+      tags: *a6
+      parameters: []
+      operationId: admin.getJobErrorStats
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /admin/dxnet-jobs:
+    get:
+      tags: *a6
+      parameters:
+        - name: friendCode
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            default: 1
+            type: integer
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            default: 10
+            type: integer
+            minimum: 1
+            maximum: 100
+      operationId: admin.searchJobs
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /admin/users:
+    get:
+      tags: *a6
+      parameters: []
+      operationId: admin.getAllUsers
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  nullable: true
+  /admin/dxnet-jobs/active:
+    get:
+      tags: *a6
+      parameters: []
+      operationId: admin.getActiveJobs
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /workers/bots/status:
+    post:
+      tags: *a6
+      parameters: []
+      operationId: admin.reportBotStatus
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bots:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      friendCode:
+                        type: string
+                      available:
+                        type: boolean
+                      friendCount:
+                        type: number
+                      friendsUpdatedAt:
+                        type: string
+                      friends:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            friendCode:
+                              type: string
+                            userName:
+                              type: string
+                              nullable: true
+                            rating:
+                              type: integer
+                              nullable: true
+                            avatarUrl:
+                              type: string
+                              nullable: true
+                            title:
+                              type: string
+                              nullable: true
+                            titleColor:
+                              type: string
+                              nullable: true
+                            ratingBgUrl:
+                              type: string
+                              nullable: true
+                            courseRankUrl:
+                              type: string
+                              nullable: true
+                            classRankUrl:
+                              type: string
+                              nullable: true
+                            awakeningCount:
+                              type: integer
+                              nullable: true
+                          required:
+                            - friendCode
+                    required:
+                      - friendCode
+                      - available
+              required:
+                - bots
+      responses:
+        "201":
+          description: "201"
+  /admin/bots:
+    get:
+      tags: *a6
+      parameters: []
+      operationId: admin.getBotStatus
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    friendCode:
+                      type: string
+                    available:
+                      type: boolean
+                    friendCount:
+                      type: number
+                      nullable: true
+                    friendsUpdatedAt:
+                      type: string
+                      nullable: true
+                    lastReportedAt:
+                      type: string
+                    remark:
+                      type: string
+                      nullable: true
+                    cabinetUserId:
+                      type: integer
+                      nullable: true
+                  required:
+                    - friendCode
+                    - available
+                  additionalProperties: true
+  /admin/bots/{friendCode}/remark:
+    patch:
+      tags: *a6
+      parameters:
+        - name: friendCode
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: admin.updateBotRemark
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                remark:
+                  type: string
+                  nullable: true
+              required:
+                - remark
+      responses:
+        "200":
+          description: "200"
+  /admin/bots/{friendCode}/cabinet-user-id:
+    patch:
+      tags: *a6
+      parameters:
+        - name: friendCode
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: admin.updateBotCabinetUserId
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cabinetUserId:
+                  type: integer
+                  minimum: 0
+                  exclusiveMinimum: 0
+                  nullable: true
+              required:
+                - cabinetUserId
+      responses:
+        "200":
+          description: "200"
+  /admin/bots/{friendCode}:
+    delete:
+      tags: *a6
+      parameters:
+        - name: friendCode
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: admin.removeBot
+      responses:
+        "200":
+          description: "200"
+  /admin/catalog/covers/sync:
+    post:
+      tags: *a6
+      parameters: []
+      operationId: admin.syncCovers
+      responses:
+        "201":
+          description: "201"
+  /admin/catalog/covers/force-sync:
+    post:
+      tags: *a6
+      parameters: []
+      operationId: admin.forceSyncCovers
+      responses:
+        "201":
+          description: "201"
+  /admin/dxnet-jobs/cleanup:
+    post:
+      tags: *a6
+      parameters: []
+      operationId: admin.cleanupJobs
+      responses:
+        "201":
+          description: "201"
+  /admin/observability/status:
+    get:
+      tags: *a6
+      parameters: []
+      operationId: admin.getObservabilityStatus
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /admin/realtime/overview:
+    get:
+      tags: *a6
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+        - name: recentMinutes
+          in: query
+          schema:
+            type: string
+      operationId: admin.getRealtimeOverview
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /admin/realtime/worker-groups:
+    get:
+      tags: *a6
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum:
+              - 15m
+              - 1h
+              - 6h
+              - 24h
+      operationId: admin.getRealtimeWorkerGroups
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /admin/history/api:
+    get:
+      tags: *a6
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24h
+              - 7d
+              - 30d
+      operationId: admin.getHistoryApi
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  nullable: true
+  /admin/history/rum:
+    get:
+      tags: *a6
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24h
+              - 7d
+              - 30d
+      operationId: admin.getHistoryRum
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  nullable: true
+  /admin/history/analytics:
+    get:
+      tags: *a6
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24h
+              - 7d
+              - 30d
+      operationId: admin.getHistoryAnalytics
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  nullable: true
+  /admin/history/workers:
+    get:
+      tags: *a6
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+        - name: window
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24h
+              - 7d
+              - 30d
+      operationId: admin.getHistoryWorkers
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  nullable: true
+  /admin/history/logs:
+    get:
+      tags: *a6
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+        - name: service
+          in: query
+          schema:
+            type: string
+        - name: workerKind
+          in: query
+          schema:
+            type: string
+            enum:
+              - backend
+              - dxnet
+              - sdgb
+              - prober_export
+        - name: workerId
+          in: query
+          schema:
+            type: string
+        - name: level
+          in: query
+          schema:
+            type: string
+        - name: jobId
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: sinceMinutes
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: string
+      operationId: admin.getHistoryLogs
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  nullable: true
+  /admin/history/log-workers:
+    get:
+      tags: *a6
+      parameters:
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+        - name: sinceMinutes
+          in: query
+          schema:
+            type: string
+      operationId: admin.getHistoryLogWorkers
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    workerId:
+                      type: string
+                    workerKind:
+                      type: string
+                    lastSeenAt:
+                      type: string
+                  required:
+                    - workerId
+                    - workerKind
+                    - lastSeenAt
+  /admin/jobs/{jobId}/debug:
+    get:
+      tags: *a6
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: env
+          in: query
+          schema:
+            type: string
+            enum:
+              - prod
+              - dev
+      operationId: admin.getJobDebug
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                nullable: true
+  /catalog/covers/{songId}:
+    get:
+      tags: &a7
+        - cover
+      parameters:
+        - name: songId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: cover.getCoverBySongId
+      responses:
+        "200":
+          description: "200"
+        "404":
+          description: "404"
+  /catalog/covers/{songId}.jpg:
+    get:
+      tags: *a7
+      parameters:
+        - name: songId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: cover.getCoverBySongIdJpg
+      responses:
+        "200":
+          description: "200"
+        "404":
+          description: "404"
+  /admin/catalog/covers/backfill-variants:
+    post:
+      tags: *a7
+      parameters: []
+      operationId: cover.backfillVariants
+      responses:
+        "201":
+          description: "201"
+  /me/score-exports/best50:
+    get:
+      tags: &a8
+        - scoreExport
+      parameters: []
+      operationId: scoreExport.best50
+      responses:
+        "200":
+          description: "200"
+  /me/score-exports/level:
+    get:
+      tags: *a8
+      parameters: []
+      operationId: scoreExport.level
+      responses:
+        "200":
+          description: "200"
+  /me/score-exports/version:
+    get:
+      tags: *a8
+      parameters: []
+      operationId: scoreExport.version
+      responses:
+        "200":
+          description: "200"
+  /workers/sdgb/jobs/{jobId}:
+    get:
+      tags: &a9
+        - sdgbWorker
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: sdgbWorker.get
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  jobType:
+                    type: string
+                    enum:
+                      - scan_qr
+                      - get_rival_hash
+                      - get_user_map
+                      - add_rival
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - processing
+                      - completed
+                      - failed
+                  payload:
+                    type: object
+                    additionalProperties: {}
+                  result:
+                    type: object
+                    additionalProperties: {}
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+                  requesterTag:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - jobType
+                  - status
+                  - payload
+                  - result
+                  - error
+                  - createdAt
+                  - updatedAt
+        "404":
+          description: "404"
+    patch:
+      tags: *a9
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: sdgbWorker.patch
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - queued
+                    - processing
+                    - completed
+                    - failed
+                result:
+                  type: object
+                  additionalProperties: {}
+                  nullable: true
+                error:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: "200"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  jobType:
+                    type: string
+                    enum:
+                      - scan_qr
+                      - get_rival_hash
+                      - get_user_map
+                      - add_rival
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - processing
+                      - completed
+                      - failed
+                  payload:
+                    type: object
+                    additionalProperties: {}
+                  result:
+                    type: object
+                    additionalProperties: {}
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+                  requesterTag:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                required:
+                  - id
+                  - jobType
+                  - status
+                  - payload
+                  - result
+                  - error
+                  - createdAt
+                  - updatedAt
+        "404":
+          description: "404"
+  /observability/rum:
+    post:
+      tags: &a10
+        - observability
+      parameters: []
+      operationId: observability.ingestRum
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                events:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts:
+                        type: string
+                      sessionId:
+                        type: string
+                      friendCode:
+                        type: string
+                      routeTemplate:
+                        type: string
+                      pageUrlHash:
+                        type: string
+                      referrerHash:
+                        type: string
+                      browser:
+                        type: string
+                      os:
+                        type: string
+                      deviceType:
+                        type: string
+                      fcpMs:
+                        type: number
+                        minimum: 0
+                      lcpMs:
+                        type: number
+                        minimum: 0
+                      inpMs:
+                        type: number
+                        minimum: 0
+                      cls:
+                        type: number
+                        minimum: 0
+                      ttfbMs:
+                        type: number
+                        minimum: 0
+                      loadMs:
+                        type: number
+                        minimum: 0
+                      apiWaitMs:
+                        type: number
+                        minimum: 0
+                      jsError:
+                        type: boolean
+                      errorName:
+                        type: string
+                      errorMessageHash:
+                        type: string
+                      traceId:
+                        type: string
+                      attrs:
+                        type: object
+                        additionalProperties:
+                          oneOf:
+                            - oneOf:
+                                - type: string
+                                - type: number
+                                - type: boolean
+                                - type: string
+                                  format: "null"
+                                  nullable: true
+                              nullable: true
+                            - type: array
+                              items:
+                                oneOf:
+                                  - type: string
+                                  - type: number
+                                  - type: boolean
+                                  - type: string
+                                    format: "null"
+                                    nullable: true
+                                nullable: true
+                          nullable: true
+                    required:
+                      - routeTemplate
+                  maxItems: 200
+              required:
+                - events
+      responses:
+        "202":
+          description: "202"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                    minimum: 0
+                required:
+                  - accepted
+  /observability/events:
+    post:
+      tags: *a10
+      parameters: []
+      operationId: observability.ingestEvents
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                events:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts:
+                        type: string
+                      eventName:
+                        type: string
+                        minLength: 1
+                        maxLength: 128
+                      friendCode:
+                        type: string
+                      sessionId:
+                        type: string
+                      routeTemplate:
+                        type: string
+                      source:
+                        type: string
+                      appVersion:
+                        type: string
+                      properties:
+                        type: object
+                        additionalProperties:
+                          oneOf:
+                            - oneOf:
+                                - type: string
+                                - type: number
+                                - type: boolean
+                                - type: string
+                                  format: "null"
+                                  nullable: true
+                              nullable: true
+                            - type: array
+                              items:
+                                oneOf:
+                                  - type: string
+                                  - type: number
+                                  - type: boolean
+                                  - type: string
+                                    format: "null"
+                                    nullable: true
+                                nullable: true
+                          nullable: true
+                    required:
+                      - eventName
+                  maxItems: 200
+              required:
+                - events
+      responses:
+        "202":
+          description: "202"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                    minimum: 0
+                required:
+                  - accepted
+  /workers/logs/{kind}/batches:
+    post:
+      tags: *a10
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - dxnet
+              - sdgb
+      operationId: observability.ingestWorkerLogs
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workerId:
+                  type: string
+                entries:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts:
+                        type: string
+                      level:
+                        type: string
+                        enum:
+                          - log
+                          - warn
+                          - error
+                          - debug
+                          - info
+                      message:
+                        type: string
+                      traceId:
+                        type: string
+                      requestId:
+                        type: string
+                      jobId:
+                        type: string
+                      workerId:
+                        type: string
+                      botFriendCode:
+                        type: string
+                      eventName:
+                        type: string
+                      errorClass:
+                        type: string
+                      attrs:
+                        type: object
+                        additionalProperties:
+                          oneOf:
+                            - oneOf:
+                                - type: string
+                                - type: number
+                                - type: boolean
+                                - type: string
+                                  format: "null"
+                                  nullable: true
+                              nullable: true
+                            - type: array
+                              items:
+                                oneOf:
+                                  - type: string
+                                  - type: number
+                                  - type: boolean
+                                  - type: string
+                                    format: "null"
+                                    nullable: true
+                                nullable: true
+                          nullable: true
+                    required:
+                      - message
+                  maxItems: 1000
+              required:
+                - entries
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                    minimum: 0
+                required:
+                  - accepted
+  /workers/dxnet/jobs/{jobId}/api-calls:
+    post:
+      tags: *a10
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: observability.ingestExternalApiCalls
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                calls:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts:
+                        type: string
+                      traceId:
+                        type: string
+                      jobId:
+                        type: string
+                      workerKind:
+                        type: string
+                      workerId:
+                        type: string
+                      botFriendCode:
+                        type: string
+                      target:
+                        type: string
+                        minLength: 1
+                      apiGroup:
+                        type: string
+                        minLength: 1
+                      method:
+                        type: string
+                        minLength: 1
+                      urlGroup:
+                        type: string
+                        minLength: 1
+                      statusCode:
+                        type: integer
+                        minimum: 0
+                      durationMs:
+                        type: number
+                        minimum: 0
+                      bodySize:
+                        type: integer
+                        minimum: 0
+                        nullable: true
+                      bodyHash:
+                        type: string
+                      artifactKey:
+                        type: string
+                        nullable: true
+                      errorClass:
+                        type: string
+                      attrs:
+                        type: object
+                        additionalProperties:
+                          oneOf:
+                            - oneOf:
+                                - type: string
+                                - type: number
+                                - type: boolean
+                                - type: string
+                                  format: "null"
+                                  nullable: true
+                              nullable: true
+                            - type: array
+                              items:
+                                oneOf:
+                                  - type: string
+                                  - type: number
+                                  - type: boolean
+                                  - type: string
+                                    format: "null"
+                                    nullable: true
+                                nullable: true
+                          nullable: true
+                    required:
+                      - target
+                      - apiGroup
+                      - method
+                      - urlGroup
+                      - statusCode
+                  maxItems: 1000
+              required:
+                - calls
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                    minimum: 0
+                required:
+                  - accepted
+  /workers/{kind}/external-api-calls:
+    post:
+      tags: *a10
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+      operationId: observability.ingestWorkerExternalApiCalls
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                calls:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts:
+                        type: string
+                      traceId:
+                        type: string
+                      jobId:
+                        type: string
+                      workerKind:
+                        type: string
+                      workerId:
+                        type: string
+                      botFriendCode:
+                        type: string
+                      target:
+                        type: string
+                        minLength: 1
+                      apiGroup:
+                        type: string
+                        minLength: 1
+                      method:
+                        type: string
+                        minLength: 1
+                      urlGroup:
+                        type: string
+                        minLength: 1
+                      statusCode:
+                        type: integer
+                        minimum: 0
+                      durationMs:
+                        type: number
+                        minimum: 0
+                      bodySize:
+                        type: integer
+                        minimum: 0
+                        nullable: true
+                      bodyHash:
+                        type: string
+                      artifactKey:
+                        type: string
+                        nullable: true
+                      errorClass:
+                        type: string
+                      attrs:
+                        type: object
+                        additionalProperties:
+                          oneOf:
+                            - oneOf:
+                                - type: string
+                                - type: number
+                                - type: boolean
+                                - type: string
+                                  format: "null"
+                                  nullable: true
+                              nullable: true
+                            - type: array
+                              items:
+                                oneOf:
+                                  - type: string
+                                  - type: number
+                                  - type: boolean
+                                  - type: string
+                                    format: "null"
+                                    nullable: true
+                                nullable: true
+                          nullable: true
+                    required:
+                      - target
+                      - apiGroup
+                      - method
+                      - urlGroup
+                      - statusCode
+                  maxItems: 1000
+              required:
+                - calls
+      responses:
+        "201":
+          description: "201"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                    minimum: 0
+                required:
+                  - accepted
+info:
+  title: Maimai Score Hub API
+  version: 1.0.0
+  description: Generated from @maimai-score-hub/shared ts-rest contracts
+servers:
+  - url: /api/v1
