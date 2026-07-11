@@ -1,38 +1,44 @@
 # rRanker TODO
 
-## 当前执行项：产品路线图与 Android/iOS 双端交付
+## 当前执行项：Win11 + iPhone 条件下的 iOS 先行路线
 
 ### 用户原始意图
 为项目规划 ROADMAP 与实现优先级，规划技术栈，并生成一份仅作展示的概念 Demo HTML；如需封面、真实玩家信息等真实数据，应通过已有 Demo 的输出获取。
 
 后续明确：概念 HTML 删除，由用户自行设计；电脑端只用于 Demo 验证想法，正式产品与测试面向 Android 和 iOS。
 
+再次调整：用户只有一台 Windows 11 PC 和一台 iPhone 17，没有 Mac 和 Android 真机；Android 与 iOS 的本地服务、代理、爬虫实现方式不同，需要重新规划 ROADMAP 和测试方法。
+
 ### 目标
-建立从数据口径、只读查分、双端数据接入到差异化推荐的分阶段路径，并保证 Android 与 iOS 从开发期开始共同验收。
+先在现有设备上完成可真实验证的 iOS 查分产品，同时保持共用领域层可移植到 Android；把两端本地抓取拆成未来独立原生实验。
 
 ### 用户价值
 - 提前看清首版交付范围，避免同步、推荐和多游戏能力同时开工。
-- 避免电脑端验证代码被误当成正式产品架构。
-- 尽早发现 Android 与 iOS 在网络、授权、存储和生命周期上的差异。
+- 不因缺少 Mac 或 Android 真机而阻塞查分、B50、查歌和工具箱。
+- 避免为了表面双端一致而维护两套高风险代理/爬虫。
+- Android 后续仍可复用共用产品能力，而不是重写整个应用。
 
 ### 实现思路
 - 以 `ROADMAP.md` 固化 P0–P3 优先级、阶段验收、技术栈和风险门槛。
 - 删除仓库中的概念 HTML，界面设计由用户另行完成。
-- 正式产品优先打通统一领域模型与只读查分，再分别验证 Android/iOS 数据接入。
+- 正式产品先打通统一领域模型、provider API、token/文件导入与 iOS 只读查分。
 - 电脑端 Python、Go、WebUI 代码只保留为 PoC 参考，不规划为运行时依赖或正式客户端。
-- 使用开发构建、Android 模拟器/真机、iOS 真机与商店测试渠道建立双端测试矩阵。
+- iOS 使用 EAS development build + iPhone 17 + TestFlight；Android 先用 Windows 模拟器和云设备维持兼容。
+- Android `VpnService` 与 iOS Network Extension 分别立项，只有具备对应真机和原生调试条件后才开始。
 
 ### 依赖/风险
 - B35/B15 分组依赖可信的歌曲版本字段，现有全量成绩样例不能单独证明 B50 口径。
 - 水鱼、微信与封面 CDN 均是外部数据链路，需要在双端分别验证许可、认证、限流与降级策略。
-- Windows 无法运行 iOS Simulator 或本地 Xcode 编译；iOS 原生能力测试需要 iPhone 开发构建，深度调试需要 Mac。
+- iPhone development build/TestFlight 需要 Apple Developer 账号；没有账号时只能在 Expo Go 支持范围内验证。
+- iOS 原生 extension 的 entitlement、签名和深度调试仍需要 Mac/Xcode。
+- 没有 Android 真机时，模拟器和云设备不能证明微信、VPN、证书和厂商后台行为可用。
 - 真实玩家信息进入可发布 fixture 前必须脱敏。
 
 ### 当前优先级
-P0。概念页已撤回；正式代码按 ROADMAP 的 M0 → M1 推进，并从第一个功能开始执行 Android/iOS 双端验收。
+P0。按 M0 平台无关底座 → M1 iOS 只读 MVP → M2 iOS Beta 推进；Android 兼容在 iOS 核心稳定后进入 M3。
 
 ### 暂缓原因
-桌面客户端产品化、推荐、谱面结构分析、多游戏支持及自建云后端暂缓，直到只读查分、数据口径和双端数据接入完成验收。
+桌面客户端、Android/iOS 本地抓取、同步首发对称、推荐、谱面结构分析、多游戏和自建云后端暂缓。抓取能力等待 Android 真机或 Mac/Xcode 条件具备后单独评估。
 
 ## 当前优先级：先实现舞萌 DX 查分器基础功能
 

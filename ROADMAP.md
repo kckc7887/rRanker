@@ -1,134 +1,153 @@
 # rRanker 产品路线图
 
-> 规划基线：2026-07-11。当前按 1 名开发者或小团队推进估算；阶段以验收门槛驱动，不以日期强行切换。
+> 规划基线：2026-07-11。现实开发环境为一台 Windows 11 PC 和一台 iPhone 17，没有 Mac、没有 Android 真机。规划以这些设备能实际验证的结果为准。
 
-## 1. 产品定位
+## 1. 核心决策
 
-rRanker 是面向音游玩家的“查分、同步、分析、练习”工具。首个支持游戏为舞萌 DX，首版先解决三件事：
+rRanker 继续使用 React Native/Expo，但不再把“Android 与 iOS 同时拥有本地代理、服务和爬虫”作为首版前提。
 
-1. 玩家能稳定看到可信的 B50 与 DX Rating。
-2. 玩家能按官方曲名找到歌曲与自己的最好成绩。
-3. 玩家能清楚知道数据来自哪里、何时同步、失败后如何恢复。
+- **产品本体跨平台**：查分、B50、查歌、缓存、计算和收藏使用共用 TypeScript 领域层。
+- **首发验证 iOS 优先**：现有 iPhone 是唯一真机，先完成 iOS 可用产品，再扩大 Android 验证。
+- **数据接入优先 provider**：优先使用许可明确的 API、用户提供的 token 或文件导入。
+- **本地抓取分平台研究**：iOS Network Extension 与 Android `VpnService` 是两项独立原生工程，不进入首版关键路径。
+- **电脑端 Demo 不产品化**：只用于理解数据格式、生成本地样例和保留踩坑记录。
 
-差异化推荐、谱面分析与多游戏支持建立在这套数据底座之上，不进入首个可交付版本。
+这不是放弃 Android，而是把“共用产品能力”和“平台专属抓取能力”拆开，避免后者阻塞前者。
 
 ## 2. 实现优先级
 
-| 优先级 | 能力 | 为什么现在做 | 完成定义 |
-| --- | --- | --- | --- |
-| P0 | 数据协议与核心算法 | 所有页面都依赖一致的成绩、曲目、B50 口径 | 固化领域模型；样例数据可校验；Rating/B50 有单元测试与对照样本 |
-| P0 | 只读查分 MVP | 最短路径验证玩家价值 | 能导入或读取一个真实账号快照，展示 B35、B15、DX Rating、更新时间与来源 |
-| P0 | 查歌 | 基础高频入口，且不依赖复杂推荐 | 支持官方曲名搜索、难度筛选、个人最佳成绩展示 |
-| P1 | Android/iOS 数据接入验证 | 补齐 fc/fs/rate 与完整成绩前，必须确认两端真实可行路径 | 两端真机均能输出同一领域模型；平台限制、授权方式与降级方案有记录 |
-| P1 | 缓存与离线快照 | 提升打开速度并降低上游波动影响 | 最近一次成功结果可离线查看；来源与时间始终可见 |
-| P1 | 常用工具箱 | 建立持续使用场景 | 完成 Rating 计算、成绩筛选、牌子进度、容错计算的首批功能 |
-| P2 | 收藏与练习清单 | 为推荐与复盘积累显式偏好 | 本地收藏、标签、练习状态可用，可导出 |
-| P2 | 可解释的练习推荐 | 形成差异化但控制风险 | 先以规则和玩家弱项统计生成推荐，并展示原因，不直接上黑盒模型 |
-| P3 | 谱面结构分析与音乐偏好推荐 | 需要额外数据和验证 | 有稳定标签/谱面特征来源、离线评估集与玩家反馈闭环后再发布 |
-| P3 | 多游戏平台化 | 避免过早抽象 | 舞萌 DX 核心链路稳定后，以第二个游戏验证 provider 接口 |
+| 优先级 | 能力 | 完成定义 |
+| --- | --- | --- |
+| P0 | 领域模型与算法 | 固化 Player/Song/Chart/Score/B50；Rating、B35/B15、ID 映射有 fixture 对照测试 |
+| P0 | iOS 只读查分 MVP | iPhone 17 可查看玩家概览、B50、成绩、数据来源与更新时间 |
+| P0 | Provider 数据接入 | 至少一个无需本地代理的真实数据入口可用；token/cookie 使用安全存储 |
+| P0 | 文件导入与离线快照 | provider 不可用时可导入标准 JSON；最近快照可离线打开 |
+| P1 | 查歌与基础工具 | 官方曲名搜索、筛选、Rating 计算和容错计算可用 |
+| P1 | iOS Beta | TestFlight 内部版本完成真实安装、升级和崩溃恢复测试 |
+| P1 | Android 兼容层 | Windows 模拟器构建和核心流程通过；不承诺本地抓取 |
+| P2 | Android 真机 Beta | 有真实 Android 设备或测试者后，完成设备矩阵和 Play 内部测试 |
+| P3 | Android 本地抓取研究 | Kotlin `VpnService` spike；独立验收微信流量、证书、后台服务与商店政策 |
+| P3 | iOS 本地抓取研究 | 获得 Mac/Xcode 后做 Swift Network Extension spike；独立验收 entitlement、签名和真机流量 |
+| P3 | 推荐与谱面分析 | 数据质量和基础使用稳定后再开始 |
 
 ## 3. 分阶段 ROADMAP
 
-### M0：工程与口径基线（S，约 1 周）
+### M0：平台无关底座（约 1 周）
 
-- 定义 `Player`、`Song`、`Chart`、`ScoreRecord`、`Best50Snapshot`、`DataSource`。
-- 把水鱼与微信样例统一映射到领域模型，保留原始字段用于追溯。
-- 固化 song id、DX/SD、难度索引、fc/fs/rate、Rating 计算规则。
-- 建立脱敏样例、契约测试和错误样例；任何未知字段都显式降级，不静默猜测。
+- 从本地 Demo 输出提取最小脱敏 fixture。
+- 定义统一 schema、provider adapter、错误模型和数据来源信息。
+- 固化 Rating/B50 规则；未知枚举保留原文并降级。
+- 建立 TypeScript 类型检查、算法测试和契约测试。
 
-验收：现有两个 JSON 样例均能通过 schema 校验；同一成绩在不同入口展示一致。
+验收：Windows 上所有 fixture 通过；同一输入只产生一个确定结果。
 
-### M1：只读查分 MVP（M，约 2–3 周）
+### M1：iOS 只读 MVP（约 2–3 周）
 
-- 移动端首页、玩家概览、B35/B15、歌曲搜索、成绩详情。
-- 数据来源、最后更新时间、缓存状态与错误恢复入口。
-- 封面失败占位、空状态、加载状态、隐私说明。
-- 先以真实快照驱动 UI，再接 provider adapter；UI 不直接依赖上游字段。
+- 建立 Expo/React Native 应用与 development build。
+- 首页、玩家信息、B35/B15、成绩列表、查歌和数据来源说明。
+- 先用 fixture 打通界面，再接第一个 provider。
+- 支持标准 JSON 导入、本地缓存和错误恢复。
+- 不加入代理、CA 证书、VPN 或微信抓取原生代码。
 
-验收：玩家从打开应用到看到 B50 不超过三步；核心页面可使用缓存快照打开。
+验收：iPhone 17 上完成首次打开、导入/拉取、离线重开、token 失效和升级安装。
 
-### M2：双端数据接入闭环（L，约 3–5 周）
+### M2：iOS 可用版本（约 2–4 周）
 
-- 不直接移植电脑端代理拦截方案；在 Android 与 iOS 真机上分别验证授权、网络、Cookie、文件导入、后台切换和安全存储边界。
-- 接入优先级为：稳定且许可明确的 provider API → 用户主动提供 token/文件 → 明确不支持；不把系统级中间人代理设为移动端前提。
-- 两端通过同一 TypeScript `provider` 接口输出标准化快照，平台差异只能留在 adapter 内。
-- 建立导入前预览、重复导入保护、token 失效处理和脱敏诊断信息。
+- 接入至少一个许可与认证方式明确的成绩 provider。
+- 完成查歌、Rating 计算、筛选、牌子进度或容错计算中的首批工具。
+- 加入安全存储、数据库迁移、隐私说明和脱敏诊断。
+- 通过 TestFlight 内部测试验证分发包，而不是只测 development build。
 
-验收：Android 与 iPhone 真机均完成正常、拒绝授权、断网、token 失效、切后台五条路径；同步后 fc/fs/rate 与同一 fixture 对照一致。若某平台不可行，必须明确降级而不是静默缺字段。
+验收：核心功能不依赖 Windows 电脑或本地爬虫；TestFlight 安装、更新和回滚路径有记录。
 
-### M3：工具箱与留存（M，约 2–4 周）
+### M3：Android 兼容版本（约 2 周，M2 后）
 
-- Rating 计算器、成绩组合筛选、牌子进度、容错计算。
-- 收藏夹与练习清单使用本地数据库；支持导出，暂不要求账号云同步。
-- 通过事件统计验证哪些工具真正被使用，再决定后续投入。
+- 在 Windows 使用 Android Studio Emulator 验证布局、导航、存储和 provider。
+- 通过云设备测试扩大系统版本与机型覆盖。
+- 寻找至少 1–3 名 Android 真机测试者，验证键盘、返回键、后台恢复、网络和安装升级。
+- 只复用共用产品能力；不在此阶段实现 `VpnService` 抓取。
 
-验收：所有计算器都有边界用例；收藏数据可备份和恢复。
+验收：模拟器、云设备和至少一台真实 Android 通过核心清单后，才进入 Google Play 内部测试。
 
-### M4：推荐验证（L，时间待数据成熟后评估）
+### M4：平台抓取可行性实验（无固定工期，独立立项）
 
-- 第一阶段只做可解释规则：相邻定数、历史表现差、收藏偏好、近期重复游玩。
-- 第二阶段再加入谱面结构标签和音乐风格信息。
-- 推荐卡必须解释“为什么推荐”和“不适合的原因”，允许玩家反馈。
+Android 实验：
 
-验收：离线评估优于随机/热门基线，并通过小范围玩家访谈；否则保持实验功能。
+- 原生 Kotlin `VpnService`，不是 React Native JS 本地服务。
+- 验证用户授权、前台服务、唯一 VPN 占用、进程回收、证书信任和目标 App HTTPS 行为。
+- 必须有 Android 真机；模拟器或云设备不能替代微信完整交互验证。
 
-## 4. 技术栈规划
+iOS 实验：
 
-### 移动客户端
+- 原生 Swift Network Extension / Packet Tunnel app extension。
+- 需要 Apple Developer 账号、Network Extension capability、签名配置和 Xcode 调试。
+- 没有 Mac 时不开始实现；EAS 云构建不能替代所有 entitlement、extension 和 Xcode 调试工作。
+- 即使拿到数据包，也不能假定可以解密第三方 App HTTPS 或通过 App Review。
 
-| 层 | 选择 | 用法边界 |
+停止条件：任何平台若需要高风险中间人证书、违反平台政策、无法稳定恢复网络，或维护成本高于产品价值，则终止该平台抓取，回退到 provider/token/文件导入。
+
+### M5：推荐与扩展（基础产品稳定后）
+
+- 收藏与练习清单。
+- 可解释的练习推荐。
+- 谱面结构与音乐偏好分析。
+- 第二个音游 provider，用来验证领域抽象，而不是提前泛化。
+
+## 4. 数据接入策略
+
+按以下顺序决策，不并行开工：
+
+1. **Provider API**：首选。验证认证、许可、限流、字段和失败降级。
+2. **用户主动导入**：token、标准 JSON、系统文件选择器或分享入口。
+3. **已有电脑 Demo**：仅供开发者生成 fixture，不作为普通用户使用前提。
+4. **平台本地抓取**：P3 独立实验；Android/iOS 分别实现和评审。
+5. **云端代抓**：默认不做。涉及用户凭据、Cookie、合规、成本和数据泄露面，除非以后单独立项。
+
+## 5. 技术栈
+
+| 层 | 建议 | 边界 |
 | --- | --- | --- |
-| 框架 | React Native + Expo + TypeScript | 延续 README 方向；正式 scaffold 时再锁定兼容版本，不在规划阶段假定依赖已安装 |
-| 路由 | Expo Router | 首页、B50、查歌、工具箱、设置；路由层不放业务计算 |
-| 服务端状态 | TanStack Query | 请求、缓存、刷新与错误状态；不保存领域计算结果的唯一真相 |
-| 本地状态 | Zustand（轻量） | 仅保存筛选、偏好和短生命周期 UI 状态 |
-| 本地数据 | Expo SQLite | 快照、收藏、练习清单；schema 版本化并提供迁移 |
-| 校验 | Zod | 所有 provider 输入先校验再映射，未知值保留原文并降级显示 |
-| 列表与动效 | FlashList + Reanimated | 仅在 B50/歌曲长列表和关键反馈中引入，避免首版过度动画 |
+| 客户端 | React Native + Expo + TypeScript | 正式 scaffold 时锁版本；不假定当前已安装 |
+| 路由 | Expo Router | 页面导航，不承载领域计算 |
+| 请求缓存 | TanStack Query | provider 请求、刷新和错误状态 |
+| 本地数据 | Expo SQLite | 快照、收藏、迁移；凭据不存普通表 |
+| 安全存储 | Expo SecureStore 或等价系统钥匙串封装 | token/cookie；日志中禁止出现明文 |
+| 校验 | Zod | 所有外部数据先校验再映射 |
+| 测试 | Vitest + React Native Testing Library | Windows 执行共用逻辑与组件测试 |
+| iOS 构建 | EAS Build + iPhone development build/TestFlight | 无 Mac 主路径；原生 extension 研究除外 |
+| Android 构建 | Windows + Android Studio Emulator，后续 EAS/Play | 真机到位前不宣称生产可用 |
 
-### 数据与同步层
+## 6. 当前设备下的测试原则
 
-- TypeScript `provider` 接口隔离水鱼、微信快照及未来数据源。
-- Python、Go、WebUI 电脑端 Demo 只作为已验证的数据格式与流程参考，不进入移动端运行时，也不规划桌面产品化。
-- 首版不自建云后端：优先本地快照和现有数据源；当跨设备、账号体系或合规需求明确后再立项。
-- 原始响应、标准化模型、展示模型分层保存，禁止页面直接猜测上游 API 行为。
+- Windows 负责：类型、算法、schema、组件、Android 模拟器和构建。
+- iPhone 17 负责：iOS development build、真实网络、存储、生命周期、权限和 TestFlight。
+- 云设备负责：Android 机型/版本的自动化覆盖，不替代微信、证书、VPN 等交互式真机实验。
+- Mac 负责：仅在未来 iOS 原生 extension、Xcode 崩溃定位或签名问题出现时临时获取，不作为 M0–M3 的日常前提。
 
-### 测试与交付
+详细执行方案见 `docs/mobile-testing.md`。
 
-- 领域算法：Vitest + 固定 JSON 对照样本。
-- React Native：React Native Testing Library；关键移动流程使用 Maestro 或等价设备级测试。
-- Android：Windows 本地使用 Android 模拟器与至少一台真实设备；覆盖低内存、断网、切后台和系统返回键。
-- iOS：Windows 上用 iPhone + Expo development build；iOS Simulator 与本地原生调试使用 Mac + Xcode。
-- 发布前：Android 进入 Google Play 内部测试，iOS 进入 TestFlight；两端使用同一版本验收清单。
-- CI：类型检查、单元测试、schema 契约测试、Android/iOS 构建；外部 API 在线探测作为独立非阻塞任务。
-- 日志默认脱敏：token、cookie、好友码和完整原始响应不得进入普通日志。
+## 7. 关键决策门槛
 
-详细步骤与用例矩阵见 `docs/mobile-testing.md`。
+### Apple Developer 账号
 
-## 5. 建议目录
+- 若愿意开通：可使用 EAS iPhone development build 和 TestFlight，执行本路线。
+- 若暂不开通：只能用 Expo Go 验证其支持范围内的 JS/UI，原生模块、正式签名和 TestFlight 延后。
 
-```text
-/apps/mobile                 # React Native 客户端
-/packages/domain             # 领域模型、Rating/B50 规则
-/packages/providers          # 数据源适配器与 schema
-/fixtures                    # 脱敏契约样例
-/docs                        # 协议、决策记录、隐私与数据说明
-```
+### Android 发布
 
-先建立上述边界，再把现有 Demo 中已验证的数据格式提取为 fixture；不迁移电脑端 UI、代理管理或打包逻辑。
+- 没有真实 Android 前，只做兼容开发，不承诺发布日期。
+- 获得真实设备或可信测试者后，再决定是否进入 Play 内测。
 
-## 6. 关键风险与决策门槛
+### 本地抓取
 
-- **上游可用性与许可**：实现前确认调用频率、认证方式、数据许可和故障降级，不把逆向结果当成稳定公开 API。
-- **B50 口径**：需要版本字段与计算规则的可验证来源；不能仅按 RA 全量排序冒充 B35/B15。
-- **移动端接入差异**：Android 可行的网络或授权流程不代表 iOS 可行，所有同步能力必须以两端真机结果为准。
-- **隐私**：真实玩家数据只用于本地验证；提交到仓库的 fixture 应脱敏并可追溯来源。
-- **推荐可信度**：没有解释和评估就不进入默认入口。
+- 不因为电脑 Demo 成功就推断移动端可行。
+- Android 与 iOS 各自需要单独 spike、隐私评审、平台政策检查和停止条件。
 
-## 7. 下一步执行顺序
+## 8. 下一步执行顺序
 
-1. 从本地 `demo/diving-fish-demo/divingfish_demo.json` 与 `demo/wechat-crawler-demo/maimai_scores.json` 提取脱敏 fixture，建立 schema 和统一映射测试。
-2. 产出 B50 规则说明与 3 组可人工复算的 fixture。
-3. 建立 React Native 骨架，只完成首页、B50、查歌三条路由。
-4. 以本地快照打通 UI，再接第一个只读 provider。
-5. M1 验收后，在两端真机分别完成数据接入 spike，再决定 M2 采用的 provider 路径。
+1. 确认是否开通 Apple Developer 账号；这决定 iPhone development build 与 TestFlight 是否可用。
+2. 提取脱敏 fixture，建立领域模型、B50 和 provider 契约测试。
+3. 创建最小 Expo 工程，以 iPhone 17 完成 fixture 驱动的只读 MVP。
+4. 验证一个无需本地代理的 provider，再加入 JSON 导入兜底。
+5. 完成 iOS TestFlight 内测后再做 Android Emulator 适配。
+6. 有 Android 真机或 Mac/Xcode 后，分别评估两个抓取 spike；在此之前不写抓取生产代码。
