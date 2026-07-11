@@ -127,7 +127,7 @@ rRanker 是面向音游玩家的“查分、同步、分析、练习”工具。
 
 ## 7. 下一步执行顺序
 
-1. 为 `diving-fish-demo.json` 与 `maimai_scores.json` 建 schema 和统一映射测试。
+1. 从本地 `demo/diving-fish-demo/divingfish_demo.json` 与 `demo/wechat-crawler-demo/maimai_scores.json` 提取脱敏 fixture，建立 schema 和统一映射测试。
 2. 产出 B50 规则说明与 3 组可人工复算的 fixture。
 3. 建立 React Native 骨架，只完成首页、B50、查歌三条路由。
 4. 以本地快照打通 UI，再接第一个只读 provider。

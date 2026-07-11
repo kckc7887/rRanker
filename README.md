@@ -16,13 +16,15 @@ React Native（移动端）
 
 详细的产品阶段、实现优先级与建议技术栈见 [ROADMAP.md](ROADMAP.md)，双端验证方案见 [docs/mobile-testing.md](docs/mobile-testing.md)。
 
+历史概念验证统一归档在本地 `demo/`，目录内容默认忽略，仅跟踪 [Demo 经验总结](demo/README.md)。
+
 ## 目录
 
 ```
 /changelog          # 变更记录，每次改动一份 YYYY-MM-DD_主题.md
 /docs               # 开发文档、API 协议
+/demo               # 本地概念验证（Git 忽略代码与输出，仅保留 README）
 /src                # 源码
-wechat-crawler-demo/ # 电脑端微信公众号爬虫概念验证，不作为正式客户端
 ```
 
 ## Agent 协作
