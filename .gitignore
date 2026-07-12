@@ -9,6 +9,13 @@ build/
 *.log
 .DS_Store
 
+# Local workspace metadata and planning files
+/.idea/
+/.trae/
+/AGENTS.md
+/ROADMAP.md
+/TODO.md
+
 # 本地概念验证：代码与输出不进入正式产品仓库，仅保留经验总结
 /demo/*
 !/demo/README.md
