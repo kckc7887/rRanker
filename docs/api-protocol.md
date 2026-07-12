@@ -1,6 +1,7 @@
 # API 协议
 
 > 状态说明：本文件是待验证清单，不能直接视为当前生产 API 契约。开始实现 provider 前，必须对每个实际使用的端点重新记录：验证日期、认证方式、请求 schema、成功响应、4xx/5xx、限流与超时行为。当前阶段只实现读取；上传与华立抓取属于后续阶段。
+> 水鱼只读端点 last_verified: 2026-07-12（/music_data、/chart_stats、/player/records、/login、/player/profile 均已复验）。/query/player 不复验，B50 用本地 buildBest50 + /player/records 合并计算。
 
 ## 水鱼 (DivingFish)
 
@@ -16,6 +17,8 @@
 | `/player/profile` | GET/POST | cookie 或 Bearer | 获取/设置资料 |
 | `/player/import_token` | PUT | cookie 或 Bearer | 刷新导入 token |
 | `/chart_stats` | GET | 无 | 谱面统计 |
+
+> last_verified: 2026-07-12 — /music_data、/chart_stats、/player/records（含 403 匿名 / 401 伪凭据）、/login、/player/profile 均已在 M0 阶段复验。/query/player 不复验，B50 用本地 buildBest50 + /player/records 合并计算。
 
 ### 开发前验证门禁
 
