@@ -4,28 +4,56 @@ import { ProviderError, providerErrorFromStatus } from './errors';
 const BASE_URL = 'https://www.diving-fish.com/api/maimaidxprober';
 
 export class DivingFishAuthProvider implements AuthProvider {
-  async loginWithPassword(credentials: LoginCredentials): Promise<ProviderSession> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-    try {
-      const response = await fetch(`${BASE_URL}/login`, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials), credentials: 'include', signal: controller.signal,
-      });
-      if (!response.ok) throw providerErrorFromStatus(response.status);
-      const setCookie = response.headers.get('set-cookie');
-      const jwt = setCookie?.match(/(?:^|;)\s*jwt_token=([^;]+)/)?.[1];
-      if (jwt) return { mode: 'jwt', value: jwt, persistable: true };
-      // Expo Go may keep the cookie in its native jar without exposing Set-Cookie.
-      return { mode: 'cookie-jar', persistable: false };
-    } catch (error) {
-      if (error instanceof ProviderError) throw error;
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', '登录请求超时', true, { cause: error });
-      }
-      throw new ProviderError('network', '无法连接水鱼登录服务', true, { cause: error });
-    } finally { clearTimeout(timeout); }
+  loginWithPassword(credentials: LoginCredentials): Promise<ProviderSession> {
+    return new Promise<ProviderSession>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${BASE_URL}/login`);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('Accept', 'application/json');
+      xhr.setRequestHeader('Content-Type', 'application/json');
+
+      const timeout = setTimeout(() => xhr.abort(), 10_000);
+
+      xhr.onload = () => {
+        clearTimeout(timeout);
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(providerErrorFromStatus(xhr.status));
+          return;
+        }
+        // iOS NSURLSession does not expose Set-Cookie via fetch headers, so XHR is required.
+        const setCookie = xhr.getResponseHeader('Set-Cookie');
+        const jwtFromHeader = setCookie?.match(/jwt_token=([^;]+)/)?.[1];
+        if (jwtFromHeader) {
+          resolve({ mode: 'jwt', value: jwtFromHeader, persistable: true });
+          return;
+        }
+        const allHeaders = xhr.getAllResponseHeaders();
+        const jwtFromAll = allHeaders.match(/set-cookie:.*jwt_token=([^;]+)/i)?.[1];
+        if (jwtFromAll) {
+          resolve({ mode: 'jwt', value: jwtFromAll, persistable: true });
+          return;
+        }
+        // Expo Go may keep the cookie in its native jar without exposing Set-Cookie.
+        resolve({ mode: 'cookie-jar', persistable: false });
+      };
+
+      xhr.onerror = () => {
+        clearTimeout(timeout);
+        reject(new ProviderError('network', '无法连接水鱼登录服务', true));
+      };
+
+      xhr.onabort = () => {
+        clearTimeout(timeout);
+        reject(new ProviderError('timeout', '登录请求超时', true));
+      };
+
+      xhr.ontimeout = () => {
+        clearTimeout(timeout);
+        reject(new ProviderError('timeout', '登录请求超时', true));
+      };
+
+      xhr.send(JSON.stringify(credentials));
+    });
   }
 
   useImportToken(token: string): ProviderSession {
