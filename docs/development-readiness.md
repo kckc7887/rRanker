@@ -96,16 +96,16 @@ tests/
 
 ## 6. M0 完成标准
 
-- [ ] `fixtures/` 中有最小脱敏样例和人工复算基准。
-- [ ] 领域模型与 Zod schema 已定义。
-- [ ] Rating/B50、排序、ID 映射测试通过。
-- [ ] 水鱼实际使用端点完成只读契约复验。
-- [ ] Expo 工程可在 Windows 启动，iPhone Expo Go 与 Android Emulator 能打开同一页面。
-- [ ] 缓存与安全存储做最小读写 spike，并记录 Expo Go 限制。
-- [ ] 用户提供 UI 设计输入，或明确批准功能线框阶段。
-- [ ] `npm test`、类型检查和 lint 命令写入 README/AGENTS 或工程脚本。
+- [x] `fixtures/` 中有最小脱敏样例和人工复算基准。
+- [x] 领域模型与 Zod schema 已定义。
+- [x] Rating/B50、排序、ID 映射测试通过。
+- [x] 水鱼实际使用端点完成只读契约复验（`/music_data`、`/chart_stats`、`/player/records` 200；匿名 403；伪凭据 401；`/login`、`/player/profile` 已接入 provider）。
+- [x] Expo 工程可在 Windows 启动；Android 静态 bundle 通过（4.55 MB Hermes）。iPhone Expo Go 与 Android Emulator 运行时由用户在 Android Studio / Expo Go 手动验收，2026-07-12 用户确认验证通过允许交付。
+- [x] 缓存与安全存储做最小读写 spike，并记录 Expo Go 限制。
+- [x] 用户提供 UI 设计输入，或明确批准功能线框阶段（M0 采用功能线框，最终视觉延后）。
+- [x] `npm test`、类型检查和 lint 命令写入工程脚本（`apps/mobile/package.json`）。
 
-只有以上项目完成，M1 双端查分 MVP 才算正式开工。
+M0 已于 2026-07-12 交付。M1 双端查分 MVP 正式开工。
 
 ## 7. 非阻塞但发布前必须完成
 
