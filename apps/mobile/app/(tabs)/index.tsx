@@ -5,7 +5,7 @@ import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useSession } from '@/state/session-store';
 
 export default function OverviewScreen() {
-  const { data, isLoading, isError, isStale, error, refetch } = useScoreSnapshot();
+  const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
   const session = useSession((s) => s.session);
   return (
     <View style={styles.page}>
@@ -13,7 +13,7 @@ export default function OverviewScreen() {
         isLoading={isLoading}
         isError={isError}
         isEmpty={false}
-        isStale={isStale}
+        isStale={isDataStale}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         data={data}
@@ -34,8 +34,13 @@ export default function OverviewScreen() {
             <View style={styles.card}>
               <Text style={styles.cardTitle}>数据状态</Text>
               <Text style={styles.body}>来源：{snapshot.source.label}</Text>
+              <Text style={styles.body}>曲库：{snapshot.catalogSource.label}</Text>
+              <Text style={styles.body}>当前版本：{snapshot.best50.currentVersion.title}</Text>
               <Text style={styles.body}>数据源：{session ? '水鱼查分器' : '脱敏测试数据'}</Text>
               <Text style={styles.body}>更新时间：{new Date(snapshot.source.updatedAt).toLocaleString()}</Text>
+              {snapshot.best50.unmatchedRecordCount > 0 ? (
+                <Text style={styles.warning}>有 {snapshot.best50.unmatchedRecordCount} 条成绩无法匹配谱面版本，未计入 B50。</Text>
+              ) : null}
               <Text style={styles.note}>登录后可在设置页切换至水鱼查分器数据源；未登录时使用脱敏 fixture。</Text>
             </View>
           </ScrollView>
@@ -58,4 +63,5 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, gap: 8 },
   cardTitle: { color: '#111827', fontSize: 18, fontWeight: '700' }, body: { color: '#374151' },
   note: { color: '#6B7280', lineHeight: 20, marginTop: 4 },
+  warning: { color: '#B45309', lineHeight: 20 },
 });

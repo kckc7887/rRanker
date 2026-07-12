@@ -7,7 +7,7 @@ import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 type Row = { group: 'B35' | 'B15'; record: ScoreRecord };
 
 export default function Best50Screen() {
-  const { data, isLoading, isError, isStale, error, refetch } = useScoreSnapshot();
+  const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
   const rows = useMemo<Row[]>(() => {
     if (!data) return [];
     return [
@@ -23,7 +23,7 @@ export default function Best50Screen() {
         isLoading={isLoading}
         isError={isError}
         isEmpty={isEmpty}
-        isStale={isStale}
+        isStale={isDataStale}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         emptyText="暂无 B50 数据"
@@ -34,7 +34,9 @@ export default function Best50Screen() {
             contentContainerStyle={styles.listContent}
             data={list}
             keyExtractor={({ group, record }) => `${group}-${record.songId}-${record.levelIndex}`}
-            ListHeaderComponent={<Text style={styles.note}>按单曲 Rating 排序；当前版本由已验证曲库字段决定。</Text>}
+            ListHeaderComponent={<Text style={styles.note}>
+              当前版本：{data?.best50.currentVersion.title}；无法匹配的 {data?.best50.unmatchedRecordCount ?? 0} 条成绩未计入。
+            </Text>}
             renderItem={({ item, index }) => (
               <View style={styles.row}>
                 <Text style={styles.rank}>{index + 1}</Text>

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { ProviderError } from '@/providers/errors';
-import { FIXTURE_CURRENT_VERSION } from '@/fixtures/sanitized';
-import { ScoreService } from '@/services/score-service';
+import type { ProviderSession } from '@/providers/contracts';
+import { validateAndActivateSession } from '@/services/session-validation';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { queryClient } from '@/state/query-client';
@@ -18,17 +18,12 @@ export default function SettingsScreen() {
   const session = useSession((s) => s.session);
   const setSession = useSession((s) => s.setSession);
   const clearSession = useSession((s) => s.clearSession);
+  const restoreError = useSession((s) => s.restoreError);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [importToken, setImportToken] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void sessions.load().then((loaded) => {
-      if (loaded) setSession(loaded);
-    });
-  }, [setSession]);
 
   const messageFor = (error: unknown) => error instanceof ProviderError ? error.message : '验证失败，请稍后重试';
 
@@ -37,26 +32,31 @@ export default function SettingsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['songs'] });
   };
 
+  const validateAndActivate = async (newSession: ProviderSession) => {
+    const provider = new DivingFishProvider(newSession);
+    try {
+      await validateAndActivateSession(newSession, {
+        createProvider: () => provider,
+        save: (sessionToSave) => sessions.save(sessionToSave),
+        activate: (sessionToActivate) => {
+          setSession(sessionToActivate);
+          invalidateAll();
+        },
+      });
+    } catch (error) {
+      if (newSession.mode === 'cookie-jar' && error instanceof ProviderError && error.code === 'authentication') {
+        throw new ProviderError('authentication', '账号密码正确，但 iOS 未能携带登录 Cookie', false, { cause: error });
+      }
+      throw error;
+    }
+  };
+
   const login = async () => {
     if (!username.trim() || !password) { setMessage('请输入水鱼用户名和密码'); return; }
     setBusy(true); setMessage('正在验证登录态…');
     try {
       const newSession = await auth.loginWithPassword({ username: username.trim(), password });
-      let snapshot;
-      try {
-        snapshot = await new ScoreService(new DivingFishProvider(newSession)).load(FIXTURE_CURRENT_VERSION);
-      } catch (error) {
-        if (newSession.mode === 'cookie-jar' && error instanceof ProviderError && error.code === 'authentication') {
-          throw new ProviderError('authentication', '账号密码正确，但 iOS 未能携带登录 Cookie', false, { cause: error });
-        }
-        throw error;
-      }
-      await sessions.save(newSession);
-      await snapshots.save(snapshot);
-      setSession(newSession);
-      const sessionValue = 'value' in newSession ? newSession.value : null;
-      queryClient.setQueryData(['score-snapshot', newSession.mode, sessionValue], snapshot);
-      void queryClient.invalidateQueries({ queryKey: ['songs'] });
+      await validateAndActivate(newSession);
       setMessage(newSession.persistable ? '登录成功，凭据已安全保存' : '登录成功；Cookie 仅在当前会话有效');
     } catch (error) { setMessage(messageFor(error)); }
     finally { setPassword(''); setBusy(false); }
@@ -66,9 +66,7 @@ export default function SettingsScreen() {
     setBusy(true); setMessage('正在验证 Import-Token…');
     try {
       const newSession = auth.useImportToken(importToken);
-      await sessions.save(newSession);
-      setSession(newSession);
-      invalidateAll();
+      await validateAndActivate(newSession);
       setImportToken(''); setMessage('Import-Token 验证成功并已安全保存');
     } catch (error) { setMessage(messageFor(error)); }
     finally { setBusy(false); }
@@ -91,6 +89,7 @@ export default function SettingsScreen() {
     <View style={styles.card}>
       <Text style={styles.title}>水鱼账号</Text>
       <Text style={styles.state}>{sessionLabel}</Text>
+      {restoreError ? <Text style={styles.error}>{restoreError}</Text> : null}
       {message ? <Text style={styles.message}>{message}</Text> : null}
       <TextInput autoCapitalize="none" autoCorrect={false} textContentType="none" autoComplete="off" importantForAutofill="no" editable={!busy} placeholder="用户名" value={username} onChangeText={setUsername} style={styles.input} />
       <TextInput autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" autoComplete="one-time-code" importantForAutofill="no" editable={!busy} placeholder="密码（不会保存）" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
@@ -111,6 +110,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#FFF', borderRadius: 14, padding: 18, gap: 10 },
   title: { color: '#111827', fontSize: 18, fontWeight: '700' }, state: { color: '#246BFD', fontWeight: '600' },
   message: { color: '#4B5563', fontSize: 13 },
+  error: { color: '#B42318', fontSize: 13 },
   body: { color: '#4B5563', lineHeight: 21 }, input: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 12, color: '#111827' },
   primary: { backgroundColor: '#246BFD', borderRadius: 10, padding: 13, alignItems: 'center' },
   primaryText: { color: '#FFF', fontWeight: '700' }, secondary: { borderWidth: 1, borderColor: '#246BFD', borderRadius: 10, padding: 13, alignItems: 'center' },

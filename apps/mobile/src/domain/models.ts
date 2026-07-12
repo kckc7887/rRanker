@@ -6,7 +6,7 @@ export type Difficulty =
   | 'master'
   | 'remaster'
   | 'unknown';
-export type DataSourceKind = 'fixture' | 'diving-fish' | 'cache';
+export type DataSourceKind = 'fixture' | 'diving-fish' | 'lxns' | 'cache';
 
 export interface DataSource {
   kind: DataSourceKind;
@@ -29,6 +29,19 @@ export interface Song {
   artist?: string;
   version: string;
   charts: Chart[];
+}
+
+export interface GameVersion {
+  id: number;
+  title: string;
+}
+
+export interface CatalogSnapshot {
+  currentVersion: GameVersion;
+  versions: GameVersion[];
+  songs: Song[];
+  chartVersionIndex: Record<string, number>;
+  source: DataSource;
 }
 
 export interface Chart {
@@ -57,9 +70,10 @@ export interface ScoreRecord extends Chart {
 
 export interface Best50Snapshot {
   player: Player;
-  currentVersion: string;
+  currentVersion: GameVersion;
   b35: ScoreRecord[];
   b15: ScoreRecord[];
+  unmatchedRecordCount: number;
   rating: number;
   generatedAt: string;
   source: DataSource;
@@ -70,4 +84,5 @@ export interface ScoreSnapshot {
   records: ScoreRecord[];
   best50: Best50Snapshot;
   source: DataSource;
+  catalogSource: DataSource;
 }

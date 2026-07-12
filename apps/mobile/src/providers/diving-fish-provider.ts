@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { fetch as expoFetch } from 'expo/fetch';
-import type { DataSource, Player, Song } from '@/domain/models';
-import { buildBest50 } from '@/domain/rating';
+import type { DataSource, Player } from '@/domain/models';
 import { DivingFishRecordsResponseSchema, mapDivingFishRecord } from '@/domain/schemas';
 import type { ProviderSession, ScoreProvider } from './contracts';
 import { ProviderError, providerErrorFromStatus } from './errors';
@@ -11,11 +10,6 @@ const ProfileSchema = z.object({
   username: z.string().optional(), nickname: z.string().optional(),
   rating: z.number().int().nonnegative().optional(), additional_rating: z.number().int().nonnegative().optional(),
 });
-const MusicDataSchema = z.array(z.object({
-  id: z.union([z.number(), z.string()]), title: z.string(),
-  basic_info: z.object({ artist: z.string().optional(), from: z.string() }).passthrough(),
-}).passthrough());
-
 function parseContract<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) {
@@ -25,6 +19,8 @@ function parseContract<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 export class DivingFishProvider implements ScoreProvider {
+  private recordsRequest: Promise<z.infer<typeof DivingFishRecordsResponseSchema>> | null = null;
+
   constructor(private readonly session: ProviderSession) {}
 
   private async request(path: string): Promise<unknown> {
@@ -59,7 +55,30 @@ export class DivingFishProvider implements ScoreProvider {
     return { kind: 'diving-fish', label: '水鱼查分器', updatedAt: new Date().toISOString(), isStale: false };
   }
 
+  private getRecordsPayload(): Promise<z.infer<typeof DivingFishRecordsResponseSchema>> {
+    if (!this.recordsRequest) {
+      this.recordsRequest = this.request('/player/records')
+        .then((payload) => parseContract(DivingFishRecordsResponseSchema, payload));
+      void this.recordsRequest.then(
+        () => { this.recordsRequest = null; },
+        () => { this.recordsRequest = null; },
+      );
+    }
+    return this.recordsRequest;
+  }
+
   async getPlayer(): Promise<Player> {
+    if (this.session.mode === 'import-token') {
+      const records = await this.getRecordsPayload();
+      const source = this.source();
+      return {
+        id: records.username ?? 'diving-fish-user',
+        displayName: records.nickname ?? records.username ?? '水鱼玩家',
+        rating: records.rating ?? 0,
+        additionalRating: records.additional_rating,
+        source,
+      };
+    }
     const profile = parseContract(ProfileSchema, await this.request('/player/profile'));
     const source = this.source();
     return {
@@ -69,24 +88,8 @@ export class DivingFishProvider implements ScoreProvider {
     };
   }
   async getRecords() {
-    const [payload, musicData] = await Promise.all([
-      this.request('/player/records'), this.request('/music_data'),
-    ]);
-    const raw = parseContract(DivingFishRecordsResponseSchema, payload);
-    const songs = parseContract(MusicDataSchema, musicData);
-    const versions = new Map(songs.map((song) => [String(song.id), song.basic_info.from]));
-    return raw.records.map((record) => mapDivingFishRecord(record, versions.get(String(record.song_id))));
-  }
-  async getBest50(currentVersion: string) {
-    const [player, records] = await Promise.all([this.getPlayer(), this.getRecords()]);
-    return buildBest50(player, records, currentVersion, this.source());
-  }
-  async getSongs(): Promise<Song[]> {
-    const raw = parseContract(MusicDataSchema, await this.request('/music_data'));
-    return raw.map((song) => ({
-      id: String(song.id), title: song.title, artist: song.basic_info.artist,
-      version: song.basic_info.from, charts: [],
-    }));
+    const raw = await this.getRecordsPayload();
+    return raw.records.map((record) => mapDivingFishRecord(record));
   }
   async getChartStats() { return this.request('/chart_stats'); }
 }

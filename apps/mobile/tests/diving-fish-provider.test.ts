@@ -41,4 +41,24 @@ describe('DivingFishProvider native cookie session', () => {
 
     await expect(promise).rejects.toMatchObject({ code: 'permission', message: expect.stringContaining('/player/profile') });
   });
+
+  it('validates Import-Token from one shared records request without assuming profile access', async () => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      username: 'masked-user', nickname: '脱敏玩家', rating: 12345, records: [],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', request);
+    const provider = new DivingFishProvider({ mode: 'import-token', value: 'fake-token', persistable: true });
+
+    const [player, records] = await Promise.all([provider.getPlayer(), provider.getRecords()]);
+
+    expect(player).toMatchObject({ id: 'masked-user', displayName: '脱敏玩家', rating: 12345 });
+    expect(records).toEqual([]);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith(expect.stringContaining('/player/records'), expect.objectContaining({
+      headers: { Accept: 'application/json', 'Import-Token': 'fake-token' },
+    }));
+  });
 });
