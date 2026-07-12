@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
+import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { ProviderError } from '@/providers/errors';
+import { FIXTURE_CURRENT_VERSION } from '@/fixtures/sanitized';
+import { ScoreService } from '@/services/score-service';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { queryClient } from '@/state/query-client';
@@ -39,9 +42,21 @@ export default function SettingsScreen() {
     setBusy(true); setMessage('正在验证登录态…');
     try {
       const newSession = await auth.loginWithPassword({ username: username.trim(), password });
+      let snapshot;
+      try {
+        snapshot = await new ScoreService(new DivingFishProvider(newSession)).load(FIXTURE_CURRENT_VERSION);
+      } catch (error) {
+        if (newSession.mode === 'cookie-jar' && error instanceof ProviderError && error.code === 'authentication') {
+          throw new ProviderError('authentication', '账号密码正确，但 iOS 未能携带登录 Cookie', false, { cause: error });
+        }
+        throw error;
+      }
       await sessions.save(newSession);
+      await snapshots.save(snapshot);
       setSession(newSession);
-      invalidateAll();
+      const sessionValue = 'value' in newSession ? newSession.value : null;
+      queryClient.setQueryData(['score-snapshot', newSession.mode, sessionValue], snapshot);
+      void queryClient.invalidateQueries({ queryKey: ['songs'] });
       setMessage(newSession.persistable ? '登录成功，凭据已安全保存' : '登录成功；Cookie 仅在当前会话有效');
     } catch (error) { setMessage(messageFor(error)); }
     finally { setPassword(''); setBusy(false); }
@@ -77,8 +92,8 @@ export default function SettingsScreen() {
       <Text style={styles.title}>水鱼账号</Text>
       <Text style={styles.state}>{sessionLabel}</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
-      <TextInput autoCapitalize="none" autoCorrect={false} textContentType="username" autoComplete="username" editable={!busy} placeholder="用户名" value={username} onChangeText={setUsername} style={styles.input} />
-      <TextInput autoCapitalize="none" autoCorrect={false} textContentType="password" autoComplete="current-password" editable={!busy} placeholder="密码（不会保存）" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
+      <TextInput autoCapitalize="none" autoCorrect={false} textContentType="none" autoComplete="off" importantForAutofill="no" editable={!busy} placeholder="用户名" value={username} onChangeText={setUsername} style={styles.input} />
+      <TextInput autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" autoComplete="one-time-code" importantForAutofill="no" editable={!busy} placeholder="密码（不会保存）" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
       <Pressable disabled={busy} onPress={() => void login()} style={styles.primary}><Text style={styles.primaryText}>账密登录并验证</Text></Pressable>
       <Text style={styles.or}>或</Text>
       <TextInput autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" autoComplete="off" editable={!busy} placeholder="Import-Token" secureTextEntry value={importToken} onChangeText={setImportToken} style={styles.input} />
