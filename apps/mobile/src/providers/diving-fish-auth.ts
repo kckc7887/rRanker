@@ -33,8 +33,8 @@ export class DivingFishAuthProvider implements AuthProvider {
           resolve({ mode: 'jwt', value: jwtFromAll, persistable: true });
           return;
         }
-        // Expo Go may keep the cookie in its native jar without exposing Set-Cookie.
-        resolve({ mode: 'cookie-jar', persistable: false });
+        // Expo Go sandbox blocks Set-Cookie access on iOS; cookie-jar mode is unreliable.
+        reject(new ProviderError('authentication', '当前环境无法保存账密登录态，请改用 Import-Token', false));
       };
 
       xhr.onerror = () => {
