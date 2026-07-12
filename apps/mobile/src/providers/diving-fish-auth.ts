@@ -1,59 +1,50 @@
+import { fetch as expoFetch } from 'expo/fetch';
 import type { AuthProvider, LoginCredentials, ProviderSession } from './contracts';
 import { ProviderError, providerErrorFromStatus } from './errors';
 
 const BASE_URL = 'https://www.diving-fish.com/api/maimaidxprober';
 
+type ExpoResponseWithRawHeaders = Response & { readonly _rawHeaders?: [string, string][] };
+
+function jwtFromResponse(response: ExpoResponseWithRawHeaders): string | null {
+  const rawSetCookie = response._rawHeaders
+    ?.filter(([name]) => name.toLowerCase() === 'set-cookie')
+    .map(([, value]) => value)
+    .join('; ');
+  const setCookie = rawSetCookie || response.headers.get('set-cookie');
+  return setCookie?.match(/jwt_token=([^;]+)/i)?.[1] ?? null;
+}
+
 export class DivingFishAuthProvider implements AuthProvider {
-  loginWithPassword(credentials: LoginCredentials): Promise<ProviderSession> {
-    return new Promise<ProviderSession>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${BASE_URL}/login`);
-      xhr.withCredentials = true;
-      xhr.setRequestHeader('Accept', 'application/json');
-      xhr.setRequestHeader('Content-Type', 'application/json');
+  async loginWithPassword(credentials: LoginCredentials): Promise<ProviderSession> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await expoFetch(`${BASE_URL}/login`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      if (!response.ok) throw providerErrorFromStatus(response.status);
 
-      const timeout = setTimeout(() => xhr.abort(), 10_000);
+      // Wait for URLSession to finish processing the response and persist Set-Cookie.
+      await response.text();
+      const jwt = jwtFromResponse(response);
+      if (jwt) return { mode: 'jwt', value: jwt, persistable: true };
 
-      xhr.onload = () => {
-        clearTimeout(timeout);
-        if (xhr.status < 200 || xhr.status >= 300) {
-          reject(providerErrorFromStatus(xhr.status));
-          return;
-        }
-        // iOS NSURLSession does not expose Set-Cookie via fetch headers, so XHR is required.
-        const setCookie = xhr.getResponseHeader('Set-Cookie');
-        const jwtFromHeader = setCookie?.match(/jwt_token=([^;]+)/)?.[1];
-        if (jwtFromHeader) {
-          resolve({ mode: 'jwt', value: jwtFromHeader, persistable: true });
-          return;
-        }
-        const allHeaders = xhr.getAllResponseHeaders();
-        const jwtFromAll = allHeaders.match(/set-cookie:.*jwt_token=([^;]+)/i)?.[1];
-        if (jwtFromAll) {
-          resolve({ mode: 'jwt', value: jwtFromAll, persistable: true });
-          return;
-        }
-        // Expo Go sandbox blocks Set-Cookie access on iOS; cookie-jar mode is unreliable.
-        reject(new ProviderError('authentication', '当前环境无法保存账密登录态，请改用 Import-Token', false));
-      };
-
-      xhr.onerror = () => {
-        clearTimeout(timeout);
-        reject(new ProviderError('network', '无法连接水鱼登录服务', true));
-      };
-
-      xhr.onabort = () => {
-        clearTimeout(timeout);
-        reject(new ProviderError('timeout', '登录请求超时', true));
-      };
-
-      xhr.ontimeout = () => {
-        clearTimeout(timeout);
-        reject(new ProviderError('timeout', '登录请求超时', true));
-      };
-
-      xhr.send(JSON.stringify(credentials));
-    });
+      // expo/fetch stores HttpOnly cookies in the shared native cookie jar on iOS.
+      return { mode: 'cookie-jar', persistable: false };
+    } catch (error) {
+      if (error instanceof ProviderError) throw error;
+      if (error instanceof Error && (error.name === 'AbortError' || controller.signal.aborted)) {
+        throw new ProviderError('timeout', '登录请求超时', true, { cause: error });
+      }
+      throw new ProviderError('network', '无法连接水鱼登录服务', true, { cause: error });
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   useImportToken(token: string): ProviderSession {
