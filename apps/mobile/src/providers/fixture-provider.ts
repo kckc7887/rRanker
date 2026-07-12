@@ -1,5 +1,5 @@
 import { buildBest50 } from '@/domain/rating';
-import { fixturePlayer, fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
+import { fixturePlayer, fixtureRecords, fixtureSongs, fixtureSource } from '@/fixtures/sanitized';
 import type { ScoreProvider } from './contracts';
 
 export class FixtureProvider implements ScoreProvider {
@@ -8,6 +8,6 @@ export class FixtureProvider implements ScoreProvider {
   async getBest50(currentVersion: string) {
     return buildBest50(await this.getPlayer(), await this.getRecords(), currentVersion, fixtureSource, fixtureSource.updatedAt);
   }
-  async getSongs() { return []; }
+  async getSongs() { return structuredClone(fixtureSongs); }
   async getChartStats() { return {}; }
 }
