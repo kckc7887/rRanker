@@ -7,9 +7,11 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "eslint app src tests vitest.config.ts",
+    "lint": "eslint app src tests vitest.config.ts jest.config.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "npm run test:unit && npm run test:ui",
+    "test:unit": "vitest run",
+    "test:ui": "jest --runInBand",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -46,11 +48,13 @@
   },
   "devDependencies": {
     "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "29.5.14",
     "@types/node": "^26.1.1",
     "@types/react": "~19.1.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
-    "react-test-renderer": "^19.1.0",
+    "jest": "~29.7.0",
+    "jest-expo": "~54.0.17",
     "typescript": "~5.9.2",
     "vitest": "^4.1.10"
   },

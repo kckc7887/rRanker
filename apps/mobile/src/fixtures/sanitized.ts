@@ -1,8 +1,11 @@
-import type { DataSource, Player, ScoreRecord, Song } from '@/domain/models';
+import { chartVersionKey } from '@/domain/catalog';
+import type { CatalogSnapshot, DataSource, Player, ScoreRecord, Song } from '@/domain/models';
 import { calculateChartRating } from '@/domain/rating';
 
 export const FIXTURE_CURRENT_VERSION = 'M0 Current Version';
 export const FIXTURE_OLD_VERSION = 'M0 Previous Version';
+export const FIXTURE_CURRENT_VERSION_ID = 2;
+export const FIXTURE_OLD_VERSION_ID = 1;
 export const fixtureSource: DataSource = {
   kind: 'fixture', label: '脱敏测试数据', updatedAt: '2026-07-11T00:00:00.000Z', isStale: false,
 };
@@ -126,3 +129,17 @@ export const fixtureSongs: Song[] = [
     ],
   },
 ];
+
+export const fixtureCatalog: CatalogSnapshot = {
+  currentVersion: { id: FIXTURE_CURRENT_VERSION_ID, title: FIXTURE_CURRENT_VERSION },
+  versions: [
+    { id: FIXTURE_OLD_VERSION_ID, title: FIXTURE_OLD_VERSION },
+    { id: FIXTURE_CURRENT_VERSION_ID, title: FIXTURE_CURRENT_VERSION },
+  ],
+  songs: fixtureSongs,
+  chartVersionIndex: Object.fromEntries(fixtureRecords.map((record) => [
+    chartVersionKey(record.songId, record.type, record.levelIndex),
+    record.version === FIXTURE_CURRENT_VERSION ? FIXTURE_CURRENT_VERSION_ID : FIXTURE_OLD_VERSION_ID,
+  ])),
+  source: fixtureSource,
+};

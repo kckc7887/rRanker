@@ -10,7 +10,7 @@ function chartTypes(song: Song): string {
 }
 
 export default function SearchScreen() {
-  const { data, isLoading, isError, isStale, error, refetch } = useSongs();
+  const { data, isLoading, isError, isDataStale, error, refetch } = useSongs();
   const [keyword, setKeyword] = useState('');
 
   const filtered = useMemo<Song[]>(() => (data ? filterSongs(data, keyword) : []), [data, keyword]);
@@ -32,7 +32,7 @@ export default function SearchScreen() {
         isLoading={isLoading}
         isError={isError}
         isEmpty={isEmpty}
-        isStale={isStale}
+        isStale={isDataStale}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         emptyText={keyword.trim() ? '没有匹配的歌曲' : '暂无歌曲数据'}
