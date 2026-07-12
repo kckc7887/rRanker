@@ -77,11 +77,11 @@ export default function SettingsScreen() {
       <Text style={styles.title}>水鱼账号</Text>
       <Text style={styles.state}>{sessionLabel}</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
-      <TextInput autoCapitalize="none" autoCorrect={false} editable={!busy} placeholder="用户名" value={username} onChangeText={setUsername} style={styles.input} />
-      <TextInput autoCapitalize="none" autoCorrect={false} editable={!busy} placeholder="密码（不会保存）" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
+      <TextInput autoCapitalize="none" autoCorrect={false} textContentType="username" autoComplete="username" editable={!busy} placeholder="用户名" value={username} onChangeText={setUsername} style={styles.input} />
+      <TextInput autoCapitalize="none" autoCorrect={false} textContentType="password" autoComplete="current-password" editable={!busy} placeholder="密码（不会保存）" secureTextEntry value={password} onChangeText={setPassword} style={styles.input} />
       <Pressable disabled={busy} onPress={() => void login()} style={styles.primary}><Text style={styles.primaryText}>账密登录并验证</Text></Pressable>
       <Text style={styles.or}>或</Text>
-      <TextInput autoCapitalize="none" autoCorrect={false} editable={!busy} placeholder="Import-Token" secureTextEntry value={importToken} onChangeText={setImportToken} style={styles.input} />
+      <TextInput autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" autoComplete="off" editable={!busy} placeholder="Import-Token" secureTextEntry value={importToken} onChangeText={setImportToken} style={styles.input} />
       <Text style={styles.hint}>Import-Token 可从水鱼查分器网页版个人设置获取</Text>
       <Pressable disabled={busy} onPress={() => void connectWithToken()} style={styles.secondary}><Text style={styles.secondaryText}>验证并保存 Token</Text></Pressable>
       <Pressable disabled={busy} onPress={() => void clearLocalData()}><Text style={styles.clear}>清除本机凭据和缓存</Text></Pressable>

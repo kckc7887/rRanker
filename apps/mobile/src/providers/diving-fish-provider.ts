@@ -27,9 +27,6 @@ export class DivingFishProvider implements ScoreProvider {
   constructor(private readonly session: ProviderSession) {}
 
   private async request(path: string): Promise<unknown> {
-    // cookie-jar mode relies on the native cookie store; fetch cannot attach it on iOS,
-    // so fall back to XMLHttpRequest + withCredentials to reuse the native jar.
-    if (this.session.mode === 'cookie-jar') return this.requestViaXHR(path);
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (this.session.mode === 'jwt') headers.Cookie = `jwt_token=${this.session.value}`;
     if (this.session.mode === 'import-token') headers['Import-Token'] = this.session.value;
@@ -51,47 +48,6 @@ export class DivingFishProvider implements ScoreProvider {
       }
       throw new ProviderError('network', '无法连接水鱼服务', true, { cause: error });
     } finally { clearTimeout(timeout); }
-  }
-
-  private requestViaXHR(path: string): Promise<unknown> {
-    return new Promise<unknown>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', `${BASE_URL}${path}`);
-      xhr.withCredentials = true;
-      xhr.setRequestHeader('Accept', 'application/json');
-
-      const timeout = setTimeout(() => xhr.abort(), 12_000);
-
-      xhr.onload = () => {
-        clearTimeout(timeout);
-        if (xhr.status < 200 || xhr.status >= 300) {
-          reject(providerErrorFromStatus(xhr.status));
-          return;
-        }
-        try {
-          resolve(JSON.parse(xhr.responseText));
-        } catch (error) {
-          reject(new ProviderError('upstream_schema', '水鱼返回了无效 JSON', true, { cause: error }));
-        }
-      };
-
-      xhr.onerror = () => {
-        clearTimeout(timeout);
-        reject(new ProviderError('network', '无法连接水鱼服务', true));
-      };
-
-      xhr.onabort = () => {
-        clearTimeout(timeout);
-        reject(new ProviderError('timeout', '水鱼读取超时', true));
-      };
-
-      xhr.ontimeout = () => {
-        clearTimeout(timeout);
-        reject(new ProviderError('timeout', '水鱼读取超时', true));
-      };
-
-      xhr.send();
-    });
   }
 
   private source(): DataSource {

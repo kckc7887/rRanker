@@ -51,7 +51,7 @@ describe('DivingFishAuthProvider.loginWithPassword', () => {
     expect(session).toEqual({ mode: 'jwt', value: 'def456', persistable: true });
   });
 
-  it('returns a cookie-jar session when no jwt_token is exposed', async () => {
+  it('throws authentication error when no jwt_token can be extracted', async () => {
     const provider = new DivingFishAuthProvider();
     const promise = provider.loginWithPassword({ username: 'u', password: 'p' });
     const xhr = MockXHR.instance!;
@@ -59,8 +59,8 @@ describe('DivingFishAuthProvider.loginWithPassword', () => {
     xhr.getResponseHeader = () => null;
     xhr.getAllResponseHeaders = () => 'content-type: application/json\r\n';
     xhr.onload!();
-    const session = await promise;
-    expect(session).toEqual({ mode: 'cookie-jar', persistable: false });
+    await expect(promise).rejects.toMatchObject({ name: 'ProviderError', code: 'authentication' });
+    await expect(promise).rejects.toBeInstanceOf(ProviderError);
   });
 
   it('throws an authentication ProviderError on 401', async () => {
