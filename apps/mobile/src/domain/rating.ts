@@ -1,4 +1,5 @@
-import type { Best50Snapshot, DataSource, Player, ScoreRecord } from './models';
+import { chartVersionKey } from './catalog';
+import type { Best50Snapshot, CatalogSnapshot, DataSource, Player, ScoreRecord } from './models';
 
 const RATING_COEFFICIENTS: readonly [number, number][] = [
   [50, 7], [60, 8], [70, 9.6], [75, 11.2], [80, 12], [90, 13.6],
@@ -22,15 +23,23 @@ function rankRecords(records: readonly ScoreRecord[]): ScoreRecord[] {
 export function buildBest50(
   player: Player,
   records: readonly ScoreRecord[],
-  currentVersion: string,
+  catalog: CatalogSnapshot,
   source: DataSource,
   generatedAt = new Date().toISOString(),
 ): Best50Snapshot {
-  if (!currentVersion.trim()) throw new Error('currentVersion must come from a verified music-data contract');
-  const b35 = rankRecords(records.filter((record) => record.version !== 'unknown' && record.version !== currentVersion)).slice(0, 35);
-  const b15 = rankRecords(records.filter((record) => record.version === currentVersion)).slice(0, 15);
+  const classified = records.map((record) => ({
+    record,
+    version: catalog.chartVersionIndex[chartVersionKey(record.songId, record.type, record.levelIndex)],
+  }));
+  const unmatchedRecordCount = classified.filter(({ version }) => version === undefined).length;
+  const b35 = rankRecords(classified
+    .filter(({ version }) => version !== undefined && version !== catalog.currentVersion.id)
+    .map(({ record }) => record)).slice(0, 35);
+  const b15 = rankRecords(classified
+    .filter(({ version }) => version === catalog.currentVersion.id)
+    .map(({ record }) => record)).slice(0, 15);
   return {
-    player, currentVersion, b35, b15,
+    player, currentVersion: catalog.currentVersion, b35, b15, unmatchedRecordCount,
     rating: [...b35, ...b15].reduce((total, record) => total + record.rating, 0),
     generatedAt, source,
   };

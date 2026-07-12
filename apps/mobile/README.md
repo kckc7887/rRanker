@@ -1,6 +1,6 @@
-# rRanker Mobile M0
+# rRanker Mobile M1
 
-Expo SDK 54 + Expo Router + TypeScript strict 的双端功能线框。页面目前由脱敏 fixture 驱动；真实水鱼 provider 已实现，但必须通过设备契约验证后再作为默认数据源。
+Expo SDK 54 + Expo Router + TypeScript strict 的双端查分 MVP。玩家、成绩与认证来自水鱼，曲库与谱面版本元数据来自 LXNS 公共 API；未登录时使用脱敏 fixture。
 
 ## Commands
 
@@ -17,4 +17,5 @@ npm run android
 - 密码只存在于当次登录请求内存。
 - JWT/Import-Token 只存 SecureStore。
 - SQLite 只保存非敏感成绩快照，并带 schema version。
+- 查询缓存键不包含 JWT 或 Import-Token 原文。
 - 不调用上传、删除成绩或生成/刷新 Import-Token 的端点。

@@ -1,4 +1,4 @@
-import type { Best50Snapshot, Player, ScoreRecord, Song } from '@/domain/models';
+import type { CatalogSnapshot, Player, ScoreRecord } from '@/domain/models';
 
 export type ProviderSession =
   | { mode: 'jwt'; value: string; persistable: true }
@@ -12,7 +12,7 @@ export interface AuthProvider {
 export interface ScoreProvider {
   getPlayer(): Promise<Player>;
   getRecords(): Promise<ScoreRecord[]>;
-  getBest50(currentVersion: string): Promise<Best50Snapshot>;
-  getSongs(): Promise<Song[]>;
-  getChartStats(): Promise<unknown>;
+}
+export interface CatalogProvider {
+  getCatalog(): Promise<CatalogSnapshot>;
 }
