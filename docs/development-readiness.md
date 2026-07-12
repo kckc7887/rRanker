@@ -49,6 +49,8 @@
 
 没有设计输入时，可以开发 domain、provider、repository、缓存和测试，但不自行生成最终 UI 风格。
 
+**M1 决策（2026-07-12）**：UI 设计需求清单（`docs/m1-design-brief.md`）延后到 M2/M4，不在 M1 阻塞。M1 沿用 M0 功能线框风格，最终视觉延后。
+
 ## 3. Scaffold 时锁定的工程决策
 
 以下项目在执行 `create-expo-app` 的同一次变更中确定并记录，不提前猜版本：
