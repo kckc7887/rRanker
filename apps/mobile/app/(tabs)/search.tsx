@@ -3,6 +3,7 @@ import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 import type { Song } from '@/domain/models';
 import { useSongs } from '@/hooks/use-songs';
+import { filterSongs } from '@/utils/search';
 
 function chartTypes(song: Song): string {
   return Array.from(new Set(song.charts.map((c) => c.type))).join('/');
@@ -12,14 +13,7 @@ export default function SearchScreen() {
   const { data, isLoading, isError, isStale, error, refetch } = useSongs();
   const [keyword, setKeyword] = useState('');
 
-  const filtered = useMemo<Song[]>(() => {
-    if (!data) return [];
-    const kw = keyword.trim().toLowerCase();
-    if (!kw) return data;
-    return data.filter(
-      (s) => s.title.toLowerCase().includes(kw) || s.id.toLowerCase().includes(kw),
-    );
-  }, [data, keyword]);
+  const filtered = useMemo<Song[]>(() => (data ? filterSongs(data, keyword) : []), [data, keyword]);
 
   const viewData = filtered.length > 0 ? filtered : undefined;
   const isEmpty = !!data && filtered.length === 0;
