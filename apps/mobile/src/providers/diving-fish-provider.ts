@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fetch as expoFetch } from 'expo/fetch';
 import type { DataSource, Player, Song } from '@/domain/models';
 import { buildBest50 } from '@/domain/rating';
 import { DivingFishRecordsResponseSchema, mapDivingFishRecord } from '@/domain/schemas';
@@ -30,13 +31,17 @@ export class DivingFishProvider implements ScoreProvider {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (this.session.mode === 'jwt') headers.Cookie = `jwt_token=${this.session.value}`;
     if (this.session.mode === 'import-token') headers['Import-Token'] = this.session.value;
+    const credentials = this.session.mode === 'cookie-jar' ? 'include' : 'omit';
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12_000);
     try {
-      const response = await fetch(`${BASE_URL}${path}`, {
-        headers, credentials: 'include', signal: controller.signal,
+      const response = await expoFetch(`${BASE_URL}${path}`, {
+        headers, credentials, signal: controller.signal,
       });
-      if (!response.ok) throw providerErrorFromStatus(response.status);
+      if (!response.ok) {
+        const error = providerErrorFromStatus(response.status);
+        throw new ProviderError(error.code, `${error.message}（${path}）`, error.retryable, { cause: error });
+      }
       return await response.json();
     } catch (error) {
       if (error instanceof ProviderError) throw error;
