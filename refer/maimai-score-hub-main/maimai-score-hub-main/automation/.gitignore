@@ -1,9 +1,0 @@
-__pycache__/
-*.pyc
-.venv/
-venv/
-screenshots/
-*.xml
-*.db
-*.db-wal
-*.db-shm
