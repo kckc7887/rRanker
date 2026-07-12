@@ -1,21 +1,24 @@
 # Tasks
 
-- [ ] Task 1: settings.tsx 登录函数加 iOS cookie-jar 降级提示
-  - [ ] SubTask 1.1: 引入 Platform from 'react-native'
-  - [ ] SubTask 1.2: login 函数中，若 Platform.OS === 'ios' 且 newSession.mode === 'cookie-jar'，不 setSession/sessions.save，setMessage('iOS Expo Go 账密登录不支持，请改用 Import-Token')，setPassword('')，return
-  - [ ] SubTask 1.3: Android cookie-jar 保持现有行为不变
-- [ ] Task 2: settings.tsx TextInput 加 textContentType
-  - [ ] SubTask 2.1: 用户名 TextInput 加 textContentType="username"
-  - [ ] SubTask 2.2: 密码 TextInput 加 textContentType="password"
-  - [ ] SubTask 2.3: Import-Token TextInput 加 textContentType="oneTimeCode"
-- [ ] Task 3: 验证与交付
-  - [ ] SubTask 3.1: npm test 通过
-  - [ ] SubTask 3.2: npm run typecheck 通过
-  - [ ] SubTask 3.3: npm run lint 通过
-  - [ ] SubTask 3.4: git commit（前后各一次）
-  - [ ] SubTask 3.5: changelog
+- [ ] Task 1: diving-fish-auth.ts 拿不到 jwt 时抛错而非返回 cookie-jar
+  - [ ] SubTask 1.1: 三层 fallback 拿不到 jwt_token 时，抛 ProviderError('authentication', '当前环境无法保存账密登录态，请改用 Import-Token', false)
+  - [ ] SubTask 1.2: 更新 tests/diving-fish-auth.test.ts，原"两层都拿不到返回 cookie-jar"改为"抛 ProviderError('authentication')"
+- [ ] Task 2: diving-fish-provider.ts 删 requestViaXHR 和 cookie-jar 分支
+  - [ ] SubTask 2.1: request 方法移除 cookie-jar 分支，只保留 fetch 路径（jwt + import-token）
+  - [ ] SubTask 2.2: 删除 requestViaXHR 方法
+- [ ] Task 3: settings.tsx TextInput 加 textContentType
+  - [ ] SubTask 3.1: 用户名 TextInput 加 textContentType="username" autoComplete="username"
+  - [ ] SubTask 3.2: 密码 TextInput 加 textContentType="password" autoComplete="current-password"
+  - [ ] SubTask 3.3: Import-Token TextInput 加 textContentType="oneTimeCode" autoComplete="off"（避免被当成密码）
+- [ ] Task 4: 验证与交付
+  - [ ] SubTask 4.1: npm test 通过
+  - [ ] SubTask 4.2: npm run typecheck 通过
+  - [ ] SubTask 4.3: npm run lint 通过
+  - [ ] SubTask 4.4: git commit（前后各一次）
+  - [ ] SubTask 4.5: 写 changelog
 
 # Task Dependencies
 
-- Task 2 与 Task 1 无依赖，可并行
-- Task 3 依赖 Task 1 和 Task 2
+- Task 2 依赖 Task 1（cookie-jar 不再被触发才能安全删除 requestViaXHR）
+- Task 3 独立
+- Task 4 依赖 1、2、3
