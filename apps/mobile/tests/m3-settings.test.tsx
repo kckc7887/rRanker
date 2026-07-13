@@ -13,17 +13,30 @@ const mockCreateBackup = jest.fn(async () => createUserDataBackup([], '2026-07-1
 const mockPickBackup = jest.fn<() => Promise<UserDataBackupV1 | null>>();
 const mockShareBackup = jest.fn<(backup: UserDataBackupV1) => Promise<void>>(async () => undefined);
 const mockClearSessionState = jest.fn();
+const mockRemoveQueries = jest.fn();
+const mockClearOrder: string[] = [];
 
-jest.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn(() => ({ clear: () => mockClearSessions() })) }));
-jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: jest.fn(() => ({ clear: () => mockClearSnapshots() })) }));
+jest.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn(() => ({ clear: async () => {
+  mockClearOrder.push('credentials');
+  return mockClearSessions();
+} })) }));
+jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: jest.fn(() => ({ clear: async () => {
+  mockClearOrder.push('cache');
+  return mockClearSnapshots();
+} })) }));
 jest.mock('@/providers/diving-fish-auth', () => ({ DivingFishAuthProvider: class {} }));
 jest.mock('@/providers/diving-fish-provider', () => ({ DivingFishProvider: class {} }));
-jest.mock('@/state/query-client', () => ({ queryClient: { invalidateQueries: jest.fn() } }));
+jest.mock('@/state/query-client', () => ({ queryClient: {
+  invalidateQueries: jest.fn(), removeQueries: (...args: unknown[]) => mockRemoveQueries(...args),
+} }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
   session: null, setSession: jest.fn(), clearSession: mockClearSessionState, restoreError: null,
 }) }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
-  data: [], isLoading: false, clearUserData: mockClearUserData, restoreBackup: mockRestoreBackup, createBackup: mockCreateBackup,
+  data: [], isLoading: false, clearUserData: async () => {
+    mockClearOrder.push('personal');
+    return mockClearUserData();
+  }, restoreBackup: mockRestoreBackup, createBackup: mockCreateBackup,
 }) }));
 jest.mock('@/services/user-data-file-service', () => ({
   UserDataFileError: class extends Error {}, pickUserDataBackup: () => mockPickBackup(),
@@ -31,7 +44,7 @@ jest.mock('@/services/user-data-file-service', () => ({
 }));
 
 describe('M3A settings data controls', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => { jest.clearAllMocks(); mockClearOrder.length = 0; });
 
   it('asks on every clear and preserves or removes personal data as selected', async () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
@@ -46,6 +59,28 @@ describe('M3A settings data controls', () => {
     const removeButtons = alert.mock.calls[1][2]!;
     await act(async () => removeButtons[2].onPress?.());
     await waitFor(() => expect(mockClearUserData).toHaveBeenCalledTimes(1));
+    expect(mockClearSessions).toHaveBeenCalledTimes(2);
+    expect(mockClearSnapshots).toHaveBeenCalledTimes(2);
+    expect(mockClearSessionState).toHaveBeenCalledTimes(2);
+    expect(mockClearOrder).toEqual(['credentials', 'cache', 'credentials', 'cache', 'personal']);
+    expect(mockRemoveQueries).toHaveBeenCalledTimes(8);
+    expect(mockRemoveQueries).toHaveBeenCalledWith({ queryKey: ['detailed-catalog'] });
+    expect(mockRemoveQueries).not.toHaveBeenCalledWith({ queryKey: ['user-library'] });
+    alert.mockRestore();
+  });
+
+  it('continues clearing, logs out and reports the failed part when one store fails', async () => {
+    mockClearSnapshots.mockRejectedValueOnce(new Error('locked'));
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    const screen = await render(<SettingsScreen />);
+    await fireEvent.press(screen.getByText('清除本机凭据和缓存'));
+    await act(async () => alert.mock.calls[0][2]![2].onPress?.());
+
+    await waitFor(() => expect(screen.getByText('部分清除失败（缓存），其余项目已清除，请重试')).toBeTruthy());
+    expect(mockClearUserData).toHaveBeenCalledTimes(1);
+    expect(mockClearSessionState).toHaveBeenCalledTimes(1);
+    expect(mockRemoveQueries).toHaveBeenCalledTimes(4);
+    expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
     alert.mockRestore();
   });
 

@@ -39,6 +39,12 @@ export default function SettingsScreen() {
     void queryClient.invalidateQueries({ queryKey: ['songs'] });
   };
 
+  const clearRemoteCaches = () => {
+    for (const key of ['score-snapshot', 'songs', 'detailed-catalog', 'plates']) {
+      queryClient.removeQueries({ queryKey: [key] });
+    }
+  };
+
   const validateAndActivate = async (newSession: ProviderSession) => {
     const provider = new DivingFishProvider(newSession);
     try {
@@ -81,14 +87,20 @@ export default function SettingsScreen() {
 
   const clearLocalData = async (includePersonalData: boolean) => {
     setBusy(true);
-    try {
-      await Promise.all([sessions.clear(), snapshots.clear(), ...(includePersonalData ? [library.clearUserData()] : [])]);
-      clearSession();
-      invalidateAll();
-      setPassword(''); setImportToken('');
-      setMessage(includePersonalData ? '已清除本机凭据、缓存和个人数据' : '已清除本机凭据和缓存；个人数据已保留');
-    } catch { setMessage('清除失败，请重试'); }
-    finally { setBusy(false); }
+    const failures: string[] = [];
+    const attempt = async (label: string, action: () => Promise<unknown>) => {
+      try { await action(); } catch { failures.push(label); }
+    };
+    // 两个 SQLite 仓储写入同一数据库，必须顺序清理，避免独占事务造成 database is locked。
+    await attempt('凭据', () => sessions.clear());
+    await attempt('缓存', () => snapshots.clear());
+    if (includePersonalData) await attempt('个人数据', () => library.clearUserData());
+    clearSession();
+    clearRemoteCaches();
+    setPassword(''); setImportToken('');
+    if (failures.length > 0) setMessage(`部分清除失败（${failures.join('、')}），其余项目已清除，请重试`);
+    else setMessage(includePersonalData ? '已清除本机凭据、缓存和个人数据' : '已清除本机凭据和缓存；个人数据已保留');
+    setBusy(false);
   };
 
   const promptClear = () => Alert.alert('清除本机数据', '请选择是否同时删除收藏、练习清单和本地标签。', [

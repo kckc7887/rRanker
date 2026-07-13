@@ -27,6 +27,7 @@ const DifficultySchema = z.object({
 const SongSchema = z.object({
   id: z.number().int().nonnegative(), title: z.string(), artist: z.string().optional(),
   bpm: z.number().finite().nonnegative().optional(), genre: z.string().optional(),
+  map: z.string().nullish(),
   rights: z.string().nullish(), version: z.number().int().positive(),
   disabled: z.boolean().optional(), locked: z.boolean().optional(),
   difficulties: z.object({
@@ -65,6 +66,11 @@ function source(label: string): DataSource {
 }
 function chartType(type: 'standard' | 'dx'): ChartType { return type === 'dx' ? 'DX' : 'SD'; }
 
+function versionAtOrBefore<T extends { version: number }>(versions: readonly T[], rawVersion: number): T | undefined {
+  return versions.reduce<T | undefined>((matched, item) =>
+    item.version <= rawVersion && (!matched || item.version > matched.version) ? item : matched, undefined);
+}
+
 async function getJson(path: string): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -86,28 +92,31 @@ function mapCatalog(input: unknown, label: string): CatalogSnapshot {
   const parsed = CatalogResponseSchema.safeParse(input);
   if (!parsed.success) throw new ProviderError('upstream_schema', 'LXNS 曲库响应结构与已验证契约不一致', true);
   const current = parsed.data.versions.reduce((latest, item) => item.version > latest.version ? item : latest);
-  const versionTitles = new Map(parsed.data.versions.map((item) => [item.version, item.title]));
   const chartVersionIndex: Record<string, number> = {};
   let currentChartCount = 0;
   const songs: Song[] = parsed.data.songs.map((rawSong) => {
     const charts: Chart[] = [...rawSong.difficulties.standard, ...rawSong.difficulties.dx].map((raw) => {
       const type = chartType(raw.type);
+      const chartVersion = versionAtOrBefore(parsed.data.versions, raw.version);
+      const chartVersionId = chartVersion?.version ?? raw.version;
       if (!rawSong.disabled) {
-        chartVersionIndex[chartVersionKey(rawSong.id, type, raw.difficulty)] = raw.version;
-        if (raw.version === current.version) currentChartCount += 1;
+        chartVersionIndex[chartVersionKey(rawSong.id, type, raw.difficulty)] = chartVersionId;
+        if (chartVersionId === current.version) currentChartCount += 1;
       }
       return {
         songId: String(rawSong.id), type, levelIndex: raw.difficulty, level: raw.level,
         difficulty: difficultyFromIndex(raw.difficulty), difficultyConstant: raw.level_value,
-        charter: raw.note_designer ?? undefined, versionId: raw.version,
+        charter: raw.note_designer ?? undefined, versionId: chartVersionId,
         notes: raw.notes ? { ...raw.notes } satisfies ChartNotes : undefined,
       };
     });
+    const songVersion = versionAtOrBefore(parsed.data.versions, rawSong.version);
     return {
       id: String(rawSong.id), title: rawSong.title, artist: rawSong.artist,
-      bpm: rawSong.bpm, genre: rawSong.genre, rights: rawSong.rights ?? undefined,
-      locked: rawSong.locked, disabled: rawSong.disabled, versionId: rawSong.version,
-      version: versionTitles.get(rawSong.version) ?? String(rawSong.version), charts,
+      bpm: rawSong.bpm, genre: rawSong.genre, region: rawSong.map?.trim() || undefined,
+      rights: rawSong.rights ?? undefined,
+      locked: rawSong.locked, disabled: rawSong.disabled, versionId: songVersion?.version ?? rawSong.version,
+      version: songVersion?.title ?? String(rawSong.version), charts,
     };
   });
   if (currentChartCount === 0) throw new ProviderError('upstream_schema', 'LXNS 最新版本没有可用谱面，拒绝猜测当前版本', true);
