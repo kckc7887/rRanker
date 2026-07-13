@@ -1,28 +1,38 @@
 import { useMemo } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { SectionList, StyleSheet, Text, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
+import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { ScoreRecord } from '@/domain/models';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 
-type Row = { group: 'B35' | 'B15'; record: ScoreRecord };
+interface BestSection {
+  key: 'B35' | 'B15';
+  title: string;
+  data: ScoreRecord[];
+}
+
+function byRating(left: ScoreRecord, right: ScoreRecord): number {
+  return right.rating - left.rating || right.achievements - left.achievements;
+}
 
 export default function Best50Screen() {
   const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
   const tabBottomInset = useNativeTabBottomInset();
-  const rows = useMemo<Row[]>(() => {
+  const sections = useMemo<BestSection[]>(() => {
     if (!data) return [];
     return [
-      ...data.best50.b35.map((record) => ({ group: 'B35' as const, record })),
-      ...data.best50.b15.map((record) => ({ group: 'B15' as const, record })),
+      { key: 'B35', title: '过往版本 Best35', data: [...data.best50.b35].sort(byRating) },
+      { key: 'B15', title: '当前版本 Best15', data: [...data.best50.b15].sort(byRating) },
     ];
   }, [data]);
-  const viewData = rows.length > 0 ? rows : undefined;
-  const isEmpty = !!data && rows.length === 0;
+  const recordCount = sections.reduce((sum, section) => sum + section.data.length, 0);
+  const viewData = recordCount > 0 ? sections : undefined;
+  const isEmpty = !!data && recordCount === 0;
   return (
     <View style={styles.page}>
-      <QueryStateView<Row[]>
+      <QueryStateView<BestSection[]>
         isLoading={isLoading}
         isError={isError}
         isEmpty={isEmpty}
@@ -32,26 +42,22 @@ export default function Best50Screen() {
         emptyText="暂无 B50 数据"
         data={viewData}
         renderData={(list) => (
-          <FlatList
+          <SectionList
             style={styles.list}
             contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
             scrollIndicatorInsets={{ bottom: tabBottomInset }}
-            data={list}
-            keyExtractor={({ group, record }) => `${group}-${record.songId}-${record.levelIndex}`}
+            sections={list}
+            stickySectionHeadersEnabled={false}
+            keyExtractor={(record) => `${record.songId}-${record.type}-${record.levelIndex}-${record.version}`}
             ListHeaderComponent={<View style={styles.header}><SourceStatus items={data ? [
               { key: 'scores', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
               { key: 'catalog', label: data.catalogSource.label, updatedAt: data.catalogSource.updatedAt, state: data.catalogSource.isStale ? 'cache' : 'live' },
             ] : []} /><Text style={styles.note}>当前版本：{data?.best50.currentVersion.title}；无法匹配的 {data?.best50.unmatchedRecordCount ?? 0} 条成绩未计入。</Text></View>}
-            renderItem={({ item, index }) => (
-              <View style={styles.row}>
-                <Text style={styles.rank}>{index + 1}</Text>
-                <View style={styles.main}>
-                  <Text numberOfLines={1} style={styles.title}>{item.record.title}</Text>
-                  <Text style={styles.meta}>{item.group} · {item.record.type} · {item.record.level}</Text>
-                </View>
-                <Text style={styles.rating}>{item.record.rating}</Text>
-              </View>
-            )}
+            renderSectionHeader={({ section }) => <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <Text style={styles.sectionCount}>{section.data.length} 张谱面</Text>
+            </View>}
+            renderItem={({ item, index }) => <ScoreRecordCard record={item} rank={index + 1} />}
           />
         )}
       />
@@ -63,9 +69,7 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { padding: 16, gap: 10 },
   note: { color: '#6B7280', marginBottom: 6 },
-  header: { gap: 9 },
-  row: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  rank: { color: '#9CA3AF', width: 24, fontWeight: '700' }, main: { flex: 1, gap: 3 },
-  title: { color: '#111827', fontWeight: '600' }, meta: { color: '#6B7280', fontSize: 12 },
-  rating: { color: '#246BFD', fontWeight: '800', fontSize: 18 },
+  header: { gap: 9, marginBottom: 2 },
+  sectionHeader: { marginTop: 10, marginBottom: 2, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  sectionTitle: { color: '#111827', fontSize: 18, fontWeight: '800' }, sectionCount: { color: '#8A93A3', fontSize: 11 },
 });

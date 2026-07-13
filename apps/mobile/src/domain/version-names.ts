@@ -4,6 +4,8 @@ export interface VersionNameMapping {
   japan: string;
 }
 
+export type VersionNameLocale = 'china' | 'japan';
+
 // 2026-07-13 由 LXNS /song/list 与水鱼 /music_data 的发布曲目交叉统计核实。
 export const VERSION_NAME_MAPPINGS: readonly VersionNameMapping[] = [
   { versionId: 10000, china: 'maimai', japan: 'maimai' },
@@ -27,3 +29,27 @@ export const VERSION_NAME_MAPPINGS: readonly VersionNameMapping[] = [
   { versionId: 25000, china: '舞萌DX 2025', japan: 'maimai でらっくす PRiSM' },
   { versionId: 25500, china: '舞萌DX 2026', japan: 'maimai でらっくす PRiSM PLUS' },
 ];
+
+export function localizedVersionName(
+  versionId: number | undefined,
+  currentName: string,
+  locale: VersionNameLocale,
+): string {
+  const namedMapping = VERSION_NAME_MAPPINGS.find((item) =>
+    item.china === currentName || item.japan === currentName);
+  if (namedMapping) return namedMapping[locale];
+
+  let mapping: VersionNameMapping | undefined;
+  if (versionId !== undefined) {
+    for (let index = 0; index < VERSION_NAME_MAPPINGS.length; index += 1) {
+      const candidate = VERSION_NAME_MAPPINGS[index];
+      const next = VERSION_NAME_MAPPINGS[index + 1];
+      if (candidate.versionId === versionId ||
+        (candidate.versionId < versionId && next !== undefined && versionId < next.versionId)) {
+        mapping = candidate;
+        break;
+      }
+    }
+  }
+  return mapping?.[locale] ?? currentName;
+}

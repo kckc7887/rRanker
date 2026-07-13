@@ -1,4 +1,5 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import SearchScreen from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
@@ -10,6 +11,7 @@ const mockPush = jest.fn();
 const mockSetFavorite = jest.fn(async () => []);
 const mockSetPractice = jest.fn(async () => []);
 const mockSetTags = jest.fn(async () => []);
+const mockRefetchScore = jest.fn<() => Promise<unknown>>(async () => undefined);
 const timestamp = '2026-07-13T00:00:00.000Z';
 const mockItems: UserLibraryItem[] = [
   { key: 'song:1', kind: 'song', songId: '1', favorite: true, tags: ['喜欢'], createdAt: timestamp, updatedAt: timestamp },
@@ -18,8 +20,13 @@ const mockItems: UserLibraryItem[] = [
 ];
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('react-native-safe-area-context', () => ({
+  ...(jest.requireActual('react-native-safe-area-context') as object),
+  useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
+}));
 jest.mock('expo-router', () => ({
-  Stack: { Screen: () => null }, router: { push: mockPush }, useLocalSearchParams: () => ({ songId: '1' }),
+  Stack: { Screen: ({ options }: { options?: { headerRight?: () => ReactNode } }) => options?.headerRight?.() ?? null },
+  router: { push: mockPush }, useLocalSearchParams: () => ({ songId: '1' }),
 }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
@@ -35,17 +42,43 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   return { data: { player: fixtures.fixturePlayer, records: fixtures.fixtureRecords, source: fixtures.fixtureSource,
     catalogSource: fixtures.fixtureSource, best50: { player: fixtures.fixturePlayer, currentVersion: fixtures.fixtureCatalog.currentVersion,
       b35: [], b15: [], unmatchedRecordCount: 0, rating: 0, generatedAt: timestamp, source: fixtures.fixtureSource } },
-    isLoading: false, isError: false, isDataStale: false, error: null, refetch: jest.fn() };
+    isLoading: false, isError: false, isDataStale: false, error: null, refetch: () => mockRefetchScore() };
 } }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: { session: null }) => unknown) => selector({ session: null }) }));
 
 describe('M3A personal library screens', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => { jest.clearAllMocks(); mockRefetchScore.mockResolvedValue(undefined); });
 
   it('keeps five tabs and exposes the personal library from overview', async () => {
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('我的曲库')).toBeTruthy();
     expect(screen.getByText('收藏 2 首 · 练习 1 张')).toBeTruthy();
+    expect(screen.queryByText(/M0 功能线框/)).toBeNull();
+    expect(screen.queryByText('刷新')).toBeNull();
+  });
+
+  it('uses one controlled pull-to-refresh action on overview', async () => {
+    let finishRefresh!: () => void;
+    mockRefetchScore.mockImplementationOnce(() => new Promise<void>((resolve) => { finishRefresh = resolve; }));
+    const screen = await render(<OverviewScreen />);
+    const refreshControl = () => screen.getByTestId('overview-scroll').props.refreshControl;
+
+    await act(async () => {
+      refreshControl().props.onRefresh();
+      await Promise.resolve();
+    });
+    expect(mockRefetchScore).toHaveBeenCalledTimes(1);
+    expect(refreshControl().props.refreshing).toBe(true);
+    await act(async () => {
+      refreshControl().props.onRefresh();
+      await Promise.resolve();
+    });
+    expect(mockRefetchScore).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finishRefresh();
+      await Promise.resolve();
+    });
+    expect(refreshControl().props.refreshing).toBe(false);
   });
 
   it('lists favorites, practice charts and missing catalog entries with filters', async () => {
@@ -67,13 +100,14 @@ describe('M3A personal library screens', () => {
 
   it('edits song favorite, chart practice and tags from song detail', async () => {
     const screen = await render(<SongDetailScreen />);
-    await fireEvent.press(screen.getByText('已收藏歌曲'));
+    await fireEvent.press(screen.getByLabelText('取消收藏 正常曲目 A'));
     expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
     await fireEvent.press(screen.getByText('已加入练习清单'));
     expect(mockSetPractice).toHaveBeenCalledWith('1', 'DX', 3, false);
     const inputs = screen.getAllByLabelText('新标签');
-    await fireEvent.changeText(inputs[0], '新标签');
-    await fireEvent.press(screen.getAllByText('添加')[0]);
+    await fireEvent.changeText(inputs[inputs.length - 1], '新标签');
+    const addButtons = screen.getAllByText('添加');
+    await fireEvent.press(addButtons[addButtons.length - 1]);
     expect(mockSetTags).toHaveBeenCalledWith({ kind: 'song', songId: '1' }, ['喜欢', '新标签']);
   });
 });

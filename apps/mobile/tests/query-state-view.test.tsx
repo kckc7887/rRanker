@@ -60,7 +60,7 @@ describe('QueryStateView five states', () => {
       />,
     );
     expect(getByText('data-content')).toBeTruthy();
-    expect(queryByText('数据可能过期，下拉刷新')).toBeNull();
+    expect(queryByText('当前显示缓存数据')).toBeNull();
   });
 
   it('shows the stale banner and data when data is present and stale', async () => {
@@ -74,7 +74,7 @@ describe('QueryStateView five states', () => {
         renderData={renderData}
       />,
     );
-    expect(getByText('数据可能过期，下拉刷新')).toBeTruthy();
+    expect(getByText('当前显示缓存数据')).toBeTruthy();
     expect(getByText('data-content')).toBeTruthy();
   });
 });

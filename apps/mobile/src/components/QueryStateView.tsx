@@ -57,7 +57,7 @@ export function QueryStateView<T,>({
       return (
         <View style={styles.data}>
           <View style={styles.staleBanner}>
-            <Text style={styles.staleText}>数据可能过期，下拉刷新</Text>
+            <Text style={styles.staleText}>当前显示缓存数据</Text>
           </View>
           {renderData(data)}
         </View>
