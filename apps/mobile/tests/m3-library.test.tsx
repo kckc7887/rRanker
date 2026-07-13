@@ -3,7 +3,7 @@ import { jest } from '@jest/globals';
 import SearchScreen from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 import UserLibraryScreen from '../app/library';
-import OverviewScreen from '../app/(tabs)';
+import OverviewScreen from '../app/(tabs)/(overview)';
 import type { UserLibraryItem } from '@/domain/user-library';
 
 const mockPush = jest.fn();

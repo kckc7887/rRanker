@@ -3,6 +3,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-n
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
+import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useRecordsFilter } from '@/state/records-filter';
 
@@ -31,6 +32,7 @@ function Chip({ label, active, onPress }: ChipProps) {
 
 export default function RecordsScreen() {
   const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
+  const tabBottomInset = useNativeTabBottomInset();
   const {
     difficulty, version, type, sortBy,
     setDifficulty, setVersion, setType, setSortBy,
@@ -106,7 +108,8 @@ export default function RecordsScreen() {
         renderData={(list) => (
           <FlatList
             style={styles.list}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
+            scrollIndicatorInsets={{ bottom: tabBottomInset }}
             data={list}
             keyExtractor={(record) => `${record.songId}-${record.levelIndex}`}
             ListHeaderComponent={<View style={styles.header}><SourceStatus items={data ? [

@@ -8,6 +8,7 @@ import { SourceStatus } from '@/components/SourceStatus';
 import type { ChartType, Difficulty, Song } from '@/domain/models';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { songLibraryKey } from '@/domain/user-library';
 import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/search';
@@ -18,6 +19,7 @@ function toggle<T>(list: T[], value: T): T[] { return list.includes(value) ? lis
 
 export default function SearchScreen() {
   const query = useDetailedCatalog();
+  const tabBottomInset = useNativeTabBottomInset();
   const library = useUserLibrary();
   const [keyword, setKeyword] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -64,7 +66,9 @@ export default function SearchScreen() {
         error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
         data={filtered.length ? filtered : undefined} renderData={(songs) => (
           <FlatList data={songs} keyExtractor={(item) => item.id} initialNumToRender={12} maxToRenderPerBatch={12}
-            windowSize={7} removeClippedSubviews contentContainerStyle={styles.listContent}
+            windowSize={7} removeClippedSubviews
+            contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 20 }]}
+            scrollIndicatorInsets={{ bottom: tabBottomInset }}
             ListHeaderComponent={query.data ? <SourceStatus items={[{
               key: 'catalog', label: query.data.source.label, updatedAt: query.data.source.updatedAt,
               state: query.data.source.isStale ? 'cache' : 'live',

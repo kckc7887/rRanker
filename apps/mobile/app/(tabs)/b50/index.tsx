@@ -3,12 +3,14 @@ import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { ScoreRecord } from '@/domain/models';
+import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 
 type Row = { group: 'B35' | 'B15'; record: ScoreRecord };
 
 export default function Best50Screen() {
   const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
+  const tabBottomInset = useNativeTabBottomInset();
   const rows = useMemo<Row[]>(() => {
     if (!data) return [];
     return [
@@ -32,7 +34,8 @@ export default function Best50Screen() {
         renderData={(list) => (
           <FlatList
             style={styles.list}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
+            scrollIndicatorInsets={{ bottom: tabBottomInset }}
             data={list}
             keyExtractor={({ group, record }) => `${group}-${record.songId}-${record.levelIndex}`}
             ListHeaderComponent={<View style={styles.header}><SourceStatus items={data ? [
