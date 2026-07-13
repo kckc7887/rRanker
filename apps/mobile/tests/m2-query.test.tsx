@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import SearchScreen from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 
+jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null }, router: { push: jest.fn() }, useLocalSearchParams: () => ({ songId: '1' }),
 }));
@@ -15,6 +16,9 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   return { data: { records: fixtures.fixtureRecords, source: fixtures.fixtureSource }, isLoading: false, isError: false, error: null, refetch: jest.fn() };
 } }));
+jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
+  data: [], isLoading: false, isUpdating: false, setSongFavorite: jest.fn(), setChartPractice: jest.fn(), setTags: jest.fn(),
+}) }));
 
 describe('M2 song query screens', () => {
   it('searches aliases after debounce and supports empty filter state', async () => {

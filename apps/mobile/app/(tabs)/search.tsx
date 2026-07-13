@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -7,6 +8,8 @@ import { SourceStatus } from '@/components/SourceStatus';
 import type { ChartType, Difficulty, Song } from '@/domain/models';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useUserLibrary } from '@/hooks/use-user-library';
+import { songLibraryKey } from '@/domain/user-library';
 import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/search';
 
 const TYPES: ChartType[] = ['SD', 'DX'];
@@ -15,6 +18,7 @@ function toggle<T>(list: T[], value: T): T[] { return list.includes(value) ? lis
 
 export default function SearchScreen() {
   const query = useDetailedCatalog();
+  const library = useUserLibrary();
   const [keyword, setKeyword] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [types, setTypes] = useState<ChartType[]>([]);
@@ -30,6 +34,7 @@ export default function SearchScreen() {
     constantMin: min ? Number(min) : undefined, constantMax: max ? Number(max) : undefined,
     songVersionIds: songVersionId ? [songVersionId] : [], chartVersionIds: chartVersionId ? [chartVersionId] : [],
   }), [chartVersionId, debouncedKeyword, difficulties, index, max, min, songVersionId, types]);
+  const favoriteKeys = useMemo(() => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.key)), [library.data]);
 
   return (
     <View style={styles.page}>
@@ -64,12 +69,18 @@ export default function SearchScreen() {
               key: 'catalog', label: query.data.source.label, updatedAt: query.data.source.updatedAt,
               state: query.data.source.isStale ? 'cache' : 'live',
             }]} /> : null}
-            renderItem={({ item }) => <Pressable style={styles.row} onPress={() => router.push(`/songs/${encodeURIComponent(item.id)}` as Href)}>
-              <SongCover songId={item.id} />
-              <View style={styles.main}><Text numberOfLines={2} style={styles.title}>{item.title}</Text>
+            renderItem={({ item }) => <View style={styles.row}>
+              <Pressable accessibilityRole="button" style={styles.openSong} onPress={() => router.push(`/songs/${encodeURIComponent(item.id)}` as Href)}>
+                <SongCover songId={item.id} />
+                <View style={styles.main}><Text numberOfLines={2} style={styles.title}>{item.title}</Text>
                 <Text numberOfLines={1} style={styles.meta}>{item.artist ?? '曲师未知'} · {item.version}</Text>
                 <Text style={styles.meta}>{item.charts.map((chart) => `${chart.type} ${chart.level}`).join(' / ')}</Text></View>
-            </Pressable>} />
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={favoriteKeys.has(songLibraryKey(item.id)) ? `取消收藏 ${item.title}` : `收藏 ${item.title}`}
+                disabled={library.isLoading || library.isUpdating} onPress={() => void library.setSongFavorite(item.id, !favoriteKeys.has(songLibraryKey(item.id)))} style={styles.favorite}>
+                <Ionicons name={favoriteKeys.has(songLibraryKey(item.id)) ? 'heart' : 'heart-outline'} color="#246BFD" size={24} />
+              </Pressable>
+            </View>} />
         )} />
     </View>
   );
@@ -92,6 +103,7 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, chip: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 15, backgroundColor: '#E5E7EB' },
   chipActive: { backgroundColor: '#246BFD' }, chipText: { color: '#374151', fontSize: 11 }, chipTextActive: { color: '#FFF' },
   rangeRow: { flexDirection: 'row', gap: 8 }, range: { flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 8 },
-  listContent: { paddingHorizontal: 12, paddingBottom: 20, gap: 9 }, row: { backgroundColor: '#FFF', borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  listContent: { paddingHorizontal: 12, paddingBottom: 20, gap: 9 }, row: { backgroundColor: '#FFF', borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  openSong: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 }, favorite: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   main: { flex: 1, gap: 3 }, title: { color: '#111827', fontWeight: '700' }, meta: { color: '#6B7280', fontSize: 11 },
 });
