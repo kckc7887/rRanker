@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
@@ -13,8 +14,17 @@ export default function OverviewScreen() {
   const library = useUserLibrary();
   const tabBottomInset = useNativeTabBottomInset();
   const session = useSession((s) => s.session);
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
+  const refresh = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    try { await refetch(); }
+    finally { refreshingRef.current = false; setRefreshing(false); }
+  }, [refetch]);
   return (
     <View style={styles.page}>
       <QueryStateView<ScoreSnapshot>
@@ -28,15 +38,14 @@ export default function OverviewScreen() {
         renderData={(snapshot) => (
           <ScrollView
             style={styles.scroll}
+            testID="overview-scroll"
+            alwaysBounceVertical
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()}
+              tintColor="#246BFD" colors={['#246BFD']} />}
             contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 20 }]}
             scrollIndicatorInsets={{ bottom: tabBottomInset }}
           >
-            <View style={styles.headerRow}>
-              <Text style={styles.eyebrow}>M0 功能线框 · {snapshot.source.label}</Text>
-              <Pressable onPress={() => void refetch()} style={styles.refresh}>
-                <Text style={styles.refreshText}>刷新</Text>
-              </Pressable>
-            </View>
+            <Text style={styles.eyebrow}>玩家概览</Text>
             <Text style={styles.name}>{snapshot.player.displayName}</Text>
             <SourceStatus items={[
               { key: 'scores', label: snapshot.source.label, updatedAt: snapshot.source.updatedAt, state: snapshot.source.isStale ? 'cache' : 'live' },
@@ -83,9 +92,6 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   scroll: { flex: 1 },
   content: { padding: 20, gap: 16, flexGrow: 1 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  refresh: { borderWidth: 1, borderColor: '#246BFD', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  refreshText: { color: '#246BFD', fontSize: 13, fontWeight: '600' },
   eyebrow: { color: '#5B6472', fontSize: 13 }, name: { color: '#111827', fontSize: 28, fontWeight: '700' },
   ratingCard: { backgroundColor: '#111827', borderRadius: 18, padding: 22, gap: 6 },
   cardLabel: { color: '#9CA3AF', fontSize: 12, fontWeight: '700' },

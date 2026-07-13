@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
+import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -9,12 +10,6 @@ import { useRecordsFilter } from '@/state/records-filter';
 
 const DIFFICULTIES: (Difficulty | 'all')[] = ['all', 'basic', 'advanced', 'expert', 'master', 'remaster'];
 const TYPES: (ChartType | 'all')[] = ['all', 'SD', 'DX'];
-const SORTS: ('rating' | 'achievements' | 'title')[] = ['rating', 'achievements', 'title'];
-const SORT_LABEL: Record<'rating' | 'achievements' | 'title', string> = {
-  rating: 'Rating',
-  achievements: '达成率',
-  title: '标题',
-};
 
 interface ChipProps {
   label: string;
@@ -34,8 +29,8 @@ export default function RecordsScreen() {
   const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
   const tabBottomInset = useNativeTabBottomInset();
   const {
-    difficulty, version, type, sortBy,
-    setDifficulty, setVersion, setType, setSortBy,
+    difficulty, version, type,
+    setDifficulty, setVersion, setType,
   } = useRecordsFilter();
 
   const versions = useMemo<string[]>(() => {
@@ -49,12 +44,8 @@ export default function RecordsScreen() {
     if (difficulty !== 'all') list = list.filter((r) => r.difficulty === difficulty);
     if (version !== 'all') list = list.filter((r) => r.version === version);
     if (type !== 'all') list = list.filter((r) => r.type === type);
-    return list.sort((a, b) => {
-      if (sortBy === 'rating') return b.rating - a.rating;
-      if (sortBy === 'achievements') return b.achievements - a.achievements;
-      return a.title.localeCompare(b.title);
-    });
-  }, [data, difficulty, version, type, sortBy]);
+    return list.sort((a, b) => b.rating - a.rating || b.achievements - a.achievements);
+  }, [data, difficulty, version, type]);
 
   const viewData = filtered.length > 0 ? filtered : undefined;
   const isEmpty = !!data && filtered.length === 0;
@@ -87,14 +78,6 @@ export default function RecordsScreen() {
             ))}
           </ScrollView>
         </View>
-        <View style={styles.filterRow}>
-          <Text style={styles.filterLabel}>排序</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            {SORTS.map((s) => (
-              <Chip key={s} label={SORT_LABEL[s]} active={sortBy === s} onPress={() => setSortBy(s)} />
-            ))}
-          </ScrollView>
-        </View>
       </View>
       <QueryStateView<ScoreRecord[]>
         isLoading={isLoading}
@@ -111,23 +94,12 @@ export default function RecordsScreen() {
             contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
             scrollIndicatorInsets={{ bottom: tabBottomInset }}
             data={list}
-            keyExtractor={(record) => `${record.songId}-${record.levelIndex}`}
+            keyExtractor={(record) => `${record.songId}-${record.type}-${record.levelIndex}`}
             ListHeaderComponent={<View style={styles.header}><SourceStatus items={data ? [
               { key: 'scores', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
               { key: 'catalog', label: data.catalogSource.label, updatedAt: data.catalogSource.updatedAt, state: data.catalogSource.isStale ? 'cache' : 'live' },
             ] : []} /><Text style={styles.note}>共 {list.length} 条成绩</Text></View>}
-            renderItem={({ item }) => (
-              <View style={styles.row}>
-                <View style={styles.main}>
-                  <Text numberOfLines={1} style={styles.title}>{item.title}</Text>
-                  <Text style={styles.meta}>{item.type} · {item.level} · {item.version}</Text>
-                </View>
-                <View style={styles.values}>
-                  <Text style={styles.achievement}>{item.achievements.toFixed(4)}%</Text>
-                  <Text style={styles.meta}>Ra {item.rating}</Text>
-                </View>
-              </View>
-            )}
+            renderItem={({ item }) => <ScoreRecordCard record={item} />}
           />
         )}
       />
@@ -148,7 +120,4 @@ const styles = StyleSheet.create({
   listContent: { padding: 16, gap: 10 },
   note: { color: '#6B7280', marginBottom: 6 },
   header: { gap: 9 },
-  row: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  main: { flex: 1, gap: 3 }, title: { color: '#111827', fontWeight: '600' }, meta: { color: '#6B7280', fontSize: 12 },
-  values: { alignItems: 'flex-end', gap: 3 }, achievement: { color: '#111827', fontWeight: '700' },
 });

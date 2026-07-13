@@ -31,6 +31,7 @@ export interface Song {
   versionId?: number;
   bpm?: number;
   genre?: string;
+  region?: string;
   rights?: string;
   aliases?: string[];
   locked?: boolean;

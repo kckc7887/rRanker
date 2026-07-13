@@ -2,8 +2,8 @@ import { chartVersionKey } from '@/domain/catalog';
 import type { CatalogSnapshot, DataSource, Player, ScoreRecord, Song } from '@/domain/models';
 import { calculateChartRating } from '@/domain/rating';
 
-export const FIXTURE_CURRENT_VERSION = 'M0 Current Version';
-export const FIXTURE_OLD_VERSION = 'M0 Previous Version';
+export const FIXTURE_CURRENT_VERSION = '脱敏当前版本';
+export const FIXTURE_OLD_VERSION = '脱敏过往版本';
 export const FIXTURE_CURRENT_VERSION_ID = 2;
 export const FIXTURE_OLD_VERSION_ID = 1;
 export const fixtureSource: DataSource = {
@@ -25,7 +25,8 @@ function createRecord(index: number, isCurrent: boolean): ScoreRecord {
     difficultyConstant, achievements, dxScore: index % 7 === 0 ? null : 100000 + index,
     rating: calculateChartRating(difficultyConstant, achievements),
     fc: index % 6 === 0 ? null : 'fc', fs: index % 5 === 0 ? null : 'fs',
-    rate: achievements >= 100 ? 'sss' : achievements >= 99 ? 'ss' : 's',
+    rate: achievements >= 100.5 ? 'sssp' : achievements >= 100 ? 'sss' :
+      achievements >= 99.5 ? 'ssp' : achievements >= 99 ? 'ss' : achievements >= 98 ? 'sp' : 's',
     version: isCurrent ? FIXTURE_CURRENT_VERSION : FIXTURE_OLD_VERSION,
   };
 }

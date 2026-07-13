@@ -39,12 +39,13 @@
 | `/maimai/alias/list` | GET | 无 | 歌曲别名 |
 | `/maimai/plate/list?required=true` | GET | 无 | 带歌曲、难度、rate、FC、FS 条件的姓名框要求 |
 
-> last_verified: 2026-07-13 — 本次 M2 验证时详细曲库返回 1305 首歌曲、别名库 1014 项、带要求姓名框 397 项；最大有效版本为 `25500 / 舞萌DX 2026`。以 `Fraq` 交叉验证：水鱼 `11806 / DX / PRiSM PLUS` 对应 LXNS `1806 / dx / version 25500`。
+> last_verified: 2026-07-13 — 本次 M2 验证时详细曲库返回 1305 首歌曲、别名库 1014 项、带要求姓名框 397 项；最大有效版本为 `25500 / 舞萌DX 2026`。以 `Fraq` 交叉验证：水鱼 `11806 / DX / PRiSM PLUS` 对应 LXNS `1806 / dx / version 25500`。M4 再次按官方文档及公共响应确认 `Song.map` 为可空的开放字符串，用于曲目所属区域；歌曲 `#363 / Oshama Scramble!` 的细分版本号为 `15007`，应按 LXNS 官方前端规则向下匹配主版本 `15000 / ORANGE PLUS`。
 
 当前职责边界：
 
 - 玩家资料、成绩和认证继续来自水鱼；LXNS 只提供无需凭据的公共曲库元数据。
 - 当前版本取 `versions[].version` 中最大有效值，并要求至少存在一张同版本、未禁用谱面；否则拒绝生成 B50，不猜版本。
+- `Song.version` 与谱面 `version` 可能是 `15007` 这类细分版本号；显示、筛选和版本统计均按 `versions[]` 降序取“不大于原值的最大主版本”，不能用精确 Map 查找或简单千位取整。
 - B35/B15 按 LXNS 的谱面级 `version` 分类，不再使用水鱼歌曲级 `basic_info.from` 字符串分类。
 - 普通水鱼 DX 曲目 ID 大于 10000 时对 10000 取模后与 LXNS ID 对齐；宴会场 ID 大于 100000 时保留。
 - 匹配键为规范化歌曲 ID、谱面类型与难度序号；无法匹配的成绩不进入 B35/B15，并在界面显示数量。
@@ -52,6 +53,7 @@
 - 详细曲库、别名和姓名框使用不同资源键缓存；单项损坏只淘汰对应资源，不清除成绩快照或 SecureStore 凭据。
 - 姓名框实测字段为 `plates[].required[]`，歌曲为 `{ id, title, type }`；本地进度必须同时匹配歌曲 ID、SD/DX、难度以及 rate/FC/FS，不能按旧的 `requirements + number[]` 猜测。
 - 国服/日服名称对照由 LXNS `versions` 与水鱼 `basic_info.from` 的发布曲目交叉核验；当前 `25500 / 舞萌DX 2026` 对应 `maimai でらっくす PRiSM PLUS`。
+- 歌曲区域读取 LXNS `Song.map`；该字段可能完全缺失，且官方未定义枚举。本地按可选开放字符串接收，缺失、`null` 或空白时不显示，不硬编码区域列表。
 - 曲绘地址为 `https://assets2.lxns.net/maimai/jacket/{song_id}.png`，只对可见列表项加载并使用磁盘缓存；不批量预取，正式发布前需完成素材许可审查。
 - LXNS 玩家 API、OAuth、成绩写入和上传仍未接入。
 
