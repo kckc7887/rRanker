@@ -28,7 +28,23 @@ export interface Song {
   title: string;
   artist?: string;
   version: string;
+  versionId?: number;
+  bpm?: number;
+  genre?: string;
+  rights?: string;
+  aliases?: string[];
+  locked?: boolean;
+  disabled?: boolean;
   charts: Chart[];
+}
+
+export interface ChartNotes {
+  tap: number;
+  hold: number;
+  slide: number;
+  touch: number;
+  break: number;
+  total: number;
 }
 
 export interface GameVersion {
@@ -51,6 +67,47 @@ export interface Chart {
   level: string;
   difficulty: Difficulty;
   difficultyConstant: number;
+  charter?: string;
+  versionId?: number;
+  notes?: ChartNotes;
+}
+
+export interface SongAlias {
+  songId: string;
+  aliases: string[];
+}
+
+export interface AliasSnapshot {
+  aliases: SongAlias[];
+  source: DataSource;
+}
+
+export interface PlateRequirement {
+  difficulties: number[];
+  rate?: string | null;
+  fc?: string | null;
+  fs?: string | null;
+  songs: string[];
+  songTypes?: Record<string, ChartType>;
+}
+
+export interface Plate {
+  id: number;
+  name: string;
+  description?: string;
+  requirements: PlateRequirement[];
+}
+
+export interface PlateSnapshot {
+  plates: Plate[];
+  source: DataSource;
+}
+
+export interface SourceStatusItem {
+  key: 'scores' | 'catalog' | 'aliases' | 'plates';
+  label: string;
+  updatedAt?: string;
+  state: 'live' | 'cache' | 'unavailable';
 }
 
 export interface ScoreRecord extends Chart {

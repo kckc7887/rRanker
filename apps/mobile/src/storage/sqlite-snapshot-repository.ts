@@ -2,11 +2,11 @@ import * as SQLite from 'expo-sqlite';
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
-import { ProviderError } from '@/providers/errors';
+import type { ResourceRepository } from '@/repositories/resource-repository';
 
 const SNAPSHOT_SCHEMA_VERSION = 2;
 const CATALOG_SCHEMA_VERSION = 1;
-export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepository {
+export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepository, ResourceRepository {
   private databasePromise = SQLite.openDatabaseAsync('rranker.db');
   async initialize(): Promise<void> {
     const db = await this.databasePromise;
@@ -17,6 +17,10 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       );
       CREATE TABLE IF NOT EXISTS catalog_snapshots (
         id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL,
+        updated_at TEXT NOT NULL, payload TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS resource_snapshots (
+        resource_key TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
         updated_at TEXT NOT NULL, payload TEXT NOT NULL
       );`);
   }
@@ -32,7 +36,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       return null;
     }
     try { return JSON.parse(row.payload) as ScoreSnapshot; }
-    catch (error) { throw new ProviderError('cache_corrupt', '缓存内容已损坏，请重新同步', false, { cause: error }); }
+    catch { await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1); return null; }
   }
   async save(snapshot: ScoreSnapshot): Promise<void> {
     await this.initialize();
@@ -56,7 +60,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       return null;
     }
     try { return JSON.parse(row.payload) as CatalogSnapshot; }
-    catch (error) { throw new ProviderError('cache_corrupt', '曲库缓存内容已损坏，请重新同步', false, { cause: error }); }
+    catch { await db.runAsync('DELETE FROM catalog_snapshots WHERE id = ?', 1); return null; }
   }
   async saveCatalog(catalog: CatalogSnapshot): Promise<void> {
     await this.initialize();
@@ -68,10 +72,43 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       1, CATALOG_SCHEMA_VERSION, catalog.source.updatedAt, JSON.stringify(catalog),
     );
   }
+  async getResource<T>(key: string, schemaVersion: number): Promise<T | null> {
+    await this.initialize();
+    const db = await this.databasePromise;
+    const row = await db.getFirstAsync<{ schema_version: number; payload: string }>(
+      'SELECT schema_version, payload FROM resource_snapshots WHERE resource_key = ?', key,
+    );
+    if (!row) return null;
+    if (row.schema_version !== schemaVersion) {
+      await this.deleteResource(key);
+      return null;
+    }
+    try { return JSON.parse(row.payload) as T; }
+    catch {
+      await this.deleteResource(key);
+      return null;
+    }
+  }
+  async saveResource<T>(key: string, schemaVersion: number, updatedAt: string, value: T): Promise<void> {
+    await this.initialize();
+    const db = await this.databasePromise;
+    await db.runAsync(
+      `INSERT INTO resource_snapshots (resource_key, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
+       ON CONFLICT(resource_key) DO UPDATE SET schema_version=excluded.schema_version,
+       updated_at=excluded.updated_at, payload=excluded.payload`,
+      key, schemaVersion, updatedAt, JSON.stringify(value),
+    );
+  }
+  async deleteResource(key: string): Promise<void> {
+    await this.initialize();
+    const db = await this.databasePromise;
+    await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', key);
+  }
   async clear(): Promise<void> {
     await this.initialize();
     const db = await this.databasePromise;
     await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);
     await db.runAsync('DELETE FROM catalog_snapshots WHERE id = ?', 1);
+    await db.runAsync('DELETE FROM resource_snapshots');
   }
 }

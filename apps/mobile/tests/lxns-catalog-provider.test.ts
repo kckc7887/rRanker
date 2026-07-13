@@ -13,7 +13,8 @@ const responsePayload = {
     version: 25500,
     difficulties: {
       standard: [],
-      dx: [{ type: 'dx', difficulty: 3, level: '13+', level_value: 13.7, version: 25500 }],
+      dx: [{ type: 'dx', difficulty: 3, level: '13+', level_value: 13.7, version: 25500,
+        note_designer: '谱师', notes: { total: 1000, tap: 500, hold: 100, slide: 100, touch: 80, break: 20 } }],
     },
   }],
 };
@@ -32,6 +33,22 @@ describe('LxnsCatalogProvider', () => {
     expect(catalog.currentVersion).toEqual({ id: 25500, title: '舞萌DX 2026' });
     expect(catalog.chartVersionIndex[chartVersionKey(11806, 'DX', 3)]).toBe(25500);
     expect(catalog.songs[0]).toMatchObject({ id: '1806', title: 'Fraq', version: '舞萌DX 2026' });
+  });
+
+  it('parses detailed notes, aliases and plate requirements independently', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(responsePayload), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ aliases: [{ song_id: 1806, aliases: ['测试别名'] }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ plates: [{ id: 1, name: '舞舞舞', required: [{ difficulties: [], rate: 'sss', fc: null, fs: null, songs: [{ id: 1806, title: 'Fraq', type: 'dx' }] }] }] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new LxnsCatalogProvider();
+    const catalog = await provider.getDetailedCatalog();
+    const aliases = await provider.getAliases();
+    const plates = await provider.getPlates();
+    expect(catalog.songs[0].charts[0]).toMatchObject({ charter: '谱师', notes: { total: 1000, break: 20 } });
+    expect(aliases.aliases[0]).toEqual({ songId: '1806', aliases: ['测试别名'] });
+    expect(plates.plates[0].requirements[0]).toMatchObject({ difficulties: [], songs: ['1806'], songTypes: { 1806: 'DX' } });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it('rejects a highest version with no matching chart', async () => {

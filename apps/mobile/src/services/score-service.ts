@@ -5,6 +5,7 @@ import type { CatalogProvider, ScoreProvider } from '@/providers/contracts';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { CatalogService } from './catalog-service';
+import { ProviderError } from '@/providers/errors';
 
 export class ScoreService {
   constructor(
@@ -35,12 +36,13 @@ export class ScoreService {
     } catch (error) {
       const cached = await this.snapshotRepository?.getLatest();
       if (cached) {
+        const needsLogin = error instanceof ProviderError && (error.code === 'authentication' || error.code === 'permission');
         return {
           ...cached,
           source: {
             ...cached.source,
             kind: 'cache',
-            label: `最近有效成绩快照（原：${cached.source.label}）`,
+            label: `${needsLogin ? '登录已失效，请重新登录；' : ''}最近有效成绩快照（原：${cached.source.label}）`,
             isStale: true,
           },
         };

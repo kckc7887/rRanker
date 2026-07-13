@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
+import { SourceStatus } from '@/components/SourceStatus';
 import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useRecordsFilter } from '@/state/records-filter';
@@ -108,7 +109,10 @@ export default function RecordsScreen() {
             contentContainerStyle={styles.listContent}
             data={list}
             keyExtractor={(record) => `${record.songId}-${record.levelIndex}`}
-            ListHeaderComponent={<Text style={styles.note}>共 {list.length} 条成绩</Text>}
+            ListHeaderComponent={<View style={styles.header}><SourceStatus items={data ? [
+              { key: 'scores', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
+              { key: 'catalog', label: data.catalogSource.label, updatedAt: data.catalogSource.updatedAt, state: data.catalogSource.isStale ? 'cache' : 'live' },
+            ] : []} /><Text style={styles.note}>共 {list.length} 条成绩</Text></View>}
             renderItem={({ item }) => (
               <View style={styles.row}>
                 <View style={styles.main}>
@@ -140,6 +144,7 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { padding: 16, gap: 10 },
   note: { color: '#6B7280', marginBottom: 6 },
+  header: { gap: 9 },
   row: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   main: { flex: 1, gap: 3 }, title: { color: '#111827', fontWeight: '600' }, meta: { color: '#6B7280', fontSize: 12 },
   values: { alignItems: 'flex-end', gap: 3 }, achievement: { color: '#111827', fontWeight: '700' },

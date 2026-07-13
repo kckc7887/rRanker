@@ -1,5 +1,5 @@
 import { chartVersionKey } from '@/domain/catalog';
-import { buildBest50, calculateChartRating, mapCoverId } from '@/domain/rating';
+import { buildBest50, calculateChartRating, mapCoverId, minimumAchievementForRating } from '@/domain/rating';
 import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource, FIXTURE_CURRENT_VERSION } from '@/fixtures/sanitized';
 
 describe('rating and B50', () => {
@@ -7,6 +7,15 @@ describe('rating and B50', () => {
     expect(calculateChartRating(13.4, 100.5)).toBe(301);
     expect(calculateChartRating(13.4, 100)).toBe(289);
     expect(calculateChartRating(13.4, 97)).toBe(259);
+  });
+  it('covers low achievement tiers and reverses at 0.0001%', () => {
+    expect(calculateChartRating(10, 5)).toBe(0);
+    expect(calculateChartRating(10, 10)).toBe(1);
+    const achievement = minimumAchievementForRating(13.4, 301);
+    expect(achievement).not.toBeNull();
+    expect(calculateChartRating(13.4, achievement!)).toBeGreaterThanOrEqual(301);
+    expect(calculateChartRating(13.4, achievement! - 0.0001)).toBeLessThan(301);
+    expect(minimumAchievementForRating(1, 999)).toBeNull();
   });
   it('selects exactly B35 and B15 and sums their ratings', () => {
     const best50 = buildBest50(fixturePlayer, fixtureRecords, fixtureCatalog, fixtureSource, fixtureSource.updatedAt);
