@@ -4,11 +4,15 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { ScoreSnapshot } from '@/domain/models';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
+import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 
 export default function OverviewScreen() {
   const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
+  const library = useUserLibrary();
   const session = useSession((s) => s.session);
+  const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
+  const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
   return (
     <View style={styles.page}>
       <QueryStateView<ScoreSnapshot>
@@ -42,6 +46,13 @@ export default function OverviewScreen() {
                 <Text style={styles.cardTitle}>工具箱</Text>
                 <Text style={styles.body}>Rating · 达成率/容错 · 牌子进度 · 版本对照</Text>
                 <Text style={styles.toolLink}>打开工具箱 →</Text>
+              </View>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => router.push('/library' as Href)}>
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>我的曲库</Text>
+                <Text style={styles.body}>{library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`}</Text>
+                <Text style={styles.toolLink}>打开收藏与练习清单 →</Text>
               </View>
             </Pressable>
             <View style={styles.card}>

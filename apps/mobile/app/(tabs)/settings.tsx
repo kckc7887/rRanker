@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { backupPreview } from '@/domain/user-library';
+import type { RestoreMode, UserDataBackupV1 } from '@/domain/user-library';
+import { useUserLibrary } from '@/hooks/use-user-library';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { ProviderError } from '@/providers/errors';
 import type { ProviderSession } from '@/providers/contracts';
 import { validateAndActivateSession } from '@/services/session-validation';
+import { pickUserDataBackup, shareUserDataBackup, UserDataFileError } from '@/services/user-data-file-service';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { queryClient } from '@/state/query-client';
@@ -19,6 +23,7 @@ export default function SettingsScreen() {
   const setSession = useSession((s) => s.setSession);
   const clearSession = useSession((s) => s.clearSession);
   const restoreError = useSession((s) => s.restoreError);
+  const library = useUserLibrary();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [importToken, setImportToken] = useState('');
@@ -72,20 +77,64 @@ export default function SettingsScreen() {
     finally { setBusy(false); }
   };
 
-  const clearLocalData = async () => {
+  const clearLocalData = async (includePersonalData: boolean) => {
     setBusy(true);
     try {
-      await Promise.all([sessions.clear(), snapshots.clear()]);
+      await Promise.all([sessions.clear(), snapshots.clear(), ...(includePersonalData ? [library.clearUserData()] : [])]);
       clearSession();
       invalidateAll();
-      setPassword(''); setImportToken(''); setMessage('已清除本机凭据和成绩快照');
+      setPassword(''); setImportToken('');
+      setMessage(includePersonalData ? '已清除本机凭据、缓存和个人数据' : '已清除本机凭据和缓存；个人数据已保留');
     } catch { setMessage('清除失败，请重试'); }
     finally { setBusy(false); }
   };
 
+  const promptClear = () => Alert.alert('清除本机数据', '请选择是否同时删除收藏、练习清单和本地标签。', [
+    { text: '取消', style: 'cancel' },
+    { text: '仅凭据与缓存', onPress: () => void clearLocalData(false) },
+    { text: '同时删除个人数据', style: 'destructive', onPress: () => void clearLocalData(true) },
+  ]);
+
+  const exportBackup = async () => {
+    setBusy(true); setMessage('正在生成个人数据备份…');
+    try {
+      const backup = await library.createBackup();
+      await shareUserDataBackup(backup);
+      setMessage('已打开系统分享面板；请在目标应用中确认保存');
+    } catch (error) {
+      setMessage(error instanceof UserDataFileError ? error.message : '备份导出失败，请重试');
+    } finally { setBusy(false); }
+  };
+
+  const applyBackup = async (backup: UserDataBackupV1, mode: RestoreMode) => {
+    setBusy(true); setMessage(mode === 'merge' ? '正在合并个人数据…' : '正在替换个人数据…');
+    try {
+      await library.restoreBackup(backup, mode);
+      setMessage(mode === 'merge' ? '个人数据已合并恢复' : '个人数据已替换恢复');
+    } catch { setMessage('备份恢复失败，原有个人数据未修改'); }
+    finally { setBusy(false); }
+  };
+
+  const importBackup = async () => {
+    setBusy(true); setMessage('请选择 rRanker JSON 备份…');
+    try {
+      const backup = await pickUserDataBackup();
+      if (!backup) { setMessage('已取消导入'); return; }
+      const preview = backupPreview(backup);
+      setMessage('备份已校验，等待确认恢复方式');
+      Alert.alert('恢复个人数据', `歌曲 ${preview.songs} 项 · 谱面 ${preview.charts} 项 · 标签 ${preview.tags} 个`, [
+        { text: '取消', style: 'cancel' },
+        { text: '合并导入', onPress: () => void applyBackup(backup, 'merge') },
+        { text: '替换现有数据', style: 'destructive', onPress: () => void applyBackup(backup, 'replace') },
+      ]);
+    } catch (error) {
+      setMessage(error instanceof UserDataFileError ? error.message : '备份导入失败，请重试');
+    } finally { setBusy(false); }
+  };
+
   const sessionLabel = session ? '已登录（水鱼）' : '未登录（fixture 模式）';
 
-  return <View style={styles.page}>
+  return <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
     <View style={styles.card}>
       <Text style={styles.title}>水鱼账号</Text>
       <Text style={styles.state}>{sessionLabel}</Text>
@@ -98,15 +147,21 @@ export default function SettingsScreen() {
       <TextInput autoCapitalize="none" autoCorrect={false} textContentType="oneTimeCode" autoComplete="off" editable={!busy} placeholder="Import-Token" secureTextEntry value={importToken} onChangeText={setImportToken} style={styles.input} />
       <Text style={styles.hint}>Import-Token 可从水鱼查分器网页版个人设置获取</Text>
       <Pressable disabled={busy} onPress={() => void connectWithToken()} style={styles.secondary}><Text style={styles.secondaryText}>验证并保存 Token</Text></Pressable>
-      <Pressable disabled={busy} onPress={() => void clearLocalData()}><Text style={styles.clear}>清除本机凭据和缓存</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={promptClear}><Text style={styles.clear}>清除本机凭据和缓存</Text></Pressable>
+    </View>
+    <View style={styles.card}><Text style={styles.title}>个人数据</Text>
+      <Text style={styles.body}>收藏、练习清单和标签保存在本机，不随水鱼登录切换。备份不包含凭据、成绩或曲库缓存。</Text>
+      <Text style={styles.hint}>当前：{library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0} 首收藏 · {library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0} 张练习谱面</Text>
+      <Pressable accessibilityRole="button" disabled={busy || library.isLoading} onPress={() => void exportBackup()} style={styles.secondary}><Text style={styles.secondaryText}>导出个人数据备份</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={busy || library.isLoading} onPress={() => void importBackup()} style={styles.secondary}><Text style={styles.secondaryText}>导入个人数据备份</Text></Pressable>
     </View>
     <View style={styles.card}><Text style={styles.title}>安全边界</Text>
       <Text style={styles.body}>密码仅用于当次登录请求；JWT/Import-Token 仅进入 SecureStore；成绩快照进入 SQLite。本应用不会生成或刷新 Import-Token。</Text></View>
-  </View>;
+  </ScrollView>;
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, padding: 16, gap: 14, backgroundColor: '#F7F8FA' },
+  page: { flex: 1, backgroundColor: '#F7F8FA' }, content: { padding: 16, gap: 14 },
   card: { backgroundColor: '#FFF', borderRadius: 14, padding: 18, gap: 10 },
   title: { color: '#111827', fontSize: 18, fontWeight: '700' }, state: { color: '#246BFD', fontWeight: '600' },
   message: { color: '#4B5563', fontSize: 13 },
