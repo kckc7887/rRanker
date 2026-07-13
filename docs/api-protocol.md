@@ -35,8 +35,11 @@
 | 端点 | 方法 | Auth | 说明 |
 |------|------|------|------|
 | `/maimai/song/list` | GET | 无 | 曲目、谱面、版本与定数元数据 |
+| `/maimai/song/list?notes=true` | GET | 无 | 详细曲库、谱师与 TAP/HOLD/SLIDE/TOUCH/BREAK 物量 |
+| `/maimai/alias/list` | GET | 无 | 歌曲别名 |
+| `/maimai/plate/list?required=true` | GET | 无 | 带歌曲、难度、rate、FC、FS 条件的姓名框要求 |
 
-> last_verified: 2026-07-13 — 默认请求返回 1294 首歌曲、20 个版本；最大有效版本为 `25500 / 舞萌DX 2026`。以 `Fraq` 交叉验证：水鱼 `11806 / DX / PRiSM PLUS` 对应 LXNS `1806 / dx / version 25500`。
+> last_verified: 2026-07-13 — 本次 M2 验证时详细曲库返回 1305 首歌曲、别名库 1014 项、带要求姓名框 397 项；最大有效版本为 `25500 / 舞萌DX 2026`。以 `Fraq` 交叉验证：水鱼 `11806 / DX / PRiSM PLUS` 对应 LXNS `1806 / dx / version 25500`。
 
 当前职责边界：
 
@@ -46,6 +49,10 @@
 - 普通水鱼 DX 曲目 ID 大于 10000 时对 10000 取模后与 LXNS ID 对齐；宴会场 ID 大于 100000 时保留。
 - 匹配键为规范化歌曲 ID、谱面类型与难度序号；无法匹配的成绩不进入 B35/B15，并在界面显示数量。
 - LXNS 请求失败时使用最近有效曲库缓存；无曲库缓存时只允许回退到最近完整成绩快照。
+- 详细曲库、别名和姓名框使用不同资源键缓存；单项损坏只淘汰对应资源，不清除成绩快照或 SecureStore 凭据。
+- 姓名框实测字段为 `plates[].required[]`，歌曲为 `{ id, title, type }`；本地进度必须同时匹配歌曲 ID、SD/DX、难度以及 rate/FC/FS，不能按旧的 `requirements + number[]` 猜测。
+- 国服/日服名称对照由 LXNS `versions` 与水鱼 `basic_info.from` 的发布曲目交叉核验；当前 `25500 / 舞萌DX 2026` 对应 `maimai でらっくす PRiSM PLUS`。
+- 曲绘地址为 `https://assets2.lxns.net/maimai/jacket/{song_id}.png`，只对可见列表项加载并使用磁盘缓存；不批量预取，正式发布前需完成素材许可审查。
 - LXNS 玩家 API、OAuth、成绩写入和上传仍未接入。
 
 ## 华立公众号爬虫

@@ -1,4 +1,4 @@
-import type { CatalogSnapshot, Player, ScoreRecord } from '@/domain/models';
+import type { AliasSnapshot, CatalogSnapshot, PlateSnapshot, Player, ScoreRecord } from '@/domain/models';
 
 export type ProviderSession =
   | { mode: 'jwt'; value: string; persistable: true }
@@ -15,4 +15,9 @@ export interface ScoreProvider {
 }
 export interface CatalogProvider {
   getCatalog(): Promise<CatalogSnapshot>;
+}
+export interface DetailedCatalogProvider extends CatalogProvider {
+  getDetailedCatalog(): Promise<CatalogSnapshot>;
+  getAliases(): Promise<AliasSnapshot>;
+  getPlates(): Promise<PlateSnapshot>;
 }

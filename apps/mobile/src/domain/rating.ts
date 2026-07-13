@@ -2,15 +2,35 @@ import { chartVersionKey } from './catalog';
 import type { Best50Snapshot, CatalogSnapshot, DataSource, Player, ScoreRecord } from './models';
 
 const RATING_COEFFICIENTS: readonly [number, number][] = [
-  [50, 7], [60, 8], [70, 9.6], [75, 11.2], [80, 12], [90, 13.6],
-  [94, 15.2], [97, 16.8], [98, 20], [99, 20.3], [99.5, 20.8],
-  [100, 21.1], [100.5, 21.6], [Number.POSITIVE_INFINITY, 22.4],
+  [10, 0], [20, 1.6], [30, 3.2], [40, 4.8], [50, 6.4], [60, 8],
+  [70, 9.6], [75, 11.2], [79.9999, 12], [80, 12.8], [90, 13.6],
+  [94, 15.2], [96.9999, 16.8], [97, 17.6], [98, 20], [98.9999, 20.3],
+  [99, 20.6], [99.5, 20.8], [99.9999, 21.1], [100, 21.4],
+  [100.4999, 21.6], [100.5, 22.2], [Number.POSITIVE_INFINITY, 22.4],
 ];
 
 export function calculateChartRating(difficultyConstant: number, achievements: number): number {
   const coefficient = RATING_COEFFICIENTS.find(([threshold]) => achievements < threshold)?.[1] ?? 22.4;
   const cappedAchievement = Math.min(100.5, Math.max(0, achievements));
   return Math.floor(difficultyConstant * (cappedAchievement / 100) * coefficient);
+}
+
+export function ratingTable(difficultyConstant: number): { achievement: number; rating: number }[] {
+  return RATING_COEFFICIENTS.filter(([achievement]) => Number.isFinite(achievement))
+    .map(([achievement]) => ({ achievement, rating: calculateChartRating(difficultyConstant, achievement) }));
+}
+
+export function minimumAchievementForRating(difficultyConstant: number, targetRating: number): number | null {
+  if (!Number.isFinite(difficultyConstant) || difficultyConstant <= 0 || !Number.isInteger(targetRating) || targetRating < 0) return null;
+  if (calculateChartRating(difficultyConstant, 101) < targetRating) return null;
+  let low = 0;
+  let high = 1_010_000;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (calculateChartRating(difficultyConstant, middle / 10_000) >= targetRating) high = middle;
+    else low = middle + 1;
+  }
+  return low / 10_000;
 }
 
 function rankRecords(records: readonly ScoreRecord[]): ScoreRecord[] {

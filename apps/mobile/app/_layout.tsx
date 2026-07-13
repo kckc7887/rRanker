@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { queryClient } from '@/state/query-client';
@@ -18,6 +18,11 @@ export default function RootLayout() {
   useEffect(() => {
     if (restoreStatus === 'restoring') void restoreSession(() => sessions.load());
   }, [restoreStatus]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => focusManager.setFocused(state === 'active'));
+    return () => subscription.remove();
+  }, []);
 
   if (restoreStatus === 'restoring') {
     return <View style={styles.loading}><ActivityIndicator color="#246BFD" /></View>;
