@@ -64,8 +64,9 @@ M3 可以开工。现有歌曲/谱面统一标识、SQLite、Zod、TanStack Quer
 
 ## 6. M3A 自动验证结果（2026-07-13）
 
-- Vitest：23 个文件、78 项通过。
+- Vitest：24 个文件、82 项通过。
 - Jest Expo：5 个套件、18 项通过。
 - TypeScript 类型检查和 ESLint 通过，无警告。
-- Android Hermes 静态导出通过：1579 个模块，主包 5.01 MB。
+- 透明原生标签栏与滚动尾部 inset 调整后 Android Hermes 静态导出通过：1597 个模块，主包 5.04 MB。
+- 透明原生标签栏与滚动尾部 inset 调整后 iOS Hermes 静态导出通过：1601 个模块，主包 5.05 MB。
 - iPhone Expo Go 与 Android Emulator 的文件选择、系统分享、重启持久化和跨端恢复仍待用户手工验收。

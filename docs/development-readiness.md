@@ -136,6 +136,7 @@ M0 已于 2026-07-12 交付。M1 双端查分 MVP 正式开工。
 - Expo SDK 54 兼容的 `expo-document-picker`、`expo-file-system`、`expo-sharing` 已作为直接依赖安装。
 - 自动化、类型、lint 和 Android Hermes 静态导出已通过；仍需用户在 iPhone Expo Go 与 Android Emulator 验证重启持久化、文件选择、系统分享和跨端恢复。
 - 首轮双端环境已记录为 iPhone 17 / iOS 27 beta 3 与 Android 16.0 / API 36.1；针对 iOS 原生返回按钮重复布局和 Android Unicode 爱心轮廓差异已完成代码修正，等待同环境复验。
+- 5 个底部入口已迁移为 Expo Router Native Tabs，并用各入口内嵌原生 Stack 提供系统标题栏；标签栏使用透明背景，SDK 54 缺失的底部自动安全区由各滚动容器尾部 inset 补齐，使信息流保持全高且最后一项停在标签栏上方。Android 1597 模块、iOS 1601 模块的 Hermes 静态导出均通过，待指定双端环境手验。
 
 结论：M3A 代码交付完成，待双端手验后正式关闭；M3B/M3C 尚未开始。
 
