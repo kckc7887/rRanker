@@ -4,12 +4,14 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { ScoreSnapshot } from '@/domain/models';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
+import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 
 export default function OverviewScreen() {
   const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
   const library = useUserLibrary();
+  const tabBottomInset = useNativeTabBottomInset();
   const session = useSession((s) => s.session);
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
@@ -24,7 +26,11 @@ export default function OverviewScreen() {
         onRetry={refetch ? () => void refetch() : undefined}
         data={data}
         renderData={(snapshot) => (
-          <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 20 }]}
+            scrollIndicatorInsets={{ bottom: tabBottomInset }}
+          >
             <View style={styles.headerRow}>
               <Text style={styles.eyebrow}>M0 功能线框 · {snapshot.source.label}</Text>
               <Pressable onPress={() => void refetch()} style={styles.refresh}>

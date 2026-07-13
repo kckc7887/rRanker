@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { backupPreview } from '@/domain/user-library';
 import type { RestoreMode, UserDataBackupV1 } from '@/domain/user-library';
+import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
@@ -24,6 +25,7 @@ export default function SettingsScreen() {
   const clearSession = useSession((s) => s.clearSession);
   const restoreError = useSession((s) => s.restoreError);
   const library = useUserLibrary();
+  const tabBottomInset = useNativeTabBottomInset();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [importToken, setImportToken] = useState('');
@@ -134,7 +136,12 @@ export default function SettingsScreen() {
 
   const sessionLabel = session ? '已登录（水鱼）' : '未登录（fixture 模式）';
 
-  return <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+  return <ScrollView
+    style={styles.page}
+    contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 16 }]}
+    keyboardShouldPersistTaps="handled"
+    scrollIndicatorInsets={{ bottom: tabBottomInset }}
+  >
     <View style={styles.card}>
       <Text style={styles.title}>水鱼账号</Text>
       <Text style={styles.state}>{sessionLabel}</Text>
