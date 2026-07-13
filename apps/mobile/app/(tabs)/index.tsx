@@ -1,5 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, type Href } from 'expo-router';
 import { QueryStateView } from '@/components/QueryStateView';
+import { SourceStatus } from '@/components/SourceStatus';
 import type { ScoreSnapshot } from '@/domain/models';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useSession } from '@/state/session-store';
@@ -26,11 +28,22 @@ export default function OverviewScreen() {
               </Pressable>
             </View>
             <Text style={styles.name}>{snapshot.player.displayName}</Text>
+            <SourceStatus items={[
+              { key: 'scores', label: snapshot.source.label, updatedAt: snapshot.source.updatedAt, state: snapshot.source.isStale ? 'cache' : 'live' },
+              { key: 'catalog', label: snapshot.catalogSource.label, updatedAt: snapshot.catalogSource.updatedAt, state: snapshot.catalogSource.isStale ? 'cache' : 'live' },
+            ]} />
             <View style={styles.ratingCard}>
               <Text style={styles.cardLabel}>DX RATING</Text>
               <Text style={styles.rating}>{snapshot.best50.rating.toString().padStart(5, '0')}</Text>
               <Text style={styles.meta}>B35 {snapshot.best50.b35.length} · B15 {snapshot.best50.b15.length}</Text>
             </View>
+            <Pressable onPress={() => router.push('/tools' as Href)}>
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>工具箱</Text>
+                <Text style={styles.body}>Rating · 达成率/容错 · 牌子进度 · 版本对照</Text>
+                <Text style={styles.toolLink}>打开工具箱 →</Text>
+              </View>
+            </Pressable>
             <View style={styles.card}>
               <Text style={styles.cardTitle}>数据状态</Text>
               <Text style={styles.body}>来源：{snapshot.source.label}</Text>
@@ -64,4 +77,5 @@ const styles = StyleSheet.create({
   cardTitle: { color: '#111827', fontSize: 18, fontWeight: '700' }, body: { color: '#374151' },
   note: { color: '#6B7280', lineHeight: 20, marginTop: 4 },
   warning: { color: '#B45309', lineHeight: 20 },
+  toolLink: { color: '#246BFD', fontWeight: '600', marginTop: 5 },
 });

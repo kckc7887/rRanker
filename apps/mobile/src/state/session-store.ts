@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CatalogProvider, ProviderSession, ScoreProvider } from '@/providers/contracts';
+import type { DetailedCatalogProvider, ProviderSession, ScoreProvider } from '@/providers/contracts';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { FixtureCatalogProvider, FixtureProvider } from '@/providers/fixture-provider';
 import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
@@ -9,7 +9,7 @@ export type SessionRestoreStatus = 'restoring' | 'ready' | 'error';
 interface SessionState {
   session: ProviderSession | null;
   scoreProvider: ScoreProvider;
-  catalogProvider: CatalogProvider;
+  catalogProvider: DetailedCatalogProvider;
   restoreStatus: SessionRestoreStatus;
   restoreError: string | null;
   setSession: (session: ProviderSession) => void;
