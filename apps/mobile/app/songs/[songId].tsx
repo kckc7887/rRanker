@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, Platform } from 'react-native';
+import { ScrollView as GestureScrollView } from 'react-native-gesture-handler';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
@@ -50,15 +51,21 @@ export default function SongDetailScreen() {
       headerRight: song ? () => <Pressable accessibilityRole="button"
         accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
         disabled={library.isLoading || library.isUpdating} hitSlop={12}
+        android_ripple={{ color: 'rgba(255,255,255,0.2)', borderless: true }}
         onPress={() => void library.setSongFavorite(song.id, !favorite)}
-        style={[styles.headerFavorite, favorite && styles.headerFavoriteActive]}>
-        <Ionicons name={favorite ? 'heart' : 'heart-outline'} color="#FFFFFF" size={22} />
+        style={({ pressed }) => [
+          styles.headerFavorite, favorite && styles.headerFavoriteActive,
+          Platform.OS !== 'ios' && styles.headerFavoriteBg,
+          Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
+          pressed && { opacity: 0.7 },
+        ]}>
+        <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
       </Pressable> : undefined,
     }} />
     <StatusBar style="light" />
     <View style={styles.page}>
       <QueryStateView<Song> isLoading={catalog.isLoading} isError={catalog.isError} isEmpty={!!catalog.data && !song}
-        isStale={!!catalog.data?.source.isStale} error={catalog.error} onRetry={() => void catalog.refetch()}
+        isStale={!!catalog.data?.source?.isStale} error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}
           catalogSource={catalog.data!.source} scoreSource={scores.data?.source} library={library}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
@@ -94,7 +101,8 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
     ? sortedCharts.findIndex((chart) => chart.levelIndex === initialLevelIndex) : -1;
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex;
 
-  return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+  return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+    directionalLockEnabled>
     <View style={[styles.hero, { width, height: width }]}>
       <SongCover songId={song.id} size={width} borderRadius={0} />
       <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
@@ -147,14 +155,52 @@ function AliasLine({ aliases }: { aliases?: string[] }) {
   </View>;
 }
 
+
+function AutoScrollText({ text, textStyle, style, contentContainerStyle }: {
+  text: string; textStyle: object; style?: object; contentContainerStyle?: object;
+}) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const offsetRef = useRef(0);
+  const directionRef = useRef(1);
+
+  const shouldAutoScroll = contentWidth > containerWidth + 4;
+
+  useEffect(() => {
+    if (!shouldAutoScroll || dragging) return;
+    const interval = setInterval(() => {
+      const next = offsetRef.current + directionRef.current * 0.5;
+      if (next >= contentWidth - containerWidth) { directionRef.current = -1; }
+      else if (next <= 0) { directionRef.current = 1; }
+      offsetRef.current = Math.max(0, Math.min(next, contentWidth - containerWidth));
+      scrollRef.current?.scrollTo({ x: offsetRef.current, animated: false });
+    }, 16);
+    return () => clearInterval(interval);
+  }, [shouldAutoScroll, dragging, contentWidth, containerWidth]);
+
+  return <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}
+    style={style}
+    contentContainerStyle={contentContainerStyle}
+    onContentSizeChange={(w) => setContentWidth(w)}
+    onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+    onScrollBeginDrag={() => setDragging(true)}
+    onScrollEndDrag={() => { setDragging(false); directionRef.current = 1; }}
+    onScroll={(e) => { offsetRef.current = e.nativeEvent.contentOffset.x; }}
+    scrollEventThrottle={16}>
+    <Text numberOfLines={1} style={textStyle}>{text}</Text>
+  </ScrollView>;
+}
+
 function HorizontalText({ text, textStyle }: { text: string; textStyle: object }) {
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.singleLine}
-    contentContainerStyle={styles.singleLineContent}><Text numberOfLines={1} style={textStyle}>{text}</Text></ScrollView>;
+  return <AutoScrollText text={text} textStyle={textStyle} style={styles.singleLine}
+    contentContainerStyle={styles.singleLineContent} />;
 }
 
 function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
   return <View style={[styles.metadataCell, { flex }]}><Text numberOfLines={1} style={styles.metadataLabel}>{label}</Text>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}><Text numberOfLines={1} style={styles.metadataValue}>{value}</Text></ScrollView>
+    <AutoScrollText text={value} textStyle={styles.metadataValue} />
   </View>;
 }
 
@@ -164,9 +210,7 @@ function VersionMetadataCell({ value, onToggle }: {
   return <View style={[styles.metadataCell, styles.versionCell]}>
     <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
     <View style={styles.versionValueRow}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.versionNameScroll}>
-        <Text numberOfLines={1} style={styles.metadataValue}>{value}</Text>
-      </ScrollView>
+      <AutoScrollText text={value} textStyle={styles.metadataValue} style={styles.versionNameScroll} />
       <Pressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
         hitSlop={8} style={styles.versionToggle}>
         <Ionicons name="swap-horizontal" color="#5967C9" size={15} />
@@ -187,8 +231,17 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
 }) {
   if (charts.length === 0) return <View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>;
   const interval = cardWidth + CARD_GAP;
-  return <ScrollView horizontal decelerationRate="fast" snapToInterval={interval} snapToAlignment="start"
-    disableIntervalMomentum showsHorizontalScrollIndicator={false} contentOffset={{ x: initialIndex * interval, y: 0 }}
+  const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [initialIndex, interval]);
+  return <GestureScrollView ref={scrollRef} horizontal decelerationRate="fast" snapToInterval={interval}
+    snapToAlignment="start" disableIntervalMomentum showsHorizontalScrollIndicator={false}
+    removeClippedSubviews={false} style={styles.carouselScroll}
+    contentOffset={{ x: initialIndex * interval, y: 0 }}
     contentContainerStyle={styles.carousel} accessibilityLabel="难度卡片">
     {charts.map((chart) => {
       const best = records.filter((record) =>
@@ -199,7 +252,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
         library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
         onToggleChartType={onToggleChartType} />;
     })}
-  </ScrollView>;
+  </GestureScrollView>;
 }
 
 function ChartCard({ chart, best, song, library, width, canSwitchChartType, onToggleChartType }: {
@@ -292,14 +345,17 @@ const styles = StyleSheet.create({
   songId: { color: 'rgba(255,255,255,0.78)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
   title: { color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6, textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8 },
   artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
-  headerFavorite: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
-  headerFavoriteActive: { backgroundColor: 'rgba(141,91,214,0.88)' },
+  headerFavorite: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  headerFavoriteBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  headerFavoriteActive: {},
+  headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   metadataTable: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DEE8', paddingHorizontal: 12, paddingVertical: 13, gap: 6 },
   metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 }, versionCell: { flex: 1.8 },
   metadataLabel: { color: '#8A93A3', fontSize: 11, fontWeight: '700' },
   versionValueRow: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
   versionNameScroll: { flex: 1, minWidth: 0 }, versionToggle: { padding: 1 },
   metadataValue: { color: '#182130', fontSize: 13, fontWeight: '700' },
+  carouselScroll: { flexGrow: 0 },
   carousel: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12, gap: CARD_GAP },
   noCharts: { padding: 20 },
   chartCard: { borderRadius: 24, borderWidth: 1, padding: 18, shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4 },
