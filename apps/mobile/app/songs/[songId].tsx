@@ -106,7 +106,7 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex;
 
   return <ScrollView testID="song-detail-scroll" contentContainerStyle={styles.content}
-    keyboardShouldPersistTaps="handled">
+    keyboardShouldPersistTaps="handled" canCancelContentTouches={false}>
     <View style={[styles.hero, { width, height: width }]}>
       <SongCover songId={song.id} size={width} borderRadius={0} />
       <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
