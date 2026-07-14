@@ -1,11 +1,10 @@
-import { ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, Platform } from 'react-native';
-import { ScrollView as GestureScrollView } from 'react-native-gesture-handler';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
@@ -231,16 +230,16 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
 }) {
   if (charts.length === 0) return <View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>;
   const interval = cardWidth + CARD_GAP;
-  const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
+  const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
     const timer = setTimeout(() => {
       scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
     }, 50);
     return () => clearTimeout(timer);
   }, [initialIndex, interval]);
-  return <GestureScrollView ref={scrollRef} horizontal decelerationRate="fast" snapToInterval={interval}
+  return <ScrollView ref={scrollRef} horizontal decelerationRate="fast" snapToInterval={interval}
     snapToAlignment="start" disableIntervalMomentum showsHorizontalScrollIndicator={false}
-    removeClippedSubviews={false} style={styles.carouselScroll}
+    nestedScrollEnabled style={styles.carouselScroll}
     contentOffset={{ x: initialIndex * interval, y: 0 }}
     contentContainerStyle={styles.carousel} accessibilityLabel="难度卡片">
     {charts.map((chart) => {
@@ -252,7 +251,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
         library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
         onToggleChartType={onToggleChartType} />;
     })}
-  </GestureScrollView>;
+  </ScrollView>;
 }
 
 function ChartCard({ chart, best, song, library, width, canSwitchChartType, onToggleChartType }: {
