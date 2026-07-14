@@ -2,8 +2,8 @@ import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import { chartVersionKey, difficultyFromIndex } from '@/domain/catalog';
 import type {
-  AliasSnapshot, CatalogSnapshot, Chart, ChartNotes, ChartType, DataSource,
-  PlateSnapshot, Song,
+  AliasSnapshot, CatalogSnapshot, Chart, ChartNotes, ChartType, CollectionItem,
+  CollectionKind, CollectionSnapshot, DataSource, PlateRequirement, PlateSnapshot, Song,
 } from '@/domain/models';
 import type { DetailedCatalogProvider } from './contracts';
 import { ProviderError, providerErrorFromStatus } from './errors';
@@ -52,14 +52,40 @@ const RequirementSchema = z.object({
     z.object({ id: z.number().int().nonnegative(), title: z.string(), type: z.enum(['standard', 'dx']) }).passthrough(),
   ])).default([]),
 }).passthrough();
-const PlateSchema = z.object({
+const CollectionSchema = z.object({
   id: z.number().int(), name: z.string(), description: z.string().optional(),
+  color: z.string().nullish(), genre: z.string().nullish(),
   required: z.array(RequirementSchema).optional(),
   requirements: z.array(RequirementSchema).optional(),
 }).passthrough();
+const PlateSchema = CollectionSchema;
 const PlateResponseSchema = z.union([
   z.array(PlateSchema), z.object({ plates: z.array(PlateSchema) }).passthrough(),
 ]);
+const COLLECTION_KINDS: readonly CollectionKind[] = ['trophy', 'icon', 'plate', 'frame'];
+const CollectionEnvelopeSchema = z.object({
+  trophies: z.array(CollectionSchema).optional(),
+  icons: z.array(CollectionSchema).optional(),
+  plates: z.array(CollectionSchema).optional(),
+  frames: z.array(CollectionSchema).optional(),
+}).passthrough();
+const CollectionListResponseSchema = z.union([
+  z.array(CollectionSchema),
+  CollectionEnvelopeSchema,
+]);
+
+function collectionEntries(
+  kind: CollectionKind,
+  payload: z.infer<typeof CollectionListResponseSchema>,
+): z.infer<typeof CollectionSchema>[] {
+  if (Array.isArray(payload)) return payload;
+  switch (kind) {
+    case 'trophy': return payload.trophies ?? [];
+    case 'icon': return payload.icons ?? [];
+    case 'plate': return payload.plates ?? [];
+    case 'frame': return payload.frames ?? [];
+  }
+}
 
 function source(label: string): DataSource {
   return { kind: 'lxns', label, updatedAt: new Date().toISOString(), isStale: false };
@@ -150,18 +176,50 @@ export class LxnsCatalogProvider implements DetailedCatalogProvider {
     return {
       plates: entries.map((item) => ({
         id: item.id, name: item.name, description: item.description,
-        requirements: (item.required ?? item.requirements ?? []).map((requirement) => {
-          const songs = requirement.songs.map((song) => String(typeof song === 'number' ? song : song.id));
-          const songTypes = Object.fromEntries(requirement.songs.flatMap((song) => typeof song === 'number'
-            ? [] : [[String(song.id), chartType(song.type)]]));
-          return {
-            difficulties: requirement.difficulties, rate: requirement.rate,
-            fc: requirement.fc, fs: requirement.fs, songs,
-            songTypes: Object.keys(songTypes).length ? songTypes : undefined,
-          };
-        }),
+        requirements: mapRequirements(item.required ?? item.requirements ?? []),
       })),
       source: source('LXNS 姓名框要求'),
     };
   }
+
+  async getCollections(): Promise<CollectionSnapshot> {
+    const responses = await Promise.all(
+      COLLECTION_KINDS.map(async (kind) => ({ kind, payload: await getJson(`/${kind}/list?required=true`) })),
+    );
+    const items: CollectionItem[] = [];
+    for (const { kind, payload } of responses) {
+      const parsed = CollectionListResponseSchema.safeParse(payload);
+      if (!parsed.success) {
+        throw new ProviderError('upstream_schema', `LXNS ${kind} 收藏品响应结构与已验证契约不一致`, true);
+      }
+      const entries = collectionEntries(kind, parsed.data);
+      for (const entry of entries) {
+        items.push({
+          id: entry.id,
+          kind,
+          name: entry.name,
+          description: entry.description,
+          color: entry.color,
+          genre: entry.genre,
+          requirements: mapRequirements(entry.required ?? entry.requirements ?? []),
+        });
+      }
+    }
+    return { items, source: source('LXNS 收藏品') };
+  }
+}
+
+function mapRequirements(
+  requirements: readonly z.infer<typeof RequirementSchema>[],
+): PlateRequirement[] {
+  return requirements.map((requirement) => {
+    const songs = requirement.songs.map((song) => String(typeof song === 'number' ? song : song.id));
+    const songTypes = Object.fromEntries(requirement.songs.flatMap((song) => typeof song === 'number'
+      ? [] : [[String(song.id), chartType(song.type)]]));
+    return {
+      difficulties: requirement.difficulties, rate: requirement.rate,
+      fc: requirement.fc, fs: requirement.fs, songs,
+      songTypes: Object.keys(songTypes).length ? songTypes : undefined,
+    };
+  });
 }

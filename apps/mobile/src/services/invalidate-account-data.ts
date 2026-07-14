@@ -6,6 +6,7 @@ const ACCOUNT_DATA_QUERY_KEYS = [
   ['score-snapshot'],
   ['detailed-catalog'],
   ['plates'],
+  ['collections'],
   ['songs'],
 ] as const;
 

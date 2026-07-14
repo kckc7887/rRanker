@@ -104,8 +104,25 @@ export interface PlateSnapshot {
   source: DataSource;
 }
 
+export type CollectionKind = 'trophy' | 'icon' | 'plate' | 'frame';
+
+export interface CollectionItem {
+  id: number;
+  kind: CollectionKind;
+  name: string;
+  description?: string;
+  color?: string | null;
+  genre?: string | null;
+  requirements: PlateRequirement[];
+}
+
+export interface CollectionSnapshot {
+  items: CollectionItem[];
+  source: DataSource;
+}
+
 export interface SourceStatusItem {
-  key: 'scores' | 'catalog' | 'aliases' | 'plates';
+  key: 'scores' | 'catalog' | 'aliases' | 'plates' | 'collections';
   label: string;
   updatedAt?: string;
   state: 'live' | 'cache' | 'unavailable';
