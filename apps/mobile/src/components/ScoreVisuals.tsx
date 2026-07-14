@@ -57,19 +57,25 @@ export const DIFFICULTY_VISUAL: Record<Difficulty, DifficultyVisual> = {
   unknown: { label: 'UNKNOWN', color: '#6B7280', tint: '#F3F4F6', badgeBackground: '#6B7280', badgeText: '#FFFFFF', badgeBorder: '#6B7280' },
 };
 
-export function DifficultyBadge({ difficulty, constant, compact = false }: {
+export function DifficultyBadge({ difficulty, constant, compact = false, mini = false }: {
   difficulty: Difficulty;
   constant?: number;
   compact?: boolean;
+  mini?: boolean;
 }) {
   const visual = DIFFICULTY_VISUAL[difficulty];
   const constantText = constant === undefined ? '' : ` (${constant.toFixed(1)})`;
   return <View style={[
-    styles.difficultyBadge, compact && styles.difficultyBadgeCompact,
+    styles.difficultyBadge,
+    compact && !mini && styles.difficultyBadgeCompact,
+    mini && styles.difficultyBadgeMini,
     { backgroundColor: visual.badgeBackground, borderColor: visual.badgeBorder },
   ]}>
     <Text numberOfLines={1} style={[
-      styles.difficultyText, compact && styles.difficultyTextCompact, { color: visual.badgeText },
+      styles.difficultyText,
+      compact && !mini && styles.difficultyTextCompact,
+      mini && styles.difficultyTextMini,
+      { color: visual.badgeText },
     ]}>{visual.label}{constantText}</Text>
   </View>;
 }
@@ -189,8 +195,10 @@ function getStatusSpec(kind: 'fc' | 'fs', rawValue: string): {
 const styles = StyleSheet.create({
   difficultyBadge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6 },
   difficultyBadgeCompact: { paddingHorizontal: 8, paddingVertical: 5 },
+  difficultyBadgeMini: { paddingHorizontal: 5, paddingVertical: 2 },
   difficultyText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7 },
   difficultyTextCompact: { fontSize: 9, letterSpacing: 0.25 },
+  difficultyTextMini: { fontSize: 8, letterSpacing: 0.1, fontWeight: '800' },
   achievement: { fontSize: 36, lineHeight: 44, fontWeight: '900', letterSpacing: -1.3, textShadowColor: 'rgba(255,255,255,0.8)', textShadowRadius: 2 },
   achievementCompact: { fontSize: 22, lineHeight: 28, letterSpacing: -0.5 },
   achievementNormal: { color: '#172033' },
