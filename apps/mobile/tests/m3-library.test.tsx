@@ -20,6 +20,10 @@ const mockItems: UserLibraryItem[] = [
 ];
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('react-native-gesture-handler', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable, ScrollView: RN.ScrollView };
+});
 jest.mock('react-native-safe-area-context', () => ({
   ...(jest.requireActual('react-native-safe-area-context') as object),
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),

@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, Platform } from 'react-native';
+import {
+  GestureHandlerRootView,
+  Pressable as GesturePressable,
+  ScrollView as GestureScrollView,
+} from 'react-native-gesture-handler';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
@@ -100,8 +105,8 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
     ? sortedCharts.findIndex((chart) => chart.levelIndex === initialLevelIndex) : -1;
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex;
 
-  return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
-    directionalLockEnabled>
+  return <ScrollView testID="song-detail-scroll" contentContainerStyle={styles.content}
+    keyboardShouldPersistTaps="handled">
     <View style={[styles.hero, { width, height: width }]}>
       <SongCover songId={song.id} size={width} borderRadius={0} />
       <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
@@ -206,16 +211,18 @@ function MetadataCell({ label, value, flex }: { label: string; value: string; fl
 function VersionMetadataCell({ value, onToggle }: {
   value: string; onToggle: () => void;
 }) {
-  return <View style={[styles.metadataCell, styles.versionCell]}>
+  return <Pressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
+    hitSlop={4} style={({ pressed }) => [styles.metadataCell, styles.versionCell, pressed && styles.switchPressed]}>
     <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
     <View style={styles.versionValueRow}>
-      <AutoScrollText text={value} textStyle={styles.metadataValue} style={styles.versionNameScroll} />
-      <Pressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
-        hitSlop={8} style={styles.versionToggle}>
+      <View pointerEvents="none" style={styles.versionNameContainer}>
+        <AutoScrollText text={value} textStyle={styles.metadataValue} style={styles.versionNameScroll} />
+      </View>
+      <View pointerEvents="none" style={styles.versionToggle}>
         <Ionicons name="swap-horizontal" color="#5967C9" size={15} />
-      </Pressable>
+      </View>
     </View>
-  </View>;
+  </Pressable>;
 }
 
 function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, onToggleChartType }: {
@@ -228,30 +235,32 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   canSwitchChartType: boolean;
   onToggleChartType: () => void;
 }) {
-  if (charts.length === 0) return <View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>;
   const interval = cardWidth + CARD_GAP;
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
   useEffect(() => {
     const timer = setTimeout(() => {
       scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
     }, 50);
     return () => clearTimeout(timer);
   }, [initialIndex, interval]);
-  return <ScrollView ref={scrollRef} horizontal decelerationRate="fast" snapToInterval={interval}
-    snapToAlignment="start" disableIntervalMomentum showsHorizontalScrollIndicator={false}
-    nestedScrollEnabled style={styles.carouselScroll}
-    contentOffset={{ x: initialIndex * interval, y: 0 }}
-    contentContainerStyle={styles.carousel} accessibilityLabel="难度卡片">
-    {charts.map((chart) => {
-      const best = records.filter((record) =>
-        (String(record.songId) === song.id || normalizeSongId(record.songId) === song.id) &&
-        record.type === chart.type && record.levelIndex === chart.levelIndex)
-        .sort((left, right) => right.achievements - left.achievements)[0];
-      return <ChartCard key={`${chart.type}:${chart.levelIndex}`} chart={chart} best={best} song={song}
-        library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
-        onToggleChartType={onToggleChartType} />;
-    })}
-  </ScrollView>;
+  if (charts.length === 0) return <View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>;
+  return <GestureHandlerRootView style={styles.carouselRoot}>
+    <GestureScrollView ref={scrollRef} horizontal decelerationRate="fast" snapToInterval={interval}
+      snapToAlignment="start" disableIntervalMomentum showsHorizontalScrollIndicator={false}
+      directionalLockEnabled nestedScrollEnabled removeClippedSubviews={false} style={styles.carouselScroll}
+      contentOffset={{ x: initialIndex * interval, y: 0 }}
+      contentContainerStyle={styles.carousel} accessibilityLabel="难度卡片">
+      {charts.map((chart) => {
+        const best = records.filter((record) =>
+          (String(record.songId) === song.id || normalizeSongId(record.songId) === song.id) &&
+          record.type === chart.type && record.levelIndex === chart.levelIndex)
+          .sort((left, right) => right.achievements - left.achievements)[0];
+        return <ChartCard key={`${chart.type}:${chart.levelIndex}`} chart={chart} best={best} song={song}
+          library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
+          onToggleChartType={onToggleChartType} />;
+      })}
+    </GestureScrollView>
+  </GestureHandlerRootView>;
 }
 
 function ChartCard({ chart, best, song, library, width, canSwitchChartType, onToggleChartType }: {
@@ -300,9 +309,11 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
 function ChartTypeSwitch({ type, canSwitch, onToggle }: {
   type: ChartType; canSwitch: boolean; onToggle: () => void;
 }) {
-  return <View style={styles.chartTypeRow}>
-    <Pressable accessibilityRole="button" accessibilityLabel={canSwitch ? `切换为${type === 'DX' ? 'SD' : 'DX'}谱面` : `${type}谱面`}
-      disabled={!canSwitch} onPress={onToggle} hitSlop={6}
+  return <GesturePressable accessibilityRole="button"
+    accessibilityLabel={canSwitch ? `切换为${type === 'DX' ? 'SD' : 'DX'}谱面` : `${type}谱面`}
+    accessibilityState={{ disabled: !canSwitch }} disabled={!canSwitch} onPress={onToggle}
+    style={({ pressed }) => [styles.chartTypeRow, pressed && styles.switchPressed]}>
+    <View pointerEvents="none"
       style={[styles.chartTypeBadge, type === 'SD' ? styles.sdTypeBadge : styles.dxTypeBadge]}>
       {type === 'SD' ? <Text style={styles.sdTypeText}>SD</Text> :
         <MaskedView style={styles.dxTypeTextMask}
@@ -310,9 +321,9 @@ function ChartTypeSwitch({ type, canSwitch, onToggle }: {
           <LinearGradient colors={['#FF8A00', '#FFD84A']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
             style={styles.gradientFill} />
         </MaskedView>}
-    </Pressable>
-    {canSwitch ? <Text style={styles.chartTypeHint}>·点击切换·</Text> : null}
-  </View>;
+    </View>
+    {canSwitch ? <Text pointerEvents="none" style={styles.chartTypeHint}>·点击切换·</Text> : null}
+  </GesturePressable>;
 }
 
 const NOTE_COLUMNS: readonly { label: string; key: keyof ChartNotes }[] = [
@@ -352,15 +363,18 @@ const styles = StyleSheet.create({
   metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 }, versionCell: { flex: 1.8 },
   metadataLabel: { color: '#8A93A3', fontSize: 11, fontWeight: '700' },
   versionValueRow: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  versionNameScroll: { flex: 1, minWidth: 0 }, versionToggle: { padding: 1 },
+  versionNameContainer: { flex: 1, minWidth: 0 }, versionNameScroll: { flexGrow: 0 },
+  versionToggle: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  switchPressed: { opacity: 0.58 },
   metadataValue: { color: '#182130', fontSize: 13, fontWeight: '700' },
+  carouselRoot: { flexGrow: 0 },
   carouselScroll: { flexGrow: 0 },
   carousel: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12, gap: CARD_GAP },
   noCharts: { padding: 20 },
   chartCard: { borderRadius: 24, borderWidth: 1, padding: 18, shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4 },
   chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   chartIdentity: { alignItems: 'flex-start', gap: 7 },
-  chartTypeRow: { minHeight: 18, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  chartTypeRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4 },
   chartTypeBadge: { minWidth: 31, height: 18, borderRadius: 6, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   sdTypeBadge: { backgroundColor: '#3286E6' }, sdTypeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
   dxTypeBadge: { backgroundColor: '#FFFFFF', borderWidth: StyleSheet.hairlineWidth, borderColor: '#F2C36C' },
