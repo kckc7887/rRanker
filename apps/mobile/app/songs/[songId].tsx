@@ -160,8 +160,8 @@ function AliasLine({ aliases }: { aliases?: string[] }) {
 }
 
 
-function AutoScrollText({ text, textStyle, style, contentContainerStyle, scrollEnabled }: {
-  text: string; textStyle: object; style?: object; contentContainerStyle?: object; scrollEnabled?: boolean;
+function AutoScrollText({ text, textStyle, style, contentContainerStyle }: {
+  text: string; textStyle: object; style?: object; contentContainerStyle?: object;
 }) {
   const scrollRef = useRef<ScrollView>(null);
   const [contentWidth, setContentWidth] = useState(0);
@@ -183,12 +183,6 @@ function AutoScrollText({ text, textStyle, style, contentContainerStyle, scrollE
     }, 16);
     return () => clearInterval(interval);
   }, [shouldAutoScroll, dragging, contentWidth, containerWidth]);
-
-  if (scrollEnabled === false) {
-    return <View style={[style, contentContainerStyle]}>
-      <Text numberOfLines={1} style={textStyle}>{text}</Text>
-    </View>;
-  }
 
   return <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}
     style={style}
@@ -222,11 +216,9 @@ function VersionMetadataCell({ value, onToggle }: {
       hitSlop={4} style={({ pressed }) => [styles.metadataCell, styles.versionCell, pressed && styles.switchPressed]}>
       <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
       <View style={styles.versionValueRow}>
-        <View pointerEvents="none" style={styles.versionNameContainer}>
-          <AutoScrollText text={value} textStyle={styles.metadataValue} style={styles.versionNameScroll} scrollEnabled={false} />
-        </View>
+        <Text style={[styles.metadataValue, styles.versionName]}>{value}</Text>
         <View pointerEvents="none" style={styles.versionToggle}>
-          <Ionicons name="swap-horizontal" color="#5967C9" size={15} />
+          <Ionicons name="swap-horizontal" color="#5967C9" size={14} />
         </View>
       </View>
     </GesturePressable>
@@ -367,15 +359,15 @@ const styles = StyleSheet.create({
   headerFavoriteBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   headerFavoriteActive: {},
   headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
-  metadataTable: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DEE8', paddingHorizontal: 12, paddingVertical: 13, gap: 6 },
+  metadataTable: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DEE8', paddingHorizontal: 12, paddingVertical: 13, gap: 6 },
   metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 },
   versionCellRoot: { flex: 1.8, minWidth: 0 }, versionCell: { flex: 1 },
-  metadataLabel: { color: '#8A93A3', fontSize: 11, fontWeight: '700' },
-  versionValueRow: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  versionNameContainer: { flex: 1, minWidth: 0 }, versionNameScroll: { flexGrow: 0 },
-  versionToggle: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  metadataLabel: { color: '#8A93A3', fontSize: 11, fontWeight: '700', lineHeight: 14 },
+  versionValueRow: { minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', gap: 2 },
+  versionName: { flex: 1, minWidth: 0 },
+  versionToggle: { width: 16, height: 16, marginTop: 1, alignItems: 'center', justifyContent: 'center' },
   switchPressed: { opacity: 0.58 },
-  metadataValue: { color: '#182130', fontSize: 13, fontWeight: '700' },
+  metadataValue: { color: '#182130', fontSize: 13, lineHeight: 16, fontWeight: '700' },
   carouselRoot: { flexGrow: 0 },
   carouselScroll: { flexGrow: 0 },
   carousel: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12, gap: CARD_GAP },
