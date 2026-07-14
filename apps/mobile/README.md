@@ -18,4 +18,5 @@ npm run android
 - JWT/Import-Token 只存 SecureStore。
 - SQLite 只保存非敏感成绩快照，并带 schema version。
 - 查询缓存键不包含 JWT 或 Import-Token 原文。
-- 不调用上传、删除成绩或生成/刷新 Import-Token 的端点。
+- 总览「上传数据」仅为待实现占位；M5 方向为 DXNet/rival 成绩同步后导出到查分器，不接微信截包。
+- 不调用删除成绩或生成/刷新 Import-Token 的端点。

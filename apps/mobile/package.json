@@ -4,15 +4,19 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "eslint app src tests vitest.config.ts jest.config.js",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:unit && npm run test:ui",
     "test:unit": "vitest run",
     "test:ui": "jest --runInBand",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prebuild:android": "expo prebuild --platform android --no-install",
+    "apk:debug": "expo prebuild --platform android && cd android && gradlew.bat assembleDebug",
+    "apk:release": "expo prebuild --platform android && cd android && gradlew.bat assembleRelease",
+    "eas:apk": "eas build -p android --profile preview"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -31,6 +35,7 @@
     "expo-image": "~3.0.11",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.12",
+    "expo-network": "~8.0.8",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
     "expo-sharing": "~14.0.8",

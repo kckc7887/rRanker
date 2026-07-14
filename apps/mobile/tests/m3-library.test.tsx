@@ -20,6 +20,8 @@ const mockItems: UserLibraryItem[] = [
 ];
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('react-native-gesture-handler', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable, ScrollView: RN.ScrollView };
@@ -48,7 +50,79 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
       b35: [], b15: [], unmatchedRecordCount: 0, rating: 0, generatedAt: timestamp, source: fixtures.fixtureSource } },
     isLoading: false, isError: false, isDataStale: false, error: null, refetch: () => mockRefetchScore() };
 } }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: { session: null }) => unknown) => selector({ session: null }) }));
+jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
+  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+  const { getGameProfile } = jest.requireActual<typeof import('../src/domain/game-profile')>('../src/domain/game-profile');
+  const { maimaiPayloadFromSnapshot } = jest.requireActual<typeof import('../src/domain/game-data')>('../src/domain/game-data');
+  const profile = getGameProfile('maimai');
+  const snapshot = {
+    player: fixtures.fixturePlayer,
+    records: fixtures.fixtureRecords,
+    source: fixtures.fixtureSource,
+    catalogSource: fixtures.fixtureSource,
+    best50: {
+      player: fixtures.fixturePlayer,
+      currentVersion: fixtures.fixtureCatalog.currentVersion,
+      b35: [],
+      b15: [],
+      unmatchedRecordCount: 0,
+      rating: 0,
+      generatedAt: timestamp,
+      source: fixtures.fixtureSource,
+    },
+  };
+  return {
+    data: {
+      gameId: 'maimai' as const,
+      providerId: 'diving-fish' as const,
+      profile,
+      payload: maimaiPayloadFromSnapshot(snapshot, profile),
+    },
+    profile,
+    activeGameId: 'maimai' as const,
+    activeProviderId: 'diving-fish' as const,
+    isLoading: false,
+    isError: false,
+    isDataStale: false,
+    error: null,
+    refetch: () => mockRefetchScore(),
+  };
+} }));
+jest.mock('@/state/query-client', () => ({
+  queryClient: { invalidateQueries: jest.fn(), removeQueries: jest.fn() },
+}));
+jest.mock('@/state/game-picker-ui', () => ({
+  useGamePickerUi: (selector: (state: {
+    expandedGameId: 'maimai';
+    setExpandedGameId: () => void;
+    toggleExpandedGameId: () => void;
+  }) => unknown) => selector({
+    expandedGameId: 'maimai',
+    setExpandedGameId: jest.fn(),
+    toggleExpandedGameId: jest.fn(),
+  }),
+}));
+jest.mock('@/state/session-store', () => ({
+  useSession: (selector: (state: {
+    session: null;
+    activeGameId: 'maimai';
+    activeProviderId: 'diving-fish';
+    activeAccountId: string;
+    boundAccounts: [];
+    selectBoundAccount: () => void;
+    setActiveProviderId: () => void;
+    setActiveGameId: () => void;
+  }) => unknown) => selector({
+    session: null,
+    activeGameId: 'maimai',
+    activeProviderId: 'diving-fish',
+    activeAccountId: 'maimai:local',
+    boundAccounts: [],
+    selectBoundAccount: jest.fn(),
+    setActiveProviderId: jest.fn(),
+    setActiveGameId: jest.fn(),
+  }),
+}));
 
 describe('M3A personal library screens', () => {
   beforeEach(() => { jest.clearAllMocks(); mockRefetchScore.mockResolvedValue(undefined); });
@@ -57,6 +131,8 @@ describe('M3A personal library screens', () => {
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('我的曲库')).toBeTruthy();
     expect(screen.getByText('收藏 2 首 · 练习 1 张')).toBeTruthy();
+    expect(screen.getByText('·点击切换·')).toBeTruthy();
+    expect(screen.getByLabelText(/点击切换账号/)).toBeTruthy();
     expect(screen.queryByText(/M0 功能线框/)).toBeNull();
     expect(screen.queryByText('刷新')).toBeNull();
   });
