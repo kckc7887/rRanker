@@ -55,6 +55,7 @@
 - 国服/日服名称对照由 LXNS `versions` 与水鱼 `basic_info.from` 的发布曲目交叉核验；当前 `25500 / 舞萌DX 2026` 对应 `maimai でらっくす PRiSM PLUS`。
 - 歌曲区域读取 LXNS `Song.map`；该字段可能完全缺失，且官方未定义枚举。本地按可选开放字符串接收，缺失、`null` 或空白时不显示，不硬编码区域列表。
 - 曲绘地址为 `https://assets2.lxns.net/maimai/jacket/{song_id}.png`，只对可见列表项加载并使用磁盘缓存；不批量预取，正式发布前需完成素材许可审查。
+- 姓名框预览地址为 `https://assets2.lxns.net/maimai/plate/{plate_id}.png`（公共资源，与查分器账号无关；`plate_id` 来自 LXNS `/plate/list`）。水鱼无对应图床。
 - 舞萌玩家成绩也可经由下方「LXNS OAuth 个人 API」绑定；公共曲库职责不变。成绩上传（`write_player`）本轮未接入。
 
 ## LXNS OAuth / 个人 API（只读绑定）
