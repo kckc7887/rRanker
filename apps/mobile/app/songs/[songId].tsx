@@ -160,8 +160,8 @@ function AliasLine({ aliases }: { aliases?: string[] }) {
 }
 
 
-function AutoScrollText({ text, textStyle, style, contentContainerStyle }: {
-  text: string; textStyle: object; style?: object; contentContainerStyle?: object;
+function AutoScrollText({ text, textStyle, style, contentContainerStyle, scrollEnabled }: {
+  text: string; textStyle: object; style?: object; contentContainerStyle?: object; scrollEnabled?: boolean;
 }) {
   const scrollRef = useRef<ScrollView>(null);
   const [contentWidth, setContentWidth] = useState(0);
@@ -185,6 +185,7 @@ function AutoScrollText({ text, textStyle, style, contentContainerStyle }: {
   }, [shouldAutoScroll, dragging, contentWidth, containerWidth]);
 
   return <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}
+    scrollEnabled={scrollEnabled !== false}
     style={style}
     contentContainerStyle={contentContainerStyle}
     onContentSizeChange={(w) => setContentWidth(w)}
@@ -216,7 +217,7 @@ function VersionMetadataCell({ value, onToggle }: {
     <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
     <View style={styles.versionValueRow}>
       <View pointerEvents="none" style={styles.versionNameContainer}>
-        <AutoScrollText text={value} textStyle={styles.metadataValue} style={styles.versionNameScroll} />
+        <AutoScrollText text={value} textStyle={styles.metadataValue} style={styles.versionNameScroll} scrollEnabled={false} />
       </View>
       <View pointerEvents="none" style={styles.versionToggle}>
         <Ionicons name="swap-horizontal" color="#5967C9" size={15} />
