@@ -13,6 +13,10 @@ const mockSetSongFavorite = jest.fn();
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('react-native-gesture-handler', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable, ScrollView: RN.ScrollView };
+});
 jest.mock('react-native-safe-area-context', () => ({
   ...(jest.requireActual('react-native-safe-area-context') as object),
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
@@ -81,6 +85,8 @@ describe('M2 song query screens', () => {
     expect(screen.getByText('maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(screen.getByLabelText('切换版本名称')).toBeTruthy();
     expect(screen.getByLabelText('数据来源状态')).toBeTruthy();
+    expect(screen.getByTestId('song-detail-scroll').props.directionalLockEnabled).toBeUndefined();
+    expect(screen.getByLabelText('难度卡片').props.directionalLockEnabled).toBe(true);
     expect(screen.getByLabelText('难度卡片').props.contentOffset.x).toBeGreaterThan(0);
     const difficulties = screen.getAllByText(/Re:MASTER|MASTER|EXPERT|ADVANCED|BASIC/).map((node) =>
       Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children);
