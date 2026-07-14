@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { EmptyDataView } from '@/components/EmptyDataView';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
@@ -11,6 +12,7 @@ import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { songLibraryKey } from '@/domain/user-library';
+import { useSession } from '@/state/session-store';
 import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/search';
 
 const TYPES: ChartType[] = ['SD', 'DX'];
@@ -18,6 +20,7 @@ const DIFFICULTIES: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 're
 function toggle<T>(list: T[], value: T): T[] { return list.includes(value) ? list.filter((item) => item !== value) : [...list, value]; }
 
 export default function SearchScreen() {
+  const activeGameId = useSession((s) => s.activeGameId);
   const query = useDetailedCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const library = useUserLibrary();
@@ -37,6 +40,10 @@ export default function SearchScreen() {
     songVersionIds: songVersionId ? [songVersionId] : [], chartVersionIds: chartVersionId ? [chartVersionId] : [],
   }), [chartVersionId, debouncedKeyword, difficulties, index, max, min, songVersionId, types]);
   const favoriteKeys = useMemo(() => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.key)), [library.data]);
+
+  if (activeGameId !== 'maimai') {
+    return <EmptyDataView title="暂无曲库" detail="空空空" />;
+  }
 
   return (
     <View style={styles.page}>

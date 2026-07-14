@@ -1,16 +1,27 @@
+import {
+  createLocalMaimaiAccount,
+  createTestBoundAccount,
+  LOCAL_MAIMAI_ACCOUNT_ID,
+  TEST_ACCOUNT_ID,
+} from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
+import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
 import { FixtureCatalogProvider, FixtureProvider } from '@/providers/fixture-provider';
 import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { restoreSession, useSession } from '@/state/session-store';
 
 const jwtSession: ProviderSession = { mode: 'jwt', value: 'fake-jwt-token', persistable: true };
-const importSession: ProviderSession = { mode: 'import-token', value: 'fake-import-token', persistable: true };
 
 describe('useSession store', () => {
   beforeEach(() => {
     useSession.setState({
+      sessionsByGame: {},
+      boundAccounts: [createLocalMaimaiAccount('测试玩家', 0), createTestBoundAccount()],
+      activeAccountId: LOCAL_MAIMAI_ACCOUNT_ID,
       session: null,
+      activeGameId: 'maimai',
+      activeProviderId: 'diving-fish',
       scoreProvider: new FixtureProvider(),
       catalogProvider: new FixtureCatalogProvider(),
       restoreStatus: 'ready',
@@ -18,34 +29,48 @@ describe('useSession store', () => {
     });
   });
 
-  it('starts with no session and a FixtureProvider', () => {
-    const { session, scoreProvider, catalogProvider } = useSession.getState();
-    expect(session).toBeNull();
-    expect(scoreProvider).toBeInstanceOf(FixtureProvider);
-    expect(catalogProvider).toBeInstanceOf(FixtureCatalogProvider);
+  it('keeps only bound accounts and always includes the empty test account', () => {
+    const { boundAccounts } = useSession.getState();
+    expect(boundAccounts.map((account) => account.id)).toContain(LOCAL_MAIMAI_ACCOUNT_ID);
+    expect(boundAccounts.map((account) => account.id)).toContain(TEST_ACCOUNT_ID);
   });
 
-  it('switches to DivingFishProvider after a jwt session is set', () => {
-    useSession.getState().setSession(jwtSession);
-    const { session, scoreProvider, catalogProvider } = useSession.getState();
-    expect(session).toEqual(jwtSession);
-    expect(scoreProvider).toBeInstanceOf(DivingFishProvider);
-    expect(catalogProvider).toBeInstanceOf(LxnsCatalogProvider);
+  it('binds a maimai account with display name and DX rating meta', () => {
+    useSession.getState().setSession(jwtSession, {
+      displayName: '尘言',
+      rating: 15000,
+      playerId: 'p1',
+      providerId: 'diving-fish',
+    });
+    const state = useSession.getState();
+    expect(state.session).toEqual(jwtSession);
+    expect(state.scoreProvider).toBeInstanceOf(DivingFishProvider);
+    expect(state.catalogProvider).toBeInstanceOf(LxnsCatalogProvider);
+    const maimai = state.boundAccounts.find((account) => account.gameId === 'maimai');
+    expect(maimai?.displayName).toBe('尘言');
+    expect(maimai?.scoreLabel).toBe('DX RATING');
+    expect(maimai?.scoreDisplay).toBe('15000');
+    expect(maimai?.providerTitle).toBe('水鱼查分器');
+    expect(state.boundAccounts.some((account) => account.id === TEST_ACCOUNT_ID)).toBe(true);
   });
 
-  it('switches to DivingFishProvider after an import-token session is set', () => {
-    useSession.getState().setSession(importSession);
-    const { session, scoreProvider } = useSession.getState();
-    expect(session).toEqual(importSession);
-    expect(scoreProvider).toBeInstanceOf(DivingFishProvider);
+  it('switches to the empty test account', () => {
+    useSession.getState().selectBoundAccount(TEST_ACCOUNT_ID);
+    const state = useSession.getState();
+    expect(state.activeAccountId).toBe(TEST_ACCOUNT_ID);
+    expect(state.activeGameId).toBe('test');
+    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
+    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
   });
 
-  it('clears back to no session and a FixtureProvider', () => {
-    useSession.getState().setSession(jwtSession);
+  it('clears the remote bind and restores local preview plus test account', () => {
+    useSession.getState().setSession(jwtSession, { displayName: '尘言', rating: 1 });
     useSession.getState().clearSession();
-    const { session, scoreProvider } = useSession.getState();
-    expect(session).toBeNull();
-    expect(scoreProvider).toBeInstanceOf(FixtureProvider);
+    const state = useSession.getState();
+    expect(state.session).toBeNull();
+    expect(state.scoreProvider).toBeInstanceOf(FixtureProvider);
+    expect(state.boundAccounts.some((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)).toBe(true);
+    expect(state.boundAccounts.some((account) => account.id === TEST_ACCOUNT_ID)).toBe(true);
   });
 
   it('restores a persisted session before the app becomes ready', async () => {

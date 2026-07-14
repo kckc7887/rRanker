@@ -1,45 +1,45 @@
 import { useMemo } from 'react';
 import { SectionList, StyleSheet, Text, View } from 'react-native';
+import { EmptyDataView } from '@/components/EmptyDataView';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
+import type { BestListSection } from '@/domain/game-data';
 import type { ScoreRecord } from '@/domain/models';
+import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
-
-interface BestSection {
-  key: 'B35' | 'B15';
-  title: string;
-  data: ScoreRecord[];
-}
 
 function byRating(left: ScoreRecord, right: ScoreRecord): number {
   return right.rating - left.rating || right.achievements - left.achievements;
 }
 
 export default function Best50Screen() {
-  const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
+  const { data, isLoading, isError, error, refetch } = useGameData();
   const tabBottomInset = useNativeTabBottomInset();
-  const sections = useMemo<BestSection[]>(() => {
-    if (!data) return [];
-    return [
-      { key: 'B35', title: '过往版本 Best35', data: [...data.best50.b35].sort(byRating) },
-      { key: 'B15', title: '当前版本 Best15', data: [...data.best50.b15].sort(byRating) },
-    ];
+  const sections = useMemo(() => {
+    if (!data || data.payload.kind !== 'maimai') return [];
+    return data.payload.bestSections.map((section) => ({
+      ...section,
+      data: [...section.records].sort(byRating),
+    }));
   }, [data]);
   const recordCount = sections.reduce((sum, section) => sum + section.data.length, 0);
-  const viewData = recordCount > 0 ? sections : undefined;
-  const isEmpty = !!data && recordCount === 0;
+  const maimai = data?.payload.kind === 'maimai' ? data.payload : null;
+
+  if (!isLoading && data && data.payload.kind !== 'maimai') {
+    return <EmptyDataView title="暂无最佳成绩" detail="空空空" />;
+  }
+
   return (
     <View style={styles.page}>
-      <QueryStateView<BestSection[]>
+      <QueryStateView<Array<BestListSection & { data: ScoreRecord[] }>>
         isLoading={isLoading}
         isError={isError}
-        isEmpty={isEmpty}
+        isEmpty={!!maimai && recordCount === 0}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
-        emptyText="暂无 B50 数据"
-        data={viewData}
+        emptyText="空空空"
+        data={recordCount > 0 ? sections : undefined}
         renderData={(list) => (
           <SectionList
             style={styles.list}
@@ -48,10 +48,10 @@ export default function Best50Screen() {
             sections={list}
             stickySectionHeadersEnabled={false}
             keyExtractor={(record) => `${record.songId}-${record.type}-${record.levelIndex}-${record.version}`}
-            ListHeaderComponent={<View style={styles.header}><SourceStatus items={data ? [
-              { key: 'scores', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
-              { key: 'catalog', label: data.catalogSource.label, updatedAt: data.catalogSource.updatedAt, state: data.catalogSource.isStale ? 'cache' : 'live' },
-            ] : []} /><Text style={styles.note}>当前版本：{data?.best50.currentVersion.title}；无法匹配的 {data?.best50.unmatchedRecordCount ?? 0} 条成绩未计入。</Text></View>}
+            ListHeaderComponent={<View style={styles.header}><SourceStatus items={maimai ? [
+              { key: 'scores', label: maimai.source.label, updatedAt: maimai.source.updatedAt, state: maimai.source.isStale ? 'cache' : 'live' },
+              { key: 'catalog', label: maimai.catalogSource.label, updatedAt: maimai.catalogSource.updatedAt, state: maimai.catalogSource.isStale ? 'cache' : 'live' },
+            ] : []} /><Text style={styles.note}>当前版本：{maimai?.currentVersionTitle}；无法匹配的 {maimai?.unmatchedRecordCount ?? 0} 条成绩未计入。</Text></View>}
             renderSectionHeader={({ section }) => <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{section.title}</Text>
               <Text style={styles.sectionCount}>{section.data.length} 张谱面</Text>

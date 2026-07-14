@@ -8,6 +8,9 @@
 | --- | --- | --- | --- |
 | `diving-fish-demo/` | 水鱼公开接口与数据格式 | 曲库、谱面统计可读；玩家查询需要有效参数/身份 | 可作为 provider 与 fixture 来源，不能假定接口长期稳定 |
 | `wechat-crawler-demo/` | 华立微信公众号成绩抓取 | 成功取得玩家信息及 697 条成绩，fc/fs/rate 可用 | 证明数据链路可行；PC 代理方案不能直接移植到移动端 |
+| `wechat-oauth-paste-demo/` | 无 VPN「用户粘贴回调」授权回传 | GUI：生成微信打开链接 + 粘贴；探针仅玩家名 | PC 粘贴可用；手机最终链接 code 已废 |
+| `local-capture-service/` | 接到未消费 callback 后的处理程序 | `:18765` 收四参数 → 换 cookie → 玩家名；mitm 插件自动 POST | Clash/mitm 正式后链路 |
+| `local-capture-service/` | 截到未消费 callback **之后**的处理程序 | HTTP `:18765` 接收四参数 → maimai_py 换 cookie → 玩家名；mitm 插件自动 POST 并短路微信 | 与 Clash/mitm 配合的正式截包后链路 |
 | `wechat-crawler-demo/rranker_wechat_demo.go` | 单 EXE、本地 UI、代理与抓取整合 | 证明可以把验证流程封装成单程序 | 只保留实现参考，不发展桌面客户端 |
 | `webui-proxy-demo/` | Python WebUI、状态机、代理恢复与打包 | 前后端契约和清理路径已设计，部分仅静态验证 | 适合提取状态机经验，不复用为正式客户端架构 |
 | 已删除的 LXNS POC | 落雪曲库与收藏品接口 | 公共读取曾返回完整曲库；开发者 API 门槛较高 | 暂不作为主数据源，重新接入前必须重新核验 |

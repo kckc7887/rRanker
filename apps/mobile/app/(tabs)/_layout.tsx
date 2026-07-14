@@ -16,7 +16,7 @@ export default function TabLayout() {
           sf={{ default: 'trophy', selected: 'trophy.fill' }}
           androidSrc={<VectorIcon family={Ionicons} name="trophy-outline" />}
         />
-        <Label>B50</Label>
+        <Label>最佳</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="records">
         <Icon sf="list.bullet" androidSrc={<VectorIcon family={Ionicons} name="list-outline" />} />
@@ -24,7 +24,7 @@ export default function TabLayout() {
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="search">
         <Icon sf="magnifyingglass" androidSrc={<VectorIcon family={Ionicons} name="search-outline" />} />
-        <Label>查歌</Label>
+        <Label>查找</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <Icon

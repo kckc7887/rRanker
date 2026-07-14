@@ -6,11 +6,15 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const repository = new SqliteSnapshotRepository();
 
+/** 舞萌曲库。无 hasCatalog 能力的游戏不会触发请求，避免复用舞萌缓存。 */
 export function useDetailedCatalog() {
   const session = useSession((state) => state.session);
+  const activeGameId = useSession((state) => state.activeGameId);
   const provider = useSession((state) => state.catalogProvider);
+  const enabled = activeGameId === 'maimai';
   return useQuery({
-    queryKey: ['detailed-catalog', session?.mode ?? 'fixture'],
+    enabled,
+    queryKey: ['detailed-catalog', activeGameId, session?.mode ?? 'fixture'],
     queryFn: async (): Promise<CatalogSnapshot> => {
       const service = new ResourceService(session ? repository : undefined);
       const catalog = await service.load('detailed-catalog', 2, () => provider.getDetailedCatalog());

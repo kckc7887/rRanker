@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { EmptyDataView } from '@/components/EmptyDataView';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
@@ -7,6 +8,7 @@ import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useRecordsFilter } from '@/state/records-filter';
+import { useSession } from '@/state/session-store';
 
 const DIFFICULTIES: (Difficulty | 'all')[] = ['all', 'basic', 'advanced', 'expert', 'master', 'remaster'];
 const TYPES: (ChartType | 'all')[] = ['all', 'SD', 'DX'];
@@ -26,6 +28,7 @@ function Chip({ label, active, onPress }: ChipProps) {
 }
 
 export default function RecordsScreen() {
+  const activeGameId = useSession((s) => s.activeGameId);
   const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const tabBottomInset = useNativeTabBottomInset();
   const {
@@ -49,6 +52,10 @@ export default function RecordsScreen() {
 
   const viewData = filtered.length > 0 ? filtered : undefined;
   const isEmpty = !!data && filtered.length === 0;
+
+  if (activeGameId !== 'maimai') {
+    return <EmptyDataView title="暂无成绩" detail="空空空" />;
+  }
 
   return (
     <View style={styles.page}>
