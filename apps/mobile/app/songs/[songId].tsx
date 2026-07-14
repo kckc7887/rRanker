@@ -69,7 +69,7 @@ export default function SongDetailScreen() {
     <StatusBar style="light" />
     <View style={styles.page}>
       <QueryStateView<Song> isLoading={catalog.isLoading} isError={catalog.isError} isEmpty={!!catalog.data && !song}
-        isStale={!!catalog.data?.source?.isStale} error={catalog.error} onRetry={() => void catalog.refetch()}
+        error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}
           catalogSource={catalog.data!.source} scoreSource={scores.data?.source} library={library}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
@@ -217,18 +217,20 @@ function MetadataCell({ label, value, flex }: { label: string; value: string; fl
 function VersionMetadataCell({ value, onToggle }: {
   value: string; onToggle: () => void;
 }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
-    hitSlop={4} style={({ pressed }) => [styles.metadataCell, styles.versionCell, pressed && styles.switchPressed]}>
-    <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
-    <View style={styles.versionValueRow}>
-      <View pointerEvents="none" style={styles.versionNameContainer}>
-        <AutoScrollText text={value} textStyle={styles.metadataValue} style={styles.versionNameScroll} scrollEnabled={false} />
+  return <GestureHandlerRootView style={styles.versionCellRoot}>
+    <GesturePressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
+      hitSlop={4} style={({ pressed }) => [styles.metadataCell, styles.versionCell, pressed && styles.switchPressed]}>
+      <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
+      <View style={styles.versionValueRow}>
+        <View pointerEvents="none" style={styles.versionNameContainer}>
+          <AutoScrollText text={value} textStyle={styles.metadataValue} style={styles.versionNameScroll} scrollEnabled={false} />
+        </View>
+        <View pointerEvents="none" style={styles.versionToggle}>
+          <Ionicons name="swap-horizontal" color="#5967C9" size={15} />
+        </View>
       </View>
-      <View pointerEvents="none" style={styles.versionToggle}>
-        <Ionicons name="swap-horizontal" color="#5967C9" size={15} />
-      </View>
-    </View>
-  </Pressable>;
+    </GesturePressable>
+  </GestureHandlerRootView>;
 }
 
 function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, onToggleChartType }: {
@@ -366,7 +368,8 @@ const styles = StyleSheet.create({
   headerFavoriteActive: {},
   headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   metadataTable: { flexDirection: 'row', backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DEE8', paddingHorizontal: 12, paddingVertical: 13, gap: 6 },
-  metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 }, versionCell: { flex: 1.8 },
+  metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 },
+  versionCellRoot: { flex: 1.8, minWidth: 0 }, versionCell: { flex: 1 },
   metadataLabel: { color: '#8A93A3', fontSize: 11, fontWeight: '700' },
   versionValueRow: { minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
   versionNameContainer: { flex: 1, minWidth: 0 }, versionNameScroll: { flexGrow: 0 },
