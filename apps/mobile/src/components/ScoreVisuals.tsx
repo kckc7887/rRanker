@@ -9,14 +9,28 @@ import {
 
 type GradientColors = readonly [string, string, ...string[]];
 
-const RAINBOW: GradientColors = ['#FF8A94', '#FFCA75', '#F7EB8E', '#7DDFA4', '#7CCCFF', '#9B9EF7', '#EE8ADE'];
+const RAINBOW: GradientColors = ['#ffb3ba', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff', '#d4baff', '#ffb3f0'];
 const FLOWING_RAINBOW: GradientColors = [
-  '#FF8A94', '#FFCA75', '#F7EB8E', '#7DDFA4', '#7CCCFF', '#9B9EF7', '#EE8ADE',
-  '#FF8A94', '#FFCA75', '#F7EB8E', '#7DDFA4', '#7CCCFF', '#9B9EF7', '#EE8ADE', '#FF8A94',
+  '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff', '#d4baff', '#ffb3f0',
+  '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff', '#d4baff', '#ffb3f0', '#ffb3ba',
 ];
+const GOLD: GradientColors = ['#ffe69a', '#f5d278', '#fff4c8'];
 const FLOWING_GOLD: GradientColors = [
-  '#FFE69A', '#E5A92D', '#FFF4C8', '#FFE69A', '#E5A92D', '#FFF4C8', '#FFE69A',
+  '#ffe69a', '#f5d278', '#fff4c8', '#ffe69a', '#f5d278', '#fff4c8', '#ffe69a',
 ];
+const GREEN: GradientColors = ['#d4f0dc', '#b0e8c4', '#e8f8ec'];
+const FLOWING_GREEN: GradientColors = [
+  '#d4f0dc', '#b0e8c4', '#e8f8ec', '#d4f0dc', '#b0e8c4', '#e8f8ec', '#d4f0dc',
+];
+const BLUE: GradientColors = ['#d4e4f8', '#b0d0ec', '#e8f0fc'];
+const FLOWING_BLUE: GradientColors = [
+  '#d4e4f8', '#b0d0ec', '#e8f0fc', '#d4e4f8', '#b0d0ec', '#e8f0fc', '#d4e4f8',
+];
+
+const RAINBOW_TEXT = '#3a2030';
+const GOLD_TEXT = '#4a3000';
+const GREEN_TEXT = '#15502a';
+const BLUE_TEXT = '#153c60';
 
 export interface DifficultyVisual {
   label: string;
@@ -97,10 +111,10 @@ function GradientAchievement({ text, flowing = false, compact = false }: {
 function RateBadge({ value }: { value: string }) {
   const label = scoreRateLabel(value);
   switch (scoreRateEffect(value)) {
-    case 'flowing-rainbow': return <GradientBadge label={label} colors={FLOWING_RAINBOW} flowing testID={`flowing-rate-${label}`} textColor="#FFFFFF" />;
-    case 'rainbow': return <GradientBadge label={label} colors={RAINBOW} testID={`rainbow-rate-${label}`} textColor="#FFFFFF" />;
-    case 'flowing-gold': return <GradientBadge label={label} colors={FLOWING_GOLD} flowing testID={`flowing-rate-${label}`} textColor="#5D3E00" />;
-    case 'gold': return <View style={[styles.statusBadge, styles.goldBadge]}><Text style={[styles.statusText, styles.goldText]}>{label}</Text></View>;
+    case 'flowing-rainbow': return <GradientBadge label={label} colors={FLOWING_RAINBOW} flowing testID={`flowing-rate-${label}`} textColor={RAINBOW_TEXT} />;
+    case 'rainbow': return <GradientBadge label={label} colors={RAINBOW} testID={`rainbow-rate-${label}`} textColor={RAINBOW_TEXT} />;
+    case 'flowing-gold': return <GradientBadge label={label} colors={FLOWING_GOLD} flowing testID={`flowing-rate-${label}`} textColor={GOLD_TEXT} />;
+    case 'gold': return <GradientBadge label={label} colors={GOLD} testID={`rate-${label}`} textColor={GOLD_TEXT} />;
     default: return <View style={[styles.statusBadge, styles.normalBadge]}><Text style={[styles.statusText, styles.normalText]}>{label}</Text></View>;
   }
 }
@@ -113,11 +127,8 @@ function NearMissBadge() {
 
 function StatusBadge({ kind, value }: { kind: 'fc' | 'fs'; value: string }) {
   const spec = getStatusSpec(kind, value);
-  if (spec.flowing) return <GradientBadge label={spec.label} colors={spec.colors} flowing
-    testID={`flowing-status-${spec.label}`} textColor={spec.textColor} />;
-  return <View style={[styles.statusBadge, { backgroundColor: spec.colors[0] }]}>
-    <Text style={[styles.statusText, { color: spec.textColor }]}>{spec.label}</Text>
-  </View>;
+  return <GradientBadge label={spec.label} colors={spec.colors} flowing={spec.flowing}
+    testID={spec.flowing ? `flowing-status-${spec.label}` : `status-${spec.label}`} textColor={spec.textColor} />;
 }
 
 function GradientBadge({ label, colors, flowing = false, testID, textColor }: {
@@ -133,7 +144,7 @@ function GradientBadge({ label, colors, flowing = false, testID, textColor }: {
       <LinearGradient colors={colors} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
     </Animated.View> : <LinearGradient pointerEvents="none" colors={colors}
       start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />}
-    <View style={styles.gradientFrost} />
+    <View style={styles.glowHighlight} />
     <Text style={[styles.statusText, { color: textColor }]}>{label}</Text>
   </View>;
 }
@@ -157,15 +168,15 @@ function getStatusSpec(kind: 'fc' | 'fs', rawValue: string): {
 } {
   const value = rawValue.toLowerCase();
   if (kind === 'fc') {
-    if (value === 'fc') return { label: 'FC', flowing: false, colors: ['#CFF2DA', '#CFF2DA'], textColor: '#17673A' };
-    if (value === 'fcp') return { label: 'FC+', flowing: true, colors: ['#CFF2DA', '#6EE7A1', '#F1FFF6', '#CFF2DA', '#6EE7A1', '#F1FFF6', '#CFF2DA'], textColor: '#125C34' };
-    if (value === 'ap') return { label: 'AP', flowing: false, colors: ['#F7D778', '#F7D778'], textColor: '#684800' };
-    if (value === 'app') return { label: 'AP+', flowing: true, colors: FLOWING_GOLD, textColor: '#5D3E00' };
+    if (value === 'fc') return { label: 'FC', flowing: false, colors: GREEN, textColor: GREEN_TEXT };
+    if (value === 'fcp') return { label: 'FC+', flowing: true, colors: FLOWING_GREEN, textColor: GREEN_TEXT };
+    if (value === 'ap') return { label: 'AP', flowing: false, colors: GOLD, textColor: GOLD_TEXT };
+    if (value === 'app') return { label: 'AP+', flowing: true, colors: FLOWING_GOLD, textColor: GOLD_TEXT };
   } else {
-    if (value === 'sync') return { label: 'SYNC', flowing: false, colors: ['#CDEBFF', '#CDEBFF'], textColor: '#175A82' };
-    if (value === 'fs' || value === 'fsp') return { label: value === 'fsp' ? 'FS+' : 'FS', flowing: true, colors: ['#CDEBFF', '#67C8FF', '#EEF9FF', '#CDEBFF', '#67C8FF', '#EEF9FF', '#CDEBFF'], textColor: '#125477' };
-    if (value === 'fsd') return { label: 'FDX', flowing: false, colors: ['#F7D778', '#F7D778'], textColor: '#684800' };
-    if (value === 'fsdp') return { label: 'FDX+', flowing: true, colors: FLOWING_GOLD, textColor: '#5D3E00' };
+    if (value === 'sync') return { label: 'SYNC', flowing: false, colors: BLUE, textColor: BLUE_TEXT };
+    if (value === 'fs' || value === 'fsp') return { label: value === 'fsp' ? 'FS+' : 'FS', flowing: true, colors: FLOWING_BLUE, textColor: BLUE_TEXT };
+    if (value === 'fsd') return { label: 'FDX', flowing: false, colors: GOLD, textColor: GOLD_TEXT };
+    if (value === 'fsdp') return { label: 'FDX+', flowing: true, colors: FLOWING_GOLD, textColor: GOLD_TEXT };
   }
   return { label: rawValue.toUpperCase(), flowing: false, colors: ['#E5E7EB', '#E5E7EB'], textColor: '#374151' };
 }
@@ -184,8 +195,7 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 5, overflow: 'hidden' },
   statusText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.45 },
   gradientBadge: { backgroundColor: '#FFFFFF' },
-  gradientFrost: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.55)' },
-  goldBadge: { backgroundColor: '#E3B84B' }, goldText: { color: '#5B3D00' },
+  glowHighlight: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.4)' },
   normalBadge: { backgroundColor: '#E5E7EB' }, normalText: { color: '#374151' },
   nearMissBadge: { backgroundColor: '#36A269' }, nearMissText: { color: '#FFFFFF' },
 });
