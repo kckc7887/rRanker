@@ -5,7 +5,6 @@ export interface QueryStateViewProps<T> {
   isLoading: boolean;
   isError: boolean;
   isEmpty: boolean;
-  isStale: boolean;
   error?: unknown;
   emptyText?: string;
   onRetry?: () => void;
@@ -17,7 +16,6 @@ export function QueryStateView<T,>({
   isLoading,
   isError,
   isEmpty,
-  isStale,
   data,
   emptyText,
   onRetry,
@@ -53,16 +51,6 @@ export function QueryStateView<T,>({
   }
 
   if (data) {
-    if (isStale) {
-      return (
-        <View style={styles.data}>
-          <View style={styles.staleBanner}>
-            <Text style={styles.staleText}>当前显示缓存数据</Text>
-          </View>
-          {renderData(data)}
-        </View>
-      );
-    }
     return renderData(data);
   }
 
@@ -75,7 +63,6 @@ export function QueryStateView<T,>({
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  data: { flex: 1 },
   statusText: { color: '#6B7280', fontSize: 14, marginBottom: 12 },
   retryButton: {
     backgroundColor: '#246BFD',
@@ -84,6 +71,4 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
-  staleBanner: { backgroundColor: '#FEF3C7', padding: 8 },
-  staleText: { color: '#92400E', fontSize: 13 },
 });

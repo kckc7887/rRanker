@@ -62,7 +62,7 @@ export default function SearchScreen() {
         </View></View> : null}
       </View>
       <QueryStateView<Song[]> isLoading={query.isLoading} isError={query.isError}
-        isEmpty={!!query.data && filtered.length === 0} isStale={!!query.data?.source?.isStale}
+        isEmpty={!!query.data && filtered.length === 0}
         error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
         data={filtered.length ? filtered : undefined} renderData={(songs) => (
           <FlatList data={songs} keyExtractor={(item) => item.id} initialNumToRender={12} maxToRenderPerBatch={12}

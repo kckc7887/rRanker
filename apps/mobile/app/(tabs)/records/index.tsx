@@ -26,7 +26,7 @@ function Chip({ label, active, onPress }: ChipProps) {
 }
 
 export default function RecordsScreen() {
-  const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
+  const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const tabBottomInset = useNativeTabBottomInset();
   const {
     difficulty, version, type,
@@ -83,7 +83,6 @@ export default function RecordsScreen() {
         isLoading={isLoading}
         isError={isError}
         isEmpty={isEmpty}
-        isStale={isDataStale}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         emptyText="当前筛选条件下没有成绩"

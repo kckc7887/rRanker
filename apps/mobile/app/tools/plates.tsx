@@ -18,7 +18,7 @@ export default function PlatesToolScreen() {
   const viewData = plateSnapshot && plateItems.length ? { items: plateItems, source: plateSnapshot.source } : undefined;
   return <View style={styles.page}><Stack.Screen options={{ title: '牌子进度' }} /><QueryStateView<{ items: Plate[]; source: import('@/domain/models').DataSource }> isLoading={plates.isLoading || scores.isLoading}
     isError={plates.isError || scores.isError} isEmpty={!!plateSnapshot && plateItems.length === 0}
-    isStale={!!plateSnapshot?.source?.isStale || !!scores.data?.source?.isStale} error={plates.error ?? scores.error}
+    error={plates.error ?? scores.error}
     onRetry={() => { void plates.refetch(); void scores.refetch(); }} data={viewData}
     renderData={({ items, source }) => <FlatList data={progress?.missingSongIds ?? []} keyExtractor={(item) => item} contentContainerStyle={styles.content}
       ListHeaderComponent={<><SourceStatus items={[
