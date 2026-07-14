@@ -13,10 +13,6 @@ const mockSetSongFavorite = jest.fn();
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
-jest.mock('react-native-gesture-handler', () => {
-  const RN = require('react-native');
-  return { ScrollView: RN.ScrollView, GestureHandlerRootView: RN.View };
-});
 jest.mock('react-native-safe-area-context', () => ({
   ...(jest.requireActual('react-native-safe-area-context') as object),
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
