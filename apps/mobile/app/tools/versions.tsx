@@ -4,7 +4,9 @@ import { Stack } from 'expo-router';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
+import { VersionLogo } from '@/components/VersionLogo';
 import type { CatalogSnapshot, GameVersion } from '@/domain/models';
+import { versionLogoSource } from '@/domain/version-logo-assets';
 import { VERSION_NAME_MAPPINGS } from '@/domain/version-names';
 import { calculateVersionStats, type VersionStats } from '@/domain/version-stats';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
@@ -36,10 +38,28 @@ export default function VersionsToolScreen() {
         ]} />
         <Text style={styles.heading}>版本名称对照</Text>
         <Card style={styles.table}>
-          <View style={[styles.tableRow, styles.tableHeader]}><Text style={styles.china}>国服 / LXNS</Text><Text style={styles.japan}>日服 / 水鱼</Text></View>
-          {VERSION_NAME_MAPPINGS.map((item) => <View key={item.versionId} style={styles.tableRow}>
-            <Text style={styles.china}>{item.china}</Text><Text style={styles.japan}>{item.japan}</Text>
-          </View>)}
+          <View style={[styles.tableRow, styles.tableHeader]}>
+            <Text style={styles.chinaHeader}>国服</Text>
+            <Text style={styles.japanHeader}>日服</Text>
+          </View>
+          {VERSION_NAME_MAPPINGS.map((item) => (
+            <View key={item.versionId} style={styles.tableRow}>
+              <View style={styles.chinaCell}>
+                <VersionLogo
+                  accessibilityLabel={`${item.china} 国服 Logo`}
+                  source={versionLogoSource(item.versionId, 'china')}
+                />
+                <Text style={styles.name}>{item.china}</Text>
+              </View>
+              <View style={styles.japanCell}>
+                <VersionLogo
+                  accessibilityLabel={`${item.japan} 日服 Logo`}
+                  source={versionLogoSource(item.versionId, 'japan')}
+                />
+                <Text style={styles.name}>{item.japan}</Text>
+              </View>
+            </View>
+          ))}
         </Card>
         <Text style={styles.heading}>各版本游玩总结</Text>
         {summaries.map(({ version, stats }) => <StatsCard key={version.id} title={version.title} value={stats} />)}
@@ -57,12 +77,25 @@ function StatsCard({ title, value }: { title: string; value: VersionStats }) {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F8FA' }, content: { padding: 16, gap: 10 },
+  page: { flex: 1, backgroundColor: '#F7F8FA' },
+  content: { padding: 16, gap: 10 },
   heading: { color: '#111827', fontSize: 17, fontWeight: '700', marginTop: 8 },
-  table: { padding: 0, overflow: 'hidden' }, tableHeader: { backgroundColor: '#EEF2F7' },
-  tableRow: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D1D5DB', paddingHorizontal: 12, paddingVertical: 9, gap: 10 },
-  china: { width: '38%', color: '#374151', fontSize: 12, fontWeight: '600' },
-  japan: { flex: 1, color: '#374151', fontSize: 12 }, stats: { padding: 14 },
+  table: { padding: 0, overflow: 'hidden' },
+  tableHeader: { backgroundColor: '#EEF2F7', alignItems: 'center' },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#D1D5DB',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  chinaHeader: { width: '38%', color: '#374151', fontSize: 12, fontWeight: '700' },
+  japanHeader: { flex: 1, color: '#374151', fontSize: 12, fontWeight: '700' },
+  chinaCell: { width: '38%', gap: 6 },
+  japanCell: { flex: 1, gap: 6 },
+  name: { color: '#374151', fontSize: 12, fontWeight: '600' },
+  stats: { padding: 14 },
   title: { color: '#111827', fontSize: 16, fontWeight: '700', marginBottom: 7 },
   line: { color: '#4B5563', fontSize: 12, paddingVertical: 2 },
 });

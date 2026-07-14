@@ -44,8 +44,14 @@ describe('M2 tool screens', () => {
     expect((await render(<PlatesToolScreen />)).getAllByText('真極').length).toBeGreaterThan(0);
     const versions = await render(<VersionsToolScreen />);
     expect(versions.getByText('版本名称对照')).toBeTruthy();
+    expect(versions.getByText('国服')).toBeTruthy();
+    expect(versions.getByText('日服')).toBeTruthy();
+    expect(versions.queryByText(/LXNS|水鱼/)).toBeNull();
+    expect(versions.getByLabelText('舞萌DX 2026 国服 Logo')).toBeTruthy();
+    expect(versions.getByLabelText('maimai でらっくす PRiSM PLUS 日服 Logo')).toBeTruthy();
     expect(versions.getByText('各版本游玩总结')).toBeTruthy();
     expect(versions.getByText('maimai でらっくす PRiSM PLUS')).toBeTruthy();
+    expect(versions.getByText('舞萌DX 2026')).toBeTruthy();
   });
   it('does not read plates before the query has data', async () => {
     const ready = mockPlateQuery;
