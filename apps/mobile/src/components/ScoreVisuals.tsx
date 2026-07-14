@@ -26,6 +26,7 @@ const RAINBOW_BLUR: BlurSpec = { bg: 'rgba(255,179,186,0.28)', border: 'rgba(255
 const GOLD_BLUR: BlurSpec = { bg: 'rgba(240,220,170,0.28)', border: 'rgba(212,180,90,0.55)', text: '#dbb860' };
 const GREEN_BLUR: BlurSpec = { bg: 'rgba(180,235,200,0.28)', border: 'rgba(120,210,155,0.55)', text: '#7ad4a0' };
 const BLUE_BLUR: BlurSpec = { bg: 'rgba(180,220,245,0.28)', border: 'rgba(120,180,220,0.55)', text: '#7ab8dc' };
+const NEUTRAL_BLUR: BlurSpec = { bg: 'rgba(156,163,175,0.28)', border: 'rgba(156,163,175,0.55)', text: '#4B5563' };
 
 const SHIMMER: GradientColors = ['rgba(255,255,255,0)', 'rgba(255,255,255,0.10)', 'rgba(255,255,255,0)'];
 
@@ -48,7 +49,7 @@ export interface DifficultyVisual {
 }
 
 export const DIFFICULTY_VISUAL: Record<Difficulty, DifficultyVisual> = {
-  remaster: { label: 'Re:MASTER', color: '#A65DB9', tint: '#FFF0F6', badgeBackground: '#FFFFFF', badgeText: '#8B4FA8', badgeBorder: '#CFA7DB' },
+  remaster: { label: 'Re:MASTER', color: '#A65DB9', tint: '#F3E8FE', badgeBackground: '#FFFFFF', badgeText: '#8B4FA8', badgeBorder: '#CFA7DB' },
   master: { label: 'MASTER', color: '#7137C8', tint: '#E9DDFF', badgeBackground: '#7137C8', badgeText: '#FFFFFF', badgeBorder: '#7137C8' },
   expert: { label: 'EXPERT', color: '#D84B68', tint: '#FFF0F3', badgeBackground: '#D84B68', badgeText: '#FFFFFF', badgeBorder: '#D84B68' },
   advanced: { label: 'ADVANCED', color: '#E39124', tint: '#FFF6E8', badgeBackground: '#E39124', badgeText: '#FFFFFF', badgeBorder: '#E39124' },
@@ -126,9 +127,7 @@ function RateBadge({ value }: { value: string }) {
 }
 
 function NearMissBadge() {
-  return <View accessibilityLabel="寸" style={[styles.statusBadge, styles.nearMissBadge]}>
-    <Text style={[styles.statusText, styles.nearMissText]}>寸</Text>
-  </View>;
+  return <BlurBadge label="寸" spec={NEUTRAL_BLUR} testID="near-miss-badge" />;
 }
 
 function StatusBadge({ kind, value }: { kind: 'fc' | 'fs'; value: string }) {
@@ -146,7 +145,7 @@ function BlurBadge({ label, spec, flowing = false, testID }: {
   return <View testID={testID} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
     style={[styles.statusBadge, { borderWidth: 1, borderColor: spec.border }]}>
     <BlurView intensity={18} tint="light" style={StyleSheet.absoluteFill} />
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: spec.bg, borderRadius: 9 }]} />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: spec.bg, borderRadius: 8 }]} />
     {flowing ? <Animated.View pointerEvents="none"
       style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
       <LinearGradient colors={SHIMMER} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
@@ -201,5 +200,4 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 5, overflow: 'hidden' },
   statusText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.45 },
   normalBadge: { backgroundColor: '#E5E7EB' }, normalText: { color: '#374151' },
-  nearMissBadge: { backgroundColor: '#36A269' }, nearMissText: { color: '#FFFFFF' },
 });
