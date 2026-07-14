@@ -184,8 +184,13 @@ function AutoScrollText({ text, textStyle, style, contentContainerStyle, scrollE
     return () => clearInterval(interval);
   }, [shouldAutoScroll, dragging, contentWidth, containerWidth]);
 
+  if (scrollEnabled === false) {
+    return <View style={[style, contentContainerStyle]}>
+      <Text numberOfLines={1} style={textStyle}>{text}</Text>
+    </View>;
+  }
+
   return <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}
-    scrollEnabled={scrollEnabled !== false}
     style={style}
     contentContainerStyle={contentContainerStyle}
     onContentSizeChange={(w) => setContentWidth(w)}
