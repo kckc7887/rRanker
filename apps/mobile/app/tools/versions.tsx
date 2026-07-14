@@ -27,7 +27,7 @@ export default function VersionsToolScreen() {
 
   return <View style={styles.page}><Stack.Screen options={{ title: '版本对照与总结' }} />
     <QueryStateView<CatalogSnapshot> isLoading={catalog.isLoading} isError={catalog.isError}
-      isEmpty={false} isStale={!!catalog.data?.source?.isStale || !!scores.data?.source?.isStale}
+      isEmpty={false}
       error={catalog.error} onRetry={() => { void catalog.refetch(); void scores.refetch(); }} data={catalog.data}
       renderData={(data) => <ScrollView contentContainerStyle={styles.content}>
         <SourceStatus items={[
