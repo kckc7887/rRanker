@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { BlurView } from 'expo-blur';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
@@ -9,28 +10,33 @@ import {
 
 type GradientColors = readonly [string, string, ...string[]];
 
-const RAINBOW: GradientColors = ['#ffb3ba', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff', '#d4baff', '#ffb3f0'];
+const RAINBOW: GradientColors = ['#ff8a96', '#ffc888', '#f0e470', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade'];
 const FLOWING_RAINBOW: GradientColors = [
-  '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff', '#d4baff', '#ffb3f0',
-  '#ffb3ba', '#ffdfba', '#ffffba', '#baffc9', '#bae1ff', '#d4baff', '#ffb3f0', '#ffb3ba',
-];
-const GOLD: GradientColors = ['#ffe69a', '#f5d278', '#fff4c8'];
-const FLOWING_GOLD: GradientColors = [
-  '#ffe69a', '#f5d278', '#fff4c8', '#ffe69a', '#f5d278', '#fff4c8', '#ffe69a',
-];
-const GREEN: GradientColors = ['#d4f0dc', '#b0e8c4', '#e8f8ec'];
-const FLOWING_GREEN: GradientColors = [
-  '#d4f0dc', '#b0e8c4', '#e8f8ec', '#d4f0dc', '#b0e8c4', '#e8f8ec', '#d4f0dc',
-];
-const BLUE: GradientColors = ['#d4e4f8', '#b0d0ec', '#e8f0fc'];
-const FLOWING_BLUE: GradientColors = [
-  '#d4e4f8', '#b0d0ec', '#e8f0fc', '#d4e4f8', '#b0d0ec', '#e8f0fc', '#d4e4f8',
+  '#ff8a96', '#ffc888', '#f0e470', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade',
+  '#ff8a96', '#ffc888', '#f0e470', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade', '#ff8a96',
 ];
 
-const RAINBOW_TEXT = '#3a2030';
-const GOLD_TEXT = '#4a3000';
-const GREEN_TEXT = '#15502a';
-const BLUE_TEXT = '#153c60';
+interface BlurSpec {
+  bg: string;
+  border: string;
+  text: string;
+}
+
+const RAINBOW_BLUR: BlurSpec = { bg: 'rgba(255,179,186,0.28)', border: 'rgba(255,160,170,0.55)', text: '#f08a96' };
+const GOLD_BLUR: BlurSpec = { bg: 'rgba(240,220,170,0.28)', border: 'rgba(212,180,90,0.55)', text: '#dbb860' };
+const GREEN_BLUR: BlurSpec = { bg: 'rgba(180,235,200,0.28)', border: 'rgba(120,210,155,0.55)', text: '#7ad4a0' };
+const BLUE_BLUR: BlurSpec = { bg: 'rgba(180,220,245,0.28)', border: 'rgba(120,180,220,0.55)', text: '#7ab8dc' };
+
+const SHIMMER: GradientColors = ['rgba(255,255,255,0)', 'rgba(255,255,255,0.10)', 'rgba(255,255,255,0)'];
+
+function blurSpec(color: 'rainbow' | 'gold' | 'green' | 'blue'): BlurSpec {
+  switch (color) {
+    case 'rainbow': return RAINBOW_BLUR;
+    case 'gold': return GOLD_BLUR;
+    case 'green': return GREEN_BLUR;
+    case 'blue': return BLUE_BLUR;
+  }
+}
 
 export interface DifficultyVisual {
   label: string;
@@ -111,10 +117,10 @@ function GradientAchievement({ text, flowing = false, compact = false }: {
 function RateBadge({ value }: { value: string }) {
   const label = scoreRateLabel(value);
   switch (scoreRateEffect(value)) {
-    case 'flowing-rainbow': return <GradientBadge label={label} colors={FLOWING_RAINBOW} flowing testID={`flowing-rate-${label}`} textColor={RAINBOW_TEXT} />;
-    case 'rainbow': return <GradientBadge label={label} colors={RAINBOW} testID={`rainbow-rate-${label}`} textColor={RAINBOW_TEXT} />;
-    case 'flowing-gold': return <GradientBadge label={label} colors={FLOWING_GOLD} flowing testID={`flowing-rate-${label}`} textColor={GOLD_TEXT} />;
-    case 'gold': return <GradientBadge label={label} colors={GOLD} testID={`rate-${label}`} textColor={GOLD_TEXT} />;
+    case 'flowing-rainbow': return <BlurBadge label={label} spec={RAINBOW_BLUR} flowing testID={`flowing-rate-${label}`} />;
+    case 'rainbow': return <BlurBadge label={label} spec={RAINBOW_BLUR} testID={`rainbow-rate-${label}`} />;
+    case 'flowing-gold': return <BlurBadge label={label} spec={GOLD_BLUR} flowing testID={`flowing-rate-${label}`} />;
+    case 'gold': return <BlurBadge label={label} spec={GOLD_BLUR} testID={`rate-${label}`} />;
     default: return <View style={[styles.statusBadge, styles.normalBadge]}><Text style={[styles.statusText, styles.normalText]}>{label}</Text></View>;
   }
 }
@@ -127,25 +133,25 @@ function NearMissBadge() {
 
 function StatusBadge({ kind, value }: { kind: 'fc' | 'fs'; value: string }) {
   const spec = getStatusSpec(kind, value);
-  return <GradientBadge label={spec.label} colors={spec.colors} flowing={spec.flowing}
-    testID={spec.flowing ? `flowing-status-${spec.label}` : `status-${spec.label}`} textColor={spec.textColor} />;
+  return <BlurBadge label={spec.label} spec={blurSpec(spec.color)} flowing={spec.flowing}
+    testID={spec.flowing ? `flowing-status-${spec.label}` : `status-${spec.label}`} />;
 }
 
-function GradientBadge({ label, colors, flowing = false, testID, textColor }: {
-  label: string; colors: GradientColors; flowing?: boolean; testID: string; textColor: string;
+function BlurBadge({ label, spec, flowing = false, testID }: {
+  label: string; spec: BlurSpec; flowing?: boolean; testID: string;
 }) {
   const [width, setWidth] = useState(52);
-  const progress = useFlowingProgress(flowing, 1250);
+  const progress = useFlowingProgress(flowing, 1400);
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
   return <View testID={testID} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-    style={[styles.statusBadge, styles.gradientBadge]}>
+    style={[styles.statusBadge, { borderWidth: 1, borderColor: spec.border }]}>
+    <BlurView intensity={18} tint="light" style={StyleSheet.absoluteFill} />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: spec.bg, borderRadius: 9 }]} />
     {flowing ? <Animated.View pointerEvents="none"
       style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
-      <LinearGradient colors={colors} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
-    </Animated.View> : <LinearGradient pointerEvents="none" colors={colors}
-      start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />}
-    <View style={styles.glowHighlight} />
-    <Text style={[styles.statusText, { color: textColor }]}>{label}</Text>
+      <LinearGradient colors={SHIMMER} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
+    </Animated.View> : null}
+    <Text style={[styles.statusText, { color: spec.text }]}>{label}</Text>
   </View>;
 }
 
@@ -164,21 +170,21 @@ function useFlowingProgress(enabled: boolean, duration: number): Animated.Value 
 }
 
 function getStatusSpec(kind: 'fc' | 'fs', rawValue: string): {
-  label: string; flowing: boolean; colors: GradientColors; textColor: string;
+  label: string; flowing: boolean; color: 'rainbow' | 'gold' | 'green' | 'blue';
 } {
   const value = rawValue.toLowerCase();
   if (kind === 'fc') {
-    if (value === 'fc') return { label: 'FC', flowing: false, colors: GREEN, textColor: GREEN_TEXT };
-    if (value === 'fcp') return { label: 'FC+', flowing: true, colors: FLOWING_GREEN, textColor: GREEN_TEXT };
-    if (value === 'ap') return { label: 'AP', flowing: false, colors: GOLD, textColor: GOLD_TEXT };
-    if (value === 'app') return { label: 'AP+', flowing: true, colors: FLOWING_GOLD, textColor: GOLD_TEXT };
+    if (value === 'fc') return { label: 'FC', flowing: false, color: 'green' };
+    if (value === 'fcp') return { label: 'FC+', flowing: true, color: 'green' };
+    if (value === 'ap') return { label: 'AP', flowing: false, color: 'gold' };
+    if (value === 'app') return { label: 'AP+', flowing: true, color: 'gold' };
   } else {
-    if (value === 'sync') return { label: 'SYNC', flowing: false, colors: BLUE, textColor: BLUE_TEXT };
-    if (value === 'fs' || value === 'fsp') return { label: value === 'fsp' ? 'FS+' : 'FS', flowing: true, colors: FLOWING_BLUE, textColor: BLUE_TEXT };
-    if (value === 'fsd') return { label: 'FDX', flowing: false, colors: GOLD, textColor: GOLD_TEXT };
-    if (value === 'fsdp') return { label: 'FDX+', flowing: true, colors: FLOWING_GOLD, textColor: GOLD_TEXT };
+    if (value === 'sync') return { label: 'SYNC', flowing: false, color: 'blue' };
+    if (value === 'fs' || value === 'fsp') return { label: value === 'fsp' ? 'FS+' : 'FS', flowing: true, color: 'blue' };
+    if (value === 'fsd') return { label: 'FDX', flowing: false, color: 'gold' };
+    if (value === 'fsdp') return { label: 'FDX+', flowing: true, color: 'gold' };
   }
-  return { label: rawValue.toUpperCase(), flowing: false, colors: ['#E5E7EB', '#E5E7EB'], textColor: '#374151' };
+  return { label: rawValue.toUpperCase(), flowing: false, color: 'gold' };
 }
 
 const styles = StyleSheet.create({
@@ -194,8 +200,6 @@ const styles = StyleSheet.create({
   gradientFill: { ...StyleSheet.absoluteFillObject }, flowTrack: { position: 'absolute', top: 0, bottom: 0, left: 0 },
   statusBadge: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 5, overflow: 'hidden' },
   statusText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.45 },
-  gradientBadge: { backgroundColor: '#FFFFFF' },
-  glowHighlight: { position: 'absolute', top: 0, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.4)' },
   normalBadge: { backgroundColor: '#E5E7EB' }, normalText: { color: '#374151' },
   nearMissBadge: { backgroundColor: '#36A269' }, nearMissText: { color: '#FFFFFF' },
 });
