@@ -55,7 +55,37 @@
 - 国服/日服名称对照由 LXNS `versions` 与水鱼 `basic_info.from` 的发布曲目交叉核验；当前 `25500 / 舞萌DX 2026` 对应 `maimai でらっくす PRiSM PLUS`。
 - 歌曲区域读取 LXNS `Song.map`；该字段可能完全缺失，且官方未定义枚举。本地按可选开放字符串接收，缺失、`null` 或空白时不显示，不硬编码区域列表。
 - 曲绘地址为 `https://assets2.lxns.net/maimai/jacket/{song_id}.png`，只对可见列表项加载并使用磁盘缓存；不批量预取，正式发布前需完成素材许可审查。
-- LXNS 玩家 API、OAuth、成绩写入和上传仍未接入。
+- 舞萌玩家成绩也可经由下方「LXNS OAuth 个人 API」绑定；公共曲库职责不变。成绩上传（`write_player`）本轮未接入。
+
+## LXNS OAuth / 个人 API（只读绑定）
+
+基础：`https://maimai.lxns.net`
+
+公开配置（可进仓库）：`client_id`、`redirect_uri=urn:ietf:wg:oauth:2.0:oob`、scope=`read_user_profile read_player write_player`。
+**禁止**把 `client_secret` 写入 App 或仓库；移动端使用 PKCE。
+
+| 端点 | 方法 | Auth | 说明 |
+|------|------|------|------|
+| `/oauth/authorize` | GET | 无 | 用户授权；附 `code_challenge` / `S256`；OOB 展示授权码 |
+| `/api/v0/oauth/token` | POST | 无 | `authorization_code`（需 `code_verifier`）或 `refresh_token`；顶层返回 token |
+| `/api/v0/user/maimai/player` | GET | `Authorization: Bearer` | 当前用户玩家信息 |
+| `/api/v0/user/maimai/player/scores` | GET | `Authorization: Bearer` | 当前用户全部成绩 `Score[]` |
+| `/api/v0/user/maimai/player/scores` | POST | Bearer | 上传成绩（scope `write_player`；App 暂未调用） |
+
+OAuth 约束（官方文档）：
+
+- Access Token 有效期 15 分钟；Refresh Token 30 天；刷新会轮换新 refresh，旧 refresh 失效。
+- Token 成功响应字段在**顶层**；旧 `data.*` 包装已废弃，解析时顶层优先。
+- Token 错误响应为 `{ error, error_description }`，无 `success/code/data`。
+- 用户 API 成功信封：`{ success, code, message, data }`。
+
+成绩映射：
+
+- `type`：`standard`→`SD`，`dx`/`utage`→`DX`。
+- `dx_rating` 向下取整为单曲 Rating；定数由 LXNS 公共曲库 enrich。
+- `fc` / `fs` / `rate` / `level_index` 与文档枚举一致。
+
+> last_verified: 2026-07-15 — 按官方 OAuth / 舞萌 API 文档落地 PKCE+OOB 与 Zod 契约；自动测试覆盖 PKCE URL、Score 映射、会话路由与按账号快照隔离。真机粘贴授权码端到端复验待用户在 Expo Go 完成。
 
 ## 华立公众号爬虫
 

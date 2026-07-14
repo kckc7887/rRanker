@@ -11,6 +11,7 @@ export class ScoreService {
   constructor(
     private readonly scoreProvider: ScoreProvider,
     private readonly catalogProvider: CatalogProvider,
+    private readonly accountId: string,
     private readonly snapshotRepository?: SnapshotRepository,
     private readonly catalogRepository?: CatalogRepository,
   ) {}
@@ -31,10 +32,10 @@ export class ScoreService {
         source: player.source,
         catalogSource: catalog.source,
       };
-      await this.snapshotRepository?.save(snapshot);
+      await this.snapshotRepository?.save(this.accountId, snapshot);
       return snapshot;
     } catch (error) {
-      const cached = await this.snapshotRepository?.getLatest();
+      const cached = await this.snapshotRepository?.getLatest(this.accountId);
       if (cached) {
         const needsLogin = error instanceof ProviderError && (error.code === 'authentication' || error.code === 'permission');
         return {

@@ -13,6 +13,10 @@ import { SymbolView } from 'expo-symbols';
 import { GamePickerSheet } from '@/components/GamePickerSheet';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import {
+  LOCAL_MAIMAI_ACCOUNT_ID,
+  type BoundAccount,
+} from '@/domain/bound-account';
+import {
   findGame,
   findProvider,
   type GameId,
@@ -20,7 +24,6 @@ import {
   type ProviderOption,
 } from '@/domain/game-bind-options';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import type { ProviderSession } from '@/providers/contracts';
 import { useGamePickerUi } from '@/state/game-picker-ui';
@@ -32,18 +35,26 @@ import { useSession } from '@/state/session-store';
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
 
-function sessionModeLabel(session: ProviderSession): string {
-  if (session.mode === 'jwt') return 'JWT 登录';
-  if (session.mode === 'import-token') return 'Import-Token';
+function sessionModeLabel(session: ProviderSession | undefined): string {
+  if (!session) return '无凭据';
+  if (session.mode === 'jwt') return '仅登录（不可上传）';
+  if (session.mode === 'import-token') return '已可上传';
+  if (session.mode === 'lxns-oauth') return 'OAuth（可同步）';
   return 'Cookie（当前会话）';
 }
 
+function isBoundRemoteAccount(account: BoundAccount): boolean {
+  return account.gameId === 'maimai' && account.id !== LOCAL_MAIMAI_ACCOUNT_ID;
+}
+
 export default function GameAccountsScreen() {
-  const session = useSession((s) => s.session);
-  const clearSession = useSession((s) => s.clearSession);
+  const boundAccounts = useSession((s) => s.boundAccounts);
+  const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
+  const activeAccountId = useSession((s) => s.activeAccountId);
+  const selectBoundAccount = useSession((s) => s.selectBoundAccount);
+  const removeBoundAccount = useSession((s) => s.removeBoundAccount);
   const restoreError = useSession((s) => s.restoreError);
   const library = useUserLibrary();
-  const snapshot = useScoreSnapshot();
   const tabBottomInset = useNativeTabBottomInset();
   const expandedGameId = useGamePickerUi((s) => s.expandedGameId);
   const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
@@ -55,33 +66,39 @@ export default function GameAccountsScreen() {
   const [loginGameId, setLoginGameId] = useState<GameId | null>(null);
   const [reopenPickerAfterLogin, setReopenPickerAfterLogin] = useState(false);
 
+  const remoteAccounts = boundAccounts.filter(isBoundRemoteAccount);
+
   const clearRemoteCaches = () => {
     for (const key of ['score-snapshot', 'game-data', 'songs', 'detailed-catalog', 'plates']) {
       queryClient.removeQueries({ queryKey: [key] });
     }
   };
 
-  const unbindAccount = async (includePersonalData: boolean) => {
+  const unbindAccount = async (accountId: string, includePersonalData: boolean) => {
     setBusy(true);
     const failures: string[] = [];
     const attempt = async (label: string, action: () => Promise<unknown>) => {
       try { await action(); } catch { failures.push(label); }
     };
-    await attempt('凭据', () => sessions.clear());
-    await attempt('缓存', () => snapshots.clear());
+    await attempt('凭据', () => sessions.removeAccount(accountId));
+    await attempt('缓存', () => snapshots.clear(accountId));
     if (includePersonalData) await attempt('个人数据', () => library.clearUserData());
-    clearSession();
+    removeBoundAccount(accountId);
     clearRemoteCaches();
     if (failures.length > 0) setMessage(`部分清除失败（${failures.join('、')}），其余项目已清除，请重试`);
     else setMessage(includePersonalData ? '已解除绑定并清除个人数据' : '已解除绑定；个人数据已保留');
     setBusy(false);
   };
 
-  const promptUnbind = () => Alert.alert('解除绑定', '将清除本机水鱼凭据和成绩缓存。是否同时删除收藏、练习清单和本地标签？', [
-    { text: '取消', style: 'cancel' },
-    { text: '仅凭据与缓存', onPress: () => void unbindAccount(false) },
-    { text: '同时删除个人数据', style: 'destructive', onPress: () => void unbindAccount(true) },
-  ]);
+  const promptUnbind = (account: BoundAccount) => Alert.alert(
+    '解除绑定',
+    `将清除「${account.displayName}」的本机凭据和成绩缓存。是否同时删除收藏、练习清单和本地标签？`,
+    [
+      { text: '取消', style: 'cancel' },
+      { text: '仅凭据与缓存', onPress: () => void unbindAccount(account.id, false) },
+      { text: '同时删除个人数据', style: 'destructive', onPress: () => void unbindAccount(account.id, true) },
+    ],
+  );
 
   const openPicker = () => {
     setExpandedGameId('maimai');
@@ -120,15 +137,14 @@ export default function GameAccountsScreen() {
     setPickerVisible(false);
   };
 
+  const onSelectAccount = (account: BoundAccount) => {
+    selectBoundAccount(account.id);
+    void sessions.setActiveAccountId(account.id);
+  };
+
   const loginProvider = loginProviderId ? findProvider(loginProviderId) ?? null : null;
   const loginGame = loginGameId ? findGame(loginGameId) : null;
   const loginVisible = loginProviderId !== null && !pickerVisible;
-
-  const playerName = session
-    ? (snapshot.data?.source.kind === 'diving-fish' || snapshot.data?.source.kind === 'cache'
-      ? snapshot.data.player.displayName
-      : '水鱼账号')
-    : null;
 
   return (
     <View style={styles.page}>
@@ -138,21 +154,44 @@ export default function GameAccountsScreen() {
       >
         {restoreError ? <Text style={styles.error}>{restoreError}</Text> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
-        {session ? (
-          <View style={styles.card}>
-            <Text style={styles.game}>舞萌 DX</Text>
-            <Text style={styles.name}>{playerName}</Text>
-            <Text style={styles.meta}>数据源：水鱼查分器</Text>
-            <Text style={styles.meta}>登录方式：{sessionModeLabel(session)}</Text>
-            <Text style={styles.state}>已绑定</Text>
-            <Pressable accessibilityRole="button" disabled={busy} onPress={promptUnbind}>
-              <Text style={styles.unbind}>解除绑定</Text>
-            </Pressable>
-          </View>
+        {remoteAccounts.length > 0 ? (
+          remoteAccounts.map((account) => {
+            const accountSession = sessionsByAccountId[account.id];
+            const isActive = account.id === activeAccountId;
+            return (
+              <View key={account.id} style={styles.card}>
+                <Text style={styles.game}>舞萌 DX · {account.providerTitle}</Text>
+                <Text style={styles.name}>{account.displayName}</Text>
+                <Text style={styles.meta}>
+                  {account.scoreLabel} {account.scoreDisplay || '—'}
+                </Text>
+                <Text style={styles.meta}>登录方式：{sessionModeLabel(accountSession)}</Text>
+                <Text style={styles.state}>{isActive ? '当前使用中' : '已绑定'}</Text>
+                {!isActive ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`切换到 ${account.displayName}`}
+                    disabled={busy}
+                    onPress={() => onSelectAccount(account)}
+                  >
+                    <Text style={styles.switch}>切换到此账号</Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`解除绑定 ${account.displayName}`}
+                  disabled={busy}
+                  onPress={() => promptUnbind(account)}
+                >
+                  <Text style={styles.unbind}>解除绑定</Text>
+                </Pressable>
+              </View>
+            );
+          })
         ) : (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>暂无已绑定账号</Text>
-            <Text style={styles.emptyBody}>点击右下角添加，展开游戏后选择查分器绑定。</Text>
+            <Text style={styles.emptyBody}>点击右下角添加，展开游戏后选择查分器绑定。同一查分器可绑定多个账号。</Text>
           </View>
         )}
       </ScrollView>
@@ -202,6 +241,7 @@ const styles = StyleSheet.create({
   name: { color: '#111827', fontSize: 20, fontWeight: '700' },
   meta: { color: '#4B5563', fontSize: 14 },
   state: { color: '#246BFD', fontWeight: '600', marginTop: 4 },
+  switch: { color: '#246BFD', textAlign: 'center', paddingTop: 8, fontWeight: '600' },
   unbind: { color: '#B42318', textAlign: 'center', paddingTop: 8 },
   emptyCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 24, gap: 8 },
   emptyTitle: { color: '#111827', fontSize: 17, fontWeight: '700' },

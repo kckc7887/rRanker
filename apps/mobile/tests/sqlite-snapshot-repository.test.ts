@@ -20,17 +20,27 @@ describe('SqliteSnapshotRepository schema migration', () => {
     sqlite.db.runAsync.mockClear();
   });
 
-  it('invalidates a schema v1 score snapshot without touching credentials', async () => {
+  it('invalidates a schema v1 score snapshot for the account', async () => {
     sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1, payload: '{}' });
     const repository = new SqliteSnapshotRepository();
-    await expect(repository.getLatest()).resolves.toBeNull();
-    expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM score_snapshots WHERE id = ?', 1);
+    await expect(repository.getLatest('maimai:lxns:1')).resolves.toBeNull();
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'DELETE FROM account_score_snapshots WHERE account_id = ?',
+      'maimai:lxns:1',
+    );
   });
 
-  it('clears score and catalog rows together', async () => {
+  it('clears one account or all score and catalog rows', async () => {
     const repository = new SqliteSnapshotRepository();
+    await repository.clear('maimai:lxns:1');
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'DELETE FROM account_score_snapshots WHERE account_id = ?',
+      'maimai:lxns:1',
+    );
+    sqlite.db.runAsync.mockClear();
     await repository.clear();
     expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM score_snapshots WHERE id = ?', 1);
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM account_score_snapshots');
     expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM catalog_snapshots WHERE id = ?', 1);
   });
 });

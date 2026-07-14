@@ -2,15 +2,24 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { jest } from '@jest/globals';
 import GameAccountsScreen from '../app/(tabs)/settings/games';
+import { createMaimaiBoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 
-const mockClearSessions = jest.fn(async () => undefined);
+const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
+const mockSetActiveAccountId = jest.fn(async (_accountId?: string) => undefined);
 const mockClearSnapshots = jest.fn(async () => undefined);
 const mockClearUserData = jest.fn(async () => []);
-const mockClearSessionState = jest.fn();
+const mockRemoveBoundAccount = jest.fn();
+const mockSelectBoundAccount = jest.fn();
 const mockRemoveQueries = jest.fn();
 const mockClearOrder: string[] = [];
 const mockSession: ProviderSession = { mode: 'jwt', value: 'token', persistable: true };
+const mockAccount = createMaimaiBoundAccount({
+  providerId: 'diving-fish',
+  displayName: '测试水鱼',
+  rating: 15000,
+  playerId: 'u1',
+});
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -34,10 +43,13 @@ jest.mock('@/components/ProviderLoginSheet', () => ({
     );
   },
 }));
-jest.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn(() => ({ clear: async () => {
-  mockClearOrder.push('credentials');
-  return mockClearSessions();
-} })) }));
+jest.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn(() => ({
+  removeAccount: async (accountId: string) => {
+    mockClearOrder.push('credentials');
+    return mockRemoveAccount(accountId);
+  },
+  setActiveAccountId: async (accountId: string) => mockSetActiveAccountId(accountId),
+})) }));
 jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: jest.fn(() => ({ clear: async () => {
   mockClearOrder.push('cache');
   return mockClearSnapshots();
@@ -47,11 +59,12 @@ jest.mock('@/state/query-client', () => ({ queryClient: {
 } }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
   session: mockSession,
-  setSession: jest.fn(),
-  clearSession: mockClearSessionState,
+  sessionsByAccountId: { [mockAccount.id]: mockSession },
+  boundAccounts: [mockAccount],
+  activeAccountId: mockAccount.id,
+  selectBoundAccount: mockSelectBoundAccount,
+  removeBoundAccount: mockRemoveBoundAccount,
   restoreError: null,
-  boundAccounts: [],
-  activeAccountId: 'maimai:x',
   activeGameId: 'maimai',
   activeProviderId: 'diving-fish',
 }) }));
@@ -72,12 +85,6 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
     return mockClearUserData();
   },
 }) }));
-jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => ({
-  data: {
-    player: { id: 'u1', displayName: '测试水鱼', rating: 0, additionalRating: 0, source: { kind: 'diving-fish', label: '水鱼查分器', updatedAt: '', isStale: false } },
-    source: { kind: 'diving-fish', label: '水鱼查分器', updatedAt: '', isStale: false },
-  },
-}) }));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
 
 describe('M3A game account management', () => {
@@ -85,7 +92,7 @@ describe('M3A game account management', () => {
 
   it('expands an inline provider list and opens the login sheet', async () => {
     const screen = await render(<GameAccountsScreen />);
-    expect(screen.getByText('舞萌 DX')).toBeTruthy();
+    expect(screen.getByText('舞萌 DX · 水鱼查分器')).toBeTruthy();
     expect(screen.getByText('测试水鱼')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
@@ -93,7 +100,6 @@ describe('M3A game account management', () => {
     expect(screen.getByText('Phigros')).toBeTruthy();
     expect(screen.getByText('测试游戏')).toBeTruthy();
     expect(screen.getByText('空数据预览 · 在总览切换')).toBeTruthy();
-    // 舞萌默认展开，查分器以内嵌小列表出现
     expect(screen.getByText('查分器')).toBeTruthy();
     expect(screen.getByLabelText('水鱼查分器')).toBeTruthy();
     expect(screen.getByLabelText('落雪查分器')).toBeTruthy();
@@ -118,14 +124,16 @@ describe('M3A game account management', () => {
     await act(async () => preserveButtons[1].onPress?.());
     await waitFor(() => expect(mockClearSnapshots).toHaveBeenCalledTimes(1));
     expect(mockClearUserData).not.toHaveBeenCalled();
+    expect(mockRemoveAccount).toHaveBeenCalledWith(mockAccount.id);
+    expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id);
 
     await fireEvent.press(screen.getByText('解除绑定'));
     const removeButtons = alert.mock.calls[1][2]!;
     await act(async () => removeButtons[2].onPress?.());
     await waitFor(() => expect(mockClearUserData).toHaveBeenCalledTimes(1));
-    expect(mockClearSessions).toHaveBeenCalledTimes(2);
+    expect(mockRemoveAccount).toHaveBeenCalledTimes(2);
     expect(mockClearSnapshots).toHaveBeenCalledTimes(2);
-    expect(mockClearSessionState).toHaveBeenCalledTimes(2);
+    expect(mockRemoveBoundAccount).toHaveBeenCalledTimes(2);
     expect(mockClearOrder).toEqual(['credentials', 'cache', 'credentials', 'cache', 'personal']);
     expect(mockRemoveQueries).toHaveBeenCalledTimes(10);
     expect(mockRemoveQueries).toHaveBeenCalledWith({ queryKey: ['detailed-catalog'] });
@@ -142,7 +150,7 @@ describe('M3A game account management', () => {
 
     await waitFor(() => expect(screen.getByText('部分清除失败（缓存），其余项目已清除，请重试')).toBeTruthy());
     expect(mockClearUserData).toHaveBeenCalledTimes(1);
-    expect(mockClearSessionState).toHaveBeenCalledTimes(1);
+    expect(mockRemoveBoundAccount).toHaveBeenCalledTimes(1);
     expect(mockRemoveQueries).toHaveBeenCalledTimes(5);
     expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
     alert.mockRestore();

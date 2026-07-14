@@ -40,3 +40,67 @@ export function mapDivingFishRecord(input: unknown, verifiedVersion?: string): S
     rawRate: raw.rate,
   };
 }
+
+const LEVEL_INDEX_DIFFICULTY: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+
+export const LxnsEnvelopeSchema = z.object({
+  success: z.boolean(),
+  code: z.number().optional(),
+  message: z.string().nullable().optional(),
+  data: z.unknown().optional(),
+}).passthrough();
+
+export const LxnsPlayerSchema = z.object({
+  name: z.string(),
+  rating: z.number().int().nonnegative(),
+  friend_code: z.union([z.number(), z.string()]),
+}).passthrough();
+
+export const LxnsScoreSchema = z.object({
+  id: z.union([z.number(), z.string()]),
+  song_name: z.string().optional(),
+  level: z.string().optional(),
+  level_index: z.number().int().min(0),
+  achievements: z.number().finite().min(0),
+  fc: z.string().nullable().optional(),
+  fs: z.string().nullable().optional(),
+  dx_score: z.number().int().nonnegative().optional(),
+  dx_rating: z.number().finite().nonnegative().optional(),
+  rate: z.string().optional(),
+  type: z.string(),
+}).passthrough();
+
+function mapLxnsSongType(type: string): 'SD' | 'DX' {
+  const normalized = type.toLowerCase();
+  if (normalized === 'dx' || normalized === 'utage') return 'DX';
+  return 'SD';
+}
+
+export function mapLxnsScore(input: unknown): ScoreRecord {
+  const raw = LxnsScoreSchema.parse(input);
+  const difficulty = LEVEL_INDEX_DIFFICULTY[raw.level_index] ?? 'unknown';
+  const level = raw.level ?? String(raw.level_index);
+  const rating = raw.dx_rating !== undefined
+    ? Math.floor(raw.dx_rating)
+    : calculateChartRating(0, raw.achievements);
+  return {
+    songId: String(raw.id),
+    title: raw.song_name ?? `#${raw.id}`,
+    type: mapLxnsSongType(raw.type),
+    levelIndex: raw.level_index,
+    level,
+    difficulty,
+    difficultyConstant: 0,
+    achievements: raw.achievements,
+    dxScore: raw.dx_score ?? null,
+    rating,
+    fc: raw.fc ?? null,
+    fs: raw.fs ?? null,
+    rate: raw.rate ?? '',
+    version: 'unknown',
+    rawDifficulty: difficulty === 'unknown' ? level : undefined,
+    rawFc: raw.fc && !['fc', 'fcp', 'ap', 'app'].includes(raw.fc) ? raw.fc : undefined,
+    rawFs: raw.fs && !['sync', 'fs', 'fsp', 'fsd', 'fsdp'].includes(raw.fs) ? raw.fs : undefined,
+    rawRate: raw.rate,
+  };
+}

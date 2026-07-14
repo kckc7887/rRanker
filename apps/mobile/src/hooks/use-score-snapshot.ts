@@ -8,6 +8,7 @@ const repository = new SqliteSnapshotRepository();
 /** 仅舞萌成绩快照。其他游戏请用 useGameData，避免把空壳游戏接到舞萌流水线上。 */
 export function useScoreSnapshot() {
   const session = useSession((s) => s.session);
+  const activeAccountId = useSession((s) => s.activeAccountId);
   const activeGameId = useSession((s) => s.activeGameId);
   const activeProviderId = useSession((s) => s.activeProviderId);
   const scoreProvider = useSession((s) => s.scoreProvider);
@@ -16,10 +17,11 @@ export function useScoreSnapshot() {
   const persistScores = enabled && !!session;
   const query = useQuery({
     enabled,
-    queryKey: ['score-snapshot', activeGameId, activeProviderId, session?.mode ?? 'fixture'],
+    queryKey: ['score-snapshot', activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'fixture'],
     queryFn: () => new ScoreService(
       scoreProvider,
       catalogProvider,
+      activeAccountId,
       persistScores ? repository : undefined,
       persistScores ? repository : undefined,
     ).load(),

@@ -8,7 +8,7 @@ export async function validateScoreProvider(provider: ScoreProvider): Promise<Pl
 
 interface SessionActivationDependencies {
   createProvider: (session: ProviderSession) => ScoreProvider;
-  save: (session: ProviderSession) => Promise<void>;
+  save: (session: ProviderSession, player: Player) => Promise<void>;
   activate: (session: ProviderSession, player: Player) => void;
 }
 
@@ -18,7 +18,7 @@ export async function validateAndActivateSession(
 ): Promise<Player> {
   const provider = dependencies.createProvider(session);
   const player = await validateScoreProvider(provider);
-  await dependencies.save(session);
+  await dependencies.save(session, player);
   dependencies.activate(session, player);
   return player;
 }
