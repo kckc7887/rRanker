@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 5, overflow: 'hidden' },
   statusText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.45 },
   gradientBadge: { backgroundColor: '#FFFFFF' },
-  gradientFrost: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.35)' },
+  gradientFrost: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.55)' },
   goldBadge: { backgroundColor: '#E3B84B' }, goldText: { color: '#5B3D00' },
   normalBadge: { backgroundColor: '#E5E7EB' }, normalText: { color: '#374151' },
   nearMissBadge: { backgroundColor: '#36A269' }, nearMissText: { color: '#FFFFFF' },
