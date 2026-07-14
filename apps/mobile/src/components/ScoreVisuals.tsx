@@ -9,10 +9,10 @@ import {
 
 type GradientColors = readonly [string, string, ...string[]];
 
-const RAINBOW: GradientColors = ['#FF5263', '#FFAB2E', '#F4E044', '#42D17A', '#3CB8FF', '#6C70F4', '#E658D4'];
+const RAINBOW: GradientColors = ['#FF8A94', '#FFCA75', '#F7EB8E', '#7DDFA4', '#7CCCFF', '#9B9EF7', '#EE8ADE'];
 const FLOWING_RAINBOW: GradientColors = [
-  '#FF5263', '#FFAB2E', '#F4E044', '#42D17A', '#3CB8FF', '#6C70F4', '#E658D4',
-  '#FF5263', '#FFAB2E', '#F4E044', '#42D17A', '#3CB8FF', '#6C70F4', '#E658D4', '#FF5263',
+  '#FF8A94', '#FFCA75', '#F7EB8E', '#7DDFA4', '#7CCCFF', '#9B9EF7', '#EE8ADE',
+  '#FF8A94', '#FFCA75', '#F7EB8E', '#7DDFA4', '#7CCCFF', '#9B9EF7', '#EE8ADE', '#FF8A94',
 ];
 const FLOWING_GOLD: GradientColors = [
   '#FFE69A', '#E5A92D', '#FFF4C8', '#FFE69A', '#E5A92D', '#FFF4C8', '#FFE69A',
@@ -133,6 +133,7 @@ function GradientBadge({ label, colors, flowing = false, testID, textColor }: {
       <LinearGradient colors={colors} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
     </Animated.View> : <LinearGradient pointerEvents="none" colors={colors}
       start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />}
+    <View style={styles.gradientFrost} />
     <Text style={[styles.statusText, { color: textColor }]}>{label}</Text>
   </View>;
 }
@@ -183,6 +184,7 @@ const styles = StyleSheet.create({
   statusBadge: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 5, overflow: 'hidden' },
   statusText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.45 },
   gradientBadge: { backgroundColor: '#FFFFFF' },
+  gradientFrost: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.35)' },
   goldBadge: { backgroundColor: '#E3B84B' }, goldText: { color: '#5B3D00' },
   normalBadge: { backgroundColor: '#E5E7EB' }, normalText: { color: '#374151' },
   nearMissBadge: { backgroundColor: '#36A269' }, nearMissText: { color: '#FFFFFF' },
