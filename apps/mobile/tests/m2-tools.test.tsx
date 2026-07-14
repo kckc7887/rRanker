@@ -7,12 +7,16 @@ import VersionsToolScreen from '../app/tools/versions';
 import type { DataSource, PlateSnapshot } from '@/domain/models';
 
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: jest.fn() } }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockSource: DataSource = { kind: 'fixture', label: '测试来源', updatedAt: '2026-07-13T00:00:00.000Z', isStale: false };
 let mockPlateQuery: { data?: PlateSnapshot; isLoading: boolean; isError: boolean; error: unknown; refetch: ReturnType<typeof jest.fn> } = {
-  data: { plates: [{ id: 1, name: '测试牌子', requirements: [{ difficulties: [], rate: 's', songs: ['1'] }] }], source: mockSource },
+  data: { plates: [{ id: 6101, name: '真極', requirements: [{ difficulties: [], rate: 's', songs: ['1'] }] }], source: mockSource },
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 };
 jest.mock('@/hooks/use-plates', () => ({ usePlates: () => mockPlateQuery }));
+jest.mock('@/hooks/use-songs', () => ({ useSongs: () => ({ data: [], isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
+jest.mock('@/components/PlateImage', () => ({ PlateImage: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog, isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => { const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized'); return { data: { records: fixtures.fixtureRecords, source: fixtures.fixtureSource, best50: { b35: [], b15: [] } }, isLoading: false, isError: false, error: null, refetch: jest.fn() }; } }));
 
@@ -37,7 +41,7 @@ describe('M2 tool screens', () => {
     expect(screen.getAllByText(/总物量不能为零/).length).toBeGreaterThan(0);
   });
   it('renders local plate progress and version comparison', async () => {
-    expect((await render(<PlatesToolScreen />)).getAllByText('测试牌子').length).toBeGreaterThan(0);
+    expect((await render(<PlatesToolScreen />)).getAllByText('真極').length).toBeGreaterThan(0);
     const versions = await render(<VersionsToolScreen />);
     expect(versions.getByText('版本名称对照')).toBeTruthy();
     expect(versions.getByText('各版本游玩总结')).toBeTruthy();
