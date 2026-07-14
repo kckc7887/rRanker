@@ -69,7 +69,7 @@ jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }
 describe('M2 song query screens', () => {
   beforeEach(() => { mockSongRouteParams = { songId: '1' }; jest.clearAllMocks(); });
 
-  it('goes back from the immersive song detail chrome', async () => {
+  it('goes back from the song detail chrome button', async () => {
     const screen = await render(<SongDetailScreen />);
     await fireEvent.press(screen.getByLabelText('返回'));
     expect(mockBack).toHaveBeenCalled();

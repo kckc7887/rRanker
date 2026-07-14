@@ -4,7 +4,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, Platform } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import {
   GestureHandlerRootView,
   Pressable as GesturePressable,
@@ -79,14 +79,14 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
 }) {
   const insets = useSafeAreaInsets();
   return <View pointerEvents="box-none" style={[styles.headerChrome, { paddingTop: insets.top }]}>
-    <GesturePressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
+    <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
       onPress={() => router.back()}
       style={({ pressed }) => [
         styles.headerButton, Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
       ]}>
       <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
-    </GesturePressable>
-    {song && onToggleFavorite ? <GesturePressable accessibilityRole="button"
+    </Pressable>
+    {song && onToggleFavorite ? <Pressable accessibilityRole="button"
       accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
       disabled={favoriteDisabled} hitSlop={12}
       onPress={onToggleFavorite}
@@ -97,7 +97,7 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
         pressed && { opacity: 0.7 },
       ]}>
       <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
-    </GesturePressable> : <View style={styles.headerButton} />}
+    </Pressable> : <View style={styles.headerButton} />}
   </View>;
 }
 
