@@ -27,12 +27,12 @@ export default function VersionsToolScreen() {
 
   return <View style={styles.page}><Stack.Screen options={{ title: '版本对照与总结' }} />
     <QueryStateView<CatalogSnapshot> isLoading={catalog.isLoading} isError={catalog.isError}
-      isEmpty={false} isStale={!!catalog.data?.source.isStale || !!scores.data?.source.isStale}
+      isEmpty={false} isStale={!!catalog.data?.source?.isStale || !!scores.data?.source?.isStale}
       error={catalog.error} onRetry={() => { void catalog.refetch(); void scores.refetch(); }} data={catalog.data}
       renderData={(data) => <ScrollView contentContainerStyle={styles.content}>
         <SourceStatus items={[
           { key: 'catalog', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
-          { key: 'scores', label: scores.data?.source.label ?? '成绩不可用，仅展示曲库统计', updatedAt: scores.data?.source.updatedAt, state: !scores.data ? 'unavailable' : scores.data.source.isStale ? 'cache' : 'live' },
+          { key: 'scores', label: scores.data?.source?.label ?? '成绩不可用，仅展示曲库统计', updatedAt: scores.data?.source?.updatedAt, state: !scores.data ? 'unavailable' : scores.data.source?.isStale ? 'cache' : 'live' },
         ]} />
         <Text style={styles.heading}>版本名称对照</Text>
         <Card style={styles.table}>

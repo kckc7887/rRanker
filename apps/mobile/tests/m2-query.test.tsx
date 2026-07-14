@@ -13,6 +13,10 @@ const mockSetSongFavorite = jest.fn();
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('react-native-gesture-handler', () => {
+  const RN = require('react-native');
+  return { ScrollView: RN.ScrollView, GestureHandlerRootView: RN.View };
+});
 jest.mock('react-native-safe-area-context', () => ({
   ...(jest.requireActual('react-native-safe-area-context') as object),
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
@@ -105,7 +109,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('flowing-rate-SSS+')).toBeTruthy();
     expect(screen.getByTestId('rainbow-rate-SSS')).toBeTruthy();
     expect(screen.getByTestId('flowing-rate-SS+')).toBeTruthy();
-    expect(screen.getByLabelText('寸')).toBeTruthy();
+    expect(screen.getByTestId('near-miss-badge')).toBeTruthy();
     expect(screen.queryByText(/定数 13\.6/)).toBeNull();
     expect(screen.getByText('13.6')).toBeTruthy();
     expect(screen.getByText('谱师：DX主谱师')).toBeTruthy();

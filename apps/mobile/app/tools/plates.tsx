@@ -18,12 +18,12 @@ export default function PlatesToolScreen() {
   const viewData = plateSnapshot && plateItems.length ? { items: plateItems, source: plateSnapshot.source } : undefined;
   return <View style={styles.page}><Stack.Screen options={{ title: '牌子进度' }} /><QueryStateView<{ items: Plate[]; source: import('@/domain/models').DataSource }> isLoading={plates.isLoading || scores.isLoading}
     isError={plates.isError || scores.isError} isEmpty={!!plateSnapshot && plateItems.length === 0}
-    isStale={!!plateSnapshot?.source.isStale || !!scores.data?.source.isStale} error={plates.error ?? scores.error}
+    isStale={!!plateSnapshot?.source?.isStale || !!scores.data?.source?.isStale} error={plates.error ?? scores.error}
     onRetry={() => { void plates.refetch(); void scores.refetch(); }} data={viewData}
     renderData={({ items, source }) => <FlatList data={progress?.missingSongIds ?? []} keyExtractor={(item) => item} contentContainerStyle={styles.content}
       ListHeaderComponent={<><SourceStatus items={[
         { key: 'plates', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
-        { key: 'scores', label: scores.data?.source.label ?? '成绩不可用', updatedAt: scores.data?.source.updatedAt, state: !scores.data ? 'unavailable' : scores.data.source.isStale ? 'cache' : 'live' },
+        { key: 'scores', label: scores.data?.source?.label ?? '成绩不可用', updatedAt: scores.data?.source?.updatedAt, state: !scores.data ? 'unavailable' : scores.data.source?.isStale ? 'cache' : 'live' },
       ]} /><Text style={styles.heading}>选择有成绩要求的姓名框</Text><View style={styles.chips}>{items.map((item) => <Pressable key={item.id} onPress={() => setSelectedId(item.id)} style={[styles.chip, item.id === selected?.id && styles.active]}><Text style={item.id === selected?.id ? styles.activeText : styles.chipText}>{item.name}</Text></Pressable>)}</View>
       {selected && progress ? <Card><Text style={styles.title}>{selected.name}</Text><Text style={styles.progress}>{progress.completed} / {progress.total}（{progress.total ? (progress.completed / progress.total * 100).toFixed(1) : '0.0'}%）</Text>
         {Object.entries(progress.byDifficulty).map(([difficulty, item]) => <Text key={difficulty} style={styles.meta}>{difficulty === '-1' ? '任意难度' : `难度 ${Number(difficulty) + 1}`}：{item.completed}/{item.total}</Text>)}</Card> : null}
