@@ -24,4 +24,24 @@ export class FixtureCatalogProvider implements DetailedCatalogProvider {
       source: structuredClone(fixtureCatalog.source),
     };
   }
+  async getCollections() {
+    return {
+      items: [
+        {
+          id: 100, kind: 'icon' as const, name: '测试单曲头像', description: '仅 song 1',
+          requirements: [{ difficulties: [0, 1, 2, 3], songs: ['1'] }],
+        },
+        {
+          id: 1, kind: 'plate' as const, name: '测试牌子', description: '多曲',
+          requirements: [{ difficulties: [3], rate: 'sss', songs: ['1', '2'] }],
+        },
+        {
+          id: 200, kind: 'trophy' as const, name: '测试称号', description: '仅 song 1',
+          color: 'Normal',
+          requirements: [{ difficulties: [], songs: ['1'] }],
+        },
+      ],
+      source: structuredClone(fixtureCatalog.source),
+    };
+  }
 }

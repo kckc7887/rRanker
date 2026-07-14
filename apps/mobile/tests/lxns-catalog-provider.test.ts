@@ -53,6 +53,35 @@ describe('LxnsCatalogProvider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('merges trophy/icon/plate/frame lists into one collection snapshot', async () => {
+    const required = [{ difficulties: [0, 1, 2, 3], songs: [{ id: 1424, title: 'Estahv', type: 'dx' as const }] }];
+    const byKind: Record<string, unknown> = {
+      trophy: { trophies: [{ id: 1, name: 'Trophy', color: 'Normal', required }] },
+      icon: { icons: [{ id: 255406, name: 'Feryquitous', required }] },
+      plate: { plates: [{ id: 9, name: 'Plate', required }] },
+      frame: { frames: [{ id: 3, name: 'Frame', required }] },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      // Prefer longer path segments so /frame/ does not collide with other substrings.
+      const kind = (['trophy', 'icon', 'plate', 'frame'] as const).find((item) => url.includes(`/maimai/${item}/list`));
+      if (!kind) return new Response(JSON.stringify({}), { status: 200 });
+      return new Response(JSON.stringify(byKind[kind]), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const snapshot = await new LxnsCatalogProvider().getCollections();
+    expect(snapshot.items.map((item) => ({ kind: item.kind, id: item.id }))).toEqual([
+      { kind: 'trophy', id: 1 },
+      { kind: 'icon', id: 255406 },
+      { kind: 'plate', id: 9 },
+      { kind: 'frame', id: 3 },
+    ]);
+    expect(snapshot.items[1]).toMatchObject({
+      id: 255406, kind: 'icon', name: 'Feryquitous',
+      requirements: [{ difficulties: [0, 1, 2, 3], songs: ['1424'], songTypes: { 1424: 'DX' } }],
+    });
+  });
+
   it('maps LXNS minor release ids down to the nearest declared main version', async () => {
     const song363 = {
       id: 363, title: 'Oshama Scramble!', artist: 't+pazolite', version: 15007,

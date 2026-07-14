@@ -38,8 +38,10 @@
 | `/maimai/song/list?notes=true` | GET | 无 | 详细曲库、谱师与 TAP/HOLD/SLIDE/TOUCH/BREAK 物量 |
 | `/maimai/alias/list` | GET | 无 | 歌曲别名 |
 | `/maimai/plate/list?required=true` | GET | 无 | 带歌曲、难度、rate、FC、FS 条件的姓名框要求 |
+| `/maimai/{trophy\|icon\|plate\|frame}/list?required=true` | GET | 无 | 收藏品列表；响应键分别为 `trophies` / `icons` / `plates` / `frames`，项内可选 `required[].songs` |
 
 > last_verified: 2026-07-13 — 本次 M2 验证时详细曲库返回 1305 首歌曲、别名库 1014 项、带要求姓名框 397 项；最大有效版本为 `25500 / 舞萌DX 2026`。以 `Fraq` 交叉验证：水鱼 `11806 / DX / PRiSM PLUS` 对应 LXNS `1806 / dx / version 25500`。M4 再次按官方文档及公共响应确认 `Song.map` 为可空的开放字符串，用于曲目所属区域；歌曲 `#363 / Oshama Scramble!` 的细分版本号为 `15007`，应按 LXNS 官方前端规则向下匹配主版本 `15000 / ORANGE PLUS`。
+> collections last_verified: 2026-07-15 — `icon/list?required=true` 返回 1041 项（约 18 项带 `required`）；`trophy` 2990 / `frame` 343 / `plate` 397。曲目专属判定：`required` 所涉曲目 ID 并集恰好等于当前曲；资源图为 `https://assets2.lxns.net/maimai/{icon\|plate\|frame}/{id}.png`（称号无图）。
 
 当前职责边界：
 

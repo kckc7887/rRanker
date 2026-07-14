@@ -2,7 +2,7 @@ import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, Platform } from 'react-native';
 import {
@@ -10,16 +10,20 @@ import {
   Pressable as GesturePressable,
   ScrollView as GestureScrollView,
 } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
+import { CollectionImage } from '@/components/CollectionImage';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
 import { normalizeSongId } from '@/domain/catalog';
-import type { Chart, ChartNotes, ChartType, Difficulty, ScoreRecord, Song } from '@/domain/models';
+import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
+import type { Chart, ChartNotes, ChartType, CollectionItem, Difficulty, ScoreRecord, Song } from '@/domain/models';
 import { chartLibraryKey, songLibraryKey } from '@/domain/user-library';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
+import { useCollections } from '@/hooks/use-collections';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -50,24 +54,17 @@ export default function SongDetailScreen() {
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   return <>
     <Stack.Screen options={{
+      // 沉浸式头图会盖住透明原生标题栏命中区；返回/收藏改由页面内叠层处理。
       title: '', headerTransparent: true, headerShadowVisible: false, headerTintColor: '#FFFFFF',
-      headerBackButtonDisplayMode: 'minimal', headerBackButtonMenuEnabled: false,
-      headerRight: song ? () => <Pressable accessibilityRole="button"
-        accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
-        disabled={library.isLoading || library.isUpdating} hitSlop={12}
-        android_ripple={{ color: 'rgba(255,255,255,0.2)', borderless: true }}
-        onPress={() => void library.setSongFavorite(song.id, !favorite)}
-        style={({ pressed }) => [
-          styles.headerFavorite, favorite && styles.headerFavoriteActive,
-          Platform.OS !== 'ios' && styles.headerFavoriteBg,
-          Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
-          pressed && { opacity: 0.7 },
-        ]}>
-        <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
-      </Pressable> : undefined,
+      headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
     }} />
     <StatusBar style="light" />
     <View style={styles.page}>
+      <SongDetailChrome
+        song={song} favorite={favorite}
+        favoriteDisabled={library.isLoading || library.isUpdating}
+        onToggleFavorite={song ? () => void library.setSongFavorite(song.id, !favorite) : undefined}
+      />
       <QueryStateView<Song> isLoading={catalog.isLoading} isError={catalog.isError} isEmpty={!!catalog.data && !song}
         error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}
@@ -75,6 +72,33 @@ export default function SongDetailScreen() {
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
     </View>
   </>;
+}
+
+function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }: {
+  song?: Song; favorite: boolean; favoriteDisabled: boolean; onToggleFavorite?: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return <View pointerEvents="box-none" style={[styles.headerChrome, { paddingTop: insets.top }]}>
+    <GesturePressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
+      onPress={() => router.back()}
+      style={({ pressed }) => [
+        styles.headerButton, Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
+      ]}>
+      <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
+    </GesturePressable>
+    {song && onToggleFavorite ? <GesturePressable accessibilityRole="button"
+      accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
+      disabled={favoriteDisabled} hitSlop={12}
+      onPress={onToggleFavorite}
+      style={({ pressed }) => [
+        styles.headerButton, favorite && styles.headerFavoriteActive,
+        Platform.OS !== 'ios' && styles.headerButtonBg,
+        Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
+        pressed && { opacity: 0.7 },
+      ]}>
+      <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
+    </GesturePressable> : <View style={styles.headerButton} />}
+  </View>;
 }
 
 function Detail({ song, records, catalogSource, scoreSource, library, initialChartType, initialLevelIndex }: {
@@ -106,7 +130,7 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex;
 
   return <ScrollView testID="song-detail-scroll" contentContainerStyle={styles.content}
-    keyboardShouldPersistTaps="handled" canCancelContentTouches={false}>
+    keyboardShouldPersistTaps="handled">
     <View style={[styles.hero, { width, height: width }]}>
       <SongCover songId={song.id} size={width} borderRadius={0} />
       <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
@@ -135,12 +159,76 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
         { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
         { key: 'scores', label: scoreSource?.label ?? '成绩未加载', updatedAt: scoreSource?.updatedAt, state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live' },
       ]} />
+      <SongCollectionsCard songId={song.id} />
       <Card><Text style={styles.section}>歌曲信息</Text><AliasLine aliases={song.aliases} />
         <Text style={styles.body}>版权：{song.rights || '未提供'}</Text><Text style={styles.body}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
       <Card><TagEditor tags={songItem?.tags ?? []} disabled={library.isUpdating}
         onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
     </View>
   </ScrollView>;
+}
+
+function SongCollectionsCard({ songId }: { songId: string }) {
+  const collections = useCollections();
+  const matched = useMemo(
+    () => collectionsForSong(collections.data?.items ?? [], songId),
+    [collections.data?.items, songId],
+  );
+  return <Card testID="song-collections-card">
+    <Text style={styles.section}>收藏品</Text>
+    {collections.isLoading ? <Text style={styles.meta}>正在加载收藏品…</Text> : null}
+    {collections.isError ? <View style={styles.collectionError}>
+      <Text style={styles.meta}>收藏品加载失败</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="重试加载收藏品"
+        onPress={() => void collections.refetch()} hitSlop={8} style={styles.aliasAction}>
+        <Text style={styles.aliasActionText}>重试</Text>
+      </Pressable>
+    </View> : null}
+    {!collections.isLoading && !collections.isError && matched.length === 0
+      ? <Text style={styles.meta}>无曲目专属收藏品</Text> : null}
+    {matched.map((item) => <CollectionRow key={`${item.kind}:${item.id}`} item={item} />)}
+  </Card>;
+}
+
+function trophyTone(color: string | null | undefined): {
+  border: string; text: string; background: string; rainbow?: boolean;
+} {
+  switch ((color ?? 'normal').toLowerCase()) {
+    case 'bronze': return { border: '#B87333', text: '#8B5A1A', background: '#FBF3EA' };
+    case 'silver': return { border: '#9CA3AF', text: '#4B5563', background: '#F3F4F6' };
+    case 'gold': return { border: '#D4A017', text: '#92650A', background: '#FFF8E6' };
+    case 'rainbow': return { border: '#A78BFA', text: '#5B21B6', background: '#F5F3FF', rainbow: true };
+    default: return { border: '#9CA3AF', text: '#6B7280', background: '#F3F4F6' };
+  }
+}
+
+function TrophyName({ name, color }: { name: string; color?: string | null }) {
+  const tone = trophyTone(color);
+  if (tone.rainbow) {
+    return <LinearGradient colors={['#F87171', '#FBBF24', '#34D399', '#60A5FA', '#A78BFA']}
+      start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.trophyNameRainbow}>
+      <View style={[styles.trophyNameInner, { backgroundColor: tone.background }]}>
+        <Text style={[styles.trophyNameText, { color: tone.text }]} numberOfLines={2}>{name}</Text>
+      </View>
+    </LinearGradient>;
+  }
+  return <View style={[styles.trophyNameFrame, { borderColor: tone.border, backgroundColor: tone.background }]}>
+    <Text style={[styles.trophyNameText, { color: tone.text }]} numberOfLines={2}>{name}</Text>
+  </View>;
+}
+
+function CollectionRow({ item }: { item: CollectionItem }) {
+  return <View style={styles.collectionRow} accessibilityLabel={`${COLLECTION_KIND_LABEL[item.kind]} ${item.name}`}>
+    {item.kind === 'trophy' ? null
+      : <CollectionImage kind={item.kind} collectionId={item.id} size={item.kind === 'plate' ? 28 : 40} />}
+    <View style={styles.collectionCopy}>
+      <Text style={styles.collectionKind}>{COLLECTION_KIND_LABEL[item.kind]}</Text>
+      {item.kind === 'trophy'
+        ? <TrophyName name={item.name} color={item.color} />
+        : <Text style={styles.collectionName}>{item.name}</Text>}
+      {item.description ? <Text style={styles.collectionDesc} numberOfLines={2}>{item.description}</Text> : null}
+    </View>
+  </View>;
 }
 
 function AliasLine({ aliases }: { aliases?: string[] }) {
@@ -355,8 +443,12 @@ const styles = StyleSheet.create({
   songId: { color: 'rgba(255,255,255,0.78)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
   title: { color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6, textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8 },
   artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
-  headerFavorite: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  headerFavoriteBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  headerChrome: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
+    minHeight: 44, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   headerFavoriteActive: {},
   headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   metadataTable: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DEE8', paddingHorizontal: 12, paddingVertical: 13, gap: 6 },
@@ -395,6 +487,16 @@ const styles = StyleSheet.create({
   section: { fontWeight: '700', color: '#111827', marginBottom: 7 }, body: { color: '#374151', lineHeight: 20 }, meta: { color: '#6B7280', fontSize: 12 },
   aliasBlock: { position: 'relative', alignItems: 'stretch' }, aliasMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
   aliasAction: { alignSelf: 'flex-end', paddingHorizontal: 2, paddingVertical: 3 }, aliasActionText: { color: '#5967C9', fontSize: 12, fontWeight: '700' },
+  collectionError: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  collectionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5E7EB' },
+  collectionCopy: { flex: 1, minWidth: 0, gap: 2 },
+  collectionKind: { color: '#8A93A3', fontSize: 11, fontWeight: '700' },
+  collectionName: { color: '#182130', fontSize: 14, fontWeight: '700' },
+  collectionDesc: { color: '#6B7280', fontSize: 12, lineHeight: 17 },
+  trophyNameFrame: { alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 8, borderWidth: 1.5, paddingHorizontal: 10, paddingVertical: 4 },
+  trophyNameRainbow: { alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 8, padding: 1.5 },
+  trophyNameInner: { borderRadius: 6.5, paddingHorizontal: 8, paddingVertical: 3 },
+  trophyNameText: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
   action: { marginTop: 13, marginBottom: 10, borderWidth: 1, borderColor: '#667085', borderRadius: 11, padding: 10, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.52)' },
   actionText: { fontWeight: '700' },

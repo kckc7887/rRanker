@@ -1,4 +1,6 @@
-import type { AliasSnapshot, CatalogSnapshot, DataSource, PlateSnapshot, Player } from '@/domain/models';
+import type {
+  AliasSnapshot, CatalogSnapshot, CollectionSnapshot, DataSource, PlateSnapshot, Player,
+} from '@/domain/models';
 import type { DetailedCatalogProvider, ScoreProvider } from './contracts';
 
 const emptySource = (): DataSource => ({
@@ -46,5 +48,9 @@ export class EmptyCatalogProvider implements DetailedCatalogProvider {
 
   async getPlates(): Promise<PlateSnapshot> {
     return { plates: [], source: emptySource() };
+  }
+
+  async getCollections(): Promise<CollectionSnapshot> {
+    return { items: [], source: emptySource() };
   }
 }
