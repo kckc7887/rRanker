@@ -1,103 +1,280 @@
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
+import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
+import { DxRatingCard } from '@/components/DxRatingCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
-import type { ScoreSnapshot } from '@/domain/models';
-import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
+import type { BoundAccount } from '@/domain/bound-account';
+import type { BestListSection, GameDataBundle } from '@/domain/game-data';
+import type { ProviderId } from '@/domain/game-bind-options';
+import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
+import { useGamePickerUi } from '@/state/game-picker-ui';
+import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 
 export default function OverviewScreen() {
-  const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
+  const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
   const tabBottomInset = useNativeTabBottomInset();
-  const session = useSession((s) => s.session);
+  const boundAccounts = useSession((s) => s.boundAccounts);
+  const activeAccountId = useSession((s) => s.activeAccountId);
+  const selectBoundAccount = useSession((s) => s.selectBoundAccount);
+  const expandedGameId = useGamePickerUi((s) => s.expandedGameId);
+  const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
+  const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
+  const [pickerVisible, setPickerVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const refreshingRef = useRef(false);
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
-  const refresh = useCallback(async () => {
+
+  const syncData = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     setRefreshing(true);
-    try { await refetch(); }
-    finally { refreshingRef.current = false; setRefreshing(false); }
-  }, [refetch]);
+    setSyncing(true);
+    try {
+      await Promise.all([
+        refetch(),
+        library.refetch(),
+        queryClient.invalidateQueries({ queryKey: ['score-snapshot'] }),
+        queryClient.invalidateQueries({ queryKey: ['detailed-catalog'] }),
+        queryClient.invalidateQueries({ queryKey: ['plates'] }),
+        queryClient.invalidateQueries({ queryKey: ['songs'] }),
+      ]);
+    } finally {
+      refreshingRef.current = false;
+      setRefreshing(false);
+      setSyncing(false);
+    }
+  }, [library.refetch, refetch]);
+
+  const openSwitchSheet = () => {
+    const active = boundAccounts.find((account) => account.id === activeAccountId);
+    setExpandedGameId(active?.gameId ?? null);
+    setPickerVisible(true);
+  };
+
+  const onSelectAccount = (account: BoundAccount) => {
+    selectBoundAccount(account.id);
+    setPickerVisible(false);
+    void queryClient.invalidateQueries({ queryKey: ['game-data'] });
+    void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
+    void queryClient.invalidateQueries({ queryKey: ['detailed-catalog'] });
+  };
+
   return (
     <View style={styles.page}>
-      <QueryStateView<ScoreSnapshot>
+      <QueryStateView<GameDataBundle>
         isLoading={isLoading}
         isError={isError}
         isEmpty={false}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         data={data}
-        renderData={(snapshot) => (
+        renderData={(bundle) => (
           <ScrollView
             style={styles.scroll}
             testID="overview-scroll"
             alwaysBounceVertical
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void syncData()}
               tintColor="#246BFD" colors={['#246BFD']} />}
             contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 20 }]}
             scrollIndicatorInsets={{ bottom: tabBottomInset }}
           >
-            <Text style={styles.eyebrow}>玩家概览</Text>
-            <Text style={styles.name}>{snapshot.player.displayName}</Text>
-            <SourceStatus items={[
-              { key: 'scores', label: snapshot.source.label, updatedAt: snapshot.source.updatedAt, state: snapshot.source.isStale ? 'cache' : 'live' },
-              { key: 'catalog', label: snapshot.catalogSource.label, updatedAt: snapshot.catalogSource.updatedAt, state: snapshot.catalogSource.isStale ? 'cache' : 'live' },
-            ]} />
-            <View style={styles.ratingCard}>
-              <Text style={styles.cardLabel}>DX RATING</Text>
-              <Text style={styles.rating}>{snapshot.best50.rating.toString().padStart(5, '0')}</Text>
-              <Text style={styles.meta}>B35 {snapshot.best50.b35.length} · B15 {snapshot.best50.b15.length}</Text>
-            </View>
+            <Text style={styles.eyebrow}>{bundle.profile.title} · 玩家概览</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`当前玩家 ${displayName(bundle)}，点击切换账号`}
+              onPress={openSwitchSheet}
+              style={({ pressed }) => [styles.nameRow, pressed && styles.nameRowPressed]}
+            >
+              <Text style={styles.name}>{displayName(bundle)}</Text>
+              <Text style={styles.switchHint}>·点击切换·</Text>
+            </Pressable>
+
+            {bundle.payload.kind === 'maimai' ? (
+              <SourceStatus items={[
+                { key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt, state: bundle.payload.source.isStale ? 'cache' : 'live' },
+                { key: 'catalog', label: bundle.payload.catalogSource.label, updatedAt: bundle.payload.catalogSource.updatedAt, state: bundle.payload.catalogSource.isStale ? 'cache' : 'live' },
+              ]} />
+            ) : (
+              <SourceStatus items={[
+                { key: 'scores', label: '空', state: 'unavailable' },
+              ]} />
+            )}
+
+            {bundle.payload.kind === 'maimai' ? (
+              <DxRatingCard
+                label={bundle.payload.playerScore.label}
+                display={bundle.payload.playerScore.display}
+                rating={bundle.payload.playerScore.value}
+                meta={formatBestSectionMeta(bundle.payload.bestSections)}
+              />
+            ) : (
+              <DxRatingCard label={profile.ratingLabel} display="—" rating={null} meta="空空空" />
+            )}
+
+            {bundle.payload.kind === 'maimai' ? (
+              <View style={styles.actionRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="上传数据，待实现"
+                  onPress={() =>
+                    Alert.alert(
+                      '上传数据',
+                      '尚未实现。后续方向为 DXNet / 机台成绩同步后导出到已绑定查分器，不再走微信授权截包。',
+                    )
+                  }
+                  style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
+                >
+                  <Text style={styles.syncText}>上传数据</Text>
+                  <Text style={styles.actionHint}>待实现</Text>
+                </Pressable>
+                <View style={styles.actionDivider} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
+                  disabled={syncing}
+                  onPress={() => void syncData()}
+                  style={({ pressed }) => [
+                    styles.actionHalf,
+                    pressed && styles.syncPressed,
+                    syncing && styles.syncDisabled,
+                  ]}
+                >
+                  <Text style={styles.syncText}>{syncing ? '同步中…' : '同步数据'}</Text>
+                  <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="同步数据"
+                disabled={syncing}
+                onPress={() => void syncData()}
+                style={({ pressed }) => [styles.syncButton, pressed && styles.syncPressed, syncing && styles.syncDisabled]}
+              >
+                <Text style={styles.syncText}>{syncing ? '同步中…' : '同步数据'}</Text>
+              </Pressable>
+            )}
+
             <Pressable onPress={() => router.push('/tools' as Href)}>
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>工具箱</Text>
-                <Text style={styles.body}>Rating · 达成率/容错 · 牌子进度 · 版本对照</Text>
+                <Text style={styles.body}>
+                  {bundle.payload.kind === 'maimai'
+                    ? 'Rating · 达成率/容错 · 牌子进度 · 版本对照'
+                    : '空空空'}
+                </Text>
                 <Text style={styles.toolLink}>打开工具箱 →</Text>
               </View>
             </Pressable>
+
             <Pressable accessibilityRole="button" onPress={() => router.push('/library' as Href)}>
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>我的曲库</Text>
-                <Text style={styles.body}>{library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`}</Text>
+                <Text style={styles.body}>
+                  {bundle.payload.kind === 'maimai'
+                    ? (library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
+                    : '空空空'}
+                </Text>
                 <Text style={styles.toolLink}>打开收藏与练习清单 →</Text>
               </View>
             </Pressable>
+
             <View style={styles.card}>
               <Text style={styles.cardTitle}>数据状态</Text>
-              <Text style={styles.body}>来源：{snapshot.source.label}</Text>
-              <Text style={styles.body}>曲库：{snapshot.catalogSource.label}</Text>
-              <Text style={styles.body}>当前版本：{snapshot.best50.currentVersion.title}</Text>
-              <Text style={styles.body}>数据源：{session ? '水鱼查分器' : '脱敏测试数据'}</Text>
-              <Text style={styles.body}>更新时间：{new Date(snapshot.source.updatedAt).toLocaleString()}</Text>
-              {snapshot.best50.unmatchedRecordCount > 0 ? (
-                <Text style={styles.warning}>有 {snapshot.best50.unmatchedRecordCount} 条成绩无法匹配谱面版本，未计入 B50。</Text>
-              ) : null}
-              <Text style={styles.note}>登录后可在设置页切换至水鱼查分器数据源；未登录时使用脱敏 fixture。</Text>
+              {bundle.payload.kind === 'maimai' ? (
+                <>
+                  <Text style={styles.body}>来源：{bundle.payload.source.label}</Text>
+                  <Text style={styles.body}>曲库：{bundle.payload.catalogSource.label}</Text>
+                  <Text style={styles.body}>当前版本：{bundle.payload.currentVersionTitle}</Text>
+                  <Text style={styles.body}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
+                </>
+              ) : (
+                <Text style={styles.body}>空空空</Text>
+              )}
+              <Text style={styles.note}>点玩家名可切换已绑定账号。</Text>
             </View>
           </ScrollView>
         )}
       />
+
+      <AccountSwitchSheet
+        visible={pickerVisible}
+        accounts={boundAccounts}
+        expandedGameId={expandedGameId}
+        activeAccountId={activeAccountId}
+        onClose={() => setPickerVisible(false)}
+        onToggleGame={toggleExpandedGameId}
+        onSelectAccount={onSelectAccount}
+      />
     </View>
   );
 }
+
+function displayName(bundle: GameDataBundle): string {
+  if (bundle.payload.kind === 'maimai') return bundle.payload.player.displayName;
+  return bundle.payload.displayName;
+}
+
+function formatBestSectionMeta(sections: BestListSection[]): string {
+  return sections.map((section) => {
+    const label = section.id === 'b35' ? 'B35' : section.id === 'b15' ? 'B15' : section.id.toUpperCase();
+    const total = section.records.reduce((sum, record) => sum + record.rating, 0);
+    return `${label} ${total}`;
+  }).join(' · ');
+}
+
+/** 总览同步按钮副文案：当前成绩来源查分器。 */
+function syncProviderHint(providerId: ProviderId | null): string {
+  if (providerId === 'lxns') return '落雪咖啡屋';
+  if (providerId === 'diving-fish') return '水鱼查分器';
+  return '本地预览';
+}
+
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   scroll: { flex: 1 },
   content: { padding: 20, gap: 16, flexGrow: 1 },
-  eyebrow: { color: '#5B6472', fontSize: 13 }, name: { color: '#111827', fontSize: 28, fontWeight: '700' },
-  ratingCard: { backgroundColor: '#111827', borderRadius: 18, padding: 22, gap: 6 },
-  cardLabel: { color: '#9CA3AF', fontSize: 12, fontWeight: '700' },
-  rating: { color: '#FFFFFF', fontSize: 42, fontWeight: '800', letterSpacing: 2 }, meta: { color: '#CBD5E1' },
+  eyebrow: { color: '#5B6472', fontSize: 13 },
+  nameRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8, alignSelf: 'flex-start' },
+  nameRowPressed: { opacity: 0.7 },
+  name: { color: '#111827', fontSize: 28, fontWeight: '700' },
+  switchHint: { color: '#9CA3AF', fontSize: 13, fontWeight: '600' },
+  syncButton: {
+    backgroundColor: '#246BFD',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    backgroundColor: '#246BFD',
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  actionHalf: {
+    flex: 1,
+    minHeight: 52,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  actionDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.35)' },
+  actionHint: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '600', lineHeight: 14 },
+  syncPressed: { opacity: 0.88 },
+  syncDisabled: { opacity: 0.65 },
+  syncText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, gap: 8 },
-  cardTitle: { color: '#111827', fontSize: 18, fontWeight: '700' }, body: { color: '#374151' },
+  cardTitle: { color: '#111827', fontSize: 18, fontWeight: '700' },
+  body: { color: '#374151' },
   note: { color: '#6B7280', lineHeight: 20, marginTop: 4 },
-  warning: { color: '#B45309', lineHeight: 20 },
   toolLink: { color: '#246BFD', fontWeight: '600', marginTop: 5 },
 });
