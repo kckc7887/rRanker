@@ -14,7 +14,7 @@
 | `wechat-crawler-demo/rranker_wechat_demo.go` | 单 EXE、本地 UI、代理与抓取整合 | 证明可以把验证流程封装成单程序 | 只保留实现参考，不发展桌面客户端 |
 | `webui-proxy-demo/` | Python WebUI、状态机、代理恢复与打包 | 前后端契约和清理路径已设计，部分仅静态验证 | 适合提取状态机经验，不复用为正式客户端架构 |
 | 已删除的 LXNS POC | 落雪曲库与收藏品接口 | 公共读取曾返回完整曲库；开发者 API 门槛较高 | 暂不作为主数据源，重新接入前必须重新核验 |
-| 已撤回的概念 HTML | 移动产品信息结构与视觉方向 | 数据填充可行，但视觉结果不符合要求 | UI 由产品设计重新完成，不复用通用仪表盘风格 |
+| `score-hub-friendcode-demo/` | 仅好友码经 score-hub 公网 API 登录并拉 latest sync | 本地 Demo：Bot 好友登录 + 单次 update_score + 慢轮询 | 不进产品；勿对公网 API 批量压测 |
 
 ## 2. 水鱼数据源 POC
 

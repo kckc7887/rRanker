@@ -1,0 +1,274 @@
+import { fetch as expoFetch } from 'expo/fetch';
+
+export const SCORE_HUB_API_BASE = 'https://api.maiscorehub.bakapiano.com/api/v1';
+
+const LOGIN_POLL_MS = 3_000;
+const SCORE_POLL_MS = 5_000;
+const LOGIN_TIMEOUT_MS = 8 * 60_000;
+const SCORE_TIMEOUT_MS = 20 * 60_000;
+const VERIFY_EVERY_MS = 20_000;
+
+export type ScoreHubSyncScore = {
+  musicId: string;
+  cid?: string;
+  chartIndex: number;
+  type: string;
+  dxScore?: string | number | null;
+  score?: string | number | null;
+  fs?: string | null;
+  fc?: string | null;
+  rating?: number;
+  isNew?: boolean;
+};
+
+export type ScoreHubLatestSync = {
+  id: string;
+  createdAt?: string;
+  updatedAt?: string;
+  scores?: ScoreHubSyncScore[];
+  autoExportResult?: unknown;
+} | null;
+
+export class ScoreHubError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'ScoreHubError';
+    this.status = status;
+  }
+}
+
+export type ScoreHubAbortSignal = { aborted: boolean };
+
+async function requestJson(
+  method: string,
+  path: string,
+  options?: {
+    body?: unknown;
+    token?: string;
+    signal?: ScoreHubAbortSignal;
+  },
+): Promise<{ status: number; body: unknown }> {
+  if (options?.signal?.aborted) {
+    throw new ScoreHubError('已取消');
+  }
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': 'rRanker-mobile/1.0',
+  };
+  if (options?.body !== undefined) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (options?.token) {
+    headers.Authorization = `Bearer ${options.token}`;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await expoFetch(`${SCORE_HUB_API_BASE}${path}`, {
+      method,
+      headers,
+      body: options?.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    let body: unknown = null;
+    if (text) {
+      try {
+        body = JSON.parse(text) as unknown;
+      } catch {
+        body = { error: text };
+      }
+    }
+    return { status: response.status, body };
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ScoreHubError('score-hub 请求超时', undefined);
+    }
+    throw new ScoreHubError(error instanceof Error ? error.message : '无法连接 score-hub');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function sleep(ms: number, signal?: ScoreHubAbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new ScoreHubError('已取消'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (signal?.aborted) reject(new ScoreHubError('已取消'));
+      else resolve();
+    }, ms);
+    if (signal) {
+      const watch = setInterval(() => {
+        if (signal.aborted) {
+          clearTimeout(timer);
+          clearInterval(watch);
+          reject(new ScoreHubError('已取消'));
+        }
+      }, 250);
+      setTimeout(() => clearInterval(watch), ms + 10);
+    }
+  });
+}
+
+export async function createFriendLoginJob(
+  friendCode: string,
+  signal?: ScoreHubAbortSignal,
+): Promise<{ jobId: string; botFriendCode: string | null; body: Record<string, unknown> }> {
+  const { status, body } = await requestJson('POST', '/auth/login-requests', {
+    body: { friendCode, method: 'bot_sends_request' },
+    signal,
+  });
+  if (status === 201 && body && typeof body === 'object') {
+    const record = body as Record<string, unknown>;
+    if (record.skipAuth && typeof record.token === 'string') {
+      return { jobId: '', botFriendCode: null, body: { ...record, __skipAuthToken: record.token } };
+    }
+    if (typeof record.jobId === 'string') {
+      const job = record.job && typeof record.job === 'object' ? (record.job as Record<string, unknown>) : {};
+      const bot =
+        (typeof record.botFriendCode === 'string' && record.botFriendCode)
+        || (typeof job.botUserFriendCode === 'string' && job.botUserFriendCode)
+        || null;
+      return { jobId: record.jobId, botFriendCode: bot, body: record };
+    }
+  }
+  throw new ScoreHubError(`创建登录失败（HTTP ${status}）`, status);
+}
+
+export async function verifyLoginJob(jobId: string, signal?: ScoreHubAbortSignal): Promise<void> {
+  await requestJson('POST', `/auth/login-requests/${encodeURIComponent(jobId)}/verify`, { signal });
+}
+
+export async function pollLoginUntilToken(input: {
+  jobId: string;
+  signal?: ScoreHubAbortSignal;
+  onWaitingFriend?: (info: { botFriendCode: string | null; stage: string | null }) => void;
+}): Promise<string> {
+  const deadline = Date.now() + LOGIN_TIMEOUT_MS;
+  let lastVerifyAt = 0;
+  let notifiedFriend = false;
+
+  while (Date.now() < deadline) {
+    if (input.signal?.aborted) throw new ScoreHubError('已取消');
+    const { status, body } = await requestJson(
+      'GET',
+      `/auth/login-requests/${encodeURIComponent(input.jobId)}`,
+      { signal: input.signal },
+    );
+    if (status !== 200 || !body || typeof body !== 'object') {
+      await sleep(LOGIN_POLL_MS, input.signal);
+      continue;
+    }
+    const record = body as Record<string, unknown>;
+    if (typeof record.token === 'string' && record.token) {
+      return record.token;
+    }
+    const job = record.job && typeof record.job === 'object' ? (record.job as Record<string, unknown>) : {};
+    const jobStatus = String(record.status ?? job.status ?? '');
+    const stage = typeof job.stage === 'string' ? job.stage : null;
+    const bot =
+      (typeof job.botUserFriendCode === 'string' && job.botUserFriendCode) || null;
+
+    if (jobStatus === 'failed' || record.status === 'failed') {
+      throw new ScoreHubError(String(job.error ?? '登录失败'));
+    }
+
+    if (stage === 'wait_acceptance' || stage === 'wait_user_request') {
+      if (!notifiedFriend) {
+        notifiedFriend = true;
+        input.onWaitingFriend?.({ botFriendCode: bot, stage });
+      } else {
+        input.onWaitingFriend?.({ botFriendCode: bot, stage });
+      }
+    }
+
+    const now = Date.now();
+    if (now - lastVerifyAt >= VERIFY_EVERY_MS) {
+      lastVerifyAt = now;
+      try {
+        await verifyLoginJob(input.jobId, input.signal);
+      } catch {
+        // verify 失败不中断轮询
+      }
+    }
+
+    await sleep(LOGIN_POLL_MS, input.signal);
+  }
+  throw new ScoreHubError('登录超时：请确认已在舞萌 NET 接受 Bot 好友申请');
+}
+
+export async function createUpdateScoreJob(
+  token: string,
+  friendshipJobId: string | null,
+  signal?: ScoreHubAbortSignal,
+): Promise<string> {
+  const body: Record<string, string> = { jobType: 'update_score' };
+  if (friendshipJobId) body.friendshipJobId = friendshipJobId;
+  const { status, body: payload } = await requestJson('POST', '/me/dxnet-jobs', {
+    body,
+    token,
+    signal,
+  });
+  if (status === 400 && payload && typeof payload === 'object') {
+    const code = (payload as { code?: string }).code;
+    if (code === 'needs_friendship') {
+      throw new ScoreHubError('尚未与 Bot 成为好友，请先完成好友申请', status);
+    }
+  }
+  if ((status === 200 || status === 201) && payload && typeof payload === 'object') {
+    const jobId = (payload as { jobId?: string }).jobId;
+    if (typeof jobId === 'string') return jobId;
+  }
+  throw new ScoreHubError(`创建成绩任务失败（HTTP ${status}）`, status);
+}
+
+export async function pollUpdateScoreUntilDone(input: {
+  token: string;
+  jobId: string;
+  signal?: ScoreHubAbortSignal;
+  onProgress?: (info: { status: string; stage: string | null }) => void;
+}): Promise<void> {
+  const deadline = Date.now() + SCORE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (input.signal?.aborted) throw new ScoreHubError('已取消');
+    const { status, body } = await requestJson(
+      'GET',
+      `/me/dxnet-jobs/${encodeURIComponent(input.jobId)}`,
+      { token: input.token, signal: input.signal },
+    );
+    if (status !== 200 || !body || typeof body !== 'object') {
+      await sleep(SCORE_POLL_MS, input.signal);
+      continue;
+    }
+    const job = body as Record<string, unknown>;
+    const st = String(job.status ?? '');
+    const stage = typeof job.stage === 'string' ? job.stage : null;
+    input.onProgress?.({ status: st, stage });
+    if (st === 'completed') return;
+    if (st === 'failed' || st === 'canceled') {
+      throw new ScoreHubError(String(job.error ?? '获取成绩失败'));
+    }
+    await sleep(SCORE_POLL_MS, input.signal);
+  }
+  throw new ScoreHubError('获取成绩超时');
+}
+
+export async function fetchLatestSync(
+  token: string,
+  signal?: ScoreHubAbortSignal,
+): Promise<ScoreHubLatestSync> {
+  const { status, body } = await requestJson('GET', '/me/sync/latest', { token, signal });
+  if (status !== 200) {
+    throw new ScoreHubError(`拉取 sync 失败（HTTP ${status}）`, status);
+  }
+  if (body === null) return null;
+  if (!body || typeof body !== 'object') {
+    throw new ScoreHubError('sync 响应无效');
+  }
+  return body as ScoreHubLatestSync;
+}

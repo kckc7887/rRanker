@@ -1,36 +1,46 @@
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
+import { UploadDataSheet } from '@/components/UploadDataSheet';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { BestListSection, GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
+import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
+import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
+import { SecureSessionStore } from '@/storage/secure-session-store';
+
+const sessions = new SecureSessionStore();
 
 export default function OverviewScreen() {
-  const { data, isLoading, isError, error, refetch, profile } = useGameData();
+  const { data, isLoading, isError, error, refetch, profile, isFetching } = useGameData();
   const library = useUserLibrary();
+  const catalogQuery = useDetailedCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const activeAccountId = useSession((s) => s.activeAccountId);
+  const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const selectBoundAccount = useSession((s) => s.selectBoundAccount);
   const expandedGameId = useGamePickerUi((s) => s.expandedGameId);
   const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [uploadVisible, setUploadVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const refreshingRef = useRef(false);
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
+  const syncBusy = syncing || (isFetching && !isLoading);
 
   const syncData = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -41,10 +51,7 @@ export default function OverviewScreen() {
       await Promise.all([
         refetch(),
         library.refetch(),
-        queryClient.invalidateQueries({ queryKey: ['score-snapshot'] }),
-        queryClient.invalidateQueries({ queryKey: ['detailed-catalog'] }),
-        queryClient.invalidateQueries({ queryKey: ['plates'] }),
-        queryClient.invalidateQueries({ queryKey: ['songs'] }),
+        invalidateAccountDataQueries(),
       ]);
     } finally {
       refreshingRef.current = false;
@@ -61,10 +68,8 @@ export default function OverviewScreen() {
 
   const onSelectAccount = (account: BoundAccount) => {
     selectBoundAccount(account.id);
+    void sessions.setActiveAccountId(account.id);
     setPickerVisible(false);
-    void queryClient.invalidateQueries({ queryKey: ['game-data'] });
-    void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
-    void queryClient.invalidateQueries({ queryKey: ['detailed-catalog'] });
   };
 
   return (
@@ -123,31 +128,26 @@ export default function OverviewScreen() {
               <View style={styles.actionRow}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="上传数据，待实现"
-                  onPress={() =>
-                    Alert.alert(
-                      '上传数据',
-                      '尚未实现。后续方向为 DXNet / 机台成绩同步后导出到已绑定查分器，不再走微信授权截包。',
-                    )
-                  }
+                  accessibilityLabel="上传数据，好友码取成绩后推送到查分器"
+                  onPress={() => setUploadVisible(true)}
                   style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
                 >
                   <Text style={styles.syncText}>上传数据</Text>
-                  <Text style={styles.actionHint}>待实现</Text>
+                  <Text style={styles.actionHint}>好友码</Text>
                 </Pressable>
                 <View style={styles.actionDivider} />
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
-                  disabled={syncing}
+                  disabled={syncBusy}
                   onPress={() => void syncData()}
                   style={({ pressed }) => [
                     styles.actionHalf,
                     pressed && styles.syncPressed,
-                    syncing && styles.syncDisabled,
+                    syncBusy && styles.syncDisabled,
                   ]}
                 >
-                  <Text style={styles.syncText}>{syncing ? '同步中…' : '同步数据'}</Text>
+                  <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
                   <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
@@ -155,11 +155,11 @@ export default function OverviewScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="同步数据"
-                disabled={syncing}
+                disabled={syncBusy}
                 onPress={() => void syncData()}
-                style={({ pressed }) => [styles.syncButton, pressed && styles.syncPressed, syncing && styles.syncDisabled]}
+                style={({ pressed }) => [styles.syncButton, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
               >
-                <Text style={styles.syncText}>{syncing ? '同步中…' : '同步数据'}</Text>
+                <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
               </Pressable>
             )}
 
@@ -213,6 +213,18 @@ export default function OverviewScreen() {
         onClose={() => setPickerVisible(false)}
         onToggleGame={toggleExpandedGameId}
         onSelectAccount={onSelectAccount}
+      />
+
+      <UploadDataSheet
+        visible={uploadVisible}
+        accounts={boundAccounts}
+        sessionsByAccountId={sessionsByAccountId}
+        catalog={catalogQuery.data}
+        onClose={() => setUploadVisible(false)}
+        onFinished={() => {
+          void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
+          void queryClient.invalidateQueries({ queryKey: ['game-data'] });
+        }}
       />
     </View>
   );

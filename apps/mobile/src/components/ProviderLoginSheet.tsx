@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -10,15 +11,18 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { createMaimaiBoundAccount, LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
+import type { ProviderOption } from '@/domain/game-bind-options';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { ProviderError } from '@/providers/errors';
 import type { ProviderSession } from '@/providers/contracts';
+import { beginLxnsAuthorize, exchangeLxnsAuthorizationCode } from '@/providers/lxns-oauth';
+import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { validateAndActivateSession } from '@/services/session-validation';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
-import type { ProviderOption } from '@/domain/game-bind-options';
 
 const auth = new DivingFishAuthProvider();
 const sessions = new SecureSessionStore();
@@ -38,17 +42,23 @@ export function ProviderLoginSheet({
 }) {
   const insets = useSafeAreaInsets();
   const setSession = useSession((s) => s.setSession);
-  const existing = useSession((s) => s.session);
+  const boundMaimaiCount = useSession((s) => s.boundAccounts.filter(
+    (account) => account.gameId === 'maimai' && account.id !== LOCAL_MAIMAI_ACCOUNT_ID,
+  ).length);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [importToken, setImportToken] = useState('');
+  const [authCode, setAuthCode] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const isLxns = provider?.id === 'lxns';
 
   const reset = () => {
     setUsername('');
     setPassword('');
     setImportToken('');
+    setAuthCode('');
     setMessage('');
     setBusy(false);
   };
@@ -67,17 +77,36 @@ export function ProviderLoginSheet({
   };
 
   const validateAndActivate = async (newSession: ProviderSession) => {
-    const scoreProvider = new DivingFishProvider(newSession);
+    const providerId = provider?.id ?? 'diving-fish';
     try {
       await validateAndActivateSession(newSession, {
-        createProvider: () => scoreProvider,
-        save: (sessionToSave) => sessions.save(sessionToSave),
+        createProvider: (session) => (
+          providerId === 'lxns'
+            ? new LxnsScoreProvider(session)
+            : new DivingFishProvider(session)
+        ),
+        save: async (sessionToSave, player) => {
+          const account = createMaimaiBoundAccount({
+            providerId,
+            displayName: player.displayName,
+            rating: player.rating,
+            playerId: player.id,
+          });
+          await sessions.upsertAccount({
+            id: account.id,
+            gameId: 'maimai',
+            providerId,
+            displayName: account.displayName,
+            scoreDisplay: account.scoreDisplay,
+            session: sessionToSave,
+          });
+        },
         activate: (sessionToActivate, player) => {
           setSession(sessionToActivate, {
             displayName: player.displayName,
             rating: player.rating,
             playerId: player.id,
-            providerId: provider?.id ?? 'diving-fish',
+            providerId,
           });
           invalidateAll();
         },
@@ -90,9 +119,38 @@ export function ProviderLoginSheet({
     }
   };
 
+  const openLxnsAuthorize = async () => {
+    setBusy(true);
+    setMessage('正在打开落雪授权页…');
+    try {
+      const url = await beginLxnsAuthorize();
+      await Linking.openURL(url);
+      setMessage('请在浏览器完成授权，将授权码粘贴到下方。');
+    } catch (error) {
+      setMessage(messageFor(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connectWithLxnsCode = async () => {
+    if (!authCode.trim()) { setMessage('请粘贴落雪授权码'); return; }
+    setBusy(true);
+    setMessage('正在换取令牌并验证成绩…');
+    try {
+      const newSession = await exchangeLxnsAuthorizationCode(authCode);
+      await validateAndActivate(newSession);
+      reset();
+      onSuccess();
+    } catch (error) {
+      setMessage(messageFor(error));
+      setBusy(false);
+    }
+  };
+
   const login = async () => {
     if (!username.trim() || !password) { setMessage('请输入水鱼用户名和密码'); return; }
-    setBusy(true); setMessage('正在验证登录态…');
+    setBusy(true); setMessage('正在登录并获取上传凭证…');
     try {
       const newSession = await auth.loginWithPassword({ username: username.trim(), password });
       await validateAndActivate(newSession);
@@ -102,7 +160,7 @@ export function ProviderLoginSheet({
   };
 
   const connectWithToken = async () => {
-    setBusy(true); setMessage('正在验证 Import-Token…');
+    setBusy(true); setMessage('正在验证上传凭证…');
     try {
       const newSession = auth.useImportToken(importToken);
       await validateAndActivate(newSession);
@@ -150,66 +208,104 @@ export function ProviderLoginSheet({
 
           <View style={styles.card}>
             <Text style={styles.body}>绑定后，总览、最佳与成绩将使用该账号的远程数据。</Text>
-            {existing ? (
-              <Text style={styles.hint}>当前已有绑定账号；添加成功后将替换现有登录态。</Text>
+            {boundMaimaiCount > 0 ? (
+              <Text style={styles.hint}>可同时保存多个查分器账号；同一玩家再次登录会更新该账号凭据。</Text>
             ) : null}
             {message ? <Text style={styles.message}>{message}</Text> : null}
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="none"
-              autoComplete="off"
-              importantForAutofill="no"
-              editable={!busy}
-              placeholder="用户名"
-              value={username}
-              onChangeText={setUsername}
-              style={styles.input}
-            />
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="oneTimeCode"
-              autoComplete="one-time-code"
-              importantForAutofill="no"
-              editable={!busy}
-              placeholder="密码（不会保存）"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-              style={styles.input}
-            />
-            <Pressable
-              disabled={busy}
-              onPress={() => void login()}
-              style={({ pressed }) => [styles.primary, pressed && !busy && styles.primaryPressed]}
-            >
-              <Text style={styles.primaryText}>账密登录并验证</Text>
-            </Pressable>
-            <Text style={styles.or}>或</Text>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="oneTimeCode"
-              autoComplete="off"
-              editable={!busy}
-              placeholder="Import-Token"
-              secureTextEntry
-              value={importToken}
-              onChangeText={setImportToken}
-              style={styles.input}
-            />
-            <Text style={styles.hint}>Import-Token 可从水鱼查分器网页版个人设置获取</Text>
-            <Pressable
-              disabled={busy}
-              onPress={() => void connectWithToken()}
-              style={({ pressed }) => [styles.secondary, pressed && !busy && styles.secondaryPressed]}
-            >
-              <Text style={styles.secondaryText}>验证并保存 Token</Text>
-            </Pressable>
-            <Text style={styles.security}>
-              密码仅用于当次登录请求；JWT/Import-Token 仅进入 SecureStore；成绩快照进入 SQLite。本应用不会生成或刷新 Import-Token。
-            </Text>
+
+            {isLxns ? (
+              <>
+                <Pressable
+                  disabled={busy}
+                  onPress={() => void openLxnsAuthorize()}
+                  style={({ pressed }) => [styles.primary, pressed && !busy && styles.primaryPressed]}
+                >
+                  <Text style={styles.primaryText}>打开落雪授权页</Text>
+                </Pressable>
+                <Text style={styles.hint}>
+                  授权页无回调；同意后复制授权码，粘贴到下方验证。本 App 使用 PKCE，不保存应用秘钥。
+                </Text>
+                <TextInput
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  textContentType="oneTimeCode"
+                  autoComplete="off"
+                  editable={!busy}
+                  placeholder="授权码（如 JVJ6-VPTM-MGHZ）"
+                  value={authCode}
+                  onChangeText={setAuthCode}
+                  style={styles.input}
+                />
+                <Pressable
+                  disabled={busy}
+                  onPress={() => void connectWithLxnsCode()}
+                  style={({ pressed }) => [styles.secondary, pressed && !busy && styles.secondaryPressed]}
+                >
+                  <Text style={styles.secondaryText}>验证授权码并绑定</Text>
+                </Pressable>
+                <Text style={styles.security}>
+                  Access Token 约 15 分钟过期；刷新令牌保存在系统 SecureStore，不进入 SQLite 或日志。
+                </Text>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="none"
+                  autoComplete="off"
+                  importantForAutofill="no"
+                  editable={!busy}
+                  placeholder="用户名"
+                  value={username}
+                  onChangeText={setUsername}
+                  style={styles.input}
+                />
+                <TextInput
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="oneTimeCode"
+                  autoComplete="one-time-code"
+                  importantForAutofill="no"
+                  editable={!busy}
+                  placeholder="密码（不会保存）"
+                  secureTextEntry
+                  value={password}
+                  onChangeText={setPassword}
+                  style={styles.input}
+                />
+                <Pressable
+                  disabled={busy}
+                  onPress={() => void login()}
+                  style={({ pressed }) => [styles.primary, pressed && !busy && styles.primaryPressed]}
+                >
+                  <Text style={styles.primaryText}>账密登录并验证</Text>
+                </Pressable>
+                <Text style={styles.or}>或</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="oneTimeCode"
+                  autoComplete="off"
+                  editable={!busy}
+                  placeholder="上传凭证"
+                  secureTextEntry
+                  value={importToken}
+                  onChangeText={setImportToken}
+                  style={styles.input}
+                />
+                <Pressable
+                  disabled={busy}
+                  onPress={() => void connectWithToken()}
+                  style={({ pressed }) => [styles.secondary, pressed && !busy && styles.secondaryPressed]}
+                >
+                  <Text style={styles.secondaryText}>验证并保存凭证</Text>
+                </Pressable>
+                <Text style={styles.security}>
+                  密码仅用于当次登录；上传凭证写入系统 SecureStore，不进入 SQLite 或日志。
+                </Text>
+              </>
+            )}
           </View>
         </ScrollView>
       </View>

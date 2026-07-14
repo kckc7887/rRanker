@@ -23,10 +23,19 @@ export function enrichRecordsWithCatalog(
   catalog: CatalogSnapshot,
 ): ScoreRecord[] {
   const versionTitles = new Map(catalog.versions.map((version) => [version.id, version.title]));
+  const songsById = new Map(catalog.songs.map((song) => [normalizeSongId(song.id), song]));
   return records.map((record) => {
+    const song = songsById.get(normalizeSongId(record.songId));
+    const chart = song?.charts.find(
+      (item) => item.type === record.type && item.levelIndex === record.levelIndex,
+    );
     const versionId = catalog.chartVersionIndex[chartVersionKey(record.songId, record.type, record.levelIndex)];
-    return versionId === undefined
-      ? { ...record, version: 'unknown' }
-      : { ...record, version: versionTitles.get(versionId) ?? String(versionId) };
+    return {
+      ...record,
+      difficultyConstant: chart?.difficultyConstant ?? record.difficultyConstant,
+      version: versionId === undefined
+        ? 'unknown'
+        : versionTitles.get(versionId) ?? String(versionId),
+    };
   });
 }

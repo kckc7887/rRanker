@@ -39,6 +39,45 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
     isLoading: false, isError: false, isDataStale: false, error: null, refetch: jest.fn(),
   };
 } }));
+jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
+  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+  const profile = jest.requireActual<typeof import('../src/domain/game-profile')>('../src/domain/game-profile')
+    .getGameProfile('maimai');
+  const base = fixtures.fixtureRecords[0];
+  const b35Low = { ...base, songId: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2,
+    difficulty: 'expert' as const, difficultyConstant: 12.4, achievements: 99, rating: 100, rate: 'ss' };
+  const b35High = { ...base, songId: '352', title: 'B35高', type: 'SD' as const, levelIndex: 3,
+    difficulty: 'master' as const, difficultyConstant: 13.7, achievements: 100.5, rating: 300, rate: 'sssp' };
+  const b15Low = { ...base, songId: '151', title: 'B15低', type: 'SD' as const, levelIndex: 1,
+    difficulty: 'advanced' as const, difficultyConstant: 10.2, achievements: 99.5, rating: 200, rate: 'ssp' };
+  const b15High = { ...base, songId: '152', title: 'B15高', type: 'DX' as const, levelIndex: 4,
+    difficulty: 'remaster' as const, difficultyConstant: 14.8, achievements: 99.9999, rating: 400, rate: 'sss' };
+  return {
+    data: {
+      gameId: 'maimai',
+      providerId: 'diving-fish',
+      profile,
+      payload: {
+        kind: 'maimai',
+        player: fixtures.fixturePlayer,
+        playerScore: { label: profile.ratingLabel, value: fixtures.fixturePlayer.rating },
+        bestSections: [
+          { id: 'b35', title: profile.bestSections[0].title, records: [b35Low, b35High] },
+          { id: 'b15', title: profile.bestSections[1].title, records: [b15Low, b15High] },
+        ],
+        recordCount: 4,
+        source: fixtures.fixtureSource,
+        catalogSource: fixtures.fixtureSource,
+        unmatchedRecordCount: 0,
+      },
+    },
+    isLoading: false, isError: false, isDataStale: false, error: null, refetch: jest.fn(),
+    profile,
+    activeGameId: 'maimai',
+    activeProviderId: 'diving-fish',
+    activeAccountId: 'maimai:diving-fish:demo',
+  };
+} }));
 
 describe('M4 score list cards', () => {
   beforeEach(() => { jest.clearAllMocks(); useRecordsFilter.getState().reset(); });

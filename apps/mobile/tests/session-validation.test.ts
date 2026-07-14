@@ -31,7 +31,7 @@ describe('validateScoreProvider', () => {
       getRecords: vi.fn().mockResolvedValue([]),
     } as unknown as ScoreProvider;
     await validateAndActivateSession(session, { createProvider: () => provider, save, activate });
-    expect(save).toHaveBeenCalledWith(session);
+    expect(save).toHaveBeenCalledWith(session, player);
     expect(activate).toHaveBeenCalledWith(session, player);
   });
 

@@ -8,15 +8,21 @@ import 'react-native-reanimated';
 import { queryClient } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
+import { useSyncOnAccountSwitch } from '@/hooks/use-sync-on-account-switch';
 
 const sessions = new SecureSessionStore();
+
+function AccountSwitchSync() {
+  useSyncOnAccountSwitch();
+  return null;
+}
 
 export const unstable_settings = { anchor: '(tabs)' };
 export default function RootLayout() {
   const restoreStatus = useSession((state) => state.restoreStatus);
 
   useEffect(() => {
-    if (restoreStatus === 'restoring') void restoreSession(() => sessions.load());
+    if (restoreStatus === 'restoring') void restoreSession(() => sessions.loadVault());
   }, [restoreStatus]);
 
   useEffect(() => {
@@ -30,6 +36,7 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <AccountSwitchSync />
       <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal', headerBackButtonMenuEnabled: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'rRanker' }} />
         <Stack.Screen name="library/index" options={{ title: '我的曲库' }} />

@@ -52,6 +52,7 @@ export function useGameData() {
       const snapshot = await new ScoreService(
         scoreProvider,
         catalogProvider,
+        activeAccountId,
         persist ? repository : undefined,
         persist ? repository : undefined,
       ).load();
