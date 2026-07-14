@@ -6,6 +6,11 @@ import type { ResourceRepository } from '@/repositories/resource-repository';
 
 const SNAPSHOT_SCHEMA_VERSION = 2;
 const CATALOG_SCHEMA_VERSION = 1;
+
+function scoreResourceKey(accountId: string): string {
+  return `score:${accountId}`;
+}
+
 export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepository, ResourceRepository {
   private databasePromise = SQLite.openDatabaseAsync('rranker.db');
   async initialize(): Promise<void> {
@@ -22,31 +27,41 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       CREATE TABLE IF NOT EXISTS resource_snapshots (
         resource_key TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
         updated_at TEXT NOT NULL, payload TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS account_score_snapshots (
+        account_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
+        updated_at TEXT NOT NULL, payload TEXT NOT NULL
       );`);
   }
-  async getLatest(): Promise<ScoreSnapshot | null> {
+  async getLatest(accountId: string): Promise<ScoreSnapshot | null> {
     await this.initialize();
     const db = await this.databasePromise;
     const row = await db.getFirstAsync<{ schema_version: number; payload: string }>(
-      'SELECT schema_version, payload FROM score_snapshots WHERE id = ?', 1,
+      'SELECT schema_version, payload FROM account_score_snapshots WHERE account_id = ?', accountId,
     );
     if (!row) return null;
     if (row.schema_version !== SNAPSHOT_SCHEMA_VERSION) {
-      await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);
+      await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
       return null;
     }
     try { return JSON.parse(row.payload) as ScoreSnapshot; }
-    catch { await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1); return null; }
+    catch {
+      await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
+      return null;
+    }
   }
-  async save(snapshot: ScoreSnapshot): Promise<void> {
+  async save(accountId: string, snapshot: ScoreSnapshot): Promise<void> {
     await this.initialize();
     const db = await this.databasePromise;
     await db.runAsync(
-      `INSERT INTO score_snapshots (id, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET schema_version=excluded.schema_version,
+      `INSERT INTO account_score_snapshots (account_id, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
+       ON CONFLICT(account_id) DO UPDATE SET schema_version=excluded.schema_version,
        updated_at=excluded.updated_at, payload=excluded.payload`,
-      1, SNAPSHOT_SCHEMA_VERSION, snapshot.source.updatedAt, JSON.stringify(snapshot),
+      accountId, SNAPSHOT_SCHEMA_VERSION, snapshot.source.updatedAt, JSON.stringify(snapshot),
     );
+    // 兼容删除旧单槽缓存，避免串号回退
+    await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);
+    await this.deleteResource(scoreResourceKey(accountId));
   }
   async getLatestCatalog(): Promise<CatalogSnapshot | null> {
     await this.initialize();
@@ -104,10 +119,16 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     const db = await this.databasePromise;
     await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', key);
   }
-  async clear(): Promise<void> {
+  async clear(accountId?: string): Promise<void> {
     await this.initialize();
     const db = await this.databasePromise;
+    if (accountId) {
+      await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
+      await this.deleteResource(scoreResourceKey(accountId));
+      return;
+    }
     await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);
+    await db.runAsync('DELETE FROM account_score_snapshots');
     await db.runAsync('DELETE FROM catalog_snapshots WHERE id = ?', 1);
     await db.runAsync('DELETE FROM resource_snapshots');
   }

@@ -3,6 +3,13 @@ import type { AliasSnapshot, CatalogSnapshot, PlateSnapshot, Player, ScoreRecord
 export type ProviderSession =
   | { mode: 'jwt'; value: string; persistable: true }
   | { mode: 'import-token'; value: string; persistable: true }
+  | {
+    mode: 'lxns-oauth';
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+    persistable: true;
+  }
   | { mode: 'cookie-jar'; persistable: false };
 export interface LoginCredentials { username: string; password: string }
 export interface AuthProvider {

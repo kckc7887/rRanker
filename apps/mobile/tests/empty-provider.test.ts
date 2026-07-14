@@ -3,7 +3,11 @@ import { ScoreService } from '@/services/score-service';
 
 describe('empty test game providers', () => {
   it('loads an all-empty score snapshot', async () => {
-    const snapshot = await new ScoreService(new EmptyScoreProvider(), new EmptyCatalogProvider()).load();
+    const snapshot = await new ScoreService(
+      new EmptyScoreProvider(),
+      new EmptyCatalogProvider(),
+      'test:empty',
+    ).load();
     expect(snapshot.player.displayName).toBe('测试游戏');
     expect(snapshot.player.rating).toBe(0);
     expect(snapshot.records).toEqual([]);
