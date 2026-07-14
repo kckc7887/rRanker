@@ -10,7 +10,7 @@ import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 
 export default function OverviewScreen() {
-  const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
+  const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const library = useUserLibrary();
   const tabBottomInset = useNativeTabBottomInset();
   const session = useSession((s) => s.session);
@@ -31,7 +31,6 @@ export default function OverviewScreen() {
         isLoading={isLoading}
         isError={isError}
         isEmpty={false}
-        isStale={isDataStale}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         data={data}

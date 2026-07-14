@@ -18,7 +18,7 @@ function byRating(left: ScoreRecord, right: ScoreRecord): number {
 }
 
 export default function Best50Screen() {
-  const { data, isLoading, isError, isDataStale, error, refetch } = useScoreSnapshot();
+  const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const tabBottomInset = useNativeTabBottomInset();
   const sections = useMemo<BestSection[]>(() => {
     if (!data) return [];
@@ -36,7 +36,6 @@ export default function Best50Screen() {
         isLoading={isLoading}
         isError={isError}
         isEmpty={isEmpty}
-        isStale={isDataStale}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         emptyText="暂无 B50 数据"

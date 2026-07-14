@@ -12,7 +12,6 @@ describe('QueryStateView five states', () => {
         isLoading
         isError={false}
         isEmpty={false}
-        isStale={false}
         data={undefined}
         renderData={renderData}
       />,
@@ -26,7 +25,6 @@ describe('QueryStateView five states', () => {
         isLoading={false}
         isError
         isEmpty={false}
-        isStale={false}
         data={undefined}
         renderData={renderData}
       />,
@@ -40,7 +38,6 @@ describe('QueryStateView five states', () => {
         isLoading={false}
         isError={false}
         isEmpty
-        isStale={false}
         data={undefined}
         renderData={renderData}
       />,
@@ -48,33 +45,17 @@ describe('QueryStateView five states', () => {
     expect(getByText('暂无数据')).toBeTruthy();
   });
 
-  it('renders data without the stale banner when data is present and not stale', async () => {
+  it('renders data when present', async () => {
     const { getByText, queryByText } = await render(
       <QueryStateView
         isLoading={false}
         isError={false}
         isEmpty={false}
-        isStale={false}
         data={[1]}
         renderData={renderData}
       />,
     );
     expect(getByText('data-content')).toBeTruthy();
     expect(queryByText('当前显示缓存数据')).toBeNull();
-  });
-
-  it('shows the stale banner and data when data is present and stale', async () => {
-    const { getByText } = await render(
-      <QueryStateView
-        isLoading={false}
-        isError={false}
-        isEmpty={false}
-        isStale
-        data={[1]}
-        renderData={renderData}
-      />,
-    );
-    expect(getByText('当前显示缓存数据')).toBeTruthy();
-    expect(getByText('data-content')).toBeTruthy();
   });
 });
