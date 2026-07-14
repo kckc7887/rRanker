@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import SearchScreen from '../app/(tabs)/search';
@@ -31,9 +30,15 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('expo-router', () => ({
-  Stack: { Screen: ({ options }: { options?: { headerRight?: () => ReactNode } }) => options?.headerRight?.() ?? null },
-  router: { push: mockPush }, useLocalSearchParams: () => ({ songId: '1' }),
+  Stack: { Screen: () => null },
+  router: { push: (...args: unknown[]) => mockPush(...args), back: jest.fn() },
+  useLocalSearchParams: () => ({ songId: '1' }),
 }));
+jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
+  data: { items: [], source: { kind: 'fixture', label: 'fixture', updatedAt: new Date(0).toISOString(), isStale: false } },
+  isLoading: false, isError: false, error: null, refetch: jest.fn(),
+}) }));
+jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: mockItems, isLoading: false, isError: false, error: null, refetch: jest.fn(), isUpdating: false,
