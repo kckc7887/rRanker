@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { GestureHandlerRootView, Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { normalizeTags } from '@/domain/user-library';
 
 export function TagEditor({ tags, disabled, onChange }: {
@@ -20,24 +21,25 @@ export function TagEditor({ tags, disabled, onChange }: {
     if (await commit([...tags, input])) setInput('');
   };
 
-  return <View style={styles.wrap}>
+  return <GestureHandlerRootView style={styles.wrap}>
     <Text style={styles.label}>本地标签</Text>
     <View style={styles.tags}>
-      {tags.map((tag) => <Pressable key={tag} disabled={disabled} accessibilityRole="button"
+      {tags.map((tag) => <GesturePressable key={tag} disabled={disabled} accessibilityRole="button"
         accessibilityLabel={`删除标签 ${tag}`} onPress={() => void commit(tags.filter((item) => item !== tag))} style={styles.tag}>
         <Text style={styles.tagText}>{tag} ×</Text>
-      </Pressable>)}
+      </GesturePressable>)}
       {!tags.length ? <Text style={styles.empty}>暂无标签</Text> : null}
     </View>
     <View style={styles.inputRow}>
       <TextInput accessibilityLabel="新标签" editable={!disabled} placeholder="输入标签" value={input}
         onChangeText={setInput} onSubmitEditing={() => void add()} style={styles.input} />
-      <Pressable accessibilityRole="button" disabled={disabled} onPress={() => void add()} style={styles.add}>
+      <GesturePressable accessibilityRole="button" accessibilityLabel="添加标签"
+        disabled={disabled} onPress={() => void add()} style={styles.add}>
         <Text style={styles.addText}>添加</Text>
-      </Pressable>
+      </GesturePressable>
     </View>
     {error ? <Text style={styles.error}>{error}</Text> : null}
-  </View>;
+  </GestureHandlerRootView>;
 }
 
 const styles = StyleSheet.create({

@@ -4,7 +4,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import {
   GestureHandlerRootView,
   Pressable as GesturePressable,
@@ -174,20 +174,22 @@ function SongCollectionsCard({ songId }: { songId: string }) {
     () => collectionsForSong(collections.data?.items ?? [], songId),
     [collections.data?.items, songId],
   );
-  return <Card testID="song-collections-card">
-    <Text style={styles.section}>收藏品</Text>
-    {collections.isLoading ? <Text style={styles.meta}>正在加载收藏品…</Text> : null}
-    {collections.isError ? <View style={styles.collectionError}>
-      <Text style={styles.meta}>收藏品加载失败</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="重试加载收藏品"
-        onPress={() => void collections.refetch()} hitSlop={8} style={styles.aliasAction}>
-        <Text style={styles.aliasActionText}>重试</Text>
-      </Pressable>
-    </View> : null}
-    {!collections.isLoading && !collections.isError && matched.length === 0
-      ? <Text style={styles.meta}>无曲目专属收藏品</Text> : null}
-    {matched.map((item) => <CollectionRow key={`${item.kind}:${item.id}`} item={item} />)}
-  </Card>;
+  return <GestureHandlerRootView style={styles.scrollActionRoot}>
+    <Card testID="song-collections-card">
+      <Text style={styles.section}>收藏品</Text>
+      {collections.isLoading ? <Text style={styles.meta}>正在加载收藏品…</Text> : null}
+      {collections.isError ? <View style={styles.collectionError}>
+        <Text style={styles.meta}>收藏品加载失败</Text>
+        <GesturePressable accessibilityRole="button" accessibilityLabel="重试加载收藏品"
+          onPress={() => void collections.refetch()} hitSlop={8} style={styles.aliasAction}>
+          <Text style={styles.aliasActionText}>重试</Text>
+        </GesturePressable>
+      </View> : null}
+      {!collections.isLoading && !collections.isError && matched.length === 0
+        ? <Text style={styles.meta}>无曲目专属收藏品</Text> : null}
+      {matched.map((item) => <CollectionRow key={`${item.kind}:${item.id}`} item={item} />)}
+    </Card>
+  </GestureHandlerRootView>;
 }
 
 function trophyTone(color: string | null | undefined): {
@@ -236,15 +238,15 @@ function AliasLine({ aliases }: { aliases?: string[] }) {
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => { setExpanded(false); setOverflow(false); }, [text]);
-  return <View style={styles.aliasBlock}>
+  return <GestureHandlerRootView style={styles.aliasBlock}>
     <Text accessible={false} testID="alias-overflow-measure" style={[styles.body, styles.aliasMeasure]}
       onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}>{text}</Text>
     <Text testID="song-alias-text" numberOfLines={expanded ? undefined : 1} style={styles.body}>{text}</Text>
-    {overflow ? <Pressable accessibilityRole="button" accessibilityLabel={expanded ? '收起别名' : '展开别名'}
+    {overflow ? <GesturePressable accessibilityRole="button" accessibilityLabel={expanded ? '收起别名' : '展开别名'}
       onPress={() => setExpanded((value) => !value)} hitSlop={6} style={styles.aliasAction}>
       <Text style={styles.aliasActionText}>{expanded ? '收起' : '展开'}</Text>
-    </Pressable> : null}
-  </View>;
+    </GesturePressable> : null}
+  </GestureHandlerRootView>;
 }
 
 
@@ -290,26 +292,53 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
     contentContainerStyle={styles.singleLineContent} />;
 }
 
-function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
-  return <View style={[styles.metadataCell, { flex }]}><Text numberOfLines={1} style={styles.metadataLabel}>{label}</Text>
-    <AutoScrollText text={value} textStyle={styles.metadataValue} />
+function MetadataValue({ label, value, expanded, onOverflowChange }: {
+  label: string; value: string; expanded: boolean; onOverflowChange: (overflow: boolean) => void;
+}) {
+  return <View style={styles.metadataValueBlock}>
+    <Text accessible={false} testID={`metadata-measure-${label}`}
+      style={[styles.metadataValue, styles.metadataValueMeasure]}
+      onTextLayout={(event) => onOverflowChange(event.nativeEvent.lines.length > 2)}>{value}</Text>
+    <Text testID={`metadata-value-${label}`} numberOfLines={expanded ? undefined : 2} ellipsizeMode="tail"
+      style={styles.metadataValue}>{value}</Text>
   </View>;
+}
+
+function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => { setExpanded(false); setOverflow(false); }, [value]);
+  return <GestureHandlerRootView style={[styles.metadataCellRoot, { flex }]}>
+    <GesturePressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
+      accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}${label}` : undefined}
+      onPress={() => setExpanded((current) => !current)} style={styles.metadataCell}>
+      <Text numberOfLines={1} style={styles.metadataLabel}>{label}</Text>
+      <MetadataValue label={label} value={value} expanded={expanded} onOverflowChange={setOverflow} />
+    </GesturePressable>
+  </GestureHandlerRootView>;
 }
 
 function VersionMetadataCell({ value, onToggle }: {
   value: string; onToggle: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => { setExpanded(false); setOverflow(false); }, [value]);
   return <GestureHandlerRootView style={styles.versionCellRoot}>
-    <GesturePressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
-      hitSlop={4} style={({ pressed }) => [styles.metadataCell, styles.versionCell, pressed && styles.switchPressed]}>
+    <View style={[styles.metadataCell, styles.versionCell]}>
       <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
       <View style={styles.versionValueRow}>
-        <Text style={[styles.metadataValue, styles.versionName]}>{value}</Text>
-        <View pointerEvents="none" style={styles.versionToggle}>
+        <GesturePressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
+          accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}版本` : undefined}
+          onPress={() => setExpanded((current) => !current)} style={styles.versionName}>
+          <MetadataValue label="版本" value={value} expanded={expanded} onOverflowChange={setOverflow} />
+        </GesturePressable>
+        <GesturePressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
+          hitSlop={4} style={({ pressed }) => [styles.versionToggle, pressed && styles.switchPressed]}>
           <Ionicons name="swap-horizontal" color="#5967C9" size={14} />
-        </View>
+        </GesturePressable>
       </View>
-    </GesturePressable>
+    </View>
   </GestureHandlerRootView>;
 }
 
@@ -351,6 +380,20 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   </GestureHandlerRootView>;
 }
 
+async function openBilibiliChartSearch(query: string): Promise<void> {
+  const keyword = encodeURIComponent(query);
+  const webUrl = `https://search.bilibili.com/all?keyword=${keyword}`;
+  if (Platform.OS === 'web') {
+    await Linking.openURL(webUrl);
+    return;
+  }
+  try {
+    await Linking.openURL(`bilibili://search?keyword=${keyword}`);
+  } catch {
+    await Linking.openURL(webUrl);
+  }
+}
+
 function ChartCard({ chart, best, song, library, width, canSwitchChartType, onToggleChartType }: {
   chart: Chart;
   best?: ScoreRecord;
@@ -363,6 +406,8 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
   const visual = DIFFICULTY_VISUAL[chart.difficulty];
   const chartItem = library.data?.find((item) => item.key === chartLibraryKey(song.id, chart.type, chart.levelIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
+  const chartTypeKeyword = canSwitchChartType ? ` ${chart.type}` : '';
+  const chartSearchQuery = `${song.title}${chartTypeKeyword} ${visual.label} 谱面确认`;
   return <View style={[styles.chartCard, { width, backgroundColor: visual.tint, borderColor: visual.color }]}>
     <View style={styles.chartHeader}>
       <View style={styles.chartIdentity}>
@@ -384,11 +429,17 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
     <View style={styles.chartDivider} />
     <Text style={styles.chartMeta}>谱师：{chart.charter || '未提供'}</Text>
     <NotesTable notes={chart.notes} />
-    <Pressable accessibilityRole="button" disabled={library.isUpdating}
+    <GesturePressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
+      disabled={library.isUpdating}
       onPress={() => void library.setChartPractice(song.id, chart.type, chart.levelIndex, !practice)}
       style={[styles.action, practice && { backgroundColor: visual.color, borderColor: visual.color }]}>
       <Text style={[styles.actionText, { color: practice ? '#FFFFFF' : visual.color }]}>{practice ? '已加入练习清单' : '加入练习清单'}</Text>
-    </Pressable>
+    </GesturePressable>
+    <GesturePressable accessibilityRole="link" accessibilityLabel={`搜索谱面确认：${chartSearchQuery}`}
+      onPress={() => void openBilibiliChartSearch(chartSearchQuery)}
+      style={[styles.action, styles.chartSearchAction, { borderColor: visual.color }]}>
+      <Text style={[styles.actionText, { color: visual.color }]}>搜索谱面确认</Text>
+    </GesturePressable>
     <TagEditor tags={chartItem?.tags ?? []} disabled={library.isUpdating}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
   </View>;
@@ -452,13 +503,15 @@ const styles = StyleSheet.create({
   headerFavoriteActive: {},
   headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   metadataTable: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DEE8', paddingHorizontal: 12, paddingVertical: 13, gap: 6 },
-  metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 },
+  metadataCellRoot: { minWidth: 0 }, metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 },
   versionCellRoot: { flex: 1.8, minWidth: 0 }, versionCell: { flex: 1 },
   metadataLabel: { color: '#8A93A3', fontSize: 11, fontWeight: '700', lineHeight: 14 },
   versionValueRow: { minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', gap: 2 },
   versionName: { flex: 1, minWidth: 0 },
   versionToggle: { width: 16, height: 16, marginTop: 1, alignItems: 'center', justifyContent: 'center' },
   switchPressed: { opacity: 0.58 },
+  metadataValueBlock: { position: 'relative', minWidth: 0 },
+  metadataValueMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
   metadataValue: { color: '#182130', fontSize: 13, lineHeight: 16, fontWeight: '700' },
   carouselRoot: { flexGrow: 0 },
   carouselScroll: { flexGrow: 0 },
@@ -498,6 +551,8 @@ const styles = StyleSheet.create({
   trophyNameInner: { borderRadius: 6.5, paddingHorizontal: 8, paddingVertical: 3 },
   trophyNameText: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
+  scrollActionRoot: { flexGrow: 0 },
   action: { marginTop: 13, marginBottom: 10, borderWidth: 1, borderColor: '#667085', borderRadius: 11, padding: 10, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.52)' },
+  chartSearchAction: { marginTop: 0 },
   actionText: { fontWeight: '700' },
 });
