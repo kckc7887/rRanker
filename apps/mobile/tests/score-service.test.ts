@@ -1,4 +1,5 @@
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
+import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/sanitized';
 import { FixtureCatalogProvider, FixtureProvider } from '@/providers/fixture-provider';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
@@ -69,9 +70,40 @@ describe('ScoreService', () => {
     const getPlayer = vi.spyOn(score, 'getPlayer');
     const getRecords = vi.spyOn(score, 'getRecords');
     const getCatalog = vi.spyOn(catalog, 'getCatalog');
+    const getDetailedCatalog = vi.spyOn(catalog, 'getDetailedCatalog');
     await new ScoreService(score, catalog, 'acct-a').load();
     expect(getPlayer).toHaveBeenCalledTimes(1);
     expect(getRecords).toHaveBeenCalledTimes(1);
-    expect(getCatalog).toHaveBeenCalledTimes(1);
+    expect(getCatalog).not.toHaveBeenCalled();
+    expect(getDetailedCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it('combines provider actual DXScore with theoretical score notes from the detailed API', async () => {
+    const record = { ...fixtureRecords[0]!, dxScore: 1836 };
+    const catalog = structuredClone(fixtureCatalog);
+    catalog.songs = [{
+      id: record.songId, title: record.title, version: record.version,
+      charts: [{
+        songId: record.songId, type: record.type, levelIndex: record.levelIndex,
+        level: record.level, difficulty: record.difficulty,
+        difficultyConstant: record.difficultyConstant,
+        notes: { tap: 300, hold: 80, slide: 200, touch: 20, break: 90, total: 690 },
+      }],
+    }];
+    const scoreProvider = {
+      getPlayer: async () => structuredClone(fixturePlayer),
+      getRecords: async () => [structuredClone(record)],
+    };
+    const catalogProvider = {
+      ...new FixtureCatalogProvider(),
+      getCatalog: async () => { throw new Error('普通曲库不应被调用'); },
+      getDetailedCatalog: async () => structuredClone(catalog),
+      getAliases: async () => ({ aliases: [], source: catalog.source }),
+      getPlates: async () => ({ plates: [], source: catalog.source }),
+      getCollections: async () => ({ items: [], source: catalog.source }),
+    };
+
+    const snapshot = await new ScoreService(scoreProvider, catalogProvider, 'acct-dx-score').load();
+    expect(snapshot.records[0]).toMatchObject({ dxScore: 1836, notes: { total: 690 } });
   });
 });

@@ -64,4 +64,17 @@ describe('DivingFishProvider native cookie session', () => {
       headers: { Accept: 'application/json', 'Import-Token': 'fake-token' },
     }));
   });
+
+  it('reads the player actual DXScore from the verified records field', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      records: [{
+        achievements: 100, ds: 13.8, dxScore: 1836, fc: 'fcp', fs: 'fsd',
+        level: '13+', level_index: 3, level_label: 'Master', ra: 298, rate: 'sss',
+        song_id: 11447, title: '测试歌曲', type: 'DX', version: '测试版本',
+      }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    const provider = new DivingFishProvider({ mode: 'import-token', value: 'fake-token', persistable: true });
+
+    await expect(provider.getRecords()).resolves.toMatchObject([{ dxScore: 1836 }]);
+  });
 });

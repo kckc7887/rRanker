@@ -33,7 +33,7 @@ export function minimumAchievementForRating(difficultyConstant: number, targetRa
   return low / 10_000;
 }
 
-function rankRecords(records: readonly ScoreRecord[]): ScoreRecord[] {
+export function rankScoreRecords(records: readonly ScoreRecord[]): ScoreRecord[] {
   return [...records].sort(
     (left, right) => right.rating - left.rating || right.achievements - left.achievements ||
       left.songId.localeCompare(right.songId) || left.levelIndex - right.levelIndex,
@@ -52,10 +52,10 @@ export function buildBest50(
     version: catalog.chartVersionIndex[chartVersionKey(record.songId, record.type, record.levelIndex)],
   }));
   const unmatchedRecordCount = classified.filter(({ version }) => version === undefined).length;
-  const b35 = rankRecords(classified
+  const b35 = rankScoreRecords(classified
     .filter(({ version }) => version !== undefined && version !== catalog.currentVersion.id)
     .map(({ record }) => record)).slice(0, 35);
-  const b15 = rankRecords(classified
+  const b15 = rankScoreRecords(classified
     .filter(({ version }) => version === catalog.currentVersion.id)
     .map(({ record }) => record)).slice(0, 15);
   return {
