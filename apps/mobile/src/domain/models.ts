@@ -20,6 +20,13 @@ export interface Player {
   displayName: string;
   rating: number;
   additionalRating?: number;
+  presentation?: {
+    iconId?: number;
+    namePlateId?: number;
+    frameId?: number;
+    trophyName?: string;
+    trophyColor?: string | null;
+  };
   source: DataSource;
 }
 

@@ -84,6 +84,8 @@ describe('M4 score list cards', () => {
 
   it('renders Best35 above Best15 and sorts each section by Rating', async () => {
     const screen = await render(<Best50Screen />);
+    await fireEvent.press(screen.getByLabelText('生成成绩图片'));
+    expect(mockPush).toHaveBeenCalledWith('/best-image');
     expect(screen.getByText('过往版本 Best35')).toBeTruthy();
     expect(screen.getByText('当前版本 Best15')).toBeTruthy();
     expect(screen.getByText('MASTER (13.7)')).toBeTruthy();

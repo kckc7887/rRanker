@@ -63,6 +63,10 @@ const PlateResponseSchema = z.union([
   z.array(PlateSchema), z.object({ plates: z.array(PlateSchema) }).passthrough(),
 ]);
 const COLLECTION_KINDS: readonly CollectionKind[] = ['trophy', 'icon', 'plate', 'frame'];
+export type LxnsCollectionQuery = {
+  kinds?: readonly CollectionKind[];
+  required?: boolean;
+};
 const CollectionEnvelopeSchema = z.object({
   trophies: z.array(CollectionSchema).optional(),
   icons: z.array(CollectionSchema).optional(),
@@ -182,9 +186,14 @@ export class LxnsCatalogProvider implements DetailedCatalogProvider {
     };
   }
 
-  async getCollections(): Promise<CollectionSnapshot> {
+  async getCollections(options: LxnsCollectionQuery = {}): Promise<CollectionSnapshot> {
+    const kinds = options.kinds ?? COLLECTION_KINDS;
+    const includeRequired = options.required ?? true;
     const responses = await Promise.all(
-      COLLECTION_KINDS.map(async (kind) => ({ kind, payload: await getJson(`/${kind}/list?required=true`) })),
+      kinds.map(async (kind) => ({
+        kind,
+        payload: await getJson(`/${kind}/list${includeRequired ? '?required=true' : ''}`),
+      })),
     );
     const items: CollectionItem[] = [];
     for (const { kind, payload } of responses) {

@@ -50,10 +50,20 @@ export const LxnsEnvelopeSchema = z.object({
   data: z.unknown().optional(),
 }).passthrough();
 
+const LxnsPlayerCollectionSchema = z.object({
+  id: z.number().int(),
+  name: z.string().optional(),
+  color: z.string().nullable().optional(),
+}).passthrough();
+
 export const LxnsPlayerSchema = z.object({
   name: z.string(),
   rating: z.number().int().nonnegative(),
   friend_code: z.union([z.number(), z.string()]),
+  trophy: LxnsPlayerCollectionSchema.nullable().optional(),
+  icon: LxnsPlayerCollectionSchema.nullable().optional(),
+  name_plate: LxnsPlayerCollectionSchema.nullable().optional(),
+  frame: LxnsPlayerCollectionSchema.nullable().optional(),
 }).passthrough();
 
 export const LxnsScoreSchema = z.object({

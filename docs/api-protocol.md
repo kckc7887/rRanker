@@ -75,6 +75,8 @@
 | `/api/v0/user/maimai/player/scores` | GET | `Authorization: Bearer` | 当前用户全部成绩 `Score[]` |
 | `/api/v0/user/maimai/player/scores` | POST | Bearer | 上传成绩（scope `write_player`；App 暂未调用） |
 
+> player last_verified: 2026-07-15 — 官方 `Player` 契约包含 `name`、`rating`、`friend_code`，以及可空的 `icon.id`、`name_plate.id`、`trophy.{id,name,color}`；头像与姓名框分别使用公共资源 `/icon/{id}.png`、`/plate/{id}.png`。水鱼玩家契约没有头像/姓名框资源 ID，预览不得伪造。
+
 OAuth 约束（官方文档）：
 
 - Access Token 有效期 15 分钟；Refresh Token 30 天；刷新会轮换新 refresh，旧 refresh 失效。

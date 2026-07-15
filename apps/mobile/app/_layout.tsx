@@ -40,6 +40,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal', headerBackButtonMenuEnabled: false }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'rRanker' }} />
         <Stack.Screen name="library/index" options={{ title: '我的曲库' }} />
+        <Stack.Screen name="best-image" options={{ title: '图片预览' }} />
         <Stack.Screen name="songs/[songId]" options={{ title: '歌曲详情' }} />
       </Stack>
       <StatusBar style="dark" />
