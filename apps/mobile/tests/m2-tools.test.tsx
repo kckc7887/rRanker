@@ -46,9 +46,12 @@ describe('M2 tool screens', () => {
     expect(versions.getByText('版本名称对照')).toBeTruthy();
     expect(versions.getByText('国服')).toBeTruthy();
     expect(versions.getByText('日服')).toBeTruthy();
+    expect(versions.getByText('版本代号')).toBeTruthy();
     expect(versions.queryByText(/LXNS|水鱼/)).toBeNull();
     expect(versions.getByLabelText('舞萌DX 2026 国服 Logo')).toBeTruthy();
     expect(versions.getByLabelText('maimai でらっくす PRiSM PLUS 日服 Logo')).toBeTruthy();
+    expect(versions.getByLabelText('maimai 版本代号 真')).toBeTruthy();
+    expect(versions.getByLabelText('舞萌DX 2026 版本代号 彩')).toBeTruthy();
     expect(versions.getByText('各版本游玩总结')).toBeTruthy();
     expect(versions.getByText('maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(versions.getByText('舞萌DX 2026')).toBeTruthy();

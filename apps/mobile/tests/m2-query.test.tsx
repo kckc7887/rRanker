@@ -87,14 +87,24 @@ describe('M2 song query screens', () => {
     expect(screen.getByText('歌曲信息')).toBeTruthy();
     expect(screen.getAllByText(/别名：唯一别名/).length).toBeGreaterThan(0);
     expect(screen.getByText('#1')).toBeTruthy();
-    expect(screen.getByText('POPS＆ANIME')).toBeTruthy();
+    expect(screen.getByTestId('metadata-value-分类').props.children).toBe('POPS＆ANIME');
     expect(screen.getAllByText('180').length).toBeGreaterThan(0);
-    expect(screen.getByText('未来都市')).toBeTruthy();
+    expect(screen.getByTestId('metadata-value-区域').props.children).toBe('未来都市');
+    for (const label of ['分类', 'BPM', '版本', '区域']) {
+      expect(screen.getByTestId(`metadata-value-${label}`).props.numberOfLines).toBe(2);
+    }
+    await fireEvent(screen.getByTestId('metadata-measure-分类'), 'textLayout', {
+      nativeEvent: { lines: [{}, {}, {}] },
+    });
+    await fireEvent.press(screen.getByLabelText('展开分类'));
+    expect(screen.getByTestId('metadata-value-分类').props.numberOfLines).toBeUndefined();
+    await fireEvent.press(screen.getByLabelText('收起分类'));
+    expect(screen.getByTestId('metadata-value-分类').props.numberOfLines).toBe(2);
     expect(screen.getByText('版本')).toBeTruthy();
-    expect(screen.getByText('舞萌DX 2026')).toBeTruthy();
+    expect(screen.getByTestId('metadata-value-版本').props.children).toBe('舞萌DX 2026');
     expect(screen.queryByText(/国服|日服/)).toBeNull();
     await fireEvent.press(screen.getByLabelText('切换版本名称'));
-    expect(screen.getByText('maimai でらっくす PRiSM PLUS')).toBeTruthy();
+    expect(screen.getByTestId('metadata-value-版本').props.children).toBe('maimai でらっくす PRiSM PLUS');
     expect(screen.getByLabelText('切换版本名称')).toBeTruthy();
     expect(screen.getByLabelText('数据来源状态')).toBeTruthy();
     expect(screen.getByTestId('song-detail-scroll').props.directionalLockEnabled).toBeUndefined();
@@ -108,6 +118,8 @@ describe('M2 song query screens', () => {
     expect(screen.getByLabelText('100.5000%')).toBeTruthy();
     expect(screen.getByTestId('flowing-achievement')).toBeTruthy();
     expect(screen.getByTestId('rainbow-achievement')).toBeTruthy();
+    expect(screen.getByTestId('flowing-achievement-gradient').props.colors).not.toContain('#f0e470');
+    expect(screen.getByTestId('rainbow-achievement-gradient').props.colors).not.toContain('#f0e470');
     expect(screen.getByLabelText('99.9999%')).toBeTruthy();
     expect(screen.getByLabelText('99.5000%')).toBeTruthy();
     expect(screen.getByLabelText('99.0000%')).toBeTruthy();
@@ -131,6 +143,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByText('谱师：DX主谱师')).toBeTruthy();
     expect(screen.queryByText('谱师：SD主谱师')).toBeNull();
     expect(screen.queryByText(/谱面版本/)).toBeNull();
+    expect(screen.getByLabelText('搜索谱面确认：正常曲目 A DX MASTER 谱面确认')).toBeTruthy();
     const notesTable = within(screen.getByLabelText('谱面物量'));
     for (const heading of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK', '总计']) {
       expect(notesTable.getByText(heading)).toBeTruthy();
@@ -143,6 +156,7 @@ describe('M2 song query screens', () => {
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
     expect(screen.queryByText('谱师：DX主谱师')).toBeNull();
     expect(screen.getByText('谱师：SD主谱师')).toBeTruthy();
+    expect(screen.getByLabelText('搜索谱面确认：正常曲目 A SD MASTER 谱面确认')).toBeTruthy();
     expect(screen.getAllByText('·点击切换·')).toHaveLength(2);
     expect(screen.getAllByText(/Re:MASTER|MASTER|EXPERT|ADVANCED|BASIC/).map((node) =>
       Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children))
