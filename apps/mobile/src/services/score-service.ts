@@ -1,16 +1,15 @@
 import { enrichRecordsWithCatalog } from '@/domain/catalog';
 import { buildBest50 } from '@/domain/rating';
 import type { ScoreSnapshot } from '@/domain/models';
-import type { CatalogProvider, ScoreProvider } from '@/providers/contracts';
+import type { DetailedCatalogProvider, ScoreProvider } from '@/providers/contracts';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
-import { CatalogService } from './catalog-service';
 import { ProviderError } from '@/providers/errors';
 
 export class ScoreService {
   constructor(
     private readonly scoreProvider: ScoreProvider,
-    private readonly catalogProvider: CatalogProvider,
+    private readonly catalogProvider: DetailedCatalogProvider,
     private readonly accountId: string,
     private readonly snapshotRepository?: SnapshotRepository,
     private readonly catalogRepository?: CatalogRepository,
@@ -21,8 +20,9 @@ export class ScoreService {
       const [player, rawRecords, catalog] = await Promise.all([
         this.scoreProvider.getPlayer(),
         this.scoreProvider.getRecords(),
-        new CatalogService(this.catalogProvider, this.catalogRepository).load(),
+        this.catalogProvider.getDetailedCatalog(),
       ]);
+      await this.catalogRepository?.saveCatalog(catalog);
       const records = enrichRecordsWithCatalog(rawRecords, catalog);
       const best50 = buildBest50(player, records, catalog, player.source);
       const snapshot: ScoreSnapshot = {

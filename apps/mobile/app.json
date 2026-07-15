@@ -43,7 +43,15 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "允许 rRanker 访问照片。",
+          "savePhotosPermission": "允许 rRanker 将成绩图片保存到相册。",
+          "granularPermissions": ["photo"]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

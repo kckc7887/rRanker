@@ -35,4 +35,22 @@ describe('LXNS player presentation', () => {
       },
     });
   });
+
+  it('reads the player actual DXScore from dx_score', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      code: 200,
+      data: [{
+        id: 1447, song_name: '测试歌曲', level: '13+', level_index: 3,
+        achievements: 100, fc: 'fcp', fs: 'fsd', dx_score: 1836,
+        dx_rating: 298, rate: 'sss', type: 'dx',
+      }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    const provider = new LxnsScoreProvider({
+      mode: 'lxns-oauth', accessToken: 'access-token', refreshToken: 'refresh-token',
+      expiresAt: Date.now() + 120_000, persistable: true,
+    });
+
+    await expect(provider.getRecords()).resolves.toMatchObject([{ dxScore: 1836 }]);
+  });
 });

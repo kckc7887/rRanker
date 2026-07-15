@@ -7,32 +7,30 @@ import type { Difficulty } from '@/domain/models';
 import {
   formatAchievement, isNearMissAchievement, scoreRateEffect, scoreRateLabel,
 } from '@/domain/score-presentation';
+import {
+  BEST_IMAGE_RAINBOW_COLORS,
+  BEST_IMAGE_RAINBOW_TEXT,
+  STATUS_BADGE_THEMES,
+} from '@/features/best-image/best-image-badge-theme';
 
 type GradientColors = readonly [string, string, ...string[]];
 
-const RAINBOW: GradientColors = ['#ff8a96', '#ffc888', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade'];
+const RAINBOW: GradientColors = BEST_IMAGE_RAINBOW_COLORS;
 const FLOWING_RAINBOW: GradientColors = [
-  '#ff8a96', '#ffc888', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade',
-  '#ff8a96', '#ffc888', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade', '#ff8a96',
+  ...BEST_IMAGE_RAINBOW_COLORS, ...BEST_IMAGE_RAINBOW_COLORS, BEST_IMAGE_RAINBOW_COLORS[0],
 ];
 
-interface BlurSpec {
-  bg: string;
-  border: string;
-  text: string;
-}
+type BlurSpec = typeof STATUS_BADGE_THEMES.gold;
 
-const RAINBOW_BLUR: BlurSpec = { bg: 'rgba(255,179,186,0.28)', border: 'rgba(255,160,170,0.55)', text: '#f08a96' };
-const GOLD_BLUR: BlurSpec = { bg: 'rgba(240,220,170,0.28)', border: 'rgba(212,180,90,0.55)', text: '#dbb860' };
-const GREEN_BLUR: BlurSpec = { bg: 'rgba(180,235,200,0.28)', border: 'rgba(120,210,155,0.55)', text: '#7ad4a0' };
-const BLUE_BLUR: BlurSpec = { bg: 'rgba(180,220,245,0.28)', border: 'rgba(120,180,220,0.55)', text: '#7ab8dc' };
-const NEUTRAL_BLUR: BlurSpec = { bg: 'rgba(156,163,175,0.28)', border: 'rgba(156,163,175,0.55)', text: '#4B5563' };
+const GOLD_BLUR = STATUS_BADGE_THEMES.gold;
+const GREEN_BLUR = STATUS_BADGE_THEMES.green;
+const BLUE_BLUR = STATUS_BADGE_THEMES.blue;
+const NEUTRAL_BLUR = STATUS_BADGE_THEMES.neutral;
 
 const SHIMMER: GradientColors = ['rgba(255,255,255,0)', 'rgba(255,255,255,0.10)', 'rgba(255,255,255,0)'];
 
-function blurSpec(color: 'rainbow' | 'gold' | 'green' | 'blue'): BlurSpec {
+function blurSpec(color: 'gold' | 'green' | 'blue'): BlurSpec {
   switch (color) {
-    case 'rainbow': return RAINBOW_BLUR;
     case 'gold': return GOLD_BLUR;
     case 'green': return GREEN_BLUR;
     case 'blue': return BLUE_BLUR;
@@ -126,12 +124,31 @@ function GradientAchievement({ text, flowing = false, compact = false }: {
 function RateBadge({ value }: { value: string }) {
   const label = scoreRateLabel(value);
   switch (scoreRateEffect(value)) {
-    case 'flowing-rainbow': return <BlurBadge label={label} spec={RAINBOW_BLUR} flowing testID={`flowing-rate-${label}`} />;
-    case 'rainbow': return <BlurBadge label={label} spec={RAINBOW_BLUR} testID={`rainbow-rate-${label}`} />;
+    case 'flowing-rainbow': return <RainbowBadge label={label} flowing testID={`flowing-rate-${label}`} />;
+    case 'rainbow': return <RainbowBadge label={label} testID={`rainbow-rate-${label}`} />;
     case 'flowing-gold': return <BlurBadge label={label} spec={GOLD_BLUR} flowing testID={`flowing-rate-${label}`} />;
     case 'gold': return <BlurBadge label={label} spec={GOLD_BLUR} testID={`rate-${label}`} />;
     default: return <View style={[styles.statusBadge, styles.normalBadge]}><Text style={[styles.statusText, styles.normalText]}>{label}</Text></View>;
   }
+}
+
+function RainbowBadge({ label, flowing = false, testID }: { label: string; flowing?: boolean; testID: string }) {
+  const [width, setWidth] = useState(52);
+  const progress = useFlowingProgress(flowing, 1400);
+  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
+  return <LinearGradient
+    colors={BEST_IMAGE_RAINBOW_COLORS}
+    end={{ x: 1, y: 0.5 }}
+    onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+    start={{ x: 0, y: 0.5 }}
+    style={[styles.statusBadge, styles.rainbowBadge]}
+    testID={testID}
+  >
+    {flowing ? <Animated.View pointerEvents="none" style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
+      <LinearGradient colors={SHIMMER} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
+    </Animated.View> : null}
+    <Text style={[styles.statusText, { color: BEST_IMAGE_RAINBOW_TEXT }]}>{label}</Text>
+  </LinearGradient>;
 }
 
 function NearMissBadge() {
@@ -153,7 +170,7 @@ function BlurBadge({ label, spec, flowing = false, testID }: {
   return <View testID={testID} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
     style={[styles.statusBadge, { borderWidth: 1, borderColor: spec.border }]}>
     <BlurView intensity={18} tint="light" style={StyleSheet.absoluteFill} />
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: spec.bg, borderRadius: 8 }]} />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: spec.background, borderRadius: 8 }]} />
     {flowing ? <Animated.View pointerEvents="none"
       style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
       <LinearGradient colors={SHIMMER} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
@@ -177,7 +194,7 @@ function useFlowingProgress(enabled: boolean, duration: number): Animated.Value 
 }
 
 function getStatusSpec(kind: 'fc' | 'fs', rawValue: string): {
-  label: string; flowing: boolean; color: 'rainbow' | 'gold' | 'green' | 'blue';
+  label: string; flowing: boolean; color: 'gold' | 'green' | 'blue';
 } {
   const value = rawValue.toLowerCase();
   if (kind === 'fc') {
@@ -207,7 +224,8 @@ const styles = StyleSheet.create({
   achievementMask: { alignSelf: 'stretch', height: 44 }, achievementMaskCompact: { height: 28 },
   achievementMaskContent: { flex: 1, alignItems: 'flex-start' }, maskText: { color: '#000000' },
   gradientFill: { ...StyleSheet.absoluteFillObject }, flowTrack: { position: 'absolute', top: 0, bottom: 0, left: 0 },
-  statusBadge: { borderRadius: 9, paddingHorizontal: 10, paddingVertical: 5, overflow: 'hidden' },
-  statusText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.45 },
+  statusBadge: { minWidth: 32, height: 24, borderRadius: 9, paddingHorizontal: 10, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  rainbowBadge: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)' },
+  statusText: { fontSize: 10, lineHeight: 12, fontWeight: '900', letterSpacing: 0.45, textAlign: 'center', includeFontPadding: false },
   normalBadge: { backgroundColor: '#E5E7EB' }, normalText: { color: '#374151' },
 });
