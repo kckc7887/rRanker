@@ -7,7 +7,17 @@ describe('Chinese and Japanese version names', () => {
       versionId: 25500,
       china: '舞萌DX 2026',
       japan: 'maimai でらっくす PRiSM PLUS',
+      code: '彩',
     });
+  });
+  it('maps every listed version to its plate code', () => {
+    expect(VERSION_NAME_MAPPINGS.map(({ versionId, code }) => [versionId, code])).toEqual([
+      [10000, '真'], [11000, '真'], [12000, '超'], [13000, '檄'],
+      [14000, '橙'], [15000, '暁'], [16000, '桃'], [17000, '櫻'],
+      [18000, '紫'], [18500, '菫'], [19000, '白'], [19500, '雪'],
+      [19900, '輝'], [20000, '熊'], [21000, '爽'], [22000, '宙'],
+      [23000, '祭'], [24000, '双'], [25000, '鏡'], [25500, '彩'],
+    ]);
   });
   it('keeps one unique mapping for every verified LXNS version id', () => {
     expect(new Set(VERSION_NAME_MAPPINGS.map((item) => item.versionId)).size).toBe(VERSION_NAME_MAPPINGS.length);

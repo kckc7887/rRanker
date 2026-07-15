@@ -1,5 +1,6 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { Linking } from 'react-native';
 import SearchScreen from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 import UserLibraryScreen from '../app/library';
@@ -184,14 +185,32 @@ describe('M3A personal library screens', () => {
   });
 
   it('edits song favorite, chart practice and tags from song detail', async () => {
+    const openUrl = jest.spyOn(Linking, 'openURL').mockResolvedValueOnce(undefined);
     const screen = await render(<SongDetailScreen />);
     await fireEvent.press(screen.getByLabelText('取消收藏 正常曲目 A'));
     expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
     await fireEvent.press(screen.getByText('已加入练习清单'));
     expect(mockSetPractice).toHaveBeenCalledWith('1', 'DX', 3, false);
+    await fireEvent.press(screen.getByText('搜索谱面确认'));
+    expect(openUrl).toHaveBeenCalledWith(
+      `bilibili://search?keyword=${encodeURIComponent('正常曲目 A MASTER 谱面确认')}`,
+    );
+    expect(openUrl).toHaveBeenCalledTimes(1);
+    openUrl.mockRejectedValueOnce(new Error('未安装哔哩哔哩')).mockResolvedValueOnce(undefined);
+    await fireEvent.press(screen.getByText('搜索谱面确认'));
+    await waitFor(() => expect(openUrl).toHaveBeenNthCalledWith(
+      3,
+      `https://search.bilibili.com/all?keyword=${encodeURIComponent('正常曲目 A MASTER 谱面确认')}`,
+    ));
     const inputs = screen.getAllByLabelText('新标签');
+    await fireEvent.changeText(inputs[0], '谱面标签');
+    const addButtons = screen.getAllByLabelText('添加标签');
+    await fireEvent.press(addButtons[0]);
+    expect(mockSetTags).toHaveBeenCalledWith(
+      { kind: 'chart', songId: '1', type: 'DX', levelIndex: 3 },
+      ['耐力', '谱面标签'],
+    );
     await fireEvent.changeText(inputs[inputs.length - 1], '新标签');
-    const addButtons = screen.getAllByText('添加');
     await fireEvent.press(addButtons[addButtons.length - 1]);
     expect(mockSetTags).toHaveBeenCalledWith({ kind: 'song', songId: '1' }, ['喜欢', '新标签']);
   });

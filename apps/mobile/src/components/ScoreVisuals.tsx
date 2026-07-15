@@ -10,10 +10,10 @@ import {
 
 type GradientColors = readonly [string, string, ...string[]];
 
-const RAINBOW: GradientColors = ['#ff8a96', '#ffc888', '#f0e470', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade'];
+const RAINBOW: GradientColors = ['#ff8a96', '#ffc888', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade'];
 const FLOWING_RAINBOW: GradientColors = [
-  '#ff8a96', '#ffc888', '#f0e470', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade',
-  '#ff8a96', '#ffc888', '#f0e470', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade', '#ff8a96',
+  '#ff8a96', '#ffc888', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade',
+  '#ff8a96', '#ffc888', '#78e8a0', '#78c8ff', '#a89cf8', '#f08ade', '#ff8a96',
 ];
 
 interface BlurSpec {
@@ -116,8 +116,10 @@ function GradientAchievement({ text, flowing = false, compact = false }: {
     style={[styles.achievementMask, compact && styles.achievementMaskCompact]}
     maskElement={<View style={styles.achievementMaskContent}><Text style={textStyle}>{text}</Text></View>}>
     {flowing ? <Animated.View style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
-      <LinearGradient colors={FLOWING_RAINBOW} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
-    </Animated.View> : <LinearGradient colors={RAINBOW} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />}
+      <LinearGradient testID="flowing-achievement-gradient" colors={FLOWING_RAINBOW}
+        start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
+    </Animated.View> : <LinearGradient testID="rainbow-achievement-gradient" colors={RAINBOW}
+      start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />}
   </MaskedView>;
 }
 

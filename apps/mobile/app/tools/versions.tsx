@@ -41,6 +41,7 @@ export default function VersionsToolScreen() {
           <View style={[styles.tableRow, styles.tableHeader]}>
             <Text style={styles.chinaHeader}>国服</Text>
             <Text style={styles.japanHeader}>日服</Text>
+            <Text style={styles.codeHeader}>版本代号</Text>
           </View>
           {VERSION_NAME_MAPPINGS.map((item) => (
             <View key={item.versionId} style={styles.tableRow}>
@@ -57,6 +58,12 @@ export default function VersionsToolScreen() {
                   source={versionLogoSource(item.versionId, 'japan')}
                 />
                 <Text style={styles.name}>{item.japan}</Text>
+              </View>
+              <View
+                accessibilityLabel={`${item.china} 版本代号 ${item.code}`}
+                style={styles.codeCell}
+              >
+                <Text style={styles.code}>{item.code}</Text>
               </View>
             </View>
           ))}
@@ -90,10 +97,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     gap: 10,
   },
-  chinaHeader: { width: '38%', color: '#374151', fontSize: 12, fontWeight: '700' },
+  chinaHeader: { width: '30%', color: '#374151', fontSize: 12, fontWeight: '700' },
   japanHeader: { flex: 1, color: '#374151', fontSize: 12, fontWeight: '700' },
-  chinaCell: { width: '38%', gap: 6 },
+  codeHeader: { width: '18%', color: '#374151', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  chinaCell: { width: '30%', gap: 6 },
   japanCell: { flex: 1, gap: 6 },
+  codeCell: { width: '18%', alignItems: 'center', justifyContent: 'center' },
+  code: { color: '#111827', fontSize: 18, fontWeight: '800' },
   name: { color: '#374151', fontSize: 12, fontWeight: '600' },
   stats: { padding: 14 },
   title: { color: '#111827', fontSize: 16, fontWeight: '700', marginBottom: 7 },
