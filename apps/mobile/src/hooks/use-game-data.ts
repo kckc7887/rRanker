@@ -12,7 +12,7 @@ import { useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 2;
+const GAME_DATA_QUERY_VERSION = 4;
 
 export function useGameData() {
   const session = useSession((s) => s.session);

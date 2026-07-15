@@ -23,6 +23,12 @@ import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections'
 import type { Chart, ChartNotes, ChartType, CollectionItem, Difficulty, ScoreRecord, Song } from '@/domain/models';
 import { chartLibraryKey, songLibraryKey } from '@/domain/user-library';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
+import {
+  BEST_IMAGE_RAINBOW_COLORS,
+  BEST_IMAGE_RAINBOW_TEXT,
+  normalizeTrophyTone,
+  TROPHY_BADGE_THEMES,
+} from '@/features/best-image/best-image-badge-theme';
 import { useCollections } from '@/hooks/use-collections';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
@@ -192,30 +198,17 @@ function SongCollectionsCard({ songId }: { songId: string }) {
   </GestureHandlerRootView>;
 }
 
-function trophyTone(color: string | null | undefined): {
-  border: string; text: string; background: string; rainbow?: boolean;
-} {
-  switch ((color ?? 'normal').toLowerCase()) {
-    case 'bronze': return { border: '#B87333', text: '#8B5A1A', background: '#FBF3EA' };
-    case 'silver': return { border: '#9CA3AF', text: '#4B5563', background: '#F3F4F6' };
-    case 'gold': return { border: '#D4A017', text: '#92650A', background: '#FFF8E6' };
-    case 'rainbow': return { border: '#A78BFA', text: '#5B21B6', background: '#F5F3FF', rainbow: true };
-    default: return { border: '#9CA3AF', text: '#6B7280', background: '#F3F4F6' };
-  }
-}
-
 function TrophyName({ name, color }: { name: string; color?: string | null }) {
-  const tone = trophyTone(color);
-  if (tone.rainbow) {
-    return <LinearGradient colors={['#F87171', '#FBBF24', '#34D399', '#60A5FA', '#A78BFA']}
-      start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.trophyNameRainbow}>
-      <View style={[styles.trophyNameInner, { backgroundColor: tone.background }]}>
-        <Text style={[styles.trophyNameText, { color: tone.text }]} numberOfLines={2}>{name}</Text>
-      </View>
+  const tone = normalizeTrophyTone(color);
+  if (tone === 'rainbow') {
+    return <LinearGradient colors={BEST_IMAGE_RAINBOW_COLORS}
+      start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={[styles.trophyNameFrame, styles.trophyNameRainbow]}>
+      <Text style={[styles.trophyNameText, { color: BEST_IMAGE_RAINBOW_TEXT }]} numberOfLines={1}>{name}</Text>
     </LinearGradient>;
   }
-  return <View style={[styles.trophyNameFrame, { borderColor: tone.border, backgroundColor: tone.background }]}>
-    <Text style={[styles.trophyNameText, { color: tone.text }]} numberOfLines={2}>{name}</Text>
+  const theme = TROPHY_BADGE_THEMES[tone];
+  return <View style={[styles.trophyNameFrame, { borderColor: theme.border, backgroundColor: theme.background }]}>
+    <Text style={[styles.trophyNameText, { color: theme.text }]} numberOfLines={1}>{name}</Text>
   </View>;
 }
 
@@ -546,10 +539,9 @@ const styles = StyleSheet.create({
   collectionKind: { color: '#8A93A3', fontSize: 11, fontWeight: '700' },
   collectionName: { color: '#182130', fontSize: 14, fontWeight: '700' },
   collectionDesc: { color: '#6B7280', fontSize: 12, lineHeight: 17 },
-  trophyNameFrame: { alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 8, borderWidth: 1.5, paddingHorizontal: 10, paddingVertical: 4 },
-  trophyNameRainbow: { alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 8, padding: 1.5 },
-  trophyNameInner: { borderRadius: 6.5, paddingHorizontal: 8, paddingVertical: 3 },
-  trophyNameText: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
+  trophyNameFrame: { alignSelf: 'flex-start', maxWidth: '100%', height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, paddingHorizontal: 10 },
+  trophyNameRainbow: { borderColor: 'rgba(255,255,255,0.82)' },
+  trophyNameText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textAlign: 'center', includeFontPadding: false },
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
   scrollActionRoot: { flexGrow: 0 },
   action: { marginTop: 13, marginBottom: 10, borderWidth: 1, borderColor: '#667085', borderRadius: 11, padding: 10, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.52)' },

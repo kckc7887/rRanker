@@ -30,8 +30,8 @@ describe('SqliteSnapshotRepository schema migration', () => {
     );
   });
 
-  it('invalidates a schema v2 snapshot that predates player frame metadata', async () => {
-    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 2, payload: '{}' });
+  it('invalidates a schema v4 snapshot that predates strict actual/theoretical DXScore data', async () => {
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 4, payload: '{}' });
     const repository = new SqliteSnapshotRepository();
     await expect(repository.getLatest('maimai:lxns:frame')).resolves.toBeNull();
     expect(sqlite.db.runAsync).toHaveBeenCalledWith(

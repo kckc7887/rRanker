@@ -1,4 +1,9 @@
-import { DivingFishRecordsResponseSchema, LxnsPlayerSchema, mapDivingFishRecord } from '@/domain/schemas';
+import {
+  DivingFishRecordsResponseSchema,
+  LxnsPlayerSchema,
+  LxnsScoreSchema,
+  mapDivingFishRecord,
+} from '@/domain/schemas';
 import { unknownEnumRawRecord } from '@/fixtures/sanitized';
 
 describe('provider schema mapping', () => {
@@ -11,6 +16,16 @@ describe('provider schema mapping', () => {
   it('rejects missing required fields and malformed input', () => {
     expect(() => mapDivingFishRecord({ title: '缺字段样例' })).toThrow();
     expect(() => mapDivingFishRecord('not-json')).toThrow();
+    expect(() => mapDivingFishRecord({ ...unknownEnumRawRecord, dxScore: undefined })).toThrow();
+    expect(() => LxnsScoreSchema.parse({
+      id: 1, level_index: 3, achievements: 100, type: 'dx',
+    })).toThrow();
+  });
+  it('keeps provider DXScore fields as the player actual score', () => {
+    expect(mapDivingFishRecord({ ...unknownEnumRawRecord, dxScore: 1836 }).dxScore).toBe(1836);
+    expect(LxnsScoreSchema.parse({
+      id: 1, level_index: 3, achievements: 100, type: 'dx', dx_score: 1836,
+    }).dx_score).toBe(1836);
   });
   it('accepts the documented player-records envelope', () => {
     const payload = DivingFishRecordsResponseSchema.parse({

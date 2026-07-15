@@ -33,6 +33,7 @@ export function enrichRecordsWithCatalog(
     return {
       ...record,
       difficultyConstant: chart?.difficultyConstant ?? record.difficultyConstant,
+      notes: chart?.notes ?? record.notes,
       version: versionId === undefined
         ? 'unknown'
         : versionTitles.get(versionId) ?? String(versionId),

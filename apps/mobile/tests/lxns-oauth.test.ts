@@ -68,12 +68,14 @@ describe('mapLxnsScore', () => {
     expect(sd.rating).toBe(308);
     expect(sd.difficulty).toBe('master');
     expect(sd.fc).toBe('app');
+    expect(sd.dxScore).toBe(2500);
 
     const dx = mapLxnsScore({
       id: 834,
       level_index: 4,
       achievements: 99,
       type: 'utage',
+      dx_score: null,
       dx_rating: 12.1,
     });
     expect(dx.type).toBe('DX');
