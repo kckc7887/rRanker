@@ -8,6 +8,7 @@ import { ProviderError, providerErrorFromStatus } from './errors';
 const BASE_URL = 'https://www.diving-fish.com/api/maimaidxprober';
 const ProfileSchema = z.object({
   username: z.string().optional(), nickname: z.string().optional(),
+  plate: z.string().optional(),
   rating: z.number().int().nonnegative().optional(), additional_rating: z.number().int().nonnegative().optional(),
 });
 function parseContract<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -76,6 +77,7 @@ export class DivingFishProvider implements ScoreProvider {
         displayName: records.nickname ?? records.username ?? '水鱼玩家',
         rating: records.rating ?? 0,
         additionalRating: records.additional_rating,
+        presentation: records.plate ? { trophyName: records.plate } : undefined,
         source,
       };
     }
@@ -84,7 +86,10 @@ export class DivingFishProvider implements ScoreProvider {
     return {
       id: profile.username ?? 'diving-fish-user',
       displayName: profile.nickname ?? profile.username ?? '水鱼玩家',
-      rating: profile.rating ?? 0, additionalRating: profile.additional_rating, source,
+      rating: profile.rating ?? 0,
+      additionalRating: profile.additional_rating,
+      presentation: profile.plate ? { trophyName: profile.plate } : undefined,
+      source,
     };
   }
   async getRecords() {

@@ -1,4 +1,4 @@
-import { DivingFishRecordsResponseSchema, mapDivingFishRecord } from '@/domain/schemas';
+import { DivingFishRecordsResponseSchema, LxnsPlayerSchema, mapDivingFishRecord } from '@/domain/schemas';
 import { unknownEnumRawRecord } from '@/fixtures/sanitized';
 
 describe('provider schema mapping', () => {
@@ -19,5 +19,16 @@ describe('provider schema mapping', () => {
     });
     expect(payload.records).toHaveLength(1);
     expect(mapDivingFishRecord(payload.records[0], '已验证版本').version).toBe('已验证版本');
+  });
+  it('accepts LXNS player presentation fields', () => {
+    const player = LxnsPlayerSchema.parse({
+      name: '脱敏玩家', rating: 15001, friend_code: 123456789,
+      icon: { id: 200201, name: '头像' },
+      name_plate: { id: 300101, name: '姓名框' },
+      trophy: { id: 300022, name: '称号', color: 'Rainbow' },
+    });
+    expect(player.icon?.id).toBe(200201);
+    expect(player.name_plate?.id).toBe(300101);
+    expect(player.trophy).toMatchObject({ name: '称号', color: 'Rainbow' });
   });
 });

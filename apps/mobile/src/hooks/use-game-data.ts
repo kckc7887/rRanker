@@ -12,6 +12,7 @@ import { useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const repository = new SqliteSnapshotRepository();
+const GAME_DATA_QUERY_VERSION = 2;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -24,7 +25,7 @@ export function useGameData() {
   const profile = getGameProfile(activeGameId);
 
   const query = useQuery({
-    queryKey: ['game-data', activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'none'],
+    queryKey: ['game-data', GAME_DATA_QUERY_VERSION, activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'none'],
     queryFn: async (): Promise<GameDataBundle> => {
       if (activeGameId === 'test') {
         return {

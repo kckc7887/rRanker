@@ -121,6 +121,13 @@ export class LxnsScoreProvider implements ScoreProvider {
       id: String(player.data.friend_code),
       displayName: player.data.name,
       rating: player.data.rating,
+      presentation: {
+        iconId: player.data.icon?.id,
+        namePlateId: player.data.name_plate?.id,
+        frameId: player.data.frame?.id,
+        trophyName: player.data.trophy?.name,
+        trophyColor: player.data.trophy?.color,
+      },
       source: this.source(),
     };
   }

@@ -4,7 +4,7 @@ import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import type { ResourceRepository } from '@/repositories/resource-repository';
 
-const SNAPSHOT_SCHEMA_VERSION = 2;
+const SNAPSHOT_SCHEMA_VERSION = 3;
 const CATALOG_SCHEMA_VERSION = 1;
 
 function scoreResourceKey(accountId: string): string {

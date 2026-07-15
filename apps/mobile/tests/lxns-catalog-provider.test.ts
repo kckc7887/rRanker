@@ -82,6 +82,30 @@ describe('LxnsCatalogProvider', () => {
     });
   });
 
+  it('can fetch only preview-style collections without heavy requirement payloads', async () => {
+    const byKind: Record<string, unknown> = {
+      trophy: { trophies: [{ id: 1, name: 'Trophy', color: 'Gold' }] },
+      icon: { icons: [{ id: 2, name: 'Icon' }] },
+      plate: { plates: [{ id: 3, name: 'Plate' }] },
+      frame: { frames: [{ id: 4, name: 'Frame' }] },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const kind = (['trophy', 'icon', 'plate', 'frame'] as const).find((item) => url.includes(`/maimai/${item}/list`));
+      return new Response(JSON.stringify(kind ? byKind[kind] : {}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const snapshot = await new LxnsCatalogProvider().getCollections({
+      kinds: ['icon', 'plate', 'trophy', 'frame'],
+      required: false,
+    });
+
+    expect(snapshot.items.map((item) => item.kind)).toEqual(['icon', 'plate', 'trophy', 'frame']);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContainEqual(expect.stringContaining('required=true'));
+  });
+
   it('maps LXNS minor release ids down to the nearest declared main version', async () => {
     const song363 = {
       id: 363, title: 'Oshama Scramble!', artist: 't+pazolite', version: 15007,
