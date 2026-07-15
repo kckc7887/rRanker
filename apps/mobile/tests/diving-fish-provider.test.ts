@@ -44,7 +44,7 @@ describe('DivingFishProvider native cookie session', () => {
 
   it('validates Import-Token from one shared records request without assuming profile access', async () => {
     const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      username: 'masked-user', nickname: '脱敏玩家', rating: 12345, records: [],
+      username: 'masked-user', nickname: '脱敏玩家', plate: '测试称号', rating: 12345, records: [],
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -54,7 +54,10 @@ describe('DivingFishProvider native cookie session', () => {
 
     const [player, records] = await Promise.all([provider.getPlayer(), provider.getRecords()]);
 
-    expect(player).toMatchObject({ id: 'masked-user', displayName: '脱敏玩家', rating: 12345 });
+    expect(player).toMatchObject({
+      id: 'masked-user', displayName: '脱敏玩家', rating: 12345,
+      presentation: { trophyName: '测试称号' },
+    });
     expect(records).toEqual([]);
     expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith(expect.stringContaining('/player/records'), expect.objectContaining({

@@ -30,6 +30,16 @@ describe('SqliteSnapshotRepository schema migration', () => {
     );
   });
 
+  it('invalidates a schema v2 snapshot that predates player frame metadata', async () => {
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 2, payload: '{}' });
+    const repository = new SqliteSnapshotRepository();
+    await expect(repository.getLatest('maimai:lxns:frame')).resolves.toBeNull();
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'DELETE FROM account_score_snapshots WHERE account_id = ?',
+      'maimai:lxns:frame',
+    );
+  });
+
   it('clears one account or all score and catalog rows', async () => {
     const repository = new SqliteSnapshotRepository();
     await repository.clear('maimai:lxns:1');
