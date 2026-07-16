@@ -139,7 +139,8 @@ describe('best image html', () => {
     expect(html).toContain('score-badge fc tone-green">FC+');
     expect(html).toContain('score-badge fs tone-gold">FDX');
     expect(html).toContain('.score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;min-height:161px;');
-    expect(html).toContain('justify-content:flex-end;margin-top:auto;padding-top:');
+    expect(html).toContain('.score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:0;padding-top:0}');
+    expect(html).not.toContain('.score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:auto');
     expect(html).toContain('.rank{margin-left:auto;flex:0 0 auto');
     expect(html).toContain('font:900 8px/1 system-ui');
     expect(html).toContain('border-color:#78D29B;background:#78D29B;color:#174C2E');
