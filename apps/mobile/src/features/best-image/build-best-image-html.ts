@@ -133,16 +133,23 @@ function fsBadgeTone(value: string | null): StatusBadgeTone {
   return normalized ? 'gold' : 'normal';
 }
 
+function renderScoreBadge(kind: string, label: string | null, tone: StatusBadgeTone): string {
+  return label ? `<span class="score-badge ${kind} tone-${tone}">${escapeHtml(label)}</span>` : '';
+}
+
+function renderRateBadge(record: ScoreRecord): string {
+  return renderScoreBadge('rate', statusLabel(record.rate, RATE_LABELS), rateBadgeTone(record.rate));
+}
+
 function renderStatusBadges(record: ScoreRecord): string {
   const badges = [
-    { kind: 'rate', label: statusLabel(record.rate, RATE_LABELS), tone: rateBadgeTone(record.rate) },
     { kind: 'near', label: isNearMissAchievement(record.achievements) ? '寸' : null, tone: 'neutral' },
     { kind: 'fc', label: statusLabel(record.fc, FC_LABELS), tone: fcBadgeTone(record.fc) },
     { kind: 'fs', label: statusLabel(record.fs, FS_LABELS), tone: fsBadgeTone(record.fs) },
   ];
   return badges
     .filter((badge): badge is { kind: string; label: string; tone: StatusBadgeTone } => !!badge.label)
-    .map((badge) => `<span class="score-badge ${badge.kind} tone-${badge.tone}">${escapeHtml(badge.label)}</span>`)
+    .map((badge) => renderScoreBadge(badge.kind, badge.label, badge.tone))
     .join('');
 }
 
@@ -175,10 +182,9 @@ function renderScoreCard(
       </div>
     </div>
     <div class="score-separator"></div>
-    <div class="achievement-row"><strong class="achievement">${formatAchievement(record.achievements)}</strong><span class="rank">#${rank}</span></div>
-    <div class="rating-row"><span>${record.difficultyConstant.toFixed(1)}</span><span class="rating-arrow">→</span><strong>${record.rating}</strong></div>
-    <div class="dx-score-row">
-      <span class="dx-score-label">DXScore</span>
+    <div class="achievement-row"><span class="achievement-with-rate"><strong class="achievement">${formatAchievement(record.achievements)}</strong>${renderRateBadge(record)}</span><span class="rank">#${rank}</span></div>
+    <div class="rating-row">
+      <span class="song-rating"><span>${record.difficultyConstant.toFixed(1)}</span><span class="rating-arrow">→</span><strong>${record.rating}</strong></span>
       <strong class="dx-score-value" aria-label="DXScore 实际 ${actualDxScore}，理论 ${maximumDxScore}"><span class="dx-score-actual">${actualDxScore}</span><span class="dx-score-slash">/</span><span class="dx-score-maximum">${maximumDxScore}</span></strong>
     </div>
     <div class="score-card-foot"><span class="score-badges">${renderStatusBadges(record)}</span></div>
@@ -243,6 +249,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const scoresTop = pageInset + bannerHeight + px(width * 0.035);
   const gridGap = px(width * 0.009);
   const scoreCardPadding = px(width * 0.0065);
+  const scoreCardMinHeight = px(width * 0.149);
   const jacketSize = px(width * 0.058);
   const scoreSections = input.scoreSections
     .map((section) => renderScoreSection(section, input.coverUrls))
@@ -309,15 +316,15 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .rating-digits{position:absolute;left:48.3%;top:17%;display:grid;grid-template-columns:repeat(5,1fr);align-items:center;width:43.8%;height:61%;font-family:RatingNumbers,"Arial Black",sans-serif;font-size:${ratingFontSize}px;font-weight:900;line-height:1;color:#FFD83D;-webkit-text-stroke:${stroke}px #090909;text-shadow:0 ${Math.max(1, stroke)}px 0 #090909;font-variant-numeric:tabular-nums}
     .rating-digits span{display:flex;align-items:center;justify-content:center;height:100%}
     .player-name{display:inline-flex;width:fit-content;max-width:100%;min-height:${px(playerNameSize * 1.35)}px;align-items:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.011)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid rgba(96,87,72,.45);border-radius:${px(bannerWidth * 0.006)}px;background:rgba(255,255,255,.9);color:#171717;font:900 ${playerNameSize}px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;text-overflow:ellipsis;white-space:nowrap}
-    .trophy{display:flex;width:fit-content;max-width:100%;height:${px(bannerWidth * 0.029)}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.009)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid ${normalTrophy.border};border-radius:999px;background:${normalTrophy.background};color:${normalTrophy.text};font:400 ${trophySize}px/normal system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}.trophy.bronze{border-color:${bronzeTrophy.border};background:${bronzeTrophy.background};color:${bronzeTrophy.text}}.trophy.silver{border-color:${silverTrophy.border};background:${silverTrophy.background};color:${silverTrophy.text}}.trophy.gold{border-color:${goldTrophy.border};background:${goldTrophy.background};color:${goldTrophy.text}}.trophy.rainbow{border-color:transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}
-    .page-marker{position:absolute;z-index:2;right:${pageInset}px;top:${pageInset}px;display:flex;height:${px(width * 0.025)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.01)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 0.009)}px/normal system-ui,sans-serif}
+    .trophy{display:flex;width:fit-content;max-width:100%;height:${px(bannerWidth * 0.029)}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.009)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid ${normalTrophy.border};border-radius:999px;background:${normalTrophy.background};color:${normalTrophy.text};font:400 ${trophySize}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}.trophy.bronze{border-color:${bronzeTrophy.border};background:${bronzeTrophy.background};color:${bronzeTrophy.text}}.trophy.silver{border-color:${silverTrophy.border};background:${silverTrophy.background};color:${silverTrophy.text}}.trophy.gold{border-color:${goldTrophy.border};background:${goldTrophy.background};color:${goldTrophy.text}}.trophy.rainbow{border-color:transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}
+    .page-marker{position:absolute;z-index:2;right:${pageInset}px;top:${pageInset}px;display:flex;height:${px(width * 0.025)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.01)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 0.009)}px/1 system-ui,sans-serif}
     .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
     .score-section+.score-section{margin-top:${px(width * 0.024)}px}
     .section-divider{display:flex;align-items:center;gap:${px(width * 0.012)}px;margin:0 0 ${px(width * 0.012)}px;color:rgba(22,29,43,.78);font:800 ${px(width * 0.016)}px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:${Math.max(1, px(width * 0.0008))}px;white-space:nowrap}
     .section-divider::before,.section-divider::after{content:"";height:${Math.max(1, px(width * 0.0012))}px;flex:1;background:linear-gradient(90deg,transparent,rgba(28,38,57,.55))}
     .section-divider::after{background:linear-gradient(90deg,rgba(28,38,57,.55),transparent)}
     .score-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:${gridGap}px}
-    .score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;flex-direction:column;overflow:hidden;padding:${scoreCardPadding}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 0.012)}px;background:var(--card-background);box-shadow:0 ${px(width * 0.004)}px ${px(width * 0.014)}px rgba(25,38,60,.22);color:var(--card-foreground)}
+    .score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;min-height:${scoreCardMinHeight}px;flex-direction:column;overflow:hidden;padding:${scoreCardPadding}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 0.012)}px;background:var(--card-background);box-shadow:0 ${px(width * 0.004)}px ${px(width * 0.014)}px rgba(25,38,60,.22);color:var(--card-foreground)}
     .score-card.difficulty-remaster{--card-foreground:#5F2C78;--card-muted:#8B5AA2;--separator-color:rgba(166,93,185,.52);border-color:rgba(166,93,185,.42)}
     .score-card-head{display:flex;min-width:0;height:${jacketSize}px;align-items:stretch;gap:${px(width * 0.006)}px}
     .jacket-shell{position:relative;width:${jacketSize}px;height:${jacketSize}px;flex:0 0 ${jacketSize}px;overflow:hidden;border:${Math.max(2, px(width * 0.003))}px solid #FFFFFF;border-radius:${px(width * 0.007)}px;background:rgba(255,255,255,.24)}
@@ -327,18 +334,18 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .song-copy{position:relative;display:flex;min-width:0;height:100%;min-height:0;flex:1;flex-direction:column;gap:${px(width * 0.004)}px;overflow:hidden;padding:${px(width * 0.002)}px 0}
     .song-id{overflow:hidden;padding-right:${px(width * 0.029)}px;color:var(--card-muted);font:700 ${px(width * 0.008)}px/1 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
     .song-title{display:-webkit-box;overflow:hidden;color:var(--card-foreground);font:800 ${px(width * 0.011)}px/1.18 system-ui,-apple-system,"Segoe UI",sans-serif;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:3;white-space:normal}
-    .chart-type{position:absolute;z-index:2;right:0;top:0;display:inline-flex;min-width:${px(width * 0.023)}px;height:${px(width * 0.014)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid transparent;border-radius:${px(width * 0.005)}px;font:900 ${px(width * 0.0065)}px/normal system-ui,sans-serif;letter-spacing:${Math.max(1, px(width * 0.0004))}px;white-space:nowrap}.chart-type>span{display:flex;height:100%;align-items:center;justify-content:center}.chart-type.type-sd{border-color:#3286E6;background:#3286E6;color:#FFFFFF}.chart-type.type-dx{border-color:#F2C36C;background:#FFFFFF;color:#FF8A00}.chart-type.type-dx>span{color:#FF8A00;background:linear-gradient(90deg,#FF8A00,#FFD84A);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+    .chart-type{position:absolute;z-index:2;right:0;top:0;display:inline-flex;min-width:${px(width * 0.023)}px;height:${px(width * 0.014)}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(width * 0.0035)}px;border:1px solid transparent;border-radius:${px(width * 0.005)}px;background-clip:border-box;font:900 ${px(width * 0.0065)}px/1 system-ui,sans-serif;letter-spacing:${Math.max(1, px(width * 0.0004))}px;text-align:center;white-space:nowrap}.chart-type>span{display:flex;width:100%;height:100%;align-items:center;justify-content:center;line-height:1}.chart-type.type-sd{border-color:#3286E6;background-color:#3286E6;color:#FFFFFF}.chart-type.type-dx{border-color:#F2C36C;background-color:#FFFFFF;color:#FF8A00}.chart-type.type-dx>span{color:#FF8A00;background:linear-gradient(90deg,#FF8A00,#FFD84A);background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent}
     .score-separator{height:1px;margin:${px(width * 0.006)}px 0;background:linear-gradient(90deg,transparent,var(--separator-color),transparent)}
-    .achievement-row{display:flex;align-items:baseline;justify-content:space-between;gap:${px(width * 0.004)}px}
+    .achievement-row{display:flex;min-width:0;align-items:center;gap:${px(width * 0.004)}px}
+    .achievement-with-rate{display:flex;min-width:0;align-items:center;gap:${px(width * 0.003)}px}
     .achievement{min-width:0;overflow:hidden;color:var(--card-foreground);font:900 ${px(width * 0.018)}px/1.06 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:${-px(width * 0.0004)}px;text-overflow:ellipsis;white-space:nowrap}
-    .rank{flex:0 0 auto;color:var(--card-muted);font:800 ${px(width * 0.009)}px/1 system-ui,sans-serif}
-    .rating-row{display:flex;align-items:center;gap:${px(width * 0.003)}px;margin-top:${px(width * 0.003)}px;color:var(--card-muted);font:700 ${px(width * 0.009)}px/1.15 system-ui,sans-serif}
-    .rating-row strong{color:var(--card-foreground);font-weight:900}.rating-arrow{color:var(--card-muted)}
-    .dx-score-row{display:flex;min-width:0;align-items:baseline;justify-content:space-between;gap:${px(width * 0.003)}px;margin-top:${px(width * 0.004)}px;color:var(--card-muted);font-family:system-ui,sans-serif;white-space:nowrap}
-    .dx-score-label{font-size:${px(width * 0.0065)}px;font-weight:700}.dx-score-value{display:inline-flex;flex:0 0 auto;align-items:baseline;gap:${px(width * 0.002)}px;color:var(--card-foreground);font-size:${px(width * 0.008)}px;font-weight:900;font-variant-numeric:tabular-nums}.dx-score-slash{color:var(--card-muted);font-weight:700}
+    .rank{margin-left:auto;flex:0 0 auto;color:var(--card-muted);font:800 ${px(width * 0.009)}px/1 system-ui,sans-serif}
+    .rating-row{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:${px(width * 0.003)}px;margin-top:${px(width * 0.003)}px;color:var(--card-muted);font:700 ${px(width * 0.009)}px/1.15 system-ui,sans-serif}
+    .song-rating{display:inline-flex;min-width:0;align-items:center;gap:${px(width * 0.003)}px;white-space:nowrap}.song-rating strong{color:var(--card-foreground);font-weight:900}.rating-arrow{color:var(--card-muted)}
+    .dx-score-value{display:inline-flex;flex:0 0 auto;align-items:baseline;gap:${px(width * 0.002)}px;color:var(--card-foreground);font-size:${px(width * 0.008)}px;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap}.dx-score-slash{color:var(--card-muted);font-weight:700}
     .score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:auto;padding-top:${px(width * 0.004)}px}
     .score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-end;gap:${px(width * 0.002)}px}
-    .score-badge{display:inline-flex;min-width:${px(width * 0.02)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid ${normalStatus.border};border-radius:999px;background:${normalStatus.background};color:${normalStatus.text};font:900 ${px(width * 0.0075)}px/normal system-ui,sans-serif;text-align:center;white-space:nowrap}.score-badge.rate.tone-rainbow{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}.score-badge.rate.tone-gold{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${goldLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT}}.score-badge.tone-gold{border-color:${goldStatus.border};background:${goldStatus.background};color:${goldStatus.text}}.score-badge.tone-green{border-color:${greenStatus.border};background:${greenStatus.background};color:${greenStatus.text}}.score-badge.tone-blue{border-color:${blueStatus.border};background:${blueStatus.background};color:${blueStatus.text}}.score-badge.tone-neutral{border-color:${neutralStatus.border};background:${neutralStatus.background};color:${neutralStatus.text};text-shadow:0 1px 1px rgba(31,41,55,.48)}
+    .score-badge{display:inline-flex;min-width:${px(width * 0.02)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid ${normalStatus.border};border-radius:999px;background:${normalStatus.background};color:${normalStatus.text};font:900 ${px(width * 0.0075)}px/1 system-ui,sans-serif;text-align:center;white-space:nowrap}.score-badge.rate.tone-rainbow{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}.score-badge.rate.tone-gold{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${goldLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT}}.score-badge.tone-gold{border-color:${goldStatus.border};background:${goldStatus.background};color:${goldStatus.text}}.score-badge.tone-green{border-color:${greenStatus.border};background:${greenStatus.background};color:${greenStatus.text}}.score-badge.tone-blue{border-color:${blueStatus.border};background:${blueStatus.background};color:${blueStatus.text}}.score-badge.tone-neutral{border-color:${neutralStatus.border};background:${neutralStatus.background};color:${neutralStatus.text};text-shadow:0 1px 1px rgba(31,41,55,.48)}
     .empty-section{grid-column:1/-1;display:flex;min-height:${px(width * 0.08)}px;align-items:center;justify-content:center;color:#697586;font:700 ${px(width * 0.012)}px/1.4 system-ui,sans-serif}
     .empty-scores{display:flex;min-height:${px(width * 0.15)}px;align-items:center;justify-content:center;border:1px dashed rgba(91,105,126,.45);border-radius:${px(width * 0.012)}px;background:rgba(255,255,255,.64);color:#697586;font:700 ${px(width * 0.013)}px/1.4 system-ui,sans-serif}
   </style>
