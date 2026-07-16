@@ -61,8 +61,9 @@ export default function SongDetailScreen() {
   const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
   return <>
     <Stack.Screen options={{
-      // 封面继续顶满屏幕；页面内只放两个独立按钮，不创建覆盖整行的高层触控容器。
+      // Android 的透明空标题栏仍会截获其下方按钮的触控；隐藏该层，保留原样式的页面内按钮与满幅封面。
       title: '', headerTransparent: true, headerShadowVisible: false, headerTintColor: '#FFFFFF',
+      headerShown: Platform.OS !== 'android',
       headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
     }} />
     <StatusBar style="light" />
