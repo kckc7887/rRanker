@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { bestImageJacketUrl, loadBestImageJackets } from '@/features/best-image/load-best-image-jackets';
+import {
+  bestImageJacketUrl,
+  imageCachePathToFileUri,
+  loadBestImageJackets,
+} from '@/features/best-image/load-best-image-jackets';
 
 const mocks = vi.hoisted(() => ({
   getCachePathAsync: vi.fn(),
@@ -36,6 +40,18 @@ describe('best image jacket cache', () => {
       'cache-11448': 'data:image/png;base64,encoded-cache-11448.png',
     });
     expect(mocks.prefetch).not.toHaveBeenCalled();
+  });
+
+  it('normalizes the absolute cache path returned by Android before reading it', async () => {
+    mocks.getCachePathAsync.mockResolvedValue('/data/user/0/app/cache/1449.png');
+    mocks.base64.mockResolvedValue('encoded-android');
+
+    await expect(loadBestImageJackets(['android-11449'])).resolves.toEqual({
+      'android-11449': 'data:image/png;base64,encoded-android',
+    });
+    expect(imageCachePathToFileUri('/data/user/0/app/cache/1449.png'))
+      .toBe('file:///data/user/0/app/cache/1449.png');
+    expect(mocks.base64).toHaveBeenCalledWith('file:///data/user/0/app/cache/1449.png');
   });
 
   it('prefetches missing jackets serially and marks failures for placeholders', async () => {

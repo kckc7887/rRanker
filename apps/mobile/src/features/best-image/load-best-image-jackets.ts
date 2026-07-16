@@ -5,6 +5,12 @@ import { mapCoverId } from '@/domain/rating';
 const JACKET_ROOT = 'https://assets2.lxns.net/maimai/jacket';
 const jacketDataUriCache = new Map<string, Promise<string | null>>();
 
+/** expo-image Android 返回绝对路径；expo-file-system File 只接受带 scheme 的 URI。 */
+export function imageCachePathToFileUri(cachePath: string): string {
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(cachePath)) return cachePath;
+  return `file://${cachePath.startsWith('/') ? '' : '/'}${cachePath}`;
+}
+
 export function bestImageJacketUrl(songId: string): string {
   const numericSongId = Number(songId);
   const coverId = Number.isSafeInteger(numericSongId) && numericSongId >= 0
@@ -26,7 +32,7 @@ async function loadJacketDataUri(songId: string): Promise<string | null> {
       localUri = await Image.getCachePathAsync(url);
     }
     if (!localUri) return null;
-    return `data:image/png;base64,${await new File(localUri).base64()}`;
+    return `data:image/png;base64,${await new File(imageCachePathToFileUri(localUri)).base64()}`;
   })();
   jacketDataUriCache.set(url, pending);
 
