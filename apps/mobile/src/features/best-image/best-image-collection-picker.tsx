@@ -10,12 +10,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { CollectionImage } from '@/components/CollectionImage';
+import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import type { CollectionItem } from '@/domain/models';
 import {
-  BEST_IMAGE_RAINBOW_COLORS,
-  BEST_IMAGE_RAINBOW_TEXT,
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from './best-image-badge-theme';
@@ -60,18 +58,18 @@ export function TrophyPreview({ item, fallback }: { item?: CollectionItem; fallb
   const tone = normalizeTrophyTone(item?.color);
   const label = item?.name ?? fallback ?? '未设置';
   if (tone === 'rainbow') return (
-    <LinearGradient
-      colors={BEST_IMAGE_RAINBOW_COLORS}
-      start={{ x: 0, y: 0.5 }}
-      end={{ x: 1, y: 0.5 }}
-      style={[styles.trophyPreview, styles.rainbowTrophyPreview]}
-    >
-      <Text numberOfLines={1} style={[styles.trophyPreviewText, { color: BEST_IMAGE_RAINBOW_TEXT }]}>{label}</Text>
-    </LinearGradient>
+    <LayeredGradientBadge
+      contentStyle={styles.rainbowTrophyPreviewContent}
+      label={label}
+      numberOfLines={1}
+      style={styles.trophyPreview}
+      textStyle={styles.trophyPreviewText}
+      tone="rainbow"
+    />
   );
   const theme = TROPHY_BADGE_THEMES[tone];
   return (
-    <View style={[styles.trophyPreview, { borderColor: theme.border, backgroundColor: theme.background }]}>
+    <View style={[styles.trophyPreview, styles.solidTrophyPreview, { borderColor: theme.border, backgroundColor: theme.background }]}>
       <Text numberOfLines={1} style={[styles.trophyPreviewText, { color: theme.text }]}>{label}</Text>
     </View>
   );
@@ -304,8 +302,9 @@ const styles = StyleSheet.create({
   selectedItem: { borderColor: '#246BFD', backgroundColor: '#F2F6FF' },
   pressed: { opacity: 0.72 },
   imagePreview: { width: 128, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  trophyPreview: { maxWidth: 150, minWidth: 96, height: 28, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  rainbowTrophyPreview: { borderColor: 'rgba(255,255,255,0.82)' },
+  trophyPreview: { maxWidth: 150, minWidth: 96, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  solidTrophyPreview: { paddingHorizontal: 12, borderWidth: 1 },
+  rainbowTrophyPreviewContent: { paddingHorizontal: 10 },
   trophyPreviewText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textAlign: 'center', includeFontPadding: false },
   itemCopy: { flex: 1, minWidth: 0 },
   itemName: { color: '#111827', fontSize: 14, fontWeight: '700' },

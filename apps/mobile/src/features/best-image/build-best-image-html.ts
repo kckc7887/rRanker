@@ -7,8 +7,8 @@ import {
 } from '@/domain/score-presentation';
 import {
   BEST_IMAGE_RAINBOW_TEXT,
+  layeredBadgeCssBackground,
   normalizeTrophyTone,
-  rainbowCssGradient,
   STATUS_BADGE_THEMES,
   TROPHY_BADGE_THEMES,
   type StatusBadgeTone,
@@ -265,7 +265,8 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const canvasBackground = frameUrl
     ? `<div class="canvas-background" style="background-image:url(&quot;${escapeHtml(frameUrl)}&quot;)"></div>`
     : '<div class="canvas-background canvas-background-fallback"></div>';
-  const rainbowGradient = rainbowCssGradient();
+  const rainbowLayeredBackground = layeredBadgeCssBackground('rainbow');
+  const goldLayeredBackground = layeredBadgeCssBackground('gold');
   const pageCount = Math.max(1, Math.floor(input.pageCount ?? 1));
   const pageIndex = Math.min(pageCount - 1, Math.max(0, Math.floor(input.pageIndex ?? 0)));
   const pageMarker = pageCount > 1 ? `<div class="page-marker">第 ${pageIndex + 1} / ${pageCount} 页</div>` : '';
@@ -274,7 +275,6 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const silverTrophy = TROPHY_BADGE_THEMES.silver;
   const goldTrophy = TROPHY_BADGE_THEMES.gold;
   const normalStatus = STATUS_BADGE_THEMES.normal;
-  const rainbowStatus = STATUS_BADGE_THEMES.rainbow;
   const goldStatus = STATUS_BADGE_THEMES.gold;
   const greenStatus = STATUS_BADGE_THEMES.green;
   const blueStatus = STATUS_BADGE_THEMES.blue;
@@ -309,7 +309,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .rating-digits{position:absolute;left:48.3%;top:17%;display:grid;grid-template-columns:repeat(5,1fr);align-items:center;width:43.8%;height:61%;font-family:RatingNumbers,"Arial Black",sans-serif;font-size:${ratingFontSize}px;font-weight:900;line-height:1;color:#FFD83D;-webkit-text-stroke:${stroke}px #090909;text-shadow:0 ${Math.max(1, stroke)}px 0 #090909;font-variant-numeric:tabular-nums}
     .rating-digits span{display:flex;align-items:center;justify-content:center;height:100%}
     .player-name{display:inline-flex;width:fit-content;max-width:100%;min-height:${px(playerNameSize * 1.35)}px;align-items:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.011)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid rgba(96,87,72,.45);border-radius:${px(bannerWidth * 0.006)}px;background:rgba(255,255,255,.9);color:#171717;font:900 ${playerNameSize}px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;text-overflow:ellipsis;white-space:nowrap}
-    .trophy{display:flex;width:fit-content;max-width:100%;height:${px(bannerWidth * 0.029)}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.009)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid ${normalTrophy.border};border-radius:999px;background:${normalTrophy.background};color:${normalTrophy.text};font:400 ${trophySize}px/normal system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}.trophy.bronze{border-color:${bronzeTrophy.border};background:${bronzeTrophy.background};color:${bronzeTrophy.text}}.trophy.silver{border-color:${silverTrophy.border};background:${silverTrophy.background};color:${silverTrophy.text}}.trophy.gold{border-color:${goldTrophy.border};background:${goldTrophy.background};color:${goldTrophy.text}}.trophy.rainbow{border-color:rgba(255,255,255,.82);background:${rainbowGradient};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}
+    .trophy{display:flex;width:fit-content;max-width:100%;height:${px(bannerWidth * 0.029)}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.009)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid ${normalTrophy.border};border-radius:999px;background:${normalTrophy.background};color:${normalTrophy.text};font:400 ${trophySize}px/normal system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}.trophy.bronze{border-color:${bronzeTrophy.border};background:${bronzeTrophy.background};color:${bronzeTrophy.text}}.trophy.silver{border-color:${silverTrophy.border};background:${silverTrophy.background};color:${silverTrophy.text}}.trophy.gold{border-color:${goldTrophy.border};background:${goldTrophy.background};color:${goldTrophy.text}}.trophy.rainbow{border-color:transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}
     .page-marker{position:absolute;z-index:2;right:${pageInset}px;top:${pageInset}px;display:flex;height:${px(width * 0.025)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.01)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 0.009)}px/normal system-ui,sans-serif}
     .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
     .score-section+.score-section{margin-top:${px(width * 0.024)}px}
@@ -338,7 +338,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .dx-score-label{font-size:${px(width * 0.0065)}px;font-weight:700}.dx-score-value{display:inline-flex;flex:0 0 auto;align-items:baseline;gap:${px(width * 0.002)}px;color:var(--card-foreground);font-size:${px(width * 0.008)}px;font-weight:900;font-variant-numeric:tabular-nums}.dx-score-slash{color:var(--card-muted);font-weight:700}
     .score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:auto;padding-top:${px(width * 0.004)}px}
     .score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-end;gap:${px(width * 0.002)}px}
-    .score-badge{display:inline-flex;min-width:${px(width * 0.02)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid ${normalStatus.border};border-radius:999px;background:${normalStatus.background};color:${normalStatus.text};font:900 ${px(width * 0.0075)}px/normal system-ui,sans-serif;text-align:center;white-space:nowrap}.score-badge.tone-rainbow{border-color:${rainbowStatus.border};background:${rainbowGradient};color:${rainbowStatus.text};text-shadow:none}.score-badge.tone-gold{border-color:${goldStatus.border};background:${goldStatus.background};color:${goldStatus.text}}.score-badge.tone-green{border-color:${greenStatus.border};background:${greenStatus.background};color:${greenStatus.text}}.score-badge.tone-blue{border-color:${blueStatus.border};background:${blueStatus.background};color:${blueStatus.text}}.score-badge.tone-neutral{border-color:${neutralStatus.border};background:${neutralStatus.background};color:${neutralStatus.text};text-shadow:0 1px 1px rgba(31,41,55,.48)}
+    .score-badge{display:inline-flex;min-width:${px(width * 0.02)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid ${normalStatus.border};border-radius:999px;background:${normalStatus.background};color:${normalStatus.text};font:900 ${px(width * 0.0075)}px/normal system-ui,sans-serif;text-align:center;white-space:nowrap}.score-badge.rate.tone-rainbow{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}.score-badge.rate.tone-gold{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${goldLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT}}.score-badge.tone-gold{border-color:${goldStatus.border};background:${goldStatus.background};color:${goldStatus.text}}.score-badge.tone-green{border-color:${greenStatus.border};background:${greenStatus.background};color:${greenStatus.text}}.score-badge.tone-blue{border-color:${blueStatus.border};background:${blueStatus.background};color:${blueStatus.text}}.score-badge.tone-neutral{border-color:${neutralStatus.border};background:${neutralStatus.background};color:${neutralStatus.text};text-shadow:0 1px 1px rgba(31,41,55,.48)}
     .empty-section{grid-column:1/-1;display:flex;min-height:${px(width * 0.08)}px;align-items:center;justify-content:center;color:#697586;font:700 ${px(width * 0.012)}px/1.4 system-ui,sans-serif}
     .empty-scores{display:flex;min-height:${px(width * 0.15)}px;align-items:center;justify-content:center;border:1px dashed rgba(91,105,126,.45);border-radius:${px(width * 0.012)}px;background:rgba(255,255,255,.64);color:#697586;font:700 ${px(width * 0.013)}px/1.4 system-ui,sans-serif}
   </style>

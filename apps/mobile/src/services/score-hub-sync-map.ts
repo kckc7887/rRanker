@@ -16,6 +16,7 @@ export type SyncMapResult = {
   records: DivingFishUploadRecord[];
   skippedNoTitle: number;
   skippedBadScore: number;
+  skippedUnsupportedChart: number;
 };
 
 /** 解析 hub 的 `"100.2618%"` / 数值为达成率。 */
@@ -71,8 +72,15 @@ export function convertHubScoresToDivingFishRecords(
   const records: DivingFishUploadRecord[] = [];
   let skippedNoTitle = 0;
   let skippedBadScore = 0;
+  let skippedUnsupportedChart = 0;
 
   for (const score of scores) {
+    const normalizedType = score.type.trim().toLowerCase();
+    if (!Number.isInteger(score.chartIndex) || score.chartIndex < 0 || score.chartIndex > 4
+      || (normalizedType !== 'standard' && normalizedType !== 'sd' && normalizedType !== 'dx')) {
+      skippedUnsupportedChart += 1;
+      continue;
+    }
     const title = lookupTitle(String(score.musicId), titleMap);
     if (!title) {
       skippedNoTitle += 1;
@@ -94,5 +102,5 @@ export function convertHubScoresToDivingFishRecords(
     });
   }
 
-  return { records, skippedNoTitle, skippedBadScore };
+  return { records, skippedNoTitle, skippedBadScore, skippedUnsupportedChart };
 }

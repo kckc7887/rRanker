@@ -69,7 +69,14 @@ async function requestJson(
     headers.Authorization = `Bearer ${options.token}`;
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 60_000);
+  const abortWatch = options?.signal ? setInterval(() => {
+    if (options.signal?.aborted) controller.abort();
+  }, 100) : null;
   try {
     const response = await expoFetch(`${SCORE_HUB_API_BASE}${path}`, {
       method,
@@ -89,11 +96,13 @@ async function requestJson(
     return { status: response.status, body };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
+      if (options?.signal?.aborted && !timedOut) throw new ScoreHubError('已取消');
       throw new ScoreHubError('score-hub 请求超时', undefined);
     }
     throw new ScoreHubError(error instanceof Error ? error.message : '无法连接 score-hub');
   } finally {
     clearTimeout(timeout);
+    if (abortWatch !== null) clearInterval(abortWatch);
   }
 }
 

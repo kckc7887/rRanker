@@ -26,6 +26,7 @@ export type UploadPhase =
   | { kind: 'fetching_scores'; message: string }
   | { kind: 'uploading'; message: string; providerTitle: string }
   | { kind: 'syncing'; message: string; providerTitle: string }
+  | { kind: 'canceling'; message: string }
   | { kind: 'done'; message: string; uploaded: number; skipped: number }
   | { kind: 'error'; message: string };
 
@@ -77,6 +78,8 @@ export function compactUploadPhaseLabel(phase: UploadPhase): string {
     case 'uploading':
     case 'syncing':
       return '上传成绩中';
+    case 'canceling':
+      return '取消中';
     case 'done':
       return '上传完成';
     case 'error':
@@ -212,7 +215,7 @@ export async function uploadMaimaiFromFriendCode(input: {
   const mapped = convertHubScoresToDivingFishRecords(scores, titleMap);
   if (mapped.records.length === 0) {
     throw new ScoreHubError(
-      `成绩无法匹配曲名（跳过无曲名 ${mapped.skippedNoTitle}、无效达成率 ${mapped.skippedBadScore}）`,
+      `没有可上传到水鱼的成绩（跳过无曲名 ${mapped.skippedNoTitle}、无效达成率 ${mapped.skippedBadScore}、不支持谱面 ${mapped.skippedUnsupportedChart}）`,
     );
   }
 
@@ -227,11 +230,11 @@ export async function uploadMaimaiFromFriendCode(input: {
       message: `上传${target.account.displayName}（${target.account.providerTitle}）中…`,
       providerTitle: target.account.providerTitle,
     });
-    const result = await uploadRecordsToDivingFish(session.value, mapped.records);
+    const result = await uploadRecordsToDivingFish(session.value, mapped.records, input.signal);
     uploadedTotal += result.uploaded;
   }
 
-  const skipped = mapped.skippedNoTitle + mapped.skippedBadScore;
+  const skipped = mapped.skippedNoTitle + mapped.skippedBadScore + mapped.skippedUnsupportedChart;
   const { refreshDivingFishAccounts } = await import('@/services/refresh-diving-fish-accounts');
   const refreshResult = await refreshDivingFishAccounts({
     accounts: selected.map((target) => target.account),
@@ -247,6 +250,7 @@ export async function uploadMaimaiFromFriendCode(input: {
       });
     },
   });
+  if (input.signal.aborted) throw new ScoreHubError('已取消');
   const failedAccountNames = refreshResult.failed.map((item) => item.account.displayName);
   if (failedAccountNames.length > 0) {
     input.onPhase({
