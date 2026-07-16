@@ -3,13 +3,13 @@ import { BlurView } from 'expo-blur';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import type { Difficulty } from '@/domain/models';
 import {
   formatAchievement, isNearMissAchievement, scoreRateEffect, scoreRateLabel,
 } from '@/domain/score-presentation';
 import {
   BEST_IMAGE_RAINBOW_COLORS,
-  BEST_IMAGE_RAINBOW_TEXT,
   STATUS_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
 
@@ -124,31 +124,31 @@ function GradientAchievement({ text, flowing = false, compact = false }: {
 function RateBadge({ value }: { value: string }) {
   const label = scoreRateLabel(value);
   switch (scoreRateEffect(value)) {
-    case 'flowing-rainbow': return <RainbowBadge label={label} flowing testID={`flowing-rate-${label}`} />;
-    case 'rainbow': return <RainbowBadge label={label} testID={`rainbow-rate-${label}`} />;
-    case 'flowing-gold': return <BlurBadge label={label} spec={GOLD_BLUR} flowing testID={`flowing-rate-${label}`} />;
-    case 'gold': return <BlurBadge label={label} spec={GOLD_BLUR} testID={`rate-${label}`} />;
+    case 'flowing-rainbow': return <RateGradientBadge label={label} tone="rainbow" flowing testID={`flowing-rate-${label}`} />;
+    case 'rainbow': return <RateGradientBadge label={label} tone="rainbow" testID={`rainbow-rate-${label}`} />;
+    case 'flowing-gold': return <RateGradientBadge label={label} tone="gold" flowing testID={`flowing-rate-${label}`} />;
+    case 'gold': return <RateGradientBadge label={label} tone="gold" testID={`rate-${label}`} />;
     default: return <View style={[styles.statusBadge, styles.normalBadge]}><Text style={[styles.statusText, styles.normalText]}>{label}</Text></View>;
   }
 }
 
-function RainbowBadge({ label, flowing = false, testID }: { label: string; flowing?: boolean; testID: string }) {
-  const [width, setWidth] = useState(52);
-  const progress = useFlowingProgress(flowing, 1400);
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
-  return <LinearGradient
-    colors={BEST_IMAGE_RAINBOW_COLORS}
-    end={{ x: 1, y: 0.5 }}
-    onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-    start={{ x: 0, y: 0.5 }}
-    style={[styles.statusBadge, styles.rainbowBadge]}
-    testID={testID}
-  >
-    {flowing ? <Animated.View pointerEvents="none" style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
-      <LinearGradient colors={SHIMMER} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
-    </Animated.View> : null}
-    <Text style={[styles.statusText, { color: BEST_IMAGE_RAINBOW_TEXT }]}>{label}</Text>
-  </LinearGradient>;
+function RateGradientBadge({ label, tone, flowing = false, testID }: {
+  label: string;
+  tone: 'rainbow' | 'gold';
+  flowing?: boolean;
+  testID: string;
+}) {
+  return (
+    <LayeredGradientBadge
+      contentStyle={styles.layeredRateContent}
+      flowing={flowing}
+      label={label}
+      style={styles.layeredRateFrame}
+      testID={testID}
+      textStyle={styles.statusText}
+      tone={tone}
+    />
+  );
 }
 
 function NearMissBadge() {
@@ -225,7 +225,8 @@ const styles = StyleSheet.create({
   achievementMaskContent: { flex: 1, alignItems: 'flex-start' }, maskText: { color: '#000000' },
   gradientFill: { ...StyleSheet.absoluteFillObject }, flowTrack: { position: 'absolute', top: 0, bottom: 0, left: 0 },
   statusBadge: { minWidth: 32, height: 24, borderRadius: 9, paddingHorizontal: 10, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  rainbowBadge: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)' },
+  layeredRateFrame: { minWidth: 32, height: 24 },
+  layeredRateContent: { paddingHorizontal: 8 },
   statusText: { fontSize: 10, lineHeight: 12, fontWeight: '900', letterSpacing: 0.45, textAlign: 'center', includeFontPadding: false },
   normalBadge: { backgroundColor: '#E5E7EB' }, normalText: { color: '#374151' },
 });

@@ -22,6 +22,7 @@ describe('好友码上传进度', () => {
     [{ kind: 'fetching_scores', message: '' }, '获取成绩中'],
     [{ kind: 'uploading', message: '', providerTitle: '水鱼' }, '上传成绩中'],
     [{ kind: 'syncing', message: '', providerTitle: '水鱼' }, '上传成绩中'],
+    [{ kind: 'canceling', message: '' }, '取消中'],
   ])('为总览上传按钮生成紧凑状态 %#', (phase, expected) => {
     expect(compactUploadPhaseLabel(phase)).toBe(expected);
   });

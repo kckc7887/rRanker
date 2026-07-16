@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
+import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
@@ -24,8 +25,6 @@ import type { Chart, ChartNotes, ChartType, CollectionItem, Difficulty, ScoreRec
 import { chartLibraryKey, songLibraryKey } from '@/domain/user-library';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
 import {
-  BEST_IMAGE_RAINBOW_COLORS,
-  BEST_IMAGE_RAINBOW_TEXT,
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
@@ -201,13 +200,17 @@ function SongCollectionsCard({ songId }: { songId: string }) {
 function TrophyName({ name, color }: { name: string; color?: string | null }) {
   const tone = normalizeTrophyTone(color);
   if (tone === 'rainbow') {
-    return <LinearGradient colors={BEST_IMAGE_RAINBOW_COLORS}
-      start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={[styles.trophyNameFrame, styles.trophyNameRainbow]}>
-      <Text style={[styles.trophyNameText, { color: BEST_IMAGE_RAINBOW_TEXT }]} numberOfLines={1}>{name}</Text>
-    </LinearGradient>;
+    return <LayeredGradientBadge
+      contentStyle={styles.trophyNameRainbowContent}
+      label={name}
+      numberOfLines={1}
+      style={styles.trophyNameFrame}
+      textStyle={styles.trophyNameText}
+      tone="rainbow"
+    />;
   }
   const theme = TROPHY_BADGE_THEMES[tone];
-  return <View style={[styles.trophyNameFrame, { borderColor: theme.border, backgroundColor: theme.background }]}>
+  return <View style={[styles.trophyNameFrame, styles.trophyNameSolid, { borderColor: theme.border, backgroundColor: theme.background }]}>
     <Text style={[styles.trophyNameText, { color: theme.text }]} numberOfLines={1}>{name}</Text>
   </View>;
 }
@@ -539,8 +542,9 @@ const styles = StyleSheet.create({
   collectionKind: { color: '#8A93A3', fontSize: 11, fontWeight: '700' },
   collectionName: { color: '#182130', fontSize: 14, fontWeight: '700' },
   collectionDesc: { color: '#6B7280', fontSize: 12, lineHeight: 17 },
-  trophyNameFrame: { alignSelf: 'flex-start', maxWidth: '100%', height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, paddingHorizontal: 10 },
-  trophyNameRainbow: { borderColor: 'rgba(255,255,255,0.82)' },
+  trophyNameFrame: { alignSelf: 'flex-start', maxWidth: '100%', height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
+  trophyNameSolid: { borderWidth: 1, paddingHorizontal: 10 },
+  trophyNameRainbowContent: { paddingHorizontal: 8 },
   trophyNameText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textAlign: 'center', includeFontPadding: false },
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
   scrollActionRoot: { flexGrow: 0 },

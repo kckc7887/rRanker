@@ -38,6 +38,7 @@ async function refreshOne(input: {
   signal?: { aborted: boolean };
 }): Promise<ScoreSnapshot> {
   let lastError: unknown;
+  let lastReadableSnapshot: ScoreSnapshot | null = null;
   for (const delay of REFRESH_RETRY_DELAYS_MS) {
     if (input.signal?.aborted) throw new Error('已取消');
     if (delay > 0) await sleep(delay);
@@ -51,7 +52,10 @@ async function refreshOne(input: {
       const snapshot = buildScoreSnapshot(player, rawRecords, input.catalog);
       if (input.expectedRecords?.length
         && !uploadedRecordsAreVisible(snapshot.records, input.expectedRecords)) {
-        throw new ProviderError('no_data', '水鱼尚未返回刚上传的成绩', true);
+        // 严格逐条回配仅用于等待水鱼最终一致性；宴会场、曲名归一化等差异
+        // 不能推翻一次已经成功的账号读取，更不能把已写入的数据误报成同步失败。
+        lastReadableSnapshot = snapshot;
+        continue;
       }
       await repository.save(input.account.id, snapshot);
       return snapshot;
@@ -59,6 +63,10 @@ async function refreshOne(input: {
       lastError = error;
       if (error instanceof ProviderError && !error.retryable) throw error;
     }
+  }
+  if (lastReadableSnapshot) {
+    await repository.save(input.account.id, lastReadableSnapshot);
+    return lastReadableSnapshot;
   }
   if (lastError instanceof Error) throw lastError;
   throw new Error('应用内成绩同步失败');

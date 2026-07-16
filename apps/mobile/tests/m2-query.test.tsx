@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated } from 'react-native';
+import { Animated, processColor } from 'react-native';
 import SearchScreen from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 
@@ -120,6 +120,8 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('rainbow-achievement')).toBeTruthy();
     expect(screen.getByTestId('flowing-achievement-gradient').props.colors).not.toContain('#f0e470');
     expect(screen.getByTestId('rainbow-achievement-gradient').props.colors).not.toContain('#f0e470');
+    expect(screen.getByTestId('rainbow-achievement-gradient').props.colors)
+      .toEqual(['#FF8A96', '#78E8A0', '#78C8FF', '#A89CF8', '#F08ADE'].map(processColor));
     expect(screen.getByLabelText('99.9999%')).toBeTruthy();
     expect(screen.getByLabelText('99.5000%')).toBeTruthy();
     expect(screen.getByLabelText('99.0000%')).toBeTruthy();
@@ -137,6 +139,10 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('flowing-rate-SSS+')).toBeTruthy();
     expect(screen.getByTestId('rainbow-rate-SSS')).toBeTruthy();
     expect(screen.getByTestId('flowing-rate-SS+')).toBeTruthy();
+    expect(screen.getByTestId('rainbow-rate-SSS').props.colors)
+      .toEqual(['#8E2437', '#984D19', '#796515', '#256B39', '#205E7A', '#384181', '#692C7C'].map(processColor));
+    expect(screen.getByTestId('flowing-rate-SS+').props.colors)
+      .toEqual(['#84530A', '#A46E12', '#765006', '#A46E12', '#84530A'].map(processColor));
     expect(screen.getByTestId('near-miss-badge')).toBeTruthy();
     expect(screen.queryByText(/定数 13\.6/)).toBeNull();
     expect(screen.getByText('13.6')).toBeTruthy();

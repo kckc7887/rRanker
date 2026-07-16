@@ -43,6 +43,7 @@ function phaseLabel(phase: UploadPhase): string {
     case 'fetching_scores':
     case 'uploading':
     case 'syncing':
+    case 'canceling':
     case 'done':
     case 'error':
       return phase.message;
@@ -118,6 +119,12 @@ export function UploadDataSheet({
     onClose();
   };
 
+  const cancelUpload = () => {
+    if (!running || abortRef.current.aborted) return;
+    abortRef.current.aborted = true;
+    applyPhase({ kind: 'canceling', message: '正在取消上传…' });
+  };
+
   const toggleAccount = (accountId: string, writable: boolean) => {
     if (!writable || running) return;
     setSelectedIds((prev) => {
@@ -172,7 +179,16 @@ export function UploadDataSheet({
           );
         },
       });
-      await onFinished?.(result);
+      try {
+        await onFinished?.(result);
+      } catch (refreshError) {
+        Alert.alert(
+          '页面刷新失败',
+          `成绩已上传并完成账号同步，但当前页面刷新失败：${
+            refreshError instanceof Error ? refreshError.message : '请稍后手动同步。'
+          }`,
+        );
+      }
     } catch (error) {
       if (abortRef.current.aborted) {
         applyPhase({ kind: 'idle' });
@@ -288,6 +304,24 @@ export function UploadDataSheet({
             )}
           </Pressable>
 
+          {running ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="取消上传"
+              disabled={phase.kind === 'canceling'}
+              onPress={cancelUpload}
+              style={({ pressed }) => [
+                styles.cancel,
+                phase.kind === 'canceling' && styles.primaryDisabled,
+                pressed && phase.kind !== 'canceling' && styles.softPressed,
+              ]}
+            >
+              <Text style={styles.primaryText}>
+                {phase.kind === 'canceling' ? '正在取消…' : '取消上传'}
+              </Text>
+            </Pressable>
+          ) : null}
+
           {statusText ? (
             <View style={styles.statusBox}>
               {running ? <ActivityIndicator color="#246BFD" style={styles.statusSpinner} /> : null}
@@ -387,6 +421,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryDisabled: { opacity: 0.55 },
+  cancel: {
+    backgroundColor: '#DC2626',
+    borderRadius: 14,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   primaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   statusBox: {
     marginTop: 4,
