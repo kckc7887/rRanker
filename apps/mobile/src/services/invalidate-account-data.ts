@@ -13,9 +13,13 @@ const ACCOUNT_DATA_QUERY_KEYS = [
 /** 切换游戏/查分器账号后，强制让成绩与曲库相关查询重新走对应 provider。 */
 export async function invalidateAccountDataQueries(
   client: QueryClient = queryClient,
+  refetchType: 'active' | 'inactive' | 'all' | 'none' = 'active',
 ): Promise<void> {
   await Promise.all(
-    ACCOUNT_DATA_QUERY_KEYS.map((queryKey) => client.invalidateQueries({ queryKey: [...queryKey] })),
+    ACCOUNT_DATA_QUERY_KEYS.map((queryKey) => client.invalidateQueries({
+      queryKey: [...queryKey],
+      refetchType,
+    })),
   );
 }
 

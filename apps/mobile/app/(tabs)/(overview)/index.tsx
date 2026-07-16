@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { DxRatingCard } from '@/components/DxRatingCard';
@@ -7,12 +7,17 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
 import type { BoundAccount } from '@/domain/bound-account';
-import type { BestListSection, GameDataBundle } from '@/domain/game-data';
+import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
+import {
+  compactUploadPhaseLabel,
+  type UploadPhase,
+  type UploadResult,
+} from '@/services/upload-maimai-from-friend-code';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { queryClient } from '@/state/query-client';
@@ -30,11 +35,13 @@ export default function OverviewScreen() {
   const activeAccountId = useSession((s) => s.activeAccountId);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const selectBoundAccount = useSession((s) => s.selectBoundAccount);
+  const updateBoundAccountScore = useSession((s) => s.updateBoundAccountScore);
   const expandedGameId = useGamePickerUi((s) => s.expandedGameId);
   const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [uploadVisible, setUploadVisible] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const refreshingRef = useRef(false);
@@ -48,17 +55,52 @@ export default function OverviewScreen() {
     setRefreshing(true);
     setSyncing(true);
     try {
-      await Promise.all([
-        refetch(),
-        library.refetch(),
-        invalidateAccountDataQueries(),
-      ]);
+      const account = boundAccounts.find((item) => item.id === activeAccountId);
+      const session = sessionsByAccountId?.[activeAccountId];
+      if (account?.providerId === 'diving-fish'
+        && session?.mode === 'import-token'
+        && catalogQuery.data) {
+        const { refreshDivingFishAccounts } = await import('@/services/refresh-diving-fish-accounts');
+        const result = await refreshDivingFishAccounts({
+          accounts: [account],
+          sessionsByAccountId,
+          catalog: catalogQuery.data,
+        });
+        const refreshed = result.refreshed[0];
+        if (!refreshed) throw result.failed[0]?.error ?? new Error('水鱼账号同步失败');
+        updateBoundAccountScore(
+          account.id,
+          formatPlayerScore(refreshed.snapshot.best50.rating, profile.ratingDigits),
+          refreshed.snapshot.player.displayName,
+        );
+      }
+      // 先把相关页面标为过期但不并发请求，再只刷新当前总览一次。
+      await invalidateAccountDataQueries(queryClient, 'none');
+      await refetch();
+    } catch (syncError) {
+      Alert.alert(
+        '同步失败',
+        syncError instanceof Error ? syncError.message : '暂时无法同步成绩，请稍后重试。',
+      );
     } finally {
       refreshingRef.current = false;
       setRefreshing(false);
       setSyncing(false);
     }
-  }, [library.refetch, refetch]);
+  }, [activeAccountId, boundAccounts, catalogQuery.data, profile.ratingDigits,
+    refetch, sessionsByAccountId, updateBoundAccountScore]);
+
+  const finishUpload = useCallback(async (result: UploadResult) => {
+    for (const refreshed of result.refreshedAccounts) {
+      updateBoundAccountScore(
+        refreshed.account.id,
+        formatPlayerScore(refreshed.snapshot.best50.rating, profile.ratingDigits),
+        refreshed.snapshot.player.displayName,
+      );
+    }
+    // 刷新服务已先写入最新分账号快照；即使随后的网络读取失败，也会回退到这份新快照。
+    await invalidateAccountDataQueries();
+  }, [profile.ratingDigits, updateBoundAccountScore]);
 
   const openSwitchSheet = () => {
     const active = boundAccounts.find((account) => account.id === activeAccountId);
@@ -128,12 +170,12 @@ export default function OverviewScreen() {
               <View style={styles.actionRow}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="上传数据，好友码取成绩后推送到查分器"
+                  accessibilityLabel={`上传数据，${compactUploadPhaseLabel(uploadPhase)}`}
                   onPress={() => setUploadVisible(true)}
                   style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
                 >
                   <Text style={styles.syncText}>上传数据</Text>
-                  <Text style={styles.actionHint}>好友码</Text>
+                  <Text style={styles.actionHint}>{compactUploadPhaseLabel(uploadPhase)}</Text>
                 </Pressable>
                 <View style={styles.actionDivider} />
                 <Pressable
@@ -221,10 +263,8 @@ export default function OverviewScreen() {
         sessionsByAccountId={sessionsByAccountId}
         catalog={catalogQuery.data}
         onClose={() => setUploadVisible(false)}
-        onFinished={() => {
-          void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
-          void queryClient.invalidateQueries({ queryKey: ['game-data'] });
-        }}
+        onPhaseChange={setUploadPhase}
+        onFinished={finishUpload}
       />
     </View>
   );

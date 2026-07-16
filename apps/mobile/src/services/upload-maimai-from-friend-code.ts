@@ -1,4 +1,4 @@
-import type { CatalogSnapshot } from '@/domain/models';
+import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
@@ -10,6 +10,7 @@ import {
   pollUpdateScoreUntilDone,
   ScoreHubError,
   type ScoreHubAbortSignal,
+  type ScoreHubScoreProgress,
 } from '@/services/score-hub-client';
 import { uploadRecordsToDivingFish } from '@/services/diving-fish-upload';
 import {
@@ -24,14 +25,67 @@ export type UploadPhase =
   | { kind: 'awaiting_friend'; message: string; botFriendCode: string | null }
   | { kind: 'fetching_scores'; message: string }
   | { kind: 'uploading'; message: string; providerTitle: string }
+  | { kind: 'syncing'; message: string; providerTitle: string }
   | { kind: 'done'; message: string; uploaded: number; skipped: number }
   | { kind: 'error'; message: string };
+
+export type UploadResult = {
+  uploaded: number;
+  skipped: number;
+  refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[];
+  failedAccountNames: string[];
+};
 
 export type UploadTarget = {
   account: BoundAccount;
   writable: boolean;
   disableReason: string | null;
 };
+
+const DIFFICULTY_LABELS: Record<number, string> = {
+  0: 'BASIC',
+  1: 'ADVANCED',
+  2: 'EXPERT',
+  3: 'MASTER',
+  4: 'Re:MASTER',
+  10: '宴会场',
+};
+
+export function scoreProgressMessage(progress: ScoreHubScoreProgress | null): string {
+  if (!progress || progress.totalDiffs <= 0) return '获取成绩中…';
+  const completed = [...new Set(progress.completedDiffs)].sort((left, right) => left - right);
+  if (completed.length === 0) {
+    return `获取各难度成绩中…（0/${progress.totalDiffs}）`;
+  }
+  const completedLabels = completed
+    .map((difficulty) => DIFFICULTY_LABELS[difficulty] ?? `难度 ${difficulty}`)
+    .join('、');
+  const count = Math.min(completed.length, progress.totalDiffs);
+  if (count >= progress.totalDiffs) {
+    return `各难度成绩已获取，正在整理…（${count}/${progress.totalDiffs}）`;
+  }
+  return `获取成绩中：已完成 ${completedLabels}（${count}/${progress.totalDiffs}）`;
+}
+
+export function compactUploadPhaseLabel(phase: UploadPhase): string {
+  switch (phase.kind) {
+    case 'logging_in':
+    case 'awaiting_friend':
+      return '好友申请中';
+    case 'fetching_scores':
+      return '获取成绩中';
+    case 'uploading':
+    case 'syncing':
+      return '上传成绩中';
+    case 'done':
+      return '上传完成';
+    case 'error':
+      return '上传失败';
+    case 'idle':
+    default:
+      return '好友码';
+  }
+}
 
 export function resolveUploadTargets(
   accounts: readonly BoundAccount[],
@@ -82,7 +136,7 @@ export async function uploadMaimaiFromFriendCode(input: {
   signal: ScoreHubAbortSignal;
   onPhase: (phase: UploadPhase) => void;
   onNeedFriendAccept: (botFriendCode: string | null) => void;
-}): Promise<void> {
+}): Promise<UploadResult> {
   const friendCode = input.friendCode.trim();
   if (!/^\d{15}$/.test(friendCode)) {
     throw new ScoreHubError('请输入 15 位好友码');
@@ -102,7 +156,7 @@ export async function uploadMaimaiFromFriendCode(input: {
     throw new ProviderError('authentication', '上传需要 Import-Token', false);
   }
 
-  input.onPhase({ kind: 'logging_in', message: '正在创建登录任务…' });
+  input.onPhase({ kind: 'logging_in', message: '正在创建好友申请任务…' });
   const login = await createFriendLoginJob(friendCode, input.signal);
 
   let token: string;
@@ -137,14 +191,14 @@ export async function uploadMaimaiFromFriendCode(input: {
     });
   }
 
-  input.onPhase({ kind: 'fetching_scores', message: '获取成绩中…' });
+  input.onPhase({ kind: 'fetching_scores', message: '获取各难度成绩中…' });
   const scoreJobId = await createUpdateScoreJob(token, friendshipJobId, input.signal);
   await pollUpdateScoreUntilDone({
     token,
     jobId: scoreJobId,
     signal: input.signal,
-    onProgress: () => {
-      input.onPhase({ kind: 'fetching_scores', message: '获取成绩中…' });
+    onProgress: ({ progress }) => {
+      input.onPhase({ kind: 'fetching_scores', message: scoreProgressMessage(progress) });
     },
   });
 
@@ -178,6 +232,34 @@ export async function uploadMaimaiFromFriendCode(input: {
   }
 
   const skipped = mapped.skippedNoTitle + mapped.skippedBadScore;
+  const { refreshDivingFishAccounts } = await import('@/services/refresh-diving-fish-accounts');
+  const refreshResult = await refreshDivingFishAccounts({
+    accounts: selected.map((target) => target.account),
+    sessionsByAccountId: input.sessionsByAccountId,
+    catalog: input.catalog,
+    expectedRecords: mapped.records,
+    signal: input.signal,
+    onRefreshing: (account) => {
+      input.onPhase({
+        kind: 'syncing',
+        message: `成绩已上传，正在同步应用内的 ${account.displayName}…`,
+        providerTitle: account.providerTitle,
+      });
+    },
+  });
+  const failedAccountNames = refreshResult.failed.map((item) => item.account.displayName);
+  if (failedAccountNames.length > 0) {
+    input.onPhase({
+      kind: 'error',
+      message: `成绩已上传，但应用内账号同步失败：${failedAccountNames.join('、')}。请稍后点“同步数据”重试。`,
+    });
+    return {
+      uploaded: uploadedTotal,
+      skipped,
+      refreshedAccounts: refreshResult.refreshed,
+      failedAccountNames,
+    };
+  }
   input.onPhase({
     kind: 'done',
     message: skipped > 0
@@ -186,4 +268,10 @@ export async function uploadMaimaiFromFriendCode(input: {
     uploaded: uploadedTotal,
     skipped,
   });
+  return {
+    uploaded: uploadedTotal,
+    skipped,
+    refreshedAccounts: refreshResult.refreshed,
+    failedAccountNames,
+  };
 }
