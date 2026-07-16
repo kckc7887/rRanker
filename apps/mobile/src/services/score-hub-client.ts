@@ -29,6 +29,11 @@ export type ScoreHubLatestSync = {
   autoExportResult?: unknown;
 } | null;
 
+export type ScoreHubScoreProgress = {
+  completedDiffs: number[];
+  totalDiffs: number;
+};
+
 export class ScoreHubError extends Error {
   readonly status?: number;
 
@@ -231,7 +236,11 @@ export async function pollUpdateScoreUntilDone(input: {
   token: string;
   jobId: string;
   signal?: ScoreHubAbortSignal;
-  onProgress?: (info: { status: string; stage: string | null }) => void;
+  onProgress?: (info: {
+    status: string;
+    stage: string | null;
+    progress: ScoreHubScoreProgress | null;
+  }) => void;
 }): Promise<void> {
   const deadline = Date.now() + SCORE_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -248,7 +257,17 @@ export async function pollUpdateScoreUntilDone(input: {
     const job = body as Record<string, unknown>;
     const st = String(job.status ?? '');
     const stage = typeof job.stage === 'string' ? job.stage : null;
-    input.onProgress?.({ status: st, stage });
+    const rawProgress = job.scoreProgress;
+    const progress = rawProgress && typeof rawProgress === 'object'
+      && Array.isArray((rawProgress as Record<string, unknown>).completedDiffs)
+      && typeof (rawProgress as Record<string, unknown>).totalDiffs === 'number'
+      ? {
+          completedDiffs: (rawProgress as { completedDiffs: unknown[] }).completedDiffs
+            .filter((value): value is number => typeof value === 'number' && Number.isInteger(value)),
+          totalDiffs: (rawProgress as { totalDiffs: number }).totalDiffs,
+        }
+      : null;
+    input.onProgress?.({ status: st, stage, progress });
     if (st === 'completed') return;
     if (st === 'failed' || st === 'canceled') {
       throw new ScoreHubError(String(job.error ?? '获取成绩失败'));

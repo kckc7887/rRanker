@@ -22,6 +22,7 @@ import {
   resolveUploadTargets,
   uploadMaimaiFromFriendCode,
   type UploadPhase,
+  type UploadResult,
 } from '@/services/upload-maimai-from-friend-code';
 import { uploadPrefsStore } from '@/storage/upload-prefs-store';
 import { ProviderError } from '@/providers/errors';
@@ -41,6 +42,7 @@ function phaseLabel(phase: UploadPhase): string {
     case 'awaiting_friend':
     case 'fetching_scores':
     case 'uploading':
+    case 'syncing':
     case 'done':
     case 'error':
       return phase.message;
@@ -55,6 +57,7 @@ export function UploadDataSheet({
   sessionsByAccountId,
   catalog,
   onClose,
+  onPhaseChange,
   onFinished,
 }: {
   visible: boolean;
@@ -62,7 +65,8 @@ export function UploadDataSheet({
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
   catalog: CatalogSnapshot | undefined;
   onClose: () => void;
-  onFinished?: () => void;
+  onPhaseChange?: (phase: UploadPhase) => void;
+  onFinished?: (result: UploadResult) => void | Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
   const [friendCode, setFriendCode] = useState('');
@@ -82,13 +86,16 @@ export function UploadDataSheet({
     }, 300);
   }, []);
 
+  const applyPhase = useCallback((next: UploadPhase) => {
+    setPhase(next);
+    onPhaseChange?.(next);
+  }, [onPhaseChange]);
+
   useEffect(() => {
-    if (!visible) return;
-    abortRef.current = { aborted: false };
-    setPhase({ kind: 'idle' });
-    setRunning(false);
-    setPrefsReady(false);
+    if (!visible || prefsReady) return;
+    let active = true;
     void uploadPrefsStore.load().then((prefs) => {
+      if (!active) return;
       setFriendCode(prefs.friendCode);
       const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
         .filter((target) => target.writable)
@@ -98,16 +105,16 @@ export function UploadDataSheet({
       setPrefsReady(true);
     });
     return () => {
-      abortRef.current.aborted = true;
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      active = false;
     };
-  }, [visible, accounts, sessionsByAccountId]);
+  }, [visible, prefsReady, accounts, sessionsByAccountId]);
+
+  useEffect(() => () => {
+    abortRef.current.aborted = true;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  }, []);
 
   const close = () => {
-    if (running) {
-      abortRef.current.aborted = true;
-      setRunning(false);
-    }
     onClose();
   };
 
@@ -145,17 +152,17 @@ export function UploadDataSheet({
 
     abortRef.current = { aborted: false };
     setRunning(true);
-    setPhase({ kind: 'logging_in', message: '正在创建登录任务…' });
+    applyPhase({ kind: 'logging_in', message: '正在创建好友申请任务…' });
 
     try {
-      await uploadMaimaiFromFriendCode({
+      const result = await uploadMaimaiFromFriendCode({
         friendCode,
         selectedAccountIds: selectedIds,
         targets,
         sessionsByAccountId,
         catalog,
         signal: abortRef.current,
-        onPhase: setPhase,
+        onPhase: applyPhase,
         onNeedFriendAccept: (botFriendCode) => {
           Alert.alert(
             '请同意好友申请',
@@ -165,17 +172,17 @@ export function UploadDataSheet({
           );
         },
       });
-      onFinished?.();
+      await onFinished?.(result);
     } catch (error) {
       if (abortRef.current.aborted) {
-        setPhase({ kind: 'idle' });
+        applyPhase({ kind: 'idle' });
       } else {
         const message = error instanceof ScoreHubError || error instanceof ProviderError
           ? error.message
           : error instanceof Error
             ? error.message
             : '上传失败';
-        setPhase({ kind: 'error', message });
+        applyPhase({ kind: 'error', message });
       }
     } finally {
       setRunning(false);
@@ -191,7 +198,7 @@ export function UploadDataSheet({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="formSheet"
+      presentationStyle="pageSheet"
       onRequestClose={close}
     >
       <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12) }]}>

@@ -1,10 +1,26 @@
 import { enrichRecordsWithCatalog } from '@/domain/catalog';
 import { buildBest50 } from '@/domain/rating';
-import type { ScoreSnapshot } from '@/domain/models';
+import type { CatalogSnapshot, Player, ScoreRecord, ScoreSnapshot } from '@/domain/models';
 import type { DetailedCatalogProvider, ScoreProvider } from '@/providers/contracts';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { ProviderError } from '@/providers/errors';
+
+export function buildScoreSnapshot(
+  player: Player,
+  rawRecords: readonly ScoreRecord[],
+  catalog: CatalogSnapshot,
+): ScoreSnapshot {
+  const records = enrichRecordsWithCatalog(rawRecords, catalog);
+  const best50 = buildBest50(player, records, catalog, player.source);
+  return {
+    player,
+    records,
+    best50,
+    source: player.source,
+    catalogSource: catalog.source,
+  };
+}
 
 export class ScoreService {
   constructor(
@@ -23,15 +39,7 @@ export class ScoreService {
         this.catalogProvider.getDetailedCatalog(),
       ]);
       await this.catalogRepository?.saveCatalog(catalog);
-      const records = enrichRecordsWithCatalog(rawRecords, catalog);
-      const best50 = buildBest50(player, records, catalog, player.source);
-      const snapshot: ScoreSnapshot = {
-        player,
-        records,
-        best50,
-        source: player.source,
-        catalogSource: catalog.source,
-      };
+      const snapshot = buildScoreSnapshot(player, rawRecords, catalog);
       await this.snapshotRepository?.save(this.accountId, snapshot);
       return snapshot;
     } catch (error) {
