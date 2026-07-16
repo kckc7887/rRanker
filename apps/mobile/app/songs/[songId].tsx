@@ -57,9 +57,19 @@ export default function SongDetailScreen() {
   const initialLevelIndex = Number.isInteger(parsedLevelIndex) && parsedLevelIndex! >= 0 ? parsedLevelIndex : undefined;
   const songItem = song ? library.data?.find((item) => item.key === songLibraryKey(song.id)) : undefined;
   const favorite = songItem?.kind === 'song' && songItem.favorite;
+  const favoriteDisabled = library.isLoading || library.isUpdating;
+  const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
+  const usesNativeAndroidHeader = Platform.OS === 'android';
   return <>
-    <Stack.Screen options={{
-      // 沉浸式头图会盖住透明原生标题栏命中区；返回/收藏改由页面内叠层处理。
+    <Stack.Screen options={usesNativeAndroidHeader ? {
+      // Android 的绝对定位高层 ViewGroup 会覆盖页面其余命中区；改由非透明原生标题栏承载操作。
+      title: '', headerTransparent: false, headerShadowVisible: false, headerTintColor: '#FFFFFF',
+      headerStyle: { backgroundColor: '#111827' }, headerBackVisible: true,
+      headerRight: song && onToggleFavorite ? () => <HeaderFavoriteButton
+        song={song} favorite={favorite} disabled={favoriteDisabled} onPress={onToggleFavorite}
+      /> : undefined,
+    } : {
+      // iOS 保留已验证的沉浸式页面内标题栏。
       title: '', headerTransparent: true, headerShadowVisible: false, headerTintColor: '#FFFFFF',
       headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
     }} />
@@ -70,13 +80,27 @@ export default function SongDetailScreen() {
         emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}
           catalogSource={catalog.data!.source} scoreSource={scores.data?.source} library={library}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
-      <SongDetailChrome
+      {!usesNativeAndroidHeader ? <SongDetailChrome
         song={song} favorite={favorite}
-        favoriteDisabled={library.isLoading || library.isUpdating}
-        onToggleFavorite={song ? () => void library.setSongFavorite(song.id, !favorite) : undefined}
-      />
+        favoriteDisabled={favoriteDisabled}
+        onToggleFavorite={onToggleFavorite}
+      /> : null}
     </View>
   </>;
+}
+
+function HeaderFavoriteButton({ song, favorite, disabled, onPress }: {
+  song: Song; favorite: boolean; disabled: boolean; onPress: () => void;
+}) {
+  return <Pressable accessibilityRole="button"
+    accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
+    disabled={disabled} hitSlop={12} onPress={onPress}
+    style={({ pressed }) => [
+      styles.headerButton, styles.headerButtonBg, favorite && styles.headerFavoriteActiveBg,
+      pressed && { opacity: 0.7 },
+    ]}>
+    <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#E9D5FF' : '#FFFFFF'} size={22} />
+  </Pressable>;
 }
 
 function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }: {
@@ -491,7 +515,7 @@ const styles = StyleSheet.create({
   title: { color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6, textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8 },
   artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
   headerChrome: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30, elevation: 30,
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
     minHeight: 44, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
