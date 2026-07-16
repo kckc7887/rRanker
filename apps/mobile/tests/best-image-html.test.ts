@@ -138,8 +138,9 @@ describe('best image html', () => {
     expect(html).toContain('.score-badge.rate.tone-rainbow{border:2px solid transparent;background:linear-gradient(rgba(75,78,85,0.16),rgba(75,78,85,0.16)) padding-box');
     expect(html).toContain('score-badge fc tone-green">FC+');
     expect(html).toContain('score-badge fs tone-gold">FDX');
-    expect(html).toContain('.score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;min-height:161px;');
-    expect(html).toContain('.score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:0;padding-top:0}');
+    expect(html).toContain('.score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;flex-direction:column;');
+    expect(html).not.toContain('display:flex;min-width:0;min-height:161px;flex-direction:column');
+    expect(html).toContain('.score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:0;padding-top:4px}');
     expect(html).not.toContain('.score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:auto');
     expect(html).toContain('.rank{margin-left:auto;flex:0 0 auto');
     expect(html).toContain('font:900 8px/1 system-ui');

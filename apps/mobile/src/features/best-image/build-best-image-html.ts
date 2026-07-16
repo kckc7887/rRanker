@@ -249,7 +249,6 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const scoresTop = pageInset + bannerHeight + px(width * 0.035);
   const gridGap = px(width * 0.009);
   const scoreCardPadding = px(width * 0.0065);
-  const scoreCardMinHeight = px(width * 0.149);
   const jacketSize = px(width * 0.058);
   const scoreSections = input.scoreSections
     .map((section) => renderScoreSection(section, input.coverUrls))
@@ -324,7 +323,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .section-divider::before,.section-divider::after{content:"";height:${Math.max(1, px(width * 0.0012))}px;flex:1;background:linear-gradient(90deg,transparent,rgba(28,38,57,.55))}
     .section-divider::after{background:linear-gradient(90deg,rgba(28,38,57,.55),transparent)}
     .score-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:${gridGap}px}
-    .score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;min-height:${scoreCardMinHeight}px;flex-direction:column;overflow:hidden;padding:${scoreCardPadding}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 0.012)}px;background:var(--card-background);box-shadow:0 ${px(width * 0.004)}px ${px(width * 0.014)}px rgba(25,38,60,.22);color:var(--card-foreground)}
+    .score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;flex-direction:column;overflow:hidden;padding:${scoreCardPadding}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 0.012)}px;background:var(--card-background);box-shadow:0 ${px(width * 0.004)}px ${px(width * 0.014)}px rgba(25,38,60,.22);color:var(--card-foreground)}
     .score-card.difficulty-remaster{--card-foreground:#5F2C78;--card-muted:#8B5AA2;--separator-color:rgba(166,93,185,.52);border-color:rgba(166,93,185,.42)}
     .score-card-head{display:flex;min-width:0;height:${jacketSize}px;align-items:stretch;gap:${px(width * 0.006)}px}
     .jacket-shell{position:relative;width:${jacketSize}px;height:${jacketSize}px;flex:0 0 ${jacketSize}px;overflow:hidden;border:${Math.max(2, px(width * 0.003))}px solid #FFFFFF;border-radius:${px(width * 0.007)}px;background:rgba(255,255,255,.24)}
@@ -343,7 +342,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .rating-row{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:${px(width * 0.003)}px;margin-top:${px(width * 0.003)}px;color:var(--card-muted);font:700 ${px(width * 0.009)}px/1.15 system-ui,sans-serif}
     .song-rating{display:inline-flex;min-width:0;align-items:center;gap:${px(width * 0.003)}px;white-space:nowrap}.song-rating strong{color:var(--card-foreground);font-weight:900}.rating-arrow{color:var(--card-muted)}
     .dx-score-value{display:inline-flex;flex:0 0 auto;align-items:baseline;gap:${px(width * 0.002)}px;color:var(--card-foreground);font-size:${px(width * 0.008)}px;font-weight:900;font-variant-numeric:tabular-nums;white-space:nowrap}.dx-score-slash{color:var(--card-muted);font-weight:700}
-    .score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:0;padding-top:0}
+    .score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:0;padding-top:${px(width * 0.004)}px}
     .score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-end;gap:${px(width * 0.002)}px}
     .score-badge{display:inline-flex;min-width:${px(width * 0.02)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid ${normalStatus.border};border-radius:999px;background:${normalStatus.background};color:${normalStatus.text};font:900 ${px(width * 0.0075)}px/1 system-ui,sans-serif;text-align:center;white-space:nowrap}.score-badge.rate.tone-rainbow{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}.score-badge.rate.tone-gold{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${goldLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT}}.score-badge.tone-gold{border-color:${goldStatus.border};background:${goldStatus.background};color:${goldStatus.text}}.score-badge.tone-green{border-color:${greenStatus.border};background:${greenStatus.background};color:${greenStatus.text}}.score-badge.tone-blue{border-color:${blueStatus.border};background:${blueStatus.background};color:${blueStatus.text}}.score-badge.tone-neutral{border-color:${neutralStatus.border};background:${neutralStatus.background};color:${neutralStatus.text};text-shadow:0 1px 1px rgba(31,41,55,.48)}
     .empty-section{grid-column:1/-1;display:flex;min-height:${px(width * 0.08)}px;align-items:center;justify-content:center;color:#697586;font:700 ${px(width * 0.012)}px/1.4 system-ui,sans-serif}
