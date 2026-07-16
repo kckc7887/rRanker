@@ -5,13 +5,42 @@ import SearchScreen from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 import UserLibraryScreen from '../app/library';
 import OverviewScreen from '../app/(tabs)/(overview)';
+import type { BoundAccount } from '@/domain/bound-account';
+import type { ProviderSession } from '@/providers/contracts';
 import type { UserLibraryItem } from '@/domain/user-library';
 
 const mockPush = jest.fn();
+const mockBack = jest.fn();
 const mockSetFavorite = jest.fn(async () => []);
 const mockSetPractice = jest.fn(async () => []);
 const mockSetTags = jest.fn(async () => []);
 const mockRefetchScore = jest.fn<() => Promise<unknown>>(async () => undefined);
+const mockCancelQueries = jest.fn<(input: unknown) => Promise<undefined>>(async () => undefined);
+const mockUpdateBoundAccountScore = jest.fn();
+const mockRefreshDivingFishAccounts = jest.fn<(input: unknown) => Promise<unknown>>();
+const mockSessionState: {
+  session: ProviderSession | null;
+  sessionsByAccountId: Record<string, ProviderSession | undefined>;
+  activeGameId: 'maimai';
+  activeProviderId: 'diving-fish';
+  activeAccountId: string;
+  boundAccounts: BoundAccount[];
+  selectBoundAccount: () => void;
+  updateBoundAccountScore: typeof mockUpdateBoundAccountScore;
+  setActiveProviderId: () => void;
+  setActiveGameId: () => void;
+} = {
+  session: null,
+  sessionsByAccountId: {},
+  activeGameId: 'maimai',
+  activeProviderId: 'diving-fish',
+  activeAccountId: 'maimai:local',
+  boundAccounts: [],
+  selectBoundAccount: jest.fn(),
+  updateBoundAccountScore: mockUpdateBoundAccountScore,
+  setActiveProviderId: jest.fn(),
+  setActiveGameId: jest.fn(),
+};
 const timestamp = '2026-07-13T00:00:00.000Z';
 const mockItems: UserLibraryItem[] = [
   { key: 'song:1', kind: 'song', songId: '1', favorite: true, tags: ['喜欢'], createdAt: timestamp, updatedAt: timestamp },
@@ -32,7 +61,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
-  router: { push: (...args: unknown[]) => mockPush(...args), back: jest.fn() },
+  router: { push: (...args: unknown[]) => mockPush(...args), back: () => mockBack() },
   useLocalSearchParams: () => ({ songId: '1' }),
 }));
 jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
@@ -95,7 +124,14 @@ jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
   };
 } }));
 jest.mock('@/state/query-client', () => ({
-  queryClient: { invalidateQueries: jest.fn(), removeQueries: jest.fn() },
+  queryClient: {
+    cancelQueries: (input: unknown) => mockCancelQueries(input),
+    invalidateQueries: jest.fn(),
+    removeQueries: jest.fn(),
+  },
+}));
+jest.mock('@/services/refresh-diving-fish-accounts', () => ({
+  refreshDivingFishAccounts: (input: unknown) => mockRefreshDivingFishAccounts(input),
 }));
 jest.mock('@/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: {
@@ -109,29 +145,20 @@ jest.mock('@/state/game-picker-ui', () => ({
   }),
 }));
 jest.mock('@/state/session-store', () => ({
-  useSession: (selector: (state: {
-    session: null;
-    activeGameId: 'maimai';
-    activeProviderId: 'diving-fish';
-    activeAccountId: string;
-    boundAccounts: [];
-    selectBoundAccount: () => void;
-    setActiveProviderId: () => void;
-    setActiveGameId: () => void;
-  }) => unknown) => selector({
-    session: null,
-    activeGameId: 'maimai',
-    activeProviderId: 'diving-fish',
-    activeAccountId: 'maimai:local',
-    boundAccounts: [],
-    selectBoundAccount: jest.fn(),
-    setActiveProviderId: jest.fn(),
-    setActiveGameId: jest.fn(),
-  }),
+  useSession: (selector: (state: typeof mockSessionState) => unknown) => selector(mockSessionState),
 }));
 
 describe('M3A personal library screens', () => {
-  beforeEach(() => { jest.clearAllMocks(); mockRefetchScore.mockResolvedValue(undefined); });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRefetchScore.mockResolvedValue(undefined);
+    Object.assign(mockSessionState, {
+      session: null,
+      sessionsByAccountId: {},
+      activeAccountId: 'maimai:local',
+      boundAccounts: [],
+    });
+  });
 
   it('keeps five tabs and exposes the personal library from overview', async () => {
     const screen = await render(<OverviewScreen />);
@@ -153,7 +180,7 @@ describe('M3A personal library screens', () => {
       refreshControl().props.onRefresh();
       await Promise.resolve();
     });
-    expect(mockRefetchScore).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockRefetchScore).toHaveBeenCalledTimes(1));
     expect(refreshControl().props.refreshing).toBe(true);
     await act(async () => {
       refreshControl().props.onRefresh();
@@ -165,6 +192,52 @@ describe('M3A personal library screens', () => {
       await Promise.resolve();
     });
     expect(refreshControl().props.refreshing).toBe(false);
+  });
+
+  it('uses the active Import-Token session for a user-triggered water-fish sync', async () => {
+    const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+    const account: BoundAccount = {
+      id: 'maimai:diving-fish:android-user', gameId: 'maimai', providerId: 'diving-fish',
+      displayName: 'Android 玩家', scoreLabel: 'DX Rating', scoreDisplay: '15000', providerTitle: '水鱼查分器',
+    };
+    const session: ProviderSession = { mode: 'import-token', value: 'android-token', persistable: true };
+    Object.assign(mockSessionState, {
+      session,
+      sessionsByAccountId: {},
+      activeAccountId: account.id,
+      boundAccounts: [account],
+    });
+    const snapshot = {
+      player: fixtures.fixturePlayer,
+      records: fixtures.fixtureRecords,
+      source: fixtures.fixtureSource,
+      catalogSource: fixtures.fixtureSource,
+      best50: {
+        player: fixtures.fixturePlayer, currentVersion: fixtures.fixtureCatalog.currentVersion,
+        b35: [], b15: [], unmatchedRecordCount: 0, rating: 15000,
+        generatedAt: timestamp, source: fixtures.fixtureSource,
+      },
+    };
+    mockRefreshDivingFishAccounts.mockResolvedValue({
+      refreshed: [{ account, snapshot }],
+      failed: [],
+    });
+
+    const screen = await render(<OverviewScreen />);
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 水鱼查分器'));
+
+    await waitFor(() => expect(mockCancelQueries).toHaveBeenCalledWith({ queryKey: ['game-data'] }));
+    await waitFor(() => expect(mockRefreshDivingFishAccounts).toHaveBeenCalledWith({
+      accounts: [account],
+      sessionsByAccountId: { [account.id]: session },
+      catalog: fixtures.fixtureCatalog,
+    }));
+    expect(mockUpdateBoundAccountScore).toHaveBeenCalledWith(
+      account.id,
+      expect.any(String),
+      fixtures.fixturePlayer.displayName,
+    );
+    expect(mockRefetchScore).toHaveBeenCalledTimes(1);
   });
 
   it('lists favorites, practice charts and missing catalog entries with filters', async () => {
@@ -187,6 +260,8 @@ describe('M3A personal library screens', () => {
   it('edits song favorite, chart practice and tags from song detail', async () => {
     const openUrl = jest.spyOn(Linking, 'openURL').mockResolvedValueOnce(undefined);
     const screen = await render(<SongDetailScreen />);
+    await fireEvent.press(screen.getByLabelText('返回'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByLabelText('取消收藏 正常曲目 A'));
     expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
     await fireEvent.press(screen.getByText('已加入练习清单'));

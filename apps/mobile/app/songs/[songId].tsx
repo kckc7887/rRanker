@@ -65,16 +65,16 @@ export default function SongDetailScreen() {
     }} />
     <StatusBar style="light" />
     <View style={styles.page}>
-      <SongDetailChrome
-        song={song} favorite={favorite}
-        favoriteDisabled={library.isLoading || library.isUpdating}
-        onToggleFavorite={song ? () => void library.setSongFavorite(song.id, !favorite) : undefined}
-      />
       <QueryStateView<Song> isLoading={catalog.isLoading} isError={catalog.isError} isEmpty={!!catalog.data && !song}
         error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}
           catalogSource={catalog.data!.source} scoreSource={scores.data?.source} library={library}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
+      <SongDetailChrome
+        song={song} favorite={favorite}
+        favoriteDisabled={library.isLoading || library.isUpdating}
+        onToggleFavorite={song ? () => void library.setSongFavorite(song.id, !favorite) : undefined}
+      />
     </View>
   </>;
 }
@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
   title: { color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6, textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8 },
   artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
   headerChrome: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30, elevation: 30,
     minHeight: 44, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
