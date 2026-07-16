@@ -5,9 +5,39 @@ import { ProviderError } from '@/providers/errors';
 const BASE_URL = 'https://www.diving-fish.com/api/maimaidxprober';
 const RETRY_DELAYS_MS = [0, 15_000, 60_000];
 
+type UploadAbortSignal = { aborted: boolean };
+
+function canceledError(): ProviderError {
+  return new ProviderError('unknown', '已取消', false);
+}
+
+function waitForRetry(ms: number, signal?: UploadAbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(canceledError());
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    let watch: ReturnType<typeof setInterval> | undefined;
+    if (signal) {
+      watch = setInterval(() => {
+        if (signal.aborted) {
+          clearTimeout(timer);
+          if (watch !== undefined) clearInterval(watch);
+          reject(canceledError());
+        }
+      }, 100);
+      setTimeout(() => {
+        if (watch !== undefined) clearInterval(watch);
+      }, ms + 10);
+    }
+  });
+}
+
 export async function uploadRecordsToDivingFish(
   importToken: string,
   records: DivingFishUploadRecord[],
+  signal?: UploadAbortSignal,
 ): Promise<{ uploaded: number }> {
   if (!importToken.trim()) {
     throw new ProviderError('authentication', '上传需要 Import-Token', false);
@@ -18,12 +48,16 @@ export async function uploadRecordsToDivingFish(
 
   let lastError: unknown;
   for (const delay of RETRY_DELAYS_MS) {
+    if (signal?.aborted) throw canceledError();
     if (delay > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await waitForRetry(delay, signal);
     }
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 120_000);
+      const abortWatch = signal ? setInterval(() => {
+        if (signal.aborted) controller.abort();
+      }, 100) : null;
       try {
         const response = await expoFetch(`${BASE_URL}/player/update_records`, {
           method: 'POST',
@@ -50,8 +84,10 @@ export async function uploadRecordsToDivingFish(
         throw new ProviderError('unknown', `水鱼上传失败（${response.status}）`, false);
       } finally {
         clearTimeout(timeout);
+        if (abortWatch !== null) clearInterval(abortWatch);
       }
     } catch (error) {
+      if (signal?.aborted) throw canceledError();
       if (error instanceof ProviderError && !error.retryable) throw error;
       lastError = error;
       if (error instanceof Error && error.name === 'AbortError') {

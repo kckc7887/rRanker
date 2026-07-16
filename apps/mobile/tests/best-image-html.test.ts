@@ -106,7 +106,9 @@ describe('best image html', () => {
     expect(html).toContain('font:400 9px/normal system-ui');
     expect(html).not.toContain('backdrop-filter');
     expect(html).toContain('class="trophy rainbow"');
-    expect(html).toContain('background:linear-gradient(90deg,#FF8A96,#78E8A0,#78C8FF,#A89CF8,#F08ADE);color:#4B5563');
+    expect(html).toContain('.trophy.rainbow{border-color:transparent;background:linear-gradient(rgba(75,78,85,0.16),rgba(75,78,85,0.16)) padding-box');
+    expect(html).toContain('linear-gradient(90deg,#FF9CA8,#FFC07E,#EADB72,#88CF96,#79BFDB,#9199DC,#C28BD4) padding-box');
+    expect(html).toContain('linear-gradient(90deg,#8E2437,#984D19,#796515,#256B39,#205E7A,#384181,#692C7C) border-box;color:#303136');
     expect(html).not.toContain('#ffc888');
     expect(html).toContain('<span>1</span><span>5</span><span>0</span><span>0</span><span>1</span>');
     expect(html).toContain('grid-template-columns:repeat(5,minmax(0,1fr))');
@@ -128,6 +130,7 @@ describe('best image html', () => {
     expect(html).toContain('aria-label="DXScore 实际 1836，理论 2070"');
     expect(html).toContain('<span class="dx-score-actual">1836</span><span class="dx-score-slash">/</span><span class="dx-score-maximum">2070</span>');
     expect(html).toContain('score-badge rate tone-rainbow">SSS');
+    expect(html).toContain('.score-badge.rate.tone-rainbow{border:2px solid transparent;background:linear-gradient(rgba(75,78,85,0.16),rgba(75,78,85,0.16)) padding-box');
     expect(html).toContain('score-badge fc tone-green">FC+');
     expect(html).toContain('score-badge fs tone-gold">FDX');
     expect(html).toContain('.score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;');
@@ -178,6 +181,10 @@ describe('best image html', () => {
     expect(nearIndex).toBeGreaterThan(rateIndex);
     expect(fcIndex).toBeGreaterThan(nearIndex);
     expect(fsIndex).toBeGreaterThan(fcIndex);
+    expect(html).toContain('.score-badge.rate.tone-gold{border:2px solid transparent;background:linear-gradient(rgba(75,78,85,0.16),rgba(75,78,85,0.16)) padding-box');
+    expect(html).toContain('linear-gradient(90deg,#FFF3B0,#F6DC7D,#E8BF54,#F6DC7D,#FFF3B0) padding-box');
+    expect(html).toContain('linear-gradient(90deg,#84530A,#A46E12,#765006,#A46E12,#84530A) border-box;color:#303136');
+    expect(html).toContain('.score-badge.tone-gold{border-color:#D4B45A;background:#D4B45A;color:#4B3A05}');
     expect(html).toContain('border-color:#9CA3AF;background:#9CA3AF;color:#FFFFFF');
   });
 

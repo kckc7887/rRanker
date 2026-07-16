@@ -23,7 +23,6 @@ describe('score-hub-sync-map', () => {
   it('maps hub types to diving-fish SD/DX', () => {
     expect(mapHubTypeToDivingFish('standard')).toBe('SD');
     expect(mapHubTypeToDivingFish('dx')).toBe('DX');
-    expect(mapHubTypeToDivingFish('utage')).toBe('DX');
   });
 
   it('converts hub scores and skips missing titles', () => {
@@ -64,6 +63,12 @@ describe('score-hub-sync-map', () => {
           type: 'dx',
           score: 'bad',
         },
+        {
+          musicId: '11696',
+          chartIndex: 10,
+          type: 'utage',
+          score: '100%',
+        },
       ],
       titleMap,
     );
@@ -78,6 +83,7 @@ describe('score-hub-sync-map', () => {
     });
     expect(result.skippedNoTitle).toBe(1);
     expect(result.skippedBadScore).toBe(1);
+    expect(result.skippedUnsupportedChart).toBe(1);
   });
 });
 
