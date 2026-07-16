@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { GestureHandlerRootView, Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { normalizeTags } from '@/domain/user-library';
 
@@ -8,6 +8,8 @@ export function TagEditor({ tags, disabled, onChange }: {
   disabled?: boolean;
   onChange: (tags: string[]) => Promise<unknown>;
 }) {
+  const GestureRoot = Platform.OS === 'android' ? View : GestureHandlerRootView;
+  const TagPressable = Platform.OS === 'android' ? Pressable : GesturePressable;
   const [input, setInput] = useState('');
   const [error, setError] = useState('');
 
@@ -21,25 +23,25 @@ export function TagEditor({ tags, disabled, onChange }: {
     if (await commit([...tags, input])) setInput('');
   };
 
-  return <GestureHandlerRootView style={styles.wrap}>
+  return <GestureRoot style={styles.wrap}>
     <Text style={styles.label}>本地标签</Text>
     <View style={styles.tags}>
-      {tags.map((tag) => <GesturePressable key={tag} disabled={disabled} accessibilityRole="button"
+      {tags.map((tag) => <TagPressable key={tag} disabled={disabled} accessibilityRole="button"
         accessibilityLabel={`删除标签 ${tag}`} onPress={() => void commit(tags.filter((item) => item !== tag))} style={styles.tag}>
         <Text style={styles.tagText}>{tag} ×</Text>
-      </GesturePressable>)}
+      </TagPressable>)}
       {!tags.length ? <Text style={styles.empty}>暂无标签</Text> : null}
     </View>
     <View style={styles.inputRow}>
       <TextInput accessibilityLabel="新标签" editable={!disabled} placeholder="输入标签" value={input}
         onChangeText={setInput} onSubmitEditing={() => void add()} style={styles.input} />
-      <GesturePressable accessibilityRole="button" accessibilityLabel="添加标签"
+      <TagPressable accessibilityRole="button" accessibilityLabel="添加标签"
         disabled={disabled} onPress={() => void add()} style={styles.add}>
         <Text style={styles.addText}>添加</Text>
-      </GesturePressable>
+      </TagPressable>
     </View>
     {error ? <Text style={styles.error}>{error}</Text> : null}
-  </GestureHandlerRootView>;
+  </GestureRoot>;
 }
 
 const styles = StyleSheet.create({
