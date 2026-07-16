@@ -1,4 +1,4 @@
-import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -59,17 +59,9 @@ export default function SongDetailScreen() {
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
-  const usesNativeAndroidHeader = Platform.OS === 'android';
   return <>
-    <Stack.Screen options={usesNativeAndroidHeader ? {
-      // Android 的绝对定位高层 ViewGroup 会覆盖页面其余命中区；改由非透明原生标题栏承载操作。
-      title: '', headerTransparent: false, headerShadowVisible: false, headerTintColor: '#FFFFFF',
-      headerStyle: { backgroundColor: '#111827' }, headerBackVisible: true,
-      headerRight: song && onToggleFavorite ? () => <HeaderFavoriteButton
-        song={song} favorite={favorite} disabled={favoriteDisabled} onPress={onToggleFavorite}
-      /> : undefined,
-    } : {
-      // iOS 保留已验证的沉浸式页面内标题栏。
+    <Stack.Screen options={{
+      // 封面继续顶满屏幕；页面内只放两个独立按钮，不创建覆盖整行的高层触控容器。
       title: '', headerTransparent: true, headerShadowVisible: false, headerTintColor: '#FFFFFF',
       headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
     }} />
@@ -80,38 +72,39 @@ export default function SongDetailScreen() {
         emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}
           catalogSource={catalog.data!.source} scoreSource={scores.data?.source} library={library}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
-      {!usesNativeAndroidHeader ? <SongDetailChrome
+      <SongDetailChrome
         song={song} favorite={favorite}
         favoriteDisabled={favoriteDisabled}
         onToggleFavorite={onToggleFavorite}
-      /> : null}
+      />
     </View>
   </>;
 }
 
-function HeaderFavoriteButton({ song, favorite, disabled, onPress }: {
-  song: Song; favorite: boolean; disabled: boolean; onPress: () => void;
+function DetailPressable(props: ComponentProps<typeof Pressable>) {
+  return Platform.OS === 'android'
+    ? <Pressable {...props} />
+    : <GesturePressable {...props as ComponentProps<typeof GesturePressable>} />;
+}
+
+function DetailGestureRoot({ children, style }: {
+  children: ReactNode; style?: ComponentProps<typeof View>['style'];
 }) {
-  return <Pressable accessibilityRole="button"
-    accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
-    disabled={disabled} hitSlop={12} onPress={onPress}
-    style={({ pressed }) => [
-      styles.headerButton, styles.headerButtonBg, favorite && styles.headerFavoriteActiveBg,
-      pressed && { opacity: 0.7 },
-    ]}>
-    <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#E9D5FF' : '#FFFFFF'} size={22} />
-  </Pressable>;
+  return Platform.OS === 'android'
+    ? <View style={style}>{children}</View>
+    : <GestureHandlerRootView style={style}>{children}</GestureHandlerRootView>;
 }
 
 function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }: {
   song?: Song; favorite: boolean; favoriteDisabled: boolean; onToggleFavorite?: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  return <View pointerEvents="box-none" style={[styles.headerChrome, { paddingTop: insets.top }]}>
+  return <>
     <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
       onPress={() => router.back()}
       style={({ pressed }) => [
-        styles.headerButton, Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
+        styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 },
+        Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
       ]}>
       <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
     </Pressable>
@@ -120,14 +113,15 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
       disabled={favoriteDisabled} hitSlop={12}
       onPress={onToggleFavorite}
       style={({ pressed }) => [
-        styles.headerButton, favorite && styles.headerFavoriteActive,
+        styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
+        favorite && styles.headerFavoriteActive,
         Platform.OS !== 'ios' && styles.headerButtonBg,
         Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
         pressed && { opacity: 0.7 },
       ]}>
       <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
-    </Pressable> : <View style={styles.headerButton} />}
-  </View>;
+    </Pressable> : null}
+  </>;
 }
 
 function Detail({ song, records, catalogSource, scoreSource, library, initialChartType, initialLevelIndex }: {
@@ -203,22 +197,22 @@ function SongCollectionsCard({ songId }: { songId: string }) {
     () => collectionsForSong(collections.data?.items ?? [], songId),
     [collections.data?.items, songId],
   );
-  return <GestureHandlerRootView style={styles.scrollActionRoot}>
+  return <DetailGestureRoot style={styles.scrollActionRoot}>
     <Card testID="song-collections-card">
       <Text style={styles.section}>收藏品</Text>
       {collections.isLoading ? <Text style={styles.meta}>正在加载收藏品…</Text> : null}
       {collections.isError ? <View style={styles.collectionError}>
         <Text style={styles.meta}>收藏品加载失败</Text>
-        <GesturePressable accessibilityRole="button" accessibilityLabel="重试加载收藏品"
+        <DetailPressable accessibilityRole="button" accessibilityLabel="重试加载收藏品"
           onPress={() => void collections.refetch()} hitSlop={8} style={styles.aliasAction}>
           <Text style={styles.aliasActionText}>重试</Text>
-        </GesturePressable>
+        </DetailPressable>
       </View> : null}
       {!collections.isLoading && !collections.isError && matched.length === 0
         ? <Text style={styles.meta}>无曲目专属收藏品</Text> : null}
       {matched.map((item) => <CollectionRow key={`${item.kind}:${item.id}`} item={item} />)}
     </Card>
-  </GestureHandlerRootView>;
+  </DetailGestureRoot>;
 }
 
 function TrophyName({ name, color }: { name: string; color?: string | null }) {
@@ -258,15 +252,15 @@ function AliasLine({ aliases }: { aliases?: string[] }) {
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => { setExpanded(false); setOverflow(false); }, [text]);
-  return <GestureHandlerRootView style={styles.aliasBlock}>
+  return <DetailGestureRoot style={styles.aliasBlock}>
     <Text accessible={false} testID="alias-overflow-measure" style={[styles.body, styles.aliasMeasure]}
       onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}>{text}</Text>
     <Text testID="song-alias-text" numberOfLines={expanded ? undefined : 1} style={styles.body}>{text}</Text>
-    {overflow ? <GesturePressable accessibilityRole="button" accessibilityLabel={expanded ? '收起别名' : '展开别名'}
+    {overflow ? <DetailPressable accessibilityRole="button" accessibilityLabel={expanded ? '收起别名' : '展开别名'}
       onPress={() => setExpanded((value) => !value)} hitSlop={6} style={styles.aliasAction}>
       <Text style={styles.aliasActionText}>{expanded ? '收起' : '展开'}</Text>
-    </GesturePressable> : null}
-  </GestureHandlerRootView>;
+    </DetailPressable> : null}
+  </DetailGestureRoot>;
 }
 
 
@@ -328,14 +322,14 @@ function MetadataCell({ label, value, flex }: { label: string; value: string; fl
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => { setExpanded(false); setOverflow(false); }, [value]);
-  return <GestureHandlerRootView style={[styles.metadataCellRoot, { flex }]}>
-    <GesturePressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
+  return <DetailGestureRoot style={[styles.metadataCellRoot, { flex }]}>
+    <DetailPressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
       accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}${label}` : undefined}
       onPress={() => setExpanded((current) => !current)} style={styles.metadataCell}>
       <Text numberOfLines={1} style={styles.metadataLabel}>{label}</Text>
       <MetadataValue label={label} value={value} expanded={expanded} onOverflowChange={setOverflow} />
-    </GesturePressable>
-  </GestureHandlerRootView>;
+    </DetailPressable>
+  </DetailGestureRoot>;
 }
 
 function VersionMetadataCell({ value, onToggle }: {
@@ -344,22 +338,22 @@ function VersionMetadataCell({ value, onToggle }: {
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => { setExpanded(false); setOverflow(false); }, [value]);
-  return <GestureHandlerRootView style={styles.versionCellRoot}>
+  return <DetailGestureRoot style={styles.versionCellRoot}>
     <View style={[styles.metadataCell, styles.versionCell]}>
       <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
       <View style={styles.versionValueRow}>
-        <GesturePressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
+        <DetailPressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
           accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}版本` : undefined}
           onPress={() => setExpanded((current) => !current)} style={styles.versionName}>
           <MetadataValue label="版本" value={value} expanded={expanded} onOverflowChange={setOverflow} />
-        </GesturePressable>
-        <GesturePressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
+        </DetailPressable>
+        <DetailPressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
           hitSlop={4} style={({ pressed }) => [styles.versionToggle, pressed && styles.switchPressed]}>
           <Ionicons name="swap-horizontal" color="#5967C9" size={14} />
-        </GesturePressable>
+        </DetailPressable>
       </View>
     </View>
-  </GestureHandlerRootView>;
+  </DetailGestureRoot>;
 }
 
 function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, onToggleChartType }: {
@@ -449,17 +443,17 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
     <View style={styles.chartDivider} />
     <Text style={styles.chartMeta}>谱师：{chart.charter || '未提供'}</Text>
     <NotesTable notes={chart.notes} />
-    <GesturePressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
+    <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
       onPress={() => void library.setChartPractice(song.id, chart.type, chart.levelIndex, !practice)}
       style={[styles.action, practice && { backgroundColor: visual.color, borderColor: visual.color }]}>
       <Text style={[styles.actionText, { color: practice ? '#FFFFFF' : visual.color }]}>{practice ? '已加入练习清单' : '加入练习清单'}</Text>
-    </GesturePressable>
-    <GesturePressable accessibilityRole="link" accessibilityLabel={`搜索谱面确认：${chartSearchQuery}`}
+    </DetailPressable>
+    <DetailPressable accessibilityRole="link" accessibilityLabel={`搜索谱面确认：${chartSearchQuery}`}
       onPress={() => void openBilibiliChartSearch(chartSearchQuery)}
       style={[styles.action, styles.chartSearchAction, { borderColor: visual.color }]}>
       <Text style={[styles.actionText, { color: visual.color }]}>搜索谱面确认</Text>
-    </GesturePressable>
+    </DetailPressable>
     <TagEditor tags={chartItem?.tags ?? []} disabled={library.isUpdating}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
   </View>;
@@ -468,7 +462,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
 function ChartTypeSwitch({ type, canSwitch, onToggle }: {
   type: ChartType; canSwitch: boolean; onToggle: () => void;
 }) {
-  return <GesturePressable accessibilityRole="button"
+  return <DetailPressable accessibilityRole="button"
     accessibilityLabel={canSwitch ? `切换为${type === 'DX' ? 'SD' : 'DX'}谱面` : `${type}谱面`}
     accessibilityState={{ disabled: !canSwitch }} disabled={!canSwitch} onPress={onToggle}
     style={({ pressed }) => [styles.chartTypeRow, pressed && styles.switchPressed]}>
@@ -482,7 +476,7 @@ function ChartTypeSwitch({ type, canSwitch, onToggle }: {
         </MaskedView>}
     </View>
     {canSwitch ? <Text pointerEvents="none" style={styles.chartTypeHint}>·点击切换·</Text> : null}
-  </GesturePressable>;
+  </DetailPressable>;
 }
 
 const NOTE_COLUMNS: readonly { label: string; key: keyof ChartNotes }[] = [
@@ -514,11 +508,8 @@ const styles = StyleSheet.create({
   songId: { color: 'rgba(255,255,255,0.78)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
   title: { color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6, textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8 },
   artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
-  headerChrome: {
-    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 30,
-    minHeight: 44, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
   headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   headerFavoriteActive: {},
   headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },

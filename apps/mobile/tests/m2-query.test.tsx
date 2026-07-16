@@ -15,8 +15,16 @@ let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: stri
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
-  return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable, ScrollView: RN.ScrollView };
+  return {
+    GestureHandlerRootView: RN.View,
+    Pressable: (props: React.ComponentProps<typeof RN.Pressable>) => React.createElement(
+      RN.Pressable,
+      { ...props, testID: props.testID ?? 'gesture-handler-pressable' },
+    ),
+    ScrollView: RN.ScrollView,
+  };
 });
 jest.mock('react-native-safe-area-context', () => ({
   ...(jest.requireActual('react-native-safe-area-context') as object),
@@ -76,33 +84,33 @@ describe('M2 song query screens', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
-  it('uses the native non-transparent header on Android without mounting the touch-blocking overlay', async () => {
+  it('keeps the immersive cover and uses native RN pressables throughout Android details', async () => {
     const originalOS = Platform.OS;
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
     try {
       const screen = await render(<SongDetailScreen />);
-      expect(screen.queryByLabelText('返回')).toBeNull();
+      expect(screen.getByLabelText('返回')).toBeTruthy();
       const stackProps = mockStackScreen.mock.calls.at(-1)?.[0] as {
         options: {
           headerBackVisible?: boolean;
           headerTransparent?: boolean;
-          headerRight?: () => React.ReactElement;
         };
       };
-      expect(stackProps.options.headerBackVisible).toBe(true);
-      expect(stackProps.options.headerTransparent).toBe(false);
+      expect(stackProps.options.headerBackVisible).toBe(false);
+      expect(stackProps.options.headerTransparent).toBe(true);
+      expect(screen.queryAllByTestId('gesture-handler-pressable')).toHaveLength(0);
 
+      await fireEvent(screen.getByTestId('metadata-measure-分类'), 'textLayout', {
+        nativeEvent: { lines: [{}, {}, {}] },
+      });
+      await fireEvent.press(screen.getByLabelText('展开分类'));
+      expect(screen.getByTestId('metadata-value-分类').props.numberOfLines).toBeUndefined();
       await fireEvent.press(screen.getByLabelText('切换版本名称'));
       expect(screen.getByTestId('metadata-value-版本').props.children).toBe('maimai でらっくす PRiSM PLUS');
       await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
       expect(screen.getByText('谱师：SD主谱师')).toBeTruthy();
 
-      const headerButton = stackProps.options.headerRight!() as React.ReactElement<{
-        song: { title: string };
-        onPress: () => void;
-      }>;
-      expect(headerButton.props.song.title).toBe('正常曲目 A');
-      headerButton.props.onPress();
+      await fireEvent.press(screen.getByLabelText('收藏 正常曲目 A'));
       expect(mockSetSongFavorite).toHaveBeenCalledWith('1', true);
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
