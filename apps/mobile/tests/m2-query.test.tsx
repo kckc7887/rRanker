@@ -93,9 +93,11 @@ describe('M2 song query screens', () => {
       const stackProps = mockStackScreen.mock.calls.at(-1)?.[0] as {
         options: {
           headerBackVisible?: boolean;
+          headerShown?: boolean;
           headerTransparent?: boolean;
         };
       };
+      expect(stackProps.options.headerShown).toBe(false);
       expect(stackProps.options.headerBackVisible).toBe(false);
       expect(stackProps.options.headerTransparent).toBe(true);
       expect(screen.queryAllByTestId('gesture-handler-pressable')).toHaveLength(0);
