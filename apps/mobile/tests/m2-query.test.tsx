@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, processColor } from 'react-native';
+import { Animated, Platform, processColor } from 'react-native';
 import SearchScreen from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 
@@ -10,6 +10,7 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
 
 const mockSetSongFavorite = jest.fn();
 const mockBack = jest.fn();
+const mockStackScreen = jest.fn((_props: unknown) => null);
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -22,7 +23,7 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('expo-router', () => ({
-  Stack: { Screen: () => null },
+  Stack: { Screen: (props: unknown) => mockStackScreen(props) },
   router: { push: jest.fn(), back: () => mockBack() },
   useLocalSearchParams: () => mockSongRouteParams,
 }));
@@ -73,6 +74,39 @@ describe('M2 song query screens', () => {
     const screen = await render(<SongDetailScreen />);
     await fireEvent.press(screen.getByLabelText('返回'));
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('uses the native non-transparent header on Android without mounting the touch-blocking overlay', async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    try {
+      const screen = await render(<SongDetailScreen />);
+      expect(screen.queryByLabelText('返回')).toBeNull();
+      const stackProps = mockStackScreen.mock.calls.at(-1)?.[0] as {
+        options: {
+          headerBackVisible?: boolean;
+          headerTransparent?: boolean;
+          headerRight?: () => React.ReactElement;
+        };
+      };
+      expect(stackProps.options.headerBackVisible).toBe(true);
+      expect(stackProps.options.headerTransparent).toBe(false);
+
+      await fireEvent.press(screen.getByLabelText('切换版本名称'));
+      expect(screen.getByTestId('metadata-value-版本').props.children).toBe('maimai でらっくす PRiSM PLUS');
+      await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
+      expect(screen.getByText('谱师：SD主谱师')).toBeTruthy();
+
+      const headerButton = stackProps.options.headerRight!() as React.ReactElement<{
+        song: { title: string };
+        onPress: () => void;
+      }>;
+      expect(headerButton.props.song.title).toBe('正常曲目 A');
+      headerButton.props.onPress();
+      expect(mockSetSongFavorite).toHaveBeenCalledWith('1', true);
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
   });
 
   it('searches aliases after debounce and supports empty filter state', async () => {
