@@ -13,6 +13,7 @@ import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
+import { refreshDivingFishAccounts } from '@/services/refresh-diving-fish-accounts';
 import {
   compactUploadPhaseLabel,
   type UploadPhase,
@@ -27,12 +28,13 @@ import { SecureSessionStore } from '@/storage/secure-session-store';
 const sessions = new SecureSessionStore();
 
 export default function OverviewScreen() {
-  const { data, isLoading, isError, error, refetch, profile, isFetching } = useGameData();
+  const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
-  const catalogQuery = useDetailedCatalog();
+  const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useDetailedCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const activeAccountId = useSession((s) => s.activeAccountId);
+  const activeSession = useSession((s) => s.session);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const selectBoundAccount = useSession((s) => s.selectBoundAccount);
   const updateBoundAccountScore = useSession((s) => s.updateBoundAccountScore);
@@ -47,7 +49,7 @@ export default function OverviewScreen() {
   const refreshingRef = useRef(false);
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
-  const syncBusy = syncing || (isFetching && !isLoading);
+  const syncBusy = syncing;
 
   const syncData = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -55,16 +57,17 @@ export default function OverviewScreen() {
     setRefreshing(true);
     setSyncing(true);
     try {
+      // 用户主动同步优先，终止登录后仍可能在后台运行的同账号自动刷新。
+      await queryClient.cancelQueries({ queryKey: ['game-data'] });
       const account = boundAccounts.find((item) => item.id === activeAccountId);
-      const session = sessionsByAccountId?.[activeAccountId];
       if (account?.providerId === 'diving-fish'
-        && session?.mode === 'import-token'
-        && catalogQuery.data) {
-        const { refreshDivingFishAccounts } = await import('@/services/refresh-diving-fish-accounts');
+        && activeSession?.mode === 'import-token') {
+        const catalog = catalogData ?? (await refetchCatalog()).data;
+        if (!catalog) throw catalogError ?? new Error('舞萌曲库尚未就绪，请稍后重试');
         const result = await refreshDivingFishAccounts({
           accounts: [account],
-          sessionsByAccountId,
-          catalog: catalogQuery.data,
+          sessionsByAccountId: { [account.id]: activeSession },
+          catalog,
         });
         const refreshed = result.refreshed[0];
         if (!refreshed) throw result.failed[0]?.error ?? new Error('水鱼账号同步失败');
@@ -87,8 +90,8 @@ export default function OverviewScreen() {
       setRefreshing(false);
       setSyncing(false);
     }
-  }, [activeAccountId, boundAccounts, catalogQuery.data, profile.ratingDigits,
-    refetch, sessionsByAccountId, updateBoundAccountScore]);
+  }, [activeAccountId, activeSession, boundAccounts, catalogData, catalogError, profile.ratingDigits,
+    refetch, refetchCatalog, updateBoundAccountScore]);
 
   const finishUpload = useCallback(async (result: UploadResult) => {
     for (const refreshed of result.refreshedAccounts) {
@@ -261,7 +264,7 @@ export default function OverviewScreen() {
         visible={uploadVisible}
         accounts={boundAccounts}
         sessionsByAccountId={sessionsByAccountId}
-        catalog={catalogQuery.data}
+        catalog={catalogData}
         onClose={() => setUploadVisible(false)}
         onPhaseChange={setUploadPhase}
         onFinished={finishUpload}
