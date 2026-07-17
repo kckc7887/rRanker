@@ -150,6 +150,33 @@ describe('best image preview', () => {
     expect(StyleSheet.flatten(screen.getByLabelText('HTML图片预览窗').props.style).height).toBe(initialPreviewHeight);
   });
 
+  it('shows the WebView version and rendering status below the export button', async () => {
+    const screen = await render(<BestImageScreen />);
+    const preview = await screen.findByTestId('best-image-html-preview-0');
+    expect(screen.getByTestId('best-image-webview-status').props.children).toBe('WebView 版本未知 · 正在加载');
+
+    await act(async () => {
+      fireEvent(preview, 'message', {
+        nativeEvent: {
+          data: JSON.stringify({
+            type: 'best-image-runtime',
+            width: 1080,
+            userAgent: 'Mozilla/5.0 AppleWebKit/537.36 Chrome/132.0.6834.79 Mobile Safari/537.36',
+          }),
+        },
+      });
+      fireEvent(preview, 'message', {
+        nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1440 }) },
+      });
+    });
+
+    expect(screen.getByTestId('best-image-webview-status').props.children).toBe('WebView 132.0.6834.79 · 渲染就绪');
+    await act(async () => {
+      fireEvent(preview, 'renderProcessGone', { nativeEvent: { didCrash: true } });
+    });
+    expect(screen.getByTestId('best-image-webview-status').props.children).toBe('WebView 132.0.6834.79 · 渲染进程崩溃');
+  });
+
   it('selects LXNS icon, plate, trophy and frame and applies them to the HTML preview', async () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());

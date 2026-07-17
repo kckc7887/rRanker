@@ -95,6 +95,33 @@ export function parseBestImageReadyMessage(data: string, expectedWidth: number):
   }
 }
 
+export type BestImageRuntimeMessage = {
+  userAgent: string;
+  version: string | null;
+};
+
+export function bestImageWebViewVersion(userAgent: string): string | null {
+  const chromeVersion = /(?:Chrome|CriOS)\/([\d.]+)/u.exec(userAgent)?.[1];
+  if (chromeVersion) return chromeVersion;
+  return /AppleWebKit\/([\d.]+)/u.exec(userAgent)?.[1] ?? null;
+}
+
+export function parseBestImageRuntimeMessage(data: string, expectedWidth: number): BestImageRuntimeMessage | null {
+  try {
+    const value: unknown = JSON.parse(data);
+    if (!value || typeof value !== 'object') return null;
+    const message = value as { type?: unknown; width?: unknown; userAgent?: unknown };
+    if (message.type !== 'best-image-runtime' || message.width !== expectedWidth) return null;
+    if (typeof message.userAgent !== 'string') return null;
+    return {
+      userAgent: message.userAgent,
+      version: bestImageWebViewVersion(message.userAgent),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -380,6 +407,16 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         bridge.postMessage(JSON.stringify(message));
         return true;
       };
+
+      const runtimeMessage = {
+        type: 'best-image-runtime',
+        width: OUTPUT_WIDTH,
+        userAgent: window.navigator && typeof window.navigator.userAgent === 'string'
+          ? window.navigator.userAgent
+          : '',
+      };
+      postToNative(runtimeMessage);
+      window.setTimeout(() => postToNative(runtimeMessage), 250);
 
       const measureAndFit = () => {
         pending = false;
