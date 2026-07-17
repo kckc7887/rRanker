@@ -11,7 +11,7 @@ jest.mock('react-native-webview', () => {
 jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn(async () => 'file:///capture.png') }));
 jest.mock('@/features/best-image/best-image-style-preferences', () => ({
   bestImageStylePreferencesStore: {
-    load: jest.fn(async () => ({ version: 1, selections: {} })),
+    load: jest.fn(async () => ({ version: 2, selections: {}, ratingStyle: 'game' })),
     save: jest.fn(async () => undefined),
   },
 }));
@@ -129,6 +129,32 @@ describe('best image preview', () => {
       expect(customHtml).toContain('B35测试曲');
       expect(customHtml).toContain('B15测试曲');
       expect(customHtml).toContain('<div class="section-divider"><span>Best2</span></div>');
+    });
+  });
+
+  it('switches Rating frames between game, app capsule and app rectangle', async () => {
+    const screen = await render(<BestImageScreen />);
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    expect(screen.getByLabelText('游戏样式').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('class="rating rating-game"');
+
+    await fireEvent.press(screen.getByLabelText('应用样式'));
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
+      .toContain('class="rating rating-app rating-app-capsule"'));
+    expect(screen.getByLabelText('胶囊').props.accessibilityState).toMatchObject({ selected: true });
+
+    await fireEvent.press(screen.getByLabelText('圆角矩形'));
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
+      .toContain('class="rating rating-app rating-app-rect"'));
+  });
+
+  it('uses the independent near-miss chip in custom image titles', async () => {
+    const screen = await render(<BestImageScreen />);
+    await fireEvent.press(screen.getByLabelText('自定义'));
+    await fireEvent.press(screen.getByLabelText('寸筛选'));
+    await waitFor(() => {
+      const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
+      expect(html).toContain('<div class="section-divider"><span>寸Best0</span></div>');
     });
   });
 

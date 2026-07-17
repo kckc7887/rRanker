@@ -1,4 +1,6 @@
 import type { Player, ScoreRecord } from '@/domain/models';
+import { resolveDxRatingTheme } from '@/domain/dx-rating-theme';
+import type { BestImageRatingStyle } from './best-image-style-preferences';
 import {
   formatAchievement,
   isNearMissAchievement,
@@ -29,6 +31,7 @@ export type BestImageHtmlInput = {
   width: number;
   player: Pick<Player, 'displayName' | 'presentation'>;
   rating: number;
+  ratingStyle?: BestImageRatingStyle;
   scoreSections: readonly BestImageScoreSection[];
   coverUrls?: Readonly<Record<string, string | null>>;
   hiddenStyles?: readonly BestImageHiddenStyle[];
@@ -237,6 +240,62 @@ function collectionAssetUrl(kind: 'icon' | 'plate' | 'frame', id: number | undef
   return `${LXNS_ASSET_ROOT}/${kind}/${id}.png`;
 }
 
+function cssLinearGradient(colors: readonly string[], locations: readonly number[]): string {
+  const stops = colors.map((color, index) => `${color} ${Math.round((locations[index] ?? index / Math.max(1, colors.length - 1)) * 100)}%`);
+  return `linear-gradient(90deg,${stops.join(',')})`;
+}
+
+const APP_RATING_GEOMETRY = {
+  wrapWidth: 244,
+  wrapHeight: 88,
+  tagWidth: 190,
+  tagHeight: 52,
+  tagTop: 18,
+  rectRadius: 19,
+  trackDistance: 9,
+  starSize: 11,
+} as const;
+
+function appRatingTrackPoint(variant: 'capsule' | 'rect', progress: number): readonly [number, number] {
+  const radius = variant === 'capsule' ? APP_RATING_GEOMETRY.tagHeight / 2 : APP_RATING_GEOMETRY.rectRadius;
+  const outerRadius = radius + APP_RATING_GEOMETRY.trackDistance;
+  const centerX = APP_RATING_GEOMETRY.tagWidth - radius;
+  const topCenterY = APP_RATING_GEOMETRY.tagTop + radius;
+  const bottomCenterY = APP_RATING_GEOMETRY.tagTop + APP_RATING_GEOMETRY.tagHeight - radius;
+  const arcLength = Math.PI * outerRadius / 2;
+  const straightLength = Math.max(0, APP_RATING_GEOMETRY.tagHeight - radius * 2);
+  const totalLength = arcLength * 2 + straightLength;
+  const distance = Math.max(0, Math.min(1, progress)) * totalLength;
+  if (distance <= arcLength) {
+    const angle = -Math.PI / 2 + distance / outerRadius;
+    return [centerX + Math.cos(angle) * outerRadius, topCenterY + Math.sin(angle) * outerRadius];
+  }
+  if (distance <= arcLength + straightLength) {
+    return [centerX + outerRadius, topCenterY + distance - arcLength];
+  }
+  const angle = (distance - arcLength - straightLength) / outerRadius;
+  return [centerX + Math.cos(angle) * outerRadius, bottomCenterY + Math.sin(angle) * outerRadius];
+}
+
+function appRatingStarPoints(centerX: number, centerY: number): string {
+  const outerRadius = APP_RATING_GEOMETRY.starSize / 2;
+  const innerRadius = outerRadius * 0.43;
+  return Array.from({ length: 10 }, (_, index) => {
+    const radius = index % 2 === 0 ? outerRadius : innerRadius;
+    const angle = -Math.PI / 2 + index * Math.PI / 5;
+    return `${(centerX + Math.cos(angle) * radius).toFixed(2)},${(centerY + Math.sin(angle) * radius).toFixed(2)}`;
+  }).join(' ');
+}
+
+function appRatingStarTrack(starCount: number, variant: 'capsule' | 'rect', color: string): string {
+  if (starCount <= 0) return '';
+  const stars = Array.from({ length: starCount }, (_, index) => {
+    const [x, y] = appRatingTrackPoint(variant, (index + 1) / (starCount + 1));
+    return `<polygon points="${appRatingStarPoints(x, y)}"></polygon>`;
+  }).join('');
+  return `<svg class="rating-star-track" viewBox="0 0 ${APP_RATING_GEOMETRY.wrapWidth} ${APP_RATING_GEOMETRY.wrapHeight}" aria-hidden="true" style="color:${color}">${stars}</svg>`;
+}
+
 function trophyToneClass(color: string | null | undefined): string {
   return normalizeTrophyTone(color);
 }
@@ -249,6 +308,8 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const width = Math.max(1, Math.round(input.width));
   const minimumHeight = minimumBestImageHeight(width);
   const rating = Math.min(99999, Math.max(0, Math.floor(Number.isFinite(input.rating) ? input.rating : 0)));
+  const ratingStyle = input.ratingStyle ?? 'game';
+  const appRatingTheme = resolveDxRatingTheme(rating);
   const digits = String(rating).padStart(5, '0').split('');
   const name = input.player.displayName.trim() || '未读取玩家资料';
   const presentation = input.player.presentation;
@@ -271,6 +332,10 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const identityRight = px(bannerWidth * 0.038);
   const ratingWidth = px(bannerWidth * 0.21);
   const ratingHeight = px(ratingWidth / 4.4);
+  const appRatingHeight = px(ratingWidth * APP_RATING_GEOMETRY.tagHeight / APP_RATING_GEOMETRY.tagWidth);
+  const appRatingWrapWidth = px(ratingWidth * APP_RATING_GEOMETRY.wrapWidth / APP_RATING_GEOMETRY.tagWidth);
+  const appRatingWrapHeight = px(ratingWidth * APP_RATING_GEOMETRY.wrapHeight / APP_RATING_GEOMETRY.tagWidth);
+  const appRatingTrackTop = px(ratingWidth * APP_RATING_GEOMETRY.tagTop / APP_RATING_GEOMETRY.tagWidth);
   const ratingFontSize = px(ratingHeight * 0.48);
   const playerNameSize = px(bannerWidth * 0.035);
   const trophySize = px(bannerWidth * 0.017);
@@ -299,6 +364,10 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     ? ''
     : `<div class="trophy ${trophyToneClass(presentation?.trophyColor)}">${escapeHtml(trophyName)}</div>`;
   const ratingDigits = digits.map((digit) => `<span>${digit}</span>`).join('');
+  const appRatingVariant = ratingStyle === 'app-rect' ? 'rect' : 'capsule';
+  const ratingMarkup = ratingStyle === 'game'
+    ? `<div class="rating rating-game" aria-label="Rating ${rating}"><img class="rating-frame" alt="" src="${escapeHtml(input.ratingFrameUrl)}"><div class="rating-digits">${ratingDigits}</div></div>`
+    : `<div class="rating rating-app rating-app-${appRatingVariant}" aria-label="Rating ${rating}，${appRatingTheme.starCount} 星"><div class="rating-app-tag"><span>${rating}</span></div>${appRatingStarTrack(appRatingTheme.starCount, appRatingVariant, appRatingTheme.starColor)}</div>`;
   const canvasBackground = frameUrl
     ? `<div class="canvas-background" style="background-image:url(&quot;${escapeHtml(frameUrl)}&quot;)"></div>`
     : '<div class="canvas-background canvas-background-fallback"></div>';
@@ -316,6 +385,8 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const greenStatus = STATUS_BADGE_THEMES.green;
   const blueStatus = STATUS_BADGE_THEMES.blue;
   const neutralStatus = STATUS_BADGE_THEMES.neutral;
+  const appRatingFill = cssLinearGradient(appRatingTheme.fillColors, appRatingTheme.fillLocations);
+  const appRatingBorder = cssLinearGradient(appRatingTheme.borderColors, appRatingTheme.borderLocations);
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -341,10 +412,17 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .avatar-image{display:block;width:100%;height:100%;object-fit:cover}
     .avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font:900 ${px(bannerWidth * 0.065)}px/1 system-ui,sans-serif;color:#52647F;background:linear-gradient(145deg,#F8FBFF,#C7D5EA)}
     .identity{position:absolute;left:${identityLeft}px;right:${identityRight}px;top:${avatarInset}px;bottom:${avatarInset}px;display:flex;min-width:0;flex-direction:column;align-items:flex-start;justify-content:center;gap:${px(bannerWidth * 0.004)}px;transform:translateY(-${px(bannerWidth * 0.004)}px)}
-    .rating{position:relative;width:${ratingWidth}px;height:${ratingHeight}px;flex:0 0 ${ratingHeight}px}
+    .rating{position:relative}
+    .rating-game{width:${ratingWidth}px;height:${ratingHeight}px;flex:0 0 ${ratingHeight}px}
     .rating-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
     .rating-digits{position:absolute;left:48.3%;top:17%;display:grid;grid-template-columns:repeat(5,1fr);align-items:center;width:43.8%;height:61%;font-family:RatingNumbers,"Arial Black",sans-serif;font-size:${ratingFontSize}px;font-weight:900;line-height:1;color:#FFD83D;-webkit-text-stroke:${stroke}px #090909;text-shadow:0 ${Math.max(1, stroke)}px 0 #090909;font-variant-numeric:tabular-nums}
     .rating-digits span{display:flex;align-items:center;justify-content:center;height:100%}
+    .rating-app{width:${appRatingWrapWidth}px;height:${appRatingHeight}px;flex:0 0 ${appRatingHeight}px;overflow:visible}
+    .rating-app-tag{position:absolute;left:0;top:0;display:flex;width:${ratingWidth}px;height:${appRatingHeight}px;align-items:center;justify-content:center;border:${Math.max(1, stroke)}px solid transparent;background:linear-gradient(${appRatingTheme.overlayColor},${appRatingTheme.overlayColor}) padding-box,${appRatingFill} padding-box,${appRatingBorder} border-box;color:${appRatingTheme.textColor};box-shadow:0 1px 0 rgba(255,255,255,.52) inset,0 -1px 0 rgba(35,38,45,.10) inset;font:700 ${px(appRatingHeight * 24 / 52)}px/1 Arial,system-ui,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:${px(appRatingHeight * 2 / 52)}px;white-space:nowrap}
+    .rating-app-capsule .rating-app-tag{border-radius:999px}
+    .rating-app-rect .rating-app-tag{border-radius:${px(appRatingHeight * APP_RATING_GEOMETRY.rectRadius / APP_RATING_GEOMETRY.tagHeight)}px}
+    .rating-star-track{position:absolute;left:0;top:-${appRatingTrackTop}px;display:block;width:${appRatingWrapWidth}px;height:${appRatingWrapHeight}px;overflow:visible;pointer-events:none}
+    .rating-star-track polygon{fill:currentColor;filter:drop-shadow(0 1px 0 rgba(255,255,255,.42))}
     .player-name{display:inline-flex;width:fit-content;max-width:100%;min-height:${px(playerNameSize * 1.35)}px;align-items:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.011)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid rgba(96,87,72,.45);border-radius:${px(bannerWidth * 0.006)}px;background:rgba(255,255,255,.9);color:#171717;font:900 ${playerNameSize}px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;text-overflow:ellipsis;white-space:nowrap}
     .trophy{display:flex;width:fit-content;max-width:100%;height:${px(bannerWidth * 0.029)}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.009)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid ${normalTrophy.border};border-radius:999px;background:${normalTrophy.background};color:${normalTrophy.text};font:400 ${trophySize}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}.trophy.bronze{border-color:${bronzeTrophy.border};background:${bronzeTrophy.background};color:${bronzeTrophy.text}}.trophy.silver{border-color:${silverTrophy.border};background:${silverTrophy.background};color:${silverTrophy.text}}.trophy.gold{border-color:${goldTrophy.border};background:${goldTrophy.background};color:${goldTrophy.text}}.trophy.rainbow{border-color:transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}
     .page-marker{position:absolute;z-index:2;right:${pageInset}px;top:${pageInset}px;display:flex;height:${px(width * 0.025)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.01)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 0.009)}px/1 system-ui,sans-serif}
@@ -388,7 +466,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         ${nameplate}
         ${hideIcon ? '' : `<div class="avatar">${avatar}</div>`}
         <div class="identity">
-          <div class="rating" aria-label="Rating ${rating}"><img class="rating-frame" alt="" src="${escapeHtml(input.ratingFrameUrl)}"><div class="rating-digits">${ratingDigits}</div></div>
+          ${ratingMarkup}
           <div class="player-name">${escapeHtml(name)}</div>
           ${trophy}
         </div>

@@ -10,6 +10,12 @@ const mockExtraLocal = createLocalMaimaiAccount('本地二号', 0, 'maimai:local
 const mockWater = createMaimaiBoundAccount({
   providerId: 'diving-fish', displayName: '水鱼玩家', rating: 15000, playerId: 'water',
 });
+const mockExtraWater = createMaimaiBoundAccount({
+  providerId: 'diving-fish', displayName: '水鱼二号', rating: 15000, playerId: 'water-2',
+});
+const mockLxns = createMaimaiBoundAccount({
+  providerId: 'lxns', displayName: '落雪玩家', rating: 15000, playerId: 'lxns',
+});
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -73,8 +79,12 @@ jest.mock('@/hooks/use-game-data', () => ({
 jest.mock('@/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
   useSession: (selector: (state: unknown) => unknown) => selector({
-    boundAccounts: [mockLocal, mockExtraLocal, mockWater],
-    activeAccountId: mockProviderId === 'local' ? mockExtraLocal.id : mockWater.id,
+    boundAccounts: [mockLocal, mockExtraLocal, mockWater, mockExtraWater, mockLxns],
+    activeAccountId: mockProviderId === 'local'
+      ? mockExtraLocal.id
+      : mockProviderId === 'lxns'
+        ? mockLxns.id
+        : mockExtraWater.id,
     session: mockProviderId === 'local'
       ? null
       : { mode: 'import-token', value: 'token', persistable: true },
@@ -98,6 +108,10 @@ jest.mock('@/storage/secure-session-store', () => ({
 }));
 
 describe('总览上传和同步操作', () => {
+  beforeEach(() => {
+    mockTemporarySelectedAccountIds = undefined;
+  });
+
   it('本地查分器页只显示使用好友码的同步按钮', async () => {
     mockProviderId = 'local';
     const screen = await render(<OverviewScreen />);
@@ -117,5 +131,14 @@ describe('总览上传和同步操作', () => {
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('上传数据')).toBeTruthy();
     expect(screen.getByLabelText('同步数据，当前 水鱼查分器')).toBeTruthy();
+    await fireEvent.press(screen.getByText('上传数据'));
+    await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockExtraWater.id]));
+  });
+
+  it('落雪页面同样只按当前具体账号预选', async () => {
+    mockProviderId = 'lxns';
+    const screen = await render(<OverviewScreen />);
+    await fireEvent.press(screen.getByText('上传数据'));
+    await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockLxns.id]));
   });
 });

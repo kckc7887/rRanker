@@ -9,10 +9,12 @@ export type BestImageCollectionChoice =
   | { mode: 'random' | 'item'; item: CollectionItem };
 export type AppliedBestImageStyleSelection = Exclude<BestImageCollectionChoice, { mode: 'current' }>;
 export type BestImageStyleSelections = Partial<Record<BestImageCollectionKind, AppliedBestImageStyleSelection>>;
+export type BestImageRatingStyle = 'game' | 'app-capsule' | 'app-rect';
 
-export type BestImageStylePreferencesV1 = {
-  version: 1;
+export type BestImageStylePreferencesV2 = {
+  version: 2;
   selections: BestImageStyleSelections;
+  ratingStyle: BestImageRatingStyle;
 };
 
 type KeyValueStore = {
@@ -43,11 +45,13 @@ function parseItem(value: unknown, expectedKind: BestImageCollectionKind): Colle
   };
 }
 
-export function parseBestImageStylePreferences(value: unknown): BestImageStylePreferencesV1 {
+export function parseBestImageStylePreferences(value: unknown): BestImageStylePreferencesV2 {
   const output: BestImageStyleSelections = {};
-  if (!value || typeof value !== 'object') return { version: 1, selections: output };
-  const raw = value as { version?: unknown; selections?: unknown };
-  if (raw.version !== 1 || !raw.selections || typeof raw.selections !== 'object') return { version: 1, selections: output };
+  if (!value || typeof value !== 'object') return { version: 2, selections: output, ratingStyle: 'game' };
+  const raw = value as { version?: unknown; selections?: unknown; ratingStyle?: unknown };
+  if ((raw.version !== 1 && raw.version !== 2) || !raw.selections || typeof raw.selections !== 'object') {
+    return { version: 2, selections: output, ratingStyle: 'game' };
+  }
   const selections = raw.selections as Record<string, unknown>;
   for (const kind of KINDS) {
     const candidate = selections[kind];
@@ -59,26 +63,34 @@ export function parseBestImageStylePreferences(value: unknown): BestImageStylePr
       if (item) output[kind] = { mode: selection.mode, item };
     }
   }
-  return { version: 1, selections: output };
+  const ratingStyle = raw.version === 2
+    && (raw.ratingStyle === 'game' || raw.ratingStyle === 'app-capsule' || raw.ratingStyle === 'app-rect')
+    ? raw.ratingStyle
+    : 'game';
+  return { version: 2, selections: output, ratingStyle };
 }
 
 export class BestImageStylePreferencesStore {
   constructor(private readonly storage: KeyValueStore = Storage) {}
 
-  async load(accountId: string | null | undefined): Promise<BestImageStylePreferencesV1> {
+  async load(accountId: string | null | undefined): Promise<BestImageStylePreferencesV2> {
     const key = keyFor(accountId);
     try {
       const raw = await this.storage.getItem(key);
-      if (!raw) return { version: 1, selections: {} };
+      if (!raw) return { version: 2, selections: {}, ratingStyle: 'game' };
       return parseBestImageStylePreferences(JSON.parse(raw));
     } catch {
       await this.storage.removeItem(key).catch(() => undefined);
-      return { version: 1, selections: {} };
+      return { version: 2, selections: {}, ratingStyle: 'game' };
     }
   }
 
-  async save(accountId: string | null | undefined, selections: BestImageStyleSelections): Promise<void> {
-    const value: BestImageStylePreferencesV1 = { version: 1, selections };
+  async save(
+    accountId: string | null | undefined,
+    selections: BestImageStyleSelections,
+    ratingStyle: BestImageRatingStyle = 'game',
+  ): Promise<void> {
+    const value: BestImageStylePreferencesV2 = { version: 2, selections, ratingStyle };
     await this.storage.setItem(keyFor(accountId), JSON.stringify(value));
   }
 }
