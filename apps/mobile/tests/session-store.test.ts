@@ -162,6 +162,34 @@ describe('useSession store', () => {
     expect(state.catalogProvider).toBeInstanceOf(LxnsCatalogProvider);
   });
 
+  it('keeps multiple local players and rebuilds the active provider after renaming', async () => {
+    const extra = createLocalMaimaiAccount('第二位玩家', 12345, 'maimai:local:second');
+    useSession.getState().upsertBoundAccount(extra);
+    useSession.getState().selectBoundAccount(extra.id);
+    useSession.getState().renameLocalAccount(extra.id, '已改名玩家');
+
+    const state = useSession.getState();
+    expect(state.boundAccounts.filter((account) => account.providerId === 'local')).toHaveLength(2);
+    expect(state.activeAccountId).toBe(extra.id);
+    await expect(state.scoreProvider.getPlayer()).resolves.toMatchObject({
+      id: extra.id,
+      displayName: '已改名玩家',
+    });
+  });
+
+  it('removes only the selected extra local player and keeps the default one', () => {
+    const extraA = createLocalMaimaiAccount('本地 A', 10000, 'maimai:local:a');
+    const extraB = createLocalMaimaiAccount('本地 B', 11000, 'maimai:local:b');
+    useSession.getState().upsertBoundAccount(extraA);
+    useSession.getState().upsertBoundAccount(extraB);
+    useSession.getState().removeBoundAccount(extraA.id);
+
+    const localIds = useSession.getState().boundAccounts
+      .filter((account) => account.providerId === 'local')
+      .map((account) => account.id);
+    expect(localIds).toEqual([LOCAL_MAIMAI_ACCOUNT_ID, extraB.id]);
+  });
+
   it('clears remote binds and restores all built-in accounts', () => {
     useSession.getState().setSession(jwtSession, { displayName: '尘言', rating: 1 });
     useSession.getState().clearSession();
@@ -241,6 +269,23 @@ describe('useSession store', () => {
     expect(state.activeAccountId).toBe(MAIMAI_TEST_ACCOUNT_ID);
     expect(state.session).toBeNull();
     expect(state.scoreProvider).toBeInstanceOf(MaxedMaimaiTestProvider);
+  });
+
+  it('restores an additional local player as the active account', async () => {
+    const extra = createLocalMaimaiAccount('离线二号', 13579, 'maimai:local:offline-2');
+    await restoreSession(
+      async () => ({ version: 2 as const, activeAccountId: extra.id, accounts: [] }),
+      async () => [createLocalMaimaiAccount('默认玩家', 0), extra],
+    );
+
+    const state = useSession.getState();
+    expect(state.activeAccountId).toBe(extra.id);
+    expect(state.activeProviderId).toBe('local');
+    expect(state.boundAccounts).toEqual(expect.arrayContaining([extra]));
+    await expect(state.scoreProvider.getPlayer()).resolves.toMatchObject({
+      id: extra.id,
+      displayName: '离线二号',
+    });
   });
 
   it('falls back to local data and exposes a restore error', async () => {

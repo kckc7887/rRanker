@@ -53,7 +53,7 @@ export const GAME_OPTIONS: GameOption[] = [
       {
         id: 'local',
         title: '本地查分器',
-        detail: '成绩仅保存在本机',
+        detail: '可添加多个玩家 · 成绩仅保存在本机',
         icon: maimaiIcon,
         available: true,
       },

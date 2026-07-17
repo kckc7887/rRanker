@@ -8,9 +8,25 @@ import 'react-native-reanimated';
 import { queryClient } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
+import { DEFAULT_LOCAL_PLAYER_NAME, LocalAccountStore } from '@/storage/local-account-store';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSyncOnAccountSwitch } from '@/hooks/use-sync-on-account-switch';
+import { createLocalMaimaiAccount, LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
 
 const sessions = new SecureSessionStore();
+const localAccounts = new LocalAccountStore();
+const snapshots = new SqliteSnapshotRepository();
+
+async function loadLocalBoundAccounts() {
+  const stored = await localAccounts.load();
+  const profiles = stored.some((profile) => profile.id === LOCAL_MAIMAI_ACCOUNT_ID)
+    ? stored
+    : [{ id: LOCAL_MAIMAI_ACCOUNT_ID, displayName: DEFAULT_LOCAL_PLAYER_NAME }, ...stored];
+  return Promise.all(profiles.map(async (profile) => {
+    const snapshot = await snapshots.getLatest(profile.id);
+    return createLocalMaimaiAccount(profile.displayName, snapshot?.best50.rating ?? 0, profile.id);
+  }));
+}
 
 function AccountSwitchSync() {
   useSyncOnAccountSwitch();
@@ -22,7 +38,9 @@ export default function RootLayout() {
   const restoreStatus = useSession((state) => state.restoreStatus);
 
   useEffect(() => {
-    if (restoreStatus === 'restoring') void restoreSession(() => sessions.loadVault());
+    if (restoreStatus === 'restoring') {
+      void restoreSession(() => sessions.loadVault(), loadLocalBoundAccounts);
+    }
   }, [restoreStatus]);
 
   useEffect(() => {

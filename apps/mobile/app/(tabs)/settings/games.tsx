@@ -12,7 +12,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
 import { GamePickerSheet } from '@/components/GamePickerSheet';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
-import type { BoundAccount } from '@/domain/bound-account';
+import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
+import {
+  createAdditionalLocalMaimaiAccountId,
+  createLocalMaimaiAccount,
+  LOCAL_MAIMAI_ACCOUNT_ID,
+  type BoundAccount,
+} from '@/domain/bound-account';
 import {
   findGame,
   findProvider,
@@ -28,9 +34,12 @@ import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
+import { LocalAccountStore } from '@/storage/local-account-store';
+import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
+const localAccounts = new LocalAccountStore();
 
 function sessionModeLabel(session: ProviderSession | undefined): string {
   if (!session) return '无凭据';
@@ -40,17 +49,13 @@ function sessionModeLabel(session: ProviderSession | undefined): string {
   return 'Cookie（当前会话）';
 }
 
-function isBoundRemoteAccount(account: BoundAccount): boolean {
-  return account.gameId === 'maimai'
-    && account.providerId !== 'local'
-    && account.providerId !== 'maimai-test';
-}
-
 export default function GameAccountsScreen() {
   const boundAccounts = useSession((s) => s.boundAccounts);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const activeAccountId = useSession((s) => s.activeAccountId);
   const selectBoundAccount = useSession((s) => s.selectBoundAccount);
+  const upsertBoundAccount = useSession((s) => s.upsertBoundAccount);
+  const renameLocalAccount = useSession((s) => s.renameLocalAccount);
   const removeBoundAccount = useSession((s) => s.removeBoundAccount);
   const restoreError = useSession((s) => s.restoreError);
   const library = useUserLibrary();
@@ -64,8 +69,9 @@ export default function GameAccountsScreen() {
   const [loginProviderId, setLoginProviderId] = useState<ProviderId | null>(null);
   const [loginGameId, setLoginGameId] = useState<GameId | null>(null);
   const [reopenPickerAfterLogin, setReopenPickerAfterLogin] = useState(false);
+  const [renameAccount, setRenameAccount] = useState<BoundAccount | null>(null);
 
-  const remoteAccounts = boundAccounts.filter(isBoundRemoteAccount);
+  const managedAccounts = boundAccounts.filter((account) => account.gameId === 'maimai');
 
   const clearRemoteCaches = () => {
     for (const key of ['score-snapshot', 'game-data', 'songs', 'detailed-catalog', 'plates']) {
@@ -99,6 +105,61 @@ export default function GameAccountsScreen() {
     ],
   );
 
+  const addLocalAccount = async () => {
+    setBusy(true);
+    try {
+      const localCount = boundAccounts.filter((account) => account.providerId === 'local').length;
+      const account = createLocalMaimaiAccount(
+        `本地玩家 ${localCount + 1}`,
+        0,
+        createAdditionalLocalMaimaiAccountId(boundAccounts.map((item) => item.id)),
+      );
+      await localAccounts.upsert({ id: account.id, displayName: account.displayName });
+      upsertBoundAccount(account);
+      selectBoundAccount(account.id);
+      await sessions.setActiveAccountId(account.id);
+      setPickerVisible(false);
+      setRenameAccount(account);
+    } catch (error) {
+      Alert.alert('添加失败', error instanceof Error ? error.message : '无法添加本地玩家，请重试。');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveLocalAccountName = async (account: BoundAccount, displayName: string) => {
+    await localAccounts.upsert({ id: account.id, displayName });
+    renameLocalAccount(account.id, displayName);
+    await invalidateAccountDataQueries(queryClient);
+    setMessage(`已将本地玩家改名为「${displayName}」`);
+  };
+
+  const removeLocalAccount = async (account: BoundAccount) => {
+    setBusy(true);
+    const failures: string[] = [];
+    try { await localAccounts.remove(account.id); } catch { failures.push('账号'); }
+    try { await snapshots.clear(account.id); } catch { failures.push('成绩'); }
+    removeBoundAccount(account.id);
+    if (account.id === activeAccountId) {
+      selectBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
+      await sessions.setActiveAccountId(LOCAL_MAIMAI_ACCOUNT_ID);
+    }
+    clearRemoteCaches();
+    setMessage(failures.length > 0
+      ? `本地玩家已从列表移除，但${failures.join('、')}数据清理失败`
+      : `已删除本地玩家「${account.displayName}」`);
+    setBusy(false);
+  };
+
+  const promptRemoveLocal = (account: BoundAccount) => Alert.alert(
+    '删除本地玩家',
+    `将删除「${account.displayName}」及其本机成绩，且无法恢复。`,
+    [
+      { text: '取消', style: 'cancel' },
+      { text: '删除', style: 'destructive', onPress: () => void removeLocalAccount(account) },
+    ],
+  );
+
   const openPicker = () => {
     setExpandedGameId('maimai');
     setPickerVisible(true);
@@ -111,7 +172,11 @@ export default function GameAccountsScreen() {
       Alert.alert(provider.title, '绑定尚未实现，待后续开放。');
       return;
     }
-    if (provider.id === 'local' || provider.id === 'maimai-test') {
+    if (provider.id === 'local') {
+      void addLocalAccount();
+      return;
+    }
+    if (provider.id === 'maimai-test') {
       const account = boundAccounts.find((item) => item.providerId === provider.id);
       if (account) onSelectAccount(account);
       setPickerVisible(false);
@@ -159,10 +224,12 @@ export default function GameAccountsScreen() {
       >
         {restoreError ? <Text style={styles.error}>{restoreError}</Text> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
-        {remoteAccounts.length > 0 ? (
-          remoteAccounts.map((account) => {
+        {managedAccounts.length > 0 ? (
+          managedAccounts.map((account) => {
             const accountSession = sessionsByAccountId[account.id];
             const isActive = account.id === activeAccountId;
+            const isLocal = account.providerId === 'local';
+            const isGeneratedTest = account.providerId === 'maimai-test';
             return (
               <View key={account.id} style={styles.card}>
                 <Text style={styles.game}>舞萌 DX · {account.providerTitle}</Text>
@@ -170,8 +237,14 @@ export default function GameAccountsScreen() {
                 <Text style={styles.meta}>
                   {account.scoreLabel} {account.scoreDisplay || '—'}
                 </Text>
-                <Text style={styles.meta}>登录方式：{sessionModeLabel(accountSession)}</Text>
-                <Text style={styles.state}>{isActive ? '当前使用中' : '已绑定'}</Text>
+                <Text style={styles.meta}>
+                  {isLocal
+                    ? '数据位置：仅本机 SQLite'
+                    : isGeneratedTest
+                      ? '数据来源：曲库动态生成'
+                      : `登录方式：${sessionModeLabel(accountSession)}`}
+                </Text>
+                <Text style={styles.state}>{isActive ? '当前使用中' : isLocal || isGeneratedTest ? '内置账号' : '已绑定'}</Text>
                 {!isActive ? (
                   <Pressable
                     accessibilityRole="button"
@@ -182,14 +255,35 @@ export default function GameAccountsScreen() {
                     <Text style={styles.switch}>切换到此账号</Text>
                   </Pressable>
                 ) : null}
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`解除绑定 ${account.displayName}`}
-                  disabled={busy}
-                  onPress={() => promptUnbind(account)}
-                >
-                  <Text style={styles.unbind}>解除绑定</Text>
-                </Pressable>
+                {isLocal ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`修改名称 ${account.displayName}`}
+                    disabled={busy}
+                    onPress={() => setRenameAccount(account)}
+                  >
+                    <Text style={styles.rename}>修改名称</Text>
+                  </Pressable>
+                ) : null}
+                {isLocal && account.id !== LOCAL_MAIMAI_ACCOUNT_ID ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`删除本地玩家 ${account.displayName}`}
+                    disabled={busy}
+                    onPress={() => promptRemoveLocal(account)}
+                  >
+                    <Text style={styles.unbind}>删除本地玩家</Text>
+                  </Pressable>
+                ) : !isLocal && !isGeneratedTest ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`解除绑定 ${account.displayName}`}
+                    disabled={busy}
+                    onPress={() => promptUnbind(account)}
+                  >
+                    <Text style={styles.unbind}>解除绑定</Text>
+                  </Pressable>
+                ) : null}
               </View>
             );
           })
@@ -234,6 +328,16 @@ export default function GameAccountsScreen() {
         onClose={() => closeLogin({ reopenPicker: true })}
         onSuccess={finishLogin}
       />
+
+      <RenameLocalAccountSheet
+        visible={renameAccount !== null}
+        initialName={renameAccount?.displayName ?? ''}
+        onClose={() => setRenameAccount(null)}
+        onSave={(displayName) => {
+          if (!renameAccount) return Promise.resolve();
+          return saveLocalAccountName(renameAccount, displayName);
+        }}
+      />
     </View>
   );
 }
@@ -247,6 +351,7 @@ const styles = StyleSheet.create({
   meta: { color: '#4B5563', fontSize: 14 },
   state: { color: '#246BFD', fontWeight: '600', marginTop: 4 },
   switch: { color: '#246BFD', textAlign: 'center', paddingTop: 8, fontWeight: '600' },
+  rename: { color: '#246BFD', textAlign: 'center', paddingTop: 8, fontWeight: '600' },
   unbind: { color: '#B42318', textAlign: 'center', paddingTop: 8 },
   emptyCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 24, gap: 8 },
   emptyTitle: { color: '#111827', fontSize: 17, fontWeight: '700' },

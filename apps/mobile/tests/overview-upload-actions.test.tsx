@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import OverviewScreen from '../app/(tabs)/(overview)/index';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
@@ -6,6 +6,7 @@ import type { ProviderId } from '@/domain/game-bind-options';
 
 let mockProviderId: ProviderId = 'local';
 const mockLocal = createLocalMaimaiAccount('本地玩家', 0);
+const mockExtraLocal = createLocalMaimaiAccount('本地二号', 0, 'maimai:local:second');
 const mockWater = createMaimaiBoundAccount({
   providerId: 'diving-fish', displayName: '水鱼玩家', rating: 15000, playerId: 'water',
 });
@@ -15,7 +16,13 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 jest.mock('@/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: () => null }));
-jest.mock('@/components/UploadDataSheet', () => ({ UploadDataSheet: () => null }));
+let mockTemporarySelectedAccountIds: readonly string[] | undefined;
+jest.mock('@/components/UploadDataSheet', () => ({
+  UploadDataSheet: ({ temporarySelectedAccountIds }: { temporarySelectedAccountIds?: readonly string[] }) => {
+    mockTemporarySelectedAccountIds = temporarySelectedAccountIds;
+    return null;
+  },
+}));
 jest.mock('@/components/SourceStatus', () => ({ SourceStatus: () => null }));
 jest.mock('@/components/DxRatingCard', () => ({ DxRatingCard: () => null }));
 jest.mock('@/components/QueryStateView', () => ({
@@ -66,8 +73,8 @@ jest.mock('@/hooks/use-game-data', () => ({
 jest.mock('@/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
   useSession: (selector: (state: unknown) => unknown) => selector({
-    boundAccounts: [mockLocal, mockWater],
-    activeAccountId: mockProviderId === 'local' ? mockLocal.id : mockWater.id,
+    boundAccounts: [mockLocal, mockExtraLocal, mockWater],
+    activeAccountId: mockProviderId === 'local' ? mockExtraLocal.id : mockWater.id,
     session: mockProviderId === 'local'
       ? null
       : { mode: 'import-token', value: 'token', persistable: true },
@@ -96,6 +103,13 @@ describe('总览上传和同步操作', () => {
     const screen = await render(<OverviewScreen />);
     expect(screen.getByLabelText('同步本地查分器数据，使用好友码')).toBeTruthy();
     expect(screen.queryByText('上传数据')).toBeNull();
+  });
+
+  it('额外本地玩家同步时只临时勾选当前玩家', async () => {
+    mockProviderId = 'local';
+    const screen = await render(<OverviewScreen />);
+    await fireEvent.press(screen.getByLabelText('同步本地查分器数据，使用好友码'));
+    await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockExtraLocal.id]));
   });
 
   it('其他舞萌查分器页仍显示上传与同步双按钮', async () => {

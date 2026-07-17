@@ -40,6 +40,26 @@ export class ScoreService {
     private readonly catalogRepository?: CatalogRepository,
   ) {}
 
+  private async loadCatalog(): Promise<CatalogSnapshot> {
+    try {
+      const catalog = await this.catalogProvider.getDetailedCatalog();
+      await this.catalogRepository?.saveCatalog(catalog);
+      return catalog;
+    } catch (error) {
+      const cached = await this.catalogRepository?.getLatestCatalog();
+      if (!cached) throw error;
+      return {
+        ...cached,
+        source: {
+          ...cached.source,
+          kind: 'cache',
+          label: `LXNS 详细曲库缓存（原：${cached.source.label}）`,
+          isStale: true,
+        },
+      };
+    }
+  }
+
   async load(): Promise<ScoreSnapshot> {
     try {
       let player: Player;
@@ -48,17 +68,16 @@ export class ScoreService {
       if (isCatalogDrivenScoreProvider(this.scoreProvider)) {
         [player, catalog] = await Promise.all([
           this.scoreProvider.getPlayer(),
-          this.catalogProvider.getDetailedCatalog(),
+          this.loadCatalog(),
         ]);
         rawRecords = await this.scoreProvider.getRecordsFromCatalog(catalog);
       } else {
         [player, rawRecords, catalog] = await Promise.all([
           this.scoreProvider.getPlayer(),
           this.scoreProvider.getRecords(),
-          this.catalogProvider.getDetailedCatalog(),
+          this.loadCatalog(),
         ]);
       }
-      await this.catalogRepository?.saveCatalog(catalog);
       const snapshot = buildScoreSnapshot(player, rawRecords, catalog);
       await this.snapshotRepository?.save(this.accountId, snapshot);
       return snapshot;
