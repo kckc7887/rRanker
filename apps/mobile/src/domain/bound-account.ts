@@ -19,6 +19,25 @@ export const TEST_ACCOUNT_ID = 'test:empty';
 export const LOCAL_MAIMAI_ACCOUNT_ID = 'maimai:local';
 export const MAIMAI_TEST_ACCOUNT_ID = 'maimai:test';
 
+export function isLocalMaimaiAccountId(accountId: string): boolean {
+  return accountId === LOCAL_MAIMAI_ACCOUNT_ID
+    || accountId.startsWith(`${LOCAL_MAIMAI_ACCOUNT_ID}:`);
+}
+
+export function createAdditionalLocalMaimaiAccountId(
+  existingAccountIds: readonly string[],
+  now = Date.now(),
+): string {
+  const base = `${LOCAL_MAIMAI_ACCOUNT_ID}:${now.toString(36)}`;
+  let candidate = base;
+  let suffix = 2;
+  while (existingAccountIds.includes(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
 const PROVIDER_TITLES: Record<ProviderId, string> = {
   'diving-fish': '水鱼查分器',
   lxns: '落雪查分器',
@@ -38,10 +57,14 @@ export function createTestBoundAccount(): BoundAccount {
   };
 }
 
-export function createLocalMaimaiAccount(displayName: string, rating: number): BoundAccount {
+export function createLocalMaimaiAccount(
+  displayName: string,
+  rating: number,
+  accountId = LOCAL_MAIMAI_ACCOUNT_ID,
+): BoundAccount {
   const profile = getGameProfile('maimai');
   return {
-    id: LOCAL_MAIMAI_ACCOUNT_ID,
+    id: accountId,
     gameId: 'maimai',
     providerId: 'local',
     displayName,

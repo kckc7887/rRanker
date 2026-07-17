@@ -1,6 +1,7 @@
 import { chartVersionKey } from '@/domain/catalog';
 import { LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
+import type { CatalogRepository } from '@/repositories/catalog-repository';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { buildMaxedMaimaiRecords, MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
@@ -51,16 +52,22 @@ const catalog: CatalogSnapshot = {
   source,
 };
 
-class MemorySnapshotRepository implements SnapshotRepository {
-  snapshot: ScoreSnapshot | null = null;
+class MemorySnapshotRepository implements SnapshotRepository, CatalogRepository {
+  snapshots = new Map<string, ScoreSnapshot>();
+  catalog: CatalogSnapshot | null = null;
   async initialize() {}
   async getLatest(accountId: string) {
-    return accountId === LOCAL_MAIMAI_ACCOUNT_ID ? this.snapshot : null;
+    return this.snapshots.get(accountId) ?? null;
   }
-  async save(_accountId: string, snapshot: ScoreSnapshot) {
-    this.snapshot = structuredClone(snapshot);
+  async save(accountId: string, snapshot: ScoreSnapshot) {
+    this.snapshots.set(accountId, structuredClone(snapshot));
   }
-  async clear() { this.snapshot = null; }
+  async clear(accountId?: string) {
+    if (accountId) this.snapshots.delete(accountId);
+    else this.snapshots.clear();
+  }
+  async getLatestCatalog() { return this.catalog; }
+  async saveCatalog(catalog: CatalogSnapshot) { this.catalog = structuredClone(catalog); }
 }
 
 function catalogProvider(getDetailedCatalog: () => Promise<CatalogSnapshot>) {
@@ -86,22 +93,42 @@ describe('本地查分器', () => {
     await expect(provider.getRecords()).resolves.toEqual([]);
 
     const records = buildMaxedMaimaiRecords(catalog);
-    repository.snapshot = buildScoreSnapshot(await provider.getPlayer(), records, catalog);
+    const stored = buildScoreSnapshot(await provider.getPlayer(), records, catalog);
+    repository.snapshots.set(LOCAL_MAIMAI_ACCOUNT_ID, stored);
     await expect(provider.getRecords()).resolves.toHaveLength(2);
     await expect(provider.getPlayer()).resolves.toMatchObject({
       displayName: '本地玩家',
-      rating: repository.snapshot.best50.rating,
+      rating: stored.best50.rating,
     });
+  });
+
+  it('多个本地玩家按账号 ID 隔离成绩，并分别使用自己的名称', async () => {
+    const repository = new MemorySnapshotRepository();
+    const aliceId = 'maimai:local:alice';
+    const bobId = 'maimai:local:bob';
+    const alice = new LocalMaimaiScoreProvider(repository, aliceId, 'Alice');
+    const bob = new LocalMaimaiScoreProvider(repository, bobId, 'Bob');
+    const aliceSnapshot = buildScoreSnapshot(
+      await alice.getPlayer(),
+      buildMaxedMaimaiRecords(catalog).slice(0, 1),
+      catalog,
+    );
+    repository.snapshots.set(aliceId, aliceSnapshot);
+
+    await expect(alice.getRecords()).resolves.toHaveLength(1);
+    await expect(bob.getRecords()).resolves.toEqual([]);
+    await expect(alice.getPlayer()).resolves.toMatchObject({ id: aliceId, displayName: 'Alice' });
+    await expect(bob.getPlayer()).resolves.toMatchObject({ id: bobId, displayName: 'Bob', rating: 0 });
   });
 
   it('曲库离线时回退到已有的本地快照', async () => {
     const repository = new MemorySnapshotRepository();
     const provider = new LocalMaimaiScoreProvider(repository);
-    repository.snapshot = buildScoreSnapshot(
+    repository.snapshots.set(LOCAL_MAIMAI_ACCOUNT_ID, buildScoreSnapshot(
       await provider.getPlayer(),
       buildMaxedMaimaiRecords(catalog),
       catalog,
-    );
+    ));
     const fail = async (): Promise<CatalogSnapshot> => { throw new Error('offline'); };
     const snapshot = await new ScoreService(
       provider,
@@ -137,6 +164,23 @@ describe('舞萌测试查分器', () => {
     expect(getDetailedCatalog).toHaveBeenCalledTimes(1);
     expect(snapshot.records).toHaveLength(2);
     expect(snapshot.player.rating).toBe(snapshot.best50.rating);
+    expect(snapshot.player.rating).toBeGreaterThan(0);
+  });
+
+  it('详细曲库请求失败时使用本地曲库缓存生成测试成绩', async () => {
+    const repository = new MemorySnapshotRepository();
+    repository.catalog = structuredClone(catalog);
+    const fail = async (): Promise<CatalogSnapshot> => { throw new Error('offline'); };
+    const snapshot = await new ScoreService(
+      new MaxedMaimaiTestProvider(),
+      catalogProvider(fail),
+      'maimai:test',
+      undefined,
+      repository,
+    ).load();
+
+    expect(snapshot.records).toHaveLength(2);
+    expect(snapshot.catalogSource).toMatchObject({ kind: 'cache', isStale: true });
     expect(snapshot.player.rating).toBeGreaterThan(0);
   });
 });

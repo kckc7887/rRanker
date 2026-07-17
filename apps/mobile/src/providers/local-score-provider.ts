@@ -13,17 +13,25 @@ function localSource(): DataSource {
 }
 
 export class LocalMaimaiScoreProvider implements ScoreProvider {
-  constructor(private readonly repository: SnapshotRepository) {}
+  constructor(
+    private readonly repository: SnapshotRepository,
+    private readonly accountId = LOCAL_MAIMAI_ACCOUNT_ID,
+    private readonly displayName = '本地玩家',
+  ) {}
 
   private snapshot() {
-    return this.repository.getLatest(LOCAL_MAIMAI_ACCOUNT_ID);
+    return this.repository.getLatest(this.accountId);
   }
 
   async getPlayer(): Promise<Player> {
     const snapshot = await this.snapshot();
-    return snapshot?.player ?? {
-      id: LOCAL_MAIMAI_ACCOUNT_ID,
-      displayName: '本地玩家',
+    return snapshot ? {
+      ...snapshot.player,
+      id: this.accountId,
+      displayName: this.displayName,
+    } : {
+      id: this.accountId,
+      displayName: this.displayName,
       rating: 0,
       additionalRating: 0,
       source: localSource(),

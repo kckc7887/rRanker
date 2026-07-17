@@ -2,7 +2,12 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { jest } from '@jest/globals';
 import GameAccountsScreen from '../app/(tabs)/settings/games';
-import { createMaimaiBoundAccount } from '@/domain/bound-account';
+import {
+  createLocalMaimaiAccount,
+  createMaimaiBoundAccount,
+  createMaxedMaimaiTestAccount,
+  type BoundAccount,
+} from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 
 const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
@@ -11,6 +16,10 @@ const mockClearSnapshots = jest.fn(async () => undefined);
 const mockClearUserData = jest.fn(async () => []);
 const mockRemoveBoundAccount = jest.fn();
 const mockSelectBoundAccount = jest.fn();
+const mockUpsertBoundAccount = jest.fn();
+const mockRenameLocalAccount = jest.fn();
+const mockUpsertLocalAccount = jest.fn(async (_profile?: unknown) => undefined);
+const mockRemoveLocalAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockRemoveQueries = jest.fn();
 const mockClearOrder: string[] = [];
 const mockSession: ProviderSession = { mode: 'jwt', value: 'token', persistable: true };
@@ -20,6 +29,8 @@ const mockAccount = createMaimaiBoundAccount({
   rating: 15000,
   playerId: 'u1',
 });
+const mockLocalAccount = createLocalMaimaiAccount('本地玩家', 0);
+const mockTestAccount = createMaxedMaimaiTestAccount();
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -54,15 +65,25 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotReposit
   mockClearOrder.push('cache');
   return mockClearSnapshots();
 } })) }));
+jest.mock('@/storage/local-account-store', () => ({
+  LocalAccountStore: jest.fn(() => ({
+    upsert: (profile: { id: string; displayName: string }) => mockUpsertLocalAccount(profile),
+    remove: (accountId: string) => mockRemoveLocalAccount(accountId),
+  })),
+  LOCAL_PLAYER_NAME_MAX_LENGTH: 20,
+  normalizeLocalPlayerName: (value: string) => value.trim() || null,
+}));
 jest.mock('@/state/query-client', () => ({ queryClient: {
   invalidateQueries: jest.fn(), removeQueries: (...args: unknown[]) => mockRemoveQueries(...args),
 } }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
   session: mockSession,
   sessionsByAccountId: { [mockAccount.id]: mockSession },
-  boundAccounts: [mockAccount],
+  boundAccounts: [mockLocalAccount, mockTestAccount, mockAccount],
   activeAccountId: mockAccount.id,
   selectBoundAccount: mockSelectBoundAccount,
+  upsertBoundAccount: mockUpsertBoundAccount,
+  renameLocalAccount: mockRenameLocalAccount,
   removeBoundAccount: mockRemoveBoundAccount,
   restoreError: null,
   activeGameId: 'maimai',
@@ -114,6 +135,44 @@ describe('M3A game account management', () => {
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     expect(screen.getByText('测试游戏')).toBeTruthy();
     expect(screen.getByText('空数据预览 · 在总览切换')).toBeTruthy();
+  });
+
+  it('shows local and generated test accounts in account management', async () => {
+    const screen = await render(<GameAccountsScreen />);
+    expect(screen.getByText('本地玩家')).toBeTruthy();
+    expect(screen.getByText('测试玩家')).toBeTruthy();
+    expect(screen.getByText('数据位置：仅本机 SQLite')).toBeTruthy();
+    expect(screen.getByText('数据来源：曲库动态生成')).toBeTruthy();
+  });
+
+  it('renames a local player from its account card', async () => {
+    const screen = await render(<GameAccountsScreen />);
+    await fireEvent.press(screen.getByLabelText('修改名称 本地玩家'));
+    await fireEvent.changeText(screen.getByLabelText('本地玩家名称'), '我的本地号');
+    await fireEvent.press(screen.getByLabelText('保存本地玩家名称'));
+
+    await waitFor(() => expect(mockUpsertLocalAccount).toHaveBeenCalledWith({
+      id: mockLocalAccount.id,
+      displayName: '我的本地号',
+    }));
+    expect(mockRenameLocalAccount).toHaveBeenCalledWith(mockLocalAccount.id, '我的本地号');
+  });
+
+  it('adds another local player instead of reusing the default account', async () => {
+    const screen = await render(<GameAccountsScreen />);
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    await fireEvent.press(screen.getByLabelText('本地查分器'));
+
+    await waitFor(() => expect(mockUpsertBoundAccount).toHaveBeenCalledTimes(1));
+    const added = mockUpsertBoundAccount.mock.calls[0][0] as BoundAccount;
+    expect(added).toMatchObject({ providerId: 'local', displayName: '本地玩家 2' });
+    expect(added.id).toMatch(/^maimai:local:/);
+    expect(added.id).not.toBe(mockLocalAccount.id);
+    expect(mockUpsertLocalAccount).toHaveBeenCalledWith({
+      id: added.id,
+      displayName: '本地玩家 2',
+    });
+    expect(mockSelectBoundAccount).toHaveBeenCalledWith(added.id);
   });
 
   it('asks on every unbind and preserves or removes personal data as selected', async () => {

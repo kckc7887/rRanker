@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
@@ -6,7 +6,7 @@ import { DxRatingCard } from '@/components/DxRatingCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
-import { LOCAL_MAIMAI_ACCOUNT_ID, type BoundAccount } from '@/domain/bound-account';
+import type { BoundAccount } from '@/domain/bound-account';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
@@ -26,8 +26,6 @@ import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const sessions = new SecureSessionStore();
-const LOCAL_ONLY_SELECTION = [LOCAL_MAIMAI_ACCOUNT_ID] as const;
-
 export default function OverviewScreen() {
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
@@ -52,6 +50,10 @@ export default function OverviewScreen() {
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
   const syncBusy = syncing;
+  const temporaryLocalSelection = useMemo(
+    () => (uploadLocalOnly ? [activeAccountId] : undefined),
+    [activeAccountId, uploadLocalOnly],
+  );
 
   const syncData = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -292,7 +294,7 @@ export default function OverviewScreen() {
         onClose={closeUpload}
         onPhaseChange={setUploadPhase}
         onFinished={finishUpload}
-        temporarySelectedAccountIds={uploadLocalOnly ? LOCAL_ONLY_SELECTION : undefined}
+        temporarySelectedAccountIds={temporaryLocalSelection}
         onLxnsTokensRotated={applyLxnsTokenRotation}
       />
     </View>
