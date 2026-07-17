@@ -296,11 +296,11 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     *{box-sizing:border-box}
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#DDE3EC}
     body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
-    .preview-stage{position:fixed;inset:0;overflow:hidden;background:#DDE3EC}
+    .preview-stage{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;overflow:hidden;background:#DDE3EC}
     .canvas{position:absolute;left:0;top:0;width:${width}px;min-height:${minimumHeight}px;overflow:hidden;transform-origin:top left;background:#E7EDF5}
-    .canvas-background{position:absolute;inset:-${backgroundBlur * 2}px;background-position:center;background-size:cover;filter:blur(${backgroundBlur}px);transform:scale(1.08)}
-    .canvas-background-fallback{inset:0;background:linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%);filter:none;transform:none}
-    .canvas-tone{position:absolute;inset:0;background:rgba(238,242,248,.18)}
+    .canvas-background{position:absolute;top:-${backgroundBlur * 2}px;right:-${backgroundBlur * 2}px;bottom:-${backgroundBlur * 2}px;left:-${backgroundBlur * 2}px;inset:-${backgroundBlur * 2}px;background-position:center;background-size:cover;filter:blur(${backgroundBlur}px);transform:scale(1.08)}
+    .canvas-background-fallback{top:0;right:0;bottom:0;left:0;inset:0;background:linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%);filter:none;transform:none}
+    .canvas-tone{position:absolute;top:0;right:0;bottom:0;left:0;inset:0;background:rgba(238,242,248,.18)}
     .profile-banner{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset}px;width:${bannerWidth}px;height:${bannerHeight}px;border-radius:${radius}px;filter:drop-shadow(0 ${px(bannerWidth * 0.008)}px ${px(bannerWidth * 0.018)}px rgba(35,53,82,.22))}
     .profile-banner.no-plate{border:1px solid rgba(255,255,255,.78);background:rgba(240,244,250,.78)}
     .nameplate-image,.nameplate-fallback{position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:${radius}px}
@@ -374,6 +374,13 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
       let pending = false;
       let readySent = false;
 
+      const postToNative = (message) => {
+        const bridge = window.ReactNativeWebView;
+        if (!bridge || typeof bridge.postMessage !== 'function') return false;
+        bridge.postMessage(JSON.stringify(message));
+        return true;
+      };
+
       const measureAndFit = () => {
         pending = false;
         const layoutChildren = Array.from(canvas.children).filter((child) => child.hasAttribute('data-layout-content'));
@@ -382,14 +389,16 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         const nextHeight = logicalHeight + 'px';
         if (canvas.style.height !== nextHeight) canvas.style.height = nextHeight;
 
-        const scale = Math.min(window.innerWidth / OUTPUT_WIDTH, window.innerHeight / logicalHeight);
-        canvas.style.left = Math.max(0, (window.innerWidth - OUTPUT_WIDTH * scale) / 2) + 'px';
-        canvas.style.top = Math.max(0, (window.innerHeight - logicalHeight * scale) / 2) + 'px';
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || OUTPUT_WIDTH;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || MINIMUM_HEIGHT;
+        const scale = Math.min(viewportWidth / OUTPUT_WIDTH, viewportHeight / logicalHeight);
+        canvas.style.left = Math.max(0, (viewportWidth - OUTPUT_WIDTH * scale) / 2) + 'px';
+        canvas.style.top = Math.max(0, (viewportHeight - logicalHeight * scale) / 2) + 'px';
         canvas.style.transform = 'scale(' + scale + ')';
 
         if (logicalHeight !== lastHeight) {
           lastHeight = logicalHeight;
-          window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'best-image-height', width: OUTPUT_WIDTH, height: logicalHeight }));
+          postToNative({ type: 'best-image-height', width: OUTPUT_WIDTH, height: logicalHeight });
         }
       };
       const schedule = () => {
@@ -397,34 +406,49 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         pending = true;
         window.requestAnimationFrame(measureAndFit);
       };
-      const resizeObserver = new ResizeObserver(schedule);
-      resizeObserver.observe(canvas);
-      Array.from(canvas.children)
-        .filter((child) => child.hasAttribute('data-layout-content'))
-        .forEach((child) => resizeObserver.observe(child));
+      let resizeObserver = null;
+      if (typeof window.ResizeObserver === 'function') {
+        resizeObserver = new window.ResizeObserver(schedule);
+        resizeObserver.observe(canvas);
+        Array.from(canvas.children)
+          .filter((child) => child.hasAttribute('data-layout-content'))
+          .forEach((child) => resizeObserver.observe(child));
+      }
       new MutationObserver((records) => {
         records.forEach((record) => record.addedNodes.forEach((node) => {
-          if (node instanceof Element && node.hasAttribute('data-layout-content')) resizeObserver.observe(node);
+          if (resizeObserver && node instanceof Element && node.hasAttribute('data-layout-content')) resizeObserver.observe(node);
         }));
         schedule();
       }).observe(canvas, { childList: true, subtree: true });
       window.addEventListener('resize', schedule);
       window.addEventListener('load', schedule);
-      document.fonts?.ready.then(schedule);
+      const fontReady = document.fonts && document.fonts.ready
+        ? document.fonts.ready.catch(() => undefined)
+        : Promise.resolve();
+      fontReady.then(schedule);
       schedule();
 
       const imageReady = Array.from(document.images).map((image) => image.complete
         ? Promise.resolve()
         : new Promise((resolve) => {
-            image.addEventListener('load', resolve, { once: true });
-            image.addEventListener('error', resolve, { once: true });
+            const settle = () => {
+              image.removeEventListener('load', settle);
+              image.removeEventListener('error', settle);
+              resolve();
+            };
+            image.addEventListener('load', settle);
+            image.addEventListener('error', settle);
           }));
-      Promise.all([document.fonts?.ready ?? Promise.resolve(), ...imageReady]).then(() => {
+      const assetReady = Promise.all([fontReady, ...imageReady]);
+      const assetTimeout = new Promise((resolve) => window.setTimeout(resolve, 5000));
+      Promise.race([assetReady, assetTimeout]).then(() => {
         window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
           measureAndFit();
           if (!readySent) {
             readySent = true;
-            window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'best-image-ready', width: OUTPUT_WIDTH, height: lastHeight }));
+            const readyMessage = { type: 'best-image-ready', width: OUTPUT_WIDTH, height: lastHeight || MINIMUM_HEIGHT };
+            postToNative(readyMessage);
+            window.setTimeout(() => postToNative(readyMessage), 250);
           }
         }));
       });

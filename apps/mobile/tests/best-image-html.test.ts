@@ -50,7 +50,10 @@ describe('best image html', () => {
     expect(html).toContain('<div class="page-marker">第 2 / 3 页</div>');
     expect(html).toContain('<span class="rank">#251</span>');
     expect(html).toContain("type: 'best-image-ready'");
-    expect(html).toContain('Promise.all([document.fonts?.ready ?? Promise.resolve(), ...imageReady])');
+    expect(html).toContain('Promise.race([assetReady, assetTimeout])');
+    expect(html).toContain('window.setTimeout(resolve, 5000)');
+    expect(html).toContain("typeof window.ResizeObserver === 'function'");
+    expect(html).not.toContain('window.ReactNativeWebView?.postMessage');
   });
 
   it('selects all eleven rating frame tiers at their boundaries', () => {
@@ -81,7 +84,7 @@ describe('best image html', () => {
     expect(html).toContain('width=1080');
     expect(html).toContain('min-height:1440px');
     expect(html).toContain('width:540px;height:87px');
-    expect(html).toContain('Math.min(window.innerWidth / OUTPUT_WIDTH, window.innerHeight / logicalHeight)');
+    expect(html).toContain('Math.min(viewportWidth / OUTPUT_WIDTH, viewportHeight / logicalHeight)');
     expect(html).toContain("type: 'best-image-height'");
     expect(html).toContain('&lt;测试玩家&gt;');
     expect(html).toContain('https://assets2.lxns.net/maimai/icon/200201.png');
