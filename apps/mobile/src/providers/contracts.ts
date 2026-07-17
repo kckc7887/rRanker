@@ -22,6 +22,17 @@ export interface ScoreProvider {
   getPlayer(): Promise<Player>;
   getRecords(): Promise<ScoreRecord[]>;
 }
+export interface CatalogDrivenScoreProvider {
+  getPlayer(): Promise<Player>;
+  getRecordsFromCatalog(catalog: CatalogSnapshot): Promise<ScoreRecord[]>;
+}
+export type AnyScoreProvider = ScoreProvider | CatalogDrivenScoreProvider;
+
+export function isCatalogDrivenScoreProvider(
+  provider: AnyScoreProvider,
+): provider is CatalogDrivenScoreProvider {
+  return 'getRecordsFromCatalog' in provider;
+}
 export interface CatalogProvider {
   getCatalog(): Promise<CatalogSnapshot>;
 }

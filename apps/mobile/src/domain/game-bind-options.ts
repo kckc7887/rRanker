@@ -1,6 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type ProviderId = 'diving-fish' | 'lxns';
+export type ProviderId = 'diving-fish' | 'lxns' | 'local' | 'maimai-test';
+export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns'>;
 export type GameId = 'maimai' | 'phigros' | 'test';
 
 export type ProviderOption = {
@@ -23,6 +24,7 @@ export type GameOption = {
 const maimaiIcon = require('../../assets/images/maimai-dx.png') as ImageSourcePropType;
 const divingFishIcon = require('../../assets/images/diving-fish.png') as ImageSourcePropType;
 const lxnsIcon = require('../../assets/images/lxns.png') as ImageSourcePropType;
+const maimaiTestIcon = require('../../assets/images/maimai-test.png') as ImageSourcePropType;
 const phigrosIcon = require('../../assets/images/phigros.png') as ImageSourcePropType;
 const testGameIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
 
@@ -46,6 +48,20 @@ export const GAME_OPTIONS: GameOption[] = [
         title: '落雪查分器',
         detail: 'OAuth 授权（粘贴授权码）',
         icon: lxnsIcon,
+        available: true,
+      },
+      {
+        id: 'local',
+        title: '本地查分器',
+        detail: '成绩仅保存在本机',
+        icon: maimaiIcon,
+        available: true,
+      },
+      {
+        id: 'maimai-test',
+        title: '测试查分器',
+        detail: '全曲全谱面满成绩',
+        icon: maimaiTestIcon,
         available: true,
       },
     ],

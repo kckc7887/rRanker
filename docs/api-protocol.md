@@ -1,6 +1,6 @@
 # API 协议
 
-> 状态说明：本文件来自 2026-07-10 的本地 PoC 与历史实现记录，只能作为待验证清单，不能直接视为当前生产 API 契约。开始实现 provider 前，必须对每个实际使用的端点重新记录：验证日期、认证方式、请求 schema、成功响应、4xx/5xx、限流与超时行为。当前阶段只实现读取；上传与华立抓取属于 ROADMAP M5。
+> 状态说明：本文件由 2026-07-10 的本地 PoC 持续更新。每个实际使用端点仍须记录验证日期、认证方式、请求 schema、成功响应、4xx/5xx、限流与超时行为；不得把未验证端点当作生产契约。当前已实现水鱼与落雪成绩读写，华立抓取仍不在 App 内实现。
 > 水鱼只读端点 last_verified: 2026-07-12（/music_data、/chart_stats、/player/records、/login、/player/profile 均已复验）。/query/player 不复验，B50 用本地 buildBest50 + /player/records 合并计算。
 
 ## 水鱼 (DivingFish)
@@ -45,7 +45,7 @@
 
 当前职责边界：
 
-- 玩家资料、成绩和认证继续来自水鱼；LXNS 只提供无需凭据的公共曲库元数据。
+- 玩家资料和成绩可来自水鱼、LXNS OAuth 或本地 SQLite；LXNS 公共 API继续提供共享曲库元数据。
 - 当前版本取 `versions[].version` 中最大有效值，并要求至少存在一张同版本、未禁用谱面；否则拒绝生成 B50，不猜版本。
 - `Song.version` 与谱面 `version` 可能是 `15007` 这类细分版本号；显示、筛选和版本统计均按 `versions[]` 降序取“不大于原值的最大主版本”，不能用精确 Map 查找或简单千位取整。
 - B35/B15 按 LXNS 的谱面级 `version` 分类，不再使用水鱼歌曲级 `basic_info.from` 字符串分类。
@@ -58,9 +58,9 @@
 - 歌曲区域读取 LXNS `Song.map`；该字段可能完全缺失，且官方未定义枚举。本地按可选开放字符串接收，缺失、`null` 或空白时不显示，不硬编码区域列表。
 - 曲绘地址为 `https://assets2.lxns.net/maimai/jacket/{song_id}.png`，只对可见列表项加载并使用磁盘缓存；不批量预取，正式发布前需完成素材许可审查。
 - 姓名框预览地址为 `https://assets2.lxns.net/maimai/plate/{plate_id}.png`（公共资源，与查分器账号无关；`plate_id` 来自 LXNS `/plate/list`）。水鱼无对应图床。
-- 舞萌玩家成绩也可经由下方「LXNS OAuth 个人 API」绑定；公共曲库职责不变。成绩上传（`write_player`）本轮未接入。
+- 舞萌玩家成绩也可经由下方「LXNS OAuth 个人 API」绑定；公共曲库职责不变。好友码成绩可经 `write_player` 上传到已授权的落雪账号。
 
-## LXNS OAuth / 个人 API（只读绑定）
+## LXNS OAuth / 个人 API（读写绑定）
 
 基础：`https://maimai.lxns.net`
 
@@ -73,7 +73,7 @@
 | `/api/v0/oauth/token` | POST | 无 | `authorization_code`（需 `code_verifier`）或 `refresh_token`；顶层返回 token |
 | `/api/v0/user/maimai/player` | GET | `Authorization: Bearer` | 当前用户玩家信息 |
 | `/api/v0/user/maimai/player/scores` | GET | `Authorization: Bearer` | 当前用户全部成绩 `Score[]` |
-| `/api/v0/user/maimai/player/scores` | POST | Bearer | 上传成绩（scope `write_player`；App 暂未调用） |
+| `/api/v0/user/maimai/player/scores` | POST | `Authorization: Bearer` | 上传 `{ scores: Score[] }`（scope `write_player`） |
 
 > player last_verified: 2026-07-15 — 官方 `Player` 契约包含 `name`、`rating`、`friend_code`，以及可空的 `icon.id`、`name_plate.id`、`trophy.{id,name,color}`；头像与姓名框分别使用公共资源 `/icon/{id}.png`、`/plate/{id}.png`。水鱼玩家契约没有头像/姓名框资源 ID，预览不得伪造。
 
@@ -89,8 +89,12 @@ OAuth 约束（官方文档）：
 - `type`：`standard`→`SD`，`dx`/`utage`→`DX`。
 - `dx_rating` 向下取整为单曲 Rating；定数由 LXNS 公共曲库 enrich。
 - `fc` / `fs` / `rate` / `level_index` 与文档枚举一致。
+- 上传前用详细曲库确认曲目和谱面；普通 SD/DX 曲目 ID 去除 `+10000` 偏移，宴会场大于 `100000` 的 ID 保留，宴会场 `level_index` 固定为 `0`。
+- score-hub 的 `fdx` / `fdxp` 分别映射为 LXNS `fsd` / `fsdp`；`fc` 只接受 `fc/fcp/ap/app`；无法确认的曲目、谱面、达成率或枚举计数后跳过。
+- 上传体只包含官方 `Score` 写入字段，按 `{ scores: [...] }` 发送；当前实现保留参考实现兼容字段 `dx_star: 0`，DXScore 缺失时为 `null`。
+- Access Token 到期前自动刷新；刷新返回的新 access/refresh token 必须一起更新内存会话与 SecureStore。401/403 不重试，429/5xx/网络超时沿用可重试错误语义，取消信号立即中止当前或后续目标。
 
-> last_verified: 2026-07-15 — 按官方 OAuth / 舞萌 API 文档落地 PKCE+OOB 与 Zod 契约；自动测试覆盖 PKCE URL、Score 映射、会话路由与按账号快照隔离。真机粘贴授权码端到端复验待用户在 Expo Go 完成。
+> last_verified: 2026-07-17 — 按官方舞萌 API 文档复核个人上传端点为 `POST /api/v0/user/maimai/player/scores`，Bearer OAuth，请求体 `{ scores: Score[] }`；官方枚举确认 FDX=`fsd`、FDX+=`fsdp`。自动测试覆盖请求体、ID/谱面/宴会场/FDX 映射、token 轮换、权限错误、重试、取消与多目标部分成功。真实外部账号写入仅人工验证。
 
 ## 华立公众号爬虫
 

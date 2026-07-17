@@ -1,25 +1,30 @@
 import { create } from 'zustand';
 import {
   createLocalMaimaiAccount,
+  createMaxedMaimaiTestAccount,
   createMaimaiBoundAccount,
   createTestBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
+  MAIMAI_TEST_ACCOUNT_ID,
   TEST_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
-import type { GameId, ProviderId } from '@/domain/game-bind-options';
-import { fixturePlayer } from '@/fixtures/sanitized';
-import type { DetailedCatalogProvider, ProviderSession, ScoreProvider } from '@/providers/contracts';
+import type { GameId, ProviderId, RemoteProviderId } from '@/domain/game-bind-options';
+import type { AnyScoreProvider, DetailedCatalogProvider, ProviderSession } from '@/providers/contracts';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
-import { FixtureCatalogProvider, FixtureProvider } from '@/providers/fixture-provider';
 import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
+import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
+import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
 import type { SessionVault, StoredProviderAccount } from '@/storage/secure-session-store';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+
+const localRepository = new SqliteSnapshotRepository();
 
 type LxnsOAuthSession = Extract<ProviderSession, { mode: 'lxns-oauth' }>;
 
-function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthSession) {
+export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthSession): Promise<void> {
   const state = useSession.getState();
   useSession.setState({
     sessionsByAccountId: {
@@ -28,34 +33,43 @@ function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthSession) {
     },
     session: state.activeAccountId === accountId ? next : state.session,
   });
-  void import('@/storage/secure-session-store').then(({ SecureSessionStore }) => {
-    void new SecureSessionStore().updateAccountSession(accountId, next);
-  });
+  const { SecureSessionStore } = await import('@/storage/secure-session-store');
+  await new SecureSessionStore().updateAccountSession(accountId, next);
 }
 
-function maimaiProviders(session: ProviderSession | null, accountId?: string): {
-  scoreProvider: ScoreProvider;
+function maimaiProviders(providerId: ProviderId, session: ProviderSession | null, accountId?: string): {
+  scoreProvider: AnyScoreProvider;
   catalogProvider: DetailedCatalogProvider;
 } {
-  if (session?.mode === 'lxns-oauth') {
-    const boundAccountId = accountId ?? useSession.getState().activeAccountId;
+  if (providerId === 'local') {
     return {
-      scoreProvider: new LxnsScoreProvider(session, (next) => {
-        applyLxnsTokenRotation(boundAccountId, next);
-      }),
+      scoreProvider: new LocalMaimaiScoreProvider(localRepository),
       catalogProvider: new LxnsCatalogProvider(),
     };
   }
-  if (session) {
+  if (providerId === 'maimai-test') {
+    return {
+      scoreProvider: new MaxedMaimaiTestProvider(),
+      catalogProvider: new LxnsCatalogProvider(),
+    };
+  }
+  if (providerId === 'lxns' && session?.mode === 'lxns-oauth') {
+    const boundAccountId = accountId ?? useSession.getState().activeAccountId;
+    return {
+      scoreProvider: new LxnsScoreProvider(
+        session,
+        (next) => applyLxnsTokenRotation(boundAccountId, next),
+      ),
+      catalogProvider: new LxnsCatalogProvider(),
+    };
+  }
+  if (providerId === 'diving-fish' && session) {
     return {
       scoreProvider: new DivingFishProvider(session),
       catalogProvider: new LxnsCatalogProvider(),
     };
   }
-  return {
-    scoreProvider: new FixtureProvider(),
-    catalogProvider: new FixtureCatalogProvider(),
-  };
+  return maimaiProviders('local', null, LOCAL_MAIMAI_ACCOUNT_ID);
 }
 
 export type SessionRestoreStatus = 'restoring' | 'ready' | 'error';
@@ -68,7 +82,7 @@ interface SessionState {
   activeAccountId: string;
   activeGameId: GameId;
   activeProviderId: ProviderId | null;
-  scoreProvider: ScoreProvider;
+  scoreProvider: AnyScoreProvider;
   catalogProvider: DetailedCatalogProvider;
   restoreStatus: SessionRestoreStatus;
   restoreError: string | null;
@@ -78,7 +92,7 @@ interface SessionState {
     displayName: string;
     rating: number;
     playerId?: string;
-    providerId?: ProviderId;
+    providerId?: RemoteProviderId;
   }) => void;
   upsertBoundAccount: (account: BoundAccount) => void;
   updateBoundAccountScore: (accountId: string, scoreDisplay: string, displayName?: string) => void;
@@ -98,30 +112,30 @@ function providersForAccount(account: BoundAccount, sessionsByAccountId: Session
       catalogProvider: new EmptyCatalogProvider(),
     };
   }
-  return maimaiProviders(sessionsByAccountId[account.id] ?? null, account.id);
+  return maimaiProviders(
+    account.providerId ?? 'local',
+    sessionsByAccountId[account.id] ?? null,
+    account.id,
+  );
 }
 
-function ensureTestAccount(accounts: BoundAccount[]): BoundAccount[] {
-  if (accounts.some((account) => account.id === TEST_ACCOUNT_ID)) return accounts;
-  return [...accounts, createTestBoundAccount()];
-}
-
-function withoutLocalPreview(accounts: BoundAccount[]): BoundAccount[] {
-  return accounts.filter((account) => account.id !== LOCAL_MAIMAI_ACCOUNT_ID);
-}
-
-function withLocalPreviewIfNoMaimai(accounts: BoundAccount[]): BoundAccount[] {
-  if (accounts.some((account) => account.gameId === 'maimai' && account.id !== LOCAL_MAIMAI_ACCOUNT_ID)) {
-    return accounts;
+function ensureBuiltinAccounts(accounts: BoundAccount[]): BoundAccount[] {
+  const result = [...accounts];
+  if (!result.some((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)) {
+    result.unshift(createLocalMaimaiAccount('本地玩家', 0));
   }
-  if (accounts.some((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)) return accounts;
-  return [createLocalMaimaiAccount(fixturePlayer.displayName, fixturePlayer.rating), ...accounts];
+  if (!result.some((account) => account.id === MAIMAI_TEST_ACCOUNT_ID)) {
+    result.push(createMaxedMaimaiTestAccount());
+  }
+  if (!result.some((account) => account.id === TEST_ACCOUNT_ID)) {
+    result.push(createTestBoundAccount());
+  }
+  return result;
 }
 
 function upsertAccountList(accounts: BoundAccount[], next: BoundAccount): BoundAccount[] {
   const withoutSelf = accounts.filter((account) => account.id !== next.id);
-  const withoutLocal = next.gameId === 'maimai' ? withoutLocalPreview(withoutSelf) : withoutSelf;
-  return ensureTestAccount([...withoutLocal, next]);
+  return ensureBuiltinAccounts([...withoutSelf, next]);
 }
 
 function boundFromStored(account: StoredProviderAccount): BoundAccount {
@@ -143,15 +157,13 @@ function sessionsMapFromVault(vault: SessionVault): SessionsByAccountId {
 
 export const useSession = create<SessionState>((set, get) => ({
   sessionsByAccountId: {},
-  boundAccounts: ensureTestAccount([
-    createLocalMaimaiAccount(fixturePlayer.displayName, fixturePlayer.rating),
-  ]),
+  boundAccounts: ensureBuiltinAccounts([]),
   activeAccountId: LOCAL_MAIMAI_ACCOUNT_ID,
   session: null,
   activeGameId: 'maimai',
-  activeProviderId: 'diving-fish',
-  scoreProvider: new FixtureProvider(),
-  catalogProvider: new FixtureCatalogProvider(),
+  activeProviderId: 'local',
+  scoreProvider: new LocalMaimaiScoreProvider(localRepository),
+  catalogProvider: new LxnsCatalogProvider(),
   restoreStatus: 'restoring',
   restoreError: null,
   setSession: (session, accountMeta) => {
@@ -175,7 +187,7 @@ export const useSession = create<SessionState>((set, get) => ({
       activeAccountId: maimaiAccount.id,
       activeGameId: 'maimai',
       activeProviderId: providerId,
-      ...maimaiProviders(session, maimaiAccount.id),
+      ...maimaiProviders(providerId, session, maimaiAccount.id),
       restoreStatus: 'ready',
       restoreError: null,
     });
@@ -211,23 +223,25 @@ export const useSession = create<SessionState>((set, get) => ({
   removeBoundAccount: (accountId) => {
     const { sessionsByAccountId, boundAccounts, activeAccountId } = get();
     const { [accountId]: _removed, ...restSessions } = sessionsByAccountId;
-    let nextAccounts = ensureTestAccount(boundAccounts.filter((account) => account.id !== accountId));
-    nextAccounts = withLocalPreviewIfNoMaimai(nextAccounts);
+    const nextAccounts = ensureBuiltinAccounts(boundAccounts.filter((account) => account.id !== accountId));
 
     const nextActiveId = activeAccountId === accountId
-      ? (nextAccounts.find((account) => account.gameId === 'maimai')?.id
+      ? (nextAccounts.find((account) => account.gameId === 'maimai'
+          && account.id !== LOCAL_MAIMAI_ACCOUNT_ID
+          && account.id !== MAIMAI_TEST_ACCOUNT_ID)?.id
+        ?? nextAccounts.find((account) => account.gameId === 'maimai')?.id
         ?? nextAccounts[0]?.id
         ?? LOCAL_MAIMAI_ACCOUNT_ID)
       : activeAccountId;
     const nextActive = nextAccounts.find((account) => account.id === nextActiveId)
-      ?? createLocalMaimaiAccount(fixturePlayer.displayName, fixturePlayer.rating);
+      ?? createLocalMaimaiAccount('本地玩家', 0);
     const session = restSessions[nextActive.id] ?? null;
 
     set({
       sessionsByAccountId: restSessions,
       boundAccounts: nextAccounts.some((account) => account.id === nextActive.id)
         ? nextAccounts
-        : ensureTestAccount([nextActive, ...nextAccounts]),
+        : ensureBuiltinAccounts([nextActive, ...nextAccounts]),
       activeAccountId: nextActive.id,
       activeGameId: nextActive.gameId,
       activeProviderId: nextActive.providerId,
@@ -256,15 +270,15 @@ export const useSession = create<SessionState>((set, get) => ({
     if (match) get().selectBoundAccount(match.id);
   },
   clearSession: () => {
-    const local = createLocalMaimaiAccount(fixturePlayer.displayName, fixturePlayer.rating);
+    const local = createLocalMaimaiAccount('本地玩家', 0);
     set({
       sessionsByAccountId: {},
       session: null,
-      boundAccounts: ensureTestAccount([local]),
+      boundAccounts: ensureBuiltinAccounts([local]),
       activeAccountId: local.id,
       activeGameId: 'maimai',
-      activeProviderId: 'diving-fish',
-      ...maimaiProviders(null),
+      activeProviderId: 'local',
+      ...maimaiProviders('local', null, local.id),
       restoreStatus: 'ready',
       restoreError: null,
     });
@@ -282,11 +296,11 @@ export const useSession = create<SessionState>((set, get) => ({
       set({
         sessionsByAccountId: { [pending.id]: session },
         session,
-        boundAccounts: ensureTestAccount([pending]),
+        boundAccounts: ensureBuiltinAccounts([pending]),
         activeAccountId: pending.id,
         activeGameId: 'maimai',
         activeProviderId: 'diving-fish',
-        ...maimaiProviders(session, pending.id),
+        ...maimaiProviders('diving-fish', session, pending.id),
         restoreStatus: 'ready',
         restoreError: null,
       });
@@ -294,9 +308,9 @@ export const useSession = create<SessionState>((set, get) => ({
     }
 
     const vault = input as SessionVault | null;
-    if (vault && vault.accounts.length > 0) {
+    if (vault) {
       const sessionsByAccountId = sessionsMapFromVault(vault);
-      const boundAccounts = ensureTestAccount(vault.accounts.map(boundFromStored));
+      const boundAccounts = ensureBuiltinAccounts(vault.accounts.map(boundFromStored));
       const activeId = vault.activeAccountId
         && boundAccounts.some((account) => account.id === vault.activeAccountId)
         ? vault.activeAccountId
@@ -318,29 +332,29 @@ export const useSession = create<SessionState>((set, get) => ({
       return;
     }
 
-    const local = createLocalMaimaiAccount(fixturePlayer.displayName, fixturePlayer.rating);
+    const local = createLocalMaimaiAccount('本地玩家', 0);
     set({
       sessionsByAccountId: {},
       session: null,
-      boundAccounts: ensureTestAccount([local]),
+      boundAccounts: ensureBuiltinAccounts([local]),
       activeAccountId: local.id,
       activeGameId: 'maimai',
-      activeProviderId: 'diving-fish',
-      ...maimaiProviders(null),
+      activeProviderId: 'local',
+      ...maimaiProviders('local', null, local.id),
       restoreStatus: 'ready',
       restoreError: null,
     });
   },
   failRestore: (message) => {
-    const local = createLocalMaimaiAccount(fixturePlayer.displayName, fixturePlayer.rating);
+    const local = createLocalMaimaiAccount('本地玩家', 0);
     set({
       sessionsByAccountId: {},
       session: null,
-      boundAccounts: ensureTestAccount([local]),
+      boundAccounts: ensureBuiltinAccounts([local]),
       activeAccountId: local.id,
       activeGameId: 'maimai',
-      activeProviderId: 'diving-fish',
-      ...maimaiProviders(null),
+      activeProviderId: 'local',
+      ...maimaiProviders('local', null, local.id),
       restoreStatus: 'error',
       restoreError: message,
     });

@@ -17,7 +17,7 @@ export function useDetailedCatalog() {
     enabled,
     queryKey: ['detailed-catalog', activeAccountId, activeGameId, session?.mode ?? 'fixture'],
     queryFn: async (): Promise<CatalogSnapshot> => {
-      const service = new ResourceService(session ? repository : undefined);
+      const service = new ResourceService(repository);
       const catalog = await service.load('detailed-catalog', 2, () => provider.getDetailedCatalog());
       const aliasResult = await Promise.allSettled([
         service.load('aliases', 1, () => provider.getAliases()),

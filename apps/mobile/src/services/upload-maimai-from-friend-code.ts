@@ -16,8 +16,13 @@ import { uploadRecordsToDivingFish } from '@/services/diving-fish-upload';
 import {
   buildMusicTitleMap,
   convertHubScoresToDivingFishRecords,
+  convertHubScoresToLocalRecords,
+  convertHubScoresToLxnsRecords,
 } from '@/services/score-hub-sync-map';
-import { LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
+import { LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
+import { uploadRecordsToLxns } from '@/services/lxns-upload';
+import { buildScoreSnapshot } from '@/services/score-service';
+import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 
 export type UploadPhase =
   | { kind: 'idle' }
@@ -35,6 +40,16 @@ export type UploadResult = {
   skipped: number;
   refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[];
   failedAccountNames: string[];
+  targetResults: UploadTargetResult[];
+};
+
+export type UploadTargetResult = {
+  account: BoundAccount;
+  status: 'success' | 'failed';
+  written: number;
+  skipped: number;
+  errorMessage?: string;
+  refreshFailed?: boolean;
 };
 
 export type UploadTarget = {
@@ -100,15 +115,23 @@ export function resolveUploadTargets(
       if (account.id === LOCAL_MAIMAI_ACCOUNT_ID) {
         return {
           account,
-          writable: false,
-          disableReason: '本地预览不可上传',
+          writable: true,
+          disableReason: null,
         };
       }
-      if (account.providerId === 'lxns') {
+      if (account.id === MAIMAI_TEST_ACCOUNT_ID || account.providerId === 'maimai-test') {
         return {
           account,
           writable: false,
-          disableReason: '落雪上传尚未实现',
+          disableReason: '测试成绩由曲库自动生成',
+        };
+      }
+      if (account.providerId === 'lxns') {
+        const session = sessionsByAccountId[account.id];
+        return {
+          account,
+          writable: session?.mode === 'lxns-oauth',
+          disableReason: session?.mode === 'lxns-oauth' ? null : '请重新授权落雪账号',
         };
       }
       if (account.providerId !== 'diving-fish') {
@@ -139,6 +162,7 @@ export async function uploadMaimaiFromFriendCode(input: {
   signal: ScoreHubAbortSignal;
   onPhase: (phase: UploadPhase) => void;
   onNeedFriendAccept: (botFriendCode: string | null) => void;
+  onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
 }): Promise<UploadResult> {
   const friendCode = input.friendCode.trim();
   if (!/^\d{15}$/.test(friendCode)) {
@@ -151,14 +175,6 @@ export async function uploadMaimaiFromFriendCode(input: {
   if (selected.length === 0) {
     throw new ScoreHubError('请至少勾选一个可上传的查分器');
   }
-  const missingToken = selected.find((target) => {
-    const session = input.sessionsByAccountId[target.account.id];
-    return !session || session.mode !== 'import-token';
-  });
-  if (missingToken) {
-    throw new ProviderError('authentication', '上传需要 Import-Token', false);
-  }
-
   input.onPhase({ kind: 'logging_in', message: '正在创建好友申请任务…' });
   const login = await createFriendLoginJob(friendCode, input.signal);
 
@@ -211,71 +227,189 @@ export async function uploadMaimaiFromFriendCode(input: {
     throw new ScoreHubError('未获取到成绩数据');
   }
 
-  const titleMap = buildMusicTitleMap(input.catalog);
-  const mapped = convertHubScoresToDivingFishRecords(scores, titleMap);
-  if (mapped.records.length === 0) {
-    throw new ScoreHubError(
-      `没有可上传到水鱼的成绩（跳过无曲名 ${mapped.skippedNoTitle}、无效达成率 ${mapped.skippedBadScore}、不支持谱面 ${mapped.skippedUnsupportedChart}）`,
-    );
-  }
-
+  const divingFishMapped = convertHubScoresToDivingFishRecords(
+    scores,
+    buildMusicTitleMap(input.catalog),
+  );
+  const localMapped = convertHubScoresToLocalRecords(scores, input.catalog);
+  const lxnsMapped = convertHubScoresToLxnsRecords(scores, input.catalog);
   let uploadedTotal = 0;
+  let skipped = 0;
+  const targetResults: UploadTargetResult[] = [];
+  const refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[] = [];
+  const failedAccountNames: string[] = [];
+  const refreshFailedAccountIds = new Set<string>();
+  const uploadedDivingFishAccounts: BoundAccount[] = [];
+
   for (const target of selected) {
     if (input.signal.aborted) throw new ScoreHubError('已取消');
-    if (target.account.providerId !== 'diving-fish') continue;
-    const session = input.sessionsByAccountId[target.account.id];
-    if (!session || session.mode !== 'import-token') continue;
-    input.onPhase({
-      kind: 'uploading',
-      message: `上传${target.account.displayName}（${target.account.providerTitle}）中…`,
-      providerTitle: target.account.providerTitle,
-    });
-    const result = await uploadRecordsToDivingFish(session.value, mapped.records, input.signal);
-    uploadedTotal += result.uploaded;
+    let written = 0;
+    let targetSkipped = 0;
+    try {
+      input.onPhase({
+        kind: 'uploading',
+        message: `写入${target.account.displayName}（${target.account.providerTitle}）中…`,
+        providerTitle: target.account.providerTitle,
+      });
+      if (target.account.providerId === 'local') {
+        targetSkipped = localMapped.skippedNoSong
+          + localMapped.skippedBadScore
+          + localMapped.skippedUnsupportedChart;
+        if (localMapped.records.length === 0) {
+          throw new ProviderError('no_data', '没有可保存到本地的成绩', false);
+        }
+        const source = {
+          kind: 'local' as const,
+          label: '本地查分器',
+          updatedAt: new Date().toISOString(),
+          isStale: false,
+        };
+        const snapshot = buildScoreSnapshot({
+          id: friendCode,
+          displayName: '本地玩家',
+          rating: 0,
+          additionalRating: 0,
+          source,
+        }, localMapped.records, input.catalog);
+        const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
+        await new SqliteSnapshotRepository().save(target.account.id, snapshot);
+        refreshedAccounts.push({ account: target.account, snapshot });
+        written = localMapped.records.length;
+      } else if (target.account.providerId === 'diving-fish') {
+        targetSkipped = divingFishMapped.skippedNoTitle
+          + divingFishMapped.skippedBadScore
+          + divingFishMapped.skippedUnsupportedChart;
+        const session = input.sessionsByAccountId[target.account.id];
+        if (!session || session.mode !== 'import-token') {
+          throw new ProviderError('authentication', '水鱼上传需要 Import-Token', false);
+        }
+        const result = await uploadRecordsToDivingFish(
+          session.value,
+          divingFishMapped.records,
+          input.signal,
+        );
+        written = result.uploaded;
+        uploadedDivingFishAccounts.push(target.account);
+      } else if (target.account.providerId === 'lxns') {
+        targetSkipped = lxnsMapped.skippedNoSong
+          + lxnsMapped.skippedBadScore
+          + lxnsMapped.skippedUnsupportedChart;
+        const session = input.sessionsByAccountId[target.account.id];
+        if (!session || session.mode !== 'lxns-oauth') {
+          throw new ProviderError('authentication', '落雪上传需要 OAuth 授权', false);
+        }
+        const result = await uploadRecordsToLxns({
+          session,
+          records: lxnsMapped.records,
+          signal: input.signal,
+          onTokensRotated: (next) => input.onLxnsTokensRotated?.(target.account.id, next),
+        });
+        written = result.uploaded;
+        try {
+          input.onPhase({
+            kind: 'syncing',
+            message: `成绩已上传，正在同步应用内的 ${target.account.displayName}…`,
+            providerTitle: target.account.providerTitle,
+          });
+          const [{ LxnsScoreProvider }, { SqliteSnapshotRepository }] = await Promise.all([
+            import('@/providers/lxns-score-provider'),
+            import('@/storage/sqlite-snapshot-repository'),
+          ]);
+          const provider = new LxnsScoreProvider(result.session, (next) => (
+            input.onLxnsTokensRotated?.(target.account.id, next)
+          ));
+          const [player, records] = await Promise.all([
+            provider.getPlayer(),
+            provider.getRecords(),
+          ]);
+          const snapshot = buildScoreSnapshot(player, records, input.catalog);
+          await new SqliteSnapshotRepository().save(target.account.id, snapshot);
+          refreshedAccounts.push({ account: target.account, snapshot });
+        } catch {
+          failedAccountNames.push(target.account.displayName);
+          refreshFailedAccountIds.add(target.account.id);
+        }
+      }
+      uploadedTotal += written;
+      skipped += targetSkipped;
+      targetResults.push({
+        account: target.account,
+        status: 'success',
+        written,
+        skipped: targetSkipped,
+        refreshFailed: refreshFailedAccountIds.has(target.account.id),
+      });
+    } catch (error) {
+      if (input.signal.aborted) throw new ScoreHubError('已取消');
+      const message = error instanceof Error ? error.message : '写入失败';
+      skipped += targetSkipped;
+      targetResults.push({
+        account: target.account,
+        status: 'failed',
+        written: 0,
+        skipped: targetSkipped,
+        errorMessage: message,
+      });
+    }
   }
 
-  const skipped = mapped.skippedNoTitle + mapped.skippedBadScore + mapped.skippedUnsupportedChart;
-  const { refreshDivingFishAccounts } = await import('@/services/refresh-diving-fish-accounts');
-  const refreshResult = await refreshDivingFishAccounts({
-    accounts: selected.map((target) => target.account),
-    sessionsByAccountId: input.sessionsByAccountId,
-    catalog: input.catalog,
-    expectedRecords: mapped.records,
-    signal: input.signal,
-    onRefreshing: (account) => {
-      input.onPhase({
-        kind: 'syncing',
-        message: `成绩已上传，正在同步应用内的 ${account.displayName}…`,
-        providerTitle: account.providerTitle,
-      });
-    },
-  });
+  if (uploadedDivingFishAccounts.length > 0) {
+    const { refreshDivingFishAccounts } = await import('@/services/refresh-diving-fish-accounts');
+    const refreshResult = await refreshDivingFishAccounts({
+      accounts: uploadedDivingFishAccounts,
+      sessionsByAccountId: input.sessionsByAccountId,
+      catalog: input.catalog,
+      expectedRecords: divingFishMapped.records,
+      signal: input.signal,
+      onRefreshing: (account) => {
+        input.onPhase({
+          kind: 'syncing',
+          message: `成绩已上传，正在同步应用内的 ${account.displayName}…`,
+          providerTitle: account.providerTitle,
+        });
+      },
+    });
+    refreshedAccounts.push(...refreshResult.refreshed);
+    for (const failed of refreshResult.failed) {
+      failedAccountNames.push(failed.account.displayName);
+      refreshFailedAccountIds.add(failed.account.id);
+      const outcome = targetResults.find((item) => item.account.id === failed.account.id);
+      if (outcome) outcome.refreshFailed = true;
+    }
+  }
   if (input.signal.aborted) throw new ScoreHubError('已取消');
-  const failedAccountNames = refreshResult.failed.map((item) => item.account.displayName);
-  if (failedAccountNames.length > 0) {
+
+  const failedTargets = targetResults.filter((item) => item.status === 'failed');
+  if (targetResults.every((item) => item.status === 'failed')) {
     input.onPhase({
       kind: 'error',
-      message: `成绩已上传，但应用内账号同步失败：${failedAccountNames.join('、')}。请稍后点“同步数据”重试。`,
+      message: `写入失败：${failedTargets.map((item) => `${item.account.displayName}（${item.errorMessage}）`).join('、')}`,
     });
     return {
       uploaded: uploadedTotal,
       skipped,
-      refreshedAccounts: refreshResult.refreshed,
+      refreshedAccounts,
       failedAccountNames,
+      targetResults,
     };
   }
   input.onPhase({
     kind: 'done',
-    message: skipped > 0
-      ? `完成：上传 ${uploadedTotal} 条，跳过 ${skipped} 条`
-      : `完成：上传 ${uploadedTotal} 条`,
+    message: failedTargets.length > 0
+      ? `部分完成：写入 ${uploadedTotal} 条；失败 ${failedTargets.map((item) => item.account.displayName).join('、')}`
+      : failedAccountNames.length > 0
+        ? `写入完成：${uploadedTotal} 条；${failedAccountNames.join('、')}应用内刷新失败`
+        : skipped > 0
+          ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条`
+          : `完成：写入 ${uploadedTotal} 条`,
     uploaded: uploadedTotal,
     skipped,
   });
   return {
     uploaded: uploadedTotal,
     skipped,
-    refreshedAccounts: refreshResult.refreshed,
+    refreshedAccounts,
     failedAccountNames,
+    targetResults,
   };
 }

@@ -1,7 +1,11 @@
 import { enrichRecordsWithCatalog } from '@/domain/catalog';
 import { buildBest50 } from '@/domain/rating';
 import type { CatalogSnapshot, Player, ScoreRecord, ScoreSnapshot } from '@/domain/models';
-import type { DetailedCatalogProvider, ScoreProvider } from '@/providers/contracts';
+import {
+  isCatalogDrivenScoreProvider,
+  type AnyScoreProvider,
+  type DetailedCatalogProvider,
+} from '@/providers/contracts';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { ProviderError } from '@/providers/errors';
@@ -12,9 +16,14 @@ export function buildScoreSnapshot(
   catalog: CatalogSnapshot,
 ): ScoreSnapshot {
   const records = enrichRecordsWithCatalog(rawRecords, catalog);
-  const best50 = buildBest50(player, records, catalog, player.source);
+  let best50 = buildBest50(player, records, catalog, player.source);
+  const derivesRatingFromBest50 = player.source.kind === 'local' || player.source.kind === 'generated';
+  const effectivePlayer = derivesRatingFromBest50
+    ? { ...player, rating: best50.rating }
+    : player;
+  if (effectivePlayer !== player) best50 = { ...best50, player: effectivePlayer };
   return {
-    player,
+    player: effectivePlayer,
     records,
     best50,
     source: player.source,
@@ -24,7 +33,7 @@ export function buildScoreSnapshot(
 
 export class ScoreService {
   constructor(
-    private readonly scoreProvider: ScoreProvider,
+    private readonly scoreProvider: AnyScoreProvider,
     private readonly catalogProvider: DetailedCatalogProvider,
     private readonly accountId: string,
     private readonly snapshotRepository?: SnapshotRepository,
@@ -33,11 +42,22 @@ export class ScoreService {
 
   async load(): Promise<ScoreSnapshot> {
     try {
-      const [player, rawRecords, catalog] = await Promise.all([
-        this.scoreProvider.getPlayer(),
-        this.scoreProvider.getRecords(),
-        this.catalogProvider.getDetailedCatalog(),
-      ]);
+      let player: Player;
+      let rawRecords: ScoreRecord[];
+      let catalog: CatalogSnapshot;
+      if (isCatalogDrivenScoreProvider(this.scoreProvider)) {
+        [player, catalog] = await Promise.all([
+          this.scoreProvider.getPlayer(),
+          this.catalogProvider.getDetailedCatalog(),
+        ]);
+        rawRecords = await this.scoreProvider.getRecordsFromCatalog(catalog);
+      } else {
+        [player, rawRecords, catalog] = await Promise.all([
+          this.scoreProvider.getPlayer(),
+          this.scoreProvider.getRecords(),
+          this.catalogProvider.getDetailedCatalog(),
+        ]);
+      }
       await this.catalogRepository?.saveCatalog(catalog);
       const snapshot = buildScoreSnapshot(player, rawRecords, catalog);
       await this.snapshotRepository?.save(this.accountId, snapshot);

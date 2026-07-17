@@ -11,7 +11,7 @@ export function useSongs() {
   const catalogProvider = useSession((s) => s.catalogProvider);
   const query = useQuery({
     queryKey: ['songs', activeAccountId, session?.mode ?? 'fixture'],
-    queryFn: () => new CatalogService(catalogProvider, session ? repository : undefined).load(),
+    queryFn: () => new CatalogService(catalogProvider, repository).load(),
   });
   return {
     ...query,

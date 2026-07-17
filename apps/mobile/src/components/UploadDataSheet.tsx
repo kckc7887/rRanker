@@ -26,6 +26,7 @@ import {
 } from '@/services/upload-maimai-from-friend-code';
 import { uploadPrefsStore } from '@/storage/upload-prefs-store';
 import { ProviderError } from '@/providers/errors';
+import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 
 function accountIcon(account: BoundAccount) {
   if (account.providerId) {
@@ -60,6 +61,8 @@ export function UploadDataSheet({
   onClose,
   onPhaseChange,
   onFinished,
+  temporarySelectedAccountIds,
+  onLxnsTokensRotated,
 }: {
   visible: boolean;
   accounts: BoundAccount[];
@@ -68,6 +71,9 @@ export function UploadDataSheet({
   onClose: () => void;
   onPhaseChange?: (phase: UploadPhase) => void;
   onFinished?: (result: UploadResult) => void | Promise<void>;
+  /** 仅本次打开使用；不覆盖用户平时保存的上传目标。 */
+  temporarySelectedAccountIds?: readonly string[];
+  onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
   const [friendCode, setFriendCode] = useState('');
@@ -75,17 +81,24 @@ export function UploadDataSheet({
   const [prefsReady, setPrefsReady] = useState(false);
   const [phase, setPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [running, setRunning] = useState(false);
+  const [lastResult, setLastResult] = useState<UploadResult | null>(null);
   const abortRef = useRef<ScoreHubAbortSignal>({ aborted: false });
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistedSelectedIdsRef = useRef<string[]>([]);
 
   const targets = resolveUploadTargets(accounts, sessionsByAccountId);
 
   const persist = useCallback((nextCode: string, nextIds: string[]) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      void uploadPrefsStore.save({ friendCode: nextCode, selectedAccountIds: nextIds });
+      void uploadPrefsStore.save({
+        friendCode: nextCode,
+        selectedAccountIds: temporarySelectedAccountIds
+          ? persistedSelectedIdsRef.current
+          : nextIds,
+      });
     }, 300);
-  }, []);
+  }, [temporarySelectedAccountIds]);
 
   const applyPhase = useCallback((next: UploadPhase) => {
     setPhase(next);
@@ -93,8 +106,14 @@ export function UploadDataSheet({
   }, [onPhaseChange]);
 
   useEffect(() => {
-    if (!visible || prefsReady) return;
+    if (!visible) {
+      setPrefsReady(false);
+      return;
+    }
     let active = true;
+    setPrefsReady(false);
+    setLastResult(null);
+    applyPhase({ kind: 'idle' });
     void uploadPrefsStore.load().then((prefs) => {
       if (!active) return;
       setFriendCode(prefs.friendCode);
@@ -102,13 +121,17 @@ export function UploadDataSheet({
         .filter((target) => target.writable)
         .map((target) => target.account.id);
       const restored = prefs.selectedAccountIds.filter((id) => writableIds.includes(id));
-      setSelectedIds(restored.length > 0 ? restored : writableIds);
+      const persisted = restored.length > 0 ? restored : writableIds;
+      persistedSelectedIdsRef.current = persisted;
+      const temporary = temporarySelectedAccountIds
+        ?.filter((id) => writableIds.includes(id)) ?? [];
+      setSelectedIds(temporarySelectedAccountIds ? temporary : persisted);
       setPrefsReady(true);
     });
     return () => {
       active = false;
     };
-  }, [visible, prefsReady, accounts, sessionsByAccountId]);
+  }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds, applyPhase]);
 
   useEffect(() => () => {
     abortRef.current.aborted = true;
@@ -149,7 +172,7 @@ export function UploadDataSheet({
       return;
     }
     if (selectedIds.filter((id) => targets.some((t) => t.writable && t.account.id === id)).length === 0) {
-      Alert.alert('未选择目标', '请勾选至少一个可上传的查分器（需已用账密绑定水鱼）。');
+      Alert.alert('未选择目标', '请勾选至少一个可写入的查分器。');
       return;
     }
     if (!catalog) {
@@ -178,7 +201,9 @@ export function UploadDataSheet({
               : '请打开舞萌 NET 接受 Bot 的好友申请，接受后本页会继续自动进行。',
           );
         },
+        onLxnsTokensRotated,
       });
+      setLastResult(result);
       try {
         await onFinished?.(result);
       } catch (refreshError) {
@@ -259,6 +284,7 @@ export function UploadDataSheet({
                   <Pressable
                     key={target.account.id}
                     accessibilityRole="checkbox"
+                    accessibilityLabel={`上传到 ${target.account.displayName}（${target.account.providerTitle}）`}
                     accessibilityState={{ checked, disabled: !target.writable || running }}
                     disabled={!target.writable || running}
                     onPress={() => toggleAccount(target.account.id, target.writable)}
@@ -337,6 +363,23 @@ export function UploadDataSheet({
               {phase.kind === 'awaiting_friend' ? (
                 <Text style={styles.statusBot}>打开舞萌 NET 接受好友申请后将自动继续</Text>
               ) : null}
+            </View>
+          ) : null}
+
+          {lastResult ? (
+            <View style={styles.resultList}>
+              {lastResult.targetResults.map((result) => (
+                <View key={result.account.id} style={styles.resultRow}>
+                  <Text style={result.status === 'success' ? styles.resultSuccess : styles.resultFailure}>
+                    {result.status === 'success' ? '✓' : '×'} {result.account.providerTitle}
+                  </Text>
+                  <Text style={styles.resultDetail}>
+                    {result.status === 'success'
+                      ? `写入 ${result.written} 条${result.skipped ? `，跳过 ${result.skipped} 条` : ''}${result.refreshFailed ? '，应用内刷新失败' : ''}`
+                      : result.errorMessage ?? '写入失败'}
+                  </Text>
+                </View>
+              ))}
             </View>
           ) : null}
         </ScrollView>
@@ -441,4 +484,9 @@ const styles = StyleSheet.create({
   statusError: { color: '#B91C1C' },
   statusDone: { color: '#047857' },
   statusBot: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
+  resultList: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 12, gap: 10 },
+  resultRow: { gap: 3 },
+  resultSuccess: { color: '#16803A', fontWeight: '700' },
+  resultFailure: { color: '#B42318', fontWeight: '700' },
+  resultDetail: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
 });
