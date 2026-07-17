@@ -42,7 +42,6 @@ export default function OverviewScreen() {
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [uploadVisible, setUploadVisible] = useState(false);
-  const [uploadLocalOnly, setUploadLocalOnly] = useState(false);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -50,10 +49,7 @@ export default function OverviewScreen() {
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
   const syncBusy = syncing;
-  const temporaryLocalSelection = useMemo(
-    () => (uploadLocalOnly ? [activeAccountId] : undefined),
-    [activeAccountId, uploadLocalOnly],
-  );
+  const currentUploadSelection = useMemo(() => [activeAccountId], [activeAccountId]);
 
   const syncData = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -121,15 +117,9 @@ export default function OverviewScreen() {
     setPickerVisible(false);
   };
 
-  const openUpload = (localOnly: boolean) => {
-    setUploadLocalOnly(localOnly);
-    setUploadVisible(true);
-  };
+  const openUpload = () => setUploadVisible(true);
 
-  const closeUpload = () => {
-    setUploadVisible(false);
-    setUploadLocalOnly(false);
-  };
+  const closeUpload = () => setUploadVisible(false);
 
   return (
     <View style={styles.page}>
@@ -146,7 +136,7 @@ export default function OverviewScreen() {
             testID="overview-scroll"
             alwaysBounceVertical
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => (
-              bundle.providerId === 'local' ? openUpload(true) : void syncData()
+              bundle.providerId === 'local' ? openUpload() : void syncData()
             )}
               tintColor="#246BFD" colors={['#246BFD']} />}
             contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 20 }]}
@@ -189,7 +179,7 @@ export default function OverviewScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="同步本地查分器数据，使用好友码"
-                onPress={() => openUpload(true)}
+                onPress={openUpload}
                 style={({ pressed }) => [styles.syncButton, pressed && styles.syncPressed]}
               >
                 <Text style={styles.syncText}>同步数据</Text>
@@ -200,7 +190,7 @@ export default function OverviewScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`上传数据，${compactUploadPhaseLabel(uploadPhase)}`}
-                  onPress={() => openUpload(false)}
+                  onPress={openUpload}
                   style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
                 >
                   <Text style={styles.syncText}>上传数据</Text>
@@ -294,7 +284,7 @@ export default function OverviewScreen() {
         onClose={closeUpload}
         onPhaseChange={setUploadPhase}
         onFinished={finishUpload}
-        temporarySelectedAccountIds={temporaryLocalSelection}
+        temporarySelectedAccountIds={currentUploadSelection}
         onLxnsTokensRotated={applyLxnsTokenRotation}
       />
     </View>

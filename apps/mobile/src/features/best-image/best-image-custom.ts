@@ -1,5 +1,5 @@
 import type { ScoreRecord } from '@/domain/models';
-import { achievementTenThousandths } from '@/domain/score-presentation';
+import { achievementTenThousandths, isNearMissAchievement } from '@/domain/score-presentation';
 import { rankScoreRecords } from '@/domain/rating';
 
 export type BestImageVersionFilter = 'current' | 'past';
@@ -17,6 +17,7 @@ export type CustomBestImageFilters = {
   minimumAchievement: number;
   achievement: BestImageAchievementFilter;
   strictAchievement: boolean;
+  nearMiss: boolean;
 };
 
 export type BestImageScoreSectionData = {
@@ -40,6 +41,7 @@ export const DEFAULT_CUSTOM_BEST_IMAGE_FILTERS: CustomBestImageFilters = {
   minimumAchievement: 0,
   achievement: null,
   strictAchievement: false,
+  nearMiss: false,
 };
 
 export const FC_ACHIEVEMENTS: readonly { value: BestImageFcAchievement; label: string }[] = [
@@ -104,8 +106,8 @@ function limited(records: readonly ScoreRecord[], quantity: number): ScoreRecord
   return quantity === 0 ? ranked : ranked.slice(0, quantity);
 }
 
-function title(prefix: string, achievement: BestImageAchievementFilter, count: number): string {
-  return `${prefix}${bestImageAchievementLabel(achievement)}${count}`;
+function title(prefix: string, achievement: BestImageAchievementFilter, nearMiss: boolean, count: number): string {
+  return `${prefix}${nearMiss ? '寸' : ''}${bestImageAchievementLabel(achievement)}${count}`;
 }
 
 export function buildCustomBestImageSections(
@@ -121,12 +123,13 @@ export function buildCustomBestImageSections(
     const version = record.version === currentVersionTitle ? 'current' : 'past';
     return selected.has(version)
       && achievementTenThousandths(record.achievements) >= minimum
+      && (!filters.nearMiss || isNearMissAchievement(record.achievements))
       && achievementMatches(record, filters.achievement, filters.strictAchievement);
   });
   const split = selected.has('current') && selected.has('past') && filters.splitVersions;
   const makeSection = (id: string, prefix: string, source: readonly ScoreRecord[]) => {
     const output = limited(source, filters.quantity);
-    return { id, title: title(prefix, filters.achievement, output.length), records: output };
+    return { id, title: title(prefix, filters.achievement, filters.nearMiss, output.length), records: output };
   };
   if (split) {
     return [

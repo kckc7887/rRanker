@@ -83,6 +83,49 @@ describe('best image html', () => {
     expect(ratingFrameIndex(16000)).toBe(10);
   });
 
+  it('keeps the existing game frame as the default rating style', () => {
+    const html = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 500,
+      scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
+      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
+    });
+    expect(html).toContain('class="rating rating-game"');
+    expect(html).toContain('<span>0</span><span>0</span><span>5</span><span>0</span><span>0</span>');
+    expect(html).toContain('class="rating-frame"');
+  });
+
+  it('renders unpadded app capsule and rectangle rating styles with preview stars', () => {
+    const capsule = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 14500, ratingStyle: 'app-capsule',
+      scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
+      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
+    });
+    expect(capsule).toContain('class="rating rating-app rating-app-capsule"');
+    expect(capsule).toContain('<div class="rating-app-tag"><span>14500</span></div><svg class="rating-star-track"');
+    expect(capsule.match(/<polygon points=/g)).toHaveLength(1);
+    expect(capsule).toContain('#F4F2E0 0%,#DBDCCD 52%,#C0C5BC 100%');
+    expect(capsule).not.toContain('class="rating-frame"');
+    expect(capsule).toContain('.rating-app{width:145px;height:31px;flex:0 0 31px');
+    expect(capsule).toContain('.rating-star-track{position:absolute;left:0;top:-11px');
+
+    const rectangle = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 15750, ratingStyle: 'app-rect',
+      scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
+      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
+    });
+    expect(rectangle).toContain('class="rating rating-app rating-app-rect"');
+    expect(rectangle.match(/<polygon points=/g)).toHaveLength(4);
+    expect(rectangle).toContain('.rating-app-rect .rating-app-tag{border-radius:');
+
+    const extreme = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 16000, ratingStyle: 'app-capsule',
+      scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
+      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
+    });
+    expect(extreme).toContain('#67D9FF 0%,#7FA9FF 24%,#B995FF 52%,#EC8DCF 78%,#FFB0BF 100%');
+    expect(extreme.match(/<polygon points=/g)).toHaveLength(1);
+  });
+
   it('renders escaped player data and verified LXNS asset paths', () => {
     const html = buildBestImageHtml({
       type: 'best50', width: 1080, rating: 15001,
@@ -121,7 +164,8 @@ describe('best image html', () => {
     expect(html).toContain('object-fit:contain');
     expect(html).toContain('data:font/ttf;base64,Zm9udA==');
     expect(html).toContain('data:image/png;base64,aW1hZ2U=');
-    expect(html).toContain('.rating{position:relative;width:113px;height:26px');
+    expect(html).toContain('.rating{position:relative}');
+    expect(html).toContain('.rating-game{width:113px;height:26px;flex:0 0 26px}');
     expect(html).toContain('font-weight:900;line-height:1;color:#FFD83D');
     expect(html).toContain('-webkit-text-stroke:1px #090909');
     expect(html).toContain('.player-name{display:inline-flex;width:fit-content;max-width:100%');

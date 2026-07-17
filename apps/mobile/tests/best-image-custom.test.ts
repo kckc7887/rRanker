@@ -74,6 +74,44 @@ describe('custom best image', () => {
     expect(sections[0]?.records.map((item) => item.songId)).toEqual(['fdxp', 'fdx']);
   });
 
+  it('filters both near-miss ranges with inclusive four-decimal boundaries', () => {
+    const sections = buildCustomBestImageSections([
+      score({ songId: 'before-100', achievements: 99.8999 }),
+      score({ songId: 'start-100', achievements: 99.9 }),
+      score({ songId: 'end-100', achievements: 99.9999 }),
+      score({ songId: 'start-1005', achievements: 100.49 }),
+      score({ songId: 'end-1005', achievements: 100.4999 }),
+      score({ songId: 'after-1005', achievements: 100.5 }),
+    ], '当前版本', filters({ versions: ['current'], nearMiss: true, quantity: 100 }));
+    expect(sections[0]?.title).toBe('当前版本寸Best4');
+    expect(sections[0]?.records.map((item) => item.songId)).toEqual([
+      'end-1005', 'start-1005', 'end-100', 'start-100',
+    ]);
+  });
+
+  it('combines near miss with AP+, FDX+, strict matching and minimum achievement', () => {
+    const records = [
+      score({ songId: 'match', achievements: 100.4999, fc: 'app', fs: 'fdxp' }),
+      score({ songId: 'not-near', achievements: 100.5, fc: 'app', fs: 'fdxp' }),
+      score({ songId: 'wrong-fc', achievements: 100.4999, fc: 'ap', fs: 'fdxp' }),
+      score({ songId: 'wrong-fs', achievements: 100.4999, fc: 'app', fs: 'fdx' }),
+      score({ songId: 'too-low', achievements: 99.9999, fc: 'app', fs: 'fdxp' }),
+    ];
+    const apPlus = buildCustomBestImageSections(records, '当前版本', filters({
+      versions: ['current'], nearMiss: true, achievement: { family: 'fc', value: 'app' },
+      strictAchievement: true, minimumAchievement: 100.49, quantity: 100,
+    }));
+    expect(apPlus[0]?.title).toBe('当前版本寸AP+2');
+    expect(apPlus[0]?.records.map((item) => item.songId)).toEqual(['match', 'wrong-fs']);
+
+    const fdxPlus = buildCustomBestImageSections(records, '当前版本', filters({
+      versions: ['current'], nearMiss: true, achievement: { family: 'fs', value: 'fsdp' },
+      strictAchievement: true, minimumAchievement: 100.49, quantity: 100,
+    }));
+    expect(fdxPlus[0]?.title).toBe('当前版本寸FDX+2');
+    expect(fdxPlus[0]?.records.map((item) => item.songId)).toEqual(['match', 'wrong-fc']);
+  });
+
   it('parses quantity and achievement boundaries', () => {
     expect(parseBestImageQuantity('０')).toBe(0);
     expect(parseBestImageQuantity('-1')).toBeNull();

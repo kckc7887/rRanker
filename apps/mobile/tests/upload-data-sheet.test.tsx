@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
-import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
+import { createLocalMaimaiAccount, createMaimaiBoundAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
 
@@ -25,6 +25,7 @@ const local = createLocalMaimaiAccount('本地玩家', 0);
 const water = createMaimaiBoundAccount({
   providerId: 'diving-fish', displayName: '水鱼玩家', rating: 15000, playerId: 'water',
 });
+const testAccount = createMaxedMaimaiTestAccount(16750);
 const waterSession: ProviderSession = {
   mode: 'import-token', value: 'water-token', persistable: true,
 };
@@ -36,11 +37,11 @@ const catalog: CatalogSnapshot = {
   source: { kind: 'lxns', label: 'test', updatedAt: '2026-07-17T00:00:00.000Z', isStale: false },
 };
 
-function sheet(temporarySelectedAccountIds?: readonly string[]) {
+function sheet(temporarySelectedAccountIds?: readonly string[], accounts = [local, water]) {
   return (
     <UploadDataSheet
       visible
-      accounts={[local, water]}
+      accounts={accounts}
       sessionsByAccountId={{ [water.id]: waterSession }}
       catalog={catalog}
       onClose={jest.fn()}
@@ -49,7 +50,7 @@ function sheet(temporarySelectedAccountIds?: readonly string[]) {
   );
 }
 
-describe('本地查分器上传弹窗临时选项', () => {
+describe('当前查分器上传弹窗临时选项', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLoadPrefs.mockResolvedValue({
@@ -58,7 +59,7 @@ describe('本地查分器上传弹窗临时选项', () => {
     });
   });
 
-  it('本地页只临时勾选本地，关闭后恢复持久化的水鱼选择', async () => {
+  it('每次只临时勾选当前可写账号且不保存目标变化', async () => {
     const localOpen = await render(sheet([local.id]));
     const localBox = await waitFor(() => localOpen.getByLabelText('上传到 本地玩家（本地查分器）'));
     const waterBox = localOpen.getByLabelText('上传到 水鱼玩家（水鱼查分器）');
@@ -74,10 +75,21 @@ describe('本地查分器上传弹窗临时选项', () => {
     });
     await act(async () => localOpen.unmount());
 
-    const normalOpen = await render(sheet());
+    const normalOpen = await render(sheet([water.id]));
     const restoredLocal = await waitFor(() => normalOpen.getByLabelText('上传到 本地玩家（本地查分器）'));
     const restoredWater = normalOpen.getByLabelText('上传到 水鱼玩家（水鱼查分器）');
     expect(restoredLocal.props.accessibilityState).toMatchObject({ checked: false });
     expect(restoredWater.props.accessibilityState).toMatchObject({ checked: true });
+  });
+
+  it('当前账号不可写时不预选目标但仍展示禁用原因', async () => {
+    const screen = await render(sheet([testAccount.id], [local, water, testAccount]));
+    const localBox = await waitFor(() => screen.getByLabelText('上传到 本地玩家（本地查分器）'));
+    const waterBox = screen.getByLabelText('上传到 水鱼玩家（水鱼查分器）');
+    const testBox = screen.getByLabelText(/上传到 .*测试查分器/);
+    expect(localBox.props.accessibilityState).toMatchObject({ checked: false });
+    expect(waterBox.props.accessibilityState).toMatchObject({ checked: false });
+    expect(testBox.props.accessibilityState).toMatchObject({ checked: false, disabled: true });
+    expect(screen.getByText('测试成绩由曲库自动生成')).toBeTruthy();
   });
 });
