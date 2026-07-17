@@ -1,8 +1,10 @@
 import {
   buildBestImageHtml,
+  bestImageWebViewVersion,
   minimumBestImageHeight,
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
+  parseBestImageRuntimeMessage,
   ratingFrameIndex,
 } from '@/features/best-image/build-best-image-html';
 import type { ScoreRecord } from '@/domain/models';
@@ -39,6 +41,17 @@ describe('best image html', () => {
     }), 1080)).toBe(2160);
   });
 
+  it('reports the Android WebView version from its runtime user agent', () => {
+    const userAgent = 'Mozilla/5.0 (Linux; Android 15; wv) AppleWebKit/537.36 Version/4.0 Chrome/132.0.6834.79 Mobile Safari/537.36';
+    expect(bestImageWebViewVersion(userAgent)).toBe('132.0.6834.79');
+    expect(parseBestImageRuntimeMessage(JSON.stringify({
+      type: 'best-image-runtime', width: 1080, userAgent,
+    }), 1080)).toEqual({ userAgent, version: '132.0.6834.79' });
+    expect(parseBestImageRuntimeMessage(JSON.stringify({
+      type: 'best-image-runtime', width: 1440, userAgent,
+    }), 1080)).toBeNull();
+  });
+
   it('renders page markers, rank offsets and an asset-stable export signal', () => {
     const html = buildBestImageHtml({
       type: 'custom', width: 1080, rating: 0,
@@ -50,6 +63,8 @@ describe('best image html', () => {
     expect(html).toContain('<div class="page-marker">第 2 / 3 页</div>');
     expect(html).toContain('<span class="rank">#251</span>');
     expect(html).toContain("type: 'best-image-ready'");
+    expect(html).toContain("type: 'best-image-runtime'");
+    expect(html).toContain('window.navigator.userAgent');
     expect(html).toContain('Promise.race([assetReady, assetTimeout])');
     expect(html).toContain('window.setTimeout(resolve, 5000)');
     expect(html).toContain("typeof window.ResizeObserver === 'function'");

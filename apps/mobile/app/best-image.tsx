@@ -24,6 +24,7 @@ import {
   minimumBestImageHeight,
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
+  parseBestImageRuntimeMessage,
   ratingFrameIndex,
   type BestImageScoreSection,
   type BestImageType,
@@ -66,6 +67,11 @@ import {
   saveBestImageCapture,
   shouldUseBestImageRenderInContext,
 } from '@/features/best-image/best-image-export';
+import {
+  inlineBestImageWebViewSources,
+  prepareAndroidBestImageWebViewSources,
+  type BestImageWebViewSource,
+} from '@/features/best-image/prepare-best-image-webview-sources';
 
 const IMAGE_TYPES: { id: BestImageType; label: string }[] = [
   { id: 'best50', label: 'Best50' },
@@ -96,6 +102,23 @@ const RATING_FRAME_SOURCES: number[] = [
   require('../assets/rating/rating_base_10.png'),
   require('../assets/rating/rating_base_11.png'),
 ];
+
+type BestImageWebViewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'timeout' | 'error' | 'crashed' | 'terminated';
+type BestImageWebViewState = {
+  phase: BestImageWebViewPhase;
+  version: string | null;
+};
+
+const WEBVIEW_STATUS_LABELS: Record<BestImageWebViewPhase, string> = {
+  loading: '正在加载',
+  loaded: '页面已载入，等待渲染',
+  rendering: '正在渲染',
+  ready: '渲染就绪',
+  timeout: '响应超时',
+  error: '加载失败',
+  crashed: '渲染进程崩溃',
+  terminated: '渲染进程已终止',
+};
 
 function ChoiceChip({ label, selected, disabled = false, onPress, accessibilityLabel }: {
   label: string;
@@ -164,6 +187,9 @@ export default function BestImageScreen() {
   const [exportPageIndex, setExportPageIndex] = useState<number | null>(null);
   const [exportHeight, setExportHeight] = useState(minimumBestImageHeight(1080));
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [webViewStates, setWebViewStates] = useState<Record<string, BestImageWebViewState>>({});
+  const [androidWebViewSources, setAndroidWebViewSources] = useState<BestImageWebViewSource[] | null>(null);
+  const [webViewSourceError, setWebViewSourceError] = useState<string | null>(null);
   const exportCaptureRef = useRef<View>(null);
   const exportReadyResolver = useRef<((height: number) => void) | null>(null);
   const exportReadyRejecter = useRef<((error: Error) => void) | null>(null);
@@ -315,13 +341,78 @@ export default function BestImageScreen() {
     pageCount: page.pageCount,
     ...embeddedAssets,
   })) : null, [coverUrls, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating]);
+  const htmlPagesRef = useRef(htmlPages);
+  htmlPagesRef.current = htmlPages;
+  const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, hiddenStyles, pages]);
+  const inlineWebViewSources = useMemo(() => htmlPages ? inlineBestImageWebViewSources(htmlPages) : null, [htmlPages]);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    setAndroidWebViewSources(null);
+    setWebViewSourceError(null);
+    const currentHtmlPages = htmlPagesRef.current;
+    if (!currentHtmlPages) return;
+    try {
+      const prepared = prepareAndroidBestImageWebViewSources(currentHtmlPages);
+      setAndroidWebViewSources(prepared.sources);
+      return prepared.dispose;
+    } catch {
+      setWebViewSourceError('WebView 本地页面准备失败');
+    }
+  }, [coverUrls, embeddedAssets, htmlGenerationKey]);
+  const webViewSources = Platform.OS === 'android' ? androidWebViewSources : inlineWebViewSources;
   const screenWidth = window.width > 0 ? window.width : 390;
   const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
   const previewHeight = previewWidth * 4 / 3;
   const currentPage = pages[Math.min(currentPageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? minimumBestImageHeight(outputWidth);
+  const currentWebViewState = webViewStates[currentPage.id];
+  const webViewStatusText = webViewSourceError
+    ? 'WebView 版本未知 · 本地页面准备失败'
+    : webViewSources
+    ? `WebView ${currentWebViewState?.version ?? '版本未知'} · ${WEBVIEW_STATUS_LABELS[currentWebViewState?.phase ?? 'loading']}`
+    : 'WebView 版本未知 · 等待预览素材';
   const exportBusy = exportPageIndex !== null || exportStatus !== null;
   const formValid = imageType !== 'custom' || customInputValid;
+
+  useEffect(() => {
+    if (!webViewSources || currentWebViewState?.phase === 'ready' || currentWebViewState?.phase === 'error'
+      || currentWebViewState?.phase === 'crashed' || currentWebViewState?.phase === 'terminated'
+      || currentWebViewState?.phase === 'timeout') return;
+    const pageId = currentPage.id;
+    const timeout = setTimeout(() => {
+      setWebViewStates((current) => {
+        const state = current[pageId];
+        if (state?.phase === 'ready' || state?.phase === 'error' || state?.phase === 'crashed'
+          || state?.phase === 'terminated' || state?.phase === 'timeout') return current;
+        return { ...current, [pageId]: { phase: 'timeout', version: state?.version ?? null } };
+      });
+    }, 12_000);
+    return () => clearTimeout(timeout);
+  }, [currentPage.id, currentWebViewState?.phase, webViewSources]);
+
+  const updateWebViewState = (pageId: string, phase: BestImageWebViewPhase, version?: string | null) => {
+    setWebViewStates((current) => ({
+      ...current,
+      [pageId]: {
+        phase,
+        version: version === undefined ? current[pageId]?.version ?? null : version,
+      },
+    }));
+  };
+
+  const updateWebViewRenderingState = (pageId: string, version?: string | null) => {
+    setWebViewStates((current) => {
+      const state = current[pageId];
+      const terminal = state?.phase === 'ready' || state?.phase === 'error' || state?.phase === 'crashed' || state?.phase === 'terminated';
+      return {
+        ...current,
+        [pageId]: {
+          phase: terminal ? state.phase : 'rendering',
+          version: version === undefined ? state?.version ?? null : version,
+        },
+      };
+    });
+  };
 
   const chooseWidth = (nextWidth: number) => {
     setOutputWidth(nextWidth);
@@ -377,7 +468,7 @@ export default function BestImageScreen() {
   };
 
   const exportImages = async () => {
-    if (!htmlPages || !formValid || exportBusy) return;
+    if (!htmlPages || !webViewSources || !formValid || exportBusy) return;
     const captures: { uri: string; filename: string }[] = [];
     try {
       await requestBestImageExportPermission();
@@ -513,44 +604,63 @@ export default function BestImageScreen() {
 
       <Text style={[styles.label, styles.sectionLabel]}>预览</Text>
       <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight }]}>
-        {htmlPages ? <FlatList
-          data={htmlPages}
+        {webViewSources ? <FlatList
+          data={webViewSources}
           horizontal
           initialNumToRender={2}
           keyExtractor={(_, index) => pages[index]!.id}
           maxToRenderPerBatch={3}
           onMomentumScrollEnd={(event) => setCurrentPageIndex(Math.round(event.nativeEvent.contentOffset.x / previewWidth))}
           pagingEnabled
-          renderItem={({ item: html, index }) => <View style={{ width: previewWidth, height: previewHeight }}>
-            <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} onMessage={(event) => {
-              const measuredHeight = parseBestImageHeightMessage(event.nativeEvent.data, outputWidth);
-              if (measuredHeight !== null) setPageHeights((current) => ({ ...current, [pages[index]!.id]: measuredHeight }));
-            }} scrollEnabled={false} source={{ html, baseUrl: 'https://assets2.lxns.net/' }} style={styles.webview} testID={`best-image-html-preview-${index}`} />
+          renderItem={({ item: source, index }) => <View style={{ width: previewWidth, height: previewHeight }}>
+            <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']}
+              onError={() => updateWebViewState(pages[index]!.id, 'error')}
+              onLoadEnd={() => setWebViewStates((current) => {
+                const pageId = pages[index]!.id;
+                const state = current[pageId];
+                return state && state.phase !== 'loading' ? current : { ...current, [pageId]: { phase: 'loaded', version: state?.version ?? null } };
+              })}
+              onLoadStart={() => updateWebViewState(pages[index]!.id, 'loading')}
+              onMessage={(event) => {
+                const pageId = pages[index]!.id;
+                const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, outputWidth);
+                if (runtime) updateWebViewRenderingState(pageId, runtime.version);
+                const measuredHeight = parseBestImageHeightMessage(event.nativeEvent.data, outputWidth);
+                if (measuredHeight !== null) {
+                  setPageHeights((current) => ({ ...current, [pageId]: measuredHeight }));
+                  updateWebViewRenderingState(pageId);
+                }
+                const readyHeight = parseBestImageReadyMessage(event.nativeEvent.data, outputWidth);
+                if (readyHeight !== null) updateWebViewState(pageId, 'ready');
+              }}
+              onRenderProcessGone={(event) => updateWebViewState(pages[index]!.id, event.nativeEvent.didCrash ? 'crashed' : 'terminated')}
+              scrollEnabled={false} source={source} style={styles.webview} testID={`best-image-html-preview-${index}`} />
           </View>}
           showsHorizontalScrollIndicator={false}
           removeClippedSubviews={false}
           style={styles.previewPager}
           windowSize={3}
         /> : <View style={styles.loadingPreview}>
-          {assetError ? <Text accessibilityRole="alert" style={styles.assetError}>{assetError}</Text> : <View style={styles.loadingContent}>
+          {assetError || webViewSourceError ? <Text accessibilityRole="alert" style={styles.assetError}>{assetError ?? webViewSourceError}</Text> : <View style={styles.loadingContent}>
             <ActivityIndicator accessibilityLabel="正在加载预览素材" color="#246BFD" size="large" />
             <Text style={styles.loadingText}>{coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
           </View>}
         </View>}
       </View>
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, index === currentPageIndex && styles.pageDotActive]} />)}</View> : null}
-      <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!htmlPages || !formValid || exportBusy} onPress={() => void exportImages()} style={[styles.exportButton, (!htmlPages || !formValid || exportBusy) && styles.exportButtonDisabled]}>
+      <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!webViewSources || !formValid || exportBusy} onPress={() => void exportImages()} style={[styles.exportButton, (!webViewSources || !formValid || exportBusy) && styles.exportButtonDisabled]}>
         {exportBusy ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
         <Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text>
       </Pressable>
+      <Text accessibilityLiveRegion="polite" style={styles.webViewStatusText} testID="best-image-webview-status">{webViewStatusText}</Text>
     </ScrollView>
 
     <BestImageCollectionPicker visible={activePicker !== null} kind={activePicker} items={collections.data?.items ?? []} selectedId={activePicker && (styleSelections[activePicker]?.mode === 'item' || styleSelections[activePicker]?.mode === 'random') ? styleSelections[activePicker].item.id : null} selectedMode={activePicker ? styleSelections[activePicker]?.mode ?? 'current' : 'current'} isLoading={collections.isLoading} isError={collections.isError} onRetry={() => { void collections.refetch(); }} onClose={() => setActivePicker(null)} onSelect={selectCollection} />
 
     <Modal visible={exportPageIndex !== null} animationType="none" transparent={false} onRequestClose={() => exportReadyRejecter.current?.(new Error('导出已取消'))}>
-      {exportPageIndex !== null && htmlPages?.[exportPageIndex] ? <View style={styles.exportRoot}>
+      {exportPageIndex !== null && htmlPages?.[exportPageIndex] && webViewSources?.[exportPageIndex] ? <View style={styles.exportRoot}>
         <View ref={exportCaptureRef} collapsable={false} style={{ width: outputWidth / PixelRatio.get(), height: exportHeight / PixelRatio.get(), backgroundColor: '#E7EDF5' }}>
-          <WebView key={`export-${exportPageIndex}-${outputWidth}`} accessibilityLabel={`导出渲染 第${exportPageIndex + 1}页`} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} scrollEnabled={false} source={{ html: htmlPages[exportPageIndex], baseUrl: 'https://assets2.lxns.net/' }} style={styles.webview} />
+          <WebView key={`export-${exportPageIndex}-${outputWidth}`} accessibilityLabel={`导出渲染 第${exportPageIndex + 1}页`} allowFileAccess={Platform.OS === 'android'} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} scrollEnabled={false} source={webViewSources[exportPageIndex]} style={styles.webview} />
         </View>
         <View style={styles.exportOverlay}><ActivityIndicator color="#246BFD" size="large" /><Text style={styles.exportOverlayText}>{exportStatus ?? '正在准备导出'}</Text></View>
       </View> : null}
@@ -611,6 +721,7 @@ const styles = StyleSheet.create({
   exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14, backgroundColor: '#246BFD' },
   exportButtonDisabled: { backgroundColor: '#AAB8D0' },
   exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  webViewStatusText: { marginTop: 7, color: '#8A93A3', fontSize: 11, lineHeight: 16, textAlign: 'center' },
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#FFFFFF' },
   exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: '#F7F8FA' },
   exportOverlayText: { color: '#4B5563', fontSize: 14, fontWeight: '700' },
