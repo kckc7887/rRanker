@@ -1,5 +1,4 @@
 import type { Player, ScoreRecord } from '@/domain/models';
-import { DX_RATING_TIER_MINS } from '@/domain/dx-rating-theme';
 import {
   formatAchievement,
   isNearMissAchievement,
@@ -63,11 +62,16 @@ export function minimumBestImageHeight(width: number): number {
 export function ratingFrameIndex(rating: number): number {
   const value = Number.isFinite(rating) ? Math.max(0, Math.floor(rating)) : 0;
   let index = 0;
-  for (let cursor = 0; cursor < DX_RATING_TIER_MINS.length; cursor += 1) {
-    if (value >= DX_RATING_TIER_MINS[cursor]!) index = cursor;
+  for (let cursor = 0; cursor < BEST_IMAGE_RATING_FRAME_MINS.length; cursor += 1) {
+    if (value >= BEST_IMAGE_RATING_FRAME_MINS[cursor]!) index = cursor;
   }
   return index;
 }
+
+/** 导出图的 11 张原始 Rating 框边界；与应用内渐变主题独立。 */
+export const BEST_IMAGE_RATING_FRAME_MINS = [
+  0, 1000, 2000, 4000, 7000, 10000, 12000, 13000, 14000, 14500, 15000,
+] as const;
 
 export function parseBestImageHeightMessage(data: string, expectedWidth: number): number | null {
   try {

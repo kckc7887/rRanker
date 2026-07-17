@@ -12,10 +12,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
 import { GamePickerSheet } from '@/components/GamePickerSheet';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
-import {
-  LOCAL_MAIMAI_ACCOUNT_ID,
-  type BoundAccount,
-} from '@/domain/bound-account';
+import type { BoundAccount } from '@/domain/bound-account';
 import {
   findGame,
   findProvider,
@@ -39,12 +36,14 @@ function sessionModeLabel(session: ProviderSession | undefined): string {
   if (!session) return '无凭据';
   if (session.mode === 'jwt') return '仅登录（不可上传）';
   if (session.mode === 'import-token') return '已可上传';
-  if (session.mode === 'lxns-oauth') return 'OAuth（可同步）';
+  if (session.mode === 'lxns-oauth') return 'OAuth（可上传）';
   return 'Cookie（当前会话）';
 }
 
 function isBoundRemoteAccount(account: BoundAccount): boolean {
-  return account.gameId === 'maimai' && account.id !== LOCAL_MAIMAI_ACCOUNT_ID;
+  return account.gameId === 'maimai'
+    && account.providerId !== 'local'
+    && account.providerId !== 'maimai-test';
 }
 
 export default function GameAccountsScreen() {
@@ -110,6 +109,12 @@ export default function GameAccountsScreen() {
   const openLogin = (gameId: GameId, provider: ProviderOption) => {
     if (!provider.available) {
       Alert.alert(provider.title, '绑定尚未实现，待后续开放。');
+      return;
+    }
+    if (provider.id === 'local' || provider.id === 'maimai-test') {
+      const account = boundAccounts.find((item) => item.providerId === provider.id);
+      if (account) onSelectAccount(account);
+      setPickerVisible(false);
       return;
     }
     setExpandedGameId(gameId);
