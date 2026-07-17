@@ -54,6 +54,7 @@ import {
   type AppliedBestImageStyleSelection,
   type BestImageCollectionChoice,
   type BestImageCollectionKind,
+  type BestImageRatingStyle,
   type BestImageStyleSelections,
 } from '@/features/best-image/best-image-style-preferences';
 import { useBestImageCollections } from '@/features/best-image/use-best-image-collections';
@@ -174,6 +175,7 @@ export default function BestImageScreen() {
   const [coverProgress, setCoverProgress] = useState({ completed: 0, total: 0 });
   const [activePicker, setActivePicker] = useState<BestImageCollectionKind | null>(null);
   const [styleSelections, setStyleSelections] = useState<BestImageStyleSelections>({});
+  const [ratingStyle, setRatingStyle] = useState<BestImageRatingStyle>('game');
   const [stylePreferencesReady, setStylePreferencesReady] = useState(false);
   const [quantityText, setQuantityText] = useState(String(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.quantity));
   const [quantity, setQuantity] = useState(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.quantity);
@@ -183,6 +185,7 @@ export default function BestImageScreen() {
   const [splitVersions, setSplitVersions] = useState(false);
   const [achievement, setAchievement] = useState<BestImageAchievementFilter>(null);
   const [strictAchievement, setStrictAchievement] = useState(false);
+  const [nearMiss, setNearMiss] = useState(false);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [exportPageIndex, setExportPageIndex] = useState<number | null>(null);
   const [exportHeight, setExportHeight] = useState(minimumBestImageHeight(1080));
@@ -220,6 +223,7 @@ export default function BestImageScreen() {
     bestImageStylePreferencesStore.load(activeAccountId).then((preferences) => {
       if (cancelled) return;
       setStyleSelections(preferences.selections);
+      setRatingStyle(preferences.ratingStyle);
       setStylePreferencesReady(true);
     });
     return () => { cancelled = true; };
@@ -227,8 +231,8 @@ export default function BestImageScreen() {
 
   useEffect(() => {
     if (!stylePreferencesReady) return;
-    void bestImageStylePreferencesStore.save(activeAccountId, styleSelections).catch(() => undefined);
-  }, [activeAccountId, stylePreferencesReady, styleSelections]);
+    void bestImageStylePreferencesStore.save(activeAccountId, styleSelections, ratingStyle).catch(() => undefined);
+  }, [activeAccountId, ratingStyle, stylePreferencesReady, styleSelections]);
 
   useEffect(() => {
     const items = collections.data?.items;
@@ -294,8 +298,9 @@ export default function BestImageScreen() {
       minimumAchievement,
       achievement,
       strictAchievement,
+      nearMiss,
     },
-  ), [achievement, maimai?.currentVersionTitle, maimai?.records, minimumAchievement, quantity, splitVersions, strictAchievement, versions]);
+  ), [achievement, maimai?.currentVersionTitle, maimai?.records, minimumAchievement, nearMiss, quantity, splitVersions, strictAchievement, versions]);
   const scoreSections = useMemo<BestImageScoreSection[]>(() => imageType === 'best50'
     ? maimai?.bestSections ?? []
     : customSections, [customSections, imageType, maimai?.bestSections]);
@@ -337,13 +342,14 @@ export default function BestImageScreen() {
     scoreSections: page.sections,
     coverUrls,
     hiddenStyles,
+    ratingStyle,
     pageIndex: page.pageIndex,
     pageCount: page.pageCount,
     ...embeddedAssets,
-  })) : null, [coverUrls, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating]);
+  })) : null, [coverUrls, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle]);
   const htmlPagesRef = useRef(htmlPages);
   htmlPagesRef.current = htmlPages;
-  const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, hiddenStyles, pages]);
+  const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages]);
   const inlineWebViewSources = useMemo(() => htmlPages ? inlineBestImageWebViewSources(htmlPages) : null, [htmlPages]);
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -573,11 +579,28 @@ export default function BestImageScreen() {
         <View style={styles.chipRow}>
           {FS_ACHIEVEMENTS.map((item) => <ChoiceChip key={item.value} label={item.label} selected={achievement?.family === 'fs' && achievement.value === item.value} onPress={() => setAchievement({ family: 'fs', value: item.value })} />)}
         </View>
+        <ChoiceChip accessibilityLabel="寸筛选" label="寸" selected={nearMiss} onPress={() => setNearMiss((value) => !value)} />
         <ChoiceChip accessibilityLabel="严格筛选" label="严格筛选" disabled={achievement === null} selected={strictAchievement} onPress={() => setStrictAchievement((value) => !value)} />
       </View> : null}
 
       <Text style={[styles.label, styles.sectionLabel]}>样式选择</Text>
       <View style={styles.styleList}>
+        <View style={styles.ratingStyleRow}>
+          <View style={styles.styleCopy}>
+            <Text style={styles.styleName}>Rating 框</Text>
+            <Text style={styles.styleValue}>游戏样式保留原框；应用样式使用当前应用配色</Text>
+          </View>
+          <View style={styles.ratingStyleChoices}>
+            <View style={styles.chipRow}>
+              <ChoiceChip label="游戏样式" selected={ratingStyle === 'game'} onPress={() => setRatingStyle('game')} />
+              <ChoiceChip label="应用样式" selected={ratingStyle !== 'game'} onPress={() => setRatingStyle('app-capsule')} />
+            </View>
+            {ratingStyle !== 'game' ? <View style={styles.chipRow}>
+              <ChoiceChip label="胶囊" selected={ratingStyle === 'app-capsule'} onPress={() => setRatingStyle('app-capsule')} />
+              <ChoiceChip label="圆角矩形" selected={ratingStyle === 'app-rect'} onPress={() => setRatingStyle('app-rect')} />
+            </View> : null}
+          </View>
+        </View>
         {STYLE_ITEMS.map(({ kind, label }) => {
           const selection = styleSelections[kind];
           const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;
@@ -694,6 +717,8 @@ const styles = StyleSheet.create({
   chipTextSelected: { color: '#246BFD' },
   chipTextDisabled: { color: '#9CA3AF' },
   styleList: { overflow: 'hidden', borderRadius: 16, backgroundColor: '#FFFFFF' },
+  ratingStyleRow: { minHeight: 88, gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
+  ratingStyleChoices: { gap: 8 },
   styleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
   styleRowPressed: { backgroundColor: '#F3F6FA' },
   stylePreview: { width: 132, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
