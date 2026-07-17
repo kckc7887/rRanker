@@ -164,6 +164,7 @@ describe('resolveUploadTargets', () => {
   it('allows local, import-token diving-fish and OAuth LXNS targets', () => {
     const accounts = [
       createLocalMaimaiAccount('本地', 0),
+      createLocalMaimaiAccount('本地二号', 0, 'maimai:local:second'),
       createMaxedMaimaiTestAccount(),
       createMaimaiBoundAccount({
         providerId: 'diving-fish',
@@ -204,7 +205,8 @@ describe('resolveUploadTargets', () => {
     expect(withTokens.find((t) => t.account.id === id1)?.writable).toBe(true);
     expect(withTokens.find((t) => t.account.id === id2)?.writable).toBe(true);
     expect(withTokens.find((t) => t.account.providerId === 'lxns')?.writable).toBe(true);
-    expect(withTokens.find((t) => t.account.id.includes('local'))?.writable).toBe(true);
+    expect(withTokens.filter((t) => t.account.providerId === 'local')).toHaveLength(2);
+    expect(withTokens.filter((t) => t.account.providerId === 'local').every((t) => t.writable)).toBe(true);
     expect(withTokens.find((t) => t.account.providerId === 'maimai-test')?.writable).toBe(false);
   });
 });

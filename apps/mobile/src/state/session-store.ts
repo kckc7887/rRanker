@@ -37,13 +37,22 @@ export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthS
   await new SecureSessionStore().updateAccountSession(accountId, next);
 }
 
-function maimaiProviders(providerId: ProviderId, session: ProviderSession | null, accountId?: string): {
+function maimaiProviders(
+  providerId: ProviderId,
+  session: ProviderSession | null,
+  accountId?: string,
+  displayName?: string,
+): {
   scoreProvider: AnyScoreProvider;
   catalogProvider: DetailedCatalogProvider;
 } {
   if (providerId === 'local') {
     return {
-      scoreProvider: new LocalMaimaiScoreProvider(localRepository),
+      scoreProvider: new LocalMaimaiScoreProvider(
+        localRepository,
+        accountId ?? LOCAL_MAIMAI_ACCOUNT_ID,
+        displayName ?? '本地玩家',
+      ),
       catalogProvider: new LxnsCatalogProvider(),
     };
   }
@@ -96,12 +105,13 @@ interface SessionState {
   }) => void;
   upsertBoundAccount: (account: BoundAccount) => void;
   updateBoundAccountScore: (accountId: string, scoreDisplay: string, displayName?: string) => void;
+  renameLocalAccount: (accountId: string, displayName: string) => void;
   selectBoundAccount: (accountId: string) => void;
   removeBoundAccount: (accountId: string) => void;
   setActiveProviderId: (providerId: ProviderId) => void;
   setActiveGameId: (gameId: GameId) => void;
   clearSession: () => void;
-  finishRestore: (vault: SessionVault | ProviderSession | null) => void;
+  finishRestore: (vault: SessionVault | ProviderSession | null, localAccounts?: BoundAccount[]) => void;
   failRestore: (message: string) => void;
 }
 
@@ -116,6 +126,7 @@ function providersForAccount(account: BoundAccount, sessionsByAccountId: Session
     account.providerId ?? 'local',
     sessionsByAccountId[account.id] ?? null,
     account.id,
+    account.displayName,
   );
 }
 
@@ -207,6 +218,22 @@ export const useSession = create<SessionState>((set, get) => ({
       }),
     });
   },
+  renameLocalAccount: (accountId, displayName) => {
+    const current = get();
+    const account = current.boundAccounts.find(
+      (item) => item.id === accountId && item.providerId === 'local',
+    );
+    if (!account) return;
+    const renamed = { ...account, displayName };
+    set({
+      boundAccounts: current.boundAccounts.map((item) => (
+        item.id === accountId ? renamed : item
+      )),
+      ...(current.activeAccountId === accountId
+        ? providersForAccount(renamed, current.sessionsByAccountId)
+        : {}),
+    });
+  },
   selectBoundAccount: (accountId) => {
     const account = get().boundAccounts.find((item) => item.id === accountId);
     if (!account) return;
@@ -270,20 +297,22 @@ export const useSession = create<SessionState>((set, get) => ({
     if (match) get().selectBoundAccount(match.id);
   },
   clearSession: () => {
-    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const localAccounts = get().boundAccounts.filter((account) => account.providerId === 'local');
+    const local = localAccounts.find((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)
+      ?? createLocalMaimaiAccount('本地玩家', 0);
     set({
       sessionsByAccountId: {},
       session: null,
-      boundAccounts: ensureBuiltinAccounts([local]),
+      boundAccounts: ensureBuiltinAccounts(localAccounts.length > 0 ? localAccounts : [local]),
       activeAccountId: local.id,
       activeGameId: 'maimai',
       activeProviderId: 'local',
-      ...maimaiProviders('local', null, local.id),
+      ...maimaiProviders('local', null, local.id, local.displayName),
       restoreStatus: 'ready',
       restoreError: null,
     });
   },
-  finishRestore: (input) => {
+  finishRestore: (input, localAccounts = []) => {
     // 兼容旧单会话 restore
     if (input && 'mode' in input) {
       const session = input as ProviderSession;
@@ -296,7 +325,7 @@ export const useSession = create<SessionState>((set, get) => ({
       set({
         sessionsByAccountId: { [pending.id]: session },
         session,
-        boundAccounts: ensureBuiltinAccounts([pending]),
+        boundAccounts: ensureBuiltinAccounts([...localAccounts, pending]),
         activeAccountId: pending.id,
         activeGameId: 'maimai',
         activeProviderId: 'diving-fish',
@@ -310,7 +339,10 @@ export const useSession = create<SessionState>((set, get) => ({
     const vault = input as SessionVault | null;
     if (vault) {
       const sessionsByAccountId = sessionsMapFromVault(vault);
-      const boundAccounts = ensureBuiltinAccounts(vault.accounts.map(boundFromStored));
+      const boundAccounts = ensureBuiltinAccounts([
+        ...localAccounts,
+        ...vault.accounts.map(boundFromStored),
+      ]);
       const activeId = vault.activeAccountId
         && boundAccounts.some((account) => account.id === vault.activeAccountId)
         ? vault.activeAccountId
@@ -332,15 +364,17 @@ export const useSession = create<SessionState>((set, get) => ({
       return;
     }
 
-    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const boundAccounts = ensureBuiltinAccounts(localAccounts);
+    const local = boundAccounts.find((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)
+      ?? createLocalMaimaiAccount('本地玩家', 0);
     set({
       sessionsByAccountId: {},
       session: null,
-      boundAccounts: ensureBuiltinAccounts([local]),
+      boundAccounts,
       activeAccountId: local.id,
       activeGameId: 'maimai',
       activeProviderId: 'local',
-      ...maimaiProviders('local', null, local.id),
+      ...maimaiProviders('local', null, local.id, local.displayName),
       restoreStatus: 'ready',
       restoreError: null,
     });
@@ -363,9 +397,14 @@ export const useSession = create<SessionState>((set, get) => ({
 
 export async function restoreSession(
   load: () => Promise<SessionVault | ProviderSession | null>,
+  loadLocalAccounts?: () => Promise<BoundAccount[]>,
 ): Promise<void> {
   try {
-    useSession.getState().finishRestore(await load());
+    const input = await load();
+    const localAccounts = loadLocalAccounts
+      ? await loadLocalAccounts().catch(() => [])
+      : [];
+    useSession.getState().finishRestore(input, localAccounts);
   } catch {
     useSession.getState().failRestore('无法读取本机登录状态，当前使用脱敏测试数据');
   }

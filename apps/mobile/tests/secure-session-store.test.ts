@@ -37,6 +37,14 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect(vault.accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:a']);
   });
 
+  it('允许额外本地玩家作为上次活跃账号', async () => {
+    const store = new SecureSessionStore();
+    await store.setActiveAccountId('maimai:local:second');
+    const vault = await store.loadVault();
+    expect(vault.activeAccountId).toBe('maimai:local:second');
+    expect(vault.accounts).toEqual([]);
+  });
+
   it('远程账号删除仍保留其他远程账号和内置活跃状态', async () => {
     const store = new SecureSessionStore();
     await store.upsertAccount(account('maimai:diving-fish:a'));

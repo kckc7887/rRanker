@@ -19,7 +19,7 @@ import {
   convertHubScoresToLocalRecords,
   convertHubScoresToLxnsRecords,
 } from '@/services/score-hub-sync-map';
-import { LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
+import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
 import { uploadRecordsToLxns } from '@/services/lxns-upload';
 import { buildScoreSnapshot } from '@/services/score-service';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
@@ -112,7 +112,7 @@ export function resolveUploadTargets(
   return accounts
     .filter((account) => account.gameId === 'maimai')
     .map((account) => {
-      if (account.id === LOCAL_MAIMAI_ACCOUNT_ID) {
+      if (account.providerId === 'local') {
         return {
           account,
           writable: true,
@@ -266,7 +266,7 @@ export async function uploadMaimaiFromFriendCode(input: {
         };
         const snapshot = buildScoreSnapshot({
           id: friendCode,
-          displayName: '本地玩家',
+          displayName: target.account.displayName,
           rating: 0,
           additionalRating: 0,
           source,

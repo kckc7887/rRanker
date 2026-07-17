@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import type { GameId, RemoteProviderId } from '@/domain/game-bind-options';
-import { LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID, TEST_ACCOUNT_ID } from '@/domain/bound-account';
+import { isLocalMaimaiAccountId, MAIMAI_TEST_ACCOUNT_ID, TEST_ACCOUNT_ID } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 
 const LEGACY_SESSION_KEY = 'rranker.diving-fish.session.v1';
@@ -143,7 +143,7 @@ export class SecureSessionStore {
 
   async setActiveAccountId(accountId: string): Promise<void> {
     const vault = await this.loadVault();
-    const builtin = accountId === LOCAL_MAIMAI_ACCOUNT_ID
+    const builtin = isLocalMaimaiAccountId(accountId)
       || accountId === MAIMAI_TEST_ACCOUNT_ID
       || accountId === TEST_ACCOUNT_ID;
     if (!builtin && !vault.accounts.some((account) => account.id === accountId)) return;
