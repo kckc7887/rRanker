@@ -528,6 +528,7 @@ export default function BestImageScreen() {
             }} scrollEnabled={false} source={{ html, baseUrl: 'https://assets2.lxns.net/' }} style={styles.webview} testID={`best-image-html-preview-${index}`} />
           </View>}
           showsHorizontalScrollIndicator={false}
+          removeClippedSubviews={false}
           style={styles.previewPager}
           windowSize={3}
         /> : <View style={styles.loadingPreview}>
