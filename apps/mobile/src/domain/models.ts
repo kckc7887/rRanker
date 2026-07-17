@@ -6,7 +6,7 @@ export type Difficulty =
   | 'master'
   | 'remaster'
   | 'unknown';
-export type DataSourceKind = 'fixture' | 'diving-fish' | 'lxns' | 'cache';
+export type DataSourceKind = 'fixture' | 'diving-fish' | 'lxns' | 'local' | 'generated' | 'cache';
 
 export interface DataSource {
   kind: DataSourceKind;

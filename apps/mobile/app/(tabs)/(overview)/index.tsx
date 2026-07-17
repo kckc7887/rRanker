@@ -6,7 +6,7 @@ import { DxRatingCard } from '@/components/DxRatingCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
-import type { BoundAccount } from '@/domain/bound-account';
+import { LOCAL_MAIMAI_ACCOUNT_ID, type BoundAccount } from '@/domain/bound-account';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
@@ -22,10 +22,11 @@ import {
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { queryClient } from '@/state/query-client';
-import { useSession } from '@/state/session-store';
+import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const sessions = new SecureSessionStore();
+const LOCAL_ONLY_SELECTION = [LOCAL_MAIMAI_ACCOUNT_ID] as const;
 
 export default function OverviewScreen() {
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
@@ -43,6 +44,7 @@ export default function OverviewScreen() {
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [uploadVisible, setUploadVisible] = useState(false);
+  const [uploadLocalOnly, setUploadLocalOnly] = useState(false);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -117,6 +119,16 @@ export default function OverviewScreen() {
     setPickerVisible(false);
   };
 
+  const openUpload = (localOnly: boolean) => {
+    setUploadLocalOnly(localOnly);
+    setUploadVisible(true);
+  };
+
+  const closeUpload = () => {
+    setUploadVisible(false);
+    setUploadLocalOnly(false);
+  };
+
   return (
     <View style={styles.page}>
       <QueryStateView<GameDataBundle>
@@ -131,7 +143,9 @@ export default function OverviewScreen() {
             style={styles.scroll}
             testID="overview-scroll"
             alwaysBounceVertical
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void syncData()}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => (
+              bundle.providerId === 'local' ? openUpload(true) : void syncData()
+            )}
               tintColor="#246BFD" colors={['#246BFD']} />}
             contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 20 }]}
             scrollIndicatorInsets={{ bottom: tabBottomInset }}
@@ -169,12 +183,22 @@ export default function OverviewScreen() {
               <DxRatingCard label={profile.ratingLabel} display="—" rating={null} meta="空空空" />
             )}
 
-            {bundle.payload.kind === 'maimai' ? (
+            {bundle.payload.kind === 'maimai' && bundle.providerId === 'local' ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="同步本地查分器数据，使用好友码"
+                onPress={() => openUpload(true)}
+                style={({ pressed }) => [styles.syncButton, pressed && styles.syncPressed]}
+              >
+                <Text style={styles.syncText}>同步数据</Text>
+                <Text style={styles.actionHint}>好友码</Text>
+              </Pressable>
+            ) : bundle.payload.kind === 'maimai' ? (
               <View style={styles.actionRow}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`上传数据，${compactUploadPhaseLabel(uploadPhase)}`}
-                  onPress={() => setUploadVisible(true)}
+                  onPress={() => openUpload(false)}
                   style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
                 >
                   <Text style={styles.syncText}>上传数据</Text>
@@ -265,9 +289,11 @@ export default function OverviewScreen() {
         accounts={boundAccounts}
         sessionsByAccountId={sessionsByAccountId}
         catalog={catalogData}
-        onClose={() => setUploadVisible(false)}
+        onClose={closeUpload}
         onPhaseChange={setUploadPhase}
         onFinished={finishUpload}
+        temporarySelectedAccountIds={uploadLocalOnly ? LOCAL_ONLY_SELECTION : undefined}
+        onLxnsTokensRotated={applyLxnsTokenRotation}
       />
     </View>
   );
@@ -290,7 +316,9 @@ function formatBestSectionMeta(sections: BestListSection[]): string {
 function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'lxns') return '落雪咖啡屋';
   if (providerId === 'diving-fish') return '水鱼查分器';
-  return '本地预览';
+  if (providerId === 'local') return '本地查分器';
+  if (providerId === 'maimai-test') return '测试查分器';
+  return '本地';
 }
 
 const styles = StyleSheet.create({

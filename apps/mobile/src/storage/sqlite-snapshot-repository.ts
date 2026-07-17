@@ -12,9 +12,15 @@ function scoreResourceKey(accountId: string): string {
 }
 
 export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepository, ResourceRepository {
-  private databasePromise = SQLite.openDatabaseAsync('rranker.db');
+  private databasePromise: ReturnType<typeof SQLite.openDatabaseAsync> | null = null;
+
+  private database(): ReturnType<typeof SQLite.openDatabaseAsync> {
+    this.databasePromise ??= SQLite.openDatabaseAsync('rranker.db');
+    return this.databasePromise;
+  }
+
   async initialize(): Promise<void> {
-    const db = await this.databasePromise;
+    const db = await this.database();
     await db.execAsync(`PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS score_snapshots (
         id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL,
@@ -35,7 +41,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
   }
   async getLatest(accountId: string): Promise<ScoreSnapshot | null> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await this.database();
     const row = await db.getFirstAsync<{ schema_version: number; payload: string }>(
       'SELECT schema_version, payload FROM account_score_snapshots WHERE account_id = ?', accountId,
     );
@@ -52,7 +58,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
   }
   async save(accountId: string, snapshot: ScoreSnapshot): Promise<void> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await this.database();
     await db.runAsync(
       `INSERT INTO account_score_snapshots (account_id, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
        ON CONFLICT(account_id) DO UPDATE SET schema_version=excluded.schema_version,
@@ -65,7 +71,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
   }
   async getLatestCatalog(): Promise<CatalogSnapshot | null> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await this.database();
     const row = await db.getFirstAsync<{ schema_version: number; payload: string }>(
       'SELECT schema_version, payload FROM catalog_snapshots WHERE id = ?', 1,
     );
@@ -79,7 +85,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
   }
   async saveCatalog(catalog: CatalogSnapshot): Promise<void> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await this.database();
     await db.runAsync(
       `INSERT INTO catalog_snapshots (id, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET schema_version=excluded.schema_version,
@@ -89,7 +95,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
   }
   async getResource<T>(key: string, schemaVersion: number): Promise<T | null> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await this.database();
     const row = await db.getFirstAsync<{ schema_version: number; payload: string }>(
       'SELECT schema_version, payload FROM resource_snapshots WHERE resource_key = ?', key,
     );
@@ -106,7 +112,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
   }
   async saveResource<T>(key: string, schemaVersion: number, updatedAt: string, value: T): Promise<void> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await this.database();
     await db.runAsync(
       `INSERT INTO resource_snapshots (resource_key, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
        ON CONFLICT(resource_key) DO UPDATE SET schema_version=excluded.schema_version,
@@ -116,12 +122,12 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
   }
   async deleteResource(key: string): Promise<void> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await this.database();
     await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', key);
   }
   async clear(accountId?: string): Promise<void> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await this.database();
     if (accountId) {
       await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
       await this.deleteResource(scoreResourceKey(accountId));

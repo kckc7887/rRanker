@@ -10,6 +10,7 @@ import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService } from '@/services/score-service';
 import { useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
 
 const repository = new SqliteSnapshotRepository();
 const GAME_DATA_QUERY_VERSION = 4;
@@ -49,13 +50,14 @@ export function useGameData() {
         };
       }
 
-      const persist = !!session;
+      const persistScores = shouldPersistScoreSnapshot(activeProviderId);
+      const persistCatalog = shouldPersistMaimaiCatalog(activeProviderId);
       const snapshot = await new ScoreService(
         scoreProvider,
         catalogProvider,
         activeAccountId,
-        persist ? repository : undefined,
-        persist ? repository : undefined,
+        persistScores ? repository : undefined,
+        persistCatalog ? repository : undefined,
       ).load();
 
       return {

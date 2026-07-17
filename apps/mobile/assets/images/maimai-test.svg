@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="测试查分器机器人头像">
+  <defs>
+    <linearGradient id="bg" x1="32" y1="24" x2="224" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7DD3FC"/>
+      <stop offset="1" stop-color="#6366F1"/>
+    </linearGradient>
+    <linearGradient id="face" x1="66" y1="70" x2="190" y2="194" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCEBFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#bg)"/>
+  <circle cx="128" cy="42" r="10" fill="#FDE047" stroke="#27345D" stroke-width="7"/>
+  <path d="M128 52v22" stroke="#27345D" stroke-width="9" stroke-linecap="round"/>
+  <rect x="46" y="67" width="164" height="144" rx="48" fill="url(#face)" stroke="#27345D" stroke-width="10"/>
+  <rect x="29" y="112" width="24" height="58" rx="12" fill="#FDE047" stroke="#27345D" stroke-width="8"/>
+  <rect x="203" y="112" width="24" height="58" rx="12" fill="#FDE047" stroke="#27345D" stroke-width="8"/>
+  <circle cx="94" cy="132" r="17" fill="#27345D"/>
+  <circle cx="162" cy="132" r="17" fill="#27345D"/>
+  <circle cx="88" cy="126" r="6" fill="#7DD3FC"/>
+  <circle cx="156" cy="126" r="6" fill="#7DD3FC"/>
+  <path d="M91 169c20 19 54 19 74 0" fill="none" stroke="#27345D" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="72" cy="162" r="8" fill="#F9A8D4" opacity=".8"/>
+  <circle cx="184" cy="162" r="8" fill="#F9A8D4" opacity=".8"/>
+</svg>

@@ -72,8 +72,15 @@ describe('best image html', () => {
   });
 
   it('selects all eleven rating frame tiers at their boundaries', () => {
-    expect([0, 1000, 2000, 4000, 7000, 10000, 12000, 13000, 14000, 15000, 16000]
-      .map(ratingFrameIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    const boundaries = [0, 1000, 2000, 4000, 7000, 10000, 12000, 13000, 14000, 14500, 15000];
+    expect(boundaries.map(ratingFrameIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    boundaries.slice(1).forEach((boundary, index) => {
+      expect(ratingFrameIndex(boundary - 1)).toBe(index);
+    });
+    expect(ratingFrameIndex(14499)).toBe(8);
+    expect(ratingFrameIndex(14999)).toBe(9);
+    expect(ratingFrameIndex(15000)).toBe(10);
+    expect(ratingFrameIndex(16000)).toBe(10);
   });
 
   it('renders escaped player data and verified LXNS asset paths', () => {

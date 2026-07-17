@@ -77,7 +77,7 @@ export function ProviderLoginSheet({
   };
 
   const validateAndActivate = async (newSession: ProviderSession) => {
-    const providerId = provider?.id ?? 'diving-fish';
+    const providerId = provider?.id === 'lxns' ? 'lxns' : 'diving-fish';
     try {
       await validateAndActivateSession(newSession, {
         createProvider: (session) => (

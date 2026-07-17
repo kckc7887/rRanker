@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSession } from '@/state/session-store';
 import { ScoreService } from '@/services/score-service';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
 
 const repository = new SqliteSnapshotRepository();
 
@@ -14,7 +15,8 @@ export function useScoreSnapshot() {
   const scoreProvider = useSession((s) => s.scoreProvider);
   const catalogProvider = useSession((s) => s.catalogProvider);
   const enabled = activeGameId === 'maimai';
-  const persistScores = enabled && !!session;
+  const persistScores = enabled && shouldPersistScoreSnapshot(activeProviderId);
+  const persistCatalog = enabled && shouldPersistMaimaiCatalog(activeProviderId);
   const query = useQuery({
     enabled,
     queryKey: ['score-snapshot', activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'fixture'],
@@ -23,7 +25,7 @@ export function useScoreSnapshot() {
       catalogProvider,
       activeAccountId,
       persistScores ? repository : undefined,
-      persistScores ? repository : undefined,
+      persistCatalog ? repository : undefined,
     ).load(),
   });
   return {

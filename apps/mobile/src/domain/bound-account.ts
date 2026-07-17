@@ -17,10 +17,13 @@ export type BoundAccount = {
 
 export const TEST_ACCOUNT_ID = 'test:empty';
 export const LOCAL_MAIMAI_ACCOUNT_ID = 'maimai:local';
+export const MAIMAI_TEST_ACCOUNT_ID = 'maimai:test';
 
 const PROVIDER_TITLES: Record<ProviderId, string> = {
   'diving-fish': '水鱼查分器',
   lxns: '落雪查分器',
+  local: '本地查分器',
+  'maimai-test': '测试查分器',
 };
 
 export function createTestBoundAccount(): BoundAccount {
@@ -40,11 +43,24 @@ export function createLocalMaimaiAccount(displayName: string, rating: number): B
   return {
     id: LOCAL_MAIMAI_ACCOUNT_ID,
     gameId: 'maimai',
-    providerId: 'diving-fish',
+    providerId: 'local',
     displayName,
     scoreLabel: profile.ratingLabel,
     scoreDisplay: formatPlayerScore(rating, profile.ratingDigits),
-    providerTitle: '本地预览',
+    providerTitle: PROVIDER_TITLES.local,
+  };
+}
+
+export function createMaxedMaimaiTestAccount(rating = 0): BoundAccount {
+  const profile = getGameProfile('maimai');
+  return {
+    id: MAIMAI_TEST_ACCOUNT_ID,
+    gameId: 'maimai',
+    providerId: 'maimai-test',
+    displayName: '测试玩家',
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: formatPlayerScore(rating, profile.ratingDigits),
+    providerTitle: PROVIDER_TITLES['maimai-test'],
   };
 }
 
