@@ -1,31 +1,29 @@
-import { memo, useDeferredValue, useMemo, useState } from 'react';
+import { memo, useDeferredValue, useMemo } from 'react';
 import { FlatList, StyleSheet, Text, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
-import { LazyTabScreen } from '@/components/LazyTabScreen';
+import { FocusedTabScreen } from '@/components/FocusedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import { matchesConstantRange } from '@/domain/maimai-filters';
 import type { DataSource, ScoreRecord } from '@/domain/models';
-import type { VersionNameLocale } from '@/domain/version-names';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
 
 export default function RecordsTabScreen() {
-  return <LazyTabScreen><RecordsScreen /></LazyTabScreen>;
+  return <FocusedTabScreen><RecordsScreen /></FocusedTabScreen>;
 }
 
 export function RecordsScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const tabBottomInset = useNativeTabBottomInset();
-  const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
   const {
-    difficulty, version, type, constantMin, constantMax,
-    setDifficulty, setVersion, setType, setConstantMin, setConstantMax,
+    difficulty, version, type, constantMin, constantMax, versionLocale,
+    setDifficulty, setVersion, setType, setConstantMin, setConstantMax, setVersionLocale,
   } = useRecordsFilter();
 
   const versions = useMemo<VersionFilterOption[]>(() => {
