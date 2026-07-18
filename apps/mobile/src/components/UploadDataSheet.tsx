@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Pressable,
@@ -27,6 +26,7 @@ import {
 import { uploadPrefsStore } from '@/storage/upload-prefs-store';
 import { ProviderError } from '@/providers/errors';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
+import { useNotification } from '@/components/AppNotification';
 
 function accountIcon(account: BoundAccount) {
   if (account.providerId) {
@@ -76,6 +76,7 @@ export function UploadDataSheet({
   onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
+  const { showActionNotification, showNotification } = useNotification();
   const [friendCode, setFriendCode] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [prefsReady, setPrefsReady] = useState(false);
@@ -168,15 +169,15 @@ export function UploadDataSheet({
   const startUpload = async () => {
     if (running) return;
     if (!/^\d{15}$/.test(friendCode.trim())) {
-      Alert.alert('好友码无效', '请输入 15 位数字好友码。');
+      showNotification({ title: '好友码无效', message: '请输入 15 位数字好友码。', variant: 'warning' });
       return;
     }
     if (selectedIds.filter((id) => targets.some((t) => t.writable && t.account.id === id)).length === 0) {
-      Alert.alert('未选择目标', '请勾选至少一个可写入的查分器。');
+      showNotification({ title: '未选择目标', message: '请勾选至少一个可写入的查分器。', variant: 'warning' });
       return;
     }
     if (!catalog) {
-      Alert.alert('曲库未就绪', '请先同步曲库后再上传，否则无法匹配曲名。');
+      showNotification({ title: '曲库未就绪', message: '请先同步曲库后再上传，否则无法匹配曲名。', variant: 'warning' });
       return;
     }
 
@@ -194,12 +195,14 @@ export function UploadDataSheet({
         signal: abortRef.current,
         onPhase: applyPhase,
         onNeedFriendAccept: (botFriendCode) => {
-          Alert.alert(
-            '请同意好友申请',
-            botFriendCode
+          showActionNotification({
+            title: '请同意好友申请',
+            message: botFriendCode
               ? `Bot（${botFriendCode}）已向你发送舞萌 NET 好友申请。请打开舞萌 NET 接受后，本页会继续自动进行。`
               : '请打开舞萌 NET 接受 Bot 的好友申请，接受后本页会继续自动进行。',
-          );
+            variant: 'info',
+            actions: [{ label: '知道了', tone: 'default' }],
+          });
         },
         onLxnsTokensRotated,
       });
@@ -207,12 +210,13 @@ export function UploadDataSheet({
       try {
         await onFinished?.(result);
       } catch (refreshError) {
-        Alert.alert(
-          '页面刷新失败',
-          `成绩已上传并完成账号同步，但当前页面刷新失败：${
+        showNotification({
+          title: '页面刷新失败',
+          message: `成绩已上传并完成账号同步，但当前页面刷新失败：${
             refreshError instanceof Error ? refreshError.message : '请稍后手动同步。'
           }`,
-        );
+          variant: 'error',
+        });
       }
     } catch (error) {
       if (abortRef.current.aborted) {

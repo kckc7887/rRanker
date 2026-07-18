@@ -6,5 +6,14 @@ module.exports = defineConfig([
   expoConfig,
   {
     ignores: ['dist/*'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: 'react-native',
+          importNames: ['Alert'],
+          message: '请使用 @/components/AppNotification 提供的全局顶部通知。',
+        }],
+      }],
+    },
   },
 ]);

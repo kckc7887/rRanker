@@ -7,6 +7,7 @@ import type { ProviderId } from '@/domain/game-bind-options';
 let mockProviderId: ProviderId = 'local';
 let mockPinnedToolIds: string[] = [];
 const mockHydratePins = jest.fn(async () => undefined);
+const mockShowNotification = jest.fn();
 const mockLocal = createLocalMaimaiAccount('本地玩家', 0);
 const mockExtraLocal = createLocalMaimaiAccount('本地二号', 0, 'maimai:local:second');
 const mockWater = createMaimaiBoundAccount({
@@ -20,6 +21,9 @@ const mockLxns = createMaimaiBoundAccount({
 });
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('@/components/AppNotification', () => ({
+  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
+}));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
@@ -49,7 +53,7 @@ jest.mock('@/hooks/use-user-library', () => ({
   useUserLibrary: () => ({ data: [], isError: false }),
 }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({
-  useDetailedCatalog: () => ({ data: undefined, error: null, refetch: jest.fn() }),
+  useDetailedCatalog: () => ({ data: undefined, error: null, refetch: jest.fn(async () => ({ data: undefined })) }),
 }));
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: () => ({
@@ -123,6 +127,7 @@ describe('总览上传和同步操作', () => {
   beforeEach(() => {
     mockTemporarySelectedAccountIds = undefined;
     mockPinnedToolIds = [];
+    mockShowNotification.mockClear();
   });
 
   it('本地查分器页只显示使用好友码的同步按钮', async () => {
@@ -160,5 +165,16 @@ describe('总览上传和同步操作', () => {
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('置顶工具')).toBeTruthy();
     expect(screen.getByLabelText('打开置顶工具 DX Rating 计算器')).toBeTruthy();
+  });
+
+  it('同步失败时改用全局错误通知', async () => {
+    mockProviderId = 'diving-fish';
+    const screen = await render(<OverviewScreen />);
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 水鱼查分器'));
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '同步失败',
+      message: '舞萌曲库尚未就绪，请稍后重试',
+      variant: 'error',
+    }));
   });
 });
