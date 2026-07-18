@@ -124,6 +124,7 @@ describe('M2 song query screens', () => {
 
   it('searches aliases after debounce and supports empty filter state', async () => {
     const screen = await render(<SearchScreen />);
+    expect(screen.getByTestId('catalog-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
     expect(StyleSheet.flatten(screen.getByLabelText('最低定数').props.style)).toEqual(expect.objectContaining({
       minHeight: 44,
       paddingVertical: 0,

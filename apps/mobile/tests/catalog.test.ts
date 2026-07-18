@@ -1,4 +1,4 @@
-import { chartVersionKey, enrichRecordsWithCatalog, normalizeSongId } from '@/domain/catalog';
+import { chartVersionKey, enrichRecordsWithCatalog, isUtageSongId, normalizeSongId } from '@/domain/catalog';
 import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
 
 describe('catalog identity mapping', () => {
@@ -9,6 +9,8 @@ describe('catalog identity mapping', () => {
 
   it('keeps utage ids above 100000 intact', () => {
     expect(normalizeSongId(111388)).toBe('111388');
+    expect(isUtageSongId(111388)).toBe(true);
+    expect(isUtageSongId(11806)).toBe(false);
   });
 
   it('copies chart note totals into enriched score records for theoretical DXScore', () => {

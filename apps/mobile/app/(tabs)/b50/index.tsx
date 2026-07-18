@@ -43,6 +43,7 @@ export default function Best50Screen() {
         data={recordCount > 0 ? sections : undefined}
         renderData={(list) => (
           <SectionList
+            contentInsetAdjustmentBehavior="automatic"
             style={styles.list}
             contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
             scrollIndicatorInsets={{ bottom: tabBottomInset }}

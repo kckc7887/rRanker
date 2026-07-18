@@ -7,6 +7,7 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView
+      contentInsetAdjustmentBehavior="automatic"
       style={styles.page}
       contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 16 }]}
       scrollIndicatorInsets={{ bottom: tabBottomInset }}

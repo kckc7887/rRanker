@@ -10,6 +10,11 @@ export function normalizeSongId(songId: string | number): string {
   return String(numericId);
 }
 
+export function isUtageSongId(songId: string | number): boolean {
+  const numericId = Number(songId);
+  return Number.isSafeInteger(numericId) && numericId > 100000;
+}
+
 export function chartVersionKey(songId: string | number, type: ChartType, levelIndex: number): string {
   return `${normalizeSongId(songId)}:${type}:${levelIndex}`;
 }

@@ -102,7 +102,7 @@ const RecordResultsList = memo(function RecordResultsList({
   ]} /><Text style={styles.note}>共 {records.length} 条成绩</Text></View>,
   [catalogSource, records.length, source]);
 
-  return <FlatList style={styles.list}
+  return <FlatList testID="records-results-list" contentInsetAdjustmentBehavior="automatic" style={styles.list}
     contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
     scrollIndicatorInsets={{ bottom: tabBottomInset }} data={records} keyExtractor={recordKey}
     initialNumToRender={8} maxToRenderPerBatch={8} updateCellsBatchingPeriod={40} windowSize={5}

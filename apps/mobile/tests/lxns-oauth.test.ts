@@ -74,11 +74,18 @@ describe('mapLxnsScore', () => {
       id: 834,
       level_index: 4,
       achievements: 99,
-      type: 'utage',
+      type: 'dx',
       dx_score: null,
       dx_rating: 12.1,
     });
     expect(dx.type).toBe('DX');
     expect(dx.rating).toBe(12);
+    expect(() => mapLxnsScore({
+      id: 100123,
+      level_index: 0,
+      achievements: 99,
+      type: 'utage',
+      dx_score: null,
+    })).toThrow('宴会场成绩不能映射');
   });
 });

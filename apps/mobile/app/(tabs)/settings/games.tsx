@@ -226,6 +226,7 @@ export default function GameAccountsScreen() {
   return (
     <View style={styles.page}>
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 88 }]}
         scrollIndicatorInsets={{ bottom: tabBottomInset }}
       >

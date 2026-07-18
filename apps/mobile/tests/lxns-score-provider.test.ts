@@ -53,4 +53,29 @@ describe('LXNS player presentation', () => {
 
     await expect(provider.getRecords()).resolves.toMatchObject([{ dxScore: 1836 }]);
   });
+
+  it('omits utage records instead of exposing their fixed level_index 0 as BASIC', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      code: 200,
+      data: [
+        {
+          id: 834, song_name: '标准 BASIC', level: '4', level_index: 0,
+          achievements: 100, dx_score: 1000, dx_rating: 20, type: 'standard',
+        },
+        {
+          id: 100123, song_name: '宴会场', level: '宴', level_index: 0,
+          achievements: 100, dx_score: 3000, dx_rating: 0, type: 'utage',
+        },
+      ],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    const provider = new LxnsScoreProvider({
+      mode: 'lxns-oauth', accessToken: 'access-token', refreshToken: 'refresh-token',
+      expiresAt: Date.now() + 120_000, persistable: true,
+    });
+
+    await expect(provider.getRecords()).resolves.toMatchObject([
+      { songId: '834', title: '标准 BASIC', difficulty: 'basic', type: 'SD' },
+    ]);
+  });
 });

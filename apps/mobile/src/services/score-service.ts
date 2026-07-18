@@ -1,4 +1,4 @@
-import { enrichRecordsWithCatalog } from '@/domain/catalog';
+import { enrichRecordsWithCatalog, isUtageSongId } from '@/domain/catalog';
 import { buildBest50 } from '@/domain/rating';
 import type { CatalogSnapshot, Player, ScoreRecord, ScoreSnapshot } from '@/domain/models';
 import {
@@ -15,7 +15,10 @@ export function buildScoreSnapshot(
   rawRecords: readonly ScoreRecord[],
   catalog: CatalogSnapshot,
 ): ScoreSnapshot {
-  const records = enrichRecordsWithCatalog(rawRecords, catalog);
+  const records = enrichRecordsWithCatalog(
+    rawRecords.filter((record) => !isUtageSongId(record.songId)),
+    catalog,
+  );
   let best50 = buildBest50(player, records, catalog, player.source);
   const derivesRatingFromBest50 = player.source.kind === 'local' || player.source.kind === 'generated';
   const effectivePlayer = derivesRatingFromBest50
@@ -28,6 +31,26 @@ export function buildScoreSnapshot(
     best50,
     source: player.source,
     catalogSource: catalog.source,
+  };
+}
+
+function withoutUtageRecords(snapshot: ScoreSnapshot): ScoreSnapshot {
+  const records = snapshot.records.filter((record) => !isUtageSongId(record.songId));
+  const b35 = snapshot.best50.b35.filter((record) => !isUtageSongId(record.songId));
+  const b15 = snapshot.best50.b15.filter((record) => !isUtageSongId(record.songId));
+  const removed = snapshot.records.length - records.length;
+  if (removed === 0 && b35.length === snapshot.best50.b35.length && b15.length === snapshot.best50.b15.length) {
+    return snapshot;
+  }
+  return {
+    ...snapshot,
+    records,
+    best50: {
+      ...snapshot.best50,
+      b35,
+      b15,
+      unmatchedRecordCount: Math.max(0, snapshot.best50.unmatchedRecordCount - removed),
+    },
   };
 }
 
@@ -84,13 +107,14 @@ export class ScoreService {
     } catch (error) {
       const cached = await this.snapshotRepository?.getLatest(this.accountId);
       if (cached) {
+        const sanitized = withoutUtageRecords(cached);
         const needsLogin = error instanceof ProviderError && (error.code === 'authentication' || error.code === 'permission');
         return {
-          ...cached,
+          ...sanitized,
           source: {
-            ...cached.source,
+            ...sanitized.source,
             kind: 'cache',
-            label: `${needsLogin ? '登录已失效，请重新登录；' : ''}最近有效成绩快照（原：${cached.source.label}）`,
+            label: `${needsLogin ? '登录已失效，请重新登录；' : ''}最近有效成绩快照（原：${sanitized.source.label}）`,
             isStale: true,
           },
         };
