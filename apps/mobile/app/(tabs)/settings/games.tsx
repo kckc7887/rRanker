@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  InteractionManager,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
-import { GamePickerSheet } from '@/components/GamePickerSheet';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import {
@@ -19,6 +18,7 @@ import {
   type BoundAccount,
 } from '@/domain/bound-account';
 import {
+  GAME_OPTIONS,
   findGame,
   findProvider,
   type GameId,
@@ -28,7 +28,6 @@ import {
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import type { ProviderSession } from '@/providers/contracts';
-import { useGamePickerUi } from '@/state/game-picker-ui';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { queryClient } from '@/state/query-client';
@@ -61,18 +60,12 @@ export default function GameAccountsScreen() {
   const restoreError = useSession((s) => s.restoreError);
   const library = useUserLibrary();
   const tabBottomInset = useNativeTabBottomInset();
-  const expandedGameId = useGamePickerUi((s) => s.expandedGameId);
-  const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
-  const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [pickerVisible, setPickerVisible] = useState(false);
+  const [expandedGameId, setExpandedGameId] = useState<GameId | null>('maimai');
   const [loginProviderId, setLoginProviderId] = useState<ProviderId | null>(null);
   const [loginGameId, setLoginGameId] = useState<GameId | null>(null);
-  const [reopenPickerAfterLogin, setReopenPickerAfterLogin] = useState(false);
   const [renameAccount, setRenameAccount] = useState<BoundAccount | null>(null);
-
-  const managedAccounts = boundAccounts.filter((account) => account.gameId === 'maimai');
 
   const clearRemoteCaches = () => {
     for (const key of ['score-snapshot', 'game-data', 'songs', 'detailed-catalog', 'plates']) {
@@ -120,7 +113,6 @@ export default function GameAccountsScreen() {
       upsertBoundAccount(account);
       selectBoundAccount(account.id);
       await sessions.setActiveAccountId(account.id);
-      setPickerVisible(false);
       setRenameAccount(account);
     } catch (error) {
       showNotification({
@@ -167,13 +159,6 @@ export default function GameAccountsScreen() {
     ],
   });
 
-  const openPicker = () => {
-    setExpandedGameId('maimai');
-    setPickerVisible(true);
-  };
-
-  const closePicker = () => setPickerVisible(false);
-
   const openLogin = (gameId: GameId, provider: ProviderOption) => {
     if (!provider.available) {
       showNotification({ title: provider.title, message: '绑定尚未实现，待后续开放。', variant: 'info' });
@@ -186,32 +171,20 @@ export default function GameAccountsScreen() {
     if (provider.id === 'maimai-test') {
       const account = boundAccounts.find((item) => item.providerId === provider.id);
       if (account) onSelectAccount(account);
-      setPickerVisible(false);
       return;
     }
-    setExpandedGameId(gameId);
     setLoginGameId(gameId);
     setLoginProviderId(provider.id);
-    setReopenPickerAfterLogin(true);
-    setPickerVisible(false);
-    InteractionManager.runAfterInteractions(() => undefined);
   };
 
-  const closeLogin = (options?: { reopenPicker?: boolean }) => {
-    const shouldReopen = options?.reopenPicker ?? reopenPickerAfterLogin;
+  const closeLogin = () => {
     setLoginProviderId(null);
     setLoginGameId(null);
-    setReopenPickerAfterLogin(false);
-    if (shouldReopen) {
-      InteractionManager.runAfterInteractions(() => setPickerVisible(true));
-    }
   };
 
   const finishLogin = () => {
-    setReopenPickerAfterLogin(false);
     setLoginProviderId(null);
     setLoginGameId(null);
-    setPickerVisible(false);
   };
 
   const onSelectAccount = (account: BoundAccount) => {
@@ -219,125 +192,149 @@ export default function GameAccountsScreen() {
     void sessions.setActiveAccountId(account.id);
   };
 
+  const renderAccountCard = (account: BoundAccount) => {
+    const accountSession = sessionsByAccountId[account.id];
+    const isActive = account.id === activeAccountId;
+    const isLocal = account.providerId === 'local';
+    const isGeneratedTest = account.providerId === 'maimai-test';
+    return (
+      <View key={account.id} style={styles.card} testID={`account-${account.id}`}>
+        <Text style={styles.name}>{account.displayName}</Text>
+        <Text style={styles.meta}>{account.scoreLabel} {account.scoreDisplay || '—'}</Text>
+        <Text style={styles.meta}>
+          {isLocal
+            ? '数据位置：仅本机 SQLite'
+            : isGeneratedTest
+              ? '数据来源：曲库动态生成'
+              : account.providerId
+                ? `登录方式：${sessionModeLabel(accountSession)}`
+                : `数据来源：${account.providerTitle}`}
+        </Text>
+        <Text style={styles.state}>{isActive ? '当前使用中' : isLocal || isGeneratedTest ? '内置账号' : '已绑定'}</Text>
+        {!isActive ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`切换到 ${account.displayName}`}
+            disabled={busy} onPress={() => onSelectAccount(account)}>
+            <Text style={styles.switch}>切换到此账号</Text>
+          </Pressable>
+        ) : null}
+        {isLocal ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`修改名称 ${account.displayName}`}
+            disabled={busy} onPress={() => setRenameAccount(account)}>
+            <Text style={styles.rename}>修改名称</Text>
+          </Pressable>
+        ) : null}
+        {isLocal && account.id !== LOCAL_MAIMAI_ACCOUNT_ID ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`删除本地玩家 ${account.displayName}`}
+            disabled={busy} onPress={() => promptRemoveLocal(account)}>
+            <Text style={styles.unbind}>删除本地玩家</Text>
+          </Pressable>
+        ) : !isLocal && !isGeneratedTest && account.providerId ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
+            disabled={busy} onPress={() => promptUnbind(account)}>
+            <Text style={styles.unbind}>解除绑定</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  };
+
   const loginProvider = loginProviderId ? findProvider(loginProviderId) ?? null : null;
   const loginGame = loginGameId ? findGame(loginGameId) : null;
-  const loginVisible = loginProviderId !== null && !pickerVisible;
+  const loginVisible = loginProviderId !== null;
 
   return (
     <View style={styles.page}>
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 88 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 24 }]}
         scrollIndicatorInsets={{ bottom: tabBottomInset }}
       >
         {restoreError ? <Text style={styles.error}>{restoreError}</Text> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
-        {managedAccounts.length > 0 ? (
-          managedAccounts.map((account) => {
-            const accountSession = sessionsByAccountId[account.id];
-            const isActive = account.id === activeAccountId;
-            const isLocal = account.providerId === 'local';
-            const isGeneratedTest = account.providerId === 'maimai-test';
-            return (
-              <View key={account.id} style={styles.card}>
-                <Text style={styles.game}>舞萌 DX · {account.providerTitle}</Text>
-                <Text style={styles.name}>{account.displayName}</Text>
-                <Text style={styles.meta}>
-                  {account.scoreLabel} {account.scoreDisplay || '—'}
-                </Text>
-                <Text style={styles.meta}>
-                  {isLocal
-                    ? '数据位置：仅本机 SQLite'
-                    : isGeneratedTest
-                      ? '数据来源：曲库动态生成'
-                      : `登录方式：${sessionModeLabel(accountSession)}`}
-                </Text>
-                <Text style={styles.state}>{isActive ? '当前使用中' : isLocal || isGeneratedTest ? '内置账号' : '已绑定'}</Text>
-                {!isActive ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`切换到 ${account.displayName}`}
-                    disabled={busy}
-                    onPress={() => onSelectAccount(account)}
-                  >
-                    <Text style={styles.switch}>切换到此账号</Text>
-                  </Pressable>
-                ) : null}
-                {isLocal ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`修改名称 ${account.displayName}`}
-                    disabled={busy}
-                    onPress={() => setRenameAccount(account)}
-                  >
-                    <Text style={styles.rename}>修改名称</Text>
-                  </Pressable>
-                ) : null}
-                {isLocal && account.id !== LOCAL_MAIMAI_ACCOUNT_ID ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`删除本地玩家 ${account.displayName}`}
-                    disabled={busy}
-                    onPress={() => promptRemoveLocal(account)}
-                  >
-                    <Text style={styles.unbind}>删除本地玩家</Text>
-                  </Pressable>
-                ) : !isLocal && !isGeneratedTest ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`解除绑定 ${account.displayName}`}
-                    disabled={busy}
-                    onPress={() => promptUnbind(account)}
-                  >
-                    <Text style={styles.unbind}>解除绑定</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            );
-          })
-        ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>暂无已绑定账号</Text>
-            <Text style={styles.emptyBody}>点击右下角添加，展开游戏后选择查分器绑定。同一查分器可绑定多个账号。</Text>
-          </View>
-        )}
-      </ScrollView>
+        {GAME_OPTIONS.map((game) => {
+          const expanded = expandedGameId === game.id;
+          const gameAccounts = boundAccounts.filter((account) => account.gameId === game.id);
+          return (
+            <View key={game.id} style={[styles.gameSection, !game.available && styles.gameSectionDisabled]}
+              testID={`game-section-${game.id}`}>
+              <Pressable accessibilityRole="button"
+                accessibilityLabel={game.available ? `${expanded ? '收起' : '展开'}游戏 ${game.title}` : `${game.title} 尚未开放`}
+                accessibilityState={game.available ? { expanded } : { disabled: true }}
+                onPress={() => {
+                  if (!game.available) {
+                    showNotification({ title: game.title, message: `${game.pendingDetail}，待后续开放。`, variant: 'info' });
+                    return;
+                  }
+                  setExpandedGameId((current) => current === game.id ? null : game.id);
+                }}
+                style={({ pressed }) => [styles.gameHeader, pressed && game.available && styles.rowPressed]}>
+                <Image source={game.icon} style={styles.gameIcon} />
+                <View style={styles.gameCopy}>
+                  <Text style={[styles.gameName, !game.available && styles.disabledText]}>{game.title}</Text>
+                  <Text style={styles.gameDetail}>
+                    {game.available
+                      ? game.providers.length > 0
+                        ? `${game.providers.length} 个查分器 · ${gameAccounts.length} 个账号`
+                        : `${gameAccounts.length} 个账号 · 无需查分器`
+                      : game.pendingDetail}
+                  </Text>
+                </View>
+                {game.available ? (
+                  <SymbolView name={expanded ? 'chevron.up' : 'chevron.down'} tintColor="#6B7280" size={18}
+                    fallback={<Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color="#6B7280" />} />
+                ) : <Text style={styles.pending}>待开放</Text>}
+              </Pressable>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="添加游戏账号"
-        disabled={busy}
-        onPress={openPicker}
-        style={({ pressed }) => [styles.fab, { bottom: tabBottomInset + 20 }, pressed && styles.fabPressed]}
-      >
-        <SymbolView
-          name="plus"
-          tintColor="#FFF"
-          size={28}
-          weight="semibold"
-          fallback={<Ionicons name="add" size={28} color="#FFF" />}
-        />
-      </Pressable>
-
-      <GamePickerSheet
-        mode="bind"
-        visible={pickerVisible}
-        expandedGameId={expandedGameId}
-        onClose={closePicker}
-        onToggleGame={toggleExpandedGameId}
-        onSelectProvider={openLogin}
-        onSelectUnavailableGame={(title, detail) => showNotification({
-          title,
-          message: `${detail}，待后续开放。`,
-          variant: 'info',
+              {expanded && game.available ? (
+                <View style={styles.gameBody}>
+                  {game.providers.length > 0 ? game.providers.map((provider) => {
+                    const providerAccounts = gameAccounts.filter((account) => account.providerId === provider.id);
+                    const actionLabel = provider.id === 'local'
+                      ? '添加玩家'
+                      : provider.id === 'maimai-test'
+                        ? '使用账号'
+                        : providerAccounts.length > 0 ? '绑定其他账号' : '绑定账号';
+                    return (
+                      <View key={provider.id} style={styles.providerSection} testID={`provider-section-${provider.id}`}>
+                        <View style={styles.providerHeader}>
+                          <Image source={provider.icon} style={styles.providerIcon} />
+                          <View style={styles.providerCopy}>
+                            <Text style={styles.providerName}>{provider.title}</Text>
+                            <Text style={styles.providerDetail}>{provider.detail}</Text>
+                          </View>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`添加账号 ${provider.title}`}
+                            disabled={busy || !provider.available} onPress={() => openLogin(game.id, provider)}
+                            style={({ pressed }) => [styles.providerAction, pressed && styles.rowPressed]}>
+                            <Text style={styles.providerActionText}>{actionLabel}</Text>
+                          </Pressable>
+                        </View>
+                        {providerAccounts.length > 0 ? (
+                          <View style={styles.accountList} testID={`provider-accounts-${provider.id}`}>
+                            {providerAccounts.map(renderAccountCard)}
+                          </View>
+                        ) : <Text style={styles.providerEmpty}>尚未绑定账号</Text>}
+                      </View>
+                    );
+                  }) : (
+                    <View style={styles.providerSection}>
+                      <Text style={styles.noProvider}>此游戏无需绑定查分器</Text>
+                      {gameAccounts.length > 0
+                        ? <View style={styles.accountList}>{gameAccounts.map(renderAccountCard)}</View>
+                        : <Text style={styles.providerEmpty}>暂无账号</Text>}
+                    </View>
+                  )}
+                </View>
+              ) : null}
+            </View>
+          );
         })}
-      />
+      </ScrollView>
 
       <ProviderLoginSheet
         visible={loginVisible}
         provider={loginProvider}
         gameTitle={loginGame?.title ?? ''}
-        onClose={() => closeLogin({ reopenPicker: true })}
+        onClose={closeLogin}
         onSuccess={finishLogin}
       />
 
@@ -357,33 +354,35 @@ export default function GameAccountsScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   content: { padding: 16, gap: 12 },
-  card: { backgroundColor: '#FFF', borderRadius: 14, padding: 18, gap: 8 },
-  game: { color: '#6B7280', fontSize: 13, fontWeight: '600' },
-  name: { color: '#111827', fontSize: 20, fontWeight: '700' },
+  gameSection: { backgroundColor: '#FFF', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#E5E7EB' },
+  gameSectionDisabled: { opacity: 0.72 },
+  gameHeader: { minHeight: 76, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  gameIcon: { width: 46, height: 46, borderRadius: 10, backgroundColor: '#F3F4F6' },
+  gameCopy: { flex: 1, minWidth: 0, gap: 3 },
+  gameName: { color: '#111827', fontSize: 17, fontWeight: '700' },
+  gameDetail: { color: '#6B7280', fontSize: 12, lineHeight: 17 },
+  disabledText: { color: '#6B7280' },
+  pending: { color: '#9CA3AF', fontSize: 12, fontWeight: '700' },
+  gameBody: { padding: 12, paddingTop: 0, gap: 10 },
+  providerSection: { borderRadius: 13, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', padding: 12, gap: 10 },
+  providerHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  providerIcon: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#FFF' },
+  providerCopy: { flex: 1, minWidth: 0, gap: 2 },
+  providerName: { color: '#111827', fontSize: 14, fontWeight: '700' },
+  providerDetail: { color: '#6B7280', fontSize: 11, lineHeight: 15 },
+  providerAction: { minHeight: 32, borderRadius: 16, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF1FF' },
+  providerActionText: { color: '#1D4ED8', fontSize: 12, fontWeight: '700' },
+  providerEmpty: { color: '#9CA3AF', fontSize: 12, paddingLeft: 46 },
+  noProvider: { color: '#4B5563', fontSize: 13, fontWeight: '600' },
+  accountList: { gap: 8 },
+  card: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, gap: 7, borderWidth: 1, borderColor: '#E5E7EB' },
+  name: { color: '#111827', fontSize: 17, fontWeight: '700' },
   meta: { color: '#4B5563', fontSize: 14 },
   state: { color: '#246BFD', fontWeight: '600', marginTop: 4 },
   switch: { color: '#246BFD', textAlign: 'center', paddingTop: 8, fontWeight: '600' },
   rename: { color: '#246BFD', textAlign: 'center', paddingTop: 8, fontWeight: '600' },
   unbind: { color: '#B42318', textAlign: 'center', paddingTop: 8 },
-  emptyCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 24, gap: 8 },
-  emptyTitle: { color: '#111827', fontSize: 17, fontWeight: '700' },
-  emptyBody: { color: '#6B7280', lineHeight: 20 },
   message: { color: '#4B5563', fontSize: 13 },
   error: { color: '#B42318', fontSize: 13 },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#246BFD',
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#111827',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  fabPressed: { opacity: 0.88 },
+  rowPressed: { opacity: 0.76 },
 });

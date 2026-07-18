@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
 import type { ChartType, Difficulty } from '@/domain/models';
@@ -62,12 +62,11 @@ export function MaimaiFilterBar({
         <NeutralChip label="全部" active={difficulty === 'all'} onPress={() => onDifficultyChange('all')} />
         {DIFFICULTIES.map((item) => {
           const active = difficulty === item;
-          return <Pressable key={item} accessibilityRole="button"
+          return <FilterChipFrame key={item} active={active}
             accessibilityLabel={`筛选难度 ${DIFFICULTY_VISUAL[item].label}`}
-            accessibilityState={{ selected: active }} onPress={() => onDifficultyChange(item)}
-            style={[styles.badgeChip, active && styles.badgeChipActive]}>
+            onPress={() => onDifficultyChange(item)}>
             <DifficultyBadge difficulty={item} compact />
-          </Pressable>;
+          </FilterChipFrame>;
         })}
       </ScrollView>
     </View>
@@ -114,11 +113,10 @@ export function MaimaiFilterBar({
         <NeutralChip label="全部" active={type === 'all'} onPress={() => onTypeChange('all')} />
         {TYPES.map((item) => {
           const active = type === item;
-          return <Pressable key={item} accessibilityRole="button" accessibilityLabel={`筛选类型 ${item}`}
-            accessibilityState={{ selected: active }} onPress={() => onTypeChange(item)}
-            style={[styles.badgeChip, active && styles.badgeChipActive]}>
+          return <FilterChipFrame key={item} active={active} shape="rounded" accessibilityLabel={`筛选类型 ${item}`}
+            onPress={() => onTypeChange(item)}>
             <ChartTypeBadge type={item} />
-          </Pressable>;
+          </FilterChipFrame>;
         })}
       </View>
     </View>
@@ -137,10 +135,30 @@ export function MaimaiFilterBar({
 }
 
 function NeutralChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={`筛选 ${label}`}
+  return <FilterChipFrame active={active} accessibilityLabel={`筛选 ${label}`} onPress={onPress}>
+    <View style={[styles.neutralChip, active && styles.neutralChipActive]}>
+      <Text style={[styles.neutralChipText, active && styles.neutralChipTextActive]}>{label}</Text>
+    </View>
+  </FilterChipFrame>;
+}
+
+function FilterChipFrame({
+  active,
+  accessibilityLabel,
+  onPress,
+  children,
+  shape = 'pill',
+}: {
+  active: boolean;
+  accessibilityLabel: string;
+  onPress: () => void;
+  children: ReactNode;
+  shape?: 'pill' | 'rounded';
+}) {
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel}
     accessibilityState={{ selected: active }} onPress={onPress}
-    style={[styles.neutralChip, active && styles.neutralChipActive]}>
-    <Text style={[styles.neutralChipText, active && styles.neutralChipTextActive]}>{label}</Text>
+    style={[styles.chipFrame, shape === 'rounded' && styles.roundedChipFrame, active && styles.chipFrameActive]}>
+    {children}
   </Pressable>;
 }
 
@@ -159,12 +177,13 @@ const styles = StyleSheet.create({
   versionRow: { alignItems: 'flex-start' },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
   chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  neutralChip: { minHeight: 30, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 15, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
+  chipFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 999, padding: 2, alignItems: 'center', justifyContent: 'center' },
+  roundedChipFrame: { borderRadius: 10 },
+  chipFrameActive: { borderColor: '#246BFD' },
+  neutralChip: { minHeight: 30, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
   neutralChipActive: { backgroundColor: '#246BFD', borderColor: '#246BFD' },
   neutralChipText: { color: '#374151', fontSize: 12 },
   neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
-  badgeChip: { minHeight: 32, borderWidth: 2, borderColor: 'transparent', borderRadius: 17, padding: 1, alignItems: 'center', justifyContent: 'center' },
-  badgeChipActive: { borderColor: '#246BFD', backgroundColor: '#EAF1FF' },
   versionArea: { flex: 1, minWidth: 0, gap: 7 },
   versionControls: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   versionTrigger: { flex: 1, minHeight: 36, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF' },
