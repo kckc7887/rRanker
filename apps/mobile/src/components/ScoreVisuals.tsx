@@ -4,6 +4,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 import type { Difficulty } from '@/domain/models';
 import {
   formatAchievement, isNearMissAchievement, scoreRateEffect, scoreRateLabel,
@@ -205,15 +206,16 @@ function BlurBadge({ label, spec, flowing = false, testID }: {
 
 function useFlowingProgress(enabled: boolean, duration: number): Animated.Value {
   const progress = useRef(new Animated.Value(0)).current;
+  const tabActive = useCachedTabActive();
   useEffect(() => {
     progress.setValue(0);
-    if (!enabled) return;
+    if (!enabled || !tabActive) return;
     const animation = Animated.loop(Animated.timing(progress, {
       toValue: 1, duration, easing: Easing.linear, useNativeDriver: true,
     }));
     animation.start();
     return () => animation.stop();
-  }, [duration, enabled, progress]);
+  }, [duration, enabled, progress, tabActive]);
   return progress;
 }
 
