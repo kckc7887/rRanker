@@ -52,7 +52,9 @@ const mockItems: UserLibraryItem[] = [
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/components/AppNotification', () => ({
+  NotificationOutlet: () => null,
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
+  useNotificationModalRequestClose: () => () => false,
 }));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('react-native-gesture-handler', () => {
