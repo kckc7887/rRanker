@@ -86,6 +86,12 @@ describe('M4 score list cards', () => {
 
   it('renders Best35 above Best15 and sorts each section by Rating', async () => {
     const screen = await render(<Best50Screen />);
+    expect(screen.getByTestId('best50-results-list').props).toEqual(expect.objectContaining({
+      initialNumToRender: 8,
+      maxToRenderPerBatch: 4,
+      updateCellsBatchingPeriod: 50,
+      windowSize: 3,
+    }));
     await fireEvent.press(screen.getByLabelText('生成成绩图片'));
     expect(mockPush).toHaveBeenCalledWith('/best-image');
     expect(screen.getByText('过往版本 Best35')).toBeTruthy();
@@ -107,7 +113,13 @@ describe('M4 score list cards', () => {
   it('always sorts filtered records by Rating and opens the exact chart', async () => {
     useRecordsFilter.getState().setSortBy('title');
     const screen = await render(<RecordsScreen />);
-    expect(screen.getByTestId('records-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
+    expect(screen.getByTestId('records-results-list').props).toEqual(expect.objectContaining({
+      contentInsetAdjustmentBehavior: 'automatic',
+      initialNumToRender: 8,
+      maxToRenderPerBatch: 4,
+      updateCellsBatchingPeriod: 50,
+      windowSize: 3,
+    }));
     expect(screen.queryByText('排序')).toBeNull();
     const labels = screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel);
     expect(labels).toEqual([

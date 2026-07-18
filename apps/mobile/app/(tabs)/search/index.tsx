@@ -3,12 +3,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
-import { FocusedTabScreen } from '@/components/FocusedTabScreen';
+import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
+import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { parseConstantBound } from '@/domain/maimai-filters';
 import type { Chart, ChartType, DataSource, Song } from '@/domain/models';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -24,7 +25,7 @@ const TYPES: ChartType[] = ['SD', 'DX'];
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
 export default function SearchTabScreen() {
-  return <FocusedTabScreen><SearchScreen /></FocusedTabScreen>;
+  return <CachedTabScreen><SearchScreen /></CachedTabScreen>;
 }
 
 export function SearchScreen() {
@@ -113,8 +114,7 @@ const CatalogResultsList = memo(function CatalogResultsList({
   }]} />, [source]);
 
   return <FlatList testID="catalog-results-list" contentInsetAdjustmentBehavior="automatic"
-    data={songs} keyExtractor={songKey} initialNumToRender={8} maxToRenderPerBatch={8}
-    updateCellsBatchingPeriod={40} windowSize={5} removeClippedSubviews
+    data={songs} keyExtractor={songKey} {...TAB_LIST_CACHE_PROPS}
     contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 20 }]}
     scrollIndicatorInsets={{ bottom: tabBottomInset }} ListHeaderComponent={sourceHeader}
     renderItem={renderItem} />;
