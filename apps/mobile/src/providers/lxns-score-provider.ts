@@ -137,12 +137,17 @@ export class LxnsScoreProvider implements ScoreProvider {
     if (!Array.isArray(data)) {
       throw new ProviderError('upstream_schema', '落雪成绩响应结构与已验证契约不一致', true);
     }
-    return data.map((item) => {
+    const records: ScoreRecord[] = [];
+    for (const item of data) {
       const parsed = LxnsScoreSchema.safeParse(item);
       if (!parsed.success) {
         throw new ProviderError('upstream_schema', '落雪成绩条目与已验证契约不一致', true);
       }
-      return mapLxnsScore(parsed.data);
-    });
+      // rRanker 当前成绩模型只有 SD / DX。落雪宴会场的 level_index
+      // 按接口契约固定为 0，若继续映射会被错误显示成 BASIC。
+      if (parsed.data.type === 'utage') continue;
+      records.push(mapLxnsScore(parsed.data));
+    }
+    return records;
   }
 }

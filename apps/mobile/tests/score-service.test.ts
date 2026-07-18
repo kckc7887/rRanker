@@ -3,7 +3,7 @@ import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/saniti
 import { FixtureCatalogProvider, FixtureProvider } from '@/providers/fixture-provider';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
-import { ScoreService } from '@/services/score-service';
+import { buildScoreSnapshot, ScoreService } from '@/services/score-service';
 
 class MemoryRepository implements SnapshotRepository, CatalogRepository {
   value: ScoreSnapshot | null = null;
@@ -34,6 +34,14 @@ describe('ScoreService', () => {
     ).load();
     expect(snapshot.records).toHaveLength(54); expect(repository.value?.best50.b35).toHaveLength(35);
   });
+  it('removes unsupported utage ids before building score and filter data', () => {
+    const utage = {
+      ...fixtureRecords[0]!, songId: '100123', title: '宴会场', levelIndex: 0,
+      difficulty: 'basic' as const, type: 'DX' as const,
+    };
+    const snapshot = buildScoreSnapshot(fixturePlayer, [fixtureRecords[0]!, utage], fixtureCatalog);
+    expect(snapshot.records.map((record) => record.songId)).toEqual([fixtureRecords[0]!.songId]);
+  });
   it('returns stale cache without overwriting it when upstream fails', async () => {
     const repository = new MemoryRepository();
     await new ScoreService(
@@ -47,6 +55,28 @@ describe('ScoreService', () => {
     ).load();
     expect(cached.source.kind).toBe('cache'); expect(cached.source.isStale).toBe(true);
     expect(repository.value).toEqual(saved);
+  });
+
+  it('removes legacy utage records when falling back to a cached snapshot', async () => {
+    const repository = new MemoryRepository();
+    await new ScoreService(
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a', repository, repository,
+    ).load();
+    const cached = repository.byAccount.get('acct-a')!;
+    const utage = {
+      ...cached.records[0]!, songId: '100123', title: '宴会场', levelIndex: 0,
+      difficulty: 'basic' as const, type: 'DX' as const,
+    };
+    cached.records.push(utage);
+    cached.best50.b35.push(utage);
+    cached.best50.unmatchedRecordCount += 1;
+    const fail = async (): Promise<never> => { throw new Error('network'); };
+
+    const snapshot = await new ScoreService(
+      { getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-a', repository, repository,
+    ).load();
+    expect(snapshot.records.some((record) => record.songId === '100123')).toBe(false);
+    expect(snapshot.best50.b35.some((record) => record.songId === '100123')).toBe(false);
   });
 
   it('isolates score cache by account id', async () => {

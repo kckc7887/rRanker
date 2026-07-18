@@ -107,6 +107,7 @@ describe('M4 score list cards', () => {
   it('always sorts filtered records by Rating and opens the exact chart', async () => {
     useRecordsFilter.getState().setSortBy('title');
     const screen = await render(<RecordsScreen />);
+    expect(screen.getByTestId('records-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
     expect(screen.queryByText('排序')).toBeNull();
     const labels = screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel);
     expect(labels).toEqual([
