@@ -1,10 +1,10 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Linking, Platform } from 'react-native';
-import SearchScreen from '../app/(tabs)/search';
+import { SearchScreen } from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 import UserLibraryScreen from '../app/library';
-import OverviewScreen from '../app/(tabs)/(overview)';
+import { OverviewScreen } from '../app/(tabs)/(overview)';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import type { UserLibraryItem } from '@/domain/user-library';

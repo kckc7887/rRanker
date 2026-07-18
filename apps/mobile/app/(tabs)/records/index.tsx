@@ -1,6 +1,7 @@
 import { memo, useDeferredValue, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
+import { LazyTabScreen } from '@/components/LazyTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
@@ -13,7 +14,11 @@ import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
 
-export default function RecordsScreen() {
+export default function RecordsTabScreen() {
+  return <LazyTabScreen><RecordsScreen /></LazyTabScreen>;
+}
+
+export function RecordsScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const tabBottomInset = useNativeTabBottomInset();

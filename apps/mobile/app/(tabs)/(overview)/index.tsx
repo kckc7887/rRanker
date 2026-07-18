@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
+import { LazyTabScreen } from '@/components/LazyTabScreen';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -33,7 +34,12 @@ import { useToolboxPins } from '@/state/toolbox-pins';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const sessions = new SecureSessionStore();
-export default function OverviewScreen() {
+
+export default function OverviewTabScreen() {
+  return <LazyTabScreen><OverviewScreen /></LazyTabScreen>;
+}
+
+export function OverviewScreen() {
   const { showNotification } = useNotification();
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
