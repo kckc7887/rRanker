@@ -109,5 +109,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     await fireEvent.press(screen.getByLabelText('开始上传'));
     expect(await screen.findByText('好友码无效')).toBeTruthy();
     expect(screen.getByText('请输入 15 位数字好友码。')).toBeTruthy();
+    expect(screen.getByTestId('app-notification-modal').props.presentationStyle)
+      .toBe('overFullScreen');
   });
 });
