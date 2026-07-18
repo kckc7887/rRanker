@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, Platform, processColor } from 'react-native';
+import { Animated, Platform, processColor, StyleSheet } from 'react-native';
 import SearchScreen from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 
@@ -124,6 +124,13 @@ describe('M2 song query screens', () => {
 
   it('searches aliases after debounce and supports empty filter state', async () => {
     const screen = await render(<SearchScreen />);
+    expect(StyleSheet.flatten(screen.getByLabelText('最低定数').props.style)).toEqual(expect.objectContaining({
+      minHeight: 44,
+      paddingVertical: 0,
+      lineHeight: 20,
+      textAlignVertical: 'center',
+      includeFontPadding: false,
+    }));
     const chartBadges = within(screen.getByTestId('song-chart-badges-1'));
     expect(chartBadges.getByText('SD')).toBeTruthy();
     expect(chartBadges.getByText('DX')).toBeTruthy();
