@@ -1,8 +1,8 @@
 import { Animated } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import Best50Screen from '../app/(tabs)/b50';
-import RecordsScreen from '../app/(tabs)/records';
+import { Best50Screen } from '../app/(tabs)/b50';
+import { RecordsScreen } from '../app/(tabs)/records';
 import { useRecordsFilter } from '@/state/records-filter';
 
 const mockPush = jest.fn();

@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import OverviewScreen from '../app/(tabs)/(overview)/index';
+import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
 import type { ProviderId } from '@/domain/game-bind-options';
 

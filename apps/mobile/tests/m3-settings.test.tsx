@@ -1,10 +1,12 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import GameAccountsScreen from '../app/(tabs)/settings/games';
+import { StyleSheet } from 'react-native';
+import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
 import {
   createLocalMaimaiAccount,
   createMaimaiBoundAccount,
   createMaxedMaimaiTestAccount,
+  createTestBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
@@ -31,6 +33,7 @@ const mockAccount = createMaimaiBoundAccount({
 });
 const mockLocalAccount = createLocalMaimaiAccount('本地玩家', 0);
 const mockTestAccount = createMaxedMaimaiTestAccount();
+const mockEmptyGameAccount = createTestBoundAccount();
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -79,7 +82,7 @@ jest.mock('@/state/query-client', () => ({ queryClient: {
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
   session: mockSession,
   sessionsByAccountId: { [mockAccount.id]: mockSession },
-  boundAccounts: [mockLocalAccount, mockTestAccount, mockAccount],
+  boundAccounts: [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount],
   activeAccountId: mockAccount.id,
   selectBoundAccount: mockSelectBoundAccount,
   upsertBoundAccount: mockUpsertBoundAccount,
@@ -117,29 +120,37 @@ describe('M3A game account management', () => {
     </NotificationProvider>,
   );
 
-  it('expands an inline provider list and opens the login sheet', async () => {
+  it('keeps the original account cards and add button while grouping existing games', async () => {
     const screen = await renderScreen();
     expect(screen.getByLabelText('收起游戏 舞萌 DX')).toBeTruthy();
+    expect(screen.getByLabelText('收起游戏 测试游戏')).toBeTruthy();
+    expect(screen.getByText('舞萌 DX · 水鱼查分器')).toBeTruthy();
     expect(screen.getByText('测试水鱼')).toBeTruthy();
-    expect(screen.getByText('Phigros')).toBeTruthy();
-    expect(screen.getByText('测试游戏')).toBeTruthy();
-    expect(screen.getByTestId('provider-section-diving-fish')).toBeTruthy();
-    expect(screen.getByTestId('provider-accounts-diving-fish')).toBeTruthy();
-    expect(screen.getByLabelText('添加账号 水鱼查分器')).toBeTruthy();
-    expect(screen.getByLabelText('添加账号 落雪查分器')).toBeTruthy();
+    expect(screen.getByLabelText('添加游戏账号')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId(`account-card-${mockAccount.id}`).props.style)).toEqual({
+      backgroundColor: '#FFF', borderRadius: 14, padding: 18, gap: 8,
+    });
+    expect(StyleSheet.flatten(screen.getByLabelText('添加游戏账号').props.style)).toEqual(expect.objectContaining({
+      right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#246BFD',
+    }));
+    expect(screen.queryByText('Phigros')).toBeNull();
 
-    await fireEvent.press(screen.getByLabelText('添加账号 水鱼查分器'));
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    expect(screen.getByText('选择游戏')).toBeTruthy();
+    expect(screen.getByText('Phigros')).toBeTruthy();
+    expect(screen.getByLabelText('水鱼查分器')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('水鱼查分器'));
     await waitFor(() => expect(screen.getByText('登录查分器')).toBeTruthy());
     expect(screen.getByText('用于绑定 舞萌 DX')).toBeTruthy();
   });
 
-  it('collapses one game and expands another game inline', async () => {
+  it('collapses only the selected existing-game account list', async () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('收起游戏 舞萌 DX'));
-    expect(screen.queryByTestId('provider-section-diving-fish')).toBeNull();
-    await fireEvent.press(screen.getByLabelText('展开游戏 测试游戏'));
-    expect(screen.getByText('此游戏无需绑定查分器')).toBeTruthy();
-    expect(screen.getByText('暂无账号')).toBeTruthy();
+    expect(screen.queryByText('测试水鱼')).toBeNull();
+    expect(screen.getByText('测试游戏 · 空数据')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('展开游戏 舞萌 DX'));
+    expect(screen.getByText('测试水鱼')).toBeTruthy();
   });
 
   it('shows local and generated test accounts in account management', async () => {
@@ -165,7 +176,8 @@ describe('M3A game account management', () => {
 
   it('adds another local player instead of reusing the default account', async () => {
     const screen = await renderScreen();
-    await fireEvent.press(screen.getByLabelText('添加账号 本地查分器'));
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    await fireEvent.press(screen.getByLabelText('本地查分器'));
 
     await waitFor(() => expect(mockUpsertBoundAccount).toHaveBeenCalledTimes(1));
     const added = mockUpsertBoundAccount.mock.calls[0][0] as BoundAccount;

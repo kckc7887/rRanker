@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, Platform, processColor, StyleSheet } from 'react-native';
-import SearchScreen from '../app/(tabs)/search';
+import { SearchScreen } from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({

@@ -14,7 +14,7 @@ export default function SettingsScreen() {
     >
       <Pressable
         accessibilityRole="button"
-        onPress={() => router.push('/settings/games' as Href)}
+        onPress={() => router.push('/game-management' as Href)}
         style={styles.row}
       >
         <View style={styles.rowText}>
