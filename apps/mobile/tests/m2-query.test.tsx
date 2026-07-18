@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import { Animated, Platform, processColor, StyleSheet } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
+import { useCatalogFilter } from '@/state/catalog-filter';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
@@ -79,7 +80,11 @@ jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
 jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
 
 describe('M2 song query screens', () => {
-  beforeEach(() => { mockSongRouteParams = { songId: '1' }; jest.clearAllMocks(); });
+  beforeEach(() => {
+    mockSongRouteParams = { songId: '1' };
+    useCatalogFilter.getState().reset();
+    jest.clearAllMocks();
+  });
 
   it('goes back from the song detail chrome button', async () => {
     const screen = await render(<SongDetailScreen />);

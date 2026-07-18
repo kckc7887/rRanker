@@ -14,6 +14,7 @@ describe('useRecordsFilter store', () => {
     expect(state.constantMin).toBe('');
     expect(state.constantMax).toBe('');
     expect(state.sortBy).toBe('rating');
+    expect(state.versionLocale).toBe('china');
   });
 
   it('updates difficulty via setDifficulty', () => {
@@ -43,6 +44,11 @@ describe('useRecordsFilter store', () => {
     expect(useRecordsFilter.getState().sortBy).toBe('achievements');
   });
 
+  it('keeps the selected version-name locale in the store', () => {
+    useRecordsFilter.getState().setVersionLocale('japan');
+    expect(useRecordsFilter.getState().versionLocale).toBe('japan');
+  });
+
   it('resets every filter back to defaults', () => {
     useRecordsFilter.getState().setDifficulty('master');
     useRecordsFilter.getState().setVersion(FIXTURE_CURRENT_VERSION);
@@ -50,6 +56,7 @@ describe('useRecordsFilter store', () => {
     useRecordsFilter.getState().setConstantMin('12');
     useRecordsFilter.getState().setConstantMax('14');
     useRecordsFilter.getState().setSortBy('achievements');
+    useRecordsFilter.getState().setVersionLocale('japan');
     useRecordsFilter.getState().reset();
     const state = useRecordsFilter.getState();
     expect(state.difficulty).toBe('all');
@@ -58,5 +65,6 @@ describe('useRecordsFilter store', () => {
     expect(state.constantMin).toBe('');
     expect(state.constantMax).toBe('');
     expect(state.sortBy).toBe('rating');
+    expect(state.versionLocale).toBe('china');
   });
 });
