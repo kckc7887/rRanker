@@ -121,6 +121,7 @@ export default function ToleranceToolScreen() {
           </View>)}
         </View>
       </ScrollView>
+      <Text style={styles.swipeHint}>↔ 左右滑动查看完整表格</Text>
     </Card>
     <Card><Text style={styles.heading}>已知判定（各类 GREAT；BREAK 按 GREAT-1）</Text><View style={styles.wrap}>{KINDS.map((kind) => <View key={kind} style={styles.small}><FormField label={`${kind.toUpperCase()} GREAT`} value={values[`${kind}Great`]} onChangeText={set(`${kind}Great`)} /></View>)}</View>
       <Text style={computed.error ? styles.error : styles.result}>{computed.error ?? `预计达成率 ${computed.achievement?.toFixed(4)}%`}</Text></Card>
@@ -159,6 +160,7 @@ export default function ToleranceToolScreen() {
           </View>)}
         </View>
       </ScrollView>
+      <Text style={styles.swipeHint}>↔ 左右滑动查看完整表格</Text>
     </Card><Text style={styles.disclaimer}>结果用于估算；BREAK 细分判定会分别计算基础分与奖励分。</Text>
   </ScrollView>;
 }
@@ -179,5 +181,6 @@ const styles = StyleSheet.create({
   kindCell: { width: 76 }, kindCellBackground: { backgroundColor: '#F8FAFC' }, kindText: { color: '#475569', fontSize: 10, fontWeight: '800' },
   analysisCell: { width: 114 }, toleranceCell: { width: 103 }, tableHeader: { color: '#64748B', fontSize: 9, lineHeight: 11, fontWeight: '800' },
   tableValue: { color: '#253047', fontSize: 10, lineHeight: 13, fontWeight: '700', textAlign: 'center' }, tableError: { color: '#94A3B8', fontSize: 11 },
+  swipeHint: { color: '#94A3B8', fontSize: 10, lineHeight: 14, textAlign: 'center', marginTop: 6 },
   disclaimer: { color: '#6B7280', fontSize: 11, textAlign: 'center' },
 });
