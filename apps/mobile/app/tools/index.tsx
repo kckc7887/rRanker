@@ -2,23 +2,18 @@ import { Stack, router, type Href } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
+import { getGameToolbox } from '@/domain/game-toolbox';
 import { useSession } from '@/state/session-store';
-
-const TOOLS = [
-  ['/tools/rating', 'DX Rating 计算器', '档位表、指定达成率与目标 Rating 反推'],
-  ['/tools/tolerance', '达成率与容错', 'Note 权重、BREAK 奖励与同类错误上限'],
-  ['/tools/plates', '牌子进度', '用本地水鱼最佳成绩核对姓名框要求'],
-  ['/tools/versions', '版本对照与总结', '国服/日服名称对照，以及逐版本游玩情况'],
-] as const;
 
 export default function ToolsScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
+  const toolbox = getGameToolbox(activeGameId);
 
-  if (activeGameId !== 'maimai') {
+  if (toolbox.tools.length === 0) {
     return (
       <View style={styles.page}>
         <Stack.Screen options={{ title: '工具箱' }} />
-        <EmptyDataView title="工具箱" detail="空空空" />
+        <EmptyDataView title="工具箱" detail={toolbox.emptyDetail} />
       </View>
     );
   }
@@ -26,11 +21,11 @@ export default function ToolsScreen() {
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: '工具箱' }} />
-      {TOOLS.map(([href, title, detail]) => (
-        <Pressable key={href} onPress={() => router.push(href as Href)}>
+      {toolbox.tools.map((tool) => (
+        <Pressable key={tool.id} onPress={() => router.push(tool.href as Href)}>
           <Card style={styles.card}>
-            <Text style={styles.title}>{title}</Text>
-            <Text style={styles.detail}>{detail}</Text>
+            <Text style={styles.title}>{tool.title}</Text>
+            <Text style={styles.detail}>{tool.detail}</Text>
             <Text style={styles.link}>打开 →</Text>
           </Card>
         </Pressable>
