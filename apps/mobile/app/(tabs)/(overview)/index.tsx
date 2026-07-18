@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
@@ -9,7 +9,7 @@ import { UploadDataSheet } from '@/components/UploadDataSheet';
 import type { BoundAccount } from '@/domain/bound-account';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
-import { summarizeGameTools } from '@/domain/game-toolbox';
+import { selectGameTools, summarizeGameTools } from '@/domain/game-toolbox';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -24,6 +24,7 @@ import { useUserLibrary } from '@/hooks/use-user-library';
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { queryClient } from '@/state/query-client';
 import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
+import { useToolboxPins } from '@/state/toolbox-pins';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const sessions = new SecureSessionStore();
@@ -34,6 +35,7 @@ export default function OverviewScreen() {
   const tabBottomInset = useNativeTabBottomInset();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const activeAccountId = useSession((s) => s.activeAccountId);
+  const activeGameId = useSession((s) => s.activeGameId);
   const activeSession = useSession((s) => s.session);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const selectBoundAccount = useSession((s) => s.selectBoundAccount);
@@ -51,6 +53,17 @@ export default function OverviewScreen() {
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
   const syncBusy = syncing;
   const currentUploadSelection = useMemo(() => [activeAccountId], [activeAccountId]);
+  const toolboxGameId = data?.gameId ?? activeGameId;
+  const pinnedToolIds = useToolboxPins((s) => s.pinnedToolIdsByGame[toolboxGameId]);
+  const hydratePins = useToolboxPins((s) => s.hydrate);
+  const pinnedTools = useMemo(
+    () => selectGameTools(toolboxGameId, pinnedToolIds),
+    [pinnedToolIds, toolboxGameId],
+  );
+
+  useEffect(() => {
+    void hydratePins();
+  }, [hydratePins]);
 
   const syncData = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -225,7 +238,23 @@ export default function OverviewScreen() {
               </Pressable>
             )}
 
-            <Pressable onPress={() => router.push('/tools' as Href)}>
+            {pinnedTools.map((tool) => (
+              <Pressable
+                key={tool.id}
+                accessibilityRole="button"
+                accessibilityLabel={`打开置顶工具 ${tool.title}`}
+                onPress={() => router.push(tool.href as Href)}
+              >
+                <View style={[styles.card, styles.pinnedToolCard]}>
+                  <Text style={styles.pinnedToolEyebrow}>置顶工具</Text>
+                  <Text style={styles.cardTitle}>{tool.title}</Text>
+                  <Text style={styles.body}>{tool.detail}</Text>
+                  <Text style={styles.toolLink}>打开 →</Text>
+                </View>
+              </Pressable>
+            ))}
+
+            <Pressable accessibilityRole="button" onPress={() => router.push('/tools' as Href)}>
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>工具箱</Text>
                 <Text style={styles.body}>{summarizeGameTools(bundle.gameId)}</Text>
@@ -345,6 +374,8 @@ const styles = StyleSheet.create({
   syncDisabled: { opacity: 0.65 },
   syncText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, gap: 8 },
+  pinnedToolCard: { borderWidth: StyleSheet.hairlineWidth, borderColor: '#AFC7FF' },
+  pinnedToolEyebrow: { color: '#246BFD', fontSize: 12, fontWeight: '700' },
   cardTitle: { color: '#111827', fontSize: 18, fontWeight: '700' },
   body: { color: '#374151' },
   note: { color: '#6B7280', lineHeight: 20, marginTop: 4 },
