@@ -588,17 +588,13 @@ export default function BestImageScreen() {
         <View style={styles.ratingStyleRow}>
           <View style={styles.styleCopy}>
             <Text style={styles.styleName}>Rating 框</Text>
-            <Text style={styles.styleValue}>游戏样式保留原框；应用样式使用当前应用配色</Text>
+            <Text style={styles.styleValue}>游戏样式保留原框；应用样式使用全宽玩家信息卡</Text>
           </View>
           <View style={styles.ratingStyleChoices}>
             <View style={styles.chipRow}>
               <ChoiceChip label="游戏样式" selected={ratingStyle === 'game'} onPress={() => setRatingStyle('game')} />
-              <ChoiceChip label="应用样式" selected={ratingStyle !== 'game'} onPress={() => setRatingStyle('app-capsule')} />
+              <ChoiceChip label="应用样式" selected={ratingStyle === 'app'} onPress={() => setRatingStyle('app')} />
             </View>
-            {ratingStyle !== 'game' ? <View style={styles.chipRow}>
-              <ChoiceChip label="胶囊" selected={ratingStyle === 'app-capsule'} onPress={() => setRatingStyle('app-capsule')} />
-              <ChoiceChip label="圆角矩形" selected={ratingStyle === 'app-rect'} onPress={() => setRatingStyle('app-rect')} />
-            </View> : null}
           </View>
         </View>
         {STYLE_ITEMS.map(({ kind, label }) => {
