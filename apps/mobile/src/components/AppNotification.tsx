@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Animated,
-  BackHandler,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -194,88 +194,94 @@ function NotificationHost({
     };
   }, [dismiss, isAction, notification.duration, opacity, translateY, variant]);
 
-  useEffect(() => {
-    if (!isAction) return;
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      const cancelAction = actions?.find((action) => action.tone === 'cancel');
-      if (cancelAction) performAction(cancelAction);
-      else dismiss();
-      return true;
-    });
-    return () => subscription.remove();
+  const requestClose = useCallback(() => {
+    const cancelAction = actions?.find((action) => action.tone === 'cancel');
+    if (isAction && cancelAction) performAction(cancelAction);
+    else dismiss();
   }, [actions, dismiss, isAction, performAction]);
 
   const meta = VARIANT_META[variant];
   return (
-    <View
-      pointerEvents={isAction ? 'auto' : 'box-none'}
-      style={[styles.overlay, { paddingTop: insets.top + 8 }]}
-      testID="app-notification-overlay"
+    <Modal
+      animationType="none"
+      hardwareAccelerated
+      onRequestClose={requestClose}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      testID="app-notification-modal"
+      transparent
+      visible
     >
-      {isAction ? (
-        <Pressable
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          onPress={() => undefined}
-          style={styles.backdrop}
-          testID="app-notification-backdrop"
-        />
-      ) : null}
-      <Animated.View
-        accessibilityLiveRegion={variant === 'error' ? 'assertive' : 'polite'}
-        accessibilityRole="alert"
-        style={[
-          styles.card,
-          { borderLeftColor: meta.color, opacity, transform: [{ translateY }] },
-        ]}
-        testID="app-notification-card"
+      <View
+        pointerEvents={isAction ? 'auto' : 'box-none'}
+        style={[styles.overlay, { paddingTop: insets.top + 8 }]}
+        testID="app-notification-overlay"
       >
-        <View style={[styles.icon, { backgroundColor: meta.backgroundColor }]}>
-          <Ionicons color={meta.color} name={meta.icon} size={22} />
-        </View>
-        <View style={styles.content}>
-          <Text style={styles.title}>{notification.title}</Text>
-          {notification.message ? <Text style={styles.message}>{notification.message}</Text> : null}
-          {actions?.length ? (
-            <View style={styles.actions}>
-              {actions.map((action, index) => (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={actionHandledRef.current}
-                  key={`${action.label}-${index}`}
-                  onPress={() => performAction(action)}
-                  style={({ pressed }) => [
-                    styles.action,
-                    action.tone === 'destructive' && styles.destructiveAction,
-                    action.tone === 'cancel' && styles.cancelAction,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Text style={[
-                    styles.actionText,
-                    action.tone === 'destructive' && styles.destructiveActionText,
-                    action.tone === 'cancel' && styles.cancelActionText,
-                  ]}>
-                    {action.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-        </View>
-        {!isAction ? (
+        {isAction ? (
           <Pressable
-            accessibilityLabel="关闭通知"
-            accessibilityRole="button"
-            hitSlop={10}
-            onPress={dismiss}
-            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
-          >
-            <Ionicons color="#667085" name="close" size={20} />
-          </Pressable>
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            onPress={() => undefined}
+            style={styles.backdrop}
+            testID="app-notification-backdrop"
+          />
         ) : null}
-      </Animated.View>
-    </View>
+        <Animated.View
+          accessibilityLiveRegion={variant === 'error' ? 'assertive' : 'polite'}
+          accessibilityRole="alert"
+          style={[
+            styles.card,
+            { borderLeftColor: meta.color, opacity, transform: [{ translateY }] },
+          ]}
+          testID="app-notification-card"
+        >
+          <View style={[styles.icon, { backgroundColor: meta.backgroundColor }]}>
+            <Ionicons color={meta.color} name={meta.icon} size={22} />
+          </View>
+          <View style={styles.content}>
+            <Text style={styles.title}>{notification.title}</Text>
+            {notification.message ? <Text style={styles.message}>{notification.message}</Text> : null}
+            {actions?.length ? (
+              <View style={styles.actions}>
+                {actions.map((action, index) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={actionHandledRef.current}
+                    key={`${action.label}-${index}`}
+                    onPress={() => performAction(action)}
+                    style={({ pressed }) => [
+                      styles.action,
+                      action.tone === 'destructive' && styles.destructiveAction,
+                      action.tone === 'cancel' && styles.cancelAction,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.actionText,
+                      action.tone === 'destructive' && styles.destructiveActionText,
+                      action.tone === 'cancel' && styles.cancelActionText,
+                    ]}>
+                      {action.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+          </View>
+          {!isAction ? (
+            <Pressable
+              accessibilityLabel="关闭通知"
+              accessibilityRole="button"
+              hitSlop={10}
+              onPress={dismiss}
+              style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+            >
+              <Ionicons color="#667085" name="close" size={20} />
+            </Pressable>
+          ) : null}
+        </Animated.View>
+      </View>
+    </Modal>
   );
 }
 

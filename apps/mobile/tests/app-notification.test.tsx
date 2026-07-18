@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   NotificationProvider,
   useNotification,
@@ -8,7 +8,6 @@ import {
 
 const mockCancel = jest.fn(() => undefined);
 const mockDelete = jest.fn(() => undefined);
-let mockHardwareBack: (() => boolean | null | undefined) | undefined;
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('react-native-safe-area-context', () => ({
@@ -58,16 +57,11 @@ describe('全局顶部通知', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
-    mockHardwareBack = undefined;
     jest.spyOn(Animated, 'parallel').mockReturnValue({
       start: (callback?: (result: { finished: boolean }) => void) => callback?.({ finished: true }),
       stop: jest.fn(),
       reset: jest.fn(),
     } as ReturnType<typeof Animated.parallel>);
-    jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
-      mockHardwareBack = handler;
-      return { remove: jest.fn() };
-    });
   });
 
   afterEach(() => {
@@ -79,6 +73,12 @@ describe('全局顶部通知', () => {
     const screen = await renderNotifications();
     await fireEvent.press(screen.getByText('显示成功'));
     expect(screen.getByText('第一条')).toBeTruthy();
+    expect(screen.getByTestId('app-notification-modal').props).toMatchObject({
+      animationType: 'none',
+      presentationStyle: 'overFullScreen',
+      statusBarTranslucent: true,
+      transparent: true,
+    });
     expect(StyleSheet.flatten(screen.getByTestId('app-notification-overlay').props.style))
       .toMatchObject({ paddingTop: 32 });
     await fireEvent.press(screen.getByLabelText('关闭通知'));
@@ -134,9 +134,7 @@ describe('全局顶部通知', () => {
   it('Android 返回键执行取消操作', async () => {
     const screen = await renderNotifications();
     await fireEvent.press(screen.getByText('显示确认'));
-    let handled: boolean | null | undefined;
-    await act(async () => { handled = mockHardwareBack?.(); });
-    expect(handled).toBe(true);
+    await act(async () => { screen.getByTestId('app-notification-modal').props.onRequestClose(); });
     expect(mockCancel).toHaveBeenCalledTimes(1);
     expect(mockDelete).not.toHaveBeenCalled();
     expect(screen.queryByText('删除本地玩家')).toBeNull();
