@@ -12,7 +12,10 @@ jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockSource: DataSource = { kind: 'fixture', label: '测试来源', updatedAt: '2026-07-13T00:00:00.000Z', isStale: false };
 let mockPlateQuery: { data?: PlateSnapshot; isLoading: boolean; isError: boolean; error: unknown; refetch: ReturnType<typeof jest.fn> } = {
-  data: { plates: [{ id: 6101, name: '真極', requirements: [{ difficulties: [], rate: 's', songs: ['1'] }] }], source: mockSource },
+  data: { plates: [
+    { id: 6101, name: '真極', requirements: [{ difficulties: [], rate: 's', songs: ['1'] }] },
+    { id: 6102, name: '真神', requirements: [{ difficulties: [], fc: 'ap', songs: ['1'] }] },
+  ], source: mockSource },
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 };
 jest.mock('@/hooks/use-plates', () => ({ usePlates: () => mockPlateQuery }));
@@ -20,9 +23,28 @@ jest.mock('@/hooks/use-songs', () => ({ useSongs: () => ({ data: [], isLoading: 
 jest.mock('@/components/PlateImage', () => ({ PlateImage: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog, isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => { const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized'); return { data: { records: fixtures.fixtureRecords, source: fixtures.fixtureSource, best50: { b35: [], b15: [] } }, isLoading: false, isError: false, error: null, refetch: jest.fn() }; } }));
+const mockTogglePinnedPlate = jest.fn(async () => undefined);
+let mockPinnedPlateIds: number[] = [];
+jest.mock('@/components/AppNotification', () => ({
+  useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
+}));
+jest.mock('@/state/session-store', () => ({
+  useSession: (selector: (state: { activeGameId: 'maimai' }) => unknown) => selector({ activeGameId: 'maimai' }),
+}));
+jest.mock('@/state/toolbox-pins', () => ({
+  useToolboxPins: (selector: (state: unknown) => unknown) => selector({
+    pinnedPlateIdsByGame: { maimai: mockPinnedPlateIds, phigros: [], test: [] },
+    hydrate: jest.fn(async () => undefined),
+    togglePinnedPlate: mockTogglePinnedPlate,
+  }),
+}));
 
 describe('M2 tool screens', () => {
-  beforeEach(() => { mockToleranceParams = {}; });
+  beforeEach(() => {
+    mockToleranceParams = {};
+    mockPinnedPlateIds = [];
+    mockTogglePinnedPlate.mockClear();
+  });
   it('calculates rating and reverse target interactively', async () => {
     const screen = await render(<RatingToolScreen />);
     expect(screen.getByText(/单曲 Rating/)).toBeTruthy();
@@ -73,6 +95,13 @@ describe('M2 tool screens', () => {
     expect(versions.getByText('各版本游玩总结')).toBeTruthy();
     expect(versions.getByText('maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(versions.getByText('舞萌DX 2026')).toBeTruthy();
+  });
+  it('selects a plate from the home route and can add it to the home page', async () => {
+    mockToleranceParams = { plateId: '6102' };
+    const screen = await render(<PlatesToolScreen />);
+    expect(screen.getByLabelText('当前牌子 真神')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('添加到主页 真神'));
+    expect(mockTogglePinnedPlate).toHaveBeenCalledWith('maimai', 6102);
   });
   it('does not read plates before the query has data', async () => {
     const ready = mockPlateQuery;
