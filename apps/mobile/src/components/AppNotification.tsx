@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   Animated,
-  Modal,
+  BackHandler,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +14,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useId,
   useState,
   type ComponentProps,
   type ReactNode,
@@ -50,7 +51,17 @@ type NotificationContextValue = {
   showActionNotification: (input: ActionNotificationInput) => number;
 };
 
+type NotificationRenderContextValue = {
+  activeOutletId: string | null;
+  claimAction: (id: number) => boolean;
+  current: QueuedNotification | null;
+  registerOutlet: (id: string) => () => void;
+  removeNotification: (id: number) => void;
+  requestCloseCurrent: () => boolean;
+};
+
 const NotificationContext = createContext<NotificationContextValue | null>(null);
+const NotificationRenderContext = createContext<NotificationRenderContextValue | null>(null);
 const ENTER_DURATION = 220;
 const EXIT_DURATION = 180;
 
@@ -71,7 +82,9 @@ function defaultDuration(variant: NotificationVariant): number {
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<QueuedNotification[]>([]);
+  const [outletIds, setOutletIds] = useState<string[]>([]);
   const nextIdRef = useRef(1);
+  const handledActionIdsRef = useRef(new Set<number>());
 
   const enqueue = useCallback((input: NotificationInput, actions?: readonly NotificationAction[]) => {
     const id = nextIdRef.current;
@@ -89,26 +102,64 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [enqueue],
   );
   const removeNotification = useCallback((id: number) => {
+    handledActionIdsRef.current.delete(id);
     setNotifications((current) => current[0]?.id === id
       ? current.slice(1)
       : current.filter((item) => item.id !== id));
   }, []);
+  const claimAction = useCallback((id: number) => {
+    if (handledActionIdsRef.current.has(id)) return false;
+    handledActionIdsRef.current.add(id);
+    return true;
+  }, []);
+  const registerOutlet = useCallback((id: string) => {
+    setOutletIds((current) => [...current.filter((item) => item !== id), id]);
+    return () => setOutletIds((current) => current.filter((item) => item !== id));
+  }, []);
+  const requestCloseCurrent = useCallback(() => {
+    const current = notifications[0];
+    if (!current) return false;
+    const cancelAction = current.actions?.find((action) => action.tone === 'cancel');
+    if (cancelAction && claimAction(current.id)) {
+      try {
+        const result = cancelAction.onPress?.();
+        if (result) void result.catch((error) => console.error('通知操作执行失败', error));
+      } catch (error) {
+        console.error('通知操作执行失败', error);
+      }
+    }
+    removeNotification(current.id);
+    return true;
+  }, [claimAction, notifications, removeNotification]);
 
   const value = useMemo(
     () => ({ showNotification, showActionNotification }),
     [showActionNotification, showNotification],
   );
+  const activeOutletId = outletIds.at(-1) ?? null;
+  const renderValue = useMemo<NotificationRenderContextValue>(() => ({
+    activeOutletId,
+    claimAction,
+    current: notifications[0] ?? null,
+    registerOutlet,
+    removeNotification,
+    requestCloseCurrent,
+  }), [activeOutletId, claimAction, notifications, registerOutlet, removeNotification, requestCloseCurrent]);
 
   return (
     <NotificationContext.Provider value={value}>
-      {children}
-      {notifications[0] ? (
-        <NotificationHost
-          key={notifications[0].id}
-          notification={notifications[0]}
-          onRemoved={removeNotification}
-        />
-      ) : null}
+      <NotificationRenderContext.Provider value={renderValue}>
+        {children}
+        {!activeOutletId && notifications[0] ? (
+          <NotificationHost
+            key={notifications[0].id}
+            notification={notifications[0]}
+            onRemoved={removeNotification}
+            claimAction={claimAction}
+            location="root"
+          />
+        ) : null}
+      </NotificationRenderContext.Provider>
     </NotificationContext.Provider>
   );
 }
@@ -119,18 +170,44 @@ export function useNotification(): NotificationContextValue {
   return value;
 }
 
+export function NotificationOutlet() {
+  const context = useContext(NotificationRenderContext);
+  const registerOutlet = context?.registerOutlet;
+  const id = useId();
+
+  useEffect(() => registerOutlet?.(id), [id, registerOutlet]);
+
+  if (!context || context.activeOutletId !== id || !context.current) return null;
+  return (
+    <NotificationHost
+      key={context.current.id}
+      notification={context.current}
+      onRemoved={context.removeNotification}
+      claimAction={context.claimAction}
+      location="outlet"
+    />
+  );
+}
+
+export function useNotificationModalRequestClose(): () => boolean {
+  return useContext(NotificationRenderContext)?.requestCloseCurrent ?? (() => false);
+}
+
 function NotificationHost({
   notification,
   onRemoved,
+  claimAction,
+  location,
 }: {
   notification: QueuedNotification;
   onRemoved: (id: number) => void;
+  claimAction: (id: number) => boolean;
+  location: 'root' | 'outlet';
 }) {
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(-120)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const exitingRef = useRef(false);
-  const actionHandledRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const variant = notification.variant ?? 'info';
   const actions = notification.actions;
@@ -155,8 +232,7 @@ function NotificationHost({
   }, [notification.id, onRemoved, opacity, translateY]);
 
   const performAction = useCallback((action: NotificationAction) => {
-    if (actionHandledRef.current) return;
-    actionHandledRef.current = true;
+    if (!claimAction(notification.id)) return;
     dismiss();
     try {
       const result = action.onPress?.();
@@ -164,7 +240,7 @@ function NotificationHost({
     } catch (error) {
       console.error('通知操作执行失败', error);
     }
-  }, [dismiss]);
+  }, [claimAction, dismiss, notification.id]);
 
   useEffect(() => {
     Animated.parallel([
@@ -194,39 +270,34 @@ function NotificationHost({
     };
   }, [dismiss, isAction, notification.duration, opacity, translateY, variant]);
 
-  const requestClose = useCallback(() => {
-    const cancelAction = actions?.find((action) => action.tone === 'cancel');
-    if (isAction && cancelAction) performAction(cancelAction);
-    else dismiss();
-  }, [actions, dismiss, isAction, performAction]);
+  useEffect(() => {
+    if (!isAction || location !== 'root') return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      const cancelAction = actions?.find((action) => action.tone === 'cancel');
+      if (cancelAction) performAction(cancelAction);
+      else dismiss();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [actions, dismiss, isAction, location, performAction]);
 
   const meta = VARIANT_META[variant];
   return (
-    <Modal
-      animationType="none"
-      hardwareAccelerated
-      onRequestClose={requestClose}
-      presentationStyle="overFullScreen"
-      statusBarTranslucent
-      testID="app-notification-modal"
-      transparent
-      visible
+    <View
+      pointerEvents={isAction ? 'auto' : 'box-none'}
+      style={[styles.overlay, { paddingTop: insets.top + 8 }]}
+      testID={`app-notification-${location}-overlay`}
     >
-      <View
-        pointerEvents={isAction ? 'auto' : 'box-none'}
-        style={[styles.overlay, { paddingTop: insets.top + 8 }]}
-        testID="app-notification-overlay"
-      >
-        {isAction ? (
-          <Pressable
-            accessibilityElementsHidden
-            importantForAccessibility="no-hide-descendants"
-            onPress={() => undefined}
-            style={styles.backdrop}
-            testID="app-notification-backdrop"
-          />
-        ) : null}
-        <Animated.View
+      {isAction ? (
+        <Pressable
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          onPress={() => undefined}
+          style={styles.backdrop}
+          testID="app-notification-backdrop"
+        />
+      ) : null}
+      <Animated.View
           accessibilityLiveRegion={variant === 'error' ? 'assertive' : 'polite'}
           accessibilityRole="alert"
           style={[
@@ -246,7 +317,6 @@ function NotificationHost({
                 {actions.map((action, index) => (
                   <Pressable
                     accessibilityRole="button"
-                    disabled={actionHandledRef.current}
                     key={`${action.label}-${index}`}
                     onPress={() => performAction(action)}
                     style={({ pressed }) => [
@@ -279,9 +349,8 @@ function NotificationHost({
               <Ionicons color="#667085" name="close" size={20} />
             </Pressable>
           ) : null}
-        </Animated.View>
-      </View>
-    </Modal>
+      </Animated.View>
+    </View>
   );
 }
 

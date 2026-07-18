@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +26,7 @@ import { uploadPrefsStore } from '@/storage/upload-prefs-store';
 import { ProviderError } from '@/providers/errors';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 import { useNotification } from '@/components/AppNotification';
+import { AppModal } from '@/components/AppModal';
 
 function accountIcon(account: BoundAccount) {
   if (account.providerId) {
@@ -240,7 +240,7 @@ export function UploadDataSheet({
     : null;
 
   return (
-    <Modal
+    <AppModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -388,7 +388,7 @@ export function UploadDataSheet({
           ) : null}
         </ScrollView>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 

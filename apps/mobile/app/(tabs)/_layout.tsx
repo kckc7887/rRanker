@@ -3,7 +3,15 @@ import { Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native
 
 export default function TabLayout() {
   return (
-    <NativeTabs backgroundColor="transparent" backBehavior="history" labelVisibilityMode="labeled" tintColor="#246BFD">
+    <NativeTabs
+      backgroundColor="#FFFFFF"
+      backBehavior="history"
+      blurEffect="systemMaterial"
+      disableTransparentOnScrollEdge
+      labelVisibilityMode="labeled"
+      minimizeBehavior="never"
+      tintColor="#246BFD"
+    >
       <NativeTabs.Trigger name="(overview)">
         <Icon
           sf={{ default: 'house', selected: 'house.fill' }}
