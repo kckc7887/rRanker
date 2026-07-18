@@ -39,7 +39,9 @@ jest.mock('expo-router', () => ({
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
-  return { data: { ...fixtures.fixtureCatalog, songs: fixtures.fixtureCatalog.songs.map((song: { id: string }) => song.id === '1' ? {
+  return { data: { ...fixtures.fixtureCatalog,
+    versions: [...fixtures.fixtureCatalog.versions, { id: 25500, title: '舞萌DX 2026' }],
+    songs: fixtures.fixtureCatalog.songs.map((song: { id: string }) => song.id === '1' ? {
     ...song, aliases: ['唯一别名', '这是用于验证超出一行后才会出现展开按钮的很长很长别名'], version: '舞萌DX 2026', versionId: undefined,
     genre: 'POPS＆ANIME', bpm: 180, region: '未来都市',
     charts: [
@@ -122,6 +124,19 @@ describe('M2 song query screens', () => {
 
   it('searches aliases after debounce and supports empty filter state', async () => {
     const screen = await render(<SearchScreen />);
+    const chartBadges = within(screen.getByTestId('song-chart-badges-1'));
+    expect(chartBadges.getByText('SD')).toBeTruthy();
+    expect(chartBadges.getByText('DX')).toBeTruthy();
+    expect(chartBadges.getAllByText(/^(5|12\.8|6|9|12|13\.6|14\.7)$/).map((node) => node.props.children))
+      .toEqual(['5', '12.8', '6', '9', '12', '13.6', '14.7']);
+
+    await fireEvent.press(screen.getByLabelText('版本筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('版本名称切换为日文'));
+    expect(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS'));
+    expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
+    expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0);
+
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '完全不存在');
     await waitFor(() => expect(screen.getByText('筛选结果为空')).toBeTruthy());
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '唯一别名');

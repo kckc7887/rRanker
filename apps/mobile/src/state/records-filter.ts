@@ -5,10 +5,14 @@ interface RecordsFilterState {
   difficulty: Difficulty | 'all';
   version: string | 'all';
   type: ChartType | 'all';
+  constantMin: string;
+  constantMax: string;
   sortBy: 'rating' | 'achievements' | 'title';
   setDifficulty: (d: Difficulty | 'all') => void;
   setVersion: (v: string | 'all') => void;
   setType: (t: ChartType | 'all') => void;
+  setConstantMin: (value: string) => void;
+  setConstantMax: (value: string) => void;
   setSortBy: (s: 'rating' | 'achievements' | 'title') => void;
   reset: () => void;
 }
@@ -17,10 +21,16 @@ export const useRecordsFilter = create<RecordsFilterState>((set) => ({
   difficulty: 'all',
   version: 'all',
   type: 'all',
+  constantMin: '',
+  constantMax: '',
   sortBy: 'rating',
   setDifficulty: (difficulty) => set({ difficulty }),
   setVersion: (version) => set({ version }),
   setType: (type) => set({ type }),
+  setConstantMin: (constantMin) => set({ constantMin }),
+  setConstantMax: (constantMax) => set({ constantMax }),
   setSortBy: (sortBy) => set({ sortBy }),
-  reset: () => set({ difficulty: 'all', version: 'all', type: 'all', sortBy: 'rating' }),
+  reset: () => set({
+    difficulty: 'all', version: 'all', type: 'all', constantMin: '', constantMax: '', sortBy: 'rating',
+  }),
 }));

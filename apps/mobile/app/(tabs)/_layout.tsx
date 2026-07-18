@@ -31,8 +31,8 @@ export default function TabLayout() {
         <Label>成绩</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="search">
-        <Icon sf="magnifyingglass" androidSrc={<VectorIcon family={Ionicons} name="search-outline" />} />
-        <Label>查找</Label>
+        <Icon sf="music.note.list" androidSrc={<VectorIcon family={Ionicons} name="musical-notes-outline" />} />
+        <Label>曲库</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
         <Icon

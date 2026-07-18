@@ -11,6 +11,8 @@ describe('useRecordsFilter store', () => {
     expect(state.difficulty).toBe('all');
     expect(state.version).toBe('all');
     expect(state.type).toBe('all');
+    expect(state.constantMin).toBe('');
+    expect(state.constantMax).toBe('');
     expect(state.sortBy).toBe('rating');
   });
 
@@ -29,6 +31,13 @@ describe('useRecordsFilter store', () => {
     expect(useRecordsFilter.getState().type).toBe('DX');
   });
 
+  it('updates the constant range via dedicated setters', () => {
+    useRecordsFilter.getState().setConstantMin('12.6');
+    useRecordsFilter.getState().setConstantMax('14.3');
+    expect(useRecordsFilter.getState().constantMin).toBe('12.6');
+    expect(useRecordsFilter.getState().constantMax).toBe('14.3');
+  });
+
   it('updates sortBy via setSortBy', () => {
     useRecordsFilter.getState().setSortBy('achievements');
     expect(useRecordsFilter.getState().sortBy).toBe('achievements');
@@ -38,12 +47,16 @@ describe('useRecordsFilter store', () => {
     useRecordsFilter.getState().setDifficulty('master');
     useRecordsFilter.getState().setVersion(FIXTURE_CURRENT_VERSION);
     useRecordsFilter.getState().setType('DX');
+    useRecordsFilter.getState().setConstantMin('12');
+    useRecordsFilter.getState().setConstantMax('14');
     useRecordsFilter.getState().setSortBy('achievements');
     useRecordsFilter.getState().reset();
     const state = useRecordsFilter.getState();
     expect(state.difficulty).toBe('all');
     expect(state.version).toBe('all');
     expect(state.type).toBe('all');
+    expect(state.constantMin).toBe('');
+    expect(state.constantMax).toBe('');
     expect(state.sortBy).toBe('rating');
   });
 });
