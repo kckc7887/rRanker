@@ -9,7 +9,6 @@ export default function SettingsLayout() {
       }}
     >
       <Stack.Screen name="index" options={{ title: '设置' }} />
-      <Stack.Screen name="games" options={{ title: '游戏管理' }} />
     </Stack>
   );
 }

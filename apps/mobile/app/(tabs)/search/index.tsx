@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
+import { LazyTabScreen } from '@/components/LazyTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
@@ -22,7 +23,11 @@ import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/s
 const TYPES: ChartType[] = ['SD', 'DX'];
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
-export default function SearchScreen() {
+export default function SearchTabScreen() {
+  return <LazyTabScreen><SearchScreen /></LazyTabScreen>;
+}
+
+export function SearchScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const query = useDetailedCatalog();
   const tabBottomInset = useNativeTabBottomInset();

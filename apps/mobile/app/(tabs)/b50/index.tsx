@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { router, type Href } from 'expo-router';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
+import { LazyTabScreen } from '@/components/LazyTabScreen';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
@@ -14,7 +15,11 @@ function byRating(left: ScoreRecord, right: ScoreRecord): number {
   return right.rating - left.rating || right.achievements - left.achievements;
 }
 
-export default function Best50Screen() {
+export default function Best50TabScreen() {
+  return <LazyTabScreen><Best50Screen /></LazyTabScreen>;
+}
+
+export function Best50Screen() {
   const { data, isLoading, isError, error, refetch } = useGameData();
   const tabBottomInset = useNativeTabBottomInset();
   const sections = useMemo(() => {
