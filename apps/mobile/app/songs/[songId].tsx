@@ -2,7 +2,7 @@ import { type ComponentProps, type ComponentRef, type ReactNode, useEffect, useM
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import {
@@ -487,16 +487,27 @@ const NOTE_COLUMNS: readonly { label: string; key: keyof ChartNotes }[] = [
 
 function NotesTable({ notes }: { notes?: ChartNotes }) {
   if (!notes) return <Text style={styles.chartMeta}>物量未提供</Text>;
-  return <View accessibilityLabel="谱面物量" style={styles.notesTable}>
-    <View style={[styles.notesRow, styles.notesHeaderRow]}>
-      {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
-        style={[styles.notesCell, styles.notesHeader]}>{column.label}</Text>)}
+  const openTolerance = () => router.push({
+    pathname: '/tools/tolerance',
+    params: {
+      tap: String(notes.tap), hold: String(notes.hold), slide: String(notes.slide),
+      touch: String(notes.touch), break: String(notes.break),
+    },
+  } as Href);
+  return <DetailPressable accessibilityRole="button" accessibilityLabel="使用此谱面物量计算容错"
+    onPress={openTolerance} style={({ pressed }) => [styles.notesAction, pressed && styles.notesActionPressed]}>
+    <View accessibilityLabel="谱面物量" style={styles.notesTable}>
+      <View style={[styles.notesRow, styles.notesHeaderRow]}>
+        {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
+          style={[styles.notesCell, styles.notesHeader]}>{column.label}</Text>)}
+      </View>
+      <View style={styles.notesRow}>
+        {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
+          style={[styles.notesCell, styles.notesValue]}>{notes[column.key]}</Text>)}
+      </View>
     </View>
-    <View style={styles.notesRow}>
-      {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
-        style={[styles.notesCell, styles.notesValue]}>{notes[column.key]}</Text>)}
-    </View>
-  </View>;
+    <Text style={styles.notesHint}>点击物量表，前往达成率与容错计算</Text>
+  </DetailPressable>;
 }
 
 const styles = StyleSheet.create({
@@ -547,6 +558,7 @@ const styles = StyleSheet.create({
   chartDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(51,65,85,0.18)', marginVertical: 16 },
   chartMeta: { color: '#4C586A', fontSize: 12, lineHeight: 18 },
   notesTable: { marginTop: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(76,88,106,0.28)', borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.38)' },
+  notesAction: { borderRadius: 9 }, notesActionPressed: { opacity: 0.62 }, notesHint: { color: '#697386', fontSize: 9, lineHeight: 13, textAlign: 'center', marginTop: 4 },
   notesRow: { minHeight: 26, flexDirection: 'row', alignItems: 'center' }, notesHeaderRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(76,88,106,0.22)' },
   notesCell: { flex: 1, minWidth: 0, textAlign: 'center' }, notesHeader: { color: '#697386', fontSize: 8, fontWeight: '800' }, notesValue: { color: '#253047', fontSize: 10, fontWeight: '800' },
   section: { fontWeight: '700', color: '#111827', marginBottom: 7 }, body: { color: '#374151', lineHeight: 20 }, meta: { color: '#6B7280', fontSize: 12 },
