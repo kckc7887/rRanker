@@ -17,4 +17,22 @@ describe('advanced song search', () => {
     expect(result.map((song) => song.id)).toEqual(['1806']);
     expect(searchSongs(buildSongSearchIndex(songs), { ...EMPTY_SONG_FILTERS, types: ['SD'] })).toHaveLength(0);
   });
+
+  it('requires type, difficulty, constant and chart version to match the same chart', () => {
+    const splitMatch: Song = {
+      ...songs[0],
+      charts: [
+        { ...songs[0].charts[0], type: 'SD', difficultyConstant: 12.6, versionId: 25000 },
+        { ...songs[0].charts[0], type: 'DX', difficulty: 'expert', difficultyConstant: 14.3, versionId: 25500 },
+      ],
+    };
+    const result = searchSongs(buildSongSearchIndex([splitMatch]), {
+      ...EMPTY_SONG_FILTERS,
+      types: ['SD'],
+      difficulties: ['expert'],
+      constantMin: 14,
+      chartVersionIds: [25500],
+    });
+    expect(result).toHaveLength(0);
+  });
 });

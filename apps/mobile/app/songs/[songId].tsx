@@ -1,6 +1,5 @@
 import { type ComponentProps, type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -15,7 +14,7 @@ import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { QueryStateView } from '@/components/QueryStateView';
-import { AchievementValue, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
+import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
@@ -467,15 +466,7 @@ function ChartTypeSwitch({ type, canSwitch, onToggle }: {
     accessibilityLabel={canSwitch ? `切换为${type === 'DX' ? 'SD' : 'DX'}谱面` : `${type}谱面`}
     accessibilityState={{ disabled: !canSwitch }} disabled={!canSwitch} onPress={onToggle}
     style={({ pressed }) => [styles.chartTypeRow, pressed && styles.switchPressed]}>
-    <View pointerEvents="none"
-      style={[styles.chartTypeBadge, type === 'SD' ? styles.sdTypeBadge : styles.dxTypeBadge]}>
-      {type === 'SD' ? <Text style={styles.sdTypeText}>SD</Text> :
-        <MaskedView style={styles.dxTypeTextMask}
-          maskElement={<Text style={[styles.chartTypeText, styles.dxTypeMaskText]}>DX</Text>}>
-          <LinearGradient colors={['#FF8A00', '#FFD84A']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
-            style={styles.gradientFill} />
-        </MaskedView>}
-    </View>
+    <View pointerEvents="none"><ChartTypeBadge type={type} /></View>
     {canSwitch ? <Text pointerEvents="none" style={styles.chartTypeHint}>·点击切换·</Text> : null}
   </DetailPressable>;
 }
@@ -544,10 +535,6 @@ const styles = StyleSheet.create({
   chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   chartIdentity: { alignItems: 'flex-start', gap: 7 },
   chartTypeRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  chartTypeBadge: { minWidth: 31, height: 18, borderRadius: 6, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
-  sdTypeBadge: { backgroundColor: '#3286E6' }, sdTypeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
-  dxTypeBadge: { backgroundColor: '#FFFFFF', borderWidth: StyleSheet.hairlineWidth, borderColor: '#F2C36C' },
-  dxTypeTextMask: { width: 19, height: 13 }, chartTypeText: { fontSize: 10, lineHeight: 13, fontWeight: '900', letterSpacing: 0.5 }, dxTypeMaskText: { color: '#000000' },
   chartTypeHint: { color: '#8A93A3', fontSize: 9, fontWeight: '600' },
   levelBlock: { alignItems: 'flex-end' }, level: { color: '#172033', fontSize: 28, lineHeight: 31, fontWeight: '900' }, constant: { color: '#667085', fontSize: 11, fontWeight: '600' },
   resultRow: { flexDirection: 'row', marginTop: 22 }, resultMain: { flex: 1, alignItems: 'flex-start' },

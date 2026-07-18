@@ -55,14 +55,27 @@ export const DIFFICULTY_VISUAL: Record<Difficulty, DifficultyVisual> = {
   unknown: { label: 'UNKNOWN', color: '#6B7280', tint: '#F3F4F6', badgeBackground: '#6B7280', badgeText: '#FFFFFF', badgeBorder: '#6B7280' },
 };
 
-export function DifficultyBadge({ difficulty, constant, compact = false, mini = false }: {
+export type DifficultyBadgeDisplay = 'label' | 'label-and-constant' | 'constant';
+
+export function formatDifficultyConstant(constant: number): string {
+  return Number.isInteger(constant) ? String(constant) : constant.toFixed(1);
+}
+
+export function DifficultyBadge({ difficulty, constant, display, compact = false, mini = false }: {
   difficulty: Difficulty;
   constant?: number;
+  display?: DifficultyBadgeDisplay;
   compact?: boolean;
   mini?: boolean;
 }) {
   const visual = DIFFICULTY_VISUAL[difficulty];
-  const constantText = constant === undefined ? '' : ` (${constant.toFixed(1)})`;
+  const effectiveDisplay = display ?? (constant === undefined ? 'label' : 'label-and-constant');
+  const formattedConstant = constant === undefined ? '—' : formatDifficultyConstant(constant);
+  const text = effectiveDisplay === 'constant'
+    ? formattedConstant
+    : effectiveDisplay === 'label-and-constant' && constant !== undefined
+      ? `${visual.label} (${constant.toFixed(1)})`
+      : visual.label;
   return <View style={[
     styles.difficultyBadge,
     compact && !mini && styles.difficultyBadgeCompact,
@@ -74,7 +87,18 @@ export function DifficultyBadge({ difficulty, constant, compact = false, mini = 
       compact && !mini && styles.difficultyTextCompact,
       mini && styles.difficultyTextMini,
       { color: visual.badgeText },
-    ]}>{visual.label}{constantText}</Text>
+    ]}>{text}</Text>
+  </View>;
+}
+
+export function ChartTypeBadge({ type }: { type: 'SD' | 'DX' }) {
+  return <View style={[styles.chartTypeBadge, type === 'SD' ? styles.sdTypeBadge : styles.dxTypeBadge]}>
+    {type === 'SD' ? <Text style={styles.sdTypeText}>SD</Text> :
+      <MaskedView style={styles.dxTypeTextMask}
+        maskElement={<Text style={[styles.chartTypeText, styles.dxTypeMaskText]}>DX</Text>}>
+        <LinearGradient colors={['#FF8A00', '#FFD84A']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
+          style={styles.gradientFill} />
+      </MaskedView>}
   </View>;
 }
 
@@ -218,6 +242,13 @@ const styles = StyleSheet.create({
   difficultyText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7 },
   difficultyTextCompact: { fontSize: 9, letterSpacing: 0.25 },
   difficultyTextMini: { fontSize: 8, letterSpacing: 0.1, fontWeight: '800' },
+  chartTypeBadge: { minWidth: 31, height: 18, borderRadius: 6, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
+  sdTypeBadge: { backgroundColor: '#3286E6' },
+  sdTypeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  dxTypeBadge: { backgroundColor: '#FFFFFF', borderWidth: StyleSheet.hairlineWidth, borderColor: '#F2C36C' },
+  dxTypeTextMask: { width: 19, height: 13 },
+  chartTypeText: { fontSize: 10, lineHeight: 13, fontWeight: '900', letterSpacing: 0.5 },
+  dxTypeMaskText: { color: '#000000' },
   achievement: { fontSize: 36, lineHeight: 44, fontWeight: '900', letterSpacing: -1.3, textShadowColor: 'rgba(255,255,255,0.8)', textShadowRadius: 2 },
   achievementCompact: { fontSize: 22, lineHeight: 28, letterSpacing: -0.5 },
   achievementNormal: { color: '#172033' },
