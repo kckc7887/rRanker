@@ -6,7 +6,9 @@ import type { ProviderId } from '@/domain/game-bind-options';
 
 let mockProviderId: ProviderId = 'local';
 let mockPinnedToolIds: string[] = [];
+let mockPinnedPlateIds: number[] = [];
 const mockHydratePins = jest.fn(async () => undefined);
+const mockRouterPush = jest.fn();
 const mockShowNotification = jest.fn();
 const mockLocal = createLocalMaimaiAccount('本地玩家', 0);
 const mockExtraLocal = createLocalMaimaiAccount('本地二号', 0, 'maimai:local:second');
@@ -20,7 +22,7 @@ const mockLxns = createMaimaiBoundAccount({
   providerId: 'lxns', displayName: '落雪玩家', rating: 15000, playerId: 'lxns',
 });
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockRouterPush(...args) } }));
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
 }));
@@ -82,6 +84,17 @@ jest.mock('@/hooks/use-game-data', () => ({
     profile: { ratingLabel: 'DX RATING', ratingDigits: 5 },
   }),
 }));
+jest.mock('@/hooks/use-plates', () => ({
+  usePlates: () => ({
+    data: {
+      plates: [
+        { id: 6101, name: '真極', requirements: [{ difficulties: [], rate: 's', songs: ['1'] }] },
+        { id: 6102, name: '真神', requirements: [{ difficulties: [], fc: 'ap', songs: ['1'] }] },
+      ],
+      source: { kind: 'fixture', label: '牌子', updatedAt: '2026-07-17T00:00:00.000Z', isStale: false },
+    },
+  }),
+}));
 jest.mock('@/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
   useSession: (selector: (state: unknown) => unknown) => selector({
@@ -103,9 +116,11 @@ jest.mock('@/state/session-store', () => ({
 jest.mock('@/state/toolbox-pins', () => ({
   useToolboxPins: (selector: (state: {
     pinnedToolIdsByGame: { maimai: string[]; phigros: string[]; test: string[] };
+    pinnedPlateIdsByGame: { maimai: number[]; phigros: number[]; test: number[] };
     hydrate: typeof mockHydratePins;
   }) => unknown) => selector({
     pinnedToolIdsByGame: { maimai: mockPinnedToolIds, phigros: [], test: [] },
+    pinnedPlateIdsByGame: { maimai: mockPinnedPlateIds, phigros: [], test: [] },
     hydrate: mockHydratePins,
   }),
 }));
@@ -127,7 +142,9 @@ describe('总览上传和同步操作', () => {
   beforeEach(() => {
     mockTemporarySelectedAccountIds = undefined;
     mockPinnedToolIds = [];
+    mockPinnedPlateIds = [];
     mockShowNotification.mockClear();
+    mockRouterPush.mockClear();
   });
 
   it('本地查分器页只显示使用好友码的同步按钮', async () => {
@@ -165,6 +182,20 @@ describe('总览上传和同步操作', () => {
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('置顶工具')).toBeTruthy();
     expect(screen.getByLabelText('打开置顶工具 DX Rating 计算器')).toBeTruthy();
+  });
+
+  it('在置顶工具上方展示牌子进度，并携带牌子参数跳转', async () => {
+    mockPinnedPlateIds = [6102];
+    mockPinnedToolIds = ['rating'];
+    const screen = await render(<OverviewScreen />);
+    const homeCardLabels = screen.getAllByText(/^(牌子进度|置顶工具)$/)
+      .map((node) => node.props.children);
+    expect(homeCardLabels).toEqual(['牌子进度', '置顶工具']);
+    await fireEvent.press(screen.getByLabelText('打开主页牌子 真神'));
+    expect(mockRouterPush).toHaveBeenCalledWith({
+      pathname: '/tools/plates',
+      params: { plateId: '6102' },
+    });
   });
 
   it('同步失败时改用全局错误通知', async () => {
