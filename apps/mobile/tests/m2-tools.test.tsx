@@ -45,6 +45,7 @@ describe('M2 tool screens', () => {
     await fireEvent.press(screen.getByLabelText('目标达成率 100.5%'));
     expect(screen.getByLabelText('目标达成率').props.value).toBe('100.5');
     expect(screen.getByLabelText('容错计算表')).toBeTruthy();
+    expect(screen.getAllByText('↔ 左右滑动查看完整表格')).toHaveLength(2);
     for (const label of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK']) await fireEvent.changeText(screen.getByLabelText(label), '0');
     expect(screen.getAllByText(/总物量不能为零/).length).toBeGreaterThan(0);
   });
