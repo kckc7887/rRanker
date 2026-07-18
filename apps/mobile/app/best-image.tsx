@@ -3,7 +3,6 @@ import { WebView } from 'react-native-webview';
 import { captureRef } from 'react-native-view-shot';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
   PixelRatio,
@@ -16,6 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useNotification } from '@/components/AppNotification';
 import { useGameData } from '@/hooks/use-game-data';
 import { CollectionImage } from '@/components/CollectionImage';
 import type { Player } from '@/domain/models';
@@ -164,6 +164,7 @@ function StylePreview({
 }
 
 export default function BestImageScreen() {
+  const { showNotification } = useNotification();
   const { data, activeAccountId } = useGameData();
   const window = useWindowDimensions();
   const [imageType, setImageType] = useState<BestImageType>('best50');
@@ -517,9 +518,17 @@ export default function BestImageScreen() {
           throw new Error(`第 ${index + 1}/${captures.length} 页保存失败：${reason}`);
         }
       }
-      Alert.alert('导出完成', `已保存 ${captures.length} 张成绩图片到相册`);
+      showNotification({
+        title: '导出完成',
+        message: `已保存 ${captures.length} 张成绩图片到相册`,
+        variant: 'success',
+      });
     } catch (error) {
-      Alert.alert('导出失败', error instanceof Error ? error.message : '无法导出成绩图片');
+      showNotification({
+        title: '导出失败',
+        message: error instanceof Error ? error.message : '无法导出成绩图片',
+        variant: 'error',
+      });
     } finally {
       if (exportTimeout.current) clearTimeout(exportTimeout.current);
       exportTimeout.current = null;

@@ -12,6 +12,7 @@ import { DEFAULT_LOCAL_PLAYER_NAME, LocalAccountStore } from '@/storage/local-ac
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSyncOnAccountSwitch } from '@/hooks/use-sync-on-account-switch';
 import { createLocalMaimaiAccount, LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
+import { NotificationProvider } from '@/components/AppNotification';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -54,14 +55,16 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AccountSwitchSync />
-      <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal', headerBackButtonMenuEnabled: false }}>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'rRanker' }} />
-        <Stack.Screen name="library/index" options={{ title: '我的曲库' }} />
-        <Stack.Screen name="best-image" options={{ title: '图片预览' }} />
-        <Stack.Screen name="songs/[songId]" options={{ title: '歌曲详情' }} />
-      </Stack>
-      <StatusBar style="dark" />
+      <NotificationProvider>
+        <AccountSwitchSync />
+        <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal', headerBackButtonMenuEnabled: false }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'rRanker' }} />
+          <Stack.Screen name="library/index" options={{ title: '我的曲库' }} />
+          <Stack.Screen name="best-image" options={{ title: '图片预览' }} />
+          <Stack.Screen name="songs/[songId]" options={{ title: '歌曲详情' }} />
+        </Stack>
+        <StatusBar style="dark" />
+      </NotificationProvider>
     </QueryClientProvider>
   );
 }

@@ -8,10 +8,14 @@ let mockPinnedToolIds: string[] = [];
 const mockHydratePins = jest.fn(async () => undefined);
 const mockTogglePinnedTool = jest.fn(async (_gameId?: GameId, _toolId?: string) => undefined);
 const mockRouterPush = jest.fn();
+const mockShowNotification = jest.fn();
 
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: { push: mockRouterPush },
+}));
+jest.mock('@/components/AppNotification', () => ({
+  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
 }));
 jest.mock('@/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: GameId }) => unknown) => selector({
@@ -63,5 +67,16 @@ describe('game-aware toolbox screen', () => {
     const screen = await render(<ToolsScreen />);
     expect(screen.getByLabelText('取消置顶 DX Rating 计算器')).toBeTruthy();
     expect(screen.getByText('已置顶')).toBeTruthy();
+  });
+
+  it('shows a global error notification when pin persistence fails', async () => {
+    mockTogglePinnedTool.mockRejectedValueOnce(new Error('disk full'));
+    const screen = await render(<ToolsScreen />);
+    await fireEvent.press(screen.getByLabelText('置顶 DX Rating 计算器'));
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '保存失败',
+      message: '无法保存工具置顶状态，请稍后重试。',
+      variant: 'error',
+    }));
   });
 });

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
+import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
@@ -29,6 +30,7 @@ import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const sessions = new SecureSessionStore();
 export default function OverviewScreen() {
+  const { showNotification } = useNotification();
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
   const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useDetailedCatalog();
@@ -95,17 +97,18 @@ export default function OverviewScreen() {
       await invalidateAccountDataQueries(queryClient, 'none');
       await refetch();
     } catch (syncError) {
-      Alert.alert(
-        '同步失败',
-        syncError instanceof Error ? syncError.message : '暂时无法同步成绩，请稍后重试。',
-      );
+      showNotification({
+        title: '同步失败',
+        message: syncError instanceof Error ? syncError.message : '暂时无法同步成绩，请稍后重试。',
+        variant: 'error',
+      });
     } finally {
       refreshingRef.current = false;
       setRefreshing(false);
       setSyncing(false);
     }
   }, [activeAccountId, activeSession, boundAccounts, catalogData, catalogError, profile.ratingDigits,
-    refetch, refetchCatalog, updateBoundAccountScore]);
+    refetch, refetchCatalog, showNotification, updateBoundAccountScore]);
 
   const finishUpload = useCallback(async (result: UploadResult) => {
     for (const refreshed of result.refreshedAccounts) {

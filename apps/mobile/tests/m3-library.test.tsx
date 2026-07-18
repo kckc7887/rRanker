@@ -11,6 +11,7 @@ import type { UserLibraryItem } from '@/domain/user-library';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockShowNotification = jest.fn();
 const mockSetFavorite = jest.fn(async () => []);
 const mockSetPractice = jest.fn(async () => []);
 const mockSetTags = jest.fn(async () => []);
@@ -50,6 +51,9 @@ const mockItems: UserLibraryItem[] = [
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('@/components/AppNotification', () => ({
+  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
+}));
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('react-native-gesture-handler', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
