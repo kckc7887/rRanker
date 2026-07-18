@@ -23,7 +23,8 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const b15Low = { ...base, songId: '151', title: 'B15低', type: 'SD' as const, levelIndex: 1,
     difficulty: 'advanced' as const, difficultyConstant: 10.2, achievements: 99.5, rating: 200, rate: 'ssp' };
   const b15High = { ...base, songId: '152', title: 'B15高', type: 'DX' as const, levelIndex: 4,
-    difficulty: 'remaster' as const, difficultyConstant: 14.8, achievements: 99.9999, rating: 400, rate: 'sss' };
+    difficulty: 'remaster' as const, difficultyConstant: 14.8, achievements: 99.9999, rating: 400, rate: 'sss',
+    version: '舞萌DX 2026' };
   return {
     data: {
       player: fixtures.fixturePlayer,
@@ -51,7 +52,8 @@ jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
   const b15Low = { ...base, songId: '151', title: 'B15低', type: 'SD' as const, levelIndex: 1,
     difficulty: 'advanced' as const, difficultyConstant: 10.2, achievements: 99.5, rating: 200, rate: 'ssp' };
   const b15High = { ...base, songId: '152', title: 'B15高', type: 'DX' as const, levelIndex: 4,
-    difficulty: 'remaster' as const, difficultyConstant: 14.8, achievements: 99.9999, rating: 400, rate: 'sss' };
+    difficulty: 'remaster' as const, difficultyConstant: 14.8, achievements: 99.9999, rating: 400, rate: 'sss',
+    version: '舞萌DX 2026' };
   return {
     data: {
       gameId: 'maimai',
@@ -117,5 +119,27 @@ describe('M4 score list cards', () => {
       pathname: '/songs/[songId]',
       params: { songId: '152', chartType: 'DX', levelIndex: '4' },
     });
+  });
+
+  it('filters records by inclusive constants and localizes the expandable version picker', async () => {
+    const screen = await render(<RecordsScreen />);
+    for (const label of ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER']) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+
+    await fireEvent.changeText(screen.getByLabelText('最低定数'), '14.8');
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('最高定数'), '14.8');
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('版本筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('选择版本 舞萌DX 2026'));
+    await fireEvent.press(screen.getByLabelText('版本名称切换为日文'));
+    expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+
+    await fireEvent.changeText(screen.getByLabelText('最低定数'), '15');
+    expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
   });
 });
