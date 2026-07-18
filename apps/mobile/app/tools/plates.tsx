@@ -1,26 +1,28 @@
-import { useMemo, useState } from 'react';
-import { router, Stack, type Href } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { router, Stack, type Href, useLocalSearchParams } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
 import { Card } from '@/components/Card';
+import { useNotification } from '@/components/AppNotification';
 import { PlateImage } from '@/components/PlateImage';
+import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
-import { DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
+import { DifficultyBadge } from '@/components/ScoreVisuals';
 import { SourceStatus } from '@/components/SourceStatus';
 import { difficultyFromIndex } from '@/domain/catalog';
 import {
   calculatePlateProgress,
   groupPlatesForPicker,
   parseVersionPlateName,
-  plateRequirementSpec,
-  type PlateTierLabel,
   type VersionPlateGroup,
 } from '@/domain/plates';
 import type { DataSource, Plate } from '@/domain/models';
 import { usePlates } from '@/hooks/use-plates';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useSongs } from '@/hooks/use-songs';
+import { useSession } from '@/state/session-store';
+import { useToolboxPins } from '@/state/toolbox-pins';
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
@@ -38,28 +40,35 @@ function firstPlateInGroups(groups: VersionPlateGroup[]): Plate | undefined {
   return groups[0]?.entries[0]?.plate;
 }
 
-function progressPercent(completed: number, total: number): number {
-  return total ? Math.min(100, (completed / total) * 100) : 0;
-}
-
-function RequirementHint({ label }: { label: PlateTierLabel }) {
-  const spec = plateRequirementSpec(label);
-  return (
-    <View style={styles.requirementHint}>
-      <Text style={styles.requirementText}>达成</Text>
-      <ScoreStatusBadges rate={spec.rate} fc={spec.fc} fs={spec.fs} />
-      <Text style={styles.requirementText}>及以上{spec.suffix}</Text>
-    </View>
-  );
+function parsePlateIdParam(value: string | undefined): number | undefined {
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const plateId = Number(value);
+  return Number.isSafeInteger(plateId) && plateId > 0 ? plateId : undefined;
 }
 
 export default function PlatesToolScreen() {
+  const { showNotification } = useNotification();
+  const { plateId: plateIdParam } = useLocalSearchParams<{ plateId?: string }>();
+  const routePlateId = parsePlateIdParam(plateIdParam);
   const plates = usePlates();
   const scores = useScoreSnapshot();
   const songs = useSongs();
-  const [selectedId, setSelectedId] = useState<number>();
+  const activeGameId = useSession((state) => state.activeGameId);
+  const pinnedPlateIds = useToolboxPins((state) => state.pinnedPlateIdsByGame[activeGameId]);
+  const hydratePins = useToolboxPins((state) => state.hydrate);
+  const togglePinnedPlate = useToolboxPins((state) => state.togglePinnedPlate);
+  const [selectedId, setSelectedId] = useState<number | undefined>(routePlateId);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openPrefix, setOpenPrefix] = useState<string | null>(null);
+  const [pinPending, setPinPending] = useState(false);
+
+  useEffect(() => {
+    void hydratePins();
+  }, [hydratePins]);
+
+  useEffect(() => {
+    if (routePlateId) setSelectedId(routePlateId);
+  }, [routePlateId]);
 
   const plateSnapshot = plates.data;
   const groups = useMemo(
@@ -82,7 +91,6 @@ export default function PlatesToolScreen() {
     return map;
   }, [songs.data]);
   const activeGroup = groups.find((group) => group.prefix === openPrefix) ?? null;
-  const percent = progress ? progressPercent(progress.completed, progress.total) : 0;
   const viewData = plateSnapshot && groups.length
     ? { groups, source: plateSnapshot.source }
     : undefined;
@@ -100,6 +108,22 @@ export default function PlatesToolScreen() {
   const selectPlate = (plate: Plate) => {
     setSelectedId(plate.id);
     closePicker();
+  };
+
+  const toggleHomePlate = async () => {
+    if (!selected) return;
+    setPinPending(true);
+    try {
+      await togglePinnedPlate(activeGameId, selected.id);
+    } catch {
+      showNotification({
+        title: '保存失败',
+        message: '无法保存牌子主页状态，请稍后重试。',
+        variant: 'error',
+      });
+    } finally {
+      setPinPending(false);
+    }
   };
 
   return (
@@ -209,36 +233,31 @@ export default function PlatesToolScreen() {
                 </Card>
 
                 {selected && progress ? (
-                  <Card style={styles.progressCard}>
-                    <View style={styles.progressHeader}>
-                      <Text style={styles.progressTitle}>{selected.name}</Text>
-                      <Text style={styles.progressPct}>{percent.toFixed(1)}%</Text>
-                    </View>
-                    <View style={styles.barTrack}>
-                      <View style={[styles.barFill, { width: `${percent}%` }]} />
-                    </View>
-                    <View style={styles.progressMetaRow}>
-                      {selectedMeta ? <RequirementHint label={selectedMeta.label} /> : <View style={styles.requirementHint} />}
-                      <Text style={styles.progressCount}>
-                        {progress.completed} / {progress.total}
-                      </Text>
-                    </View>
-                    {Object.entries(progress.byDifficulty)
-                      .sort(([left], [right]) => Number(left) - Number(right))
-                      .map(([difficulty, item]) => {
-                        const levelIndex = Number(difficulty);
-                        return (
-                          <View key={difficulty} style={styles.diffRow}>
-                            {levelIndex < 0 ? (
-                              <Text style={styles.anyDiff}>任意难度</Text>
-                            ) : (
-                              <DifficultyBadge difficulty={difficultyFromIndex(levelIndex)} compact />
-                            )}
-                            <Text style={styles.meta}>{item.completed}/{item.total}</Text>
-                          </View>
-                        );
-                      })}
-                  </Card>
+                  <PlateProgressCard
+                    plate={selected}
+                    progress={progress}
+                    footer={(
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${pinnedPlateIds.includes(selected.id) ? '从主页移除' : '添加到主页'} ${selected.name}`}
+                        disabled={pinPending}
+                        onPress={() => void toggleHomePlate()}
+                        style={({ pressed }) => [
+                          styles.homeButton,
+                          pinnedPlateIds.includes(selected.id) && styles.homeButtonActive,
+                          pressed && styles.pressed,
+                          pinPending && styles.homeButtonDisabled,
+                        ]}
+                      >
+                        <Text style={[
+                          styles.homeButtonText,
+                          pinnedPlateIds.includes(selected.id) && styles.homeButtonTextActive,
+                        ]}>
+                          {pinnedPlateIds.includes(selected.id) ? '已添加到主页' : '添加到主页'}
+                        </Text>
+                      </Pressable>
+                    )}
+                  />
                 ) : null}
 
                 <Text style={styles.heading}>
@@ -357,43 +376,18 @@ const styles = StyleSheet.create({
   },
   tierChipText: { color: '#374151', fontSize: 15, fontWeight: '700' },
   tierChipTextActive: { color: '#FFFFFF' },
-  progressCard: { gap: 8 },
-  progressHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 },
-  progressTitle: { color: '#111827', fontSize: 18, fontWeight: '800', flex: 1 },
-  progressPct: { color: '#246BFD', fontSize: 22, fontWeight: '800' },
-  barTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#246BFD',
-  },
-  progressMetaRow: {
-    flexDirection: 'row',
+  homeButton: {
+    marginTop: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#C7D2E2',
+    borderRadius: 12,
+    paddingVertical: 10,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
   },
-  requirementHint: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 4,
-  },
-  requirementText: {
-    color: '#6B7280',
-    fontSize: 11,
-    lineHeight: 16,
-  },
-  progressCount: { color: '#4B5563', fontSize: 12, fontWeight: '600', flexShrink: 0 },
-  diffRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  anyDiff: { color: '#6B7280', fontSize: 12, fontWeight: '700' },
-  meta: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
+  homeButtonActive: { borderColor: '#246BFD', backgroundColor: '#EAF1FF' },
+  homeButtonDisabled: { opacity: 0.55 },
+  homeButtonText: { color: '#5B6472', fontSize: 14, fontWeight: '700' },
+  homeButtonTextActive: { color: '#246BFD' },
   emptyCard: { alignItems: 'center', paddingVertical: 18 },
   done: { color: '#166534', fontWeight: '700' },
   song: {

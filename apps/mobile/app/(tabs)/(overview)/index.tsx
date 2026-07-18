@@ -3,6 +3,7 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { DxRatingCard } from '@/components/DxRatingCard';
+import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
@@ -11,9 +12,12 @@ import type { BoundAccount } from '@/domain/bound-account';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
 import { selectGameTools, summarizeGameTools } from '@/domain/game-toolbox';
+import { calculatePlateProgress } from '@/domain/plates';
+import type { ScoreRecord } from '@/domain/models';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
+import { usePlates } from '@/hooks/use-plates';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
 import { refreshDivingFishAccounts } from '@/services/refresh-diving-fish-accounts';
 import {
@@ -57,6 +61,7 @@ export default function OverviewScreen() {
   const currentUploadSelection = useMemo(() => [activeAccountId], [activeAccountId]);
   const toolboxGameId = data?.gameId ?? activeGameId;
   const pinnedToolIds = useToolboxPins((s) => s.pinnedToolIdsByGame[toolboxGameId]);
+  const pinnedPlateIds = useToolboxPins((s) => s.pinnedPlateIdsByGame[toolboxGameId]);
   const hydratePins = useToolboxPins((s) => s.hydrate);
   const pinnedTools = useMemo(
     () => selectGameTools(toolboxGameId, pinnedToolIds),
@@ -241,9 +246,14 @@ export default function OverviewScreen() {
               </Pressable>
             )}
 
+            {bundle.payload.kind === 'maimai' && pinnedPlateIds.length ? (
+              <PinnedPlateCards plateIds={pinnedPlateIds} records={bundle.payload.records} />
+            ) : null}
+
             {pinnedTools.map((tool) => (
               <Pressable
                 key={tool.id}
+                testID={`overview-pinned-tool-${tool.id}`}
                 accessibilityRole="button"
                 accessibilityLabel={`打开置顶工具 ${tool.title}`}
                 onPress={() => router.push(tool.href as Href)}
@@ -318,6 +328,36 @@ export default function OverviewScreen() {
       />
     </View>
   );
+}
+
+function PinnedPlateCards({ plateIds, records }: { plateIds: readonly number[]; records: readonly ScoreRecord[] }) {
+  const plates = usePlates();
+  const pinnedPlates = useMemo(() => {
+    const plateById = new Map((plates.data?.plates ?? []).map((plate) => [plate.id, plate]));
+    return plateIds.flatMap((plateId) => {
+      const plate = plateById.get(plateId);
+      return plate ? [plate] : [];
+    });
+  }, [plateIds, plates.data?.plates]);
+
+  return pinnedPlates.map((plate) => (
+    <Pressable
+      key={plate.id}
+      accessibilityRole="button"
+      accessibilityLabel={`打开主页牌子 ${plate.name}`}
+      onPress={() => router.push({
+        pathname: '/tools/plates',
+        params: { plateId: String(plate.id) },
+      } as Href)}
+    >
+      <PlateProgressCard
+        plate={plate}
+        progress={calculatePlateProgress(plate, records)}
+        eyebrow="牌子进度"
+        testID={`overview-pinned-plate-${plate.id}`}
+      />
+    </Pressable>
+  ));
 }
 
 function displayName(bundle: GameDataBundle): string {
