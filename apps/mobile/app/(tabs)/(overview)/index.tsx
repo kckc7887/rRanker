@@ -154,6 +154,7 @@ export default function OverviewScreen() {
         data={data}
         renderData={(bundle) => (
           <ScrollView
+            contentInsetAdjustmentBehavior="automatic"
             style={styles.scroll}
             testID="overview-scroll"
             alwaysBounceVertical

@@ -77,13 +77,14 @@ export const LxnsScoreSchema = z.object({
   dx_score: z.number().int().nonnegative().nullable(),
   dx_rating: z.number().finite().nonnegative().optional(),
   rate: z.string().optional(),
-  type: z.string(),
+  type: z.enum(['standard', 'dx', 'utage']),
 }).passthrough();
 
 function mapLxnsSongType(type: string): 'SD' | 'DX' {
   const normalized = type.toLowerCase();
-  if (normalized === 'dx' || normalized === 'utage') return 'DX';
-  return 'SD';
+  if (normalized === 'dx') return 'DX';
+  if (normalized === 'standard') return 'SD';
+  throw new TypeError('宴会场成绩不能映射为标准 SD/DX 谱面');
 }
 
 export function mapLxnsScore(input: unknown): ScoreRecord {

@@ -110,7 +110,8 @@ const CatalogResultsList = memo(function CatalogResultsList({
     state: source.isStale ? 'cache' : 'live',
   }]} />, [source]);
 
-  return <FlatList data={songs} keyExtractor={songKey} initialNumToRender={8} maxToRenderPerBatch={8}
+  return <FlatList testID="catalog-results-list" contentInsetAdjustmentBehavior="automatic"
+    data={songs} keyExtractor={songKey} initialNumToRender={8} maxToRenderPerBatch={8}
     updateCellsBatchingPeriod={40} windowSize={5} removeClippedSubviews
     contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 20 }]}
     scrollIndicatorInsets={{ bottom: tabBottomInset }} ListHeaderComponent={sourceHeader}
