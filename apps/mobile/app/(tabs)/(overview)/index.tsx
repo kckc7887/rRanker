@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
-import { FocusedTabScreen } from '@/components/FocusedTabScreen';
+import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -36,7 +36,7 @@ import { SecureSessionStore } from '@/storage/secure-session-store';
 const sessions = new SecureSessionStore();
 
 export default function OverviewTabScreen() {
-  return <FocusedTabScreen><OverviewScreen /></FocusedTabScreen>;
+  return <CachedTabScreen><OverviewScreen /></CachedTabScreen>;
 }
 
 export function OverviewScreen() {
