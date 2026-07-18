@@ -1,6 +1,7 @@
 export type NormalJudgment = 'perfect' | 'great' | 'good' | 'miss';
 export type BreakJudgment = 'criticalPerfect' | 'perfect1' | 'perfect2' | 'great1' | 'great2' | 'great3' | 'good' | 'miss';
 export type NoteKind = 'tap' | 'hold' | 'slide' | 'touch' | 'break';
+export type NoteAnalysisMode = 'zeroPlus' | 'hundredMinus' | 'hundredOneMinus';
 
 export interface NoteCounts { tap: number; hold: number; slide: number; touch: number; break: number }
 export interface JudgmentInput {
@@ -61,6 +62,37 @@ export function singleNoteLoss(notes: NoteCounts, kind: NoteKind, judgment: Norm
     return (5 - BREAK_BASE[key]) / total * 100 + (1 - BREAK_BONUS[key]) / notes.break;
   }
   return NOTE_WEIGHT[kind] * (1 - NORMAL_RATIO[judgment as NormalJudgment]) / total * 100;
+}
+
+/**
+ * 返回单个 Note 在指定判定下用于物量分析表的达成率数值：
+ * - zeroPlus：从 0% 起累计该 Note 实际获得的达成率；
+ * - hundredMinus：从 100% 起扣除的数值，BREAK 奖励会使结果为负数；
+ * - hundredOneMinus：从 101% 起扣除的损失。
+ */
+export function singleNoteAnalysis(
+  notes: NoteCounts,
+  kind: NoteKind,
+  judgment: NormalJudgment | BreakJudgment,
+  mode: NoteAnalysisMode,
+): number {
+  const total = weightedNoteTotal(notes);
+  if (kind === 'break') {
+    if (!notes.break) throw new Error('零 BREAK 谱面无法计算 BREAK 达成率');
+    const key = judgment as BreakJudgment;
+    const baseEarned = BREAK_BASE[key] / total * 100;
+    const bonusEarned = BREAK_BONUS[key] / notes.break;
+    if (mode === 'zeroPlus') return baseEarned + bonusEarned;
+    const baseLoss = (5 - BREAK_BASE[key]) / total * 100;
+    return mode === 'hundredMinus'
+      ? baseLoss - bonusEarned
+      : baseLoss + (1 - BREAK_BONUS[key]) / notes.break;
+  }
+
+  const key = judgment as NormalJudgment;
+  const earned = NOTE_WEIGHT[kind] * NORMAL_RATIO[key] / total * 100;
+  if (mode === 'zeroPlus') return earned;
+  return NOTE_WEIGHT[kind] * (1 - NORMAL_RATIO[key]) / total * 100;
 }
 
 export function maximumSameErrors(notes: NoteCounts, target: number, kind: NoteKind, judgment: NormalJudgment | BreakJudgment): number {

@@ -6,7 +6,8 @@ import PlatesToolScreen from '../app/tools/plates';
 import VersionsToolScreen from '../app/tools/versions';
 import type { DataSource, PlateSnapshot } from '@/domain/models';
 
-jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: jest.fn() } }));
+let mockToleranceParams: Record<string, string> = {};
+jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: jest.fn() }, useLocalSearchParams: () => mockToleranceParams }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockSource: DataSource = { kind: 'fixture', label: '测试来源', updatedAt: '2026-07-13T00:00:00.000Z', isStale: false };
@@ -21,6 +22,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ 
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => { const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized'); return { data: { records: fixtures.fixtureRecords, source: fixtures.fixtureSource, best50: { b35: [], b15: [] } }, isLoading: false, isError: false, error: null, refetch: jest.fn() }; } }));
 
 describe('M2 tool screens', () => {
+  beforeEach(() => { mockToleranceParams = {}; });
   it('calculates rating and reverse target interactively', async () => {
     const screen = await render(<RatingToolScreen />);
     expect(screen.getByText(/单曲 Rating/)).toBeTruthy();
@@ -37,8 +39,23 @@ describe('M2 tool screens', () => {
   it('shows tolerance result and invalid zero-total error', async () => {
     const screen = await render(<ToleranceToolScreen />);
     expect(screen.getAllByText(/预计达成率/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('物量分析表')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('物量分析模式 0%+'));
+    expect(screen.getByLabelText('TAP GREAT 0%+')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('目标达成率 100.5%'));
+    expect(screen.getByLabelText('目标达成率').props.value).toBe('100.5');
+    expect(screen.getByLabelText('容错计算表')).toBeTruthy();
     for (const label of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK']) await fireEvent.changeText(screen.getByLabelText(label), '0');
     expect(screen.getAllByText(/总物量不能为零/).length).toBeGreaterThan(0);
+  });
+  it('fills chart note counts from song-detail route parameters', async () => {
+    mockToleranceParams = { tap: '321', hold: '45', slide: '67', touch: '89', break: '10' };
+    const screen = await render(<ToleranceToolScreen />);
+    expect(screen.getByLabelText('TAP').props.value).toBe('321');
+    expect(screen.getByLabelText('HOLD').props.value).toBe('45');
+    expect(screen.getByLabelText('SLIDE').props.value).toBe('67');
+    expect(screen.getByLabelText('TOUCH').props.value).toBe('89');
+    expect(screen.getByLabelText('BREAK').props.value).toBe('10');
   });
   it('renders local plate progress and version comparison', async () => {
     expect((await render(<PlatesToolScreen />)).getAllByText('真極').length).toBeGreaterThan(0);

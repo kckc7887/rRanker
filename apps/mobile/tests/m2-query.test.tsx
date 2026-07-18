@@ -10,6 +10,7 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
 
 const mockSetSongFavorite = jest.fn();
 const mockBack = jest.fn();
+const mockPush = jest.fn();
 const mockStackScreen = jest.fn((_props: unknown) => null);
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 
@@ -32,7 +33,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('expo-router', () => ({
   Stack: { Screen: (props: unknown) => mockStackScreen(props) },
-  router: { push: jest.fn(), back: () => mockBack() },
+  router: { push: (...args: unknown[]) => mockPush(...args), back: () => mockBack() },
   useLocalSearchParams: () => mockSongRouteParams,
 }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
@@ -201,6 +202,12 @@ describe('M2 song query screens', () => {
     for (const value of ['500', '100', '120', '80', '20', '820']) {
       expect(notesTable.getByText(value)).toBeTruthy();
     }
+    expect(screen.getByText('点击物量表，前往达成率与容错计算')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('使用此谱面物量计算容错'));
+    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
+      pathname: '/tools/tolerance',
+      params: { tap: '500', hold: '100', slide: '120', touch: '80', break: '20' },
+    }));
 
     expect(screen.getAllByText('·点击切换·')).toHaveLength(5);
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
