@@ -8,6 +8,7 @@ import { OverviewScreen } from '../app/(tabs)/(overview)';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import type { UserLibraryItem } from '@/domain/user-library';
+import { useCatalogFilter } from '@/state/catalog-filter';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -157,6 +158,7 @@ jest.mock('@/state/session-store', () => ({
 describe('M3A personal library screens', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    useCatalogFilter.getState().reset();
     mockRefetchScore.mockResolvedValue(undefined);
     Object.assign(mockSessionState, {
       session: null,

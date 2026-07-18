@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { router, type Href } from 'expo-router';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
-import { LazyTabScreen } from '@/components/LazyTabScreen';
+import { FocusedTabScreen } from '@/components/FocusedTabScreen';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
@@ -16,7 +16,7 @@ function byRating(left: ScoreRecord, right: ScoreRecord): number {
 }
 
 export default function Best50TabScreen() {
-  return <LazyTabScreen><Best50Screen /></LazyTabScreen>;
+  return <FocusedTabScreen><Best50Screen /></FocusedTabScreen>;
 }
 
 export function Best50Screen() {

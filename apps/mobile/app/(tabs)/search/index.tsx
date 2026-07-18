@@ -1,30 +1,30 @@
-import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
-import { LazyTabScreen } from '@/components/LazyTabScreen';
+import { FocusedTabScreen } from '@/components/FocusedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
 import { parseConstantBound } from '@/domain/maimai-filters';
-import type { Chart, ChartType, DataSource, Difficulty, Song } from '@/domain/models';
-import type { VersionNameLocale } from '@/domain/version-names';
+import type { Chart, ChartType, DataSource, Song } from '@/domain/models';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { songLibraryKey } from '@/domain/user-library';
 import { useSession } from '@/state/session-store';
+import { useCatalogFilter } from '@/state/catalog-filter';
 import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/search';
 
 const TYPES: ChartType[] = ['SD', 'DX'];
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
 export default function SearchTabScreen() {
-  return <LazyTabScreen><SearchScreen /></LazyTabScreen>;
+  return <FocusedTabScreen><SearchScreen /></FocusedTabScreen>;
 }
 
 export function SearchScreen() {
@@ -32,13 +32,10 @@ export function SearchScreen() {
   const query = useDetailedCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const library = useUserLibrary();
-  const [keyword, setKeyword] = useState('');
-  const [type, setType] = useState<ChartType | 'all'>('all');
-  const [difficulty, setDifficulty] = useState<Difficulty | 'all'>('all');
-  const [constantMin, setConstantMin] = useState('');
-  const [constantMax, setConstantMax] = useState('');
-  const [version, setVersion] = useState<string | 'all'>('all');
-  const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
+  const {
+    keyword, type, difficulty, constantMin, constantMax, version, versionLocale,
+    setKeyword, setType, setDifficulty, setConstantMin, setConstantMax, setVersion, setVersionLocale,
+  } = useCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const index = useMemo(() => buildSongSearchIndex(query.data?.songs ?? []), [query.data?.songs]);
   const versions = useMemo<VersionFilterOption[]>(() => (query.data?.versions ?? []).map((item) => ({
