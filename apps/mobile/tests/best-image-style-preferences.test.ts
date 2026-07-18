@@ -15,19 +15,29 @@ describe('best image style preferences', () => {
   it('keeps account selections isolated', async () => {
     const storage = new MemoryStore();
     const store = new BestImageStylePreferencesStore(storage);
-    await store.save('account-a', { icon: { mode: 'off' } }, 'app-capsule');
-    await store.save('account-b', { frame: { mode: 'item', item: { id: 9, kind: 'frame', name: '背景', requirements: [] } } }, 'app-rect');
+    await store.save('account-a', { icon: { mode: 'off' } }, 'app');
+    await store.save('account-b', { frame: { mode: 'item', item: { id: 9, kind: 'frame', name: '背景', requirements: [] } } }, 'game');
     expect((await store.load('account-a')).selections).toEqual({ icon: { mode: 'off' } });
-    expect((await store.load('account-a')).ratingStyle).toBe('app-capsule');
+    expect((await store.load('account-a')).ratingStyle).toBe('app');
     expect((await store.load('account-b')).selections.frame).toMatchObject({ mode: 'item', item: { id: 9, kind: 'frame' } });
-    expect((await store.load('account-b')).ratingStyle).toBe('app-rect');
+    expect((await store.load('account-b')).ratingStyle).toBe('game');
   });
 
   it('migrates version one preferences without losing collection selections', () => {
     expect(parseBestImageStylePreferences({
       version: 1,
       selections: { icon: { mode: 'off' } },
-    })).toEqual({ version: 2, selections: { icon: { mode: 'off' } }, ratingStyle: 'game' });
+    })).toEqual({ version: 3, selections: { icon: { mode: 'off' } }, ratingStyle: 'game' });
+  });
+
+  it('migrates both version two app variants to the single app style', () => {
+    const selections = { trophy: { mode: 'off' } };
+    expect(parseBestImageStylePreferences({
+      version: 2, selections, ratingStyle: 'app-capsule',
+    })).toEqual({ version: 3, selections, ratingStyle: 'app' });
+    expect(parseBestImageStylePreferences({
+      version: 2, selections, ratingStyle: 'app-rect',
+    })).toEqual({ version: 3, selections, ratingStyle: 'app' });
   });
 
   it('drops invalid or mismatched collection items', () => {
@@ -43,7 +53,7 @@ describe('best image style preferences', () => {
     const storage = new MemoryStore();
     storage.values.set('rranker.best-image.styles.v1:a', '{');
     const store = new BestImageStylePreferencesStore(storage);
-    await expect(store.load('a')).resolves.toEqual({ version: 2, selections: {}, ratingStyle: 'game' });
+    await expect(store.load('a')).resolves.toEqual({ version: 3, selections: {}, ratingStyle: 'game' });
     expect(storage.values.size).toBe(0);
   });
 
@@ -52,6 +62,6 @@ describe('best image style preferences', () => {
     storage.getItem = async () => { throw new Error('database unavailable'); };
     storage.removeItem = async () => { throw new Error('database unavailable'); };
     const store = new BestImageStylePreferencesStore(storage);
-    await expect(store.load('a')).resolves.toEqual({ version: 2, selections: {}, ratingStyle: 'game' });
+    await expect(store.load('a')).resolves.toEqual({ version: 3, selections: {}, ratingStyle: 'game' });
   });
 });
