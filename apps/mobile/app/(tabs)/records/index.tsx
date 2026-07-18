@@ -1,12 +1,12 @@
-import { useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { memo, useDeferredValue, useMemo, useState } from 'react';
+import { FlatList, StyleSheet, Text, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import { matchesConstantRange } from '@/domain/maimai-filters';
-import type { ScoreRecord } from '@/domain/models';
+import type { DataSource, ScoreRecord } from '@/domain/models';
 import type { VersionNameLocale } from '@/domain/version-names';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
@@ -29,17 +29,32 @@ export default function RecordsScreen() {
       .map((name) => ({ value: name, name }));
   }, [data]);
 
+  const filterSpec = useMemo(() => ({ difficulty, version, type, constantMin, constantMax }),
+    [constantMax, constantMin, difficulty, type, version]);
+  const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<ScoreRecord[]>(() => {
     if (!data) return [];
     let list = data.records.slice();
-    if (difficulty !== 'all') list = list.filter((r) => r.difficulty === difficulty);
-    if (version !== 'all') list = list.filter((r) => r.version === version);
-    if (type !== 'all') list = list.filter((r) => r.type === type);
-    list = list.filter((record) => matchesConstantRange(record.difficultyConstant, constantMin, constantMax));
+    if (deferredFilterSpec.difficulty !== 'all') {
+      list = list.filter((record) => record.difficulty === deferredFilterSpec.difficulty);
+    }
+    if (deferredFilterSpec.version !== 'all') {
+      list = list.filter((record) => record.version === deferredFilterSpec.version);
+    }
+    if (deferredFilterSpec.type !== 'all') {
+      list = list.filter((record) => record.type === deferredFilterSpec.type);
+    }
+    list = list.filter((record) => matchesConstantRange(
+      record.difficultyConstant, deferredFilterSpec.constantMin, deferredFilterSpec.constantMax,
+    ));
     return list.sort((a, b) => b.rating - a.rating || b.achievements - a.achievements);
-  }, [constantMax, constantMin, data, difficulty, type, version]);
+  }, [data, deferredFilterSpec]);
 
-  const viewData = filtered.length > 0 ? filtered : undefined;
+  const viewData = data && filtered.length > 0 ? {
+    records: filtered,
+    source: data.source,
+    catalogSource: data.catalogSource,
+  } : undefined;
   const isEmpty = !!data && filtered.length === 0;
 
   if (activeGameId !== 'maimai') {
@@ -53,7 +68,7 @@ export default function RecordsScreen() {
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onVersionLocaleChange={setVersionLocale} />
-      <QueryStateView<ScoreRecord[]>
+      <QueryStateView<{ records: ScoreRecord[]; source: DataSource; catalogSource: DataSource }>
         isLoading={isLoading}
         isError={isError}
         isEmpty={isEmpty}
@@ -61,24 +76,44 @@ export default function RecordsScreen() {
         onRetry={refetch ? () => void refetch() : undefined}
         emptyText="当前筛选条件下没有成绩"
         data={viewData}
-        renderData={(list) => (
-          <FlatList
-            style={styles.list}
-            contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
-            scrollIndicatorInsets={{ bottom: tabBottomInset }}
-            data={list}
-            keyExtractor={(record) => `${record.songId}-${record.type}-${record.levelIndex}`}
-            ListHeaderComponent={<View style={styles.header}><SourceStatus items={data ? [
-              { key: 'scores', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
-              { key: 'catalog', label: data.catalogSource.label, updatedAt: data.catalogSource.updatedAt, state: data.catalogSource.isStale ? 'cache' : 'live' },
-            ] : []} /><Text style={styles.note}>共 {list.length} 条成绩</Text></View>}
-            renderItem={({ item }) => <ScoreRecordCard record={item} />}
-          />
+        renderData={(result) => (
+          <RecordResultsList records={result.records} source={result.source} catalogSource={result.catalogSource}
+            tabBottomInset={tabBottomInset} />
         )}
       />
     </View>
   );
 }
+
+const RecordResultsList = memo(function RecordResultsList({
+  records,
+  source,
+  catalogSource,
+  tabBottomInset,
+}: {
+  records: ScoreRecord[];
+  source: DataSource;
+  catalogSource: DataSource;
+  tabBottomInset: number;
+}) {
+  const header = useMemo(() => <View style={styles.header}><SourceStatus items={[
+    { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
+    { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
+  ]} /><Text style={styles.note}>共 {records.length} 条成绩</Text></View>,
+  [catalogSource, records.length, source]);
+
+  return <FlatList style={styles.list}
+    contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
+    scrollIndicatorInsets={{ bottom: tabBottomInset }} data={records} keyExtractor={recordKey}
+    initialNumToRender={8} maxToRenderPerBatch={8} updateCellsBatchingPeriod={40} windowSize={5}
+    ListHeaderComponent={header} renderItem={renderRecord} />;
+});
+
+const renderRecord: ListRenderItem<ScoreRecord> = ({ item }) => <ScoreRecordCard record={item} />;
+function recordKey(record: ScoreRecord): string {
+  return `${record.songId}-${record.type}-${record.levelIndex}`;
+}
+
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   list: { flex: 1 },

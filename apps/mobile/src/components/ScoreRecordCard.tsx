@@ -1,9 +1,10 @@
+import { memo } from 'react';
 import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ScoreRecord } from '@/domain/models';
 import { AchievementValue, DifficultyBadge, ScoreStatusBadges } from './ScoreVisuals';
 
-export function ScoreRecordCard({ record, rank }: { record: ScoreRecord; rank?: number }) {
+export const ScoreRecordCard = memo(function ScoreRecordCard({ record, rank }: { record: ScoreRecord; rank?: number }) {
   const openDetail = () => router.push({
     pathname: '/songs/[songId]',
     params: { songId: record.songId, chartType: record.type, levelIndex: String(record.levelIndex) },
@@ -24,7 +25,7 @@ export function ScoreRecordCard({ record, rank }: { record: ScoreRecord; rank?: 
       <Text style={styles.rating}>{record.rating}</Text>
     </View>
   </Pressable>;
-}
+});
 
 const styles = StyleSheet.create({
   card: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },

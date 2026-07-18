@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { LibraryTarget, RestoreMode, UserDataBackupV1, UserLibraryItem } from '@/domain/user-library';
 import { UserLibraryService } from '@/services/user-library-service';
@@ -28,16 +29,25 @@ export function useUserLibrary() {
     },
     onSuccess: (items) => queryClient.setQueryData(USER_LIBRARY_QUERY_KEY, items),
   });
+  const mutateAsync = mutation.mutateAsync;
+  const setSongFavorite = useCallback((songId: string, value: boolean) =>
+    mutateAsync({ type: 'favorite', songId, value }), [mutateAsync]);
+  const setChartPractice = useCallback((songId: string, chartType: 'SD' | 'DX', levelIndex: number, value: boolean) =>
+    mutateAsync({ type: 'practice', songId, chartType, levelIndex, value }), [mutateAsync]);
+  const setTags = useCallback((target: LibraryTarget, values: string[]) =>
+    mutateAsync({ type: 'tags', target, values }), [mutateAsync]);
+  const restoreBackup = useCallback((backup: UserDataBackupV1, mode: RestoreMode) =>
+    mutateAsync({ type: 'restore', backup, mode }), [mutateAsync]);
+  const clearUserData = useCallback(() => mutateAsync({ type: 'clear' }), [mutateAsync]);
   return {
     ...query,
     isUpdating: mutation.isPending,
     updateError: mutation.error,
-    setSongFavorite: (songId: string, value: boolean) => mutation.mutateAsync({ type: 'favorite', songId, value }),
-    setChartPractice: (songId: string, chartType: 'SD' | 'DX', levelIndex: number, value: boolean) =>
-      mutation.mutateAsync({ type: 'practice', songId, chartType, levelIndex, value }),
-    setTags: (target: LibraryTarget, values: string[]) => mutation.mutateAsync({ type: 'tags', target, values }),
+    setSongFavorite,
+    setChartPractice,
+    setTags,
     createBackup: () => service.createBackup(),
-    restoreBackup: (backup: UserDataBackupV1, mode: RestoreMode) => mutation.mutateAsync({ type: 'restore', backup, mode }),
-    clearUserData: () => mutation.mutateAsync({ type: 'clear' }),
+    restoreBackup,
+    clearUserData,
   };
 }
