@@ -1,4 +1,5 @@
 import type { GameId } from './game-bind-options';
+import { getGameToolbox } from './game-toolbox';
 
 /** BestN 分区定义：舞萌是 B35+B15；其他音游通常是一组 BestN。 */
 export type BestSectionSpec = {
@@ -26,11 +27,10 @@ export type GameProfile = {
   capabilities: GameCapabilities;
 };
 
-const commonNav: GameCapabilities = {
+const commonNav = {
   hasCatalog: true,
   hasRecords: true,
   hasBestList: true,
-  hasTools: true,
 };
 
 export const GAME_PROFILES: Record<GameId, GameProfile> = {
@@ -43,7 +43,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
       { id: 'b35', title: '过往版本 Best35', size: 35 },
       { id: 'b15', title: '当前版本 Best15', size: 15 },
     ],
-    capabilities: commonNav,
+    capabilities: { ...commonNav, hasTools: getGameToolbox('maimai').tools.length > 0 },
   },
   test: {
     id: 'test',
@@ -51,7 +51,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'Rating',
     ratingDigits: 0,
     bestSections: [{ id: 'best', title: 'Best', size: 0 }],
-    capabilities: commonNav,
+    capabilities: { ...commonNav, hasTools: getGameToolbox('test').tools.length > 0 },
   },
   phigros: {
     id: 'phigros',
@@ -59,7 +59,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'RKS',
     ratingDigits: 0,
     bestSections: [{ id: 'best', title: 'Best', size: 0 }],
-    capabilities: commonNav,
+    capabilities: { ...commonNav, hasTools: getGameToolbox('phigros').tools.length > 0 },
   },
 };
 

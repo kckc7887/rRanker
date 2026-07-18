@@ -9,6 +9,7 @@ import { UploadDataSheet } from '@/components/UploadDataSheet';
 import type { BoundAccount } from '@/domain/bound-account';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
+import { summarizeGameTools } from '@/domain/game-toolbox';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -227,11 +228,7 @@ export default function OverviewScreen() {
             <Pressable onPress={() => router.push('/tools' as Href)}>
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>工具箱</Text>
-                <Text style={styles.body}>
-                  {bundle.payload.kind === 'maimai'
-                    ? 'Rating · 达成率/容错 · 牌子进度 · 版本对照'
-                    : '空空空'}
-                </Text>
+                <Text style={styles.body}>{summarizeGameTools(bundle.gameId)}</Text>
                 <Text style={styles.toolLink}>打开工具箱 →</Text>
               </View>
             </Pressable>
