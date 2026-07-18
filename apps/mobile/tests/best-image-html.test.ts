@@ -8,6 +8,7 @@ import {
   ratingFrameIndex,
 } from '@/features/best-image/build-best-image-html';
 import type { ScoreRecord } from '@/domain/models';
+import { JSDOM } from 'jsdom';
 
 const score: ScoreRecord = {
   songId: '11447',
@@ -60,7 +61,7 @@ describe('best image html', () => {
       fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('<div class="page-marker">第 2 / 3 页</div>');
+    expect(html).toContain('<div class="page-marker page-marker-game">第 2 / 3 页</div>');
     expect(html).toContain('<span class="rank">#251</span>');
     expect(html).toContain("type: 'best-image-ready'");
     expect(html).toContain("type: 'best-image-runtime'");
@@ -92,38 +93,100 @@ describe('best image html', () => {
     expect(html).toContain('class="rating rating-game"');
     expect(html).toContain('<span>0</span><span>0</span><span>5</span><span>0</span><span>0</span>');
     expect(html).toContain('class="rating-frame"');
+    expect(html).toContain('class="profile-banner-game"');
+    expect(html).not.toContain('class="profile-app"');
   });
 
-  it('renders unpadded app capsule and rectangle rating styles with preview stars', () => {
-    const capsule = buildBestImageHtml({
-      type: 'custom', width: 1080, rating: 14500, ratingStyle: 'app-capsule',
+  it('renders the full-width app profile with adaptive identity, stars and fixed glass settings', () => {
+    const app = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 14500, ratingStyle: 'app',
       scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
-      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
+      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
+      player: { displayName: '完整玩家姓名', presentation: { iconId: 10, namePlateId: 11, trophyName: '称号', trophyColor: 'Gold' } },
     });
-    expect(capsule).toContain('class="rating rating-app rating-app-capsule"');
-    expect(capsule).toContain('<div class="rating-app-tag"><span>14500</span></div><svg class="rating-star-track"');
-    expect(capsule.match(/<polygon points=/g)).toHaveLength(1);
-    expect(capsule).toContain('#F4F2E0 0%,#DBDCCD 52%,#C0C5BC 100%');
-    expect(capsule).not.toContain('class="rating-frame"');
-    expect(capsule).toContain('.rating-app{width:145px;height:31px;flex:0 0 31px');
-    expect(capsule).toContain('.rating-star-track{position:absolute;left:0;top:-11px');
+    expect(app).toContain('class="profile-app"');
+    expect(app).toContain('class="profile-banner-app" id="profile-banner"');
+    expect(app).toContain('class="identity-card theme-platinum"');
+    expect(app).toContain('data-star-count="1"');
+    expect(app).toContain('<div class="app-player-name" id="player-name">完整玩家姓名</div>');
+    expect(app).toContain('<div class="identity-rating"><span>Rating</span><strong>14500</strong></div>');
+    expect(app).toContain('#F4F2E0 0%,#DBDCCD 52%,#C0C5BC 100%');
+    expect(app).not.toContain('class="rating-frame"');
+    expect(app).toContain('.profile-app{position:absolute;z-index:1;left:43px;top:43px;width:994px;');
+    expect(app).toContain('.profile-banner-app{--glass-opacity:0;--glass-blur-strong:6px;--glass-blur-medium:4px;--glass-blur-soft:2.3px;');
+    expect(app).toContain('.profile-glass{position:absolute;z-index:0;left:0;top:0;bottom:0;width:var(--glass-physical-width,60%);overflow:hidden');
+    expect(app).toContain("banner.style.setProperty('--glass-physical-width'");
+    expect(app).toContain('.profile-banner-app .avatar{position:relative;z-index:1;width:130px;height:130px;');
+    expect(app).toContain('overflow:visible;border:0;background:transparent');
+    expect(app).toContain('object-fit:contain;filter:drop-shadow');
+    expect(app).toContain('.profile-app .trophy{display:flex;width:100%;max-width:none;');
+    expect(app).toContain('font:800 17px/1.2 system-ui');
+    expect(app).toContain('fitAppPlayerName();');
+    expect(app).toContain("playerName.style.transform = 'scaleX('");
 
-    const rectangle = buildBestImageHtml({
-      type: 'custom', width: 1080, rating: 15750, ratingStyle: 'app-rect',
+    const fourStars = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 15750, ratingStyle: 'app',
       scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
     });
-    expect(rectangle).toContain('class="rating rating-app rating-app-rect"');
-    expect(rectangle.match(/<polygon points=/g)).toHaveLength(4);
-    expect(rectangle).toContain('.rating-app-rect .rating-app-tag{border-radius:');
+    expect(fourStars).toContain('class="identity-card theme-rainbow"');
+    expect(fourStars).toContain('data-star-count="4"');
 
     const extreme = buildBestImageHtml({
-      type: 'custom', width: 1080, rating: 16000, ratingStyle: 'app-capsule',
+      type: 'custom', width: 1080, rating: 16000, ratingStyle: 'app',
       scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
     });
     expect(extreme).toContain('#67D9FF 0%,#7FA9FF 24%,#B995FF 52%,#EC8DCF 78%,#FFB0BF 100%');
-    expect(extreme.match(/<polygon points=/g)).toHaveLength(1);
+    expect(extreme).toContain('class="identity-card theme-extreme"');
+    expect(extreme).toContain('data-star-count="1"');
+  });
+
+  it('measures the adaptive app profile before export readiness', async () => {
+    const html = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 15750, ratingStyle: 'app', scoreSections: [],
+      hiddenStyles: ['icon', 'plate', 'trophy', 'frame'],
+      fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
+      player: { displayName: '这是一个需要动态缩放但不能被省略的超长玩家姓名' },
+    });
+    const dom = new JSDOM(html, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      beforeParse(window) {
+        Object.defineProperty(window.HTMLElement.prototype, 'clientWidth', { get() {
+          if (this.id === 'profile-banner') return 994;
+          if (this.id === 'rating-box') return 360;
+          return 1080;
+        } });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetLeft', { get() {
+          return this.id === 'rating-box' ? 22 : 0;
+        } });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', { get() {
+          return this.id === 'rating-box' ? 360 : 1080;
+        } });
+        Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', { get() {
+          return this.id === 'rating-box' ? 124 : 0;
+        } });
+        Object.defineProperty(window.HTMLElement.prototype, 'scrollWidth', { get() {
+          return this.id === 'player-name' ? 900 : 0;
+        } });
+        Object.defineProperty(window.HTMLElement.prototype, 'scrollHeight', { get() { return 1440; } });
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const document = dom.window.document;
+    const banner = document.getElementById('profile-banner')!;
+    const playerName = document.getElementById('player-name')!;
+    const geometry = [
+      '--glass-local-start', '--glass-local-step-1', '--glass-local-step-2',
+    ].map((name) => Number.parseFloat(banner.style.getPropertyValue(name)));
+    expect(document.querySelectorAll('#rating-stars polygon')).toHaveLength(4);
+    expect(playerName.style.fontSize).toBe('22px');
+    expect(playerName.style.transform).toMatch(/^scaleX\(/u);
+    expect(banner.style.getPropertyValue('--glass-physical-width')).toMatch(/%$/u);
+    expect(geometry[0]).toBeLessThan(geometry[1]!);
+    expect(geometry[1]).toBeLessThan(geometry[2]!);
+    dom.window.close();
   });
 
   it('renders escaped player data and verified LXNS asset paths', () => {
@@ -173,7 +236,7 @@ describe('best image html', () => {
     expect(html).toContain('.trophy{display:flex;width:fit-content;max-width:100%');
     expect(html).toContain('border-radius:999px');
     expect(html).toContain('font:400 9px/1 system-ui');
-    expect(html).not.toContain('backdrop-filter');
+    expect(html).not.toContain('class="profile-glass"');
     expect(html).toContain('class="trophy rainbow"');
     expect(html).toContain('.trophy.rainbow{border-color:transparent;background:linear-gradient(rgba(75,78,85,0.16),rgba(75,78,85,0.16)) padding-box');
     expect(html).toContain('linear-gradient(90deg,#FF9CA8,#FFC07E,#EADB72,#88CF96,#79BFDB,#9199DC,#C28BD4) padding-box');
@@ -326,11 +389,33 @@ describe('best image html', () => {
         presentation: { iconId: 1, namePlateId: 2, frameId: 3, trophyName: '称号' },
       },
     });
-    expect(html).toContain('class="profile-banner no-plate"');
+    expect(html).toContain('class="profile-banner-game no-plate"');
     expect(html).not.toContain('/icon/1.png');
     expect(html).not.toContain('/plate/2.png');
     expect(html).not.toContain('/frame/3.png');
     expect(html).not.toContain('>称号</div>');
+  });
+
+  it('collapses disabled app presentation parts and keeps page markers below the profile', () => {
+    const html = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 14000, ratingStyle: 'app', scoreSections: [],
+      hiddenStyles: ['icon', 'plate', 'trophy'], pageIndex: 1, pageCount: 3,
+      fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
+      player: {
+        displayName: '这是一个用于验证不会省略的非常长玩家姓名',
+        presentation: { iconId: 1, namePlateId: 2, trophyName: '称号' },
+      },
+    });
+    expect(html).toContain('class="profile-banner-app no-plate"');
+    expect(html).not.toContain('class="avatar"');
+    expect(html).not.toContain('class="trophy-row"');
+    expect(html).not.toContain('/icon/1.png');
+    expect(html).not.toContain('/plate/2.png');
+    expect(html).not.toContain('>称号</div>');
+    expect(html).toContain('<div class="app-page-marker-row"><div class="page-marker app-page-marker">第 2 / 3 页</div></div>');
+    expect(html).toContain('height:206px');
+    expect(html).toContain('这是一个用于验证不会省略的非常长玩家姓名');
+    expect(html).not.toContain('.app-player-name{width:max-content;max-width:100%;overflow:hidden');
   });
 
   it('does not let WebView retry a jacket that failed during native preloading', () => {

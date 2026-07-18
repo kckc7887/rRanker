@@ -11,7 +11,7 @@ jest.mock('react-native-webview', () => {
 jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn(async () => 'file:///capture.png') }));
 jest.mock('@/features/best-image/best-image-style-preferences', () => ({
   bestImageStylePreferencesStore: {
-    load: jest.fn(async () => ({ version: 2, selections: {}, ratingStyle: 'game' })),
+    load: jest.fn(async () => ({ version: 3, selections: {}, ratingStyle: 'game' })),
     save: jest.fn(async () => undefined),
   },
 }));
@@ -132,7 +132,7 @@ describe('best image preview', () => {
     });
   });
 
-  it('switches Rating frames between game, app capsule and app rectangle', async () => {
+  it('switches the player profile between the game and unified app styles', async () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
     expect(screen.getByLabelText('游戏样式').props.accessibilityState).toMatchObject({ selected: true });
@@ -140,12 +140,10 @@ describe('best image preview', () => {
 
     await fireEvent.press(screen.getByLabelText('应用样式'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('class="rating rating-app rating-app-capsule"'));
-    expect(screen.getByLabelText('胶囊').props.accessibilityState).toMatchObject({ selected: true });
-
-    await fireEvent.press(screen.getByLabelText('圆角矩形'));
-    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('class="rating rating-app rating-app-rect"'));
+      .toContain('class="profile-app"'));
+    expect(screen.getByLabelText('应用样式').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.queryByLabelText('胶囊')).toBeNull();
+    expect(screen.queryByLabelText('圆角矩形')).toBeNull();
   });
 
   it('uses the independent near-miss chip in custom image titles', async () => {
@@ -265,7 +263,7 @@ describe('best image preview', () => {
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
       expect(screen.getAllByText('已关闭')).toHaveLength(2);
-      expect(html).toContain('class="profile-banner no-plate"');
+      expect(html).toContain('class="profile-banner-game no-plate"');
       expect(html).not.toContain('https://assets2.lxns.net/maimai/plate/300101.png');
     });
   });
