@@ -70,3 +70,8 @@ export function summarizeGameTools(gameId: GameId): string {
   if (toolbox.tools.length === 0) return toolbox.emptyDetail;
   return toolbox.tools.map((tool) => tool.summaryLabel).join(' · ');
 }
+
+export function selectGameTools(gameId: GameId, toolIds: readonly string[]): readonly GameToolDefinition[] {
+  const selectedIds = new Set(toolIds);
+  return getGameToolbox(gameId).tools.filter((tool) => selectedIds.has(tool.id));
+}

@@ -5,6 +5,8 @@ import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bou
 import type { ProviderId } from '@/domain/game-bind-options';
 
 let mockProviderId: ProviderId = 'local';
+let mockPinnedToolIds: string[] = [];
+const mockHydratePins = jest.fn(async () => undefined);
 const mockLocal = createLocalMaimaiAccount('本地玩家', 0);
 const mockExtraLocal = createLocalMaimaiAccount('本地二号', 0, 'maimai:local:second');
 const mockWater = createMaimaiBoundAccount({
@@ -80,6 +82,7 @@ jest.mock('@/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
   useSession: (selector: (state: unknown) => unknown) => selector({
     boundAccounts: [mockLocal, mockExtraLocal, mockWater, mockExtraWater, mockLxns],
+    activeGameId: 'maimai',
     activeAccountId: mockProviderId === 'local'
       ? mockExtraLocal.id
       : mockProviderId === 'lxns'
@@ -91,6 +94,15 @@ jest.mock('@/state/session-store', () => ({
     sessionsByAccountId: {},
     selectBoundAccount: jest.fn(),
     updateBoundAccountScore: jest.fn(),
+  }),
+}));
+jest.mock('@/state/toolbox-pins', () => ({
+  useToolboxPins: (selector: (state: {
+    pinnedToolIdsByGame: { maimai: string[]; phigros: string[]; test: string[] };
+    hydrate: typeof mockHydratePins;
+  }) => unknown) => selector({
+    pinnedToolIdsByGame: { maimai: mockPinnedToolIds, phigros: [], test: [] },
+    hydrate: mockHydratePins,
   }),
 }));
 jest.mock('@/state/game-picker-ui', () => ({
@@ -110,6 +122,7 @@ jest.mock('@/storage/secure-session-store', () => ({
 describe('总览上传和同步操作', () => {
   beforeEach(() => {
     mockTemporarySelectedAccountIds = undefined;
+    mockPinnedToolIds = [];
   });
 
   it('本地查分器页只显示使用好友码的同步按钮', async () => {
@@ -140,5 +153,12 @@ describe('总览上传和同步操作', () => {
     const screen = await render(<OverviewScreen />);
     await fireEvent.press(screen.getByText('上传数据'));
     await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockLxns.id]));
+  });
+
+  it('在总览外显当前游戏的置顶工具', async () => {
+    mockPinnedToolIds = ['rating'];
+    const screen = await render(<OverviewScreen />);
+    expect(screen.getByText('置顶工具')).toBeTruthy();
+    expect(screen.getByLabelText('打开置顶工具 DX Rating 计算器')).toBeTruthy();
   });
 });
