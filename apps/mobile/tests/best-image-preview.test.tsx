@@ -3,6 +3,12 @@ import { jest } from '@jest/globals';
 import { PixelRatio, Platform, StyleSheet } from 'react-native';
 import BestImageScreen from '../app/best-image';
 
+const mockShowNotification = jest.fn();
+
+jest.mock('@/components/AppNotification', () => ({
+  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
+}));
+
 jest.mock('react-native-webview', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
@@ -107,6 +113,8 @@ jest.mock('@/components/CollectionImage', () => {
 });
 
 describe('best image preview', () => {
+  beforeEach(() => mockShowNotification.mockClear());
+
   it('switches image type and renders the HTML preview', async () => {
     const screen = await render(<BestImageScreen />);
     const best50 = screen.getByLabelText('Best50');
@@ -308,5 +316,10 @@ describe('best image preview', () => {
       height: expectedHeight,
       format: 'png',
     })));
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '导出完成',
+      message: '已保存 1 张成绩图片到相册',
+      variant: 'success',
+    }));
   });
 });

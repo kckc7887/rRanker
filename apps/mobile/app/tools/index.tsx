@@ -1,6 +1,7 @@
 import { Stack, router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNotification } from '@/components/AppNotification';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { getGameToolbox } from '@/domain/game-toolbox';
@@ -8,6 +9,7 @@ import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 
 export default function ToolsScreen() {
+  const { showNotification } = useNotification();
   const activeGameId = useSession((s) => s.activeGameId);
   const toolbox = getGameToolbox(activeGameId);
   const pinnedToolIds = useToolboxPins((s) => s.pinnedToolIdsByGame[activeGameId]);
@@ -24,7 +26,11 @@ export default function ToolsScreen() {
     try {
       await togglePinnedTool(activeGameId, toolId);
     } catch {
-      Alert.alert('保存失败', '无法保存工具置顶状态，请稍后重试。');
+      showNotification({
+        title: '保存失败',
+        message: '无法保存工具置顶状态，请稍后重试。',
+        variant: 'error',
+      });
     } finally {
       setPendingToolId(null);
     }

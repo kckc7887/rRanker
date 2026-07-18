@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import {
-  Alert,
   InteractionManager,
   Pressable,
   ScrollView,
@@ -36,6 +35,7 @@ import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
+import { useNotification } from '@/components/AppNotification';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -50,6 +50,7 @@ function sessionModeLabel(session: ProviderSession | undefined): string {
 }
 
 export default function GameAccountsScreen() {
+  const { showActionNotification, showNotification } = useNotification();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const activeAccountId = useSession((s) => s.activeAccountId);
@@ -95,15 +96,16 @@ export default function GameAccountsScreen() {
     setBusy(false);
   };
 
-  const promptUnbind = (account: BoundAccount) => Alert.alert(
-    '解除绑定',
-    `将清除「${account.displayName}」的本机凭据和成绩缓存。是否同时删除收藏、练习清单和本地标签？`,
-    [
-      { text: '取消', style: 'cancel' },
-      { text: '仅凭据与缓存', onPress: () => void unbindAccount(account.id, false) },
-      { text: '同时删除个人数据', style: 'destructive', onPress: () => void unbindAccount(account.id, true) },
+  const promptUnbind = (account: BoundAccount) => showActionNotification({
+    title: '解除绑定',
+    message: `将清除「${account.displayName}」的本机凭据和成绩缓存。是否同时删除收藏、练习清单和本地标签？`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '仅凭据与缓存', onPress: () => unbindAccount(account.id, false) },
+      { label: '同时删除个人数据', tone: 'destructive', onPress: () => unbindAccount(account.id, true) },
     ],
-  );
+  });
 
   const addLocalAccount = async () => {
     setBusy(true);
@@ -121,7 +123,11 @@ export default function GameAccountsScreen() {
       setPickerVisible(false);
       setRenameAccount(account);
     } catch (error) {
-      Alert.alert('添加失败', error instanceof Error ? error.message : '无法添加本地玩家，请重试。');
+      showNotification({
+        title: '添加失败',
+        message: error instanceof Error ? error.message : '无法添加本地玩家，请重试。',
+        variant: 'error',
+      });
     } finally {
       setBusy(false);
     }
@@ -151,14 +157,15 @@ export default function GameAccountsScreen() {
     setBusy(false);
   };
 
-  const promptRemoveLocal = (account: BoundAccount) => Alert.alert(
-    '删除本地玩家',
-    `将删除「${account.displayName}」及其本机成绩，且无法恢复。`,
-    [
-      { text: '取消', style: 'cancel' },
-      { text: '删除', style: 'destructive', onPress: () => void removeLocalAccount(account) },
+  const promptRemoveLocal = (account: BoundAccount) => showActionNotification({
+    title: '删除本地玩家',
+    message: `将删除「${account.displayName}」及其本机成绩，且无法恢复。`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '删除', tone: 'destructive', onPress: () => removeLocalAccount(account) },
     ],
-  );
+  });
 
   const openPicker = () => {
     setExpandedGameId('maimai');
@@ -169,7 +176,7 @@ export default function GameAccountsScreen() {
 
   const openLogin = (gameId: GameId, provider: ProviderOption) => {
     if (!provider.available) {
-      Alert.alert(provider.title, '绑定尚未实现，待后续开放。');
+      showNotification({ title: provider.title, message: '绑定尚未实现，待后续开放。', variant: 'info' });
       return;
     }
     if (provider.id === 'local') {
@@ -318,7 +325,11 @@ export default function GameAccountsScreen() {
         onClose={closePicker}
         onToggleGame={toggleExpandedGameId}
         onSelectProvider={openLogin}
-        onSelectUnavailableGame={(title, detail) => Alert.alert(title, `${detail}，待后续开放。`)}
+        onSelectUnavailableGame={(title, detail) => showNotification({
+          title,
+          message: `${detail}，待后续开放。`,
+          variant: 'info',
+        })}
       />
 
       <ProviderLoginSheet

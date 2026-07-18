@@ -1,5 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
-import { Alert } from 'react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import GameAccountsScreen from '../app/(tabs)/settings/games';
 import {
@@ -9,6 +8,7 @@ import {
   type BoundAccount,
 } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
+import { NotificationProvider } from '@/components/AppNotification';
 
 const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockSetActiveAccountId = jest.fn(async (_accountId?: string) => undefined);
@@ -111,8 +111,14 @@ jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInse
 describe('M3A game account management', () => {
   beforeEach(() => { jest.clearAllMocks(); mockClearOrder.length = 0; });
 
+  const renderScreen = () => render(
+    <NotificationProvider>
+      <GameAccountsScreen />
+    </NotificationProvider>,
+  );
+
   it('expands an inline provider list and opens the login sheet', async () => {
-    const screen = await render(<GameAccountsScreen />);
+    const screen = await renderScreen();
     expect(screen.getByText('舞萌 DX · 水鱼查分器')).toBeTruthy();
     expect(screen.getByText('测试水鱼')).toBeTruthy();
 
@@ -131,14 +137,14 @@ describe('M3A game account management', () => {
   });
 
   it('shows the empty test game entry in the bind picker', async () => {
-    const screen = await render(<GameAccountsScreen />);
+    const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     expect(screen.getByText('测试游戏')).toBeTruthy();
     expect(screen.getByText('空数据预览 · 在总览切换')).toBeTruthy();
   });
 
   it('shows local and generated test accounts in account management', async () => {
-    const screen = await render(<GameAccountsScreen />);
+    const screen = await renderScreen();
     expect(screen.getByText('本地玩家')).toBeTruthy();
     expect(screen.getByText('测试玩家')).toBeTruthy();
     expect(screen.getByText('数据位置：仅本机 SQLite')).toBeTruthy();
@@ -146,7 +152,7 @@ describe('M3A game account management', () => {
   });
 
   it('renames a local player from its account card', async () => {
-    const screen = await render(<GameAccountsScreen />);
+    const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('修改名称 本地玩家'));
     await fireEvent.changeText(screen.getByLabelText('本地玩家名称'), '我的本地号');
     await fireEvent.press(screen.getByLabelText('保存本地玩家名称'));
@@ -159,7 +165,7 @@ describe('M3A game account management', () => {
   });
 
   it('adds another local player instead of reusing the default account', async () => {
-    const screen = await render(<GameAccountsScreen />);
+    const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     await fireEvent.press(screen.getByLabelText('本地查分器'));
 
@@ -176,19 +182,18 @@ describe('M3A game account management', () => {
   });
 
   it('asks on every unbind and preserves or removes personal data as selected', async () => {
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    const screen = await render(<GameAccountsScreen />);
+    const screen = await renderScreen();
     await fireEvent.press(screen.getByText('解除绑定'));
-    const preserveButtons = alert.mock.calls[0][2]!;
-    await act(async () => preserveButtons[1].onPress?.());
+    expect(screen.getByText('仅凭据与缓存')).toBeTruthy();
+    await fireEvent.press(screen.getByText('仅凭据与缓存'));
     await waitFor(() => expect(mockClearSnapshots).toHaveBeenCalledTimes(1));
     expect(mockClearUserData).not.toHaveBeenCalled();
     expect(mockRemoveAccount).toHaveBeenCalledWith(mockAccount.id);
     expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id);
 
+    await waitFor(() => expect(screen.queryByText('仅凭据与缓存')).toBeNull());
     await fireEvent.press(screen.getByText('解除绑定'));
-    const removeButtons = alert.mock.calls[1][2]!;
-    await act(async () => removeButtons[2].onPress?.());
+    await fireEvent.press(screen.getByText('同时删除个人数据'));
     await waitFor(() => expect(mockClearUserData).toHaveBeenCalledTimes(1));
     expect(mockRemoveAccount).toHaveBeenCalledTimes(2);
     expect(mockClearSnapshots).toHaveBeenCalledTimes(2);
@@ -197,21 +202,18 @@ describe('M3A game account management', () => {
     expect(mockRemoveQueries).toHaveBeenCalledTimes(10);
     expect(mockRemoveQueries).toHaveBeenCalledWith({ queryKey: ['detailed-catalog'] });
     expect(mockRemoveQueries).not.toHaveBeenCalledWith({ queryKey: ['user-library'] });
-    alert.mockRestore();
   });
 
   it('continues clearing, logs out and reports the failed part when one store fails', async () => {
     mockClearSnapshots.mockRejectedValueOnce(new Error('locked'));
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
-    const screen = await render(<GameAccountsScreen />);
+    const screen = await renderScreen();
     await fireEvent.press(screen.getByText('解除绑定'));
-    await act(async () => alert.mock.calls[0][2]![2].onPress?.());
+    await fireEvent.press(screen.getByText('同时删除个人数据'));
 
     await waitFor(() => expect(screen.getByText('部分清除失败（缓存），其余项目已清除，请重试')).toBeTruthy());
     expect(mockClearUserData).toHaveBeenCalledTimes(1);
     expect(mockRemoveBoundAccount).toHaveBeenCalledTimes(1);
     expect(mockRemoveQueries).toHaveBeenCalledTimes(5);
     expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
-    alert.mockRestore();
   });
 });
