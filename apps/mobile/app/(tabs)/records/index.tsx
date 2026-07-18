@@ -1,11 +1,12 @@
 import { memo, useDeferredValue, useMemo } from 'react';
 import { FlatList, StyleSheet, Text, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
-import { FocusedTabScreen } from '@/components/FocusedTabScreen';
+import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
+import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { matchesConstantRange } from '@/domain/maimai-filters';
 import type { DataSource, ScoreRecord } from '@/domain/models';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -14,7 +15,7 @@ import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
 
 export default function RecordsTabScreen() {
-  return <FocusedTabScreen><RecordsScreen /></FocusedTabScreen>;
+  return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
 }
 
 export function RecordsScreen() {
@@ -108,7 +109,7 @@ const RecordResultsList = memo(function RecordResultsList({
   return <FlatList testID="records-results-list" contentInsetAdjustmentBehavior="automatic" style={styles.list}
     contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
     scrollIndicatorInsets={{ bottom: tabBottomInset }} data={records} keyExtractor={recordKey}
-    initialNumToRender={8} maxToRenderPerBatch={8} updateCellsBatchingPeriod={40} windowSize={5}
+    {...TAB_LIST_CACHE_PROPS}
     ListHeaderComponent={header} renderItem={renderRecord} />;
 });
 

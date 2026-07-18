@@ -2,10 +2,11 @@ import { useMemo } from 'react';
 import { router, type Href } from 'expo-router';
 import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
-import { FocusedTabScreen } from '@/components/FocusedTabScreen';
+import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
+import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import type { BestListSection } from '@/domain/game-data';
 import type { ScoreRecord } from '@/domain/models';
 import { useGameData } from '@/hooks/use-game-data';
@@ -16,7 +17,7 @@ function byRating(left: ScoreRecord, right: ScoreRecord): number {
 }
 
 export default function Best50TabScreen() {
-  return <FocusedTabScreen><Best50Screen /></FocusedTabScreen>;
+  return <CachedTabScreen><Best50Screen /></CachedTabScreen>;
 }
 
 export function Best50Screen() {
@@ -48,11 +49,13 @@ export function Best50Screen() {
         data={recordCount > 0 ? sections : undefined}
         renderData={(list) => (
           <SectionList
+            testID="best50-results-list"
             contentInsetAdjustmentBehavior="automatic"
             style={styles.list}
             contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
             scrollIndicatorInsets={{ bottom: tabBottomInset }}
             sections={list}
+            {...TAB_LIST_CACHE_PROPS}
             stickySectionHeadersEnabled={false}
             keyExtractor={(record) => `${record.songId}-${record.type}-${record.levelIndex}-${record.version}`}
             ListHeaderComponent={<View style={styles.header}>
