@@ -132,6 +132,30 @@ describe('M2 song query screens', () => {
       textAlignVertical: 'center',
       includeFontPadding: false,
     }));
+    for (const selectedAll of screen.getAllByLabelText('筛选 全部')) {
+      expect(StyleSheet.flatten(selectedAll.props.style)).toEqual(expect.objectContaining({
+        borderWidth: 2,
+        borderRadius: 999,
+        padding: 2,
+        borderColor: '#246BFD',
+      }));
+    }
+    await fireEvent.press(screen.getByLabelText('筛选难度 BASIC'));
+    expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 BASIC').props.style)).toEqual(expect.objectContaining({
+      borderWidth: 2,
+      borderRadius: 999,
+      padding: 2,
+      borderColor: '#246BFD',
+    }));
+    await fireEvent.press(screen.getAllByLabelText('筛选 全部')[0]);
+    await fireEvent.press(screen.getByLabelText('筛选类型 SD'));
+    expect(StyleSheet.flatten(screen.getByLabelText('筛选类型 SD').props.style)).toEqual(expect.objectContaining({
+      borderWidth: 2,
+      borderRadius: 10,
+      padding: 2,
+      borderColor: '#246BFD',
+    }));
+    await fireEvent.press(screen.getAllByLabelText('筛选 全部')[1]);
     const chartBadges = within(screen.getByTestId('song-chart-badges-1'));
     expect(chartBadges.getByText('SD')).toBeTruthy();
     expect(chartBadges.getByText('DX')).toBeTruthy();
