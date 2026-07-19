@@ -4,8 +4,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import { AccentColorPicker } from '@/components/AccentColorPicker';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
+import {
+  BADGE_LAYER_OVERLAY,
+  BADGE_RAINBOW_BORDER_COLORS,
+  BADGE_RAINBOW_FILL_COLORS,
+  BEST_IMAGE_RAINBOW_TEXT,
+} from '@/features/best-image/best-image-badge-theme';
 import { APP_ACCENTS, useAppTheme } from '@/theme/app-theme';
-import { HUE_SPECTRUM } from '@/theme/accent-color';
 import { useThemeStore } from '@/state/theme-store';
 import type { AppAppearance } from '@/storage/theme-preferences-store';
 
@@ -58,8 +63,21 @@ export default function SettingsScreen() {
             {accent === 'custom'
               ? <View style={[styles.swatch, { backgroundColor: customHex }]} />
               : (
-                <LinearGradient colors={[...HUE_SPECTRUM] as [string, string, ...string[]]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.swatch}>
-                  <Text style={styles.customMark}>+</Text>
+                <LinearGradient
+                  colors={BADGE_RAINBOW_BORDER_COLORS}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.customRainbowBorder}
+                >
+                  <LinearGradient
+                    colors={BADGE_RAINBOW_FILL_COLORS}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.customRainbowFill}
+                  >
+                    <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.customRainbowOverlay]} />
+                    <Text style={styles.customMark}>+</Text>
+                  </LinearGradient>
                 </LinearGradient>
               )}
           </Pressable>
@@ -112,5 +130,8 @@ const styles = StyleSheet.create({
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   swatchFrame: { width: 38, height: 38, borderWidth: 2, borderColor: 'transparent', borderRadius: 19, padding: 3 },
   swatch: { flex: 1, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  customMark: { color: '#FFF', fontSize: 18, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 2 },
+  customRainbowBorder: { flex: 1, borderRadius: 16, padding: 2, overflow: 'hidden' },
+  customRainbowFill: { flex: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  customRainbowOverlay: { backgroundColor: BADGE_LAYER_OVERLAY },
+  customMark: { color: BEST_IMAGE_RAINBOW_TEXT, fontSize: 16, fontWeight: '800' },
 });
