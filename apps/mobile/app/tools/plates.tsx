@@ -26,13 +26,14 @@ import { useToolboxPins } from '@/state/toolbox-pins';
 import { useAppTheme } from '@/theme/app-theme';
 
 function Chevron({ expanded }: { expanded: boolean }) {
+  const theme = useAppTheme();
   return (
     <SymbolView
       name={expanded ? 'chevron.up' : 'chevron.down'}
       size={16}
-      tintColor="#6B7280"
+      tintColor={theme.textMuted}
       weight="semibold"
-      fallback={<Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color="#6B7280" />}
+      fallback={<Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={theme.textMuted} />}
     />
   );
 }
@@ -159,8 +160,8 @@ export default function PlatesToolScreen() {
                     style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
                   >
                     <View style={styles.triggerCopy}>
-                      <Text style={styles.triggerLabel}>当前牌子</Text>
-                      <Text style={styles.triggerName}>{selected?.name ?? '请选择'}</Text>
+                      <Text style={[styles.triggerLabel, { color: theme.textMuted }]}>当前牌子</Text>
+                      <Text style={[styles.triggerName, { color: theme.text }]}>{selected?.name ?? '请选择'}</Text>
                     </View>
                     {selected ? (
                       <View style={styles.platePreview}>
@@ -171,8 +172,8 @@ export default function PlatesToolScreen() {
                   </Pressable>
 
                   {pickerOpen ? (
-                    <View style={styles.pickerBody}>
-                      <Text style={styles.sectionLabel}>版本</Text>
+                    <View style={[styles.pickerBody, { borderTopColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+                      <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>版本</Text>
                       <View style={styles.versionGrid}>
                         {pickerGroups.map((group) => {
                           const active = openPrefix === group.prefix;
@@ -185,15 +186,17 @@ export default function PlatesToolScreen() {
                               onPress={() => setOpenPrefix(group.prefix)}
                               style={({ pressed }) => [
                                 styles.versionChip,
-                                selectedHere && styles.versionChipSelected,
-                                active && styles.versionChipActive,
+                                { backgroundColor: theme.surface, borderColor: theme.border },
+                                selectedHere && { borderColor: theme.accent, backgroundColor: theme.accentSoft },
+                                active && { borderColor: theme.accent, backgroundColor: theme.accent },
                                 pressed && styles.pressed,
                               ]}
                             >
                               <Text style={[
                                 styles.versionChipText,
-                                selectedHere && styles.versionChipTextSelected,
-                                active && styles.versionChipTextActive,
+                                { color: theme.text },
+                                selectedHere && { color: theme.accent },
+                                active && { color: '#FFFFFF' },
                               ]}>
                                 {group.prefix}
                               </Text>
@@ -204,7 +207,7 @@ export default function PlatesToolScreen() {
 
                       {activeGroup ? (
                         <>
-                          <Text style={styles.sectionLabel}>{activeGroup.prefix}代档位</Text>
+                          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>{activeGroup.prefix}代档位</Text>
                           <View style={styles.tierRow}>
                             {activeGroup.entries.map((entry) => {
                               const current = entry.plate.id === selected?.id;
@@ -217,11 +220,12 @@ export default function PlatesToolScreen() {
                                   onPress={() => selectPlate(entry.plate)}
                                   style={({ pressed }) => [
                                     styles.tierChip,
-                                    current && styles.tierChipActive,
+                                    { backgroundColor: theme.surface, borderColor: theme.border },
+                                    current && { backgroundColor: theme.accent, borderColor: theme.accent },
                                     pressed && styles.pressed,
                                   ]}
                                 >
-                                  <Text style={[styles.tierChipText, current && styles.tierChipTextActive]}>
+                                  <Text style={[styles.tierChipText, { color: theme.textSecondary }, current && { color: '#FFFFFF' }]}>
                                     {entry.label}
                                   </Text>
                                 </Pressable>
@@ -246,14 +250,16 @@ export default function PlatesToolScreen() {
                         onPress={() => void toggleHomePlate()}
                         style={({ pressed }) => [
                           styles.homeButton,
-                          pinnedPlateIds.includes(selected.id) && styles.homeButtonActive,
+                          { borderColor: theme.border },
+                          pinnedPlateIds.includes(selected.id) && { borderColor: theme.accent, backgroundColor: theme.accentSoft },
                           pressed && styles.pressed,
                           pinPending && styles.homeButtonDisabled,
                         ]}
                       >
                         <Text style={[
                           styles.homeButtonText,
-                          pinnedPlateIds.includes(selected.id) && styles.homeButtonTextActive,
+                          { color: theme.textSecondary },
+                          pinnedPlateIds.includes(selected.id) && { color: theme.accent },
                         ]}>
                           {pinnedPlateIds.includes(selected.id) ? '已添加到主页' : '添加到主页'}
                         </Text>
@@ -262,7 +268,7 @@ export default function PlatesToolScreen() {
                   />
                 ) : null}
 
-                <Text style={styles.heading}>
+                <Text style={[styles.heading, { color: theme.text }]}>
                   缺失曲目
                   {progress?.missingSongs.length ? ` · ${progress.missingSongs.length}` : ''}
                 </Text>
@@ -270,23 +276,23 @@ export default function PlatesToolScreen() {
             )}
             ListEmptyComponent={(
               <Card style={styles.emptyCard}>
-                <Text style={styles.done}>{progress?.total ? '全部完成' : '该姓名框没有歌曲要求'}</Text>
+                <Text style={[styles.done, { color: theme.success }]}>{progress?.total ? '全部完成' : '该姓名框没有歌曲要求'}</Text>
               </Card>
             )}
             renderItem={({ item }) => {
               const title = songTitleById.get(item.songId);
               return (
                 <Pressable
-                  style={({ pressed }) => [styles.song, pressed && styles.pressed]}
+                  style={({ pressed }) => [styles.song, { backgroundColor: theme.surface }, pressed && styles.pressed]}
                   onPress={() => router.push(`/songs/${encodeURIComponent(item.songId)}` as Href)}
                 >
                   <View style={styles.songCopy}>
-                    <Text style={styles.songId}>#{item.songId}</Text>
-                    <Text style={styles.songTitle}>{title ?? `歌曲 ${item.songId}`}</Text>
+                    <Text style={[styles.songId, { color: theme.textMuted }]}>#{item.songId}</Text>
+                    <Text style={[styles.songTitle, { color: theme.text }]}>{title ?? `歌曲 ${item.songId}`}</Text>
                     <View style={styles.songDiffs}>
                       {item.missingDifficulties.map((levelIndex) => (
                         levelIndex < 0 ? (
-                          <Text key="any" style={styles.anyDiffMini}>任意难度</Text>
+                          <Text key="any" style={[styles.anyDiffMini, { color: theme.textMuted }]}>任意难度</Text>
                         ) : (
                           <DifficultyBadge
                             key={levelIndex}
@@ -297,7 +303,7 @@ export default function PlatesToolScreen() {
                       ))}
                     </View>
                   </View>
-                  <Text style={styles.link}>详情</Text>
+                  <Text style={[styles.link, { color: theme.accent }]}>详情</Text>
                 </Pressable>
               );
             }}
