@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, Platform, processColor, StyleSheet } from 'react-native';
+import { Animated, InteractionManager, Platform, processColor, StyleSheet } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 import { useCatalogFilter } from '@/state/catalog-filter';
@@ -8,6 +8,10 @@ import { useCatalogFilter } from '@/state/catalog-filter';
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
 } as unknown as ReturnType<typeof Animated.loop>);
+jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+  (callback as () => void)();
+  return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+});
 
 const mockSetSongFavorite = jest.fn();
 const mockBack = jest.fn();

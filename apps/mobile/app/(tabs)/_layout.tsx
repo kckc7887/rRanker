@@ -6,9 +6,10 @@ export default function TabLayout() {
   const theme = useAppTheme();
   return (
     <NativeTabs
+      // Use an opaque surface color only — light/dark material blur can blend
+      // at the scroll edge and visually stretch the iOS tab bar again.
       backgroundColor={theme.surface}
       backBehavior="history"
-      blurEffect={theme.dark ? 'systemMaterialDark' : 'systemMaterialLight'}
       disableTransparentOnScrollEdge
       labelVisibilityMode="labeled"
       minimizeBehavior="never"

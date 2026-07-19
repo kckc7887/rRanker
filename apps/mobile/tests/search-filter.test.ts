@@ -30,4 +30,19 @@ describe('filterSongs', () => {
     expect(matched).toHaveLength(1);
     expect(matched[0].title).toBe('マスカレイド・マスカレード');
   });
+  it('matches partial Hepburn romaji against kana titles', () => {
+    const matched = filterSongs(fixtureSongs, 'masukareido');
+    expect(matched).toHaveLength(1);
+    expect(matched[0].title).toBe('マスカレイド・マスカレード');
+  });
+  it('matches spaced romaji via compact and hiragana keyword conversion', () => {
+    const compact = filterSongs(fixtureSongs, 'masukareido masukareedo');
+    expect(compact).toHaveLength(1);
+    expect(compact[0].title).toBe('マスカレイド・マスカレード');
+  });
+  it('matches romaji keywords after converting them to hiragana', () => {
+    const matched = filterSongs(fixtureSongs, 'masukareedo');
+    expect(matched).toHaveLength(1);
+    expect(matched[0].title).toBe('マスカレイド・マスカレード');
+  });
 });

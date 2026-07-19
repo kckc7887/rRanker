@@ -3,7 +3,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  InteractionManager,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import {
   GestureHandlerRootView,
   Pressable as GesturePressable,
@@ -63,7 +73,10 @@ export default function SongDetailScreen() {
   return <>
     <Stack.Screen options={{
       // Android 的透明空标题栏仍会截获其下方按钮的触控；隐藏该层，保留原样式的页面内按钮与满幅封面。
+      // iOS 必须清掉全局 theme.surface 顶栏背景，否则透明 header 仍会画出挡封面的色块。
       title: '', headerTransparent: true, headerShadowVisible: false, headerTintColor: '#FFFFFF',
+      headerStyle: { backgroundColor: 'transparent' },
+      headerBackground: () => null,
       headerShown: Platform.OS !== 'android',
       headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
     }} />
@@ -154,6 +167,12 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
   const requestedIndex = selectedChartType === initialChartType && initialLevelIndex !== undefined
     ? sortedCharts.findIndex((chart) => chart.levelIndex === initialLevelIndex) : -1;
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex;
+  const [deferredReady, setDeferredReady] = useState(false);
+  useEffect(() => {
+    setDeferredReady(false);
+    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
+    return () => task.cancel();
+  }, [song.id]);
 
   return <ScrollView testID="song-detail-scroll" contentContainerStyle={styles.content}
     keyboardShouldPersistTaps="handled">
@@ -176,23 +195,25 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
       {song.region ? <MetadataCell label="区域" value={song.region} flex={1} /> : null}
     </View>
 
-    <ChartCarousel key={`${song.id}:${selectedChartType}:${initialIndex}`} charts={sortedCharts} records={records} song={song}
-      library={library} cardWidth={cardWidth} initialIndex={initialIndex} canSwitchChartType={canSwitchChartType}
-      onToggleChartType={() => setSelectedChartType((type) => type === 'DX' ? 'SD' : 'DX')} />
+    {deferredReady ? <>
+      <ChartCarousel key={`${song.id}:${selectedChartType}:${initialIndex}`} charts={sortedCharts} records={records} song={song}
+        library={library} cardWidth={cardWidth} initialIndex={initialIndex} canSwitchChartType={canSwitchChartType}
+        onToggleChartType={() => setSelectedChartType((type) => type === 'DX' ? 'SD' : 'DX')} />
 
-    <View style={styles.details}>
-      <SourceStatus items={[
-        { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
-        { key: 'scores', label: scoreSource?.label ?? '成绩未加载', updatedAt: scoreSource?.updatedAt, state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live' },
-      ]} />
-      <SongCollectionsCard songId={song.id} />
-      <Card><Text style={styles.section}>歌曲信息</Text><AliasLine aliases={song.aliases} />
-        <Text style={styles.body}>版权：{song.rights || '未提供'}</Text><Text style={styles.body}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
-      <Card><TagEditor tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
-        historyTags={buildTagHistory(library.data ?? [], songLibraryKey(song.id), library.tagPresets ?? [])}
-        disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
-        onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
-    </View>
+      <View style={styles.details}>
+        <SourceStatus items={[
+          { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
+          { key: 'scores', label: scoreSource?.label ?? '成绩未加载', updatedAt: scoreSource?.updatedAt, state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live' },
+        ]} />
+        <SongCollectionsCard songId={song.id} />
+        <Card><Text style={styles.section}>歌曲信息</Text><AliasLine aliases={song.aliases} />
+          <Text style={styles.body}>版权：{song.rights || '未提供'}</Text><Text style={styles.body}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
+        <Card><TagEditor tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
+          historyTags={buildTagHistory(library.data ?? [], songLibraryKey(song.id), library.tagPresets ?? [])}
+          disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
+          onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
+      </View>
+    </> : <View testID="song-detail-deferred-placeholder" style={styles.deferredPlaceholder} />}
   </ScrollView>;
 }
 
@@ -276,32 +297,62 @@ function AutoScrollText({ text, textStyle, style, contentContainerStyle }: {
   const [contentWidth, setContentWidth] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [scrolling, setScrolling] = useState(false);
   const offsetRef = useRef(0);
   const directionRef = useRef(1);
-
-  const shouldAutoScroll = contentWidth > containerWidth + 4;
+  const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!shouldAutoScroll || dragging) return;
-    const interval = setInterval(() => {
-      const next = offsetRef.current + directionRef.current * 0.5;
-      if (next >= contentWidth - containerWidth) { directionRef.current = -1; }
-      else if (next <= 0) { directionRef.current = 1; }
-      offsetRef.current = Math.max(0, Math.min(next, contentWidth - containerWidth));
+    offsetRef.current = 0;
+    directionRef.current = 1;
+    setScrolling(false);
+    scrollRef.current?.scrollTo({ x: 0, animated: false });
+  }, [text]);
+
+  useEffect(() => {
+    if (contentWidth <= 0 || containerWidth <= 0) return;
+    const overflow = contentWidth - containerWidth;
+    setScrolling((current) => {
+      if (current) return overflow > 2;
+      return overflow > 8;
+    });
+  }, [contentWidth, containerWidth]);
+
+  useEffect(() => {
+    if (!scrolling || dragging) {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      return;
+    }
+    const maxOffset = Math.max(0, contentWidth - containerWidth);
+    const tick = () => {
+      const next = offsetRef.current + directionRef.current * 0.45;
+      if (next >= maxOffset) directionRef.current = -1;
+      else if (next <= 0) directionRef.current = 1;
+      offsetRef.current = Math.max(0, Math.min(next, maxOffset));
       scrollRef.current?.scrollTo({ x: offsetRef.current, animated: false });
-    }, 16);
-    return () => clearInterval(interval);
-  }, [shouldAutoScroll, dragging, contentWidth, containerWidth]);
+      frameRef.current = requestAnimationFrame(tick);
+    };
+    frameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    };
+  }, [scrolling, dragging, contentWidth, containerWidth]);
 
   return <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}
     style={style}
     contentContainerStyle={contentContainerStyle}
+    scrollEnabled={scrolling}
     onContentSizeChange={(w) => setContentWidth(w)}
     onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
     onScrollBeginDrag={() => setDragging(true)}
-    onScrollEndDrag={() => { setDragging(false); directionRef.current = 1; }}
-    onScroll={(e) => { offsetRef.current = e.nativeEvent.contentOffset.x; }}
-    scrollEventThrottle={16}>
+    onScrollEndDrag={(e) => {
+      offsetRef.current = e.nativeEvent.contentOffset.x;
+      setDragging(false);
+      directionRef.current = 1;
+    }}
+    scrollEventThrottle={32}>
     <Text numberOfLines={1} style={textStyle}>{text}</Text>
   </ScrollView>;
 }
@@ -522,6 +573,7 @@ const styles = StyleSheet.create({
   ratingAction: { alignSelf: 'flex-start', gap: 3 },
   ratingHint: { color: '#6B7280', fontSize: 11 },
   content: { paddingBottom: 48 },
+  deferredPlaceholder: { minHeight: 180 },
   hero: { position: 'relative', backgroundColor: '#D9DEE7', overflow: 'hidden' },
   heroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
   heroCopy: { position: 'absolute', left: 18, right: 18, bottom: 20, gap: 2 },
