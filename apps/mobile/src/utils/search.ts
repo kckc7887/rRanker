@@ -1,5 +1,5 @@
 import type { ChartType, Difficulty, Song } from '@/domain/models';
-import { toRomaji } from 'wanakana';
+import { toHiragana, toRomaji } from 'wanakana';
 
 export interface SongSearchFilters {
   keyword: string;
@@ -26,19 +26,47 @@ export function compactSearchText(value: string): string {
   return normalizeSearchText(value).replace(/[\s\p{P}\p{S}]+/gu, '');
 }
 
+function uniqueSearchVariants(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result;
+}
+
 export function buildSearchDocument(values: readonly string[]): SearchDocument {
   const normalized = values.flatMap((value) => {
     const source = normalizeSearchText(value);
+    if (!source) return [];
+    const hiragana = normalizeSearchText(toHiragana(source));
     const romaji = normalizeSearchText(toRomaji(source));
-    return source === romaji ? [source] : [source, romaji];
+    return uniqueSearchVariants([source, hiragana, romaji]);
   });
   return { text: normalized.join('\u0000'), compact: normalized.map(compactSearchText).join('\u0000') };
 }
 
-export function searchDocumentMatches(document: SearchDocument, keyword: string): boolean {
+function keywordVariants(keyword: string): string[] {
   const normalized = normalizeSearchText(keyword);
-  if (!normalized) return true;
-  return document.text.includes(normalized) || document.compact.includes(compactSearchText(normalized));
+  if (!normalized) return [];
+  const hiragana = normalizeSearchText(toHiragana(normalized));
+  const romaji = normalizeSearchText(toRomaji(normalized));
+  return uniqueSearchVariants([
+    normalized,
+    compactSearchText(normalized),
+    hiragana,
+    compactSearchText(hiragana),
+    romaji,
+    compactSearchText(romaji),
+  ]);
+}
+
+export function searchDocumentMatches(document: SearchDocument, keyword: string): boolean {
+  const variants = keywordVariants(keyword);
+  if (variants.length === 0) return true;
+  return variants.some((variant) => document.text.includes(variant) || document.compact.includes(variant));
 }
 
 export function buildSongSearchIndex(songs: readonly Song[]): SongSearchEntry[] {

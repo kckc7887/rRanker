@@ -97,7 +97,9 @@ export function ChartTypeBadge({ type }: { type: 'SD' | 'DX' }) {
   return <View style={[styles.chartTypeBadge, type === 'SD' ? styles.sdTypeBadge : styles.dxTypeBadge]}>
     {type === 'SD' ? <Text style={styles.sdTypeText}>SD</Text> :
       <MaskedView style={styles.dxTypeTextMask}
-        maskElement={<Text style={[styles.chartTypeText, styles.dxTypeMaskText]}>DX</Text>}>
+        maskElement={<View style={styles.dxTypeMaskRoot}>
+          <Text style={[styles.chartTypeText, styles.dxTypeMaskText]}>DX</Text>
+        </View>}>
         <LinearGradient colors={['#FF8A00', '#FFD84A']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
           style={styles.gradientFill} />
       </MaskedView>}
@@ -252,11 +254,12 @@ const styles = StyleSheet.create({
   difficultyTextMini: { fontSize: 8, letterSpacing: 0.1, fontWeight: '800' },
   chartTypeBadge: { minWidth: 31, height: 18, borderRadius: 6, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   sdTypeBadge: { backgroundColor: '#3286E6' },
-  sdTypeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  sdTypeText: { color: '#FFFFFF', fontSize: 10, lineHeight: 12, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', includeFontPadding: false },
   dxTypeBadge: { backgroundColor: '#FFFFFF', borderWidth: StyleSheet.hairlineWidth, borderColor: '#F2C36C' },
-  dxTypeTextMask: { width: 19, height: 13 },
-  chartTypeText: { fontSize: 10, lineHeight: 13, fontWeight: '900', letterSpacing: 0.5 },
-  dxTypeMaskText: { color: '#000000' },
+  dxTypeTextMask: { width: 18, height: 12, alignSelf: 'center', overflow: 'hidden' },
+  dxTypeMaskRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  chartTypeText: { fontSize: 10, lineHeight: 12, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', includeFontPadding: false },
+  dxTypeMaskText: { color: '#000000', includeFontPadding: false },
   achievement: { fontSize: 36, lineHeight: 44, fontWeight: '900', letterSpacing: -1.3, textShadowColor: 'rgba(255,255,255,0.8)', textShadowRadius: 2 },
   achievementCompact: { fontSize: 22, lineHeight: 28, letterSpacing: -0.5 },
   achievementNormal: { color: '#172033' },

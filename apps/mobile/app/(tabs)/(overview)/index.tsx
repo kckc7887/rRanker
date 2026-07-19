@@ -218,13 +218,13 @@ export function OverviewScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="同步本地查分器数据，使用好友码"
                 onPress={openUpload}
-                style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.surface }, pressed && styles.syncPressed]}
+                style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed]}
               >
                 <Text style={styles.syncText}>同步数据</Text>
                 <Text style={styles.actionHint}>好友码</Text>
               </Pressable>
             ) : bundle.payload.kind === 'maimai' ? (
-              <View style={[styles.actionRow, { backgroundColor: theme.surface }]}>
+              <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`上传数据，${compactUploadPhaseLabel(uploadPhase)}`}
@@ -256,7 +256,7 @@ export function OverviewScreen() {
                 accessibilityLabel="同步数据"
                 disabled={syncBusy}
                 onPress={() => void syncData()}
-                style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.surface }, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
+                style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
               >
                 <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
               </Pressable>
