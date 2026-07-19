@@ -291,7 +291,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const stroke = Math.max(1, px(bannerWidth / 720));
   const appProfileWidth = width - pageInset * 2;
   const appBannerHeight = px(appProfileWidth * 116 / 720);
-  const appBannerRadius = px(width * 28 / 1080);
+  const appBannerRadius = px(appProfileWidth * 0.013);
   const appBannerPaddingX = px(width * 22 / 1080);
   const appBannerPaddingY = px(width * 16 / 1080);
   const appAvatarSize = px(width * 130 / 1080);
@@ -425,7 +425,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .profile-app{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset}px;width:${appProfileWidth}px;height:${appProfileHeight}px}
     .profile-banner-app{--glass-opacity:0;--glass-blur-strong:6px;--glass-blur-medium:4px;--glass-blur-soft:2.3px;position:relative;display:flex;width:100%;height:${appBannerHeight}px;align-items:center;gap:${appIdentityGap}px;overflow:hidden;padding:${appBannerPaddingY}px ${appBannerPaddingX}px;border:1px solid rgba(255,255,255,.84);border-radius:${appBannerRadius}px;background:linear-gradient(100deg,#7497D8,#EEB4D4 54%,#FFE0A7);box-shadow:0 ${px(width * 18 / 1080)}px ${px(width * 44 / 1080)}px rgba(46,63,96,.24),inset 0 1px rgba(255,255,255,.72);isolation:isolate}
     .profile-banner-app.no-plate{background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}
-    .profile-banner-app .nameplate-image,.profile-banner-app .nameplate-fallback{position:absolute;z-index:-2;inset:0;display:block;width:100%;height:100%;border-radius:0;transform:none}
+    .profile-banner-app .nameplate-image,.profile-banner-app .nameplate-fallback{position:absolute;z-index:-2;inset:0;display:block;width:100%;height:100%;border-radius:${appBannerRadius}px;transform:none}
     .profile-banner-app .nameplate-image{object-fit:contain;filter:saturate(1.08)}
     .profile-banner-app .nameplate-fallback{border:1px solid rgba(255,255,255,.8);background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}
     .profile-glass{position:absolute;z-index:0;left:0;top:0;bottom:0;width:var(--glass-physical-width,60%);overflow:hidden;pointer-events:none}
