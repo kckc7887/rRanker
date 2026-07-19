@@ -360,7 +360,6 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1000,
-    elevation: 1000,
     alignItems: 'center',
     paddingHorizontal: 16,
   },
