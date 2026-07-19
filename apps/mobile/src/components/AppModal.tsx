@@ -1,4 +1,5 @@
-import { Modal, type ModalProps } from 'react-native';
+import { Modal, StyleSheet, type ModalProps } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import {
   NotificationOutlet,
@@ -16,8 +17,14 @@ export function AppModal({ children, onRequestClose, visible = true, ...props }:
         if (!requestCloseNotification()) onRequestClose?.(event);
       }}
     >
-      {children}
-      {visible ? <NotificationOutlet /> : null}
+      <GestureHandlerRootView style={styles.root}>
+        {children}
+        {visible ? <NotificationOutlet /> : null}
+      </GestureHandlerRootView>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});

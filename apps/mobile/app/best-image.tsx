@@ -454,7 +454,11 @@ export default function BestImageScreen() {
     if (exportTimeout.current) clearTimeout(exportTimeout.current);
     exportReadyResolver.current = resolve;
     exportReadyRejecter.current = reject;
-    setExportHeight(minimumBestImageHeight(outputWidth));
+    const pageId = pages[pageIndex]?.id;
+    const knownHeight = pageId ? pageHeights[pageId] : undefined;
+    // Prefer the preview-measured height so the export WebView never first mounts at the
+    // minimum 3:4 box and letterboxes while assets resolve on page 2+.
+    setExportHeight(knownHeight ?? minimumBestImageHeight(outputWidth));
     setExportPageIndex(pageIndex);
     exportTimeout.current = setTimeout(() => {
       exportReadyResolver.current = null;
@@ -474,7 +478,8 @@ export default function BestImageScreen() {
     exportReadyRejecter.current = null;
     if (exportTimeout.current) clearTimeout(exportTimeout.current);
     exportTimeout.current = null;
-    setTimeout(() => resolve(readyHeight), 150);
+    // Allow the native capture view to adopt the final height and the WebView to re-fit at scale 1.
+    setTimeout(() => resolve(readyHeight), 320);
   };
 
   const exportImages = async () => {
@@ -691,7 +696,22 @@ export default function BestImageScreen() {
     <Modal visible={exportPageIndex !== null} animationType="none" transparent={false} onRequestClose={() => exportReadyRejecter.current?.(new Error('导出已取消'))}>
       {exportPageIndex !== null && htmlPages?.[exportPageIndex] && webViewSources?.[exportPageIndex] ? <View style={styles.exportRoot}>
         <View ref={exportCaptureRef} collapsable={false} style={{ width: outputWidth / PixelRatio.get(), height: exportHeight / PixelRatio.get(), backgroundColor: '#E7EDF5' }}>
-          <WebView key={`export-${exportPageIndex}-${outputWidth}`} accessibilityLabel={`导出渲染 第${exportPageIndex + 1}页`} allowFileAccess={Platform.OS === 'android'} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} scrollEnabled={false} source={webViewSources[exportPageIndex]} style={styles.webview} />
+          <WebView
+            key={`export-${exportPageIndex}-${outputWidth}`}
+            accessibilityLabel={`导出渲染 第${exportPageIndex + 1}页`}
+            allowFileAccess={Platform.OS === 'android'}
+            // Keep software layer for Android blank-capture devices, but glass now uses
+            // filter:blur plate clones so frosted edges still rasterize under software draw.
+            androidLayerType="software"
+            bounces={false}
+            javaScriptEnabled
+            mixedContentMode="never"
+            originWhitelist={['*']}
+            onMessage={(event) => handleExportMessage(event.nativeEvent.data)}
+            scrollEnabled={false}
+            source={webViewSources[exportPageIndex]}
+            style={styles.webview}
+          />
         </View>
         <View style={styles.exportOverlay}><ActivityIndicator color="#246BFD" size="large" /><Text style={styles.exportOverlayText}>{exportStatus ?? '正在准备导出'}</Text></View>
       </View> : null}

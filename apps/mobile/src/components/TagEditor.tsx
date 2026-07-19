@@ -42,35 +42,37 @@ export function TagEditor({ tags, presets = [], historyTags = [], disabled, onCh
     if (await commit([...tags, input])) setInput('');
   };
 
-  return <GestureRoot style={styles.wrap}>
-    <Text style={[styles.label, { color: theme.textSecondary }]}>本地标签</Text>
-    <View style={styles.tags}>
-      {tags.map((tag) => <TagPressable key={tag} disabled={disabled} accessibilityRole="button"
-        accessibilityLabel={`删除标签 ${tag}`} onPress={() => void commit(tags.filter((item) => item !== tag))}
-        style={[styles.tag, { backgroundColor: theme.accentSoft }]}>
-        <Text style={[styles.tagText, { color: theme.accent }]}>{tag} ×</Text>
-      </TagPressable>)}
-      {!tags.length ? <Text style={[styles.empty, { color: theme.textMuted }]}>暂无标签</Text> : null}
-    </View>
-    <View style={styles.inputRow}>
-      <TextInput accessibilityLabel="新标签" editable={!disabled} placeholder="输入标签" placeholderTextColor={theme.textMuted}
-        value={input} onChangeText={setInput} onSubmitEditing={() => void add()}
-        style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-      <TagPressable accessibilityRole="button" accessibilityLabel="打开标签预设" disabled={disabled}
-        onPress={() => setPickerVisible(true)} style={[styles.presetButton, { borderColor: theme.accent }]}>
-        <Text style={[styles.presetText, { color: theme.accent }]}>预设</Text>
-      </TagPressable>
-      <TagPressable accessibilityRole="button" accessibilityLabel="添加标签" disabled={disabled}
-        onPress={() => void add()} style={[styles.add, { backgroundColor: theme.accent }]}>
-        <Text style={styles.addText}>添加</Text>
-      </TagPressable>
-    </View>
-    {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
+  return <>
+    <GestureRoot style={styles.wrap}>
+      <Text style={[styles.label, { color: theme.textSecondary }]}>本地标签</Text>
+      <View style={styles.tags}>
+        {tags.map((tag) => <TagPressable key={tag} disabled={disabled} accessibilityRole="button"
+          accessibilityLabel={`删除标签 ${tag}`} onPress={() => void commit(tags.filter((item) => item !== tag))}
+          style={[styles.tag, { backgroundColor: theme.accentSoft }]}>
+          <Text style={[styles.tagText, { color: theme.accent }]}>{tag} ×</Text>
+        </TagPressable>)}
+        {!tags.length ? <Text style={[styles.empty, { color: theme.textMuted }]}>暂无标签</Text> : null}
+      </View>
+      <View style={styles.inputRow}>
+        <TextInput accessibilityLabel="新标签" editable={!disabled} placeholder="输入标签" placeholderTextColor={theme.textMuted}
+          value={input} onChangeText={setInput} onSubmitEditing={() => void add()}
+          style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+        <TagPressable accessibilityRole="button" accessibilityLabel="打开标签预设" disabled={disabled}
+          onPress={() => setPickerVisible(true)} style={[styles.presetButton, { borderColor: theme.accent }]}>
+          <Text style={[styles.presetText, { color: theme.accent }]}>预设</Text>
+        </TagPressable>
+        <TagPressable accessibilityRole="button" accessibilityLabel="添加标签" disabled={disabled}
+          onPress={() => void add()} style={[styles.add, { backgroundColor: theme.accent }]}>
+          <Text style={styles.addText}>添加</Text>
+        </TagPressable>
+      </View>
+      {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
+    </GestureRoot>
     <TagPresetSheet visible={pickerVisible} tags={tags} presets={presets} historyTags={historyTags}
       onClose={() => setPickerVisible(false)} onSave={async (values) => {
         if (await commit(values)) setPickerVisible(false);
       }} onPresetsChange={onPresetsChange} />
-  </GestureRoot>;
+  </>;
 }
 
 function TagPresetSheet({ visible, tags, presets, historyTags, onClose, onSave, onPresetsChange }: {
