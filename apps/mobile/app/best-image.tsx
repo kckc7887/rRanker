@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useNotification } from '@/components/AppNotification';
 import { useGameData } from '@/hooks/use-game-data';
+import { useAppTheme } from '@/theme/app-theme';
 import { CollectionImage } from '@/components/CollectionImage';
 import type { Player } from '@/domain/models';
 import {
@@ -128,15 +129,16 @@ function ChoiceChip({ label, selected, disabled = false, onPress, accessibilityL
   onPress: () => void;
   accessibilityLabel?: string;
 }) {
+  const theme = useAppTheme();
   return <Pressable
     accessibilityLabel={accessibilityLabel ?? label}
     accessibilityRole="button"
     accessibilityState={{ disabled, selected }}
     disabled={disabled}
     onPress={onPress}
-    style={[styles.chip, selected && styles.chipSelected, disabled && styles.chipDisabled]}
+    style={[styles.chip, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, disabled && styles.chipDisabled]}
   >
-    <Text style={[styles.chipText, selected && styles.chipTextSelected, disabled && styles.chipTextDisabled]}>{label}</Text>
+    <Text style={[styles.chipText, { color: theme.textSecondary }, selected && { color: theme.accent }, disabled && styles.chipTextDisabled]}>{label}</Text>
   </Pressable>;
 }
 
@@ -164,6 +166,7 @@ function StylePreview({
 }
 
 export default function BestImageScreen() {
+  const theme = useAppTheme();
   const { showNotification } = useNotification();
   const { data, activeAccountId } = useGameData();
   const window = useWindowDimensions();
@@ -541,19 +544,19 @@ export default function BestImageScreen() {
   };
 
   return <>
-    <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={styles.label}>选择类型</Text>
-      <View accessibilityRole="tablist" style={styles.segmentedControl}>
+    <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <Text style={[styles.label, { color: theme.text }]}>选择类型</Text>
+      <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
         {IMAGE_TYPES.map((item) => {
           const selected = imageType === item.id;
-          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setImageType(item.id)} style={[styles.segment, selected && styles.segmentSelected]}>
-            <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{item.label}</Text>
+          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setImageType(item.id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+            <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item.label}</Text>
           </Pressable>;
         })}
       </View>
 
-      {imageType === 'custom' ? <View style={styles.customPanel}>
-        <Text style={styles.panelTitle}>自定义 BestN</Text>
+      {imageType === 'custom' ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
         <View style={styles.fieldRow}>
           <View style={styles.textFieldWrap}>
             <Text style={styles.fieldLabel}>数量</Text>
@@ -561,7 +564,7 @@ export default function BestImageScreen() {
               setQuantityText(value);
               const parsed = parseBestImageQuantity(value);
               if (parsed !== null) setQuantity(parsed);
-            }} placeholder="0 为无限制" style={[styles.textInput, quantityError && styles.textInputError]} />
+            }} placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, quantityError && styles.textInputError]} />
             {quantityError ? <Text style={styles.errorText}>{quantityError}</Text> : null}
           </View>
           <View style={styles.textFieldWrap}>
@@ -570,7 +573,7 @@ export default function BestImageScreen() {
               setMinimumAchievementText(value);
               const parsed = parseBestImageMinimumAchievement(value);
               if (parsed !== null) setMinimumAchievement(parsed);
-            }} placeholder="0–101" style={[styles.textInput, minimumAchievementError && styles.textInputError]} />
+            }} placeholder="0–101" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, minimumAchievementError && styles.textInputError]} />
             {minimumAchievementError ? <Text style={styles.errorText}>{minimumAchievementError}</Text> : null}
           </View>
         </View>
@@ -592,8 +595,8 @@ export default function BestImageScreen() {
         <ChoiceChip accessibilityLabel="严格筛选" label="严格筛选" disabled={achievement === null} selected={strictAchievement} onPress={() => setStrictAchievement((value) => !value)} />
       </View> : null}
 
-      <Text style={[styles.label, styles.sectionLabel]}>样式选择</Text>
-      <View style={styles.styleList}>
+      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
+      <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
         <View style={styles.ratingStyleRow}>
           <View style={styles.styleCopy}>
             <Text style={styles.styleName}>Rating 框</Text>
@@ -619,18 +622,18 @@ export default function BestImageScreen() {
         })}
       </View>
 
-      <Text style={[styles.label, styles.sectionLabel]}>分辨率</Text>
+      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>分辨率</Text>
       <View style={styles.widthOptions}>
         {OUTPUT_WIDTHS.map((width) => {
           const selected = outputWidth === width;
-          return <Pressable key={width} accessibilityLabel={`宽度 ${width} 像素`} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => chooseWidth(width)} style={[styles.widthOption, selected && styles.widthOptionSelected]}>
-            <Text style={[styles.widthOptionText, selected && styles.widthOptionTextSelected]}>{width}px</Text>
+          return <Pressable key={width} accessibilityLabel={`宽度 ${width} 像素`} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => chooseWidth(width)} style={[styles.widthOption, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}>
+            <Text style={[styles.widthOptionText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{width}px</Text>
           </Pressable>;
         })}
       </View>
       <Text style={styles.dimensionMeta}>{outputWidth} × {outputHeight} px · 每页最多 {maximumRowsPerPage} 行 · 第 {currentPageIndex + 1}/{pages.length} 页</Text>
 
-      <Text style={[styles.label, styles.sectionLabel]}>预览</Text>
+      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>预览</Text>
       <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight }]}>
         {webViewSources ? <FlatList
           data={webViewSources}
@@ -670,13 +673,13 @@ export default function BestImageScreen() {
           windowSize={3}
         /> : <View style={styles.loadingPreview}>
           {assetError || webViewSourceError ? <Text accessibilityRole="alert" style={styles.assetError}>{assetError ?? webViewSourceError}</Text> : <View style={styles.loadingContent}>
-            <ActivityIndicator accessibilityLabel="正在加载预览素材" color="#246BFD" size="large" />
-            <Text style={styles.loadingText}>{coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
+            <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
+            <Text style={[styles.loadingText, { color: theme.textMuted }]}>{coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
           </View>}
         </View>}
       </View>
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, index === currentPageIndex && styles.pageDotActive]} />)}</View> : null}
-      <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!webViewSources || !formValid || exportBusy} onPress={() => void exportImages()} style={[styles.exportButton, (!webViewSources || !formValid || exportBusy) && styles.exportButtonDisabled]}>
+      <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!webViewSources || !formValid || exportBusy} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!webViewSources || !formValid || exportBusy) && styles.exportButtonDisabled]}>
         {exportBusy ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
         <Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text>
       </Pressable>

@@ -8,6 +8,8 @@ describe('useRecordsFilter store', () => {
 
   it('starts with default filters', () => {
     const state = useRecordsFilter.getState();
+    expect(state.keyword).toBe('');
+    expect(state.collapsed).toBe(false);
     expect(state.difficulty).toBe('all');
     expect(state.version).toBe('all');
     expect(state.type).toBe('all');
@@ -20,6 +22,12 @@ describe('useRecordsFilter store', () => {
   it('updates difficulty via setDifficulty', () => {
     useRecordsFilter.getState().setDifficulty('master');
     expect(useRecordsFilter.getState().difficulty).toBe('master');
+  });
+
+  it('keeps the records keyword and collapsed state', () => {
+    useRecordsFilter.getState().setKeyword('宴会场');
+    useRecordsFilter.getState().setCollapsed(true);
+    expect(useRecordsFilter.getState()).toMatchObject({ keyword: '宴会场', collapsed: true });
   });
 
   it('updates version via setVersion', () => {
@@ -51,6 +59,8 @@ describe('useRecordsFilter store', () => {
 
   it('resets every filter back to defaults', () => {
     useRecordsFilter.getState().setDifficulty('master');
+    useRecordsFilter.getState().setKeyword('旧条件');
+    useRecordsFilter.getState().setCollapsed(true);
     useRecordsFilter.getState().setVersion(FIXTURE_CURRENT_VERSION);
     useRecordsFilter.getState().setType('DX');
     useRecordsFilter.getState().setConstantMin('12');
@@ -60,6 +70,8 @@ describe('useRecordsFilter store', () => {
     useRecordsFilter.getState().reset();
     const state = useRecordsFilter.getState();
     expect(state.difficulty).toBe('all');
+    expect(state.keyword).toBe('');
+    expect(state.collapsed).toBe(false);
     expect(state.version).toBe('all');
     expect(state.type).toBe('all');
     expect(state.constantMin).toBe('');

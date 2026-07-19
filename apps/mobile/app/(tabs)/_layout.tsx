@@ -1,16 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
+import { useAppTheme } from '@/theme/app-theme';
 
 export default function TabLayout() {
+  const theme = useAppTheme();
   return (
     <NativeTabs
-      backgroundColor="#FFFFFF"
+      backgroundColor={theme.surface}
       backBehavior="history"
-      blurEffect="systemMaterial"
+      blurEffect={theme.dark ? 'systemMaterialDark' : 'systemMaterialLight'}
       disableTransparentOnScrollEdge
       labelVisibilityMode="labeled"
       minimizeBehavior="never"
-      tintColor="#246BFD"
+      tintColor={theme.accent}
     >
       <NativeTabs.Trigger name="(overview)">
         <Icon
@@ -27,7 +29,7 @@ export default function TabLayout() {
         <Label>最佳</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="records">
-        <Icon sf="list.bullet" androidSrc={<VectorIcon family={Ionicons} name="list-outline" />} />
+        <Icon sf="chart.bar.xaxis" androidSrc={<VectorIcon family={Ionicons} name="stats-chart-outline" />} />
         <Label>成绩</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="search">

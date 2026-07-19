@@ -1,11 +1,18 @@
-import { createUserDataBackup, libraryTargetKey, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
-import type { LibraryTarget, RestoreMode, UserDataBackupV1, UserLibraryItem } from '@/domain/user-library';
+import { createUserDataBackup, DEFAULT_TAG_PRESETS, libraryTargetKey, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
+import type { LibraryTarget, RestoreMode, UserDataBackup, UserDataBackupV2, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 
 export class UserLibraryService {
   constructor(private readonly repository: UserLibraryRepository, private readonly now = () => new Date().toISOString()) {}
 
   list(): Promise<UserLibraryItem[]> { return this.repository.list(); }
+  listTagPresets(): Promise<string[]> {
+    return this.repository.listTagPresets?.() ?? Promise.resolve([...DEFAULT_TAG_PRESETS]);
+  }
+  setTagPresets(values: readonly string[]): Promise<string[]> {
+    const normalized = normalizeTags(values);
+    return this.repository.setTagPresets?.(normalized) ?? Promise.resolve(normalized);
+  }
 
   setSongFavorite(songId: string, favorite: boolean): Promise<UserLibraryItem[]> {
     return this.updateTarget({ kind: 'song', songId }, (current, timestamp) => ({
@@ -33,12 +40,20 @@ export class UserLibraryService {
         tags, createdAt: current?.createdAt ?? timestamp, updatedAt: timestamp });
   }
 
-  async createBackup(): Promise<UserDataBackupV1> {
-    return createUserDataBackup(await this.repository.list(), this.now());
+  async createBackup(): Promise<UserDataBackupV2> {
+    const [items, tagPresets] = await Promise.all([this.repository.list(), this.listTagPresets()]);
+    return createUserDataBackup(items, this.now(), tagPresets);
   }
 
-  restore(backup: UserDataBackupV1, mode: RestoreMode): Promise<UserLibraryItem[]> {
-    return this.repository.restore(backup.items, mode);
+  async restore(backup: UserDataBackup, mode: RestoreMode): Promise<UserLibraryItem[]> {
+    const items = await this.repository.restore(backup.items, mode);
+    const current = await this.listTagPresets();
+    const imported = backup.version === 2 ? backup.tagPresets : [...DEFAULT_TAG_PRESETS];
+    const nextPresets = backup.version === 1 && mode === 'merge'
+      ? current
+      : mode === 'merge' ? [...current, ...imported] : imported;
+    await this.setTagPresets(nextPresets);
+    return items;
   }
 
   clear(): Promise<void> { return this.repository.clear(); }

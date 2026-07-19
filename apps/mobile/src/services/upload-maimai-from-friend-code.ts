@@ -199,7 +199,7 @@ export async function uploadMaimaiFromFriendCode(input: {
       onWaitingFriend: ({ botFriendCode }) => {
         input.onPhase({
           kind: 'awaiting_friend',
-          message: '等待同意好友中…请到舞萌 NET 接受 Bot 好友申请',
+          message: '等待同意好友中…请到“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 好友申请',
           botFriendCode,
         });
         if (!alerted) {

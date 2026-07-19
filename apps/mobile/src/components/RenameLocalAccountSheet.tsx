@@ -12,6 +12,7 @@ import {
   LOCAL_PLAYER_NAME_MAX_LENGTH,
   normalizeLocalPlayerName,
 } from '@/storage/local-account-store';
+import { useAppTheme } from '@/theme/app-theme';
 
 export function RenameLocalAccountSheet({
   visible,
@@ -24,6 +25,7 @@ export function RenameLocalAccountSheet({
   onClose: () => void;
   onSave: (displayName: string) => Promise<void>;
 }) {
+  const theme = useAppTheme();
   const [draft, setDraft] = useState(initialName);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -60,8 +62,8 @@ export function RenameLocalAccountSheet({
       onRequestClose={saving ? undefined : onClose}
     >
       <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={styles.title}>修改本地玩家名称</Text>
+        <View style={[styles.card, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.title, { color: theme.text }]}>修改本地玩家名称</Text>
           <TextInput
             accessibilityLabel="本地玩家名称"
             autoFocus
@@ -73,7 +75,8 @@ export function RenameLocalAccountSheet({
             onSubmitEditing={() => void save()}
             returnKeyType="done"
             selectTextOnFocus
-            style={styles.input}
+            placeholderTextColor={theme.textMuted}
+            style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
           />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.actions}>
@@ -84,14 +87,14 @@ export function RenameLocalAccountSheet({
               onPress={onClose}
               style={styles.secondary}
             >
-              <Text style={styles.secondaryText}>取消</Text>
+              <Text style={[styles.secondaryText, { color: theme.textSecondary }]}>取消</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="保存本地玩家名称"
               disabled={saving}
               onPress={() => void save()}
-              style={[styles.primary, saving && styles.disabled]}
+              style={[styles.primary, { backgroundColor: theme.accent }, saving && styles.disabled]}
             >
               {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryText}>保存</Text>}
             </Pressable>

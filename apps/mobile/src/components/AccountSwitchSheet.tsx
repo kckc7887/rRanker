@@ -1,49 +1,9 @@
-import {
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { SymbolView } from 'expo-symbols';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DxRatingTag } from '@/components/DxRatingTag';
-import {
-  findGame,
-  findProvider,
-  type GameId,
-} from '@/domain/game-bind-options';
-import {
-  groupBoundAccountGameIds,
-  type BoundAccount,
-} from '@/domain/bound-account';
-
-function Chevron({ expanded }: { expanded: boolean }) {
-  return (
-    <SymbolView
-      name={expanded ? 'chevron.down' : 'chevron.right'}
-      size={14}
-      tintColor="#9CA3AF"
-      weight="semibold"
-      fallback={<Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color="#9CA3AF" />}
-    />
-  );
-}
-
-function accountIcon(account: BoundAccount) {
-  if (account.providerId) {
-    return findProvider(account.providerId)?.icon ?? findGame(account.gameId)?.icon;
-  }
-  return findGame(account.gameId)?.icon;
-}
-
-function ratingNumber(display: string): number | null {
-  const value = Number.parseInt(display, 10);
-  return Number.isFinite(value) ? value : null;
-}
+import type { GameId } from '@/domain/game-bind-options';
+import type { BoundAccount } from '@/domain/bound-account';
+import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
+import { useAppTheme } from '@/theme/app-theme';
 
 /** 总览切换：仅列出已绑定游戏，展开为账号行。 */
 export function AccountSwitchSheet({
@@ -64,16 +24,7 @@ export function AccountSwitchSheet({
   onSelectAccount: (account: BoundAccount) => void;
 }) {
   const insets = useSafeAreaInsets();
-  const groups = groupBoundAccountGameIds(accounts).flatMap((gameId) => {
-    const game = findGame(gameId);
-    if (!game) return [];
-    return [{
-      gameId,
-      title: game.title,
-      icon: game.icon,
-      accounts: accounts.filter((account) => account.gameId === gameId),
-    }];
-  });
+  const theme = useAppTheme();
 
   return (
     <Modal
@@ -82,7 +33,7 @@ export function AccountSwitchSheet({
       presentationStyle="formSheet"
       onRequestClose={onClose}
     >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
           <Text style={styles.title}>切换账号</Text>
@@ -98,74 +49,10 @@ export function AccountSwitchSheet({
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {groups.length === 0 ? (
-            <Text style={styles.empty}>暂无已绑定账号，请先在设置 → 游戏管理中绑定。</Text>
-          ) : (
-            <>
-              <Text style={styles.sectionLabel}>已绑定</Text>
-              <View style={styles.list}>
-                {groups.map((group) => {
-                  const expanded = expandedGameId === group.gameId;
-                  return (
-                    <View key={group.gameId} style={styles.gameCard}>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ expanded }}
-                        onPress={() => onToggleGame(group.gameId)}
-                        style={({ pressed }) => [styles.gameRow, pressed && styles.softPressed]}
-                      >
-                        <Image source={group.icon} style={styles.gameIcon} />
-                        <View style={styles.copy}>
-                          <Text style={styles.gameName}>{group.title}</Text>
-                          <Text style={styles.detail}>
-                            {expanded ? '选择账号' : `${group.accounts.length} 个账号 · 点按展开`}
-                          </Text>
-                        </View>
-                        <Chevron expanded={expanded} />
-                      </Pressable>
-
-                      {expanded ? (
-                        <View style={styles.accountNest}>
-                          {group.accounts.map((account) => {
-                            const current = account.id === activeAccountId;
-                            const icon = accountIcon(account);
-                            return (
-                              <Pressable
-                                key={account.id}
-                                accessibilityRole="button"
-                                accessibilityLabel={`${account.displayName}，${account.scoreLabel} ${account.scoreDisplay}，${account.providerTitle}`}
-                                onPress={() => onSelectAccount(account)}
-                                style={({ pressed }) => [
-                                  styles.accountRow,
-                                  pressed && styles.accountPressed,
-                                  current && styles.accountCurrent,
-                                ]}
-                              >
-                                {icon ? <Image source={icon} style={styles.providerIcon} /> : null}
-                                <View style={styles.copy}>
-                                  <View style={styles.titleRow}>
-                                    <Text style={styles.accountName}>{account.displayName}</Text>
-                                    {current ? <Text style={styles.currentBadge}>当前</Text> : null}
-                                  </View>
-                                  {account.gameId === 'maimai' ? (
-                                    <DxRatingTag
-                                      rating={ratingNumber(account.scoreDisplay)}
-                                      display={account.scoreDisplay}
-                                    />
-                                  ) : null}
-                                  <Text style={styles.providerLine}>{account.providerTitle}</Text>
-                                </View>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
-            </>
-          )}
+          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>已绑定</Text>
+          <BoundAccountGroupedList accounts={accounts} expandedGameId={expandedGameId} activeAccountId={activeAccountId}
+            onToggleGame={onToggleGame} onSelectAccount={onSelectAccount}
+            emptyText="暂无已绑定账号，请先在设置 → 游戏管理中绑定。" />
         </ScrollView>
       </View>
     </Modal>

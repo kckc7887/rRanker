@@ -27,6 +27,8 @@ import { ProviderError } from '@/providers/errors';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 import { useNotification } from '@/components/AppNotification';
 import { AppModal } from '@/components/AppModal';
+import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
+import { useAppTheme } from '@/theme/app-theme';
 
 function accountIcon(account: BoundAccount) {
   if (account.providerId) {
@@ -75,6 +77,7 @@ export function UploadDataSheet({
   temporarySelectedAccountIds?: readonly string[];
   onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
 }) {
+  const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { showActionNotification, showNotification } = useNotification();
   const [friendCode, setFriendCode] = useState('');
@@ -168,6 +171,10 @@ export function UploadDataSheet({
 
   const startUpload = async () => {
     if (running) return;
+    if (isMaimaiMaintenanceWindow()) {
+      showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
+      return;
+    }
     if (!/^\d{15}$/.test(friendCode.trim())) {
       showNotification({ title: '好友码无效', message: '请输入 15 位数字好友码。', variant: 'warning' });
       return;
@@ -198,8 +205,8 @@ export function UploadDataSheet({
           showActionNotification({
             title: '请同意好友申请',
             message: botFriendCode
-              ? `Bot（${botFriendCode}）已向你发送舞萌 NET 好友申请。请打开舞萌 NET 接受后，本页会继续自动进行。`
-              : '请打开舞萌 NET 接受 Bot 的好友申请，接受后本页会继续自动进行。',
+              ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
+              : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
             variant: 'info',
             actions: [{ label: '知道了', tone: 'default' }],
           });
@@ -246,10 +253,10 @@ export function UploadDataSheet({
       presentationStyle="pageSheet"
       onRequestClose={close}
     >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
-          <Text style={styles.title}>上传数据</Text>
+          <Text style={[styles.title, { color: theme.text }]}>上传数据</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="关闭上传"
@@ -257,12 +264,12 @@ export function UploadDataSheet({
             onPress={close}
             style={({ pressed }) => [styles.closeHit, pressed && styles.softPressed]}
           >
-            <Text style={styles.close}>关闭</Text>
+            <Text style={[styles.close, { color: theme.accent }]}>关闭</Text>
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.sectionLabel}>好友码</Text>
+          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码</Text>
           <TextInput
             accessibilityLabel="舞萌好友码"
             value={friendCode}
@@ -270,14 +277,14 @@ export function UploadDataSheet({
             keyboardType="number-pad"
             maxLength={15}
             placeholder="15 位数字"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={theme.textMuted}
             editable={!running && prefsReady}
-            style={styles.input}
+            style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
           />
-          <Text style={styles.hint}>从机台/DXNet 取成绩后上传到下方勾选的查分器。</Text>
+          <Text style={[styles.hint, { color: theme.textMuted }]}>从游戏服务器取成绩后上传到下方勾选的查分器。</Text>
 
-          <Text style={styles.sectionLabel}>上传到</Text>
-          <View style={styles.listCard}>
+          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>上传到</Text>
+          <View style={[styles.listCard, { backgroundColor: theme.surface }]}>
             {targets.length === 0 ? (
               <Text style={styles.empty}>当前游戏没有已绑定查分器</Text>
             ) : (
@@ -304,8 +311,8 @@ export function UploadDataSheet({
                     </View>
                     {icon ? <Image source={icon} style={styles.icon} /> : <View style={styles.iconPlaceholder} />}
                     <View style={styles.rowBody}>
-                      <Text style={styles.rowTitle}>{target.account.displayName}</Text>
-                      <Text style={styles.rowSub}>{target.account.providerTitle}</Text>
+                      <Text style={[styles.rowTitle, { color: theme.text }]}>{target.account.displayName}</Text>
+                      <Text style={[styles.rowSub, { color: theme.textMuted }]}>{target.account.providerTitle}</Text>
                       {target.disableReason ? (
                         <Text style={styles.rowWarn}>{target.disableReason}</Text>
                       ) : null}
@@ -322,7 +329,7 @@ export function UploadDataSheet({
             disabled={running || !prefsReady}
             onPress={() => void startUpload()}
             style={({ pressed }) => [
-              styles.primary,
+              styles.primary, { backgroundColor: theme.accent },
               (running || !prefsReady) && styles.primaryDisabled,
               pressed && !running && styles.softPressed,
             ]}
@@ -365,7 +372,7 @@ export function UploadDataSheet({
               </Text>
               {botHint ? <Text style={styles.statusBot}>{botHint}</Text> : null}
               {phase.kind === 'awaiting_friend' ? (
-                <Text style={styles.statusBot}>打开舞萌 NET 接受好友申请后将自动继续</Text>
+                <Text style={styles.statusBot}>打开“舞萌-中二公众号-我的记录-舞萌DX”接受好友申请后将自动继续</Text>
               ) : null}
             </View>
           ) : null}

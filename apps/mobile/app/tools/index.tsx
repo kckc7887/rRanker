@@ -7,9 +7,11 @@ import { EmptyDataView } from '@/components/EmptyDataView';
 import { getGameToolbox } from '@/domain/game-toolbox';
 import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
+import { useAppTheme } from '@/theme/app-theme';
 
 export default function ToolsScreen() {
   const { showNotification } = useNotification();
+  const theme = useAppTheme();
   const activeGameId = useSession((s) => s.activeGameId);
   const toolbox = getGameToolbox(activeGameId);
   const pinnedToolIds = useToolboxPins((s) => s.pinnedToolIdsByGame[activeGameId]);
@@ -38,7 +40,7 @@ export default function ToolsScreen() {
 
   if (toolbox.tools.length === 0) {
     return (
-      <View style={styles.page}>
+      <View style={[styles.page, { backgroundColor: theme.background }]}>
         <Stack.Screen options={{ title: '工具箱' }} />
         <EmptyDataView title="工具箱" detail={toolbox.emptyDetail} />
       </View>
@@ -46,13 +48,13 @@ export default function ToolsScreen() {
   }
 
   return (
-    <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content}>
       <Stack.Screen options={{ title: '工具箱' }} />
       {toolbox.tools.map((tool) => (
         <Pressable key={tool.id} onPress={() => router.push(tool.href as Href)}>
           <Card style={styles.card}>
             <View style={styles.titleRow}>
-              <Text style={styles.title}>{tool.title}</Text>
+              <Text style={[styles.title, { color: theme.text }]}>{tool.title}</Text>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${pinnedToolIds.includes(tool.id) ? '取消置顶' : '置顶'} ${tool.title}`}
@@ -63,21 +65,21 @@ export default function ToolsScreen() {
                 }}
                 style={({ pressed }) => [
                   styles.pinButton,
-                  pinnedToolIds.includes(tool.id) && styles.pinButtonActive,
+                  { borderColor: theme.border }, pinnedToolIds.includes(tool.id) && { borderColor: theme.accent, backgroundColor: theme.accentSoft },
                   pressed && styles.pinButtonPressed,
                   pendingToolId !== null && styles.pinButtonDisabled,
                 ]}
               >
                 <Text style={[
                   styles.pinButtonText,
-                  pinnedToolIds.includes(tool.id) && styles.pinButtonTextActive,
+                  { color: theme.textSecondary }, pinnedToolIds.includes(tool.id) && { color: theme.accent },
                 ]}>
                   {pinnedToolIds.includes(tool.id) ? '已置顶' : '置顶'}
                 </Text>
               </Pressable>
             </View>
-            <Text style={styles.detail}>{tool.detail}</Text>
-            <Text style={styles.link}>打开 →</Text>
+            <Text style={[styles.detail, { color: theme.textMuted }]}>{tool.detail}</Text>
+            <Text style={[styles.link, { color: theme.accent }]}>打开 →</Text>
           </Card>
         </Pressable>
       ))}

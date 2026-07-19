@@ -40,6 +40,10 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
     isLoading: false, isError: false, isDataStale: false, error: null, refetch: jest.fn(),
   };
 } }));
+jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
+  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+  return { data: fixtures.fixtureCatalog, isLoading: false, isError: false, error: null };
+} }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const profile = jest.requireActual<typeof import('../src/domain/game-profile')>('../src/domain/game-profile')
@@ -102,6 +106,13 @@ describe('M4 score list cards', () => {
       '查看谱面 B35高 SD master', '查看谱面 B35低 DX expert',
       '查看谱面 B15高 DX remaster', '查看谱面 B15低 SD advanced',
     ]);
+    const collectText = (node: unknown): string[] => {
+      if (typeof node === 'string' || typeof node === 'number') return [String(node)];
+      if (!node || typeof node !== 'object' || !('children' in node)) return [];
+      return (node as { children: unknown[] }).children.flatMap(collectText);
+    };
+    const badgeTexts = collectText(screen.getByTestId('score-card-badges-152'));
+    expect(badgeTexts.slice(0, 3)).toEqual(['Re:MASTER (14.8)', 'DX', '寸']);
 
     await fireEvent.press(screen.getByLabelText('查看谱面 B35高 SD master'));
     expect(mockPush).toHaveBeenCalledWith({
@@ -121,6 +132,7 @@ describe('M4 score list cards', () => {
       windowSize: 3,
     }));
     expect(screen.queryByText('排序')).toBeNull();
+    expect(screen.getByLabelText('成绩搜索')).toBeTruthy();
     const labels = screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel);
     expect(labels).toEqual([
       '查看谱面 B15高 DX remaster', '查看谱面 B35高 SD master',
@@ -151,6 +163,10 @@ describe('M4 score list cards', () => {
     await fireEvent.press(screen.getByLabelText('版本名称切换为日文'));
     expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('收起筛选'));
+    expect(screen.getByLabelText(/展开筛选，当前.*PRiSM PLUS.*定数 14.8~14.8/)).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
 
     await fireEvent.changeText(screen.getByLabelText('最低定数'), '15');
     expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();

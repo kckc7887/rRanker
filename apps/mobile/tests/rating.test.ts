@@ -1,5 +1,5 @@
 import { chartVersionKey } from '@/domain/catalog';
-import { buildBest50, calculateChartRating, mapCoverId, minimumAchievementForRating } from '@/domain/rating';
+import { buildBest50, calculateChartRating, mapCoverId, minimumAchievementForRating, ratingTableDescending } from '@/domain/rating';
 import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource, FIXTURE_CURRENT_VERSION } from '@/fixtures/sanitized';
 
 describe('rating and B50', () => {
@@ -16,6 +16,11 @@ describe('rating and B50', () => {
     expect(calculateChartRating(13.4, achievement!)).toBeGreaterThanOrEqual(301);
     expect(calculateChartRating(13.4, achievement! - 0.0001)).toBeLessThan(301);
     expect(minimumAchievementForRating(1, 999)).toBeNull();
+  });
+  it('shows the achievement-to-Rating table in descending order', () => {
+    const rows = ratingTableDescending(13.4);
+    expect(rows[0].achievement).toBeGreaterThan(rows.at(-1)!.achievement);
+    expect(rows).toEqual([...rows].sort((left, right) => right.achievement - left.achievement));
   });
   it('selects exactly B35 and B15 and sums their ratings', () => {
     const best50 = buildBest50(fixturePlayer, fixtureRecords, fixtureCatalog, fixtureSource, fixtureSource.updatedAt);

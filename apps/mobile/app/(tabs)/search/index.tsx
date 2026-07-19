@@ -20,6 +20,7 @@ import { songLibraryKey } from '@/domain/user-library';
 import { useSession } from '@/state/session-store';
 import { useCatalogFilter } from '@/state/catalog-filter';
 import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/search';
+import { useAppTheme } from '@/theme/app-theme';
 
 const TYPES: ChartType[] = ['SD', 'DX'];
 type LibraryHook = ReturnType<typeof useUserLibrary>;
@@ -33,9 +34,10 @@ export function SearchScreen() {
   const query = useDetailedCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const library = useUserLibrary();
+  const theme = useAppTheme();
   const {
-    keyword, type, difficulty, constantMin, constantMax, version, versionLocale,
-    setKeyword, setType, setDifficulty, setConstantMin, setConstantMax, setVersion, setVersionLocale,
+    keyword, collapsed, type, difficulty, constantMin, constantMax, version, versionLocale,
+    setKeyword, setCollapsed, setType, setDifficulty, setConstantMin, setConstantMax, setVersion, setVersionLocale,
   } = useCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const index = useMemo(() => buildSongSearchIndex(query.data?.songs ?? []), [query.data?.songs]);
@@ -58,17 +60,20 @@ export function SearchScreen() {
   const favoriteKeys = useMemo(() => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.key)), [library.data]);
 
   if (activeGameId !== 'maimai') {
-    return <EmptyDataView title="暂无曲库" detail="空空空" />;
+    return <EmptyDataView title="暂无曲库" detail="当前游戏暂未接入曲库数据" />;
   }
 
   return (
-    <View style={styles.page}>
-      <View style={styles.searchArea}>
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
+      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput accessibilityLabel="歌曲搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / ID / 别名 / 曲师 / 谱师" value={keyword} onChangeText={setKeyword} style={styles.searchBox} />
+          placeholder="曲名 / ID / 别名 / 曲师 / 谱师 / 罗马音" placeholderTextColor={theme.textMuted}
+          value={keyword} onChangeText={setKeyword}
+          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
       </View>
-      <MaimaiFilterBar difficulty={difficulty} version={version} type={type}
+      <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
+        difficulty={difficulty} version={version} type={type}
         constantMin={constantMin} constantMax={constantMax} versionLocale={versionLocale} versions={versions}
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
@@ -126,17 +131,18 @@ const CatalogSongRow = memo(function CatalogSongRow({ song, favorite, favoritePe
   favoritePending: boolean;
   onFavoriteChange: (songId: string, favorite: boolean) => void;
 }) {
-  return <View style={styles.row}>
+  const theme = useAppTheme();
+  return <View style={[styles.row, { backgroundColor: theme.surface }]}>
     <Pressable accessibilityRole="button" style={styles.openSong}
       onPress={() => router.push(`/songs/${encodeURIComponent(song.id)}` as Href)}>
       <SongCover songId={song.id} />
-      <View style={styles.main}><Text numberOfLines={2} style={styles.title}>{song.title}</Text>
-      <Text numberOfLines={1} style={styles.meta}>{song.artist ?? '曲师未知'} · {song.version}</Text>
+      <View style={styles.main}><Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>{song.title}</Text>
+      <Text numberOfLines={1} style={[styles.meta, { color: theme.textMuted }]}>{song.artist ?? '曲师未知'} · {song.version}</Text>
       <SongChartBadges songId={song.id} charts={song.charts} /></View>
     </Pressable>
     <Pressable accessibilityRole="button" accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
       disabled={favoritePending} onPress={() => onFavoriteChange(song.id, !favorite)} style={styles.favorite}>
-      <Ionicons name={favorite ? 'heart' : 'heart-outline'} color="#246BFD" size={24} />
+      <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={theme.accent} size={24} />
     </Pressable>
   </View>;
 });
