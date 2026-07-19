@@ -1,14 +1,30 @@
-import type { AppAccent, AppAppearance } from '@/storage/theme-preferences-store';
+import type { AppAccent, AppAppearance, ThemePreferences } from '@/storage/theme-preferences-store';
+import { normalizeAccentHex } from '@/theme/accent-color';
 
-const ACCENT_COLORS: Record<AppAccent, string> = {
-  blue: '#246BFD', violet: '#7C3AED', pink: '#BE185D',
-  orange: '#C2410C', green: '#15803D', cyan: '#0E7490',
+const ACCENT_COLORS: Record<Exclude<AppAccent, 'custom'>, string> = {
+  blue: '#246BFD',
+  violet: '#7C3AED',
+  pink: '#BE185D',
+  orange: '#C2410C',
+  green: '#15803D',
+  cyan: '#0E7490',
+  red: '#DC2626',
+  amber: '#D97706',
+  indigo: '#4338CA',
+  rose: '#E11D48',
+  teal: '#0F766E',
+  slate: '#475569',
 };
 
-export const APP_ACCENTS = Object.entries(ACCENT_COLORS).map(([id, color]) => ({
-  id: id as AppAccent,
-  color,
-  label: ({ blue: '蓝', violet: '紫', pink: '粉', orange: '橙', green: '绿', cyan: '青' } as const)[id as AppAccent],
+const ACCENT_LABELS: Record<Exclude<AppAccent, 'custom'>, string> = {
+  blue: '蓝', violet: '紫', pink: '粉', orange: '橙', green: '绿', cyan: '青',
+  red: '红', amber: '琥珀', indigo: '靛', rose: '玫', teal: '青绿', slate: '灰',
+};
+
+export const APP_ACCENTS = (Object.keys(ACCENT_COLORS) as Exclude<AppAccent, 'custom'>[]).map((id) => ({
+  id,
+  color: ACCENT_COLORS[id],
+  label: ACCENT_LABELS[id],
 }));
 
 export interface AppThemeTokens {
@@ -22,8 +38,15 @@ export function resolveAppearance(appearance: AppAppearance, system: 'light' | '
   return appearance === 'system' ? (system === 'dark' ? 'dark' : 'light') : appearance;
 }
 
-export function createAppTheme(mode: 'light' | 'dark', accentId: AppAccent): AppThemeTokens {
-  const accent = ACCENT_COLORS[accentId];
+export function resolveAccentHex(preferences: Pick<ThemePreferences, 'accent' | 'customHex'>): string {
+  if (preferences.accent === 'custom') {
+    return normalizeAccentHex(preferences.customHex) ?? ACCENT_COLORS.blue;
+  }
+  return ACCENT_COLORS[preferences.accent];
+}
+
+export function createAppTheme(mode: 'light' | 'dark', accentHex: string): AppThemeTokens {
+  const accent = normalizeAccentHex(accentHex) ?? ACCENT_COLORS.blue;
   if (mode === 'dark') return {
     dark: true, accent, accentSoft: `${accent}33`, background: '#0D1117', surface: '#161B22',
     surfaceMuted: '#21262D', text: '#F0F3F6', textSecondary: '#C9D1D9', textMuted: '#8B949E',

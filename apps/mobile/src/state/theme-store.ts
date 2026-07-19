@@ -6,15 +6,26 @@ import {
   type AppAppearance,
   type ThemePreferences,
 } from '@/storage/theme-preferences-store';
+import { normalizeAccentHex } from '@/theme/accent-color';
 
 interface ThemeState extends ThemePreferences {
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setAppearance: (appearance: AppAppearance) => Promise<void>;
-  setAccent: (accent: AppAccent) => Promise<void>;
+  setAccent: (accent: Exclude<AppAccent, 'custom'>) => Promise<void>;
+  setCustomAccent: (hex: string) => Promise<void>;
 }
 
 let hydrationPromise: Promise<void> | undefined;
+
+function snapshot(state: ThemeState): ThemePreferences {
+  return {
+    version: 2,
+    appearance: state.appearance,
+    accent: state.accent,
+    customHex: state.customHex,
+  };
+}
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
   ...DEFAULT_THEME_PREFERENCES,
@@ -28,13 +39,21 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   setAppearance: async (appearance) => {
     const previous = get().appearance;
     set({ appearance });
-    try { await themePreferencesStore.save({ version: 1, appearance, accent: get().accent }); }
+    try { await themePreferencesStore.save(snapshot(get())); }
     catch { set({ appearance: previous }); }
   },
   setAccent: async (accent) => {
-    const previous = get().accent;
+    const previous = { accent: get().accent, customHex: get().customHex };
     set({ accent });
-    try { await themePreferencesStore.save({ version: 1, appearance: get().appearance, accent }); }
-    catch { set({ accent: previous }); }
+    try { await themePreferencesStore.save(snapshot(get())); }
+    catch { set(previous); }
+  },
+  setCustomAccent: async (hex) => {
+    const normalized = normalizeAccentHex(hex);
+    if (!normalized) return;
+    const previous = { accent: get().accent, customHex: get().customHex };
+    set({ accent: 'custom', customHex: normalized });
+    try { await themePreferencesStore.save(snapshot(get())); }
+    catch { set(previous); }
   },
 }));
