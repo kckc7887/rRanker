@@ -54,27 +54,6 @@
 
 Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict · Zustand · TanStack Query · Expo SQLite · Expo SecureStore
 
-## 运行与构建
-
-```powershell
-# 安装依赖
-npm install
-
-# 开发
-npm start
-npm run android
-npm run ios
-
-# 检查
-npm run typecheck
-npm run lint
-npm test
-
-# 构建 APK
-npm run apk:debug
-npm run apk:release
-```
-
 ## 许可证
 
 本项目采用 [MIT License](LICENSE)，Copyright (c) 2026 Chnynnya。
