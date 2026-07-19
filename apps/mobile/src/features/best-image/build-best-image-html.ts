@@ -428,22 +428,27 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .profile-banner-game .player-name{display:inline-flex;width:fit-content;max-width:100%;min-height:${px(playerNameSize * 1.35)}px;align-items:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.011)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid rgba(96,87,72,.45);border-radius:${px(bannerWidth * 0.006)}px;background:rgba(255,255,255,.9);color:#171717;font:900 ${playerNameSize}px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif;text-overflow:ellipsis;white-space:nowrap}
     .profile-banner-game .trophy{display:flex;width:fit-content;max-width:100%;height:${px(bannerWidth * 0.029)}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(bannerWidth * 0.009)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid ${normalTrophy.border};border-radius:999px;background:${normalTrophy.background};color:${normalTrophy.text};font:400 ${trophySize}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;text-align:center;text-overflow:ellipsis;white-space:nowrap}
     .profile-app{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset}px;width:${appProfileWidth}px;height:${appProfileHeight}px}
-    .profile-banner-app{--glass-opacity:.28;--glass-blur-strong:6px;--glass-blur-medium:4px;--glass-blur-soft:2.3px;position:relative;display:flex;width:100%;height:${appBannerHeight}px;align-items:center;gap:${appIdentityGap}px;overflow:hidden;padding:${appBannerPaddingY}px ${appBannerPaddingX}px;border:1px solid rgba(255,255,255,.84);border-radius:${appBannerRadius}px;background:linear-gradient(100deg,#7497D8,#EEB4D4 54%,#FFE0A7);box-shadow:0 ${px(width * 18 / 1080)}px ${px(width * 44 / 1080)}px rgba(46,63,96,.24),inset 0 1px rgba(255,255,255,.72);isolation:isolate}
+    .profile-banner-app{--glass-opacity:0;--glass-blur-strong:6px;--glass-blur-medium:4px;--glass-blur-soft:2.3px;position:relative;display:flex;width:100%;height:${appBannerHeight}px;align-items:center;gap:${appIdentityGap}px;overflow:hidden;padding:${appBannerPaddingY}px ${appBannerPaddingX}px;border:1px solid rgba(255,255,255,.84);border-radius:${appBannerRadius}px;background:linear-gradient(100deg,#7497D8,#EEB4D4 54%,#FFE0A7);box-shadow:0 ${px(width * 18 / 1080)}px ${px(width * 44 / 1080)}px rgba(46,63,96,.24),inset 0 1px rgba(255,255,255,.72);isolation:isolate}
     .profile-banner-app.no-plate{background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}
     .profile-banner-app .nameplate-image,.profile-banner-app .nameplate-fallback{position:absolute;z-index:-2;inset:0;display:block;width:100%;height:100%;border-radius:0;transform:none}
     .profile-banner-app .nameplate-image{object-fit:contain;filter:saturate(1.08)}
     .profile-banner-app .nameplate-fallback{border:1px solid rgba(255,255,255,.8);background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}
     .profile-glass{position:absolute;z-index:0;left:0;top:0;bottom:0;width:var(--glass-physical-width,60%);overflow:hidden;pointer-events:none}
-    .glass-layer{position:absolute;top:-${appGlassBleed}px;right:0;bottom:-${appGlassBleed}px;left:-${appGlassBleed}px;display:block;overflow:hidden;pointer-events:none}
-    .glass-plate-source{position:absolute;top:${appGlassBleed}px;left:${appGlassBleed}px;display:block;width:var(--glass-banner-width,100%);height:calc(100% - ${appGlassBleed * 2}px);border-radius:0;transform:none}
-    .glass-plate-source.nameplate-image{object-fit:contain;filter:saturate(1.08)}
-    .glass-blur-strong{-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-1,74%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-1,74%),transparent 100%)}
-    .glass-blur-strong .glass-plate-source{filter:blur(var(--glass-blur-strong)) saturate(110%)}
-    .glass-blur-medium{-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-2,86%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-2,86%),transparent 100%)}
-    .glass-blur-medium .glass-plate-source{filter:blur(var(--glass-blur-medium)) saturate(108%)}
-    .glass-blur-soft{-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent 100%)}
-    .glass-blur-soft .glass-plate-source{filter:blur(var(--glass-blur-soft)) saturate(106%)}
-    .glass-tint{inset:0;background:linear-gradient(90deg,rgba(242,247,255,var(--glass-opacity)) 0%,rgba(242,247,255,calc(var(--glass-opacity) * .72)) var(--glass-local-start,60%),rgba(242,247,255,0) 100%)}
+    .glass-layer{position:absolute;top:-${appGlassBleed}px;right:0;bottom:-${appGlassBleed}px;left:-${appGlassBleed}px;display:block;overflow:hidden;background:rgba(255,255,255,.001);pointer-events:none}
+    .glass-plate-source{display:none}
+    .glass-blur-strong{-webkit-backdrop-filter:blur(var(--glass-blur-strong)) saturate(110%);backdrop-filter:blur(var(--glass-blur-strong)) saturate(110%);-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-1,74%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-1,74%),transparent 100%)}
+    .glass-blur-medium{-webkit-backdrop-filter:blur(var(--glass-blur-medium)) saturate(108%);backdrop-filter:blur(var(--glass-blur-medium)) saturate(108%);-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-2,86%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-2,86%),transparent 100%)}
+    .glass-blur-soft{-webkit-backdrop-filter:blur(var(--glass-blur-soft)) saturate(106%);backdrop-filter:blur(var(--glass-blur-soft)) saturate(106%);-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent 100%)}
+    .glass-tint{inset:0;background:linear-gradient(90deg,rgba(242,247,255,var(--glass-opacity)) 0%,rgba(242,247,255,var(--glass-opacity)) var(--glass-local-start,60%),rgba(242,247,255,0) 100%)}
+    /* Export software capture cannot rasterize backdrop-filter; bake plate clones only then. */
+    html.export-capture .profile-banner-app{--glass-opacity:.28}
+    html.export-capture .glass-blur-strong,html.export-capture .glass-blur-medium,html.export-capture .glass-blur-soft{-webkit-backdrop-filter:none;backdrop-filter:none}
+    html.export-capture .glass-plate-source{position:absolute;top:${appGlassBleed}px;left:${appGlassBleed}px;display:block;width:var(--glass-banner-width,100%);height:calc(100% - ${appGlassBleed * 2}px);border-radius:0;transform:none}
+    html.export-capture .glass-plate-source.nameplate-image{object-fit:contain;filter:saturate(1.08)}
+    html.export-capture .glass-blur-strong .glass-plate-source{filter:blur(var(--glass-blur-strong)) saturate(110%)}
+    html.export-capture .glass-blur-medium .glass-plate-source{filter:blur(var(--glass-blur-medium)) saturate(108%)}
+    html.export-capture .glass-blur-soft .glass-plate-source{filter:blur(var(--glass-blur-soft)) saturate(106%)}
+    html.export-capture .glass-tint{background:linear-gradient(90deg,rgba(242,247,255,var(--glass-opacity)) 0%,rgba(242,247,255,calc(var(--glass-opacity) * .72)) var(--glass-local-start,60%),rgba(242,247,255,0) 100%)}
     .profile-banner-app .avatar{position:relative;z-index:1;width:${appAvatarSize}px;height:${appAvatarSize}px;flex:0 0 ${appAvatarSize}px;overflow:visible;border:0;background:transparent}
     .profile-banner-app .avatar-image{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 ${px(width * 10 / 1080)}px ${px(width * 12 / 1080)}px rgba(31,44,75,.3))}
     .profile-banner-app .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;overflow:hidden;border:${Math.max(2, px(width * 4 / 1080))}px solid rgba(255,255,255,.92);border-radius:${px(width * 20 / 1080)}px;background:linear-gradient(145deg,#F8FBFF,#C7D5EA);box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 24 / 1080)}px rgba(31,44,75,.3),inset 0 1px rgba(255,255,255,.9);color:#52647F;font:950 ${px(width * 56 / 1080)}px/1 system-ui,sans-serif}
@@ -652,6 +657,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         // never letterboxes while the native container is still catching up between pages.
         const exportViewport = Math.abs(viewportWidth - OUTPUT_WIDTH) < 2
           && viewportHeight + 2 >= Math.min(logicalHeight, MINIMUM_HEIGHT);
+        document.documentElement.classList.toggle('export-capture', exportViewport);
         if (exportViewport) {
           canvas.style.left = '0px';
           canvas.style.top = '0px';
