@@ -2,13 +2,13 @@ import * as DocumentPicker from 'expo-document-picker';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { parseUserDataBackup } from '@/domain/user-library';
-import type { UserDataBackupV1 } from '@/domain/user-library';
+import type { UserDataBackup } from '@/domain/user-library';
 
 export const MAX_BACKUP_FILE_BYTES = 1024 * 1024;
 
 export class UserDataFileError extends Error {}
 
-export async function shareUserDataBackup(backup: UserDataBackupV1): Promise<void> {
+export async function shareUserDataBackup(backup: UserDataBackup): Promise<void> {
   if (!await Sharing.isAvailableAsync()) throw new UserDataFileError('当前设备不支持系统分享');
   const stamp = backup.exportedAt.replace(/[-:]/gu, '').replace(/\.\d{3}Z$/u, 'Z');
   const file = new File(Paths.cache, `rRanker-backup-${stamp}.json`);
@@ -21,7 +21,7 @@ export async function shareUserDataBackup(backup: UserDataBackupV1): Promise<voi
   }
 }
 
-export async function pickUserDataBackup(): Promise<UserDataBackupV1 | null> {
+export async function pickUserDataBackup(): Promise<UserDataBackup | null> {
   const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true, multiple: false });
   if (result.canceled) return null;
   const asset = result.assets[0];

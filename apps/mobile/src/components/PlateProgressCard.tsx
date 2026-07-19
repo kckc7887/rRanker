@@ -10,6 +10,7 @@ import {
   type PlateTierLabel,
 } from '@/domain/plates';
 import type { Plate } from '@/domain/models';
+import { useAppTheme } from '@/theme/app-theme';
 
 type PlateProgressCardProps = {
   plate: Plate;
@@ -24,33 +25,35 @@ function progressPercent(completed: number, total: number): number {
 }
 
 function RequirementHint({ label }: { label: PlateTierLabel }) {
+  const theme = useAppTheme();
   const spec = plateRequirementSpec(label);
   return (
     <View style={styles.requirementHint}>
-      <Text style={styles.requirementText}>达成</Text>
+      <Text style={[styles.requirementText, { color: theme.textMuted }]}>达成</Text>
       <ScoreStatusBadges rate={spec.rate} fc={spec.fc} fs={spec.fs} />
-      <Text style={styles.requirementText}>及以上{spec.suffix}</Text>
+      <Text style={[styles.requirementText, { color: theme.textMuted }]}>及以上{spec.suffix}</Text>
     </View>
   );
 }
 
 export function PlateProgressCard({ plate, progress, eyebrow, footer, testID }: PlateProgressCardProps) {
+  const theme = useAppTheme();
   const plateMeta = parseVersionPlateName(plate.name);
   const percent = progressPercent(progress.completed, progress.total);
 
   return (
     <Card style={styles.card} testID={testID}>
-      {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+      {eyebrow ? <Text style={[styles.eyebrow, { color: theme.accent }]}>{eyebrow}</Text> : null}
       <View style={styles.progressHeader}>
-        <Text style={styles.progressTitle}>{plate.name}</Text>
-        <Text style={styles.progressPct}>{percent.toFixed(1)}%</Text>
+        <Text style={[styles.progressTitle, { color: theme.text }]}>{plate.name}</Text>
+        <Text style={[styles.progressPct, { color: theme.accent }]}>{percent.toFixed(1)}%</Text>
       </View>
-      <View style={styles.barTrack}>
-        <View style={[styles.barFill, { width: `${percent}%` }]} />
+      <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
+        <View style={[styles.barFill, { width: `${percent}%`, backgroundColor: theme.accent }]} />
       </View>
       <View style={styles.progressMetaRow}>
         {plateMeta ? <RequirementHint label={plateMeta.label} /> : <View style={styles.requirementHint} />}
-        <Text style={styles.progressCount}>
+        <Text style={[styles.progressCount, { color: theme.textSecondary }]}>
           {progress.completed} / {progress.total}
         </Text>
       </View>
@@ -65,7 +68,7 @@ export function PlateProgressCard({ plate, progress, eyebrow, footer, testID }: 
               ) : (
                 <DifficultyBadge difficulty={difficultyFromIndex(levelIndex)} compact />
               )}
-              <Text style={styles.meta}>{item.completed}/{item.total}</Text>
+              <Text style={[styles.meta, { color: theme.textMuted }]}>{item.completed}/{item.total}</Text>
             </View>
           );
         })}

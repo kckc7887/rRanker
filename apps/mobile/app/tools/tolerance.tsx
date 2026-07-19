@@ -13,6 +13,7 @@ import {
   type NoteCounts,
   type NoteKind,
 } from '@/domain/tolerance';
+import { useAppTheme } from '@/theme/app-theme';
 
 const KINDS = ['tap', 'hold', 'slide', 'touch', 'break'] as const;
 const MODE_OPTIONS: readonly { mode: NoteAnalysisMode; label: string; detail: string }[] = [
@@ -56,12 +57,14 @@ function TableCell({ children, cellStyle, textStyle, accessibilityLabel }: {
   textStyle?: React.ComponentProps<typeof Text>['style'];
   accessibilityLabel?: string;
 }) {
-  return <View accessibilityLabel={accessibilityLabel} style={[styles.tableCell, cellStyle]}>
-    <Text style={textStyle}>{children}</Text>
+  const theme = useAppTheme();
+  return <View accessibilityLabel={accessibilityLabel} style={[styles.tableCell, { borderRightColor: theme.border }, cellStyle]}>
+    <Text style={[textStyle, { color: theme.textSecondary }]}>{children}</Text>
   </View>;
 }
 
 export default function ToleranceToolScreen() {
+  const theme = useAppTheme();
   const params = useLocalSearchParams<Partial<Record<NoteKind, string | string[]>>>();
   const [values, setValues] = useState<Record<string, string>>(() => ({
     tap: initialNoteValue(params.tap, '500'), hold: initialNoteValue(params.hold, '100'),
@@ -87,16 +90,16 @@ export default function ToleranceToolScreen() {
     } catch (error) { return { achievement: null, error: error instanceof Error ? error.message : '输入无效' }; }
   }, [notes, values]);
   const set = (key: string) => (value: string) => setValues((current) => ({ ...current, [key]: value }));
-  return <ScrollView style={styles.page} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><Stack.Screen options={{ title: '达成率与容错' }} />
-    <Card><Text style={styles.heading}>谱面物量</Text><View style={styles.wrap}>{KINDS.map((kind) => <View key={kind} style={styles.small}><FormField label={kind.toUpperCase()} value={values[kind]} onChangeText={set(kind)} /></View>)}</View></Card>
-    <Card><Text style={styles.heading}>物量分析</Text>
+  return <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><Stack.Screen options={{ title: '达成率与容错' }} />
+    <Card><Text style={[styles.heading, { color: theme.text }]}>谱面物量</Text><View style={styles.wrap}>{KINDS.map((kind) => <View key={kind} style={styles.small}><FormField label={kind.toUpperCase()} value={values[kind]} onChangeText={set(kind)} /></View>)}</View></Card>
+    <Card><Text style={[styles.heading, { color: theme.text }]}>物量分析</Text>
       <View style={styles.modeRow}>{MODE_OPTIONS.map((option) => <Pressable key={option.mode}
         accessibilityRole="button" accessibilityLabel={`物量分析模式 ${option.label}`}
         accessibilityState={{ selected: analysisMode === option.mode }} onPress={() => setAnalysisMode(option.mode)}
-        style={[styles.modeButton, analysisMode === option.mode && styles.modeButtonActive]}>
+        style={[styles.modeButton, { backgroundColor: theme.surface, borderColor: theme.border }, analysisMode === option.mode && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
         <Text style={[styles.modeButtonText, analysisMode === option.mode && styles.modeButtonTextActive]}>{option.label}</Text>
       </Pressable>)}</View>
-      <Text style={styles.note}>{MODE_OPTIONS.find((option) => option.mode === analysisMode)?.detail}</Text>
+      <Text style={[styles.note, { color: theme.textMuted }]}>{MODE_OPTIONS.find((option) => option.mode === analysisMode)?.detail}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableScroll}>
         <View accessibilityLabel="物量分析表" style={styles.analysisTable}>
           <View style={[styles.tableRow, styles.tableHeaderRow]}><TableCell cellStyle={styles.kindCell} textStyle={styles.tableHeader}>NOTE</TableCell>
@@ -123,15 +126,15 @@ export default function ToleranceToolScreen() {
       </ScrollView>
       <Text style={styles.swipeHint}>↔ 左右滑动查看完整表格</Text>
     </Card>
-    <Card><Text style={styles.heading}>已知判定（各类 GREAT；BREAK 按 GREAT-1）</Text><View style={styles.wrap}>{KINDS.map((kind) => <View key={kind} style={styles.small}><FormField label={`${kind.toUpperCase()} GREAT`} value={values[`${kind}Great`]} onChangeText={set(`${kind}Great`)} /></View>)}</View>
+    <Card><Text style={[styles.heading, { color: theme.text }]}>已知判定（各类 GREAT；BREAK 按 GREAT-1）</Text><View style={styles.wrap}>{KINDS.map((kind) => <View key={kind} style={styles.small}><FormField label={`${kind.toUpperCase()} GREAT`} value={values[`${kind}Great`]} onChangeText={set(`${kind}Great`)} /></View>)}</View>
       <Text style={computed.error ? styles.error : styles.result}>{computed.error ?? `预计达成率 ${computed.achievement?.toFixed(4)}%`}</Text></Card>
-    <Card><Text style={styles.heading}>容错计算 - 目标达成率</Text><FormField label="目标达成率" value={target} onChangeText={setTarget} />
+    <Card><Text style={[styles.heading, { color: theme.text }]}>容错计算 - 目标达成率</Text><FormField label="目标达成率" value={target} onChangeText={setTarget} />
       <View style={styles.targetRow}>{TARGET_SHORTCUTS.map((value) => <Pressable key={value}
         accessibilityRole="button" accessibilityLabel={`目标达成率 ${value}%`} accessibilityState={{ selected: target === value }}
-        onPress={() => setTarget(value)} style={[styles.targetButton, target === value && styles.targetButtonActive]}>
+        onPress={() => setTarget(value)} style={[styles.targetButton, { backgroundColor: theme.surface, borderColor: theme.border }, target === value && { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
         <Text style={[styles.targetButtonText, target === value && styles.targetButtonTextActive]}>{value}%</Text>
       </Pressable>)}</View>
-      <Text style={styles.note}>数值表示只出现该类同级判定、其余 Note 均为 CRITICAL PERFECT 时允许的最大数量。</Text>
+      <Text style={[styles.note, { color: theme.textMuted }]}>数值表示只出现该类同级判定、其余 Note 均为 CRITICAL PERFECT 时允许的最大数量。</Text>
       {targetError ? <Text style={styles.error}>{targetError}</Text> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableScroll}>
         <View accessibilityLabel="容错计算表" style={styles.toleranceTable}>
@@ -161,7 +164,7 @@ export default function ToleranceToolScreen() {
         </View>
       </ScrollView>
       <Text style={styles.swipeHint}>↔ 左右滑动查看完整表格</Text>
-    </Card><Text style={styles.disclaimer}>结果用于估算；BREAK 细分判定会分别计算基础分与奖励分。</Text>
+    </Card><Text style={[styles.disclaimer, { color: theme.textMuted }]}>结果用于估算；BREAK 细分判定会分别计算基础分与奖励分。</Text>
   </ScrollView>;
 }
 const styles = StyleSheet.create({

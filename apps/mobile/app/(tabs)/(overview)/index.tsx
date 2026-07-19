@@ -32,6 +32,8 @@ import { queryClient } from '@/state/query-client';
 import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { SecureSessionStore } from '@/storage/secure-session-store';
+import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
+import { useAppTheme } from '@/theme/app-theme';
 
 const sessions = new SecureSessionStore();
 
@@ -41,6 +43,7 @@ export default function OverviewTabScreen() {
 
 export function OverviewScreen() {
   const { showNotification } = useNotification();
+  const theme = useAppTheme();
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
   const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useDetailedCatalog();
@@ -145,12 +148,18 @@ export function OverviewScreen() {
     setPickerVisible(false);
   };
 
-  const openUpload = () => setUploadVisible(true);
+  const openUpload = () => {
+    if (isMaimaiMaintenanceWindow()) {
+      showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
+      return;
+    }
+    setUploadVisible(true);
+  };
 
   const closeUpload = () => setUploadVisible(false);
 
   return (
-    <View style={styles.page}>
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
       <QueryStateView<GameDataBundle>
         isLoading={isLoading}
         isError={isError}
@@ -167,7 +176,7 @@ export function OverviewScreen() {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => (
               bundle.providerId === 'local' ? openUpload() : void syncData()
             )}
-              tintColor="#246BFD" colors={['#246BFD']} />}
+              tintColor={theme.accent} colors={[theme.accent]} />}
             contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 20 }]}
             scrollIndicatorInsets={{ bottom: tabBottomInset }}
           >
@@ -178,7 +187,7 @@ export function OverviewScreen() {
               onPress={openSwitchSheet}
               style={({ pressed }) => [styles.nameRow, pressed && styles.nameRowPressed]}
             >
-              <Text style={styles.name}>{displayName(bundle)}</Text>
+              <Text style={[styles.name, { color: theme.text }]}>{displayName(bundle)}</Text>
               <Text style={styles.switchHint}>·点击切换·</Text>
             </Pressable>
 
@@ -201,7 +210,7 @@ export function OverviewScreen() {
                 meta={formatBestSectionMeta(bundle.payload.bestSections)}
               />
             ) : (
-              <DxRatingCard label={profile.ratingLabel} display="—" rating={null} meta="空空空" />
+              <DxRatingCard label={profile.ratingLabel} display="—" rating={null} meta="当前游戏暂未提供评分" />
             )}
 
             {bundle.payload.kind === 'maimai' && bundle.providerId === 'local' ? (
@@ -209,13 +218,13 @@ export function OverviewScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="同步本地查分器数据，使用好友码"
                 onPress={openUpload}
-                style={({ pressed }) => [styles.syncButton, pressed && styles.syncPressed]}
+                style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.surface }, pressed && styles.syncPressed]}
               >
                 <Text style={styles.syncText}>同步数据</Text>
                 <Text style={styles.actionHint}>好友码</Text>
               </Pressable>
             ) : bundle.payload.kind === 'maimai' ? (
-              <View style={styles.actionRow}>
+              <View style={[styles.actionRow, { backgroundColor: theme.surface }]}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`上传数据，${compactUploadPhaseLabel(uploadPhase)}`}
@@ -247,7 +256,7 @@ export function OverviewScreen() {
                 accessibilityLabel="同步数据"
                 disabled={syncBusy}
                 onPress={() => void syncData()}
-                style={({ pressed }) => [styles.syncButton, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
+                style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.surface }, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
               >
                 <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
               </Pressable>
@@ -265,37 +274,37 @@ export function OverviewScreen() {
                 accessibilityLabel={`打开置顶工具 ${tool.title}`}
                 onPress={() => router.push(tool.href as Href)}
               >
-                <View style={[styles.card, styles.pinnedToolCard]}>
+                <View style={[styles.card, styles.pinnedToolCard, { backgroundColor: theme.surface }]}>
                   <Text style={styles.pinnedToolEyebrow}>置顶工具</Text>
-                  <Text style={styles.cardTitle}>{tool.title}</Text>
-                  <Text style={styles.body}>{tool.detail}</Text>
-                  <Text style={styles.toolLink}>打开 →</Text>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>{tool.title}</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>{tool.detail}</Text>
+                  <Text style={[styles.toolLink, { color: theme.accent }]}>打开 →</Text>
                 </View>
               </Pressable>
             ))}
 
             <Pressable accessibilityRole="button" onPress={() => router.push('/tools' as Href)}>
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>工具箱</Text>
-                <Text style={styles.body}>{summarizeGameTools(bundle.gameId)}</Text>
-                <Text style={styles.toolLink}>打开工具箱 →</Text>
+              <View style={[styles.card, { backgroundColor: theme.surface }]}>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>工具箱</Text>
+                <Text style={[styles.body, { color: theme.textSecondary }]}>{summarizeGameTools(bundle.gameId)}</Text>
+                <Text style={[styles.toolLink, { color: theme.accent }]}>打开工具箱 →</Text>
               </View>
             </Pressable>
 
             <Pressable accessibilityRole="button" onPress={() => router.push('/library' as Href)}>
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>我的曲库</Text>
-                <Text style={styles.body}>
+              <View style={[styles.card, { backgroundColor: theme.surface }]}>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>我的曲库</Text>
+                <Text style={[styles.body, { color: theme.textSecondary }]}>
                   {bundle.payload.kind === 'maimai'
                     ? (library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
-                    : '空空空'}
+                    : '当前游戏暂未开放个人曲库'}
                 </Text>
-                <Text style={styles.toolLink}>打开收藏与练习清单 →</Text>
+                <Text style={[styles.toolLink, { color: theme.accent }]}>打开收藏与练习清单 →</Text>
               </View>
             </Pressable>
 
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>数据状态</Text>
+            <View style={[styles.card, { backgroundColor: theme.surface }]}>
+              <Text style={[styles.cardTitle, { color: theme.text }]}>数据状态</Text>
               {bundle.payload.kind === 'maimai' ? (
                 <>
                   <Text style={styles.body}>来源：{bundle.payload.source.label}</Text>
@@ -304,9 +313,8 @@ export function OverviewScreen() {
                   <Text style={styles.body}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
               ) : (
-                <Text style={styles.body}>空空空</Text>
+                <Text style={styles.body}>当前游戏暂未接入数据</Text>
               )}
-              <Text style={styles.note}>点玩家名可切换已绑定账号。</Text>
             </View>
           </ScrollView>
         )}

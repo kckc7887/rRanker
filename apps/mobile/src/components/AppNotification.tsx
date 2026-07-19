@@ -20,6 +20,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppTheme } from '@/theme/app-theme';
 
 export type NotificationVariant = 'success' | 'info' | 'warning' | 'error';
 export type NotificationActionTone = 'default' | 'cancel' | 'destructive';
@@ -204,6 +205,7 @@ function NotificationHost({
   claimAction: (id: number) => boolean;
   location: 'root' | 'outlet';
 }) {
+  const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(-120)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -293,7 +295,7 @@ function NotificationHost({
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
           onPress={() => undefined}
-          style={styles.backdrop}
+          style={[styles.backdrop, { backgroundColor: theme.overlay }]}
           testID="app-notification-backdrop"
         />
       ) : null}
@@ -302,7 +304,7 @@ function NotificationHost({
           accessibilityRole="alert"
           style={[
             styles.card,
-            { borderLeftColor: meta.color, opacity, transform: [{ translateY }] },
+            { borderLeftColor: meta.color, backgroundColor: theme.surface, opacity, transform: [{ translateY }] },
           ]}
           testID="app-notification-card"
         >
@@ -310,8 +312,8 @@ function NotificationHost({
             <Ionicons color={meta.color} name={meta.icon} size={22} />
           </View>
           <View style={styles.content}>
-            <Text style={styles.title}>{notification.title}</Text>
-            {notification.message ? <Text style={styles.message}>{notification.message}</Text> : null}
+            <Text style={[styles.title, { color: theme.text }]}>{notification.title}</Text>
+            {notification.message ? <Text style={[styles.message, { color: theme.textSecondary }]}>{notification.message}</Text> : null}
             {actions?.length ? (
               <View style={styles.actions}>
                 {actions.map((action, index) => (
@@ -320,16 +322,16 @@ function NotificationHost({
                     key={`${action.label}-${index}`}
                     onPress={() => performAction(action)}
                     style={({ pressed }) => [
-                      styles.action,
+                      styles.action, { backgroundColor: theme.accent },
                       action.tone === 'destructive' && styles.destructiveAction,
-                      action.tone === 'cancel' && styles.cancelAction,
+                      action.tone === 'cancel' && { backgroundColor: theme.surfaceMuted },
                       pressed && styles.pressed,
                     ]}
                   >
                     <Text style={[
                       styles.actionText,
                       action.tone === 'destructive' && styles.destructiveActionText,
-                      action.tone === 'cancel' && styles.cancelActionText,
+                      action.tone === 'cancel' && { color: theme.textSecondary },
                     ]}>
                       {action.label}
                     </Text>
@@ -346,7 +348,7 @@ function NotificationHost({
               onPress={dismiss}
               style={({ pressed }) => [styles.close, pressed && styles.pressed]}
             >
-              <Ionicons color="#667085" name="close" size={20} />
+              <Ionicons color={theme.textMuted} name="close" size={20} />
             </Pressable>
           ) : null}
       </Animated.View>

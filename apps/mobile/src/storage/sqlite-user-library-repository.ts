@@ -1,10 +1,10 @@
 import * as SQLite from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { mergeLibraryItems, normalizeLibraryItem, normalizeTagName, shouldKeepLibraryItem } from '@/domain/user-library';
+import { DEFAULT_TAG_PRESETS, mergeLibraryItems, normalizeLibraryItem, normalizeTagName, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
 import type { RestoreMode, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 
-const USER_LIBRARY_SCHEMA_VERSION = 1;
+const USER_LIBRARY_SCHEMA_VERSION = 2;
 type DatabaseAccess = Pick<SQLiteDatabase, 'getAllAsync' | 'getFirstAsync' | 'runAsync'>;
 
 interface ItemRow {
@@ -54,9 +54,18 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
         tag_id INTEGER NOT NULL REFERENCES user_library_tags(id) ON DELETE CASCADE,
         PRIMARY KEY (item_key, tag_id)
       );
-      INSERT OR IGNORE INTO user_library_meta (id, schema_version) VALUES (1, ${USER_LIBRARY_SCHEMA_VERSION});`);
+      CREATE TABLE IF NOT EXISTS user_library_tag_presets (
+        normalized_name TEXT PRIMARY KEY, display_name TEXT NOT NULL,
+        sort_order INTEGER NOT NULL, created_at TEXT NOT NULL
+      );`);
     const row = await db.getFirstAsync<{ schema_version: number }>('SELECT schema_version FROM user_library_meta WHERE id = 1');
-    if (!row || row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {
+    if (!row) {
+      await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
+      await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
+    } else if (row.schema_version === 1) {
+      await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
+      await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
+    } else if (row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {
       throw new Error(`不支持的个人数据版本：${row?.schema_version ?? '未知'}`);
     }
   }
@@ -64,6 +73,23 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
   async list(): Promise<UserLibraryItem[]> {
     await this.initialize();
     return this.readFrom(await this.databasePromise);
+  }
+
+  async listTagPresets(): Promise<string[]> {
+    await this.initialize();
+    const db = await this.databasePromise;
+    const rows = await db.getAllAsync<{ display_name: string }>(
+      'SELECT display_name FROM user_library_tag_presets ORDER BY sort_order, normalized_name',
+    );
+    return rows.map((row) => row.display_name);
+  }
+
+  async setTagPresets(values: readonly string[]): Promise<string[]> {
+    await this.initialize();
+    const normalized = normalizeTags(values);
+    const db = await this.databasePromise;
+    await db.withExclusiveTransactionAsync((txn) => this.writeTagPresets(txn, normalized));
+    return normalized;
   }
 
   async update(transform: (items: UserLibraryItem[]) => UserLibraryItem[]): Promise<UserLibraryItem[]> {
@@ -96,7 +122,20 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
       await txn.runAsync('DELETE FROM user_library_item_tags');
       await txn.runAsync('DELETE FROM user_library_items');
       await txn.runAsync('DELETE FROM user_library_tags');
+      await this.writeTagPresets(txn, DEFAULT_TAG_PRESETS);
     });
+  }
+
+  private async writeTagPresets(db: DatabaseAccess, values: readonly string[]): Promise<void> {
+    await db.runAsync('DELETE FROM user_library_tag_presets');
+    const timestamp = new Date().toISOString();
+    for (const [index, value] of normalizeTags(values).entries()) {
+      const normalized = normalizeTagName(value);
+      await db.runAsync(
+        'INSERT INTO user_library_tag_presets (normalized_name, display_name, sort_order, created_at) VALUES (?, ?, ?, ?)',
+        normalized.key, normalized.displayName, index, timestamp,
+      );
+    }
   }
 
   private async readFrom(db: DatabaseAccess): Promise<UserLibraryItem[]> {

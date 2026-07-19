@@ -1,5 +1,5 @@
 import {
-  backupPreview, chartLibraryKey, createUserDataBackup, mergeLibraryItems, normalizeTagName,
+  backupPreview, buildTagHistory, chartLibraryKey, createUserDataBackup, mergeLibraryItems, normalizeTagName,
   normalizeTags, parseUserDataBackup, songLibraryKey,
 } from '@/domain/user-library';
 import type { ChartLibraryItem, SongLibraryItem } from '@/domain/user-library';
@@ -25,10 +25,19 @@ describe('user library domain', () => {
   it('creates a deterministic strict privacy backup', () => {
     const backup = createUserDataBackup([chart, song], updatedAt);
     expect(backup.items.map((item) => item.key)).toEqual(['chart:1:DX:3', 'song:1']);
+    expect(backup.version).toBe(2);
+    expect(backup.tagPresets).toEqual(['爆发', '交互', '星星', '鬼歌', '大歌']);
     expect(backupPreview(backup)).toEqual({ songs: 1, charts: 1, tags: 2 });
     expect(JSON.stringify(backup)).not.toMatch(/token|cookie|player|records/i);
     expect(() => parseUserDataBackup({ ...backup, token: 'secret' })).toThrow();
-    expect(() => parseUserDataBackup({ ...backup, version: 2 })).toThrow();
+    expect(() => parseUserDataBackup({ ...backup, version: 3 })).toThrow();
+  });
+
+  it('builds recent history excluding the current item and presets', () => {
+    expect(buildTagHistory([
+      { ...song, key: 'song:1', tags: ['爆发', '耐力'], updatedAt: createdAt },
+      { ...chart, key: 'chart:2:DX:3', tags: ['耐力', '交互', '星星谱'], updatedAt },
+    ], 'song:1', ['爆发', '交互'])).toEqual(['耐力', '星星谱']);
   });
 
   it('merges flags and tags while keeping the local display spelling', () => {

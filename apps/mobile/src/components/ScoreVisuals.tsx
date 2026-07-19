@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { useAppTheme } from '@/theme/app-theme';
 import type { Difficulty } from '@/domain/models';
 import {
   formatAchievement, isNearMissAchievement, scoreRateEffect, scoreRateLabel,
@@ -104,24 +105,28 @@ export function ChartTypeBadge({ type }: { type: 'SD' | 'DX' }) {
 }
 
 export function AchievementValue({ value, compact = false }: { value?: number; compact?: boolean }) {
+  const theme = useAppTheme();
   const textStyle = [styles.achievement, compact && styles.achievementCompact];
   if (value === undefined) return <Text accessibilityLabel="未游玩" style={[...textStyle, styles.achievementNormal]}>—</Text>;
   const text = formatAchievement(value);
   if (value >= 100.5) return <GradientAchievement text={text} flowing compact={compact} />;
   if (value >= 99.9999) return <GradientAchievement text={text} compact={compact} />;
   const color = value >= 99.4999 ? '#D7C08A' : value >= 98.9999 ? '#D69B24' : '#172033';
-  return <Text accessibilityLabel={text} style={[...textStyle, { color }]}>{text}</Text>;
+  return <Text accessibilityLabel={text} style={[...textStyle, { color: theme.dark && value < 99.4999 ? theme.text : color }]}>{text}</Text>;
 }
 
-export function ScoreStatusBadges({ rate, achievements, fc, fs }: {
+export function ScoreStatusBadges({ rate, achievements, fc, fs, nearMissFirst = false }: {
   rate?: string | null;
   achievements?: number;
   fc?: string | null;
   fs?: string | null;
+  nearMissFirst?: boolean;
 }) {
+  const nearMiss = achievements !== undefined && isNearMissAchievement(achievements);
   return <>
+    {nearMissFirst && nearMiss ? <NearMissBadge /> : null}
     {rate ? <RateBadge value={rate} /> : null}
-    {achievements !== undefined && isNearMissAchievement(achievements) ? <NearMissBadge /> : null}
+    {!nearMissFirst && nearMiss ? <NearMissBadge /> : null}
     {fc ? <StatusBadge kind="fc" value={fc} /> : null}
     {fs ? <StatusBadge kind="fs" value={fs} /> : null}
   </>;
@@ -189,12 +194,13 @@ function StatusBadge({ kind, value }: { kind: 'fc' | 'fs'; value: string }) {
 function BlurBadge({ label, spec, flowing = false, testID }: {
   label: string; spec: BlurSpec; flowing?: boolean; testID: string;
 }) {
+  const theme = useAppTheme();
   const [width, setWidth] = useState(52);
   const progress = useFlowingProgress(flowing, 1400);
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
   return <View testID={testID} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
     style={[styles.statusBadge, { borderWidth: 1, borderColor: spec.border }]}>
-    <BlurView intensity={18} tint="light" style={StyleSheet.absoluteFill} />
+    <BlurView intensity={18} tint={theme.dark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
     <View style={[StyleSheet.absoluteFill, { backgroundColor: spec.background, borderRadius: 8 }]} />
     {flowing ? <Animated.View pointerEvents="none"
       style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>

@@ -15,15 +15,17 @@ import {
   type GameId,
   type ProviderOption,
 } from '@/domain/game-bind-options';
+import { useAppTheme } from '@/theme/app-theme';
 
 function Chevron({ expanded }: { expanded: boolean }) {
+  const theme = useAppTheme();
   return (
     <SymbolView
       name={expanded ? 'chevron.down' : 'chevron.right'}
       size={14}
-      tintColor="#9CA3AF"
+      tintColor={theme.textMuted}
       weight="semibold"
-      fallback={<Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color="#9CA3AF" />}
+      fallback={<Ionicons name={expanded ? 'chevron-down' : 'chevron-forward'} size={16} color={theme.textMuted} />}
     />
   );
 }
@@ -56,6 +58,7 @@ export function GamePickerSheet({
   onSelectGame?: (gameId: GameId) => void;
   onSelectUnavailableGame: (title: string, detail: string) => void;
 }) {
+  const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const sheetTitle = title ?? (mode === 'switch' ? '切换游戏' : '选择游戏');
 
@@ -66,10 +69,10 @@ export function GamePickerSheet({
       presentationStyle="formSheet"
       onRequestClose={onClose}
     >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <View style={styles.grabber} />
+      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
+        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
         <View style={styles.header}>
-          <Text style={styles.title}>{sheetTitle}</Text>
+          <Text style={[styles.title, { color: theme.text }]}>{sheetTitle}</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="关闭"
@@ -77,19 +80,19 @@ export function GamePickerSheet({
             onPress={onClose}
             style={({ pressed }) => [styles.closeHit, pressed && styles.softPressed]}
           >
-            <Text style={styles.close}>完成</Text>
+            <Text style={[styles.close, { color: theme.accent }]}>完成</Text>
           </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.sectionLabel}>游戏</Text>
+          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>游戏</Text>
           <View style={styles.list}>
             {GAME_OPTIONS.map((game) => {
               const expanded = expandedGameId === game.id;
               const gameIsCurrent = mode === 'switch' && currentGameId === game.id
                 && (game.providers.length === 0 || currentProviderId != null);
               return (
-                <View key={game.id} style={styles.gameCard}>
+                <View key={game.id} style={[styles.gameCard, { backgroundColor: theme.surface }]}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityState={{ expanded: game.available ? expanded : undefined }}
@@ -109,7 +112,7 @@ export function GamePickerSheet({
                     <Image source={game.icon} style={styles.gameIcon} />
                     <View style={styles.copy}>
                       <View style={styles.titleRow}>
-                        <Text style={[styles.gameName, !game.available && styles.muted]}>
+                        <Text style={[styles.gameName, { color: theme.text }, !game.available && { color: theme.textMuted }]}>
                           {game.title}
                         </Text>
                         {!game.available ? <Text style={styles.badge}>待实现</Text> : null}
@@ -117,7 +120,7 @@ export function GamePickerSheet({
                           <Text style={styles.currentBadge}>当前</Text>
                         ) : null}
                       </View>
-                      <Text style={styles.detail}>
+                      <Text style={[styles.detail, { color: theme.textMuted }]}>
                         {!game.available
                           ? game.pendingDetail
                           : game.providers.length === 0
@@ -140,7 +143,7 @@ export function GamePickerSheet({
                   </Pressable>
 
                   {game.available && expanded ? (
-                    <View style={styles.providerNest}>
+                    <View style={[styles.providerNest, { backgroundColor: theme.surfaceMuted, borderTopColor: theme.border }]}>
                       {game.providers.length === 0 ? (
                         mode === 'switch' && onSelectGame ? (
                           <Pressable
@@ -148,17 +151,17 @@ export function GamePickerSheet({
                             accessibilityLabel={`切换到${game.title}`}
                             onPress={() => onSelectGame(game.id)}
                             style={({ pressed }) => [
-                              styles.providerRow,
+                              styles.providerRow, { backgroundColor: theme.surface },
                               pressed && styles.providerPressed,
-                              currentGameId === game.id && styles.providerCurrent,
+                              currentGameId === game.id && { borderColor: theme.accent, borderWidth: 1 },
                             ]}
                           >
                             <View style={styles.copy}>
                               <View style={styles.titleRow}>
-                                <Text style={styles.providerName}>使用空数据</Text>
+                                <Text style={[styles.providerName, { color: theme.text }]}>使用空数据</Text>
                                 {currentGameId === game.id ? <Text style={styles.currentBadge}>当前</Text> : null}
                               </View>
-                              <Text style={styles.detail}>空数据</Text>
+                              <Text style={[styles.detail, { color: theme.textMuted }]}>空数据</Text>
                             </View>
                             <SymbolView
                               name="chevron.right"
@@ -169,13 +172,13 @@ export function GamePickerSheet({
                             />
                           </Pressable>
                         ) : (
-                          <Text style={styles.detail}>
+                          <Text style={[styles.detail, { color: theme.textMuted }]}>
                             此游戏无需绑定账号。请在总览页点击玩家名，切换到「{game.title}」。
                           </Text>
                         )
                       ) : (
                         <>
-                          <Text style={styles.providerLabel}>查分器</Text>
+                          <Text style={[styles.providerLabel, { color: theme.textMuted }]}>查分器</Text>
                           {game.providers.map((provider) => {
                             const isCurrent = mode === 'switch'
                               && currentGameId === game.id
@@ -194,22 +197,22 @@ export function GamePickerSheet({
                                   onSelectProvider(game.id, provider);
                                 }}
                                 style={({ pressed }) => [
-                                  styles.providerRow,
+                                  styles.providerRow, { backgroundColor: theme.surface },
                                   pressed && provider.available && styles.providerPressed,
                                   !provider.available && styles.disabled,
-                                  isCurrent && styles.providerCurrent,
+                                  isCurrent && { borderColor: theme.accent, borderWidth: 1 },
                                 ]}
                               >
                                 <Image source={provider.icon} style={styles.providerIcon} />
                                 <View style={styles.copy}>
                                   <View style={styles.titleRow}>
-                                    <Text style={[styles.providerName, !provider.available && styles.muted]}>
+                                    <Text style={[styles.providerName, { color: theme.text }, !provider.available && { color: theme.textMuted }]}>
                                       {provider.title}
                                     </Text>
                                     {!provider.available ? <Text style={styles.badge}>待实现</Text> : null}
                                     {isCurrent ? <Text style={styles.currentBadge}>当前</Text> : null}
                                   </View>
-                                  <Text style={styles.detail}>{provider.detail}</Text>
+                                  <Text style={[styles.detail, { color: theme.textMuted }]}>{provider.detail}</Text>
                                 </View>
                                 {provider.available ? (
                                   <SymbolView

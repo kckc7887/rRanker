@@ -23,6 +23,7 @@ import { validateAndActivateSession } from '@/services/session-validation';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
+import { useAppTheme } from '@/theme/app-theme';
 
 const auth = new DivingFishAuthProvider();
 const sessions = new SecureSessionStore();
@@ -40,6 +41,7 @@ export function ProviderLoginSheet({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const setSession = useSession((s) => s.setSession);
   const boundMaimaiCount = useSession((s) => s.boundAccounts.filter(
@@ -178,8 +180,8 @@ export function ProviderLoginSheet({
       presentationStyle="pageSheet"
       onRequestClose={close}
     >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <View style={styles.grabber} />
+      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
+        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
@@ -189,9 +191,9 @@ export function ProviderLoginSheet({
             onPress={close}
             style={({ pressed }) => [styles.headerAction, pressed && styles.pressed]}
           >
-            <Text style={styles.close}>取消</Text>
+            <Text style={[styles.close, { color: theme.accent }]}>取消</Text>
           </Pressable>
-          <Text style={styles.title}>登录查分器</Text>
+          <Text style={[styles.title, { color: theme.text }]}>登录查分器</Text>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -202,12 +204,12 @@ export function ProviderLoginSheet({
         >
           <View style={styles.identity}>
             <Image source={provider.icon} style={styles.icon} />
-            <Text style={styles.providerName}>{provider.title}</Text>
-            <Text style={styles.gameLine}>用于绑定 {gameTitle}</Text>
+            <Text style={[styles.providerName, { color: theme.text }]}>{provider.title}</Text>
+            <Text style={[styles.gameLine, { color: theme.textMuted }]}>用于绑定 {gameTitle}</Text>
           </View>
 
-          <View style={styles.card}>
-            <Text style={styles.body}>绑定后，总览、最佳与成绩将使用该账号的远程数据。</Text>
+          <View style={[styles.card, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.body, { color: theme.textSecondary }]}>绑定后，总览、最佳与成绩将使用该账号的远程数据。</Text>
             {boundMaimaiCount > 0 ? (
               <Text style={styles.hint}>可同时保存多个查分器账号；同一玩家再次登录会更新该账号凭据。</Text>
             ) : null}
@@ -218,7 +220,7 @@ export function ProviderLoginSheet({
                 <Pressable
                   disabled={busy}
                   onPress={() => void openLxnsAuthorize()}
-                  style={({ pressed }) => [styles.primary, pressed && !busy && styles.primaryPressed]}
+                  style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
                 >
                   <Text style={styles.primaryText}>打开落雪授权页</Text>
                 </Pressable>
@@ -234,14 +236,15 @@ export function ProviderLoginSheet({
                   placeholder="授权码（如 JVJ6-VPTM-MGHZ）"
                   value={authCode}
                   onChangeText={setAuthCode}
-                  style={styles.input}
+                  placeholderTextColor={theme.textMuted}
+                  style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
                 />
                 <Pressable
                   disabled={busy}
                   onPress={() => void connectWithLxnsCode()}
-                  style={({ pressed }) => [styles.secondary, pressed && !busy && styles.secondaryPressed]}
+                  style={({ pressed }) => [styles.secondary, { borderColor: theme.accent }, pressed && !busy && styles.secondaryPressed]}
                 >
-                  <Text style={styles.secondaryText}>验证授权码并绑定</Text>
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>验证授权码并绑定</Text>
                 </Pressable>
                 <Text style={styles.security}>
                   Access Token 约 15 分钟过期；刷新令牌保存在系统 SecureStore，不进入 SQLite 或日志。
@@ -259,7 +262,8 @@ export function ProviderLoginSheet({
                   placeholder="用户名"
                   value={username}
                   onChangeText={setUsername}
-                  style={styles.input}
+                  placeholderTextColor={theme.textMuted}
+                  style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
                 />
                 <TextInput
                   autoCapitalize="none"
@@ -272,12 +276,13 @@ export function ProviderLoginSheet({
                   secureTextEntry
                   value={password}
                   onChangeText={setPassword}
-                  style={styles.input}
+                  placeholderTextColor={theme.textMuted}
+                  style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
                 />
                 <Pressable
                   disabled={busy}
                   onPress={() => void login()}
-                  style={({ pressed }) => [styles.primary, pressed && !busy && styles.primaryPressed]}
+                  style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
                 >
                   <Text style={styles.primaryText}>账密登录并验证</Text>
                 </Pressable>
@@ -292,14 +297,15 @@ export function ProviderLoginSheet({
                   secureTextEntry
                   value={importToken}
                   onChangeText={setImportToken}
-                  style={styles.input}
+                  placeholderTextColor={theme.textMuted}
+                  style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
                 />
                 <Pressable
                   disabled={busy}
                   onPress={() => void connectWithToken()}
-                  style={({ pressed }) => [styles.secondary, pressed && !busy && styles.secondaryPressed]}
+                  style={({ pressed }) => [styles.secondary, { borderColor: theme.accent }, pressed && !busy && styles.secondaryPressed]}
                 >
-                  <Text style={styles.secondaryText}>验证并保存凭证</Text>
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>验证并保存凭证</Text>
                 </Pressable>
                 <Text style={styles.security}>
                   密码仅用于当次登录；上传凭证写入系统 SecureStore，不进入 SQLite 或日志。

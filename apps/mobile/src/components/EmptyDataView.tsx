@@ -1,17 +1,19 @@
 import { StyleSheet, Text, View } from 'react-native';
+import { useAppTheme } from '@/theme/app-theme';
 
 /** 导航页通用空态：数据为空时展示，不讨论「属于哪个游戏」。 */
 export function EmptyDataView({
   title = '暂无数据',
-  detail = '空空空，当前账号还没有任何内容。',
+  detail = '当前账号暂无可显示内容。',
 }: {
   title?: string;
   detail?: string;
 }) {
+  const theme = useAppTheme();
   return (
-    <View style={styles.page} accessibilityLabel={title}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.body}>{detail}</Text>
+    <View style={[styles.page, { backgroundColor: theme.background }]} accessibilityLabel={title}>
+      <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+      <Text style={[styles.body, { color: theme.textMuted }]}>{detail}</Text>
     </View>
   );
 }

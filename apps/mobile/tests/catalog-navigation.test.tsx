@@ -36,6 +36,12 @@ describe('catalog navigation', () => {
         props: expect.objectContaining({ name: 'musical-notes-outline' }),
       }),
     }));
+    expect(mockIcons).toContainEqual(expect.objectContaining({
+      sf: 'chart.bar.xaxis',
+      androidSrc: expect.objectContaining({
+        props: expect.objectContaining({ name: 'stats-chart-outline' }),
+      }),
+    }));
   });
 
   it('uses catalog as the stack title while preserving the search route', async () => {

@@ -23,6 +23,7 @@ import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useSongs } from '@/hooks/use-songs';
 import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
+import { useAppTheme } from '@/theme/app-theme';
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
@@ -47,6 +48,7 @@ function parsePlateIdParam(value: string | undefined): number | undefined {
 }
 
 export default function PlatesToolScreen() {
+  const theme = useAppTheme();
   const { showNotification } = useNotification();
   const { plateId: plateIdParam } = useLocalSearchParams<{ plateId?: string }>();
   const routePlateId = parsePlateIdParam(plateIdParam);
@@ -127,7 +129,7 @@ export default function PlatesToolScreen() {
   };
 
   return (
-    <View style={styles.page}>
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: '牌子进度' }} />
       <QueryStateView<{ groups: VersionPlateGroup[]; source: DataSource }>
         isLoading={plates.isLoading || scores.isLoading}

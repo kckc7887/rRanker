@@ -1,13 +1,15 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { SourceStatusItem } from '@/domain/models';
+import { useAppTheme } from '@/theme/app-theme';
 
 export function SourceStatus({ items }: { items: SourceStatusItem[] }) {
+  const theme = useAppTheme();
   return (
-    <View accessibilityLabel="数据来源状态" style={styles.container}>
+    <View accessibilityLabel="数据来源状态" style={[styles.container, { backgroundColor: theme.surfaceMuted }]}>
       {items.map((item) => (
         <View key={item.key} style={styles.row}>
           <View style={[styles.dot, item.state === 'live' ? styles.live : item.state === 'cache' ? styles.cache : styles.off]} />
-          <Text style={styles.text} numberOfLines={1}>
+          <Text style={[styles.text, { color: theme.textSecondary }]} numberOfLines={1}>
             {item.label}{item.updatedAt ? ` · ${new Date(item.updatedAt).toLocaleString()}` : ''}
           </Text>
         </View>

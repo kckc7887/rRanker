@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
 import type { ChartType, Difficulty } from '@/domain/models';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
+import { useAppTheme } from '@/theme/app-theme';
 
 const DIFFICULTIES: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 'remaster'];
 const TYPES: ChartType[] = ['SD', 'DX'];
@@ -14,6 +15,7 @@ export interface VersionFilterOption {
 }
 
 export interface MaimaiFilterBarProps {
+  collapsed: boolean;
   difficulty: Difficulty | 'all';
   version: string | 'all';
   type: ChartType | 'all';
@@ -21,6 +23,7 @@ export interface MaimaiFilterBarProps {
   constantMax: string;
   versionLocale: VersionNameLocale;
   versions: readonly VersionFilterOption[];
+  onCollapsedChange: (collapsed: boolean) => void;
   onDifficultyChange: (difficulty: Difficulty | 'all') => void;
   onVersionChange: (version: string | 'all') => void;
   onTypeChange: (type: ChartType | 'all') => void;
@@ -29,7 +32,22 @@ export interface MaimaiFilterBarProps {
   onVersionLocaleChange: (locale: VersionNameLocale) => void;
 }
 
+export function buildMaimaiFilterSummary({ difficulty, version, type, constantMin, constantMax, versionLocale, versions }:
+  Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'type' | 'constantMin' | 'constantMax' | 'versionLocale' | 'versions'>): string {
+  const selectedVersion = versions.find((option) => option.value === version);
+  const selectedVersionLabel = selectedVersion
+    ? localizedVersionName(selectedVersion.versionId, selectedVersion.name, versionLocale)
+    : '全部';
+  return [
+    difficulty === 'all' ? null : DIFFICULTY_VISUAL[difficulty].label,
+    selectedVersionLabel === '全部' ? null : selectedVersionLabel,
+    type === 'all' ? null : type,
+    constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
+  ].filter(Boolean).join(' · ') || '全部';
+}
+
 export function MaimaiFilterBar({
+  collapsed,
   difficulty,
   version,
   type,
@@ -37,6 +55,7 @@ export function MaimaiFilterBar({
   constantMax,
   versionLocale,
   versions,
+  onCollapsedChange,
   onDifficultyChange,
   onVersionChange,
   onTypeChange,
@@ -44,6 +63,7 @@ export function MaimaiFilterBar({
   onConstantMaxChange,
   onVersionLocaleChange,
 }: MaimaiFilterBarProps) {
+  const theme = useAppTheme();
   const [versionPickerOpen, setVersionPickerOpen] = useState(false);
   const selectedVersion = versions.find((option) => option.value === version);
   const selectedVersionLabel = selectedVersion
@@ -55,9 +75,26 @@ export function MaimaiFilterBar({
     setVersionPickerOpen(false);
   };
 
-  return <View style={styles.filterBar}>
+  const summary = buildMaimaiFilterSummary({
+    difficulty, version, type, constantMin, constantMax, versionLocale, versions,
+  });
+
+  if (collapsed) return <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
+    accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)}
+    style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+    <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
+    <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
+    <Text style={[styles.collapseAction, { color: theme.accent }]}>展开⌄</Text>
+  </Pressable>;
+
+  return <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
+      onPress={() => onCollapsedChange(true)} style={styles.expandedHeader}>
+      <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
+      <Text style={[styles.collapseAction, { color: theme.accent }]}>收起⌃</Text>
+    </Pressable>
     <View style={styles.filterRow}>
-      <Text style={styles.filterLabel}>难度</Text>
+      <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
         <NeutralChip label="全部" active={difficulty === 'all'} onPress={() => onDifficultyChange('all')} />
         {DIFFICULTIES.map((item) => {
@@ -72,29 +109,29 @@ export function MaimaiFilterBar({
     </View>
 
     <View style={[styles.filterRow, styles.versionRow]}>
-      <Text style={styles.filterLabel}>版本</Text>
+      <Text style={[styles.filterLabel, { color: theme.textMuted }]}>版本</Text>
       <View style={styles.versionArea}>
         <View style={styles.versionControls}>
           <Pressable accessibilityRole="button" accessibilityLabel={`版本筛选，当前 ${selectedVersionLabel}`}
             accessibilityState={{ expanded: versionPickerOpen }}
-            onPress={() => setVersionPickerOpen((open) => !open)} style={styles.versionTrigger}>
-            <Text numberOfLines={1} style={styles.versionTriggerText}>{selectedVersionLabel}</Text>
+            onPress={() => setVersionPickerOpen((open) => !open)} style={[styles.versionTrigger, { backgroundColor: theme.input, borderColor: theme.border }]}>
+            <Text numberOfLines={1} style={[styles.versionTriggerText, { color: theme.text }]}>{selectedVersionLabel}</Text>
             <Text style={styles.chevron}>{versionPickerOpen ? '⌃' : '⌄'}</Text>
           </Pressable>
-          <View style={styles.localeSwitch}>
+          <View style={[styles.localeSwitch, { borderColor: theme.border }]}>
             {(['china', 'japan'] as const).map((locale) => {
               const active = versionLocale === locale;
               const label = locale === 'china' ? '中' : '日';
               return <Pressable key={locale} accessibilityRole="button"
                 accessibilityLabel={`版本名称切换为${locale === 'china' ? '中文' : '日文'}`}
                 accessibilityState={{ selected: active }} onPress={() => onVersionLocaleChange(locale)}
-                style={[styles.localeButton, active && styles.localeButtonActive]}>
+                style={[styles.localeButton, { backgroundColor: theme.surface }, active && { backgroundColor: theme.accent }]}>
                 <Text style={[styles.localeText, active && styles.localeTextActive]}>{label}</Text>
               </Pressable>;
             })}
           </View>
         </View>
-        {versionPickerOpen ? <View style={styles.versionPicker}>
+        {versionPickerOpen ? <View style={[styles.versionPicker, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <ScrollView nestedScrollEnabled style={styles.versionList}>
             <VersionOption label="全部" selected={version === 'all'} onPress={() => selectVersion('all')} />
             {versions.map((option) => (
@@ -108,7 +145,7 @@ export function MaimaiFilterBar({
     </View>
 
     <View style={styles.filterRow}>
-      <Text style={styles.filterLabel}>类型</Text>
+      <Text style={[styles.filterLabel, { color: theme.textMuted }]}>类型</Text>
       <View style={styles.chipRow}>
         <NeutralChip label="全部" active={type === 'all'} onPress={() => onTypeChange('all')} />
         {TYPES.map((item) => {
@@ -122,22 +159,25 @@ export function MaimaiFilterBar({
     </View>
 
     <View style={styles.filterRow}>
-      <Text style={styles.filterLabel}>定数</Text>
+      <Text style={[styles.filterLabel, { color: theme.textMuted }]}>定数</Text>
       <View style={styles.rangeRow}>
         <TextInput accessibilityLabel="最低定数" autoCorrect={false} keyboardType="decimal-pad"
-          placeholder="下限" value={constantMin} onChangeText={onConstantMinChange} style={styles.rangeInput} />
+          placeholder="下限" placeholderTextColor={theme.textMuted} value={constantMin} onChangeText={onConstantMinChange}
+          style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         <Text style={styles.rangeSeparator}>~</Text>
         <TextInput accessibilityLabel="最高定数" autoCorrect={false} keyboardType="decimal-pad"
-          placeholder="上限" value={constantMax} onChangeText={onConstantMaxChange} style={styles.rangeInput} />
+          placeholder="上限" placeholderTextColor={theme.textMuted} value={constantMax} onChangeText={onConstantMaxChange}
+          style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
     </View>
   </View>;
 }
 
 function NeutralChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const theme = useAppTheme();
   return <FilterChipFrame active={active} accessibilityLabel={`筛选 ${label}`} onPress={onPress}>
-    <View style={[styles.neutralChip, active && styles.neutralChipActive]}>
-      <Text style={[styles.neutralChipText, active && styles.neutralChipTextActive]}>{label}</Text>
+    <View style={[styles.neutralChip, { backgroundColor: theme.surface, borderColor: theme.border }, active && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+      <Text style={[styles.neutralChipText, { color: theme.textSecondary }, active && styles.neutralChipTextActive]}>{label}</Text>
     </View>
   </FilterChipFrame>;
 }
@@ -155,19 +195,21 @@ function FilterChipFrame({
   children: ReactNode;
   shape?: 'pill' | 'rounded';
 }) {
+  const theme = useAppTheme();
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel}
     accessibilityState={{ selected: active }} onPress={onPress}
-    style={[styles.chipFrame, shape === 'rounded' && styles.roundedChipFrame, active && styles.chipFrameActive]}>
+    style={[styles.chipFrame, shape === 'rounded' && styles.roundedChipFrame, active && { borderColor: theme.accent }]}>
     {children}
   </Pressable>;
 }
 
 function VersionOption({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const theme = useAppTheme();
   return <Pressable accessibilityRole="button" accessibilityLabel={`选择版本 ${label}`}
     accessibilityState={{ selected }} onPress={onPress}
-    style={[styles.versionOption, selected && styles.versionOptionSelected]}>
-    <Text style={[styles.versionOptionText, selected && styles.versionOptionTextSelected]}>{label}</Text>
-    {selected ? <Text style={styles.versionCheck}>✓</Text> : null}
+    style={[styles.versionOption, { borderBottomColor: theme.border }, selected && { backgroundColor: theme.accentSoft }]}>
+    <Text style={[styles.versionOptionText, { color: selected ? theme.accent : theme.textSecondary, fontWeight: selected ? '700' : '400' }]}>{label}</Text>
+    {selected ? <Text style={[styles.versionCheck, { color: theme.accent }]}>✓</Text> : null}
   </Pressable>;
 }
 
@@ -219,4 +261,10 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   rangeSeparator: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
+  collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  collapsedLabel: { fontSize: 12, fontWeight: '700' },
+  collapsedSummary: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
+  collapseAction: { fontSize: 12, fontWeight: '800' },
+  expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  expandedTitle: { fontSize: 13, fontWeight: '800' },
 });

@@ -5,9 +5,12 @@ import ToleranceToolScreen from '../app/tools/tolerance';
 import PlatesToolScreen from '../app/tools/plates';
 import VersionsToolScreen from '../app/tools/versions';
 import type { DataSource, PlateSnapshot } from '@/domain/models';
+import { useRecordsFilter } from '@/state/records-filter';
+import { useCatalogFilter } from '@/state/catalog-filter';
 
 let mockToleranceParams: Record<string, string> = {};
-jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: jest.fn() }, useLocalSearchParams: () => mockToleranceParams }));
+const mockDismissTo = jest.fn();
+jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: jest.fn(), dismissTo: (href: unknown) => mockDismissTo(href) }, useLocalSearchParams: () => mockToleranceParams }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockSource: DataSource = { kind: 'fixture', label: '测试来源', updatedAt: '2026-07-13T00:00:00.000Z', isStale: false };
@@ -44,6 +47,9 @@ describe('M2 tool screens', () => {
     mockToleranceParams = {};
     mockPinnedPlateIds = [];
     mockTogglePinnedPlate.mockClear();
+    mockDismissTo.mockClear();
+    useRecordsFilter.getState().reset();
+    useCatalogFilter.getState().reset();
   });
   it('calculates rating and reverse target interactively', async () => {
     const screen = await render(<RatingToolScreen />);
@@ -57,6 +63,11 @@ describe('M2 tool screens', () => {
     expect(screen.getByText(/理论最高 101%/)).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('目标 Rating（整数）'), '9999');
     expect(screen.getByText(/无法达到/)).toBeTruthy();
+  });
+  it('fills the Rating constant from the route parameter', async () => {
+    mockToleranceParams = { constant: '12.3' };
+    const screen = await render(<RatingToolScreen />);
+    expect(screen.getByLabelText('定数').props.value).toBe('12.3');
   });
   it('shows tolerance result and invalid zero-total error', async () => {
     const screen = await render(<ToleranceToolScreen />);
@@ -95,6 +106,17 @@ describe('M2 tool screens', () => {
     expect(versions.getByText('各版本游玩总结')).toBeTruthy();
     expect(versions.getByText('maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(versions.getByText('舞萌DX 2026')).toBeTruthy();
+  });
+  it('resets filters before opening a version in records or catalog', async () => {
+    useRecordsFilter.getState().setKeyword('旧搜索');
+    useCatalogFilter.getState().setKeyword('旧搜索');
+    const screen = await render(<VersionsToolScreen />);
+    await fireEvent.press(screen.getByLabelText('查看 脱敏当前版本 成绩'));
+    expect(useRecordsFilter.getState()).toMatchObject({ keyword: '', difficulty: 'all', version: '脱敏当前版本' });
+    expect(mockDismissTo).toHaveBeenLastCalledWith('/(tabs)/records');
+    await fireEvent.press(screen.getByLabelText('查看 脱敏当前版本 曲库'));
+    expect(useCatalogFilter.getState()).toMatchObject({ keyword: '', difficulty: 'all', version: '2' });
+    expect(mockDismissTo).toHaveBeenLastCalledWith('/(tabs)/search');
   });
   it('selects a plate from the home route and can add it to the home page', async () => {
     mockToleranceParams = { plateId: '6102' };

@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useAppTheme } from '@/theme/app-theme';
 
 export interface QueryStateViewProps<T> {
   isLoading: boolean;
@@ -21,10 +22,11 @@ export function QueryStateView<T,>({
   onRetry,
   renderData,
 }: QueryStateViewProps<T>) {
+  const theme = useAppTheme();
   if (isLoading && !data) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color="#246BFD" />
+        <ActivityIndicator color={theme.accent} />
       </View>
     );
   }
@@ -32,9 +34,9 @@ export function QueryStateView<T,>({
   if (isError && !data) {
     return (
       <View style={styles.center}>
-        <Text style={styles.statusText}>加载失败，请重试</Text>
+        <Text style={[styles.statusText, { color: theme.textMuted }]}>加载失败，请重试</Text>
         {onRetry ? (
-          <Pressable style={styles.retryButton} onPress={onRetry}>
+          <Pressable style={[styles.retryButton, { backgroundColor: theme.accent }]} onPress={onRetry}>
             <Text style={styles.retryText}>重试</Text>
           </Pressable>
         ) : null}
@@ -45,7 +47,7 @@ export function QueryStateView<T,>({
   if (isEmpty && !data) {
     return (
       <View style={styles.center}>
-        <Text style={styles.statusText}>{emptyText ?? '暂无数据'}</Text>
+        <Text style={[styles.statusText, { color: theme.textMuted }]}>{emptyText ?? '暂无数据'}</Text>
       </View>
     );
   }
@@ -56,7 +58,7 @@ export function QueryStateView<T,>({
 
   return (
     <View style={styles.center}>
-      <ActivityIndicator color="#246BFD" />
+      <ActivityIndicator color={theme.accent} />
     </View>
   );
 }

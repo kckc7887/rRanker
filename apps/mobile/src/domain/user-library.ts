@@ -3,7 +3,8 @@ import { chartVersionKey, normalizeSongId } from './catalog';
 import type { ChartType } from './models';
 
 export const USER_DATA_BACKUP_FORMAT = 'rranker-user-data' as const;
-export const USER_DATA_BACKUP_VERSION = 1 as const;
+export const USER_DATA_BACKUP_VERSION = 2 as const;
+export const DEFAULT_TAG_PRESETS = ['爆发', '交互', '星星', '鬼歌', '大歌'] as const;
 export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
 export const MAX_BACKUP_ITEMS = 5000;
@@ -48,10 +49,20 @@ export type RestoreMode = 'merge' | 'replace';
 
 export interface UserDataBackupV1 {
   format: typeof USER_DATA_BACKUP_FORMAT;
-  version: typeof USER_DATA_BACKUP_VERSION;
+  version: 1;
   exportedAt: string;
   items: UserLibraryItem[];
 }
+
+export interface UserDataBackupV2 {
+  format: typeof USER_DATA_BACKUP_FORMAT;
+  version: typeof USER_DATA_BACKUP_VERSION;
+  exportedAt: string;
+  items: UserLibraryItem[];
+  tagPresets: string[];
+}
+
+export type UserDataBackup = UserDataBackupV1 | UserDataBackupV2;
 
 const TimestampSchema = z.string().datetime();
 const SongIdSchema = z.string().trim().min(1).max(64);
@@ -78,12 +89,20 @@ const ChartItemSchema = z.object({
   practice: z.boolean(),
 }).strict();
 
-const UserDataBackupSchema = z.object({
+const UserDataBackupV1Schema = z.object({
+  format: z.literal(USER_DATA_BACKUP_FORMAT),
+  version: z.literal(1),
+  exportedAt: TimestampSchema,
+  items: z.array(z.discriminatedUnion('kind', [SongItemSchema, ChartItemSchema])).max(MAX_BACKUP_ITEMS),
+}).strict();
+const UserDataBackupV2Schema = z.object({
   format: z.literal(USER_DATA_BACKUP_FORMAT),
   version: z.literal(USER_DATA_BACKUP_VERSION),
   exportedAt: TimestampSchema,
   items: z.array(z.discriminatedUnion('kind', [SongItemSchema, ChartItemSchema])).max(MAX_BACKUP_ITEMS),
+  tagPresets: z.array(TagSchema).max(200),
 }).strict();
+const UserDataBackupSchema = z.discriminatedUnion('version', [UserDataBackupV1Schema, UserDataBackupV2Schema]);
 
 export function songLibraryKey(songId: string | number): string {
   return `song:${normalizeSongId(songId)}`;
@@ -116,6 +135,28 @@ export function normalizeTags(values: readonly string[]): string[] {
   return [...byKey.values()];
 }
 
+export function buildTagHistory(
+  items: readonly UserLibraryItem[],
+  currentKey: string,
+  presets: readonly string[],
+): string[] {
+  const excluded = new Set(presets.map((value) => normalizeTagName(value).key));
+  const latest = new Map<string, { displayName: string; updatedAt: string }>();
+  for (const item of items) {
+    if (item.key === currentKey) continue;
+    for (const tag of item.tags) {
+      const normalized = normalizeTagName(tag);
+      if (excluded.has(normalized.key)) continue;
+      const previous = latest.get(normalized.key);
+      if (!previous || item.updatedAt > previous.updatedAt) {
+        latest.set(normalized.key, { displayName: normalized.displayName, updatedAt: item.updatedAt });
+      }
+    }
+  }
+  return [...latest.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)
+    || left.displayName.localeCompare(right.displayName)).map((item) => item.displayName);
+}
+
 export function normalizeLibraryItem(item: UserLibraryItem): UserLibraryItem {
   const songId = normalizeSongId(item.songId);
   const tags = normalizeTags(item.tags);
@@ -132,18 +173,27 @@ export function shouldKeepLibraryItem(item: UserLibraryItem): boolean {
   return item.tags.length > 0 || (item.kind === 'song' ? item.favorite : item.practice);
 }
 
-export function createUserDataBackup(items: readonly UserLibraryItem[], exportedAt = new Date().toISOString()): UserDataBackupV1 {
+export function createUserDataBackup(
+  items: readonly UserLibraryItem[],
+  exportedAt = new Date().toISOString(),
+  tagPresets: readonly string[] = DEFAULT_TAG_PRESETS,
+): UserDataBackupV2 {
   return {
     format: USER_DATA_BACKUP_FORMAT,
     version: USER_DATA_BACKUP_VERSION,
     exportedAt,
     items: items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key)),
+    tagPresets: normalizeTags(tagPresets),
   };
 }
 
-export function parseUserDataBackup(value: unknown): UserDataBackupV1 {
+export function parseUserDataBackup(value: unknown): UserDataBackup {
   const parsed = UserDataBackupSchema.parse(value);
-  return createUserDataBackup(parsed.items as UserLibraryItem[], parsed.exportedAt);
+  const items = parsed.items.map((item) => normalizeLibraryItem(item as UserLibraryItem))
+    .filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
+  return parsed.version === 1
+    ? { ...parsed, items }
+    : { ...parsed, items, tagPresets: normalizeTags(parsed.tagPresets) };
 }
 
 export function mergeLibraryItems(localItems: readonly UserLibraryItem[], importedItems: readonly UserLibraryItem[]): UserLibraryItem[] {
@@ -172,7 +222,7 @@ export function mergeLibraryItems(localItems: readonly UserLibraryItem[], import
   return [...merged.values()].filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
 }
 
-export function backupPreview(backup: UserDataBackupV1): { songs: number; charts: number; tags: number } {
+export function backupPreview(backup: UserDataBackup): { songs: number; charts: number; tags: number } {
   const tagKeys = new Set<string>();
   for (const item of backup.items) for (const tag of item.tags) tagKeys.add(normalizeTagName(tag).key);
   return {

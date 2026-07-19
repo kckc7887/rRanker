@@ -213,7 +213,7 @@ export async function pollLoginUntilToken(input: {
 
     await sleep(LOGIN_POLL_MS, input.signal);
   }
-  throw new ScoreHubError('登录超时：请确认已在舞萌 NET 接受 Bot 好友申请');
+  throw new ScoreHubError('登录超时：请确认已在“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 好友申请');
 }
 
 export async function createUpdateScoreJob(

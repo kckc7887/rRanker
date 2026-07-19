@@ -127,9 +127,9 @@ describe('M3A game account management', () => {
     expect(screen.getByText('舞萌 DX · 水鱼查分器')).toBeTruthy();
     expect(screen.getByText('测试水鱼')).toBeTruthy();
     expect(screen.getByLabelText('添加游戏账号')).toBeTruthy();
-    expect(StyleSheet.flatten(screen.getByTestId(`account-card-${mockAccount.id}`).props.style)).toEqual({
-      backgroundColor: '#FFF', borderRadius: 14, padding: 18, gap: 8,
-    });
+    expect(StyleSheet.flatten(screen.getByTestId(`account-card-${mockAccount.id}`).props.style)).toEqual(expect.objectContaining({
+      backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#246BFD',
+    }));
     expect(StyleSheet.flatten(screen.getByLabelText('添加游戏账号').props.style)).toEqual(expect.objectContaining({
       right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#246BFD',
     }));

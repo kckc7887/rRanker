@@ -28,6 +28,7 @@ describe('SqliteUserLibraryRepository', () => {
     await expect(repository.list()).resolves.toEqual([]);
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('user_library_meta'));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('PRAGMA foreign_keys = ON'));
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', 2);
   });
 
   it('clears personal tables inside an exclusive transaction', async () => {
