@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query';
+import type { GameDataBundle } from '@/domain/game-data';
 import { queryClient } from '@/state/query-client';
 
 const ACCOUNT_DATA_QUERY_KEYS = [
@@ -20,6 +21,39 @@ export async function invalidateAccountDataQueries(
       queryKey: [...queryKey],
       refetchType,
     })),
+  );
+}
+
+/**
+ * 本地玩家改名只需同步展示名，不应触发曲库/牌子等全量 refetch（会卡死命名弹层）。
+ * queryKey: ['game-data', version, accountId, ...]
+ */
+export function patchMaimaiPlayerDisplayName(
+  accountId: string,
+  displayName: string,
+  client: QueryClient = queryClient,
+): void {
+  client.setQueriesData<GameDataBundle>(
+    {
+      predicate: (query) => {
+        const key = query.queryKey;
+        return Array.isArray(key) && key[0] === 'game-data' && key[2] === accountId;
+      },
+    },
+    (current) => {
+      if (!current || current.payload.kind !== 'maimai') return current;
+      return {
+        ...current,
+        payload: {
+          ...current.payload,
+          player: { ...current.payload.player, displayName },
+          snapshot: {
+            ...current.payload.snapshot,
+            player: { ...current.payload.snapshot.player, displayName },
+          },
+        },
+      };
+    },
   );
 }
 

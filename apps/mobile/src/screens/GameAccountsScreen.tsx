@@ -35,7 +35,7 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
-import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
+import { patchMaimaiPlayerDisplayName } from '@/services/invalidate-account-data';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -121,10 +121,15 @@ export function GameAccountsScreen() {
       );
       await localAccounts.upsert({ id: account.id, displayName: account.displayName });
       upsertBoundAccount(account);
-      selectBoundAccount(account.id);
-      await sessions.setActiveAccountId(account.id);
+      // Close the picker first; switching account + opening rename in the same
+      // tick stacks formSheet dismiss, pageSheet present, keyboard, and query
+      // refetch — which freezes the UI and can stretch the iOS tab bar.
       setPickerVisible(false);
-      setRenameAccount(account);
+      InteractionManager.runAfterInteractions(() => {
+        selectBoundAccount(account.id);
+        void sessions.setActiveAccountId(account.id);
+        setRenameAccount(account);
+      });
     } catch (error) {
       showNotification({
         title: '添加失败',
@@ -139,7 +144,7 @@ export function GameAccountsScreen() {
   const saveLocalAccountName = async (account: BoundAccount, displayName: string) => {
     await localAccounts.upsert({ id: account.id, displayName });
     renameLocalAccount(account.id, displayName);
-    await invalidateAccountDataQueries(queryClient);
+    patchMaimaiPlayerDisplayName(account.id, displayName, queryClient);
     setMessage(`已将本地玩家改名为「${displayName}」`);
   };
 
