@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
+import { AccentColorPicker } from '@/components/AccentColorPicker';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { APP_ACCENTS, useAppTheme } from '@/theme/app-theme';
+import { HUE_SPECTRUM } from '@/theme/accent-color';
 import { useThemeStore } from '@/state/theme-store';
 import type { AppAppearance } from '@/storage/theme-preferences-store';
 
@@ -14,8 +18,11 @@ export default function SettingsScreen() {
   const theme = useAppTheme();
   const appearance = useThemeStore((state) => state.appearance);
   const accent = useThemeStore((state) => state.accent);
+  const customHex = useThemeStore((state) => state.customHex);
   const setAppearance = useThemeStore((state) => state.setAppearance);
   const setAccent = useThemeStore((state) => state.setAccent);
+  const setCustomAccent = useThemeStore((state) => state.setCustomAccent);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   return (
     <ScrollView
@@ -41,6 +48,21 @@ export default function SettingsScreen() {
             onPress={() => void setAccent(option.id)} style={[styles.swatchFrame, accent === option.id && { borderColor: theme.text }]}>
             <View style={[styles.swatch, { backgroundColor: option.color }]} />
           </Pressable>)}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="主题色 自定义"
+            accessibilityState={{ selected: accent === 'custom' }}
+            onPress={() => setPickerOpen(true)}
+            style={[styles.swatchFrame, accent === 'custom' && { borderColor: theme.text }]}
+          >
+            {accent === 'custom'
+              ? <View style={[styles.swatch, { backgroundColor: customHex }]} />
+              : (
+                <LinearGradient colors={[...HUE_SPECTRUM] as [string, string, ...string[]]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.swatch}>
+                  <Text style={styles.customMark}>+</Text>
+                </LinearGradient>
+              )}
+          </Pressable>
         </View>
       </View>
       <Pressable
@@ -54,6 +76,15 @@ export default function SettingsScreen() {
         </View>
         <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
       </Pressable>
+      <AccentColorPicker
+        visible={pickerOpen}
+        initialHex={accent === 'custom' ? customHex : theme.accent}
+        onClose={() => setPickerOpen(false)}
+        onApply={(hex) => {
+          void setCustomAccent(hex);
+          setPickerOpen(false);
+        }}
+      />
     </ScrollView>
   );
 }
@@ -80,5 +111,6 @@ const styles = StyleSheet.create({
   option: { flex: 1, minHeight: 38, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   swatchFrame: { width: 38, height: 38, borderWidth: 2, borderColor: 'transparent', borderRadius: 19, padding: 3 },
-  swatch: { flex: 1, borderRadius: 16 },
+  swatch: { flex: 1, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  customMark: { color: '#FFF', fontSize: 18, fontWeight: '800', textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 2 },
 });
