@@ -17,6 +17,7 @@ import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import {
   createAdditionalLocalMaimaiAccountId,
   createLocalMaimaiAccount,
+  createMaxedMaimaiTestAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
@@ -33,8 +34,9 @@ import { useGamePickerUi } from '@/state/game-picker-ui';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { queryClient } from '@/state/query-client';
-import { useSession } from '@/state/session-store';
+import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
+import { DemoAccountStore } from '@/storage/demo-account-store';
 import { patchMaimaiPlayerDisplayName } from '@/services/invalidate-account-data';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
@@ -42,6 +44,7 @@ import { useAppTheme } from '@/theme/app-theme';
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
 const localAccounts = new LocalAccountStore();
+const demoAccounts = new DemoAccountStore();
 
 function sessionModeLabel(session: ProviderSession | undefined): string {
   if (!session) return '无凭据';
@@ -114,10 +117,13 @@ export function GameAccountsScreen() {
     setBusy(true);
     try {
       const localCount = boundAccounts.filter((account) => account.providerId === 'local').length;
+      const accountId = localCount === 0
+        ? LOCAL_MAIMAI_ACCOUNT_ID
+        : createAdditionalLocalMaimaiAccountId(boundAccounts.map((item) => item.id));
       const account = createLocalMaimaiAccount(
-        `本地玩家 ${localCount + 1}`,
+        localCount === 0 ? '本地玩家' : `本地玩家 ${localCount + 1}`,
         0,
-        createAdditionalLocalMaimaiAccountId(boundAccounts.map((item) => item.id)),
+        accountId,
       );
       await localAccounts.upsert({ id: account.id, displayName: account.displayName });
       upsertBoundAccount(account);
@@ -141,11 +147,52 @@ export function GameAccountsScreen() {
     }
   };
 
+  const addDemoAccount = async () => {
+    setBusy(true);
+    try {
+      const existing = boundAccounts.find((account) => account.providerId === 'maimai-test');
+      if (existing) {
+        setPickerVisible(false);
+        InteractionManager.runAfterInteractions(() => {
+          onSelectAccount(existing);
+          setMessage(`示例账号「${existing.displayName}」已在列表中，已切换到该账号`);
+        });
+        return;
+      }
+      const account = createMaxedMaimaiTestAccount();
+      await demoAccounts.upsert({ id: account.id, displayName: account.displayName });
+      upsertBoundAccount(account);
+      setPickerVisible(false);
+      InteractionManager.runAfterInteractions(() => {
+        selectBoundAccount(account.id);
+        void sessions.setActiveAccountId(account.id);
+        setMessage(`已添加示例账号「${account.displayName}」`);
+      });
+    } catch (error) {
+      showNotification({
+        title: '添加失败',
+        message: error instanceof Error ? error.message : '无法添加示例账号，请重试。',
+        variant: 'error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveLocalAccountName = async (account: BoundAccount, displayName: string) => {
     await localAccounts.upsert({ id: account.id, displayName });
     renameLocalAccount(account.id, displayName);
     patchMaimaiPlayerDisplayName(account.id, displayName, queryClient);
     setMessage(`已将本地玩家改名为「${displayName}」`);
+  };
+
+  const persistActiveAccountId = async () => {
+    const nextId = useSession.getState().activeAccountId;
+    if (!nextId || nextId === UNBOUND_ACCOUNT_ID) {
+      await sessions.setActiveAccountId(null);
+      return;
+    }
+    await sessions.setActiveAccountId(nextId);
   };
 
   const removeLocalAccount = async (account: BoundAccount) => {
@@ -154,14 +201,21 @@ export function GameAccountsScreen() {
     try { await localAccounts.remove(account.id); } catch { failures.push('账号'); }
     try { await snapshots.clear(account.id); } catch { failures.push('成绩'); }
     removeBoundAccount(account.id);
-    if (account.id === activeAccountId) {
-      selectBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
-      await sessions.setActiveAccountId(LOCAL_MAIMAI_ACCOUNT_ID);
-    }
+    await persistActiveAccountId();
     clearRemoteCaches();
     setMessage(failures.length > 0
       ? `本地玩家已从列表移除，但${failures.join('、')}数据清理失败`
       : `已删除本地玩家「${account.displayName}」`);
+    setBusy(false);
+  };
+
+  const removeDemoAccount = async (account: BoundAccount) => {
+    setBusy(true);
+    try { await demoAccounts.remove(account.id); } catch { /* ignore */ }
+    removeBoundAccount(account.id);
+    await persistActiveAccountId();
+    clearRemoteCaches();
+    setMessage(`已删除示例账号「${account.displayName}」`);
     setBusy(false);
   };
 
@@ -172,6 +226,16 @@ export function GameAccountsScreen() {
     actions: [
       { label: '取消', tone: 'cancel' },
       { label: '删除', tone: 'destructive', onPress: () => removeLocalAccount(account) },
+    ],
+  });
+
+  const promptRemoveDemo = (account: BoundAccount) => showActionNotification({
+    title: '删除示例账号',
+    message: `将移除「${account.displayName}」。之后可在添加菜单中重新加入示例查分器。`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '删除', tone: 'destructive', onPress: () => removeDemoAccount(account) },
     ],
   });
 
@@ -192,9 +256,7 @@ export function GameAccountsScreen() {
       return;
     }
     if (provider.id === 'maimai-test') {
-      const account = boundAccounts.find((item) => item.providerId === provider.id);
-      if (account) onSelectAccount(account);
-      setPickerVisible(false);
+      void addDemoAccount();
       return;
     }
     setExpandedPickerGameId(gameId);
@@ -252,7 +314,9 @@ export function GameAccountsScreen() {
                 ? `登录方式：${sessionModeLabel(accountSession)}`
                 : `数据来源：${account.providerTitle}`}
         </Text>
-        <Text style={[styles.state, { color: theme.accent }]}>{isActive ? '当前使用中' : isLocal || isGeneratedTest ? '内置账号' : '已绑定'}</Text>
+        <Text style={[styles.state, { color: theme.accent }]}>
+          {isActive ? '当前使用中' : isLocal || isGeneratedTest ? '可随时删除' : '已绑定'}
+        </Text>
         {!isActive ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`切换到 ${account.displayName}`}
             disabled={busy} onPress={() => onSelectAccount(account)}>
@@ -265,10 +329,15 @@ export function GameAccountsScreen() {
             <Text style={[styles.rename, { color: theme.accent }]}>修改名称</Text>
           </Pressable>
         ) : null}
-        {isLocal && account.id !== LOCAL_MAIMAI_ACCOUNT_ID ? (
+        {isLocal ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`删除本地玩家 ${account.displayName}`}
             disabled={busy} onPress={() => promptRemoveLocal(account)}>
             <Text style={styles.unbind}>删除本地玩家</Text>
+          </Pressable>
+        ) : isGeneratedTest ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`删除示例账号 ${account.displayName}`}
+            disabled={busy} onPress={() => promptRemoveDemo(account)}>
+            <Text style={styles.unbind}>删除示例账号</Text>
           </Pressable>
         ) : isRemote ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}

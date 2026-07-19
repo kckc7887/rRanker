@@ -59,8 +59,8 @@ export const GAME_OPTIONS: GameOption[] = [
       },
       {
         id: 'maimai-test',
-        title: '测试查分器',
-        detail: '全曲全谱面满成绩',
+        title: '示例查分器',
+        detail: '全曲全谱面满成绩 · 可删除后重新添加',
         icon: maimaiTestIcon,
         available: true,
       },

@@ -6,7 +6,7 @@ import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
 function generatedSource(): DataSource {
   return {
     kind: 'generated',
-    label: '测试查分器（全谱面满成绩）',
+    label: '示例查分器（全谱面满成绩）',
     updatedAt: new Date().toISOString(),
     isStale: false,
   };
@@ -30,10 +30,15 @@ export function buildMaxedMaimaiRecords(catalog: CatalogSnapshot): ScoreRecord[]
 }
 
 export class MaxedMaimaiTestProvider implements CatalogDrivenScoreProvider {
+  constructor(
+    private readonly accountId = MAIMAI_TEST_ACCOUNT_ID,
+    private readonly displayName = '示例账号',
+  ) {}
+
   async getPlayer(): Promise<Player> {
     return {
-      id: MAIMAI_TEST_ACCOUNT_ID,
-      displayName: '测试玩家',
+      id: this.accountId,
+      displayName: this.displayName,
       rating: 0,
       additionalRating: 0,
       source: generatedSource(),

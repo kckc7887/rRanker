@@ -42,7 +42,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'diving-fish': '水鱼查分器',
   lxns: '落雪查分器',
   local: '本地查分器',
-  'maimai-test': '测试查分器',
+  'maimai-test': '示例查分器',
 };
 
 export function createTestBoundAccount(): BoundAccount {
@@ -74,13 +74,17 @@ export function createLocalMaimaiAccount(
   };
 }
 
-export function createMaxedMaimaiTestAccount(rating = 0): BoundAccount {
+export function createMaxedMaimaiTestAccount(
+  rating = 0,
+  displayName = '示例账号',
+  accountId = MAIMAI_TEST_ACCOUNT_ID,
+): BoundAccount {
   const profile = getGameProfile('maimai');
   return {
-    id: MAIMAI_TEST_ACCOUNT_ID,
+    id: accountId,
     gameId: 'maimai',
     providerId: 'maimai-test',
-    displayName: '测试玩家',
+    displayName,
     scoreLabel: profile.ratingLabel,
     scoreDisplay: formatPlayerScore(rating, profile.ratingDigits),
     providerTitle: PROVIDER_TITLES['maimai-test'],

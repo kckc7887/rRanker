@@ -16,6 +16,10 @@ const mockIsMaimaiMaintenance = jest.fn(() => false);
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
+jest.mock('react-native-gesture-handler', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };
+});
 jest.mock('@/storage/upload-prefs-store', () => ({
   uploadPrefsStore: {
     load: () => mockLoadPrefs(),
@@ -101,7 +105,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     const screen = await renderSheet([testAccount.id], [local, water, testAccount]);
     const localBox = await waitFor(() => screen.getByLabelText('上传到 本地玩家（本地查分器）'));
     const waterBox = screen.getByLabelText('上传到 水鱼玩家（水鱼查分器）');
-    const testBox = screen.getByLabelText(/上传到 .*测试查分器/);
+    const testBox = screen.getByLabelText(/上传到 .*示例查分器/);
     expect(localBox.props.accessibilityState).toMatchObject({ checked: false });
     expect(waterBox.props.accessibilityState).toMatchObject({ checked: false });
     expect(testBox.props.accessibilityState).toMatchObject({ checked: false, disabled: true });

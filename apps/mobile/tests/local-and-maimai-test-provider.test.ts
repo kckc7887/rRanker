@@ -141,7 +141,7 @@ describe('本地查分器', () => {
   });
 });
 
-describe('舞萌测试查分器', () => {
+describe('舞萌示例查分器', () => {
   it('覆盖所有未禁用谱面并生成 AP+、FDX+ 与满 DXScore', () => {
     const records = buildMaxedMaimaiRecords(catalog);
     expect(records).toHaveLength(2);
