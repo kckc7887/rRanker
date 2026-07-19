@@ -40,6 +40,10 @@ jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 34, left: 0 }),
 }));
+jest.mock('react-native-gesture-handler', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };
+});
 jest.mock('@/components/ProviderLoginSheet', () => ({
   ProviderLoginSheet: ({ visible, provider, gameTitle }: {
     visible: boolean;
@@ -77,7 +81,9 @@ jest.mock('@/storage/local-account-store', () => ({
   normalizeLocalPlayerName: (value: string) => value.trim() || null,
 }));
 jest.mock('@/state/query-client', () => ({ queryClient: {
-  invalidateQueries: jest.fn(), removeQueries: (...args: unknown[]) => mockRemoveQueries(...args),
+  invalidateQueries: jest.fn(),
+  setQueriesData: jest.fn(),
+  removeQueries: (...args: unknown[]) => mockRemoveQueries(...args),
 } }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
   session: mockSession,
@@ -188,7 +194,8 @@ describe('M3A game account management', () => {
       id: added.id,
       displayName: '本地玩家 2',
     });
-    expect(mockSelectBoundAccount).toHaveBeenCalledWith(added.id);
+    await waitFor(() => expect(mockSelectBoundAccount).toHaveBeenCalledWith(added.id));
+    await waitFor(() => expect(screen.getByLabelText('本地玩家名称')).toBeTruthy());
   });
 
   it('asks on every unbind and preserves or removes personal data as selected', async () => {
