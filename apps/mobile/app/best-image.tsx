@@ -700,8 +700,6 @@ export default function BestImageScreen() {
             key={`export-${exportPageIndex}-${outputWidth}`}
             accessibilityLabel={`导出渲染 第${exportPageIndex + 1}页`}
             allowFileAccess={Platform.OS === 'android'}
-            // Keep software layer for Android blank-capture devices, but glass now uses
-            // filter:blur plate clones so frosted edges still rasterize under software draw.
             androidLayerType="software"
             bounces={false}
             javaScriptEnabled

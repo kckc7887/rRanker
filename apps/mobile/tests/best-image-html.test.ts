@@ -118,12 +118,10 @@ describe('best image html', () => {
     expect(app).toContain('.profile-banner-app .nameplate-image{object-fit:contain;filter:saturate(1.08)}');
     expect(app).not.toContain('transform:scale(1.03)');
     expect(app).toContain('backdrop-filter:blur(var(--glass-blur-strong)) saturate(110%)');
-    expect(app).toContain('.glass-plate-source{display:none}');
-    expect(app).toContain('html.export-capture .glass-blur-strong .glass-plate-source{filter:blur(var(--glass-blur-strong)) saturate(110%)}');
-    expect(app).toContain("document.documentElement.classList.toggle('export-capture', exportViewport)");
+    expect(app).not.toContain('glass-plate-source');
+    expect(app).not.toContain('export-capture');
     expect(app).toContain('.profile-glass{position:absolute;z-index:0;left:0;top:0;bottom:0;width:var(--glass-physical-width,60%);overflow:hidden');
     expect(app).toContain("banner.style.setProperty('--glass-physical-width'");
-    expect(app).toContain("banner.style.setProperty('--glass-banner-width'");
     expect(app).toContain("canvas.style.transform = 'scale(1)'");
     expect(app).toContain('.profile-banner-app .avatar{position:relative;z-index:1;width:130px;height:130px;');
     expect(app).toContain('overflow:visible;border:0;background:transparent');
