@@ -11,6 +11,7 @@ import type { BestListSection } from '@/domain/game-data';
 import type { ScoreRecord } from '@/domain/models';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
+import { useAppTheme } from '@/theme/app-theme';
 
 function byRating(left: ScoreRecord, right: ScoreRecord): number {
   return right.rating - left.rating || right.achievements - left.achievements;
@@ -23,6 +24,7 @@ export default function Best50TabScreen() {
 export function Best50Screen() {
   const { data, isLoading, isError, error, refetch } = useGameData();
   const tabBottomInset = useNativeTabBottomInset();
+  const theme = useAppTheme();
   const sections = useMemo(() => {
     if (!data || data.payload.kind !== 'maimai') return [];
     return data.payload.bestSections.map((section) => ({
@@ -34,18 +36,18 @@ export function Best50Screen() {
   const maimai = data?.payload.kind === 'maimai' ? data.payload : null;
 
   if (!isLoading && data && data.payload.kind !== 'maimai') {
-    return <EmptyDataView title="暂无最佳成绩" detail="空空空" />;
+    return <EmptyDataView title="暂无最佳成绩" detail="当前游戏暂未接入最佳成绩" />;
   }
 
   return (
-    <View style={styles.page}>
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
       <QueryStateView<(BestListSection & { data: ScoreRecord[] })[]>
         isLoading={isLoading}
         isError={isError}
         isEmpty={!!maimai && recordCount === 0}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
-        emptyText="空空空"
+        emptyText="当前账号暂无最佳成绩"
         data={recordCount > 0 ? sections : undefined}
         renderData={(list) => (
           <SectionList
@@ -63,7 +65,7 @@ export function Best50Screen() {
                 accessibilityLabel="生成成绩图片"
                 accessibilityRole="button"
                 onPress={() => router.push('/best-image' as Href)}
-                style={styles.generateButton}
+                style={[styles.generateButton, { backgroundColor: theme.accent }]}
               >
                 <Text style={styles.generateButtonText}>生成成绩图片</Text>
               </Pressable>
@@ -71,11 +73,10 @@ export function Best50Screen() {
                 { key: 'scores', label: maimai.source.label, updatedAt: maimai.source.updatedAt, state: maimai.source.isStale ? 'cache' : 'live' },
                 { key: 'catalog', label: maimai.catalogSource.label, updatedAt: maimai.catalogSource.updatedAt, state: maimai.catalogSource.isStale ? 'cache' : 'live' },
               ] : []} />
-              <Text style={styles.note}>当前版本：{maimai?.currentVersionTitle}；无法匹配的 {maimai?.unmatchedRecordCount ?? 0} 条成绩未计入。</Text>
             </View>}
             renderSectionHeader={({ section }) => <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-              <Text style={styles.sectionCount}>{section.data.length} 张谱面</Text>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
+              <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 张谱面</Text>
             </View>}
             renderItem={({ item, index }) => <ScoreRecordCard record={item} rank={index + 1} />}
           />

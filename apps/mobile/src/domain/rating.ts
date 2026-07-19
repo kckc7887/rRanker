@@ -20,6 +20,10 @@ export function ratingTable(difficultyConstant: number): { achievement: number; 
     .map(([achievement]) => ({ achievement, rating: calculateChartRating(difficultyConstant, achievement) }));
 }
 
+export function ratingTableDescending(difficultyConstant: number): { achievement: number; rating: number }[] {
+  return ratingTable(difficultyConstant).reverse();
+}
+
 export function minimumAchievementForRating(difficultyConstant: number, targetRating: number): number | null {
   if (!Number.isFinite(difficultyConstant) || difficultyConstant <= 0 || !Number.isInteger(targetRating) || targetRating < 0) return null;
   if (calculateChartRating(difficultyConstant, 101) < targetRating) return null;

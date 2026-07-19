@@ -25,4 +25,9 @@ describe('filterSongs', () => {
     expect(matched).toHaveLength(1);
     expect(matched[0].title).toBe('マスカレイド・マスカレード');
   });
+  it('matches kana titles by Hepburn romaji with compact punctuation', () => {
+    const matched = filterSongs(fixtureSongs, 'masukareidomasukareedo');
+    expect(matched).toHaveLength(1);
+    expect(matched[0].title).toBe('マスカレイド・マスカレード');
+  });
 });

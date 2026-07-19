@@ -45,7 +45,7 @@ export function useGameData() {
             kind: 'unsupported',
             gameId: 'phigros',
             displayName: 'Phigros',
-            message: '空空空，暂未接入成绩。',
+            message: '当前游戏暂未接入成绩。',
           },
         };
       }

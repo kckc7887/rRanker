@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { ViewStyle } from 'react-native';
+import { useAppTheme } from '@/theme/app-theme';
 
 export interface CardProps {
   children: ReactNode;
@@ -9,12 +10,12 @@ export interface CardProps {
 }
 
 export function Card({ children, style, testID }: CardProps) {
-  return <View testID={testID} style={[styles.card, style]}>{children}</View>;
+  const theme = useAppTheme();
+  return <View testID={testID} style={[styles.card, { backgroundColor: theme.surface }, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 14,
     padding: 18,
   },

@@ -21,7 +21,7 @@ import { TagEditor } from '@/components/TagEditor';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
 import type { Chart, ChartNotes, ChartType, CollectionItem, Difficulty, ScoreRecord, Song } from '@/domain/models';
-import { chartLibraryKey, songLibraryKey } from '@/domain/user-library';
+import { buildTagHistory, chartLibraryKey, songLibraryKey } from '@/domain/user-library';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
 import {
   normalizeTrophyTone,
@@ -31,6 +31,7 @@ import { useCollections } from '@/hooks/use-collections';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
+import { useAppTheme } from '@/theme/app-theme';
 
 const CARD_GAP = 12;
 const DIFFICULTY_ORDER: Record<Difficulty, number> = {
@@ -40,6 +41,7 @@ const DIFFICULTY_ORDER: Record<Difficulty, number> = {
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
 export default function SongDetailScreen() {
+  const theme = useAppTheme();
   const { songId, chartType, levelIndex } = useLocalSearchParams<{
     songId: string; chartType?: string; levelIndex?: string;
   }>();
@@ -66,7 +68,7 @@ export default function SongDetailScreen() {
       headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
     }} />
     <StatusBar style="light" />
-    <View style={styles.page}>
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
       <QueryStateView<Song> isLoading={catalog.isLoading} isError={catalog.isError} isEmpty={!!catalog.data && !song}
         error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}
@@ -133,6 +135,7 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
   initialChartType?: ChartType;
   initialLevelIndex?: number;
 }) {
+  const theme = useAppTheme();
   const { width } = useWindowDimensions();
   const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
   const songItem = library.data?.find((item) => item.key === songLibraryKey(song.id));
@@ -165,7 +168,7 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
       </View>
     </View>
 
-    <View style={styles.metadataTable} accessibilityLabel="歌曲详情数据">
+    <View style={[styles.metadataTable, { backgroundColor: theme.surface, borderBottomColor: theme.border }]} accessibilityLabel="歌曲详情数据">
       <MetadataCell label="分类" value={song.genre ?? '未知'} flex={1} />
       <MetadataCell label="BPM" value={song.bpm?.toString() ?? '未知'} flex={0.65} />
       <VersionMetadataCell value={versionName}
@@ -185,7 +188,9 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
       <SongCollectionsCard songId={song.id} />
       <Card><Text style={styles.section}>歌曲信息</Text><AliasLine aliases={song.aliases} />
         <Text style={styles.body}>版权：{song.rights || '未提供'}</Text><Text style={styles.body}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
-      <Card><TagEditor tags={songItem?.tags ?? []} disabled={library.isUpdating}
+      <Card><TagEditor tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
+        historyTags={buildTagHistory(library.data ?? [], songLibraryKey(song.id), library.tagPresets ?? [])}
+        disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
         onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
     </View>
   </ScrollView>;
@@ -309,16 +314,18 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
 function MetadataValue({ label, value, expanded, onOverflowChange }: {
   label: string; value: string; expanded: boolean; onOverflowChange: (overflow: boolean) => void;
 }) {
+  const theme = useAppTheme();
   return <View style={styles.metadataValueBlock}>
     <Text accessible={false} testID={`metadata-measure-${label}`}
-      style={[styles.metadataValue, styles.metadataValueMeasure]}
+      style={[styles.metadataValue, styles.metadataValueMeasure, { color: theme.text }]}
       onTextLayout={(event) => onOverflowChange(event.nativeEvent.lines.length > 2)}>{value}</Text>
     <Text testID={`metadata-value-${label}`} numberOfLines={expanded ? undefined : 2} ellipsizeMode="tail"
-      style={styles.metadataValue}>{value}</Text>
+      style={[styles.metadataValue, { color: theme.text }]}>{value}</Text>
   </View>;
 }
 
 function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
+  const theme = useAppTheme();
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => { setExpanded(false); setOverflow(false); }, [value]);
@@ -326,7 +333,7 @@ function MetadataCell({ label, value, flex }: { label: string; value: string; fl
     <DetailPressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
       accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}${label}` : undefined}
       onPress={() => setExpanded((current) => !current)} style={styles.metadataCell}>
-      <Text numberOfLines={1} style={styles.metadataLabel}>{label}</Text>
+      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>{label}</Text>
       <MetadataValue label={label} value={value} expanded={expanded} onOverflowChange={setOverflow} />
     </DetailPressable>
   </DetailGestureRoot>;
@@ -417,31 +424,37 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
   canSwitchChartType: boolean;
   onToggleChartType: () => void;
 }) {
+  const theme = useAppTheme();
   const visual = DIFFICULTY_VISUAL[chart.difficulty];
   const chartItem = library.data?.find((item) => item.key === chartLibraryKey(song.id, chart.type, chart.levelIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const chartTypeKeyword = canSwitchChartType ? ` ${chart.type}` : '';
   const chartSearchQuery = `${song.title}${chartTypeKeyword} ${visual.label} 谱面确认`;
-  return <View style={[styles.chartCard, { width, backgroundColor: visual.tint, borderColor: visual.color }]}>
+  return <View style={[styles.chartCard, { width, backgroundColor: theme.dark ? theme.surface : visual.tint, borderColor: visual.color }]}>
     <View style={styles.chartHeader}>
       <View style={styles.chartIdentity}>
         <DifficultyBadge difficulty={chart.difficulty} />
         <ChartTypeSwitch type={chart.type} canSwitch={canSwitchChartType} onToggle={onToggleChartType} />
       </View>
-      <View style={styles.levelBlock}><Text style={styles.level}>{chart.level}</Text><Text style={styles.constant}>{chart.difficultyConstant.toFixed(1)}</Text></View>
+      <View style={styles.levelBlock}><Text style={[styles.level, { color: theme.text }]}>{chart.level}</Text><Text style={[styles.constant, { color: theme.textMuted }]}>{chart.difficultyConstant.toFixed(1)}</Text></View>
     </View>
     <View style={styles.resultRow}>
       <View style={styles.resultMain}>
-        <Text style={styles.achievementLabel}>达成率</Text>
+        <Text style={[styles.achievementLabel, { color: theme.textMuted }]}>达成率</Text>
         <AchievementValue value={best?.achievements} />
         <View style={styles.statusRow}>
           <ScoreStatusBadges rate={best?.rate} achievements={best?.achievements} fc={best?.fc} fs={best?.fs} />
         </View>
-        <Text style={styles.rating}>Rating <Text style={styles.ratingValue}>{best?.rating ?? '—'}</Text></Text>
+        <DetailPressable accessibilityRole="link" accessibilityLabel={`使用定数 ${chart.difficultyConstant.toFixed(1)} 打开 Rating 计算器`}
+          onPress={() => router.push({ pathname: '/tools/rating', params: { constant: chart.difficultyConstant.toFixed(1) } } as Href)}
+          style={({ pressed }) => [styles.ratingAction, pressed && styles.switchPressed]}>
+          <Text style={[styles.rating, { color: theme.textMuted }]}>Rating <Text style={[styles.ratingValue, { color: theme.text }]}>{best?.rating ?? '—'}</Text></Text>
+          <Text style={[styles.ratingHint, { color: theme.textMuted }]}>点击 Rating，前往计算器并带入定数</Text>
+        </DetailPressable>
       </View>
     </View>
-    <View style={styles.chartDivider} />
-    <Text style={styles.chartMeta}>谱师：{chart.charter || '未提供'}</Text>
+    <View style={[styles.chartDivider, { backgroundColor: theme.border }]} />
+    <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
     <NotesTable notes={chart.notes} />
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
@@ -454,7 +467,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
       style={[styles.action, styles.chartSearchAction, { borderColor: visual.color }]}>
       <Text style={[styles.actionText, { color: visual.color }]}>搜索谱面确认</Text>
     </DetailPressable>
-    <TagEditor tags={chartItem?.tags ?? []} disabled={library.isUpdating}
+    <TagEditor tags={chartItem?.tags ?? []} presets={library.tagPresets ?? []}
+      historyTags={buildTagHistory(library.data ?? [], chartLibraryKey(song.id, chart.type, chart.levelIndex), library.tagPresets ?? [])}
+      disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
   </View>;
 }
@@ -477,7 +492,8 @@ const NOTE_COLUMNS: readonly { label: string; key: keyof ChartNotes }[] = [
 ];
 
 function NotesTable({ notes }: { notes?: ChartNotes }) {
-  if (!notes) return <Text style={styles.chartMeta}>物量未提供</Text>;
+  const theme = useAppTheme();
+  if (!notes) return <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>物量未提供</Text>;
   const openTolerance = () => router.push({
     pathname: '/tools/tolerance',
     params: {
@@ -487,22 +503,24 @@ function NotesTable({ notes }: { notes?: ChartNotes }) {
   } as Href);
   return <DetailPressable accessibilityRole="button" accessibilityLabel="使用此谱面物量计算容错"
     onPress={openTolerance} style={({ pressed }) => [styles.notesAction, pressed && styles.notesActionPressed]}>
-    <View accessibilityLabel="谱面物量" style={styles.notesTable}>
+    <View accessibilityLabel="谱面物量" style={[styles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
       <View style={[styles.notesRow, styles.notesHeaderRow]}>
         {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
-          style={[styles.notesCell, styles.notesHeader]}>{column.label}</Text>)}
+          style={[styles.notesCell, styles.notesHeader, { color: theme.textMuted }]}>{column.label}</Text>)}
       </View>
       <View style={styles.notesRow}>
         {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
-          style={[styles.notesCell, styles.notesValue]}>{notes[column.key]}</Text>)}
+          style={[styles.notesCell, styles.notesValue, { color: theme.text }]}>{notes[column.key]}</Text>)}
       </View>
     </View>
-    <Text style={styles.notesHint}>点击物量表，前往达成率与容错计算</Text>
+    <Text style={[styles.notesHint, { color: theme.textMuted }]}>点击物量表，前往达成率与容错计算</Text>
   </DetailPressable>;
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
+  ratingAction: { alignSelf: 'flex-start', gap: 3 },
+  ratingHint: { color: '#6B7280', fontSize: 11 },
   content: { paddingBottom: 48 },
   hero: { position: 'relative', backgroundColor: '#D9DEE7', overflow: 'hidden' },
   heroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },

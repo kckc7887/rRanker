@@ -12,6 +12,7 @@ describe('useCatalogFilter store', () => {
     state.setConstantMax('14.9');
     state.setVersion('25500');
     state.setVersionLocale('japan');
+    state.setCollapsed(true);
 
     expect(useCatalogFilter.getState()).toEqual(expect.objectContaining({
       keyword: '宴会场',
@@ -21,15 +22,17 @@ describe('useCatalogFilter store', () => {
       constantMax: '14.9',
       version: '25500',
       versionLocale: 'japan',
+      collapsed: true,
     }));
   });
 
   it('resets every filter to its default', () => {
     useCatalogFilter.getState().setKeyword('test');
     useCatalogFilter.getState().setVersionLocale('japan');
+    useCatalogFilter.getState().setCollapsed(true);
     useCatalogFilter.getState().reset();
     expect(useCatalogFilter.getState()).toEqual(expect.objectContaining({
-      keyword: '', type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all', versionLocale: 'china',
+      keyword: '', collapsed: false, type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all', versionLocale: 'china',
     }));
   });
 });

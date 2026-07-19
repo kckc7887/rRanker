@@ -6,11 +6,13 @@ import type { Song } from '@/domain/models';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useUserLibrary } from '@/hooks/use-user-library';
+import { useAppTheme } from '@/theme/app-theme';
 
 type Mode = 'all' | 'favorite' | 'practice';
 
 export default function UserLibraryScreen() {
   const library = useUserLibrary();
+  const theme = useAppTheme();
   const catalog = useDetailedCatalog();
   const [mode, setMode] = useState<Mode>('all');
   const [tag, setTag] = useState<string>();
@@ -22,7 +24,7 @@ export default function UserLibraryScreen() {
   }), [library.data, mode, tag]);
   const tags = useMemo(() => [...new Set((library.data ?? []).flatMap((item) => item.tags))].sort(), [library.data]);
 
-  return <View style={styles.page}>
+  return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <View style={styles.filters}>
       <View style={styles.chips}>
         <Chip label="全部" active={mode === 'all'} onPress={() => setMode('all')} />
@@ -34,30 +36,32 @@ export default function UserLibraryScreen() {
         {tags.map((item) => <Chip key={item} label={item} active={tag === item} onPress={() => setTag(tag === item ? undefined : item)} />)}
       </View> : null}
     </View>
-    {library.isLoading ? <ActivityIndicator style={styles.center} color="#246BFD" /> : library.isError ?
-      <View style={styles.center}><Text style={styles.error}>个人数据加载失败</Text><Pressable onPress={() => void library.refetch()}><Text style={styles.link}>重试</Text></Pressable></View> :
+    {library.isLoading ? <ActivityIndicator style={styles.center} color={theme.accent} /> : library.isError ?
+      <View style={styles.center}><Text style={[styles.error, { color: theme.danger }]}>个人数据加载失败</Text><Pressable onPress={() => void library.refetch()}><Text style={[styles.link, { color: theme.accent }]}>重试</Text></Pressable></View> :
       <FlatList data={items} keyExtractor={(item) => item.key} contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={styles.empty}>{library.data?.length ? '当前筛选没有项目' : '还没有收藏、练习谱面或本地标签'}</Text>}
+        ListEmptyComponent={<Text style={[styles.empty, { color: theme.textMuted }]}>{library.data?.length ? '当前筛选没有项目' : '还没有收藏、练习谱面或本地标签'}</Text>}
         renderItem={({ item }) => <LibraryRow item={item} song={songsById.get(item.songId)} />} />}
   </View>;
 }
 
 function LibraryRow({ item, song }: { item: UserLibraryItem; song?: Song }) {
+  const theme = useAppTheme();
   const chart = item.kind === 'chart' ? song?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex) : undefined;
-  return <Pressable accessibilityRole="button" onPress={() => router.push(`/songs/${encodeURIComponent(item.songId)}` as Href)} style={styles.row}>
+  return <Pressable accessibilityRole="button" onPress={() => router.push(`/songs/${encodeURIComponent(item.songId)}` as Href)} style={[styles.row, { backgroundColor: theme.surface }]}>
     <SongCover songId={item.songId} />
     <View style={styles.main}>
-      <Text numberOfLines={2} style={styles.title}>{song?.title ?? `歌曲 ID ${item.songId}`}</Text>
-      <Text style={styles.meta}>{item.kind === 'song' ? (item.favorite ? '已收藏歌曲' : '歌曲标签') :
+      <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>{song?.title ?? `歌曲 ID ${item.songId}`}</Text>
+      <Text style={[styles.meta, { color: theme.textSecondary }]}>{item.kind === 'song' ? (item.favorite ? '已收藏歌曲' : '歌曲标签') :
         `${item.practice ? '练习谱面' : '谱面标签'} · ${item.type} ${chart?.difficulty.toUpperCase() ?? `难度 ${item.levelIndex}`}`}</Text>
       {!song ? <Text style={styles.warning}>曲库暂不可用，个人数据已保留</Text> : null}
-      {item.tags.length ? <Text numberOfLines={2} style={styles.tagsText}>{item.tags.join(' · ')}</Text> : null}
+      {item.tags.length ? <Text numberOfLines={2} style={[styles.tagsText, { color: theme.accent }]}>{item.tags.join(' · ')}</Text> : null}
     </View>
   </Pressable>;
 }
 
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}><Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text></Pressable>;
+  const theme = useAppTheme();
+  return <Pressable onPress={onPress} style={[styles.chip, { backgroundColor: theme.surfaceMuted }, active && { backgroundColor: theme.accent }]}><Text style={[styles.chipText, { color: theme.textSecondary }, active && styles.chipTextActive]}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({

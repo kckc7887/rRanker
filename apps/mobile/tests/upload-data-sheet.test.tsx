@@ -11,6 +11,7 @@ const mockLoadPrefs = jest.fn(async (): Promise<TestUploadPrefs> => ({
   friendCode: '', selectedAccountIds: [],
 }));
 const mockSavePrefs = jest.fn(async (_prefs: TestUploadPrefs) => undefined);
+const mockIsMaimaiMaintenance = jest.fn(() => false);
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -20,6 +21,10 @@ jest.mock('@/storage/upload-prefs-store', () => ({
     load: () => mockLoadPrefs(),
     save: (prefs: TestUploadPrefs) => mockSavePrefs(prefs),
   },
+}));
+jest.mock('@/domain/maimai-maintenance', () => ({
+  isMaimaiMaintenanceWindow: () => mockIsMaimaiMaintenance(),
+  MAIMAI_MAINTENANCE_MESSAGE: '维护窗口说明',
 }));
 
 const local = createLocalMaimaiAccount('本地玩家', 0);
@@ -62,6 +67,7 @@ function renderSheet(temporarySelectedAccountIds?: readonly string[], accounts =
 describe('当前查分器上传弹窗临时选项', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsMaimaiMaintenance.mockReturnValue(false);
     mockLoadPrefs.mockResolvedValue({
       friendCode: '111111111111111',
       selectedAccountIds: [water.id],
@@ -111,5 +117,14 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.getByText('请输入 15 位数字好友码。')).toBeTruthy();
     expect(screen.getByTestId('app-notification-outlet-overlay')).toBeTruthy();
     expect(screen.queryByTestId('app-notification-root-overlay')).toBeNull();
+  });
+
+  it('维护窗口内停止上传并显示统一通知', async () => {
+    mockIsMaimaiMaintenance.mockReturnValue(true);
+    const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    expect(await screen.findByText('游戏服务器维护中')).toBeTruthy();
+    expect(screen.getByText('维护窗口说明')).toBeTruthy();
   });
 });

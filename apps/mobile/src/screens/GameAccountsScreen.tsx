@@ -13,10 +13,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GamePickerSheet } from '@/components/GamePickerSheet';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
+import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import {
   createAdditionalLocalMaimaiAccountId,
   createLocalMaimaiAccount,
-  groupBoundAccountGameIds,
   LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
@@ -37,6 +37,7 @@ import { useSession } from '@/state/session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
 import { useNotification } from '@/components/AppNotification';
+import { useAppTheme } from '@/theme/app-theme';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -51,6 +52,7 @@ function sessionModeLabel(session: ProviderSession | undefined): string {
 }
 
 export function GameAccountsScreen() {
+  const theme = useAppTheme();
   const { showActionNotification, showNotification } = useNotification();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
@@ -65,7 +67,6 @@ export function GameAccountsScreen() {
   const expandedPickerGameId = useGamePickerUi((s) => s.expandedGameId);
   const setExpandedPickerGameId = useGamePickerUi((s) => s.setExpandedGameId);
   const toggleExpandedPickerGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
-  const [collapsedGameIds, setCollapsedGameIds] = useState<Set<GameId>>(() => new Set());
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -74,7 +75,7 @@ export function GameAccountsScreen() {
   const [reopenPickerAfterLogin, setReopenPickerAfterLogin] = useState(false);
   const [renameAccount, setRenameAccount] = useState<BoundAccount | null>(null);
 
-  const gameIds = groupBoundAccountGameIds(boundAccounts);
+  const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
 
   const clearRemoteCaches = () => {
     for (const key of ['score-snapshot', 'game-data', 'songs', 'detailed-catalog', 'plates']) {
@@ -219,28 +220,25 @@ export function GameAccountsScreen() {
     void sessions.setActiveAccountId(account.id);
   };
 
-  const toggleGame = (gameId: GameId) => {
-    setCollapsedGameIds((current) => {
-      const next = new Set(current);
-      if (next.has(gameId)) next.delete(gameId);
-      else next.add(gameId);
-      return next;
-    });
-  };
+  const toggleGame = (gameId: GameId) => setCollapsedManagedGameIds((current) => {
+    const next = new Set(current);
+    if (next.has(gameId)) next.delete(gameId);
+    else next.add(gameId);
+    return next;
+  });
 
-  const renderAccount = (account: BoundAccount) => {
+  const renderAccountActions = (account: BoundAccount) => {
     const accountSession = sessionsByAccountId[account.id];
-    const gameTitle = findGame(account.gameId)?.title ?? account.gameId;
     const isActive = account.id === activeAccountId;
     const isLocal = account.providerId === 'local';
     const isGeneratedTest = account.providerId === 'maimai-test';
     const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns';
     return (
-      <View key={account.id} style={styles.card} testID={`account-card-${account.id}`}>
-        <Text style={styles.game}>{gameTitle} · {account.providerTitle}</Text>
-        <Text style={styles.name}>{account.displayName}</Text>
-        <Text style={styles.meta}>{account.scoreLabel} {account.scoreDisplay || '—'}</Text>
-        <Text style={styles.meta}>
+      <>
+        <Text style={[styles.game, { color: theme.textMuted }]}>
+          {findGame(account.gameId)?.title} · {account.providerTitle}
+        </Text>
+        <Text style={[styles.meta, { color: theme.textSecondary }]}>
           {isLocal
             ? '数据位置：仅本机 SQLite'
             : isGeneratedTest
@@ -249,17 +247,17 @@ export function GameAccountsScreen() {
                 ? `登录方式：${sessionModeLabel(accountSession)}`
                 : `数据来源：${account.providerTitle}`}
         </Text>
-        <Text style={styles.state}>{isActive ? '当前使用中' : isLocal || isGeneratedTest ? '内置账号' : '已绑定'}</Text>
+        <Text style={[styles.state, { color: theme.accent }]}>{isActive ? '当前使用中' : isLocal || isGeneratedTest ? '内置账号' : '已绑定'}</Text>
         {!isActive ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`切换到 ${account.displayName}`}
             disabled={busy} onPress={() => onSelectAccount(account)}>
-            <Text style={styles.switch}>切换到此账号</Text>
+            <Text style={[styles.switch, { color: theme.accent }]}>切换到此账号</Text>
           </Pressable>
         ) : null}
         {isLocal ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`修改名称 ${account.displayName}`}
             disabled={busy} onPress={() => setRenameAccount(account)}>
-            <Text style={styles.rename}>修改名称</Text>
+            <Text style={[styles.rename, { color: theme.accent }]}>修改名称</Text>
           </Pressable>
         ) : null}
         {isLocal && account.id !== LOCAL_MAIMAI_ACCOUNT_ID ? (
@@ -273,7 +271,7 @@ export function GameAccountsScreen() {
             <Text style={styles.unbind}>解除绑定</Text>
           </Pressable>
         ) : null}
-      </View>
+      </>
     );
   };
 
@@ -282,39 +280,20 @@ export function GameAccountsScreen() {
   const loginVisible = loginProviderId !== null && !pickerVisible;
 
   return (
-    <View style={styles.page}>
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: safeAreaInsets.bottom + 88 }]}
         scrollIndicatorInsets={{ bottom: safeAreaInsets.bottom }}>
         {restoreError ? <Text style={styles.error}>{restoreError}</Text> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
-        {gameIds.length > 0 ? gameIds.map((gameId) => {
-          const game = findGame(gameId);
-          const gameAccounts = boundAccounts.filter((account) => account.gameId === gameId);
-          const expanded = !collapsedGameIds.has(gameId);
-          return (
-            <View key={gameId} style={styles.gameGroup} testID={`managed-game-${gameId}`}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`${expanded ? '收起' : '展开'}游戏 ${game?.title ?? gameId}`}
-                accessibilityState={{ expanded }} onPress={() => toggleGame(gameId)} style={styles.gameGroupHeader}>
-                <Text style={styles.gameGroupTitle}>{game?.title ?? gameId}</Text>
-                <View style={styles.gameGroupSummary}>
-                  <Text style={styles.gameGroupCount}>{gameAccounts.length} 个账号</Text>
-                  <SymbolView name={expanded ? 'chevron.up' : 'chevron.down'} tintColor="#6B7280" size={16}
-                    fallback={<Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color="#6B7280" />} />
-                </View>
-              </Pressable>
-              {expanded ? <View style={styles.gameAccounts}>{gameAccounts.map(renderAccount)}</View> : null}
-            </View>
-          );
-        }) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>暂无已绑定账号</Text>
-            <Text style={styles.emptyBody}>点击右下角添加，展开游戏后选择查分器绑定。同一查分器可绑定多个账号。</Text>
-          </View>
-        )}
+        <BoundAccountGroupedList accounts={boundAccounts} expandedGameId={null}
+          isGameExpanded={(gameId) => !collapsedManagedGameIds.has(gameId)}
+          activeAccountId={activeAccountId} onToggleGame={toggleGame} onSelectAccount={onSelectAccount}
+          renderActions={renderAccountActions}
+          emptyText="暂无已绑定账号。点击右下角添加，展开游戏后选择查分器绑定。" />
       </ScrollView>
 
       <Pressable accessibilityRole="button" accessibilityLabel="添加游戏账号" disabled={busy} onPress={openPicker}
-        style={({ pressed }) => [styles.fab, { bottom: safeAreaInsets.bottom + 20 }, pressed && styles.fabPressed]}>
+        style={({ pressed }) => [styles.fab, { bottom: safeAreaInsets.bottom + 20, backgroundColor: theme.accent }, pressed && styles.fabPressed]}>
         <SymbolView name="plus" tintColor="#FFF" size={28} weight="semibold"
           fallback={<Ionicons name="add" size={28} color="#FFF" />} />
       </Pressable>

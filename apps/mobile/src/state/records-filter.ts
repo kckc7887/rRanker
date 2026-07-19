@@ -3,6 +3,8 @@ import type { ChartType, Difficulty } from '@/domain/models';
 import type { VersionNameLocale } from '@/domain/version-names';
 
 interface RecordsFilterState {
+  keyword: string;
+  collapsed: boolean;
   difficulty: Difficulty | 'all';
   version: string | 'all';
   type: ChartType | 'all';
@@ -10,6 +12,8 @@ interface RecordsFilterState {
   constantMax: string;
   sortBy: 'rating' | 'achievements' | 'title';
   versionLocale: VersionNameLocale;
+  setKeyword: (value: string) => void;
+  setCollapsed: (value: boolean) => void;
   setDifficulty: (d: Difficulty | 'all') => void;
   setVersion: (v: string | 'all') => void;
   setType: (t: ChartType | 'all') => void;
@@ -21,6 +25,8 @@ interface RecordsFilterState {
 }
 
 export const useRecordsFilter = create<RecordsFilterState>((set) => ({
+  keyword: '',
+  collapsed: false,
   difficulty: 'all',
   version: 'all',
   type: 'all',
@@ -28,6 +34,8 @@ export const useRecordsFilter = create<RecordsFilterState>((set) => ({
   constantMax: '',
   sortBy: 'rating',
   versionLocale: 'china',
+  setKeyword: (keyword) => set({ keyword }),
+  setCollapsed: (collapsed) => set({ collapsed }),
   setDifficulty: (difficulty) => set({ difficulty }),
   setVersion: (version) => set({ version }),
   setType: (type) => set({ type }),
@@ -36,7 +44,7 @@ export const useRecordsFilter = create<RecordsFilterState>((set) => ({
   setSortBy: (sortBy) => set({ sortBy }),
   setVersionLocale: (versionLocale) => set({ versionLocale }),
   reset: () => set({
-    difficulty: 'all', version: 'all', type: 'all', constantMin: '', constantMax: '', sortBy: 'rating',
+    keyword: '', collapsed: false, difficulty: 'all', version: 'all', type: 'all', constantMin: '', constantMax: '', sortBy: 'rating',
     versionLocale: 'china',
   }),
 }));
