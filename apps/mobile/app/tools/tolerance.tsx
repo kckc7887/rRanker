@@ -63,8 +63,20 @@ function TableCell({ children, cellStyle, textStyle, accessibilityLabel }: {
   </View>;
 }
 
+function useTableChrome() {
+  const theme = useAppTheme();
+  return {
+    theme,
+    table: { borderColor: theme.border, backgroundColor: theme.surface },
+    row: { borderBottomColor: theme.border },
+    headerRow: { backgroundColor: theme.surfaceMuted },
+    kindCell: { backgroundColor: theme.surfaceMuted },
+  };
+}
+
 export default function ToleranceToolScreen() {
   const theme = useAppTheme();
+  const tableChrome = useTableChrome();
   const params = useLocalSearchParams<Partial<Record<NoteKind, string | string[]>>>();
   const [values, setValues] = useState<Record<string, string>>(() => ({
     tap: initialNoteValue(params.tap, '500'), hold: initialNoteValue(params.hold, '100'),
@@ -97,16 +109,16 @@ export default function ToleranceToolScreen() {
         accessibilityRole="button" accessibilityLabel={`物量分析模式 ${option.label}`}
         accessibilityState={{ selected: analysisMode === option.mode }} onPress={() => setAnalysisMode(option.mode)}
         style={[styles.modeButton, { backgroundColor: theme.surface, borderColor: theme.border }, analysisMode === option.mode && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-        <Text style={[styles.modeButtonText, analysisMode === option.mode && styles.modeButtonTextActive]}>{option.label}</Text>
+        <Text style={[styles.modeButtonText, { color: theme.textSecondary }, analysisMode === option.mode && styles.modeButtonTextActive]}>{option.label}</Text>
       </Pressable>)}</View>
       <Text style={[styles.note, { color: theme.textMuted }]}>{MODE_OPTIONS.find((option) => option.mode === analysisMode)?.detail}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableScroll}>
-        <View accessibilityLabel="物量分析表" style={styles.analysisTable}>
-          <View style={[styles.tableRow, styles.tableHeaderRow]}><TableCell cellStyle={styles.kindCell} textStyle={styles.tableHeader}>NOTE</TableCell>
+        <View accessibilityLabel="物量分析表" style={[styles.analysisTable, tableChrome.table]}>
+          <View style={[styles.tableRow, styles.tableHeaderRow, tableChrome.row, tableChrome.headerRow]}><TableCell cellStyle={styles.kindCell} textStyle={styles.tableHeader}>NOTE</TableCell>
             {ANALYSIS_COLUMNS.map((column) => <TableCell key={column} cellStyle={styles.analysisCell} textStyle={styles.tableHeader}>{ANALYSIS_LABELS[column]}</TableCell>)}
           </View>
-          {KINDS.map((kind) => <View key={kind} style={styles.tableRow}>
-            <TableCell cellStyle={[styles.kindCell, styles.kindCellBackground]} textStyle={styles.kindText}>{kind.toUpperCase()}</TableCell>
+          {KINDS.map((kind) => <View key={kind} style={[styles.tableRow, tableChrome.row]}>
+            <TableCell cellStyle={[styles.kindCell, tableChrome.kindCell]} textStyle={styles.kindText}>{kind.toUpperCase()}</TableCell>
             {ANALYSIS_COLUMNS.map((column) => {
               try {
                 const judgments = kind === 'break' ? BREAK_ANALYSIS_JUDGMENTS[column] : NORMAL_ANALYSIS_JUDGMENTS[column];
@@ -124,25 +136,25 @@ export default function ToleranceToolScreen() {
           </View>)}
         </View>
       </ScrollView>
-      <Text style={styles.swipeHint}>↔ 左右滑动查看完整表格</Text>
+      <Text style={[styles.swipeHint, { color: theme.textMuted }]}>↔ 左右滑动查看完整表格</Text>
     </Card>
     <Card><Text style={[styles.heading, { color: theme.text }]}>已知判定（各类 GREAT；BREAK 按 GREAT-1）</Text><View style={styles.wrap}>{KINDS.map((kind) => <View key={kind} style={styles.small}><FormField label={`${kind.toUpperCase()} GREAT`} value={values[`${kind}Great`]} onChangeText={set(`${kind}Great`)} /></View>)}</View>
-      <Text style={computed.error ? styles.error : styles.result}>{computed.error ?? `预计达成率 ${computed.achievement?.toFixed(4)}%`}</Text></Card>
+      <Text style={computed.error ? styles.error : [styles.result, { color: theme.success }]}>{computed.error ?? `预计达成率 ${computed.achievement?.toFixed(4)}%`}</Text></Card>
     <Card><Text style={[styles.heading, { color: theme.text }]}>容错计算 - 目标达成率</Text><FormField label="目标达成率" value={target} onChangeText={setTarget} />
       <View style={styles.targetRow}>{TARGET_SHORTCUTS.map((value) => <Pressable key={value}
         accessibilityRole="button" accessibilityLabel={`目标达成率 ${value}%`} accessibilityState={{ selected: target === value }}
         onPress={() => setTarget(value)} style={[styles.targetButton, { backgroundColor: theme.surface, borderColor: theme.border }, target === value && { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
-        <Text style={[styles.targetButtonText, target === value && styles.targetButtonTextActive]}>{value}%</Text>
+        <Text style={[styles.targetButtonText, { color: theme.textSecondary }, target === value && { color: theme.accent }]}>{value}%</Text>
       </Pressable>)}</View>
       <Text style={[styles.note, { color: theme.textMuted }]}>数值表示只出现该类同级判定、其余 Note 均为 CRITICAL PERFECT 时允许的最大数量。</Text>
       {targetError ? <Text style={styles.error}>{targetError}</Text> : null}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableScroll}>
-        <View accessibilityLabel="容错计算表" style={styles.toleranceTable}>
-          <View style={[styles.tableRow, styles.tableHeaderRow]}><TableCell cellStyle={styles.kindCell} textStyle={styles.tableHeader}>NOTE</TableCell>
+        <View accessibilityLabel="容错计算表" style={[styles.toleranceTable, tableChrome.table]}>
+          <View style={[styles.tableRow, styles.tableHeaderRow, tableChrome.row, tableChrome.headerRow]}><TableCell cellStyle={styles.kindCell} textStyle={styles.tableHeader}>NOTE</TableCell>
             {TOLERANCE_COLUMNS.map((column) => <TableCell key={column} cellStyle={styles.toleranceCell} textStyle={styles.tableHeader}>{column.toUpperCase()}</TableCell>)}
           </View>
-          {KINDS.map((kind) => <View key={kind} style={styles.tableRow}>
-            <TableCell cellStyle={[styles.kindCell, styles.kindCellBackground]} textStyle={styles.kindText}>{kind.toUpperCase()}</TableCell>
+          {KINDS.map((kind) => <View key={kind} style={[styles.tableRow, tableChrome.row]}>
+            <TableCell cellStyle={[styles.kindCell, tableChrome.kindCell]} textStyle={styles.kindText}>{kind.toUpperCase()}</TableCell>
             {TOLERANCE_COLUMNS.map((column) => {
               if (kind !== 'break' && column === 'perfect') return <TableCell key={column} cellStyle={styles.toleranceCell} textStyle={styles.tableValue}>—</TableCell>;
               try {
@@ -163,7 +175,7 @@ export default function ToleranceToolScreen() {
           </View>)}
         </View>
       </ScrollView>
-      <Text style={styles.swipeHint}>↔ 左右滑动查看完整表格</Text>
+      <Text style={[styles.swipeHint, { color: theme.textMuted }]}>↔ 左右滑动查看完整表格</Text>
     </Card><Text style={[styles.disclaimer, { color: theme.textMuted }]}>结果用于估算；BREAK 细分判定会分别计算基础分与奖励分。</Text>
   </ScrollView>;
 }

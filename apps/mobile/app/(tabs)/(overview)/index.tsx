@@ -307,13 +307,13 @@ export function OverviewScreen() {
               <Text style={[styles.cardTitle, { color: theme.text }]}>数据状态</Text>
               {bundle.payload.kind === 'maimai' ? (
                 <>
-                  <Text style={styles.body}>来源：{bundle.payload.source.label}</Text>
-                  <Text style={styles.body}>曲库：{bundle.payload.catalogSource.label}</Text>
-                  <Text style={styles.body}>当前版本：{bundle.payload.currentVersionTitle}</Text>
-                  <Text style={styles.body}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>曲库：{bundle.payload.catalogSource.label}</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>当前版本：{bundle.payload.currentVersionTitle}</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
               ) : (
-                <Text style={styles.body}>当前游戏暂未接入数据</Text>
+                <Text style={[styles.body, { color: theme.textSecondary }]}>当前游戏暂未接入数据</Text>
               )}
             </View>
           </ScrollView>

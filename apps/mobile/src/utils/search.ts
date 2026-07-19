@@ -18,12 +18,42 @@ export const EMPTY_SONG_FILTERS: SongSearchFilters = {
   keyword: '', types: [], difficulties: [], songVersionIds: [], chartVersionIds: [],
 };
 
+/** Hepburn ↔ Kunrei/Nihon 等同假名拼写；按长度优先替换。 */
+const ROMAJI_MORA_ALIASES: readonly (readonly [string, string])[] = [
+  ['tsu', 'tu'],
+  ['shi', 'si'],
+  ['chi', 'ti'],
+  ['fu', 'hu'],
+  ['shu', 'syu'],
+  ['sho', 'syo'],
+  ['sha', 'sya'],
+  ['chu', 'tyu'],
+  ['cho', 'tyo'],
+  ['cha', 'tya'],
+  ['dzu', 'du'],
+  ['ju', 'zyu'],
+  ['ju', 'jyu'],
+  ['jo', 'zyo'],
+  ['jo', 'jyo'],
+  ['ja', 'zya'],
+  ['ja', 'jya'],
+  ['ji', 'zi'],
+  ['zu', 'du'],
+];
+
+const MAX_ROMAJI_ALIAS_VARIANTS = 24;
+
 export function normalizeSearchText(value: string): string {
   return value.normalize('NFKC').toLocaleLowerCase().trim();
 }
 
 export function compactSearchText(value: string): string {
   return normalizeSearchText(value).replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
+/** づ/ぢ 与 ず/じ 在检索中视为同音。 */
+export function canonicalizeSearchKana(value: string): string {
+  return value.replace(/\u3065/g, '\u305a').replace(/\u3062/g, '\u3058');
 }
 
 function uniqueSearchVariants(values: readonly string[]): string[] {
@@ -37,30 +67,65 @@ function uniqueSearchVariants(values: readonly string[]): string[] {
   return result;
 }
 
-export function buildSearchDocument(values: readonly string[]): SearchDocument {
-  const normalized = values.flatMap((value) => {
-    const source = normalizeSearchText(value);
-    if (!source) return [];
-    const hiragana = normalizeSearchText(toHiragana(source));
-    const romaji = normalizeSearchText(toRomaji(source));
-    return uniqueSearchVariants([source, hiragana, romaji]);
-  });
-  return { text: normalized.join('\u0000'), compact: normalized.map(compactSearchText).join('\u0000') };
+/** 生成同一假名下的多种罗马音拼写变体（有上限，避免长词组合爆炸）。 */
+export function expandRomajiAliases(romaji: string): string[] {
+  const normalized = normalizeSearchText(romaji);
+  if (!normalized) return [];
+  const variants = new Set<string>([normalized]);
+  const queue = [normalized];
+  while (queue.length > 0 && variants.size < MAX_ROMAJI_ALIAS_VARIANTS) {
+    const current = queue.shift()!;
+    for (const [left, right] of ROMAJI_MORA_ALIASES) {
+      for (const [from, to] of [[left, right], [right, left]] as const) {
+        let index = current.indexOf(from);
+        while (index >= 0 && variants.size < MAX_ROMAJI_ALIAS_VARIANTS) {
+          const next = `${current.slice(0, index)}${to}${current.slice(index + from.length)}`;
+          if (!variants.has(next)) {
+            variants.add(next);
+            queue.push(next);
+          }
+          index = current.indexOf(from, index + from.length);
+        }
+      }
+    }
+  }
+  return [...variants];
+}
+
+function documentVariants(value: string): string[] {
+  const source = normalizeSearchText(value);
+  if (!source) return [];
+  const hiragana = canonicalizeSearchKana(normalizeSearchText(toHiragana(source)));
+  const romaji = normalizeSearchText(toRomaji(source));
+  const romajiFromKana = hiragana ? normalizeSearchText(toRomaji(hiragana)) : '';
+  // 索引侧只存源文 / 假名 / Hepburn，避免长曲名罗马音别名组合爆炸。
+  return uniqueSearchVariants([source, hiragana, romaji, romajiFromKana]);
 }
 
 function keywordVariants(keyword: string): string[] {
-  const normalized = normalizeSearchText(keyword);
-  if (!normalized) return [];
-  const hiragana = normalizeSearchText(toHiragana(normalized));
-  const romaji = normalizeSearchText(toRomaji(normalized));
-  return uniqueSearchVariants([
-    normalized,
-    compactSearchText(normalized),
+  const source = normalizeSearchText(keyword);
+  if (!source) return [];
+  const hiragana = canonicalizeSearchKana(normalizeSearchText(toHiragana(source)));
+  const romaji = normalizeSearchText(toRomaji(source));
+  const romajiFromKana = hiragana ? normalizeSearchText(toRomaji(hiragana)) : '';
+  const variants = uniqueSearchVariants([
+    source,
     hiragana,
-    compactSearchText(hiragana),
     romaji,
-    compactSearchText(romaji),
+    romajiFromKana,
+    ...expandRomajiAliases(romaji),
+    ...expandRomajiAliases(romajiFromKana),
+    ...expandRomajiAliases(source),
   ]);
+  return uniqueSearchVariants([
+    ...variants,
+    ...variants.map(compactSearchText),
+  ]);
+}
+
+export function buildSearchDocument(values: readonly string[]): SearchDocument {
+  const normalized = values.flatMap((value) => documentVariants(value));
+  return { text: normalized.join('\u0000'), compact: normalized.map(compactSearchText).join('\u0000') };
 }
 
 export function searchDocumentMatches(document: SearchDocument, keyword: string): boolean {

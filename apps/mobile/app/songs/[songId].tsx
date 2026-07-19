@@ -206,8 +206,9 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
           { key: 'scores', label: scoreSource?.label ?? '成绩未加载', updatedAt: scoreSource?.updatedAt, state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live' },
         ]} />
         <SongCollectionsCard songId={song.id} />
-        <Card><Text style={styles.section}>歌曲信息</Text><AliasLine aliases={song.aliases} />
-          <Text style={styles.body}>版权：{song.rights || '未提供'}</Text><Text style={styles.body}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
+        <Card><Text style={[styles.section, { color: theme.text }]}>歌曲信息</Text><AliasLine aliases={song.aliases} />
+          <Text style={[styles.body, { color: theme.textSecondary }]}>版权：{song.rights || '未提供'}</Text>
+          <Text style={[styles.body, { color: theme.textSecondary }]}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
         <Card><TagEditor tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
           historyTags={buildTagHistory(library.data ?? [], songLibraryKey(song.id), library.tagPresets ?? [])}
           disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
@@ -218,6 +219,7 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
 }
 
 function SongCollectionsCard({ songId }: { songId: string }) {
+  const theme = useAppTheme();
   const collections = useCollections();
   const matched = useMemo(
     () => collectionsForSong(collections.data?.items ?? [], songId),
@@ -225,17 +227,17 @@ function SongCollectionsCard({ songId }: { songId: string }) {
   );
   return <DetailGestureRoot style={styles.scrollActionRoot}>
     <Card testID="song-collections-card">
-      <Text style={styles.section}>收藏品</Text>
-      {collections.isLoading ? <Text style={styles.meta}>正在加载收藏品…</Text> : null}
+      <Text style={[styles.section, { color: theme.text }]}>收藏品</Text>
+      {collections.isLoading ? <Text style={[styles.meta, { color: theme.textMuted }]}>正在加载收藏品…</Text> : null}
       {collections.isError ? <View style={styles.collectionError}>
-        <Text style={styles.meta}>收藏品加载失败</Text>
+        <Text style={[styles.meta, { color: theme.textMuted }]}>收藏品加载失败</Text>
         <DetailPressable accessibilityRole="button" accessibilityLabel="重试加载收藏品"
           onPress={() => void collections.refetch()} hitSlop={8} style={styles.aliasAction}>
-          <Text style={styles.aliasActionText}>重试</Text>
+          <Text style={[styles.aliasActionText, { color: theme.accent }]}>重试</Text>
         </DetailPressable>
       </View> : null}
       {!collections.isLoading && !collections.isError && matched.length === 0
-        ? <Text style={styles.meta}>无曲目专属收藏品</Text> : null}
+        ? <Text style={[styles.meta, { color: theme.textMuted }]}>无曲目专属收藏品</Text> : null}
       {matched.map((item) => <CollectionRow key={`${item.kind}:${item.id}`} item={item} />)}
     </Card>
   </DetailGestureRoot>;
@@ -260,31 +262,33 @@ function TrophyName({ name, color }: { name: string; color?: string | null }) {
 }
 
 function CollectionRow({ item }: { item: CollectionItem }) {
-  return <View style={styles.collectionRow} accessibilityLabel={`${COLLECTION_KIND_LABEL[item.kind]} ${item.name}`}>
+  const theme = useAppTheme();
+  return <View style={[styles.collectionRow, { borderTopColor: theme.border }]} accessibilityLabel={`${COLLECTION_KIND_LABEL[item.kind]} ${item.name}`}>
     {item.kind === 'trophy' ? null
       : <CollectionImage kind={item.kind} collectionId={item.id} size={item.kind === 'plate' ? 28 : 40} />}
     <View style={styles.collectionCopy}>
-      <Text style={styles.collectionKind}>{COLLECTION_KIND_LABEL[item.kind]}</Text>
+      <Text style={[styles.collectionKind, { color: theme.textMuted }]}>{COLLECTION_KIND_LABEL[item.kind]}</Text>
       {item.kind === 'trophy'
         ? <TrophyName name={item.name} color={item.color} />
-        : <Text style={styles.collectionName}>{item.name}</Text>}
-      {item.description ? <Text style={styles.collectionDesc} numberOfLines={2}>{item.description}</Text> : null}
+        : <Text style={[styles.collectionName, { color: theme.text }]}>{item.name}</Text>}
+      {item.description ? <Text style={[styles.collectionDesc, { color: theme.textMuted }]} numberOfLines={2}>{item.description}</Text> : null}
     </View>
   </View>;
 }
 
 function AliasLine({ aliases }: { aliases?: string[] }) {
+  const theme = useAppTheme();
   const text = `别名：${aliases?.join('、') || '无'}`;
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => { setExpanded(false); setOverflow(false); }, [text]);
   return <DetailGestureRoot style={styles.aliasBlock}>
-    <Text accessible={false} testID="alias-overflow-measure" style={[styles.body, styles.aliasMeasure]}
+    <Text accessible={false} testID="alias-overflow-measure" style={[styles.body, styles.aliasMeasure, { color: theme.textSecondary }]}
       onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}>{text}</Text>
-    <Text testID="song-alias-text" numberOfLines={expanded ? undefined : 1} style={styles.body}>{text}</Text>
+    <Text testID="song-alias-text" numberOfLines={expanded ? undefined : 1} style={[styles.body, { color: theme.textSecondary }]}>{text}</Text>
     {overflow ? <DetailPressable accessibilityRole="button" accessibilityLabel={expanded ? '收起别名' : '展开别名'}
       onPress={() => setExpanded((value) => !value)} hitSlop={6} style={styles.aliasAction}>
-      <Text style={styles.aliasActionText}>{expanded ? '收起' : '展开'}</Text>
+      <Text style={[styles.aliasActionText, { color: theme.accent }]}>{expanded ? '收起' : '展开'}</Text>
     </DetailPressable> : null}
   </DetailGestureRoot>;
 }
@@ -393,12 +397,13 @@ function MetadataCell({ label, value, flex }: { label: string; value: string; fl
 function VersionMetadataCell({ value, onToggle }: {
   value: string; onToggle: () => void;
 }) {
+  const theme = useAppTheme();
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => { setExpanded(false); setOverflow(false); }, [value]);
   return <DetailGestureRoot style={styles.versionCellRoot}>
     <View style={[styles.metadataCell, styles.versionCell]}>
-      <Text numberOfLines={1} style={styles.metadataLabel}>版本</Text>
+      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>版本</Text>
       <View style={styles.versionValueRow}>
         <DetailPressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
           accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}版本` : undefined}
@@ -407,7 +412,7 @@ function VersionMetadataCell({ value, onToggle }: {
         </DetailPressable>
         <DetailPressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
           hitSlop={4} style={({ pressed }) => [styles.versionToggle, pressed && styles.switchPressed]}>
-          <Ionicons name="swap-horizontal" color="#5967C9" size={14} />
+          <Ionicons name="swap-horizontal" color={theme.accent} size={14} />
         </DetailPressable>
       </View>
     </View>
@@ -510,13 +515,15 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
       onPress={() => void library.setChartPractice(song.id, chart.type, chart.levelIndex, !practice)}
-      style={[styles.action, practice && { backgroundColor: visual.color, borderColor: visual.color }]}>
-      <Text style={[styles.actionText, { color: practice ? '#FFFFFF' : visual.color }]}>{practice ? '已加入练习清单' : '加入练习清单'}</Text>
+      style={[styles.action, chartActionStyle(theme.dark, chart.difficulty, visual, practice)]}>
+      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, practice)]}>
+        {practice ? '已加入练习清单' : '加入练习清单'}
+      </Text>
     </DetailPressable>
     <DetailPressable accessibilityRole="link" accessibilityLabel={`搜索谱面确认：${chartSearchQuery}`}
       onPress={() => void openBilibiliChartSearch(chartSearchQuery)}
-      style={[styles.action, styles.chartSearchAction, { borderColor: visual.color }]}>
-      <Text style={[styles.actionText, { color: visual.color }]}>搜索谱面确认</Text>
+      style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
+      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>搜索谱面确认</Text>
     </DetailPressable>
     <TagEditor tags={chartItem?.tags ?? []} presets={library.tagPresets ?? []}
       historyTags={buildTagHistory(library.data ?? [], chartLibraryKey(song.id, chart.type, chart.levelIndex), library.tagPresets ?? [])}
@@ -525,15 +532,45 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
   </View>;
 }
 
+function chartActionStyle(
+  dark: boolean,
+  difficulty: Difficulty,
+  visual: (typeof DIFFICULTY_VISUAL)[Difficulty],
+  filled: boolean,
+) {
+  if (dark) {
+    if (difficulty === 'remaster') {
+      return { backgroundColor: visual.badgeBackground, borderColor: visual.badgeBorder };
+    }
+    return { backgroundColor: visual.color, borderColor: visual.color };
+  }
+  if (!filled) return { borderColor: visual.color };
+  return { backgroundColor: visual.color, borderColor: visual.color };
+}
+
+function chartActionTextStyle(
+  dark: boolean,
+  difficulty: Difficulty,
+  visual: (typeof DIFFICULTY_VISUAL)[Difficulty],
+  filled: boolean,
+) {
+  if (dark) {
+    if (difficulty === 'remaster') return { color: visual.badgeText };
+    return { color: '#FFFFFF' };
+  }
+  return { color: filled ? '#FFFFFF' : visual.color };
+}
+
 function ChartTypeSwitch({ type, canSwitch, onToggle }: {
   type: ChartType; canSwitch: boolean; onToggle: () => void;
 }) {
+  const theme = useAppTheme();
   return <DetailPressable accessibilityRole="button"
     accessibilityLabel={canSwitch ? `切换为${type === 'DX' ? 'SD' : 'DX'}谱面` : `${type}谱面`}
     accessibilityState={{ disabled: !canSwitch }} disabled={!canSwitch} onPress={onToggle}
     style={({ pressed }) => [styles.chartTypeRow, pressed && styles.switchPressed]}>
     <View pointerEvents="none"><ChartTypeBadge type={type} /></View>
-    {canSwitch ? <Text pointerEvents="none" style={styles.chartTypeHint}>·点击切换·</Text> : null}
+    {canSwitch ? <Text pointerEvents="none" style={[styles.chartTypeHint, { color: theme.textMuted }]}>·点击切换·</Text> : null}
   </DetailPressable>;
 }
 
@@ -633,7 +670,7 @@ const styles = StyleSheet.create({
   trophyNameText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textAlign: 'center', includeFontPadding: false },
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
   scrollActionRoot: { flexGrow: 0 },
-  action: { marginTop: 13, marginBottom: 10, borderWidth: 1, borderColor: '#667085', borderRadius: 11, padding: 10, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.52)' },
+  action: { marginTop: 13, marginBottom: 10, borderWidth: 1, borderColor: '#667085', borderRadius: 11, padding: 10, alignItems: 'center', backgroundColor: 'transparent' },
   chartSearchAction: { marginTop: 0 },
   actionText: { fontWeight: '700' },
 });

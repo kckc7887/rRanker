@@ -1,5 +1,5 @@
 import { fixtureSongs } from '@/fixtures/sanitized';
-import { filterSongs } from '@/utils/search';
+import { canonicalizeSearchKana, expandRomajiAliases, filterSongs } from '@/utils/search';
 
 describe('filterSongs', () => {
   it('returns all songs when the keyword is empty or whitespace', () => {
@@ -44,5 +44,30 @@ describe('filterSongs', () => {
     const matched = filterSongs(fixtureSongs, 'masukareedo');
     expect(matched).toHaveLength(1);
     expect(matched[0].title).toBe('マスカレイド・マスカレード');
+  });
+  it('matches kunrei/nihon romaji aliases for the same kana', () => {
+    const songs = [{
+      ...fixtureSongs[0],
+      id: 'tsuki-song',
+      title: 'つき',
+      aliases: [],
+      charts: fixtureSongs[0].charts,
+    }];
+    expect(filterSongs(songs, 'tuki')).toHaveLength(1);
+    expect(filterSongs(songs, 'tsuki')).toHaveLength(1);
+    expect(expandRomajiAliases('tsuki')).toEqual(expect.arrayContaining(['tsuki', 'tuki']));
+    expect(expandRomajiAliases('si')).toEqual(expect.arrayContaining(['si', 'shi']));
+  });
+  it('treats づ and ず as equivalent search kana', () => {
+    const songs = [{
+      ...fixtureSongs[0],
+      id: 'zu-du',
+      title: 'かづ',
+      aliases: [],
+      charts: fixtureSongs[0].charts,
+    }];
+    expect(filterSongs(songs, 'kazu')).toHaveLength(1);
+    expect(filterSongs(songs, 'kadu')).toHaveLength(1);
+    expect(canonicalizeSearchKana('かづ')).toBe('かず');
   });
 });
