@@ -12,8 +12,10 @@ import {
 import type { ProviderSession } from '@/providers/contracts';
 import { NotificationProvider } from '@/components/AppNotification';
 
+const mockUpsertDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
+const mockRemoveDemoAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
-const mockSetActiveAccountId = jest.fn(async (_accountId?: string) => undefined);
+const mockSetActiveAccountId = jest.fn(async (_accountId?: string | null) => undefined);
 const mockClearSnapshots = jest.fn(async () => undefined);
 const mockClearUserData = jest.fn(async () => []);
 const mockRemoveBoundAccount = jest.fn();
@@ -80,24 +82,35 @@ jest.mock('@/storage/local-account-store', () => ({
   LOCAL_PLAYER_NAME_MAX_LENGTH: 20,
   normalizeLocalPlayerName: (value: string) => value.trim() || null,
 }));
+jest.mock('@/storage/demo-account-store', () => ({
+  DemoAccountStore: jest.fn(() => ({
+    upsert: (profile: { id: string; displayName: string }) => mockUpsertDemoAccount(profile),
+    remove: (accountId: string) => mockRemoveDemoAccount(accountId),
+  })),
+  DEFAULT_DEMO_PLAYER_NAME: '示例账号',
+  isMaimaiDemoAccountId: (accountId: string) => accountId === 'maimai:test' || accountId.startsWith('maimai:test:'),
+}));
 jest.mock('@/state/query-client', () => ({ queryClient: {
   invalidateQueries: jest.fn(),
   setQueriesData: jest.fn(),
   removeQueries: (...args: unknown[]) => mockRemoveQueries(...args),
 } }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
-  session: mockSession,
-  sessionsByAccountId: { [mockAccount.id]: mockSession },
-  boundAccounts: [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount],
-  activeAccountId: mockAccount.id,
-  selectBoundAccount: mockSelectBoundAccount,
-  upsertBoundAccount: mockUpsertBoundAccount,
-  renameLocalAccount: mockRenameLocalAccount,
-  removeBoundAccount: mockRemoveBoundAccount,
-  restoreError: null,
-  activeGameId: 'maimai',
-  activeProviderId: 'diving-fish',
-}) }));
+jest.mock('@/state/session-store', () => ({
+  UNBOUND_ACCOUNT_ID: 'maimai:unbound',
+  useSession: (selector: (state: unknown) => unknown) => selector({
+    session: mockSession,
+    sessionsByAccountId: { [mockAccount.id]: mockSession },
+    boundAccounts: [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount],
+    activeAccountId: mockAccount.id,
+    selectBoundAccount: mockSelectBoundAccount,
+    upsertBoundAccount: mockUpsertBoundAccount,
+    renameLocalAccount: mockRenameLocalAccount,
+    removeBoundAccount: mockRemoveBoundAccount,
+    restoreError: null,
+    activeGameId: 'maimai',
+    activeProviderId: 'diving-fish',
+  }),
+}));
 jest.mock('@/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: {
     expandedGameId: 'maimai';
@@ -162,9 +175,23 @@ describe('M3A game account management', () => {
   it('shows local and generated test accounts in account management', async () => {
     const screen = await renderScreen();
     expect(screen.getByText('本地玩家')).toBeTruthy();
-    expect(screen.getByText('测试玩家')).toBeTruthy();
+    expect(screen.getByText('示例账号')).toBeTruthy();
     expect(screen.getByText('数据位置：仅本机 SQLite')).toBeTruthy();
     expect(screen.getByText('数据来源：曲库动态生成')).toBeTruthy();
+  });
+
+  it('allows deleting the default local player and demo account', async () => {
+    const screen = await renderScreen();
+    expect(screen.getByLabelText('删除本地玩家 本地玩家')).toBeTruthy();
+    expect(screen.getByLabelText('删除示例账号 示例账号')).toBeTruthy();
+  });
+
+  it('switches to existing demo account when demo provider is selected again', async () => {
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    await fireEvent.press(screen.getByLabelText('示例查分器'));
+    await waitFor(() => expect(mockSelectBoundAccount).toHaveBeenCalledWith(mockTestAccount.id));
+    expect(mockUpsertDemoAccount).not.toHaveBeenCalled();
   });
 
   it('renames a local player from its account card', async () => {

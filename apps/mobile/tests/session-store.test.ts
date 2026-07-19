@@ -13,7 +13,7 @@ import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
-import { restoreSession, useSession } from '@/state/session-store';
+import { restoreSession, UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 
 vi.mock('expo-secure-store', () => ({
   getItemAsync: vi.fn(async () => null),
@@ -66,11 +66,25 @@ describe('useSession store', () => {
     });
   });
 
-  it('always includes local, maxed maimai test and empty test accounts', () => {
+  it('does not re-inject deleted local or demo accounts', () => {
+    useSession.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
+    useSession.getState().removeBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
     const { boundAccounts } = useSession.getState();
-    expect(boundAccounts.map((account) => account.id)).toContain(LOCAL_MAIMAI_ACCOUNT_ID);
-    expect(boundAccounts.map((account) => account.id)).toContain(MAIMAI_TEST_ACCOUNT_ID);
+    expect(boundAccounts.map((account) => account.id)).not.toContain(LOCAL_MAIMAI_ACCOUNT_ID);
+    expect(boundAccounts.map((account) => account.id)).not.toContain(MAIMAI_TEST_ACCOUNT_ID);
     expect(boundAccounts.map((account) => account.id)).toContain(TEST_ACCOUNT_ID);
+  });
+
+  it('enters unbound empty state when all accounts are removed', () => {
+    useSession.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
+    useSession.getState().removeBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
+    useSession.getState().removeBoundAccount(TEST_ACCOUNT_ID);
+    const state = useSession.getState();
+    expect(state.boundAccounts).toEqual([]);
+    expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
+    expect(state.activeProviderId).toBeNull();
+    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
+    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
   });
 
   it('binds a maimai account with display name and DX rating meta', () => {
@@ -89,7 +103,6 @@ describe('useSession store', () => {
     expect(maimai?.scoreLabel).toBe('DX RATING');
     expect(maimai?.scoreDisplay).toBe('15000');
     expect(maimai?.providerTitle).toBe('水鱼查分器');
-    expect(state.boundAccounts.some((account) => account.id === TEST_ACCOUNT_ID)).toBe(true);
   });
 
   it('binds an lxns oauth account onto LxnsScoreProvider', () => {
@@ -129,8 +142,6 @@ describe('useSession store', () => {
     expect(maimaiIds).toEqual(expect.arrayContaining([
       'maimai:diving-fish:a1',
       'maimai:diving-fish:b2',
-    ]));
-    expect(maimaiIds).toEqual(expect.arrayContaining([
       LOCAL_MAIMAI_ACCOUNT_ID,
       MAIMAI_TEST_ACCOUNT_ID,
     ]));
@@ -152,7 +163,7 @@ describe('useSession store', () => {
     expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
   });
 
-  it('switches to the generated maxed maimai test account', () => {
+  it('switches to the generated maxed maimai demo account', () => {
     useSession.getState().selectBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(MAIMAI_TEST_ACCOUNT_ID);
@@ -177,20 +188,20 @@ describe('useSession store', () => {
     });
   });
 
-  it('removes only the selected extra local player and keeps the default one', () => {
+  it('can remove the default local player and keep other locals', () => {
     const extraA = createLocalMaimaiAccount('本地 A', 10000, 'maimai:local:a');
     const extraB = createLocalMaimaiAccount('本地 B', 11000, 'maimai:local:b');
     useSession.getState().upsertBoundAccount(extraA);
     useSession.getState().upsertBoundAccount(extraB);
-    useSession.getState().removeBoundAccount(extraA.id);
+    useSession.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
 
     const localIds = useSession.getState().boundAccounts
       .filter((account) => account.providerId === 'local')
       .map((account) => account.id);
-    expect(localIds).toEqual([LOCAL_MAIMAI_ACCOUNT_ID, extraB.id]);
+    expect(localIds).toEqual([extraA.id, extraB.id]);
   });
 
-  it('clears remote binds and restores all built-in accounts', () => {
+  it('clears remote binds and keeps remaining local/demo accounts', () => {
     useSession.getState().setSession(jwtSession, { displayName: '尘言', rating: 1 });
     useSession.getState().clearSession();
     const state = useSession.getState();
@@ -198,7 +209,7 @@ describe('useSession store', () => {
     expect(state.scoreProvider).toBeInstanceOf(LocalMaimaiScoreProvider);
     expect(state.boundAccounts.some((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.id === MAIMAI_TEST_ACCOUNT_ID)).toBe(true);
-    expect(state.boundAccounts.some((account) => account.id === TEST_ACCOUNT_ID)).toBe(true);
+    expect(state.boundAccounts.some((account) => account.providerId === 'diving-fish')).toBe(false);
   });
 
   it('removes one bound account without wiping the other', () => {
@@ -259,16 +270,31 @@ describe('useSession store', () => {
     );
   });
 
-  it('restores a built-in account as the active account', async () => {
+  it('restores a demo account only when it is provided in optional accounts', async () => {
+    await restoreSession(
+      async () => ({
+        version: 2 as const,
+        activeAccountId: MAIMAI_TEST_ACCOUNT_ID,
+        accounts: [],
+      }),
+      async () => [createMaxedMaimaiTestAccount()],
+    );
+    const state = useSession.getState();
+    expect(state.activeAccountId).toBe(MAIMAI_TEST_ACCOUNT_ID);
+    expect(state.session).toBeNull();
+    expect(state.scoreProvider).toBeInstanceOf(MaxedMaimaiTestProvider);
+  });
+
+  it('falls back to unbound empty when demo is not among optional accounts', async () => {
     await restoreSession(async () => ({
       version: 2 as const,
       activeAccountId: MAIMAI_TEST_ACCOUNT_ID,
       accounts: [],
     }));
     const state = useSession.getState();
-    expect(state.activeAccountId).toBe(MAIMAI_TEST_ACCOUNT_ID);
-    expect(state.session).toBeNull();
-    expect(state.scoreProvider).toBeInstanceOf(MaxedMaimaiTestProvider);
+    expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
+    expect(state.boundAccounts).toEqual([]);
+    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
   });
 
   it('restores an additional local player as the active account', async () => {
@@ -288,10 +314,14 @@ describe('useSession store', () => {
     });
   });
 
-  it('falls back to local data and exposes a restore error', async () => {
+  it('falls back to unbound empty data and exposes a restore error', async () => {
     await restoreSession(async () => { throw new Error('secure store unavailable'); });
-    expect(useSession.getState()).toMatchObject({ session: null, restoreStatus: 'error' });
+    expect(useSession.getState()).toMatchObject({
+      session: null,
+      restoreStatus: 'error',
+      activeAccountId: UNBOUND_ACCOUNT_ID,
+    });
     expect(useSession.getState().restoreError).toContain('无法读取');
-    expect(useSession.getState().scoreProvider).toBeInstanceOf(LocalMaimaiScoreProvider);
+    expect(useSession.getState().scoreProvider).toBeInstanceOf(EmptyScoreProvider);
   });
 });

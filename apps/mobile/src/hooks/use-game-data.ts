@@ -8,7 +8,7 @@ import {
 } from '@/domain/game-data';
 import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService } from '@/services/score-service';
-import { useSession } from '@/state/session-store';
+import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
 
@@ -47,6 +47,16 @@ export function useGameData() {
             displayName: 'Phigros',
             message: '当前游戏暂未接入成绩。',
           },
+        };
+      }
+
+      // 无绑定账号 / 未选中查分器：按空数据处理，不走成绩 provider。
+      if (!activeProviderId || !activeAccountId || activeAccountId === UNBOUND_ACCOUNT_ID) {
+        return {
+          gameId: 'maimai',
+          providerId: null,
+          profile: getGameProfile('maimai'),
+          payload: emptyGamePayload('maimai', '未绑定账号'),
         };
       }
 

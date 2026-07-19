@@ -9,27 +9,65 @@ import 'react-native-reanimated';
 import { queryClient } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
-import { DEFAULT_LOCAL_PLAYER_NAME, LocalAccountStore } from '@/storage/local-account-store';
+import {
+  DEFAULT_LOCAL_PLAYER_NAME,
+  LocalAccountStore,
+  normalizeLocalPlayerName,
+} from '@/storage/local-account-store';
+import {
+  DEFAULT_DEMO_PLAYER_NAME,
+  DemoAccountStore,
+} from '@/storage/demo-account-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSyncOnAccountSwitch } from '@/hooks/use-sync-on-account-switch';
-import { createLocalMaimaiAccount, LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
+import {
+  createLocalMaimaiAccount,
+  createMaxedMaimaiTestAccount,
+  LOCAL_MAIMAI_ACCOUNT_ID,
+} from '@/domain/bound-account';
 import { NotificationProvider } from '@/components/AppNotification';
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
+const demoAccounts = new DemoAccountStore();
 const snapshots = new SqliteSnapshotRepository();
 
 async function loadLocalBoundAccounts() {
-  const stored = await localAccounts.load();
-  const profiles = stored.some((profile) => profile.id === LOCAL_MAIMAI_ACCOUNT_ID)
-    ? stored
-    : [{ id: LOCAL_MAIMAI_ACCOUNT_ID, displayName: DEFAULT_LOCAL_PLAYER_NAME }, ...stored];
-  return Promise.all(profiles.map(async (profile) => {
+  let stored = await localAccounts.load();
+  // 旧版会强制注入默认本地玩家但不一定写入 KV；若本机已有该账号快照则迁移一次。
+  if (stored.length === 0) {
+    const snapshot = await snapshots.getLatest(LOCAL_MAIMAI_ACCOUNT_ID);
+    if (snapshot) {
+      const displayName = normalizeLocalPlayerName(snapshot.player.displayName)
+        ?? DEFAULT_LOCAL_PLAYER_NAME;
+      const profile = { id: LOCAL_MAIMAI_ACCOUNT_ID, displayName };
+      await localAccounts.upsert(profile);
+      stored = [profile];
+    }
+  }
+  return Promise.all(stored.map(async (profile) => {
     const snapshot = await snapshots.getLatest(profile.id);
     return createLocalMaimaiAccount(profile.displayName, snapshot?.best50.rating ?? 0, profile.id);
   }));
+}
+
+async function loadDemoBoundAccounts() {
+  const stored = await demoAccounts.load();
+  return stored.map((profile) => createMaxedMaimaiTestAccount(
+    0,
+    profile.displayName || DEFAULT_DEMO_PLAYER_NAME,
+    profile.id,
+  ));
+}
+
+async function loadOptionalBoundAccounts() {
+  const [locals, demos] = await Promise.all([
+    loadLocalBoundAccounts(),
+    loadDemoBoundAccounts(),
+  ]);
+  return [...locals, ...demos];
 }
 
 function AccountSwitchSync() {
@@ -46,7 +84,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (restoreStatus === 'restoring') {
-      void restoreSession(() => sessions.loadVault(), loadLocalBoundAccounts);
+      void restoreSession(() => sessions.loadVault(), loadOptionalBoundAccounts);
     }
   }, [restoreStatus]);
 
