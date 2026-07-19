@@ -159,7 +159,7 @@ export function OverviewScreen() {
   const closeUpload = () => setUploadVisible(false);
 
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
+    <View collapsable={false} style={[styles.page, { backgroundColor: theme.background }]}>
       <QueryStateView<GameDataBundle>
         isLoading={isLoading}
         isError={isError}

@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   InteractionManager,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -73,9 +71,10 @@ export function RenameLocalAccountSheet({
       presentationStyle="pageSheet"
       onRequestClose={saving ? undefined : onClose}
     >
-      <KeyboardAvoidingView
+      {/* pageSheet already lifts for the keyboard — do not wrap in KeyboardAvoidingView,
+          which can leave inflated safe-area insets and stretch the iOS tab bar after dismiss. */}
+      <View
         style={[styles.root, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={[styles.grabber, { backgroundColor: theme.border }]} />
         <Text style={[styles.title, { color: theme.text }]}>修改本地玩家名称</Text>
@@ -114,7 +113,7 @@ export function RenameLocalAccountSheet({
             {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryText}>保存</Text>}
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </AppModal>
   );
 }

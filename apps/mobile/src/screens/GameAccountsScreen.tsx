@@ -355,7 +355,7 @@ export function GameAccountsScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: safeAreaInsets.bottom + 88 }]}
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(safeAreaInsets.bottom, 24) + 72 }]}
         scrollIndicatorInsets={{ bottom: safeAreaInsets.bottom }}>
         {restoreError ? <Text style={styles.error}>{restoreError}</Text> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
@@ -367,7 +367,7 @@ export function GameAccountsScreen() {
       </ScrollView>
 
       <Pressable accessibilityRole="button" accessibilityLabel="添加游戏账号" disabled={busy} onPress={openPicker}
-        style={({ pressed }) => [styles.fab, { bottom: safeAreaInsets.bottom + 20, backgroundColor: theme.accent }, pressed && styles.fabPressed]}>
+        style={({ pressed }) => [styles.fab, { bottom: Math.max(safeAreaInsets.bottom, 12) + 16, backgroundColor: theme.accent }, pressed && styles.fabPressed]}>
         <SymbolView name="plus" tintColor="#FFF" size={28} weight="semibold"
           fallback={<Ionicons name="add" size={28} color="#FFF" />} />
       </Pressable>
