@@ -113,12 +113,14 @@ describe('best image html', () => {
     expect(app).toContain('#F4F2E0 0%,#DBDCCD 52%,#C0C5BC 100%');
     expect(app).not.toContain('class="rating-frame"');
     expect(app).toContain('.profile-app{position:absolute;z-index:1;left:43px;top:43px;width:994px;');
-    expect(app).toContain('.profile-banner-app{--glass-opacity:.28;--glass-blur-strong:6px;--glass-blur-medium:4px;--glass-blur-soft:2.3px;');
+    expect(app).toContain('.profile-banner-app{--glass-opacity:0;--glass-blur-strong:6px;--glass-blur-medium:4px;--glass-blur-soft:2.3px;');
     expect(app).toContain('height:160px');
     expect(app).toContain('.profile-banner-app .nameplate-image{object-fit:contain;filter:saturate(1.08)}');
     expect(app).not.toContain('transform:scale(1.03)');
-    expect(app).toContain('class="glass-plate-source nameplate-image"');
-    expect(app).toContain('.glass-blur-strong .glass-plate-source{filter:blur(var(--glass-blur-strong)) saturate(110%)}');
+    expect(app).toContain('backdrop-filter:blur(var(--glass-blur-strong)) saturate(110%)');
+    expect(app).toContain('.glass-plate-source{display:none}');
+    expect(app).toContain('html.export-capture .glass-blur-strong .glass-plate-source{filter:blur(var(--glass-blur-strong)) saturate(110%)}');
+    expect(app).toContain("document.documentElement.classList.toggle('export-capture', exportViewport)");
     expect(app).toContain('.profile-glass{position:absolute;z-index:0;left:0;top:0;bottom:0;width:var(--glass-physical-width,60%);overflow:hidden');
     expect(app).toContain("banner.style.setProperty('--glass-physical-width'");
     expect(app).toContain("banner.style.setProperty('--glass-banner-width'");
