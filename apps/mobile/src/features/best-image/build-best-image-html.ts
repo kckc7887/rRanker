@@ -326,11 +326,6 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     : plateUrl
     ? `<img class="nameplate-image" alt="" src="${escapeHtml(plateUrl)}">`
     : '<div class="nameplate-fallback"></div>';
-  const glassPlate = hidePlate
-    ? '<div class="glass-plate-source nameplate-fallback"></div>'
-    : plateUrl
-    ? `<img class="glass-plate-source nameplate-image" alt="" src="${escapeHtml(plateUrl)}">`
-    : '<div class="glass-plate-source nameplate-fallback"></div>';
   const avatar = hideIcon
     ? ''
     : iconUrl
@@ -380,9 +375,9 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         <section class="profile-banner-app${hidePlate ? ' no-plate' : ''}" id="profile-banner">
           ${nameplate}
           <div class="profile-glass" aria-hidden="true">
-            <div class="glass-layer glass-blur-strong">${glassPlate}</div>
-            <div class="glass-layer glass-blur-medium">${glassPlate}</div>
-            <div class="glass-layer glass-blur-soft">${glassPlate}</div>
+            <span class="glass-layer glass-blur-strong"></span>
+            <span class="glass-layer glass-blur-medium"></span>
+            <span class="glass-layer glass-blur-soft"></span>
             <span class="glass-layer glass-tint"></span>
           </div>
           ${hideIcon ? '' : `<div class="avatar">${avatar}</div>`}
@@ -434,21 +429,11 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .profile-banner-app .nameplate-image{object-fit:contain;filter:saturate(1.08)}
     .profile-banner-app .nameplate-fallback{border:1px solid rgba(255,255,255,.8);background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}
     .profile-glass{position:absolute;z-index:0;left:0;top:0;bottom:0;width:var(--glass-physical-width,60%);overflow:hidden;pointer-events:none}
-    .glass-layer{position:absolute;top:-${appGlassBleed}px;right:0;bottom:-${appGlassBleed}px;left:-${appGlassBleed}px;display:block;overflow:hidden;background:rgba(255,255,255,.001);pointer-events:none}
-    .glass-plate-source{display:none}
+    .glass-layer{position:absolute;top:-${appGlassBleed}px;right:0;bottom:-${appGlassBleed}px;left:-${appGlassBleed}px;background:rgba(255,255,255,.001);pointer-events:none}
     .glass-blur-strong{-webkit-backdrop-filter:blur(var(--glass-blur-strong)) saturate(110%);backdrop-filter:blur(var(--glass-blur-strong)) saturate(110%);-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-1,74%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-1,74%),transparent 100%)}
     .glass-blur-medium{-webkit-backdrop-filter:blur(var(--glass-blur-medium)) saturate(108%);backdrop-filter:blur(var(--glass-blur-medium)) saturate(108%);-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-2,86%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent var(--glass-local-step-2,86%),transparent 100%)}
     .glass-blur-soft{-webkit-backdrop-filter:blur(var(--glass-blur-soft)) saturate(106%);backdrop-filter:blur(var(--glass-blur-soft)) saturate(106%);-webkit-mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent 100%);mask-image:linear-gradient(90deg,#000 0%,#000 var(--glass-local-start,60%),transparent 100%)}
     .glass-tint{inset:0;background:linear-gradient(90deg,rgba(242,247,255,var(--glass-opacity)) 0%,rgba(242,247,255,var(--glass-opacity)) var(--glass-local-start,60%),rgba(242,247,255,0) 100%)}
-    /* Export software capture cannot rasterize backdrop-filter; bake plate clones only then. */
-    html.export-capture .profile-banner-app{--glass-opacity:.28}
-    html.export-capture .glass-blur-strong,html.export-capture .glass-blur-medium,html.export-capture .glass-blur-soft{-webkit-backdrop-filter:none;backdrop-filter:none}
-    html.export-capture .glass-plate-source{position:absolute;top:${appGlassBleed}px;left:${appGlassBleed}px;display:block;width:var(--glass-banner-width,100%);height:calc(100% - ${appGlassBleed * 2}px);border-radius:0;transform:none}
-    html.export-capture .glass-plate-source.nameplate-image{object-fit:contain;filter:saturate(1.08)}
-    html.export-capture .glass-blur-strong .glass-plate-source{filter:blur(var(--glass-blur-strong)) saturate(110%)}
-    html.export-capture .glass-blur-medium .glass-plate-source{filter:blur(var(--glass-blur-medium)) saturate(108%)}
-    html.export-capture .glass-blur-soft .glass-plate-source{filter:blur(var(--glass-blur-soft)) saturate(106%)}
-    html.export-capture .glass-tint{background:linear-gradient(90deg,rgba(242,247,255,var(--glass-opacity)) 0%,rgba(242,247,255,calc(var(--glass-opacity) * .72)) var(--glass-local-start,60%),rgba(242,247,255,0) 100%)}
     .profile-banner-app .avatar{position:relative;z-index:1;width:${appAvatarSize}px;height:${appAvatarSize}px;flex:0 0 ${appAvatarSize}px;overflow:visible;border:0;background:transparent}
     .profile-banner-app .avatar-image{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 ${px(width * 10 / 1080)}px ${px(width * 12 / 1080)}px rgba(31,44,75,.3))}
     .profile-banner-app .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;overflow:hidden;border:${Math.max(2, px(width * 4 / 1080))}px solid rgba(255,255,255,.92);border-radius:${px(width * 20 / 1080)}px;background:linear-gradient(145deg,#F8FBFF,#C7D5EA);box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 24 / 1080)}px rgba(31,44,75,.3),inset 0 1px rgba(255,255,255,.9);color:#52647F;font:950 ${px(width * 56 / 1080)}px/1 system-ui,sans-serif}
@@ -612,7 +597,6 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         const localStepOne = (stepOnePx + APP_GLASS_BLEED) / expandedLayerWidth * 100;
         const localStepTwo = (stepTwoPx + APP_GLASS_BLEED) / expandedLayerWidth * 100;
         banner.style.setProperty('--glass-physical-width', (endPx / banner.clientWidth * 100).toFixed(1) + '%');
-        banner.style.setProperty('--glass-banner-width', banner.clientWidth + 'px');
         banner.style.setProperty('--glass-local-start', localStart.toFixed(1) + '%');
         banner.style.setProperty('--glass-local-step-1', localStepOne.toFixed(1) + '%');
         banner.style.setProperty('--glass-local-step-2', localStepTwo.toFixed(1) + '%');
@@ -657,7 +641,6 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         // never letterboxes while the native container is still catching up between pages.
         const exportViewport = Math.abs(viewportWidth - OUTPUT_WIDTH) < 2
           && viewportHeight + 2 >= Math.min(logicalHeight, MINIMUM_HEIGHT);
-        document.documentElement.classList.toggle('export-capture', exportViewport);
         if (exportViewport) {
           canvas.style.left = '0px';
           canvas.style.top = '0px';
