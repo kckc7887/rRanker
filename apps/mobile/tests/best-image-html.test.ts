@@ -114,6 +114,9 @@ describe('best image html', () => {
     expect(app).not.toContain('class="rating-frame"');
     expect(app).toContain('.profile-app{position:absolute;z-index:1;left:43px;top:43px;width:994px;');
     expect(app).toContain('.profile-banner-app{--glass-opacity:0;--glass-blur-strong:6px;--glass-blur-medium:4px;--glass-blur-soft:2.3px;');
+    expect(app).toContain('height:160px');
+    expect(app).toContain('.profile-banner-app .nameplate-image{object-fit:contain;filter:saturate(1.08)}');
+    expect(app).not.toContain('transform:scale(1.03)');
     expect(app).toContain('.profile-glass{position:absolute;z-index:0;left:0;top:0;bottom:0;width:var(--glass-physical-width,60%);overflow:hidden');
     expect(app).toContain("banner.style.setProperty('--glass-physical-width'");
     expect(app).toContain('.profile-banner-app .avatar{position:relative;z-index:1;width:130px;height:130px;');
@@ -413,7 +416,7 @@ describe('best image html', () => {
     expect(html).not.toContain('/plate/2.png');
     expect(html).not.toContain('>称号</div>');
     expect(html).toContain('<div class="app-page-marker-row"><div class="page-marker app-page-marker">第 2 / 3 页</div></div>');
-    expect(html).toContain('height:206px');
+    expect(html).toContain('height:202px');
     expect(html).toContain('这是一个用于验证不会省略的非常长玩家姓名');
     expect(html).not.toContain('.app-player-name{width:max-content;max-width:100%;overflow:hidden');
   });
