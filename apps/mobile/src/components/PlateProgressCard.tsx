@@ -64,7 +64,7 @@ export function PlateProgressCard({ plate, progress, eyebrow, footer, testID }: 
           return (
             <View key={difficulty} style={styles.diffRow}>
               {levelIndex < 0 ? (
-                <Text style={styles.anyDiff}>任意难度</Text>
+                <Text style={[styles.anyDiff, { color: theme.textMuted }]}>任意难度</Text>
               ) : (
                 <DifficultyBadge difficulty={difficultyFromIndex(levelIndex)} compact />
               )}
