@@ -201,7 +201,7 @@ describe('M4 score list cards', () => {
     await fireEvent.press(screen.getByLabelText('选择多人成就 FS'));
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
     expect(screen.getByLabelText('查看谱面 B15低 SD advanced')).toBeTruthy();
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
     expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
     await fireEvent.press(screen.getByLabelText('收起筛选'));
     expect(screen.getByLabelText(/展开筛选，当前.*多人 FS/)).toBeTruthy();

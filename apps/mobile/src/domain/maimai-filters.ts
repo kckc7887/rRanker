@@ -102,7 +102,7 @@ export function matchesSoloAchievementFilter(
   filter: MaimaiFcAchievement | null,
 ): boolean {
   if (!filter) return true;
-  return matchesAchievementStatus(record, { family: 'fc', value: filter });
+  return matchesAchievementStatus(record, { family: 'fc', value: filter }, true);
 }
 
 export function matchesMultiAchievementFilter(
@@ -110,7 +110,7 @@ export function matchesMultiAchievementFilter(
   filter: MaimaiFsAchievement | null,
 ): boolean {
   if (!filter) return true;
-  return matchesAchievementStatus(record, { family: 'fs', value: filter });
+  return matchesAchievementStatus(record, { family: 'fs', value: filter }, true);
 }
 
 export function maimaiAchievementStatusLabel(filter: MaimaiAchievementStatus): string {
