@@ -8,12 +8,14 @@ import type { UserLibraryItem } from '@/domain/user-library';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useUserLibrary } from '@/hooks/use-user-library';
+import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
 type Mode = 'all' | 'favorite' | 'practice';
 
 export default function UserLibraryScreen() {
   const library = useUserLibrary();
+  const activeGameId = useSession((state) => state.activeGameId);
   const theme = useAppTheme();
   const maimaiCatalog = useDetailedCatalog();
   const phigrosCatalog = usePhigrosCatalog();
@@ -21,10 +23,13 @@ export default function UserLibraryScreen() {
   const [tag, setTag] = useState<string>();
   const songsById = useMemo(() => {
     const map = new Map<string, Song>();
-    for (const song of phigrosCatalog.data?.snapshot.songs ?? []) map.set(song.id, song);
-    for (const song of maimaiCatalog.data?.songs ?? []) map.set(song.id, song);
+    if (activeGameId === 'phigros') {
+      for (const song of phigrosCatalog.data?.snapshot.songs ?? []) map.set(song.id, song);
+    } else {
+      for (const song of maimaiCatalog.data?.songs ?? []) map.set(song.id, song);
+    }
     return map;
-  }, [maimaiCatalog.data?.songs, phigrosCatalog.data?.snapshot.songs]);
+  }, [activeGameId, maimaiCatalog.data?.songs, phigrosCatalog.data?.snapshot.songs]);
   const phigrosBlurUrls = useMemo(() => {
     const map = new Map<string, string>();
     const provider = phigrosCatalog.data?.provider;

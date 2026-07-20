@@ -28,7 +28,7 @@ describe('SqliteUserLibraryRepository', () => {
     await expect(repository.list()).resolves.toEqual([]);
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('user_library_meta'));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('PRAGMA foreign_keys = ON'));
-    expect(sqlite.db.runAsync).toHaveBeenCalledWith('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', 2);
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', 3);
   });
 
   it('clears personal tables inside an exclusive transaction', async () => {
@@ -42,11 +42,11 @@ describe('SqliteUserLibraryRepository', () => {
   it('writes a library item through the exclusive update transaction', async () => {
     const repository = new SqliteUserLibraryRepository();
     await repository.update(() => [{
-      key: 'song:1', kind: 'song', songId: '1', favorite: true, tags: [],
+      key: 'song:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: [],
       createdAt: '2026-07-13T00:00:00.000Z', updatedAt: '2026-07-13T00:00:00.000Z',
     }]);
     expect(sqlite.db.runAsync).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO user_library_items'),
-      'song:1', 'song', '1', null, null, 1, 0, '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z');
+      'song:maimai:1', 'maimai', 'song', '1', null, null, 1, 0, '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z');
   });
 
   it('propagates transaction failure without reporting success', async () => {

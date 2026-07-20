@@ -18,7 +18,6 @@ import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
-import { songLibraryKey } from '@/domain/user-library';
 import { useSession } from '@/state/session-store';
 import { useCatalogFilter } from '@/state/catalog-filter';
 import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/search';
@@ -59,7 +58,10 @@ export function SearchScreen() {
   const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
   const isFiltering = filterSpec !== deferredFilterSpec;
   const viewData = query.data && filtered.length > 0 ? { songs: filtered, source: query.data.source } : undefined;
-  const favoriteKeys = useMemo(() => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.key)), [library.data]);
+  const favoriteSongIds = useMemo(
+    () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
+    [library.data],
+  );
 
   if (activeGameId === 'phigros') {
     return <PhigrosSearchScreen />;
@@ -89,7 +91,7 @@ export function SearchScreen() {
         error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
         data={viewData} renderData={(result) => (
           <CatalogResultsList songs={result.songs} source={result.source} tabBottomInset={tabBottomInset}
-            favoriteKeys={favoriteKeys} favoritePending={library.isLoading || library.isUpdating}
+            favoriteSongIds={favoriteSongIds} favoritePending={library.isLoading || library.isUpdating}
             setSongFavorite={library.setSongFavorite} />
         )} />
     </View>
@@ -100,14 +102,14 @@ const CatalogResultsList = memo(function CatalogResultsList({
   songs,
   source,
   tabBottomInset,
-  favoriteKeys,
+  favoriteSongIds,
   favoritePending,
   setSongFavorite,
 }: {
   songs: Song[];
   source: DataSource;
   tabBottomInset: number;
-  favoriteKeys: ReadonlySet<string>;
+  favoriteSongIds: ReadonlySet<string>;
   favoritePending: boolean;
   setSongFavorite: LibraryHook['setSongFavorite'];
 }) {
@@ -115,10 +117,10 @@ const CatalogResultsList = memo(function CatalogResultsList({
     void setSongFavorite(songId, favorite);
   }, [setSongFavorite]);
   const renderItem = useCallback<ListRenderItem<Song>>(({ item }) => {
-    const favorite = favoriteKeys.has(songLibraryKey(item.id));
+    const favorite = favoriteSongIds.has(item.id);
     return <CatalogSongRow song={item} favorite={favorite} favoritePending={favoritePending}
       onFavoriteChange={toggleFavorite} />;
-  }, [favoriteKeys, favoritePending, toggleFavorite]);
+  }, [favoriteSongIds, favoritePending, toggleFavorite]);
   const sourceHeader = useMemo(() => <SourceStatus items={[{
     key: 'catalog', label: source.label, updatedAt: source.updatedAt,
     state: source.isStale ? 'cache' : 'live',
@@ -182,8 +184,8 @@ function PhigrosSearchScreen() {
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
   const isFiltering = filterSpec !== deferredFilterSpec;
-  const favoriteKeys = useMemo(
-    () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.key)),
+  const favoriteSongIds = useMemo(
+    () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
     [library.data],
   );
 
@@ -221,7 +223,7 @@ function PhigrosSearchScreen() {
             blurUrls={blurUrls}
             source={result.source}
             tabBottomInset={tabBottomInset}
-            favoriteKeys={favoriteKeys}
+            favoriteSongIds={favoriteSongIds}
             favoritePending={library.isLoading || library.isUpdating}
             setSongFavorite={library.setSongFavorite}
           />
@@ -232,13 +234,13 @@ function PhigrosSearchScreen() {
 }
 
 const PhigrosCatalogList = memo(function PhigrosCatalogList({
-  songs, blurUrls, source, tabBottomInset, favoriteKeys, favoritePending, setSongFavorite,
+  songs, blurUrls, source, tabBottomInset, favoriteSongIds, favoritePending, setSongFavorite,
 }: {
   songs: Song[];
   blurUrls: Map<string, string>;
   source?: DataSource;
   tabBottomInset: number;
-  favoriteKeys: ReadonlySet<string>;
+  favoriteSongIds: ReadonlySet<string>;
   favoritePending: boolean;
   setSongFavorite: LibraryHook['setSongFavorite'];
 }) {
@@ -249,11 +251,11 @@ const PhigrosCatalogList = memo(function PhigrosCatalogList({
     <PhigrosSongRow
       song={item}
       blurUrl={blurUrls.get(item.id) ?? null}
-      favorite={favoriteKeys.has(songLibraryKey(item.id))}
+      favorite={favoriteSongIds.has(item.id)}
       favoritePending={favoritePending}
       onFavoriteChange={toggleFavorite}
     />
-  ), [blurUrls, favoriteKeys, favoritePending, toggleFavorite]);
+  ), [blurUrls, favoriteSongIds, favoritePending, toggleFavorite]);
 
   const sourceHeader = useMemo(() => source ? <SourceStatus items={[{
     key: 'catalog', label: source.label, updatedAt: source.updatedAt,

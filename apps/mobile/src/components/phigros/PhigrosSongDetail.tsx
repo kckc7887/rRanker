@@ -27,7 +27,7 @@ import { SourceStatus } from '@/components/SourceStatus';
 import type { Chart, ScoreRecord, Song } from '@/domain/models';
 import { PHIGROS_MAX_SCORE, phigrosScoreToRate } from '@/domain/phigros';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
-import { buildTagHistory, chartLibraryKey, songLibraryKey } from '@/domain/user-library';
+import { buildTagHistory } from '@/domain/user-library';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -99,7 +99,7 @@ export function PhigrosSongDetail({
   const illustrationUrl = songId && provider ? provider.getIllustrationUrl(songId) : null;
   const blurUrl = songId && provider ? provider.getIllustrationBlurUrl(songId) : null;
   const lowresUrl = songId && provider ? provider.getIllustrationLowresUrl(songId) : null;
-  const songItem = song ? library.data?.find((item) => item.key === songLibraryKey(song.id)) : undefined;
+  const songItem = song ? library.data?.find((item) => item.key === library.songKey(song.id)) : undefined;
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
@@ -220,7 +220,7 @@ function Detail({
 }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
-  const songItem = library.data?.find((item) => item.key === songLibraryKey(song.id));
+  const songItem = library.data?.find((item) => item.key === library.songKey(song.id));
   const sortedCharts = useMemo(
     () => [...song.charts].sort((a, b) => b.levelIndex - a.levelIndex),
     [song.charts],
@@ -327,7 +327,7 @@ function Detail({
             <TagEditor
               tags={songItem?.kind === 'song' ? songItem.tags : []}
               presets={library.tagPresets ?? []}
-              historyTags={buildTagHistory(library.data ?? [], songLibraryKey(song.id), library.tagPresets ?? [])}
+              historyTags={buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
               disabled={library.isUpdating}
               onPresetsChange={library.setTagPresets}
               onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)}
@@ -436,7 +436,7 @@ function ChartCard({
   const theme = useAppTheme();
   const colors = phigrosLevelColors(chart.levelIndex);
   const label = phigrosLevelLabel(chart.levelIndex);
-  const chartItem = library.data?.find((item) => item.key === chartLibraryKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex));
+  const chartItem = library.data?.find((item) => item.key === library.chartKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const levelNumber = Math.floor(chart.difficultyConstant);
   const score = best?.dxScore;
@@ -531,7 +531,7 @@ function ChartCard({
         presets={library.tagPresets ?? []}
         historyTags={buildTagHistory(
           library.data ?? [],
-          chartLibraryKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex),
+          library.chartKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex),
           library.tagPresets ?? [],
         )}
         disabled={library.isUpdating}
