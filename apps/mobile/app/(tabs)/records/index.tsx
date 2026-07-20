@@ -14,12 +14,13 @@ import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
-import { useGameData } from '@/hooks/use-game-data';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
+import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
+import { useQuery } from '@tanstack/react-query';
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
@@ -147,14 +148,27 @@ function recordKey(record: ScoreRecord): string {
 }
 
 function PhigrosRecordsScreen() {
-  const gameQuery = useGameData();
+  const provider = useSession((s) => s.scoreProvider);
+  const session = useSession((s) => s.session);
   const catalogQuery = usePhigrosCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const { keyword, setKeyword } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
-  const filterSpec = useMemo(() => ({ keyword: debouncedKeyword }), [debouncedKeyword]);
-  const deferredFilterSpec = useDeferredValue(filterSpec);
+  const hasSession = session?.mode === 'phi-session' && provider instanceof PhigrosScoreProvider;
+
+  const recordsQuery = useQuery({
+    queryKey: ['phigros-records-v2'],
+    queryFn: async (): Promise<ScoreRecord[]> => {
+      if (!(provider instanceof PhigrosScoreProvider)) return [];
+      const [records] = await Promise.all([
+        provider.getRecords(),
+        provider.getB30(),
+      ]);
+      return records.sort((a, b) => b.rating - a.rating);
+    },
+    enabled: hasSession,
+  });
 
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -164,19 +178,18 @@ function PhigrosRecordsScreen() {
     return map;
   }, [catalogQuery.data?.snapshot.songs]);
 
-  const records: ScoreRecord[] = gameQuery.data?.payload?.kind === 'phigros'
-    ? (gameQuery.data.payload as unknown as { records?: ScoreRecord[] }).records ?? []
-    : [];
-
   const searchDocs = useMemo(() => new Map(
-    records.map((r) => {
+    (recordsQuery.data ?? []).map((r) => {
       const title = titleMap.get(r.songId) ?? r.songId;
       return [recordKey(r), { ...buildSearchDocument([r.songId, title]), title }] as const;
     }),
-  ), [records, titleMap]);
+  ), [recordsQuery.data, titleMap]);
 
+  const filterSpec = useMemo(() => ({ keyword: debouncedKeyword }), [debouncedKeyword]);
+  const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<{ record: ScoreRecord; title: string }[]>(() => {
-    let list = records.map((r) => {
+    if (!recordsQuery.data) return [];
+    let list = recordsQuery.data.map((r) => {
       const doc = searchDocs.get(recordKey(r));
       return { record: r, title: doc?.title ?? r.songId };
     });
@@ -186,17 +199,27 @@ function PhigrosRecordsScreen() {
         return doc ? searchDocumentMatches(doc, deferredFilterSpec.keyword) : false;
       });
     }
-    return list.sort((a, b) => b.record.rating - a.record.rating);
-  }, [deferredFilterSpec.keyword, records, searchDocs]);
+    return list;
+  }, [deferredFilterSpec.keyword, recordsQuery.data, searchDocs]);
 
-  const isGameLoading = gameQuery.isLoading || catalogQuery.isLoading;
-  const isGameError = gameQuery.isError || catalogQuery.isError;
-  const error = gameQuery.error ?? catalogQuery.error;
-  const refetch = () => { void gameQuery.refetch(); void catalogQuery.refetch(); };
-  const source = gameQuery.data?.payload?.kind === 'phigros'
-    ? (gameQuery.data.payload as unknown as { source?: DataSource }).source
-    : undefined;
-  const payloadSource = source ?? { kind: 'generated' as const, label: 'Phigros 云存档', updatedAt: new Date().toISOString(), isStale: false };
+  const isGameLoading = recordsQuery.isLoading || catalogQuery.isLoading;
+  const isGameError = recordsQuery.isError || catalogQuery.isError;
+  const error = recordsQuery.error ?? catalogQuery.error;
+  const refetchAll = () => {
+    void Promise.all([recordsQuery.refetch(), catalogQuery.refetch()]);
+  };
+  const source: DataSource = { kind: 'generated', label: 'TapTap 云存档', updatedAt: new Date().toISOString(), isStale: false };
+
+  if (!hasSession && !recordsQuery.isLoading) {
+    return (
+      <View style={[styles.page, { backgroundColor: theme.background }]}>
+        <View style={styles.center}>
+          <Text style={[styles.statusText, { color: theme.textMuted }]}>尚未绑定 TapTap 账号</Text>
+          <Text style={[styles.statusHint, { color: theme.textMuted }]}>请在游戏管理中绑定 Phigros 的 TapTap 云存档</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
@@ -207,14 +230,15 @@ function PhigrosRecordsScreen() {
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
       <QueryStateView<{ record: ScoreRecord; title: string }[]>
-        isLoading={isGameLoading} isError={isGameError}
+        isLoading={isGameLoading}
+        isError={isGameError}
         isEmpty={!isGameLoading && filtered.length === 0}
-        error={error} onRetry={refetch}
+        error={error}
+        onRetry={refetchAll}
         emptyText={keyword.trim() ? '筛选结果为空' : '暂无成绩数据'}
         data={!isGameLoading && filtered.length > 0 ? filtered : undefined}
         renderData={(entries) => (
-          <PhigrosRecordList entries={entries.map((e) => ({ record: e.record, title: e.title }))}
-            source={payloadSource} tabBottomInset={tabBottomInset} />
+          <PhigrosRecordList entries={entries} source={source} tabBottomInset={tabBottomInset} />
         )}
       />
     </View>
@@ -258,4 +282,7 @@ const styles = StyleSheet.create({
   header: { gap: 9 },
   searchArea: { padding: 12, paddingBottom: 8 },
   searchBox: { borderWidth: 1, borderRadius: 10, padding: 11 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24 },
+  statusText: { fontSize: 16, fontWeight: '600' },
+  statusHint: { fontSize: 13 },
 });
