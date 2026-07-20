@@ -18,7 +18,7 @@ import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 13;
+const GAME_DATA_QUERY_VERSION = 14;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -44,12 +44,15 @@ export function useGameData() {
       if (activeGameId === 'phigros') {
         if (scoreProvider instanceof PhigrosScoreProvider) {
           scoreProvider.invalidateCache();
-          const catalogProvider = new PhigrosCatalogProvider();
+          // 复用会话里的曲库 provider，避免每次同步成绩都新建实例并重拉 OSS、误刷新资源时间。
+          const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
+            ? catalogProvider
+            : new PhigrosCatalogProvider();
           const [player, records, bestSections, gameVersion, summary] = await Promise.all([
             scoreProvider.getPlayer(),
             scoreProvider.getRecords(),
             scoreProvider.getBestSections(),
-            catalogProvider.getGameVersion(),
+            phiCatalog.getGameVersion(),
             scoreProvider.getSummary(),
           ]);
 
@@ -63,7 +66,7 @@ export function useGameData() {
           const catalogSource = {
             kind: 'generated' as const,
             label: `Phigros${gameVersion}`,
-            updatedAt: new Date().toISOString(),
+            updatedAt: phiCatalog.getResourceUpdatedAt() ?? saveUpdatedAt,
             isStale: false,
           };
           const rks = player.rating;
