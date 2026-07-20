@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rranker.app"
+      "bundleIdentifier": "com.rranker.app",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["taptap"]
+      }
     },
     "android": {
       "package": "com.rranker.app",
