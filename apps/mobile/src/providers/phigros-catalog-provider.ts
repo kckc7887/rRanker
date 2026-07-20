@@ -94,8 +94,9 @@ export class PhigrosCatalogProvider implements CatalogProvider {
 
   private async doGetCatalog(): Promise<CatalogSnapshot> {
     const current = await this.fetchJson(`${OSS_BASE}/phigros/current.json`, CurrentSchema);
+    this.gameVersion = current.gameVersion;
     const catalog = await this.fetchJson(`${OSS_BASE}/${current.catalog}`, CatalogSchema);
-    const version = current.gameVersion;
+    const version = this.gameVersion;
 
     const songs: Song[] = catalog.songs.map((raw) => {
       const charts: Chart[] = raw.difficulties.map((dc, i) => ({
