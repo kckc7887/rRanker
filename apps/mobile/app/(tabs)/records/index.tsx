@@ -161,10 +161,7 @@ function PhigrosRecordsScreen() {
     queryKey: ['phigros-records-v2'],
     queryFn: async (): Promise<ScoreRecord[]> => {
       if (!(provider instanceof PhigrosScoreProvider)) return [];
-      const [records] = await Promise.all([
-        provider.getRecords(),
-        provider.getB30(),
-      ]);
+      const records = await provider.getRecords();
       return records.sort((a, b) => b.rating - a.rating);
     },
     enabled: hasSession,
