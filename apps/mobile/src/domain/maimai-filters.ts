@@ -1,5 +1,5 @@
 export type MaimaiFcAchievement = 'fc' | 'fcp' | 'ap' | 'app';
-export type MaimaiFsAchievement = 'sync' | 'fs' | 'fsp' | 'fsd' | 'fsdp';
+export type MaimaiFsAchievement = 'fs' | 'fsp' | 'fsd' | 'fsdp';
 export type MaimaiAchievementStatus =
   | { family: 'fc'; value: MaimaiFcAchievement }
   | { family: 'fs'; value: MaimaiFsAchievement }
@@ -13,12 +13,11 @@ export const MAIMAI_FC_ACHIEVEMENTS: readonly { value: MaimaiFcAchievement; labe
 export const MAIMAI_FS_ACHIEVEMENTS: readonly { value: MaimaiFsAchievement; label: string }[] = [
   { value: 'fsdp', label: 'FDX+' }, { value: 'fsd', label: 'FDX' },
   { value: 'fsp', label: 'FS+' }, { value: 'fs', label: 'FS' },
-  { value: 'sync', label: 'SYNC' },
 ];
 
-/** 1-based ranks so SYNC/FC (lowest tier) are never falsy as `0`. */
+/** 1-based ranks so FC/FS 最低档位 never falsy as `0`. */
 const FC_RANK: Record<MaimaiFcAchievement, number> = { fc: 1, fcp: 2, ap: 3, app: 4 };
-const FS_RANK: Record<MaimaiFsAchievement, number> = { sync: 1, fs: 2, fsp: 3, fsd: 4, fsdp: 5 };
+const FS_RANK: Record<MaimaiFsAchievement, number> = { fs: 1, fsp: 2, fsd: 3, fsdp: 4 };
 
 export function parseConstantBound(input: string): number | undefined {
   const text = input.trim();
@@ -62,10 +61,11 @@ export function normalizeMaimaiFc(value: string | null | undefined): MaimaiFcAch
 export function normalizeMaimaiFs(value: string | null | undefined): MaimaiFsAchievement | null {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return null;
+  // Sync Play 上游常丢失，产品侧不展示/不筛选 SYNC
+  if (normalized === 'sync') return null;
   if (normalized === 'fdx') return 'fsd';
   if (normalized === 'fdxp') return 'fsdp';
-  if (normalized === 'sync' || normalized === 'fs' || normalized === 'fsp'
-    || normalized === 'fsd' || normalized === 'fsdp') {
+  if (normalized === 'fs' || normalized === 'fsp' || normalized === 'fsd' || normalized === 'fsdp') {
     return normalized;
   }
   return null;

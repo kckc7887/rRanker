@@ -66,7 +66,7 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const base = fixtures.fixtureRecords[0];
   const visualRecords = [
-    { ...base, songId: '1', levelIndex: 0, difficulty: 'basic', achievements: 98.5, rating: 100, rate: 'sp', fc: 'fc', fs: 'sync' },
+    { ...base, songId: '1', levelIndex: 0, difficulty: 'basic', achievements: 98.5, rating: 100, rate: 'sp', fc: 'fc', fs: 'fs' },
     { ...base, songId: '1', levelIndex: 1, difficulty: 'advanced', achievements: 99, rating: 120, rate: 'ss', fc: 'fcp', fs: 'fs' },
     { ...base, songId: '1', levelIndex: 2, difficulty: 'expert', achievements: 99.5, rating: 140, rate: 'ssp', fc: 'ap', fs: 'fsd' },
     { ...base, songId: '1', levelIndex: 3, difficulty: 'master', achievements: 99.9999, rating: 160, rate: 'sss', fc: 'app', fs: 'fsdp' },
@@ -238,8 +238,10 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('flowing-status-AP+')).toBeTruthy();
     expect(screen.getByTestId('flowing-status-FDX+')).toBeTruthy();
     expect(screen.getByText('FC')).toBeTruthy();
-    expect(screen.getByText('SYNC')).toBeTruthy();
-    expect(screen.getByTestId('flowing-status-SYNC')).toBeTruthy();
+    expect(screen.getAllByText('FS').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('flowing-status-FS').length).toBeGreaterThan(0);
+    expect(screen.queryByText('SYNC')).toBeNull();
+    expect(screen.queryByTestId('flowing-status-SYNC')).toBeNull();
     expect(screen.getByText('SSS+')).toBeTruthy();
     expect(screen.getByText('SSS')).toBeTruthy();
     expect(screen.getByText('SS+')).toBeTruthy();

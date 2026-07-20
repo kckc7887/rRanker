@@ -14,7 +14,7 @@ function score(overrides: Partial<ScoreRecord> = {}): ScoreRecord {
   return {
     songId: '1', title: '测试曲', type: 'DX', levelIndex: 3, level: '13', difficulty: 'master',
     difficultyConstant: 13, achievements: 100, dxScore: 1800, rating: 280,
-    fc: 'fc', fs: 'sync', rate: 'sss', version: '当前版本',
+    fc: 'fc', fs: 'fs', rate: 'sss', version: '当前版本',
     ...overrides,
   };
 }
@@ -61,29 +61,29 @@ describe('custom best image', () => {
     expect(strict[0]?.records[0]?.songId).toBe('fcp');
   });
 
-  it('filters SYNC and higher fs achievements without treating sync rank as falsy', () => {
+  it('filters FS and higher fs achievements without treating fs rank as falsy', () => {
     const records = [
-      score({ songId: 'sync', fs: 'sync' }),
+      score({ songId: 'sync-only', fs: 'sync' }),
       score({ songId: 'fs', fs: 'fs' }),
       score({ songId: 'fsp', fs: 'fsp' }),
       score({ songId: 'none', fs: null }),
     ];
     const atLeast = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], achievement: { family: 'fs', value: 'sync' }, quantity: 100,
+      versions: ['current'], achievement: { family: 'fs', value: 'fs' }, quantity: 100,
     }));
-    expect(atLeast[0]?.title).toBe('当前版本SYNC3');
-    expect(new Set(atLeast[0]?.records.map((item) => item.songId))).toEqual(new Set(['sync', 'fs', 'fsp']));
+    expect(atLeast[0]?.title).toBe('当前版本FS2');
+    expect(new Set(atLeast[0]?.records.map((item) => item.songId))).toEqual(new Set(['fs', 'fsp']));
 
     const strict = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], achievement: { family: 'fs', value: 'sync' }, strictAchievement: true, quantity: 100,
+      versions: ['current'], achievement: { family: 'fs', value: 'fs' }, strictAchievement: true, quantity: 100,
     }));
-    expect(strict[0]?.title).toBe('当前版本SYNC1');
-    expect(strict[0]?.records.map((item) => item.songId)).toEqual(['sync']);
+    expect(strict[0]?.title).toBe('当前版本FS1');
+    expect(strict[0]?.records.map((item) => item.songId)).toEqual(['fs']);
   });
 
   it('normalizes FDX aliases and filters achievement inclusively', () => {
     const records = [
-      score({ songId: 'sync', fs: 'sync', achievements: 100.49 }),
+      score({ songId: 'sync-only', fs: 'sync', achievements: 100.49 }),
       score({ songId: 'fdx', fs: 'fdx', achievements: 100.5 }),
       score({ songId: 'fdxp', fs: 'fdxp', achievements: 101 }),
     ];
