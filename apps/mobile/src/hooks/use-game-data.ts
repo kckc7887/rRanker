@@ -6,8 +6,10 @@ import {
   maimaiPayloadFromSnapshot,
   type GameDataBundle,
 } from '@/domain/game-data';
+import { buildLxnsIconUrl, buildPhigrosAvatarUrl } from '@/domain/account-avatar';
 import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService } from '@/services/score-service';
+import { persistBoundAccountAvatar } from '@/services/hydrate-bound-account-avatars';
 import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
@@ -42,11 +44,12 @@ export function useGameData() {
         if (scoreProvider instanceof PhigrosScoreProvider) {
           scoreProvider.invalidateCache();
           const catalogProvider = new PhigrosCatalogProvider();
-          const [player, records, bestSections, gameVersion] = await Promise.all([
+          const [player, records, bestSections, gameVersion, summary] = await Promise.all([
             scoreProvider.getPlayer(),
             scoreProvider.getRecords(),
             scoreProvider.getBestSections(),
             catalogProvider.getGameVersion(),
+            scoreProvider.getSummary(),
           ]);
 
           const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
@@ -63,6 +66,7 @@ export function useGameData() {
             isStale: false,
           };
           const rks = player.rating;
+          const avatarUrl = buildPhigrosAvatarUrl(gameVersion, summary.avatar);
           return {
             gameId: 'phigros' as const,
             providerId: 'phi-taptap' as const,
@@ -79,6 +83,7 @@ export function useGameData() {
               },
               source,
               catalogSource,
+              avatarUrl,
             },
           };
         }
@@ -124,18 +129,29 @@ export function useGameData() {
     if (!query.data) return;
     const d = query.data;
     if (d.payload.kind === 'maimai') {
+      const avatarUrl = d.providerId === 'lxns'
+        ? buildLxnsIconUrl(d.payload.player.presentation?.iconId)
+        : undefined;
       updateBoundAccountScore(
         activeAccountId,
         formatPlayerScore(d.payload.playerScore.value, d.profile.ratingDigits),
         d.payload.player.displayName,
+        avatarUrl,
       );
+      if (avatarUrl) {
+        void persistBoundAccountAvatar(activeAccountId, avatarUrl);
+      }
     }
     if (d.payload.kind === 'phigros') {
       updateBoundAccountScore(
         activeAccountId,
         d.payload.playerScore.display,
         d.payload.player.displayName,
+        d.payload.avatarUrl ?? null,
       );
+      if (d.payload.avatarUrl) {
+        void persistBoundAccountAvatar(activeAccountId, d.payload.avatarUrl);
+      }
     }
   }, [activeAccountId, query.data, updateBoundAccountScore]);
 

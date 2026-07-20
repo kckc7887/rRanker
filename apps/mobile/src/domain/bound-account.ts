@@ -13,6 +13,8 @@ export type BoundAccount = {
   /** 展示用分数，空为 — */
   scoreDisplay: string;
   providerTitle: string;
+  /** 玩家头像 URL；Phigros / 落雪等远程账号优先展示。 */
+  avatarUrl?: string | null;
 };
 
 export const TEST_ACCOUNT_ID = 'test:empty';

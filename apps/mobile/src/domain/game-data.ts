@@ -44,6 +44,7 @@ export type GamePayload =
       playerScore: PlayerScoreSummary;
       source: DataSource;
       catalogSource: DataSource;
+      avatarUrl?: string | null;
     }
   | {
       kind: 'empty';

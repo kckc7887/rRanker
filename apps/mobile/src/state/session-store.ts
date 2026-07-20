@@ -16,6 +16,7 @@ import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider'
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import type { SessionVault, StoredProviderAccount } from '@/storage/secure-session-store';
+import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const localRepository = new SqliteSnapshotRepository();
@@ -135,7 +136,12 @@ interface SessionState {
     providerId?: RemoteProviderId;
   }) => void;
   upsertBoundAccount: (account: BoundAccount) => void;
-  updateBoundAccountScore: (accountId: string, scoreDisplay: string, displayName?: string) => void;
+  updateBoundAccountScore: (
+    accountId: string,
+    scoreDisplay: string,
+    displayName?: string,
+    avatarUrl?: string | null,
+  ) => void;
   renameLocalAccount: (accountId: string, displayName: string) => void;
   selectBoundAccount: (accountId: string) => void;
   removeBoundAccount: (accountId: string) => void;
@@ -311,7 +317,7 @@ export const useSession = create<SessionState>((set, get) => ({
   upsertBoundAccount: (account) => {
     set({ boundAccounts: upsertAccountList(get().boundAccounts, account) });
   },
-  updateBoundAccountScore: (accountId, scoreDisplay, displayName) => {
+  updateBoundAccountScore: (accountId, scoreDisplay, displayName, avatarUrl) => {
     if (!get().boundAccounts.some((account) => account.id === accountId)) return;
     set({
       boundAccounts: get().boundAccounts.map((account) => {
@@ -320,6 +326,7 @@ export const useSession = create<SessionState>((set, get) => ({
           ...account,
           scoreDisplay,
           displayName: displayName ?? account.displayName,
+          ...(avatarUrl !== undefined ? { avatarUrl } : {}),
         };
       }),
     });
@@ -437,6 +444,7 @@ export async function restoreSession(
       ? await loadOptionalAccounts().catch(() => [])
       : [];
     useSession.getState().finishRestore(input, optionalAccounts);
+    await hydrateBoundAccountAvatars();
   } catch {
     useSession.getState().failRestore('无法读取本机登录状态，当前未加载任何账号');
   }
