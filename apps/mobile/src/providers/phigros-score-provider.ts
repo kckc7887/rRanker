@@ -16,6 +16,7 @@ import {
   loadDifficultyTable,
   LEVEL_NAMES,
   type PhigrosB30,
+  type PhigrosSummary,
 } from '@/domain/phigros';
 
 export type { DeviceCodeResult };
@@ -24,7 +25,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private sessionToken: string;
   private playerId: string;
   private b30Cache: PhigrosB30 | null = null;
-  private summaryCache: { avatar: string; rankingScore: number } | null = null;
+  private summaryCache: PhigrosSummary | null = null;
 
   constructor(session: ProviderSession) {
     if (session.mode !== 'phi-session') {
@@ -82,11 +83,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
   async getPlayer(): Promise<Player> {
     if (!this.summaryCache) {
       const { summaryBase64 } = await getGameSave(this.sessionToken);
-      const summary = parseSummary(summaryBase64);
-      this.summaryCache = {
-        avatar: summary.avatar,
-        rankingScore: summary.rankingScore,
-      };
+      this.summaryCache = parseSummary(summaryBase64);
     }
     return {
       id: this.playerId,
@@ -94,6 +91,14 @@ export class PhigrosScoreProvider implements ScoreProvider {
       rating: Math.round(this.summaryCache.rankingScore * 100) / 100,
       source: this.source(),
     };
+  }
+
+  getSummary(): Promise<PhigrosSummary> {
+    if (this.summaryCache) return Promise.resolve(this.summaryCache);
+    return getGameSave(this.sessionToken).then(({ summaryBase64 }) => {
+      this.summaryCache = parseSummary(summaryBase64);
+      return this.summaryCache;
+    });
   }
 
   private async loadB30(): Promise<PhigrosB30> {
@@ -111,8 +116,11 @@ export class PhigrosScoreProvider implements ScoreProvider {
   }
 
   private async loadDifficultyTable(): Promise<string> {
+    const current = await fetch(
+      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/current.json',
+    ).then((r) => r.json());
     const res = await fetch(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4/metadata/difficulty.tsv',
+      `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${current.gameVersion}/metadata/difficulty.tsv`,
     );
     if (!res.ok) throw new ProviderError('network', '无法加载定数表', true);
     return await res.text();
