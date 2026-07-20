@@ -10,7 +10,7 @@ import { buildLxnsIconUrl } from '@/domain/account-avatar';
 import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
 import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService } from '@/services/score-service';
-import { persistBoundAccountAvatar } from '@/services/hydrate-bound-account-avatars';
+import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
 import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
@@ -148,7 +148,7 @@ export function useGameData() {
         activeAccountId,
         d.payload.playerScore.display,
         d.payload.player.displayName,
-        d.payload.avatarUrl ?? null,
+        d.payload.avatarUrl ?? undefined,
       );
       if (d.payload.avatarUrl) {
         void persistBoundAccountAvatar(activeAccountId, d.payload.avatarUrl);
