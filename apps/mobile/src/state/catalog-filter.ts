@@ -24,7 +24,7 @@ interface CatalogFilterState {
 
 const DEFAULT_CATALOG_FILTERS = {
   keyword: '',
-  collapsed: false,
+  collapsed: true,
   type: 'all' as const,
   difficulty: 'all' as const,
   constantMin: '',

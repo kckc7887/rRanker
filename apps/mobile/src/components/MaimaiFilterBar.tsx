@@ -21,6 +21,8 @@ export interface MaimaiFilterBarProps {
   type: ChartType | 'all';
   constantMin: string;
   constantMax: string;
+  achievementMin?: string;
+  achievementMax?: string;
   versionLocale: VersionNameLocale;
   versions: readonly VersionFilterOption[];
   onCollapsedChange: (collapsed: boolean) => void;
@@ -29,11 +31,13 @@ export interface MaimaiFilterBarProps {
   onTypeChange: (type: ChartType | 'all') => void;
   onConstantMinChange: (value: string) => void;
   onConstantMaxChange: (value: string) => void;
+  onAchievementMinChange?: (value: string) => void;
+  onAchievementMaxChange?: (value: string) => void;
   onVersionLocaleChange: (locale: VersionNameLocale) => void;
 }
 
-export function buildMaimaiFilterSummary({ difficulty, version, type, constantMin, constantMax, versionLocale, versions }:
-  Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'type' | 'constantMin' | 'constantMax' | 'versionLocale' | 'versions'>): string {
+export function buildMaimaiFilterSummary({ difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax, versionLocale, versions }:
+  Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'type' | 'constantMin' | 'constantMax' | 'achievementMin' | 'achievementMax' | 'versionLocale' | 'versions'>): string {
   const selectedVersion = versions.find((option) => option.value === version);
   const selectedVersionLabel = selectedVersion
     ? localizedVersionName(selectedVersion.versionId, selectedVersion.name, versionLocale)
@@ -43,6 +47,7 @@ export function buildMaimaiFilterSummary({ difficulty, version, type, constantMi
     selectedVersionLabel === '全部' ? null : selectedVersionLabel,
     type === 'all' ? null : type,
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
+    achievementMin || achievementMax ? `达成率 ${achievementMin || '不限'}~${achievementMax || '不限'}%` : null,
   ].filter(Boolean).join(' · ') || '全部';
 }
 
@@ -53,6 +58,8 @@ export function MaimaiFilterBar({
   type,
   constantMin,
   constantMax,
+  achievementMin = '',
+  achievementMax = '',
   versionLocale,
   versions,
   onCollapsedChange,
@@ -61,10 +68,13 @@ export function MaimaiFilterBar({
   onTypeChange,
   onConstantMinChange,
   onConstantMaxChange,
+  onAchievementMinChange,
+  onAchievementMaxChange,
   onVersionLocaleChange,
 }: MaimaiFilterBarProps) {
   const theme = useAppTheme();
   const [versionPickerOpen, setVersionPickerOpen] = useState(false);
+  const showAchievementRange = onAchievementMinChange !== undefined && onAchievementMaxChange !== undefined;
   const selectedVersion = versions.find((option) => option.value === version);
   const selectedVersionLabel = selectedVersion
     ? localizedVersionName(selectedVersion.versionId, selectedVersion.name, versionLocale)
@@ -76,7 +86,7 @@ export function MaimaiFilterBar({
   };
 
   const summary = buildMaimaiFilterSummary({
-    difficulty, version, type, constantMin, constantMax, versionLocale, versions,
+    difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax, versionLocale, versions,
   });
 
   if (collapsed) return <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
@@ -170,6 +180,18 @@ export function MaimaiFilterBar({
           style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
     </View>
+    {showAchievementRange ? <View style={styles.filterRow}>
+      <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>达成率</Text>
+      <View style={styles.rangeRow}>
+        <TextInput accessibilityLabel="最低达成率" autoCorrect={false} keyboardType="decimal-pad"
+          placeholder="下限" placeholderTextColor={theme.textMuted} value={achievementMin} onChangeText={onAchievementMinChange}
+          style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+        <Text style={styles.rangeSeparator}>~</Text>
+        <TextInput accessibilityLabel="最高达成率" autoCorrect={false} keyboardType="decimal-pad"
+          placeholder="上限" placeholderTextColor={theme.textMuted} value={achievementMax} onChangeText={onAchievementMaxChange}
+          style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+      </View>
+    </View> : null}
   </View>;
 }
 
@@ -218,6 +240,7 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   versionRow: { alignItems: 'flex-start' },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
+  wideFilterLabel: { width: 44 },
   chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   chipFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 999, padding: 2, alignItems: 'center', justifyContent: 'center' },
   roundedChipFrame: { borderRadius: 10 },

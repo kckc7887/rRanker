@@ -32,7 +32,7 @@ describe('useCatalogFilter store', () => {
     useCatalogFilter.getState().setCollapsed(true);
     useCatalogFilter.getState().reset();
     expect(useCatalogFilter.getState()).toEqual(expect.objectContaining({
-      keyword: '', collapsed: false, type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all', versionLocale: 'china',
+      keyword: '', collapsed: true, type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all', versionLocale: 'china',
     }));
   });
 });

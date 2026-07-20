@@ -9,12 +9,14 @@ describe('useRecordsFilter store', () => {
   it('starts with default filters', () => {
     const state = useRecordsFilter.getState();
     expect(state.keyword).toBe('');
-    expect(state.collapsed).toBe(false);
+    expect(state.collapsed).toBe(true);
     expect(state.difficulty).toBe('all');
     expect(state.version).toBe('all');
     expect(state.type).toBe('all');
     expect(state.constantMin).toBe('');
     expect(state.constantMax).toBe('');
+    expect(state.achievementMin).toBe('');
+    expect(state.achievementMax).toBe('');
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
   });
@@ -38,6 +40,13 @@ describe('useRecordsFilter store', () => {
   it('updates type via setType', () => {
     useRecordsFilter.getState().setType('DX');
     expect(useRecordsFilter.getState().type).toBe('DX');
+  });
+
+  it('updates the achievement range via dedicated setters', () => {
+    useRecordsFilter.getState().setAchievementMin('99.5');
+    useRecordsFilter.getState().setAchievementMax('100.5');
+    expect(useRecordsFilter.getState().achievementMin).toBe('99.5');
+    expect(useRecordsFilter.getState().achievementMax).toBe('100.5');
   });
 
   it('updates the constant range via dedicated setters', () => {
@@ -65,17 +74,21 @@ describe('useRecordsFilter store', () => {
     useRecordsFilter.getState().setType('DX');
     useRecordsFilter.getState().setConstantMin('12');
     useRecordsFilter.getState().setConstantMax('14');
+    useRecordsFilter.getState().setAchievementMin('99');
+    useRecordsFilter.getState().setAchievementMax('101');
     useRecordsFilter.getState().setSortBy('achievements');
     useRecordsFilter.getState().setVersionLocale('japan');
     useRecordsFilter.getState().reset();
     const state = useRecordsFilter.getState();
     expect(state.difficulty).toBe('all');
     expect(state.keyword).toBe('');
-    expect(state.collapsed).toBe(false);
+    expect(state.collapsed).toBe(true);
     expect(state.version).toBe('all');
     expect(state.type).toBe('all');
     expect(state.constantMin).toBe('');
     expect(state.constantMax).toBe('');
+    expect(state.achievementMin).toBe('');
+    expect(state.achievementMax).toBe('');
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
   });
