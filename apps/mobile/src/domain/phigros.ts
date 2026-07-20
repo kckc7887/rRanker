@@ -120,6 +120,9 @@ export type PhigrosSummary = {
   rankingScore: number;
   gameVersion: number;
   avatar: string;
+  cleared: [number, number, number, number];
+  fullCombo: [number, number, number, number];
+  phi: [number, number, number, number];
 };
 
 export type PhigrosSaveData = {
@@ -133,13 +136,28 @@ export function parseSummary(summaryBase64: string): PhigrosSummary {
   const bytes = new Uint8Array(hexStr.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
   const r = new ByteReader(bytes);
 
-  return {
+  const cleared: number[] = [];
+  const fullCombo: number[] = [];
+  const phi: number[] = [];
+
+  const result: PhigrosSummary = {
     saveVersion: r.getByte(),
     challengeModeRank: r.getShort(),
     rankingScore: r.getFloat(),
     gameVersion: r.getVarInt(),
     avatar: r.getString(),
+    cleared: [0, 0, 0, 0],
+    fullCombo: [0, 0, 0, 0],
+    phi: [0, 0, 0, 0],
   };
+
+  for (let lv = 0; lv < 4; lv++) {
+    result.cleared[lv] = r.getShort();
+    result.fullCombo[lv] = r.getShort();
+    result.phi[lv] = r.getShort();
+  }
+
+  return result;
 }
 
 export function parseGameRecord(buf: ArrayBuffer | SharedArrayBuffer): Record<string, (PhigrosScoreEntry | null)[]> {
