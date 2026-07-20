@@ -144,6 +144,16 @@ describe('Phigros song detail', () => {
     expect(carousel.props.contentOffset.x).toBeGreaterThan(0);
   });
 
+  it('shows floored level and Score label on chart cards', async () => {
+    const screen = await render(<SongDetailScreen />);
+    await waitFor(() => expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy());
+    expect(screen.getAllByText('Score').length).toBeGreaterThan(0);
+    // IN constant 14.8 → floor 14
+    expect(screen.getByText('14')).toBeTruthy();
+    // AT constant 15.9 → floor 15
+    expect(screen.getByText('15')).toBeTruthy();
+  });
+
   it('shows em dash for charts without scores', async () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy());

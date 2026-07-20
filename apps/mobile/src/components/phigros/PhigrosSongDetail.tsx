@@ -19,7 +19,7 @@ import {
   ScrollView as GestureScrollView,
 } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
+import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { Chart, ScoreRecord, Song } from '@/domain/models';
@@ -28,6 +28,9 @@ import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-th
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useAppTheme } from '@/theme/app-theme';
+
+const DETAIL_SCORE_FONT_SIZE = 34;
+const DETAIL_SCORE_LINE_HEIGHT = 40;
 
 const CARD_GAP = 12;
 const IN_LEVEL_INDEX = 2;
@@ -362,6 +365,7 @@ function ChartCard({
   const theme = useAppTheme();
   const colors = phigrosLevelColors(chart.levelIndex);
   const label = phigrosLevelLabel(chart.levelIndex);
+  const levelNumber = Math.floor(chart.difficultyConstant);
   const score = best?.dxScore;
   const acc = best?.achievements;
   const rks = best?.rating;
@@ -371,9 +375,8 @@ function ChartCard({
   const rksText = rks === undefined
     ? '—'
     : Number.isInteger(rks) ? rks.toFixed(1) : rks.toFixed(2);
-  const scoreText = score === undefined ? '—' : score.toLocaleString();
   const isPhi = score === PHIGROS_MAX_SCORE;
-  const isFc = best?.fc === 'ap' && !isPhi;
+  const isFc = !!best && best.fc === 'ap' && !isPhi;
 
   return (
     <View
@@ -389,9 +392,11 @@ function ChartCard({
       ]}
     >
       <View style={styles.chartHeader}>
-        <PhigrosDifficultyBadge levelIndex={chart.levelIndex} constant={chart.difficultyConstant} />
+        <View style={[styles.diffPill, { backgroundColor: colors.fg }]}>
+          <Text style={styles.diffPillText}>{label}</Text>
+        </View>
         <View style={styles.levelBlock}>
-          <Text style={[styles.level, { color: colors.fg }]}>{label}</Text>
+          <Text style={[styles.level, { color: colors.fg }]}>{levelNumber}</Text>
           <Text style={[styles.constant, { color: theme.textMuted }]}>
             {chart.difficultyConstant.toFixed(1)}
           </Text>
@@ -399,18 +404,23 @@ function ChartCard({
       </View>
 
       <View style={styles.resultBlock}>
-        <Text style={[styles.resultLabel, { color: theme.textMuted }]}>分数</Text>
-        <Text
-          accessibilityLabel={score === undefined ? '未游玩' : scoreText}
-          style={[
-            styles.scoreValue,
-            {
-              color: isPhi ? '#B8860B' : isFc ? '#0EA5E9' : theme.text,
-            },
-          ]}
-        >
-          {scoreText}
-        </Text>
+        <Text style={[styles.resultLabel, { color: theme.textMuted }]}>Score</Text>
+        {score === undefined ? (
+          <Text
+            accessibilityLabel="未游玩"
+            style={[styles.scoreValue, { color: theme.text }]}
+          >
+            —
+          </Text>
+        ) : (
+          <PhigrosScoreValue
+            score={score}
+            variant={isPhi ? 'phi' : isFc ? 'fc' : 'normal'}
+            textColor={theme.text}
+            fontSize={DETAIL_SCORE_FONT_SIZE}
+            lineHeight={DETAIL_SCORE_LINE_HEIGHT}
+          />
+        )}
         {best ? <DetailRateBadge record={best} /> : null}
       </View>
 
@@ -421,7 +431,7 @@ function ChartCard({
         </View>
         <View style={styles.statCell}>
           <Text style={[styles.resultLabel, { color: theme.textMuted }]}>RKS</Text>
-          <Text style={[styles.statValue, { color: theme.accent }]}>{rksText}</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>{rksText}</Text>
         </View>
       </View>
 
@@ -492,12 +502,33 @@ const styles = StyleSheet.create({
     shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4,
   },
   chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  diffPill: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  diffPillText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    lineHeight: 14,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    includeFontPadding: false,
+  },
   levelBlock: { alignItems: 'flex-end' },
   level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
   constant: { fontSize: 11, fontWeight: '600' },
   resultBlock: { marginTop: 22, alignItems: 'flex-start', gap: 6 },
   resultLabel: { fontSize: 12, fontWeight: '700' },
-  scoreValue: { fontSize: 28, lineHeight: 34, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  scoreValue: {
+    fontSize: DETAIL_SCORE_FONT_SIZE,
+    lineHeight: DETAIL_SCORE_LINE_HEIGHT,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+  },
   rateBadge: {
     borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, minHeight: 18,
     alignItems: 'center', justifyContent: 'center',
