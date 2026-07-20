@@ -11,10 +11,11 @@ import { ScoreService } from '@/services/score-service';
 import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
+import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 11;
+const GAME_DATA_QUERY_VERSION = 12;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -40,17 +41,25 @@ export function useGameData() {
       if (activeGameId === 'phigros') {
         if (scoreProvider instanceof PhigrosScoreProvider) {
           scoreProvider.invalidateCache();
-          const [player, records, bestSections] = await Promise.all([
+          const catalogProvider = new PhigrosCatalogProvider();
+          const [player, records, bestSections, gameVersion] = await Promise.all([
             scoreProvider.getPlayer(),
             scoreProvider.getRecords(),
             scoreProvider.getBestSections(),
+            catalogProvider.getGameVersion(),
           ]);
 
           const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
           const source = {
             kind: 'generated' as const,
-            label: 'Phigros 云存档',
+            label: 'TapTap云存档',
             updatedAt: saveUpdatedAt,
+            isStale: false,
+          };
+          const catalogSource = {
+            kind: 'generated' as const,
+            label: `Phigros${gameVersion}`,
+            updatedAt: new Date().toISOString(),
             isStale: false,
           };
           const rks = player.rating;
@@ -69,7 +78,7 @@ export function useGameData() {
                 display: rks.toFixed(4),
               },
               source,
-              catalogSource: source,
+              catalogSource,
             },
           };
         }
