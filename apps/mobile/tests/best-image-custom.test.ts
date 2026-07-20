@@ -61,6 +61,26 @@ describe('custom best image', () => {
     expect(strict[0]?.records[0]?.songId).toBe('fcp');
   });
 
+  it('filters SYNC and higher fs achievements without treating sync rank as falsy', () => {
+    const records = [
+      score({ songId: 'sync', fs: 'sync' }),
+      score({ songId: 'fs', fs: 'fs' }),
+      score({ songId: 'fsp', fs: 'fsp' }),
+      score({ songId: 'none', fs: null }),
+    ];
+    const atLeast = buildCustomBestImageSections(records, '当前版本', filters({
+      versions: ['current'], achievement: { family: 'fs', value: 'sync' }, quantity: 100,
+    }));
+    expect(atLeast[0]?.title).toBe('当前版本SYNC3');
+    expect(new Set(atLeast[0]?.records.map((item) => item.songId))).toEqual(new Set(['sync', 'fs', 'fsp']));
+
+    const strict = buildCustomBestImageSections(records, '当前版本', filters({
+      versions: ['current'], achievement: { family: 'fs', value: 'sync' }, strictAchievement: true, quantity: 100,
+    }));
+    expect(strict[0]?.title).toBe('当前版本SYNC1');
+    expect(strict[0]?.records.map((item) => item.songId)).toEqual(['sync']);
+  });
+
   it('normalizes FDX aliases and filters achievement inclusively', () => {
     const records = [
       score({ songId: 'sync', fs: 'sync', achievements: 100.49 }),

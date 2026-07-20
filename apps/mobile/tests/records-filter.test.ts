@@ -17,6 +17,7 @@ describe('useRecordsFilter store', () => {
     expect(state.constantMax).toBe('');
     expect(state.achievementMin).toBe('');
     expect(state.achievementMax).toBe('');
+    expect(state.achievementStatus).toBeNull();
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
   });
@@ -49,6 +50,13 @@ describe('useRecordsFilter store', () => {
     expect(useRecordsFilter.getState().achievementMax).toBe('100.5');
   });
 
+  it('updates achievement status via setAchievementStatus', () => {
+    useRecordsFilter.getState().setAchievementStatus({ family: 'fs', value: 'sync' });
+    expect(useRecordsFilter.getState().achievementStatus).toEqual({ family: 'fs', value: 'sync' });
+    useRecordsFilter.getState().setAchievementStatus({ family: 'fc', value: 'app' });
+    expect(useRecordsFilter.getState().achievementStatus).toEqual({ family: 'fc', value: 'app' });
+  });
+
   it('updates the constant range via dedicated setters', () => {
     useRecordsFilter.getState().setConstantMin('12.6');
     useRecordsFilter.getState().setConstantMax('14.3');
@@ -76,6 +84,7 @@ describe('useRecordsFilter store', () => {
     useRecordsFilter.getState().setConstantMax('14');
     useRecordsFilter.getState().setAchievementMin('99');
     useRecordsFilter.getState().setAchievementMax('101');
+    useRecordsFilter.getState().setAchievementStatus({ family: 'fs', value: 'sync' });
     useRecordsFilter.getState().setSortBy('achievements');
     useRecordsFilter.getState().setVersionLocale('japan');
     useRecordsFilter.getState().reset();
@@ -89,6 +98,7 @@ describe('useRecordsFilter store', () => {
     expect(state.constantMax).toBe('');
     expect(state.achievementMin).toBe('');
     expect(state.achievementMax).toBe('');
+    expect(state.achievementStatus).toBeNull();
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
   });
