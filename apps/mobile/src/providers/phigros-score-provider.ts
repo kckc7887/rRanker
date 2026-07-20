@@ -43,18 +43,26 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private summaryCache: PhigrosSummary | null = null;
   private saveMeta: GameSaveMeta | null = null;
   private saveLoadPromise: Promise<LoadedSave> | null = null;
+  /** App 最近一次成功从 LeanCloud 拉取云存档元数据的本地时间（用于 UI） */
+  private lastFetchedAt: string | null = null;
 
   private async ensureSaveMeta(): Promise<GameSaveMeta> {
     if (this.saveMeta) return this.saveMeta;
     const meta = await getGameSave(this.sessionToken);
     this.saveMeta = meta;
     this.summaryCache = parseSummary(meta.summaryBase64);
+    this.lastFetchedAt = new Date().toISOString();
     return meta;
   }
 
-  /** 云存档在 LeanCloud 上的更新时间（用于 UI 展示与下载缓存穿透） */
+  /** 云存档在 LeanCloud 上的更新时间（下载缓存穿透用，非 UI 同步时间） */
   getSaveUpdatedAt(): string | null {
     return this.saveMeta?.updatedAt ?? null;
+  }
+
+  /** App 最近一次成功拉取云存档的本地时间；未拉取过为 null */
+  getSyncedAt(): string | null {
+    return this.lastFetchedAt;
   }
 
   constructor(session: ProviderSession) {
@@ -105,7 +113,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return {
       kind: 'generated',
       label: 'TapTap云存档',
-      updatedAt: this.saveMeta?.updatedAt ?? new Date().toISOString(),
+      updatedAt: this.lastFetchedAt ?? new Date().toISOString(),
       isStale: false,
     };
   }
