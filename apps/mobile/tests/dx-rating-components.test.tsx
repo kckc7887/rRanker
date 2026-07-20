@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react-native';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { DxRatingTag } from '@/components/DxRatingTag';
+import { resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 
 describe('DX Rating components', () => {
   it('shows tier stars on the overview card without the old medal dot', async () => {
@@ -23,5 +24,21 @@ describe('DX Rating components', () => {
     const screen = await render(<DxRatingTag rating={null} display="—" />);
     expect(screen.getByText('—')).toBeTruthy();
     expect(screen.queryByTestId('dx-rating-tag-stars')).toBeNull();
+  });
+
+  it('supports Phigros challenge badge on the right side', async () => {
+    const screen = await render(
+      <DxRatingCard
+        label="Raking Score"
+        display="16.1266"
+        meta="B27 14.81 · Phi3 15.00"
+        rating={16.1266}
+        themeOverride={resolvePhigrosChallengeTheme(442)}
+        sideBadge={{ title: '课题模式', value: '金42' }}
+      />,
+    );
+    expect(screen.getByText('课题模式')).toBeTruthy();
+    expect(screen.getByText('金42')).toBeTruthy();
+    expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
   });
 });

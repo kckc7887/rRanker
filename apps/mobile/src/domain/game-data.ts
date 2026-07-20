@@ -42,6 +42,7 @@ export type GamePayload =
       records: ScoreRecord[];
       bestSections: BestListSection[];
       playerScore: PlayerScoreSummary;
+      challengeModeRank: number;
       source: DataSource;
       catalogSource: DataSource;
       avatarUrl?: string | null;
