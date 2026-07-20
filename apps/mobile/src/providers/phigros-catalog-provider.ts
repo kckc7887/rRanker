@@ -131,10 +131,27 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     };
   }
 
-  getIllustrationUrl(illustrator: string): string | null {
+  private illustrationBase(): string | null {
     if (!this.gameVersion) return null;
-    const safe = encodeURIComponent(illustrator);
-    return `${OSS_BASE}/phigros/releases/${this.gameVersion}/illustrations/${safe}.png`;
+    return `${OSS_BASE}/phigros/releases/${this.gameVersion}/illustrations`;
+  }
+
+  getIllustrationUrl(songId: string): string | null {
+    const base = this.illustrationBase();
+    if (!base) return null;
+    return `${base}/${encodeURIComponent(songId)}.png`;
+  }
+
+  getIllustrationBlurUrl(songId: string): string | null {
+    const base = this.illustrationBase();
+    if (!base) return null;
+    return `${base}-blur/${encodeURIComponent(songId)}.png`;
+  }
+
+  getIllustrationLowresUrl(songId: string): string | null {
+    const base = this.illustrationBase();
+    if (!base) return null;
+    return `${base}-lowres/${encodeURIComponent(songId)}.png`;
   }
 
   getAvatarUrl(avatarName: string): string | null {
