@@ -10,12 +10,25 @@ import { useAppTheme } from '@/theme/app-theme';
 
 type GradientColors = readonly [string, string, ...string[]];
 
-const FLOWING_PHI: GradientColors = [
-  '#FFF3B0', '#F6DC7D', '#E8BF54', '#FF9CA8', '#78C8FF', '#A89CF8', '#F6DC7D', '#FFF3B0',
+/** V08 薄荷苏打：φ 蜂蜜金 / FC 薄荷天蓝 */
+const PHI_BASE: GradientColors = [
+  '#F5D76E', '#FDE68A', '#FBBF24', '#FCD34D', '#F59E0B', '#E8A317',
 ];
-const FLOWING_FC: GradientColors = [
-  '#3B82F6', '#78D29B', '#22C55E', '#78B4DC', '#3B82F6', '#78D29B', '#22C55E',
+const FC_BASE: GradientColors = [
+  '#38BDF8', '#6EE7B7', '#2DD4BF', '#7DD3FC', '#34D399',
 ];
+
+const FLOW_GRADIENT_REPEATS = 3;
+const FLOW_DURATION_PHI_MS = 3000;
+const FLOW_DURATION_FC_MS = 2400;
+
+function buildFlowingColors(base: GradientColors): GradientColors {
+  const repeated = Array.from({ length: FLOW_GRADIENT_REPEATS }, () => [...base]).flat();
+  return [...repeated, base[0]] as GradientColors;
+}
+
+const FLOWING_PHI = buildFlowingColors(PHI_BASE);
+const FLOWING_FC = buildFlowingColors(FC_BASE);
 
 export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   record,
@@ -77,7 +90,7 @@ function PhigrosScoreValue({
   return (
     <FlowingGradientText
       colors={colors}
-      duration={variant === 'phi' ? 1800 : 1400}
+      duration={variant === 'phi' ? FLOW_DURATION_PHI_MS : FLOW_DURATION_FC_MS}
       testID={variant === 'phi' ? 'phigros-flowing-score-phi' : 'phigros-flowing-score-fc'}
       text={text}
     />
@@ -98,8 +111,11 @@ function FlowingGradientText({
   const [width, setWidth] = useState(120);
   const progress = useFlowingProgress(duration);
   const measuredWidth = Math.max(width, 1);
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-measuredWidth, 0] });
-  const flowingColors: GradientColors = [...colors, ...colors, colors[0]];
+  const trackWidth = measuredWidth * FLOW_GRADIENT_REPEATS;
+  const translateX = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-trackWidth + measuredWidth, 0],
+  });
 
   return (
     <View style={styles.scoreMeasureWrap}>
@@ -129,17 +145,17 @@ function FlowingGradientText({
             style={[
               styles.flowTrack,
               {
-                width: measuredWidth * 2,
+                width: trackWidth,
                 height: SCORE_LINE_HEIGHT,
                 transform: [{ translateX }],
               },
             ]}
           >
             <LinearGradient
-              colors={flowingColors}
+              colors={colors}
               end={{ x: 1, y: 0.5 }}
               start={{ x: 0, y: 0.5 }}
-              style={{ width: measuredWidth * 2, height: SCORE_LINE_HEIGHT }}
+              style={{ width: trackWidth, height: SCORE_LINE_HEIGHT }}
               testID={`${testID}-gradient`}
             />
           </Animated.View>
@@ -197,7 +213,7 @@ function resolveRate(record: ScoreRecord): RateKind {
 
 function RateBadge({ rate, fc }: { rate: RateKind; fc: boolean }) {
   const colors = rate === 'v' && fc
-    ? { bg: '#3B82F6', fg: '#FFFFFF' }
+    ? { bg: '#0EA5E9', fg: '#FFFFFF' }
     : RATE_COLORS[rate];
   const label = RATE_LABELS[rate];
   return (
