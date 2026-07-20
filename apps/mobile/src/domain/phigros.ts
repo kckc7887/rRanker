@@ -144,12 +144,12 @@ export type PhigrosB30 = {
   phi3: PhigrosScoreEntry[];
   /** Best27 各曲 RKS 之和（计入总 RKS 分子） */
   best27RksSum: number;
-  /** Phi3 各曲 RKS 之和（计入总 RKS 分子；可与 Best27 重复计同一谱面） */
-  phi3RksSum: number;
-  /** Best27 平均 RKS（展示用，非求和） */
+  /** Phi3 各曲定数之和（计入总 RKS 分子；与 phiTool parse_b27 一致） */
+  phi3ContributionSum: number;
+  /** Best27 平均 RKS */
   best27AvgRks: number;
-  /** Phi3 平均 RKS（展示用，非求和） */
-  phi3AvgRks: number;
+  /** Phi3 平均定数贡献 */
+  phi3AvgContribution: number;
 };
 
 export type PhigrosSummary = {
@@ -251,26 +251,17 @@ export function roundRks(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
-/** acc≥100 按 RKS 降序取前三（astrbot findAccRecord(100)；非 PHI 评级） */
+/** Phi3 槽：score=1000000 按定数降序取前三（phiTool parse_b27；非 PHI 评级 acc=100） */
 export function selectPhi3(allRecords: PhigrosScoreEntry[]): PhigrosScoreEntry[] {
   return [...allRecords]
-    .filter((r) => r.acc >= 100)
-    .sort((a, b) => b.rks - a.rks)
+    .filter((r) => r.score === 1000000)
+    .sort((a, b) => b.difficulty - a.difficulty)
     .slice(0, 3);
 }
 
-function sumPhi3Rks(
-  allRecords: PhigrosScoreEntry[],
-  override?: { songId: string; level: PhigrosLevel; rks: number; acc: number },
-): number {
-  const adjusted = override
-    ? allRecords.map((r) =>
-      r.songId === override.songId && r.level === override.level
-        ? { ...r, rks: override.rks, acc: override.acc }
-        : r,
-    )
-    : allRecords;
-  return selectPhi3(adjusted).reduce((sum, s) => sum + s.rks, 0);
+/** Phi3 槽位对总 RKS 的贡献 = 定数之和（acc=100 时等于 RKS；AP 时仍用定数） */
+export function sumPhi3Contribution(allRecords: PhigrosScoreEntry[]): number {
+  return selectPhi3(allRecords).reduce((sum, s) => sum + s.difficulty, 0);
 }
 
 /** 将存档 gameRecord 展开为带定数与 RKS 的全部游玩记录 */
@@ -346,14 +337,14 @@ export function computeB30(
   const phi3 = selectPhi3(allRecords);
 
   const best27RksSum = best27.reduce((sum, s) => sum + s.rks, 0);
-  const phi3RksSum = phi3.reduce((sum, s) => sum + s.rks, 0);
-  const finalRks = roundRks((best27RksSum + phi3RksSum) / 30);
+  const phi3ContributionSum = phi3.reduce((sum, s) => sum + s.difficulty, 0);
+  const finalRks = roundRks((best27RksSum + phi3ContributionSum) / 30);
 
   const displayRks2 = Math.floor(finalRks * 100) / 100;
   const targetRks = displayRks2 + 0.01 - 0.005;
 
   const scoredBest27 = best27.map((song) => {
-    if (song.acc >= 100) return { ...song, targetAccForPlusOne: null };
+    if (song.score === 1000000) return { ...song, targetAccForPlusOne: null };
 
     const diff = song.difficulty;
     let low = Math.max(55.01, song.acc);
@@ -368,12 +359,22 @@ export function computeB30(
         s.songId === song.songId && s.level === song.level ? { rks: newRks } : { rks: s.rks },
       );
       const tempBestSum = tempBest27.reduce((s, r) => s + r.rks, 0);
-      const tempPhiSum = sumPhi3Rks(allRecords, {
-        songId: song.songId,
-        level: song.level,
-        rks: newRks,
-        acc: mid,
-      });
+
+      let tempPhiSum = phi3ContributionSum;
+      if (song.score === 1000000 && mid >= 100) {
+        const candidates = allRecords
+          .map((r) => {
+            if (r.songId === song.songId && r.level === song.level) {
+              return { difficulty: diff, isPhi: mid >= 100 };
+            }
+            return { difficulty: r.difficulty, isPhi: r.score === 1000000 };
+          })
+          .filter((r) => r.isPhi)
+          .sort((a, b) => b.difficulty - a.difficulty)
+          .slice(0, 3);
+        tempPhiSum = candidates.reduce((s, r) => s + r.difficulty, 0);
+      }
+
       const tempRks = (tempBestSum + tempPhiSum) / 30;
 
       if (tempRks >= targetRks) {
@@ -395,9 +396,9 @@ export function computeB30(
     best27: scoredBest27,
     phi3,
     best27RksSum,
-    phi3RksSum,
+    phi3ContributionSum,
     best27AvgRks: best27.length ? roundRks(best27RksSum / best27.length) : 0,
-    phi3AvgRks: phi3.length ? roundRks(phi3RksSum / phi3.length) : 0,
+    phi3AvgContribution: phi3.length ? roundRks(phi3ContributionSum / phi3.length) : 0,
   };
 }
 
