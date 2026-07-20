@@ -14,13 +14,12 @@ import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { useGameData } from '@/hooks/use-game-data';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
-import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
-import { useQuery } from '@tanstack/react-query';
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
@@ -148,24 +147,19 @@ function recordKey(record: ScoreRecord): string {
 }
 
 function PhigrosRecordsScreen() {
-  const provider = useSession((s) => s.scoreProvider);
   const session = useSession((s) => s.session);
+  const gameData = useGameData();
   const catalogQuery = usePhigrosCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const { keyword, setKeyword } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
-  const hasSession = session?.mode === 'phi-session' && provider instanceof PhigrosScoreProvider;
-
-  const recordsQuery = useQuery({
-    queryKey: ['phigros-records-v2'],
-    queryFn: async (): Promise<ScoreRecord[]> => {
-      if (!(provider instanceof PhigrosScoreProvider)) return [];
-      const records = await provider.getRecords();
-      return records.sort((a, b) => b.rating - a.rating);
-    },
-    enabled: hasSession,
-  });
+  const hasSession = session?.mode === 'phi-session';
+  const phigrosPayload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
+  const records = useMemo(
+    () => phigrosPayload?.records ?? [],
+    [phigrosPayload?.records],
+  );
 
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -176,17 +170,17 @@ function PhigrosRecordsScreen() {
   }, [catalogQuery.data?.snapshot.songs]);
 
   const searchDocs = useMemo(() => new Map(
-    (recordsQuery.data ?? []).map((r) => {
+    records.map((r) => {
       const title = titleMap.get(r.songId) ?? r.songId;
       return [recordKey(r), { ...buildSearchDocument([r.songId, title]), title }] as const;
     }),
-  ), [recordsQuery.data, titleMap]);
+  ), [records, titleMap]);
 
   const filterSpec = useMemo(() => ({ keyword: debouncedKeyword }), [debouncedKeyword]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<{ record: ScoreRecord; title: string }[]>(() => {
-    if (!recordsQuery.data) return [];
-    let list = recordsQuery.data.map((r) => {
+    if (!records.length) return [];
+    let list = records.map((r) => {
       const doc = searchDocs.get(recordKey(r));
       return { record: r, title: doc?.title ?? r.songId };
     });
@@ -197,17 +191,22 @@ function PhigrosRecordsScreen() {
       });
     }
     return list;
-  }, [deferredFilterSpec.keyword, recordsQuery.data, searchDocs]);
+  }, [deferredFilterSpec.keyword, records, searchDocs]);
 
-  const isGameLoading = recordsQuery.isLoading || catalogQuery.isLoading;
-  const isGameError = recordsQuery.isError || catalogQuery.isError;
-  const error = recordsQuery.error ?? catalogQuery.error;
+  const isGameLoading = gameData.isLoading || catalogQuery.isLoading;
+  const isGameError = gameData.isError || catalogQuery.isError;
+  const error = gameData.error ?? catalogQuery.error;
   const refetchAll = () => {
-    void Promise.all([recordsQuery.refetch(), catalogQuery.refetch()]);
+    void Promise.all([gameData.refetch(), catalogQuery.refetch()]);
   };
-  const source: DataSource = { kind: 'generated', label: 'TapTap 云存档', updatedAt: new Date().toISOString(), isStale: false };
+  const source: DataSource = phigrosPayload?.source ?? {
+    kind: 'generated',
+    label: 'TapTap 云存档',
+    updatedAt: new Date().toISOString(),
+    isStale: false,
+  };
 
-  if (!hasSession && !recordsQuery.isLoading) {
+  if (!hasSession && !isGameLoading) {
     return (
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <View style={styles.center}>

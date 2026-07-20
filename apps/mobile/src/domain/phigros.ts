@@ -190,12 +190,17 @@ export function parseGameRecord(
   buf: ArrayBuffer | SharedArrayBuffer | Uint8Array,
 ): Record<string, (PhigrosScoreEntry | null)[]> {
   const r = new ByteReader(buf);
-  const songsNum = r.getVarInt();
   const record: Record<string, (PhigrosScoreEntry | null)[]> = {};
+
+  // 与 astrbot GameRecord 一致：首 varint 仅作 songsnum 记录，循环以 remaining 为准。
+  // 若以首 varint 为上限，常见值为 27，会导致只解析 B27 条而非完整存档。
+  if (r.remaining() > 0) {
+    r.getVarInt();
+  }
 
   // 对齐 phiTool PhigrosLibrary.GameRecord.read：
   // varshort(keyLen) + utf8(keyLen-2) + checksum2 + u8(bodyLen) + body；仅 EZ/HD/IN/AT。
-  for (let i = 0; i < songsNum && r.remaining() > 0; i++) {
+  while (r.remaining() > 0) {
     const key = r.getGameRecordKey();
     const lengthBytePos = r.pos;
     const bodyLength = r.getByte();

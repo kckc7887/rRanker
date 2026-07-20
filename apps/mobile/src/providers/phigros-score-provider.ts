@@ -148,6 +148,13 @@ export class PhigrosScoreProvider implements ScoreProvider {
     });
   }
 
+  /** 丢弃内存缓存，下次拉取会重新请求云存档 */
+  invalidateCache(): void {
+    this.saveCache = null;
+    this.b30Cache = null;
+    this.summaryCache = null;
+  }
+
   /** Best30 分区：Phi3 + Best27，与 RKS 计算口径一致 */
   async getBestSections(): Promise<{ id: string; title: string; records: ScoreRecord[] }[]> {
     const b30 = await this.getB30();

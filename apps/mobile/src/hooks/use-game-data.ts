@@ -14,7 +14,7 @@ import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 4;
+const GAME_DATA_QUERY_VERSION = 5;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -39,6 +39,7 @@ export function useGameData() {
       }
       if (activeGameId === 'phigros') {
         if (scoreProvider instanceof PhigrosScoreProvider) {
+          scoreProvider.invalidateCache();
           const [player, records, b30, bestSections] = await Promise.all([
             scoreProvider.getPlayer(),
             scoreProvider.getRecords(),
