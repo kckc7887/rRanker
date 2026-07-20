@@ -1,0 +1,517 @@
+import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router, Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import {
+  InteractionManager,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import {
+  GestureHandlerRootView,
+  ScrollView as GestureScrollView,
+} from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
+import { QueryStateView } from '@/components/QueryStateView';
+import { SourceStatus } from '@/components/SourceStatus';
+import type { Chart, ScoreRecord, Song } from '@/domain/models';
+import { PHIGROS_MAX_SCORE, phigrosScoreToRate } from '@/domain/phigros';
+import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
+import { useGameData } from '@/hooks/use-game-data';
+import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { useAppTheme } from '@/theme/app-theme';
+
+const CARD_GAP = 12;
+const IN_LEVEL_INDEX = 2;
+
+type RateKind = 'f' | 'c' | 'b' | 'a' | 's' | 'v' | 'phi';
+
+const RATE_COLORS: Record<RateKind | 'vFc', { bg: string; fg: string }> = {
+  f: { bg: '#F3F4F6', fg: '#6B7280' },
+  c: { bg: '#F3F4F6', fg: '#6B7280' },
+  b: { bg: '#F3F4F6', fg: '#6B7280' },
+  a: { bg: '#F3F4F6', fg: '#6B7280' },
+  s: { bg: '#FDF2F8', fg: '#DB2777' },
+  v: { bg: '#4B5563', fg: '#FFFFFF' },
+  vFc: { bg: '#E0F2FE', fg: '#0EA5E9' },
+  phi: { bg: '#FFF7E6', fg: '#B8860B' },
+};
+
+const RATE_LABELS: Record<RateKind, string> = {
+  f: 'F',
+  c: 'C',
+  b: 'B',
+  a: 'A',
+  s: 'S',
+  v: 'V',
+  phi: '\u03C6',
+};
+
+export function PhigrosSongDetail({
+  songId,
+  levelIndex,
+}: {
+  songId?: string;
+  levelIndex?: number;
+}) {
+  const theme = useAppTheme();
+  const catalog = usePhigrosCatalog();
+  const gameData = useGameData();
+  const song = useMemo(() => {
+    const songs = catalog.data?.snapshot.songs;
+    return songs?.find((item) => item.id === songId);
+  }, [catalog.data?.snapshot.songs, songId]);
+
+  const records = useMemo(() => {
+    const payload = gameData.data?.payload;
+    if (payload?.kind === 'phigros') return payload.records;
+    return [] as ScoreRecord[];
+  }, [gameData.data?.payload]);
+
+  const catalogSource = catalog.data?.snapshot.source;
+  const scoreSource = useMemo(() => {
+    const payload = gameData.data?.payload;
+    if (payload?.kind === 'phigros') return payload.source;
+    return undefined;
+  }, [gameData.data?.payload]);
+
+  const provider = catalog.data?.provider ?? null;
+  const illustrationUrl = songId && provider ? provider.getIllustrationUrl(songId) : null;
+  const blurUrl = songId && provider ? provider.getIllustrationBlurUrl(songId) : null;
+  const lowresUrl = songId && provider ? provider.getIllustrationLowresUrl(songId) : null;
+
+  return <>
+    <Stack.Screen options={{
+      title: '', headerTransparent: true, headerShadowVisible: false, headerTintColor: '#FFFFFF',
+      headerStyle: { backgroundColor: 'transparent' },
+      headerBackground: () => null,
+      headerShown: Platform.OS !== 'android',
+      headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
+    }} />
+    <StatusBar style="light" />
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
+      <QueryStateView<Song>
+        isLoading={catalog.isLoading}
+        isError={catalog.isError}
+        isEmpty={!!catalog.data && !song}
+        error={catalog.error}
+        onRetry={() => void catalog.refetch()}
+        emptyText="找不到这首歌曲"
+        data={song}
+        renderData={(item) => (
+          <Detail
+            song={item}
+            records={records}
+            catalogSource={catalogSource}
+            scoreSource={scoreSource}
+            illustrationUrl={illustrationUrl}
+            blurUrl={blurUrl}
+            lowresUrl={lowresUrl}
+            initialLevelIndex={levelIndex}
+          />
+        )}
+      />
+      <PhigrosDetailChrome />
+    </View>
+  </>;
+}
+
+function PhigrosDetailChrome() {
+  const insets = useSafeAreaInsets();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="返回"
+      hitSlop={12}
+      onPress={() => router.back()}
+      style={({ pressed }) => [
+        styles.headerButton,
+        styles.headerFloatingButton,
+        { top: insets.top, left: 8 },
+        Platform.OS !== 'ios' && styles.headerButtonBg,
+        pressed && { opacity: 0.7 },
+      ]}
+    >
+      <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
+    </Pressable>
+  );
+}
+
+function Detail({
+  song,
+  records,
+  catalogSource,
+  scoreSource,
+  illustrationUrl,
+  blurUrl,
+  lowresUrl,
+  initialLevelIndex,
+}: {
+  song: Song;
+  records: ScoreRecord[];
+  catalogSource?: import('@/domain/models').DataSource;
+  scoreSource?: import('@/domain/models').DataSource;
+  illustrationUrl: string | null;
+  blurUrl: string | null;
+  lowresUrl: string | null;
+  initialLevelIndex?: number;
+}) {
+  const theme = useAppTheme();
+  const { width } = useWindowDimensions();
+  const sortedCharts = useMemo(
+    () => [...song.charts].sort((a, b) => b.levelIndex - a.levelIndex),
+    [song.charts],
+  );
+  const defaultIndex = Math.max(0, sortedCharts.findIndex((c) => c.levelIndex === IN_LEVEL_INDEX));
+  const requestedIndex = initialLevelIndex === undefined
+    ? -1
+    : sortedCharts.findIndex((c) => c.levelIndex === initialLevelIndex);
+  const initialIndex = requestedIndex >= 0 ? requestedIndex : defaultIndex;
+  const cardWidth = Math.max(280, width - 40);
+  const [deferredReady, setDeferredReady] = useState(false);
+  const [coverFailed, setCoverFailed] = useState(false);
+  const [coverStage, setCoverStage] = useState<'full' | 'lowres' | 'blur'>('full');
+
+  useEffect(() => {
+    setDeferredReady(false);
+    setCoverFailed(false);
+    setCoverStage('full');
+    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
+    return () => task.cancel();
+  }, [song.id]);
+
+  const coverSource = coverStage === 'full'
+    ? illustrationUrl
+    : coverStage === 'lowres'
+      ? lowresUrl
+      : blurUrl;
+
+  return (
+    <ScrollView testID="phigros-song-detail-scroll" contentContainerStyle={styles.content}>
+      <View style={[styles.hero, { width, height: width }]}>
+        {coverFailed || !coverSource ? (
+          <View style={[styles.heroPlaceholder, { backgroundColor: theme.input }]}>
+            <Text style={styles.heroPlaceholderNote}>♪</Text>
+          </View>
+        ) : (
+          <Image
+            accessibilityLabel="曲绘"
+            cachePolicy="disk"
+            contentFit="cover"
+            onError={() => {
+              if (coverStage === 'full' && lowresUrl) {
+                setCoverStage('lowres');
+                return;
+              }
+              if (coverStage !== 'blur' && blurUrl) {
+                setCoverStage('blur');
+                return;
+              }
+              setCoverFailed(true);
+            }}
+            source={coverSource}
+            style={StyleSheet.absoluteFillObject}
+            transition={120}
+          />
+        )}
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
+          locations={[0, 1]}
+          style={styles.heroShade}
+        />
+        <View style={styles.heroCopy}>
+          <Text numberOfLines={1} style={styles.songId}>#{song.id}</Text>
+          <Text numberOfLines={2} style={styles.title}>{song.title}</Text>
+          <Text numberOfLines={1} style={styles.artist}>{song.artist ?? '曲师未知'}</Text>
+        </View>
+      </View>
+
+      <View
+        style={[styles.metadataTable, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}
+        accessibilityLabel="歌曲详情数据"
+      >
+        <MetadataCell label="曲绘师" value={song.illustrator ?? '未知'} flex={1} />
+        <MetadataCell label="版本" value={song.version || '未知'} flex={1} />
+      </View>
+
+      {deferredReady ? <>
+        <ChartCarousel
+          key={`${song.id}:${initialIndex}`}
+          charts={sortedCharts}
+          records={records}
+          song={song}
+          cardWidth={cardWidth}
+          initialIndex={initialIndex}
+        />
+        <View style={styles.details}>
+          <SourceStatus items={[
+            {
+              key: 'catalog',
+              label: catalogSource?.label ?? '曲库未加载',
+              updatedAt: catalogSource?.updatedAt,
+              state: !catalogSource ? 'unavailable' : catalogSource.isStale ? 'cache' : 'live',
+            },
+            {
+              key: 'scores',
+              label: scoreSource?.label ?? '成绩未绑定',
+              updatedAt: scoreSource?.updatedAt,
+              state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live',
+            },
+          ]} />
+        </View>
+      </> : <View testID="phigros-song-detail-deferred-placeholder" style={styles.deferredPlaceholder} />}
+    </ScrollView>
+  );
+}
+
+function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
+  const theme = useAppTheme();
+  return (
+    <View style={[styles.metadataCell, { flex }]}>
+      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>{label}</Text>
+      <Text numberOfLines={2} style={[styles.metadataValue, { color: theme.text }]}>{value}</Text>
+    </View>
+  );
+}
+
+function ChartCarousel({
+  charts,
+  records,
+  song,
+  cardWidth,
+  initialIndex,
+}: {
+  charts: Chart[];
+  records: ScoreRecord[];
+  song: Song;
+  cardWidth: number;
+  initialIndex: number;
+}) {
+  const interval = cardWidth + CARD_GAP;
+  const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [initialIndex, interval]);
+
+  if (charts.length === 0) {
+    return (
+      <View style={styles.noCharts}>
+        <Text style={styles.meta}>暂无可用难度</Text>
+      </View>
+    );
+  }
+
+  return (
+    <GestureHandlerRootView style={styles.carouselRoot}>
+      <GestureScrollView
+        ref={scrollRef}
+        horizontal
+        decelerationRate="fast"
+        snapToInterval={interval}
+        snapToAlignment="start"
+        disableIntervalMomentum
+        showsHorizontalScrollIndicator={false}
+        directionalLockEnabled
+        nestedScrollEnabled
+        removeClippedSubviews={false}
+        style={styles.carouselScroll}
+        contentOffset={{ x: initialIndex * interval, y: 0 }}
+        contentContainerStyle={styles.carousel}
+        accessibilityLabel="难度卡片"
+        testID="phigros-chart-carousel"
+      >
+        {charts.map((chart) => {
+          const best = records
+            .filter((record) => record.songId === song.id && record.levelIndex === chart.levelIndex)
+            .sort((left, right) => (right.dxScore ?? 0) - (left.dxScore ?? 0))[0];
+          return (
+            <ChartCard
+              key={`${chart.songId}:${chart.levelIndex}`}
+              chart={chart}
+              best={best}
+              width={cardWidth}
+            />
+          );
+        })}
+      </GestureScrollView>
+    </GestureHandlerRootView>
+  );
+}
+
+function ChartCard({
+  chart,
+  best,
+  width,
+}: {
+  chart: Chart;
+  best?: ScoreRecord;
+  width: number;
+}) {
+  const theme = useAppTheme();
+  const colors = phigrosLevelColors(chart.levelIndex);
+  const label = phigrosLevelLabel(chart.levelIndex);
+  const score = best?.dxScore;
+  const acc = best?.achievements;
+  const rks = best?.rating;
+  const accText = acc === undefined
+    ? '—'
+    : acc % 1 === 0 ? `${acc.toFixed(0)}%` : `${acc.toFixed(2)}%`;
+  const rksText = rks === undefined
+    ? '—'
+    : Number.isInteger(rks) ? rks.toFixed(1) : rks.toFixed(2);
+  const scoreText = score === undefined ? '—' : score.toLocaleString();
+  const isPhi = score === PHIGROS_MAX_SCORE;
+  const isFc = best?.fc === 'ap' && !isPhi;
+
+  return (
+    <View
+      testID={`phigros-chart-card-${chart.levelIndex}`}
+      accessibilityLabel={`${label} 难度卡片`}
+      style={[
+        styles.chartCard,
+        {
+          width,
+          backgroundColor: theme.dark ? theme.surface : colors.bg,
+          borderColor: colors.fg,
+        },
+      ]}
+    >
+      <View style={styles.chartHeader}>
+        <PhigrosDifficultyBadge levelIndex={chart.levelIndex} constant={chart.difficultyConstant} />
+        <View style={styles.levelBlock}>
+          <Text style={[styles.level, { color: colors.fg }]}>{label}</Text>
+          <Text style={[styles.constant, { color: theme.textMuted }]}>
+            {chart.difficultyConstant.toFixed(1)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.resultBlock}>
+        <Text style={[styles.resultLabel, { color: theme.textMuted }]}>分数</Text>
+        <Text
+          accessibilityLabel={score === undefined ? '未游玩' : scoreText}
+          style={[
+            styles.scoreValue,
+            {
+              color: isPhi ? '#B8860B' : isFc ? '#0EA5E9' : theme.text,
+            },
+          ]}
+        >
+          {scoreText}
+        </Text>
+        {best ? <DetailRateBadge record={best} /> : null}
+      </View>
+
+      <View style={styles.statRow}>
+        <View style={styles.statCell}>
+          <Text style={[styles.resultLabel, { color: theme.textMuted }]}>Acc</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>{accText}</Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={[styles.resultLabel, { color: theme.textMuted }]}>RKS</Text>
+          <Text style={[styles.statValue, { color: theme.accent }]}>{rksText}</Text>
+        </View>
+      </View>
+
+      <View style={[styles.chartDivider, { backgroundColor: theme.border }]} />
+      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
+        谱师：{chart.charter || '未提供'}
+      </Text>
+    </View>
+  );
+}
+
+function DetailRateBadge({ record }: { record: ScoreRecord }) {
+  const rate = resolveRate(record);
+  const fc = record.fc === 'ap';
+  const colors = rate === 'v' && fc ? RATE_COLORS.vFc : RATE_COLORS[rate];
+  return (
+    <View style={[styles.rateBadge, { backgroundColor: colors.bg }]}>
+      <Text style={[
+        styles.rateText,
+        { color: colors.fg },
+        rate === 'phi' && styles.rateTextPhi,
+      ]}
+      >
+        {RATE_LABELS[rate]}
+      </Text>
+    </View>
+  );
+}
+
+function resolveRate(record: ScoreRecord): RateKind {
+  const rate = phigrosScoreToRate(record.dxScore ?? 0, record.fc === 'ap') as RateKind;
+  if (rate in RATE_LABELS) return rate;
+  return 'f';
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1 },
+  content: { paddingBottom: 48 },
+  deferredPlaceholder: { minHeight: 180 },
+  hero: { position: 'relative', backgroundColor: '#D9DEE7', overflow: 'hidden' },
+  heroPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  heroPlaceholderNote: { color: '#6B7280', fontSize: 64 },
+  heroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
+  heroCopy: { position: 'absolute', left: 18, right: 18, bottom: 20, gap: 2 },
+  songId: { color: 'rgba(255,255,255,0.78)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
+  title: {
+    color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6,
+    textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8,
+  },
+  artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
+  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
+  headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  metadataTable: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 12, paddingVertical: 13, gap: 6,
+  },
+  metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 },
+  metadataLabel: { fontSize: 11, fontWeight: '700', lineHeight: 14 },
+  metadataValue: { fontSize: 13, lineHeight: 16, fontWeight: '700' },
+  carouselRoot: { flexGrow: 0 },
+  carouselScroll: { flexGrow: 0 },
+  carousel: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12, gap: CARD_GAP },
+  noCharts: { padding: 20 },
+  chartCard: {
+    borderRadius: 24, borderWidth: 1, padding: 18,
+    shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4,
+  },
+  chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  levelBlock: { alignItems: 'flex-end' },
+  level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
+  constant: { fontSize: 11, fontWeight: '600' },
+  resultBlock: { marginTop: 22, alignItems: 'flex-start', gap: 6 },
+  resultLabel: { fontSize: 12, fontWeight: '700' },
+  scoreValue: { fontSize: 28, lineHeight: 34, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  rateBadge: {
+    borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, minHeight: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rateText: {
+    fontSize: 10, lineHeight: 12, fontWeight: '900', letterSpacing: 0.3,
+    includeFontPadding: false, textAlign: 'center',
+  },
+  rateTextPhi: { transform: [{ translateY: -1.5 }] },
+  statRow: { flexDirection: 'row', marginTop: 16, gap: 24 },
+  statCell: { gap: 2 },
+  statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  chartDivider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
+  chartMeta: { fontSize: 12, lineHeight: 18 },
+  details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
+  meta: { color: '#6B7280', fontSize: 12 },
+});

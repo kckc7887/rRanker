@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { Image } from 'expo-image';
-import { StyleSheet, Text, View } from 'react-native';
+import { router, type Href } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import type { Song } from '@/domain/models';
 import { useAppTheme } from '@/theme/app-theme';
@@ -14,9 +15,15 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
 }) {
   const theme = useAppTheme();
   const [coverFailed, setCoverFailed] = useState(false);
+  const openDetail = () => router.push(`/songs/${encodeURIComponent(song.id)}` as Href);
 
   return (
-    <View style={[styles.row, { backgroundColor: theme.surface }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`查看歌曲 ${song.title}`}
+      onPress={openDetail}
+      style={[styles.row, { backgroundColor: theme.surface }]}
+    >
       <View style={styles.main}>
         <View style={styles.coverWrap}>
           {coverFailed || !blurUrl ? (
@@ -53,7 +60,7 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
           </View>
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 });
 
