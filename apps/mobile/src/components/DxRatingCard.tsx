@@ -14,14 +14,22 @@ export function DxRatingCard({
   display,
   meta,
   rating,
+  themeOverride,
+  sideBadge,
 }: {
   label: string;
   display: string;
   meta: string;
   /** 用于选档的数值；空账号传 null 用中性灰底 */
   rating: number | null;
+  /** 自定义主题（如 Phigros 课题模式） */
+  themeOverride?: DxRatingTheme;
+  sideBadge?: {
+    title: string;
+    value: string;
+  };
 }) {
-  const theme = rating == null ? EMPTY_THEME : resolveDxRatingTheme(rating);
+  const theme = themeOverride ?? (rating == null ? EMPTY_THEME : resolveDxRatingTheme(rating));
   const stars = '★'.repeat(theme.starCount);
 
   return (
@@ -47,7 +55,14 @@ export function DxRatingCard({
             <Text style={[styles.rating, { color: theme.textColor }]}>{display}</Text>
             <Text style={[styles.meta, { color: theme.textColor }]}>{meta}</Text>
           </View>
-          {stars ? <Text testID="dx-rating-card-stars" style={[styles.stars, { color: theme.starColor }]}>{stars}</Text> : null}
+          {sideBadge ? (
+            <View style={styles.badgeWrap}>
+              <Text style={[styles.badgeTitle, { color: theme.textColor }]}>{sideBadge.title}</Text>
+              <View style={styles.badge}>
+                <Text style={[styles.badgeValue, { color: theme.textColor }]}>{sideBadge.value}</Text>
+              </View>
+            </View>
+          ) : stars ? <Text testID="dx-rating-card-stars" style={[styles.stars, { color: theme.starColor }]}>{stars}</Text> : null}
         </View>
       </LinearGradient>
     </LinearGradient>
@@ -63,4 +78,15 @@ const styles = StyleSheet.create({
   rating: { fontSize: 42, fontWeight: '800', letterSpacing: 2 },
   meta: { fontSize: 14, opacity: 0.78 },
   stars: { maxWidth: 96, fontSize: 20, lineHeight: 28, fontWeight: '800', letterSpacing: 2, textAlign: 'right' },
+  badgeWrap: { alignItems: 'flex-end', alignSelf: 'flex-start', gap: 6 },
+  badgeTitle: { fontSize: 12, fontWeight: '700', lineHeight: 16 },
+  badge: {
+    minWidth: 88,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+  },
+  badgeValue: { fontSize: 26, fontWeight: '800', letterSpacing: 1 },
 });
