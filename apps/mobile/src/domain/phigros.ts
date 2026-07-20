@@ -9,7 +9,11 @@ class ByteReader {
   pos: number;
 
   constructor(buf: ArrayBuffer | SharedArrayBuffer | Uint8Array, offset = 0) {
-    this.view = new DataView(buf instanceof Uint8Array ? buf.buffer : buf);
+    if (buf instanceof Uint8Array) {
+      this.view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    } else {
+      this.view = new DataView(buf);
+    }
     this.pos = offset;
   }
 
@@ -47,43 +51,61 @@ class ByteReader {
 
   getString(): string {
     const len = this.getVarInt();
-    const dec = new TextDecoder();
-    const s = dec.decode(new Uint8Array(this.view.buffer, this.pos, len));
+    const bytes = new Uint8Array(this.view.buffer, this.view.byteOffset + this.pos, len);
+    const s = new TextDecoder().decode(bytes);
     this.pos += len;
     return s;
   }
 
-  skipVarInt(): void {
-    if (this.view.getUint8(this.pos) > 127) this.pos += 2;
-    else this.pos++;
+  /** GameRecord 键格式：varshort(len) + utf8(len-2) + 2 字节校验，与 phiTool 一致 */
+  getGameRecordKey(): string {
+    const len = this.getVarInt();
+    if (len < 2) throw new Error('GameRecord 键长度无效');
+    const bytes = new Uint8Array(this.view.buffer, this.view.byteOffset + this.pos, len - 2);
+    const key = new TextDecoder().decode(bytes);
+    this.pos += len;
+    return key;
   }
+}
+
+function wordArrayToUint8Array(wa: CryptoJS.lib.WordArray): Uint8Array {
+  const out = new Uint8Array(wa.sigBytes);
+  for (let i = 0; i < wa.sigBytes; i++) {
+    out[i] = (wa.words[i >>> 2]! >>> (24 - (i % 4) * 8)) & 0xff;
+  }
+  return out;
+}
+
+function uint8ArrayToWordArray(data: Uint8Array): CryptoJS.lib.WordArray {
+  const words: number[] = [];
+  for (let i = 0; i < data.length; i += 4) {
+    words.push(
+      ((data[i] ?? 0) << 24)
+      | ((data[i + 1] ?? 0) << 16)
+      | ((data[i + 2] ?? 0) << 8)
+      | (data[i + 3] ?? 0),
+    );
+  }
+  return CryptoJS.lib.WordArray.create(words, data.length);
 }
 
 export function decryptAes(encryptedBase64: string): Uint8Array {
   const key = CryptoJS.enc.Base64.parse(AES_KEY_B64);
   const iv = CryptoJS.enc.Base64.parse(AES_IV_B64);
   const decrypted = CryptoJS.AES.decrypt(encryptedBase64, key, { iv });
-  return new Uint8Array(
-    decrypted.words
-      .map((w) => [w >>> 24, (w >>> 16) & 0xff, (w >>> 8) & 0xff, w & 0xff])
-      .flat(),
-  );
+  return wordArrayToUint8Array(decrypted);
 }
 
 export function decryptBytes(data: Uint8Array): Uint8Array {
   const key = CryptoJS.enc.Base64.parse(AES_KEY_B64);
   const iv = CryptoJS.enc.Base64.parse(AES_IV_B64);
-  const wordArray = CryptoJS.lib.WordArray.create(data);
   const decrypted = CryptoJS.AES.decrypt(
-    { ciphertext: wordArray } as unknown as string,
+    // crypto-js 接受 { ciphertext: WordArray }；类型定义偏窄，这里按运行时契约传参
+    { ciphertext: uint8ArrayToWordArray(data) } as unknown as string,
     key,
     { iv },
   );
-  return new Uint8Array(
-    decrypted.words
-      .map((w) => [w >>> 24, (w >>> 16) & 0xff, (w >>> 8) & 0xff, w & 0xff])
-      .flat(),
-  );
+  return wordArrayToUint8Array(decrypted);
 }
 
 export type PhigrosLevel = 0 | 1 | 2 | 3;
@@ -156,23 +178,30 @@ export function parseSummary(summaryBase64: string): PhigrosSummary {
   return result;
 }
 
-export function parseGameRecord(buf: ArrayBuffer | SharedArrayBuffer): Record<string, (PhigrosScoreEntry | null)[]> {
+export function parseGameRecord(
+  buf: ArrayBuffer | SharedArrayBuffer | Uint8Array,
+): Record<string, (PhigrosScoreEntry | null)[]> {
   const r = new ByteReader(buf);
   const songsNum = r.getVarInt();
   const record: Record<string, (PhigrosScoreEntry | null)[]> = {};
 
+  // 对齐 phiTool PhigrosLibrary.GameRecord.read：
+  // varshort(keyLen) + utf8(keyLen-2) + checksum2 + u8(bodyLen) + body；仅 EZ/HD/IN/AT。
   for (let i = 0; i < songsNum && r.remaining() > 0; i++) {
-    const key = r.getString();
-    r.skipVarInt();
-    const lengthFlag = r.getByte();
-    const fcFlag = r.getByte();
+    const key = r.getGameRecordKey();
+    const lengthBytePos = r.pos;
+    const bodyLength = r.getByte();
+    const nextPos = lengthBytePos + bodyLength + 1;
 
-    const levels: (PhigrosScoreEntry | null)[] = [];
-    for (let lv = 0; lv < 5; lv++) {
-      if (lengthFlag & (1 << lv)) {
+    const exist = r.getByte();
+    const fcFlag = r.getByte();
+    const levels: (PhigrosScoreEntry | null)[] = [null, null, null, null];
+
+    for (let lv = 0; lv < 4; lv++) {
+      if ((exist >> lv) & 1) {
         const score = r.getInt();
         const acc = r.getFloat();
-        const isFullCombo = (score === 1000000 && acc === 100) || !!(fcFlag & (1 << lv));
+        const isFullCombo = (score === 1000000 && acc === 100) || !!((fcFlag >> lv) & 1);
         levels[lv] = {
           songId: key,
           level: lv as PhigrosLevel,
@@ -182,12 +211,13 @@ export function parseGameRecord(buf: ArrayBuffer | SharedArrayBuffer): Record<st
           fc: isFullCombo,
           rks: 0,
         };
-      } else {
-        levels[lv] = null;
       }
     }
+
+    r.pos = nextPos;
     record[key] = levels;
   }
+
   return record;
 }
 
@@ -284,13 +314,14 @@ export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{
 }> {
   const zip = await JSZip.loadAsync(zipBuf);
 
-  const gameRecordBuf = await zip.file('gameRecord')!.async('arraybuffer');
-  const gameRecordBytes = new Uint8Array(gameRecordBuf);
-  const recordVersion = gameRecordBytes[0];
+  const gameRecordFile = zip.file('gameRecord');
+  if (!gameRecordFile) throw new Error('存档缺少 gameRecord');
+  const gameRecordBuf = await gameRecordFile.async('uint8array');
+  const recordVersion = gameRecordBuf[0];
   if (recordVersion !== 1) throw new Error('存档版本不支持');
-  const encryptedRecord = gameRecordBytes.slice(1);
+  const encryptedRecord = gameRecordBuf.subarray(1);
   const decryptedRecord = decryptBytes(encryptedRecord);
-  const gameRecord = parseGameRecord(decryptedRecord.buffer);
+  const gameRecord = parseGameRecord(decryptedRecord);
 
   return { gameRecord };
 }
