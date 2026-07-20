@@ -190,13 +190,9 @@ export function ProviderLoginSheet({
       setMessage('请在 TapTap 完成授权。');
 
       try {
-        await Linking.openURL(`taptap://?url=${encodeURIComponent(device.qrcodeUrl)}`);
+        await Linking.openURL(device.qrcodeUrl.replace(/^https/, 'taptap'));
       } catch {
-        try {
-          await Linking.openURL(`taptap://web?url=${encodeURIComponent(device.qrcodeUrl)}`);
-        } catch {
-          await Linking.openURL(device.qrcodeUrl);
-        }
+        await Linking.openURL(device.qrcodeUrl);
       }
     } catch (error) {
       setMessage(messageFor(error));
