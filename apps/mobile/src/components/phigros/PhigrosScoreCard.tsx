@@ -185,13 +185,14 @@ function useFlowingProgress(duration: number): Animated.Value {
 
 type RateKind = 'f' | 'c' | 'b' | 'a' | 's' | 'v' | 'phi';
 
-const RATE_COLORS: Record<RateKind, { bg: string; fg: string }> = {
+const RATE_COLORS: Record<RateKind | 'vFc', { bg: string; fg: string }> = {
   f: { bg: '#F3F4F6', fg: '#6B7280' },
   c: { bg: '#F3F4F6', fg: '#6B7280' },
   b: { bg: '#F3F4F6', fg: '#6B7280' },
   a: { bg: '#F3F4F6', fg: '#6B7280' },
   s: { bg: '#FDF2F8', fg: '#DB2777' },
   v: { bg: '#4B5563', fg: '#FFFFFF' },
+  vFc: { bg: '#E0F2FE', fg: '#0EA5E9' },
   phi: { bg: '#FFF7E6', fg: '#B8860B' },
 };
 
@@ -212,17 +213,10 @@ function resolveRate(record: ScoreRecord): RateKind {
 }
 
 function RateBadge({ rate, fc }: { rate: RateKind; fc: boolean }) {
-  const isBlueV = rate === 'v' && fc;
-  const colors = isBlueV
-    ? { bg: '#FFFFFF', fg: '#0EA5E9' }
-    : RATE_COLORS[rate];
+  const colors = rate === 'v' && fc ? RATE_COLORS.vFc : RATE_COLORS[rate];
   const label = RATE_LABELS[rate];
   return (
-    <View style={[
-      styles.rateBadge,
-      { backgroundColor: colors.bg },
-      isBlueV && styles.rateBadgeBlueV,
-    ]}>
+    <View style={[styles.rateBadge, { backgroundColor: colors.bg }]}>
       <Text style={[styles.rateText, { color: colors.fg }]}>{label}</Text>
     </View>
   );
@@ -250,6 +244,5 @@ const styles = StyleSheet.create({
   acc: { fontSize: 12, fontWeight: '700' },
   rks: { fontSize: 20, fontWeight: '900' },
   rateBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
-  rateBadgeBlueV: { borderWidth: 1, borderColor: '#BFDBFE' },
-  rateText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.3 },
+  rateText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.3, includeFontPadding: false },
 });
