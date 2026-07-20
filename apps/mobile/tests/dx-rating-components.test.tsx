@@ -34,11 +34,11 @@ describe('DX Rating components', () => {
         meta="B27 14.81 · Phi3 15.00"
         rating={16.1266}
         themeOverride={resolvePhigrosChallengeTheme(442)}
-        sideBadge={{ title: '课题模式', value: '金42' }}
+        sideBadge={{ title: '课题模式', value: '42' }}
       />,
     );
     expect(screen.getByText('课题模式')).toBeTruthy();
-    expect(screen.getByText('金42')).toBeTruthy();
+    expect(screen.getByText('42')).toBeTruthy();
     expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
   });
 });
