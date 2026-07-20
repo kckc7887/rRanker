@@ -13,7 +13,7 @@ import {
 import type { RestoreMode, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 
-const USER_LIBRARY_SCHEMA_VERSION = 3;
+const USER_LIBRARY_SCHEMA_VERSION = 4;
 type DatabaseAccess = Pick<SQLiteDatabase, 'getAllAsync' | 'getFirstAsync' | 'runAsync'>;
 
 interface ItemRow {
@@ -73,18 +73,14 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
     if (!row) {
       await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
       await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
-    } else if (row.schema_version === 1) {
-      await db.runAsync('ALTER TABLE user_library_items ADD COLUMN game_id TEXT NOT NULL DEFAULT \'maimai\'');
-      await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
-      await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
-    } else if (row.schema_version === 2) {
-      await db.runAsync('ALTER TABLE user_library_items ADD COLUMN game_id TEXT NOT NULL DEFAULT \'maimai\'');
+    } else if (row.schema_version < USER_LIBRARY_SCHEMA_VERSION) {
+      // 按游戏隔离后不再迁移旧收藏：升级时直接清空，避免跨游戏混用与错误归属。
+      await this.ensureGameIdColumn(db);
+      if (row.schema_version === 1) await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
       await db.withExclusiveTransactionAsync(async (txn) => {
-        const items = (await this.readFrom(txn)).map((item) => normalizeLibraryItem({
-          ...item,
-          gameId: item.gameId ?? inferGameIdFromKey(item.key),
-        }));
-        await this.writeAll(txn, items);
+        await txn.runAsync('DELETE FROM user_library_item_tags');
+        await txn.runAsync('DELETE FROM user_library_items');
+        await txn.runAsync('DELETE FROM user_library_tags');
       });
       await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
     } else if (row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {

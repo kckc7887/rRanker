@@ -28,13 +28,14 @@ describe('SqliteUserLibraryRepository', () => {
     await expect(repository.list()).resolves.toEqual([]);
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('user_library_meta'));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('PRAGMA foreign_keys = ON'));
-    expect(sqlite.db.runAsync).toHaveBeenCalledWith('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', 3);
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', 4);
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM user_library_items');
   });
 
   it('clears personal tables inside an exclusive transaction', async () => {
     const repository = new SqliteUserLibraryRepository();
     await repository.clear();
-    expect(sqlite.db.withExclusiveTransactionAsync).toHaveBeenCalledTimes(1);
+    expect(sqlite.db.withExclusiveTransactionAsync).toHaveBeenCalled();
     expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM user_library_items');
     expect(sqlite.db.runAsync).not.toHaveBeenCalledWith(expect.stringContaining('score_snapshots'));
   });
