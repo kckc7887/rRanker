@@ -15,7 +15,7 @@
 | `webui-proxy-demo/` | Python WebUI、状态机、代理恢复与打包 | 前后端契约和清理路径已设计，部分仅静态验证 | 适合提取状态机经验，不复用为正式客户端架构 |
 | 已删除的 LXNS POC | 落雪曲库与收藏品接口 | 公共读取曾返回完整曲库；开发者 API 门槛较高 | 暂不作为主数据源，重新接入前必须重新核验 |
 | `score-hub-friendcode-demo/` | 仅好友码经 score-hub 公网 API 登录并拉 latest sync | 本地 Demo：Bot 好友登录 + 单次 update_score + 慢轮询 | 不进产品；勿对公网 API 批量压测 |
-| `phigros-resource-publisher/` | 最新客户端探测、解包、整理与对象存储发布 | 最新下载地址返回 HTTP 200；参考 APK 整理出 1027 个文件（约 779 MiB） | 本地 WebUI 已可用；真实对象存储上传留待用户使用自有凭据验证 |
+| `phigros-resource-publisher/` | 本地 APK 解包、整理与对象存储发布 | 内置 phiTool 解包；本地选 APK 或下载最新版；整理含 chart | 本地 WebUI 已可用；真实对象存储上传留待用户使用自有凭据验证 |
 
 ## 2. 水鱼数据源 POC
 
@@ -124,10 +124,10 @@ WebUI 曾使用以下水鱼 song id → 落雪封面 id 规则：
 
 ### 已验证链路
 
-1. 按参考插件使用的 TapTap 接口解析 Phigros 最新版本与 APK 地址。
-2. 对 APK 地址发起流式请求，收到 HTTP 200 即结束下载测试，不落盘最新 APK。
-3. 从 `refer/astrbot_plugin_phi.zip` 提取已有 APK 与解包工具链。
-4. 调用参考项目解包逻辑，整理头像、原图、模糊图、低清图和元数据。
+1. 按 TapTap 接口解析 Phigros 最新版本与 APK 地址（下载模式）。
+2. 选择本地已有 APK，解包、整理并可选上传对象存储。
+3. 内置 `bundled/phiTool/` 解包工具链，不再依赖参考压缩包。
+4. 解包产出头像、曲绘、谱面 chart 与元数据。
 5. 生成带 SHA-256 的 `manifest.json`、资源索引 `catalog.json` 和入口 `current.json`。
 
 参考 APK `3.19.0.1` 的一次真实整理结果为 1027 个资源文件、816681939 字节。上传开关默认关闭，Access Key 与 Secret Key 只随 localhost 请求进入内存，不写入配置或日志；雨云 S3 兼容上传未代替用户执行。
