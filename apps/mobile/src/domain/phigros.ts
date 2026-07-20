@@ -218,35 +218,47 @@ export function parseGameRecord(
   // 对齐 phiTool PhigrosLibrary.GameRecord.read：
   // varshort(keyLen) + utf8(keyLen-2) + checksum2 + u8(bodyLen) + body；仅 EZ/HD/IN/AT。
   while (r.remaining() > 0) {
-    const key = r.getGameRecordKey();
-    const lengthBytePos = r.pos;
-    const bodyLength = r.getByte();
-    const nextPos = lengthBytePos + bodyLength + 1;
+    const entryStart = r.pos;
+    try {
+      const key = r.getGameRecordKey();
+      if (!key || key.length > 128) break;
 
-    const exist = r.getByte();
-    const fcFlag = r.getByte();
-    const levels: (PhigrosScoreEntry | null)[] = [null, null, null, null];
-
-    for (let lv = 0; lv < 4; lv++) {
-      if ((exist >> lv) & 1) {
-        const score = r.getInt();
-        const rawAcc = r.getFloat();
-        const isFullCombo = (score === 1000000 && rawAcc >= 99.995) || !!((fcFlag >> lv) & 1);
-        levels[lv] = {
-          songId: key,
-          level: lv as PhigrosLevel,
-          difficulty: 0,
-          score,
-          rawAcc,
-          acc: Math.round(rawAcc * 100) / 100,
-          fc: isFullCombo,
-          rks: 0,
-        };
+      const lengthBytePos = r.pos;
+      const bodyLength = r.getByte();
+      if (bodyLength <= 0 || r.remaining() < bodyLength) {
+        r.pos = entryStart;
+        break;
       }
-    }
+      const nextPos = lengthBytePos + bodyLength + 1;
 
-    r.pos = nextPos;
-    record[key] = levels;
+      const exist = r.getByte();
+      const fcFlag = r.getByte();
+      const levels: (PhigrosScoreEntry | null)[] = [null, null, null, null];
+
+      for (let lv = 0; lv < 4; lv++) {
+        if ((exist >> lv) & 1) {
+          const score = r.getInt();
+          const rawAcc = r.getFloat();
+          const isFullCombo = (score === 1000000 && rawAcc >= 99.995) || !!((fcFlag >> lv) & 1);
+          levels[lv] = {
+            songId: key,
+            level: lv as PhigrosLevel,
+            difficulty: 0,
+            score,
+            rawAcc,
+            acc: Math.round(rawAcc * 100) / 100,
+            fc: isFullCombo,
+            rks: 0,
+          };
+        }
+      }
+
+      r.pos = nextPos;
+      record[key] = levels;
+    } catch {
+      r.pos = entryStart;
+      break;
+    }
   }
 
   return record;
@@ -289,15 +301,14 @@ export function collectScoredEntries(
 
   for (const [songId, levels] of Object.entries(gameRecord)) {
     const diffs = difficultyTable[songId];
-    if (!diffs) continue;
     for (let lv = 0; lv < 4; lv++) {
       const entry = levels[lv];
-      if (!entry || lv >= diffs.length) continue;
-      const diff = diffs[lv];
+      if (!entry) continue;
+      const diff = diffs?.[lv] ?? 0;
       allRecords.push({
         ...entry,
         difficulty: diff,
-        rks: calculateRks(diff, entry.rawAcc),
+        rks: diff > 0 ? calculateRks(diff, entry.rawAcc) : 0,
       });
     }
   }
@@ -319,7 +330,7 @@ export function phigrosEntryToScoreRecord(entry: PhigrosScoreEntry): ScoreRecord
     rating: entry.rks,
     fc: entry.fc ? 'ap' : null,
     fs: null,
-    rate: isAcc100Percent(entry.rawAcc) && entry.score === 1000000
+    rate: isAcc100Percent(entry.rawAcc)
       ? 'phi'
       : entry.fc
         ? 'fc'
@@ -438,9 +449,27 @@ export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{
 export function loadDifficultyTable(raw: string): PhigrosDifficultyTable {
   const table: PhigrosDifficultyTable = {};
   for (const line of raw.trim().split('\n')) {
+    if (!line.trim()) continue;
     const cols = line.split('\t');
     const id = cols[0];
-    table[id] = cols.slice(1).map(Number);
+    if (!id) continue;
+    const vals = cols.slice(1).map((c) => (c === '' ? 0 : Number(c)));
+    while (vals.length < 4) vals.push(0);
+    table[id] = vals;
   }
   return table;
+}
+
+/** 合并定数表：优先保留先出现的版本，后续仅补缺曲目 */
+export function mergeDifficultyTables(
+  primary: PhigrosDifficultyTable,
+  ...fallbacks: PhigrosDifficultyTable[]
+): PhigrosDifficultyTable {
+  const merged: PhigrosDifficultyTable = { ...primary };
+  for (const table of fallbacks) {
+    for (const [id, diffs] of Object.entries(table)) {
+      if (!merged[id]) merged[id] = diffs;
+    }
+  }
+  return merged;
 }
