@@ -538,7 +538,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
     </View>
     <View style={[styles.chartDivider, { backgroundColor: theme.border }]} />
     <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
-    <NotesTable notes={chart.notes} />
+    <NotesTable notes={chart.notes && 'slide' in chart.notes ? chart.notes : undefined} />
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
       onPress={() => void library.setChartPractice(song.id, chart.type, chart.levelIndex, !practice)}

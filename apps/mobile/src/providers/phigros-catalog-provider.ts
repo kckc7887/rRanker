@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { buildPhigrosAvatarUrl, PHIGROS_OSS_BASE } from '@/domain/account-avatar';
-import type { DataSource, Song, Chart, ChartType, CatalogSnapshot } from '@/domain/models';
+import type { DataSource, Song, Chart, ChartType, CatalogSnapshot, PhigrosChartNotes } from '@/domain/models';
+import { loadNoteCountsTable } from '@/domain/phigros';
 import type { CatalogProvider } from './contracts';
 import { ProviderError } from './errors';
 
@@ -11,6 +12,7 @@ const CurrentSchema = z.object({
   gameVersion: z.string(),
   catalog: z.string(),
   manifest: z.string(),
+  noteCounts: z.string().optional(),
 });
 
 const CatalogSongSchema = z.object({
@@ -79,6 +81,38 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     }
   }
 
+  private async fetchText(url: string): Promise<string> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { Accept: 'text/plain, text/tab-separated-values, */*' },
+      });
+      if (!res.ok) {
+        throw new ProviderError('network', `OSS 请求失败 HTTP ${res.status}`, true);
+      }
+      return await res.text();
+    } catch (error) {
+      if (error instanceof ProviderError) throw error;
+      throw new ProviderError('network', '无法连接 Phigros 资源服务', true, { cause: error });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async loadNoteCounts(
+    noteCountsPath: string | undefined,
+  ): Promise<Record<string, PhigrosChartNotes[]>> {
+    if (!noteCountsPath) return {};
+    try {
+      const raw = await this.fetchText(`${OSS_BASE}/${noteCountsPath}`);
+      return loadNoteCountsTable(raw);
+    } catch {
+      return {};
+    }
+  }
+
   async getGameVersion(): Promise<string> {
     if (this.gameVersion) return this.gameVersion;
     const current = await this.fetchJson(`${OSS_BASE}/phigros/current.json`, CurrentSchema);
@@ -97,10 +131,14 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   private async doGetCatalog(): Promise<CatalogSnapshot> {
     const current = await this.fetchJson(`${OSS_BASE}/phigros/current.json`, CurrentSchema);
     this.gameVersion = current.gameVersion;
-    const catalog = await this.fetchJson(`${OSS_BASE}/${current.catalog}`, CatalogSchema);
+    const [catalog, noteCounts] = await Promise.all([
+      this.fetchJson(`${OSS_BASE}/${current.catalog}`, CatalogSchema),
+      this.loadNoteCounts(current.noteCounts),
+    ]);
     const version = this.gameVersion;
 
     const songs: Song[] = catalog.songs.map((raw) => {
+      const songNotes = noteCounts[raw.id];
       const charts: Chart[] = raw.difficulties.map((dc, i) => ({
         songId: raw.id,
         type: CHART_TYPE,
@@ -109,6 +147,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
         difficulty: LEVEL_INDEX_MAP[i] ?? 'unknown',
         difficultyConstant: dc,
         charter: raw.charters[i],
+        notes: songNotes?.[i],
       }));
 
       return {
