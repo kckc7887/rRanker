@@ -242,8 +242,9 @@ export function parseGameRecord(
   return record;
 }
 
+/** 成绩定数：acc 为存档中的百分数（0–100）；acc≥100% 时等于谱面定数 */
 export function calculateRks(difficulty: number, acc: number): number {
-  if (acc < 55) return 0;
+  if (acc < 70) return 0;
   return difficulty * ((acc - 55) / 45) ** 2;
 }
 
@@ -251,15 +252,15 @@ export function roundRks(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
-/** Phi3 槽：score=1000000 按定数降序取前三（phiTool parse_b27；非 PHI 评级 acc=100） */
+/** Phi3 槽：acc=100% 按谱面定数降序取前三；与分数/AP 无关，贡献取谱面定数 */
 export function selectPhi3(allRecords: PhigrosScoreEntry[]): PhigrosScoreEntry[] {
   return [...allRecords]
-    .filter((r) => r.score === 1000000)
+    .filter((r) => r.acc >= 100)
     .sort((a, b) => b.difficulty - a.difficulty)
     .slice(0, 3);
 }
 
-/** Phi3 槽位对总 RKS 的贡献 = 定数之和（acc=100 时等于 RKS；AP 时仍用定数） */
+/** Phi3 槽位对总 RKS 的贡献 = 谱面定数之和（非成绩定数） */
 export function sumPhi3Contribution(allRecords: PhigrosScoreEntry[]): number {
   return selectPhi3(allRecords).reduce((sum, s) => sum + s.difficulty, 0);
 }
@@ -344,10 +345,10 @@ export function computeB30(
   const targetRks = displayRks2 + 0.01 - 0.005;
 
   const scoredBest27 = best27.map((song) => {
-    if (song.score === 1000000) return { ...song, targetAccForPlusOne: null };
+    if (song.acc >= 100) return { ...song, targetAccForPlusOne: null };
 
     const diff = song.difficulty;
-    let low = Math.max(55.01, song.acc);
+    let low = Math.max(song.acc, 70.01);
     let high = 100.0;
     let target: number | null = null;
 
@@ -361,15 +362,15 @@ export function computeB30(
       const tempBestSum = tempBest27.reduce((s, r) => s + r.rks, 0);
 
       let tempPhiSum = phi3ContributionSum;
-      if (song.score === 1000000 && mid >= 100) {
+      if (mid >= 100) {
         const candidates = allRecords
           .map((r) => {
             if (r.songId === song.songId && r.level === song.level) {
-              return { difficulty: diff, isPhi: mid >= 100 };
+              return { difficulty: diff, qualifies: mid >= 100 };
             }
-            return { difficulty: r.difficulty, isPhi: r.score === 1000000 };
+            return { difficulty: r.difficulty, qualifies: r.acc >= 100 };
           })
-          .filter((r) => r.isPhi)
+          .filter((r) => r.qualifies)
           .sort((a, b) => b.difficulty - a.difficulty)
           .slice(0, 3);
         tempPhiSum = candidates.reduce((s, r) => s + r.difficulty, 0);

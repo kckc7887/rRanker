@@ -207,7 +207,7 @@ export function OverviewScreen() {
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
                 rating={bundle.payload.playerScore.value}
-                meta={formatBestSectionMeta(bundle.payload.bestSections)}
+                meta={formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
               />
             ) : (
               <DxRatingCard label={profile.ratingLabel} display="—" rating={null} meta="当前游戏暂未提供评分" />
@@ -384,9 +384,18 @@ function displayName(bundle: GameDataBundle): string {
   return bundle.payload.displayName;
 }
 
-function formatBestSectionMeta(sections: BestListSection[]): string {
+function formatBestSectionMeta(sections: BestListSection[], gameId: GameDataBundle['gameId']): string {
   return sections.map((section) => {
     const label = section.id === 'b35' ? 'B35' : section.id === 'b15' ? 'B15' : section.id.toUpperCase();
+    if (gameId === 'phigros') {
+      if (!section.records.length) return `${label} —`;
+      if (section.id === 'phi3') {
+        const avg = section.records.reduce((sum, r) => sum + r.difficultyConstant, 0) / section.records.length;
+        return `${label} 均定 ${avg.toFixed(2)}`;
+      }
+      const avg = section.records.reduce((sum, r) => sum + r.rating, 0) / section.records.length;
+      return `${label} 均 ${avg.toFixed(2)}`;
+    }
     const total = section.records.reduce((sum, record) => sum + record.rating, 0);
     return `${label} ${total}`;
   }).join(' · ');
