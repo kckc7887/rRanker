@@ -133,6 +133,8 @@ export function PhigrosSongDetail({
             lowresUrl={lowresUrl}
             initialLevelIndex={levelIndex}
             library={library}
+            catalogFetching={catalog.isFetching}
+            onEnsureLatestNoteCounts={() => void catalog.refetch()}
           />
         )}
       />
@@ -207,6 +209,8 @@ function Detail({
   lowresUrl,
   initialLevelIndex,
   library,
+  catalogFetching,
+  onEnsureLatestNoteCounts,
 }: {
   song: Song;
   records: ScoreRecord[];
@@ -217,6 +221,8 @@ function Detail({
   lowresUrl: string | null;
   initialLevelIndex?: number;
   library: LibraryHook;
+  catalogFetching: boolean;
+  onEnsureLatestNoteCounts: () => void;
 }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
@@ -225,6 +231,20 @@ function Detail({
     () => [...song.charts].sort((a, b) => b.levelIndex - a.levelIndex),
     [song.charts],
   );
+  const hasAnyNotes = useMemo(
+    () => song.charts.some((chart) => asPhigrosNotes(chart.notes)),
+    [song.charts],
+  );
+  const [triedNotesRefresh, setTriedNotesRefresh] = useState(false);
+  useEffect(() => {
+    setTriedNotesRefresh(false);
+  }, [song.id]);
+  useEffect(() => {
+    if (hasAnyNotes || triedNotesRefresh) return;
+    setTriedNotesRefresh(true);
+    onEnsureLatestNoteCounts();
+  }, [hasAnyNotes, triedNotesRefresh, onEnsureLatestNoteCounts]);
+  const notesPending = !hasAnyNotes && (!triedNotesRefresh || catalogFetching);
   const defaultIndex = Math.max(0, sortedCharts.findIndex((c) => c.levelIndex === IN_LEVEL_INDEX));
   const requestedIndex = initialLevelIndex === undefined
     ? -1
@@ -307,6 +327,7 @@ function Detail({
           library={library}
           cardWidth={cardWidth}
           initialIndex={initialIndex}
+          notesPending={notesPending}
         />
         <View style={styles.details}>
           <SourceStatus items={[
@@ -356,6 +377,7 @@ function ChartCarousel({
   library,
   cardWidth,
   initialIndex,
+  notesPending,
 }: {
   charts: Chart[];
   records: ScoreRecord[];
@@ -363,6 +385,7 @@ function ChartCarousel({
   library: LibraryHook;
   cardWidth: number;
   initialIndex: number;
+  notesPending: boolean;
 }) {
   const interval = cardWidth + CARD_GAP;
   const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
@@ -412,6 +435,7 @@ function ChartCarousel({
               song={song}
               library={library}
               width={cardWidth}
+              notesPending={notesPending}
             />
           );
         })}
@@ -426,12 +450,14 @@ function ChartCard({
   song,
   library,
   width,
+  notesPending,
 }: {
   chart: Chart;
   best?: ScoreRecord;
   song: Song;
   library: LibraryHook;
   width: number;
+  notesPending: boolean;
 }) {
   const theme = useAppTheme();
   const colors = phigrosLevelColors(chart.levelIndex);
@@ -512,7 +538,7 @@ function ChartCard({
       <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         谱师：{chart.charter || '未提供'}
       </Text>
-      <NotesTable notes={asPhigrosNotes(chart.notes)} />
+      <NotesTable notes={asPhigrosNotes(chart.notes)} pending={notesPending} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
@@ -561,11 +587,13 @@ function asPhigrosNotes(notes: Chart['notes']): PhigrosChartNotes | undefined {
   return notes;
 }
 
-function NotesTable({ notes }: { notes?: PhigrosChartNotes }) {
+function NotesTable({ notes, pending }: { notes?: PhigrosChartNotes; pending?: boolean }) {
   const theme = useAppTheme();
   if (!notes) {
     return (
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>物量未提供</Text>
+      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
+        {pending ? '加载物量中…' : '物量未提供'}
+      </Text>
     );
   }
   return (
