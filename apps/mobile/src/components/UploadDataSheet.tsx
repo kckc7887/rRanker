@@ -254,7 +254,7 @@ export function UploadDataSheet({
       onRequestClose={close}
     >
       <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={styles.grabber} />
+        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.text }]}>上传数据</Text>
           <Pressable
@@ -279,14 +279,14 @@ export function UploadDataSheet({
             placeholder="15 位数字"
             placeholderTextColor={theme.textMuted}
             editable={!running && prefsReady}
-            style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
+            style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
           />
           <Text style={[styles.hint, { color: theme.textMuted }]}>从游戏服务器取成绩后上传到下方勾选的查分器。</Text>
 
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>上传到</Text>
           <View style={[styles.listCard, { backgroundColor: theme.surface }]}>
             {targets.length === 0 ? (
-              <Text style={styles.empty}>当前游戏没有已绑定查分器</Text>
+              <Text style={[styles.empty, { color: theme.textMuted }]}>当前游戏没有已绑定查分器</Text>
             ) : (
               targets.map((target, index) => {
                 const checked = selectedIds.includes(target.account.id);
@@ -301,20 +301,27 @@ export function UploadDataSheet({
                     onPress={() => toggleAccount(target.account.id, target.writable)}
                     style={({ pressed }) => [
                       styles.row,
-                      index > 0 && styles.rowBorder,
+                      index > 0 && [styles.rowBorder, { borderTopColor: theme.border }],
                       pressed && target.writable && styles.softPressed,
                       !target.writable && styles.rowDisabled,
                     ]}
                   >
-                    <View style={[styles.box, checked && target.writable && styles.boxOn]}>
+                    <View style={[
+                      styles.box,
+                      { borderColor: theme.border, backgroundColor: theme.input },
+                      checked && target.writable && { backgroundColor: theme.accent, borderColor: theme.accent },
+                    ]}
+                    >
                       {checked && target.writable ? <Text style={styles.boxMark}>✓</Text> : null}
                     </View>
-                    {icon ? <Image source={icon} style={styles.icon} /> : <View style={styles.iconPlaceholder} />}
+                    {icon ? <Image source={icon} style={styles.icon} /> : (
+                      <View style={[styles.iconPlaceholder, { backgroundColor: theme.surfaceMuted }]} />
+                    )}
                     <View style={styles.rowBody}>
                       <Text style={[styles.rowTitle, { color: theme.text }]}>{target.account.displayName}</Text>
                       <Text style={[styles.rowSub, { color: theme.textMuted }]}>{target.account.providerTitle}</Text>
                       {target.disableReason ? (
-                        <Text style={styles.rowWarn}>{target.disableReason}</Text>
+                        <Text style={[styles.rowWarn, { color: theme.warning }]}>{target.disableReason}</Text>
                       ) : null}
                     </View>
                   </Pressable>
@@ -349,6 +356,7 @@ export function UploadDataSheet({
               onPress={cancelUpload}
               style={({ pressed }) => [
                 styles.cancel,
+                { backgroundColor: theme.danger },
                 phase.kind === 'canceling' && styles.primaryDisabled,
                 pressed && phase.kind !== 'canceling' && styles.softPressed,
               ]}
@@ -360,31 +368,35 @@ export function UploadDataSheet({
           ) : null}
 
           {statusText ? (
-            <View style={styles.statusBox}>
-              {running ? <ActivityIndicator color="#246BFD" style={styles.statusSpinner} /> : null}
+            <View style={[styles.statusBox, { backgroundColor: theme.surface }]}>
+              {running ? <ActivityIndicator color={theme.accent} style={styles.statusSpinner} /> : null}
               <Text style={[
                 styles.statusText,
-                phase.kind === 'error' && styles.statusError,
-                phase.kind === 'done' && styles.statusDone,
+                { color: theme.textSecondary },
+                phase.kind === 'error' && { color: theme.danger },
+                phase.kind === 'done' && { color: theme.success },
               ]}
               >
                 {statusText}
               </Text>
-              {botHint ? <Text style={styles.statusBot}>{botHint}</Text> : null}
+              {botHint ? <Text style={[styles.statusBot, { color: theme.textMuted }]}>{botHint}</Text> : null}
               {phase.kind === 'awaiting_friend' ? (
-                <Text style={styles.statusBot}>打开“舞萌-中二公众号-我的记录-舞萌DX”接受好友申请后将自动继续</Text>
+                <Text style={[styles.statusBot, { color: theme.textMuted }]}>打开“舞萌-中二公众号-我的记录-舞萌DX”接受好友申请后将自动继续</Text>
               ) : null}
             </View>
           ) : null}
 
           {lastResult ? (
-            <View style={styles.resultList}>
+            <View style={[styles.resultList, { backgroundColor: theme.surface }]}>
               {lastResult.targetResults.map((result) => (
                 <View key={result.account.id} style={styles.resultRow}>
-                  <Text style={result.status === 'success' ? styles.resultSuccess : styles.resultFailure}>
+                  <Text style={result.status === 'success'
+                    ? [styles.resultSuccess, { color: theme.success }]
+                    : [styles.resultFailure, { color: theme.danger }]}
+                  >
                     {result.status === 'success' ? '✓' : '×'} {result.account.providerTitle}
                   </Text>
-                  <Text style={styles.resultDetail}>
+                  <Text style={[styles.resultDetail, { color: theme.textMuted }]}>
                     {result.status === 'success'
                       ? `写入 ${result.written} 条${result.skipped ? `，跳过 ${result.skipped} 条` : ''}${result.refreshFailed ? '，应用内刷新失败' : ''}`
                       : result.errorMessage ?? '写入失败'}
