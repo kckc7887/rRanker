@@ -101,16 +101,58 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     }
   }
 
+  private async tryLoadNoteCountsFromPath(
+    path: string | undefined,
+    tried: Set<string>,
+  ): Promise<Record<string, PhigrosChartNotes[]> | null> {
+    if (!path || tried.has(path)) return null;
+    tried.add(path);
+    try {
+      const raw = await this.fetchText(`${OSS_BASE}/${path}`);
+      const table = loadNoteCountsTable(raw);
+      return Object.keys(table).length > 0 ? table : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 拉取物量表：优先 current.noteCounts，其次当前版本约定路径；
+   * 仍无数据时再拉一次最新 current.json 并重试。
+   */
   private async loadNoteCounts(
     noteCountsPath: string | undefined,
+    gameVersion: string,
   ): Promise<Record<string, PhigrosChartNotes[]>> {
-    if (!noteCountsPath) return {};
+    const tried = new Set<string>();
+    const versionPath = (version: string) =>
+      `phigros/releases/${version}/metadata/note_counts.tsv`;
+
+    const fromPointer = await this.tryLoadNoteCountsFromPath(noteCountsPath, tried);
+    if (fromPointer) return fromPointer;
+
+    const fromVersion = await this.tryLoadNoteCountsFromPath(versionPath(gameVersion), tried);
+    if (fromVersion) return fromVersion;
+
     try {
-      const raw = await this.fetchText(`${OSS_BASE}/${noteCountsPath}`);
-      return loadNoteCountsTable(raw);
+      const fresh = await this.fetchJson(`${OSS_BASE}/phigros/current.json`, CurrentSchema);
+      const fromFreshPointer = await this.tryLoadNoteCountsFromPath(fresh.noteCounts, tried);
+      if (fromFreshPointer) return fromFreshPointer;
+      const fromFreshVersion = await this.tryLoadNoteCountsFromPath(
+        versionPath(fresh.gameVersion),
+        tried,
+      );
+      if (fromFreshVersion) return fromFreshVersion;
     } catch {
-      return {};
+      // 最新 pointer 不可用时保持空表
     }
+
+    return {};
+  }
+
+  /** 使下次 getCatalog 重新请求 OSS（React Query refetch 时调用） */
+  resetCatalogCache(): void {
+    this.catalogPromise = null;
   }
 
   async getGameVersion(): Promise<string> {
@@ -133,7 +175,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     this.gameVersion = current.gameVersion;
     const [catalog, noteCounts] = await Promise.all([
       this.fetchJson(`${OSS_BASE}/${current.catalog}`, CatalogSchema),
-      this.loadNoteCounts(current.noteCounts),
+      this.loadNoteCounts(current.noteCounts, current.gameVersion),
     ]);
     const version = this.gameVersion;
 
