@@ -18,7 +18,7 @@ import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 14;
+const GAME_DATA_QUERY_VERSION = 15;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -56,17 +56,17 @@ export function useGameData() {
             scoreProvider.getSummary(),
           ]);
 
-          const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
+          const syncedAt = scoreProvider.getSyncedAt() ?? new Date().toISOString();
           const source = {
             kind: 'generated' as const,
             label: 'TapTap云存档',
-            updatedAt: saveUpdatedAt,
+            updatedAt: syncedAt,
             isStale: false,
           };
           const catalogSource = {
             kind: 'generated' as const,
             label: `Phigros${gameVersion}`,
-            updatedAt: phiCatalog.getResourceUpdatedAt() ?? saveUpdatedAt,
+            updatedAt: phiCatalog.getResourceUpdatedAt() ?? syncedAt,
             isStale: false,
           };
           const rks = player.rating;
