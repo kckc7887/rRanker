@@ -10,6 +10,7 @@ import {
   loadDifficultyTable,
   mergeDifficultyTables,
   parseGameRecord,
+  phigrosAccToRate,
   roundRks,
   selectPhi3,
   sumPhi3Contribution,
@@ -77,6 +78,18 @@ function encryptPkcs7(plain: Uint8Array): Uint8Array {
 }
 
 describe('phigros save parsing', () => {
+  it('phigrosAccToRate maps accuracy to F–φ grades', () => {
+    expect(phigrosAccToRate(100)).toBe('phi');
+    expect(phigrosAccToRate(99.996)).toBe('phi');
+    expect(phigrosAccToRate(96)).toBe('v');
+    expect(phigrosAccToRate(92)).toBe('s');
+    expect(phigrosAccToRate(88)).toBe('a');
+    expect(phigrosAccToRate(80)).toBe('b');
+    expect(phigrosAccToRate(70)).toBe('c');
+    expect(phigrosAccToRate(60)).toBe('d');
+    expect(phigrosAccToRate(59.9)).toBe('f');
+  });
+
   it('decryptBytes strips PKCS7 padding via sigBytes', () => {
     const plain = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
     const cipher = encryptPkcs7(plain);
