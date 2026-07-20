@@ -90,6 +90,15 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({
   data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog,
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }) }));
+jest.mock('@/hooks/use-phigros-catalog', () => ({
+  usePhigrosCatalog: () => ({
+    data: { snapshot: { songs: [] }, provider: null },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  }),
+}));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   return { data: { player: fixtures.fixturePlayer, records: fixtures.fixtureRecords, source: fixtures.fixtureSource,

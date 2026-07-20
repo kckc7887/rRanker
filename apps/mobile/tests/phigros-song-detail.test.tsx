@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { InteractionManager } from 'react-native';
 import SongDetailScreen from '../app/songs/[songId]';
@@ -112,16 +112,63 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({
 jest.mock('@/hooks/use-score-snapshot', () => ({
   useScoreSnapshot: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({
-  useUserLibrary: () => ({ data: [], isLoading: false, isUpdating: false, setSongFavorite: jest.fn(), setChartPractice: jest.fn(), setTags: jest.fn() }),
+const mockSetSongFavorite = jest.fn();
+const mockSetChartPractice = jest.fn();
+const mockSetTags = jest.fn();
+const mockSetTagPresets = jest.fn();
+
+jest.mock('@/hooks/use-user-library', () => {
+  const state: {
+    data: Array<{
+      key: string;
+      kind: 'song' | 'chart';
+      songId: string;
+      favorite?: boolean;
+      practice?: boolean;
+      type?: 'SD';
+      levelIndex?: number;
+      tags: string[];
+    }>;
+  } = { data: [] };
+  return {
+    __libraryMockState: state,
+    useUserLibrary: () => ({
+      data: state.data,
+      isLoading: false,
+      isUpdating: false,
+      setSongFavorite: (...args: unknown[]) => mockSetSongFavorite(...args),
+      setChartPractice: (...args: unknown[]) => mockSetChartPractice(...args),
+      setTags: (...args: unknown[]) => mockSetTags(...args),
+      setTagPresets: (...args: unknown[]) => mockSetTagPresets(...args),
+      tagPresets: ['爆发', '交互'],
+    }),
+  };
+});
+
+const libraryMock = jest.requireMock<{ __libraryMockState: { data: unknown[] } }>('@/hooks/use-user-library');
+jest.mock('@/components/TagEditor', () => ({
+  TagEditor: ({ onChange }: { onChange?: (tags: string[]) => void }) => {
+    const React = jest.requireActual<typeof import('react')>('react');
+    const RN = jest.requireActual<typeof import('react-native')>('react-native');
+    return React.createElement(RN.Pressable, {
+      accessibilityRole: 'button',
+      accessibilityLabel: '编辑标签',
+      onPress: () => onChange?.(['测试标签']),
+    });
+  },
 }));
 jest.mock('@/components/CachedTabScreen', () => ({
   useCachedTabActive: () => true,
 }));
 
 describe('Phigros song detail', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     mockSongRouteParams = { songId: 'Song.A' };
+    libraryMock.__libraryMockState.data = [];
     jest.clearAllMocks();
   });
 
@@ -179,10 +226,18 @@ describe('Phigros song detail', () => {
   it('navigates from song row and score card', async () => {
     const sampleSong = buildSampleSong();
     const row = await render(
-      <PhigrosSongRow song={sampleSong} blurUrl={null} />,
+      <PhigrosSongRow
+        song={sampleSong}
+        blurUrl={null}
+        favorite={false}
+        onFavoriteChange={mockSetSongFavorite}
+      />,
     );
     fireEvent.press(row.getByLabelText('查看歌曲 测试曲'));
     expect(mockPush).toHaveBeenCalledWith('/songs/Song.A');
+
+    fireEvent.press(row.getByLabelText('收藏 测试曲'));
+    expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);
 
     mockPush.mockClear();
     const card = await render(
@@ -200,5 +255,19 @@ describe('Phigros song detail', () => {
       pathname: '/songs/[songId]',
       params: { songId: 'Song.A', levelIndex: '2' },
     });
+  });
+
+  it('supports favorite, practice list and tags like maimai detail', async () => {
+    const screen = await render(<SongDetailScreen />);
+    await waitFor(() => expect(screen.getByText('测试曲')).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText('收藏 测试曲'));
+    expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);
+
+    fireEvent.press(screen.getAllByLabelText('编辑标签').at(-1)!);
+    expect(mockSetTags).toHaveBeenCalledWith({ kind: 'song', songId: 'Song.A' }, ['测试标签']);
+
+    fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
+    expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
   });
 });
