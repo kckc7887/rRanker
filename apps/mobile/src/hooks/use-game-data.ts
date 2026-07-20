@@ -39,10 +39,11 @@ export function useGameData() {
       }
       if (activeGameId === 'phigros') {
         if (scoreProvider instanceof PhigrosScoreProvider) {
-          const [player, records, b30] = await Promise.all([
+          const [player, records, b30, bestSections] = await Promise.all([
             scoreProvider.getPlayer(),
             scoreProvider.getRecords(),
             scoreProvider.getB30(),
+            scoreProvider.getBestSections(),
           ]);
 
           const source = { kind: 'generated' as const, label: 'Phigros 云存档', updatedAt: new Date().toISOString(), isStale: false };
@@ -54,9 +55,7 @@ export function useGameData() {
               kind: 'phigros' as const,
               player,
               records,
-              bestSections: [
-                { id: 'b30', title: 'Best30', records: records.slice(0, 30) },
-              ],
+              bestSections,
               playerScore: {
                 label: 'RKS',
                 value: b30.rks,

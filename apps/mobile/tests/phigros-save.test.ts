@@ -5,6 +5,7 @@ import {
   computeB30,
   decryptBytes,
   decodeSaveZip,
+  gameRecordToScoreRecords,
   loadDifficultyTable,
   parseGameRecord,
 } from '@/domain/phigros';
@@ -103,5 +104,34 @@ describe('phigros save parsing', () => {
     expect(b30.best27).toHaveLength(1);
     expect(b30.best27[0]?.songId).toBe('Glaciaxion.SunsetRay');
     expect(b30.best27[0]?.rks).toBeGreaterThan(0);
+  });
+
+  it('gameRecordToScoreRecords returns all played charts, not only B27', () => {
+    const gameRecord = {
+      'Glaciaxion.SunsetRay': [
+        { songId: 'Glaciaxion.SunsetRay', level: 0 as const, difficulty: 0, score: 900000, acc: 95, fc: false, rks: 0 },
+        null,
+        { songId: 'Glaciaxion.SunsetRay', level: 2 as const, difficulty: 0, score: 984131, acc: 99.69, fc: false, rks: 0 },
+        null,
+      ],
+      'Test.Other': [
+        null,
+        { songId: 'Test.Other', level: 1 as const, difficulty: 0, score: 950000, acc: 97, fc: true, rks: 0 },
+        null,
+        null,
+      ],
+    };
+    const table = loadDifficultyTable(
+      'Glaciaxion.SunsetRay\t1.0\t6.5\t12.6\nTest.Other\t2.0\t7.0\t\n',
+    );
+    const records = gameRecordToScoreRecords(gameRecord, table);
+    expect(records).toHaveLength(3);
+    expect(records.map((r) => `${r.songId}:${r.levelIndex}`)).toEqual([
+      'Glaciaxion.SunsetRay:2',
+      'Test.Other:1',
+      'Glaciaxion.SunsetRay:0',
+    ]);
+    expect(records[0]?.difficulty).toBe('expert');
+    expect(records[1]?.level).toBe('HD');
   });
 });

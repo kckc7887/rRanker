@@ -1,5 +1,6 @@
 import CryptoJS from 'crypto-js';
 import JSZip from 'jszip';
+import type { Difficulty, ScoreRecord } from '@/domain/models';
 
 const AES_KEY_B64 = '6Jaa0qVAJZuXkZCLiOa/Ax5tIZVu+taKUN1V1nqwkks=';
 const AES_IV_B64 = 'Kk/wisgNYwcAV8WVGMgyUw==';
@@ -117,6 +118,13 @@ export const LEVEL_NAMES: Record<PhigrosLevel, string> = {
   3: 'AT',
 };
 
+const LEVEL_DIFFICULTY: Record<PhigrosLevel, Difficulty> = {
+  0: 'basic',
+  1: 'advanced',
+  2: 'expert',
+  3: 'master',
+};
+
 export type PhigrosDifficultyTable = Record<string, number[]>;
 
 export type PhigrosScoreEntry = {
@@ -226,10 +234,11 @@ export function calculateRks(difficulty: number, acc: number): number {
   return difficulty * ((acc - 55) / 45) ** 2;
 }
 
-export function computeB30(
+/** 将存档 gameRecord 展开为带定数与 RKS 的全部游玩记录 */
+export function collectScoredEntries(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
-): PhigrosB30 {
+): PhigrosScoreEntry[] {
   const allRecords: PhigrosScoreEntry[] = [];
 
   for (const [songId, levels] of Object.entries(gameRecord)) {
@@ -247,6 +256,52 @@ export function computeB30(
       });
     }
   }
+
+  return allRecords;
+}
+
+export function phigrosEntryToScoreRecord(entry: PhigrosScoreEntry): ScoreRecord {
+  return {
+    songId: entry.songId,
+    title: entry.songId,
+    type: 'SD',
+    levelIndex: entry.level,
+    level: LEVEL_NAMES[entry.level],
+    difficulty: LEVEL_DIFFICULTY[entry.level],
+    difficultyConstant: entry.difficulty,
+    achievements: entry.acc,
+    dxScore: entry.score,
+    rating: entry.rks,
+    fc: entry.fc ? 'ap' : null,
+    fs: null,
+    rate: entry.score === 1000000 && entry.acc === 100
+      ? 'phi'
+      : entry.fc
+        ? 'fc'
+        : entry.acc >= 96
+          ? 'v'
+          : entry.acc >= 92
+            ? 's'
+            : 'a',
+    version: 'current',
+  };
+}
+
+/** 完整存档成绩列表（全部已游玩谱面，按 RKS 降序） */
+export function gameRecordToScoreRecords(
+  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
+  difficultyTable: PhigrosDifficultyTable,
+): ScoreRecord[] {
+  return collectScoredEntries(gameRecord, difficultyTable)
+    .map(phigrosEntryToScoreRecord)
+    .sort((a, b) => b.rating - a.rating || b.achievements - a.achievements);
+}
+
+export function computeB30(
+  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
+  difficultyTable: PhigrosDifficultyTable,
+): PhigrosB30 {
+  const allRecords = collectScoredEntries(gameRecord, difficultyTable);
 
   const sortedByRks = [...allRecords].sort((a, b) => b.rks - a.rks);
   const best27 = sortedByRks.slice(0, 27);

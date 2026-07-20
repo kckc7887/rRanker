@@ -13,17 +13,26 @@ import {
   parseSummary,
   decodeSaveZip,
   computeB30,
+  gameRecordToScoreRecords,
   loadDifficultyTable,
-  LEVEL_NAMES,
+  phigrosEntryToScoreRecord,
   type PhigrosB30,
+  type PhigrosDifficultyTable,
+  type PhigrosScoreEntry,
   type PhigrosSummary,
 } from '@/domain/phigros';
 
 export type { DeviceCodeResult };
 
+type LoadedSave = {
+  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>;
+  diffTable: PhigrosDifficultyTable;
+};
+
 export class PhigrosScoreProvider implements ScoreProvider {
   private sessionToken: string;
   private playerId: string;
+  private saveCache: LoadedSave | null = null;
   private b30Cache: PhigrosB30 | null = null;
   private summaryCache: PhigrosSummary | null = null;
 
@@ -101,8 +110,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
     });
   }
 
-  private async loadB30(): Promise<PhigrosB30> {
-    if (this.b30Cache) return this.b30Cache;
+  private async loadSave(): Promise<LoadedSave> {
+    if (this.saveCache) return this.saveCache;
 
     const { saveUrl } = await getGameSave(this.sessionToken);
     const zipBuf = await downloadSave(saveUrl);
@@ -111,8 +120,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
     const diffRaw = await this.loadDifficultyTable();
     const diffTable = loadDifficultyTable(diffRaw);
 
-    this.b30Cache = computeB30(gameRecord, diffTable);
-    return this.b30Cache;
+    this.saveCache = { gameRecord, diffTable };
+    return this.saveCache;
   }
 
   private async loadDifficultyTable(): Promise<string> {
@@ -127,27 +136,25 @@ export class PhigrosScoreProvider implements ScoreProvider {
   }
 
   async getRecords(): Promise<ScoreRecord[]> {
-    const b30 = await this.loadB30();
-    return b30.best27.map((entry) => ({
-      songId: entry.songId,
-      title: entry.songId,
-      type: 'SD' as const,
-      levelIndex: entry.level,
-      level: LEVEL_NAMES[entry.level],
-      difficulty: 'expert' as const,
-      difficultyConstant: entry.difficulty,
-      achievements: entry.acc,
-      dxScore: entry.score,
-      rating: entry.rks,
-      fc: entry.fc ? 'ap' : null,
-      fs: null,
-      rate: entry.score === 1000000 ? 'phi' : entry.fc ? 'fc' : entry.acc >= 96 ? 'v' : entry.acc >= 92 ? 's' : 'a',
-      version: 'current',
-    }));
+    const { gameRecord, diffTable } = await this.loadSave();
+    return gameRecordToScoreRecords(gameRecord, diffTable);
   }
 
   getB30(): Promise<PhigrosB30> {
-    return this.loadB30();
+    if (this.b30Cache) return Promise.resolve(this.b30Cache);
+    return this.loadSave().then(({ gameRecord, diffTable }) => {
+      this.b30Cache = computeB30(gameRecord, diffTable);
+      return this.b30Cache;
+    });
+  }
+
+  /** Best30 分区：Phi3 + Best27，与 RKS 计算口径一致 */
+  async getBestSections(): Promise<{ id: string; title: string; records: ScoreRecord[] }[]> {
+    const b30 = await this.getB30();
+    return [
+      { id: 'phi3', title: 'Phi3', records: b30.phi3.map(phigrosEntryToScoreRecord) },
+      { id: 'b27', title: 'Best27', records: b30.best27.map(phigrosEntryToScoreRecord) },
+    ];
   }
 
   getSummaryCache() {
