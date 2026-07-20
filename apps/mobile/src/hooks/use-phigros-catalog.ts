@@ -8,6 +8,7 @@ export function usePhigrosCatalog() {
   return useQuery({
     queryKey: ['phigros-catalog'],
     queryFn: async (): Promise<{ snapshot: CatalogSnapshot; provider: PhigrosCatalogProvider }> => {
+      provider.resetCatalogCache();
       const snapshot = await provider.getCatalog();
       return { snapshot, provider };
     },

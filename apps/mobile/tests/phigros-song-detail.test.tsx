@@ -111,6 +111,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
     },
     isLoading: false,
     isError: false,
+    isFetching: false,
     error: null,
     refetch: jest.fn(),
   }),
