@@ -239,6 +239,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('flowing-status-FDX+')).toBeTruthy();
     expect(screen.getByText('FC')).toBeTruthy();
     expect(screen.getByText('SYNC')).toBeTruthy();
+    expect(screen.getByTestId('flowing-status-SYNC')).toBeTruthy();
     expect(screen.getByText('SSS+')).toBeTruthy();
     expect(screen.getByText('SSS')).toBeTruthy();
     expect(screen.getByText('SS+')).toBeTruthy();

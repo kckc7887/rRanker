@@ -1,4 +1,11 @@
-import { matchesAchievementRange, matchesConstantRange, parseAchievementBound, parseConstantBound } from '@/domain/maimai-filters';
+import {
+  matchesAchievementRange,
+  matchesAchievementStatus,
+  matchesConstantRange,
+  normalizeMaimaiFs,
+  parseAchievementBound,
+  parseConstantBound,
+} from '@/domain/maimai-filters';
 
 describe('maimai constant filters', () => {
   it('parses non-negative finite bounds and ignores empty or invalid input', () => {
@@ -38,5 +45,28 @@ describe('maimai achievement filters', () => {
 
   it('matches nothing when a valid achievement lower bound exceeds the upper bound', () => {
     expect(matchesAchievementRange(100, '101', '99')).toBe(false);
+  });
+});
+
+describe('maimai achievement status filters', () => {
+  it('normalizes SYNC and FDX aliases from the fs field', () => {
+    expect(normalizeMaimaiFs('SYNC')).toBe('sync');
+    expect(normalizeMaimaiFs(' sync ')).toBe('sync');
+    expect(normalizeMaimaiFs('fdx')).toBe('fsd');
+    expect(normalizeMaimaiFs('fdxp')).toBe('fsdp');
+  });
+
+  it('matches SYNC as the lowest fs tier without treating its rank as falsy', () => {
+    expect(matchesAchievementStatus({ fs: 'sync' }, { family: 'fs', value: 'sync' })).toBe(true);
+    expect(matchesAchievementStatus({ fs: 'fs' }, { family: 'fs', value: 'sync' })).toBe(true);
+    expect(matchesAchievementStatus({ fs: null }, { family: 'fs', value: 'sync' })).toBe(false);
+    expect(matchesAchievementStatus({ fs: 'fs' }, { family: 'fs', value: 'sync' }, true)).toBe(false);
+    expect(matchesAchievementStatus({ fs: 'sync' }, { family: 'fs', value: 'sync' }, true)).toBe(true);
+  });
+
+  it('matches FC family inclusively and reads rawFc/rawFs fallbacks', () => {
+    expect(matchesAchievementStatus({ fc: 'ap' }, { family: 'fc', value: 'fc' })).toBe(true);
+    expect(matchesAchievementStatus({ fc: 'fc' }, { family: 'fc', value: 'ap' })).toBe(false);
+    expect(matchesAchievementStatus({ rawFs: 'SYNC' }, { family: 'fs', value: 'sync' }, true)).toBe(true);
   });
 });

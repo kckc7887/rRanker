@@ -35,8 +35,8 @@ export function mapDivingFishRecord(input: unknown, verifiedVersion?: string): S
     fc: raw.fc ?? null, fs: raw.fs ?? null, rate: raw.rate,
     version: raw.version ?? verifiedVersion ?? 'unknown',
     rawDifficulty: difficulty === 'unknown' ? raw.level_label : undefined,
-    rawFc: raw.fc && !['fc', 'fcp', 'ap', 'app'].includes(raw.fc) ? raw.fc : undefined,
-    rawFs: raw.fs && !['sync', 'fs', 'fsp', 'fsd', 'fsdp'].includes(raw.fs) ? raw.fs : undefined,
+    rawFc: raw.fc && !['fc', 'fcp', 'ap', 'app'].includes(raw.fc.toLowerCase()) ? raw.fc : undefined,
+    rawFs: raw.fs && !['sync', 'fs', 'fsp', 'fsd', 'fsdp'].includes(raw.fs.toLowerCase()) ? raw.fs : undefined,
     rawRate: raw.rate,
   };
 }
@@ -110,8 +110,8 @@ export function mapLxnsScore(input: unknown): ScoreRecord {
     rate: raw.rate ?? '',
     version: 'unknown',
     rawDifficulty: difficulty === 'unknown' ? level : undefined,
-    rawFc: raw.fc && !['fc', 'fcp', 'ap', 'app'].includes(raw.fc) ? raw.fc : undefined,
-    rawFs: raw.fs && !['sync', 'fs', 'fsp', 'fsd', 'fsdp'].includes(raw.fs) ? raw.fs : undefined,
+    rawFc: raw.fc && !['fc', 'fcp', 'ap', 'app'].includes(raw.fc.toLowerCase()) ? raw.fc : undefined,
+    rawFs: raw.fs && !['sync', 'fs', 'fsp', 'fsd', 'fsdp'].includes(raw.fs.toLowerCase()) ? raw.fs : undefined,
     rawRate: raw.rate,
   };
 }
