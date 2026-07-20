@@ -8,7 +8,7 @@ import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
-import { matchesAchievementRange, matchesConstantRange } from '@/domain/maimai-filters';
+import { matchesAchievementRange, matchesAchievementStatus, matchesConstantRange } from '@/domain/maimai-filters';
 import type { DataSource, ScoreRecord } from '@/domain/models';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
@@ -32,9 +32,11 @@ export function RecordsScreen() {
   const theme = useAppTheme();
   const tabBottomInset = useNativeTabBottomInset();
   const {
-    keyword, collapsed, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax, versionLocale,
+    keyword, collapsed, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
+    achievementStatus, versionLocale,
     setKeyword, setCollapsed,
-    setDifficulty, setVersion, setType, setConstantMin, setConstantMax, setAchievementMin, setAchievementMax, setVersionLocale,
+    setDifficulty, setVersion, setType, setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
+    setAchievementStatus, setVersionLocale,
   } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const searchBySongId = useMemo(() => new Map(buildSongSearchIndex(catalog.data?.songs ?? [])
@@ -48,7 +50,8 @@ export function RecordsScreen() {
 
   const filterSpec = useMemo(() => ({
     keyword: debouncedKeyword, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
-  }), [achievementMax, achievementMin, constantMax, constantMin, debouncedKeyword, difficulty, type, version]);
+    achievementStatus,
+  }), [achievementMax, achievementMin, achievementStatus, constantMax, constantMin, debouncedKeyword, difficulty, type, version]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<ScoreRecord[]>(() => {
     if (!data) return [];
@@ -72,6 +75,7 @@ export function RecordsScreen() {
     list = list.filter((record) => matchesAchievementRange(
       record.achievements, deferredFilterSpec.achievementMin, deferredFilterSpec.achievementMax,
     ));
+    list = list.filter((record) => matchesAchievementStatus(record, deferredFilterSpec.achievementStatus));
     return list.sort((a, b) => b.rating - a.rating || b.achievements - a.achievements);
   }, [data, deferredFilterSpec, searchBySongId]);
 
@@ -102,10 +106,12 @@ export function RecordsScreen() {
         difficulty={difficulty} version={version} type={type}
         constantMin={constantMin} constantMax={constantMax}
         achievementMin={achievementMin} achievementMax={achievementMax}
+        achievementStatus={achievementStatus}
         versionLocale={versionLocale} versions={versions}
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}
+        onAchievementStatusChange={setAchievementStatus}
         onVersionLocaleChange={setVersionLocale} />
       <QueryStateView<{ records: ScoreRecord[]; source: DataSource; catalogSource: DataSource }>
         isLoading={isLoading}

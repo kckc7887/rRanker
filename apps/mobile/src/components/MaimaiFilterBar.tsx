@@ -2,6 +2,12 @@ import { type ReactNode, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
+import {
+  MAIMAI_FC_ACHIEVEMENTS,
+  MAIMAI_FS_ACHIEVEMENTS,
+  maimaiAchievementStatusLabel,
+  type MaimaiAchievementStatus,
+} from '@/domain/maimai-filters';
 import type { ChartType, Difficulty } from '@/domain/models';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
 import { useAppTheme } from '@/theme/app-theme';
@@ -24,6 +30,7 @@ export interface MaimaiFilterBarProps {
   constantMax: string;
   achievementMin?: string;
   achievementMax?: string;
+  achievementStatus?: MaimaiAchievementStatus;
   versionLocale: VersionNameLocale;
   versions: readonly VersionFilterOption[];
   onCollapsedChange: (collapsed: boolean) => void;
@@ -34,21 +41,24 @@ export interface MaimaiFilterBarProps {
   onConstantMaxChange: (value: string) => void;
   onAchievementMinChange?: (value: string) => void;
   onAchievementMaxChange?: (value: string) => void;
+  onAchievementStatusChange?: (value: MaimaiAchievementStatus) => void;
   onVersionLocaleChange: (locale: VersionNameLocale) => void;
 }
 
-export function buildMaimaiFilterSummary({ difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax, versionLocale, versions }:
-  Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'type' | 'constantMin' | 'constantMax' | 'achievementMin' | 'achievementMax' | 'versionLocale' | 'versions'>): string {
+export function buildMaimaiFilterSummary({ difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax, achievementStatus, versionLocale, versions }:
+  Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'type' | 'constantMin' | 'constantMax' | 'achievementMin' | 'achievementMax' | 'achievementStatus' | 'versionLocale' | 'versions'>): string {
   const selectedVersion = versions.find((option) => option.value === version);
   const selectedVersionLabel = selectedVersion
     ? localizedVersionName(selectedVersion.versionId, selectedVersion.name, versionLocale)
     : '全部';
+  const statusLabel = achievementStatus ? maimaiAchievementStatusLabel(achievementStatus) : null;
   return [
     difficulty === 'all' ? null : DIFFICULTY_VISUAL[difficulty].label,
     selectedVersionLabel === '全部' ? null : selectedVersionLabel,
     type === 'all' ? null : type,
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
     achievementMin || achievementMax ? `达成率 ${achievementMin || '不限'}~${achievementMax || '不限'}%` : null,
+    statusLabel && statusLabel !== '全部' ? statusLabel : null,
   ].filter(Boolean).join(' · ') || '全部';
 }
 
@@ -61,6 +71,7 @@ export function MaimaiFilterBar({
   constantMax,
   achievementMin = '',
   achievementMax = '',
+  achievementStatus = null,
   versionLocale,
   versions,
   onCollapsedChange,
@@ -71,11 +82,13 @@ export function MaimaiFilterBar({
   onConstantMaxChange,
   onAchievementMinChange,
   onAchievementMaxChange,
+  onAchievementStatusChange,
   onVersionLocaleChange,
 }: MaimaiFilterBarProps) {
   const theme = useAppTheme();
   const [versionPickerOpen, setVersionPickerOpen] = useState(false);
   const showAchievementRange = onAchievementMinChange !== undefined && onAchievementMaxChange !== undefined;
+  const showAchievementStatus = onAchievementStatusChange !== undefined;
   const selectedVersion = versions.find((option) => option.value === version);
   const selectedVersionLabel = selectedVersion
     ? localizedVersionName(selectedVersion.versionId, selectedVersion.name, versionLocale)
@@ -87,7 +100,8 @@ export function MaimaiFilterBar({
   };
 
   const summary = buildMaimaiFilterSummary({
-    difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax, versionLocale, versions,
+    difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
+    achievementStatus, versionLocale, versions,
   });
 
   if (collapsed) return <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
@@ -193,6 +207,32 @@ export function MaimaiFilterBar({
           style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
     </View> : null}
+    {showAchievementStatus ? <>
+      <View style={styles.filterRow}>
+        <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>成就</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <NeutralChip label="全部" active={achievementStatus === null}
+            accessibilityLabel="筛选成就 全部" onPress={() => onAchievementStatusChange(null)} />
+          {MAIMAI_FC_ACHIEVEMENTS.map((item) => {
+            const active = achievementStatus?.family === 'fc' && achievementStatus.value === item.value;
+            return <NeutralChip key={`fc-${item.value}`} label={item.label} active={active}
+              accessibilityLabel={`筛选成就 ${item.label}`}
+              onPress={() => onAchievementStatusChange({ family: 'fc', value: item.value })} />;
+          })}
+        </ScrollView>
+      </View>
+      <View style={styles.filterRow}>
+        <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          {MAIMAI_FS_ACHIEVEMENTS.map((item) => {
+            const active = achievementStatus?.family === 'fs' && achievementStatus.value === item.value;
+            return <NeutralChip key={`fs-${item.value}`} label={item.label} active={active}
+              accessibilityLabel={`筛选成就 ${item.label}`}
+              onPress={() => onAchievementStatusChange({ family: 'fs', value: item.value })} />;
+          })}
+        </ScrollView>
+      </View>
+    </> : null}
   </View>;
 }
 
@@ -204,9 +244,11 @@ function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: s
   </View>;
 }
 
-function NeutralChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+function NeutralChip({ label, active, onPress, accessibilityLabel }: {
+  label: string; active: boolean; onPress: () => void; accessibilityLabel?: string;
+}) {
   const theme = useAppTheme();
-  return <FilterChipFrame active={active} accessibilityLabel={`筛选 ${label}`} onPress={onPress}>
+  return <FilterChipFrame active={active} accessibilityLabel={accessibilityLabel ?? `筛选 ${label}`} onPress={onPress}>
     <View style={[styles.neutralChip, { backgroundColor: theme.surface, borderColor: theme.border }, active && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
       <Text style={[styles.neutralChipText, { color: theme.textSecondary }, active && styles.neutralChipTextActive]}>{label}</Text>
     </View>

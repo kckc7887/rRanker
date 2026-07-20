@@ -232,19 +232,25 @@ function useFlowingProgress(enabled: boolean, duration: number): Animated.Value 
 function getStatusSpec(kind: 'fc' | 'fs', rawValue: string): {
   label: string; flowing: boolean; color: 'gold' | 'green' | 'blue';
 } {
-  const value = rawValue.toLowerCase();
+  const value = rawValue.trim().toLowerCase();
   if (kind === 'fc') {
     if (value === 'fc') return { label: 'FC', flowing: false, color: 'green' };
     if (value === 'fcp') return { label: 'FC+', flowing: true, color: 'green' };
     if (value === 'ap') return { label: 'AP', flowing: false, color: 'gold' };
     if (value === 'app') return { label: 'AP+', flowing: true, color: 'gold' };
   } else {
-    if (value === 'sync') return { label: 'SYNC', flowing: false, color: 'blue' };
-    if (value === 'fs' || value === 'fsp') return { label: value === 'fsp' ? 'FS+' : 'FS', flowing: true, color: 'blue' };
+    // SYNC 与 FS/FS+ 同为蓝色流动玻璃标签
+    if (value === 'sync' || value === 'fs' || value === 'fsp') {
+      return {
+        label: value === 'sync' ? 'SYNC' : value === 'fsp' ? 'FS+' : 'FS',
+        flowing: true,
+        color: 'blue',
+      };
+    }
     if (value === 'fsd') return { label: 'FDX', flowing: false, color: 'gold' };
     if (value === 'fsdp') return { label: 'FDX+', flowing: true, color: 'gold' };
   }
-  return { label: rawValue.toUpperCase(), flowing: false, color: 'gold' };
+  return { label: rawValue.trim().toUpperCase(), flowing: false, color: 'gold' };
 }
 
 const styles = StyleSheet.create({

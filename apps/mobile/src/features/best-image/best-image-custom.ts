@@ -1,14 +1,20 @@
 import type { ScoreRecord } from '@/domain/models';
+import {
+  MAIMAI_FC_ACHIEVEMENTS,
+  MAIMAI_FS_ACHIEVEMENTS,
+  matchesAchievementStatus,
+  maimaiAchievementStatusLabel,
+  type MaimaiAchievementStatus,
+  type MaimaiFcAchievement,
+  type MaimaiFsAchievement,
+} from '@/domain/maimai-filters';
 import { achievementTenThousandths, isNearMissAchievement } from '@/domain/score-presentation';
 import { rankScoreRecords } from '@/domain/rating';
 
 export type BestImageVersionFilter = 'current' | 'past';
-export type BestImageFcAchievement = 'fc' | 'fcp' | 'ap' | 'app';
-export type BestImageFsAchievement = 'sync' | 'fs' | 'fsp' | 'fsd' | 'fsdp';
-export type BestImageAchievementFilter =
-  | { family: 'fc'; value: BestImageFcAchievement }
-  | { family: 'fs'; value: BestImageFsAchievement }
-  | null;
+export type BestImageFcAchievement = MaimaiFcAchievement;
+export type BestImageFsAchievement = MaimaiFsAchievement;
+export type BestImageAchievementFilter = MaimaiAchievementStatus;
 
 export type CustomBestImageFilters = {
   quantity: number;
@@ -44,47 +50,13 @@ export const DEFAULT_CUSTOM_BEST_IMAGE_FILTERS: CustomBestImageFilters = {
   nearMiss: false,
 };
 
-export const FC_ACHIEVEMENTS: readonly { value: BestImageFcAchievement; label: string }[] = [
-  { value: 'app', label: 'AP+' }, { value: 'ap', label: 'AP' },
-  { value: 'fcp', label: 'FC+' }, { value: 'fc', label: 'FC' },
-];
-export const FS_ACHIEVEMENTS: readonly { value: BestImageFsAchievement; label: string }[] = [
-  { value: 'fsdp', label: 'FDX+' }, { value: 'fsd', label: 'FDX' },
-  { value: 'fsp', label: 'FS+' }, { value: 'fs', label: 'FS' },
-  { value: 'sync', label: 'SYNC' },
-];
-
-const FC_RANK: Record<BestImageFcAchievement, number> = { fc: 0, fcp: 1, ap: 2, app: 3 };
-const FS_RANK: Record<BestImageFsAchievement, number> = { sync: 0, fs: 1, fsp: 2, fsd: 3, fsdp: 4 };
-
-function normalizeFs(value: string | null): BestImageFsAchievement | null {
-  const normalized = value?.trim().toLowerCase();
-  if (normalized === 'fdx') return 'fsd';
-  if (normalized === 'fdxp') return 'fsdp';
-  return normalized && Object.hasOwn(FS_RANK, normalized) ? normalized as BestImageFsAchievement : null;
-}
-
-function normalizeFc(value: string | null): BestImageFcAchievement | null {
-  const normalized = value?.trim().toLowerCase();
-  return normalized && Object.hasOwn(FC_RANK, normalized) ? normalized as BestImageFcAchievement : null;
-}
-
-function achievementMatches(record: ScoreRecord, filter: BestImageAchievementFilter, strict: boolean): boolean {
-  if (!filter) return true;
-  if (filter.family === 'fc') {
-    const actual = normalizeFc(record.fc);
-    if (!actual) return false;
-    return strict ? actual === filter.value : FC_RANK[actual] >= FC_RANK[filter.value];
-  }
-  const actual = normalizeFs(record.fs);
-  if (!actual) return false;
-  return strict ? actual === filter.value : FS_RANK[actual] >= FS_RANK[filter.value];
-}
+export const FC_ACHIEVEMENTS = MAIMAI_FC_ACHIEVEMENTS;
+export const FS_ACHIEVEMENTS = MAIMAI_FS_ACHIEVEMENTS;
 
 export function bestImageAchievementLabel(filter: BestImageAchievementFilter): string {
   if (!filter) return 'Best';
-  const options = filter.family === 'fc' ? FC_ACHIEVEMENTS : FS_ACHIEVEMENTS;
-  return options.find((item) => item.value === filter.value)?.label ?? 'Best';
+  const label = maimaiAchievementStatusLabel(filter);
+  return label === '全部' ? 'Best' : label;
 }
 
 export function parseBestImageQuantity(value: string): number | null {
@@ -124,7 +96,7 @@ export function buildCustomBestImageSections(
     return selected.has(version)
       && achievementTenThousandths(record.achievements) >= minimum
       && (!filters.nearMiss || isNearMissAchievement(record.achievements))
-      && achievementMatches(record, filters.achievement, filters.strictAchievement);
+      && matchesAchievementStatus(record, filters.achievement, filters.strictAchievement);
   });
   const split = selected.has('current') && selected.has('past') && filters.splitVersions;
   const makeSection = (id: string, prefix: string, source: readonly ScoreRecord[]) => {

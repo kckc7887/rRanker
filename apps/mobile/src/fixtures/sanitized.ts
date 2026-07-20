@@ -24,7 +24,8 @@ function createRecord(index: number, isCurrent: boolean): ScoreRecord {
     difficulty: ['basic', 'advanced', 'expert', 'master', 'remaster'][index % 5] as ScoreRecord['difficulty'],
     difficultyConstant, achievements, dxScore: index % 7 === 0 ? null : 100000 + index,
     rating: calculateChartRating(difficultyConstant, achievements),
-    fc: index % 6 === 0 ? null : 'fc', fs: index % 5 === 0 ? null : 'fs',
+    fc: index % 6 === 0 ? null : 'fc',
+    fs: index % 5 === 0 ? null : index % 5 === 1 ? 'sync' : index % 5 === 2 ? 'fsp' : 'fs',
     rate: achievements >= 100.5 ? 'sssp' : achievements >= 100 ? 'sss' :
       achievements >= 99.5 ? 'ssp' : achievements >= 99 ? 'ss' : achievements >= 98 ? 'sp' : 's',
     version: isCurrent ? FIXTURE_CURRENT_VERSION : FIXTURE_OLD_VERSION,
