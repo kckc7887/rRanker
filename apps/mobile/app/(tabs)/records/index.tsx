@@ -1,4 +1,4 @@
-import { memo, useDeferredValue, useMemo } from 'react';
+import { memo, useCallback, useDeferredValue, useMemo } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -7,11 +7,13 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
+import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { matchesConstantRange } from '@/domain/maimai-filters';
 import type { DataSource, ScoreRecord } from '@/domain/models';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { usePhigrosRecords, type PhigrosRecordEntry } from '@/hooks/use-phigros-records';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
@@ -75,6 +77,10 @@ export function RecordsScreen() {
   } : undefined;
   const isEmpty = !!data && filtered.length === 0;
 
+  if (activeGameId === 'phigros') {
+    return <PhigrosRecordsScreen />;
+  }
+
   if (activeGameId !== 'maimai') {
     return <EmptyDataView title="暂无成绩" detail="当前游戏暂未接入成绩数据" />;
   }
@@ -83,7 +89,7 @@ export function RecordsScreen() {
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput accessibilityLabel="成绩搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / ID / 别名 / 曲师 / 谱师 / 罗马音" placeholderTextColor={theme.textMuted}
+          placeholder="曲名 / 曲师 / 谱师 / 罗马音" placeholderTextColor={theme.textMuted}
           value={keyword} onChangeText={setKeyword}
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
@@ -137,6 +143,80 @@ const RecordResultsList = memo(function RecordResultsList({
 const renderRecord: ListRenderItem<ScoreRecord> = ({ item }) => <ScoreRecordCard record={item} />;
 function recordKey(record: ScoreRecord): string {
   return `${record.songId}-${record.type}-${record.levelIndex}`;
+}
+
+function PhigrosRecordsScreen() {
+  const query = usePhigrosRecords();
+  const tabBottomInset = useNativeTabBottomInset();
+  const theme = useAppTheme();
+  const { keyword, setKeyword } = useRecordsFilter();
+  const debouncedKeyword = useDebouncedValue(keyword);
+  const filterSpec = useMemo(() => ({ keyword: debouncedKeyword }), [debouncedKeyword]);
+  const deferredFilterSpec = useDeferredValue(filterSpec);
+  const filtered = useMemo<PhigrosRecordEntry[]>(() => {
+    if (!query.data) return [];
+    let list = query.data.slice();
+    if (deferredFilterSpec.keyword.trim()) {
+      list = list.filter((item) => searchDocumentMatches(item.searchDoc, deferredFilterSpec.keyword));
+    }
+    return list.sort((a, b) => b.entry.rks - a.entry.rks);
+  }, [deferredFilterSpec.keyword, query.data]);
+  const isFiltering = filterSpec !== deferredFilterSpec;
+  const source: DataSource = { kind: 'generated', label: 'Phigros 云存档', updatedAt: new Date().toISOString(), isStale: false };
+
+  return (
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
+      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
+        <TextInput accessibilityLabel="成绩搜索" autoCapitalize="none" autoCorrect={false}
+          placeholder="曲名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
+          value={keyword} onChangeText={setKeyword}
+          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+      </View>
+      <QueryStateView<PhigrosRecordEntry[]>
+        isLoading={query.isLoading} isError={query.isError}
+        isEmpty={!!query.data && filtered.length === 0}
+        error={query.error} onRetry={() => void query.refetch()}
+        emptyText={keyword.trim() ? '筛选结果为空' : '暂无成绩数据'}
+        data={query.data && filtered.length > 0 ? filtered : undefined}
+        renderData={(entries) => (
+          <PhigrosRecordList entries={entries} source={source} tabBottomInset={tabBottomInset} />
+        )}
+      />
+    </View>
+  );
+}
+
+const PhigrosRecordList = memo(function PhigrosRecordList({
+  entries, source, tabBottomInset,
+}: {
+  entries: PhigrosRecordEntry[];
+  source: DataSource;
+  tabBottomInset: number;
+}) {
+  const header = useMemo(() => (
+    <View style={styles.header}>
+      <SourceStatus items={[{
+        key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live',
+      }]} />
+      <Text style={styles.note}>共 {entries.length} 条成绩</Text>
+    </View>
+  ), [entries.length, source]);
+
+  const renderItem = useCallback<ListRenderItem<PhigrosRecordEntry>>(({ item }) => (
+    <PhigrosScoreCard entry={item.entry} catalogTitle={item.catalogTitle} />
+  ), []);
+
+  return <FlatList testID="phigros-records-list" contentInsetAdjustmentBehavior="automatic"
+    style={styles.list}
+    contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
+    scrollIndicatorInsets={{ bottom: tabBottomInset }}
+    data={entries} keyExtractor={phigrosRecordKey}
+    {...TAB_LIST_CACHE_PROPS}
+    ListHeaderComponent={header} renderItem={renderItem} />;
+});
+
+function phigrosRecordKey(item: PhigrosRecordEntry): string {
+  return `${item.entry.songId}-${item.entry.level}`;
 }
 
 const styles = StyleSheet.create({

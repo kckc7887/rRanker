@@ -199,7 +199,7 @@ function PhigrosSearchScreen() {
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput accessibilityLabel="歌曲搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / ID / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
+          placeholder="曲名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
           value={keyword} onChangeText={setKeyword}
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
