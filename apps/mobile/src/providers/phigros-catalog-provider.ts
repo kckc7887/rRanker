@@ -48,9 +48,10 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   private gameVersion: string | null = null;
 
   private source(): DataSource {
+    const version = this.gameVersion;
     return {
       kind: 'generated',
-      label: 'Phigros OSS',
+      label: version ? `Phigros${version}` : 'Phigros',
       updatedAt: new Date().toISOString(),
       isStale: false,
     };

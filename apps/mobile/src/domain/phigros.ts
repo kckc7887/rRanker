@@ -269,6 +269,18 @@ export function isAcc100Percent(rawAcc: number): boolean {
   return rawAcc >= 99.995;
 }
 
+/** Phigros 评价等级（F–φ），基于存档 rawAcc 百分数 */
+export function phigrosAccToRate(rawAcc: number): string {
+  if (isAcc100Percent(rawAcc)) return 'phi';
+  if (rawAcc >= 96) return 'v';
+  if (rawAcc >= 92) return 's';
+  if (rawAcc >= 88) return 'a';
+  if (rawAcc >= 80) return 'b';
+  if (rawAcc >= 70) return 'c';
+  if (rawAcc >= 60) return 'd';
+  return 'f';
+}
+
 /** 成绩定数：rawAcc 为存档百分数（0–100）；acc≥100% 时等于谱面定数 */
 export function calculateRks(difficulty: number, rawAcc: number): number {
   if (rawAcc < 70) return 0;
@@ -330,15 +342,7 @@ export function phigrosEntryToScoreRecord(entry: PhigrosScoreEntry): ScoreRecord
     rating: entry.rks,
     fc: entry.fc ? 'ap' : null,
     fs: null,
-    rate: isAcc100Percent(entry.rawAcc)
-      ? 'phi'
-      : entry.fc
-        ? 'fc'
-        : entry.acc >= 96
-          ? 'v'
-          : entry.acc >= 92
-            ? 's'
-            : 'a',
+    rate: phigrosAccToRate(entry.rawAcc),
     version: 'current',
   };
 }

@@ -104,7 +104,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private source(): DataSource {
     return {
       kind: 'generated',
-      label: 'Phigros 云存档',
+      label: 'TapTap云存档',
       updatedAt: this.saveMeta?.updatedAt ?? new Date().toISOString(),
       isStale: false,
     };

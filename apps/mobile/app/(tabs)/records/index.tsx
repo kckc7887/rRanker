@@ -201,10 +201,18 @@ function PhigrosRecordsScreen() {
   };
   const source: DataSource = phigrosPayload?.source ?? {
     kind: 'generated',
-    label: 'TapTap 云存档',
+    label: 'TapTap云存档',
     updatedAt: new Date().toISOString(),
     isStale: false,
   };
+  const catalogSource: DataSource = phigrosPayload?.catalogSource
+    ?? catalogQuery.data?.snapshot.source
+    ?? {
+      kind: 'generated',
+      label: 'Phigros',
+      updatedAt: new Date().toISOString(),
+      isStale: false,
+    };
 
   if (!hasSession && !isGameLoading) {
     return (
@@ -234,7 +242,7 @@ function PhigrosRecordsScreen() {
         emptyText={keyword.trim() ? '筛选结果为空' : '暂无成绩数据'}
         data={!isGameLoading && filtered.length > 0 ? filtered : undefined}
         renderData={(entries) => (
-          <PhigrosRecordList entries={entries} source={source} tabBottomInset={tabBottomInset} />
+          <PhigrosRecordList entries={entries} source={source} catalogSource={catalogSource} tabBottomInset={tabBottomInset} />
         )}
       />
     </View>
@@ -242,20 +250,22 @@ function PhigrosRecordsScreen() {
 }
 
 const PhigrosRecordList = memo(function PhigrosRecordList({
-  entries, source, tabBottomInset,
+  entries, source, catalogSource, tabBottomInset,
 }: {
   entries: { record: ScoreRecord; title: string }[];
   source: DataSource;
+  catalogSource: DataSource;
   tabBottomInset: number;
 }) {
   const header = useMemo(() => (
     <View style={styles.header}>
-      <SourceStatus items={[{
-        key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live',
-      }]} />
+      <SourceStatus items={[
+        { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
+        { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
+      ]} />
       <Text style={styles.note}>共 {entries.length} 条成绩</Text>
     </View>
-  ), [entries.length, source]);
+  ), [catalogSource, entries.length, source]);
 
   const renderItem = useCallback<ListRenderItem<{ record: ScoreRecord; title: string }>>(({ item }) => (
     <PhigrosScoreCard record={item.record} catalogTitle={item.title} />

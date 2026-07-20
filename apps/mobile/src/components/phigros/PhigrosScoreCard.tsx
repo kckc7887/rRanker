@@ -18,6 +18,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   const acc = record.achievements;
   const accText = acc % 1 === 0 ? `${acc.toFixed(0)}%` : `${acc.toFixed(2)}%`;
   const rksText = Number.isInteger(record.rating) ? record.rating.toFixed(1) : record.rating.toFixed(2);
+  const rate = resolveRate(record);
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -25,14 +26,12 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
         <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>
           {catalogTitle ?? record.title}
         </Text>
-        <View style={styles.scoreRow}>
-          <Text style={[styles.score, { color: scoreColor }]}>
-            {(record.dxScore ?? 0).toLocaleString()}
-          </Text>
-          <View style={styles.tags}>
-            <PhigrosDifficultyBadge levelIndex={record.levelIndex} constant={record.difficultyConstant} />
-            <RateBadge rate={resolveRate(record)} />
-          </View>
+        <Text style={[styles.score, { color: scoreColor }]}>
+          {(record.dxScore ?? 0).toLocaleString()}
+        </Text>
+        <View style={styles.tags}>
+          <PhigrosDifficultyBadge levelIndex={record.levelIndex} constant={record.difficultyConstant} />
+          <RateBadge rate={rate} fc={isFc} />
         </View>
       </View>
       <View style={styles.stats}>
@@ -43,34 +42,53 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   );
 });
 
-type RateKind = 'phi' | 'fc' | 'v' | 's';
+type RateKind = 'f' | 'd' | 'c' | 'b' | 'a' | 's' | 'v' | 'phi';
 
 const RATE_COLORS: Record<RateKind, { bg: string; fg: string }> = {
-  phi: { bg: '#FFF7E6', fg: '#B8860B' },
-  fc: { bg: '#E8F0FE', fg: '#3B82F6' },
+  f: { bg: '#F3F4F6', fg: '#6B7280' },
+  d: { bg: '#F3F4F6', fg: '#6B7280' },
+  c: { bg: '#F3F4F6', fg: '#6B7280' },
+  b: { bg: '#F3F4F6', fg: '#6B7280' },
+  a: { bg: '#F3F4F6', fg: '#6B7280' },
+  s: { bg: '#FDF2F8', fg: '#DB2777' },
   v: { bg: '#FFFFFF', fg: '#374151' },
-  s: { bg: '#F3E8FF', fg: '#9333EA' },
+  phi: { bg: '#FFF7E6', fg: '#B8860B' },
 };
 
 const RATE_LABELS: Record<RateKind, string> = {
-  phi: '\u03C6',
-  fc: 'FC',
-  v: 'V',
+  f: 'F',
+  d: 'D',
+  c: 'C',
+  b: 'B',
+  a: 'A',
   s: 'S',
+  v: 'V',
+  phi: '\u03C6',
 };
 
 function resolveRate(record: ScoreRecord): RateKind {
-  if (record.rate === 'phi') return 'phi';
-  if (record.fc === 'ap') return 'fc';
+  const rate = record.rate as RateKind;
+  if (rate in RATE_LABELS) return rate;
   if (record.achievements >= 96) return 'v';
-  return 's';
+  if (record.achievements >= 92) return 's';
+  if (record.achievements >= 88) return 'a';
+  if (record.achievements >= 80) return 'b';
+  if (record.achievements >= 70) return 'c';
+  if (record.achievements >= 60) return 'd';
+  return 'f';
 }
 
-function RateBadge({ rate }: { rate: RateKind }) {
-  const colors = RATE_COLORS[rate];
+function RateBadge({ rate, fc }: { rate: RateKind; fc: boolean }) {
+  const colors = rate === 'v' && fc
+    ? { bg: '#E8F0FE', fg: '#3B82F6' }
+    : RATE_COLORS[rate];
   const label = RATE_LABELS[rate];
   return (
-    <View style={[styles.rateBadge, { backgroundColor: colors.bg }]}>
+    <View style={[
+      styles.rateBadge,
+      { backgroundColor: colors.bg },
+      rate === 'v' && !fc && styles.rateBadgeOutline,
+    ]}>
       <Text style={[styles.rateText, { color: colors.fg }]}>{label}</Text>
     </View>
   );
@@ -80,12 +98,12 @@ const styles = StyleSheet.create({
   card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   main: { flex: 1, minWidth: 0, gap: 4 },
   title: { fontSize: 15, fontWeight: '700' },
-  scoreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  score: { fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  tags: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  score: { fontSize: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  tags: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   stats: { minWidth: 56, alignItems: 'flex-end', gap: 4 },
   acc: { fontSize: 12, fontWeight: '700' },
   rks: { fontSize: 20, fontWeight: '900' },
   rateBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
+  rateBadgeOutline: { borderWidth: 1, borderColor: '#E5E7EB' },
   rateText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.3 },
 });
