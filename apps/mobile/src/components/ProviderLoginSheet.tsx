@@ -188,7 +188,19 @@ export function ProviderLoginSheet({
       setPhiDevice(device);
       setPhiExpiresAt(Date.now() + device.expiresIn * 1000);
       setMessage('请在 TapTap 完成授权。');
-      await Linking.openURL(device.qrcodeUrl);
+
+      try {
+        const taptapInstalled = await Linking.canOpenURL('taptap://');
+        if (taptapInstalled) {
+          const parsed = new URL(device.qrcodeUrl);
+          const taptapUrl = `taptap://${parsed.pathname.replace(/^\//, '')}${parsed.search}`;
+          await Linking.openURL(taptapUrl);
+        } else {
+          await Linking.openURL(device.qrcodeUrl);
+        }
+      } catch {
+        await Linking.openURL(device.qrcodeUrl);
+      }
     } catch (error) {
       setMessage(messageFor(error));
     } finally {
