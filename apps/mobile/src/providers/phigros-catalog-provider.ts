@@ -49,13 +49,24 @@ const CHART_TYPE: ChartType = 'SD';
 export class PhigrosCatalogProvider implements CatalogProvider {
   private catalogPromise: Promise<CatalogSnapshot> | null = null;
   private gameVersion: string | null = null;
+  /** 最近一次成功从 OSS 拉取游戏资源的本地时间；未拉取过为 null */
+  private resourceFetchedAt: string | null = null;
+
+  private markResourceFetched(): void {
+    this.resourceFetchedAt = new Date().toISOString();
+  }
+
+  /** 最近一次成功拉取 OSS 游戏资源的时间；未拉取过则为 null */
+  getResourceUpdatedAt(): string | null {
+    return this.resourceFetchedAt;
+  }
 
   private source(): DataSource {
     const version = this.gameVersion;
     return {
       kind: 'generated',
       label: version ? `Phigros${version}` : 'Phigros',
-      updatedAt: new Date().toISOString(),
+      updatedAt: this.resourceFetchedAt ?? new Date().toISOString(),
       isStale: false,
     };
   }
@@ -159,6 +170,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     if (this.gameVersion) return this.gameVersion;
     const current = await this.fetchJson(`${OSS_BASE}/phigros/current.json`, CurrentSchema);
     this.gameVersion = current.gameVersion;
+    this.markResourceFetched();
     return this.gameVersion;
   }
 
@@ -177,6 +189,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
       this.fetchJson(`${OSS_BASE}/${current.catalog}`, CatalogSchema),
       this.loadNoteCounts(current.noteCounts, current.gameVersion),
     ]);
+    this.markResourceFetched();
     const version = this.gameVersion;
 
     const songs: Song[] = catalog.songs.map((raw) => {
