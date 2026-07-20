@@ -122,3 +122,58 @@ describe('PhigrosCatalogProvider note counts fallback', () => {
     expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain(OSS);
   });
 });
+
+describe('PhigrosCatalogProvider resource updatedAt', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('only advances updatedAt when an OSS resource is actually fetched', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-20T10:00:00.000Z'));
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/phigros/current.json')) {
+        return jsonResponse({
+          schemaVersion: 1,
+          gameVersion: '3.19.4',
+          catalog: 'phigros/releases/3.19.4/catalog.json',
+          manifest: 'phigros/releases/3.19.4/manifest.json',
+          noteCounts: 'phigros/releases/3.19.4/metadata/note_counts.tsv',
+        });
+      }
+      if (url.endsWith('/catalog.json')) {
+        return jsonResponse({
+          schemaVersion: 1,
+          songCount: 0,
+          songs: [],
+        });
+      }
+      if (url.endsWith('/metadata/note_counts.tsv')) {
+        return textResponse('');
+      }
+      return textResponse('', false);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const provider = new PhigrosCatalogProvider();
+    expect(provider.getResourceUpdatedAt()).toBeNull();
+
+    await provider.getGameVersion();
+    const afterVersion = provider.getResourceUpdatedAt();
+    expect(afterVersion).toBe('2026-07-20T10:00:00.000Z');
+
+    vi.setSystemTime(new Date('2026-07-20T11:00:00.000Z'));
+    await provider.getGameVersion();
+    expect(provider.getResourceUpdatedAt()).toBe(afterVersion);
+
+    vi.setSystemTime(new Date('2026-07-20T12:00:00.000Z'));
+    provider.resetCatalogCache();
+    const catalog = await provider.getCatalog();
+    expect(provider.getResourceUpdatedAt()).toBe('2026-07-20T12:00:00.000Z');
+    expect(catalog.source.updatedAt).toBe('2026-07-20T12:00:00.000Z');
+  });
+});
