@@ -106,6 +106,33 @@ describe('phigros save parsing', () => {
     expect(b30.best27[0]?.rks).toBeGreaterThan(0);
   });
 
+  it('parseGameRecord reads until buffer end when header count is wrong', () => {
+    function buildSong(id: string, level: number, score: number, acc: number): number[] {
+      const keyPayload = new Uint8Array([...new TextEncoder().encode(id), 0, 0]);
+      const body = [
+        1 << level,
+        0,
+        ...writeIntLE(score),
+        ...writeFloatLE(acc),
+      ];
+      return [
+        ...writeVarShort(keyPayload.length),
+        ...keyPayload,
+        body.length,
+        ...body,
+      ];
+    }
+
+    const payload = new Uint8Array([
+      ...writeVarShort(1),
+      ...buildSong('A.A', 2, 900000, 95),
+      ...buildSong('B.B', 1, 950000, 97),
+      ...buildSong('C.C', 0, 800000, 90),
+    ]);
+    const record = parseGameRecord(payload);
+    expect(Object.keys(record).sort()).toEqual(['A.A', 'B.B', 'C.C']);
+  });
+
   it('gameRecordToScoreRecords returns all played charts, not only B27', () => {
     const gameRecord = {
       'Glaciaxion.SunsetRay': [
