@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { router, type Href } from 'expo-router';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import type { ScoreRecord } from '@/domain/models';
@@ -47,12 +48,22 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   const accText = acc % 1 === 0 ? `${acc.toFixed(0)}%` : `${acc.toFixed(2)}%`;
   const rksText = Number.isInteger(record.rating) ? record.rating.toFixed(1) : record.rating.toFixed(2);
   const rate = resolveRate(record);
+  const title = catalogTitle ?? record.title;
+  const openDetail = () => router.push({
+    pathname: '/songs/[songId]',
+    params: { songId: record.songId, levelIndex: String(record.levelIndex) },
+  } as Href);
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.surface }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`查看谱面 ${title}`}
+      onPress={openDetail}
+      style={[styles.card, { backgroundColor: theme.surface }]}
+    >
       <View style={styles.main}>
         <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-          {rank ? `${rank}. ` : ''}{catalogTitle ?? record.title}
+          {rank ? `${rank}. ` : ''}{title}
         </Text>
         <PhigrosScoreValue
           score={score}
@@ -68,7 +79,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
         <Text style={[styles.acc, { color: theme.text }]}>{accText}</Text>
         <Text style={[styles.rks, { color: theme.accent }]}>{rksText}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 });
 

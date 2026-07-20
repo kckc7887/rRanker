@@ -1,22 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
-
-const LEVEL_COLORS: Record<number, { bg: string; fg: string }> = {
-  0: { bg: '#E6F5ED', fg: '#3E9D6B' },
-  1: { bg: '#E8F0FE', fg: '#3B82F6' },
-  2: { bg: '#FDE8EC', fg: '#D84B68' },
-  3: { bg: '#F3F4F6', fg: '#374151' },
-};
-
-const LEVEL_LABELS: Record<number, string> = {
-  0: 'EZ',
-  1: 'HD',
-  2: 'IN',
-  3: 'AT',
-};
+import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 
 export function PhigrosDifficultyBadge({ levelIndex, constant }: { levelIndex: number; constant: number }) {
-  const colors = LEVEL_COLORS[levelIndex] ?? { bg: '#F3F4F6', fg: '#6B7280' };
-  const label = LEVEL_LABELS[levelIndex] ?? `LV${levelIndex}`;
+  const colors = phigrosLevelColors(levelIndex);
+  const label = phigrosLevelLabel(levelIndex);
   const text = constant.toFixed(1);
 
   return (

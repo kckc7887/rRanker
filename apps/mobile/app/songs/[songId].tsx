@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
+import { PhigrosSongDetail } from '@/components/phigros/PhigrosSongDetail';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
@@ -41,6 +42,7 @@ import { useCollections } from '@/hooks/use-collections';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
+import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
 const CARD_GAP = 12;
@@ -52,9 +54,36 @@ type LibraryHook = ReturnType<typeof useUserLibrary>;
 
 export default function SongDetailScreen() {
   const theme = useAppTheme();
+  const activeGameId = useSession((s) => s.activeGameId);
   const { songId, chartType, levelIndex } = useLocalSearchParams<{
     songId: string; chartType?: string; levelIndex?: string;
   }>();
+  const parsedLevelIndex = levelIndex === undefined ? undefined : Number(levelIndex);
+  const initialLevelIndex = Number.isInteger(parsedLevelIndex) && parsedLevelIndex! >= 0 ? parsedLevelIndex : undefined;
+
+  if (activeGameId === 'phigros') {
+    return <PhigrosSongDetail songId={songId} levelIndex={initialLevelIndex} />;
+  }
+
+  return <MaimaiSongDetailScreen
+    songId={songId}
+    chartType={chartType}
+    initialLevelIndex={initialLevelIndex}
+    themeBackground={theme.background}
+  />;
+}
+
+function MaimaiSongDetailScreen({
+  songId,
+  chartType,
+  initialLevelIndex,
+  themeBackground,
+}: {
+  songId?: string;
+  chartType?: string;
+  initialLevelIndex?: number;
+  themeBackground: string;
+}) {
   const catalog = useDetailedCatalog();
   const scores = useScoreSnapshot();
   const library = useUserLibrary();
@@ -64,8 +93,6 @@ export default function SongDetailScreen() {
       songs?.find((item) => item.id === normalizeSongId(songId));
   }, [catalog.data?.songs, songId]);
   const initialChartType = chartType === 'SD' || chartType === 'DX' ? chartType : undefined;
-  const parsedLevelIndex = levelIndex === undefined ? undefined : Number(levelIndex);
-  const initialLevelIndex = Number.isInteger(parsedLevelIndex) && parsedLevelIndex! >= 0 ? parsedLevelIndex : undefined;
   const songItem = song ? library.data?.find((item) => item.key === songLibraryKey(song.id)) : undefined;
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
@@ -81,7 +108,7 @@ export default function SongDetailScreen() {
       headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
     }} />
     <StatusBar style="light" />
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
+    <View style={[styles.page, { backgroundColor: themeBackground }]}>
       <QueryStateView<Song> isLoading={catalog.isLoading} isError={catalog.isError} isEmpty={!!catalog.data && !song}
         error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}

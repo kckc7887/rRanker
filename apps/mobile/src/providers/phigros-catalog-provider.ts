@@ -115,6 +115,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
         id: raw.id,
         title: raw.title,
         artist: raw.composer,
+        illustrator: raw.illustrator,
         version,
         charts,
       };
