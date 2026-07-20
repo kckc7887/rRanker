@@ -2,7 +2,7 @@ import { type ReactNode, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
-import { FilterSelectSheet, type FilterSelectOption } from '@/components/FilterSelectSheet';
+import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import {
   MAIMAI_FC_ACHIEVEMENTS,
   MAIMAI_FS_ACHIEVEMENTS,
@@ -17,7 +17,7 @@ import { useAppTheme } from '@/theme/app-theme';
 
 const DIFFICULTIES: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 'remaster'];
 const TYPES: ChartType[] = ['SD', 'DX'];
-type ActiveSheet = 'version' | 'solo' | 'multi' | null;
+type OpenDropdown = 'version' | 'solo' | 'multi' | null;
 type VersionSheetValue = string | 'all';
 type SoloSheetValue = MaimaiFcAchievement | 'all';
 type MultiSheetValue = MaimaiFsAchievement | 'all';
@@ -102,7 +102,7 @@ export function MaimaiFilterBar({
   onVersionLocaleChange,
 }: MaimaiFilterBarProps) {
   const theme = useAppTheme();
-  const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null);
+  const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
   const showAchievementRange = onAchievementMinChange !== undefined && onAchievementMaxChange !== undefined;
   const showAchievementPickers = onSoloAchievementChange !== undefined && onMultiAchievementChange !== undefined;
   const selectedVersion = versions.find((option) => option.value === version);
@@ -111,6 +111,10 @@ export function MaimaiFilterBar({
     : '全部';
   const soloLabel = maimaiFcAchievementLabel(soloAchievement);
   const multiLabel = maimaiFsAchievementLabel(multiAchievement);
+
+  const setDropdownOpen = (id: OpenDropdown) => (open: boolean) => {
+    setOpenDropdown(open ? id : null);
+  };
 
   const versionOptions = useMemo<FilterSelectOption<VersionSheetValue>[]>(() => [
     { value: 'all', label: '全部' },
@@ -148,159 +152,134 @@ export function MaimaiFilterBar({
   }
 
   return (
-    <>
-      <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
-          onPress={() => onCollapsedChange(true)} style={styles.expandedHeader}>
-          <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
-          <CollapseToggleAction expanded label="收起" />
-        </Pressable>
+    <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+      <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
+        onPress={() => { setOpenDropdown(null); onCollapsedChange(true); }} style={styles.expandedHeader}>
+        <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
+        <CollapseToggleAction expanded label="收起" />
+      </Pressable>
 
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            <NeutralChip label="全部" active={difficulty === 'all'} onPress={() => onDifficultyChange('all')} />
-            {DIFFICULTIES.map((item) => {
-              const active = difficulty === item;
+      <View style={styles.filterRow}>
+        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <NeutralChip label="全部" active={difficulty === 'all'} onPress={() => onDifficultyChange('all')} />
+          {DIFFICULTIES.map((item) => {
+            const active = difficulty === item;
+            return (
+              <FilterChipFrame key={item} active={active}
+                accessibilityLabel={`筛选难度 ${DIFFICULTY_VISUAL[item].label}`}
+                onPress={() => onDifficultyChange(item)}>
+                <DifficultyBadge difficulty={item} compact />
+              </FilterChipFrame>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <View style={styles.filterRow}>
+        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>版本</Text>
+        <View style={styles.dropdownControls}>
+          <FilterAnchoredDropdown
+            open={openDropdown === 'version'}
+            onOpenChange={setDropdownOpen('version')}
+            valueLabel={selectedVersionLabel}
+            accessibilityLabel={`版本筛选，当前 ${selectedVersionLabel}`}
+            options={versionOptions}
+            selectedValue={version}
+            optionAccessibilityPrefix="选择版本"
+            onSelect={(value) => onVersionChange(value === 'all' ? 'all' : value)}
+          />
+          <View style={[styles.localeSwitch, { borderColor: theme.border }]}>
+            {(['china', 'japan'] as const).map((locale) => {
+              const active = versionLocale === locale;
+              const label = locale === 'china' ? '中' : '日';
               return (
-                <FilterChipFrame key={item} active={active}
-                  accessibilityLabel={`筛选难度 ${DIFFICULTY_VISUAL[item].label}`}
-                  onPress={() => onDifficultyChange(item)}>
-                  <DifficultyBadge difficulty={item} compact />
-                </FilterChipFrame>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>版本</Text>
-          <View style={styles.dropdownControls}>
-            <SelectTrigger accessibilityLabel={`版本筛选，当前 ${selectedVersionLabel}`}
-              label={selectedVersionLabel} onPress={() => setActiveSheet('version')} />
-            <View style={[styles.localeSwitch, { borderColor: theme.border }]}>
-              {(['china', 'japan'] as const).map((locale) => {
-                const active = versionLocale === locale;
-                const label = locale === 'china' ? '中' : '日';
-                return (
-                  <Pressable key={locale} accessibilityRole="button"
-                    accessibilityLabel={`版本名称切换为${locale === 'china' ? '中文' : '日文'}`}
-                    accessibilityState={{ selected: active }} onPress={() => onVersionLocaleChange(locale)}
-                    style={[styles.localeButton, { backgroundColor: theme.surface }, active && { backgroundColor: theme.accent }]}>
-                    <Text style={[styles.localeText, active && styles.localeTextActive]}>{label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>类型</Text>
-          <View style={styles.chipRow}>
-            <NeutralChip label="全部" active={type === 'all'} onPress={() => onTypeChange('all')} />
-            {TYPES.map((item) => {
-              const active = type === item;
-              return (
-                <FilterChipFrame key={item} active={active} shape="rounded" accessibilityLabel={`筛选类型 ${item}`}
-                  onPress={() => onTypeChange(item)}>
-                  <ChartTypeBadge type={item} />
-                </FilterChipFrame>
+                <Pressable key={locale} accessibilityRole="button"
+                  accessibilityLabel={`版本名称切换为${locale === 'china' ? '中文' : '日文'}`}
+                  accessibilityState={{ selected: active }} onPress={() => onVersionLocaleChange(locale)}
+                  style={[styles.localeButton, { backgroundColor: theme.surface }, active && { backgroundColor: theme.accent }]}>
+                  <Text style={[styles.localeText, active && styles.localeTextActive]}>{label}</Text>
+                </Pressable>
               );
             })}
           </View>
         </View>
+      </View>
 
+      <View style={styles.filterRow}>
+        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>类型</Text>
+        <View style={styles.chipRow}>
+          <NeutralChip label="全部" active={type === 'all'} onPress={() => onTypeChange('all')} />
+          {TYPES.map((item) => {
+            const active = type === item;
+            return (
+              <FilterChipFrame key={item} active={active} shape="rounded" accessibilityLabel={`筛选类型 ${item}`}
+                onPress={() => onTypeChange(item)}>
+                <ChartTypeBadge type={item} />
+              </FilterChipFrame>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.filterRow}>
+        <Text style={[styles.filterLabel, showAchievementRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
+        <View style={styles.rangeRow}>
+          <TextInput accessibilityLabel="最低定数" autoCorrect={false} keyboardType="decimal-pad"
+            placeholder="下限" placeholderTextColor={theme.textMuted} value={constantMin} onChangeText={onConstantMinChange}
+            style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+          <Text style={styles.rangeSeparator}>~</Text>
+          <TextInput accessibilityLabel="最高定数" autoCorrect={false} keyboardType="decimal-pad"
+            placeholder="上限" placeholderTextColor={theme.textMuted} value={constantMax} onChangeText={onConstantMaxChange}
+            style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+        </View>
+      </View>
+
+      {showAchievementRange ? (
         <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, showAchievementRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
+          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>达成率</Text>
           <View style={styles.rangeRow}>
-            <TextInput accessibilityLabel="最低定数" autoCorrect={false} keyboardType="decimal-pad"
-              placeholder="下限" placeholderTextColor={theme.textMuted} value={constantMin} onChangeText={onConstantMinChange}
+            <TextInput accessibilityLabel="最低达成率" autoCorrect={false} keyboardType="decimal-pad"
+              placeholder="下限" placeholderTextColor={theme.textMuted} value={achievementMin} onChangeText={onAchievementMinChange}
               style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
             <Text style={styles.rangeSeparator}>~</Text>
-            <TextInput accessibilityLabel="最高定数" autoCorrect={false} keyboardType="decimal-pad"
-              placeholder="上限" placeholderTextColor={theme.textMuted} value={constantMax} onChangeText={onConstantMaxChange}
+            <TextInput accessibilityLabel="最高达成率" autoCorrect={false} keyboardType="decimal-pad"
+              placeholder="上限" placeholderTextColor={theme.textMuted} value={achievementMax} onChangeText={onAchievementMaxChange}
               style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
           </View>
         </View>
+      ) : null}
 
-        {showAchievementRange ? (
-          <View style={styles.filterRow}>
-            <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>达成率</Text>
-            <View style={styles.rangeRow}>
-              <TextInput accessibilityLabel="最低达成率" autoCorrect={false} keyboardType="decimal-pad"
-                placeholder="下限" placeholderTextColor={theme.textMuted} value={achievementMin} onChangeText={onAchievementMinChange}
-                style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-              <Text style={styles.rangeSeparator}>~</Text>
-              <TextInput accessibilityLabel="最高达成率" autoCorrect={false} keyboardType="decimal-pad"
-                placeholder="上限" placeholderTextColor={theme.textMuted} value={achievementMax} onChangeText={onAchievementMaxChange}
-                style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-            </View>
+      {showAchievementPickers ? (
+        <View style={styles.filterRow}>
+          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>成就</Text>
+          <View style={styles.achievementDropdownRow}>
+            <FilterAnchoredDropdown
+              open={openDropdown === 'solo'}
+              onOpenChange={setDropdownOpen('solo')}
+              valueLabel={soloLabel}
+              caption="单人"
+              accessibilityLabel={`单人成就筛选，当前 ${soloLabel}`}
+              options={soloOptions}
+              selectedValue={soloAchievement ?? 'all'}
+              optionAccessibilityPrefix="选择单人成就"
+              onSelect={(value) => onSoloAchievementChange(value === 'all' ? null : value)}
+            />
+            <FilterAnchoredDropdown
+              open={openDropdown === 'multi'}
+              onOpenChange={setDropdownOpen('multi')}
+              valueLabel={multiLabel}
+              caption="多人"
+              accessibilityLabel={`多人成就筛选，当前 ${multiLabel}`}
+              options={multiOptions}
+              selectedValue={multiAchievement ?? 'all'}
+              optionAccessibilityPrefix="选择多人成就"
+              onSelect={(value) => onMultiAchievementChange(value === 'all' ? null : value)}
+            />
           </View>
-        ) : null}
-
-        {showAchievementPickers ? (
-          <View style={styles.filterRow}>
-            <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>成就</Text>
-            <View style={styles.achievementDropdownRow}>
-              <SelectTrigger accessibilityLabel={`单人成就筛选，当前 ${soloLabel}`}
-                label={soloLabel} caption="单人" onPress={() => setActiveSheet('solo')} />
-              <SelectTrigger accessibilityLabel={`多人成就筛选，当前 ${multiLabel}`}
-                label={multiLabel} caption="多人" onPress={() => setActiveSheet('multi')} />
-            </View>
-          </View>
-        ) : null}
-      </View>
-
-      <FilterSelectSheet
-        visible={activeSheet === 'version'}
-        title="选择版本"
-        options={versionOptions}
-        selectedValue={version}
-        optionAccessibilityPrefix="选择版本"
-        onClose={() => setActiveSheet(null)}
-        onSelect={(value) => onVersionChange(value === 'all' ? 'all' : value)}
-      />
-      {showAchievementPickers ? <>
-        <FilterSelectSheet
-          visible={activeSheet === 'solo'}
-          title="单人成就"
-          options={soloOptions}
-          selectedValue={soloAchievement ?? 'all'}
-          optionAccessibilityPrefix="选择单人成就"
-          onClose={() => setActiveSheet(null)}
-          onSelect={(value) => onSoloAchievementChange(value === 'all' ? null : value)}
-        />
-        <FilterSelectSheet
-          visible={activeSheet === 'multi'}
-          title="多人成就"
-          options={multiOptions}
-          selectedValue={multiAchievement ?? 'all'}
-          optionAccessibilityPrefix="选择多人成就"
-          onClose={() => setActiveSheet(null)}
-          onSelect={(value) => onMultiAchievementChange(value === 'all' ? null : value)}
-        />
-      </> : null}
-    </>
-  );
-}
-
-function SelectTrigger({ label, caption, accessibilityLabel, onPress }: {
-  label: string;
-  caption?: string;
-  accessibilityLabel: string;
-  onPress: () => void;
-}) {
-  const theme = useAppTheme();
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress}
-      style={[styles.selectTrigger, { backgroundColor: theme.input, borderColor: theme.border }]}>
-      {caption ? <Text style={[styles.selectCaption, { color: theme.textMuted }]}>{caption}</Text> : null}
-      <View style={styles.selectValueRow}>
-        <Text numberOfLines={1} style={[styles.selectValue, { color: theme.text }]}>{label}</Text>
-        <Ionicons name="chevron-down" size={14} color={theme.textMuted} />
-      </View>
-    </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -363,22 +342,6 @@ const styles = StyleSheet.create({
   neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
   dropdownControls: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
   achievementDropdownRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  selectTrigger: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 36,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    justifyContent: 'center',
-    gap: 2,
-    backgroundColor: '#FFF',
-  },
-  selectCaption: { fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
-  selectValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  selectValue: { flex: 1, minWidth: 0, color: '#111827', fontSize: 12, fontWeight: '600' },
   localeSwitch: { flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10 },
   localeButton: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
   localeText: { color: '#4B5563', fontSize: 12, fontWeight: '700' },

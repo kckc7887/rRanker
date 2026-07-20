@@ -1,5 +1,5 @@
 import { Animated } from 'react-native';
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
@@ -161,6 +161,9 @@ describe('M4 score list cards', () => {
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('版本筛选，当前 全部'));
+    await waitFor(() => {
+      expect(screen.getByLabelText('选择版本 舞萌DX 2026')).toBeTruthy();
+    });
     await fireEvent.press(screen.getByLabelText('选择版本 舞萌DX 2026'));
     await fireEvent.press(screen.getByLabelText('版本名称切换为日文'));
     expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
@@ -192,6 +195,9 @@ describe('M4 score list cards', () => {
     const screen = await render(<RecordsScreen />);
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     await fireEvent.press(screen.getByLabelText('多人成就筛选，当前 全部'));
+    await waitFor(() => {
+      expect(screen.getByLabelText('选择多人成就 FS')).toBeTruthy();
+    });
     await fireEvent.press(screen.getByLabelText('选择多人成就 FS'));
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
     expect(screen.getByLabelText('查看谱面 B15低 SD advanced')).toBeTruthy();
