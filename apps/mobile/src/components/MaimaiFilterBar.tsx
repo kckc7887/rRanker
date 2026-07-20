@@ -169,7 +169,7 @@ export function MaimaiFilterBar({
     </View>
 
     <View style={styles.filterRow}>
-      <Text style={[styles.filterLabel, { color: theme.textMuted }]}>定数</Text>
+      <Text style={[styles.filterLabel, showAchievementRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
       <View style={styles.rangeRow}>
         <TextInput accessibilityLabel="最低定数" autoCorrect={false} keyboardType="decimal-pad"
           placeholder="下限" placeholderTextColor={theme.textMuted} value={constantMin} onChangeText={onConstantMinChange}
