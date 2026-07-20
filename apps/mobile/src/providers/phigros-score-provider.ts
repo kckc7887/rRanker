@@ -15,6 +15,7 @@ import {
   computeB30,
   gameRecordToScoreRecords,
   loadDifficultyTable,
+  mergeDifficultyTables,
   phigrosEntryToScoreRecord,
   roundRks,
   type PhigrosB30,
@@ -29,6 +30,8 @@ type LoadedSave = {
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>;
   diffTable: PhigrosDifficultyTable;
   gameVersion: number;
+  songCount: number;
+  chartCount: number;
 };
 
 export class PhigrosScoreProvider implements ScoreProvider {
@@ -37,6 +40,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private saveCache: LoadedSave | null = null;
   private b30Cache: PhigrosB30 | null = null;
   private summaryCache: PhigrosSummary | null = null;
+  private saveLoadPromise: Promise<LoadedSave> | null = null;
 
   private async ensureSaveMeta(): Promise<{
     summaryBase64: string;
@@ -118,33 +122,65 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return this.ensureSaveMeta().then(() => this.summaryCache!);
   }
 
-  private async loadDifficultyTable(gameVersion: number): Promise<string> {
-    const primary = `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${gameVersion}/metadata/difficulty.tsv`;
-    let res = await fetch(primary);
-    if (!res.ok) {
-      const current = await fetch(
-        'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/current.json',
-      ).then((r) => r.json()) as { gameVersion: number };
-      res = await fetch(
-        `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${current.gameVersion}/metadata/difficulty.tsv`,
-      );
-    }
-    if (!res.ok) throw new ProviderError('network', '无法加载定数表', true);
+  private async fetchDifficultyTable(gameVersion: number): Promise<string> {
+    const res = await fetch(
+      `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${gameVersion}/metadata/difficulty.tsv`,
+    );
+    if (!res.ok) throw new ProviderError('network', `无法加载定数表（版本 ${gameVersion}）`, true);
     return await res.text();
   }
 
-  private async loadSave(): Promise<LoadedSave> {
-    if (this.saveCache) return this.saveCache;
+  private async loadMergedDifficultyTable(gameVersion: number): Promise<PhigrosDifficultyTable> {
+    const current = await fetch(
+      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/current.json',
+    ).then((r) => r.json()) as { gameVersion: number };
 
+    const [saveVerRaw, currentRaw] = await Promise.all([
+      this.fetchDifficultyTable(gameVersion).catch(() => null),
+      this.fetchDifficultyTable(current.gameVersion).catch(() => null),
+    ]);
+
+    const tables = [saveVerRaw, currentRaw]
+      .filter((raw): raw is string => !!raw)
+      .map(loadDifficultyTable);
+
+    if (!tables.length) {
+      throw new ProviderError('network', '无法加载定数表', true);
+    }
+
+    return mergeDifficultyTables(...tables);
+  }
+
+  private countGameRecord(
+    gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
+  ): { songCount: number; chartCount: number } {
+    let chartCount = 0;
+    for (const levels of Object.values(gameRecord)) {
+      chartCount += levels.filter(Boolean).length;
+    }
+    return { songCount: Object.keys(gameRecord).length, chartCount };
+  }
+
+  private async loadSaveInternal(): Promise<LoadedSave> {
     const { saveUrl } = await this.ensureSaveMeta();
     const zipBuf = await downloadSave(saveUrl);
     const { gameRecord } = await decodeSaveZip(zipBuf);
 
     const gameVersion = this.summaryCache?.gameVersion ?? 0;
-    const diffRaw = await this.loadDifficultyTable(gameVersion);
-    const diffTable = loadDifficultyTable(diffRaw);
+    const diffTable = await this.loadMergedDifficultyTable(gameVersion);
+    const { songCount, chartCount } = this.countGameRecord(gameRecord);
 
-    this.saveCache = { gameRecord, diffTable, gameVersion };
+    return { gameRecord, diffTable, gameVersion, songCount, chartCount };
+  }
+
+  private async loadSave(): Promise<LoadedSave> {
+    if (this.saveCache) return this.saveCache;
+    if (!this.saveLoadPromise) {
+      this.saveLoadPromise = this.loadSaveInternal().finally(() => {
+        this.saveLoadPromise = null;
+      });
+    }
+    this.saveCache = await this.saveLoadPromise;
     return this.saveCache;
   }
 
@@ -166,6 +202,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     this.saveCache = null;
     this.b30Cache = null;
     this.summaryCache = null;
+    this.saveLoadPromise = null;
   }
 
   /** Best30 分区：Phi3 + Best27，与 RKS 计算口径一致 */
