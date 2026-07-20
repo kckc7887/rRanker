@@ -191,7 +191,7 @@ export function OverviewScreen() {
               <Text style={styles.switchHint}>·点击切换·</Text>
             </Pressable>
 
-            {bundle.payload.kind === 'maimai' ? (
+            {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
               <SourceStatus items={[
                 { key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt, state: bundle.payload.source.isStale ? 'cache' : 'live' },
                 { key: 'catalog', label: bundle.payload.catalogSource.label, updatedAt: bundle.payload.catalogSource.updatedAt, state: bundle.payload.catalogSource.isStale ? 'cache' : 'live' },
@@ -202,7 +202,7 @@ export function OverviewScreen() {
               ]} />
             )}
 
-            {bundle.payload.kind === 'maimai' ? (
+            {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
               <DxRatingCard
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
@@ -253,12 +253,13 @@ export function OverviewScreen() {
             ) : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="同步数据"
+                accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
                 disabled={syncBusy}
                 onPress={() => void syncData()}
                 style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
               >
                 <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
+                <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
               </Pressable>
             )}
 
@@ -305,11 +306,13 @@ export function OverviewScreen() {
 
             <View style={[styles.card, { backgroundColor: theme.surface }]}>
               <Text style={[styles.cardTitle, { color: theme.text }]}>数据状态</Text>
-              {bundle.payload.kind === 'maimai' ? (
+              {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
                 <>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>曲库：{bundle.payload.catalogSource.label}</Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>当前版本：{bundle.payload.currentVersionTitle}</Text>
+                  {bundle.payload.kind === 'maimai' ? (
+                    <Text style={[styles.body, { color: theme.textSecondary }]}>当前版本：{bundle.payload.currentVersionTitle}</Text>
+                  ) : null}
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
               ) : (
@@ -393,6 +396,7 @@ function formatBestSectionMeta(sections: BestListSection[]): string {
 function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'lxns') return '落雪咖啡屋';
   if (providerId === 'diving-fish') return '水鱼查分器';
+  if (providerId === 'phi-taptap') return 'TapTap 云存档';
   if (providerId === 'local') return '本地查分器';
   if (providerId === 'maimai-test') return '示例查分器';
   return '本地';

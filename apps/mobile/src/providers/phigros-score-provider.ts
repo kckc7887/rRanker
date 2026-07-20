@@ -136,7 +136,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
       level: LEVEL_NAMES[entry.level],
       difficulty: 'expert' as const,
       difficultyConstant: entry.difficulty,
-      achievements: entry.acc * 100,
+      achievements: entry.acc,
       dxScore: entry.score,
       rating: entry.rks,
       fc: entry.fc ? 'ap' : null,
