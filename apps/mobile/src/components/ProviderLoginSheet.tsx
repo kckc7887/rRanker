@@ -191,7 +191,7 @@ export function ProviderLoginSheet({
 
       try {
         await Linking.openURL(
-          `taptap://taptap.com/to?url=${encodeURIComponent(device.qrcodeUrl + '/for-client')}`,
+          `taptap://taptap.com/to?url=${encodeURIComponent(device.qrcodeUrl)}`,
         );
       } catch {
         await Linking.openURL(device.qrcodeUrl);
@@ -232,7 +232,8 @@ export function ProviderLoginSheet({
       onSuccess();
     } catch (error) {
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
-      setMessage(messageFor(error));
+      const detail = error instanceof Error ? error.message : String(error);
+      setMessage(`授权失败：${detail}`);
     }
   };
 
