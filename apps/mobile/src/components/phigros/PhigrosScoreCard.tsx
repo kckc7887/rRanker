@@ -57,6 +57,8 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   );
 });
 
+const SCORE_LINE_HEIGHT = 32;
+
 function PhigrosScoreValue({
   score,
   variant,
@@ -93,34 +95,57 @@ function FlowingGradientText({
   duration: number;
   testID: string;
 }) {
-  const [width, setWidth] = useState(180);
+  const [width, setWidth] = useState(120);
   const progress = useFlowingProgress(duration);
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
+  const measuredWidth = Math.max(width, 1);
+  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-measuredWidth, 0] });
   const flowingColors: GradientColors = [...colors, ...colors, colors[0]];
 
   return (
-    <MaskedView
-      accessible
-      accessibilityLabel={text}
-      maskElement={(
-        <View style={styles.scoreMaskContent}>
-          <Text style={[styles.score, styles.scoreMaskText]}>{text}</Text>
+    <View style={styles.scoreMeasureWrap}>
+      <Text
+        pointerEvents="none"
+        style={[styles.score, styles.scoreMeasure]}
+        onLayout={(event) => {
+          const next = Math.ceil(event.nativeEvent.layout.width);
+          if (next > 0 && next !== width) setWidth(next);
+        }}
+      >
+        {text}
+      </Text>
+      <MaskedView
+        accessible
+        accessibilityLabel={text}
+        maskElement={(
+          <View style={styles.scoreMaskRoot}>
+            <Text style={[styles.score, styles.scoreMaskText]}>{text}</Text>
+          </View>
+        )}
+        style={[styles.scoreMask, { width: measuredWidth }]}
+        testID={testID}
+      >
+        <View style={{ width: measuredWidth, height: SCORE_LINE_HEIGHT }}>
+          <Animated.View
+            style={[
+              styles.flowTrack,
+              {
+                width: measuredWidth * 2,
+                height: SCORE_LINE_HEIGHT,
+                transform: [{ translateX }],
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={flowingColors}
+              end={{ x: 1, y: 0.5 }}
+              start={{ x: 0, y: 0.5 }}
+              style={{ width: measuredWidth * 2, height: SCORE_LINE_HEIGHT }}
+              testID={`${testID}-gradient`}
+            />
+          </Animated.View>
         </View>
-      )}
-      onLayout={(event) => setWidth(Math.max(event.nativeEvent.layout.width, 1))}
-      style={styles.scoreMask}
-      testID={testID}
-    >
-      <Animated.View style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
-        <LinearGradient
-          colors={flowingColors}
-          end={{ x: 1, y: 0.5 }}
-          start={{ x: 0, y: 0.5 }}
-          style={styles.gradientFill}
-          testID={`${testID}-gradient`}
-        />
-      </Animated.View>
-    </MaskedView>
+      </MaskedView>
+    </View>
   );
 }
 
@@ -186,12 +211,19 @@ const styles = StyleSheet.create({
   card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   main: { flex: 1, minWidth: 0, gap: 4 },
   title: { fontSize: 15, fontWeight: '700' },
-  score: { fontSize: 24, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  scoreMask: { alignSelf: 'flex-start', height: 30, overflow: 'hidden' },
-  scoreMaskContent: { backgroundColor: 'transparent' },
+  score: {
+    fontSize: 24,
+    lineHeight: SCORE_LINE_HEIGHT,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+  },
+  scoreMask: { height: SCORE_LINE_HEIGHT },
+  scoreMeasureWrap: { alignSelf: 'flex-start' },
+  scoreMeasure: { position: 'absolute', opacity: 0, left: 0, top: 0 },
+  scoreMaskRoot: { backgroundColor: 'transparent', justifyContent: 'center' },
   scoreMaskText: { color: '#000000' },
-  gradientFill: { ...StyleSheet.absoluteFillObject },
-  flowTrack: { position: 'absolute', top: 0, bottom: 0, left: 0 },
+  flowTrack: { position: 'absolute', top: 0, left: 0 },
   tags: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   stats: { minWidth: 56, alignItems: 'flex-end', gap: 4 },
   acc: { fontSize: 12, fontWeight: '700' },
