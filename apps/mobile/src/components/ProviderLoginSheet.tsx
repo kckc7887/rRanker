@@ -187,17 +187,8 @@ export function ProviderLoginSheet({
       const device = await PhigrosScoreProvider.beginLogin();
       setPhiDevice(device);
       setPhiExpiresAt(Date.now() + device.expiresIn * 1000);
-      setMessage('请在 TapTap 完成授权。');
-
-      try {
-        const u = new URL(device.qrcodeUrl);
-        const code = u.searchParams.get('code') ?? u.searchParams.get('user_code') ?? '';
-        await Linking.openURL(
-          `tapiosdk://oauth/device/authorize?client_id=rAK3FfdieFob2Nn8Am&scope=public_profile&code=${code}`,
-        );
-      } catch {
-        await Linking.openURL(device.qrcodeUrl);
-      }
+      setMessage('请在浏览器完成授权后返回 App。');
+      await Linking.openURL(device.qrcodeUrl);
     } catch (error) {
       setMessage(messageFor(error));
     } finally {
