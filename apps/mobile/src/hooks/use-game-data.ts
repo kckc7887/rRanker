@@ -14,7 +14,7 @@ import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 10;
+const GAME_DATA_QUERY_VERSION = 11;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -46,7 +46,13 @@ export function useGameData() {
             scoreProvider.getBestSections(),
           ]);
 
-          const source = { kind: 'generated' as const, label: 'Phigros 云存档', updatedAt: new Date().toISOString(), isStale: false };
+          const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
+          const source = {
+            kind: 'generated' as const,
+            label: 'Phigros 云存档',
+            updatedAt: saveUpdatedAt,
+            isStale: false,
+          };
           const rks = player.rating;
           return {
             gameId: 'phigros' as const,
