@@ -1,10 +1,8 @@
 import type { ScoreRecord } from '@/domain/models';
 import {
-  MAIMAI_FC_ACHIEVEMENTS,
-  MAIMAI_FS_ACHIEVEMENTS,
   matchesAchievementStatus,
-  maimaiAchievementStatusLabel,
-  type MaimaiAchievementStatus,
+  maimaiFcAchievementLabel,
+  maimaiFsAchievementLabel,
   type MaimaiFcAchievement,
   type MaimaiFsAchievement,
 } from '@/domain/maimai-filters';
@@ -14,14 +12,14 @@ import { rankScoreRecords } from '@/domain/rating';
 export type BestImageVersionFilter = 'current' | 'past';
 export type BestImageFcAchievement = MaimaiFcAchievement;
 export type BestImageFsAchievement = MaimaiFsAchievement;
-export type BestImageAchievementFilter = MaimaiAchievementStatus;
 
 export type CustomBestImageFilters = {
   quantity: number;
   versions: readonly BestImageVersionFilter[];
   splitVersions: boolean;
   minimumAchievement: number;
-  achievement: BestImageAchievementFilter;
+  soloAchievement: MaimaiFcAchievement | null;
+  multiAchievement: MaimaiFsAchievement | null;
   strictAchievement: boolean;
   nearMiss: boolean;
 };
@@ -45,18 +43,20 @@ export const DEFAULT_CUSTOM_BEST_IMAGE_FILTERS: CustomBestImageFilters = {
   versions: ['current', 'past'],
   splitVersions: false,
   minimumAchievement: 0,
-  achievement: null,
+  soloAchievement: null,
+  multiAchievement: null,
   strictAchievement: false,
   nearMiss: false,
 };
 
-export const FC_ACHIEVEMENTS = MAIMAI_FC_ACHIEVEMENTS;
-export const FS_ACHIEVEMENTS = MAIMAI_FS_ACHIEVEMENTS;
-
-export function bestImageAchievementLabel(filter: BestImageAchievementFilter): string {
-  if (!filter) return 'Best';
-  const label = maimaiAchievementStatusLabel(filter);
-  return label === '全部' ? 'Best' : label;
+export function bestImageAchievementTitleLabel(
+  soloAchievement: MaimaiFcAchievement | null,
+  multiAchievement: MaimaiFsAchievement | null,
+): string {
+  const solo = soloAchievement ? maimaiFcAchievementLabel(soloAchievement) : null;
+  const multi = multiAchievement ? maimaiFsAchievementLabel(multiAchievement) : null;
+  if (!solo && !multi) return 'Best';
+  return [solo, multi].filter(Boolean).join('');
 }
 
 export function parseBestImageQuantity(value: string): number | null {
@@ -78,8 +78,29 @@ function limited(records: readonly ScoreRecord[], quantity: number): ScoreRecord
   return quantity === 0 ? ranked : ranked.slice(0, quantity);
 }
 
-function title(prefix: string, achievement: BestImageAchievementFilter, nearMiss: boolean, count: number): string {
-  return `${prefix}${nearMiss ? '寸' : ''}${bestImageAchievementLabel(achievement)}${count}`;
+function title(
+  prefix: string,
+  soloAchievement: MaimaiFcAchievement | null,
+  multiAchievement: MaimaiFsAchievement | null,
+  nearMiss: boolean,
+  count: number,
+): string {
+  return `${prefix}${nearMiss ? '寸' : ''}${bestImageAchievementTitleLabel(soloAchievement, multiAchievement)}${count}`;
+}
+
+function matchesCustomAchievementFilters(
+  record: ScoreRecord,
+  soloAchievement: MaimaiFcAchievement | null,
+  multiAchievement: MaimaiFsAchievement | null,
+  strictAchievement: boolean,
+): boolean {
+  if (soloAchievement && !matchesAchievementStatus(record, { family: 'fc', value: soloAchievement }, strictAchievement)) {
+    return false;
+  }
+  if (multiAchievement && !matchesAchievementStatus(record, { family: 'fs', value: multiAchievement }, strictAchievement)) {
+    return false;
+  }
+  return true;
 }
 
 export function buildCustomBestImageSections(
@@ -96,12 +117,16 @@ export function buildCustomBestImageSections(
     return selected.has(version)
       && achievementTenThousandths(record.achievements) >= minimum
       && (!filters.nearMiss || isNearMissAchievement(record.achievements))
-      && matchesAchievementStatus(record, filters.achievement, filters.strictAchievement);
+      && matchesCustomAchievementFilters(record, filters.soloAchievement, filters.multiAchievement, filters.strictAchievement);
   });
   const split = selected.has('current') && selected.has('past') && filters.splitVersions;
   const makeSection = (id: string, prefix: string, source: readonly ScoreRecord[]) => {
     const output = limited(source, filters.quantity);
-    return { id, title: title(prefix, filters.achievement, filters.nearMiss, output.length), records: output };
+    return {
+      id,
+      title: title(prefix, filters.soloAchievement, filters.multiAchievement, filters.nearMiss, output.length),
+      records: output,
+    };
   };
   if (split) {
     return [

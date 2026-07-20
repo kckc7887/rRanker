@@ -51,11 +51,11 @@ describe('custom best image', () => {
       score({ songId: 'ap', fc: 'ap' }), score({ songId: 'app', fc: 'app' }),
     ];
     const atLeast = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], achievement: { family: 'fc', value: 'fcp' }, quantity: 100,
+      versions: ['current'], soloAchievement: 'fcp', quantity: 100,
     }));
     expect(atLeast[0]?.title).toBe('当前版本FC+3');
     const strict = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], achievement: { family: 'fc', value: 'fcp' }, strictAchievement: true, quantity: 100,
+      versions: ['current'], soloAchievement: 'fcp', strictAchievement: true, quantity: 100,
     }));
     expect(strict[0]?.title).toBe('当前版本FC+1');
     expect(strict[0]?.records[0]?.songId).toBe('fcp');
@@ -69,13 +69,13 @@ describe('custom best image', () => {
       score({ songId: 'none', fs: null }),
     ];
     const atLeast = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], achievement: { family: 'fs', value: 'fs' }, quantity: 100,
+      versions: ['current'], multiAchievement: 'fs', quantity: 100,
     }));
     expect(atLeast[0]?.title).toBe('当前版本FS2');
     expect(new Set(atLeast[0]?.records.map((item) => item.songId))).toEqual(new Set(['fs', 'fsp']));
 
     const strict = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], achievement: { family: 'fs', value: 'fs' }, strictAchievement: true, quantity: 100,
+      versions: ['current'], multiAchievement: 'fs', strictAchievement: true, quantity: 100,
     }));
     expect(strict[0]?.title).toBe('当前版本FS1');
     expect(strict[0]?.records.map((item) => item.songId)).toEqual(['fs']);
@@ -88,7 +88,7 @@ describe('custom best image', () => {
       score({ songId: 'fdxp', fs: 'fdxp', achievements: 101 }),
     ];
     const sections = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], achievement: { family: 'fs', value: 'fsd' }, minimumAchievement: 100.5,
+      versions: ['current'], multiAchievement: 'fsd', minimumAchievement: 100.5,
     }));
     expect(sections[0]?.title).toBe('当前版本FDX2');
     expect(sections[0]?.records.map((item) => item.songId)).toEqual(['fdxp', 'fdx']);
@@ -118,18 +118,25 @@ describe('custom best image', () => {
       score({ songId: 'too-low', achievements: 99.9999, fc: 'app', fs: 'fdxp' }),
     ];
     const apPlus = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], nearMiss: true, achievement: { family: 'fc', value: 'app' },
+      versions: ['current'], nearMiss: true, soloAchievement: 'app',
       strictAchievement: true, minimumAchievement: 100.49, quantity: 100,
     }));
     expect(apPlus[0]?.title).toBe('当前版本寸AP+2');
     expect(apPlus[0]?.records.map((item) => item.songId)).toEqual(['match', 'wrong-fs']);
 
     const fdxPlus = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], nearMiss: true, achievement: { family: 'fs', value: 'fsdp' },
+      versions: ['current'], nearMiss: true, multiAchievement: 'fsdp',
       strictAchievement: true, minimumAchievement: 100.49, quantity: 100,
     }));
     expect(fdxPlus[0]?.title).toBe('当前版本寸FDX+2');
     expect(fdxPlus[0]?.records.map((item) => item.songId)).toEqual(['match', 'wrong-fc']);
+
+    const both = buildCustomBestImageSections(records, '当前版本', filters({
+      versions: ['current'], nearMiss: true, soloAchievement: 'app', multiAchievement: 'fsdp',
+      strictAchievement: true, minimumAchievement: 100.49, quantity: 100,
+    }));
+    expect(both[0]?.title).toBe('当前版本寸AP+FDX+1');
+    expect(both[0]?.records.map((item) => item.songId)).toEqual(['match']);
   });
 
   it('parses quantity and achievement boundaries', () => {
