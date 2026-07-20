@@ -136,10 +136,6 @@ export function parseSummary(summaryBase64: string): PhigrosSummary {
   const bytes = new Uint8Array(hexStr.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
   const r = new ByteReader(bytes);
 
-  const cleared: number[] = [];
-  const fullCombo: number[] = [];
-  const phi: number[] = [];
-
   const result: PhigrosSummary = {
     saveVersion: r.getByte(),
     challengeModeRank: r.getShort(),

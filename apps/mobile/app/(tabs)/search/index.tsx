@@ -10,10 +10,12 @@ import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
+import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import { parseConstantBound } from '@/domain/maimai-filters';
 import type { Chart, ChartType, DataSource, Song } from '@/domain/models';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { songLibraryKey } from '@/domain/user-library';
@@ -58,6 +60,10 @@ export function SearchScreen() {
   const isFiltering = filterSpec !== deferredFilterSpec;
   const viewData = query.data && filtered.length > 0 ? { songs: filtered, source: query.data.source } : undefined;
   const favoriteKeys = useMemo(() => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.key)), [library.data]);
+
+  if (activeGameId === 'phigros') {
+    return <PhigrosSearchScreen />;
+  }
 
   if (activeGameId !== 'maimai') {
     return <EmptyDataView title="暂无曲库" detail="当前游戏暂未接入曲库数据" />;
@@ -163,6 +169,80 @@ const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { song
 });
 
 function songKey(song: Song): string { return song.id; }
+
+function PhigrosSearchScreen() {
+  const query = usePhigrosCatalog();
+  const tabBottomInset = useNativeTabBottomInset();
+  const theme = useAppTheme();
+  const { keyword, setKeyword } = useCatalogFilter();
+  const debouncedKeyword = useDebouncedValue(keyword);
+  const index = useMemo(() => buildSongSearchIndex(query.data?.snapshot.songs ?? []), [query.data?.snapshot.songs]);
+  const filterSpec = useMemo(() => ({ ...EMPTY_SONG_FILTERS, keyword: debouncedKeyword }), [debouncedKeyword]);
+  const deferredFilterSpec = useDeferredValue(filterSpec);
+  const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
+  const isFiltering = filterSpec !== deferredFilterSpec;
+
+  const provider = query.data?.provider ?? null;
+  const blurUrls = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!provider) return map;
+    for (const song of filtered) {
+      const url = provider.getIllustrationBlurUrl(song.id);
+      if (url) map.set(song.id, url);
+    }
+    return map;
+  }, [filtered, provider]);
+
+  const source = useMemo(() => query.data?.snapshot.source, [query.data?.snapshot.source]);
+
+  return (
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
+      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
+        <TextInput accessibilityLabel="歌曲搜索" autoCapitalize="none" autoCorrect={false}
+          placeholder="曲名 / ID / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
+          value={keyword} onChangeText={setKeyword}
+          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+        <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
+      </View>
+      <QueryStateView<{ songs: Song[]; source?: DataSource }>
+        isLoading={query.isLoading} isError={query.isError}
+        isEmpty={!!query.data && filtered.length === 0}
+        error={query.error} onRetry={() => void query.refetch()}
+        emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
+        data={query.data && filtered.length > 0 ? { songs: filtered, source } : undefined}
+        renderData={(result) => (
+          <PhigrosCatalogList songs={result.songs} blurUrls={blurUrls} source={result.source} tabBottomInset={tabBottomInset} />
+        )}
+      />
+    </View>
+  );
+}
+
+const PhigrosCatalogList = memo(function PhigrosCatalogList({
+  songs, blurUrls, source, tabBottomInset,
+}: {
+  songs: Song[];
+  blurUrls: Map<string, string>;
+  source?: DataSource;
+  tabBottomInset: number;
+}) {
+  const renderItem = useCallback<ListRenderItem<Song>>(({ item }) => (
+    <PhigrosSongRow song={item} blurUrl={blurUrls.get(item.id) ?? null} />
+  ), [blurUrls]);
+
+  const sourceHeader = useMemo(() => source ? <SourceStatus items={[{
+    key: 'catalog', label: source.label, updatedAt: source.updatedAt,
+    state: source.isStale ? 'cache' : 'live',
+  }]} /> : null, [source]);
+
+  return <FlatList testID="phigros-catalog-results-list"
+    data={songs} keyExtractor={songKey} {...TAB_LIST_CACHE_PROPS}
+    contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 20 }]}
+    scrollIndicatorInsets={{ bottom: tabBottomInset }}
+    ListHeaderComponent={sourceHeader}
+    renderItem={renderItem} />;
+});
+
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' }, searchArea: { padding: 12, paddingBottom: 8, gap: 6, backgroundColor: '#FFF' },
   searchBox: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 11, backgroundColor: '#FFF', color: '#111827' },
