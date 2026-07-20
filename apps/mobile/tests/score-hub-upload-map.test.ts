@@ -29,9 +29,11 @@ describe('score-hub-sync-map', () => {
     expect(mapHubTypeToDivingFish('dx')).toBe('DX');
   });
 
-  it('normalizes FDX aliases used by score-hub', () => {
+  it('normalizes FDX aliases and SYNC used by score-hub', () => {
     expect(mapHubFsToCanonical('fdx')).toBe('fsd');
     expect(mapHubFsToCanonical('FDXP')).toBe('fsdp');
+    expect(mapHubFsToCanonical('SYNC')).toBe('sync');
+    expect(mapHubFsToCanonical('')).toBeNull();
     expect(mapHubFsToCanonical('unknown')).toBeNull();
   });
 

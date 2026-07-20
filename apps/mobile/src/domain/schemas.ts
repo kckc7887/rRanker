@@ -1,6 +1,24 @@
 import { z } from 'zod';
+import { normalizeMaimaiFc, normalizeMaimaiFs } from './maimai-filters';
 import type { Difficulty, ScoreRecord } from './models';
 import { calculateChartRating } from './rating';
+
+function mapKnownFc(value: string | null | undefined): string | null {
+  return normalizeMaimaiFc(value);
+}
+
+function mapKnownFs(value: string | null | undefined): string | null {
+  return normalizeMaimaiFs(value);
+}
+
+function keepRawStatus(
+  value: string | null | undefined,
+  known: string | null,
+): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || known) return undefined;
+  return trimmed;
+}
 
 export const DivingFishRecordSchema = z.object({
   achievements: z.number().finite().min(0),
@@ -27,16 +45,18 @@ export function mapDivingFishRecord(input: unknown, verifiedVersion?: string): S
   const raw = DivingFishRecordSchema.parse(input);
   const rawDifficulty = raw.level_label?.toLowerCase() ?? '';
   const difficulty = DIFFICULTIES[rawDifficulty] ?? 'unknown';
+  const fc = mapKnownFc(raw.fc);
+  const fs = mapKnownFs(raw.fs);
   return {
     songId: String(raw.song_id), title: raw.title, type: raw.type.toUpperCase() === 'DX' ? 'DX' : 'SD',
     levelIndex: raw.level_index, level: raw.level, difficulty, difficultyConstant: raw.ds,
     achievements: raw.achievements, dxScore: raw.dxScore ?? null,
     rating: raw.ra ?? calculateChartRating(raw.ds, raw.achievements),
-    fc: raw.fc ?? null, fs: raw.fs ?? null, rate: raw.rate,
+    fc, fs, rate: raw.rate,
     version: raw.version ?? verifiedVersion ?? 'unknown',
     rawDifficulty: difficulty === 'unknown' ? raw.level_label : undefined,
-    rawFc: raw.fc && !['fc', 'fcp', 'ap', 'app'].includes(raw.fc.toLowerCase()) ? raw.fc : undefined,
-    rawFs: raw.fs && !['sync', 'fs', 'fsp', 'fsd', 'fsdp'].includes(raw.fs.toLowerCase()) ? raw.fs : undefined,
+    rawFc: keepRawStatus(raw.fc, fc),
+    rawFs: keepRawStatus(raw.fs, fs),
     rawRate: raw.rate,
   };
 }
@@ -94,6 +114,8 @@ export function mapLxnsScore(input: unknown): ScoreRecord {
   const rating = raw.dx_rating !== undefined
     ? Math.floor(raw.dx_rating)
     : calculateChartRating(0, raw.achievements);
+  const fc = mapKnownFc(raw.fc);
+  const fs = mapKnownFs(raw.fs);
   return {
     songId: String(raw.id),
     title: raw.song_name ?? `#${raw.id}`,
@@ -105,13 +127,13 @@ export function mapLxnsScore(input: unknown): ScoreRecord {
     achievements: raw.achievements,
     dxScore: raw.dx_score,
     rating,
-    fc: raw.fc ?? null,
-    fs: raw.fs ?? null,
+    fc,
+    fs,
     rate: raw.rate ?? '',
     version: 'unknown',
     rawDifficulty: difficulty === 'unknown' ? level : undefined,
-    rawFc: raw.fc && !['fc', 'fcp', 'ap', 'app'].includes(raw.fc.toLowerCase()) ? raw.fc : undefined,
-    rawFs: raw.fs && !['sync', 'fs', 'fsp', 'fsd', 'fsdp'].includes(raw.fs.toLowerCase()) ? raw.fs : undefined,
+    rawFc: keepRawStatus(raw.fc, fc),
+    rawFs: keepRawStatus(raw.fs, fs),
     rawRate: raw.rate,
   };
 }

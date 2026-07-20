@@ -10,8 +10,19 @@ describe('provider schema mapping', () => {
   it('preserves unknown enum values instead of dropping the record', () => {
     const record = mapDivingFishRecord(unknownEnumRawRecord);
     expect(record.difficulty).toBe('unknown'); expect(record.rawDifficulty).toBe('FutureDifficulty');
+    expect(record.fc).toBeNull(); expect(record.fs).toBeNull();
     expect(record.rawFc).toBe('future_fc'); expect(record.rawFs).toBe('future_fs');
     expect(record.rawRate).toBe('future_rate');
+  });
+
+  it('canonicalizes SYNC and FDX aliases and treats blank fs as null', () => {
+    expect(mapDivingFishRecord({ ...unknownEnumRawRecord, fc: '', fs: 'SYNC' })).toMatchObject({
+      fc: null, fs: 'sync', rawFc: undefined, rawFs: undefined,
+    });
+    expect(mapDivingFishRecord({ ...unknownEnumRawRecord, fs: 'fdxp' })).toMatchObject({
+      fs: 'fsdp', rawFs: undefined,
+    });
+    expect(mapDivingFishRecord({ ...unknownEnumRawRecord, fs: '   ' }).fs).toBeNull();
   });
   it('rejects missing required fields and malformed input', () => {
     expect(() => mapDivingFishRecord({ title: '缺字段样例' })).toThrow();

@@ -7,6 +7,7 @@ import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { useAppTheme } from '@/theme/app-theme';
 import type { Difficulty } from '@/domain/models';
+import { normalizeMaimaiFc, normalizeMaimaiFs } from '@/domain/maimai-filters';
 import {
   formatAchievement, isNearMissAchievement, scoreRateEffect, scoreRateLabel,
 } from '@/domain/score-presentation';
@@ -127,12 +128,14 @@ export function ScoreStatusBadges({ rate, achievements, fc, fs, nearMissFirst = 
   nearMissFirst?: boolean;
 }) {
   const nearMiss = achievements !== undefined && isNearMissAchievement(achievements);
+  const normalizedFc = normalizeMaimaiFc(fc);
+  const normalizedFs = normalizeMaimaiFs(fs);
   return <>
     {nearMissFirst && nearMiss ? <NearMissBadge /> : null}
     {rate ? <RateBadge value={rate} /> : null}
     {!nearMissFirst && nearMiss ? <NearMissBadge /> : null}
-    {fc ? <StatusBadge kind="fc" value={fc} /> : null}
-    {fs ? <StatusBadge kind="fs" value={fs} /> : null}
+    {normalizedFc ? <StatusBadge kind="fc" value={normalizedFc} /> : null}
+    {normalizedFs ? <StatusBadge kind="fs" value={normalizedFs} /> : null}
   </>;
 }
 
