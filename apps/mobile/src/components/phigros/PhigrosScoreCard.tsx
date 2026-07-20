@@ -212,12 +212,17 @@ function resolveRate(record: ScoreRecord): RateKind {
 }
 
 function RateBadge({ rate, fc }: { rate: RateKind; fc: boolean }) {
-  const colors = rate === 'v' && fc
-    ? { bg: '#0EA5E9', fg: '#FFFFFF' }
+  const isBlueV = rate === 'v' && fc;
+  const colors = isBlueV
+    ? { bg: '#FFFFFF', fg: '#0EA5E9' }
     : RATE_COLORS[rate];
   const label = RATE_LABELS[rate];
   return (
-    <View style={[styles.rateBadge, { backgroundColor: colors.bg }]}>
+    <View style={[
+      styles.rateBadge,
+      { backgroundColor: colors.bg },
+      isBlueV && styles.rateBadgeBlueV,
+    ]}>
       <Text style={[styles.rateText, { color: colors.fg }]}>{label}</Text>
     </View>
   );
@@ -245,5 +250,6 @@ const styles = StyleSheet.create({
   acc: { fontSize: 12, fontWeight: '700' },
   rks: { fontSize: 20, fontWeight: '900' },
   rateBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
+  rateBadgeBlueV: { borderWidth: 1, borderColor: '#BFDBFE' },
   rateText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.3 },
 });
