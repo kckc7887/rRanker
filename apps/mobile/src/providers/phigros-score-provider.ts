@@ -28,6 +28,7 @@ export type { DeviceCodeResult };
 type LoadedSave = {
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>;
   diffTable: PhigrosDifficultyTable;
+  gameVersion: number;
 };
 
 export class PhigrosScoreProvider implements ScoreProvider {
@@ -36,6 +37,18 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private saveCache: LoadedSave | null = null;
   private b30Cache: PhigrosB30 | null = null;
   private summaryCache: PhigrosSummary | null = null;
+
+  private async ensureSaveMeta(): Promise<{
+    summaryBase64: string;
+    saveUrl: string;
+    updatedAt: string;
+  }> {
+    const meta = await getGameSave(this.sessionToken);
+    if (!this.summaryCache) {
+      this.summaryCache = parseSummary(meta.summaryBase64);
+    }
+    return meta;
+  }
 
   constructor(session: ProviderSession) {
     if (session.mode !== 'phi-session') {
@@ -91,49 +104,48 @@ export class PhigrosScoreProvider implements ScoreProvider {
   }
 
   async getPlayer(): Promise<Player> {
-    if (!this.summaryCache) {
-      const { summaryBase64 } = await getGameSave(this.sessionToken);
-      this.summaryCache = parseSummary(summaryBase64);
-    }
+    await this.ensureSaveMeta();
     return {
       id: this.playerId,
       displayName: this.playerId,
-      rating: roundRks(this.summaryCache.rankingScore),
+      rating: roundRks(this.summaryCache!.rankingScore),
       source: this.source(),
     };
   }
 
   getSummary(): Promise<PhigrosSummary> {
     if (this.summaryCache) return Promise.resolve(this.summaryCache);
-    return getGameSave(this.sessionToken).then(({ summaryBase64 }) => {
-      this.summaryCache = parseSummary(summaryBase64);
-      return this.summaryCache;
-    });
+    return this.ensureSaveMeta().then(() => this.summaryCache!);
+  }
+
+  private async loadDifficultyTable(gameVersion: number): Promise<string> {
+    const primary = `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${gameVersion}/metadata/difficulty.tsv`;
+    let res = await fetch(primary);
+    if (!res.ok) {
+      const current = await fetch(
+        'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/current.json',
+      ).then((r) => r.json()) as { gameVersion: number };
+      res = await fetch(
+        `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${current.gameVersion}/metadata/difficulty.tsv`,
+      );
+    }
+    if (!res.ok) throw new ProviderError('network', '无法加载定数表', true);
+    return await res.text();
   }
 
   private async loadSave(): Promise<LoadedSave> {
     if (this.saveCache) return this.saveCache;
 
-    const { saveUrl } = await getGameSave(this.sessionToken);
+    const { saveUrl } = await this.ensureSaveMeta();
     const zipBuf = await downloadSave(saveUrl);
     const { gameRecord } = await decodeSaveZip(zipBuf);
 
-    const diffRaw = await this.loadDifficultyTable();
+    const gameVersion = this.summaryCache?.gameVersion ?? 0;
+    const diffRaw = await this.loadDifficultyTable(gameVersion);
     const diffTable = loadDifficultyTable(diffRaw);
 
-    this.saveCache = { gameRecord, diffTable };
+    this.saveCache = { gameRecord, diffTable, gameVersion };
     return this.saveCache;
-  }
-
-  private async loadDifficultyTable(): Promise<string> {
-    const current = await fetch(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/current.json',
-    ).then((r) => r.json());
-    const res = await fetch(
-      `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${current.gameVersion}/metadata/difficulty.tsv`,
-    );
-    if (!res.ok) throw new ProviderError('network', '无法加载定数表', true);
-    return await res.text();
   }
 
   async getRecords(): Promise<ScoreRecord[]> {
