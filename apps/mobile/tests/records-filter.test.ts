@@ -17,7 +17,8 @@ describe('useRecordsFilter store', () => {
     expect(state.constantMax).toBe('');
     expect(state.achievementMin).toBe('');
     expect(state.achievementMax).toBe('');
-    expect(state.achievementStatus).toBeNull();
+    expect(state.soloAchievement).toBeNull();
+    expect(state.multiAchievement).toBeNull();
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
   });
@@ -50,11 +51,12 @@ describe('useRecordsFilter store', () => {
     expect(useRecordsFilter.getState().achievementMax).toBe('100.5');
   });
 
-  it('updates achievement status via setAchievementStatus', () => {
-    useRecordsFilter.getState().setAchievementStatus({ family: 'fs', value: 'fs' });
-    expect(useRecordsFilter.getState().achievementStatus).toEqual({ family: 'fs', value: 'fs' });
-    useRecordsFilter.getState().setAchievementStatus({ family: 'fc', value: 'app' });
-    expect(useRecordsFilter.getState().achievementStatus).toEqual({ family: 'fc', value: 'app' });
+  it('updates solo and multi achievements independently', () => {
+    useRecordsFilter.getState().setMultiAchievement('fs');
+    expect(useRecordsFilter.getState().multiAchievement).toBe('fs');
+    useRecordsFilter.getState().setSoloAchievement('app');
+    expect(useRecordsFilter.getState().soloAchievement).toBe('app');
+    expect(useRecordsFilter.getState().multiAchievement).toBe('fs');
   });
 
   it('updates the constant range via dedicated setters', () => {
@@ -84,7 +86,8 @@ describe('useRecordsFilter store', () => {
     useRecordsFilter.getState().setConstantMax('14');
     useRecordsFilter.getState().setAchievementMin('99');
     useRecordsFilter.getState().setAchievementMax('101');
-    useRecordsFilter.getState().setAchievementStatus({ family: 'fs', value: 'fs' });
+    useRecordsFilter.getState().setSoloAchievement('ap');
+    useRecordsFilter.getState().setMultiAchievement('fs');
     useRecordsFilter.getState().setSortBy('achievements');
     useRecordsFilter.getState().setVersionLocale('japan');
     useRecordsFilter.getState().reset();
@@ -98,7 +101,8 @@ describe('useRecordsFilter store', () => {
     expect(state.constantMax).toBe('');
     expect(state.achievementMin).toBe('');
     expect(state.achievementMax).toBe('');
-    expect(state.achievementStatus).toBeNull();
+    expect(state.soloAchievement).toBeNull();
+    expect(state.multiAchievement).toBeNull();
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
   });

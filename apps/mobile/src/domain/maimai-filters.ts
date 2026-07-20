@@ -87,6 +87,32 @@ export function matchesAchievementStatus(
   return strict ? actual === filter.value : FS_RANK[actual] >= FS_RANK[filter.value];
 }
 
+export function maimaiFcAchievementLabel(value: MaimaiFcAchievement | null): string {
+  if (!value) return '全部';
+  return MAIMAI_FC_ACHIEVEMENTS.find((item) => item.value === value)?.label ?? '全部';
+}
+
+export function maimaiFsAchievementLabel(value: MaimaiFsAchievement | null): string {
+  if (!value) return '全部';
+  return MAIMAI_FS_ACHIEVEMENTS.find((item) => item.value === value)?.label ?? '全部';
+}
+
+export function matchesSoloAchievementFilter(
+  record: { fc?: string | null; fs?: string | null; rawFc?: string; rawFs?: string },
+  filter: MaimaiFcAchievement | null,
+): boolean {
+  if (!filter) return true;
+  return matchesAchievementStatus(record, { family: 'fc', value: filter });
+}
+
+export function matchesMultiAchievementFilter(
+  record: { fc?: string | null; fs?: string | null; rawFc?: string; rawFs?: string },
+  filter: MaimaiFsAchievement | null,
+): boolean {
+  if (!filter) return true;
+  return matchesAchievementStatus(record, { family: 'fs', value: filter });
+}
+
 export function maimaiAchievementStatusLabel(filter: MaimaiAchievementStatus): string {
   if (!filter) return '全部';
   const options = filter.family === 'fc' ? MAIMAI_FC_ACHIEVEMENTS : MAIMAI_FS_ACHIEVEMENTS;
