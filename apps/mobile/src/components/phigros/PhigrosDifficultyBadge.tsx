@@ -17,7 +17,7 @@ const LEVEL_LABELS: Record<number, string> = {
 export function PhigrosDifficultyBadge({ levelIndex, constant }: { levelIndex: number; constant: number }) {
   const colors = LEVEL_COLORS[levelIndex] ?? { bg: '#F3F4F6', fg: '#6B7280' };
   const label = LEVEL_LABELS[levelIndex] ?? `LV${levelIndex}`;
-  const text = Number.isInteger(constant) ? String(constant) : constant.toFixed(1);
+  const text = constant.toFixed(1);
 
   return (
     <View style={[styles.badge, { backgroundColor: colors.bg }]}>
