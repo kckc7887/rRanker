@@ -2,14 +2,11 @@ import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
+import { BoundAccountAvatar } from '@/components/BoundAccountAvatar';
 import { DxRatingTag } from '@/components/DxRatingTag';
 import { groupBoundAccountGameIds, type BoundAccount } from '@/domain/bound-account';
-import { findGame, findProvider, type GameId } from '@/domain/game-bind-options';
+import { findGame, type GameId } from '@/domain/game-bind-options';
 import { useAppTheme } from '@/theme/app-theme';
-
-function accountIcon(account: BoundAccount) {
-  return account.providerId ? findProvider(account.providerId)?.icon ?? findGame(account.gameId)?.icon : findGame(account.gameId)?.icon;
-}
 
 function ratingNumber(display: string): number | null {
   const value = Number.parseInt(display, 10);
@@ -46,13 +43,12 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
       {expanded ? <View style={[styles.accountNest, { backgroundColor: theme.surfaceMuted, borderTopColor: theme.border }]}>
         {group.accounts.map((account) => {
           const current = account.id === activeAccountId;
-          const icon = accountIcon(account);
           return <View key={account.id} testID={`account-card-${account.id}`}
             style={[styles.accountCard, { backgroundColor: theme.surface }, current && { borderColor: theme.accent }]}>
             <Pressable accessibilityRole="button" disabled={!onSelectAccount}
               accessibilityLabel={`${account.displayName}，${account.scoreLabel} ${account.scoreDisplay}，${account.providerTitle}`}
               onPress={() => onSelectAccount?.(account)} style={styles.accountRow}>
-              {icon ? <Image source={icon} style={styles.providerIcon} /> : null}
+              <BoundAccountAvatar account={account} style={styles.providerIcon} />
               <View style={styles.copy}><View style={styles.titleRow}>
                 <Text style={[styles.accountName, { color: theme.text }]}>{account.displayName}</Text>
                 {current ? <Text style={[styles.currentBadge, { color: theme.accent, backgroundColor: theme.accentSoft }]}>当前</Text> : null}
