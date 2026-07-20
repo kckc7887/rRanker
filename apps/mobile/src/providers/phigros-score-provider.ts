@@ -34,10 +34,27 @@ export class PhigrosScoreProvider implements ScoreProvider {
     this.playerId = session.playerId;
   }
 
+  static async beginLogin(): Promise<DeviceCodeResult> {
+    return await requestDeviceCode();
+  }
+
+  static async pollLogin(
+    device: DeviceCodeResult,
+  ): Promise<ProviderSession | 'pending' | 'waiting'> {
+    const result = await pollForToken(device.deviceCode, device.deviceId);
+    if (result === 'pending' || result === 'waiting') return result;
+    const session = await exchangeSessionToken(result);
+    return {
+      mode: 'phi-session',
+      sessionToken: session.sessionToken,
+      playerId: session.playerId,
+      persistable: true,
+    };
+  }
+
   static async login(): Promise<ProviderSession> {
     const device = await requestDeviceCode();
     const start = Date.now();
-
     while (Date.now() - start < device.expiresIn * 1000) {
       await new Promise((r) => setTimeout(r, device.interval * 1000));
       const result = await pollForToken(device.deviceCode, device.deviceId);

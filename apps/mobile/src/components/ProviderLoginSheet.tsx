@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Image,
   Linking,
@@ -9,9 +9,10 @@ import {
   Text,
   TextInput,
   View,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createMaimaiBoundAccount, LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
+import { createMaimaiBoundAccount, createPhigrosBoundAccount, LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
 import type { ProviderOption } from '@/domain/game-bind-options';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
@@ -19,6 +20,7 @@ import { ProviderError } from '@/providers/errors';
 import type { ProviderSession } from '@/providers/contracts';
 import { beginLxnsAuthorize, exchangeLxnsAuthorizationCode } from '@/providers/lxns-oauth';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
+import { PhigrosScoreProvider, type DeviceCodeResult } from '@/providers/phigros-score-provider';
 import { validateAndActivateSession } from '@/services/session-validation';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { queryClient } from '@/state/query-client';
@@ -53,8 +55,12 @@ export function ProviderLoginSheet({
   const [authCode, setAuthCode] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [phiDevice, setPhiDevice] = useState<DeviceCodeResult | null>(null);
+  const [phiExpiresAt, setPhiExpiresAt] = useState(0);
+  const phiTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isLxns = provider?.id === 'lxns';
+  const isPhigros = provider?.id === 'phi-taptap';
 
   const reset = () => {
     setUsername('');
@@ -63,6 +69,9 @@ export function ProviderLoginSheet({
     setAuthCode('');
     setMessage('');
     setBusy(false);
+    setPhiDevice(null);
+    setPhiExpiresAt(0);
+    if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
   };
 
   const close = () => {
@@ -171,6 +180,73 @@ export function ProviderLoginSheet({
     } catch (error) { setMessage(messageFor(error)); setBusy(false); }
   };
 
+  const beginPhigrosLogin = async () => {
+    setBusy(true);
+    setMessage('正在请求 TapTap 授权…');
+    try {
+      const device = await PhigrosScoreProvider.beginLogin();
+      setPhiDevice(device);
+      setPhiExpiresAt(Date.now() + device.expiresIn * 1000);
+      setMessage('请在 TapTap 完成授权。');
+      await Linking.openURL(device.qrcodeUrl);
+    } catch (error) {
+      setMessage(messageFor(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pollPhigros = async () => {
+    if (!phiDevice) return;
+    const remaining = Math.max(0, Math.floor((phiExpiresAt - Date.now()) / 1000));
+    setMessage(`等待授权中…（${remaining} 秒后过期）`);
+    try {
+      const result = await PhigrosScoreProvider.pollLogin(phiDevice);
+      if (result === 'pending' || result === 'waiting') return;
+      if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
+      setMessage('正在保存并验证…');
+      const newSession = result;
+      if (newSession.mode !== 'phi-session') {
+        setMessage('授权返回异常，请重试');
+        return;
+      }
+      const account = createPhigrosBoundAccount({ playerId: newSession.playerId, rating: 0 });
+      await sessions.upsertAccount({
+        id: account.id,
+        gameId: 'phigros',
+        providerId: 'phi-taptap',
+        displayName: account.displayName,
+        scoreDisplay: account.scoreDisplay,
+        session: newSession,
+      });
+      setSession(newSession);
+      invalidateAll();
+      reset();
+      onSuccess();
+    } catch (error) {
+      if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
+      setMessage(messageFor(error));
+    }
+  };
+
+  useEffect(() => {
+    if (!phiDevice) return;
+    const interval = phiDevice.interval * 1000;
+    phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
+    return () => {
+      if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phiDevice]);
+
+  const cancelPhigrosLogin = () => {
+    if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
+    setPhiDevice(null);
+    setPhiExpiresAt(0);
+    setMessage('');
+    setBusy(false);
+  };
+
   if (!provider) return null;
 
   return (
@@ -215,7 +291,40 @@ export function ProviderLoginSheet({
             ) : null}
             {message ? <Text style={styles.message}>{message}</Text> : null}
 
-            {isLxns ? (
+            {isPhigros ? (
+              <>
+                {!phiDevice ? (
+                  <>
+                    <Pressable
+                      disabled={busy}
+                      onPress={() => void beginPhigrosLogin()}
+                      style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
+                    >
+                      <Text style={styles.primaryText}>打开 TapTap 授权页</Text>
+                    </Pressable>
+                    <Text style={styles.hint}>
+                      点击后将跳转 TapTap 完成授权，授权成功后自动绑定。
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.phiStatus}>
+                      <ActivityIndicator color={theme.accent} />
+                      <Text style={[styles.message, { color: theme.text }]}>{message}</Text>
+                    </View>
+                    <Pressable
+                      onPress={cancelPhigrosLogin}
+                      style={({ pressed }) => [styles.secondary, { borderColor: theme.accent }, pressed && styles.secondaryPressed]}
+                    >
+                      <Text style={[styles.secondaryText, { color: theme.accent }]}>取消授权</Text>
+                    </Pressable>
+                  </>
+                )}
+                <Text style={styles.security}>
+                  Session Token 仅保存在系统 SecureStore，不进入 SQLite 或日志。
+                </Text>
+              </>
+            ) : isLxns ? (
               <>
                 <Pressable
                   disabled={busy}
@@ -360,4 +469,5 @@ const styles = StyleSheet.create({
   or: { color: '#9CA3AF', textAlign: 'center' },
   hint: { color: '#6B7280', fontSize: 12, lineHeight: 16 },
   security: { color: '#6B7280', fontSize: 12, lineHeight: 18, marginTop: 4 },
+  phiStatus: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
 });
