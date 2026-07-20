@@ -19,7 +19,7 @@ export type PlayerScoreSummary = {
 /**
  * 分游戏载荷。新游戏新增 kind，不要往舞萌字段里塞无关数据。
  * - maimai：DX Rating + B35/B15 + 水鱼/落雪成绩曲库
- * - phigros：RKS + B30 成绩
+ * - phigros：RKS + Phi3/Best27
  * - empty：测试等空壳游戏，不继承舞萌成绩
  * - unsupported：已登记但尚未接入成绩模型的游戏
  */

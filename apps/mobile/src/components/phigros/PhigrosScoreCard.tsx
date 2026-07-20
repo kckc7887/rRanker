@@ -33,9 +33,11 @@ const FLOWING_FC = buildFlowingColors(FC_BASE);
 export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   record,
   catalogTitle,
+  rank,
 }: {
   record: ScoreRecord;
   catalogTitle?: string;
+  rank?: number;
 }) {
   const theme = useAppTheme();
   const score = record.dxScore ?? 0;
@@ -50,7 +52,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
       <View style={styles.main}>
         <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-          {catalogTitle ?? record.title}
+          {rank ? `${rank}. ` : ''}{catalogTitle ?? record.title}
         </Text>
         <PhigrosScoreValue
           score={score}
