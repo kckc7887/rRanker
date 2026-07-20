@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
 import type { ChartType, Difficulty } from '@/domain/models';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
@@ -94,14 +95,14 @@ export function MaimaiFilterBar({
     style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
     <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
     <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
-    <Text style={[styles.collapseAction, { color: theme.accent }]}>展开⌄</Text>
+    <CollapseToggleAction expanded={false} label="展开" />
   </Pressable>;
 
   return <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
     <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
       onPress={() => onCollapsedChange(true)} style={styles.expandedHeader}>
       <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
-      <Text style={[styles.collapseAction, { color: theme.accent }]}>收起⌃</Text>
+      <CollapseToggleAction expanded label="收起" />
     </Pressable>
     <View style={styles.filterRow}>
       <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
@@ -192,6 +193,14 @@ export function MaimaiFilterBar({
           style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
     </View> : null}
+  </View>;
+}
+
+function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: string }) {
+  const theme = useAppTheme();
+  return <View style={styles.collapseActionRow}>
+    <Text style={[styles.collapseAction, { color: theme.accent }]}>{label}</Text>
+    <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.accent} />
   </View>;
 }
 
@@ -288,6 +297,7 @@ const styles = StyleSheet.create({
   collapsedLabel: { fontSize: 12, fontWeight: '700' },
   collapsedSummary: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
   collapseAction: { fontSize: 12, fontWeight: '800' },
+  collapseActionRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   expandedTitle: { fontSize: 13, fontWeight: '800' },
 });
