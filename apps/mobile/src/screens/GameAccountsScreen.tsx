@@ -51,6 +51,7 @@ function sessionModeLabel(session: ProviderSession | undefined): string {
   if (session.mode === 'jwt') return '仅登录（不可上传）';
   if (session.mode === 'import-token') return '已可上传';
   if (session.mode === 'lxns-oauth') return 'OAuth（可上传）';
+  if (session.mode === 'phi-session') return 'TapTap 授权';
   return 'Cookie（当前会话）';
 }
 
@@ -299,7 +300,7 @@ export function GameAccountsScreen() {
     const isActive = account.id === activeAccountId;
     const isLocal = account.providerId === 'local';
     const isGeneratedTest = account.providerId === 'maimai-test';
-    const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns';
+    const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
     return (
       <>
         <Text style={[styles.game, { color: theme.textMuted }]}>
