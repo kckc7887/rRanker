@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { InteractionManager } from 'react-native';
 import SongDetailScreen from '../app/songs/[songId]';
@@ -24,10 +24,25 @@ function buildSampleSong(): Song {
     illustrator: '测试曲绘师',
     version: '3.8.0',
     charts: [
-      { songId: 'Song.A', type: 'SD', levelIndex: 0, level: 'EZ', difficulty: 'basic', difficultyConstant: 5.5, charter: 'EZ谱师' },
-      { songId: 'Song.A', type: 'SD', levelIndex: 1, level: 'HD', difficulty: 'advanced', difficultyConstant: 10.2, charter: 'HD谱师' },
-      { songId: 'Song.A', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert', difficultyConstant: 14.8, charter: 'IN谱师' },
-      { songId: 'Song.A', type: 'SD', levelIndex: 3, level: 'AT', difficulty: 'master', difficultyConstant: 15.9, charter: 'AT谱师' },
+      {
+        songId: 'Song.A', type: 'SD', levelIndex: 0, level: 'EZ', difficulty: 'basic',
+        difficultyConstant: 5.5, charter: 'EZ谱师',
+        notes: { tap: 10, hold: 20, drag: 30, flick: 40, total: 100 },
+      },
+      {
+        songId: 'Song.A', type: 'SD', levelIndex: 1, level: 'HD', difficulty: 'advanced',
+        difficultyConstant: 10.2, charter: 'HD谱师',
+        notes: { tap: 50, hold: 60, drag: 70, flick: 80, total: 260 },
+      },
+      {
+        songId: 'Song.A', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert',
+        difficultyConstant: 14.8, charter: 'IN谱师',
+        notes: { tap: 100, hold: 110, drag: 120, flick: 130, total: 460 },
+      },
+      {
+        songId: 'Song.A', type: 'SD', levelIndex: 3, level: 'AT', difficulty: 'master',
+        difficultyConstant: 15.9, charter: 'AT谱师',
+      },
     ],
   };
 }
@@ -65,10 +80,25 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
           illustrator: '测试曲绘师',
           version: '3.8.0',
           charts: [
-            { songId: 'Song.A', type: 'SD', levelIndex: 0, level: 'EZ', difficulty: 'basic', difficultyConstant: 5.5, charter: 'EZ谱师' },
-            { songId: 'Song.A', type: 'SD', levelIndex: 1, level: 'HD', difficulty: 'advanced', difficultyConstant: 10.2, charter: 'HD谱师' },
-            { songId: 'Song.A', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert', difficultyConstant: 14.8, charter: 'IN谱师' },
-            { songId: 'Song.A', type: 'SD', levelIndex: 3, level: 'AT', difficulty: 'master', difficultyConstant: 15.9, charter: 'AT谱师' },
+            {
+              songId: 'Song.A', type: 'SD', levelIndex: 0, level: 'EZ', difficulty: 'basic',
+              difficultyConstant: 5.5, charter: 'EZ谱师',
+              notes: { tap: 10, hold: 20, drag: 30, flick: 40, total: 100 },
+            },
+            {
+              songId: 'Song.A', type: 'SD', levelIndex: 1, level: 'HD', difficulty: 'advanced',
+              difficultyConstant: 10.2, charter: 'HD谱师',
+              notes: { tap: 50, hold: 60, drag: 70, flick: 80, total: 260 },
+            },
+            {
+              songId: 'Song.A', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert',
+              difficultyConstant: 14.8, charter: 'IN谱师',
+              notes: { tap: 100, hold: 110, drag: 120, flick: 130, total: 460 },
+            },
+            {
+              songId: 'Song.A', type: 'SD', levelIndex: 3, level: 'AT', difficulty: 'master',
+              difficultyConstant: 15.9, charter: 'AT谱师',
+            },
           ],
         }],
         source: { kind: 'generated', label: 'Phigros3.8.0', updatedAt: '2026-07-20T00:00:00.000Z', isStale: false },
@@ -203,6 +233,31 @@ describe('Phigros song detail', () => {
     expect(screen.getByText('14')).toBeTruthy();
     // AT constant 15.9 → floor 15
     expect(screen.getByText('15')).toBeTruthy();
+  });
+
+  it('shows note counts table on charts with notes and fallback when missing', async () => {
+    const screen = await render(<SongDetailScreen />);
+    await waitFor(() => expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy());
+
+    const tables = screen.getAllByLabelText('谱面物量');
+    expect(tables.length).toBe(3);
+    expect(screen.getAllByText('TAP').length).toBe(3);
+    expect(screen.getAllByText('HOLD').length).toBe(3);
+    expect(screen.getAllByText('DRAG').length).toBe(3);
+    expect(screen.getAllByText('FLICK').length).toBe(3);
+    expect(screen.getAllByText('总计').length).toBe(3);
+
+    const inCard = screen.getByLabelText('IN 难度卡片');
+    const inTable = within(inCard).getByLabelText('谱面物量');
+    expect(within(inTable).getByText('100')).toBeTruthy();
+    expect(within(inTable).getByText('110')).toBeTruthy();
+    expect(within(inTable).getByText('120')).toBeTruthy();
+    expect(within(inTable).getByText('130')).toBeTruthy();
+    expect(within(inTable).getByText('460')).toBeTruthy();
+
+    const atCard = screen.getByLabelText('AT 难度卡片');
+    expect(within(atCard).getByText('物量未提供')).toBeTruthy();
+    expect(screen.queryByText('点击物量表，前往达成率与容错计算')).toBeNull();
   });
 
   it('shows em dash for charts without scores', async () => {

@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 import JSZip from 'jszip';
-import type { Difficulty, ScoreRecord } from '@/domain/models';
+import type { Difficulty, PhigrosChartNotes, ScoreRecord } from '@/domain/models';
 
 const AES_KEY_B64 = '6Jaa0qVAJZuXkZCLiOa/Ax5tIZVu+taKUN1V1nqwkks=';
 const AES_IV_B64 = 'Kk/wisgNYwcAV8WVGMgyUw==';
@@ -482,6 +482,55 @@ export function loadDifficultyTable(raw: string): PhigrosDifficultyTable {
     const vals = cols.slice(1).map((c) => (c === '' ? 0 : Number(c)));
     while (vals.length < 4) vals.push(0);
     table[id] = vals;
+  }
+  return table;
+}
+
+/** 将 chart 目录 ID（常带 `.0`）对齐到 catalog song.id */
+export function normalizePhigrosSongId(chartSongId: string): string {
+  return chartSongId.replace(/\.0$/, '');
+}
+
+function parseNoteCountsCell(raw: string): PhigrosChartNotes | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length !== 4) return null;
+    const [tap, hold, drag, flick] = parsed;
+    if (![tap, hold, drag, flick].every((n) => Number.isInteger(n) && (n as number) >= 0)) {
+      return null;
+    }
+    return {
+      tap: tap as number,
+      hold: hold as number,
+      drag: drag as number,
+      flick: flick as number,
+      total: (tap as number) + (hold as number) + (drag as number) + (flick as number),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 解析 OSS `metadata/note_counts.tsv`。
+ * 列：songId, EZ, HD, IN, [AT]；每格为 JSON `[Tap,Hold,Drag,Flick]`。
+ */
+export function loadNoteCountsTable(raw: string): Record<string, PhigrosChartNotes[]> {
+  const table: Record<string, PhigrosChartNotes[]> = {};
+  for (const line of raw.trim().split('\n')) {
+    if (!line.trim()) continue;
+    const cols = line.split('\t');
+    const chartSongId = cols[0];
+    if (!chartSongId) continue;
+    const notes: PhigrosChartNotes[] = [];
+    for (const cell of cols.slice(1)) {
+      if (!cell) break;
+      const parsed = parseNoteCountsCell(cell);
+      if (!parsed) break;
+      notes.push(parsed);
+    }
+    if (notes.length === 0) continue;
+    table[normalizePhigrosSongId(chartSongId)] = notes;
   }
   return table;
 }

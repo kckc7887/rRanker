@@ -8,7 +8,9 @@ import {
   decodeSaveZip,
   gameRecordToScoreRecords,
   loadDifficultyTable,
+  loadNoteCountsTable,
   mergeDifficultyTables,
+  normalizePhigrosSongId,
   parseGameRecord,
   parseChallengeModeRank,
   phigrosScoreToRate,
@@ -294,5 +296,28 @@ describe('phigros save parsing', () => {
   it('parseChallengeModeRank decodes level and rank correctly', () => {
     expect(parseChallengeModeRank(442)).toEqual({ level: 4, rank: 42 });
     expect(parseChallengeModeRank(0)).toEqual({ level: 0, rank: 0 });
+  });
+
+  it('normalizePhigrosSongId strips trailing .0', () => {
+    expect(normalizePhigrosSongId('Credits.Frums.0')).toBe('Credits.Frums');
+    expect(normalizePhigrosSongId('Credits.Frums')).toBe('Credits.Frums');
+  });
+
+  it('loadNoteCountsTable parses TSV with .0 ids and 3/4 difficulties', () => {
+    const raw = [
+      'Glaciaxion.SunsetRay.0\t[57,53,45,16]\t[169,47,139,16]\t[446,65,84,94]',
+      'Credits.Frums.0\t[168,76,514,8]\t[389,146,460,51]\t[955,163,352,130]\t[1388,85,393,159]',
+      'Bad.Row\tnot-json\t[1,2,3,4]',
+      'Short.Row\t[1,2,3]',
+    ].join('\n');
+    const table = loadNoteCountsTable(raw);
+    expect(table['Glaciaxion.SunsetRay']).toHaveLength(3);
+    expect(table['Glaciaxion.SunsetRay']?.[2]).toEqual({
+      tap: 446, hold: 65, drag: 84, flick: 94, total: 689,
+    });
+    expect(table['Credits.Frums']).toHaveLength(4);
+    expect(table['Credits.Frums']?.[3]?.total).toBe(1388 + 85 + 393 + 159);
+    expect(table['Bad.Row']).toBeUndefined();
+    expect(table['Short.Row']).toBeUndefined();
   });
 });
