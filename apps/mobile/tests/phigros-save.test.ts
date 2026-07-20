@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import CryptoJS from 'crypto-js';
 import JSZip from 'jszip';
 import {
+  calculateRks,
   computeB30,
   decryptBytes,
   decodeSaveZip,
@@ -165,7 +166,13 @@ describe('phigros save parsing', () => {
     expect(records[1]?.level).toBe('HD');
   });
 
-  it('computeB30 uses phiTool formula: b27 rks + phi3 difficulty, divided by 30', () => {
+  it('calculateRks returns 0 below 70% acc', () => {
+    expect(calculateRks(15, 69.99)).toBe(0);
+    expect(calculateRks(15, 70)).toBeGreaterThan(0);
+    expect(calculateRks(15, 100)).toBe(15);
+  });
+
+  it('computeB30: Best27 用成绩定数，Phi3 用 acc=100% 的谱面定数，除以 30', () => {
     const gameRecord = {
       'Perfect.P': [
         null,
@@ -193,17 +200,17 @@ describe('phigros save parsing', () => {
     const apRks = 16.0 * ((99.5 - 55) / 45) ** 2;
     const goodRks = 10.0 * ((98 - 55) / 45) ** 2;
 
-    expect(b30.phi3.map((s) => s.songId)).toEqual(['AP.A', 'Perfect.P']);
-    expect(b30.phi3ContributionSum).toBeCloseTo(16 + 15, 4);
-    expect(b30.rks).toBe(roundRks((apRks + 15 + goodRks + 16 + 15) / 30));
+    expect(b30.phi3.map((s) => s.songId)).toEqual(['Perfect.P']);
+    expect(b30.phi3ContributionSum).toBeCloseTo(15, 4);
+    expect(b30.rks).toBe(roundRks((apRks + 15 + goodRks + 15) / 30));
   });
 
-  it('selectPhi3 picks score=1000000 by difficulty, not acc>=100', () => {
+  it('selectPhi3 picks acc=100% by chart constant, ignores AP without 100% acc', () => {
     const records = [
       { songId: 'AP', level: 2 as const, difficulty: 16, score: 1000000, acc: 99.5, fc: true, rks: 15.5 },
       { songId: 'HighAcc', level: 2 as const, difficulty: 12, score: 990000, acc: 100, fc: false, rks: 12 },
     ];
-    expect(selectPhi3(records).map((r) => r.songId)).toEqual(['AP']);
-    expect(sumPhi3Contribution(records)).toBe(16);
+    expect(selectPhi3(records).map((r) => r.songId)).toEqual(['HighAcc']);
+    expect(sumPhi3Contribution(records)).toBe(12);
   });
 });

@@ -14,7 +14,7 @@ import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 7;
+const GAME_DATA_QUERY_VERSION = 8;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -40,26 +40,28 @@ export function useGameData() {
       if (activeGameId === 'phigros') {
         if (scoreProvider instanceof PhigrosScoreProvider) {
           scoreProvider.invalidateCache();
-          const [player, records, bestSections] = await Promise.all([
+          const [player, records, b30, bestSections] = await Promise.all([
             scoreProvider.getPlayer(),
             scoreProvider.getRecords(),
+            scoreProvider.getB30(),
             scoreProvider.getBestSections(),
           ]);
 
           const source = { kind: 'generated' as const, label: 'Phigros 云存档', updatedAt: new Date().toISOString(), isStale: false };
+          const rks = b30.rks;
           return {
             gameId: 'phigros' as const,
             providerId: 'phi-taptap' as const,
             profile: getGameProfile('phigros'),
             payload: {
               kind: 'phigros' as const,
-              player,
+              player: { ...player, rating: rks },
               records,
               bestSections,
               playerScore: {
                 label: 'RKS',
-                value: player.rating,
-                display: player.rating.toFixed(4),
+                value: rks,
+                display: rks.toFixed(4),
               },
               source,
               catalogSource: source,
