@@ -12,7 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.rranker.app",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["taptap"]
+        "LSApplicationQueriesSchemes": ["tapiosdk", "tapsdk", "taptap"]
       }
     },
     "android": {
