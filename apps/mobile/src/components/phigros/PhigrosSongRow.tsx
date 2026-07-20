@@ -1,4 +1,5 @@
 import { memo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -9,22 +10,28 @@ import { useAppTheme } from '@/theme/app-theme';
 export const PhigrosSongRow = memo(function PhigrosSongRow({
   song,
   blurUrl,
+  favorite = false,
+  favoritePending = false,
+  onFavoriteChange,
 }: {
   song: Song;
   blurUrl: string | null;
+  favorite?: boolean;
+  favoritePending?: boolean;
+  onFavoriteChange?: (songId: string, favorite: boolean) => void;
 }) {
   const theme = useAppTheme();
   const [coverFailed, setCoverFailed] = useState(false);
   const openDetail = () => router.push(`/songs/${encodeURIComponent(song.id)}` as Href);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`查看歌曲 ${song.title}`}
-      onPress={openDetail}
-      style={[styles.row, { backgroundColor: theme.surface }]}
-    >
-      <View style={styles.main}>
+    <View style={[styles.row, { backgroundColor: theme.surface }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`查看歌曲 ${song.title}`}
+        onPress={openDetail}
+        style={styles.openSong}
+      >
         <View style={styles.coverWrap}>
           {coverFailed || !blurUrl ? (
             <View style={[styles.placeholder, { backgroundColor: theme.input }]}>
@@ -59,14 +66,25 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
               ))}
           </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+      {onFavoriteChange ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
+          disabled={favoritePending}
+          onPress={() => onFavoriteChange(song.id, !favorite)}
+          style={styles.favorite}
+        >
+          <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={theme.accent} size={24} />
+        </Pressable>
+      ) : null}
+    </View>
   );
 });
 
 const styles = StyleSheet.create({
   row: { borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  main: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  openSong: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
   coverWrap: { width: 58, height: 58 },
   cover: { width: 58, height: 58, borderRadius: 9 },
   placeholder: { width: 58, height: 58, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
@@ -75,4 +93,5 @@ const styles = StyleSheet.create({
   title: { fontWeight: '700' },
   composer: { fontSize: 11 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  favorite: { paddingHorizontal: 4, paddingVertical: 8 },
 });

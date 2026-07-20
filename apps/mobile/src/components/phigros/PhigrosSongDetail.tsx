@@ -19,15 +19,21 @@ import {
   ScrollView as GestureScrollView,
 } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Card } from '@/components/Card';
+import { TagEditor } from '@/components/TagEditor';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { Chart, ScoreRecord, Song } from '@/domain/models';
 import { PHIGROS_MAX_SCORE, phigrosScoreToRate } from '@/domain/phigros';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
+import { buildTagHistory, chartLibraryKey, songLibraryKey } from '@/domain/user-library';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { useUserLibrary } from '@/hooks/use-user-library';
 import { useAppTheme } from '@/theme/app-theme';
+
+const PHIGROS_CHART_TYPE = 'SD' as const;
 
 const DETAIL_SCORE_FONT_SIZE = 34;
 const DETAIL_SCORE_LINE_HEIGHT = 40;
@@ -58,6 +64,8 @@ const RATE_LABELS: Record<RateKind, string> = {
   phi: '\u03C6',
 };
 
+type LibraryHook = ReturnType<typeof useUserLibrary>;
+
 export function PhigrosSongDetail({
   songId,
   levelIndex,
@@ -68,6 +76,7 @@ export function PhigrosSongDetail({
   const theme = useAppTheme();
   const catalog = usePhigrosCatalog();
   const gameData = useGameData();
+  const library = useUserLibrary();
   const song = useMemo(() => {
     const songs = catalog.data?.snapshot.songs;
     return songs?.find((item) => item.id === songId);
@@ -90,6 +99,10 @@ export function PhigrosSongDetail({
   const illustrationUrl = songId && provider ? provider.getIllustrationUrl(songId) : null;
   const blurUrl = songId && provider ? provider.getIllustrationBlurUrl(songId) : null;
   const lowresUrl = songId && provider ? provider.getIllustrationLowresUrl(songId) : null;
+  const songItem = song ? library.data?.find((item) => item.key === songLibraryKey(song.id)) : undefined;
+  const favorite = songItem?.kind === 'song' && songItem.favorite;
+  const favoriteDisabled = library.isLoading || library.isUpdating;
+  const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
 
   return <>
     <Stack.Screen options={{
@@ -119,17 +132,33 @@ export function PhigrosSongDetail({
             blurUrl={blurUrl}
             lowresUrl={lowresUrl}
             initialLevelIndex={levelIndex}
+            library={library}
           />
         )}
       />
-      <PhigrosDetailChrome />
+      <PhigrosDetailChrome
+        song={song}
+        favorite={favorite}
+        favoriteDisabled={favoriteDisabled}
+        onToggleFavorite={onToggleFavorite}
+      />
     </View>
   </>;
 }
 
-function PhigrosDetailChrome() {
+function PhigrosDetailChrome({
+  song,
+  favorite,
+  favoriteDisabled,
+  onToggleFavorite,
+}: {
+  song?: Song;
+  favorite: boolean;
+  favoriteDisabled: boolean;
+  onToggleFavorite?: () => void;
+}) {
   const insets = useSafeAreaInsets();
-  return (
+  return <>
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="返回"
@@ -145,7 +174,27 @@ function PhigrosDetailChrome() {
     >
       <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
     </Pressable>
-  );
+    {song && onToggleFavorite ? (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
+        disabled={favoriteDisabled}
+        hitSlop={12}
+        onPress={onToggleFavorite}
+        style={({ pressed }) => [
+          styles.headerButton,
+          styles.headerFloatingButton,
+          { top: insets.top, right: 8 },
+          favorite && styles.headerFavoriteActive,
+          Platform.OS !== 'ios' && styles.headerButtonBg,
+          Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
+          pressed && { opacity: 0.7 },
+        ]}
+      >
+        <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
+      </Pressable>
+    ) : null}
+  </>;
 }
 
 function Detail({
@@ -157,6 +206,7 @@ function Detail({
   blurUrl,
   lowresUrl,
   initialLevelIndex,
+  library,
 }: {
   song: Song;
   records: ScoreRecord[];
@@ -166,9 +216,11 @@ function Detail({
   blurUrl: string | null;
   lowresUrl: string | null;
   initialLevelIndex?: number;
+  library: LibraryHook;
 }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
+  const songItem = library.data?.find((item) => item.key === songLibraryKey(song.id));
   const sortedCharts = useMemo(
     () => [...song.charts].sort((a, b) => b.levelIndex - a.levelIndex),
     [song.charts],
@@ -252,6 +304,7 @@ function Detail({
           charts={sortedCharts}
           records={records}
           song={song}
+          library={library}
           cardWidth={cardWidth}
           initialIndex={initialIndex}
         />
@@ -270,6 +323,16 @@ function Detail({
               state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live',
             },
           ]} />
+          <Card>
+            <TagEditor
+              tags={songItem?.kind === 'song' ? songItem.tags : []}
+              presets={library.tagPresets ?? []}
+              historyTags={buildTagHistory(library.data ?? [], songLibraryKey(song.id), library.tagPresets ?? [])}
+              disabled={library.isUpdating}
+              onPresetsChange={library.setTagPresets}
+              onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)}
+            />
+          </Card>
         </View>
       </> : <View testID="phigros-song-detail-deferred-placeholder" style={styles.deferredPlaceholder} />}
     </ScrollView>
@@ -290,12 +353,14 @@ function ChartCarousel({
   charts,
   records,
   song,
+  library,
   cardWidth,
   initialIndex,
 }: {
   charts: Chart[];
   records: ScoreRecord[];
   song: Song;
+  library: LibraryHook;
   cardWidth: number;
   initialIndex: number;
 }) {
@@ -344,6 +409,8 @@ function ChartCarousel({
               key={`${chart.songId}:${chart.levelIndex}`}
               chart={chart}
               best={best}
+              song={song}
+              library={library}
               width={cardWidth}
             />
           );
@@ -356,15 +423,21 @@ function ChartCarousel({
 function ChartCard({
   chart,
   best,
+  song,
+  library,
   width,
 }: {
   chart: Chart;
   best?: ScoreRecord;
+  song: Song;
+  library: LibraryHook;
   width: number;
 }) {
   const theme = useAppTheme();
   const colors = phigrosLevelColors(chart.levelIndex);
   const label = phigrosLevelLabel(chart.levelIndex);
+  const chartItem = library.data?.find((item) => item.key === chartLibraryKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex));
+  const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const levelNumber = Math.floor(chart.difficultyConstant);
   const score = best?.dxScore;
   const acc = best?.achievements;
@@ -439,8 +512,49 @@ function ChartCard({
       <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         谱师：{chart.charter || '未提供'}
       </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
+        disabled={library.isUpdating}
+        onPress={() => void library.setChartPractice(song.id, PHIGROS_CHART_TYPE, chart.levelIndex, !practice)}
+        style={[
+          styles.action,
+          practiceActionStyle(colors.fg, practice),
+        ]}
+      >
+        <Text style={[styles.actionText, practiceTextStyle(colors.fg, practice)]}>
+          {practice ? '已加入练习清单' : '加入练习清单'}
+        </Text>
+      </Pressable>
+      <TagEditor
+        tags={chartItem?.tags ?? []}
+        presets={library.tagPresets ?? []}
+        historyTags={buildTagHistory(
+          library.data ?? [],
+          chartLibraryKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex),
+          library.tagPresets ?? [],
+        )}
+        disabled={library.isUpdating}
+        onPresetsChange={library.setTagPresets}
+        onChange={(tags) => library.setTags({
+          kind: 'chart',
+          songId: song.id,
+          type: PHIGROS_CHART_TYPE,
+          levelIndex: chart.levelIndex,
+        }, tags)}
+      />
     </View>
   );
+}
+
+function practiceActionStyle(fg: string, filled: boolean) {
+  return filled
+    ? { backgroundColor: fg, borderColor: fg }
+    : { backgroundColor: 'transparent', borderColor: fg };
+}
+
+function practiceTextStyle(fg: string, filled: boolean) {
+  return { color: filled ? '#FFFFFF' : fg };
 }
 
 function DetailRateBadge({ record }: { record: ScoreRecord }) {
@@ -485,6 +599,8 @@ const styles = StyleSheet.create({
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
   headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  headerFavoriteActive: {},
+  headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   metadataTable: {
     flexDirection: 'row', alignItems: 'flex-start',
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -543,6 +659,15 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
   chartDivider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
   chartMeta: { fontSize: 12, lineHeight: 18 },
+  action: {
+    marginTop: 13,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderRadius: 11,
+    padding: 10,
+    alignItems: 'center',
+  },
+  actionText: { fontWeight: '700' },
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
   meta: { color: '#6B7280', fontSize: 12 },
 });
