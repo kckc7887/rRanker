@@ -26,6 +26,7 @@
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
     "@tanstack/react-query": "^5.101.2",
+    "crypto-js": "^4.2.0",
     "expo": "~54.0.34",
     "expo-asset": "~12.0.13",
     "expo-blur": "~15.0.8",
@@ -49,6 +50,7 @@
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
     "expo-web-browser": "~15.0.11",
+    "jszip": "^3.10.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -66,6 +68,7 @@
   },
   "devDependencies": {
     "@testing-library/react-native": "^14.0.1",
+    "@types/crypto-js": "^4.2.2",
     "@types/jest": "29.5.14",
     "@types/node": "^26.1.1",
     "@types/react": "~19.1.0",

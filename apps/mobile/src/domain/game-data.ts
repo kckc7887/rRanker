@@ -19,6 +19,7 @@ export type PlayerScoreSummary = {
 /**
  * 分游戏载荷。新游戏新增 kind，不要往舞萌字段里塞无关数据。
  * - maimai：DX Rating + B35/B15 + 水鱼/落雪成绩曲库
+ * - phigros：RKS + B30 成绩
  * - empty：测试等空壳游戏，不继承舞萌成绩
  * - unsupported：已登记但尚未接入成绩模型的游戏
  */
@@ -33,8 +34,16 @@ export type GamePayload =
       unmatchedRecordCount: number;
       source: DataSource;
       catalogSource: DataSource;
-      /** 过渡期：既有页面仍可读完整快照 */
       snapshot: ScoreSnapshot;
+    }
+  | {
+      kind: 'phigros';
+      player: Player;
+      records: ScoreRecord[];
+      bestSections: BestListSection[];
+      playerScore: PlayerScoreSummary;
+      source: DataSource;
+      catalogSource: DataSource;
     }
   | {
       kind: 'empty';

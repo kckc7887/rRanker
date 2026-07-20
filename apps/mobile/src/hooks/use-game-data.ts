@@ -11,6 +11,7 @@ import { ScoreService } from '@/services/score-service';
 import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
+import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
 const GAME_DATA_QUERY_VERSION = 4;
@@ -37,16 +38,41 @@ export function useGameData() {
         };
       }
       if (activeGameId === 'phigros') {
+        if (scoreProvider instanceof PhigrosScoreProvider) {
+          const [player, records, b30] = await Promise.all([
+            scoreProvider.getPlayer(),
+            scoreProvider.getRecords(),
+            scoreProvider.getB30(),
+          ]);
+
+          const source = { kind: 'generated' as const, label: 'Phigros 云存档', updatedAt: new Date().toISOString(), isStale: false };
+          return {
+            gameId: 'phigros' as const,
+            providerId: 'phi-taptap' as const,
+            profile: getGameProfile('phigros'),
+            payload: {
+              kind: 'phigros' as const,
+              player,
+              records,
+              bestSections: [
+                { id: 'b30', title: 'Best30', records: records.slice(0, 30) },
+              ],
+              playerScore: {
+                label: 'RKS',
+                value: b30.rks,
+                display: b30.rks.toFixed(2),
+              },
+              source,
+              catalogSource: source,
+            },
+          };
+        }
+
         return {
-          gameId: 'phigros',
+          gameId: 'phigros' as const,
           providerId: null,
           profile: getGameProfile('phigros'),
-          payload: {
-            kind: 'unsupported',
-            gameId: 'phigros',
-            displayName: 'Phigros',
-            message: '当前游戏暂未接入成绩。',
-          },
+          payload: emptyGamePayload('phigros', 'Phigros'),
         };
       }
 
@@ -80,12 +106,22 @@ export function useGameData() {
   });
 
   useEffect(() => {
-    if (!query.data || query.data.payload.kind !== 'maimai') return;
-    updateBoundAccountScore(
-      activeAccountId,
-      formatPlayerScore(query.data.payload.playerScore.value, query.data.profile.ratingDigits),
-      query.data.payload.player.displayName,
-    );
+    if (!query.data) return;
+    const d = query.data;
+    if (d.payload.kind === 'maimai') {
+      updateBoundAccountScore(
+        activeAccountId,
+        formatPlayerScore(d.payload.playerScore.value, d.profile.ratingDigits),
+        d.payload.player.displayName,
+      );
+    }
+    if (d.payload.kind === 'phigros') {
+      updateBoundAccountScore(
+        activeAccountId,
+        d.payload.playerScore.display,
+        d.payload.player.displayName,
+      );
+    }
   }, [activeAccountId, query.data, updateBoundAccountScore]);
 
   return {
@@ -94,7 +130,7 @@ export function useGameData() {
     activeGameId,
     activeProviderId,
     activeAccountId,
-    isDataStale: !!query.data && query.data.payload.kind === 'maimai'
+    isDataStale: !!query.data && (query.data.payload.kind === 'maimai' || query.data.payload.kind === 'phigros')
       && (query.data.payload.source.isStale || query.data.payload.catalogSource.isStale),
   };
 }

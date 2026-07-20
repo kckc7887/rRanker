@@ -43,6 +43,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   lxns: '落雪查分器',
   local: '本地查分器',
   'maimai-test': '示例查分器',
+  'phi-taptap': 'TapTap 云存档',
 };
 
 export function createTestBoundAccount(): BoundAccount {
@@ -106,6 +107,22 @@ export function createMaimaiBoundAccount(input: {
     scoreLabel: profile.ratingLabel,
     scoreDisplay: formatPlayerScore(input.rating, profile.ratingDigits),
     providerTitle: PROVIDER_TITLES[input.providerId],
+  };
+}
+
+export function createPhigrosBoundAccount(input: {
+  playerId: string;
+  rating: number;
+}): BoundAccount {
+  const profile = getGameProfile('phigros');
+  return {
+    id: `phigros:phi-taptap:${input.playerId}`,
+    gameId: 'phigros',
+    providerId: 'phi-taptap',
+    displayName: input.playerId,
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: formatPlayerScore(input.rating, profile.ratingDigits),
+    providerTitle: PROVIDER_TITLES['phi-taptap'],
   };
 }
 

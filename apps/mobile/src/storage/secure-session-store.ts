@@ -26,7 +26,7 @@ const EMPTY_VAULT: SessionVault = { version: 2, activeAccountId: null, accounts:
 
 function isPersistableSession(session: ProviderSession): session is ProviderSession & { persistable: true } {
   if (session.persistable !== true) return false;
-  if (session.mode === 'jwt' || session.mode === 'import-token') return true;
+    if (session.mode === 'jwt' || session.mode === 'import-token' || session.mode === 'phi-session') return true;
   if (session.mode === 'lxns-oauth') {
     return typeof session.accessToken === 'string'
       && typeof session.refreshToken === 'string'
@@ -43,7 +43,7 @@ function parseVault(raw: string): SessionVault | null {
       if (!account || typeof account !== 'object') return false;
       if (typeof account.id !== 'string' || typeof account.displayName !== 'string') return false;
       if (account.gameId !== 'maimai' && account.gameId !== 'phigros' && account.gameId !== 'test') return false;
-      if (account.providerId !== 'diving-fish' && account.providerId !== 'lxns') return false;
+      if (account.providerId !== 'diving-fish' && account.providerId !== 'lxns' && account.providerId !== 'phi-taptap') return false;
       return isPersistableSession(account.session);
     });
     return {

@@ -377,6 +377,7 @@ function PinnedPlateCards({ plateIds, records }: { plateIds: readonly number[]; 
 
 function displayName(bundle: GameDataBundle): string {
   if (bundle.payload.kind === 'maimai') return bundle.payload.player.displayName;
+  if (bundle.payload.kind === 'phigros') return bundle.payload.player.displayName;
   return bundle.payload.displayName;
 }
 

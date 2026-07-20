@@ -12,6 +12,7 @@ export type ProviderSession =
     expiresAt: number;
     persistable: true;
   }
+  | { mode: 'phi-session'; sessionToken: string; playerId: string; persistable: true }
   | { mode: 'cookie-jar'; persistable: false };
 export interface LoginCredentials { username: string; password: string }
 export interface AuthProvider {
