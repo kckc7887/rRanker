@@ -14,7 +14,7 @@ import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 5;
+const GAME_DATA_QUERY_VERSION = 6;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -60,7 +60,7 @@ export function useGameData() {
               playerScore: {
                 label: 'RKS',
                 value: b30.rks,
-                display: b30.rks.toFixed(2),
+                display: b30.rks.toFixed(4),
               },
               source,
               catalogSource: source,

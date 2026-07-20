@@ -142,6 +142,14 @@ export type PhigrosB30 = {
   rks: number;
   best27: PhigrosScoreEntry[];
   phi3: PhigrosScoreEntry[];
+  /** Best27 各曲 RKS 之和（计入总 RKS 分子） */
+  best27RksSum: number;
+  /** Phi3 各曲 RKS 之和（计入总 RKS 分子；可与 Best27 重复计同一谱面） */
+  phi3RksSum: number;
+  /** Best27 平均 RKS（展示用，非求和） */
+  best27AvgRks: number;
+  /** Phi3 平均 RKS（展示用，非求和） */
+  phi3AvgRks: number;
 };
 
 export type PhigrosSummary = {
@@ -239,6 +247,32 @@ export function calculateRks(difficulty: number, acc: number): number {
   return difficulty * ((acc - 55) / 45) ** 2;
 }
 
+export function roundRks(value: number): number {
+  return Math.round(value * 10000) / 10000;
+}
+
+/** acc≥100 按 RKS 降序取前三（astrbot findAccRecord(100)；非 PHI 评级） */
+export function selectPhi3(allRecords: PhigrosScoreEntry[]): PhigrosScoreEntry[] {
+  return [...allRecords]
+    .filter((r) => r.acc >= 100)
+    .sort((a, b) => b.rks - a.rks)
+    .slice(0, 3);
+}
+
+function sumPhi3Rks(
+  allRecords: PhigrosScoreEntry[],
+  override?: { songId: string; level: PhigrosLevel; rks: number; acc: number },
+): number {
+  const adjusted = override
+    ? allRecords.map((r) =>
+      r.songId === override.songId && r.level === override.level
+        ? { ...r, rks: override.rks, acc: override.acc }
+        : r,
+    )
+    : allRecords;
+  return selectPhi3(adjusted).reduce((sum, s) => sum + s.rks, 0);
+}
+
 /** 将存档 gameRecord 展开为带定数与 RKS 的全部游玩记录 */
 export function collectScoredEntries(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
@@ -253,11 +287,10 @@ export function collectScoredEntries(
       const entry = levels[lv];
       if (!entry || lv >= diffs.length) continue;
       const diff = diffs[lv];
-      const rks = calculateRks(diff, entry.acc);
       allRecords.push({
         ...entry,
         difficulty: diff,
-        rks: Math.round(rks * 100) / 100,
+        rks: calculateRks(diff, entry.acc),
       });
     }
   }
@@ -310,18 +343,17 @@ export function computeB30(
 
   const sortedByRks = [...allRecords].sort((a, b) => b.rks - a.rks);
   const best27 = sortedByRks.slice(0, 27);
-
-  const phiRecords = allRecords.filter((r) => r.score === 1000000 && r.acc === 100);
-  const sortedByDiff = [...phiRecords].sort((a, b) => b.difficulty - a.difficulty);
-  const phi3 = sortedByDiff.slice(0, 3);
+  const phi3 = selectPhi3(allRecords);
 
   const best27RksSum = best27.reduce((sum, s) => sum + s.rks, 0);
-  const phi3DiffSum = phi3.reduce((sum, s) => sum + s.difficulty, 0);
-  const finalRks = Math.round(((best27RksSum + phi3DiffSum) / 30) * 100) / 100;
+  const phi3RksSum = phi3.reduce((sum, s) => sum + s.rks, 0);
+  const finalRks = roundRks((best27RksSum + phi3RksSum) / 30);
 
-  const targetRks = finalRks + 0.01 - 0.005;
+  const displayRks2 = Math.floor(finalRks * 100) / 100;
+  const targetRks = displayRks2 + 0.01 - 0.005;
+
   const scoredBest27 = best27.map((song) => {
-    if (song.score === 1000000) return { ...song, targetAccForPlusOne: null };
+    if (song.acc >= 100) return { ...song, targetAccForPlusOne: null };
 
     const diff = song.difficulty;
     let low = Math.max(55.01, song.acc);
@@ -336,25 +368,14 @@ export function computeB30(
         s.songId === song.songId && s.level === song.level ? { rks: newRks } : { rks: s.rks },
       );
       const tempBestSum = tempBest27.reduce((s, r) => s + r.rks, 0);
+      const tempPhiSum = sumPhi3Rks(allRecords, {
+        songId: song.songId,
+        level: song.level,
+        rks: newRks,
+        acc: mid,
+      });
+      const tempRks = (tempBestSum + tempPhiSum) / 30;
 
-      let tempPhi3DiffSum = 0;
-      if (song.score === 1000000 && mid >= 100) {
-        const candidates = allRecords
-          .map((r) => {
-            if (r.songId === song.songId && r.level === song.level) {
-              return { difficulty: diff, isPhi: mid >= 100 };
-            }
-            return { difficulty: r.difficulty, isPhi: r.score === 1000000 };
-          })
-          .filter((r) => r.isPhi)
-          .sort((a, b) => b.difficulty - a.difficulty)
-          .slice(0, 3);
-        tempPhi3DiffSum = candidates.reduce((s, r) => s + r.difficulty, 0);
-      } else {
-        tempPhi3DiffSum = phi3DiffSum;
-      }
-
-      const tempRks = (tempBestSum + tempPhi3DiffSum) / 30;
       if (tempRks >= targetRks) {
         target = mid;
         high = mid;
@@ -363,10 +384,21 @@ export function computeB30(
       }
     }
 
-    return { ...song, targetAccForPlusOne: target && target <= 100 ? Math.round(target * 100) / 100 : 100.0 };
+    return {
+      ...song,
+      targetAccForPlusOne: target && target <= 100 ? Math.round(target * 100) / 100 : 100.0,
+    };
   });
 
-  return { rks: finalRks, best27: scoredBest27, phi3 };
+  return {
+    rks: finalRks,
+    best27: scoredBest27,
+    phi3,
+    best27RksSum,
+    phi3RksSum,
+    best27AvgRks: best27.length ? roundRks(best27RksSum / best27.length) : 0,
+    phi3AvgRks: phi3.length ? roundRks(phi3RksSum / phi3.length) : 0,
+  };
 }
 
 export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{

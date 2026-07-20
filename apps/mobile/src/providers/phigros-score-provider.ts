@@ -16,6 +16,7 @@ import {
   gameRecordToScoreRecords,
   loadDifficultyTable,
   phigrosEntryToScoreRecord,
+  roundRks,
   type PhigrosB30,
   type PhigrosDifficultyTable,
   type PhigrosScoreEntry,
@@ -97,7 +98,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return {
       id: this.playerId,
       displayName: this.playerId,
-      rating: Math.round(this.summaryCache.rankingScore * 100) / 100,
+      rating: roundRks(this.summaryCache.rankingScore),
       source: this.source(),
     };
   }
