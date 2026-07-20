@@ -132,6 +132,9 @@ export type PhigrosScoreEntry = {
   level: PhigrosLevel;
   difficulty: number;
   score: number;
+  /** 存档原始准确率（百分数 0–100，未四舍五入） */
+  rawAcc: number;
+  /** 展示用准确率（保留两位） */
   acc: number;
   fc: boolean;
   rks: number;
@@ -169,9 +172,15 @@ export type PhigrosSaveData = {
   updatedAt: string;
 };
 
+function base64ToBytes(b64: string): Uint8Array {
+  const hexStr = CryptoJS.enc.Base64.parse(b64).toString(CryptoJS.enc.Hex);
+  const pairs = hexStr.match(/.{2}/g);
+  if (!pairs) return new Uint8Array(0);
+  return new Uint8Array(pairs.map((b) => parseInt(b, 16)));
+}
+
 export function parseSummary(summaryBase64: string): PhigrosSummary {
-  const hexStr = CryptoJS.enc.Base64.parse(summaryBase64).toString(CryptoJS.enc.Hex);
-  const bytes = new Uint8Array(hexStr.match(/.{2}/g)!.map((b) => parseInt(b, 16)));
+  const bytes = base64ToBytes(summaryBase64);
   const r = new ByteReader(bytes);
 
   const result: PhigrosSummary = {
@@ -221,14 +230,15 @@ export function parseGameRecord(
     for (let lv = 0; lv < 4; lv++) {
       if ((exist >> lv) & 1) {
         const score = r.getInt();
-        const acc = r.getFloat();
-        const isFullCombo = (score === 1000000 && acc === 100) || !!((fcFlag >> lv) & 1);
+        const rawAcc = r.getFloat();
+        const isFullCombo = (score === 1000000 && rawAcc >= 99.995) || !!((fcFlag >> lv) & 1);
         levels[lv] = {
           songId: key,
           level: lv as PhigrosLevel,
           difficulty: 0,
           score,
-          acc: Math.round(acc * 100) / 100,
+          rawAcc,
+          acc: Math.round(rawAcc * 100) / 100,
           fc: isFullCombo,
           rks: 0,
         };
@@ -242,20 +252,25 @@ export function parseGameRecord(
   return record;
 }
 
-/** 成绩定数：acc 为存档中的百分数（0–100）；acc≥100% 时等于谱面定数 */
-export function calculateRks(difficulty: number, acc: number): number {
-  if (acc < 70) return 0;
-  return difficulty * ((acc - 55) / 45) ** 2;
+/** 游戏内显示为 100% 的准确率（存档浮点可能为 99.996 等） */
+export function isAcc100Percent(rawAcc: number): boolean {
+  return rawAcc >= 99.995;
+}
+
+/** 成绩定数：rawAcc 为存档百分数（0–100）；acc≥100% 时等于谱面定数 */
+export function calculateRks(difficulty: number, rawAcc: number): number {
+  if (rawAcc < 70) return 0;
+  return difficulty * ((rawAcc - 55) / 45) ** 2;
 }
 
 export function roundRks(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
-/** Phi3 槽：acc=100% 按谱面定数降序取前三；与分数/AP 无关，贡献取谱面定数 */
+/** Phi3 槽：acc=100% 按谱面定数降序取前三；贡献取谱面定数（非成绩定数） */
 export function selectPhi3(allRecords: PhigrosScoreEntry[]): PhigrosScoreEntry[] {
   return [...allRecords]
-    .filter((r) => r.acc >= 100)
+    .filter((r) => isAcc100Percent(r.rawAcc))
     .sort((a, b) => b.difficulty - a.difficulty)
     .slice(0, 3);
 }
@@ -282,7 +297,7 @@ export function collectScoredEntries(
       allRecords.push({
         ...entry,
         difficulty: diff,
-        rks: calculateRks(diff, entry.acc),
+        rks: calculateRks(diff, entry.rawAcc),
       });
     }
   }
@@ -304,7 +319,7 @@ export function phigrosEntryToScoreRecord(entry: PhigrosScoreEntry): ScoreRecord
     rating: entry.rks,
     fc: entry.fc ? 'ap' : null,
     fs: null,
-    rate: entry.score === 1000000 && entry.acc === 100
+    rate: isAcc100Percent(entry.rawAcc) && entry.score === 1000000
       ? 'phi'
       : entry.fc
         ? 'fc'
@@ -345,10 +360,10 @@ export function computeB30(
   const targetRks = displayRks2 + 0.01 - 0.005;
 
   const scoredBest27 = best27.map((song) => {
-    if (song.acc >= 100) return { ...song, targetAccForPlusOne: null };
+    if (isAcc100Percent(song.rawAcc)) return { ...song, targetAccForPlusOne: null };
 
     const diff = song.difficulty;
-    let low = Math.max(song.acc, 70.01);
+    let low = Math.max(song.rawAcc, 70.01);
     let high = 100.0;
     let target: number | null = null;
 
@@ -362,13 +377,13 @@ export function computeB30(
       const tempBestSum = tempBest27.reduce((s, r) => s + r.rks, 0);
 
       let tempPhiSum = phi3ContributionSum;
-      if (mid >= 100) {
+      if (isAcc100Percent(mid)) {
         const candidates = allRecords
           .map((r) => {
             if (r.songId === song.songId && r.level === song.level) {
-              return { difficulty: diff, qualifies: mid >= 100 };
+              return { difficulty: diff, qualifies: isAcc100Percent(mid) };
             }
-            return { difficulty: r.difficulty, qualifies: r.acc >= 100 };
+            return { difficulty: r.difficulty, qualifies: isAcc100Percent(r.rawAcc) };
           })
           .filter((r) => r.qualifies)
           .sort((a, b) => b.difficulty - a.difficulty)

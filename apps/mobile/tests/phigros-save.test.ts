@@ -140,14 +140,14 @@ describe('phigros save parsing', () => {
   it('gameRecordToScoreRecords returns all played charts, not only B27', () => {
     const gameRecord = {
       'Glaciaxion.SunsetRay': [
-        { songId: 'Glaciaxion.SunsetRay', level: 0 as const, difficulty: 0, score: 900000, acc: 95, fc: false, rks: 0 },
+        { songId: 'Glaciaxion.SunsetRay', level: 0 as const, difficulty: 0, score: 900000, rawAcc: 95, acc: 95, fc: false, rks: 0 },
         null,
-        { songId: 'Glaciaxion.SunsetRay', level: 2 as const, difficulty: 0, score: 984131, acc: 99.69, fc: false, rks: 0 },
+        { songId: 'Glaciaxion.SunsetRay', level: 2 as const, difficulty: 0, score: 984131, rawAcc: 99.69, acc: 99.69, fc: false, rks: 0 },
         null,
       ],
       'Test.Other': [
         null,
-        { songId: 'Test.Other', level: 1 as const, difficulty: 0, score: 950000, acc: 97, fc: true, rks: 0 },
+        { songId: 'Test.Other', level: 1 as const, difficulty: 0, score: 950000, rawAcc: 97, acc: 97, fc: true, rks: 0 },
         null,
         null,
       ],
@@ -172,24 +172,41 @@ describe('phigros save parsing', () => {
     expect(calculateRks(15, 100)).toBe(15);
   });
 
+  it('selectPhi3 counts raw acc 99.996 as 100%', () => {
+    const records = [
+      {
+        songId: 'Near',
+        level: 2 as const,
+        difficulty: 15,
+        score: 999000,
+        rawAcc: 99.996,
+        acc: 100,
+        fc: false,
+        rks: 15,
+      },
+    ];
+    expect(selectPhi3(records)).toHaveLength(1);
+    expect(sumPhi3Contribution(records)).toBe(15);
+  });
+
   it('computeB30: Best27 用成绩定数，Phi3 用 acc=100% 的谱面定数，除以 30', () => {
     const gameRecord = {
       'Perfect.P': [
         null,
         null,
-        { songId: 'Perfect.P', level: 2 as const, difficulty: 0, score: 1000000, acc: 100, fc: true, rks: 0 },
+        { songId: 'Perfect.P', level: 2 as const, difficulty: 0, score: 1000000, rawAcc: 100, acc: 100, fc: true, rks: 0 },
         null,
       ],
       'AP.A': [
         null,
         null,
-        { songId: 'AP.A', level: 2 as const, difficulty: 0, score: 1000000, acc: 99.5, fc: true, rks: 0 },
+        { songId: 'AP.A', level: 2 as const, difficulty: 0, score: 1000000, rawAcc: 99.5, acc: 99.5, fc: true, rks: 0 },
         null,
       ],
       'Good.G': [
         null,
         null,
-        { songId: 'Good.G', level: 2 as const, difficulty: 0, score: 980000, acc: 98, fc: false, rks: 0 },
+        { songId: 'Good.G', level: 2 as const, difficulty: 0, score: 980000, rawAcc: 98, acc: 98, fc: false, rks: 0 },
         null,
       ],
     };
@@ -207,8 +224,8 @@ describe('phigros save parsing', () => {
 
   it('selectPhi3 picks acc=100% by chart constant, ignores AP without 100% acc', () => {
     const records = [
-      { songId: 'AP', level: 2 as const, difficulty: 16, score: 1000000, acc: 99.5, fc: true, rks: 15.5 },
-      { songId: 'HighAcc', level: 2 as const, difficulty: 12, score: 990000, acc: 100, fc: false, rks: 12 },
+      { songId: 'AP', level: 2 as const, difficulty: 16, score: 1000000, rawAcc: 99.5, acc: 99.5, fc: true, rks: 15.5 },
+      { songId: 'HighAcc', level: 2 as const, difficulty: 12, score: 990000, rawAcc: 100, acc: 100, fc: false, rks: 12 },
     ];
     expect(selectPhi3(records).map((r) => r.songId)).toEqual(['HighAcc']);
     expect(sumPhi3Contribution(records)).toBe(12);
