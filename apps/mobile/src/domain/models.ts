@@ -34,6 +34,7 @@ export interface Song {
   id: string;
   title: string;
   artist?: string;
+  illustrator?: string;
   version: string;
   versionId?: number;
   bpm?: number;
