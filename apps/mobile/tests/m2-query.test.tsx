@@ -140,6 +140,7 @@ describe('M2 song query screens', () => {
       updateCellsBatchingPeriod: 50,
       windowSize: 3,
     }));
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
     expect(StyleSheet.flatten(screen.getByLabelText('最低定数').props.style)).toEqual(expect.objectContaining({
       minHeight: 44,
       paddingVertical: 0,

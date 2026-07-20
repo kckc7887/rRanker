@@ -148,6 +148,8 @@ describe('M4 score list cards', () => {
 
   it('filters records by inclusive constants and localizes the expandable version picker', async () => {
     const screen = await render(<RecordsScreen />);
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+
     for (const label of ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
@@ -170,5 +172,19 @@ describe('M4 score list cards', () => {
 
     await fireEvent.changeText(screen.getByLabelText('最低定数'), '15');
     expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
+  });
+
+  it('filters records by inclusive achievement range', async () => {
+    const screen = await render(<RecordsScreen />);
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+
+    await fireEvent.changeText(screen.getByLabelText('最低达成率'), '100');
+    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
+    expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
+
+    await fireEvent.changeText(screen.getByLabelText('最高达成率'), '100.5');
+    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
   });
 });

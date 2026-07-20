@@ -10,6 +10,8 @@ interface RecordsFilterState {
   type: ChartType | 'all';
   constantMin: string;
   constantMax: string;
+  achievementMin: string;
+  achievementMax: string;
   sortBy: 'rating' | 'achievements' | 'title';
   versionLocale: VersionNameLocale;
   setKeyword: (value: string) => void;
@@ -19,6 +21,8 @@ interface RecordsFilterState {
   setType: (t: ChartType | 'all') => void;
   setConstantMin: (value: string) => void;
   setConstantMax: (value: string) => void;
+  setAchievementMin: (value: string) => void;
+  setAchievementMax: (value: string) => void;
   setSortBy: (s: 'rating' | 'achievements' | 'title') => void;
   setVersionLocale: (locale: VersionNameLocale) => void;
   reset: () => void;
@@ -26,12 +30,14 @@ interface RecordsFilterState {
 
 export const useRecordsFilter = create<RecordsFilterState>((set) => ({
   keyword: '',
-  collapsed: false,
+  collapsed: true,
   difficulty: 'all',
   version: 'all',
   type: 'all',
   constantMin: '',
   constantMax: '',
+  achievementMin: '',
+  achievementMax: '',
   sortBy: 'rating',
   versionLocale: 'china',
   setKeyword: (keyword) => set({ keyword }),
@@ -41,10 +47,13 @@ export const useRecordsFilter = create<RecordsFilterState>((set) => ({
   setType: (type) => set({ type }),
   setConstantMin: (constantMin) => set({ constantMin }),
   setConstantMax: (constantMax) => set({ constantMax }),
+  setAchievementMin: (achievementMin) => set({ achievementMin }),
+  setAchievementMax: (achievementMax) => set({ achievementMax }),
   setSortBy: (sortBy) => set({ sortBy }),
   setVersionLocale: (versionLocale) => set({ versionLocale }),
   reset: () => set({
-    keyword: '', collapsed: false, difficulty: 'all', version: 'all', type: 'all', constantMin: '', constantMax: '', sortBy: 'rating',
+    keyword: '', collapsed: true, difficulty: 'all', version: 'all', type: 'all',
+    constantMin: '', constantMax: '', achievementMin: '', achievementMax: '', sortBy: 'rating',
     versionLocale: 'china',
   }),
 }));
