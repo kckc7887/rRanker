@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -7,6 +8,16 @@ import { DxRatingTag } from '@/components/DxRatingTag';
 import { groupBoundAccountGameIds, type BoundAccount } from '@/domain/bound-account';
 import { findGame, type GameId } from '@/domain/game-bind-options';
 import { useAppTheme } from '@/theme/app-theme';
+import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
+
+function useHydrateAccountAvatars(accounts: BoundAccount[]): void {
+  useEffect(() => {
+    if (!accounts.some((account) => account.providerId === 'lxns' || account.providerId === 'phi-taptap')) {
+      return;
+    }
+    void hydrateBoundAccountAvatars();
+  }, [accounts]);
+}
 
 function ratingNumber(display: string): number | null {
   const value = Number.parseInt(display, 10);
@@ -24,6 +35,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   emptyText?: string;
 }) {
   const theme = useAppTheme();
+  useHydrateAccountAvatars(accounts);
   const groups = groupBoundAccountGameIds(accounts).flatMap((gameId) => {
     const game = findGame(gameId);
     return game ? [{ gameId, title: game.title, icon: game.icon, accounts: accounts.filter((item) => item.gameId === gameId) }] : [];

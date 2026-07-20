@@ -6,7 +6,8 @@ import {
   maimaiPayloadFromSnapshot,
   type GameDataBundle,
 } from '@/domain/game-data';
-import { buildLxnsIconUrl, buildPhigrosAvatarUrl } from '@/domain/account-avatar';
+import { buildLxnsIconUrl } from '@/domain/account-avatar';
+import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
 import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService } from '@/services/score-service';
 import { persistBoundAccountAvatar } from '@/services/hydrate-bound-account-avatars';
@@ -17,7 +18,7 @@ import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 12;
+const GAME_DATA_QUERY_VERSION = 13;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -66,7 +67,7 @@ export function useGameData() {
             isStale: false,
           };
           const rks = player.rating;
-          const avatarUrl = buildPhigrosAvatarUrl(gameVersion, summary.avatar);
+          const avatarUrl = await resolvePhigrosAvatarUrl(gameVersion, summary.avatar);
           return {
             gameId: 'phigros' as const,
             providerId: 'phi-taptap' as const,
@@ -126,7 +127,7 @@ export function useGameData() {
   });
 
   useEffect(() => {
-    if (!query.data) return;
+    if (!query.data || !activeAccountId) return;
     const d = query.data;
     if (d.payload.kind === 'maimai') {
       const avatarUrl = d.providerId === 'lxns'
