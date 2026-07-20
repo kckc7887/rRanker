@@ -1,3 +1,4 @@
+import { accountAvatarResourceKey } from '@/domain/account-avatar';
 import * as SQLite from 'expo-sqlite';
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
@@ -131,6 +132,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     if (accountId) {
       await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
       await this.deleteResource(scoreResourceKey(accountId));
+      await this.deleteResource(accountAvatarResourceKey(accountId));
       return;
     }
     await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);

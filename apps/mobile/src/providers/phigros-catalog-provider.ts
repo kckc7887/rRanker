@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { buildPhigrosAvatarUrl, PHIGROS_OSS_BASE } from '@/domain/account-avatar';
 import type { DataSource, Song, Chart, ChartType, CatalogSnapshot } from '@/domain/models';
 import type { CatalogProvider } from './contracts';
 import { ProviderError } from './errors';
 
-const OSS_BASE = 'https://rranker-phigros-data.cn-nb1.rains3.com';
+const OSS_BASE = PHIGROS_OSS_BASE;
 
 const CurrentSchema = z.object({
   schemaVersion: z.number(),
@@ -157,8 +158,6 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   }
 
   getAvatarUrl(avatarName: string): string | null {
-    if (!this.gameVersion) return null;
-    const safe = encodeURIComponent(avatarName);
-    return `${OSS_BASE}/phigros/releases/${this.gameVersion}/avatars/${safe}.png`;
+    return buildPhigrosAvatarUrl(this.gameVersion, avatarName);
   }
 }
