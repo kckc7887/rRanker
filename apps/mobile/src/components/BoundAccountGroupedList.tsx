@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -10,13 +10,14 @@ import { findGame, type GameId } from '@/domain/game-bind-options';
 import { useAppTheme } from '@/theme/app-theme';
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
 
-function useHydrateAccountAvatars(accounts: BoundAccount[]): void {
+function useHydrateAccountAvatars(accountIds: string): void {
+  const ranFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!accounts.some((account) => account.providerId === 'lxns' || account.providerId === 'phi-taptap')) {
-      return;
-    }
+    if (!accountIds) return;
+    if (ranFor.current === accountIds) return;
+    ranFor.current = accountIds;
     void hydrateBoundAccountAvatars();
-  }, [accounts]);
+  }, [accountIds]);
 }
 
 function ratingNumber(display: string): number | null {
@@ -35,7 +36,11 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   emptyText?: string;
 }) {
   const theme = useAppTheme();
-  useHydrateAccountAvatars(accounts);
+  const avatarHydrateKey = accounts
+    .filter((account) => account.providerId === 'lxns' || account.providerId === 'phi-taptap')
+    .map((account) => account.id)
+    .join('|');
+  useHydrateAccountAvatars(avatarHydrateKey);
   const groups = groupBoundAccountGameIds(accounts).flatMap((gameId) => {
     const game = findGame(gameId);
     return game ? [{ gameId, title: game.title, icon: game.icon, accounts: accounts.filter((item) => item.gameId === gameId) }] : [];
@@ -60,7 +65,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
             <Pressable accessibilityRole="button" disabled={!onSelectAccount}
               accessibilityLabel={`${account.displayName}，${account.scoreLabel} ${account.scoreDisplay}，${account.providerTitle}`}
               onPress={() => onSelectAccount?.(account)} style={styles.accountRow}>
-              <BoundAccountAvatar account={account} style={styles.providerIcon} />
+              <BoundAccountAvatar accountId={account.id} style={styles.providerIcon} />
               <View style={styles.copy}><View style={styles.titleRow}>
                 <Text style={[styles.accountName, { color: theme.text }]}>{account.displayName}</Text>
                 {current ? <Text style={[styles.currentBadge, { color: theme.accent, backgroundColor: theme.accentSoft }]}>当前</Text> : null}
