@@ -1,46 +1,43 @@
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
-import type { PhigrosScoreEntry } from '@/domain/phigros';
+import type { ScoreRecord } from '@/domain/models';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const PhigrosScoreCard = memo(function PhigrosScoreCard({
-  entry,
+  record,
   catalogTitle,
 }: {
-  entry: PhigrosScoreEntry;
+  record: ScoreRecord;
   catalogTitle?: string;
 }) {
   const theme = useAppTheme();
-  const scoreColor = entry.score === 1000000
-    ? '#D69B24'
-    : entry.fc
-      ? '#3B82F6'
-      : theme.text;
+  const isPhi = record.rate === 'phi';
+  const isFc = record.fc === 'ap';
+  const scoreColor = isPhi ? '#D69B24' : isFc ? '#3B82F6' : theme.text;
+  const acc = record.achievements;
+  const accText = acc % 1 === 0 ? `${acc.toFixed(0)}%` : `${acc.toFixed(2)}%`;
+  const rksText = Number.isInteger(record.rating) ? record.rating.toFixed(1) : record.rating.toFixed(2);
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
       <View style={styles.main}>
         <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-          {catalogTitle ?? entry.songId}
+          {catalogTitle ?? record.title}
         </Text>
         <View style={styles.scoreRow}>
           <Text style={[styles.score, { color: scoreColor }]}>
-            {entry.score.toLocaleString()}
+            {(record.dxScore ?? 0).toLocaleString()}
           </Text>
           <View style={styles.tags}>
-            <PhigrosDifficultyBadge levelIndex={entry.level} constant={entry.difficulty} />
-            <RateBadge rate={resolveRate(entry)} />
+            <PhigrosDifficultyBadge levelIndex={record.levelIndex} constant={record.difficultyConstant} />
+            <RateBadge rate={resolveRate(record)} />
           </View>
         </View>
       </View>
       <View style={styles.stats}>
-        <Text style={[styles.acc, { color: theme.text }]}>
-          {entry.acc % 1 === 0 ? entry.acc.toFixed(0) : entry.acc.toFixed(2)}%
-        </Text>
-        <Text style={[styles.rks, { color: theme.accent }]}>
-          {Number.isInteger(entry.rks) ? entry.rks.toFixed(1) : entry.rks.toFixed(2)}
-        </Text>
+        <Text style={[styles.acc, { color: theme.text }]}>{accText}</Text>
+        <Text style={[styles.rks, { color: theme.accent }]}>{rksText}</Text>
       </View>
     </View>
   );
@@ -62,10 +59,10 @@ const RATE_LABELS: Record<RateKind, string> = {
   s: 'S',
 };
 
-function resolveRate(entry: PhigrosScoreEntry): RateKind {
-  if (entry.score === 1000000) return 'phi';
-  if (entry.fc) return 'fc';
-  if (entry.acc >= 96) return 'v';
+function resolveRate(record: ScoreRecord): RateKind {
+  if (record.rate === 'phi') return 'phi';
+  if (record.fc === 'ap') return 'fc';
+  if (record.achievements >= 96) return 'v';
   return 's';
 }
 

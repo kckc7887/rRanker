@@ -13,7 +13,8 @@ import type { DataSource, ScoreRecord } from '@/domain/models';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
-import { usePhigrosRecords, type PhigrosRecordEntry } from '@/hooks/use-phigros-records';
+import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { useGameData } from '@/hooks/use-game-data';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
@@ -146,23 +147,56 @@ function recordKey(record: ScoreRecord): string {
 }
 
 function PhigrosRecordsScreen() {
-  const query = usePhigrosRecords();
+  const gameQuery = useGameData();
+  const catalogQuery = usePhigrosCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const { keyword, setKeyword } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const filterSpec = useMemo(() => ({ keyword: debouncedKeyword }), [debouncedKeyword]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
-  const filtered = useMemo<PhigrosRecordEntry[]>(() => {
-    if (!query.data) return [];
-    let list = query.data.slice();
-    if (deferredFilterSpec.keyword.trim()) {
-      list = list.filter((item) => searchDocumentMatches(item.searchDoc, deferredFilterSpec.keyword));
+
+  const titleMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const song of catalogQuery.data?.snapshot.songs ?? []) {
+      map.set(song.id, song.title);
     }
-    return list.sort((a, b) => b.entry.rks - a.entry.rks);
-  }, [deferredFilterSpec.keyword, query.data]);
-  const isFiltering = filterSpec !== deferredFilterSpec;
-  const source: DataSource = { kind: 'generated', label: 'Phigros 云存档', updatedAt: new Date().toISOString(), isStale: false };
+    return map;
+  }, [catalogQuery.data?.snapshot.songs]);
+
+  const records: ScoreRecord[] = gameQuery.data?.payload?.kind === 'phigros'
+    ? (gameQuery.data.payload as unknown as { records?: ScoreRecord[] }).records ?? []
+    : [];
+
+  const searchDocs = useMemo(() => new Map(
+    records.map((r) => {
+      const title = titleMap.get(r.songId) ?? r.songId;
+      return [recordKey(r), { ...buildSearchDocument([r.songId, title]), title }] as const;
+    }),
+  ), [records, titleMap]);
+
+  const filtered = useMemo<{ record: ScoreRecord; title: string }[]>(() => {
+    let list = records.map((r) => {
+      const doc = searchDocs.get(recordKey(r));
+      return { record: r, title: doc?.title ?? r.songId };
+    });
+    if (deferredFilterSpec.keyword.trim()) {
+      list = list.filter((item) => {
+        const doc = searchDocs.get(recordKey(item.record));
+        return doc ? searchDocumentMatches(doc, deferredFilterSpec.keyword) : false;
+      });
+    }
+    return list.sort((a, b) => b.record.rating - a.record.rating);
+  }, [deferredFilterSpec.keyword, records, searchDocs]);
+
+  const isGameLoading = gameQuery.isLoading || catalogQuery.isLoading;
+  const isGameError = gameQuery.isError || catalogQuery.isError;
+  const error = gameQuery.error ?? catalogQuery.error;
+  const refetch = () => { void gameQuery.refetch(); void catalogQuery.refetch(); };
+  const source = gameQuery.data?.payload?.kind === 'phigros'
+    ? (gameQuery.data.payload as unknown as { source?: DataSource }).source
+    : undefined;
+  const payloadSource = source ?? { kind: 'generated' as const, label: 'Phigros 云存档', updatedAt: new Date().toISOString(), isStale: false };
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
@@ -172,14 +206,15 @@ function PhigrosRecordsScreen() {
           value={keyword} onChangeText={setKeyword}
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
-      <QueryStateView<PhigrosRecordEntry[]>
-        isLoading={query.isLoading} isError={query.isError}
-        isEmpty={!!query.data && filtered.length === 0}
-        error={query.error} onRetry={() => void query.refetch()}
+      <QueryStateView<{ record: ScoreRecord; title: string }[]>
+        isLoading={isGameLoading} isError={isGameError}
+        isEmpty={!isGameLoading && filtered.length === 0}
+        error={error} onRetry={refetch}
         emptyText={keyword.trim() ? '筛选结果为空' : '暂无成绩数据'}
-        data={query.data && filtered.length > 0 ? filtered : undefined}
+        data={!isGameLoading && filtered.length > 0 ? filtered : undefined}
         renderData={(entries) => (
-          <PhigrosRecordList entries={entries} source={source} tabBottomInset={tabBottomInset} />
+          <PhigrosRecordList entries={entries.map((e) => ({ record: e.record, title: e.title }))}
+            source={payloadSource} tabBottomInset={tabBottomInset} />
         )}
       />
     </View>
@@ -189,7 +224,7 @@ function PhigrosRecordsScreen() {
 const PhigrosRecordList = memo(function PhigrosRecordList({
   entries, source, tabBottomInset,
 }: {
-  entries: PhigrosRecordEntry[];
+  entries: { record: ScoreRecord; title: string }[];
   source: DataSource;
   tabBottomInset: number;
 }) {
@@ -202,22 +237,18 @@ const PhigrosRecordList = memo(function PhigrosRecordList({
     </View>
   ), [entries.length, source]);
 
-  const renderItem = useCallback<ListRenderItem<PhigrosRecordEntry>>(({ item }) => (
-    <PhigrosScoreCard entry={item.entry} catalogTitle={item.catalogTitle} />
+  const renderItem = useCallback<ListRenderItem<{ record: ScoreRecord; title: string }>>(({ item }) => (
+    <PhigrosScoreCard record={item.record} catalogTitle={item.title} />
   ), []);
 
   return <FlatList testID="phigros-records-list" contentInsetAdjustmentBehavior="automatic"
     style={styles.list}
     contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
     scrollIndicatorInsets={{ bottom: tabBottomInset }}
-    data={entries} keyExtractor={phigrosRecordKey}
+    data={entries} keyExtractor={(item) => recordKey(item.record)}
     {...TAB_LIST_CACHE_PROPS}
     ListHeaderComponent={header} renderItem={renderItem} />;
 });
-
-function phigrosRecordKey(item: PhigrosRecordEntry): string {
-  return `${item.entry.songId}-${item.entry.level}`;
-}
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
