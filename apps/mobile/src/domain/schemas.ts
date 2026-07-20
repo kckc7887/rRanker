@@ -17,6 +17,8 @@ function keepRawStatus(
 ): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed || known) return undefined;
+  // Sync Play 不作为产品成就展示，也不保留为 raw 回退
+  if (trimmed.toLowerCase() === 'sync') return undefined;
   return trimmed;
 }
 

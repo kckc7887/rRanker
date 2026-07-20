@@ -19,7 +19,7 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const b35Low = { ...base, songId: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2,
     difficulty: 'expert' as const, difficultyConstant: 12.4, achievements: 99, rating: 100, rate: 'ss', fs: null };
   const b35High = { ...base, songId: '352', title: 'B35高', type: 'SD' as const, levelIndex: 3,
-    difficulty: 'master' as const, difficultyConstant: 13.7, achievements: 100.5, rating: 300, rate: 'sssp', fs: 'sync' };
+    difficulty: 'master' as const, difficultyConstant: 13.7, achievements: 100.5, rating: 300, rate: 'sssp', fs: 'fs' };
   const b15Low = { ...base, songId: '151', title: 'B15低', type: 'SD' as const, levelIndex: 1,
     difficulty: 'advanced' as const, difficultyConstant: 10.2, achievements: 99.5, rating: 200, rate: 'ssp', fs: 'fs' };
   const b15High = { ...base, songId: '152', title: 'B15高', type: 'DX' as const, levelIndex: 4,
@@ -52,7 +52,7 @@ jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
   const b35Low = { ...base, songId: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2,
     difficulty: 'expert' as const, difficultyConstant: 12.4, achievements: 99, rating: 100, rate: 'ss', fs: null };
   const b35High = { ...base, songId: '352', title: 'B35高', type: 'SD' as const, levelIndex: 3,
-    difficulty: 'master' as const, difficultyConstant: 13.7, achievements: 100.5, rating: 300, rate: 'sssp', fs: 'sync' };
+    difficulty: 'master' as const, difficultyConstant: 13.7, achievements: 100.5, rating: 300, rate: 'sssp', fs: 'fs' };
   const b15Low = { ...base, songId: '151', title: 'B15低', type: 'SD' as const, levelIndex: 1,
     difficulty: 'advanced' as const, difficultyConstant: 10.2, achievements: 99.5, rating: 200, rate: 'ssp', fs: 'fs' };
   const b15High = { ...base, songId: '152', title: 'B15高', type: 'DX' as const, levelIndex: 4,
@@ -188,15 +188,15 @@ describe('M4 score list cards', () => {
     expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
   });
 
-  it('filters records by achievement status including SYNC', async () => {
+  it('filters records by achievement status including FS', async () => {
     const screen = await render(<RecordsScreen />);
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
-    await fireEvent.press(screen.getByLabelText('筛选成就 SYNC'));
+    await fireEvent.press(screen.getByLabelText('筛选成就 FS'));
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
     expect(screen.getByLabelText('查看谱面 B15低 SD advanced')).toBeTruthy();
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
     expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
     await fireEvent.press(screen.getByLabelText('收起筛选'));
-    expect(screen.getByLabelText(/展开筛选，当前.*SYNC/)).toBeTruthy();
+    expect(screen.getByLabelText(/展开筛选，当前.*FS/)).toBeTruthy();
   });
 });

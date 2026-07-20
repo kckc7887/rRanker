@@ -15,9 +15,9 @@ describe('provider schema mapping', () => {
     expect(record.rawRate).toBe('future_rate');
   });
 
-  it('canonicalizes SYNC and FDX aliases and treats blank fs as null', () => {
+  it('canonicalizes FDX aliases, drops Sync Play, and treats blank fs as null', () => {
     expect(mapDivingFishRecord({ ...unknownEnumRawRecord, fc: '', fs: 'SYNC' })).toMatchObject({
-      fc: null, fs: 'sync', rawFc: undefined, rawFs: undefined,
+      fc: null, fs: null, rawFc: undefined, rawFs: undefined,
     });
     expect(mapDivingFishRecord({ ...unknownEnumRawRecord, fs: 'fdxp' })).toMatchObject({
       fs: 'fsdp', rawFs: undefined,
