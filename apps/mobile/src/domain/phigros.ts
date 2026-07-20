@@ -166,6 +166,13 @@ export type PhigrosSummary = {
   phi: [number, number, number, number];
 };
 
+export type PhigrosChallengeMode = {
+  /** 课题模式颜色等级（0-5：白绿蓝红金彩） */
+  level: number;
+  /** 课题模式数字（1-99；0 代表未激活） */
+  rank: number;
+};
+
 export type PhigrosSaveData = {
   summary: PhigrosSummary;
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>;
@@ -201,6 +208,14 @@ export function parseSummary(summaryBase64: string): PhigrosSummary {
   }
 
   return result;
+}
+
+/** 课题模式编码：summary.challengeModeRank = level*100 + rank */
+export function parseChallengeModeRank(challengeModeRank: number): PhigrosChallengeMode {
+  const value = Number.isFinite(challengeModeRank) ? Math.max(0, Math.floor(challengeModeRank)) : 0;
+  const level = Math.min(5, Math.floor(value / 100));
+  const rank = value % 100;
+  return { level, rank };
 }
 
 export function parseGameRecord(

@@ -10,6 +10,7 @@ import {
   loadDifficultyTable,
   mergeDifficultyTables,
   parseGameRecord,
+  parseChallengeModeRank,
   phigrosScoreToRate,
   roundRks,
   selectPhi3,
@@ -288,5 +289,10 @@ describe('phigros save parsing', () => {
       loadDifficultyTable('B.B\t5\t6\t7\t8\n'),
     );
     expect(Object.keys(merged).sort()).toEqual(['A.A', 'B.B']);
+  });
+
+  it('parseChallengeModeRank decodes level and rank correctly', () => {
+    expect(parseChallengeModeRank(442)).toEqual({ level: 4, rank: 42 });
+    expect(parseChallengeModeRank(0)).toEqual({ level: 0, rank: 0 });
   });
 });

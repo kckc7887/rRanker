@@ -78,10 +78,11 @@ export function useGameData() {
               records,
               bestSections,
               playerScore: {
-                label: 'RKS',
+                label: 'Raking Score',
                 value: rks,
                 display: rks.toFixed(4),
               },
+              challengeModeRank: summary.challengeModeRank,
               source,
               catalogSource,
               avatarUrl,

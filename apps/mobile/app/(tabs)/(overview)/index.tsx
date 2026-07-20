@@ -12,6 +12,7 @@ import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
+import { formatPhigrosChallengeBadge, resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 import { selectGameTools, summarizeGameTools } from '@/domain/game-toolbox';
 import { calculatePlateProgress } from '@/domain/plates';
 import type { ScoreRecord } from '@/domain/models';
@@ -208,6 +209,12 @@ export function OverviewScreen() {
                 display={bundle.payload.playerScore.display}
                 rating={bundle.payload.playerScore.value}
                 meta={formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
+                themeOverride={bundle.payload.kind === 'phigros'
+                  ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
+                  : undefined}
+                sideBadge={bundle.payload.kind === 'phigros'
+                  ? { title: '课题模式', value: formatPhigrosChallengeBadge(bundle.payload.challengeModeRank) }
+                  : undefined}
               />
             ) : (
               <DxRatingCard label={profile.ratingLabel} display="—" rating={null} meta="当前游戏暂未提供评分" />

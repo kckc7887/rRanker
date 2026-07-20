@@ -37,7 +37,8 @@ jest.mock('@/hooks/use-game-data', () => ({
       payload: {
         kind: 'phigros',
         player: { id: 'p1', displayName: 'p1', rating: 16.17 },
-        playerScore: { label: 'RKS', value: 16.17, display: '16.1700' },
+        playerScore: { label: 'Raking Score', value: 16.17, display: '16.1700' },
+        challengeModeRank: 442,
         bestSections: [
           {
             id: 'phi3',
