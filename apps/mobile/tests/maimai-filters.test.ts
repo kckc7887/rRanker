@@ -67,11 +67,13 @@ describe('maimai achievement status filters', () => {
     expect(matchesAchievementStatus({ fs: 'sync' }, { family: 'fs', value: 'fs' })).toBe(false);
   });
 
-  it('matches solo and multi achievement filters independently', () => {
+  it('matches solo and multi achievement filters strictly', () => {
     const record = { fc: 'fc', fs: 'fsp' };
     expect(matchesSoloAchievementFilter(record, 'fc')).toBe(true);
+    expect(matchesSoloAchievementFilter(record, 'fcp')).toBe(false);
     expect(matchesSoloAchievementFilter(record, 'ap')).toBe(false);
-    expect(matchesMultiAchievementFilter(record, 'fs')).toBe(true);
+    expect(matchesMultiAchievementFilter(record, 'fs')).toBe(false);
+    expect(matchesMultiAchievementFilter(record, 'fsp')).toBe(true);
     expect(matchesMultiAchievementFilter(record, 'fsdp')).toBe(false);
     expect(matchesSoloAchievementFilter(record, null)).toBe(true);
     expect(matchesMultiAchievementFilter(record, null)).toBe(true);
