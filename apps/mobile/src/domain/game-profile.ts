@@ -57,7 +57,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     id: 'phigros',
     title: 'Phigros',
     ratingLabel: 'RKS',
-    ratingDigits: 2,
+    ratingDigits: 4,
     bestSections: [{ id: 'b30', title: 'Best30', size: 30 }],
     capabilities: { ...commonNav, hasTools: getGameToolbox('phigros').tools.length > 0 },
   },
