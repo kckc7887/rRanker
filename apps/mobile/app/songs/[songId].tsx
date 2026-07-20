@@ -32,7 +32,7 @@ import { TagEditor } from '@/components/TagEditor';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
 import type { Chart, ChartNotes, ChartType, CollectionItem, Difficulty, ScoreRecord, Song } from '@/domain/models';
-import { buildTagHistory, chartLibraryKey, songLibraryKey } from '@/domain/user-library';
+import { buildTagHistory } from '@/domain/user-library';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
 import {
   normalizeTrophyTone,
@@ -93,7 +93,7 @@ function MaimaiSongDetailScreen({
       songs?.find((item) => item.id === normalizeSongId(songId));
   }, [catalog.data?.songs, songId]);
   const initialChartType = chartType === 'SD' || chartType === 'DX' ? chartType : undefined;
-  const songItem = song ? library.data?.find((item) => item.key === songLibraryKey(song.id)) : undefined;
+  const songItem = song ? library.data?.find((item) => item.key === library.songKey(song.id)) : undefined;
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
@@ -178,7 +178,7 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
   const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
-  const songItem = library.data?.find((item) => item.key === songLibraryKey(song.id));
+  const songItem = library.data?.find((item) => item.key === library.songKey(song.id));
   const versionName = localizedVersionName(song.versionId, song.version, versionLocale);
   const availableChartTypes = useMemo(() => new Set(song.charts.map((chart) => chart.type)), [song.charts]);
   const defaultChartType: ChartType = initialChartType && availableChartTypes.has(initialChartType)
@@ -237,7 +237,7 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
           <Text style={[styles.body, { color: theme.textSecondary }]}>版权：{song.rights || '未提供'}</Text>
           <Text style={[styles.body, { color: theme.textSecondary }]}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
         <Card><TagEditor tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
-          historyTags={buildTagHistory(library.data ?? [], songLibraryKey(song.id), library.tagPresets ?? [])}
+          historyTags={buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
           disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
           onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
       </View>
@@ -509,7 +509,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
 }) {
   const theme = useAppTheme();
   const visual = DIFFICULTY_VISUAL[chart.difficulty];
-  const chartItem = library.data?.find((item) => item.key === chartLibraryKey(song.id, chart.type, chart.levelIndex));
+  const chartItem = library.data?.find((item) => item.key === library.chartKey(song.id, chart.type, chart.levelIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const chartTypeKeyword = canSwitchChartType ? ` ${chart.type}` : '';
   const chartSearchQuery = `${song.title}${chartTypeKeyword} ${visual.label} 谱面确认`;
@@ -553,7 +553,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
       <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>搜索谱面确认</Text>
     </DetailPressable>
     <TagEditor tags={chartItem?.tags ?? []} presets={library.tagPresets ?? []}
-      historyTags={buildTagHistory(library.data ?? [], chartLibraryKey(song.id, chart.type, chart.levelIndex), library.tagPresets ?? [])}
+      historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), library.tagPresets ?? [])}
       disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
   </View>;
