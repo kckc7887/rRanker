@@ -24,7 +24,7 @@ import { TagEditor } from '@/components/TagEditor';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
-import type { Chart, ScoreRecord, Song } from '@/domain/models';
+import type { Chart, PhigrosChartNotes, ScoreRecord, Song } from '@/domain/models';
 import { PHIGROS_MAX_SCORE, phigrosScoreToRate } from '@/domain/phigros';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { buildTagHistory } from '@/domain/user-library';
@@ -512,6 +512,7 @@ function ChartCard({
       <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         谱师：{chart.charter || '未提供'}
       </Text>
+      <NotesTable notes={asPhigrosNotes(chart.notes)} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
@@ -543,6 +544,57 @@ function ChartCard({
           levelIndex: chart.levelIndex,
         }, tags)}
       />
+    </View>
+  );
+}
+
+const NOTE_COLUMNS: readonly { label: string; key: keyof PhigrosChartNotes }[] = [
+  { label: 'TAP', key: 'tap' },
+  { label: 'HOLD', key: 'hold' },
+  { label: 'DRAG', key: 'drag' },
+  { label: 'FLICK', key: 'flick' },
+  { label: '总计', key: 'total' },
+];
+
+function asPhigrosNotes(notes: Chart['notes']): PhigrosChartNotes | undefined {
+  if (!notes || !('drag' in notes)) return undefined;
+  return notes;
+}
+
+function NotesTable({ notes }: { notes?: PhigrosChartNotes }) {
+  const theme = useAppTheme();
+  if (!notes) {
+    return (
+      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>物量未提供</Text>
+    );
+  }
+  return (
+    <View
+      accessibilityLabel="谱面物量"
+      style={[styles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
+    >
+      <View style={[styles.notesRow, styles.notesHeaderRow]}>
+        {NOTE_COLUMNS.map((column) => (
+          <Text
+            key={column.key}
+            numberOfLines={1}
+            style={[styles.notesCell, styles.notesHeader, { color: theme.textMuted }]}
+          >
+            {column.label}
+          </Text>
+        ))}
+      </View>
+      <View style={styles.notesRow}>
+        {NOTE_COLUMNS.map((column) => (
+          <Text
+            key={column.key}
+            numberOfLines={1}
+            style={[styles.notesCell, styles.notesValue, { color: theme.text }]}
+          >
+            {notes[column.key]}
+          </Text>
+        ))}
+      </View>
     </View>
   );
 }
@@ -659,6 +711,22 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
   chartDivider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
   chartMeta: { fontSize: 12, lineHeight: 18 },
+  notesTable: {
+    marginTop: 9,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(76,88,106,0.28)',
+    borderRadius: 9,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.38)',
+  },
+  notesRow: { minHeight: 26, flexDirection: 'row', alignItems: 'center' },
+  notesHeaderRow: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(76,88,106,0.22)',
+  },
+  notesCell: { flex: 1, minWidth: 0, textAlign: 'center' },
+  notesHeader: { fontSize: 8, fontWeight: '800' },
+  notesValue: { fontSize: 10, fontWeight: '800' },
   action: {
     marginTop: 13,
     marginBottom: 10,

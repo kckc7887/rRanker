@@ -56,6 +56,15 @@ export interface ChartNotes {
   total: number;
 }
 
+/** Phigros 谱面物量：[Tap, Hold, Drag, Flick] */
+export interface PhigrosChartNotes {
+  tap: number;
+  hold: number;
+  drag: number;
+  flick: number;
+  total: number;
+}
+
 export interface GameVersion {
   id: number;
   title: string;
@@ -78,7 +87,7 @@ export interface Chart {
   difficultyConstant: number;
   charter?: string;
   versionId?: number;
-  notes?: ChartNotes;
+  notes?: ChartNotes | PhigrosChartNotes;
 }
 
 export interface SongAlias {
