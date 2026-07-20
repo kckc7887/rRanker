@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import CryptoJS from 'crypto-js';
 
 const TAPTAP_CLIENT_ID = 'rAK3FfdieFob2Nn8Am';
 const TAPTAP_SCOPE = 'public_profile';
@@ -153,16 +154,9 @@ async function getProfile(token: TapTapToken): Promise<z.infer<typeof ProfileDat
   const port = '443';
   const sigBase = `${ts}\n${nonce}\n${method}\n${uri}\n${host}\n${port}\n\n`;
 
-  const enc = new TextEncoder();
-  const keyData = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(token.mac_key),
-    { name: 'HMAC', hash: 'SHA-1' },
-    false,
-    ['sign'],
+  const mac = CryptoJS.enc.Base64.stringify(
+    CryptoJS.HmacSHA1(sigBase, token.mac_key),
   );
-  const sig = await crypto.subtle.sign('HMAC', keyData, enc.encode(sigBase));
-  const mac = btoa(String.fromCharCode(...new Uint8Array(sig)));
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
@@ -182,9 +176,8 @@ export async function exchangeSessionToken(token: TapTapToken): Promise<PhigrosS
   const profile = await getProfile(token);
   const ts = String(Math.floor(Date.now() / 1000));
 
-  const enc = new TextEncoder();
-  const hash = await crypto.subtle.digest('MD5', enc.encode(ts + LC_APP_KEY));
-  const lcSign = `${Array.from(new Uint8Array(hash)).map((b) => b.toString(16).padStart(2, '0')).join('')},${ts}`;
+  const lcHash = CryptoJS.MD5(ts + LC_APP_KEY).toString();
+  const lcSign = `${lcHash},${ts}`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
