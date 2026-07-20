@@ -81,6 +81,5 @@ export function resolvePhigrosChallengeTheme(challengeModeRank: number): DxRatin
 
 export function formatPhigrosChallengeBadge(challengeModeRank: number): string {
   const parsed = parseChallengeModeRank(challengeModeRank);
-  const head = THEMES[parsed.level]?.label ?? '白';
-  return `${head}${parsed.rank}`;
+  return String(parsed.rank);
 }
