@@ -219,7 +219,14 @@ function RateBadge({ rate, fc }: { rate: RateKind; fc: boolean }) {
   const label = RATE_LABELS[rate];
   return (
     <View style={[styles.rateBadge, { backgroundColor: colors.bg }]}>
-      <Text style={[styles.rateText, { color: colors.fg }]}>{label}</Text>
+      <Text style={[
+        styles.rateText,
+        { color: colors.fg },
+        rate === 'phi' && styles.rateTextPhi,
+      ]}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -245,6 +252,21 @@ const styles = StyleSheet.create({
   stats: { minWidth: 56, alignItems: 'flex-end', gap: 4 },
   acc: { fontSize: 12, fontWeight: '700' },
   rks: { fontSize: 20, fontWeight: '900' },
-  rateBadge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
-  rateText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.3, includeFontPadding: false },
+  rateBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    minHeight: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rateText: {
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    includeFontPadding: false,
+    textAlign: 'center',
+  },
+  rateTextPhi: { transform: [{ translateY: -1.5 }] },
 });
