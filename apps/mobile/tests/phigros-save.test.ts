@@ -10,7 +10,7 @@ import {
   loadDifficultyTable,
   mergeDifficultyTables,
   parseGameRecord,
-  phigrosAccToRate,
+  phigrosScoreToRate,
   roundRks,
   selectPhi3,
   sumPhi3Contribution,
@@ -78,16 +78,18 @@ function encryptPkcs7(plain: Uint8Array): Uint8Array {
 }
 
 describe('phigros save parsing', () => {
-  it('phigrosAccToRate maps accuracy to F–φ grades', () => {
-    expect(phigrosAccToRate(100)).toBe('phi');
-    expect(phigrosAccToRate(99.996)).toBe('phi');
-    expect(phigrosAccToRate(96)).toBe('v');
-    expect(phigrosAccToRate(92)).toBe('s');
-    expect(phigrosAccToRate(88)).toBe('a');
-    expect(phigrosAccToRate(80)).toBe('b');
-    expect(phigrosAccToRate(70)).toBe('c');
-    expect(phigrosAccToRate(60)).toBe('d');
-    expect(phigrosAccToRate(59.9)).toBe('f');
+  it('phigrosScoreToRate maps score and FC to F–φ grades', () => {
+    expect(phigrosScoreToRate(1_000_000, false)).toBe('phi');
+    expect(phigrosScoreToRate(1_000_000, true)).toBe('phi');
+    expect(phigrosScoreToRate(980_000, true)).toBe('v');
+    expect(phigrosScoreToRate(980_000, false)).toBe('v');
+    expect(phigrosScoreToRate(850_000, true)).toBe('v');
+    expect(phigrosScoreToRate(850_000, false)).toBe('b');
+    expect(phigrosScoreToRate(930_000, false)).toBe('s');
+    expect(phigrosScoreToRate(900_000, false)).toBe('a');
+    expect(phigrosScoreToRate(750_000, false)).toBe('c');
+    expect(phigrosScoreToRate(500_000, false)).toBe('f');
+    expect(phigrosScoreToRate(0, false)).toBe('new');
   });
 
   it('decryptBytes strips PKCS7 padding via sigBytes', () => {
