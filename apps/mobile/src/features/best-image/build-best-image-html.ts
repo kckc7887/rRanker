@@ -56,7 +56,7 @@ const RATE_LABELS: Record<string, string> = {
 };
 const FC_LABELS: Record<string, string> = { fc: 'FC', fcp: 'FC+', ap: 'AP', app: 'AP+' };
 const FS_LABELS: Record<string, string> = {
-  sync: 'SYNC', fs: 'FS', fsp: 'FS+', fsd: 'FDX', fsdp: 'FDX+', fdx: 'FDX', fdxp: 'FDX+',
+  fs: 'FS', fsp: 'FS+', fsd: 'FDX', fsdp: 'FDX+', fdx: 'FDX', fdxp: 'FDX+',
 };
 export function minimumBestImageHeight(width: number): number {
   return Math.ceil(width * 4 / 3);
@@ -166,7 +166,7 @@ function fcBadgeTone(value: string | null): StatusBadgeTone {
 
 function fsBadgeTone(value: string | null): StatusBadgeTone {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === 'sync' || normalized === 'fs' || normalized === 'fsp') return 'blue';
+  if (normalized === 'fs' || normalized === 'fsp') return 'blue';
   return normalized ? 'gold' : 'normal';
 }
 

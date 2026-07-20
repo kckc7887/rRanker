@@ -51,8 +51,8 @@ describe('useRecordsFilter store', () => {
   });
 
   it('updates achievement status via setAchievementStatus', () => {
-    useRecordsFilter.getState().setAchievementStatus({ family: 'fs', value: 'sync' });
-    expect(useRecordsFilter.getState().achievementStatus).toEqual({ family: 'fs', value: 'sync' });
+    useRecordsFilter.getState().setAchievementStatus({ family: 'fs', value: 'fs' });
+    expect(useRecordsFilter.getState().achievementStatus).toEqual({ family: 'fs', value: 'fs' });
     useRecordsFilter.getState().setAchievementStatus({ family: 'fc', value: 'app' });
     expect(useRecordsFilter.getState().achievementStatus).toEqual({ family: 'fc', value: 'app' });
   });
@@ -84,7 +84,7 @@ describe('useRecordsFilter store', () => {
     useRecordsFilter.getState().setConstantMax('14');
     useRecordsFilter.getState().setAchievementMin('99');
     useRecordsFilter.getState().setAchievementMax('101');
-    useRecordsFilter.getState().setAchievementStatus({ family: 'fs', value: 'sync' });
+    useRecordsFilter.getState().setAchievementStatus({ family: 'fs', value: 'fs' });
     useRecordsFilter.getState().setSortBy('achievements');
     useRecordsFilter.getState().setVersionLocale('japan');
     useRecordsFilter.getState().reset();

@@ -242,10 +242,9 @@ function getStatusSpec(kind: 'fc' | 'fs', rawValue: string): {
     if (value === 'ap') return { label: 'AP', flowing: false, color: 'gold' };
     if (value === 'app') return { label: 'AP+', flowing: true, color: 'gold' };
   } else {
-    // SYNC 与 FS/FS+ 同为蓝色流动玻璃标签
-    if (value === 'sync' || value === 'fs' || value === 'fsp') {
+    if (value === 'fs' || value === 'fsp') {
       return {
-        label: value === 'sync' ? 'SYNC' : value === 'fsp' ? 'FS+' : 'FS',
+        label: value === 'fsp' ? 'FS+' : 'FS',
         flowing: true,
         color: 'blue',
       };
