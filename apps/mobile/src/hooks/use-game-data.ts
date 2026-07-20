@@ -14,7 +14,7 @@ import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 9;
+const GAME_DATA_QUERY_VERSION = 10;
 
 export function useGameData() {
   const session = useSession((s) => s.session);

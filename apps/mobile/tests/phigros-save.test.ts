@@ -8,11 +8,14 @@ import {
   decodeSaveZip,
   gameRecordToScoreRecords,
   loadDifficultyTable,
+  mergeDifficultyTables,
   parseGameRecord,
   roundRks,
   selectPhi3,
   sumPhi3Contribution,
 } from '@/domain/phigros';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const AES_KEY_B64 = '6Jaa0qVAJZuXkZCLiOa/Ax5tIZVu+taKUN1V1nqwkks=';
 const AES_IV_B64 = 'Kk/wisgNYwcAV8WVGMgyUw==';
@@ -229,5 +232,46 @@ describe('phigros save parsing', () => {
     ];
     expect(selectPhi3(records).map((r) => r.songId)).toEqual(['HighAcc']);
     expect(sumPhi3Contribution(records)).toBe(12);
+  });
+
+  it('parseGameRecord reads full reference fixture (221 songs / 291 charts)', () => {
+    const fixturePath = join(__dirname, 'fixtures', 'gameRecord-full.bin');
+    const buf = readFileSync(fixturePath);
+    const record = parseGameRecord(buf);
+    expect(Object.keys(record)).toHaveLength(221);
+    const charts = Object.values(record).reduce((sum, levels) => sum + levels.filter(Boolean).length, 0);
+    expect(charts).toBe(291);
+  });
+
+  it('gameRecordToScoreRecords keeps charts missing from difficulty table', () => {
+    const gameRecord = {
+      'Unknown.NewSong': [
+        null,
+        null,
+        {
+          songId: 'Unknown.NewSong',
+          level: 2 as const,
+          difficulty: 0,
+          score: 1000000,
+          rawAcc: 100,
+          acc: 100,
+          fc: true,
+          rks: 0,
+        },
+        null,
+      ],
+    };
+    const records = gameRecordToScoreRecords(gameRecord, {});
+    expect(records).toHaveLength(1);
+    expect(records[0]?.songId).toBe('Unknown.NewSong');
+    expect(records[0]?.rate).toBe('phi');
+  });
+
+  it('mergeDifficultyTables fills missing songs from fallback', () => {
+    const merged = mergeDifficultyTables(
+      loadDifficultyTable('A.A\t1\t2\t3\t4\n'),
+      loadDifficultyTable('B.B\t5\t6\t7\t8\n'),
+    );
+    expect(Object.keys(merged).sort()).toEqual(['A.A', 'B.B']);
   });
 });
