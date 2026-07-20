@@ -1,4 +1,5 @@
 import { difficultyFromIndex, normalizeSongId } from '@/domain/catalog';
+import { normalizeMaimaiFc, normalizeMaimaiFs } from '@/domain/maimai-filters';
 import { calculateChartRating } from '@/domain/rating';
 import type { CatalogSnapshot, ChartType, ScoreRecord, Song } from '@/domain/models';
 import type { ScoreHubSyncScore } from '@/services/score-hub-client';
@@ -70,16 +71,11 @@ function toDxScore(value: string | number | null | undefined): number | null {
 }
 
 export function mapHubFcToCanonical(value: string | null | undefined): string | null {
-  const normalized = value?.trim().toLowerCase();
-  return normalized && ['fc', 'fcp', 'ap', 'app'].includes(normalized) ? normalized : null;
+  return normalizeMaimaiFc(value);
 }
 
 export function mapHubFsToCanonical(value: string | null | undefined): string | null {
-  const normalized = value?.trim().toLowerCase();
-  if (!normalized) return null;
-  if (normalized === 'fdxp') return 'fsdp';
-  if (normalized === 'fdx') return 'fsd';
-  return ['sync', 'fs', 'fsp', 'fsd', 'fsdp'].includes(normalized) ? normalized : null;
+  return normalizeMaimaiFs(value);
 }
 
 export function scoreRateFromAchievement(achievement: number): string {

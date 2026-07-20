@@ -145,7 +145,10 @@ function escapeCssUrl(value: string): string {
 function statusLabel(value: string | null, labels: Record<string, string>): string | null {
   if (!value) return null;
   const normalized = value.trim().toLowerCase();
-  return labels[normalized] ?? value.trim().toUpperCase() ?? null;
+  if (!normalized) return null;
+  if (normalized === 'fdx') return labels.fsd ?? 'FDX';
+  if (normalized === 'fdxp') return labels.fsdp ?? 'FDX+';
+  return labels[normalized] ?? null;
 }
 
 function rateBadgeTone(value: string | null): StatusBadgeTone {
