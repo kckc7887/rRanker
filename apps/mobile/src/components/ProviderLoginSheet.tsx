@@ -190,7 +190,11 @@ export function ProviderLoginSheet({
       setMessage('请在 TapTap 完成授权。');
 
       try {
-        await Linking.openURL(device.qrcodeUrl.replace('accounts.tapapis.cn', 'www.taptap.cn'));
+        const u = new URL(device.qrcodeUrl);
+        const code = u.searchParams.get('code') ?? u.searchParams.get('user_code') ?? '';
+        await Linking.openURL(
+          `tapiosdk://oauth/device/authorize?client_id=rAK3FfdieFob2Nn8Am&scope=public_profile&code=${code}`,
+        );
       } catch {
         await Linking.openURL(device.qrcodeUrl);
       }
