@@ -19,3 +19,4 @@
 
 - 已实现懒加载解析与 alias 映射
 - 单元测试覆盖 tmp.tsv 映射与 URL 构建
+- 后续核对 OSS manifest：`avatars/` 文件名与 tmp.tsv 第二列（内部 key）一致（如 `Cipher1.png`），已修正映射方向

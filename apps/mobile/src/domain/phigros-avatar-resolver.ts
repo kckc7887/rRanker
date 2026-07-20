@@ -13,11 +13,12 @@ function parseAvatarAliasTsv(text: string): AvatarAliasMap {
     if (!trimmed) continue;
     const tab = trimmed.indexOf('\t');
     if (tab < 0) continue;
-    const fileName = trimmed.slice(0, tab).trim();
-    const key = trimmed.slice(tab + 1).trim();
-    if (!fileName || !key) continue;
-    fileByKey.set(key, fileName);
-    fileByKey.set(fileName, fileName);
+    const displayName = trimmed.slice(0, tab).trim();
+    const ossName = trimmed.slice(tab + 1).trim();
+    if (!displayName || !ossName) continue;
+    // OSS avatars/ 下文件名与 tmp.tsv 第二列（内部 key）一致，如 Cipher1.png。
+    fileByKey.set(ossName, ossName);
+    fileByKey.set(displayName, ossName);
   }
   return { fileByKey };
 }
