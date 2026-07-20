@@ -303,7 +303,7 @@ export function OverviewScreen() {
               <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <Text style={[styles.cardTitle, { color: theme.text }]}>我的曲库</Text>
                 <Text style={[styles.body, { color: theme.textSecondary }]}>
-                  {bundle.payload.kind === 'maimai'
+                  {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros'
                     ? (library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
                     : '当前游戏暂未开放个人曲库'}
                 </Text>

@@ -50,9 +50,9 @@ const mockSessionState: {
 };
 const timestamp = '2026-07-13T00:00:00.000Z';
 const mockItems: UserLibraryItem[] = [
-  { key: 'song:1', kind: 'song', songId: '1', favorite: true, tags: ['喜欢'], createdAt: timestamp, updatedAt: timestamp },
-  { key: 'chart:1:DX:3', kind: 'chart', songId: '1', type: 'DX', levelIndex: 3, practice: true, tags: ['耐力'], createdAt: timestamp, updatedAt: timestamp },
-  { key: 'song:999', kind: 'song', songId: '999', favorite: true, tags: [], createdAt: timestamp, updatedAt: timestamp },
+  { key: 'song:maimai:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: ['喜欢'], createdAt: timestamp, updatedAt: timestamp },
+  { key: 'chart:maimai:1:DX:3', gameId: 'maimai', kind: 'chart', songId: '1', type: 'DX', levelIndex: 3, practice: true, tags: ['耐力'], createdAt: timestamp, updatedAt: timestamp },
+  { key: 'song:maimai:999', gameId: 'maimai', kind: 'song', songId: '999', favorite: true, tags: [], createdAt: timestamp, updatedAt: timestamp },
 ];
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -82,10 +82,17 @@ jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
 }) }));
 jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
-  data: mockItems, isLoading: false, isError: false, error: null, refetch: jest.fn(), isUpdating: false,
-  setSongFavorite: mockSetFavorite, setChartPractice: mockSetPractice, setTags: mockSetTags,
-}) }));
+jest.mock('@/hooks/use-user-library', () => {
+  const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
+  return { useUserLibrary: () => ({
+    data: mockItems, isLoading: false, isError: false, error: null, refetch: jest.fn(), isUpdating: false,
+    setSongFavorite: mockSetFavorite, setChartPractice: mockSetPractice, setTags: mockSetTags,
+    songKey: (songId: string | number) => songLibraryKey('maimai', songId),
+    chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('maimai', songId, type, levelIndex),
+    tagPresets: ['爆发', '交互'],
+    setTagPresets: jest.fn(),
+  }) };
+});
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({
   data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog,
   isLoading: false, isError: false, error: null, refetch: jest.fn(),

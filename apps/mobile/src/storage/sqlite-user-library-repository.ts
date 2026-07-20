@@ -1,14 +1,24 @@
 import * as SQLite from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
-import { DEFAULT_TAG_PRESETS, mergeLibraryItems, normalizeLibraryItem, normalizeTagName, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
+import type { GameId } from '@/domain/game-bind-options';
+import {
+  DEFAULT_TAG_PRESETS,
+  inferGameIdFromKey,
+  mergeLibraryItems,
+  normalizeLibraryItem,
+  normalizeTagName,
+  normalizeTags,
+  shouldKeepLibraryItem,
+} from '@/domain/user-library';
 import type { RestoreMode, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 
-const USER_LIBRARY_SCHEMA_VERSION = 2;
+const USER_LIBRARY_SCHEMA_VERSION = 3;
 type DatabaseAccess = Pick<SQLiteDatabase, 'getAllAsync' | 'getFirstAsync' | 'runAsync'>;
 
 interface ItemRow {
   item_key: string;
+  game_id: string | null;
   kind: 'song' | 'chart';
   song_id: string;
   chart_type: 'SD' | 'DX' | null;
@@ -37,7 +47,8 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
         id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS user_library_items (
-        item_key TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('song', 'chart')),
+        item_key TEXT PRIMARY KEY, game_id TEXT NOT NULL DEFAULT 'maimai',
+        kind TEXT NOT NULL CHECK (kind IN ('song', 'chart')),
         song_id TEXT NOT NULL, chart_type TEXT, level_index INTEGER,
         is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
         is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
@@ -63,16 +74,37 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
       await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
       await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
     } else if (row.schema_version === 1) {
+      await db.runAsync('ALTER TABLE user_library_items ADD COLUMN game_id TEXT NOT NULL DEFAULT \'maimai\'');
       await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
+      await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
+    } else if (row.schema_version === 2) {
+      await db.runAsync('ALTER TABLE user_library_items ADD COLUMN game_id TEXT NOT NULL DEFAULT \'maimai\'');
+      await db.withExclusiveTransactionAsync(async (txn) => {
+        const items = (await this.readFrom(txn)).map((item) => normalizeLibraryItem({
+          ...item,
+          gameId: item.gameId ?? inferGameIdFromKey(item.key),
+        }));
+        await this.writeAll(txn, items);
+      });
       await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
     } else if (row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {
       throw new Error(`不支持的个人数据版本：${row?.schema_version ?? '未知'}`);
+    } else {
+      await this.ensureGameIdColumn(db);
     }
   }
 
-  async list(): Promise<UserLibraryItem[]> {
+  private async ensureGameIdColumn(db: DatabaseAccess): Promise<void> {
+    const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(user_library_items)');
+    if (!columns.some((column) => column.name === 'game_id')) {
+      await db.runAsync('ALTER TABLE user_library_items ADD COLUMN game_id TEXT NOT NULL DEFAULT \'maimai\'');
+    }
+  }
+
+  async list(gameId?: GameId): Promise<UserLibraryItem[]> {
     await this.initialize();
-    return this.readFrom(await this.databasePromise);
+    const items = await this.readFrom(await this.databasePromise);
+    return gameId ? items.filter((item) => item.gameId === gameId) : items;
   }
 
   async listTagPresets(): Promise<string[]> {
@@ -146,11 +178,20 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
     ]);
     const tagsByItem = new Map<string, string[]>();
     for (const row of tags) tagsByItem.set(row.item_key, [...(tagsByItem.get(row.item_key) ?? []), row.display_name]);
-    return items.map((row): UserLibraryItem => row.kind === 'song'
-      ? { key: row.item_key, kind: 'song', songId: row.song_id, favorite: row.is_favorite === 1,
-        tags: tagsByItem.get(row.item_key) ?? [], createdAt: row.created_at, updatedAt: row.updated_at }
-      : { key: row.item_key, kind: 'chart', songId: row.song_id, type: row.chart_type!, levelIndex: row.level_index!,
-        practice: row.is_practice === 1, tags: tagsByItem.get(row.item_key) ?? [], createdAt: row.created_at, updatedAt: row.updated_at });
+    return items.map((row): UserLibraryItem => {
+      const gameId = (row.game_id as GameId | null) ?? inferGameIdFromKey(row.item_key);
+      const base = {
+        key: row.item_key,
+        gameId,
+        tags: tagsByItem.get(row.item_key) ?? [],
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      };
+      return row.kind === 'song'
+        ? { ...base, kind: 'song', songId: row.song_id, favorite: row.is_favorite === 1 }
+        : { ...base, kind: 'chart', songId: row.song_id, type: row.chart_type!, levelIndex: row.level_index!,
+          practice: row.is_practice === 1 };
+    }).map(normalizeLibraryItem);
   }
 
   private async writeAll(db: DatabaseAccess, items: readonly UserLibraryItem[]): Promise<void> {
@@ -161,9 +202,9 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
       const item = normalizeLibraryItem(rawItem);
       await db.runAsync(
         `INSERT INTO user_library_items
-          (item_key, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        item.key, item.kind, item.songId, item.kind === 'chart' ? item.type : null,
+          (item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        item.key, item.gameId, item.kind, item.songId, item.kind === 'chart' ? item.type : null,
         item.kind === 'chart' ? item.levelIndex : null, item.kind === 'song' && item.favorite ? 1 : 0,
         item.kind === 'chart' && item.practice ? 1 : 0, item.createdAt, item.updatedAt,
       );

@@ -1,21 +1,27 @@
 import { z } from 'zod';
 import { chartVersionKey, normalizeSongId } from './catalog';
+import type { GameId } from './game-bind-options';
 import type { ChartType } from './models';
 
 export const USER_DATA_BACKUP_FORMAT = 'rranker-user-data' as const;
-export const USER_DATA_BACKUP_VERSION = 2 as const;
+export const USER_DATA_BACKUP_VERSION = 3 as const;
 export const DEFAULT_TAG_PRESETS = ['爆发', '交互', '星星', '鬼歌', '大歌'] as const;
 export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
 export const MAX_BACKUP_ITEMS = 5000;
 
+const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'phigros', 'test']);
+const GameIdSchema = z.enum(['maimai', 'phigros', 'test']);
+
 export interface SongLibraryTarget {
   kind: 'song';
+  gameId: GameId;
   songId: string;
 }
 
 export interface ChartLibraryTarget {
   kind: 'chart';
+  gameId: GameId;
   songId: string;
   type: ChartType;
   levelIndex: number;
@@ -25,6 +31,7 @@ export type LibraryTarget = SongLibraryTarget | ChartLibraryTarget;
 
 interface LibraryItemBase {
   key: string;
+  gameId: GameId;
   tags: string[];
   createdAt: string;
   updatedAt: string;
@@ -56,19 +63,28 @@ export interface UserDataBackupV1 {
 
 export interface UserDataBackupV2 {
   format: typeof USER_DATA_BACKUP_FORMAT;
+  version: 2;
+  exportedAt: string;
+  items: UserLibraryItem[];
+  tagPresets: string[];
+}
+
+export interface UserDataBackupV3 {
+  format: typeof USER_DATA_BACKUP_FORMAT;
   version: typeof USER_DATA_BACKUP_VERSION;
   exportedAt: string;
   items: UserLibraryItem[];
   tagPresets: string[];
 }
 
-export type UserDataBackup = UserDataBackupV1 | UserDataBackupV2;
+export type UserDataBackup = UserDataBackupV1 | UserDataBackupV2 | UserDataBackupV3;
 
 const TimestampSchema = z.string().datetime();
 const SongIdSchema = z.string().trim().min(1).max(64);
 const TagSchema = z.string().min(1).max(128);
 const CommonItemShape = {
   key: z.string().min(1).max(160),
+  gameId: GameIdSchema.optional(),
   songId: SongIdSchema,
   tags: z.array(TagSchema).max(MAX_TAGS_PER_ITEM),
   createdAt: TimestampSchema,
@@ -97,25 +113,44 @@ const UserDataBackupV1Schema = z.object({
 }).strict();
 const UserDataBackupV2Schema = z.object({
   format: z.literal(USER_DATA_BACKUP_FORMAT),
+  version: z.literal(2),
+  exportedAt: TimestampSchema,
+  items: z.array(z.discriminatedUnion('kind', [SongItemSchema, ChartItemSchema])).max(MAX_BACKUP_ITEMS),
+  tagPresets: z.array(TagSchema).max(200),
+}).strict();
+const UserDataBackupV3Schema = z.object({
+  format: z.literal(USER_DATA_BACKUP_FORMAT),
   version: z.literal(USER_DATA_BACKUP_VERSION),
   exportedAt: TimestampSchema,
   items: z.array(z.discriminatedUnion('kind', [SongItemSchema, ChartItemSchema])).max(MAX_BACKUP_ITEMS),
   tagPresets: z.array(TagSchema).max(200),
 }).strict();
-const UserDataBackupSchema = z.discriminatedUnion('version', [UserDataBackupV1Schema, UserDataBackupV2Schema]);
+const UserDataBackupSchema = z.discriminatedUnion('version', [
+  UserDataBackupV1Schema,
+  UserDataBackupV2Schema,
+  UserDataBackupV3Schema,
+]);
 
-export function songLibraryKey(songId: string | number): string {
-  return `song:${normalizeSongId(songId)}`;
+export function inferGameIdFromKey(key: string): GameId {
+  const [prefix, gameOrSongId] = key.split(':');
+  if ((prefix === 'song' || prefix === 'chart') && gameOrSongId && KNOWN_GAME_IDS.has(gameOrSongId as GameId)) {
+    return gameOrSongId as GameId;
+  }
+  return 'maimai';
 }
 
-export function chartLibraryKey(songId: string | number, type: ChartType, levelIndex: number): string {
-  return `chart:${chartVersionKey(songId, type, levelIndex)}`;
+export function songLibraryKey(gameId: GameId, songId: string | number): string {
+  return `song:${gameId}:${normalizeSongId(songId)}`;
+}
+
+export function chartLibraryKey(gameId: GameId, songId: string | number, type: ChartType, levelIndex: number): string {
+  return `chart:${gameId}:${chartVersionKey(songId, type, levelIndex)}`;
 }
 
 export function libraryTargetKey(target: LibraryTarget): string {
   return target.kind === 'song'
-    ? songLibraryKey(target.songId)
-    : chartLibraryKey(target.songId, target.type, target.levelIndex);
+    ? songLibraryKey(target.gameId, target.songId)
+    : chartLibraryKey(target.gameId, target.songId, target.type, target.levelIndex);
 }
 
 export function normalizeTagName(value: string): { displayName: string; key: string } {
@@ -158,15 +193,16 @@ export function buildTagHistory(
 }
 
 export function normalizeLibraryItem(item: UserLibraryItem): UserLibraryItem {
+  const gameId = item.gameId ?? inferGameIdFromKey(item.key);
   const songId = normalizeSongId(item.songId);
   const tags = normalizeTags(item.tags);
   if (item.kind === 'song') {
-    return { ...item, key: songLibraryKey(songId), songId, tags };
+    return { ...item, gameId, key: songLibraryKey(gameId, songId), songId, tags };
   }
   if (!Number.isInteger(item.levelIndex) || item.levelIndex < 0 || item.levelIndex > 255) {
     throw new Error('谱面难度序号无效');
   }
-  return { ...item, key: chartLibraryKey(songId, item.type, item.levelIndex), songId, tags };
+  return { ...item, gameId, key: chartLibraryKey(gameId, songId, item.type, item.levelIndex), songId, tags };
 }
 
 export function shouldKeepLibraryItem(item: UserLibraryItem): boolean {
@@ -177,7 +213,7 @@ export function createUserDataBackup(
   items: readonly UserLibraryItem[],
   exportedAt = new Date().toISOString(),
   tagPresets: readonly string[] = DEFAULT_TAG_PRESETS,
-): UserDataBackupV2 {
+): UserDataBackupV3 {
   return {
     format: USER_DATA_BACKUP_FORMAT,
     version: USER_DATA_BACKUP_VERSION,
@@ -189,8 +225,10 @@ export function createUserDataBackup(
 
 export function parseUserDataBackup(value: unknown): UserDataBackup {
   const parsed = UserDataBackupSchema.parse(value);
-  const items = parsed.items.map((item) => normalizeLibraryItem(item as UserLibraryItem))
-    .filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
+  const items = parsed.items.map((item) => normalizeLibraryItem({
+    ...(item as UserLibraryItem),
+    gameId: (item as UserLibraryItem).gameId ?? 'maimai',
+  })).filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
   return parsed.version === 1
     ? { ...parsed, items }
     : { ...parsed, items, tagPresets: normalizeTags(parsed.tagPresets) };
@@ -216,8 +254,8 @@ export function mergeLibraryItems(localItems: readonly UserLibraryItem[], import
       updatedAt: local.updatedAt > imported.updatedAt ? local.updatedAt : imported.updatedAt,
     };
     merged.set(imported.key, local.kind === 'song'
-      ? { ...common, kind: 'song', songId: local.songId, favorite: local.favorite || (imported as SongLibraryItem).favorite }
-      : { ...common, kind: 'chart', songId: local.songId, type: local.type, levelIndex: local.levelIndex, practice: local.practice || (imported as ChartLibraryItem).practice });
+      ? { ...common, kind: 'song', gameId: local.gameId, songId: local.songId, favorite: local.favorite || (imported as SongLibraryItem).favorite }
+      : { ...common, kind: 'chart', gameId: local.gameId, songId: local.songId, type: local.type, levelIndex: local.levelIndex, practice: local.practice || (imported as ChartLibraryItem).practice });
   }
   return [...merged.values()].filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
 }

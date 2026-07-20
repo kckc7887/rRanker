@@ -118,9 +118,11 @@ const mockSetTags = jest.fn();
 const mockSetTagPresets = jest.fn();
 
 jest.mock('@/hooks/use-user-library', () => {
+  const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
   const state: {
     data: Array<{
       key: string;
+      gameId: 'phigros';
       kind: 'song' | 'chart';
       songId: string;
       favorite?: boolean;
@@ -141,6 +143,8 @@ jest.mock('@/hooks/use-user-library', () => {
       setTags: (...args: unknown[]) => mockSetTags(...args),
       setTagPresets: (...args: unknown[]) => mockSetTagPresets(...args),
       tagPresets: ['爆发', '交互'],
+      songKey: (songId: string | number) => songLibraryKey('phigros', songId),
+      chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('phigros', songId, type, levelIndex),
     }),
   };
 });
