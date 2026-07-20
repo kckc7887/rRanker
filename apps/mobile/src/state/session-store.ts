@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   createMaimaiBoundAccount,
+  createPhigrosBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
@@ -12,6 +13,8 @@ import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
+import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
+import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import type { SessionVault, StoredProviderAccount } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
@@ -92,6 +95,23 @@ function maimaiProviders(
   return emptyProviders();
 }
 
+function phigrosProviders(
+  account: BoundAccount,
+  sessionsByAccountId: SessionsByAccountId,
+): {
+  scoreProvider: AnyScoreProvider;
+  catalogProvider: DetailedCatalogProvider;
+} {
+  const session = sessionsByAccountId[account.id] ?? null;
+  if (session?.mode === 'phi-session') {
+    return {
+      scoreProvider: new PhigrosScoreProvider(session),
+      catalogProvider: new PhigrosCatalogProvider() as unknown as DetailedCatalogProvider,
+    };
+  }
+  return emptyProviders();
+}
+
 export type SessionRestoreStatus = 'restoring' | 'ready' | 'error';
 
 export type SessionsByAccountId = Record<string, ProviderSession>;
@@ -127,8 +147,11 @@ interface SessionState {
 }
 
 function providersForAccount(account: BoundAccount, sessionsByAccountId: SessionsByAccountId) {
-  if (account.gameId === 'test' || account.gameId === 'phigros' || !account.providerId) {
+  if (account.gameId === 'test' || !account.providerId) {
     return emptyProviders();
+  }
+  if (account.gameId === 'phigros') {
+    return phigrosProviders(account, sessionsByAccountId);
   }
   return maimaiProviders(
     account.providerId,
@@ -210,6 +233,12 @@ function activateAccount(
 }
 
 function boundFromStored(account: StoredProviderAccount): BoundAccount {
+  if (account.gameId === 'phigros' && account.providerId === 'phi-taptap') {
+    return createPhigrosBoundAccount({
+      playerId: account.displayName,
+      rating: Number.parseInt(account.scoreDisplay, 10) || 0,
+    });
+  }
   return createMaimaiBoundAccount({
     providerId: account.providerId,
     displayName: account.displayName,
@@ -231,6 +260,29 @@ export const useSession = create<SessionState>((set, get) => ({
   restoreStatus: 'restoring',
   restoreError: null,
   setSession: (session, accountMeta) => {
+    if (session.mode === 'phi-session') {
+      const phigrosAccount = createPhigrosBoundAccount({
+        playerId: session.playerId,
+        rating: 0,
+      });
+      const sessionsByAccountId = {
+        ...get().sessionsByAccountId,
+        [phigrosAccount.id]: session,
+      };
+      set({
+        sessionsByAccountId,
+        session,
+        boundAccounts: upsertAccountList(get().boundAccounts, phigrosAccount),
+        activeAccountId: phigrosAccount.id,
+        activeGameId: 'phigros',
+        activeProviderId: 'phi-taptap',
+        ...phigrosProviders(phigrosAccount, sessionsByAccountId),
+        restoreStatus: 'ready',
+        restoreError: null,
+      });
+      return;
+    }
+
     const providerId = accountMeta?.providerId
       ?? (session.mode === 'lxns-oauth' ? 'lxns' : 'diving-fish');
     const maimaiAccount = createMaimaiBoundAccount({

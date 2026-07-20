@@ -1,7 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type ProviderId = 'diving-fish' | 'lxns' | 'local' | 'maimai-test';
-export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns'>;
+export type ProviderId = 'diving-fish' | 'lxns' | 'local' | 'maimai-test' | 'phi-taptap';
+export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
 export type GameId = 'maimai' | 'phigros' | 'test';
 
 export type ProviderOption = {
@@ -26,6 +26,7 @@ const divingFishIcon = require('../../assets/images/diving-fish.png') as ImageSo
 const lxnsIcon = require('../../assets/images/lxns.png') as ImageSourcePropType;
 const maimaiTestIcon = require('../../assets/images/maimai-test.png') as ImageSourcePropType;
 const phigrosIcon = require('../../assets/images/phigros.png') as ImageSourcePropType;
+const taptapIcon = require('../../assets/images/taptap.png') as ImageSourcePropType;
 const testGameIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
@@ -78,9 +79,17 @@ export const GAME_OPTIONS: GameOption[] = [
     id: 'phigros',
     title: 'Phigros',
     icon: phigrosIcon,
-    available: false,
-    pendingDetail: '成绩绑定尚未开放',
-    providers: [],
+    available: true,
+    pendingDetail: '',
+    providers: [
+      {
+        id: 'phi-taptap',
+        title: 'TapTap 云存档',
+        detail: '跳转 TapTap 授权登录',
+        icon: taptapIcon,
+        available: true,
+      },
+    ],
   },
 ];
 
