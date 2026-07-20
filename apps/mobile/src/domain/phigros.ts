@@ -269,16 +269,23 @@ export function isAcc100Percent(rawAcc: number): boolean {
   return rawAcc >= 99.995;
 }
 
-/** Phigros 评价等级（F–φ），基于存档 rawAcc 百分数 */
-export function phigrosAccToRate(rawAcc: number): string {
-  if (isAcc100Percent(rawAcc)) return 'phi';
-  if (rawAcc >= 96) return 'v';
-  if (rawAcc >= 92) return 's';
-  if (rawAcc >= 88) return 'a';
-  if (rawAcc >= 80) return 'b';
-  if (rawAcc >= 70) return 'c';
-  if (rawAcc >= 60) return 'd';
-  return 'f';
+/** Phigros 评价等级（F/C/B/A/S/V/φ），基于 score 与 FC，对齐 phi-plugin fCompute.rate */
+export const PHIGROS_MAX_SCORE = 1_000_000;
+
+export function phigrosScoreToRate(
+  score: number,
+  fc: boolean,
+  totalScore = PHIGROS_MAX_SCORE,
+): string {
+  if (score === totalScore) return 'phi';
+  if (fc) return 'v';
+  if (score >= totalScore * 0.96) return 'v';
+  if (score >= totalScore * 0.92) return 's';
+  if (score >= totalScore * 0.88) return 'a';
+  if (score >= totalScore * 0.82) return 'b';
+  if (score >= totalScore * 0.70) return 'c';
+  if (score > 0) return 'f';
+  return 'new';
 }
 
 /** 成绩定数：rawAcc 为存档百分数（0–100）；acc≥100% 时等于谱面定数 */
@@ -342,7 +349,7 @@ export function phigrosEntryToScoreRecord(entry: PhigrosScoreEntry): ScoreRecord
     rating: entry.rks,
     fc: entry.fc ? 'ap' : null,
     fs: null,
-    rate: phigrosAccToRate(entry.rawAcc),
+    rate: phigrosScoreToRate(entry.score, entry.fc),
     version: 'current',
   };
 }

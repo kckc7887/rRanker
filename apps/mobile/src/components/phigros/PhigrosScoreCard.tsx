@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import type { ScoreRecord } from '@/domain/models';
+import { phigrosScoreToRate } from '@/domain/phigros';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const PhigrosScoreCard = memo(function PhigrosScoreCard({
@@ -42,11 +43,10 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   );
 });
 
-type RateKind = 'f' | 'd' | 'c' | 'b' | 'a' | 's' | 'v' | 'phi';
+type RateKind = 'f' | 'c' | 'b' | 'a' | 's' | 'v' | 'phi';
 
 const RATE_COLORS: Record<RateKind, { bg: string; fg: string }> = {
   f: { bg: '#F3F4F6', fg: '#6B7280' },
-  d: { bg: '#F3F4F6', fg: '#6B7280' },
   c: { bg: '#F3F4F6', fg: '#6B7280' },
   b: { bg: '#F3F4F6', fg: '#6B7280' },
   a: { bg: '#F3F4F6', fg: '#6B7280' },
@@ -57,7 +57,6 @@ const RATE_COLORS: Record<RateKind, { bg: string; fg: string }> = {
 
 const RATE_LABELS: Record<RateKind, string> = {
   f: 'F',
-  d: 'D',
   c: 'C',
   b: 'B',
   a: 'A',
@@ -67,14 +66,8 @@ const RATE_LABELS: Record<RateKind, string> = {
 };
 
 function resolveRate(record: ScoreRecord): RateKind {
-  const rate = record.rate as RateKind;
+  const rate = phigrosScoreToRate(record.dxScore ?? 0, record.fc === 'ap') as RateKind;
   if (rate in RATE_LABELS) return rate;
-  if (record.achievements >= 96) return 'v';
-  if (record.achievements >= 92) return 's';
-  if (record.achievements >= 88) return 'a';
-  if (record.achievements >= 80) return 'b';
-  if (record.achievements >= 70) return 'c';
-  if (record.achievements >= 60) return 'd';
   return 'f';
 }
 
