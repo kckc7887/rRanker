@@ -8,6 +8,7 @@ import {
   getGameSave,
   downloadSave,
   type DeviceCodeResult,
+  type GameSaveMeta,
 } from './phigros-auth';
 import {
   parseSummary,
@@ -40,18 +41,20 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private saveCache: LoadedSave | null = null;
   private b30Cache: PhigrosB30 | null = null;
   private summaryCache: PhigrosSummary | null = null;
+  private saveMeta: GameSaveMeta | null = null;
   private saveLoadPromise: Promise<LoadedSave> | null = null;
 
-  private async ensureSaveMeta(): Promise<{
-    summaryBase64: string;
-    saveUrl: string;
-    updatedAt: string;
-  }> {
+  private async ensureSaveMeta(): Promise<GameSaveMeta> {
+    if (this.saveMeta) return this.saveMeta;
     const meta = await getGameSave(this.sessionToken);
-    if (!this.summaryCache) {
-      this.summaryCache = parseSummary(meta.summaryBase64);
-    }
+    this.saveMeta = meta;
+    this.summaryCache = parseSummary(meta.summaryBase64);
     return meta;
+  }
+
+  /** 云存档在 LeanCloud 上的更新时间（用于 UI 展示与下载缓存穿透） */
+  getSaveUpdatedAt(): string | null {
+    return this.saveMeta?.updatedAt ?? null;
   }
 
   constructor(session: ProviderSession) {
@@ -102,7 +105,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return {
       kind: 'generated',
       label: 'Phigros 云存档',
-      updatedAt: new Date().toISOString(),
+      updatedAt: this.saveMeta?.updatedAt ?? new Date().toISOString(),
       isStale: false,
     };
   }
@@ -162,8 +165,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
   }
 
   private async loadSaveInternal(): Promise<LoadedSave> {
-    const { saveUrl } = await this.ensureSaveMeta();
-    const zipBuf = await downloadSave(saveUrl);
+    const { saveUrl, updatedAt } = await this.ensureSaveMeta();
+    const zipBuf = await downloadSave(saveUrl, updatedAt);
     const { gameRecord } = await decodeSaveZip(zipBuf);
 
     const gameVersion = this.summaryCache?.gameVersion ?? 0;
@@ -202,6 +205,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     this.saveCache = null;
     this.b30Cache = null;
     this.summaryCache = null;
+    this.saveMeta = null;
     this.saveLoadPromise = null;
   }
 

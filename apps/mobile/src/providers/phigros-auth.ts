@@ -63,6 +63,30 @@ const GameSaveResponseSchema = z.object({
   })),
 });
 
+export type GameSaveMeta = {
+  summaryBase64: string;
+  saveUrl: string;
+  updatedAt: string;
+};
+
+/** 从 LeanCloud 返回的多条存档中取 updatedAt 最新且含 gameFile 的一条 */
+export function pickLatestGameSave(
+  results: Array<{ summary: string; gameFile: { url: string }; updatedAt: string }>,
+): GameSaveMeta {
+  const candidates = results.filter((item) => item.summary && item.gameFile?.url);
+  if (!candidates.length) {
+    throw new Error('云存档列表为空，请先在游戏内同步云存档');
+  }
+  const latest = candidates.reduce((best, cur) =>
+    (Date.parse(cur.updatedAt) > Date.parse(best.updatedAt) ? cur : best),
+  );
+  return {
+    summaryBase64: latest.summary,
+    saveUrl: latest.gameFile.url,
+    updatedAt: latest.updatedAt,
+  };
+}
+
 export type DeviceCodeResult = {
   deviceCode: string;
   qrcodeUrl: string;
@@ -234,42 +258,48 @@ export async function getPlayerId(sessionToken: string): Promise<string> {
   }
 }
 
-export async function getGameSave(sessionToken: string): Promise<{
-  summaryBase64: string;
-  saveUrl: string;
-  updatedAt: string;
-}> {
+export async function getGameSave(sessionToken: string): Promise<GameSaveMeta> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
-    const res = await fetch(`${LC_SERVER}/1.1/classes/_GameSave`, {
+    const query = new URL(`${LC_SERVER}/1.1/classes/_GameSave`);
+    query.searchParams.set('order', '-updatedAt');
+    query.searchParams.set('limit', '20');
+
+    const res = await fetch(query.toString(), {
       headers: {
         'X-LC-Id': TAPTAP_CLIENT_ID,
         'X-LC-Key': LC_APP_KEY,
         'User-Agent': 'LeanCloud-CSharp-SDK/1.0.3',
         Accept: 'application/json',
         'X-LC-Session': sessionToken,
+        'Cache-Control': 'no-cache',
       },
+      cache: 'no-store',
       signal: controller.signal,
     });
     const json = await res.json();
     const parsed = GameSaveResponseSchema.parse(json);
-    const save = parsed.results[0];
-    return {
-      summaryBase64: save.summary,
-      saveUrl: save.gameFile.url,
-      updatedAt: save.updatedAt,
-    };
+    return pickLatestGameSave(parsed.results);
   } finally {
     clearTimeout(timeout);
   }
 }
 
-export async function downloadSave(saveUrl: string): Promise<ArrayBuffer> {
+export async function downloadSave(saveUrl: string, cacheBust?: string): Promise<ArrayBuffer> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
-    const res = await fetch(saveUrl, { signal: controller.signal });
+    const url = new URL(saveUrl);
+    url.searchParams.set('_ts', cacheBust ?? String(Date.now()));
+    const res = await fetch(url.toString(), {
+      signal: controller.signal,
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!res.ok) {
+      throw new Error(`下载云存档失败（HTTP ${res.status}）`);
+    }
     return await res.arrayBuffer();
   } finally {
     clearTimeout(timeout);
