@@ -2,6 +2,8 @@ import {
   matchesAchievementRange,
   matchesAchievementStatus,
   matchesConstantRange,
+  matchesMultiAchievementFilter,
+  matchesSoloAchievementFilter,
   normalizeMaimaiFs,
   parseAchievementBound,
   parseConstantBound,
@@ -63,6 +65,16 @@ describe('maimai achievement status filters', () => {
     expect(matchesAchievementStatus({ fs: 'fsp' }, { family: 'fs', value: 'fs' }, true)).toBe(false);
     expect(matchesAchievementStatus({ fs: 'fs' }, { family: 'fs', value: 'fs' }, true)).toBe(true);
     expect(matchesAchievementStatus({ fs: 'sync' }, { family: 'fs', value: 'fs' })).toBe(false);
+  });
+
+  it('matches solo and multi achievement filters independently', () => {
+    const record = { fc: 'fc', fs: 'fsp' };
+    expect(matchesSoloAchievementFilter(record, 'fc')).toBe(true);
+    expect(matchesSoloAchievementFilter(record, 'ap')).toBe(false);
+    expect(matchesMultiAchievementFilter(record, 'fs')).toBe(true);
+    expect(matchesMultiAchievementFilter(record, 'fsdp')).toBe(false);
+    expect(matchesSoloAchievementFilter(record, null)).toBe(true);
+    expect(matchesMultiAchievementFilter(record, null)).toBe(true);
   });
 
   it('matches FC family inclusively and reads rawFc/rawFs fallbacks', () => {
