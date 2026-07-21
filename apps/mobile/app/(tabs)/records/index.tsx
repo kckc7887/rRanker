@@ -225,7 +225,6 @@ function PhigrosRecordsScreen() {
     list = list.filter((item) => matchesPhigrosRankFilter(item.record, deferredFilterSpec.rank));
     return list;
   }, [deferredFilterSpec, records, searchDocs]);
-  const isFiltering = filterSpec !== deferredFilterSpec;
 
   const isGameLoading = gameData.isLoading || catalogQuery.isLoading;
   const isGameError = gameData.isError || catalogQuery.isError;
@@ -275,7 +274,6 @@ function PhigrosRecordsScreen() {
           placeholder="曲名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
           value={keyword} onChangeText={setKeyword}
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-        <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 条`}</Text>
       </View>
       <PhigrosFilterBar
         collapsed={collapsed} onCollapsedChange={setCollapsed}
@@ -315,8 +313,9 @@ const PhigrosRecordList = memo(function PhigrosRecordList({
         { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
         { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
       ]} />
+      <Text style={styles.note}>共 {entries.length} 条成绩</Text>
     </View>
-  ), [catalogSource, source]);
+  ), [catalogSource, entries.length, source]);
 
   const renderItem = useCallback<ListRenderItem<{ record: ScoreRecord; title: string }>>(({ item }) => (
     <PhigrosScoreCard record={item.record} catalogTitle={item.title} />
@@ -324,7 +323,7 @@ const PhigrosRecordList = memo(function PhigrosRecordList({
 
   return <FlatList testID="phigros-records-list" contentInsetAdjustmentBehavior="automatic"
     style={styles.list}
-    contentContainerStyle={[styles.phigrosListContent, { paddingBottom: tabBottomInset + 20 }]}
+    contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
     scrollIndicatorInsets={{ bottom: tabBottomInset }}
     data={entries} keyExtractor={(item) => recordKey(item.record)}
     {...TAB_LIST_CACHE_PROPS}
@@ -335,12 +334,10 @@ const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   list: { flex: 1 },
   listContent: { padding: 16, gap: 10 },
-  phigrosListContent: { paddingHorizontal: 12, gap: 9 },
   note: { color: '#6B7280', marginBottom: 6 },
   header: { gap: 9 },
-  searchArea: { padding: 12, paddingBottom: 8, gap: 6 },
+  searchArea: { padding: 12, paddingBottom: 8 },
   searchBox: { borderWidth: 1, borderRadius: 10, padding: 11 },
-  resultCount: { color: '#6B7280', fontSize: 11 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24 },
   statusText: { fontSize: 16, fontWeight: '600' },
   statusHint: { fontSize: 13 },
