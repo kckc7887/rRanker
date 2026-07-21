@@ -313,6 +313,11 @@ export function roundRks(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
+/** 单曲成绩 RKS 展示：始终两位小数（非谱面定数、非玩家总 RKS） */
+export function formatPhigrosSongRks(rks: number): string {
+  return rks.toFixed(2);
+}
+
 /** Phi3 槽：acc=100% 按谱面定数降序取前三；贡献取谱面定数（非成绩定数） */
 export function selectPhi3(allRecords: PhigrosScoreEntry[]): PhigrosScoreEntry[] {
   return [...allRecords]
