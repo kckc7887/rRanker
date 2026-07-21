@@ -30,6 +30,7 @@ interface RecordsFilterState {
   setMultiAchievement: (value: MaimaiFsAchievement | null) => void;
   setSortBy: (s: 'rating' | 'achievements' | 'title') => void;
   setVersionLocale: (locale: VersionNameLocale) => void;
+  clearFilters: () => void;
   reset: () => void;
 }
 
@@ -60,6 +61,11 @@ export const useRecordsFilter = create<RecordsFilterState>((set) => ({
   setMultiAchievement: (multiAchievement) => set({ multiAchievement }),
   setSortBy: (sortBy) => set({ sortBy }),
   setVersionLocale: (versionLocale) => set({ versionLocale }),
+  clearFilters: () => set({
+    keyword: '', difficulty: 'all', version: 'all', type: 'all',
+    constantMin: '', constantMax: '', achievementMin: '', achievementMax: '',
+    soloAchievement: null, multiAchievement: null,
+  }),
   reset: () => set({
     keyword: '', collapsed: true, difficulty: 'all', version: 'all', type: 'all',
     constantMin: '', constantMax: '', achievementMin: '', achievementMax: '',

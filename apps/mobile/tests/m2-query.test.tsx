@@ -163,6 +163,11 @@ describe('M2 song query screens', () => {
       padding: 2,
       borderColor: '#246BFD',
     }));
+    await fireEvent.press(screen.getByLabelText('重置筛选'));
+    expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 BASIC').props.style)).toEqual(expect.objectContaining({
+      borderColor: 'transparent',
+    }));
+    await fireEvent.press(screen.getByLabelText('筛选难度 BASIC'));
     await fireEvent.press(screen.getAllByLabelText('筛选 全部')[0]);
     await fireEvent.press(screen.getByLabelText('筛选类型 SD'));
     expect(StyleSheet.flatten(screen.getByLabelText('筛选类型 SD').props.style)).toEqual(expect.objectContaining({

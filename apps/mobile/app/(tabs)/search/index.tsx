@@ -39,6 +39,7 @@ export function SearchScreen() {
   const {
     keyword, collapsed, type, difficulty, constantMin, constantMax, version, versionLocale,
     setKeyword, setCollapsed, setType, setDifficulty, setConstantMin, setConstantMax, setVersion, setVersionLocale,
+    clearFilters,
   } = useCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const index = useMemo(() => buildSongSearchIndex(query.data?.songs ?? []), [query.data?.songs]);
@@ -85,7 +86,7 @@ export function SearchScreen() {
         constantMin={constantMin} constantMax={constantMax} versionLocale={versionLocale} versions={versions}
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-        onVersionLocaleChange={setVersionLocale} />
+        onVersionLocaleChange={setVersionLocale} onReset={clearFilters} />
       <QueryStateView<{ songs: Song[]; source: DataSource }> isLoading={query.isLoading} isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}
         error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
