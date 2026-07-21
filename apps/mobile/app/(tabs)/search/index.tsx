@@ -1,12 +1,13 @@
 import { memo, useCallback, useDeferredValue, useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
-import { FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
+import { SEARCH_BOX_STYLE } from '@/components/search-box-style';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
@@ -29,17 +30,6 @@ import { useAppTheme } from '@/theme/app-theme';
 const TYPES: ChartType[] = ['SD', 'DX'];
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
-/** 与成绩页共用：安卓需去掉字体内边距，并用略不对称的上下 padding 把文字光学居中。 */
-const SEARCH_BOX_STYLE = {
-  borderWidth: 1,
-  borderRadius: 10,
-  paddingHorizontal: 11,
-  paddingTop: Platform.OS === 'android' ? 7 : 11,
-  paddingBottom: Platform.OS === 'android' ? 13 : 11,
-  ...(Platform.OS === 'android'
-    ? { textAlignVertical: 'center' as const, includeFontPadding: false }
-    : null),
-};
 export default function SearchTabScreen() {
   return <CachedTabScreen><SearchScreen /></CachedTabScreen>;
 }
