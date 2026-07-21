@@ -25,9 +25,9 @@ function parseDelta(value: string): number | null {
   return rounded;
 }
 
-function parseTopN(value: string): number | null {
+function parseSongCost(value: string): number | null {
   const n = parseNumericInput(value);
-  if (!Number.isInteger(n) || n < 1 || n > 200) return null;
+  if (!Number.isInteger(n) || n < 1 || n > 30) return null;
   return n;
 }
 
@@ -37,15 +37,15 @@ export default function PushRksToolScreen() {
   const scoreProvider = useSession((s) => s.scoreProvider);
   const catalogQuery = usePhigrosCatalog();
   const [deltaText, setDeltaText] = useState('0.01');
-  const [topNText, setTopNText] = useState('15');
+  const [songCostText, setSongCostText] = useState('1');
 
   const delta = parseDelta(deltaText);
-  const topN = parseTopN(topNText);
+  const songCost = parseSongCost(songCostText);
   const deltaError = delta == null ? '加值至少为 0.01，且最多两位小数。' : null;
-  const topNError = topN == null ? '成本 N 须为 1–200 的整数。' : null;
+  const songCostError = songCost == null ? '成本须为 1–30 的整数（愿意打几首歌）。' : null;
   const hasPhiSession = session?.mode === 'phi-session'
     && scoreProvider instanceof PhigrosScoreProvider;
-  const inputsValid = delta != null && topN != null;
+  const inputsValid = delta != null && songCost != null;
 
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -56,13 +56,13 @@ export default function PushRksToolScreen() {
   }, [catalogQuery.data?.snapshot.songs]);
 
   const pushQuery = useQuery({
-    queryKey: ['phigros-push-rks', delta, topN, session?.mode],
+    queryKey: ['phigros-push-rks', delta, songCost, session?.mode],
     enabled: hasPhiSession && inputsValid,
     queryFn: async (): Promise<PushRecommendationsResult> => {
-      if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || topN == null) {
+      if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || songCost == null) {
         throw new Error('Phigros 存档未就绪');
       }
-      return scoreProvider.getPushRecommendations(delta, topN);
+      return scoreProvider.getPushRecommendations(delta, songCost);
     },
   });
 
@@ -96,10 +96,15 @@ export default function PushRksToolScreen() {
             <Card>
               <View style={styles.row}>
                 <FormField label="期望加值" value={deltaText} onChangeText={setDeltaText} placeholder="0.01" />
-                <FormField label="期望成本 N" value={topNText} onChangeText={setTopNText} placeholder="15" />
+                <FormField
+                  label="期望成本（首歌）"
+                  value={songCostText}
+                  onChangeText={setSongCostText}
+                  placeholder="1"
+                />
               </View>
               {deltaError ? <Text style={[styles.error, { color: theme.danger }]}>{deltaError}</Text> : null}
-              {topNError ? <Text style={[styles.error, { color: theme.danger }]}>{topNError}</Text> : null}
+              {songCostError ? <Text style={[styles.error, { color: theme.danger }]}>{songCostError}</Text> : null}
               {result ? (
                 <>
                   <Text style={[styles.meta, { color: theme.textMuted }]}>
@@ -111,6 +116,13 @@ export default function PushRksToolScreen() {
                   </Text>
                   <Text style={[styles.meta, { color: theme.textSecondary }]}>
                     期望显示 RKS {result.displayTarget.toFixed(2)}
+                  </Text>
+                  <Text style={[styles.meta, { color: theme.textSecondary }]}>
+                    精确加值 {result.gainNeeded.toFixed(4)}
+                    {' · '}
+                    分摊 {result.songCost} 首
+                    {' · '}
+                    每首承担 {result.perSongShare.toFixed(4)}
                   </Text>
                 </>
               ) : null}
@@ -141,7 +153,7 @@ export default function PushRksToolScreen() {
                 </Text>
                 {result.recommendations.length === 0 ? (
                   <Text style={[styles.emptyHint, { color: theme.textMuted }]}>
-                    没有单曲能单独达到该期望 RKS，可尝试降低加值。
+                    没有谱面能承担每首 {result.perSongShare.toFixed(4)} 的份额，可增加成本歌数或降低加值。
                   </Text>
                 ) : null}
               </>
