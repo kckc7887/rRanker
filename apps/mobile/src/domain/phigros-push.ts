@@ -48,6 +48,8 @@ export type PushRecommendationsResult = {
   gainNeeded: number;
   /** 每首歌需承担的总 RKS 份额（gainNeeded / songCost） */
   perSongShare: number;
+  /** 是否包含目标 Acc 为 100%（φ）的谱面 */
+  includePhi: boolean;
   recommendations: PushRecommendation[];
 };
 
@@ -132,13 +134,15 @@ function makePlaceholderEntry(
 /**
  * 推分推荐：将精确加值均摊到 songCost 首歌，每首歌只需把总 RKS 抬高 perSongShare。
  * 对每张候选谱面二分 Acc，按 Acc 差值升序返回全部可达谱面。
+ * includePhi=false 时排除目标 Acc 为 100%（φ）的谱面。
  */
 export function findPushRecommendations(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
-  options: { delta: number; songCost: number },
+  options: { delta: number; songCost: number; includePhi?: boolean },
 ): PushRecommendationsResult {
   const songCost = Math.max(1, Math.floor(options.songCost));
+  const includePhi = options.includePhi !== false;
   const { delta } = options;
   const scored = collectScoredEntries(gameRecord, difficultyTable);
   const baseSims = toSimRecords(scored);
@@ -218,6 +222,8 @@ export function findPushRecommendations(
       }
       targetAcc = snappedAcc;
 
+      if (!includePhi && isAcc100Percent(targetAcc)) continue;
+
       const accDiff = Math.max(0, targetAcc - currentAcc);
       const expectedChartRks = calculateRks(diff, targetAcc);
       const after = withReplacedChart(baseSims, songId, level as PhigrosLevel, {
@@ -259,6 +265,7 @@ export function findPushRecommendations(
     songCost,
     gainNeeded: roundRks(gainNeeded),
     perSongShare: roundRks(perSongShare),
+    includePhi,
     recommendations,
   };
 }

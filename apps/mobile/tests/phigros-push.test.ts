@@ -139,4 +139,28 @@ describe('findPushRecommendations', () => {
     )!;
     expect(splitSame.targetAcc).toBeLessThan(comparable!.targetAcc);
   });
+
+  it('can exclude recommendations that require φ (target Acc 100%)', () => {
+    const { gameRecord, difficultyTable } = buildPool();
+    const withPhi = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.1,
+      songCost: 1,
+      includePhi: true,
+    });
+    const withoutPhi = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.1,
+      songCost: 1,
+      includePhi: false,
+    });
+
+    expect(withPhi.includePhi).toBe(true);
+    expect(withoutPhi.includePhi).toBe(false);
+    expect(withoutPhi.recommendations.every((r) => r.targetAcc < 100)).toBe(true);
+    expect(withoutPhi.recommendations.length).toBeLessThanOrEqual(withPhi.recommendations.length);
+
+    const phiOnlyCount = withPhi.recommendations.filter((r) => r.targetAcc >= 100).length;
+    if (phiOnlyCount > 0) {
+      expect(withoutPhi.recommendations.length).toBe(withPhi.recommendations.length - phiOnlyCount);
+    }
+  });
 });
