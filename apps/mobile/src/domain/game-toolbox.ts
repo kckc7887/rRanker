@@ -57,7 +57,7 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         id: 'push-rks',
         href: '/tools/push-rks',
         title: '推分计算',
-        detail: '按期望加值与成本反推目标 Acc，并按 Acc 差值推荐谱面',
+        detail: '按期望加值与成本歌数均摊，反推每谱面目标 Acc',
         summaryLabel: '推分',
       },
     ],
