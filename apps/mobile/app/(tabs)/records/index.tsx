@@ -7,8 +7,10 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
+import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { matchesAchievementRange, matchesConstantRange, matchesMultiAchievementFilter, matchesSoloAchievementFilter } from '@/domain/maimai-filters';
+import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
 import type { DataSource, ScoreRecord } from '@/domain/models';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
@@ -16,6 +18,7 @@ import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
@@ -166,7 +169,11 @@ function PhigrosRecordsScreen() {
   const catalogQuery = usePhigrosCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
-  const { keyword, setKeyword } = useRecordsFilter();
+  const {
+    keyword, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank,
+    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setAccuracyMin, setAccuracyMax, setRank,
+    clearFilters,
+  } = usePhigrosRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const hasSession = session?.mode === 'phi-session';
   const phigrosPayload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
@@ -190,7 +197,9 @@ function PhigrosRecordsScreen() {
     }),
   ), [records, titleMap]);
 
-  const filterSpec = useMemo(() => ({ keyword: debouncedKeyword }), [debouncedKeyword]);
+  const filterSpec = useMemo(() => ({
+    keyword: debouncedKeyword, level, constantMin, constantMax, accuracyMin, accuracyMax, rank,
+  }), [accuracyMax, accuracyMin, constantMax, constantMin, debouncedKeyword, level, rank]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<{ record: ScoreRecord; title: string }[]>(() => {
     if (!records.length) return [];
@@ -204,8 +213,18 @@ function PhigrosRecordsScreen() {
         return doc ? searchDocumentMatches(doc, deferredFilterSpec.keyword) : false;
       });
     }
+    if (deferredFilterSpec.level !== 'all') {
+      list = list.filter((item) => matchesPhigrosLevel(item.record.levelIndex, deferredFilterSpec.level));
+    }
+    list = list.filter((item) => matchesConstantRange(
+      item.record.difficultyConstant, deferredFilterSpec.constantMin, deferredFilterSpec.constantMax,
+    ));
+    list = list.filter((item) => matchesAchievementRange(
+      item.record.achievements, deferredFilterSpec.accuracyMin, deferredFilterSpec.accuracyMax,
+    ));
+    list = list.filter((item) => matchesPhigrosRankFilter(item.record, deferredFilterSpec.rank));
     return list;
-  }, [deferredFilterSpec.keyword, records, searchDocs]);
+  }, [deferredFilterSpec, records, searchDocs]);
 
   const isGameLoading = gameData.isLoading || catalogQuery.isLoading;
   const isGameError = gameData.isError || catalogQuery.isError;
@@ -227,6 +246,15 @@ function PhigrosRecordsScreen() {
       updatedAt: new Date().toISOString(),
       isStale: false,
     };
+  const hasActiveFilters = !!(
+    keyword.trim()
+    || level !== 'all'
+    || constantMin
+    || constantMax
+    || accuracyMin
+    || accuracyMax
+    || rank
+  );
 
   if (!hasSession && !isGameLoading) {
     return (
@@ -247,13 +275,21 @@ function PhigrosRecordsScreen() {
           value={keyword} onChangeText={setKeyword}
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
+      <PhigrosFilterBar
+        collapsed={collapsed} onCollapsedChange={setCollapsed}
+        level={level} constantMin={constantMin} constantMax={constantMax}
+        accuracyMin={accuracyMin} accuracyMax={accuracyMax} rank={rank}
+        onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
+        onAccuracyMinChange={setAccuracyMin} onAccuracyMaxChange={setAccuracyMax} onRankChange={setRank}
+        onReset={clearFilters}
+      />
       <QueryStateView<{ record: ScoreRecord; title: string }[]>
         isLoading={isGameLoading}
         isError={isGameError}
         isEmpty={!isGameLoading && filtered.length === 0}
         error={error}
         onRetry={refetchAll}
-        emptyText={keyword.trim() ? '筛选结果为空' : '暂无成绩数据'}
+        emptyText={hasActiveFilters ? '筛选结果为空' : '暂无成绩数据'}
         data={!isGameLoading && filtered.length > 0 ? filtered : undefined}
         renderData={(entries) => (
           <PhigrosRecordList entries={entries} source={source} catalogSource={catalogSource} tabBottomInset={tabBottomInset} />

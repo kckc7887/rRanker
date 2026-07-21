@@ -1,15 +1,24 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 
-export function PhigrosDifficultyBadge({ levelIndex, constant }: { levelIndex: number; constant: number }) {
+export function PhigrosDifficultyBadge({
+  levelIndex,
+  constant,
+  showConstant = true,
+}: {
+  levelIndex: number;
+  constant: number;
+  showConstant?: boolean;
+}) {
   const colors = phigrosLevelColors(levelIndex);
   const label = phigrosLevelLabel(levelIndex);
-  const text = constant.toFixed(1);
 
   return (
     <View style={[styles.badge, { backgroundColor: colors.bg }]}>
       <Text style={[styles.label, { color: colors.fg }]}>{label}</Text>
-      <Text style={[styles.constant, { color: colors.fg }]}>{text}</Text>
+      {showConstant ? (
+        <Text style={[styles.constant, { color: colors.fg }]}>{constant.toFixed(1)}</Text>
+      ) : null}
     </View>
   );
 }
