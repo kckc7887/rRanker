@@ -36,7 +36,7 @@ export function RecordsScreen() {
     soloAchievement, multiAchievement, versionLocale,
     setKeyword, setCollapsed,
     setDifficulty, setVersion, setType, setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
-    setSoloAchievement, setMultiAchievement, setVersionLocale,
+    setSoloAchievement, setMultiAchievement, setVersionLocale, clearFilters,
   } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const searchBySongId = useMemo(() => new Map(buildSongSearchIndex(catalog.data?.songs ?? [])
@@ -113,7 +113,7 @@ export function RecordsScreen() {
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}
         onSoloAchievementChange={setSoloAchievement} onMultiAchievementChange={setMultiAchievement}
-        onVersionLocaleChange={setVersionLocale} />
+        onVersionLocaleChange={setVersionLocale} onReset={clearFilters} />
       <QueryStateView<{ records: ScoreRecord[]; source: DataSource; catalogSource: DataSource }>
         isLoading={isLoading}
         isError={isError}

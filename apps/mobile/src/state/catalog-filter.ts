@@ -19,6 +19,7 @@ interface CatalogFilterState {
   setConstantMax: (constantMax: string) => void;
   setVersion: (version: string | 'all') => void;
   setVersionLocale: (versionLocale: VersionNameLocale) => void;
+  clearFilters: () => void;
   reset: () => void;
 }
 
@@ -43,5 +44,8 @@ export const useCatalogFilter = create<CatalogFilterState>((set) => ({
   setConstantMax: (constantMax) => set({ constantMax }),
   setVersion: (version) => set({ version }),
   setVersionLocale: (versionLocale) => set({ versionLocale }),
+  clearFilters: () => set({
+    keyword: '', type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all',
+  }),
   reset: () => set(DEFAULT_CATALOG_FILTERS),
 }));
