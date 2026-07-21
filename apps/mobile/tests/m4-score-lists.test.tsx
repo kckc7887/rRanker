@@ -206,4 +206,19 @@ describe('M4 score list cards', () => {
     await fireEvent.press(screen.getByLabelText('收起筛选'));
     expect(screen.getByLabelText(/展开筛选，当前.*多人 FS/)).toBeTruthy();
   });
+
+  it('resets records filters from the shared filter bar', async () => {
+    const screen = await render(<RecordsScreen />);
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+    await fireEvent.changeText(screen.getByLabelText('最低定数'), '14.8');
+    await fireEvent.changeText(screen.getByLabelText('最高定数'), '14.8');
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('重置筛选'));
+    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(screen.getByLabelText('最低定数').props.value).toBe('');
+    expect(screen.getByLabelText('最高定数').props.value).toBe('');
+  });
 });

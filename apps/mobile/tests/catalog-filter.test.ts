@@ -35,4 +35,20 @@ describe('useCatalogFilter store', () => {
       keyword: '', collapsed: true, type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all', versionLocale: 'china',
     }));
   });
+
+  it('clears filters without collapsing or changing version locale', () => {
+    const state = useCatalogFilter.getState();
+    state.setKeyword('宴会场');
+    state.setDifficulty('master');
+    state.setType('DX');
+    state.setConstantMin('13.0');
+    state.setVersion('25500');
+    state.setVersionLocale('japan');
+    state.setCollapsed(false);
+    state.clearFilters();
+    expect(useCatalogFilter.getState()).toEqual(expect.objectContaining({
+      keyword: '', difficulty: 'all', type: 'all', constantMin: '', constantMax: '', version: 'all',
+      versionLocale: 'japan', collapsed: false,
+    }));
+  });
 });

@@ -52,6 +52,7 @@ export interface MaimaiFilterBarProps {
   onSoloAchievementChange?: (value: MaimaiFcAchievement | null) => void;
   onMultiAchievementChange?: (value: MaimaiFsAchievement | null) => void;
   onVersionLocaleChange: (locale: VersionNameLocale) => void;
+  onReset: () => void;
 }
 
 export function buildMaimaiFilterSummary({
@@ -100,6 +101,7 @@ export function MaimaiFilterBar({
   onSoloAchievementChange,
   onMultiAchievementChange,
   onVersionLocaleChange,
+  onReset,
 }: MaimaiFilterBarProps) {
   const theme = useAppTheme();
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
@@ -114,6 +116,11 @@ export function MaimaiFilterBar({
 
   const setDropdownOpen = (id: OpenDropdown) => (open: boolean) => {
     setOpenDropdown(open ? id : null);
+  };
+
+  const handleReset = () => {
+    setOpenDropdown(null);
+    onReset();
   };
 
   const versionOptions = useMemo<FilterSelectOption<VersionSheetValue>[]>(() => [
@@ -141,23 +148,32 @@ export function MaimaiFilterBar({
 
   if (collapsed) {
     return (
-      <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
-        accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)}
-        style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
-        <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
-        <CollapseToggleAction expanded={false} label="展开" />
-      </Pressable>
+      <View style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
+          accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)}
+          style={styles.collapsedMain}>
+          <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
+          <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
+          <CollapseToggleAction expanded={false} label="展开" />
+        </Pressable>
+        <ResetFilterButton onPress={handleReset} />
+      </View>
     );
   }
 
   return (
     <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-      <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
-        onPress={() => { setOpenDropdown(null); onCollapsedChange(true); }} style={styles.expandedHeader}>
+      <View style={styles.expandedHeader}>
         <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
-        <CollapseToggleAction expanded label="收起" />
-      </Pressable>
+        <View style={styles.headerActions}>
+          <ResetFilterButton onPress={handleReset} />
+          <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
+            onPress={() => { setOpenDropdown(null); onCollapsedChange(true); }} hitSlop={8}
+            style={styles.headerAction}>
+            <CollapseToggleAction expanded label="收起" />
+          </Pressable>
+        </View>
+      </View>
 
       <View style={styles.filterRow}>
         <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
@@ -293,6 +309,16 @@ function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: s
   );
 }
 
+function ResetFilterButton({ onPress }: { onPress: () => void }) {
+  const theme = useAppTheme();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel="重置筛选" hitSlop={8} onPress={onPress}
+      style={({ pressed }) => [styles.resetButton, pressed && styles.resetButtonPressed]}>
+      <Text style={[styles.resetButtonText, { color: theme.accent }]}>重置</Text>
+    </Pressable>
+  );
+}
+
 function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   label: string; active: boolean; onPress: () => void; accessibilityLabel?: string;
 }) {
@@ -364,11 +390,17 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   rangeSeparator: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
-  collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
   collapsedLabel: { fontSize: 12, fontWeight: '700' },
   collapsedSummary: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
   collapseAction: { fontSize: 12, fontWeight: '800' },
   collapseActionRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   expandedTitle: { fontSize: 13, fontWeight: '800' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerAction: { minHeight: 28, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+  resetButton: { minHeight: 28, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
+  resetButtonPressed: { opacity: 0.62 },
+  resetButtonText: { fontSize: 12, fontWeight: '800' },
 });

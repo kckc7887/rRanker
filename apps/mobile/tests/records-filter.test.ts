@@ -106,4 +106,21 @@ describe('useRecordsFilter store', () => {
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
   });
+
+  it('clears filters without collapsing or changing version locale', () => {
+    useRecordsFilter.getState().setKeyword('宴会场');
+    useRecordsFilter.getState().setDifficulty('master');
+    useRecordsFilter.getState().setAchievementMin('99');
+    useRecordsFilter.getState().setSoloAchievement('ap');
+    useRecordsFilter.getState().setMultiAchievement('fs');
+    useRecordsFilter.getState().setVersionLocale('japan');
+    useRecordsFilter.getState().setCollapsed(false);
+    useRecordsFilter.getState().clearFilters();
+    expect(useRecordsFilter.getState()).toMatchObject({
+      keyword: '', difficulty: 'all', version: 'all', type: 'all',
+      constantMin: '', constantMax: '', achievementMin: '', achievementMax: '',
+      soloAchievement: null, multiAchievement: null,
+      versionLocale: 'japan', collapsed: false,
+    });
+  });
 });
