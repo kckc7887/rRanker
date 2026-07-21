@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { type ReactNode, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   Modal,
@@ -22,6 +22,13 @@ type AnchorLayout = Pick<LayoutRectangle, 'x' | 'y' | 'width' | 'height'>;
 const DROPDOWN_GAP = 4;
 const DROPDOWN_MAX_HEIGHT = 220;
 const OPTION_HEIGHT = 40;
+const FALLBACK_TRIGGER: AnchorLayout = { x: 16, y: 120, width: 200, height: 36 };
+const FALLBACK_ADORNMENT: AnchorLayout = {
+  x: FALLBACK_TRIGGER.x + FALLBACK_TRIGGER.width + 8,
+  y: FALLBACK_TRIGGER.y,
+  width: 68,
+  height: 36,
+};
 
 function computeDropdownTop(anchor: AnchorLayout, optionCount: number): number {
   const windowHeight = Dimensions.get('window').height;
@@ -43,6 +50,7 @@ export function FilterAnchoredDropdown<T extends string>({
   selectedValue,
   onSelect,
   optionAccessibilityPrefix,
+  endAdornment,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -53,10 +61,14 @@ export function FilterAnchoredDropdown<T extends string>({
   selectedValue: T;
   onSelect: (value: T) => void;
   optionAccessibilityPrefix: string;
+  /** 紧邻触发器的附加控件；下拉展开时会叠在遮罩之上保持可点。 */
+  endAdornment?: ReactNode;
 }) {
   const theme = useAppTheme();
   const triggerRef = useRef<View>(null);
+  const adornmentRef = useRef<View>(null);
   const [anchor, setAnchor] = useState<AnchorLayout | null>(null);
+  const [adornmentAnchor, setAdornmentAnchor] = useState<AnchorLayout | null>(null);
 
   const dropdownTop = useMemo(() => {
     if (!anchor) return 0;
@@ -65,21 +77,33 @@ export function FilterAnchoredDropdown<T extends string>({
 
   const openFromTrigger = () => {
     let measured = false;
-    const fallbackAnchor: AnchorLayout = { x: 16, y: 120, width: 200, height: 36 };
 
-    const applyAnchor = (layout: AnchorLayout) => {
+    const applyAnchor = (layout: AnchorLayout, adornment: AnchorLayout | null) => {
       setAnchor(layout);
+      setAdornmentAnchor(adornment);
       onOpenChange(true);
+    };
+
+    const measureAdornment = (triggerLayout: AnchorLayout) => {
+      if (!endAdornment || !adornmentRef.current) {
+        applyAnchor(triggerLayout, null);
+        return;
+      }
+      adornmentRef.current.measureInWindow((x, y, width, height) => {
+        applyAnchor(triggerLayout, { x, y, width, height });
+      });
     };
 
     triggerRef.current?.measureInWindow((x, y, width, height) => {
       measured = true;
-      applyAnchor({ x, y, width, height });
+      measureAdornment({ x, y, width, height });
     });
 
     // Jest 等环境不会触发 measureInWindow，仍要渲染 overlay 选项。
     queueMicrotask(() => {
-      if (!measured) applyAnchor(fallbackAnchor);
+      if (!measured) {
+        applyAnchor(FALLBACK_TRIGGER, endAdornment ? FALLBACK_ADORNMENT : null);
+      }
     });
   };
 
@@ -91,7 +115,7 @@ export function FilterAnchoredDropdown<T extends string>({
   };
 
   return (
-    <>
+    <View style={styles.root}>
       <View ref={triggerRef} collapsable={false} style={styles.triggerWrap}>
         <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel}
           accessibilityState={{ expanded: open }} onPress={onTriggerPress}
@@ -103,9 +127,34 @@ export function FilterAnchoredDropdown<T extends string>({
           </View>
         </Pressable>
       </View>
+      {endAdornment ? (
+        <View
+          ref={adornmentRef}
+          collapsable={false}
+          pointerEvents={open ? 'none' : 'auto'}
+          accessibilityElementsHidden={open}
+          importantForAccessibility={open ? 'no-hide-descendants' : 'auto'}
+          style={open ? styles.adornmentHidden : undefined}
+        >
+          {endAdornment}
+        </View>
+      ) : null}
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
         <Pressable accessibilityRole="button" accessibilityLabel="关闭下拉列表" style={styles.backdrop} onPress={close} />
+        {endAdornment && adornmentAnchor ? (
+          <View
+            pointerEvents="box-none"
+            style={[styles.adornmentOverlay, {
+              top: adornmentAnchor.y,
+              left: adornmentAnchor.x,
+              width: adornmentAnchor.width,
+              height: Math.max(adornmentAnchor.height, 36),
+            }]}
+          >
+            {endAdornment}
+          </View>
+        ) : null}
         {anchor ? (
           <View
             pointerEvents="box-none"
@@ -142,11 +191,12 @@ export function FilterAnchoredDropdown<T extends string>({
           </View>
         ) : null}
       </Modal>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
   triggerWrap: { flex: 1, minWidth: 0 },
   trigger: {
     minHeight: 36,
@@ -160,9 +210,12 @@ const styles = StyleSheet.create({
   caption: { fontSize: 10, fontWeight: '700', letterSpacing: 0.2 },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   value: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
+  adornmentHidden: { opacity: 0 },
+  adornmentOverlay: { position: 'absolute', zIndex: 2, justifyContent: 'center' },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.08)' },
   dropdown: {
     position: 'absolute',
+    zIndex: 1,
     borderWidth: 1,
     borderRadius: 10,
     overflow: 'hidden',

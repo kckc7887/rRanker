@@ -164,8 +164,10 @@ describe('M4 score list cards', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('选择版本 舞萌DX 2026')).toBeTruthy();
     });
-    await fireEvent.press(screen.getByLabelText('选择版本 舞萌DX 2026'));
     await fireEvent.press(screen.getByLabelText('版本名称切换为日文'));
+    expect(screen.getByLabelText('版本筛选，当前 全部')).toBeTruthy();
+    expect(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS'));
     expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
 
