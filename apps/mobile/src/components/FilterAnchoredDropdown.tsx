@@ -140,7 +140,7 @@ export function FilterAnchoredDropdown<T extends string>({
         </View>
       ) : null}
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+      <Modal visible={open} transparent animationType="none" onRequestClose={close}>
         <Pressable accessibilityRole="button" accessibilityLabel="关闭下拉列表" style={styles.backdrop} onPress={close} />
         {endAdornment && adornmentAnchor ? (
           <View
