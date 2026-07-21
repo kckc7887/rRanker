@@ -20,25 +20,19 @@ export function resolvePhigrosRate(record: Pick<ScoreRecord, 'dxScore' | 'fc'>):
 export function PhigrosRateBadge({
   rate,
   fc = false,
-  label,
 }: {
-  rate: PhigrosRateKind | 'fc';
+  rate: PhigrosRateKind;
+  /** V + FC 时使用浅蓝配色，文案仍为 V */
   fc?: boolean;
-  /** 覆盖默认文案（如筛选里的 FC） */
-  label?: string;
 }) {
-  const colors = rate === 'fc'
-    ? PHIGROS_RATE_COLORS.fc
-    : rate === 'v' && fc
-      ? PHIGROS_RATE_COLORS.vFc
-      : PHIGROS_RATE_COLORS[rate];
-  const text = label ?? (rate === 'fc' ? 'FC' : PHIGROS_RATE_LABELS[rate]);
+  const colors = rate === 'v' && fc ? PHIGROS_RATE_COLORS.vFc : PHIGROS_RATE_COLORS[rate];
+  const text = PHIGROS_RATE_LABELS[rate];
   return (
     <View style={[styles.rateBadge, { backgroundColor: colors.bg }]}>
       <Text style={[
         styles.rateText,
         { color: colors.fg },
-        (rate === 'phi' || text === '\u03C6') && styles.rateTextPhi,
+        rate === 'phi' && styles.rateTextPhi,
       ]}
       >
         {text}
