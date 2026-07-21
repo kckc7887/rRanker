@@ -160,7 +160,8 @@ function StylePreview({
   selection?: AppliedBestImageStyleSelection;
   player: Pick<Player, 'displayName' | 'presentation'>;
 }) {
-  if (selection?.mode === 'off') return <Text style={styles.noAsset}>已关闭</Text>;
+  const theme = useAppTheme();
+  if (selection?.mode === 'off') return <Text style={[styles.noAsset, { color: theme.textMuted }]}>已关闭</Text>;
   const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;
   if (kind === 'trophy') {
     return <TrophyPreview item={selectedItem} fallback={player.presentation?.trophyName} />;
@@ -170,7 +171,7 @@ function StylePreview({
     plate: player.presentation?.namePlateId,
     frame: player.presentation?.frameId,
   } as const)[kind];
-  if (collectionId === undefined) return <Text style={styles.noAsset}>未设置</Text>;
+  if (collectionId === undefined) return <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>;
   return <CollectionImage kind={kind} collectionId={collectionId} size={kind === 'plate' ? 18 : 44} borderRadius={kind === 'plate' ? 4 : 10} />;
 }
 
@@ -591,31 +592,31 @@ export default function BestImageScreen() {
         <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
         <View style={styles.fieldRow}>
           <View style={styles.textFieldWrap}>
-            <Text style={styles.fieldLabel}>数量</Text>
+            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
             <TextInput accessibilityLabel="自定义数量" autoCorrect={false} value={quantityText} onChangeText={(value) => {
               setQuantityText(value);
               const parsed = parseBestImageQuantity(value);
               if (parsed !== null) setQuantity(parsed);
             }} placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, quantityError && styles.textInputError]} />
-            {quantityError ? <Text style={styles.errorText}>{quantityError}</Text> : null}
+            {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
           </View>
           <View style={styles.textFieldWrap}>
-            <Text style={styles.fieldLabel}>最小达成率</Text>
+            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最小达成率</Text>
             <TextInput accessibilityLabel="最小达成率" autoCorrect={false} value={minimumAchievementText} onChangeText={(value) => {
               setMinimumAchievementText(value);
               const parsed = parseBestImageMinimumAchievement(value);
               if (parsed !== null) setMinimumAchievement(parsed);
             }} placeholder="0–101" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, minimumAchievementError && styles.textInputError]} />
-            {minimumAchievementError ? <Text style={styles.errorText}>{minimumAchievementError}</Text> : null}
+            {minimumAchievementError ? <Text style={[styles.errorText, { color: theme.danger }]}>{minimumAchievementError}</Text> : null}
           </View>
         </View>
-        <Text style={styles.fieldLabel}>版本</Text>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>版本</Text>
         <View style={styles.chipRow}>
           <ChoiceChip label="当前版本" selected={versions.includes('current')} onPress={() => toggleVersion('current')} />
           <ChoiceChip label="过往版本" selected={versions.includes('past')} onPress={() => toggleVersion('past')} />
           <ChoiceChip accessibilityLabel="区分版本" label="区分版本" disabled={versions.length < 2} selected={splitVersions} onPress={() => setSplitVersions((value) => !value)} />
         </View>
-        <Text style={styles.fieldLabel}>成就</Text>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>成就</Text>
         <View style={styles.achievementDropdownRow}>
           <FilterAnchoredDropdown
             open={openAchievementDropdown === 'solo'}
@@ -654,7 +655,7 @@ export default function BestImageScreen() {
 
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
       <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
-        <View style={styles.ratingStyleRow}>
+        <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
           <View style={styles.chipRow}>
             <ChoiceChip label="游戏样式" selected={ratingStyle === 'game'} onPress={() => setRatingStyle('game')} />
             <ChoiceChip label="应用样式" selected={ratingStyle === 'app'} onPress={() => setRatingStyle('app')} />
@@ -665,10 +666,10 @@ export default function BestImageScreen() {
           const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;
           const fallbackName = kind === 'trophy' ? basePlayer.presentation?.trophyName : `玩家当前${label}`;
           const selectionName = selection?.mode === 'off' ? '已关闭' : selection?.mode === 'random' ? `随机 · ${selection.item.name}` : selectedItem?.name ?? fallbackName ?? '未设置';
-          return <Pressable key={kind} accessibilityLabel={`选择${label}`} accessibilityRole="button" onPress={() => setActivePicker(kind)} style={({ pressed }) => [styles.styleRow, pressed && styles.styleRowPressed]}>
+          return <Pressable key={kind} accessibilityLabel={`选择${label}`} accessibilityRole="button" onPress={() => setActivePicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
             <View style={styles.stylePreview}><StylePreview kind={kind} selection={selection} player={basePlayer} /></View>
-            <View style={styles.styleCopy}><Text style={styles.styleName}>{label}</Text><Text numberOfLines={1} style={styles.styleValue}>{selectionName}</Text></View>
-            <Text style={styles.chevron}>›</Text>
+            <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{label}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{selectionName}</Text></View>
+            <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
           </Pressable>;
         })}
       </View>
@@ -682,10 +683,10 @@ export default function BestImageScreen() {
           </Pressable>;
         })}
       </View>
-      <Text style={styles.dimensionMeta}>{outputWidth} × {outputHeight} px · 每页最多 {maximumRowsPerPage} 行 · 第 {currentPageIndex + 1}/{pages.length} 页</Text>
+      <Text style={[styles.dimensionMeta, { color: theme.textMuted }]}>{outputWidth} × {outputHeight} px · 每页最多 {maximumRowsPerPage} 行 · 第 {currentPageIndex + 1}/{pages.length} 页</Text>
 
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>预览</Text>
-      <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight }]}>
+      <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
         {webViewSources ? <FlatList
           data={webViewSources}
           horizontal
@@ -723,18 +724,18 @@ export default function BestImageScreen() {
           style={styles.previewPager}
           windowSize={3}
         /> : <View style={styles.loadingPreview}>
-          {assetError || webViewSourceError ? <Text accessibilityRole="alert" style={styles.assetError}>{assetError ?? webViewSourceError}</Text> : <View style={styles.loadingContent}>
+          {assetError || webViewSourceError ? <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{assetError ?? webViewSourceError}</Text> : <View style={styles.loadingContent}>
             <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
             <Text style={[styles.loadingText, { color: theme.textMuted }]}>{coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
           </View>}
         </View>}
       </View>
-      {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, index === currentPageIndex && styles.pageDotActive]} />)}</View> : null}
+      {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === currentPageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
       <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!webViewSources || !formValid || exportBusy} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!webViewSources || !formValid || exportBusy) && styles.exportButtonDisabled]}>
         {exportBusy ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
         <Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text>
       </Pressable>
-      <Text accessibilityLiveRegion="polite" style={styles.webViewStatusText} testID="best-image-webview-status">{webViewStatusText}</Text>
+      <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="best-image-webview-status">{webViewStatusText}</Text>
     </ScrollView>
 
     <BestImageCollectionPicker visible={activePicker !== null} kind={activePicker} items={collections.data?.items ?? []} selectedId={activePicker && (styleSelections[activePicker]?.mode === 'item' || styleSelections[activePicker]?.mode === 'random') ? styleSelections[activePicker].item.id : null} selectedMode={activePicker ? styleSelections[activePicker]?.mode ?? 'current' : 'current'} isLoading={collections.isLoading} isError={collections.isError} onRetry={() => { void collections.refetch(); }} onClose={() => setActivePicker(null)} onSelect={selectCollection} />
@@ -757,69 +758,61 @@ export default function BestImageScreen() {
             style={styles.webview}
           />
         </View>
-        <View style={styles.exportOverlay}><ActivityIndicator color="#246BFD" size="large" /><Text style={styles.exportOverlayText}>{exportStatus ?? '正在准备导出'}</Text></View>
+        <View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View>
       </View> : null}
     </Modal>
   </>;
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F8FA' },
+  page: { flex: 1 },
   content: { padding: 16, paddingBottom: 32, alignItems: 'stretch' },
-  label: { color: '#111827', fontSize: 15, fontWeight: '800', marginBottom: 10 },
+  label: { fontSize: 15, fontWeight: '800', marginBottom: 10 },
   sectionLabel: { marginTop: 24 },
-  segmentedControl: { flexDirection: 'row', padding: 4, borderRadius: 14, backgroundColor: '#E8EBF0' },
+  segmentedControl: { flexDirection: 'row', padding: 4, borderRadius: 14 },
   segment: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  segmentSelected: { backgroundColor: '#FFFFFF' },
-  segmentText: { color: '#6B7280', fontSize: 14, fontWeight: '700' },
-  segmentTextSelected: { color: '#246BFD' },
-  customPanel: { marginTop: 16, padding: 14, gap: 10, borderRadius: 16, backgroundColor: '#FFFFFF' },
-  panelTitle: { color: '#111827', fontSize: 15, fontWeight: '800' },
+  segmentText: { fontSize: 14, fontWeight: '700' },
+  customPanel: { marginTop: 16, padding: 14, gap: 10, borderRadius: 16 },
+  panelTitle: { fontSize: 15, fontWeight: '800' },
   fieldRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   textFieldWrap: { flex: 1, minWidth: 0 },
-  fieldLabel: { color: '#596579', fontSize: 12, fontWeight: '700', marginBottom: 6 },
-  textInput: { minHeight: 40, paddingHorizontal: 11, borderWidth: 1, borderColor: '#D8DDE6', borderRadius: 10, backgroundColor: '#F8FAFC', color: '#111827', fontSize: 14 },
+  fieldLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  textInput: { minHeight: 40, paddingHorizontal: 11, borderWidth: 1, borderRadius: 10, fontSize: 14 },
   textInputError: { borderColor: '#D92D20' },
-  errorText: { marginTop: 4, color: '#D92D20', fontSize: 10, lineHeight: 14 },
+  errorText: { marginTop: 4, fontSize: 10, lineHeight: 14 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   achievementDropdownRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  chip: { minWidth: 46, height: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderWidth: 1, borderColor: '#D8DDE6', borderRadius: 999, backgroundColor: '#FFFFFF' },
-  chipSelected: { borderColor: '#246BFD', backgroundColor: '#EEF4FF' },
+  chip: { minWidth: 46, height: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderWidth: 1, borderRadius: 999 },
   chipDisabled: { opacity: 0.42 },
-  chipText: { color: '#596579', fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
-  chipTextSelected: { color: '#246BFD' },
+  chipText: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
   chipTextDisabled: { color: '#9CA3AF' },
-  styleList: { overflow: 'hidden', borderRadius: 16, backgroundColor: '#FFFFFF' },
-  ratingStyleRow: { paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
-  styleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
-  styleRowPressed: { backgroundColor: '#F3F6FA' },
+  styleList: { overflow: 'hidden', borderRadius: 16 },
+  ratingStyleRow: { paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  styleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
   stylePreview: { width: 132, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   styleCopy: { flex: 1, minWidth: 0 },
-  styleName: { color: '#111827', fontSize: 14, fontWeight: '800' },
-  styleValue: { color: '#8A93A3', fontSize: 12, marginTop: 3 },
-  chevron: { color: '#9CA3AF', fontSize: 26, fontWeight: '300' },
-  noAsset: { color: '#9CA3AF', fontSize: 12 },
+  styleName: { fontSize: 14, fontWeight: '800' },
+  styleValue: { fontSize: 12, marginTop: 3 },
+  chevron: { fontSize: 26, fontWeight: '300' },
+  noAsset: { fontSize: 12 },
   widthOptions: { flexDirection: 'row', gap: 8 },
-  widthOption: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#D6DAE1', backgroundColor: '#FFFFFF' },
-  widthOptionSelected: { borderColor: '#246BFD', backgroundColor: '#EEF4FF' },
-  widthOptionText: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
-  widthOptionTextSelected: { color: '#246BFD' },
-  dimensionMeta: { color: '#8A93A3', fontSize: 12, marginTop: 8, textAlign: 'right' },
-  previewFrame: { alignSelf: 'center', overflow: 'hidden', borderRadius: 18, borderWidth: 1, borderColor: '#DDE1E8', backgroundColor: '#FFFFFF' },
+  widthOption: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
+  widthOptionText: { fontSize: 13, fontWeight: '700' },
+  dimensionMeta: { fontSize: 12, marginTop: 8, textAlign: 'right' },
+  previewFrame: { alignSelf: 'center', overflow: 'hidden', borderRadius: 18, borderWidth: 1 },
   previewPager: { flex: 1 },
   webview: { flex: 1, backgroundColor: 'transparent' },
   loadingPreview: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingContent: { alignItems: 'center', gap: 10 },
-  loadingText: { color: '#687386', fontSize: 12, fontWeight: '600' },
-  assetError: { color: '#B42318', fontSize: 14, fontWeight: '700' },
+  loadingText: { fontSize: 12, fontWeight: '600' },
+  assetError: { fontSize: 14, fontWeight: '700' },
   pageDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  pageDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#CDD3DD' },
-  pageDotActive: { width: 18, backgroundColor: '#246BFD' },
-  exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14, backgroundColor: '#246BFD' },
-  exportButtonDisabled: { backgroundColor: '#AAB8D0' },
+  pageDot: { width: 6, height: 6, borderRadius: 3 },
+  exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14 },
+  exportButtonDisabled: { opacity: 0.55 },
   exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  webViewStatusText: { marginTop: 7, color: '#8A93A3', fontSize: 11, lineHeight: 16, textAlign: 'center' },
+  webViewStatusText: { marginTop: 7, fontSize: 11, lineHeight: 16, textAlign: 'center' },
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#FFFFFF' },
-  exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: '#F7F8FA' },
-  exportOverlayText: { color: '#4B5563', fontSize: 14, fontWeight: '700' },
+  exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  exportOverlayText: { fontSize: 14, fontWeight: '700' },
 });
