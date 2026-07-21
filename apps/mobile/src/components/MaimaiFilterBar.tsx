@@ -204,21 +204,23 @@ export function MaimaiFilterBar({
             selectedValue={version}
             optionAccessibilityPrefix="选择版本"
             onSelect={(value) => onVersionChange(value === 'all' ? 'all' : value)}
+            endAdornment={(
+              <View style={[styles.localeSwitch, { borderColor: theme.border }]}>
+                {(['china', 'japan'] as const).map((locale) => {
+                  const active = versionLocale === locale;
+                  const label = locale === 'china' ? '中' : '日';
+                  return (
+                    <Pressable key={locale} accessibilityRole="button"
+                      accessibilityLabel={`版本名称切换为${locale === 'china' ? '中文' : '日文'}`}
+                      accessibilityState={{ selected: active }} onPress={() => onVersionLocaleChange(locale)}
+                      style={[styles.localeButton, { backgroundColor: theme.surface }, active && { backgroundColor: theme.accent }]}>
+                      <Text style={[styles.localeText, active && styles.localeTextActive]}>{label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           />
-          <View style={[styles.localeSwitch, { borderColor: theme.border }]}>
-            {(['china', 'japan'] as const).map((locale) => {
-              const active = versionLocale === locale;
-              const label = locale === 'china' ? '中' : '日';
-              return (
-                <Pressable key={locale} accessibilityRole="button"
-                  accessibilityLabel={`版本名称切换为${locale === 'china' ? '中文' : '日文'}`}
-                  accessibilityState={{ selected: active }} onPress={() => onVersionLocaleChange(locale)}
-                  style={[styles.localeButton, { backgroundColor: theme.surface }, active && { backgroundColor: theme.accent }]}>
-                  <Text style={[styles.localeText, active && styles.localeTextActive]}>{label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
         </View>
       </View>
 
