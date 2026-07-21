@@ -213,9 +213,13 @@ export class PhigrosScoreProvider implements ScoreProvider {
   }
 
   /** 推分推荐：按加值与成本歌数均摊份额，返回可达谱面列表 */
-  async getPushRecommendations(delta: number, songCost: number): Promise<PushRecommendationsResult> {
+  async getPushRecommendations(
+    delta: number,
+    songCost: number,
+    includePhi = true,
+  ): Promise<PushRecommendationsResult> {
     const { gameRecord, diffTable } = await this.loadSave();
-    return findPushRecommendations(gameRecord, diffTable, { delta, songCost });
+    return findPushRecommendations(gameRecord, diffTable, { delta, songCost, includePhi });
   }
 
   /** 丢弃内存缓存，下次拉取会重新请求云存档 */

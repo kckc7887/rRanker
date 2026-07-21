@@ -38,6 +38,7 @@ export default function PushRksToolScreen() {
   const catalogQuery = usePhigrosCatalog();
   const [deltaText, setDeltaText] = useState('0.01');
   const [songCostText, setSongCostText] = useState('1');
+  const [includePhi, setIncludePhi] = useState(true);
 
   const delta = parseDelta(deltaText);
   const songCost = parseSongCost(songCostText);
@@ -56,13 +57,13 @@ export default function PushRksToolScreen() {
   }, [catalogQuery.data?.snapshot.songs]);
 
   const pushQuery = useQuery({
-    queryKey: ['phigros-push-rks', delta, songCost, session?.mode],
+    queryKey: ['phigros-push-rks', delta, songCost, includePhi, session?.mode],
     enabled: hasPhiSession && inputsValid,
     queryFn: async (): Promise<PushRecommendationsResult> => {
       if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || songCost == null) {
         throw new Error('Phigros 存档未就绪');
       }
-      return scoreProvider.getPushRecommendations(delta, songCost);
+      return scoreProvider.getPushRecommendations(delta, songCost, includePhi);
     },
   });
 
@@ -105,6 +106,31 @@ export default function PushRksToolScreen() {
               </View>
               {deltaError ? <Text style={[styles.error, { color: theme.danger }]}>{deltaError}</Text> : null}
               {songCostError ? <Text style={[styles.error, { color: theme.danger }]}>{songCostError}</Text> : null}
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: includePhi }}
+                accessibilityLabel={includePhi ? '包含目标 Acc 100% 的 φ 推分' : '排除目标 Acc 100% 的 φ 推分'}
+                onPress={() => setIncludePhi((v) => !v)}
+                style={[
+                  styles.toggleRow,
+                  {
+                    borderColor: includePhi ? theme.accent : theme.border,
+                    backgroundColor: includePhi ? theme.accentSoft : theme.input,
+                  },
+                ]}
+              >
+                <View style={styles.toggleTextCol}>
+                  <Text style={[styles.toggleTitle, { color: theme.text }]}>包含 φ</Text>
+                  <Text style={[styles.toggleHint, { color: theme.textMuted }]}>
+                    目标 Acc 为 100% 的谱面
+                  </Text>
+                </View>
+                <Text style={[styles.toggleState, { color: includePhi ? theme.accent : theme.textMuted }]}>
+                  {includePhi ? '开' : '关'}
+                </Text>
+              </Pressable>
+
               {result ? (
                 <>
                   <Text style={[styles.meta, { color: theme.textMuted }]}>
@@ -153,7 +179,11 @@ export default function PushRksToolScreen() {
                 </Text>
                 {result.recommendations.length === 0 ? (
                   <Text style={[styles.emptyHint, { color: theme.textMuted }]}>
-                    没有谱面能承担每首 {result.perSongShare.toFixed(4)} 的份额，可增加成本歌数或降低加值。
+                    没有谱面能承担每首 {result.perSongShare.toFixed(4)} 的份额
+                    {result.includePhi ? '' : '（已排除 φ）'}
+                    ，可增加成本歌数、降低加值
+                    {result.includePhi ? '' : '或开启包含 φ'}
+                    。
                   </Text>
                 ) : null}
                 {result.recommendations.length > 0
@@ -189,6 +219,20 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 10, paddingBottom: 28 },
   header: { gap: 12, marginBottom: 4 },
   row: { flexDirection: 'row', gap: 10 },
+  toggleRow: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  toggleTextCol: { flex: 1, gap: 2 },
+  toggleTitle: { fontSize: 14, fontWeight: '700' },
+  toggleHint: { fontSize: 12, lineHeight: 16 },
+  toggleState: { fontSize: 15, fontWeight: '800' },
   meta: { fontSize: 13, marginTop: 8, lineHeight: 18 },
   resultLine: { fontSize: 18, fontWeight: '700', marginTop: 6 },
   error: { marginTop: 8, fontSize: 13 },
