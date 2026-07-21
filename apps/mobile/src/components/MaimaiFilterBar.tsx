@@ -157,8 +157,7 @@ export function MaimaiFilterBar({
         </Pressable>
         <View style={styles.headerActions}>
           <ResetFilterButton onPress={handleReset} />
-          <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
-            accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)} hitSlop={8}
+          <Pressable accessible={false} hitSlop={8} onPress={() => onCollapsedChange(false)}
             style={styles.headerAction}>
             <CollapseToggleAction expanded={false} label="展开" />
           </Pressable>
