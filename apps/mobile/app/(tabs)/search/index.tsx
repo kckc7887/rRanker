@@ -1,7 +1,7 @@
 import { memo, useCallback, useDeferredValue, useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { FlatList, Platform, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
@@ -29,6 +29,17 @@ import { useAppTheme } from '@/theme/app-theme';
 const TYPES: ChartType[] = ['SD', 'DX'];
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
+/** 与成绩页共用：安卓需去掉字体内边距，并用略不对称的上下 padding 把文字光学居中。 */
+const SEARCH_BOX_STYLE = {
+  borderWidth: 1,
+  borderRadius: 10,
+  paddingHorizontal: 11,
+  paddingTop: Platform.OS === 'android' ? 7 : 11,
+  paddingBottom: Platform.OS === 'android' ? 13 : 11,
+  ...(Platform.OS === 'android'
+    ? { textAlignVertical: 'center' as const, includeFontPadding: false }
+    : null),
+};
 export default function SearchTabScreen() {
   return <CachedTabScreen><SearchScreen /></CachedTabScreen>;
 }
@@ -293,7 +304,7 @@ const PhigrosCatalogList = memo(function PhigrosCatalogList({
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   searchArea: { padding: 12, paddingBottom: 8, gap: 6, backgroundColor: '#FFF' },
-  searchBox: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 11, backgroundColor: '#FFF', color: '#111827' },
+  searchBox: { ...SEARCH_BOX_STYLE, borderColor: '#D1D5DB', backgroundColor: '#FFF', color: '#111827' },
   resultCount: { color: '#6B7280', fontSize: 11 },
   listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 20, gap: 9 },
   row: { backgroundColor: '#FFF', borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },

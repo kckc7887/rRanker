@@ -1,5 +1,5 @@
 import { memo, useCallback, useDeferredValue, useMemo } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { FlatList, Platform, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
@@ -23,6 +23,18 @@ import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
+
+/** 安卓去掉字体内边距，并用略不对称上下 padding 把占位/输入文字光学居中。 */
+const SEARCH_BOX_STYLE = {
+  borderWidth: 1,
+  borderRadius: 10,
+  paddingHorizontal: 11,
+  paddingTop: Platform.OS === 'android' ? 7 : 11,
+  paddingBottom: Platform.OS === 'android' ? 13 : 11,
+  ...(Platform.OS === 'android'
+    ? { textAlignVertical: 'center' as const, includeFontPadding: false }
+    : null),
+};
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
@@ -337,7 +349,7 @@ const styles = StyleSheet.create({
   note: { color: '#6B7280', marginBottom: 6 },
   header: { gap: 9 },
   searchArea: { padding: 12, paddingBottom: 8 },
-  searchBox: { borderWidth: 1, borderRadius: 10, padding: 11 },
+  searchBox: SEARCH_BOX_STYLE,
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24 },
   statusText: { fontSize: 16, fontWeight: '600' },
   statusHint: { fontSize: 13 },
