@@ -10,8 +10,10 @@ import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
+import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import { parseConstantBound } from '@/domain/maimai-filters';
+import { phigrosLevelToDifficulty } from '@/domain/phigros-filters';
 import type { Chart, ChartType, DataSource, Song } from '@/domain/models';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
@@ -20,6 +22,7 @@ import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useCatalogFilter } from '@/state/catalog-filter';
+import { usePhigrosCatalogFilter } from '@/state/phigros-catalog-filter';
 import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -178,10 +181,19 @@ function PhigrosSearchScreen() {
   const library = useUserLibrary();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
-  const { keyword, setKeyword } = useCatalogFilter();
+  const {
+    keyword, collapsed, level, constantMin, constantMax,
+    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, clearFilters,
+  } = usePhigrosCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const index = useMemo(() => buildSongSearchIndex(query.data?.snapshot.songs ?? []), [query.data?.snapshot.songs]);
-  const filterSpec = useMemo(() => ({ ...EMPTY_SONG_FILTERS, keyword: debouncedKeyword }), [debouncedKeyword]);
+  const filterSpec = useMemo(() => ({
+    ...EMPTY_SONG_FILTERS,
+    keyword: debouncedKeyword,
+    difficulties: level === 'all' ? [] : [phigrosLevelToDifficulty(level)],
+    constantMin: parseConstantBound(constantMin),
+    constantMax: parseConstantBound(constantMax),
+  }), [constantMax, constantMin, debouncedKeyword, level]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
   const isFiltering = filterSpec !== deferredFilterSpec;
@@ -189,6 +201,7 @@ function PhigrosSearchScreen() {
     () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
     [library.data],
   );
+  const hasActiveFilters = !!(keyword.trim() || level !== 'all' || constantMin || constantMax);
 
   const provider = query.data?.provider ?? null;
   const blurUrls = useMemo(() => {
@@ -212,11 +225,17 @@ function PhigrosSearchScreen() {
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
       </View>
+      <PhigrosFilterBar
+        collapsed={collapsed} onCollapsedChange={setCollapsed}
+        level={level} constantMin={constantMin} constantMax={constantMax}
+        onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
+        onReset={clearFilters}
+      />
       <QueryStateView<{ songs: Song[]; source?: DataSource }>
         isLoading={query.isLoading} isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}
         error={query.error} onRetry={() => void query.refetch()}
-        emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
+        emptyText={hasActiveFilters ? '筛选结果为空' : '暂无曲库数据'}
         data={query.data && filtered.length > 0 ? { songs: filtered, source } : undefined}
         renderData={(result) => (
           <PhigrosCatalogList
