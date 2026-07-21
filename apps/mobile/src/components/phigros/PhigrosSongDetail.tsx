@@ -26,7 +26,7 @@ import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { Chart, PhigrosChartNotes, ScoreRecord, Song } from '@/domain/models';
-import { PHIGROS_MAX_SCORE } from '@/domain/phigros';
+import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { buildTagHistory } from '@/domain/user-library';
 import { useGameData } from '@/hooks/use-game-data';
@@ -451,7 +451,7 @@ function ChartCard({
     : acc % 1 === 0 ? `${acc.toFixed(0)}%` : `${acc.toFixed(2)}%`;
   const rksText = rks === undefined
     ? '—'
-    : Number.isInteger(rks) ? rks.toFixed(1) : rks.toFixed(2);
+    : formatPhigrosSongRks(rks);
   const isPhi = score === PHIGROS_MAX_SCORE;
   const isFc = !!best && best.fc === 'ap' && !isPhi;
 
