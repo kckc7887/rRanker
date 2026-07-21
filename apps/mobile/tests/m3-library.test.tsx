@@ -279,6 +279,16 @@ describe('M3A personal library screens', () => {
     expect(screen.queryByText('歌曲 ID 999')).toBeNull();
   });
 
+  it('opens practice chart detail with chartType and levelIndex', async () => {
+    const screen = await render(<UserLibraryScreen />);
+    await fireEvent.press(screen.getByText('练习'));
+    await fireEvent.press(screen.getByText(/练习谱面/));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/songs/[songId]',
+      params: { songId: '1', chartType: 'DX', levelIndex: '3' },
+    });
+  });
+
   it('toggles a song favorite from search without opening the row', async () => {
     const screen = await render(<SearchScreen />);
     await fireEvent.press(screen.getByLabelText('取消收藏 正常曲目 A'));
