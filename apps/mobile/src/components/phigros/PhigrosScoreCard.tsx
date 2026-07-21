@@ -2,9 +2,10 @@ import { memo } from 'react';
 import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
+import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import type { ScoreRecord } from '@/domain/models';
-import { PHIGROS_MAX_SCORE, phigrosScoreToRate } from '@/domain/phigros';
+import { PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const PhigrosScoreCard = memo(function PhigrosScoreCard({
@@ -23,7 +24,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   const acc = record.achievements;
   const accText = acc % 1 === 0 ? `${acc.toFixed(0)}%` : `${acc.toFixed(2)}%`;
   const rksText = Number.isInteger(record.rating) ? record.rating.toFixed(1) : record.rating.toFixed(2);
-  const rate = resolveRate(record);
+  const rate = resolvePhigrosRate(record);
   const title = catalogTitle ?? record.title;
   const openDetail = () => router.push({
     pathname: '/songs/[songId]',
@@ -48,7 +49,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
         />
         <View style={styles.tags}>
           <PhigrosDifficultyBadge levelIndex={record.levelIndex} constant={record.difficultyConstant} />
-          <RateBadge rate={rate} fc={record.fc === 'ap'} />
+          <PhigrosRateBadge rate={rate} fc={record.fc === 'ap'} />
         </View>
       </View>
       <View style={styles.stats}>
@@ -59,52 +60,6 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   );
 });
 
-type RateKind = 'f' | 'c' | 'b' | 'a' | 's' | 'v' | 'phi';
-
-const RATE_COLORS: Record<RateKind | 'vFc', { bg: string; fg: string }> = {
-  f: { bg: '#F3F4F6', fg: '#6B7280' },
-  c: { bg: '#F3F4F6', fg: '#6B7280' },
-  b: { bg: '#F3F4F6', fg: '#6B7280' },
-  a: { bg: '#F3F4F6', fg: '#6B7280' },
-  s: { bg: '#FDF2F8', fg: '#DB2777' },
-  v: { bg: '#4B5563', fg: '#FFFFFF' },
-  vFc: { bg: '#E0F2FE', fg: '#0EA5E9' },
-  phi: { bg: '#FFF7E6', fg: '#B8860B' },
-};
-
-const RATE_LABELS: Record<RateKind, string> = {
-  f: 'F',
-  c: 'C',
-  b: 'B',
-  a: 'A',
-  s: 'S',
-  v: 'V',
-  phi: '\u03C6',
-};
-
-function resolveRate(record: ScoreRecord): RateKind {
-  const rate = phigrosScoreToRate(record.dxScore ?? 0, record.fc === 'ap') as RateKind;
-  if (rate in RATE_LABELS) return rate;
-  return 'f';
-}
-
-function RateBadge({ rate, fc }: { rate: RateKind; fc: boolean }) {
-  const colors = rate === 'v' && fc ? RATE_COLORS.vFc : RATE_COLORS[rate];
-  const label = RATE_LABELS[rate];
-  return (
-    <View style={[styles.rateBadge, { backgroundColor: colors.bg }]}>
-      <Text style={[
-        styles.rateText,
-        { color: colors.fg },
-        rate === 'phi' && styles.rateTextPhi,
-      ]}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   main: { flex: 1, minWidth: 0, gap: 4 },
@@ -113,21 +68,4 @@ const styles = StyleSheet.create({
   stats: { minWidth: 56, alignItems: 'flex-end', gap: 4 },
   acc: { fontSize: 12, fontWeight: '700' },
   rks: { fontSize: 20, fontWeight: '900' },
-  rateBadge: {
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    minHeight: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rateText: {
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-    includeFontPadding: false,
-    textAlign: 'center',
-  },
-  rateTextPhi: { transform: [{ translateY: -1.5 }] },
 });
