@@ -24,6 +24,10 @@ import {
   type PhigrosScoreEntry,
   type PhigrosSummary,
 } from '@/domain/phigros';
+import {
+  findPushRecommendations,
+  type PushRecommendationsResult,
+} from '@/domain/phigros-push';
 
 export type { DeviceCodeResult };
 
@@ -206,6 +210,12 @@ export class PhigrosScoreProvider implements ScoreProvider {
       this.b30Cache = computeB30(gameRecord, diffTable);
       return this.b30Cache;
     });
+  }
+
+  /** 推分推荐：按加值与成本 N 返回可达期望 RKS 的谱面列表 */
+  async getPushRecommendations(delta: number, topN: number): Promise<PushRecommendationsResult> {
+    const { gameRecord, diffTable } = await this.loadSave();
+    return findPushRecommendations(gameRecord, diffTable, { delta, topN });
   }
 
   /** 丢弃内存缓存，下次拉取会重新请求云存档 */
