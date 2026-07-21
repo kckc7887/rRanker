@@ -156,6 +156,12 @@ export default function PushRksToolScreen() {
                     没有谱面能承担每首 {result.perSongShare.toFixed(4)} 的份额，可增加成本歌数或降低加值。
                   </Text>
                 ) : null}
+                {result.recommendations.length > 0
+                  && result.recommendations.length < result.songCost ? (
+                  <Text style={[styles.warnHint, { color: theme.warning }]}>
+                    仅有 {result.recommendations.length} 张谱面可达每首份额，少于期望成本 {result.songCost} 首；均摊可能无法凑满期望 RKS，可增加成本歌数或降低加值。
+                  </Text>
+                ) : null}
               </>
             ) : null}
           </View>
@@ -188,6 +194,7 @@ const styles = StyleSheet.create({
   error: { marginTop: 8, fontSize: 13 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginTop: 4 },
   emptyHint: { fontSize: 13, lineHeight: 19 },
+  warnHint: { fontSize: 13, lineHeight: 19, fontWeight: '600' },
   statusBlock: { alignItems: 'center', paddingVertical: 20, gap: 10 },
   statusText: { fontSize: 14 },
   retryButton: {
