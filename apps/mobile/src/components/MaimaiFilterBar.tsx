@@ -154,9 +154,15 @@ export function MaimaiFilterBar({
           style={styles.collapsedMain}>
           <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
           <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
-          <CollapseToggleAction expanded={false} label="展开" />
         </Pressable>
-        <ResetFilterButton onPress={handleReset} />
+        <View style={styles.headerActions}>
+          <ResetFilterButton onPress={handleReset} />
+          <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
+            accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)} hitSlop={8}
+            style={styles.headerAction}>
+            <CollapseToggleAction expanded={false} label="展开" />
+          </Pressable>
+        </View>
       </View>
     );
   }
