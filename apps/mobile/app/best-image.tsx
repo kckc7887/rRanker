@@ -655,15 +655,9 @@ export default function BestImageScreen() {
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
       <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
         <View style={styles.ratingStyleRow}>
-          <View style={styles.styleCopy}>
-            <Text style={styles.styleName}>Rating 框</Text>
-            <Text style={styles.styleValue}>游戏样式保留原框；应用样式使用全宽玩家信息卡</Text>
-          </View>
-          <View style={styles.ratingStyleChoices}>
-            <View style={styles.chipRow}>
-              <ChoiceChip label="游戏样式" selected={ratingStyle === 'game'} onPress={() => setRatingStyle('game')} />
-              <ChoiceChip label="应用样式" selected={ratingStyle === 'app'} onPress={() => setRatingStyle('app')} />
-            </View>
+          <View style={styles.chipRow}>
+            <ChoiceChip label="游戏样式" selected={ratingStyle === 'game'} onPress={() => setRatingStyle('game')} />
+            <ChoiceChip label="应用样式" selected={ratingStyle === 'app'} onPress={() => setRatingStyle('app')} />
           </View>
         </View>
         {STYLE_ITEMS.map(({ kind, label }) => {
@@ -796,8 +790,7 @@ const styles = StyleSheet.create({
   chipTextSelected: { color: '#246BFD' },
   chipTextDisabled: { color: '#9CA3AF' },
   styleList: { overflow: 'hidden', borderRadius: 16, backgroundColor: '#FFFFFF' },
-  ratingStyleRow: { minHeight: 88, gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
-  ratingStyleChoices: { gap: 8 },
+  ratingStyleRow: { paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
   styleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
   styleRowPressed: { backgroundColor: '#F3F6FA' },
   stylePreview: { width: 132, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
