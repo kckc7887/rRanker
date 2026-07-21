@@ -5,7 +5,6 @@ import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
-import { SEARCH_BOX_STYLE } from '@/components/search-box-style';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
@@ -338,7 +337,7 @@ const styles = StyleSheet.create({
   note: { color: '#6B7280', marginBottom: 6 },
   header: { gap: 9 },
   searchArea: { padding: 12, paddingBottom: 8 },
-  searchBox: SEARCH_BOX_STYLE,
+  searchBox: { borderWidth: 1, borderRadius: 10, padding: 11 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24 },
   statusText: { fontSize: 16, fontWeight: '600' },
   statusHint: { fontSize: 13 },
