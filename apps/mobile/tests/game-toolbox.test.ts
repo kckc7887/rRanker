@@ -17,7 +17,7 @@ describe('per-game toolbox registry', () => {
   it('gives Phigros a push-rks toolbox entry', () => {
     const toolbox = getGameToolbox('phigros');
     expect(toolbox.tools.map((tool) => tool.id)).toEqual(['push-rks']);
-    expect(summarizeGameTools('phigros')).toBe('推分');
+    expect(summarizeGameTools('phigros')).toBe('推分计算');
   });
 
   it('keeps profile capabilities consistent with registered tools', () => {
