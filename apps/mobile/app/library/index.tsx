@@ -86,7 +86,7 @@ function LibraryRow({ item, song, blurUrl }: { item: UserLibraryItem; song?: Son
   return <Pressable accessibilityRole="button" onPress={() => router.push({
     pathname: '/songs/[songId]',
     params: item.kind === 'chart'
-      ? { songId: item.songId, levelIndex: String(item.levelIndex) }
+      ? { songId: item.songId, chartType: item.type, levelIndex: String(item.levelIndex) }
       : { songId: item.songId },
   } as Href)} style={[styles.row, { backgroundColor: theme.surface }]}>
     <LibrarySongCover song={song} blurUrl={blurUrl} />
