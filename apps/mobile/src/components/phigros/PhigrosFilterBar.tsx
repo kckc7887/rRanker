@@ -2,7 +2,6 @@ import { type ReactNode, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
-import { PhigrosDifficultyBadge } from '@/components/phigros/PhigrosDifficultyBadge';
 import {
   PHIGROS_LEVELS,
   PHIGROS_RANK_FILTERS,
@@ -11,6 +10,7 @@ import {
   type PhigrosRankFilter,
 } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
+import { phigrosLevelColors } from '@/domain/phigros-level-theme';
 import { useAppTheme } from '@/theme/app-theme';
 
 type OpenDropdown = 'rank' | null;
@@ -126,18 +126,21 @@ export function PhigrosFilterBar({
 
       <View style={styles.filterRow}>
         <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipScroll}
+          contentContainerStyle={styles.chipRow}
+        >
           <NeutralChip label="全部" active={level === 'all'} onPress={() => onLevelChange('all')} />
-          {PHIGROS_LEVELS.map((item) => {
-            const active = level === item;
-            return (
-              <FilterChipFrame key={item} active={active}
-                accessibilityLabel={`筛选难度 ${phigrosLevelLabel(item)}`}
-                onPress={() => onLevelChange(item)}>
-                <PhigrosDifficultyBadge levelIndex={item} constant={0} showConstant={false} />
-              </FilterChipFrame>
-            );
-          })}
+          {PHIGROS_LEVELS.map((item) => (
+            <LevelChip
+              key={item}
+              level={item}
+              active={level === item}
+              onPress={() => onLevelChange(item)}
+            />
+          ))}
         </ScrollView>
       </View>
 
@@ -215,9 +218,28 @@ function NeutralChip({ label, active, onPress, accessibilityLabel }: {
 }) {
   const theme = useAppTheme();
   return (
-    <FilterChipFrame active={active} accessibilityLabel={accessibilityLabel ?? `筛选 ${label}`} onPress={onPress}>
+    <FilterChipFrame active={active} shape="pill" accessibilityLabel={accessibilityLabel ?? `筛选 ${label}`} onPress={onPress}>
       <View style={[styles.neutralChip, { backgroundColor: theme.surface, borderColor: theme.border }, active && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
         <Text style={[styles.neutralChipText, { color: theme.textSecondary }, active && styles.neutralChipTextActive]}>{label}</Text>
+      </View>
+    </FilterChipFrame>
+  );
+}
+
+function LevelChip({ level, active, onPress }: {
+  level: PhigrosLevel; active: boolean; onPress: () => void;
+}) {
+  const colors = phigrosLevelColors(level);
+  const label = phigrosLevelLabel(level);
+  return (
+    <FilterChipFrame
+      active={active}
+      shape="rounded"
+      accessibilityLabel={`筛选难度 ${label}`}
+      onPress={onPress}
+    >
+      <View style={[styles.levelChip, { backgroundColor: colors.bg }]}>
+        <Text style={[styles.levelChipText, { color: colors.fg }]}>{label}</Text>
       </View>
     </FilterChipFrame>
   );
@@ -228,17 +250,19 @@ function FilterChipFrame({
   accessibilityLabel,
   onPress,
   children,
+  shape = 'pill',
 }: {
   active: boolean;
   accessibilityLabel: string;
   onPress: () => void;
   children: ReactNode;
+  shape?: 'pill' | 'rounded';
 }) {
   const theme = useAppTheme();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected: active }} onPress={onPress}
-      style={[styles.chipFrame, active && { borderColor: theme.accent }]}>
+      style={[styles.chipFrame, shape === 'rounded' && styles.roundedChipFrame, active && { borderColor: theme.accent }]}>
       {children}
     </Pressable>
   );
@@ -249,11 +273,15 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
   wideFilterLabel: { width: 44 },
-  chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  chipFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 10, padding: 2, alignItems: 'center', justifyContent: 'center' },
+  chipScroll: { flexGrow: 0, flexShrink: 1 },
+  chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 1 },
+  chipFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 999, padding: 2, alignItems: 'center', justifyContent: 'center' },
+  roundedChipFrame: { borderRadius: 10 },
   neutralChip: { minHeight: 30, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
   neutralChipText: { color: '#374151', fontSize: 12 },
   neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
+  levelChip: { minHeight: 30, borderRadius: 8, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  levelChipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
   dropdownControls: { flex: 1, minWidth: 0 },
   rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
   rangeInput: {
