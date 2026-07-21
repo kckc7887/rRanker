@@ -238,6 +238,9 @@ function LevelChip({ level, active, onPress }: {
 function RankChip({ value, active, onPress }: {
   value: PhigrosRankFilter; active: boolean; onPress: () => void;
 }) {
+  // 成绩卡上 FC 体现为 V 标签的 FC 配色，文案仍是 V
+  const badgeRate = value === 'fc' ? 'v' : value;
+  const badgeFc = value === 'fc';
   return (
     <FilterChipFrame
       active={active}
@@ -246,7 +249,7 @@ function RankChip({ value, active, onPress }: {
       onPress={onPress}
     >
       <View style={styles.rankChip}>
-        <PhigrosRateBadge rate={value === 'fc' ? 'fc' : value} />
+        <PhigrosRateBadge rate={badgeRate} fc={badgeFc} />
       </View>
     </FilterChipFrame>
   );
