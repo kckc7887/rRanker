@@ -44,7 +44,7 @@ export function buildPhigrosFilterSummary({
   return [
     level === 'all' ? null : phigrosLevelLabel(level),
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
-    accuracyMin || accuracyMax ? `准确率 ${accuracyMin || '不限'}~${accuracyMax || '不限'}%` : null,
+    accuracyMin || accuracyMax ? `Acc ${accuracyMin || '不限'}~${accuracyMax || '不限'}%` : null,
     rank ? phigrosRankFilterLabel(rank) : null,
   ].filter(Boolean).join(' · ') || '全部';
 }
@@ -158,14 +158,14 @@ export function PhigrosFilterBar({
       </View>
 
       {showAccuracyRange ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>准确率</Text>
+        <View style={[styles.filterRow, styles.accuracyRow]}>
+          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>Acc</Text>
           <View style={styles.rangeRow}>
-            <TextInput accessibilityLabel="最低准确率" autoCorrect={false} keyboardType="decimal-pad"
+            <TextInput accessibilityLabel="最低 Acc" autoCorrect={false} keyboardType="decimal-pad"
               placeholder="下限" placeholderTextColor={theme.textMuted} value={accuracyMin} onChangeText={onAccuracyMinChange}
               style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
             <Text style={styles.rangeSeparator}>~</Text>
-            <TextInput accessibilityLabel="最高准确率" autoCorrect={false} keyboardType="decimal-pad"
+            <TextInput accessibilityLabel="最高 Acc" autoCorrect={false} keyboardType="decimal-pad"
               placeholder="上限" placeholderTextColor={theme.textMuted} value={accuracyMax} onChangeText={onAccuracyMaxChange}
               style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
           </View>
@@ -271,6 +271,7 @@ function FilterChipFrame({
 const styles = StyleSheet.create({
   filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  accuracyRow: { marginBottom: 6 },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
   wideFilterLabel: { width: 44 },
   chipScroll: { flexGrow: 0, flexShrink: 1 },
