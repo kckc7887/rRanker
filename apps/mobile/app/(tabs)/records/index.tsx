@@ -1,10 +1,11 @@
 import { memo, useCallback, useDeferredValue, useMemo } from 'react';
-import { FlatList, Platform, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
+import { SEARCH_BOX_STYLE } from '@/components/search-box-style';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
@@ -23,18 +24,6 @@ import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
-
-/** 安卓去掉字体内边距，并用略不对称上下 padding 把占位/输入文字光学居中。 */
-const SEARCH_BOX_STYLE = {
-  borderWidth: 1,
-  borderRadius: 10,
-  paddingHorizontal: 11,
-  paddingTop: Platform.OS === 'android' ? 7 : 11,
-  paddingBottom: Platform.OS === 'android' ? 13 : 11,
-  ...(Platform.OS === 'android'
-    ? { textAlignVertical: 'center' as const, includeFontPadding: false }
-    : null),
-};
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
