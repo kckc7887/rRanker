@@ -14,9 +14,10 @@ describe('per-game toolbox registry', () => {
     expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照');
   });
 
-  it('gives Phigros an independent empty toolbox ready for later registration', () => {
-    expect(getGameToolbox('phigros').tools).toEqual([]);
-    expect(summarizeGameTools('phigros')).toBe('Phigros 工具正在准备中。');
+  it('gives Phigros a push-rks toolbox entry', () => {
+    const toolbox = getGameToolbox('phigros');
+    expect(toolbox.tools.map((tool) => tool.id)).toEqual(['push-rks']);
+    expect(summarizeGameTools('phigros')).toBe('推分');
   });
 
   it('keeps profile capabilities consistent with registered tools', () => {

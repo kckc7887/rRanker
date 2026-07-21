@@ -6,16 +6,26 @@ import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import type { ScoreRecord } from '@/domain/models';
 import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
+import { formatPushAcc } from '@/domain/phigros-push';
 import { useAppTheme } from '@/theme/app-theme';
+
+export type PhigrosPushHint = {
+  currentAcc: number;
+  targetAcc: number;
+  accDiff: number;
+};
 
 export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   record,
   catalogTitle,
   rank,
+  pushHint,
 }: {
   record: ScoreRecord;
   catalogTitle?: string;
   rank?: number;
+  /** 推分页：当前 Acc → 目标 Acc */
+  pushHint?: PhigrosPushHint;
 }) {
   const theme = useAppTheme();
   const score = record.dxScore ?? 0;
@@ -51,9 +61,24 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
           <PhigrosDifficultyBadge levelIndex={record.levelIndex} constant={record.difficultyConstant} />
           <PhigrosRateBadge rate={rate} fc={record.fc === 'ap'} />
         </View>
+        {pushHint ? (
+          <Text style={[styles.pushLine, { color: theme.textSecondary }]}>
+            {formatPushAcc(pushHint.currentAcc)}
+            {' → '}
+            <Text style={{ color: theme.accent, fontWeight: '800' }}>
+              {formatPushAcc(pushHint.targetAcc)}
+            </Text>
+            {'  '}
+            <Text style={{ color: theme.textMuted }}>
+              (+{formatPushAcc(pushHint.accDiff)})
+            </Text>
+          </Text>
+        ) : null}
       </View>
       <View style={styles.stats}>
-        <Text style={[styles.acc, { color: theme.text }]}>{accText}</Text>
+        <Text style={[styles.acc, { color: theme.text }]}>
+          {pushHint ? formatPushAcc(pushHint.targetAcc) : accText}
+        </Text>
         <Text style={[styles.rks, { color: theme.accent }]}>{rksText}</Text>
       </View>
     </Pressable>
@@ -65,6 +90,7 @@ const styles = StyleSheet.create({
   main: { flex: 1, minWidth: 0, gap: 4 },
   title: { fontSize: 15, fontWeight: '700' },
   tags: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  pushLine: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   stats: { minWidth: 56, alignItems: 'flex-end', gap: 4 },
   acc: { fontSize: 12, fontWeight: '700' },
   rks: { fontSize: 20, fontWeight: '900' },

@@ -52,7 +52,15 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     emptyDetail: '舞萌 DX 暂无可用工具。',
   },
   phigros: {
-    tools: [],
+    tools: [
+      {
+        id: 'push-rks',
+        href: '/tools/push-rks',
+        title: '推分计算',
+        detail: '按期望加值与成本反推目标 Acc，并按 Acc 差值推荐谱面',
+        summaryLabel: '推分',
+      },
+    ],
     emptyDetail: 'Phigros 工具正在准备中。',
   },
   test: {
