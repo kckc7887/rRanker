@@ -5,7 +5,7 @@ import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import type { ScoreRecord } from '@/domain/models';
-import { PHIGROS_MAX_SCORE } from '@/domain/phigros';
+import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const PhigrosScoreCard = memo(function PhigrosScoreCard({
@@ -23,7 +23,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   const isFc = record.fc === 'ap' && !isPhi;
   const acc = record.achievements;
   const accText = acc % 1 === 0 ? `${acc.toFixed(0)}%` : `${acc.toFixed(2)}%`;
-  const rksText = Number.isInteger(record.rating) ? record.rating.toFixed(1) : record.rating.toFixed(2);
+  const rksText = formatPhigrosSongRks(record.rating);
   const rate = resolvePhigrosRate(record);
   const title = catalogTitle ?? record.title;
   const openDetail = () => router.push({
