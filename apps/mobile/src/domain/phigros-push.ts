@@ -30,6 +30,7 @@ export type PushRecommendation = {
   currentChartRks: number;
   expectedChartRks: number;
   isInBest27: boolean;
+  /** 该曲提升后对总 RKS 的增益（应 ≥ perSongShare） */
   rksGain: number;
   maxPossibleGain: number;
   /** 用于卡片展示的成绩记录（当前成绩；未打谱面 score=0） */
@@ -41,6 +42,12 @@ export type PushRecommendationsResult = {
   displayRks: number;
   exactTarget: number;
   displayTarget: number;
+  /** 愿意打的歌数 */
+  songCost: number;
+  /** 精确总加值（exactTarget - currentRks） */
+  gainNeeded: number;
+  /** 每首歌需承担的总 RKS 份额（gainNeeded / songCost） */
+  perSongShare: number;
   recommendations: PushRecommendation[];
 };
 
@@ -123,19 +130,25 @@ function makePlaceholderEntry(
 }
 
 /**
- * 推分推荐：单曲独立将总 RKS 推到 exactTarget，按 ACC 差值升序取前 topN。
- * 候选为 gameRecord 中歌曲 × 有定数难度（含未打难度）。
+ * 推分推荐：将精确加值均摊到 songCost 首歌，每首歌只需把总 RKS 抬高 perSongShare。
+ * 对每张候选谱面二分 Acc，按 Acc 差值升序返回全部可达谱面。
  */
 export function findPushRecommendations(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
-  options: { delta: number; topN: number },
+  options: { delta: number; songCost: number },
 ): PushRecommendationsResult {
-  const { delta, topN } = options;
+  const songCost = Math.max(1, Math.floor(options.songCost));
+  const { delta } = options;
   const scored = collectScoredEntries(gameRecord, difficultyTable);
   const baseSims = toSimRecords(scored);
   const currentRks = roundRks(calculateFinalRks(baseSims));
   const { displayRks, exactTarget, displayTarget } = resolvePushExactTarget(currentRks, delta);
+
+  const gainNeeded = Math.max(0, exactTarget - currentRks);
+  const perSongShare = gainNeeded / songCost;
+  /** 单曲二分目标：当前 RKS + 每首歌应承担份额 */
+  const perSongTarget = currentRks + perSongShare;
 
   const best27Keys = new Set(
     [...baseSims]
@@ -145,6 +158,8 @@ export function findPushRecommendations(
   );
 
   const recommendations: PushRecommendation[] = [];
+  // 份额极小时用一个下限，避免浮点噪声；正常按份额判断可行性
+  const minGainGate = Math.max(perSongShare * 0.99, 1e-6);
 
   for (const [songId, levels] of Object.entries(gameRecord)) {
     const diffs = difficultyTable[songId];
@@ -165,7 +180,7 @@ export function findPushRecommendations(
         isPhi: true,
       });
       const maxPossibleGain = calculateFinalRks(at100) - currentRks;
-      if (maxPossibleGain < 0.005) continue;
+      if (maxPossibleGain < minGainGate) continue;
 
       let lowAcc = Math.max(55.01, currentAcc - 5);
       let highAcc = 100;
@@ -180,7 +195,7 @@ export function findPushRecommendations(
           isPhi: isAcc100Percent(midAcc),
         });
         const tempFinal = calculateFinalRks(temp);
-        if (tempFinal >= exactTarget) {
+        if (tempFinal >= perSongTarget) {
           targetAcc = midAcc;
           highAcc = midAcc;
         } else {
@@ -198,7 +213,7 @@ export function findPushRecommendations(
         difficulty: diff,
         isPhi: isAcc100Percent(snappedAcc),
       });
-      if (calculateFinalRks(verify) < exactTarget) {
+      if (calculateFinalRks(verify) < perSongTarget) {
         snappedAcc = Math.min(100, snappedAcc + 0.01);
       }
       targetAcc = snappedAcc;
@@ -211,7 +226,7 @@ export function findPushRecommendations(
         isPhi: isAcc100Percent(targetAcc),
       });
       const rksGain = roundRks(calculateFinalRks(after) - currentRks);
-      if (rksGain < 0.005) continue;
+      if (rksGain + 1e-9 < perSongShare) continue;
 
       const scoredEntry: PhigrosScoreEntry = entry
         ? { ...entry, difficulty: diff, rks: currentChartRks }
@@ -241,7 +256,10 @@ export function findPushRecommendations(
     displayRks,
     exactTarget,
     displayTarget,
-    recommendations: recommendations.slice(0, Math.max(0, topN)),
+    songCost,
+    gainNeeded: roundRks(gainNeeded),
+    perSongShare: roundRks(perSongShare),
+    recommendations,
   };
 }
 

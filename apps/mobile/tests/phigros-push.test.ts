@@ -40,25 +40,42 @@ function entry(
   };
 }
 
+function buildPool(lowAccIndex = 29) {
+  const gameRecord: Record<string, (PhigrosScoreEntry | null)[]> = {};
+  const difficultyTable: Record<string, number[]> = {};
+
+  for (let i = 0; i < 30; i++) {
+    const id = `song.${i}`;
+    const diff = 15 - i * 0.05;
+    difficultyTable[id] = [0, 0, diff, 0];
+    const acc = i === lowAccIndex ? 92 : 99.5;
+    const score = Math.floor(acc * 10000);
+    gameRecord[id] = [null, null, entry(id, 2, diff, score, acc), null];
+  }
+
+  return { gameRecord, difficultyTable };
+}
+
 describe('findPushRecommendations', () => {
-  it('finds a chart whose higher ACC alone reaches the exact target', () => {
-    // 构造足够多的中高 RKS 谱面，使总 RKS 落在可推区间
-    const gameRecord: Record<string, (PhigrosScoreEntry | null)[]> = {};
-    const difficultyTable: Record<string, number[]> = {};
+  it('splits exact gain across songCost songs as perSongShare', () => {
+    const { gameRecord, difficultyTable } = buildPool();
+    const result = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.1,
+      songCost: 4,
+    });
 
-    for (let i = 0; i < 30; i++) {
-      const id = `song.${i}`;
-      const diff = 15 - i * 0.05;
-      difficultyTable[id] = [0, 0, diff, 0];
-      // 前几首较高 acc，最后一首明显偏低，作为推分候选
-      const acc = i === 29 ? 92 : 99.5;
-      const score = Math.floor(acc * 10000);
-      gameRecord[id] = [null, null, entry(id, 2, diff, score, acc), null];
-    }
+    expect(result.songCost).toBe(4);
+    expect(result.perSongShare).toBeCloseTo(result.gainNeeded / 4, 3);
+    // 用户口径：涨约 0.1、成本 4 首 → 每首约 0.025（精确加值略小于显示加值）
+    expect(result.perSongShare).toBeGreaterThan(0.02);
+    expect(result.perSongShare).toBeLessThan(0.03);
+  });
 
+  it('finds charts that can cover one song share and sorts by ACC diff', () => {
+    const { gameRecord, difficultyTable } = buildPool();
     const result = findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
-      topN: 10,
+      songCost: 1,
     });
 
     expect(result.currentRks).toBeGreaterThan(0);
@@ -69,15 +86,14 @@ describe('findPushRecommendations', () => {
 
     const first = result.recommendations[0]!;
     expect(first.targetAcc).toBeGreaterThan(first.currentAcc);
-    expect(first.accDiff).toBeGreaterThanOrEqual(0);
+    expect(first.rksGain).toBeGreaterThanOrEqual(result.perSongShare - 1e-6);
 
-    // 应按 ACC 差值升序
     for (let i = 1; i < result.recommendations.length; i++) {
       expect(result.recommendations[i]!.accDiff)
         .toBeGreaterThanOrEqual(result.recommendations[i - 1]!.accDiff);
     }
 
-    // 提高第一首到目标 ACC 后总 RKS 应达到 exactTarget
+    // 提高第一首到目标 ACC 后总 RKS 应至少达到「当前 + 单首份额」
     const pushSong = first.songId;
     const pushed = { ...gameRecord };
     const levels = [...(pushed[pushSong] ?? [null, null, null, null])];
@@ -92,23 +108,35 @@ describe('findPushRecommendations', () => {
 
     const after = findPushRecommendations(pushed, difficultyTable, {
       delta: 0.01,
-      topN: 1,
+      songCost: 1,
     });
-    expect(after.currentRks).toBeGreaterThanOrEqual(result.exactTarget);
+    expect(after.currentRks).toBeGreaterThanOrEqual(result.currentRks + result.perSongShare);
   });
 
-  it('respects topN limit', () => {
-    const gameRecord: Record<string, (PhigrosScoreEntry | null)[]> = {};
-    const difficultyTable: Record<string, number[]> = {};
-    for (let i = 0; i < 30; i++) {
-      const id = `cap.${i}`;
-      difficultyTable[id] = [0, 0, 14, 0];
-      gameRecord[id] = [null, null, entry(id, 2, 14, 980000, 98), null];
-    }
-    const result = findPushRecommendations(gameRecord, difficultyTable, {
+  it('higher songCost lowers per-song ACC requirement', () => {
+    const { gameRecord, difficultyTable } = buildPool();
+    const solo = findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
-      topN: 3,
+      songCost: 1,
     });
-    expect(result.recommendations.length).toBeLessThanOrEqual(3);
+    const split = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.01,
+      songCost: 4,
+    });
+
+    expect(split.perSongShare).toBeCloseTo(solo.perSongShare / 4, 3);
+
+    // 取两边都有、且未顶满 100% 的同一谱面比较
+    const comparable = solo.recommendations.find((s) => {
+      const other = split.recommendations.find(
+        (r) => r.songId === s.songId && r.level === s.level,
+      );
+      return other != null && s.targetAcc < 100 && other.targetAcc < 100;
+    });
+    expect(comparable).toBeDefined();
+    const splitSame = split.recommendations.find(
+      (r) => r.songId === comparable!.songId && r.level === comparable!.level,
+    )!;
+    expect(splitSame.targetAcc).toBeLessThan(comparable!.targetAcc);
   });
 });
