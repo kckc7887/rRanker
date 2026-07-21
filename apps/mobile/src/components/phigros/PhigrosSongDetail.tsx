@@ -22,10 +22,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
+import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { Chart, PhigrosChartNotes, ScoreRecord, Song } from '@/domain/models';
-import { PHIGROS_MAX_SCORE, phigrosScoreToRate } from '@/domain/phigros';
+import { PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { buildTagHistory } from '@/domain/user-library';
 import { useGameData } from '@/hooks/use-game-data';
@@ -40,29 +41,6 @@ const DETAIL_SCORE_LINE_HEIGHT = 40;
 
 const CARD_GAP = 12;
 const IN_LEVEL_INDEX = 2;
-
-type RateKind = 'f' | 'c' | 'b' | 'a' | 's' | 'v' | 'phi';
-
-const RATE_COLORS: Record<RateKind | 'vFc', { bg: string; fg: string }> = {
-  f: { bg: '#F3F4F6', fg: '#6B7280' },
-  c: { bg: '#F3F4F6', fg: '#6B7280' },
-  b: { bg: '#F3F4F6', fg: '#6B7280' },
-  a: { bg: '#F3F4F6', fg: '#6B7280' },
-  s: { bg: '#FDF2F8', fg: '#DB2777' },
-  v: { bg: '#4B5563', fg: '#FFFFFF' },
-  vFc: { bg: '#E0F2FE', fg: '#0EA5E9' },
-  phi: { bg: '#FFF7E6', fg: '#B8860B' },
-};
-
-const RATE_LABELS: Record<RateKind, string> = {
-  f: 'F',
-  c: 'C',
-  b: 'B',
-  a: 'A',
-  s: 'S',
-  v: 'V',
-  phi: '\u03C6',
-};
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
@@ -638,27 +616,7 @@ function practiceTextStyle(fg: string, filled: boolean) {
 }
 
 function DetailRateBadge({ record }: { record: ScoreRecord }) {
-  const rate = resolveRate(record);
-  const fc = record.fc === 'ap';
-  const colors = rate === 'v' && fc ? RATE_COLORS.vFc : RATE_COLORS[rate];
-  return (
-    <View style={[styles.rateBadge, { backgroundColor: colors.bg }]}>
-      <Text style={[
-        styles.rateText,
-        { color: colors.fg },
-        rate === 'phi' && styles.rateTextPhi,
-      ]}
-      >
-        {RATE_LABELS[rate]}
-      </Text>
-    </View>
-  );
-}
-
-function resolveRate(record: ScoreRecord): RateKind {
-  const rate = phigrosScoreToRate(record.dxScore ?? 0, record.fc === 'ap') as RateKind;
-  if (rate in RATE_LABELS) return rate;
-  return 'f';
+  return <PhigrosRateBadge rate={resolvePhigrosRate(record)} fc={record.fc === 'ap'} />;
 }
 
 const styles = StyleSheet.create({
@@ -725,15 +683,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     includeFontPadding: false,
   },
-  rateBadge: {
-    borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, minHeight: 18,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  rateText: {
-    fontSize: 10, lineHeight: 12, fontWeight: '900', letterSpacing: 0.3,
-    includeFontPadding: false, textAlign: 'center',
-  },
-  rateTextPhi: { transform: [{ translateY: -1.5 }] },
   statRow: { flexDirection: 'row', marginTop: 16, gap: 24 },
   statCell: { gap: 2 },
   statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },

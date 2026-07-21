@@ -1,7 +1,7 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
+import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import {
   PHIGROS_LEVELS,
   PHIGROS_RANK_FILTERS,
@@ -12,8 +12,6 @@ import {
 import type { PhigrosLevel } from '@/domain/phigros';
 import { phigrosLevelColors } from '@/domain/phigros-level-theme';
 import { useAppTheme } from '@/theme/app-theme';
-
-type OpenDropdown = 'rank' | null;
 
 export interface PhigrosFilterBarProps {
   collapsed: boolean;
@@ -67,24 +65,12 @@ export function PhigrosFilterBar({
   onReset,
 }: PhigrosFilterBarProps) {
   const theme = useAppTheme();
-  const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
   const showAccuracyRange = onAccuracyMinChange !== undefined && onAccuracyMaxChange !== undefined;
   const showRankPicker = onRankChange !== undefined;
-  const rankLabel = phigrosRankFilterLabel(rank);
-
-  const setDropdownOpen = (id: OpenDropdown) => (open: boolean) => {
-    setOpenDropdown(open ? id : null);
-  };
 
   const handleReset = () => {
-    setOpenDropdown(null);
     onReset();
   };
-
-  const rankOptions = useMemo<FilterSelectOption<PhigrosRankFilter | 'all'>[]>(() => [
-    { value: 'all', label: '全部' },
-    ...PHIGROS_RANK_FILTERS.map((item) => ({ value: item.value, label: item.label })),
-  ], []);
 
   const summary = buildPhigrosFilterSummary({
     level, constantMin, constantMax, accuracyMin, accuracyMax, rank,
@@ -117,7 +103,7 @@ export function PhigrosFilterBar({
         <View style={styles.headerActions}>
           <ResetFilterButton onPress={handleReset} />
           <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
-            onPress={() => { setOpenDropdown(null); onCollapsedChange(true); }} hitSlop={8}
+            onPress={() => onCollapsedChange(true)} hitSlop={8}
             style={styles.headerAction}>
             <CollapseToggleAction expanded label="收起" />
           </Pressable>
@@ -175,18 +161,22 @@ export function PhigrosFilterBar({
       {showRankPicker ? (
         <View style={styles.filterRow}>
           <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>评价</Text>
-          <View style={styles.dropdownControls}>
-            <FilterAnchoredDropdown
-              open={openDropdown === 'rank'}
-              onOpenChange={setDropdownOpen('rank')}
-              valueLabel={rankLabel}
-              accessibilityLabel={`评价筛选，当前 ${rankLabel}`}
-              options={rankOptions}
-              selectedValue={rank ?? 'all'}
-              optionAccessibilityPrefix="选择评价"
-              onSelect={(value) => onRankChange(value === 'all' ? null : value)}
-            />
-          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipScroll}
+            contentContainerStyle={styles.chipRow}
+          >
+            <NeutralChip label="全部" active={rank === null} onPress={() => onRankChange(null)} />
+            {PHIGROS_RANK_FILTERS.map((item) => (
+              <RankChip
+                key={item.value}
+                value={item.value}
+                active={rank === item.value}
+                onPress={() => onRankChange(item.value)}
+              />
+            ))}
+          </ScrollView>
         </View>
       ) : null}
     </View>
@@ -245,6 +235,23 @@ function LevelChip({ level, active, onPress }: {
   );
 }
 
+function RankChip({ value, active, onPress }: {
+  value: PhigrosRankFilter; active: boolean; onPress: () => void;
+}) {
+  return (
+    <FilterChipFrame
+      active={active}
+      shape="rounded"
+      accessibilityLabel={`筛选评价 ${phigrosRankFilterLabel(value)}`}
+      onPress={onPress}
+    >
+      <View style={styles.rankChip}>
+        <PhigrosRateBadge rate={value === 'fc' ? 'fc' : value} />
+      </View>
+    </FilterChipFrame>
+  );
+}
+
 function FilterChipFrame({
   active,
   accessibilityLabel,
@@ -283,7 +290,7 @@ const styles = StyleSheet.create({
   neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
   levelChip: { minHeight: 30, borderRadius: 8, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   levelChipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
-  dropdownControls: { flex: 1, minWidth: 0 },
+  rankChip: { minHeight: 30, borderRadius: 8, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
   rangeInput: {
     flex: 1,

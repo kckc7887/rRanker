@@ -4,21 +4,23 @@ import {
   phigrosScoreToRate,
   type PhigrosLevel,
 } from '@/domain/phigros';
+import { PHIGROS_RATE_LABELS, type PhigrosRateKind } from '@/domain/phigros-rate-theme';
 import type { Difficulty } from '@/domain/models';
 
-export type PhigrosRankFilter = 'phi' | 'fc' | 'v' | 's' | 'a' | 'b' | 'c' | 'f';
+export type PhigrosRankFilter = PhigrosRateKind | 'fc';
 
 export const PHIGROS_LEVELS: readonly PhigrosLevel[] = [0, 1, 2, 3];
 
+/** 与成绩卡片评价标签一致：φ / FC / V / S / A / B / C / F */
 export const PHIGROS_RANK_FILTERS: readonly { value: PhigrosRankFilter; label: string }[] = [
-  { value: 'phi', label: 'φ' },
+  { value: 'phi', label: PHIGROS_RATE_LABELS.phi },
   { value: 'fc', label: 'FC' },
-  { value: 'v', label: 'V' },
-  { value: 's', label: 'S' },
-  { value: 'a', label: 'A' },
-  { value: 'b', label: 'B' },
-  { value: 'c', label: 'C' },
-  { value: 'f', label: 'F' },
+  { value: 'v', label: PHIGROS_RATE_LABELS.v },
+  { value: 's', label: PHIGROS_RATE_LABELS.s },
+  { value: 'a', label: PHIGROS_RATE_LABELS.a },
+  { value: 'b', label: PHIGROS_RATE_LABELS.b },
+  { value: 'c', label: PHIGROS_RATE_LABELS.c },
+  { value: 'f', label: PHIGROS_RATE_LABELS.f },
 ];
 
 const LEVEL_TO_DIFFICULTY: Record<PhigrosLevel, Difficulty> = {
