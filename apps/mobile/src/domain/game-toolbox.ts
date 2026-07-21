@@ -58,7 +58,7 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         href: '/tools/push-rks',
         title: '推分计算',
         detail: '按期望加值与成本歌数均摊，反推每谱面目标 Acc',
-        summaryLabel: '推分',
+        summaryLabel: '推分计算',
       },
     ],
     emptyDetail: 'Phigros 工具正在准备中。',
