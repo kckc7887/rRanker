@@ -271,7 +271,7 @@ function FilterChipFrame({
 const styles = StyleSheet.create({
   filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  accuracyRow: { marginBottom: 6 },
+  accuracyRow: { marginBottom: 14 },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
   wideFilterLabel: { width: 44 },
   chipScroll: { flexGrow: 0, flexShrink: 1 },
