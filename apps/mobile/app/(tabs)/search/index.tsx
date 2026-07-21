@@ -29,43 +29,6 @@ import { useAppTheme } from '@/theme/app-theme';
 const TYPES: ChartType[] = ['SD', 'DX'];
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
-function CatalogSearchField({
-  value,
-  onChangeText,
-  placeholder,
-  accessibilityLabel,
-}: {
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  accessibilityLabel: string;
-}) {
-  const theme = useAppTheme();
-  const showPlaceholder = value.length === 0;
-  return (
-    <View style={[styles.searchBoxWrap, { backgroundColor: theme.input, borderColor: theme.border }]}>
-      {showPlaceholder ? (
-        <Text
-          pointerEvents="none"
-          numberOfLines={1}
-          style={[styles.searchPlaceholder, { color: theme.textMuted }]}
-        >
-          {placeholder}
-        </Text>
-      ) : null}
-      <TextInput
-        accessibilityLabel={accessibilityLabel}
-        autoCapitalize="none"
-        autoCorrect={false}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder=""
-        underlineColorAndroid="transparent"
-        style={[styles.searchBox, { color: theme.text }]}
-      />
-    </View>
-  );
-}
 export default function SearchTabScreen() {
   return <CachedTabScreen><SearchScreen /></CachedTabScreen>;
 }
@@ -115,12 +78,10 @@ export function SearchScreen() {
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
-        <CatalogSearchField
-          accessibilityLabel="歌曲搜索"
-          placeholder="曲名 / ID / 别名 / 曲师 / 谱师 / 罗马音"
-          value={keyword}
-          onChangeText={setKeyword}
-        />
+        <TextInput accessibilityLabel="歌曲搜索" autoCapitalize="none" autoCorrect={false}
+          placeholder="曲名 / ID / 别名 / 曲师 / 谱师 / 罗马音" placeholderTextColor={theme.textMuted}
+          value={keyword} onChangeText={setKeyword}
+          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
       </View>
       <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
@@ -258,12 +219,10 @@ function PhigrosSearchScreen() {
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
-        <CatalogSearchField
-          accessibilityLabel="歌曲搜索"
-          placeholder="曲名 / 曲师 / 谱师"
-          value={keyword}
-          onChangeText={setKeyword}
-        />
+        <TextInput accessibilityLabel="歌曲搜索" autoCapitalize="none" autoCorrect={false}
+          placeholder="曲名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
+          value={keyword} onChangeText={setKeyword}
+          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
       </View>
       <PhigrosFilterBar
@@ -334,34 +293,19 @@ const PhigrosCatalogList = memo(function PhigrosCatalogList({
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   searchArea: { padding: 12, paddingBottom: 8, gap: 6, backgroundColor: '#FFF' },
-  searchBoxWrap: {
-    borderWidth: 1,
-    borderRadius: 10,
-    height: 44,
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  searchPlaceholder: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    top: 0,
-    bottom: 0,
-    fontSize: 14,
-    lineHeight: 44,
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-  },
   searchBox: {
-    height: 44,
-    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    minHeight: 44,
+    paddingHorizontal: 11,
     paddingVertical: 0,
-    margin: 0,
-    fontSize: 14,
+    backgroundColor: '#FFF',
     color: '#111827',
+    fontSize: 14,
+    lineHeight: 20,
     textAlignVertical: 'center',
     includeFontPadding: false,
-    backgroundColor: 'transparent',
   },
   resultCount: { color: '#6B7280', fontSize: 11 },
   listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 20, gap: 9 },
