@@ -7,7 +7,6 @@ import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
-import { SEARCH_BOX_STYLE } from '@/components/search-box-style';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
@@ -294,7 +293,7 @@ const PhigrosCatalogList = memo(function PhigrosCatalogList({
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   searchArea: { padding: 12, paddingBottom: 8, gap: 6, backgroundColor: '#FFF' },
-  searchBox: { ...SEARCH_BOX_STYLE, borderColor: '#D1D5DB', backgroundColor: '#FFF', color: '#111827' },
+  searchBox: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 11, backgroundColor: '#FFF', color: '#111827' },
   resultCount: { color: '#6B7280', fontSize: 11 },
   listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 20, gap: 9 },
   row: { backgroundColor: '#FFF', borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
