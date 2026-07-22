@@ -142,7 +142,8 @@ export function OverviewScreen() {
 
   const onSelectAccount = (account: BoundAccount) => {
     setPickerVisible(false);
-    switchBoundAccount(account.id);
+    // 已在总览账号页：只清缓存并切换，等待加载后展示。
+    switchBoundAccount(account.id, { navigateToOverview: false });
   };
 
   const openUpload = () => {
