@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <link rel="shortcut icon" href="#" />
+    <link rel="stylesheet" type="text/css" href="{{_res_path}}html/common/common.css" />
+    
+    {{if theme == "snow"}}
+    <link rel="stylesheet" href="{{_res_path}}html/common/theme/snow/snow.css">
+    {{else if theme == "topText" || theme == "foolsDay"}}
+    <link rel="stylesheet" href="{{_res_path}}html/common/theme/topText/topText.css">
+    {{/if}}
+
+    {{block 'css'}}
+    {{/block}}
+    <title>phi-plugin</title>
+</head>
+
+<body class="elem-{{element || elem || `hydro`}} {{displayMode || mode || `default`}}-mode  {{bodyClass}}" {{@sys.scale}}>
+
+
+    <div class="background">
+        {{if theme == "star"}}
+        <img src="{{_res_path}}html/otherimg/Star1.png" alt="曲绘-模糊">
+        <img src="{{_res_path}}html/otherimg/Star2.png" alt="曲绘-模糊"
+            style="min-height: 0;width: 100%;height: auto;bottom: 0;filter: none;">
+        {{else}}
+        {{if background}}
+        <img src="{{background}}" alt="曲绘-模糊">
+        {{else}}
+        <img src="{{_res_path}}html/otherimg/phigros.png" alt="曲绘-模糊">
+        {{/if}}
+        {{/if}}
+    </div>
+
+    <script>
+        var _res_path = "{{_res_path}}";
+    </script>
+
+    {{if theme == "snow"}}
+    <script src="{{_res_path}}html/common/theme/snow/snow.js"></script>
+    {{else if theme == "topText" || theme == "foolsDay"}}
+    <script src="{{_res_path}}html/common/theme/topText/topText.js"></script>
+    {{else if theme == "star"}}
+    <script src="{{_res_path}}html/common/theme/star/star.js"></script>
+    {{/if}}
+
+    <!-- <div class="container" id="container"> -->
+    {{block 'main'}}{{/block}}
+    <!-- <div class="copyright">{{@sys.copyright}}</div> -->
+    <!-- </div> -->
+    <!-- 曲目名称自适应name-box的宽度 -->
+
+    <script>
+        function isBiggerThanParent(songName, parentElement) {
+            console.log(songName, parentElement)
+            console.log(songName.scrollWidth, parentElement.offsetWidth, songName.scrollHeight, parentElement.offsetHeight)
+            return songName.scrollWidth > parentElement.offsetWidth || songName.scrollHeight > parentElement.offsetHeight
+        }
+        function adjustFontSize() {
+            //获取p元素
+            let a = document.getElementsByName('pvis')
+            for (let i = 0; i < a.length; ++i) {
+
+                let songName = a[i]
+
+                if (!songName) continue
+
+
+                /*调整曲目名称字体大小*/
+                let parentElement = songName.parentElement
+
+                if (!isBiggerThanParent(songName, parentElement)) continue
+
+                let fontSize = Number(window.getComputedStyle(songName, null).getPropertyValue('font-size').replace("px", ""));
+
+                let l = 0, r = fontSize;
+                while (l < r) {
+                    let mid = Math.floor((l + r + 1) / 2);
+                    songName.style.fontSize = mid + "px";
+                    if (isBiggerThanParent(songName, parentElement)) {
+                        r = mid - 1;
+                    } else {
+                        l = mid;
+                    }
+                }
+                songName.style.fontSize = l + "px";
+            }
+
+        }
+        window.onload = adjustFontSize
+        window.onresize = adjustFontSize
+    </script>
+</body>
+
+</html>
