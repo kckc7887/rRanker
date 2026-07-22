@@ -1,4 +1,4 @@
-import type { ScoreRecord } from '@/domain/models';
+import type { ScoreRecord, Song } from '@/domain/models';
 import { matchesAchievementRange } from '@/domain/maimai-filters';
 import {
   matchesPhigrosLevel,
@@ -9,6 +9,12 @@ import {
   type PhigrosRankFilter,
 } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
+import {
+  isPhigrosXingAcc,
+  phigrosChartNoteKey,
+  phigrosXingLabel,
+  type PhigrosXingKind,
+} from '@/domain/phigros-xing';
 import { parseBestImageQuantity } from '@/features/best-image/best-image-custom';
 import {
   sortPhigrosBestImageRecords,
@@ -23,6 +29,8 @@ export type CustomPhigrosBestImageFilters = {
   accuracyMin: string;
   accuracyMax: string;
   rank: PhigrosRankFilter | null;
+  /** null = 关闭 XING 筛选；good/miss 单选 */
+  xing: PhigrosXingKind | null;
 };
 
 export const DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS: CustomPhigrosBestImageFilters = {
@@ -33,9 +41,24 @@ export const DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS: CustomPhigrosBestImageFi
   accuracyMin: '',
   accuracyMax: '',
   rank: null,
+  xing: null,
 };
 
 export { parseBestImageQuantity };
+
+/** 从曲库建立 songId:levelIndex → 物量 total 查找表 */
+export function buildPhigrosNoteTotalByKey(songs: readonly Song[]): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const song of songs) {
+    for (const chart of song.charts ?? []) {
+      const total = chart.notes?.total;
+      if (typeof total === 'number' && Number.isInteger(total) && total > 0) {
+        result[phigrosChartNoteKey(song.id, chart.levelIndex)] = total;
+      }
+    }
+  }
+  return result;
+}
 
 /** 空字符串视为合法（不限）；非空须为 0–100 的 Acc。 */
 export function parsePhigrosBestImageAccuracyBound(value: string): number | null | undefined {
@@ -90,6 +113,17 @@ function formatAccNote(accuracyMin: string, accuracyMax: string): string | undef
   return `Acc≤${max}%`;
 }
 
+function matchesXingFilter(
+  record: ScoreRecord,
+  xing: PhigrosXingKind | null,
+  noteTotalByKey: Readonly<Record<string, number>>,
+): boolean {
+  if (xing === null) return true;
+  const total = noteTotalByKey[phigrosChartNoteKey(record.songId, record.levelIndex)];
+  if (total === undefined) return false;
+  return isPhigrosXingAcc(record.achievements, total, xing);
+}
+
 /** 自定义分区主标题 + 分数/Acc 小字附注。 */
 export function buildCustomPhigrosSectionTitle(
   filters: CustomPhigrosBestImageFilters,
@@ -97,15 +131,16 @@ export function buildCustomPhigrosSectionTitle(
 ): { title: string; titleNote?: string } {
   const hasLevel = filters.level !== 'all';
   const hasRank = filters.rank !== null;
+  const xingPrefix = filters.xing ? `${phigrosXingLabel(filters.xing)} ` : '';
   let title: string;
   if (hasLevel && hasRank) {
-    title = `${phigrosLevelLabel(filters.level)} ${phigrosRankFilterLabel(filters.rank)}${count}`;
+    title = `${xingPrefix}${phigrosLevelLabel(filters.level)} ${phigrosRankFilterLabel(filters.rank)}${count}`;
   } else if (hasLevel) {
-    title = `${phigrosLevelLabel(filters.level)}${count}`;
+    title = `${xingPrefix}${phigrosLevelLabel(filters.level)}${count}`;
   } else if (hasRank) {
-    title = `${phigrosRankFilterLabel(filters.rank)}${count}`;
+    title = `${xingPrefix}${phigrosRankFilterLabel(filters.rank)}${count}`;
   } else {
-    title = `Best${count}`;
+    title = `${xingPrefix}Best${count}`;
   }
   const noteParts = [
     formatScoreNote(filters.scoreMin, filters.scoreMax),
@@ -117,12 +152,14 @@ export function buildCustomPhigrosSectionTitle(
 export function buildCustomPhigrosBestImageSections(
   records: readonly ScoreRecord[],
   filters: CustomPhigrosBestImageFilters,
+  noteTotalByKey: Readonly<Record<string, number>> = {},
 ): PhigrosBestImageSection[] {
   const filtered = records.filter((record) => (
     matchesPhigrosLevel(record.levelIndex, filters.level)
     && matchesPhigrosScoreRange(record.dxScore, filters.scoreMin, filters.scoreMax)
     && matchesAchievementRange(record.achievements, filters.accuracyMin, filters.accuracyMax)
     && matchesPhigrosRankFilter(record, filters.rank)
+    && matchesXingFilter(record, filters.xing, noteTotalByKey)
   ));
   const sorted = sortPhigrosBestImageRecords(filtered);
   const limited = filters.quantity === 0 ? sorted : sorted.slice(0, filters.quantity);
