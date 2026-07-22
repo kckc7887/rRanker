@@ -20,7 +20,7 @@ import { formatPhigrosDataMoney } from '@/domain/phigros';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 15;
+const GAME_DATA_QUERY_VERSION = 16;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -60,17 +60,17 @@ export function useGameData() {
             scoreProvider.getGameProgress(),
           ]);
 
-          const syncedAt = scoreProvider.getSyncedAt() ?? new Date().toISOString();
+          const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
           const source = {
             kind: 'generated' as const,
             label: 'TapTap云存档',
-            updatedAt: syncedAt,
+            updatedAt: saveUpdatedAt,
             isStale: false,
           };
           const catalogSource = {
             kind: 'generated' as const,
             label: `Phigros${gameVersion}`,
-            updatedAt: phiCatalog.getResourceUpdatedAt() ?? syncedAt,
+            updatedAt: phiCatalog.getResourceUpdatedAt() ?? saveUpdatedAt,
             isStale: false,
           };
           const rks = player.rating;
@@ -91,7 +91,7 @@ export function useGameData() {
               },
               challengeModeRank: summary.challengeModeRank,
               source,
-              saveUpdatedAt: scoreProvider.getSaveUpdatedAt() ?? syncedAt,
+              saveUpdatedAt,
               catalogSource,
               avatarUrl,
               avatarKey: userProfile?.avatar || summary.avatar || null,
