@@ -142,19 +142,19 @@ describe('Phigros 成绩图', () => {
     const goodOnly = buildCustomPhigrosBestImageSections(
       records, filters({ xing: 'good', quantity: 0 }), noteTotalByKey,
     );
-    expect(goodOnly[0]?.title).toBe('XING-Good Best1');
+    expect(goodOnly[0]?.title).toBe('XING-GOOD1');
     expect(goodOnly[0]?.records.map((item) => item.songId)).toEqual(['xing-good']);
 
     const missOnly = buildCustomPhigrosBestImageSections(
       records, filters({ xing: 'miss', quantity: 0 }), noteTotalByKey,
     );
-    expect(missOnly[0]?.title).toBe('XING-Miss Best1');
+    expect(missOnly[0]?.title).toBe('XING-MISS1');
     expect(missOnly[0]?.records.map((item) => item.songId)).toEqual(['xing-miss']);
 
     const withLevel = buildCustomPhigrosBestImageSections(
       records, filters({ xing: 'good', level: 2, quantity: 0 }), noteTotalByKey,
     );
-    expect(withLevel[0]?.title).toBe('XING-Good IN1');
+    expect(withLevel[0]?.title).toBe('XING-GOOD IN1');
 
     expect(buildCustomPhigrosBestImageSections(
       [record('missing-notes', { achievements: goodAcc })],

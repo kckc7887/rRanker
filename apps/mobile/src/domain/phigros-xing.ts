@@ -24,7 +24,7 @@ export function isPhigrosXingAcc(acc: number, totalNotes: number, kind: PhigrosX
 }
 
 export function phigrosXingLabel(kind: PhigrosXingKind): string {
-  return kind === 'good' ? 'XING-Good' : 'XING-Miss';
+  return kind === 'good' ? 'XING-GOOD' : 'XING-MISS';
 }
 
 export function phigrosChartNoteKey(songId: string, levelIndex: number): string {
