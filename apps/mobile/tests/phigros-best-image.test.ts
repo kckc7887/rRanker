@@ -62,7 +62,7 @@ describe('Phigros 成绩图', () => {
     for (const width of [1080, 1440, 2160] as const) {
       const page = paginatePhigrosBestImageSections([{ id: 'phi3', title: 'Phi3', records: [record('x', { title: '<script>alert(1)</script>' })] }])[0]!;
       const html = buildPhigrosBestImageHtml({
-        type: 'best30', width, page, playerName: '<玩家>', rks: '15.4321', challenge: '23', syncedAt: '2026-07-22',
+        type: 'best30', width, page, playerName: '<玩家>', rks: '15.4321', challenge: '23', challengeModeRank: 223, syncedAt: '2026-07-22',
         progress: { cleared: [1, 2, 3, 4], fullCombo: [1, 1, 1, 1], phi: [0, 0, 1, 1] },
         titles: { x: '<script>alert(1)</script>' }, illustrations: { x: null }, avatarDataUri: null, backgroundDataUri: null,
       });
@@ -71,6 +71,12 @@ describe('Phigros 成绩图', () => {
       expect(html).toContain('cover-fallback');
       expect(html).toContain('linear-gradient(135deg,#121B2B');
       expect(html).toContain('15.4321');
+      expect(html).toContain('class="playerInfo"');
+      expect(html).toContain('class="recordInfo"');
+      expect(html).toContain('class="song phi_song"');
+      expect(html).toContain('class="b19"');
+      expect(html).toContain('--challenge:#5c9ce6');
+      expect(html).toContain(`zoom:${width / 1200}`);
     }
   });
 });
