@@ -162,7 +162,9 @@ export async function loadPhigrosReferenceTemplateAssets(): Promise<PhigrosRefer
       loadAssetText(CSS_SOURCES.b19),
       loadAssetText(CSS_SOURCES.common),
       loadAssetText(CSS_SOURCES.snow),
-      Promise.all(Object.entries(FONT_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetDataUri(source, 'font/ttf')] as const)),
+      // Fonts total nearly 45 MiB. Keeping them as cached files avoids rebuilding
+      // roughly 60 MiB of Base64 CSS whenever a preview option changes.
+      Promise.all(Object.entries(FONT_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetUri(source)] as const)),
       Promise.all(CHALLENGE_SOURCES.map((source) => loadPhigrosReferenceAssetDataUri(source, 'image/png'))),
       Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetDataUri(source, 'image/png')] as const)),
       loadPhigrosReferenceAssetDataUri(DATA_ICON_SOURCE, 'image/png'),
