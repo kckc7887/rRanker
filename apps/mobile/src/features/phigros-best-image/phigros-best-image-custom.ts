@@ -10,7 +10,7 @@ import {
 } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
 import {
-  isPhigrosXingAcc,
+  matchesPhigrosXingFilter,
   phigrosChartNoteKey,
   phigrosXingLabel,
   type PhigrosXingKind,
@@ -113,19 +113,6 @@ function formatAccNote(accuracyMin: string, accuracyMax: string): string | undef
   return `Acc≤${max}%`;
 }
 
-function matchesXingFilter(
-  record: ScoreRecord,
-  xing: PhigrosXingKind | null,
-  noteTotalByKey: Readonly<Record<string, number>>,
-): boolean {
-  if (xing === null) return true;
-  // Miss 必断连击，排除 FC（存档映射为 fc === 'ap'）
-  if (xing === 'miss' && record.fc === 'ap') return false;
-  const total = noteTotalByKey[phigrosChartNoteKey(record.songId, record.levelIndex)];
-  if (total === undefined) return false;
-  return isPhigrosXingAcc(record.achievements, total, xing);
-}
-
 /** 自定义分区主标题 + 分数/Acc 小字附注。XING 为顶层标签（如 XING-GOOD3），不套 Best。 */
 export function buildCustomPhigrosSectionTitle(
   filters: CustomPhigrosBestImageFilters,
@@ -171,7 +158,7 @@ export function buildCustomPhigrosBestImageSections(
     && matchesPhigrosScoreRange(record.dxScore, filters.scoreMin, filters.scoreMax)
     && matchesAchievementRange(record.achievements, filters.accuracyMin, filters.accuracyMax)
     && matchesPhigrosRankFilter(record, filters.rank)
-    && matchesXingFilter(record, filters.xing, noteTotalByKey)
+    && matchesPhigrosXingFilter(record, filters.xing, noteTotalByKey)
   ));
   const sorted = sortPhigrosBestImageRecords(filtered);
   const limited = filters.quantity === 0 ? sorted : sorted.slice(0, filters.quantity);

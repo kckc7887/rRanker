@@ -10,6 +10,8 @@ import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import type { BestListSection } from '@/domain/game-data';
 import type { DataSource, ScoreRecord } from '@/domain/models';
+import { phigrosChartNoteKey } from '@/domain/phigros-xing';
+import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -117,13 +119,18 @@ function PhigrosBestScreen() {
   const hasSession = session?.mode === 'phi-session';
   const phigrosPayload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
 
+  const catalogSongs = catalogQuery.data?.snapshot.songs ?? [];
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const song of catalogQuery.data?.snapshot.songs ?? []) {
+    for (const song of catalogSongs) {
       map.set(song.id, song.title);
     }
     return map;
-  }, [catalogQuery.data?.snapshot.songs]);
+  }, [catalogSongs]);
+  const noteTotalByKey = useMemo(
+    () => buildPhigrosNoteTotalByKey(catalogSongs),
+    [catalogSongs],
+  );
 
   const sections = useMemo(() => {
     if (!phigrosPayload) return [];
@@ -183,6 +190,7 @@ function PhigrosBestScreen() {
             source={source}
             catalogSource={catalogSource}
             titleMap={titleMap}
+            noteTotalByKey={noteTotalByKey}
             tabBottomInset={tabBottomInset}
           />
         )}
@@ -196,12 +204,14 @@ const PhigrosBestList = memo(function PhigrosBestList({
   source,
   catalogSource,
   titleMap,
+  noteTotalByKey,
   tabBottomInset,
 }: {
   sections: BestSection[];
   source: DataSource;
   catalogSource: DataSource;
   titleMap: Map<string, string>;
+  noteTotalByKey: Readonly<Record<string, number>>;
   tabBottomInset: number;
 }) {
   const theme = useAppTheme();
@@ -235,8 +245,9 @@ const PhigrosBestList = memo(function PhigrosBestList({
       record={item}
       catalogTitle={titleMap.get(item.songId) ?? item.songId}
       rank={index + 1}
+      totalNotes={noteTotalByKey[phigrosChartNoteKey(item.songId, item.levelIndex)]}
     />
-  ), [titleMap]);
+  ), [noteTotalByKey, titleMap]);
 
   return (
     <SectionList

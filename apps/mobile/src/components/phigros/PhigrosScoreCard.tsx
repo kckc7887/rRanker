@@ -4,9 +4,11 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
+import { PhigrosXingBadge } from './PhigrosXingBadge';
 import type { ScoreRecord } from '@/domain/models';
 import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { formatPushAcc } from '@/domain/phigros-push';
+import { resolvePhigrosXingKind } from '@/domain/phigros-xing';
 import { useAppTheme } from '@/theme/app-theme';
 
 export type PhigrosPushHint = {
@@ -20,12 +22,15 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   catalogTitle,
   rank,
   pushHint,
+  totalNotes,
 }: {
   record: ScoreRecord;
   catalogTitle?: string;
   rank?: number;
   /** 推分页：当前 Acc → 目标 Acc */
   pushHint?: PhigrosPushHint;
+  /** 谱面物量；缺省时不判定 XING */
+  totalNotes?: number;
 }) {
   const theme = useAppTheme();
   const score = record.dxScore ?? 0;
@@ -35,6 +40,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   const accText = acc % 1 === 0 ? `${acc.toFixed(0)}%` : `${acc.toFixed(2)}%`;
   const rksText = formatPhigrosSongRks(record.rating);
   const rate = resolvePhigrosRate(record);
+  const xingKind = resolvePhigrosXingKind(acc, totalNotes, record.fc === 'ap');
   const title = catalogTitle ?? record.title;
   const openDetail = () => router.push({
     pathname: '/songs/[songId]',
@@ -60,6 +66,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
         <View style={styles.tags}>
           <PhigrosDifficultyBadge levelIndex={record.levelIndex} constant={record.difficultyConstant} />
           <PhigrosRateBadge rate={rate} fc={record.fc === 'ap'} />
+          {xingKind ? <PhigrosXingBadge kind={xingKind} /> : null}
         </View>
         {pushHint ? (
           <Text style={[styles.pushLine, { color: theme.textSecondary }]}>

@@ -11,7 +11,9 @@ import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { matchesAchievementRange, matchesConstantRange, matchesMultiAchievementFilter, matchesSoloAchievementFilter } from '@/domain/maimai-filters';
 import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
+import { matchesPhigrosXingFilter, phigrosChartNoteKey } from '@/domain/phigros-xing';
 import type { DataSource, ScoreRecord } from '@/domain/models';
+import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
@@ -170,8 +172,8 @@ function PhigrosRecordsScreen() {
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const {
-    keyword, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank,
-    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setAccuracyMin, setAccuracyMax, setRank,
+    keyword, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing,
+    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setAccuracyMin, setAccuracyMax, setRank, setXing,
     clearFilters,
   } = usePhigrosRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
@@ -182,13 +184,18 @@ function PhigrosRecordsScreen() {
     [phigrosPayload?.records],
   );
 
+  const catalogSongs = catalogQuery.data?.snapshot.songs ?? [];
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();
-    for (const song of catalogQuery.data?.snapshot.songs ?? []) {
+    for (const song of catalogSongs) {
       map.set(song.id, song.title);
     }
     return map;
-  }, [catalogQuery.data?.snapshot.songs]);
+  }, [catalogSongs]);
+  const noteTotalByKey = useMemo(
+    () => buildPhigrosNoteTotalByKey(catalogSongs),
+    [catalogSongs],
+  );
 
   const searchDocs = useMemo(() => new Map(
     records.map((r) => {
@@ -198,8 +205,8 @@ function PhigrosRecordsScreen() {
   ), [records, titleMap]);
 
   const filterSpec = useMemo(() => ({
-    keyword: debouncedKeyword, level, constantMin, constantMax, accuracyMin, accuracyMax, rank,
-  }), [accuracyMax, accuracyMin, constantMax, constantMin, debouncedKeyword, level, rank]);
+    keyword: debouncedKeyword, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing,
+  }), [accuracyMax, accuracyMin, constantMax, constantMin, debouncedKeyword, level, rank, xing]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<{ record: ScoreRecord; title: string }[]>(() => {
     if (!records.length) return [];
@@ -223,8 +230,11 @@ function PhigrosRecordsScreen() {
       item.record.achievements, deferredFilterSpec.accuracyMin, deferredFilterSpec.accuracyMax,
     ));
     list = list.filter((item) => matchesPhigrosRankFilter(item.record, deferredFilterSpec.rank));
+    list = list.filter((item) => matchesPhigrosXingFilter(
+      item.record, deferredFilterSpec.xing, noteTotalByKey,
+    ));
     return list;
-  }, [deferredFilterSpec, records, searchDocs]);
+  }, [deferredFilterSpec, noteTotalByKey, records, searchDocs]);
 
   const isGameLoading = gameData.isLoading || catalogQuery.isLoading;
   const isGameError = gameData.isError || catalogQuery.isError;
@@ -254,6 +264,7 @@ function PhigrosRecordsScreen() {
     || accuracyMin
     || accuracyMax
     || rank
+    || xing
   );
 
   if (!hasSession && !isGameLoading) {
@@ -278,9 +289,10 @@ function PhigrosRecordsScreen() {
       <PhigrosFilterBar
         collapsed={collapsed} onCollapsedChange={setCollapsed}
         level={level} constantMin={constantMin} constantMax={constantMax}
-        accuracyMin={accuracyMin} accuracyMax={accuracyMax} rank={rank}
+        accuracyMin={accuracyMin} accuracyMax={accuracyMax} rank={rank} xing={xing}
         onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-        onAccuracyMinChange={setAccuracyMin} onAccuracyMaxChange={setAccuracyMax} onRankChange={setRank}
+        onAccuracyMinChange={setAccuracyMin} onAccuracyMaxChange={setAccuracyMax}
+        onRankChange={setRank} onXingChange={setXing}
         onReset={clearFilters}
       />
       <QueryStateView<{ record: ScoreRecord; title: string }[]>
@@ -292,7 +304,13 @@ function PhigrosRecordsScreen() {
         emptyText={hasActiveFilters ? '筛选结果为空' : '暂无成绩数据'}
         data={!isGameLoading && filtered.length > 0 ? filtered : undefined}
         renderData={(entries) => (
-          <PhigrosRecordList entries={entries} source={source} catalogSource={catalogSource} tabBottomInset={tabBottomInset} />
+          <PhigrosRecordList
+            entries={entries}
+            source={source}
+            catalogSource={catalogSource}
+            noteTotalByKey={noteTotalByKey}
+            tabBottomInset={tabBottomInset}
+          />
         )}
       />
     </View>
@@ -300,11 +318,12 @@ function PhigrosRecordsScreen() {
 }
 
 const PhigrosRecordList = memo(function PhigrosRecordList({
-  entries, source, catalogSource, tabBottomInset,
+  entries, source, catalogSource, noteTotalByKey, tabBottomInset,
 }: {
   entries: { record: ScoreRecord; title: string }[];
   source: DataSource;
   catalogSource: DataSource;
+  noteTotalByKey: Readonly<Record<string, number>>;
   tabBottomInset: number;
 }) {
   const header = useMemo(() => (
@@ -318,8 +337,12 @@ const PhigrosRecordList = memo(function PhigrosRecordList({
   ), [catalogSource, entries.length, source]);
 
   const renderItem = useCallback<ListRenderItem<{ record: ScoreRecord; title: string }>>(({ item }) => (
-    <PhigrosScoreCard record={item.record} catalogTitle={item.title} />
-  ), []);
+    <PhigrosScoreCard
+      record={item.record}
+      catalogTitle={item.title}
+      totalNotes={noteTotalByKey[phigrosChartNoteKey(item.record.songId, item.record.levelIndex)]}
+    />
+  ), [noteTotalByKey]);
 
   return <FlatList testID="phigros-records-list" contentInsetAdjustmentBehavior="automatic"
     style={styles.list}
