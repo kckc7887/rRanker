@@ -4,10 +4,15 @@ import {
   appendPhigrosOverflowRecords, paginatePhigrosBestImageSections, sortPhigrosBestImageRecords,
 } from '@/features/phigros-best-image/phigros-best-image';
 import {
+  buildCustomPhigrosBestImageSections, DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS,
+  parsePhigrosBestImageAccuracyBound, parsePhigrosBestImageScoreBound,
+} from '@/features/phigros-best-image/phigros-best-image-custom';
+import {
   buildPhigrosBestImageHtml, escapePhigrosBestImageHtml,
 } from '@/features/phigros-best-image/build-phigros-best-image-html';
 import { parsePhigrosBestImageStylePreferences } from '@/features/phigros-best-image/phigros-best-image-preferences';
 import { parsePhigrosUser } from '@/domain/phigros';
+import { matchesPhigrosScoreRange } from '@/domain/phigros-filters';
 
 function record(id: string, overrides: Partial<ScoreRecord> = {}): ScoreRecord {
   return {
@@ -15,6 +20,10 @@ function record(id: string, overrides: Partial<ScoreRecord> = {}): ScoreRecord {
     difficultyConstant: 14, achievements: 98, dxScore: 980000, rating: 13, fc: null, fs: null,
     rate: 'v', version: 'current', ...overrides,
   };
+}
+
+function filters(overrides: Partial<typeof DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS> = {}) {
+  return { ...DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS, ...overrides };
 }
 
 describe('Phigros 成绩图', () => {
@@ -39,7 +48,7 @@ describe('Phigros 成绩图', () => {
     expect(parsePhigrosUser(bytes)).toEqual({ showPlayerId: false, selfIntro: 'hello', avatar: 'avatar.Cipher1', backgroundSongId: 'Song.Background' });
   });
 
-  it('自定义不提供筛选，并按单曲 RKS、Acc 稳定降序展示全部成绩', () => {
+  it('自定义按单曲 RKS、Acc 稳定降序，并按数量截断', () => {
     const records = [
       record('first', { rating: 12, achievements: 99, rate: 'v', fc: 'ap' }),
       record('second', { rating: 12, achievements: 99, rate: 'v', fc: 'ap' }),
@@ -48,12 +57,43 @@ describe('Phigros 成绩图', () => {
     ];
     const result = sortPhigrosBestImageRecords(records);
     expect(result.map((item) => item.songId)).toEqual(['highest', 'first', 'second', 'lower']);
+    const limited = buildCustomPhigrosBestImageSections(records, filters({ quantity: 2 }));
+    expect(limited[0]?.title).toBe('自定义2');
+    expect(limited[0]?.records.map((item) => item.songId)).toEqual(['highest', 'first']);
+  });
+
+  it('自定义支持难度、分数、Acc、评价筛选组合', () => {
+    const records = [
+      record('in-v', { levelIndex: 2, achievements: 99, dxScore: 990_000, fc: null, rate: 'v' }),
+      record('at-s', { levelIndex: 3, level: 'AT', difficulty: 'master', achievements: 96, dxScore: 960_000, fc: null, rate: 's' }),
+      record('in-phi', { levelIndex: 2, achievements: 100, dxScore: 1_000_000, fc: 'ap', rate: 'phi' }),
+      record('hd-low', { levelIndex: 1, level: 'HD', difficulty: 'advanced', achievements: 80, dxScore: 800_000, fc: null, rate: 'a' }),
+    ];
+    expect(buildCustomPhigrosBestImageSections(records, filters({ level: 2, quantity: 0 }))[0]?.records.map((item) => item.songId))
+      .toEqual(['in-phi', 'in-v']);
+    expect(buildCustomPhigrosBestImageSections(records, filters({ scoreMin: '990000', quantity: 0 }))[0]?.records.map((item) => item.songId))
+      .toEqual(['in-phi', 'in-v']);
+    expect(buildCustomPhigrosBestImageSections(records, filters({ accuracyMin: '99', accuracyMax: '99.5', quantity: 0 }))[0]?.records.map((item) => item.songId))
+      .toEqual(['in-v']);
+    expect(buildCustomPhigrosBestImageSections(records, filters({ rank: 'phi', quantity: 0 }))[0]?.records.map((item) => item.songId))
+      .toEqual(['in-phi']);
+  });
+
+  it('分数区间与 Acc/分数解析边界合法', () => {
+    expect(matchesPhigrosScoreRange(980_000, '900000', '990000')).toBe(true);
+    expect(matchesPhigrosScoreRange(980_000, '990000', '')).toBe(false);
+    expect(matchesPhigrosScoreRange(980_000, '990000', '900000')).toBe(false);
+    expect(parsePhigrosBestImageScoreBound('')).toBeUndefined();
+    expect(parsePhigrosBestImageScoreBound('1000000')).toBe(1_000_000);
+    expect(parsePhigrosBestImageScoreBound('1000001')).toBeNull();
+    expect(parsePhigrosBestImageAccuracyBound('100')).toBe(100);
+    expect(parsePhigrosBestImageAccuracyBound('100.1')).toBeNull();
   });
 
   it('自定义全部成绩超过 30 张时自动分页', () => {
     const records = Array.from({ length: 61 }, (_, index) => record(String(index), { rating: 100 - index }));
-    const selected = sortPhigrosBestImageRecords(records);
-    const pages = paginatePhigrosBestImageSections([{ id: 'custom', title: '自定义', records: selected }]);
+    const selected = buildCustomPhigrosBestImageSections(records, filters({ quantity: 0 }));
+    const pages = paginatePhigrosBestImageSections(selected);
     expect(pages.map((page) => page.sections.flatMap((section) => section.records).length)).toEqual([30, 30, 1]);
   });
 

@@ -52,6 +52,28 @@ export function matchesPhigrosLevel(
   return levelIndex === filter;
 }
 
+export function parsePhigrosScoreBound(input: string): number | undefined {
+  const text = input.normalize('NFKC').trim().replace(',', '.');
+  if (!text) return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) && value >= 0 && value <= PHIGROS_MAX_SCORE ? value : undefined;
+}
+
+/** 分数区间（dxScore）；空上下限表示不限；非法或上下限颠倒时不匹配 */
+export function matchesPhigrosScoreRange(
+  score: number | null | undefined,
+  minInput: string,
+  maxInput: string,
+): boolean {
+  const value = score ?? 0;
+  const min = parsePhigrosScoreBound(minInput);
+  const max = parsePhigrosScoreBound(maxInput);
+  if (min !== undefined && max !== undefined && min > max) return false;
+  if (min !== undefined && value < min) return false;
+  if (max !== undefined && value > max) return false;
+  return true;
+}
+
 /** φ = 满分；FC = Full Combo 且非 φ；其余按评价等级严格匹配 */
 export function matchesPhigrosRankFilter(
   record: { dxScore?: number | null; fc?: string | null },
