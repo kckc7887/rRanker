@@ -40,6 +40,9 @@ describe('best image html', () => {
     expect(parseBestImageReadyMessage(JSON.stringify({
       type: 'best-image-ready', width: 1080, height: 2160,
     }), 1080)).toBe(2160);
+    expect(parseBestImageHeightMessage(JSON.stringify({
+      type: 'best-image-height', width: 1080, height: 1215,
+    }), 1080, 1)).toBe(1215);
   });
 
   it('reports the Android WebView version from its runtime user agent', () => {
