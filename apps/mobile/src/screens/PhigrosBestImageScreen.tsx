@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Directory } from 'expo-file-system';
 import {
   ActivityIndicator, FlatList, Image, Modal, PixelRatio, Platform, Pressable, ScrollView,
   StyleSheet, Text, useWindowDimensions, View,
@@ -35,6 +36,9 @@ import {
   loadPhigrosReferenceAvatarUrl, loadPhigrosReferenceTemplateAssets,
   type PhigrosReferenceTemplateAssets,
 } from '@/features/phigros-best-image/load-phigros-reference-template-assets';
+import {
+  PHIGROS_FONT_MANIFEST, preparePhigrosFonts, type PhigrosFontProgress,
+} from '@/features/phigros-best-image/phigros-font-cache';
 import {
   phigrosBestImagePreferencesStore, type PhigrosBestImageStylePreferences,
   type PhigrosImageStyleChoice,
@@ -82,6 +86,15 @@ function resolvedRandom<T>(items: readonly T[], seed: string): T | undefined {
   return items[Math.abs(hash) % items.length];
 }
 
+function fontProgressLabel(progress: PhigrosFontProgress): string {
+  const count = `已完成 ${progress.completed}/${progress.total}`;
+  if (progress.phase === 'ready') return `全部字体已准备 · ${count}`;
+  if (progress.phase === 'core-ready') return `核心字体已准备 · ${count}`;
+  if (progress.phase === 'downloading-core') return `正在准备核心字体${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
+  if (progress.phase === 'downloading-extensions') return `正在后台下载扩展字体${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
+  return `正在检查字体缓存${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
+}
+
 export function PhigrosBestImageScreen() {
   const theme = useAppTheme();
   const { showNotification } = useNotification();
@@ -100,6 +113,12 @@ export function PhigrosBestImageScreen() {
   const [avatarData, setAvatarData] = useState<string | null>(null); const [backgroundData, setBackgroundData] = useState<string | null>(null);
   const [templateAssets, setTemplateAssets] = useState<PhigrosReferenceTemplateAssets | null>(null);
   const [templateAssetError, setTemplateAssetError] = useState<string | null>(null);
+  const [fontDirectory, setFontDirectory] = useState<Directory | null>(null);
+  const [fontsReady, setFontsReady] = useState(false);
+  const [fontAttempt, setFontAttempt] = useState(0);
+  const [fontProgress, setFontProgress] = useState<PhigrosFontProgress>({
+    phase: 'checking', completed: 0, total: PHIGROS_FONT_MANIFEST.length, currentFont: null,
+  });
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
   const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
   const [pageHeights, setPageHeights] = useState<Record<string, number>>({}); const [pageIndex, setPageIndex] = useState(0);
@@ -124,13 +143,32 @@ export function PhigrosBestImageScreen() {
   useEffect(() => {
     let cancelled = false;
     setTemplateAssetError(null);
-    void loadPhigrosReferenceTemplateAssets().then((assets) => {
-      if (!cancelled) setTemplateAssets(assets);
-    }).catch((error) => {
+    setFontsReady(false);
+    void (async () => {
+      const prepared = await preparePhigrosFonts((progress) => {
+        if (!cancelled) setFontProgress(progress);
+      });
+      const fullResult = prepared.fullReady.then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+      const assets = await loadPhigrosReferenceTemplateAssets(prepared.directory.uri);
+      if (!cancelled) {
+        setFontDirectory(prepared.directory);
+        setTemplateAssets(assets);
+      }
+      const result = await fullResult;
+      if (!result.ok) throw result.error;
+      if (!cancelled) {
+        setFontsReady(true);
+        // 重新创建对象以强制重建 HTML，使已补齐的扩展字体进入当前 WebView。
+        setTemplateAssets({ ...assets });
+      }
+    })().catch((error) => {
       if (!cancelled) setTemplateAssetError(error instanceof Error ? error.message : '无法加载 Phigros 参考模板素材');
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [fontAttempt]);
 
   const sections = useMemo(() => {
     if (!payload) return [];
@@ -207,9 +245,9 @@ export function PhigrosBestImageScreen() {
 
   useEffect(() => {
     setSources(null); setPageHeights({}); setPageIndex(0); setPreviewStates({});
-    if (!htmlPages) return;
-    const prepared = prepareBestImageWebViewSources(htmlPages); setSources(prepared.sources); return prepared.dispose;
-  }, [htmlPages]);
+    if (!htmlPages || !fontDirectory) return;
+    const prepared = prepareBestImageWebViewSources(htmlPages, fontDirectory); setSources(prepared.sources); return prepared.dispose;
+  }, [fontDirectory, htmlPages]);
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);
@@ -270,7 +308,7 @@ export function PhigrosBestImageScreen() {
     setTimeout(() => resolve(ready), 320);
   };
   const exportImages = async () => {
-    if (!payload || !sources || !htmlPages || exportStatus) return;
+    if (!payload || !sources || !htmlPages || !fontsReady || exportStatus) return;
     const captures: { uri: string; filename: string }[] = [];
     try {
       await requestBestImageExportPermission();
@@ -333,10 +371,11 @@ export function PhigrosBestImageScreen() {
             const height = parseBestImageHeightMessage(event.nativeEvent.data, width, 1); if (height != null) { setPageHeights((current) => ({ ...current, [pageId]: height })); updatePreviewState(pageId, 'rendering'); }
             const ready = parseBestImageReadyMessage(event.nativeEvent.data, width, 1); if (ready != null) updatePreviewState(pageId, 'ready');
           }} /></View>;
-        }} /> : <View style={styles.loadingPreview}>{templateAssetError ? <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? '正在加载原始 B30 模板与字体' : assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View>}</View>}
+        }} /> : <View style={styles.loadingPreview}>{templateAssetError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View>}</View>}
       </View>
+      {sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；全部完成后可导出</Text></>}</View> : null}
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === pageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || !fontsReady || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !fontsReady || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? (fontsReady ? '导出到相册' : '字体准备完成后可导出')}</Text></Pressable>
       <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="phigros-best-image-webview-status">{previewStatus}</Text>
     </ScrollView>
     <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />
@@ -379,6 +418,10 @@ const styles = StyleSheet.create({
   loadingContent: { alignItems: 'center', gap: 10 },
   loadingText: { fontSize: 12, fontWeight: '600' },
   assetError: { paddingHorizontal: 20, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  fontStatus: { minHeight: 44, marginTop: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  fontStatusText: { flexShrink: 1, fontSize: 12, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
+  retryButton: { minHeight: 32, minWidth: 68, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 999 },
+  retryButtonText: { fontSize: 12, fontWeight: '800' },
   pageDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   pageDot: { width: 6, height: 6, borderRadius: 3 },
   exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14 },

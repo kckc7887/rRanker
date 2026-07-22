@@ -1,4 +1,4 @@
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 
 export type BestImageWebViewSource = { html: string; baseUrl: string } | { uri: string };
 
@@ -13,12 +13,15 @@ export function inlineBestImageWebViewSources(htmlPages: readonly string[]): Bes
   return htmlPages.map((html) => ({ html, baseUrl: 'https://assets2.lxns.net/' }));
 }
 
-export function prepareBestImageWebViewSources(htmlPages: readonly string[]): PreparedBestImageWebViewSources {
+export function prepareBestImageWebViewSources(
+  htmlPages: readonly string[],
+  directory: Directory = Paths.cache,
+): PreparedBestImageWebViewSources {
   sourceBatch += 1;
   const files: File[] = [];
   try {
     const sources = htmlPages.map((html, index) => {
-      const file = new File(Paths.cache, `rranker-best-image-${sourceBatch}-${index}.html`);
+      const file = new File(directory, `rranker-best-image-${sourceBatch}-${index}.html`);
       file.create({ overwrite: true });
       file.write(html);
       files.push(file);

@@ -7,8 +7,8 @@ vi.mock('expo-file-system', () => ({
   File: class MockFile {
     readonly uri: string;
 
-    constructor(base: string, name: string) {
-      this.uri = `${base}/${name}`;
+    constructor(base: string | { uri: string }, name: string) {
+      this.uri = `${typeof base === 'string' ? base : base.uri}/${name}`;
     }
 
     get exists() {
@@ -52,5 +52,14 @@ describe('best image WebView sources', () => {
 
     prepared.dispose();
     expect([...storedFiles.values()].every((file) => !file.exists)).toBe(true);
+  });
+
+  it('can place HTML beside persistent Phigros fonts for WebView read access', () => {
+    const directory = { uri: 'file:///document/rranker/phigros-fonts/v1' };
+    const prepared = prepareBestImageWebViewSources(['<p>font preview</p>'], directory as never);
+    expect(prepared.sources[0]).toEqual(expect.objectContaining({
+      uri: expect.stringMatching(/^file:\/\/\/document\/rranker\/phigros-fonts\/v1\/rranker-best-image-/u),
+    }));
+    prepared.dispose();
   });
 });
