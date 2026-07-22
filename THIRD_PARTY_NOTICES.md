@@ -4,19 +4,22 @@
 
 The Phigros score-image renderer in
 `apps/mobile/src/features/phigros-best-image/build-phigros-best-image-html.ts`
-uses the `resources/html/b19` DOM/CSS contract from **phi-plugin**. The original
-`b19`, `common`, `otherimg` and `avatar` files are copied without content changes into
-`apps/mobile/assets/phigros-b30-reference` (the `HIMALAYA.TTF` filename is
-changed to lowercase `.ttf` solely for Metro asset resolution).
+uses the `resources/html/b19` DOM/CSS contract from **phi-plugin**. The non-font
+files from `b19`, `common`, `otherimg` and `avatar` are copied
+without content changes into `apps/mobile/assets/phigros-b30-reference`.
 
 Those resource templates are licensed under the Apache License, Version 2.0.
 The Best30 visual shown by the upstream README is credited there to Steve
 ([@S-t-e-v-e-e](https://github.com/S-t-e-v-e-e)).
 The rRanker integration replaces only the upstream template engine and data
-model, resolves the original fonts and PNG files through Expo Asset, and adds
-the existing preview/export protocol. The original CSS, font files, player
-avatars, challenge badges, rating images, fallback artwork, footer structure
-and visual branding are used directly.
+model, resolves the PNG files through Expo Asset, and adds the existing
+preview/export protocol. The original twelve font files are distributed as
+individually compressed archives from
+`https://rranker-phigros-data.cn-nb1.rains3.com/fonts/`, downloaded on demand,
+and accepted only after their pinned archive and font hashes have been
+verified. The original CSS, fonts, player avatars, challenge badges, rating
+images, fallback artwork, footer structure and visual branding are used
+directly.
 
 Copyright remains with the original phi-plugin resource contributors. A copy
 of the applicable license is included at
