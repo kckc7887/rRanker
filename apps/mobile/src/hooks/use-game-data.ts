@@ -16,6 +16,7 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
+import { formatPhigrosDataMoney } from '@/domain/phigros';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const repository = new SqliteSnapshotRepository();
@@ -49,13 +50,14 @@ export function useGameData() {
           const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
             ? catalogProvider
             : new PhigrosCatalogProvider();
-          const [player, records, bestSections, gameVersion, summary, userProfile] = await Promise.all([
+          const [player, records, bestSections, gameVersion, summary, userProfile, gameProgress] = await Promise.all([
             scoreProvider.getPlayer(),
             scoreProvider.getRecords(),
             scoreProvider.getBestSections(),
             phiCatalog.getGameVersion(),
             scoreProvider.getSummary(),
             scoreProvider.getUserProfile(),
+            scoreProvider.getGameProgress(),
           ]);
 
           const syncedAt = scoreProvider.getSyncedAt() ?? new Date().toISOString();
@@ -89,10 +91,12 @@ export function useGameData() {
               },
               challengeModeRank: summary.challengeModeRank,
               source,
+              saveUpdatedAt: scoreProvider.getSaveUpdatedAt() ?? syncedAt,
               catalogSource,
               avatarUrl,
               avatarKey: userProfile?.avatar || summary.avatar || null,
               backgroundSongId: userProfile?.backgroundSongId || null,
+              dataAmount: formatPhigrosDataMoney(gameProgress?.money ?? []),
               progress: {
                 cleared: summary.cleared,
                 fullCombo: summary.fullCombo,

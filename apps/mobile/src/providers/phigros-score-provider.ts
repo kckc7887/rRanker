@@ -6,6 +6,7 @@ import {
   pollForToken,
   exchangeSessionToken,
   getGameSave,
+  getPlayerId as getCloudPlayerId,
   downloadSave,
   type DeviceCodeResult,
   type GameSaveMeta,
@@ -23,6 +24,7 @@ import {
   type PhigrosDifficultyTable,
   type PhigrosScoreEntry,
   type PhigrosSummary,
+  type PhigrosGameProgress,
   type PhigrosUserProfile,
 } from '@/domain/phigros';
 import {
@@ -39,6 +41,7 @@ type LoadedSave = {
   songCount: number;
   chartCount: number;
   user: PhigrosUserProfile | null;
+  gameProgress: PhigrosGameProgress | null;
 };
 
 export class PhigrosScoreProvider implements ScoreProvider {
@@ -49,6 +52,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private summaryCache: PhigrosSummary | null = null;
   private saveMeta: GameSaveMeta | null = null;
   private saveLoadPromise: Promise<LoadedSave> | null = null;
+  private playerNameCache: string | null = null;
+  private playerNamePromise: Promise<string> | null = null;
   /** App 最近一次成功从 LeanCloud 拉取云存档元数据的本地时间（用于 UI） */
   private lastFetchedAt: string | null = null;
 
@@ -125,13 +130,24 @@ export class PhigrosScoreProvider implements ScoreProvider {
   }
 
   async getPlayer(): Promise<Player> {
-    await this.ensureSaveMeta();
+    const [, displayName] = await Promise.all([this.ensureSaveMeta(), this.getCloudPlayerName()]);
     return {
       id: this.playerId,
-      displayName: this.playerId,
+      displayName,
       rating: roundRks(this.summaryCache!.rankingScore),
       source: this.source(),
     };
+  }
+
+  private async getCloudPlayerName(): Promise<string> {
+    if (this.playerNameCache) return this.playerNameCache;
+    if (!this.playerNamePromise) {
+      this.playerNamePromise = getCloudPlayerId(this.sessionToken)
+        .catch(() => this.playerId)
+        .finally(() => { this.playerNamePromise = null; });
+    }
+    this.playerNameCache = await this.playerNamePromise;
+    return this.playerNameCache;
   }
 
   getSummary(): Promise<PhigrosSummary> {
@@ -182,13 +198,13 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private async loadSaveInternal(): Promise<LoadedSave> {
     const { saveUrl, updatedAt } = await this.ensureSaveMeta();
     const zipBuf = await downloadSave(saveUrl, updatedAt);
-    const { gameRecord, user } = await decodeSaveZip(zipBuf);
+    const { gameRecord, user, gameProgress } = await decodeSaveZip(zipBuf);
 
     const gameVersion = this.summaryCache?.gameVersion ?? 0;
     const diffTable = await this.loadMergedDifficultyTable(gameVersion);
     const { songCount, chartCount } = this.countGameRecord(gameRecord);
 
-    return { gameRecord, diffTable, gameVersion, songCount, chartCount, user };
+    return { gameRecord, diffTable, gameVersion, songCount, chartCount, user, gameProgress };
   }
 
   private async loadSave(): Promise<LoadedSave> {
@@ -209,6 +225,10 @@ export class PhigrosScoreProvider implements ScoreProvider {
 
   async getUserProfile(): Promise<PhigrosUserProfile | null> {
     return (await this.loadSave()).user;
+  }
+
+  async getGameProgress(): Promise<PhigrosGameProgress | null> {
+    return (await this.loadSave()).gameProgress;
   }
 
   getB30(): Promise<PhigrosB30> {

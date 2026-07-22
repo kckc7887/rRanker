@@ -180,19 +180,89 @@ export type PhigrosSaveData = {
 };
 
 export type PhigrosUserProfile = {
+  showPlayerId: boolean;
   selfIntro: string;
   avatar: string;
   backgroundSongId: string;
 };
 
+export type PhigrosGameProgress = {
+  isFirstRun: boolean;
+  legacyChapterFinished: boolean;
+  alreadyShowCollectionTip: boolean;
+  alreadyShowAutoUnlockINTip: boolean;
+  completed: string;
+  songUpdateInfo: number;
+  challengeModeRank: number;
+  /** Phigros Data，依次为 KiB / MiB / GiB / TiB / PiB。 */
+  money: [number, number, number, number, number];
+  unlockFlagOfSpasmodic: number;
+  unlockFlagOfIgallta: number;
+  unlockFlagOfRrharil: number;
+  flagOfSongRecordKey: number;
+  randomVersionUnlocked: number;
+  chapter8UnlockBegin: boolean;
+  chapter8UnlockSecondPhase: boolean;
+  chapter8Passed: boolean;
+  chapter8SongUnlocked: number;
+};
+
 export function parsePhigrosUser(buf: ArrayBuffer | SharedArrayBuffer | Uint8Array): PhigrosUserProfile {
   const r = new ByteReader(buf);
-  if (r.remaining() > 0) r.getByte(); // 用户设置 flags
+  const flags = r.remaining() > 0 ? r.getByte() : 0;
   return {
+    showPlayerId: (flags & 1) !== 0,
     selfIntro: r.remaining() > 0 ? r.getString() : '',
     avatar: r.remaining() > 0 ? r.getString() : '',
     backgroundSongId: r.remaining() > 0 ? normalizePhigrosSongId(r.getString()) : '',
   };
+}
+
+/** 对齐原项目 GameProgress 的二进制布局，读取玩家 Data 与解锁进度。 */
+export function parsePhigrosGameProgress(
+  buf: ArrayBuffer | SharedArrayBuffer | Uint8Array,
+): PhigrosGameProgress {
+  const r = new ByteReader(buf);
+  const flags = r.getByte();
+  const completed = r.getString();
+  const songUpdateInfo = r.getVarInt();
+  const challengeModeRank = r.getShort();
+  const money = [r.getVarInt(), r.getVarInt(), r.getVarInt(), r.getVarInt(), r.getVarInt()] as PhigrosGameProgress['money'];
+  const unlockFlagOfSpasmodic = r.getByte();
+  const unlockFlagOfIgallta = r.getByte();
+  const unlockFlagOfRrharil = r.getByte();
+  const flagOfSongRecordKey = r.getByte();
+  const randomVersionUnlocked = r.getByte();
+  const chapter8Flags = r.getByte();
+  return {
+    isFirstRun: (flags & 1) !== 0,
+    legacyChapterFinished: (flags & 2) !== 0,
+    alreadyShowCollectionTip: (flags & 4) !== 0,
+    alreadyShowAutoUnlockINTip: (flags & 8) !== 0,
+    completed,
+    songUpdateInfo,
+    challengeModeRank,
+    money,
+    unlockFlagOfSpasmodic,
+    unlockFlagOfIgallta,
+    unlockFlagOfRrharil,
+    flagOfSongRecordKey,
+    randomVersionUnlocked,
+    chapter8UnlockBegin: (chapter8Flags & 1) !== 0,
+    chapter8UnlockSecondPhase: (chapter8Flags & 2) !== 0,
+    chapter8Passed: (chapter8Flags & 4) !== 0,
+    chapter8SongUnlocked: r.remaining() > 0 ? r.getByte() : 0,
+  };
+}
+
+export function formatPhigrosDataMoney(money: readonly number[]): string {
+  const units = ['KiB', 'MiB', 'GiB', 'TiB', 'PiB'] as const;
+  const parts: string[] = [];
+  for (let index = Math.min(money.length, units.length) - 1; index >= 0; index -= 1) {
+    const value = money[index] ?? 0;
+    if (value) parts.push(`${value}${units[index]}`);
+  }
+  return parts.join(' ') || '0KiB';
 }
 
 function base64ToBytes(b64: string): Uint8Array {
@@ -479,6 +549,7 @@ export function computeB30(
 export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>;
   user: PhigrosUserProfile | null;
+  gameProgress: PhigrosGameProgress | null;
 }> {
   const zip = await JSZip.loadAsync(zipBuf);
 
@@ -502,7 +573,20 @@ export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{
     }
   }
 
-  return { gameRecord, user };
+  let gameProgress: PhigrosGameProgress | null = null;
+  const progressFile = zip.file('gameProgress');
+  if (progressFile) {
+    try {
+      const progressBuf = await progressFile.async('uint8array');
+      if (progressBuf[0] === 1) {
+        gameProgress = parsePhigrosGameProgress(decryptBytes(progressBuf.subarray(1)));
+      }
+    } catch {
+      gameProgress = null;
+    }
+  }
+
+  return { gameRecord, user, gameProgress };
 }
 
 export function loadDifficultyTable(raw: string): PhigrosDifficultyTable {
