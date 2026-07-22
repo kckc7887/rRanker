@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
+import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
 import {
   PHIGROS_LEVELS,
   PHIGROS_RANK_FILTERS,
@@ -11,7 +12,13 @@ import {
 } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
 import { phigrosLevelColors } from '@/domain/phigros-level-theme';
+import { phigrosXingLabel, type PhigrosXingKind } from '@/domain/phigros-xing';
 import { useAppTheme } from '@/theme/app-theme';
+
+const PHIGROS_XING_FILTERS: readonly { value: PhigrosXingKind; label: string }[] = [
+  { value: 'good', label: 'Good' },
+  { value: 'miss', label: 'Miss' },
+];
 
 export interface PhigrosFilterBarProps {
   collapsed: boolean;
@@ -21,6 +28,7 @@ export interface PhigrosFilterBarProps {
   accuracyMin?: string;
   accuracyMax?: string;
   rank?: PhigrosRankFilter | null;
+  xing?: PhigrosXingKind | null;
   onCollapsedChange: (collapsed: boolean) => void;
   onLevelChange: (level: PhigrosLevel | 'all') => void;
   onConstantMinChange: (value: string) => void;
@@ -28,6 +36,7 @@ export interface PhigrosFilterBarProps {
   onAccuracyMinChange?: (value: string) => void;
   onAccuracyMaxChange?: (value: string) => void;
   onRankChange?: (value: PhigrosRankFilter | null) => void;
+  onXingChange?: (value: PhigrosXingKind | null) => void;
   onReset: () => void;
 }
 
@@ -38,12 +47,14 @@ export function buildPhigrosFilterSummary({
   accuracyMin,
   accuracyMax,
   rank,
-}: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank'>): string {
+  xing,
+}: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank' | 'xing'>): string {
   return [
     level === 'all' ? null : phigrosLevelLabel(level),
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
     accuracyMin || accuracyMax ? `Acc ${accuracyMin || '不限'}~${accuracyMax || '不限'}%` : null,
     rank ? phigrosRankFilterLabel(rank) : null,
+    xing ? phigrosXingLabel(xing) : null,
   ].filter(Boolean).join(' · ') || '全部';
 }
 
@@ -55,6 +66,7 @@ export function PhigrosFilterBar({
   accuracyMin = '',
   accuracyMax = '',
   rank = null,
+  xing = null,
   onCollapsedChange,
   onLevelChange,
   onConstantMinChange,
@@ -62,18 +74,20 @@ export function PhigrosFilterBar({
   onAccuracyMinChange,
   onAccuracyMaxChange,
   onRankChange,
+  onXingChange,
   onReset,
 }: PhigrosFilterBarProps) {
   const theme = useAppTheme();
   const showAccuracyRange = onAccuracyMinChange !== undefined && onAccuracyMaxChange !== undefined;
   const showRankPicker = onRankChange !== undefined;
+  const showXingPicker = onXingChange !== undefined;
 
   const handleReset = () => {
     onReset();
   };
 
   const summary = buildPhigrosFilterSummary({
-    level, constantMin, constantMax, accuracyMin, accuracyMax, rank,
+    level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing,
   });
 
   if (collapsed) {
@@ -179,6 +193,28 @@ export function PhigrosFilterBar({
           </ScrollView>
         </View>
       ) : null}
+
+      {showXingPicker ? (
+        <View style={styles.filterRow}>
+          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>XING</Text>
+          <View style={styles.chipRow}>
+            <NeutralChip
+              label="关闭"
+              accessibilityLabel="XING 筛选 关闭"
+              active={xing === null}
+              onPress={() => onXingChange(null)}
+            />
+            {PHIGROS_XING_FILTERS.map((item) => (
+              <XingChip
+                key={item.value}
+                value={item.value}
+                active={xing === item.value}
+                onPress={() => onXingChange(item.value)}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -250,6 +286,23 @@ function RankChip({ value, active, onPress }: {
     >
       <View style={styles.rankChip}>
         <PhigrosRateBadge rate={badgeRate} fc={badgeFc} />
+      </View>
+    </FilterChipFrame>
+  );
+}
+
+function XingChip({ value, active, onPress }: {
+  value: PhigrosXingKind; active: boolean; onPress: () => void;
+}) {
+  return (
+    <FilterChipFrame
+      active={active}
+      shape="rounded"
+      accessibilityLabel={`XING 筛选 ${phigrosXingLabel(value)}`}
+      onPress={onPress}
+    >
+      <View style={styles.rankChip}>
+        <PhigrosXingBadge kind={value} />
       </View>
     </FilterChipFrame>
   );
