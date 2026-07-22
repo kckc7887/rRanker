@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Modal, PixelRatio, Platform, Pressable, ScrollView,
+  ActivityIndicator, FlatList, Image, Modal, PixelRatio, Platform, Pressable, ScrollView,
   StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -10,7 +10,7 @@ import { formatPhigrosChallengeBadge } from '@/domain/phigros-challenge-theme';
 import { loadPhigrosAvatarCatalog } from '@/domain/phigros-avatar-resolver';
 import type { Song } from '@/domain/models';
 import {
-  parseBestImageHeightMessage, parseBestImageReadyMessage,
+  parseBestImageHeightMessage, parseBestImageReadyMessage, parseBestImageRuntimeMessage,
 } from '@/features/best-image/build-best-image-html';
 import {
   bestImageCaptureDimensions, bestImageExportFilename, deleteBestImageCapture,
@@ -49,11 +49,18 @@ const DEFAULT_STYLES: PhigrosBestImageStylePreferences = {
 type StyleKind = 'avatar' | 'background';
 type PickerItem = { key: string; label: string };
 
-function Chip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+type PreviewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'error' | 'crashed' | 'terminated';
+
+const PREVIEW_PHASE_LABEL: Record<PreviewPhase, string> = {
+  loading: '正在加载', loaded: '页面已载入，等待渲染', rendering: '正在渲染', ready: '渲染就绪',
+  error: '加载失败', crashed: '渲染进程崩溃', terminated: '渲染进程已终止',
+};
+
+function ChoiceChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
   const theme = useAppTheme();
-  return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={label}
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={label}
     onPress={onPress} style={[styles.chip, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
-    <Text style={[styles.chipText, { color: selected ? theme.accent : theme.textSecondary }]}>{label}</Text>
+    <Text style={[styles.chipText, { color: theme.textSecondary }, selected && { color: theme.accent }]}>{label}</Text>
   </Pressable>;
 }
 
@@ -92,6 +99,7 @@ export function PhigrosBestImageScreen() {
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
   const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
   const [pageHeights, setPageHeights] = useState<Record<string, number>>({}); const [pageIndex, setPageIndex] = useState(0);
+  const [previewStates, setPreviewStates] = useState<Record<string, { phase: PreviewPhase; version: string | null }>>({});
   const [exportIndex, setExportIndex] = useState<number | null>(null); const [exportHeight, setExportHeight] = useState(810);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const exportCaptureRef = useRef<View>(null); const exportResolve = useRef<((height: number) => void) | null>(null);
@@ -159,12 +167,13 @@ export function PhigrosBestImageScreen() {
   const titles = useMemo(() => Object.fromEntries(songs.map((song) => [song.id, song.title])), [songs]);
   const htmlPages = useMemo(() => payload && illustrations ? pages.map((page) => buildPhigrosBestImageHtml({
     type, width, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
-    challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), syncedAt: formatSyncTime(payload.source.updatedAt),
+    challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
+    syncedAt: formatSyncTime(payload.source.updatedAt),
     progress: payload.progress, titles, illustrations, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
   })) : null, [avatarData, backgroundData, illustrations, pages, payload, titles, type, width]);
 
   useEffect(() => {
-    setSources(null); setPageHeights({}); setPageIndex(0);
+    setSources(null); setPageHeights({}); setPageIndex(0); setPreviewStates({});
     if (!htmlPages) return;
     if (Platform.OS !== 'android') { setSources(inlineBestImageWebViewSources(htmlPages)); return; }
     const prepared = prepareAndroidBestImageWebViewSources(htmlPages); setSources(prepared.sources); return prepared.dispose;
@@ -173,6 +182,10 @@ export function PhigrosBestImageScreen() {
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);
   const previewWidth = Math.min(720, Math.max(280, window.width - 32)); const previewHeight = previewWidth * .75;
+  const currentPreviewState = previewStates[currentPage.id];
+  const previewStatus = currentPreviewState
+    ? `${PREVIEW_PHASE_LABEL[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
+    : 'WebView 版本未知 · 等待预览素材';
   const pickerItems: PickerItem[] = picker === 'avatar'
     ? avatarItems.map((key) => ({ key, label: key }))
     : songs.map((song: Song) => ({ key: song.id, label: song.title }));
@@ -182,6 +195,16 @@ export function PhigrosBestImageScreen() {
     const available = kind === 'avatar' ? avatarItems : songs.map((song) => song.id);
     const resolved = choice.mode === 'random' ? { mode: 'random' as const, key: resolvedRandom(available, `${gameData.activeAccountId}:${kind}:${Date.now()}`) } : choice;
     setStylePrefs((current) => ({ ...current, [kind]: resolved })); setPicker(null);
+  };
+  const styleValue = (kind: StyleKind): string => {
+    const choice = stylePrefs[kind];
+    if (choice.mode === 'current') return `玩家当前${kind === 'avatar' ? '头像' : '背景'}`;
+    if (choice.mode === 'off') return '已关闭';
+    if (choice.mode === 'random') return `随机${choice.key ? ` · ${kind === 'background' ? titles[choice.key] ?? choice.key : choice.key}` : ''}`;
+    return kind === 'background' ? titles[choice.key ?? ''] ?? choice.key ?? '未设置' : choice.key ?? '未设置';
+  };
+  const updatePreviewState = (pageId: string, phase: PreviewPhase, version?: string | null) => {
+    setPreviewStates((current) => ({ ...current, [pageId]: { phase, version: version === undefined ? current[pageId]?.version ?? null : version } }));
   };
   const waitForExport = (index: number) => new Promise<number>((resolve, reject) => {
     exportResolve.current = resolve; exportReject.current = reject; setExportHeight(pageHeights[pages[index]!.id] ?? Math.ceil(width * .75)); setExportIndex(index);
@@ -216,38 +239,126 @@ export function PhigrosBestImageScreen() {
 
   if (!payload && !gameData.isLoading) return <View style={[styles.center, { backgroundColor: theme.background }]}><Text style={{ color: theme.textMuted }}>当前账号没有可生成的 Phigros 成绩</Text></View>;
   return <>
-    <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={[styles.heading, { color: theme.text }]}>选择类型</Text><View style={styles.row}>
-        <Chip label="Best30" selected={type === 'best30'} onPress={() => setType('best30')} /><Chip label="自定义" selected={type === 'custom'} onPress={() => setType('custom')} />
+    <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <Text style={[styles.label, { color: theme.text }]}>选择类型</Text>
+      <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
+        {([{ id: 'best30', label: 'Best30' }, { id: 'custom', label: '自定义' }] as const).map((item) => {
+          const selected = type === item.id;
+          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setType(item.id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+            <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item.label}</Text>
+          </Pressable>;
+        })}
       </View>
-      {type === 'custom' ? <View style={[styles.panel, { backgroundColor: theme.surface }]}>
-        <Text style={[styles.panelTitle, { color: theme.text }]}>自定义筛选</Text><TextInput accessibilityLabel="自定义数量" value={quantity} onChangeText={setQuantity} keyboardType="number-pad" placeholder="数量，0 为不限" placeholderTextColor={theme.textMuted} style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} />
-        <Text style={[styles.caption, { color: theme.textMuted }]}>难度</Text><View style={styles.wrap}>{LEVELS.map((level, index) => <Chip key={level} label={level} selected={difficulties.includes(index as PhigrosBestImageDifficulty)} onPress={() => setDifficulties((current) => current.includes(index as PhigrosBestImageDifficulty) ? current.filter((value) => value !== index) : [...current, index as PhigrosBestImageDifficulty])} />)}</View>
-        <View style={styles.row}><TextInput accessibilityLabel="最小定数" value={minConstant} onChangeText={setMinConstant} keyboardType="decimal-pad" placeholder="最小定数" placeholderTextColor={theme.textMuted} style={[styles.input, styles.flex, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /><TextInput accessibilityLabel="最大定数" value={maxConstant} onChangeText={setMaxConstant} keyboardType="decimal-pad" placeholder="最大定数" placeholderTextColor={theme.textMuted} style={[styles.input, styles.flex, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
-        <View style={styles.row}><TextInput accessibilityLabel="最小Acc" value={minAcc} onChangeText={setMinAcc} keyboardType="decimal-pad" placeholder="最小 Acc" placeholderTextColor={theme.textMuted} style={[styles.input, styles.flex, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /><TextInput accessibilityLabel="最大Acc" value={maxAcc} onChangeText={setMaxAcc} keyboardType="decimal-pad" placeholder="最大 Acc" placeholderTextColor={theme.textMuted} style={[styles.input, styles.flex, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
-        <Text style={[styles.caption, { color: theme.textMuted }]}>评价 / FC</Text><View style={styles.wrap}>{RATES.map((rate) => <Chip key={rate} label={rate === 'phi' ? 'φ' : rate.toUpperCase()} selected={rates.includes(rate)} onPress={() => setRates((current) => current.includes(rate) ? current.filter((value) => value !== rate) : [...current, rate])} />)}<Chip label="FC" selected={fcOnly} onPress={() => setFcOnly((value) => !value)} /></View>
-        {!parsedFilters ? <Text style={{ color: theme.danger }}>请检查筛选范围和数量</Text> : null}
+
+      {type === 'custom' ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
+        <View style={styles.fieldRow}>
+          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text><TextInput accessibilityLabel="自定义数量" autoCorrect={false} value={quantity} onChangeText={setQuantity} keyboardType="number-pad" placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }, parsePhigrosImageQuantity(quantity) === null && styles.textInputError]} /></View>
+          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>难度</Text><View style={styles.chipRow}>{LEVELS.map((level, index) => <ChoiceChip key={level} label={level} selected={difficulties.includes(index as PhigrosBestImageDifficulty)} onPress={() => setDifficulties((current) => current.includes(index as PhigrosBestImageDifficulty) ? current.filter((value) => value !== index) : [...current, index as PhigrosBestImageDifficulty])} />)}</View></View>
+        </View>
+        <View style={styles.fieldRow}>
+          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最小定数</Text><TextInput accessibilityLabel="最小定数" autoCorrect={false} value={minConstant} onChangeText={setMinConstant} keyboardType="decimal-pad" placeholder="0–20" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
+          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最大定数</Text><TextInput accessibilityLabel="最大定数" autoCorrect={false} value={maxConstant} onChangeText={setMaxConstant} keyboardType="decimal-pad" placeholder="0–20" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
+        </View>
+        <View style={styles.fieldRow}>
+          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最小 Acc</Text><TextInput accessibilityLabel="最小Acc" autoCorrect={false} value={minAcc} onChangeText={setMinAcc} keyboardType="decimal-pad" placeholder="0–100" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
+          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最大 Acc</Text><TextInput accessibilityLabel="最大Acc" autoCorrect={false} value={maxAcc} onChangeText={setMaxAcc} keyboardType="decimal-pad" placeholder="0–100" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
+        </View>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>评价 / FC</Text>
+        <View style={styles.chipRow}>{RATES.map((rate) => <ChoiceChip key={rate} label={rate === 'phi' ? 'φ' : rate.toUpperCase()} selected={rates.includes(rate)} onPress={() => setRates((current) => current.includes(rate) ? current.filter((value) => value !== rate) : [...current, rate])} />)}<ChoiceChip label="FC" selected={fcOnly} onPress={() => setFcOnly((value) => !value)} /></View>
+        {!parsedFilters ? <Text style={[styles.errorText, { color: theme.danger }]}>请检查数量、筛选范围，并至少选择一个难度</Text> : null}
       </View> : null}
-      <Text style={[styles.heading, { color: theme.text }]}>样式选择</Text>{(['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={[styles.styleRow, { backgroundColor: theme.surface, borderColor: theme.border }]}><Text style={{ color: theme.text, fontWeight: '700' }}>{kind === 'avatar' ? '头像' : '背景'}</Text><Text style={{ color: theme.textMuted }}>{stylePrefs[kind].mode === 'current' ? '玩家当前' : stylePrefs[kind].mode === 'off' ? '关闭' : stylePrefs[kind].mode === 'random' ? '随机' : stylePrefs[kind].key}</Text></Pressable>)}
-      <Text style={[styles.heading, { color: theme.text }]}>分辨率</Text><View style={styles.row}>{WIDTHS.map((item) => <Chip key={item} label={`${item}px`} selected={width === item} onPress={() => setWidth(item)} />)}</View>
-      <Text style={[styles.meta, { color: theme.textMuted }]}>{width} × {outputHeight} px · 第 {pageIndex + 1}/{pages.length} 页 · 每页最多 30 张</Text>
-      <Text style={[styles.heading, { color: theme.text }]}>预览</Text><View accessibilityLabel="HTML图片预览窗" style={[styles.preview, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
-        {sources ? <FlatList horizontal pagingEnabled data={sources} keyExtractor={(_, index) => pages[index]!.id} showsHorizontalScrollIndicator={false} onMomentumScrollEnd={(event) => setPageIndex(Math.round(event.nativeEvent.contentOffset.x / previewWidth))} renderItem={({ item, index }) => <View style={{ width: previewWidth, height: previewHeight }}><WebView testID={`phigros-best-image-html-preview-${index}`} accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} javaScriptEnabled originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} onMessage={(event) => { const height = parseBestImageHeightMessage(event.nativeEvent.data, width); if (height != null) setPageHeights((current) => ({ ...current, [pages[index]!.id]: height })); }} /></View>} /> : <View style={styles.center}><ActivityIndicator color={theme.accent} /><Text style={{ color: theme.textMuted }}>正在加载素材 {assetProgress.done}/{assetProgress.total}</Text></View>}
+
+      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
+      <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
+        {(['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
+          <View style={styles.stylePreview}>{kind === 'avatar' ? (avatarData ? <Image source={{ uri: avatarData }} style={styles.avatarPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>) : (backgroundData ? <Image source={{ uri: backgroundData }} style={styles.backgroundPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>)}</View>
+          <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{kind === 'avatar' ? '头像' : '背景'}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{styleValue(kind)}</Text></View>
+          <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
+        </Pressable>)}
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || !parsedFilters && type === 'custom' || !!exportStatus} onPress={() => void exportImages()} style={[styles.export, { backgroundColor: theme.accent }, (!sources || !!exportStatus) && { opacity: .5 }]}><Text style={styles.exportText}>{exportStatus ?? '导出到相册'}</Text></Pressable>
+
+      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>分辨率</Text>
+      <View style={styles.widthOptions}>{WIDTHS.map((item) => {
+        const selected = width === item;
+        return <Pressable key={item} accessibilityLabel={`宽度 ${item} 像素`} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setWidth(item)} style={[styles.widthOption, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}><Text style={[styles.widthOptionText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item}px</Text></Pressable>;
+      })}</View>
+      <Text style={[styles.dimensionMeta, { color: theme.textMuted }]}>{width} × {outputHeight} px · 每页最多 30 张 · 第 {pageIndex + 1}/{pages.length} 页</Text>
+
+      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>预览</Text>
+      <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
+        {sources ? <FlatList data={sources} horizontal initialNumToRender={2} keyExtractor={(_, index) => pages[index]!.id} maxToRenderPerBatch={3} pagingEnabled removeClippedSubviews={false} showsHorizontalScrollIndicator={false} windowSize={3} style={styles.previewPager} onMomentumScrollEnd={(event) => setPageIndex(Math.round(event.nativeEvent.contentOffset.x / previewWidth))} renderItem={({ item, index }) => {
+          const pageId = pages[index]!.id;
+          return <View style={{ width: previewWidth, height: previewHeight }}><WebView testID={`phigros-best-image-html-preview-${index}`} accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} onError={() => updatePreviewState(pageId, 'error')} onLoadStart={() => updatePreviewState(pageId, 'loading')} onLoadEnd={() => setPreviewStates((current) => current[pageId] && current[pageId]!.phase !== 'loading' ? current : { ...current, [pageId]: { phase: 'loaded', version: current[pageId]?.version ?? null } })} onRenderProcessGone={(event) => updatePreviewState(pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated')} onMessage={(event) => {
+            const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, width); if (runtime) updatePreviewState(pageId, 'rendering', runtime.version);
+            const height = parseBestImageHeightMessage(event.nativeEvent.data, width); if (height != null) { setPageHeights((current) => ({ ...current, [pageId]: height })); updatePreviewState(pageId, 'rendering'); }
+            const ready = parseBestImageReadyMessage(event.nativeEvent.data, width); if (ready != null) updatePreviewState(pageId, 'ready');
+          }} /></View>;
+        }} /> : <View style={styles.loadingPreview}><View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View></View>}
+      </View>
+      {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === pageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
+      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || (!parsedFilters && type === 'custom') || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text></Pressable>
+      <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="phigros-best-image-webview-status">{previewStatus}</Text>
     </ScrollView>
-    <Modal visible={picker !== null} animationType="slide" onRequestClose={() => setPicker(null)}><View style={[styles.modal, { backgroundColor: theme.background }]}><Text style={[styles.modalTitle, { color: theme.text }]}>选择{picker === 'avatar' ? '头像' : '背景'}</Text><View style={styles.wrap}><Chip label="玩家当前" selected={false} onPress={() => chooseStyle({ mode: 'current' })} /><Chip label="随机" selected={false} onPress={() => chooseStyle({ mode: 'random' })} /><Chip label="关闭" selected={false} onPress={() => chooseStyle({ mode: 'off' })} /></View><FlatList data={pickerItems} keyExtractor={(item) => item.key} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`选择素材 ${item.label}`} onPress={() => chooseStyle({ mode: 'item', key: item.key })} style={[styles.pickerItem, { borderBottomColor: theme.border }]}><Text numberOfLines={1} style={{ color: theme.text }}>{item.label}</Text></Pressable>} /><Pressable onPress={() => setPicker(null)} style={styles.close}><Text style={{ color: theme.accent, fontWeight: '800' }}>取消</Text></Pressable></View></Modal>
-    <Modal visible={exportIndex !== null} transparent={false} animationType="none" onRequestClose={() => exportReject.current?.(new Error('导出已取消'))}>{exportIndex !== null && sources?.[exportIndex] ? <View style={styles.exportRoot}><View ref={exportCaptureRef} collapsable={false} style={{ width: width / PixelRatio.get(), height: exportHeight / PixelRatio.get() }}><WebView key={`phi-export-${exportIndex}-${width}`} allowFileAccess={Platform.OS === 'android'} androidLayerType="software" javaScriptEnabled originWhitelist={['*']} scrollEnabled={false} source={sources[exportIndex]} style={styles.webview} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} /></View><View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} /><Text style={{ color: theme.textMuted }}>{exportStatus}</Text></View></View> : null}</Modal>
+    <Modal visible={picker !== null} animationType="slide" onRequestClose={() => setPicker(null)}><View style={[styles.modal, { backgroundColor: theme.background }]}><View style={styles.modalHeader}><Text style={[styles.modalTitle, { color: theme.text }]}>选择{picker === 'avatar' ? '头像' : '背景'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭素材选择" onPress={() => setPicker(null)}><Text style={[styles.modalCloseText, { color: theme.accent }]}>完成</Text></Pressable></View><View style={styles.chipRow}><ChoiceChip label="玩家当前" selected={picker ? stylePrefs[picker].mode === 'current' : false} onPress={() => chooseStyle({ mode: 'current' })} /><ChoiceChip label="随机" selected={picker ? stylePrefs[picker].mode === 'random' : false} onPress={() => chooseStyle({ mode: 'random' })} /><ChoiceChip label="关闭" selected={picker ? stylePrefs[picker].mode === 'off' : false} onPress={() => chooseStyle({ mode: 'off' })} /></View><FlatList contentContainerStyle={styles.pickerList} data={pickerItems} keyExtractor={(item) => item.key} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`选择素材 ${item.label}`} onPress={() => chooseStyle({ mode: 'item', key: item.key })} style={({ pressed }) => [styles.pickerItem, { backgroundColor: theme.surface, borderColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}><Text numberOfLines={1} style={[styles.pickerItemText, { color: theme.text }]}>{item.label}</Text><Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text></Pressable>} /></View></Modal>
+    <Modal visible={exportIndex !== null} transparent={false} animationType="none" onRequestClose={() => exportReject.current?.(new Error('导出已取消'))}>{exportIndex !== null && sources?.[exportIndex] ? <View style={styles.exportRoot}><View ref={exportCaptureRef} collapsable={false} style={{ width: width / PixelRatio.get(), height: exportHeight / PixelRatio.get() }}><WebView key={`phi-export-${exportIndex}-${width}`} allowFileAccess={Platform.OS === 'android'} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={sources[exportIndex]} style={styles.webview} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} /></View><View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View></View> : null}</Modal>
   </>;
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16, paddingBottom: 36 }, heading: { fontSize: 15, fontWeight: '800', marginTop: 20, marginBottom: 10 },
-  row: { flexDirection: 'row', gap: 8 }, wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, flex: { flex: 1 },
-  chip: { minHeight: 38, minWidth: 68, borderWidth: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }, chipText: { fontWeight: '700' },
-  panel: { borderRadius: 16, padding: 14, gap: 10, marginTop: 14 }, panelTitle: { fontSize: 15, fontWeight: '800' }, caption: { fontSize: 12, fontWeight: '700' },
-  input: { minHeight: 42, borderWidth: 1, borderRadius: 10, paddingHorizontal: 11 }, styleRow: { minHeight: 54, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  meta: { marginTop: 10, fontSize: 12 }, preview: { borderWidth: 1, borderRadius: 14, overflow: 'hidden', alignSelf: 'center' }, webview: { flex: 1, backgroundColor: 'transparent' }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  export: { minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: 16 }, exportText: { color: '#FFF', fontWeight: '800' },
-  modal: { flex: 1, padding: 20, paddingTop: 54 }, modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 16 }, pickerItem: { minHeight: 50, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth }, close: { minHeight: 48, alignItems: 'center', justifyContent: 'center' }, exportRoot: { flex: 1, backgroundColor: '#111827' },
+  page: { flex: 1 },
+  content: { padding: 16, paddingBottom: 32, alignItems: 'stretch' },
+  label: { fontSize: 15, fontWeight: '800', marginBottom: 10 },
+  sectionLabel: { marginTop: 24 },
+  segmentedControl: { flexDirection: 'row', padding: 4, borderRadius: 14 },
+  segment: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
+  segmentText: { fontSize: 14, fontWeight: '700' },
+  customPanel: { marginTop: 16, padding: 14, gap: 10, borderRadius: 16 },
+  panelTitle: { fontSize: 15, fontWeight: '800' },
+  fieldRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  textFieldWrap: { flex: 1, minWidth: 0 },
+  fieldLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
+  textInput: { minHeight: 40, paddingHorizontal: 11, borderWidth: 1, borderRadius: 10, fontSize: 14 },
+  textInputError: { borderColor: '#D92D20' },
+  errorText: { marginTop: 4, fontSize: 10, lineHeight: 14 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  chip: { minWidth: 46, height: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderWidth: 1, borderRadius: 999 },
+  chipText: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
+  styleList: { overflow: 'hidden', borderRadius: 16 },
+  styleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
+  stylePreview: { width: 132, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
+  avatarPreview: { width: 46, height: 46, borderRadius: 10 },
+  backgroundPreview: { width: 132, height: 46, borderRadius: 8 },
+  styleCopy: { flex: 1, minWidth: 0 },
+  styleName: { fontSize: 14, fontWeight: '800' },
+  styleValue: { fontSize: 12, marginTop: 3 },
+  chevron: { fontSize: 26, fontWeight: '300' },
+  noAsset: { fontSize: 12 },
+  widthOptions: { flexDirection: 'row', gap: 8 },
+  widthOption: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
+  widthOptionText: { fontSize: 13, fontWeight: '700' },
+  dimensionMeta: { fontSize: 12, marginTop: 8, textAlign: 'right' },
+  previewFrame: { alignSelf: 'center', overflow: 'hidden', borderRadius: 18, borderWidth: 1 },
+  previewPager: { flex: 1 },
+  webview: { flex: 1, backgroundColor: 'transparent' },
+  loadingPreview: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingContent: { alignItems: 'center', gap: 10 },
+  loadingText: { fontSize: 12, fontWeight: '600' },
+  pageDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  pageDot: { width: 6, height: 6, borderRadius: 3 },
+  exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14 },
+  exportButtonDisabled: { opacity: 0.55 },
+  exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  webViewStatusText: { marginTop: 7, fontSize: 11, lineHeight: 16, textAlign: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  modal: { flex: 1, padding: 16, paddingTop: 54 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
+  modalCloseText: { fontSize: 15, fontWeight: '800' },
+  pickerList: { gap: 8, paddingTop: 18, paddingBottom: 32 },
+  pickerItem: { minHeight: 54, paddingHorizontal: 14, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  pickerItemText: { flex: 1, fontSize: 14, fontWeight: '700' },
+  exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#111111' },
+  exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  exportOverlayText: { fontSize: 14, fontWeight: '700' },
 });
