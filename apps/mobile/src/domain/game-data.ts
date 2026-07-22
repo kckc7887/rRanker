@@ -44,10 +44,12 @@ export type GamePayload =
       playerScore: PlayerScoreSummary;
       challengeModeRank: number;
       source: DataSource;
+      saveUpdatedAt: string;
       catalogSource: DataSource;
       avatarUrl?: string | null;
       avatarKey?: string | null;
       backgroundSongId?: string | null;
+      dataAmount: string;
       progress: {
         cleared: [number, number, number, number];
         fullCombo: [number, number, number, number];

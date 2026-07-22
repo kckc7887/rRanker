@@ -18,10 +18,17 @@ jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => ({
   loadPhigrosIllustrations: jest.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `data:image/png;base64,${id}`]))),
   loadRemoteImageDataUri: jest.fn(async () => 'data:image/png;base64,style'),
 }));
+jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
+  loadPhigrosAccAverages: jest.fn(async () => ({})),
+  phigrosAccAverageKey: (record: { songId: string; levelIndex: number }) => `${record.songId}:${record.levelIndex}`,
+}));
 jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
+  getPhigrosReferenceAvatarKeys: () => ['Introduction', 'avatar.test'],
+  findPhigrosReferenceAvatarKey: (key: string) => key,
+  loadPhigrosReferenceAvatarUrl: jest.fn(async () => 'file:///reference/avatar.test.png'),
   loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
     css: '.song{width:360px}.Rating img{width:100%}',
-    dataIconUrl: 'file:///reference/data.png', fallbackBackgroundUrl: 'file:///reference/phigros.png',
+    dataIconUrl: 'file:///reference/data.png', fallbackBackgroundUrl: 'file:///reference/phigros.png', fallbackAvatarUrl: 'file:///reference/Introduction.png',
     challengeIconUrls: Array.from({ length: 6 }, (_, index) => `file:///reference/${index}.png`),
     ratingIconUrls: { F: 'file:///reference/F.png', FC: 'file:///reference/FC.png', V: 'file:///reference/V.png', phi: 'file:///reference/phi.png' },
     allowingReadAccessToUrl: 'file:///reference/',
@@ -56,9 +63,11 @@ jest.mock('@/hooks/use-game-data', () => ({
       payload: {
         kind: 'phigros',
         player: { displayName: 'Phi 测试玩家' },
-        playerScore: { display: '15.4321' },
+        playerScore: { value: 15.4321, display: '15.4321' },
         challengeModeRank: 23,
         source: { updatedAt: '2026-07-22T08:00:00.000Z' },
+        saveUpdatedAt: '2026-07-22T08:00:00.000Z',
+        dataAmount: '386MiB 289KiB',
         progress: { cleared: [1, 2, 3, 4], fullCombo: [1, 1, 1, 1], phi: [0, 0, 1, 1] },
         avatarKey: 'avatar.test',
         backgroundSongId: 'song-1',

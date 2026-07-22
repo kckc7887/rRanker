@@ -11,8 +11,10 @@ import {
   loadNoteCountsTable,
   mergeDifficultyTables,
   normalizePhigrosSongId,
+  parsePhigrosGameProgress,
   parseGameRecord,
   parseChallengeModeRank,
+  formatPhigrosDataMoney,
   phigrosScoreToRate,
   roundRks,
   selectPhi3,
@@ -53,6 +55,20 @@ function buildGameRecordPayload(): Uint8Array {
     ...body,
   ];
   return new Uint8Array([...writeVarShort(1), ...entry]);
+}
+
+function buildGameProgressPayload(): Uint8Array {
+  const completed = new TextEncoder().encode('3.0');
+  return new Uint8Array([
+    0b1111,
+    completed.length, ...completed,
+    ...writeVarShort(4),
+    0xba, 0x01,
+    ...writeVarShort(289), ...writeVarShort(386), 0, 0, 0,
+    12, 14, 14, 127, 55,
+    0b111,
+    63,
+  ]);
 }
 
 function encryptPkcs7(plain: Uint8Array): Uint8Array {
@@ -114,15 +130,35 @@ describe('phigros save parsing', () => {
     expect(record['Glaciaxion.SunsetRay']?.[0]).toBeNull();
   });
 
+  it('按原项目 GameProgress 布局读取 Data 与解锁字段', () => {
+    const progress = parsePhigrosGameProgress(buildGameProgressPayload());
+    expect(progress).toMatchObject({
+      isFirstRun: true,
+      legacyChapterFinished: true,
+      alreadyShowCollectionTip: true,
+      alreadyShowAutoUnlockINTip: true,
+      completed: '3.0',
+      songUpdateInfo: 4,
+      challengeModeRank: 442,
+      money: [289, 386, 0, 0, 0],
+      chapter8Passed: true,
+      chapter8SongUnlocked: 63,
+    });
+    expect(formatPhigrosDataMoney(progress.money)).toBe('386MiB 289KiB');
+    expect(formatPhigrosDataMoney([0, 0, 0, 0, 0])).toBe('0KiB');
+  });
+
   it('decodeSaveZip decrypts gameRecord and matches difficulty for B30', async () => {
     const plain = buildGameRecordPayload();
     const encrypted = encryptPkcs7(plain);
     const zip = new JSZip();
     zip.file('gameRecord', new Uint8Array([1, ...encrypted]));
+    zip.file('gameProgress', new Uint8Array([1, ...encryptPkcs7(buildGameProgressPayload())]));
     const zipBuf = await zip.generateAsync({ type: 'arraybuffer' });
 
-    const { gameRecord } = await decodeSaveZip(zipBuf);
+    const { gameRecord, gameProgress } = await decodeSaveZip(zipBuf);
     expect(Object.keys(gameRecord)).toEqual(['Glaciaxion.SunsetRay']);
+    expect(gameProgress?.money).toEqual([289, 386, 0, 0, 0]);
 
     const table = loadDifficultyTable('Glaciaxion.SunsetRay\t1.0\t6.5\t12.6\n');
     const b30 = computeB30(gameRecord, table);

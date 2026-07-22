@@ -1,11 +1,17 @@
 import { Asset } from 'expo-asset';
 import { File, Paths } from 'expo-file-system';
 import { Image } from 'react-native';
+import { normalizePhigrosAvatarKey } from '@/domain/phigros-avatar-resolver';
+import {
+  PHIGROS_REFERENCE_AVATAR_KEYS,
+  PHIGROS_REFERENCE_AVATAR_SOURCES,
+} from './phigros-reference-avatar-assets.generated';
 
 export type PhigrosReferenceTemplateAssets = {
   css: string;
   dataIconUrl: string;
   fallbackBackgroundUrl: string;
+  fallbackAvatarUrl: string;
   challengeIconUrls: readonly string[];
   ratingIconUrls: Readonly<Record<string, string>>;
   allowingReadAccessToUrl: string;
@@ -61,7 +67,7 @@ const BACKGROUND_SOURCE = require('../../../assets/phigros-b30-reference/otherim
 const assetUriCache = new Map<number, Promise<string>>();
 let templatePromise: Promise<PhigrosReferenceTemplateAssets> | null = null;
 
-async function loadAssetUri(moduleId: number): Promise<string> {
+export async function loadPhigrosReferenceAssetUri(moduleId: number): Promise<string> {
   const cached = assetUriCache.get(moduleId);
   if (cached) return cached;
   const pending = (async () => {
@@ -87,7 +93,36 @@ async function loadAssetUri(moduleId: number): Promise<string> {
 }
 
 async function loadAssetText(moduleId: number): Promise<string> {
-  return new File(await loadAssetUri(moduleId)).text();
+  return new File(await loadPhigrosReferenceAssetUri(moduleId)).text();
+}
+
+const avatarKeyByLowercase = new Map(PHIGROS_REFERENCE_AVATAR_KEYS.map((key) => [key.toLocaleLowerCase(), key]));
+const avatarAliases: Readonly<Record<string, string>> = {
+  'Cipher : /2&//<|0': 'Cipher1',
+  'Oblivion: PHIN': 'OblivionPHIN',
+  'Drop It': 'Drop it',
+  RIPPER: 'ripper',
+};
+
+export function getPhigrosReferenceAvatarKeys(): readonly string[] {
+  return PHIGROS_REFERENCE_AVATAR_KEYS;
+}
+
+export function findPhigrosReferenceAvatarKey(rawKey: string | null | undefined): string | null {
+  const normalized = normalizePhigrosAvatarKey(rawKey);
+  const aliased = avatarAliases[normalized] ?? normalized;
+  return PHIGROS_REFERENCE_AVATAR_SOURCES[aliased]
+    ? aliased
+    : avatarKeyByLowercase.get(aliased.toLocaleLowerCase()) ?? null;
+}
+
+export function resolvePhigrosReferenceAvatarKey(rawKey: string | null | undefined): string {
+  return findPhigrosReferenceAvatarKey(rawKey) ?? 'Introduction';
+}
+
+export function loadPhigrosReferenceAvatarUrl(rawKey: string | null | undefined): Promise<string> {
+  const key = resolvePhigrosReferenceAvatarKey(rawKey);
+  return loadPhigrosReferenceAssetUri(PHIGROS_REFERENCE_AVATAR_SOURCES[key]!);
 }
 
 function withoutImport(css: string, importPath: string): string {
@@ -97,15 +132,16 @@ function withoutImport(css: string, importPath: string): string {
 export async function loadPhigrosReferenceTemplateAssets(): Promise<PhigrosReferenceTemplateAssets> {
   if (templatePromise) return templatePromise;
   templatePromise = (async () => {
-    const [b19Css, commonCssSource, snowCss, fontEntries, challengeIconUrls, ratingEntries, dataIconUrl, fallbackBackgroundUrl] = await Promise.all([
+    const [b19Css, commonCssSource, snowCss, fontEntries, challengeIconUrls, ratingEntries, dataIconUrl, fallbackBackgroundUrl, fallbackAvatarUrl] = await Promise.all([
       loadAssetText(CSS_SOURCES.b19),
       loadAssetText(CSS_SOURCES.common),
       loadAssetText(CSS_SOURCES.snow),
-      Promise.all(Object.entries(FONT_SOURCES).map(async ([name, source]) => [name, await loadAssetUri(source)] as const)),
-      Promise.all(CHALLENGE_SOURCES.map(loadAssetUri)),
-      Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadAssetUri(source)] as const)),
-      loadAssetUri(DATA_ICON_SOURCE),
-      loadAssetUri(BACKGROUND_SOURCE),
+      Promise.all(Object.entries(FONT_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetUri(source)] as const)),
+      Promise.all(CHALLENGE_SOURCES.map(loadPhigrosReferenceAssetUri)),
+      Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetUri(source)] as const)),
+      loadPhigrosReferenceAssetUri(DATA_ICON_SOURCE),
+      loadPhigrosReferenceAssetUri(BACKGROUND_SOURCE),
+      loadPhigrosReferenceAvatarUrl('Introduction'),
     ]);
 
     let commonCss = withoutImport(commonCssSource, './theme/snow/snow.css');
@@ -118,6 +154,7 @@ export async function loadPhigrosReferenceTemplateAssets(): Promise<PhigrosRefer
       css: `${snowCss}\n${commonCss}\n${withoutImport(b19Css, '../common/common.css')}`,
       dataIconUrl,
       fallbackBackgroundUrl,
+      fallbackAvatarUrl,
       challengeIconUrls,
       ratingIconUrls: Object.fromEntries(ratingEntries),
       allowingReadAccessToUrl: Paths.cache.uri,
