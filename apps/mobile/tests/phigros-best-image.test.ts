@@ -65,17 +65,26 @@ describe('Phigros 成绩图', () => {
         type: 'best30', width, page, playerName: '<玩家>', rks: '15.4321', challenge: '23', challengeModeRank: 223, syncedAt: '2026-07-22',
         progress: { cleared: [1, 2, 3, 4], fullCombo: [1, 1, 1, 1], phi: [0, 0, 1, 1] },
         titles: { x: '<script>alert(1)</script>' }, illustrations: { x: null }, avatarDataUri: null, backgroundDataUri: null,
+        templateAssets: {
+          css: '.song{width:360px}.Rating img{width:100%}',
+          dataIconUrl: 'file:///reference/data.png', fallbackBackgroundUrl: 'file:///reference/phigros.png',
+          challengeIconUrls: Array.from({ length: 6 }, (_, index) => `file:///reference/${index}.png`),
+          ratingIconUrls: { F: 'file:///reference/F.png', FC: 'file:///reference/FC.png', V: 'file:///reference/V.png', phi: 'file:///reference/phi.png' },
+          allowingReadAccessToUrl: 'file:///reference/',
+        },
       });
       expect(html).toContain(`width:${width}px`);
       expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
-      expect(html).toContain('cover-fallback');
-      expect(html).toContain('linear-gradient(135deg,#121B2B');
+      expect(html).toContain('reference-cover-fallback');
+      expect(html).toContain('file:///reference/phigros.png');
       expect(html).toContain('15.4321');
       expect(html).toContain('class="playerInfo"');
-      expect(html).toContain('class="recordInfo"');
+      expect(html).toContain('class="recordInfo clip-box"');
       expect(html).toContain('class="song phi_song"');
       expect(html).toContain('class="b19"');
-      expect(html).toContain('--challenge:#5c9ce6');
+      expect(html).toContain('file:///reference/2.png');
+      expect(html).toContain('file:///reference/V.png');
+      expect(html).toContain('.song{width:360px}');
       expect(html).toContain(`zoom:${width / 1200}`);
     }
   });

@@ -18,6 +18,15 @@ jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => ({
   loadPhigrosIllustrations: jest.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `data:image/png;base64,${id}`]))),
   loadRemoteImageDataUri: jest.fn(async () => 'data:image/png;base64,style'),
 }));
+jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
+  loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
+    css: '.song{width:360px}.Rating img{width:100%}',
+    dataIconUrl: 'file:///reference/data.png', fallbackBackgroundUrl: 'file:///reference/phigros.png',
+    challengeIconUrls: Array.from({ length: 6 }, (_, index) => `file:///reference/${index}.png`),
+    ratingIconUrls: { F: 'file:///reference/F.png', FC: 'file:///reference/FC.png', V: 'file:///reference/V.png', phi: 'file:///reference/phi.png' },
+    allowingReadAccessToUrl: 'file:///reference/',
+  })),
+}));
 jest.mock('@/features/phigros-best-image/phigros-best-image-preferences', () => ({
   phigrosBestImagePreferencesStore: {
     load: jest.fn(async () => ({ version: 1, avatar: { mode: 'current' }, background: { mode: 'current' } })),
