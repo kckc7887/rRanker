@@ -43,7 +43,7 @@ import {
   type PhigrosBestImageOverflowCount, type PhigrosBestImageType,
 } from '@/features/phigros-best-image/phigros-best-image';
 import {
-  loadPhigrosIllustrations, loadRemoteImageDataUri,
+  loadPhigrosIllustrations, loadRemoteImageDataUri, phigrosReadableRootDirectory,
 } from '@/features/phigros-best-image/load-phigros-image-assets';
 import { partitionPhigrosIllustrationCache } from '@/features/phigros-best-image/phigros-illustration-cache';
 import {
@@ -239,7 +239,7 @@ export function PhigrosBestImageScreen() {
         () => ({ ok: true as const }),
         (error: unknown) => ({ ok: false as const, error }),
       );
-      const assets = await loadPhigrosReferenceTemplateAssets(prepared.directory.uri);
+      const assets = await loadPhigrosReferenceTemplateAssets(phigrosReadableRootDirectory().uri);
       const trimmedAssets = {
         ...assets,
         css: trimPhigrosBestImageCss(assets.css, neededFontEntriesRef.current),
@@ -302,6 +302,8 @@ export function PhigrosBestImageScreen() {
     const uniqueIds = [...new Set(selectedSongIds)];
     const { next, missing } = partitionPhigrosIllustrationCache(uniqueIds, illustrationCacheRef.current);
     // 先用缓存命中结果立刻出预览，缺失曲目先回退占位，避免切换时整页清空。
+    // 只保留当前选中曲目，避免切换筛选时 session 缓存只增不减。
+    illustrationCacheRef.current = next;
     setIllustrations(next);
     setAssetProgress({ done: uniqueIds.length - missing.length, total: uniqueIds.length });
     if (!missing.length) return;
@@ -309,8 +311,9 @@ export function PhigrosBestImageScreen() {
       if (!cancelled) setAssetProgress({ done: uniqueIds.length - missing.length + done, total: uniqueIds.length });
     }).then((loaded) => {
       if (cancelled) return;
-      Object.assign(illustrationCacheRef.current, loaded);
-      setIllustrations(Object.fromEntries(uniqueIds.map((id) => [id, illustrationCacheRef.current[id] ?? null])));
+      const merged = Object.fromEntries(uniqueIds.map((id) => [id, loaded[id] ?? illustrationCacheRef.current[id] ?? null]));
+      illustrationCacheRef.current = merged;
+      setIllustrations(merged);
       setAssetProgress({ done: uniqueIds.length, total: uniqueIds.length });
     });
     return () => { cancelled = true; };
