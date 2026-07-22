@@ -4,6 +4,11 @@ import { PixelRatio, Platform, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
 
+const mockShowNotification = jest.fn();
+
+jest.mock('@/components/AppNotification', () => ({
+  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
+}));
 jest.mock('react-native-webview', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
@@ -24,9 +29,6 @@ jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
     sources: htmlPages.map((html) => ({ html, baseUrl: 'file:///reference/' })),
     dispose: jest.fn(),
   }),
-}));
-jest.mock('@/components/AppNotification', () => ({
-  useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
 }));
 jest.mock('@/domain/phigros-avatar-resolver', () => ({
   loadPhigrosAvatarCatalog: jest.fn(async () => ['avatar.test']),
@@ -233,11 +235,17 @@ describe('Phigros 生成图片页', () => {
     })));
     await waitFor(() => expect(screen.getByText('导出到相册')).toBeTruthy());
 
+    mockShowNotification.mockClear();
     fireEvent.press(screen.getByLabelText('自定义'));
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '自定义模式',
+      message: '暂未开放，请先使用 Best30。',
+      variant: 'info',
+    });
+    expect(screen.getByLabelText('Best30').props.accessibilityState).toEqual({ selected: true });
+    expect(screen.getByLabelText('自定义').props.accessibilityState).toEqual({ selected: false });
     expect(screen.queryByText('自定义 BestN')).toBeNull();
     expect(screen.queryByLabelText('自定义数量')).toBeNull();
-    expect(screen.queryByLabelText('最小定数')).toBeNull();
-    expect(screen.queryByLabelText('最大Acc')).toBeNull();
 
     fireEvent.press(screen.getByLabelText('选择头像'));
     await waitFor(() => expect(screen.getByLabelText('使用玩家当前头像')).toBeTruthy());
