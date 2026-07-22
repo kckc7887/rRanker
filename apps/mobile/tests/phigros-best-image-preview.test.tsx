@@ -82,6 +82,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
         getAvatarUrl: (key: string) => `https://example.test/avatar/${key}.png`,
         getIllustrationUrl: (id: string) => `https://example.test/illustration/${id}.png`,
         getIllustrationBlurUrl: (id: string) => `https://example.test/illustration/${id}.png`,
+        getIllustrationLowresUrl: (id: string) => `https://example.test/illustration-lowres/${id}.png`,
       },
       snapshot: { songs: [{ id: 'song-1', title: 'テスト曲目' }] },
     } };
