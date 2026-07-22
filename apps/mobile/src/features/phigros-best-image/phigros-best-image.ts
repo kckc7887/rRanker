@@ -3,7 +3,12 @@ import type { ScoreRecord } from '@/domain/models';
 export type PhigrosBestImageType = 'best30' | 'custom';
 export type PhigrosBestImageOverflowCount = 0 | 3 | 6 | 9;
 
-export type PhigrosBestImageSection = { id: string; title: string; records: ScoreRecord[] };
+export type PhigrosBestImageSection = {
+  id: string;
+  title: string;
+  titleNote?: string;
+  records: ScoreRecord[];
+};
 export type PhigrosBestImagePage = {
   id: string;
   pageIndex: number;
@@ -54,7 +59,14 @@ export function paginatePhigrosBestImageSections(
     for (const { section, record } of slice) {
       const last = pageSections.at(-1);
       if (last?.id === section.id) last.records.push(record);
-      else pageSections.push({ id: section.id, title: section.title, records: [record] });
+      else {
+        pageSections.push({
+          id: section.id,
+          title: section.title,
+          ...(section.titleNote ? { titleNote: section.titleNote } : {}),
+          records: [record],
+        });
+      }
     }
     return { id: `phi-page-${pageIndex}`, pageIndex, pageCount, sections: pageSections };
   });

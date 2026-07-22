@@ -4,6 +4,8 @@ import {
   matchesPhigrosLevel,
   matchesPhigrosRankFilter,
   matchesPhigrosScoreRange,
+  phigrosLevelLabel,
+  phigrosRankFilterLabel,
   type PhigrosRankFilter,
 } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
@@ -66,6 +68,52 @@ export function isCustomPhigrosBestImageFiltersValid(input: {
   return true;
 }
 
+function normalizeBoundText(value: string): string {
+  return value.normalize('NFKC').trim().replace(',', '.');
+}
+
+function formatScoreNote(scoreMin: string, scoreMax: string): string | undefined {
+  const min = normalizeBoundText(scoreMin);
+  const max = normalizeBoundText(scoreMax);
+  if (!min && !max) return undefined;
+  if (min && max) return `分数${min}-${max}`;
+  if (min) return `分数≥${min}`;
+  return `分数≤${max}`;
+}
+
+function formatAccNote(accuracyMin: string, accuracyMax: string): string | undefined {
+  const min = normalizeBoundText(accuracyMin);
+  const max = normalizeBoundText(accuracyMax);
+  if (!min && !max) return undefined;
+  if (min && max) return `Acc${min}-${max}%`;
+  if (min) return `Acc≥${min}%`;
+  return `Acc≤${max}%`;
+}
+
+/** 自定义分区主标题 + 分数/Acc 小字附注。 */
+export function buildCustomPhigrosSectionTitle(
+  filters: CustomPhigrosBestImageFilters,
+  count: number,
+): { title: string; titleNote?: string } {
+  const hasLevel = filters.level !== 'all';
+  const hasRank = filters.rank !== null;
+  let title: string;
+  if (hasLevel && hasRank) {
+    title = `${phigrosLevelLabel(filters.level)} ${phigrosRankFilterLabel(filters.rank)}${count}`;
+  } else if (hasLevel) {
+    title = `${phigrosLevelLabel(filters.level)}${count}`;
+  } else if (hasRank) {
+    title = `${phigrosRankFilterLabel(filters.rank)}${count}`;
+  } else {
+    title = `Best${count}`;
+  }
+  const noteParts = [
+    formatScoreNote(filters.scoreMin, filters.scoreMax),
+    formatAccNote(filters.accuracyMin, filters.accuracyMax),
+  ].filter((part): part is string => Boolean(part));
+  return noteParts.length ? { title, titleNote: noteParts.join(' ') } : { title };
+}
+
 export function buildCustomPhigrosBestImageSections(
   records: readonly ScoreRecord[],
   filters: CustomPhigrosBestImageFilters,
@@ -78,5 +126,11 @@ export function buildCustomPhigrosBestImageSections(
   ));
   const sorted = sortPhigrosBestImageRecords(filtered);
   const limited = filters.quantity === 0 ? sorted : sorted.slice(0, filters.quantity);
-  return [{ id: 'custom', title: `自定义${limited.length}`, records: limited }];
+  const { title, titleNote } = buildCustomPhigrosSectionTitle(filters, limited.length);
+  return [{
+    id: 'custom',
+    title,
+    ...(titleNote ? { titleNote } : {}),
+    records: limited,
+  }];
 }
