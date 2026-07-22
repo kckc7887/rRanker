@@ -307,7 +307,7 @@ export function PhigrosBestImageScreen() {
     setIllustrations(next);
     setAssetProgress({ done: uniqueIds.length - missing.length, total: uniqueIds.length });
     if (!missing.length) return;
-    void loadPhigrosIllustrations(missing, (id) => provider.getIllustrationUrl(id), (done) => {
+    void loadPhigrosIllustrations(missing, (id) => provider.getIllustrationLowresUrl(id), (done) => {
       if (!cancelled) setAssetProgress({ done: uniqueIds.length - missing.length + done, total: uniqueIds.length });
     }).then((loaded) => {
       if (cancelled) return;
