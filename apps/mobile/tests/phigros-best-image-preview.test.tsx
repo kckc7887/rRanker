@@ -237,15 +237,20 @@ describe('Phigros 生成图片页', () => {
 
     mockShowNotification.mockClear();
     fireEvent.press(screen.getByLabelText('自定义'));
-    expect(mockShowNotification).toHaveBeenCalledWith({
-      title: '自定义模式',
-      message: '暂未开放，请先使用 Best30。',
-      variant: 'info',
+    await waitFor(() => {
+      expect(screen.getByLabelText('自定义').props.accessibilityState.selected).toBe(true);
     });
-    expect(screen.getByLabelText('Best30').props.accessibilityState).toEqual({ selected: true });
-    expect(screen.getByLabelText('自定义').props.accessibilityState).toEqual({ selected: false });
-    expect(screen.queryByText('自定义 BestN')).toBeNull();
-    expect(screen.queryByLabelText('自定义数量')).toBeNull();
+    expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Best30').props.accessibilityState.selected).toBe(false);
+    expect(screen.getByText('自定义 BestN')).toBeTruthy();
+    expect(screen.getByLabelText('自定义数量')).toBeTruthy();
+    expect(screen.getByLabelText('最低分数')).toBeTruthy();
+    expect(screen.getByLabelText('最高分数')).toBeTruthy();
+    expect(screen.getByLabelText('最低 Acc')).toBeTruthy();
+    expect(screen.getByLabelText('最高 Acc')).toBeTruthy();
+    expect(screen.getByLabelText('筛选难度 IN')).toBeTruthy();
+    expect(screen.getByLabelText('筛选评价 φ')).toBeTruthy();
+    expect(screen.queryByText('OVER FLOW')).toBeNull();
 
     fireEvent.press(screen.getByLabelText('选择头像'));
     await waitFor(() => expect(screen.getByLabelText('使用玩家当前头像')).toBeTruthy());
