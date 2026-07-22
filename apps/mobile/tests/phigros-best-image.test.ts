@@ -98,7 +98,7 @@ describe('Phigros 成绩图', () => {
           allowingReadAccessToUrl: 'file:///reference/',
         },
       });
-      expect(html).toContain(`width:${width}px`);
+      expect(html).toContain('width:1200px');
       expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
       expect(html).toContain('<img src="file:///reference/phigros.png" alt="ill">');
       expect(html).toContain('file:///reference/phigros.png');
@@ -115,11 +115,14 @@ describe('Phigros 成绩图', () => {
       expect(html).toContain('file:///reference/2.png');
       expect(html).toContain('file:///reference/V.png');
       expect(html).toContain('.song{width:360px}');
-      expect(html).toContain(`zoom:${width / 1200}`);
+      expect(html).toContain(`const W=${width},S=${width / 1200}`);
       expect(html).not.toContain('body{min-height:');
       expect(html).toContain(`name="viewport" content="width=${width}, initial-scale=1`);
-      expect(html).toContain("[canvas,...canvas.querySelectorAll('*')]");
-      expect(html).toContain('node.getBoundingClientRect().bottom-rect.top');
+      expect(html).toContain('<body><main id="canvas"');
+      expect(html).toContain('data-layout-content');
+      expect(html).toContain("[...canvas.children].filter(node=>node.hasAttribute('data-layout-content'))");
+      expect(html).not.toContain("canvas.querySelectorAll('*')");
+      expect(html).toContain("renderScale=S*viewScale");
       expect(html).toContain("Math.abs(vh-last)<3");
       expect(html).toContain('<p>rRanker</p>');
       expect(html).not.toContain('<p>Phi-Plugin</p>');
