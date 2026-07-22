@@ -4,6 +4,7 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repository';
 import {
   GAME_STORAGE_ADAPTERS,
+  measureDurableLocalMaimaiBytes,
   measureSharedCacheBytes,
   sharedCacheNote,
   type StorageSegmentId,
@@ -44,11 +45,13 @@ export function listClearableCategoryIds(): StorageClearCategoryId[] {
 }
 
 export async function collectStorageUsage(): Promise<StorageUsageReport> {
-  const [appBytes, sharedBytes, ...gameBytes] = await Promise.all([
+  const [libraryBytes, localMaimaiBytes, sharedBytes, ...gameBytes] = await Promise.all([
     library.measureBytes(),
+    measureDurableLocalMaimaiBytes(snapshots),
     measureSharedCacheBytes(),
     ...GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(snapshots)),
   ]);
+  const appBytes = libraryBytes + localMaimaiBytes;
 
   const segments: StorageUsageSegment[] = [
     {
@@ -57,7 +60,7 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
       bytes: appBytes,
       clearable: false,
       clearCategoryId: null,
-      note: '偏好与个人曲库等，不可清除',
+      note: '个人曲库与本地账号成绩等，不可清除',
       color: SEGMENT_COLORS.app,
     },
     ...GAME_STORAGE_ADAPTERS.map((adapter, index) => ({
@@ -67,6 +70,9 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
       clearable: true,
       clearCategoryId: adapter.gameId as GameId,
       color: SEGMENT_COLORS[adapter.gameId] ?? '#6366F1',
+      ...(adapter.gameId === 'maimai'
+        ? { note: '不含本地账号成绩' }
+        : {}),
     })),
     {
       id: 'shared',
