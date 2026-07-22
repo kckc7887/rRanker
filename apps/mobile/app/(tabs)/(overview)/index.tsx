@@ -21,6 +21,7 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePlates } from '@/hooks/use-plates';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
+import { switchBoundAccount } from '@/services/switch-bound-account';
 import { refreshDivingFishAccounts } from '@/services/refresh-diving-fish-accounts';
 import {
   compactUploadPhaseLabel,
@@ -32,11 +33,8 @@ import { useGamePickerUi } from '@/state/game-picker-ui';
 import { queryClient } from '@/state/query-client';
 import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
-import { SecureSessionStore } from '@/storage/secure-session-store';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
-
-const sessions = new SecureSessionStore();
 
 export default function OverviewTabScreen() {
   return <CachedTabScreen><OverviewScreen /></CachedTabScreen>;
@@ -54,7 +52,6 @@ export function OverviewScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const activeSession = useSession((s) => s.session);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
-  const selectBoundAccount = useSession((s) => s.selectBoundAccount);
   const updateBoundAccountScore = useSession((s) => s.updateBoundAccountScore);
   const expandedGameId = useGamePickerUi((s) => s.expandedGameId);
   const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
@@ -144,9 +141,8 @@ export function OverviewScreen() {
   };
 
   const onSelectAccount = (account: BoundAccount) => {
-    selectBoundAccount(account.id);
-    void sessions.setActiveAccountId(account.id);
     setPickerVisible(false);
+    switchBoundAccount(account.id);
   };
 
   const openUpload = () => {
