@@ -76,6 +76,9 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
 } }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: [], isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
+  songKey: (songId: string | number) => `maimai:song:${songId}`,
+  chartKey: (songId: string | number, type: string, levelIndex: number) => `maimai:chart:${songId}:${type}:${levelIndex}`,
+  tagPresets: [], setTagPresets: jest.fn(),
 }) }));
 jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
   data: { items: [], source: { kind: 'fixture', label: 'fixture', updatedAt: new Date(0).toISOString(), isStale: false } },

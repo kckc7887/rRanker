@@ -96,7 +96,7 @@ describe('M4 score list cards', () => {
       updateCellsBatchingPeriod: 50,
       windowSize: 3,
     }));
-    await fireEvent.press(screen.getByLabelText('生成成绩图片'));
+    await fireEvent.press(screen.getByLabelText('生成B50图片'));
     expect(mockPush).toHaveBeenCalledWith('/best-image');
     expect(screen.getByText('过往版本 Best35')).toBeTruthy();
     expect(screen.getByText('当前版本 Best15')).toBeTruthy();

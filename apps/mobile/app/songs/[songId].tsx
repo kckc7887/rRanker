@@ -90,7 +90,7 @@ function MaimaiSongDetailScreen({
   const song = useMemo(() => {
     const songs = catalog.data?.songs;
     return songs?.find((item) => item.id === songId) ??
-      songs?.find((item) => item.id === normalizeSongId(songId));
+      (songId ? songs?.find((item) => item.id === normalizeSongId(songId)) : undefined);
   }, [catalog.data?.songs, songId]);
   const initialChartType = chartType === 'SD' || chartType === 'DX' ? chartType : undefined;
   const songItem = song ? library.data?.find((item) => item.key === library.songKey(song.id)) : undefined;

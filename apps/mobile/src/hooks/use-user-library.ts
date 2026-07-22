@@ -7,6 +7,8 @@ import {
   DEFAULT_TAG_PRESETS,
   songLibraryKey,
   type LibraryTarget,
+  type SongLibraryTarget,
+  type ChartLibraryTarget,
   type RestoreMode,
   type UserDataBackup,
   type UserLibraryItem,
@@ -25,7 +27,8 @@ type Operation =
   | { type: 'practice'; gameId: GameId; songId: string; chartType: 'SD' | 'DX'; levelIndex: number; value: boolean }
   | { type: 'tags'; target: LibraryTarget; values: string[] }
   | { type: 'restore'; backup: UserDataBackup; mode: RestoreMode }
-  | { type: 'clear' };
+  | { type: 'clear' }
+  | { type: 'clear-game'; gameId: GameId };
 
 function userLibraryQueryKey(gameId: GameId) {
   return [...USER_LIBRARY_QUERY_KEY, gameId] as const;
@@ -52,10 +55,11 @@ export function useUserLibrary() {
         case 'tags': return service.setTags(operation.target, operation.values);
         case 'restore': return service.restore(operation.backup, operation.mode);
         case 'clear': await service.clear(); return [];
+        case 'clear-game': return service.clearGame(operation.gameId);
       }
     },
     onSuccess: (items, operation) => {
-      if (operation.type === 'restore' || operation.type === 'clear') {
+      if (operation.type === 'restore' || operation.type === 'clear' || operation.type === 'clear-game') {
         void queryClient.invalidateQueries({ queryKey: USER_LIBRARY_QUERY_KEY });
         if (operation.type === 'clear') queryClient.setQueryData(TAG_PRESETS_QUERY_KEY, [...DEFAULT_TAG_PRESETS]);
         return;
@@ -72,11 +76,12 @@ export function useUserLibrary() {
     mutateAsync({ type: 'favorite', gameId: activeGameId, songId, value }), [activeGameId, mutateAsync]);
   const setChartPractice = useCallback((songId: string, chartType: 'SD' | 'DX', levelIndex: number, value: boolean) =>
     mutateAsync({ type: 'practice', gameId: activeGameId, songId, chartType, levelIndex, value }), [activeGameId, mutateAsync]);
-  const setTags = useCallback((target: Omit<LibraryTarget, 'gameId'>, values: string[]) =>
+  const setTags = useCallback((target: Omit<SongLibraryTarget, 'gameId'> | Omit<ChartLibraryTarget, 'gameId'>, values: string[]) =>
     mutateAsync({ type: 'tags', target: { ...target, gameId: activeGameId }, values }), [activeGameId, mutateAsync]);
   const restoreBackup = useCallback((backup: UserDataBackup, mode: RestoreMode) =>
     mutateAsync({ type: 'restore', backup, mode }), [mutateAsync]);
   const clearUserData = useCallback(() => mutateAsync({ type: 'clear' }), [mutateAsync]);
+  const clearGameUserData = useCallback((gameId: GameId) => mutateAsync({ type: 'clear-game', gameId }), [mutateAsync]);
   const setTagPresets = useCallback((values: string[]) => presetMutation.mutateAsync(values), [presetMutation]);
   const songKey = useCallback((songId: string | number) => songLibraryKey(activeGameId, songId), [activeGameId]);
   const chartKey = useCallback((songId: string | number, type: ChartType, levelIndex: number) =>
@@ -97,5 +102,6 @@ export function useUserLibrary() {
     createBackup: () => service.createBackup(),
     restoreBackup,
     clearUserData,
+    clearGameUserData,
   };
 }

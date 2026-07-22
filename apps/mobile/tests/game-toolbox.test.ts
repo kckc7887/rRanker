@@ -10,14 +10,15 @@ describe('per-game toolbox registry', () => {
       'tolerance',
       'plates',
       'versions',
+      'best-image',
     ]);
-    expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照');
+    expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 成绩图片');
   });
 
   it('gives Phigros a push-rks toolbox entry', () => {
     const toolbox = getGameToolbox('phigros');
-    expect(toolbox.tools.map((tool) => tool.id)).toEqual(['push-rks']);
-    expect(summarizeGameTools('phigros')).toBe('推分计算');
+    expect(toolbox.tools.map((tool) => tool.id)).toEqual(['push-rks', 'best-image']);
+    expect(summarizeGameTools('phigros')).toBe('推分计算 · 成绩图片');
   });
 
   it('keeps profile capabilities consistent with registered tools', () => {

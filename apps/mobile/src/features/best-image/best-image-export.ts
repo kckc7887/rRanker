@@ -35,7 +35,7 @@ function safeFilePart(value: string): string {
 
 export function bestImageExportFilename(
   playerName: string,
-  imageType: 'best50' | 'custom',
+  imageType: 'best50' | 'best30' | 'custom',
   pageIndex: number,
   pageCount: number,
   now = new Date(),

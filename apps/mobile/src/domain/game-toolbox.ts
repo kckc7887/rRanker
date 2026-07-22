@@ -2,7 +2,7 @@ import type { GameId } from './game-bind-options';
 
 export type GameToolDefinition = {
   id: string;
-  href: `/tools/${string}`;
+  href: `/tools/${string}` | '/best-image';
   title: string;
   detail: string;
   summaryLabel: string;
@@ -48,6 +48,13 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         detail: '国服/日服名称对照，以及逐版本游玩情况',
         summaryLabel: '版本对照',
       },
+      {
+        id: 'best-image',
+        href: '/best-image',
+        title: '生成成绩图片',
+        detail: '生成并导出 B50 或自定义成绩图片',
+        summaryLabel: '成绩图片',
+      },
     ],
     emptyDetail: '舞萌 DX 暂无可用工具。',
   },
@@ -59,6 +66,13 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         title: '推分计算',
         detail: '按期望加值与成本歌数均摊，反推每谱面目标 Acc',
         summaryLabel: '推分计算',
+      },
+      {
+        id: 'best-image',
+        href: '/best-image',
+        title: '生成成绩图片',
+        detail: '生成并导出 Best30 或自定义成绩图片',
+        summaryLabel: '成绩图片',
       },
     ],
     emptyDetail: 'Phigros 工具正在准备中。',

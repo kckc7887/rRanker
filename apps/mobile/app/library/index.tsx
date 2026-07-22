@@ -32,9 +32,10 @@ export default function UserLibraryScreen() {
   }, [activeGameId, maimaiCatalog.data?.songs, phigrosCatalog.data?.snapshot.songs]);
   const phigrosBlurUrls = useMemo(() => {
     const map = new Map<string, string>();
-    const provider = phigrosCatalog.data?.provider;
-    if (!provider) return map;
-    for (const song of phigrosCatalog.data.snapshot.songs) {
+    const data = phigrosCatalog.data;
+    if (!data) return map;
+    const provider = data.provider;
+    for (const song of data.snapshot.songs) {
       const url = provider.getIllustrationBlurUrl(song.id);
       if (url) map.set(song.id, url);
     }
@@ -78,11 +79,13 @@ function LibraryRow({ item, song, blurUrl }: { item: UserLibraryItem; song?: Son
   const chart = item.kind === 'chart'
     ? song?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex)
     : undefined;
-  const chartLabel = chart
-    ? (['EZ', 'HD', 'IN', 'AT'].includes(chart.level)
-      ? chart.level
-      : `${item.type} ${chart.difficulty.toUpperCase()}`)
-    : `${item.type} 难度 ${item.levelIndex}`;
+  const chartLabel = item.kind === 'chart'
+    ? chart
+      ? (['EZ', 'HD', 'IN', 'AT'].includes(chart.level)
+        ? chart.level
+        : `${item.type} ${chart.difficulty.toUpperCase()}`)
+      : `${item.type} 难度 ${item.levelIndex}`
+    : '';
   return <Pressable accessibilityRole="button" onPress={() => router.push({
     pathname: '/songs/[songId]',
     params: item.kind === 'chart'

@@ -5,10 +5,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
 import { BoundAccountAvatar } from '@/components/BoundAccountAvatar';
 import { DxRatingTag } from '@/components/DxRatingTag';
+import { PhigrosAccountTags } from '@/components/PhigrosAccountTags';
 import { groupBoundAccountGameIds, type BoundAccount } from '@/domain/bound-account';
 import { findGame, type GameId } from '@/domain/game-bind-options';
 import { useAppTheme } from '@/theme/app-theme';
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
+import { hydratePhigrosAccountSummaries } from '@/services/hydrate-phigros-account-summaries';
 
 function useHydrateAccountAvatars(accountIds: string): void {
   const ranFor = useRef<string | null>(null);
@@ -17,6 +19,7 @@ function useHydrateAccountAvatars(accountIds: string): void {
     if (ranFor.current === accountIds) return;
     ranFor.current = accountIds;
     void hydrateBoundAccountAvatars();
+    void hydratePhigrosAccountSummaries();
   }, [accountIds]);
 }
 
@@ -71,6 +74,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
                 {current ? <Text style={[styles.currentBadge, { color: theme.accent, backgroundColor: theme.accentSoft }]}>当前</Text> : null}
               </View>
               {account.gameId === 'maimai' ? <DxRatingTag rating={ratingNumber(account.scoreDisplay)} display={account.scoreDisplay} /> : null}
+              {account.gameId === 'phigros' ? <PhigrosAccountTags rks={account.scoreDisplay} challengeModeRank={account.challengeModeRank} /> : null}
               <Text style={[styles.providerLine, { color: theme.textMuted }]}>{account.providerTitle}</Text></View>
             </Pressable>
             {renderActions ? <View style={[styles.actions, { borderTopColor: theme.border }]}>{renderActions(account)}</View> : null}

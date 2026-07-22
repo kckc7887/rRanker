@@ -22,7 +22,7 @@ const DEFAULT_FONT_SIZE = 24;
 
 function buildFlowingColors(base: GradientColors): GradientColors {
   const repeated = Array.from({ length: FLOW_GRADIENT_REPEATS }, () => [...base]).flat();
-  return [...repeated, base[0]] as GradientColors;
+  return [...repeated, base[0]] as unknown as GradientColors;
 }
 
 const FLOWING_PHI = buildFlowingColors(PHI_BASE);
