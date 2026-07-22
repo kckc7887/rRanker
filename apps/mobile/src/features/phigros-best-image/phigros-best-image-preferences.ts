@@ -1,4 +1,5 @@
 import Storage from 'expo-sqlite/kv-store';
+import type { PhigrosBestImageOverflowCount } from './phigros-best-image';
 
 export type PhigrosImageStyleMode = 'current' | 'item' | 'random' | 'off';
 export type PhigrosImageStyleChoice = { mode: PhigrosImageStyleMode; key?: string };
@@ -6,11 +7,12 @@ export type PhigrosBestImageStylePreferences = {
   version: 1;
   avatar: PhigrosImageStyleChoice;
   background: PhigrosImageStyleChoice;
+  overflowCount: PhigrosBestImageOverflowCount;
 };
 
 const PREFIX = 'rranker.phigros-best-image.styles.v1:';
 const defaults: PhigrosBestImageStylePreferences = {
-  version: 1, avatar: { mode: 'current' }, background: { mode: 'current' },
+  version: 1, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
 };
 
 function parseChoice(value: unknown): PhigrosImageStyleChoice {
@@ -25,8 +27,11 @@ function parseChoice(value: unknown): PhigrosImageStyleChoice {
 
 export function parsePhigrosBestImageStylePreferences(value: unknown): PhigrosBestImageStylePreferences {
   if (!value || typeof value !== 'object' || (value as { version?: unknown }).version !== 1) return defaults;
-  const raw = value as { avatar?: unknown; background?: unknown };
-  return { version: 1, avatar: parseChoice(raw.avatar), background: parseChoice(raw.background) };
+  const raw = value as { avatar?: unknown; background?: unknown; overflowCount?: unknown };
+  const overflowCount = raw.overflowCount === 3 || raw.overflowCount === 6 || raw.overflowCount === 9
+    ? raw.overflowCount
+    : 0;
+  return { version: 1, avatar: parseChoice(raw.avatar), background: parseChoice(raw.background), overflowCount };
 }
 
 export const phigrosBestImagePreferencesStore = {

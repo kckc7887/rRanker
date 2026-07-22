@@ -146,6 +146,11 @@ export function loadPhigrosReferenceAvatarUrl(rawKey: string | null | undefined)
   return loadPhigrosReferenceAssetDataUri(PHIGROS_REFERENCE_AVATAR_SOURCES[key]!, 'image/png');
 }
 
+export function getPhigrosReferenceAvatarSource(rawKey: string | null | undefined): number | null {
+  const key = findPhigrosReferenceAvatarKey(rawKey);
+  return key ? PHIGROS_REFERENCE_AVATAR_SOURCES[key] ?? null : null;
+}
+
 function withoutImport(css: string, importPath: string): string {
   return css.replace(`@import "${importPath}";`, '');
 }

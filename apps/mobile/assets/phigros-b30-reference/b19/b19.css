@@ -375,6 +375,9 @@ body p {
 .rel {
   width: auto;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .org {
@@ -385,6 +388,7 @@ body p {
 
 .org p {
   font-size: 12px;
+  line-height: 1;
 }
 
 .rel {
@@ -394,6 +398,7 @@ body p {
 
 .rel p {
   font-size: 13px;
+  line-height: 1;
 }
 
 .info-AT,
@@ -518,6 +523,7 @@ body p {
 
 .suggest p {
   font-size: 12px;
+  line-height: 1;
   font-weight: bold;
   color: #ffffff;
   text-shadow: 0 0 2px #000000ac;

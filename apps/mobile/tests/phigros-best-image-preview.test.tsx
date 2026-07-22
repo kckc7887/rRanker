@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
 
 jest.mock('react-native-webview', () => {
@@ -24,6 +25,7 @@ jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
 }));
 jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
   getPhigrosReferenceAvatarKeys: () => ['Introduction', 'avatar.test'],
+  getPhigrosReferenceAvatarSource: () => 1,
   findPhigrosReferenceAvatarKey: (key: string) => key,
   loadPhigrosReferenceAvatarUrl: jest.fn(async () => 'data:image/png;base64,avatar'),
   loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
@@ -36,7 +38,7 @@ jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets'
 }));
 jest.mock('@/features/phigros-best-image/phigros-best-image-preferences', () => ({
   phigrosBestImagePreferencesStore: {
-    load: jest.fn(async () => ({ version: 1, avatar: { mode: 'current' }, background: { mode: 'current' } })),
+    load: jest.fn(async () => ({ version: 1, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0 })),
     save: jest.fn(async () => undefined),
   },
 }));
@@ -82,12 +84,16 @@ jest.mock('@/hooks/use-game-data', () => ({
 
 describe('Phigros 生成图片页', () => {
   it('沿用舞萌板块的页面顺序、控件样式和预览导出布局', async () => {
-    const screen = await render(<PhigrosBestImageScreen />);
+    const screen = await render(<SafeAreaProvider initialMetrics={{
+      frame: { x: 0, y: 0, width: 390, height: 844 },
+      insets: { top: 0, left: 0, right: 0, bottom: 0 },
+    }}><PhigrosBestImageScreen /></SafeAreaProvider>);
     expect(screen.getByLabelText('Best30').props.accessibilityState).toEqual({ selected: true });
     expect(screen.getByLabelText('自定义').props.accessibilityState).toEqual({ selected: false });
     expect(screen.getByText('样式选择')).toBeTruthy();
     expect(screen.getByLabelText('选择头像')).toBeTruthy();
     expect(screen.getByLabelText('选择背景')).toBeTruthy();
+    expect(screen.getByLabelText('0 个').props.accessibilityState).toEqual({ selected: true });
     expect(screen.getByLabelText('宽度 1080 像素').props.accessibilityState).toEqual({ selected: true });
 
     const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
@@ -100,9 +106,16 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByTestId('phigros-best-image-webview-status')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('自定义'));
-    await waitFor(() => expect(screen.getByText('自定义 BestN')).toBeTruthy());
-    expect(screen.getByLabelText('自定义数量')).toBeTruthy();
-    expect(screen.getByLabelText('最小定数')).toBeTruthy();
-    expect(screen.getByLabelText('最大Acc')).toBeTruthy();
+    expect(screen.queryByText('自定义 BestN')).toBeNull();
+    expect(screen.queryByLabelText('自定义数量')).toBeNull();
+    expect(screen.queryByLabelText('最小定数')).toBeNull();
+    expect(screen.queryByLabelText('最大Acc')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('选择头像'));
+    await waitFor(() => expect(screen.getByLabelText('使用玩家当前头像')).toBeTruthy());
+    expect(screen.getByLabelText('搜索头像')).toBeTruthy();
+    expect(screen.getByLabelText('avatar.test，头像')).toBeTruthy();
+    expect(screen.getByLabelText('随机头像')).toBeTruthy();
+    expect(screen.getByLabelText('关闭头像')).toBeTruthy();
   });
 });
