@@ -40,7 +40,11 @@ jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
   phigrosAccAverageKey: (record: { songId: string; levelIndex: number }) => `${record.songId}:${record.levelIndex}`,
 }));
 jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
-  PHIGROS_FONT_MANIFEST: Array.from({ length: 12 }, (_, index) => ({ name: `font-${index}` })),
+  PHIGROS_FONT_MANIFEST: [
+    { name: 'phi', core: true },
+    { name: 'Aldrich-Regular', core: true },
+    { name: 'NotoSansJP', core: false },
+  ],
   preparePhigrosFonts: jest.fn(),
 }));
 jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
@@ -71,7 +75,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
         getIllustrationUrl: (id: string) => `https://example.test/illustration/${id}.png`,
         getIllustrationBlurUrl: (id: string) => `https://example.test/illustration/${id}.png`,
       },
-      snapshot: { songs: [{ id: 'song-1', title: '测试曲目' }] },
+      snapshot: { songs: [{ id: 'song-1', title: 'テスト曲目' }] },
     } };
     return () => result;
   })(),
@@ -84,7 +88,7 @@ jest.mock('@/hooks/use-game-data', () => ({
     data: {
       payload: {
         kind: 'phigros',
-        player: { displayName: 'Phi 测试玩家' },
+        player: { displayName: 'Phi テスト' },
         playerScore: { value: 15.4321, display: '15.4321' },
         challengeModeRank: 23,
         source: { updatedAt: '2026-07-22T08:00:00.000Z' },
@@ -94,8 +98,8 @@ jest.mock('@/hooks/use-game-data', () => ({
         avatarKey: 'avatar.test',
         backgroundSongId: 'song-1',
         avatarUrl: 'https://example.test/avatar/current.png',
-        records: [{ songId: 'song-1', title: '测试曲目', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert', difficultyConstant: 14, achievements: 99.5, dxScore: 995000, rating: 13.2, fc: 'fc', fs: null, rate: 'v', version: 'current' }],
-        bestSections: [{ id: 'phi3', title: 'Phi3', records: [{ songId: 'song-1', title: '测试曲目', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert', difficultyConstant: 14, achievements: 99.5, dxScore: 995000, rating: 13.2, fc: 'fc', fs: null, rate: 'v', version: 'current' }] }],
+        records: [{ songId: 'song-1', title: 'テスト曲目', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert', difficultyConstant: 14, achievements: 99.5, dxScore: 995000, rating: 13.2, fc: 'fc', fs: null, rate: 'v', version: 'current' }],
+        bestSections: [{ id: 'phi3', title: 'Phi3', records: [{ songId: 'song-1', title: 'テスト曲目', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert', difficultyConstant: 14, achievements: 99.5, dxScore: 995000, rating: 13.2, fc: 'fc', fs: null, rate: 'v', version: 'current' }] }],
       },
     } };
     return () => result;
@@ -107,24 +111,29 @@ describe('Phigros 生成图片页', () => {
     const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     preparePhigrosFonts.mockReset().mockImplementation(async (...args: unknown[]) => {
       const onProgress = args[0] as (value: Record<string, unknown>) => void;
-      onProgress({ phase: 'core-ready', completed: 2, total: 12, currentFont: null });
+      const options = args[1] as { neededNames?: string[] } | undefined;
+      const total = options?.neededNames?.length ?? 3;
+      onProgress({ phase: 'core-ready', completed: 2, total, currentFont: null });
       return {
         directory: { uri: 'file:///reference/' },
-        fullReady: Promise.resolve().then(() => onProgress({ phase: 'ready', completed: 12, total: 12, currentFont: null })),
+        fullReady: Promise.resolve().then(() => onProgress({ phase: 'ready', completed: total, total, currentFont: null })),
       };
     });
   });
 
-  it('shows the core preview while extensions download and enables export only after 12/12 fonts', async () => {
+  it('shows the core preview while needed extensions download and enables export only after they are ready', async () => {
     const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     let finish!: () => void;
     preparePhigrosFonts.mockImplementationOnce(async (...args: unknown[]) => {
       const onProgress = args[0] as (value: Record<string, unknown>) => void;
+      const options = args[1] as { neededNames?: string[] } | undefined;
+      expect(options?.neededNames).toEqual(expect.arrayContaining(['phi', 'Aldrich-Regular', 'NotoSansJP']));
+      expect(options?.neededNames).toHaveLength(3);
       return {
         directory: { uri: 'file:///reference/' },
         fullReady: new Promise<void>((resolve) => {
           finish = () => {
-            onProgress({ phase: 'ready', completed: 12, total: 12, currentFont: null });
+            onProgress({ phase: 'ready', completed: 3, total: 3, currentFont: null });
             resolve();
           };
         }),
@@ -136,7 +145,7 @@ describe('Phigros 生成图片页', () => {
     }}><PhigrosBestImageScreen /></SafeAreaProvider>);
     await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
-    expect(screen.getByText(/全部完成后可导出/u)).toBeTruthy();
+    expect(screen.getByText(/所需字体完成后可导出/u)).toBeTruthy();
     await act(async () => finish());
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
     expect(screen.getByText('导出到相册')).toBeTruthy();
