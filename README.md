@@ -56,4 +56,4 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 
 ## 许可证
 
-本项目采用 [MIT License](LICENSE)，Copyright (c) 2026 Chnynnya。
+本项目采用 [GNU Affero General Public License v3.0](LICENSE)（SPDX：`AGPL-3.0-only`），Copyright (c) 2026 Chnynnya。
