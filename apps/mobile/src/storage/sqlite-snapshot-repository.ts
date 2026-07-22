@@ -126,6 +126,67 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     const db = await this.database();
     await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', key);
   }
+
+  async listAccountScoreSizes(): Promise<{ accountId: string; bytes: number }[]> {
+    await this.initialize();
+    const db = await this.database();
+    const rows = await db.getAllAsync<{ account_id: string; bytes: number }>(
+      'SELECT account_id, LENGTH(payload) AS bytes FROM account_score_snapshots',
+    );
+    return rows.map((row) => ({ accountId: row.account_id, bytes: row.bytes ?? 0 }));
+  }
+
+  async listResourceSizes(): Promise<{ key: string; bytes: number }[]> {
+    await this.initialize();
+    const db = await this.database();
+    const rows = await db.getAllAsync<{ resource_key: string; bytes: number }>(
+      'SELECT resource_key, LENGTH(payload) AS bytes FROM resource_snapshots',
+    );
+    return rows.map((row) => ({ key: row.resource_key, bytes: row.bytes ?? 0 }));
+  }
+
+  async measureCatalogBytes(): Promise<number> {
+    await this.initialize();
+    const db = await this.database();
+    const row = await db.getFirstAsync<{ bytes: number }>(
+      'SELECT LENGTH(payload) AS bytes FROM catalog_snapshots WHERE id = ?', 1,
+    );
+    return row?.bytes ?? 0;
+  }
+
+  async measureLegacyScoreBytes(): Promise<number> {
+    await this.initialize();
+    const db = await this.database();
+    const row = await db.getFirstAsync<{ bytes: number }>(
+      'SELECT LENGTH(payload) AS bytes FROM score_snapshots WHERE id = ?', 1,
+    );
+    return row?.bytes ?? 0;
+  }
+
+  async clearAccountScores(accountIds: readonly string[]): Promise<void> {
+    if (accountIds.length === 0) return;
+    await this.initialize();
+    const db = await this.database();
+    for (const accountId of accountIds) {
+      await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
+      await this.deleteResource(scoreResourceKey(accountId));
+      await this.deleteResource(accountAvatarResourceKey(accountId));
+    }
+  }
+
+  async clearResources(keys: readonly string[]): Promise<void> {
+    if (keys.length === 0) return;
+    await this.initialize();
+    for (const key of keys) await this.deleteResource(key);
+  }
+
+  async clearCatalog(): Promise<void> {
+    await this.initialize();
+    const db = await this.database();
+    await db.runAsync('DELETE FROM catalog_snapshots WHERE id = ?', 1);
+    await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);
+  }
+
   async clear(accountId?: string): Promise<void> {
     await this.initialize();
     const db = await this.database();
