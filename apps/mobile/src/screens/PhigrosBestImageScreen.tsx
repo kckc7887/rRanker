@@ -21,6 +21,7 @@ import {
   prepareBestImageWebViewSources, type BestImageWebViewSource,
 } from '@/features/best-image/prepare-best-image-webview-sources';
 import { buildPhigrosBestImageHtml } from '@/features/phigros-best-image/build-phigros-best-image-html';
+import { collectPhigrosBestImageVisibleStrings } from '@/features/phigros-best-image/collect-phigros-best-image-visible-strings';
 import {
   loadPhigrosAccAverages, type PhigrosAccAverage,
 } from '@/features/phigros-best-image/load-phigros-acc-averages';
@@ -37,8 +38,11 @@ import {
   type PhigrosReferenceTemplateAssets,
 } from '@/features/phigros-best-image/load-phigros-reference-template-assets';
 import {
-  PHIGROS_FONT_MANIFEST, preparePhigrosFonts, type PhigrosFontProgress,
+  preparePhigrosFonts, type PhigrosFontProgress,
 } from '@/features/phigros-best-image/phigros-font-cache';
+import {
+  resolveNeededPhigrosFonts, trimPhigrosBestImageCss,
+} from '@/features/phigros-best-image/phigros-font-coverage';
 import {
   phigrosBestImagePreferencesStore, type PhigrosBestImageStylePreferences,
   type PhigrosImageStyleChoice,
@@ -88,10 +92,10 @@ function resolvedRandom<T>(items: readonly T[], seed: string): T | undefined {
 
 function fontProgressLabel(progress: PhigrosFontProgress): string {
   const count = `已完成 ${progress.completed}/${progress.total}`;
-  if (progress.phase === 'ready') return `全部字体已准备 · ${count}`;
+  if (progress.phase === 'ready') return `所需字体已准备 · ${count}`;
   if (progress.phase === 'core-ready') return `核心字体已准备 · ${count}`;
   if (progress.phase === 'downloading-core') return `正在准备核心字体${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
-  if (progress.phase === 'downloading-extensions') return `正在后台下载扩展字体${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
+  if (progress.phase === 'downloading-extensions') return `正在下载所需扩展字体${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
   return `正在检查字体缓存${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
 }
 
@@ -117,7 +121,7 @@ export function PhigrosBestImageScreen() {
   const [fontsReady, setFontsReady] = useState(false);
   const [fontAttempt, setFontAttempt] = useState(0);
   const [fontProgress, setFontProgress] = useState<PhigrosFontProgress>({
-    phase: 'checking', completed: 0, total: PHIGROS_FONT_MANIFEST.length, currentFont: null,
+    phase: 'checking', completed: 0, total: 2, currentFont: null,
   });
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
   const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
@@ -140,36 +144,6 @@ export function PhigrosBestImageScreen() {
       setAvatarItems([...new Set([...bundled, ...remote])]);
     }).catch(() => setAvatarItems(bundled));
   }, [provider]);
-  useEffect(() => {
-    let cancelled = false;
-    setTemplateAssetError(null);
-    setFontsReady(false);
-    void (async () => {
-      const prepared = await preparePhigrosFonts((progress) => {
-        if (!cancelled) setFontProgress(progress);
-      });
-      const fullResult = prepared.fullReady.then(
-        () => ({ ok: true as const }),
-        (error: unknown) => ({ ok: false as const, error }),
-      );
-      const assets = await loadPhigrosReferenceTemplateAssets(prepared.directory.uri);
-      if (!cancelled) {
-        setFontDirectory(prepared.directory);
-        setTemplateAssets(assets);
-      }
-      const result = await fullResult;
-      if (!result.ok) throw result.error;
-      if (!cancelled) {
-        setFontsReady(true);
-        // 重新创建对象以强制重建 HTML，使已补齐的扩展字体进入当前 WebView。
-        setTemplateAssets({ ...assets });
-      }
-    })().catch((error) => {
-      if (!cancelled) setTemplateAssetError(error instanceof Error ? error.message : '无法加载 Phigros 参考模板素材');
-    });
-    return () => { cancelled = true; };
-  }, [fontAttempt]);
-
   const sections = useMemo(() => {
     if (!payload) return [];
     if (type === 'best30') return appendPhigrosOverflowRecords(payload.bestSections, payload.records, stylePrefs.overflowCount);
@@ -179,6 +153,56 @@ export function PhigrosBestImageScreen() {
     sections,
     type === 'best30' ? 30 + stylePrefs.overflowCount : 30,
   ), [sections, stylePrefs.overflowCount, type]);
+  const titles = useMemo(() => Object.fromEntries(songs.map((song) => [song.id, song.title])), [songs]);
+  const neededFontEntries = useMemo(() => {
+    if (!payload) return resolveNeededPhigrosFonts([]);
+    return resolveNeededPhigrosFonts(collectPhigrosBestImageVisibleStrings({
+      type,
+      playerName: payload.player.displayName,
+      rks: payload.playerScore.display,
+      dataAmount: payload.dataAmount,
+      challenge: formatPhigrosChallengeBadge(payload.challengeModeRank),
+      syncedAt: formatSyncTime(payload.saveUpdatedAt),
+      titles,
+      pages,
+    }));
+  }, [pages, payload, titles, type]);
+  const neededFontKey = neededFontEntries.map((entry) => entry.name).join('|');
+
+  useEffect(() => {
+    let cancelled = false;
+    setTemplateAssetError(null);
+    setFontsReady(false);
+    const neededNames = neededFontEntries.map((entry) => entry.name);
+    void (async () => {
+      const prepared = await preparePhigrosFonts((progress) => {
+        if (!cancelled) setFontProgress(progress);
+      }, { neededNames });
+      const fullResult = prepared.fullReady.then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+      const assets = await loadPhigrosReferenceTemplateAssets(prepared.directory.uri);
+      const trimmedAssets = {
+        ...assets,
+        css: trimPhigrosBestImageCss(assets.css, neededFontEntries),
+      };
+      if (!cancelled) {
+        setFontDirectory(prepared.directory);
+        setTemplateAssets(trimmedAssets);
+      }
+      const result = await fullResult;
+      if (!result.ok) throw result.error;
+      if (!cancelled) {
+        setFontsReady(true);
+        // 重新创建对象以强制重建 HTML，使已补齐的扩展字体进入当前 WebView。
+        setTemplateAssets({ ...trimmedAssets });
+      }
+    })().catch((error) => {
+      if (!cancelled) setTemplateAssetError(error instanceof Error ? error.message : '无法加载 Phigros 参考模板素材');
+    });
+    return () => { cancelled = true; };
+  }, [fontAttempt, neededFontKey, neededFontEntries]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
   const selectedSongKey = selectedSongIds.join('|');
   const averageRecords = useMemo(() => type === 'best30'
@@ -233,7 +257,6 @@ export function PhigrosBestImageScreen() {
     return () => { cancelled = true; };
   }, [avatarKey, backgroundKey, payload?.avatarUrl, provider, selectedSongIds, selectedSongKey, stylePrefs.avatar.mode, stylePrefs.background.mode]);
 
-  const titles = useMemo(() => Object.fromEntries(songs.map((song) => [song.id, song.title])), [songs]);
   const htmlPages = useMemo(() => payload && illustrations && accAverages && templateAssets ? pages.map((page) => buildPhigrosBestImageHtml({
     type, width, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
     dataAmount: payload.dataAmount,
@@ -373,9 +396,9 @@ export function PhigrosBestImageScreen() {
           }} /></View>;
         }} /> : <View style={styles.loadingPreview}>{templateAssetError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View>}</View>}
       </View>
-      {sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；全部完成后可导出</Text></>}</View> : null}
+      {sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；所需字体完成后可导出</Text></>}</View> : null}
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === pageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || !fontsReady || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !fontsReady || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? (fontsReady ? '导出到相册' : '字体准备完成后可导出')}</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || !fontsReady || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !fontsReady || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? (fontsReady ? '导出到相册' : '所需字体准备完成后可导出')}</Text></Pressable>
       <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="phigros-best-image-webview-status">{previewStatus}</Text>
     </ScrollView>
     <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />
