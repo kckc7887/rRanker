@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import type { Directory } from 'expo-file-system';
 import {
   ActivityIndicator, FlatList, Image, Modal, PixelRatio, Platform, Pressable, ScrollView,
@@ -45,6 +45,7 @@ import {
 import {
   loadPhigrosIllustrations, loadRemoteImageDataUri,
 } from '@/features/phigros-best-image/load-phigros-image-assets';
+import { partitionPhigrosIllustrationCache } from '@/features/phigros-best-image/phigros-illustration-cache';
 import {
   findPhigrosReferenceAvatarKey, getPhigrosReferenceAvatarKeys, getPhigrosReferenceAvatarSource,
   loadPhigrosReferenceAvatarUrl, loadPhigrosReferenceTemplateAssets,
@@ -170,6 +171,9 @@ export function PhigrosBestImageScreen() {
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const exportCaptureRef = useRef<View>(null); const exportResolve = useRef<((height: number) => void) | null>(null);
   const exportReject = useRef<((error: Error) => void) | null>(null); const exportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const illustrationCacheRef = useRef<Record<string, string | null>>({});
+  const neededFontEntriesRef = useRef<ReturnType<typeof resolveNeededPhigrosFonts>>([]);
+  const styleAssetKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     setPrefsReady(false);
@@ -219,13 +223,14 @@ export function PhigrosBestImageScreen() {
       pages,
     }));
   }, [pages, payload, titles, type]);
+  neededFontEntriesRef.current = neededFontEntries;
   const neededFontKey = neededFontEntries.map((entry) => entry.name).join('|');
 
   useEffect(() => {
     let cancelled = false;
     setTemplateAssetError(null);
     setFontsReady(false);
-    const neededNames = neededFontEntries.map((entry) => entry.name);
+    const neededNames = neededFontKey ? neededFontKey.split('|').filter(Boolean) : [];
     void (async () => {
       const prepared = await preparePhigrosFonts((progress) => {
         if (!cancelled) setFontProgress(progress);
@@ -237,7 +242,7 @@ export function PhigrosBestImageScreen() {
       const assets = await loadPhigrosReferenceTemplateAssets(prepared.directory.uri);
       const trimmedAssets = {
         ...assets,
-        css: trimPhigrosBestImageCss(assets.css, neededFontEntries),
+        css: trimPhigrosBestImageCss(assets.css, neededFontEntriesRef.current),
       };
       if (!cancelled) {
         setFontDirectory(prepared.directory);
@@ -254,7 +259,7 @@ export function PhigrosBestImageScreen() {
       if (!cancelled) setTemplateAssetError(error instanceof Error ? error.message : '无法加载 Phigros 参考模板素材');
     });
     return () => { cancelled = true; };
-  }, [fontAttempt, neededFontKey, neededFontEntries]);
+  }, [fontAttempt, neededFontKey]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
   const selectedSongKey = selectedSongIds.join('|');
   const averageRecords = useMemo(() => type === 'best30'
@@ -269,7 +274,6 @@ export function PhigrosBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setAccAverages(null);
     if (!payload) return;
     void loadPhigrosAccAverages(averageRecords, averageReferenceRks).then((averages) => {
       if (!cancelled) setAccAverages(averages);
@@ -287,13 +291,36 @@ export function PhigrosBestImageScreen() {
   };
   const avatarKey = selectStyleKey('avatar', stylePrefs.avatar);
   const backgroundKey = selectStyleKey('background', stylePrefs.background);
+  const backgroundFallbackSongId = selectedSongIds[0] ?? null;
+  const styleAssetKey = [
+    stylePrefs.avatar.mode, avatarKey ?? '', stylePrefs.background.mode, backgroundKey ?? '', backgroundFallbackSongId ?? '', payload?.avatarUrl ?? '',
+  ].join('|');
 
   useEffect(() => {
     let cancelled = false;
-    setIllustrations(null); setAssetProgress({ done: 0, total: selectedSongIds.length });
     if (!provider) return;
+    const uniqueIds = [...new Set(selectedSongIds)];
+    const { next, missing } = partitionPhigrosIllustrationCache(uniqueIds, illustrationCacheRef.current);
+    // 先用缓存命中结果立刻出预览，缺失曲目先回退占位，避免切换时整页清空。
+    setIllustrations(next);
+    setAssetProgress({ done: uniqueIds.length - missing.length, total: uniqueIds.length });
+    if (!missing.length) return;
+    void loadPhigrosIllustrations(missing, (id) => provider.getIllustrationUrl(id), (done) => {
+      if (!cancelled) setAssetProgress({ done: uniqueIds.length - missing.length + done, total: uniqueIds.length });
+    }).then((loaded) => {
+      if (cancelled) return;
+      Object.assign(illustrationCacheRef.current, loaded);
+      setIllustrations(Object.fromEntries(uniqueIds.map((id) => [id, illustrationCacheRef.current[id] ?? null])));
+      setAssetProgress({ done: uniqueIds.length, total: uniqueIds.length });
+    });
+    return () => { cancelled = true; };
+  }, [provider, selectedSongKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!provider) return;
+    if (styleAssetKeyRef.current === styleAssetKey) return;
     void Promise.all([
-      loadPhigrosIllustrations(selectedSongIds, (id) => provider.getIllustrationUrl(id), (done, total) => !cancelled && setAssetProgress({ done, total })),
       stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
         await (findPhigrosReferenceAvatarKey(avatarKey) ? loadPhigrosReferenceAvatarUrl(avatarKey) : Promise.resolve(null))
         ?? await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl)
@@ -301,13 +328,19 @@ export function PhigrosBestImageScreen() {
       ))(),
       stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
         await loadRemoteImageDataUri(backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null)
-        ?? await loadRemoteImageDataUri(selectedSongIds[0] ? provider.getIllustrationBlurUrl(selectedSongIds[0]) : null)
+        ?? await loadRemoteImageDataUri(backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null)
       ))(),
-    ]).then(([nextIllustrations, nextAvatar, nextBackground]) => {
-      if (!cancelled) { setIllustrations(nextIllustrations); setAvatarData(nextAvatar ?? null); setBackgroundData(nextBackground ?? null); }
+    ]).then(([nextAvatar, nextBackground]) => {
+      if (cancelled) return;
+      styleAssetKeyRef.current = styleAssetKey;
+      setAvatarData(nextAvatar ?? null);
+      setBackgroundData(nextBackground ?? null);
     });
     return () => { cancelled = true; };
-  }, [avatarKey, backgroundKey, payload?.avatarUrl, provider, selectedSongIds, selectedSongKey, stylePrefs.avatar.mode, stylePrefs.background.mode]);
+  }, [
+    avatarKey, backgroundFallbackSongId, backgroundKey, payload?.avatarUrl, provider,
+    styleAssetKey, stylePrefs.avatar.mode, stylePrefs.background.mode,
+  ]);
 
   const htmlPages = useMemo(() => payload && illustrations && accAverages && templateAssets ? pages.map((page) => buildPhigrosBestImageHtml({
     type, width, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
@@ -319,9 +352,14 @@ export function PhigrosBestImageScreen() {
   })) : null, [accAverages, avatarData, backgroundData, illustrations, pages, payload, templateAssets, titles, type, width]);
 
   useEffect(() => {
-    setSources(null); setPageHeights({}); setPageIndex(0); setPreviewStates({});
-    if (!htmlPages || !fontDirectory) return;
-    const prepared = prepareBestImageWebViewSources(htmlPages, fontDirectory); setSources(prepared.sources); return prepared.dispose;
+    setPageHeights({}); setPageIndex(0); setPreviewStates({});
+    if (!htmlPages || !fontDirectory) {
+      setSources(null);
+      return;
+    }
+    const prepared = prepareBestImageWebViewSources(htmlPages, fontDirectory);
+    setSources(prepared.sources);
+    return prepared.dispose;
   }, [fontDirectory, htmlPages]);
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
@@ -411,7 +449,9 @@ export function PhigrosBestImageScreen() {
       <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
         {([{ id: 'best30', label: 'Best30' }, { id: 'custom', label: '自定义' }] as const).map((item) => {
           const selected = type === item.id;
-          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setType(item.id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => {
+            startTransition(() => setType(item.id));
+          }} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
             <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item.label}</Text>
           </Pressable>;
         })}

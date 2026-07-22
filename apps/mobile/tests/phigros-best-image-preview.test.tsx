@@ -33,10 +33,16 @@ jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
 jest.mock('@/domain/phigros-avatar-resolver', () => ({
   loadPhigrosAvatarCatalog: jest.fn(async () => ['avatar.test']),
 }));
-jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => ({
-  loadPhigrosIllustrations: jest.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `data:image/png;base64,${id}`]))),
-  loadRemoteImageDataUri: jest.fn(async () => 'data:image/png;base64,style'),
-}));
+jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => {
+  const actual = jest.requireActual<typeof import('@/features/phigros-best-image/load-phigros-image-assets')>(
+    '@/features/phigros-best-image/load-phigros-image-assets',
+  );
+  return {
+    ...actual,
+    loadPhigrosIllustrations: jest.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `data:image/png;base64,${id}`]))),
+    loadRemoteImageDataUri: jest.fn(async () => 'data:image/png;base64,style'),
+  };
+});
 jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
   loadPhigrosAccAverages: jest.fn(async () => ({})),
   phigrosAccAverageKey: (record: { songId: string; levelIndex: number }) => `${record.songId}:${record.levelIndex}`,
@@ -236,11 +242,16 @@ describe('Phigros 生成图片页', () => {
     await waitFor(() => expect(screen.getByText('导出到相册')).toBeTruthy());
 
     mockShowNotification.mockClear();
+    const { loadPhigrosIllustrations } = jest.requireMock('@/features/phigros-best-image/load-phigros-image-assets') as {
+      loadPhigrosIllustrations: jest.Mock;
+    };
+    loadPhigrosIllustrations.mockClear();
     fireEvent.press(screen.getByLabelText('自定义'));
     await waitFor(() => {
       expect(screen.getByLabelText('自定义').props.accessibilityState.selected).toBe(true);
     });
     expect(mockShowNotification).not.toHaveBeenCalled();
+    expect(loadPhigrosIllustrations).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Best30').props.accessibilityState.selected).toBe(false);
     expect(screen.getByText('自定义 BestN')).toBeTruthy();
     expect(screen.getByLabelText('自定义数量')).toBeTruthy();
