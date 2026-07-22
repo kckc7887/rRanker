@@ -94,6 +94,11 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+export type PreparePhigrosFontsOptions = {
+  /** 仅准备这些字体；未提供时准备完整清单。核心字体始终包含。 */
+  neededNames?: readonly string[];
+};
+
 export function createPhigrosFontPreparer(
   manifest: readonly PhigrosFontManifestEntry[] = PHIGROS_FONT_MANIFEST,
 ) {
@@ -175,15 +180,20 @@ export function createPhigrosFontPreparer(
 
   return async function preparePhigrosFonts(
     onProgress?: ProgressListener,
+    options?: PreparePhigrosFontsOptions,
   ): Promise<PreparedPhigrosFonts> {
     const { directory, fontDirectory, temporaryDirectory } = directories();
+    const neededSet = options?.neededNames ? new Set(options.neededNames) : null;
+    const selected = neededSet
+      ? manifest.filter((entry) => entry.core || neededSet.has(entry.name))
+      : [...manifest];
     const completed = new Set<string>();
-    const total = manifest.length;
+    const total = selected.length;
     const emit = (phase: PhigrosFontProgressPhase, currentFont: string | null, error?: string) => {
       onProgress?.({ phase, completed: completed.size, total, currentFont, error });
     };
-    const core = manifest.filter((entry) => entry.core);
-    const extensions = manifest.filter((entry) => !entry.core);
+    const core = selected.filter((entry) => entry.core);
+    const extensions = selected.filter((entry) => !entry.core);
     emit('checking', null);
     try {
       await Promise.all(core.map(async (entry) => {

@@ -200,4 +200,37 @@ describe('Phigros remote font cache', () => {
     await expect(createPhigrosFontPreparer([{ ...fontHashEntry, fontSha256: '0'.repeat(64) }])()).rejects.toThrow('字体校验失败');
     expect(mockFontFs.files.size).toBe(0);
   });
+
+  it('downloads only the requested extension fonts after core', async () => {
+    const manifest = [
+      await fixtureEntry('core-a', true),
+      await fixtureEntry('core-b', true),
+      await fixtureEntry('extension-a', false),
+      await fixtureEntry('extension-b', false),
+    ];
+    const progress: PhigrosFontProgress[] = [];
+    const prepare = createPhigrosFontPreparer(manifest);
+    const prepared = await prepare((value) => progress.push(value), { neededNames: ['core-a', 'core-b', 'extension-a'] });
+    expect(progress.some((value) => value.phase === 'core-ready' && value.completed === 2 && value.total === 3)).toBe(true);
+    await prepared.fullReady;
+    expect(progress.at(-1)).toMatchObject({ phase: 'ready', completed: 3, total: 3 });
+    expect(mockFontFs.downloadCalls).toHaveLength(3);
+    expect(new Set(mockFontFs.downloadCalls.slice(0, 2))).toEqual(new Set([
+      'https://fonts.test/core-a.zip',
+      'https://fonts.test/core-b.zip',
+    ]));
+    expect(mockFontFs.downloadCalls[2]).toBe('https://fonts.test/extension-a.zip');
+    expect([...mockFontFs.files.keys()].filter((uri) => uri.includes('/font/'))).toHaveLength(3);
+  });
+
+  it('skips all extensions when only core fonts are needed', async () => {
+    const manifest = [
+      await fixtureEntry('core-a', true),
+      await fixtureEntry('extension-a', false),
+    ];
+    const prepare = createPhigrosFontPreparer(manifest);
+    const prepared = await prepare(undefined, { neededNames: ['core-a'] });
+    await prepared.fullReady;
+    expect(mockFontFs.downloadCalls).toEqual(['https://fonts.test/core-a.zip']);
+  });
 });
