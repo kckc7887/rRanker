@@ -119,7 +119,7 @@ describe('Phigros 生成图片页', () => {
     }) } });
     await waitFor(() => expect(screen.getByText(/1080 × 1215 px/u)).toBeTruthy());
     const previewFrameStyle = screen.getByLabelText('HTML图片预览窗').props.style[1];
-    expect(previewFrameStyle.height).toBeCloseTo(previewFrameStyle.width * 1215 / 1080);
+    expect(previewFrameStyle.height).toBeCloseTo(previewFrameStyle.width * 4 / 3);
 
     fireEvent.press(screen.getByLabelText('自定义'));
     expect(screen.queryByText('自定义 BestN')).toBeNull();
