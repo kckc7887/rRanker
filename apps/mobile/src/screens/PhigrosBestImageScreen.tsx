@@ -359,7 +359,13 @@ export function PhigrosBestImageScreen() {
       <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
         {([{ id: 'best30', label: 'Best30' }, { id: 'custom', label: '自定义' }] as const).map((item) => {
           const selected = type === item.id;
-          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setType(item.id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => {
+            if (item.id === 'custom') {
+              showNotification({ title: '自定义模式', message: '暂未开放，请先使用 Best30。', variant: 'info' });
+              return;
+            }
+            setType(item.id);
+          }} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
             <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item.label}</Text>
           </Pressable>;
         })}

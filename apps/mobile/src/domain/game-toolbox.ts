@@ -71,7 +71,7 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         id: 'best-image',
         href: '/best-image',
         title: '生成成绩图片',
-        detail: '生成并导出 Best30 或自定义成绩图片',
+        detail: '生成并导出 Best30 成绩图片',
         summaryLabel: '成绩图片',
       },
     ],
