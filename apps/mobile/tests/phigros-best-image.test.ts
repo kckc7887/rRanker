@@ -24,7 +24,7 @@ describe('Phigros 成绩图', () => {
     const bytes = new Uint8Array(1 + strings.reduce((sum, value) => sum + 1 + value.length, 0));
     let offset = 1;
     for (const value of strings) { bytes[offset] = value.length; offset += 1; bytes.set(value, offset); offset += value.length; }
-    expect(parsePhigrosUser(bytes)).toEqual({ selfIntro: 'hello', avatar: 'avatar.Cipher1', backgroundSongId: 'Song.Background' });
+    expect(parsePhigrosUser(bytes)).toEqual({ showPlayerId: false, selfIntro: 'hello', avatar: 'avatar.Cipher1', backgroundSongId: 'Song.Background' });
   });
 
   it('自定义按单曲 RKS、Acc 稳定降序，并正确处理筛选边界、评价与 FC', () => {
@@ -62,12 +62,12 @@ describe('Phigros 成绩图', () => {
     for (const width of [1080, 1440, 2160] as const) {
       const page = paginatePhigrosBestImageSections([{ id: 'phi3', title: 'Phi3', records: [record('x', { title: '<script>alert(1)</script>' })] }])[0]!;
       const html = buildPhigrosBestImageHtml({
-        type: 'best30', width, page, playerName: '<玩家>', rks: '15.4321', challenge: '23', challengeModeRank: 223, syncedAt: '2026-07-22',
+        type: 'best30', width, page, playerName: '<玩家>', rks: '15.4321', dataAmount: '386MiB 289KiB', challenge: '23', challengeModeRank: 223, syncedAt: '2026/07/22 12:34:56',
         progress: { cleared: [1, 2, 3, 4], fullCombo: [1, 1, 1, 1], phi: [0, 0, 1, 1] },
-        titles: { x: '<script>alert(1)</script>' }, illustrations: { x: null }, avatarDataUri: null, backgroundDataUri: null,
+        titles: { x: '<script>alert(1)</script>' }, illustrations: { x: null }, accAverages: { 'x:2': { value: 99.1234, kind: 'Higher' } }, avatarDataUri: null, backgroundDataUri: null,
         templateAssets: {
           css: '.song{width:360px}.Rating img{width:100%}',
-          dataIconUrl: 'file:///reference/data.png', fallbackBackgroundUrl: 'file:///reference/phigros.png',
+          dataIconUrl: 'file:///reference/data.png', fallbackBackgroundUrl: 'file:///reference/phigros.png', fallbackAvatarUrl: 'file:///reference/Introduction.png',
           challengeIconUrls: Array.from({ length: 6 }, (_, index) => `file:///reference/${index}.png`),
           ratingIconUrls: { F: 'file:///reference/F.png', FC: 'file:///reference/FC.png', V: 'file:///reference/V.png', phi: 'file:///reference/phi.png' },
           allowingReadAccessToUrl: 'file:///reference/',
@@ -75,17 +75,48 @@ describe('Phigros 成绩图', () => {
       });
       expect(html).toContain(`width:${width}px`);
       expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
-      expect(html).toContain('reference-cover-fallback');
+      expect(html).toContain('<img src="file:///reference/phigros.png" alt="ill">');
       expect(html).toContain('file:///reference/phigros.png');
       expect(html).toContain('15.4321');
+      expect(html).toContain('386MiB 289KiB');
+      expect(html).toContain('file:///reference/Introduction.png');
       expect(html).toContain('class="playerInfo"');
       expect(html).toContain('class="recordInfo clip-box"');
+      expect(html.indexOf('<p>EZ</p>')).toBeLessThan(html.indexOf('<p>HD</p>'));
+      expect(html.indexOf('<p>HD</p>')).toBeLessThan(html.indexOf('<p>IN</p>'));
+      expect(html.indexOf('<p>IN</p>')).toBeLessThan(html.indexOf('<p>AT</p>'));
       expect(html).toContain('class="song phi_song"');
       expect(html).toContain('class="b19"');
       expect(html).toContain('file:///reference/2.png');
       expect(html).toContain('file:///reference/V.png');
       expect(html).toContain('.song{width:360px}');
       expect(html).toContain(`zoom:${width / 1200}`);
+      expect(html).toContain('<p>Phi-Plugin</p>');
+      expect(html).toContain('<p>v1.0.1</p>');
+      expect(html).not.toContain('<p>rRanker</p>');
     }
+  });
+
+  it('输出原模板 Avg 条和 OVER FLOW 分隔结构', () => {
+    const best = Array.from({ length: 28 }, (_, index) => record(`b${index + 1}`, { rating: 16 - index / 100 }));
+    const html = buildPhigrosBestImageHtml({
+      type: 'best30', width: 1080,
+      page: { id: 'page', pageIndex: 0, pageCount: 1, sections: [{ id: 'b27', title: 'Best27', records: best }] },
+      playerName: '尘言', rks: '16.1053', dataAmount: '386MiB 289KiB', challenge: '42', challengeModeRank: 442,
+      syncedAt: '2026/03/27 07:19:55', progress: { cleared: [0, 31, 221, 39], fullCombo: [0, 12, 111, 4], phi: [0, 4, 16, 2] },
+      titles: Object.fromEntries(best.map((item) => [item.songId, item.title])),
+      illustrations: Object.fromEntries(best.map((item) => [item.songId, 'file:///cover.png'])),
+      accAverages: { 'b1:2': { value: 98.5004, kind: 'Higher' } },
+      templateAssets: {
+        css: '.song{width:360px}', dataIconUrl: 'file:///data.png', fallbackBackgroundUrl: 'file:///bg.png', fallbackAvatarUrl: 'file:///avatar.png',
+        challengeIconUrls: Array.from({ length: 6 }, (_, index) => `file:///${index}.png`),
+        ratingIconUrls: { F: 'file:///F.png', V: 'file:///V.png', FC: 'file:///FC.png', phi: 'file:///phi.png' },
+        allowingReadAccessToUrl: 'file:///',
+      },
+    });
+    expect(html).toContain('class="accAvg accHigher clip-box"');
+    expect(html).toContain('Avg: 98.5004%');
+    expect(html).toContain('class="over_flow"');
+    expect(html).toContain('<i>OVER FLOW</i>');
   });
 });

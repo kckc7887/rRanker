@@ -23,6 +23,9 @@ import {
 } from '@/features/best-image/prepare-best-image-webview-sources';
 import { buildPhigrosBestImageHtml } from '@/features/phigros-best-image/build-phigros-best-image-html';
 import {
+  loadPhigrosAccAverages, type PhigrosAccAverage,
+} from '@/features/phigros-best-image/load-phigros-acc-averages';
+import {
   buildPhigrosCustomRecords, DEFAULT_PHIGROS_BEST_IMAGE_FILTERS,
   paginatePhigrosBestImageSections, parseOptionalRangeNumber, parsePhigrosImageQuantity,
   type PhigrosBestImageDifficulty, type PhigrosBestImageFilters,
@@ -32,7 +35,9 @@ import {
   loadPhigrosIllustrations, loadRemoteImageDataUri,
 } from '@/features/phigros-best-image/load-phigros-image-assets';
 import {
-  loadPhigrosReferenceTemplateAssets, type PhigrosReferenceTemplateAssets,
+  findPhigrosReferenceAvatarKey, getPhigrosReferenceAvatarKeys,
+  loadPhigrosReferenceAvatarUrl, loadPhigrosReferenceTemplateAssets,
+  type PhigrosReferenceTemplateAssets,
 } from '@/features/phigros-best-image/load-phigros-reference-template-assets';
 import {
   phigrosBestImagePreferencesStore, type PhigrosBestImageStylePreferences,
@@ -69,7 +74,9 @@ function ChoiceChip({ label, selected, onPress }: { label: string; selected: boo
 
 function formatSyncTime(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '未知' : date.toLocaleString('zh-CN', { hour12: false });
+  if (Number.isNaN(date.getTime())) return '未知';
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function resolvedRandom<T>(items: readonly T[], seed: string): T | undefined {
@@ -96,8 +103,9 @@ export function PhigrosBestImageScreen() {
   const [minAcc, setMinAcc] = useState(''); const [maxAcc, setMaxAcc] = useState('');
   const [rates, setRates] = useState<PhigrosBestImageRate[]>([]); const [fcOnly, setFcOnly] = useState(false);
   const [stylePrefs, setStylePrefs] = useState(DEFAULT_STYLES); const [prefsReady, setPrefsReady] = useState(false);
-  const [avatarItems, setAvatarItems] = useState<string[]>([]); const [picker, setPicker] = useState<StyleKind | null>(null);
+  const [avatarItems, setAvatarItems] = useState<string[]>(() => [...getPhigrosReferenceAvatarKeys()]); const [picker, setPicker] = useState<StyleKind | null>(null);
   const [illustrations, setIllustrations] = useState<Record<string, string | null> | null>(null);
+  const [accAverages, setAccAverages] = useState<Record<string, PhigrosAccAverage> | null>(null);
   const [avatarData, setAvatarData] = useState<string | null>(null); const [backgroundData, setBackgroundData] = useState<string | null>(null);
   const [templateAssets, setTemplateAssets] = useState<PhigrosReferenceTemplateAssets | null>(null);
   const [templateAssetError, setTemplateAssetError] = useState<string | null>(null);
@@ -115,7 +123,13 @@ export function PhigrosBestImageScreen() {
     void phigrosBestImagePreferencesStore.load(gameData.activeAccountId).then((value) => { setStylePrefs(value); setPrefsReady(true); });
   }, [gameData.activeAccountId]);
   useEffect(() => { if (prefsReady) void phigrosBestImagePreferencesStore.save(gameData.activeAccountId, stylePrefs); }, [gameData.activeAccountId, prefsReady, stylePrefs]);
-  useEffect(() => { if (provider) void provider.getGameVersion().then(loadPhigrosAvatarCatalog).then(setAvatarItems).catch(() => setAvatarItems([])); }, [provider]);
+  useEffect(() => {
+    const bundled = [...getPhigrosReferenceAvatarKeys()];
+    if (!provider) { setAvatarItems(bundled); return; }
+    void provider.getGameVersion().then(loadPhigrosAvatarCatalog).then((remote) => {
+      setAvatarItems([...new Set([...bundled, ...remote])]);
+    }).catch(() => setAvatarItems(bundled));
+  }, [provider]);
   useEffect(() => {
     let cancelled = false;
     setTemplateAssetError(null);
@@ -147,6 +161,25 @@ export function PhigrosBestImageScreen() {
   const pages = useMemo(() => paginatePhigrosBestImageSections(sections), [sections]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
   const selectedSongKey = selectedSongIds.join('|');
+  const averageRecords = useMemo(() => type === 'best30'
+    ? sections.filter((section) => !section.id.toLowerCase().includes('phi')).flatMap((section) => section.records)
+    : sections.flatMap((section) => section.records), [sections, type]);
+  const averageReferenceRks = useMemo(() => {
+    if (type !== 'best30') return payload?.playerScore.value ?? 0;
+    const phiRecords = sections.filter((section) => section.id.toLowerCase().includes('phi')).flatMap((section) => section.records).slice(0, 3);
+    const bestRecords = sections.filter((section) => !section.id.toLowerCase().includes('phi')).flatMap((section) => section.records).slice(0, 27);
+    return [...phiRecords, ...bestRecords].reduce((sum, record) => sum + record.rating, 0) / 30;
+  }, [payload?.playerScore.value, sections, type]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAccAverages(null);
+    if (!payload) return;
+    void loadPhigrosAccAverages(averageRecords, averageReferenceRks).then((averages) => {
+      if (!cancelled) setAccAverages(averages);
+    });
+    return () => { cancelled = true; };
+  }, [averageRecords, averageReferenceRks, payload]);
 
   const selectStyleKey = (kind: StyleKind, choice: PhigrosImageStyleChoice): string | null => {
     const available = kind === 'avatar' ? avatarItems : songs.map((song) => song.id);
@@ -166,7 +199,8 @@ export function PhigrosBestImageScreen() {
     void Promise.all([
       loadPhigrosIllustrations(selectedSongIds, (id) => provider.getIllustrationUrl(id), (done, total) => !cancelled && setAssetProgress({ done, total })),
       stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl)
+        await (findPhigrosReferenceAvatarKey(avatarKey) ? loadPhigrosReferenceAvatarUrl(avatarKey) : Promise.resolve(null))
+        ?? await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl)
         ?? await loadRemoteImageDataUri(payload?.avatarUrl)
       ))(),
       stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
@@ -180,13 +214,14 @@ export function PhigrosBestImageScreen() {
   }, [avatarKey, backgroundKey, payload?.avatarUrl, provider, selectedSongIds, selectedSongKey, stylePrefs.avatar.mode, stylePrefs.background.mode]);
 
   const titles = useMemo(() => Object.fromEntries(songs.map((song) => [song.id, song.title])), [songs]);
-  const htmlPages = useMemo(() => payload && illustrations && templateAssets ? pages.map((page) => buildPhigrosBestImageHtml({
+  const htmlPages = useMemo(() => payload && illustrations && accAverages && templateAssets ? pages.map((page) => buildPhigrosBestImageHtml({
     type, width, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
+    dataAmount: payload.dataAmount,
     challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
-    syncedAt: formatSyncTime(payload.source.updatedAt),
-    progress: payload.progress, titles, illustrations, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
+    syncedAt: formatSyncTime(payload.saveUpdatedAt),
+    progress: payload.progress, titles, illustrations, accAverages, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
     templateAssets,
-  })) : null, [avatarData, backgroundData, illustrations, pages, payload, templateAssets, titles, type, width]);
+  })) : null, [accAverages, avatarData, backgroundData, illustrations, pages, payload, templateAssets, titles, type, width]);
 
   useEffect(() => {
     setSources(null); setPageHeights({}); setPageIndex(0); setPreviewStates({});
