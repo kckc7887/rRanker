@@ -25,12 +25,12 @@ jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
 jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
   getPhigrosReferenceAvatarKeys: () => ['Introduction', 'avatar.test'],
   findPhigrosReferenceAvatarKey: (key: string) => key,
-  loadPhigrosReferenceAvatarUrl: jest.fn(async () => 'file:///reference/avatar.test.png'),
+  loadPhigrosReferenceAvatarUrl: jest.fn(async () => 'data:image/png;base64,avatar'),
   loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
     css: '.song{width:360px}.Rating img{width:100%}',
-    dataIconUrl: 'file:///reference/data.png', fallbackBackgroundUrl: 'file:///reference/phigros.png', fallbackAvatarUrl: 'file:///reference/Introduction.png',
-    challengeIconUrls: Array.from({ length: 6 }, (_, index) => `file:///reference/${index}.png`),
-    ratingIconUrls: { F: 'file:///reference/F.png', FC: 'file:///reference/FC.png', V: 'file:///reference/V.png', phi: 'file:///reference/phi.png' },
+    dataIconUrl: 'data:image/png;base64,data', fallbackBackgroundUrl: 'data:image/png;base64,background', fallbackAvatarUrl: 'data:image/png;base64,avatar',
+    challengeIconUrls: Array.from({ length: 6 }, (_, index) => `data:image/png;base64,challenge-${index}`),
+    ratingIconUrls: { F: 'data:image/png;base64,F', FC: 'data:image/png;base64,FC', V: 'data:image/png;base64,V', phi: 'data:image/png;base64,phi' },
     allowingReadAccessToUrl: 'file:///reference/',
   })),
 }));
@@ -93,6 +93,9 @@ describe('Phigros 生成图片页', () => {
     const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
     expect(preview.props.source.html).toContain('class="playerInfo"');
     expect(preview.props.source.html).toContain('class="song phi_song"');
+    expect(preview.props.source.html).toContain('data:image/png;base64,avatar');
+    expect(preview.props.source.html).toContain('data:image/png;base64,FC');
+    expect(preview.props.source.html).not.toContain('file:///reference/');
     expect(screen.getByLabelText('导出成绩图片')).toBeTruthy();
     expect(screen.getByTestId('phigros-best-image-webview-status')).toBeTruthy();
 

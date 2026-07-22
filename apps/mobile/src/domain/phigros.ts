@@ -567,7 +567,7 @@ export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{
   if (userFile) {
     try {
       const userBuf = await userFile.async('uint8array');
-      if (userBuf[0] === 1) user = parsePhigrosUser(decryptBytes(userBuf.subarray(1)));
+      if (userBuf.length > 1) user = parsePhigrosUser(decryptBytes(userBuf.subarray(1)));
     } catch {
       user = null;
     }
@@ -578,7 +578,7 @@ export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{
   if (progressFile) {
     try {
       const progressBuf = await progressFile.async('uint8array');
-      if (progressBuf[0] === 1) {
+      if (progressBuf.length > 1) {
         gameProgress = parsePhigrosGameProgress(decryptBytes(progressBuf.subarray(1)));
       }
     } catch {
