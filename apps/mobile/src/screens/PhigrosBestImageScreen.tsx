@@ -32,6 +32,9 @@ import {
   loadPhigrosIllustrations, loadRemoteImageDataUri,
 } from '@/features/phigros-best-image/load-phigros-image-assets';
 import {
+  loadPhigrosReferenceTemplateAssets, type PhigrosReferenceTemplateAssets,
+} from '@/features/phigros-best-image/load-phigros-reference-template-assets';
+import {
   phigrosBestImagePreferencesStore, type PhigrosBestImageStylePreferences,
   type PhigrosImageStyleChoice,
 } from '@/features/phigros-best-image/phigros-best-image-preferences';
@@ -96,6 +99,8 @@ export function PhigrosBestImageScreen() {
   const [avatarItems, setAvatarItems] = useState<string[]>([]); const [picker, setPicker] = useState<StyleKind | null>(null);
   const [illustrations, setIllustrations] = useState<Record<string, string | null> | null>(null);
   const [avatarData, setAvatarData] = useState<string | null>(null); const [backgroundData, setBackgroundData] = useState<string | null>(null);
+  const [templateAssets, setTemplateAssets] = useState<PhigrosReferenceTemplateAssets | null>(null);
+  const [templateAssetError, setTemplateAssetError] = useState<string | null>(null);
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
   const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
   const [pageHeights, setPageHeights] = useState<Record<string, number>>({}); const [pageIndex, setPageIndex] = useState(0);
@@ -111,6 +116,16 @@ export function PhigrosBestImageScreen() {
   }, [gameData.activeAccountId]);
   useEffect(() => { if (prefsReady) void phigrosBestImagePreferencesStore.save(gameData.activeAccountId, stylePrefs); }, [gameData.activeAccountId, prefsReady, stylePrefs]);
   useEffect(() => { if (provider) void provider.getGameVersion().then(loadPhigrosAvatarCatalog).then(setAvatarItems).catch(() => setAvatarItems([])); }, [provider]);
+  useEffect(() => {
+    let cancelled = false;
+    setTemplateAssetError(null);
+    void loadPhigrosReferenceTemplateAssets().then((assets) => {
+      if (!cancelled) setTemplateAssets(assets);
+    }).catch((error) => {
+      if (!cancelled) setTemplateAssetError(error instanceof Error ? error.message : '无法加载 Phigros 参考模板素材');
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const parsedFilters = useMemo<PhigrosBestImageFilters | null>(() => {
     const parsedQuantity = parsePhigrosImageQuantity(quantity);
@@ -165,12 +180,13 @@ export function PhigrosBestImageScreen() {
   }, [avatarKey, backgroundKey, payload?.avatarUrl, provider, selectedSongIds, selectedSongKey, stylePrefs.avatar.mode, stylePrefs.background.mode]);
 
   const titles = useMemo(() => Object.fromEntries(songs.map((song) => [song.id, song.title])), [songs]);
-  const htmlPages = useMemo(() => payload && illustrations ? pages.map((page) => buildPhigrosBestImageHtml({
+  const htmlPages = useMemo(() => payload && illustrations && templateAssets ? pages.map((page) => buildPhigrosBestImageHtml({
     type, width, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
     challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
     syncedAt: formatSyncTime(payload.source.updatedAt),
     progress: payload.progress, titles, illustrations, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
-  })) : null, [avatarData, backgroundData, illustrations, pages, payload, titles, type, width]);
+    templateAssets,
+  })) : null, [avatarData, backgroundData, illustrations, pages, payload, templateAssets, titles, type, width]);
 
   useEffect(() => {
     setSources(null); setPageHeights({}); setPageIndex(0); setPreviewStates({});
@@ -289,19 +305,19 @@ export function PhigrosBestImageScreen() {
       <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
         {sources ? <FlatList data={sources} horizontal initialNumToRender={2} keyExtractor={(_, index) => pages[index]!.id} maxToRenderPerBatch={3} pagingEnabled removeClippedSubviews={false} showsHorizontalScrollIndicator={false} windowSize={3} style={styles.previewPager} onMomentumScrollEnd={(event) => setPageIndex(Math.round(event.nativeEvent.contentOffset.x / previewWidth))} renderItem={({ item, index }) => {
           const pageId = pages[index]!.id;
-          return <View style={{ width: previewWidth, height: previewHeight }}><WebView testID={`phigros-best-image-html-preview-${index}`} accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} onError={() => updatePreviewState(pageId, 'error')} onLoadStart={() => updatePreviewState(pageId, 'loading')} onLoadEnd={() => setPreviewStates((current) => current[pageId] && current[pageId]!.phase !== 'loading' ? current : { ...current, [pageId]: { phase: 'loaded', version: current[pageId]?.version ?? null } })} onRenderProcessGone={(event) => updatePreviewState(pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated')} onMessage={(event) => {
+          return <View style={{ width: previewWidth, height: previewHeight }}><WebView testID={`phigros-best-image-html-preview-${index}`} accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={templateAssets?.allowingReadAccessToUrl} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} onError={() => updatePreviewState(pageId, 'error')} onLoadStart={() => updatePreviewState(pageId, 'loading')} onLoadEnd={() => setPreviewStates((current) => current[pageId] && current[pageId]!.phase !== 'loading' ? current : { ...current, [pageId]: { phase: 'loaded', version: current[pageId]?.version ?? null } })} onRenderProcessGone={(event) => updatePreviewState(pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated')} onMessage={(event) => {
             const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, width); if (runtime) updatePreviewState(pageId, 'rendering', runtime.version);
             const height = parseBestImageHeightMessage(event.nativeEvent.data, width); if (height != null) { setPageHeights((current) => ({ ...current, [pageId]: height })); updatePreviewState(pageId, 'rendering'); }
             const ready = parseBestImageReadyMessage(event.nativeEvent.data, width); if (ready != null) updatePreviewState(pageId, 'ready');
           }} /></View>;
-        }} /> : <View style={styles.loadingPreview}><View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View></View>}
+        }} /> : <View style={styles.loadingPreview}>{templateAssetError ? <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? '正在加载原始 B30 模板与字体' : assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View>}</View>}
       </View>
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === pageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
       <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || (!parsedFilters && type === 'custom') || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text></Pressable>
       <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="phigros-best-image-webview-status">{previewStatus}</Text>
     </ScrollView>
     <Modal visible={picker !== null} animationType="slide" onRequestClose={() => setPicker(null)}><View style={[styles.modal, { backgroundColor: theme.background }]}><View style={styles.modalHeader}><Text style={[styles.modalTitle, { color: theme.text }]}>选择{picker === 'avatar' ? '头像' : '背景'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭素材选择" onPress={() => setPicker(null)}><Text style={[styles.modalCloseText, { color: theme.accent }]}>完成</Text></Pressable></View><View style={styles.chipRow}><ChoiceChip label="玩家当前" selected={picker ? stylePrefs[picker].mode === 'current' : false} onPress={() => chooseStyle({ mode: 'current' })} /><ChoiceChip label="随机" selected={picker ? stylePrefs[picker].mode === 'random' : false} onPress={() => chooseStyle({ mode: 'random' })} /><ChoiceChip label="关闭" selected={picker ? stylePrefs[picker].mode === 'off' : false} onPress={() => chooseStyle({ mode: 'off' })} /></View><FlatList contentContainerStyle={styles.pickerList} data={pickerItems} keyExtractor={(item) => item.key} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`选择素材 ${item.label}`} onPress={() => chooseStyle({ mode: 'item', key: item.key })} style={({ pressed }) => [styles.pickerItem, { backgroundColor: theme.surface, borderColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}><Text numberOfLines={1} style={[styles.pickerItemText, { color: theme.text }]}>{item.label}</Text><Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text></Pressable>} /></View></Modal>
-    <Modal visible={exportIndex !== null} transparent={false} animationType="none" onRequestClose={() => exportReject.current?.(new Error('导出已取消'))}>{exportIndex !== null && sources?.[exportIndex] ? <View style={styles.exportRoot}><View ref={exportCaptureRef} collapsable={false} style={{ width: width / PixelRatio.get(), height: exportHeight / PixelRatio.get() }}><WebView key={`phi-export-${exportIndex}-${width}`} allowFileAccess={Platform.OS === 'android'} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={sources[exportIndex]} style={styles.webview} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} /></View><View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View></View> : null}</Modal>
+    <Modal visible={exportIndex !== null} transparent={false} animationType="none" onRequestClose={() => exportReject.current?.(new Error('导出已取消'))}>{exportIndex !== null && sources?.[exportIndex] ? <View style={styles.exportRoot}><View ref={exportCaptureRef} collapsable={false} style={{ width: width / PixelRatio.get(), height: exportHeight / PixelRatio.get() }}><WebView key={`phi-export-${exportIndex}-${width}`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={templateAssets?.allowingReadAccessToUrl} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={sources[exportIndex]} style={styles.webview} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} /></View><View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View></View> : null}</Modal>
   </>;
 }
 
@@ -344,6 +360,7 @@ const styles = StyleSheet.create({
   loadingPreview: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingContent: { alignItems: 'center', gap: 10 },
   loadingText: { fontSize: 12, fontWeight: '600' },
+  assetError: { paddingHorizontal: 20, fontSize: 14, fontWeight: '700', textAlign: 'center' },
   pageDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   pageDot: { width: 6, height: 6, borderRadius: 3 },
   exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14 },
