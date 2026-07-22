@@ -37,6 +37,7 @@ import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
 import { DemoAccountStore } from '@/storage/demo-account-store';
 import { patchMaimaiPlayerDisplayName } from '@/services/invalidate-account-data';
+import { switchBoundAccount } from '@/services/switch-bound-account';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -313,8 +314,7 @@ export function GameAccountsScreen() {
   };
 
   const onSelectAccount = (account: BoundAccount) => {
-    selectBoundAccount(account.id);
-    void sessions.setActiveAccountId(account.id);
+    switchBoundAccount(account.id);
   };
 
   const toggleGame = (gameId: GameId) => setCollapsedManagedGameIds((current) => {

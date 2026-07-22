@@ -5,6 +5,7 @@ import { getGameProfile } from '@/domain/game-profile';
 import type { Player, ScoreSnapshot } from '@/domain/models';
 import {
   accountDataQueryKeys,
+  clearAccountDataQueries,
   invalidateAccountDataQueries,
   patchMaimaiPlayerDisplayName,
 } from '@/services/invalidate-account-data';
@@ -65,6 +66,19 @@ describe('invalidateAccountDataQueries', () => {
     const spy = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
 
     await invalidateAccountDataQueries(client);
+
+    expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
+      accountDataQueryKeys().map((key) => [...key]),
+    );
+  });
+});
+
+describe('clearAccountDataQueries', () => {
+  it('removes all account-scoped data queries', () => {
+    const client = new QueryClient();
+    const spy = vi.spyOn(client, 'removeQueries');
+
+    clearAccountDataQueries(client);
 
     expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
       accountDataQueryKeys().map((key) => [...key]),
