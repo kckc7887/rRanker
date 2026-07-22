@@ -213,7 +213,9 @@ export function PhigrosBestImageScreen() {
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);
-  const previewWidth = Math.min(720, Math.max(280, window.width - 32)); const previewHeight = previewWidth * outputHeight / width;
+  const screenWidth = window.width > 0 ? window.width : 390;
+  const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
+  const previewHeight = previewWidth * 4 / 3;
   const currentPreviewState = previewStates[currentPage.id];
   const previewStatus = currentPreviewState
     ? `${PREVIEW_PHASE_LABEL[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
