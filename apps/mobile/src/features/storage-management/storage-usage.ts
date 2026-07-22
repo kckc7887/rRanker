@@ -15,7 +15,7 @@ export type StorageUsageSegment = {
   title: string;
   bytes: number;
   clearable: boolean;
-  /** 勾选清除用的 id；应用本体不可清除时为 null */
+  /** 勾选清除用的 id；个人数据不可清除时为 null */
   clearCategoryId: StorageClearCategoryId | null;
   note?: string;
   color: string;
@@ -56,11 +56,11 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
   const segments: StorageUsageSegment[] = [
     {
       id: 'app',
-      title: '应用本体',
+      title: '个人数据',
       bytes: appBytes,
       clearable: false,
       clearCategoryId: null,
-      note: '个人曲库与本地账号成绩等，不可清除',
+      note: '曲库收藏、本地账号成绩等；不含安装包',
       color: SEGMENT_COLORS.app,
     },
     ...GAME_STORAGE_ADAPTERS.map((adapter, index) => ({
@@ -72,7 +72,9 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
       color: SEGMENT_COLORS[adapter.gameId] ?? '#6366F1',
       ...(adapter.gameId === 'maimai'
         ? { note: '不含本地账号成绩' }
-        : {}),
+        : adapter.gameId === 'phigros'
+          ? { note: '字体与头像缓存；不含登录态与成绩' }
+          : {}),
     })),
     {
       id: 'shared',
