@@ -124,23 +124,33 @@ function matchesXingFilter(
   return isPhigrosXingAcc(record.achievements, total, xing);
 }
 
-/** 自定义分区主标题 + 分数/Acc 小字附注。 */
+/** 自定义分区主标题 + 分数/Acc 小字附注。XING 为顶层标签（如 XING-GOOD3），不套 Best。 */
 export function buildCustomPhigrosSectionTitle(
   filters: CustomPhigrosBestImageFilters,
   count: number,
 ): { title: string; titleNote?: string } {
   const hasLevel = filters.level !== 'all';
   const hasRank = filters.rank !== null;
-  const xingPrefix = filters.xing ? `${phigrosXingLabel(filters.xing)} ` : '';
   let title: string;
-  if (hasLevel && hasRank) {
-    title = `${xingPrefix}${phigrosLevelLabel(filters.level)} ${phigrosRankFilterLabel(filters.rank)}${count}`;
+  if (filters.xing) {
+    const xing = phigrosXingLabel(filters.xing);
+    if (hasLevel && hasRank) {
+      title = `${xing} ${phigrosLevelLabel(filters.level)} ${phigrosRankFilterLabel(filters.rank)}${count}`;
+    } else if (hasLevel) {
+      title = `${xing} ${phigrosLevelLabel(filters.level)}${count}`;
+    } else if (hasRank) {
+      title = `${xing} ${phigrosRankFilterLabel(filters.rank)}${count}`;
+    } else {
+      title = `${xing}${count}`;
+    }
+  } else if (hasLevel && hasRank) {
+    title = `${phigrosLevelLabel(filters.level)} ${phigrosRankFilterLabel(filters.rank)}${count}`;
   } else if (hasLevel) {
-    title = `${xingPrefix}${phigrosLevelLabel(filters.level)}${count}`;
+    title = `${phigrosLevelLabel(filters.level)}${count}`;
   } else if (hasRank) {
-    title = `${xingPrefix}${phigrosRankFilterLabel(filters.rank)}${count}`;
+    title = `${phigrosRankFilterLabel(filters.rank)}${count}`;
   } else {
-    title = `${xingPrefix}Best${count}`;
+    title = `Best${count}`;
   }
   const noteParts = [
     formatScoreNote(filters.scoreMin, filters.scoreMax),
