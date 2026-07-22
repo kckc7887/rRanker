@@ -42,6 +42,9 @@ describe('best image WebView sources', () => {
     expect(inlineBestImageWebViewSources(['<p>preview</p>'])).toEqual([
       { html: '<p>preview</p>', baseUrl: 'https://assets2.lxns.net/' },
     ]);
+    expect(inlineBestImageWebViewSources(['<p>preview</p>'], 'file:///cache/')).toEqual([
+      { html: '<p>preview</p>', baseUrl: 'file:///cache/' },
+    ]);
   });
 
   it('writes Android HTML pages to cache files and removes them after use', () => {

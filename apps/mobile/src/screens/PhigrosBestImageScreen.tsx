@@ -209,9 +209,9 @@ export function PhigrosBestImageScreen() {
   useEffect(() => {
     setSources(null); setPageHeights({}); setPageIndex(0); setPreviewStates({});
     if (!htmlPages) return;
-    if (Platform.OS !== 'android') { setSources(inlineBestImageWebViewSources(htmlPages)); return; }
+    if (Platform.OS !== 'android') { setSources(inlineBestImageWebViewSources(htmlPages, templateAssets?.allowingReadAccessToUrl)); return; }
     const prepared = prepareAndroidBestImageWebViewSources(htmlPages); setSources(prepared.sources); return prepared.dispose;
-  }, [htmlPages]);
+  }, [htmlPages, templateAssets?.allowingReadAccessToUrl]);
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);
