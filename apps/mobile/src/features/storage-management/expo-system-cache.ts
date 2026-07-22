@@ -2,3 +2,8 @@
 export function isExpoSystemCacheEntry(name: string): boolean {
   return name.startsWith('ExponentAsset-');
 }
+
+/** 应用自己写入 Paths.cache 的临时文件前缀（共享缓存只清这些）。 */
+export function isAppOwnedCacheEntry(name: string): boolean {
+  return name.startsWith('rranker-') || name.startsWith('rRanker-');
+}
