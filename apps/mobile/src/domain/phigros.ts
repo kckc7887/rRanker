@@ -179,6 +179,22 @@ export type PhigrosSaveData = {
   updatedAt: string;
 };
 
+export type PhigrosUserProfile = {
+  selfIntro: string;
+  avatar: string;
+  backgroundSongId: string;
+};
+
+export function parsePhigrosUser(buf: ArrayBuffer | SharedArrayBuffer | Uint8Array): PhigrosUserProfile {
+  const r = new ByteReader(buf);
+  if (r.remaining() > 0) r.getByte(); // 用户设置 flags
+  return {
+    selfIntro: r.remaining() > 0 ? r.getString() : '',
+    avatar: r.remaining() > 0 ? r.getString() : '',
+    backgroundSongId: r.remaining() > 0 ? normalizePhigrosSongId(r.getString()) : '',
+  };
+}
+
 function base64ToBytes(b64: string): Uint8Array {
   const hexStr = CryptoJS.enc.Base64.parse(b64).toString(CryptoJS.enc.Hex);
   const pairs = hexStr.match(/.{2}/g);
@@ -462,6 +478,7 @@ export function computeB30(
 
 export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>;
+  user: PhigrosUserProfile | null;
 }> {
   const zip = await JSZip.loadAsync(zipBuf);
 
@@ -474,7 +491,18 @@ export async function decodeSaveZip(zipBuf: ArrayBuffer): Promise<{
   const decryptedRecord = decryptBytes(encryptedRecord);
   const gameRecord = parseGameRecord(decryptedRecord);
 
-  return { gameRecord };
+  let user: PhigrosUserProfile | null = null;
+  const userFile = zip.file('user');
+  if (userFile) {
+    try {
+      const userBuf = await userFile.async('uint8array');
+      if (userBuf[0] === 1) user = parsePhigrosUser(decryptBytes(userBuf.subarray(1)));
+    } catch {
+      user = null;
+    }
+  }
+
+  return { gameRecord, user };
 }
 
 export function loadDifficultyTable(raw: string): PhigrosDifficultyTable {

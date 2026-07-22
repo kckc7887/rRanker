@@ -23,6 +23,7 @@ import {
   type PhigrosDifficultyTable,
   type PhigrosScoreEntry,
   type PhigrosSummary,
+  type PhigrosUserProfile,
 } from '@/domain/phigros';
 import {
   findPushRecommendations,
@@ -37,6 +38,7 @@ type LoadedSave = {
   gameVersion: number;
   songCount: number;
   chartCount: number;
+  user: PhigrosUserProfile | null;
 };
 
 export class PhigrosScoreProvider implements ScoreProvider {
@@ -163,7 +165,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
       throw new ProviderError('network', '无法加载定数表', true);
     }
 
-    return mergeDifficultyTables(...tables);
+    const [primary, ...fallbacks] = tables;
+    return mergeDifficultyTables(primary!, ...fallbacks);
   }
 
   private countGameRecord(
@@ -179,13 +182,13 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private async loadSaveInternal(): Promise<LoadedSave> {
     const { saveUrl, updatedAt } = await this.ensureSaveMeta();
     const zipBuf = await downloadSave(saveUrl, updatedAt);
-    const { gameRecord } = await decodeSaveZip(zipBuf);
+    const { gameRecord, user } = await decodeSaveZip(zipBuf);
 
     const gameVersion = this.summaryCache?.gameVersion ?? 0;
     const diffTable = await this.loadMergedDifficultyTable(gameVersion);
     const { songCount, chartCount } = this.countGameRecord(gameRecord);
 
-    return { gameRecord, diffTable, gameVersion, songCount, chartCount };
+    return { gameRecord, diffTable, gameVersion, songCount, chartCount, user };
   }
 
   private async loadSave(): Promise<LoadedSave> {
@@ -202,6 +205,10 @@ export class PhigrosScoreProvider implements ScoreProvider {
   async getRecords(): Promise<ScoreRecord[]> {
     const { gameRecord, diffTable } = await this.loadSave();
     return gameRecordToScoreRecords(gameRecord, diffTable);
+  }
+
+  async getUserProfile(): Promise<PhigrosUserProfile | null> {
+    return (await this.loadSave()).user;
   }
 
   getB30(): Promise<PhigrosB30> {

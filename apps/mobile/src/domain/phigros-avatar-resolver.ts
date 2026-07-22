@@ -45,6 +45,12 @@ async function loadAvatarAliasMap(gameVersion: string): Promise<AvatarAliasMap> 
   }
 }
 
+/** 可分发 OSS 头像素材清单，供成绩图样式选择使用。 */
+export async function loadPhigrosAvatarCatalog(gameVersion: string): Promise<string[]> {
+  const map = await loadAvatarAliasMap(gameVersion);
+  return [...new Set(map.fileByKey.values())].sort((left, right) => left.localeCompare(right));
+}
+
 export function normalizePhigrosAvatarKey(raw: string | null | undefined): string {
   const trimmed = raw?.trim() ?? '';
   if (!trimmed) return '';

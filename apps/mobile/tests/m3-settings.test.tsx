@@ -36,6 +36,7 @@ const mockAccount = createMaimaiBoundAccount({
 const mockLocalAccount = createLocalMaimaiAccount('本地玩家', 0);
 const mockTestAccount = createMaxedMaimaiTestAccount();
 const mockEmptyGameAccount = createTestBoundAccount();
+let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount];
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -95,12 +96,11 @@ jest.mock('@/state/query-client', () => ({ queryClient: {
   setQueriesData: jest.fn(),
   removeQueries: (...args: unknown[]) => mockRemoveQueries(...args),
 } }));
-jest.mock('@/state/session-store', () => ({
-  UNBOUND_ACCOUNT_ID: 'maimai:unbound',
-  useSession: (selector: (state: unknown) => unknown) => selector({
+jest.mock('@/state/session-store', () => {
+  const state = () => ({
     session: mockSession,
     sessionsByAccountId: { [mockAccount.id]: mockSession },
-    boundAccounts: [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount],
+    boundAccounts: mockBoundAccounts,
     activeAccountId: mockAccount.id,
     selectBoundAccount: mockSelectBoundAccount,
     upsertBoundAccount: mockUpsertBoundAccount,
@@ -109,8 +109,11 @@ jest.mock('@/state/session-store', () => ({
     restoreError: null,
     activeGameId: 'maimai',
     activeProviderId: 'diving-fish',
-  }),
-}));
+  });
+  const useSession = (selector: (value: unknown) => unknown) => selector(state());
+  useSession.getState = state;
+  return { UNBOUND_ACCOUNT_ID: 'maimai:unbound', useSession };
+});
 jest.mock('@/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: {
     expandedGameId: 'maimai';
@@ -123,7 +126,7 @@ jest.mock('@/state/game-picker-ui', () => ({
   }),
 }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
-  data: [], isLoading: false, clearUserData: async () => {
+  data: [], isLoading: false, clearGameUserData: async () => {
     mockClearOrder.push('personal');
     return mockClearUserData();
   },
@@ -131,7 +134,7 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
 
 describe('M3A game account management', () => {
-  beforeEach(() => { jest.clearAllMocks(); mockClearOrder.length = 0; });
+  beforeEach(() => { jest.clearAllMocks(); mockClearOrder.length = 0; mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount]; });
 
   const renderScreen = () => render(
     <NotificationProvider>
@@ -143,7 +146,7 @@ describe('M3A game account management', () => {
     const screen = await renderScreen();
     expect(screen.getByLabelText('收起游戏 舞萌 DX')).toBeTruthy();
     expect(screen.getByLabelText('收起游戏 测试游戏')).toBeTruthy();
-    expect(screen.getByText('舞萌 DX · 水鱼查分器')).toBeTruthy();
+    expect(screen.getByText('水鱼查分器')).toBeTruthy();
     expect(screen.getByText('测试水鱼')).toBeTruthy();
     expect(screen.getByLabelText('添加游戏账号')).toBeTruthy();
     expect(StyleSheet.flatten(screen.getByTestId(`account-card-${mockAccount.id}`).props.style)).toEqual(expect.objectContaining({
@@ -167,7 +170,7 @@ describe('M3A game account management', () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('收起游戏 舞萌 DX'));
     expect(screen.queryByText('测试水鱼')).toBeNull();
-    expect(screen.getByText('测试游戏 · 空数据')).toBeTruthy();
+    expect(screen.getByText('空数据')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('展开游戏 舞萌 DX'));
     expect(screen.getByText('测试水鱼')).toBeTruthy();
   });
@@ -176,8 +179,11 @@ describe('M3A game account management', () => {
     const screen = await renderScreen();
     expect(screen.getByText('本地玩家')).toBeTruthy();
     expect(screen.getByText('示例账号')).toBeTruthy();
-    expect(screen.getByText('数据位置：仅本机 SQLite')).toBeTruthy();
-    expect(screen.getByText('数据来源：曲库动态生成')).toBeTruthy();
+    expect(screen.queryByText('数据位置：仅本机 SQLite')).toBeNull();
+    expect(screen.queryByText('数据来源：曲库动态生成')).toBeNull();
+    expect(screen.queryByText('当前使用中')).toBeNull();
+    expect(screen.queryByText('可随时删除')).toBeNull();
+    expect(screen.queryByText('已绑定')).toBeNull();
   });
 
   it('allows deleting the default local player and demo account', async () => {
@@ -225,34 +231,37 @@ describe('M3A game account management', () => {
     await waitFor(() => expect(screen.getByLabelText('本地玩家名称')).toBeTruthy());
   });
 
-  it('asks on every unbind and preserves or removes personal data as selected', async () => {
+  it('does not ask to clear personal data when another account of the game remains', async () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByText('解除绑定'));
-    expect(screen.getByText('仅凭据与缓存')).toBeTruthy();
-    await fireEvent.press(screen.getByText('仅凭据与缓存'));
+    expect(screen.queryByText('解绑并清除个人数据')).toBeNull();
+    await fireEvent.press(screen.getByText('确认解绑'));
     await waitFor(() => expect(mockClearSnapshots).toHaveBeenCalledTimes(1));
     expect(mockClearUserData).not.toHaveBeenCalled();
     expect(mockRemoveAccount).toHaveBeenCalledWith(mockAccount.id);
     expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id);
-
-    await waitFor(() => expect(screen.queryByText('仅凭据与缓存')).toBeNull());
-    await fireEvent.press(screen.getByText('解除绑定'));
-    await fireEvent.press(screen.getByText('同时删除个人数据'));
-    await waitFor(() => expect(mockClearUserData).toHaveBeenCalledTimes(1));
-    expect(mockRemoveAccount).toHaveBeenCalledTimes(2);
-    expect(mockClearSnapshots).toHaveBeenCalledTimes(2);
-    expect(mockRemoveBoundAccount).toHaveBeenCalledTimes(2);
-    expect(mockClearOrder).toEqual(['credentials', 'cache', 'credentials', 'cache', 'personal']);
-    expect(mockRemoveQueries).toHaveBeenCalledTimes(10);
+    expect(mockClearOrder).toEqual(['credentials', 'cache']);
+    expect(mockRemoveQueries).toHaveBeenCalledTimes(5);
     expect(mockRemoveQueries).toHaveBeenCalledWith({ queryKey: ['detailed-catalog'] });
     expect(mockRemoveQueries).not.toHaveBeenCalledWith({ queryKey: ['user-library'] });
   });
 
-  it('continues clearing, logs out and reports the failed part when one store fails', async () => {
-    mockClearSnapshots.mockRejectedValueOnce(new Error('locked'));
+  it('offers game-scoped personal data cleanup for the final account', async () => {
+    mockBoundAccounts = [mockAccount, mockEmptyGameAccount];
     const screen = await renderScreen();
     await fireEvent.press(screen.getByText('解除绑定'));
-    await fireEvent.press(screen.getByText('同时删除个人数据'));
+    expect(screen.getByText('确认解绑并保留个人数据')).toBeTruthy();
+    await fireEvent.press(screen.getByText('解绑并清除个人数据'));
+    await waitFor(() => expect(mockClearUserData).toHaveBeenCalledTimes(1));
+    expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
+  });
+
+  it('continues clearing, logs out and reports the failed part when one store fails', async () => {
+    mockClearSnapshots.mockRejectedValueOnce(new Error('locked'));
+    mockBoundAccounts = [mockAccount, mockEmptyGameAccount];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByText('解除绑定'));
+    await fireEvent.press(screen.getByText('解绑并清除个人数据'));
 
     await waitFor(() => expect(screen.getByText('部分清除失败（缓存），其余项目已清除，请重试')).toBeTruthy());
     expect(mockClearUserData).toHaveBeenCalledTimes(1);

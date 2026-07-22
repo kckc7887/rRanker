@@ -84,12 +84,12 @@ function MaimaiBest50Screen() {
             keyExtractor={(record) => `${record.songId}-${record.type}-${record.levelIndex}-${record.version}`}
             ListHeaderComponent={<View style={styles.header}>
               <Pressable
-                accessibilityLabel="生成成绩图片"
+                accessibilityLabel="生成B50图片"
                 accessibilityRole="button"
                 onPress={() => router.push('/best-image' as Href)}
                 style={[styles.generateButton, { backgroundColor: theme.accent }]}
               >
-                <Text style={styles.generateButtonText}>生成成绩图片</Text>
+                <Text style={styles.generateButtonText}>生成B50图片</Text>
               </Pressable>
               <SourceStatus items={maimai ? [
                 { key: 'scores', label: maimai.source.label, updatedAt: maimai.source.updatedAt, state: maimai.source.isStale ? 'cache' : 'live' },
@@ -208,12 +208,20 @@ const PhigrosBestList = memo(function PhigrosBestList({
 
   const header = useMemo(() => (
     <View style={styles.header}>
+      <Pressable
+        accessibilityLabel="生成B30图片"
+        accessibilityRole="button"
+        onPress={() => router.push('/best-image' as Href)}
+        style={[styles.generateButton, { backgroundColor: theme.accent }]}
+      >
+        <Text style={styles.generateButtonText}>生成B30图片</Text>
+      </Pressable>
       <SourceStatus items={[
         { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
         { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
       ]} />
     </View>
-  ), [catalogSource, source]);
+  ), [catalogSource, source, theme.accent]);
 
   const renderSectionHeader = useCallback(({ section }: { section: BestSection }) => (
     <View style={styles.sectionHeader}>

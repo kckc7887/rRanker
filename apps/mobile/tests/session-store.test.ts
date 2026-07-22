@@ -239,6 +239,21 @@ describe('useSession store', () => {
     expect(useSession.getState().scoreProvider).toBeInstanceOf(DivingFishProvider);
   });
 
+  it('restores Phigros RKS precision and challenge metadata from v2 vault', () => {
+    const session = { mode: 'phi-session', sessionToken: 'phi-token', playerId: 'phi-player', persistable: true } as const;
+    useSession.getState().finishRestore({
+      version: 2,
+      activeAccountId: 'phigros:phi-taptap:phi-player',
+      accounts: [{
+        id: 'phigros:phi-taptap:phi-player', gameId: 'phigros', providerId: 'phi-taptap',
+        displayName: 'phi-player', scoreDisplay: '15.4321', challengeModeRank: 523, session,
+      }],
+    });
+    expect(useSession.getState().boundAccounts[0]).toMatchObject({
+      scoreDisplay: '15.4321', challengeModeRank: 523,
+    });
+  });
+
   it('restores a multi-account vault', async () => {
     await restoreSession(async () => ({
       version: 2 as const,

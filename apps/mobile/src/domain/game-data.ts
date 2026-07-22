@@ -46,6 +46,13 @@ export type GamePayload =
       source: DataSource;
       catalogSource: DataSource;
       avatarUrl?: string | null;
+      avatarKey?: string | null;
+      backgroundSongId?: string | null;
+      progress: {
+        cleared: [number, number, number, number];
+        fullCombo: [number, number, number, number];
+        phi: [number, number, number, number];
+      };
     }
   | {
       kind: 'empty';
