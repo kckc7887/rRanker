@@ -114,6 +114,13 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByLabelText('导出成绩图片')).toBeTruthy();
     expect(screen.getByTestId('phigros-best-image-webview-status')).toBeTruthy();
 
+    fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({
+      type: 'best-image-height', width: 1080, height: 1215,
+    }) } });
+    await waitFor(() => expect(screen.getByText(/1080 × 1215 px/u)).toBeTruthy());
+    const previewFrameStyle = screen.getByLabelText('HTML图片预览窗').props.style[1];
+    expect(previewFrameStyle.height).toBeCloseTo(previewFrameStyle.width * 1215 / 1080);
+
     fireEvent.press(screen.getByLabelText('自定义'));
     expect(screen.queryByText('自定义 BestN')).toBeNull();
     expect(screen.queryByLabelText('自定义数量')).toBeNull();

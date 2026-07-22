@@ -116,6 +116,8 @@ describe('Phigros 成绩图', () => {
       expect(html).toContain('file:///reference/V.png');
       expect(html).toContain('.song{width:360px}');
       expect(html).toContain(`zoom:${width / 1200}`);
+      expect(html).not.toContain('body{min-height:');
+      expect(html).toContain("last=Math.max(1,Math.ceil(canvas.getBoundingClientRect().height))");
       expect(html).toContain('<p>rRanker</p>');
       expect(html).not.toContain('<p>Phi-Plugin</p>');
       expect(html).not.toContain('<div class="ver">');
