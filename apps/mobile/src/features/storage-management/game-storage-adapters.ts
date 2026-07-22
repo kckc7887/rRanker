@@ -111,16 +111,13 @@ async function clearGameSqlite(
         ? isClearableMaimaiResource(key)
         : resourceBelongsToGame(key, gameId)
     ));
-  // 成绩行会顺带删 score:/avatar: 资源；其余目录类资源单独删
+  // Phigros 等不落盘成绩时，头像等资源只有 resource 行，必须按键直接删，不能依赖成绩行顺带清理。
   await snapshots.clearAccountScores(accountIds);
-  const leftover = resourceKeys.filter(
-    (key) => !key.startsWith('score:') && !key.startsWith('account-avatar:'),
-  );
-  await snapshots.clearResources(leftover);
+  await snapshots.clearResources(resourceKeys);
   if (includeCatalog) await snapshots.clearCatalog();
 }
 
-/** 本地舞萌账号成绩快照计入应用本体（不可清除）。 */
+/** 本地舞萌账号成绩快照计入个人数据（不可清除）。 */
 export async function measureDurableLocalMaimaiBytes(
   snapshots: SqliteSnapshotRepository,
 ): Promise<number> {
