@@ -4,6 +4,7 @@ import {
   type StorageClearCategoryId,
 } from '@/storage/storage-clear-prefs-store';
 import { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
+import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 
 describe('storage-clear-prefs', () => {
   const allowed: StorageClearCategoryId[] = ['maimai', 'phigros', 'shared'];
@@ -36,5 +37,14 @@ describe('formatStorageBytes', () => {
     expect(formatStorageBytes(800)).toBe('800 B');
     expect(formatStorageBytes(2048)).toBe('2.0 KB');
     expect(formatStorageBytes(2.5 * 1024 * 1024)).toBe('2.5 MB');
+  });
+});
+
+describe('durable maimai local accounts', () => {
+  it('treats local account ids as durable user data', () => {
+    expect(isDurableMaimaiAccountId('maimai:local')).toBe(true);
+    expect(isDurableMaimaiAccountId('maimai:local:abc')).toBe(true);
+    expect(isDurableMaimaiAccountId('maimai:diving-fish:u1')).toBe(false);
+    expect(isDurableMaimaiAccountId('maimai:test')).toBe(false);
   });
 });

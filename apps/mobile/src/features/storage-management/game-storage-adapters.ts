@@ -1,6 +1,7 @@
 import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
+import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import {
   clearDirectoryContents,
@@ -8,6 +9,8 @@ import {
   APP_CACHE_ROOT,
   PHIGROS_FONT_ROOT,
 } from '@/features/storage-management/fs-storage';
+
+export { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 
 export const MAIMAI_CATALOG_RESOURCE_KEYS = [
   'detailed-catalog',
@@ -29,17 +32,31 @@ function accountIdBelongsToGame(accountId: string, gameId: GameId): boolean {
   return accountId === gameId || accountId.startsWith(`${gameId}:`);
 }
 
+function accountIdFromResourceKey(key: string): string | null {
+  if (key.startsWith('score:')) return key.slice('score:'.length);
+  if (key.startsWith('account-avatar:')) return key.slice('account-avatar:'.length);
+  return null;
+}
+
 function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   if (gameId === 'maimai' && (MAIMAI_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
     return true;
   }
-  if (key.startsWith('score:')) {
-    return accountIdBelongsToGame(key.slice('score:'.length), gameId);
-  }
-  if (key.startsWith('account-avatar:')) {
-    return accountIdBelongsToGame(key.slice('account-avatar:'.length), gameId);
-  }
+  const accountId = accountIdFromResourceKey(key);
+  if (accountId) return accountIdBelongsToGame(accountId, gameId);
   return false;
+}
+
+/** 舞萌可清缓存：排除本地账号成绩/头像资源。 */
+function isClearableMaimaiAccountData(accountId: string): boolean {
+  return accountIdBelongsToGame(accountId, 'maimai') && !isDurableMaimaiAccountId(accountId);
+}
+
+function isClearableMaimaiResource(key: string): boolean {
+  if ((MAIMAI_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) return true;
+  const accountId = accountIdFromResourceKey(key);
+  if (!accountId) return false;
+  return isClearableMaimaiAccountData(accountId);
 }
 
 async function measureGameSqliteBytes(
@@ -55,9 +72,17 @@ async function measureGameSqliteBytes(
   ]);
   let total = 0;
   for (const row of scores) {
+    if (gameId === 'maimai') {
+      if (isClearableMaimaiAccountData(row.accountId)) total += row.bytes;
+      continue;
+    }
     if (accountIdBelongsToGame(row.accountId, gameId)) total += row.bytes;
   }
   for (const row of resources) {
+    if (gameId === 'maimai') {
+      if (isClearableMaimaiResource(row.key)) total += row.bytes;
+      continue;
+    }
     if (resourceBelongsToGame(row.key, gameId)) total += row.bytes;
   }
   return total + catalog + legacy;
@@ -74,10 +99,18 @@ async function clearGameSqlite(
   ]);
   const accountIds = scores
     .map((row) => row.accountId)
-    .filter((id) => accountIdBelongsToGame(id, gameId));
+    .filter((id) => (
+      gameId === 'maimai'
+        ? isClearableMaimaiAccountData(id)
+        : accountIdBelongsToGame(id, gameId)
+    ));
   const resourceKeys = resources
     .map((row) => row.key)
-    .filter((key) => resourceBelongsToGame(key, gameId));
+    .filter((key) => (
+      gameId === 'maimai'
+        ? isClearableMaimaiResource(key)
+        : resourceBelongsToGame(key, gameId)
+    ));
   // 成绩行会顺带删 score:/avatar: 资源；其余目录类资源单独删
   await snapshots.clearAccountScores(accountIds);
   const leftover = resourceKeys.filter(
@@ -85,6 +118,25 @@ async function clearGameSqlite(
   );
   await snapshots.clearResources(leftover);
   if (includeCatalog) await snapshots.clearCatalog();
+}
+
+/** 本地舞萌账号成绩快照计入应用本体（不可清除）。 */
+export async function measureDurableLocalMaimaiBytes(
+  snapshots: SqliteSnapshotRepository,
+): Promise<number> {
+  const [scores, resources] = await Promise.all([
+    snapshots.listAccountScoreSizes(),
+    snapshots.listResourceSizes(),
+  ]);
+  let total = 0;
+  for (const row of scores) {
+    if (isDurableMaimaiAccountId(row.accountId)) total += row.bytes;
+  }
+  for (const row of resources) {
+    const accountId = accountIdFromResourceKey(row.key);
+    if (accountId && isDurableMaimaiAccountId(accountId)) total += row.bytes;
+  }
+  return total;
 }
 
 const maimaiAdapter: GameStorageAdapter = {
