@@ -65,29 +65,50 @@ const RATING_SOURCES: Readonly<Record<string, number>> = {
 const DATA_ICON_SOURCE = require('../../../assets/phigros-b30-reference/otherimg/data.png') as number;
 const BACKGROUND_SOURCE = require('../../../assets/phigros-b30-reference/otherimg/phigros.png') as number;
 const assetUriCache = new Map<number, Promise<string>>();
+const assetDataUriCache = new Map<string, Promise<string>>();
 let templatePromise: Promise<PhigrosReferenceTemplateAssets> | null = null;
 
 export async function loadPhigrosReferenceAssetUri(moduleId: number): Promise<string> {
   const cached = assetUriCache.get(moduleId);
   if (cached) return cached;
   const pending = (async () => {
-    const [asset] = await Asset.loadAsync(moduleId);
-    if (asset?.localUri) return asset.localUri;
-    if (asset?.uri?.startsWith('http')) return asset.uri;
+    let initialError: unknown;
+    try {
+      const [asset] = await Asset.loadAsync(moduleId);
+      const uri = asset?.localUri ?? asset?.uri;
+      if (uri?.startsWith('file://')) return uri;
+    } catch (error) {
+      initialError = error;
+    }
     const resourceUri = Image.resolveAssetSource(moduleId)?.uri;
     if (resourceUri) {
       const [cachedAsset] = await Asset.loadAsync(resourceUri);
       const uri = cachedAsset?.localUri ?? cachedAsset?.uri;
-      if (uri) return uri;
+      if (uri?.startsWith('file://')) return uri;
     }
-    if (asset?.uri) return asset.uri;
-    throw new Error('Phigros 参考模板素材没有可读取的 URI');
+    if (initialError instanceof Error) throw initialError;
+    throw new Error('Phigros 参考模板素材没有可读取的本地文件');
   })();
   assetUriCache.set(moduleId, pending);
   try {
     return await pending;
   } catch (error) {
     assetUriCache.delete(moduleId);
+    throw error;
+  }
+}
+
+async function loadPhigrosReferenceAssetDataUri(moduleId: number, mimeType: string): Promise<string> {
+  const cacheKey = `${moduleId}:${mimeType}`;
+  const cached = assetDataUriCache.get(cacheKey);
+  if (cached) return cached;
+  const pending = new File(await loadPhigrosReferenceAssetUri(moduleId)).base64()
+    .then((base64) => `data:${mimeType};base64,${base64}`);
+  assetDataUriCache.set(cacheKey, pending);
+  try {
+    return await pending;
+  } catch (error) {
+    assetDataUriCache.delete(cacheKey);
     throw error;
   }
 }
@@ -122,7 +143,7 @@ export function resolvePhigrosReferenceAvatarKey(rawKey: string | null | undefin
 
 export function loadPhigrosReferenceAvatarUrl(rawKey: string | null | undefined): Promise<string> {
   const key = resolvePhigrosReferenceAvatarKey(rawKey);
-  return loadPhigrosReferenceAssetUri(PHIGROS_REFERENCE_AVATAR_SOURCES[key]!);
+  return loadPhigrosReferenceAssetDataUri(PHIGROS_REFERENCE_AVATAR_SOURCES[key]!, 'image/png');
 }
 
 function withoutImport(css: string, importPath: string): string {
@@ -136,11 +157,11 @@ export async function loadPhigrosReferenceTemplateAssets(): Promise<PhigrosRefer
       loadAssetText(CSS_SOURCES.b19),
       loadAssetText(CSS_SOURCES.common),
       loadAssetText(CSS_SOURCES.snow),
-      Promise.all(Object.entries(FONT_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetUri(source)] as const)),
-      Promise.all(CHALLENGE_SOURCES.map(loadPhigrosReferenceAssetUri)),
-      Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetUri(source)] as const)),
-      loadPhigrosReferenceAssetUri(DATA_ICON_SOURCE),
-      loadPhigrosReferenceAssetUri(BACKGROUND_SOURCE),
+      Promise.all(Object.entries(FONT_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetDataUri(source, 'font/ttf')] as const)),
+      Promise.all(CHALLENGE_SOURCES.map((source) => loadPhigrosReferenceAssetDataUri(source, 'image/png'))),
+      Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetDataUri(source, 'image/png')] as const)),
+      loadPhigrosReferenceAssetDataUri(DATA_ICON_SOURCE, 'image/png'),
+      loadPhigrosReferenceAssetDataUri(BACKGROUND_SOURCE, 'image/png'),
       loadPhigrosReferenceAvatarUrl('Introduction'),
     ]);
 

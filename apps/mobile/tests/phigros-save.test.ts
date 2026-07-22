@@ -71,6 +71,12 @@ function buildGameProgressPayload(): Uint8Array {
   ]);
 }
 
+function buildUserPayload(): Uint8Array {
+  const values = ['hello', 'Cipher : /2&//<|0', 'Glaciaxion.SunsetRay.0']
+    .map((value) => new TextEncoder().encode(value));
+  return new Uint8Array([1, ...values.flatMap((value) => [value.length, ...value])]);
+}
+
 function encryptPkcs7(plain: Uint8Array): Uint8Array {
   const key = CryptoJS.enc.Base64.parse(AES_KEY_B64);
   const iv = CryptoJS.enc.Base64.parse(AES_IV_B64);
@@ -153,12 +159,14 @@ describe('phigros save parsing', () => {
     const encrypted = encryptPkcs7(plain);
     const zip = new JSZip();
     zip.file('gameRecord', new Uint8Array([1, ...encrypted]));
-    zip.file('gameProgress', new Uint8Array([1, ...encryptPkcs7(buildGameProgressPayload())]));
+    zip.file('gameProgress', new Uint8Array([7, ...encryptPkcs7(buildGameProgressPayload())]));
+    zip.file('user', new Uint8Array([9, ...encryptPkcs7(buildUserPayload())]));
     const zipBuf = await zip.generateAsync({ type: 'arraybuffer' });
 
-    const { gameRecord, gameProgress } = await decodeSaveZip(zipBuf);
+    const { gameRecord, gameProgress, user } = await decodeSaveZip(zipBuf);
     expect(Object.keys(gameRecord)).toEqual(['Glaciaxion.SunsetRay']);
     expect(gameProgress?.money).toEqual([289, 386, 0, 0, 0]);
+    expect(user).toMatchObject({ avatar: 'Cipher : /2&//<|0', backgroundSongId: 'Glaciaxion.SunsetRay' });
 
     const table = loadDifficultyTable('Glaciaxion.SunsetRay\t1.0\t6.5\t12.6\n');
     const b30 = computeB30(gameRecord, table);
