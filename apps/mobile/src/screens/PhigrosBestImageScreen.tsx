@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, FlatList, Image, Modal, PixelRatio, Platform, Pressable, ScrollView,
-  StyleSheet, Text, TextInput, useWindowDimensions, View,
+  StyleSheet, Text, useWindowDimensions, View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { captureRef } from 'react-native-view-shot';
 import { useNotification } from '@/components/AppNotification';
 import { formatPhigrosChallengeBadge } from '@/domain/phigros-challenge-theme';
 import { loadPhigrosAvatarCatalog } from '@/domain/phigros-avatar-resolver';
-import type { Song } from '@/domain/models';
 import {
   parseBestImageHeightMessage, parseBestImageReadyMessage, parseBestImageRuntimeMessage,
 } from '@/features/best-image/build-best-image-html';
@@ -26,16 +25,14 @@ import {
   loadPhigrosAccAverages, type PhigrosAccAverage,
 } from '@/features/phigros-best-image/load-phigros-acc-averages';
 import {
-  buildPhigrosCustomRecords, DEFAULT_PHIGROS_BEST_IMAGE_FILTERS,
-  paginatePhigrosBestImageSections, parseOptionalRangeNumber, parsePhigrosImageQuantity,
-  type PhigrosBestImageDifficulty, type PhigrosBestImageFilters,
-  type PhigrosBestImageRate, type PhigrosBestImageType,
+  appendPhigrosOverflowRecords, paginatePhigrosBestImageSections,
+  sortPhigrosBestImageRecords, type PhigrosBestImageOverflowCount, type PhigrosBestImageType,
 } from '@/features/phigros-best-image/phigros-best-image';
 import {
   loadPhigrosIllustrations, loadRemoteImageDataUri,
 } from '@/features/phigros-best-image/load-phigros-image-assets';
 import {
-  findPhigrosReferenceAvatarKey, getPhigrosReferenceAvatarKeys,
+  findPhigrosReferenceAvatarKey, getPhigrosReferenceAvatarKeys, getPhigrosReferenceAvatarSource,
   loadPhigrosReferenceAvatarUrl, loadPhigrosReferenceTemplateAssets,
   type PhigrosReferenceTemplateAssets,
 } from '@/features/phigros-best-image/load-phigros-reference-template-assets';
@@ -43,19 +40,19 @@ import {
   phigrosBestImagePreferencesStore, type PhigrosBestImageStylePreferences,
   type PhigrosImageStyleChoice,
 } from '@/features/phigros-best-image/phigros-best-image-preferences';
+import {
+  PhigrosBestImageStylePicker, type PhigrosBestImagePickerItem,
+  type PhigrosBestImagePickerKind,
+} from '@/features/phigros-best-image/phigros-best-image-style-picker';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useAppTheme } from '@/theme/app-theme';
 
 const WIDTHS = [1080, 1440, 2160] as const;
-const LEVELS = ['EZ', 'HD', 'IN', 'AT'] as const;
-const RATES: readonly PhigrosBestImageRate[] = ['phi', 'v', 's', 'a', 'b', 'c', 'f'];
+const OVERFLOW_COUNTS: readonly PhigrosBestImageOverflowCount[] = [0, 3, 6, 9];
 const DEFAULT_STYLES: PhigrosBestImageStylePreferences = {
-  version: 1, avatar: { mode: 'current' }, background: { mode: 'current' },
+  version: 1, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
 };
-
-type StyleKind = 'avatar' | 'background';
-type PickerItem = { key: string; label: string };
 
 type PreviewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'error' | 'crashed' | 'terminated';
 
@@ -97,13 +94,8 @@ export function PhigrosBestImageScreen() {
   const songs = useMemo(() => catalog.data?.snapshot.songs ?? [], [catalog.data?.snapshot.songs]);
   const [type, setType] = useState<PhigrosBestImageType>('best30');
   const [width, setWidth] = useState<(typeof WIDTHS)[number]>(1080);
-  const [quantity, setQuantity] = useState('30');
-  const [difficulties, setDifficulties] = useState<PhigrosBestImageDifficulty[]>([0, 1, 2, 3]);
-  const [minConstant, setMinConstant] = useState(''); const [maxConstant, setMaxConstant] = useState('');
-  const [minAcc, setMinAcc] = useState(''); const [maxAcc, setMaxAcc] = useState('');
-  const [rates, setRates] = useState<PhigrosBestImageRate[]>([]); const [fcOnly, setFcOnly] = useState(false);
   const [stylePrefs, setStylePrefs] = useState(DEFAULT_STYLES); const [prefsReady, setPrefsReady] = useState(false);
-  const [avatarItems, setAvatarItems] = useState<string[]>(() => [...getPhigrosReferenceAvatarKeys()]); const [picker, setPicker] = useState<StyleKind | null>(null);
+  const [avatarItems, setAvatarItems] = useState<string[]>(() => [...getPhigrosReferenceAvatarKeys()]); const [picker, setPicker] = useState<PhigrosBestImagePickerKind | null>(null);
   const [illustrations, setIllustrations] = useState<Record<string, string | null> | null>(null);
   const [accAverages, setAccAverages] = useState<Record<string, PhigrosAccAverage> | null>(null);
   const [avatarData, setAvatarData] = useState<string | null>(null); const [backgroundData, setBackgroundData] = useState<string | null>(null);
@@ -141,24 +133,15 @@ export function PhigrosBestImageScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  const parsedFilters = useMemo<PhigrosBestImageFilters | null>(() => {
-    const parsedQuantity = parsePhigrosImageQuantity(quantity);
-    const values = [
-      parseOptionalRangeNumber(minConstant, 0, 20), parseOptionalRangeNumber(maxConstant, 0, 20),
-      parseOptionalRangeNumber(minAcc, 0, 100), parseOptionalRangeNumber(maxAcc, 0, 100),
-    ];
-    if (parsedQuantity == null || values.includes(undefined) || difficulties.length === 0) return null;
-    const [minC, maxC, minA, maxA] = values as (number | null)[];
-    if ((minC != null && maxC != null && minC > maxC) || (minA != null && maxA != null && minA > maxA)) return null;
-    return { ...DEFAULT_PHIGROS_BEST_IMAGE_FILTERS, quantity: parsedQuantity, difficulties, minConstant: minC, maxConstant: maxC, minAcc: minA, maxAcc: maxA, rates, fcOnly };
-  }, [difficulties, fcOnly, maxAcc, maxConstant, minAcc, minConstant, quantity, rates]);
-
   const sections = useMemo(() => {
     if (!payload) return [];
-    if (type === 'best30') return payload.bestSections.map((section) => ({ ...section, records: [...section.records] }));
-    return [{ id: 'custom', title: '自定义', records: parsedFilters ? buildPhigrosCustomRecords(payload.records, parsedFilters) : [] }];
-  }, [parsedFilters, payload, type]);
-  const pages = useMemo(() => paginatePhigrosBestImageSections(sections), [sections]);
+    if (type === 'best30') return appendPhigrosOverflowRecords(payload.bestSections, payload.records, stylePrefs.overflowCount);
+    return [{ id: 'custom', title: '自定义', records: sortPhigrosBestImageRecords(payload.records) }];
+  }, [payload, stylePrefs.overflowCount, type]);
+  const pages = useMemo(() => paginatePhigrosBestImageSections(
+    sections,
+    type === 'best30' ? 30 + stylePrefs.overflowCount : 30,
+  ), [sections, stylePrefs.overflowCount, type]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
   const selectedSongKey = selectedSongIds.join('|');
   const averageRecords = useMemo(() => type === 'best30'
@@ -181,7 +164,7 @@ export function PhigrosBestImageScreen() {
     return () => { cancelled = true; };
   }, [averageRecords, averageReferenceRks, payload]);
 
-  const selectStyleKey = (kind: StyleKind, choice: PhigrosImageStyleChoice): string | null => {
+  const selectStyleKey = (kind: PhigrosBestImagePickerKind, choice: PhigrosImageStyleChoice): string | null => {
     const available = kind === 'avatar' ? avatarItems : songs.map((song) => song.id);
     if (choice.mode === 'off') return null;
     if (choice.mode === 'item') return choice.key ?? null;
@@ -237,17 +220,23 @@ export function PhigrosBestImageScreen() {
   const previewStatus = currentPreviewState
     ? `${PREVIEW_PHASE_LABEL[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
     : 'WebView 版本未知 · 等待预览素材';
-  const pickerItems: PickerItem[] = picker === 'avatar'
-    ? avatarItems.map((key) => ({ key, label: key }))
-    : songs.map((song: Song) => ({ key: song.id, label: song.title }));
+  const avatarPickerItems = useMemo<PhigrosBestImagePickerItem[]>(() => avatarItems.flatMap((key) => {
+    const bundledSource = getPhigrosReferenceAvatarSource(key);
+    const remoteUrl = provider?.getAvatarUrl(key);
+    const source = bundledSource ?? (remoteUrl ? { uri: remoteUrl } : null);
+    return source ? [{ key, label: key, meta: '头像', source }] : [];
+  }), [avatarItems, provider]);
+  const backgroundPickerItems = useMemo<PhigrosBestImagePickerItem[]>(() => provider ? songs.flatMap((song) => {
+    const uri = provider.getIllustrationUrl(song.id);
+    return uri ? [{ key: song.id, label: song.title, meta: song.id, source: { uri } }] : [];
+  }) : [], [provider, songs]);
+  const pickerItems = picker === 'avatar' ? avatarPickerItems : backgroundPickerItems;
 
   const chooseStyle = (choice: PhigrosImageStyleChoice) => {
     const kind = picker; if (!kind) return;
-    const available = kind === 'avatar' ? avatarItems : songs.map((song) => song.id);
-    const resolved = choice.mode === 'random' ? { mode: 'random' as const, key: resolvedRandom(available, `${gameData.activeAccountId}:${kind}:${Date.now()}`) } : choice;
-    setStylePrefs((current) => ({ ...current, [kind]: resolved })); setPicker(null);
+    setStylePrefs((current) => ({ ...current, [kind]: choice })); setPicker(null);
   };
-  const styleValue = (kind: StyleKind): string => {
+  const styleValue = (kind: PhigrosBestImagePickerKind): string => {
     const choice = stylePrefs[kind];
     if (choice.mode === 'current') return `玩家当前${kind === 'avatar' ? '头像' : '背景'}`;
     if (choice.mode === 'off') return '已关闭';
@@ -301,27 +290,12 @@ export function PhigrosBestImageScreen() {
         })}
       </View>
 
-      {type === 'custom' ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
-        <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
-        <View style={styles.fieldRow}>
-          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text><TextInput accessibilityLabel="自定义数量" autoCorrect={false} value={quantity} onChangeText={setQuantity} keyboardType="number-pad" placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }, parsePhigrosImageQuantity(quantity) === null && styles.textInputError]} /></View>
-          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>难度</Text><View style={styles.chipRow}>{LEVELS.map((level, index) => <ChoiceChip key={level} label={level} selected={difficulties.includes(index as PhigrosBestImageDifficulty)} onPress={() => setDifficulties((current) => current.includes(index as PhigrosBestImageDifficulty) ? current.filter((value) => value !== index) : [...current, index as PhigrosBestImageDifficulty])} />)}</View></View>
-        </View>
-        <View style={styles.fieldRow}>
-          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最小定数</Text><TextInput accessibilityLabel="最小定数" autoCorrect={false} value={minConstant} onChangeText={setMinConstant} keyboardType="decimal-pad" placeholder="0–20" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
-          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最大定数</Text><TextInput accessibilityLabel="最大定数" autoCorrect={false} value={maxConstant} onChangeText={setMaxConstant} keyboardType="decimal-pad" placeholder="0–20" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
-        </View>
-        <View style={styles.fieldRow}>
-          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最小 Acc</Text><TextInput accessibilityLabel="最小Acc" autoCorrect={false} value={minAcc} onChangeText={setMinAcc} keyboardType="decimal-pad" placeholder="0–100" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
-          <View style={styles.textFieldWrap}><Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最大 Acc</Text><TextInput accessibilityLabel="最大Acc" autoCorrect={false} value={maxAcc} onChangeText={setMaxAcc} keyboardType="decimal-pad" placeholder="0–100" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]} /></View>
-        </View>
-        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>评价 / FC</Text>
-        <View style={styles.chipRow}>{RATES.map((rate) => <ChoiceChip key={rate} label={rate === 'phi' ? 'φ' : rate.toUpperCase()} selected={rates.includes(rate)} onPress={() => setRates((current) => current.includes(rate) ? current.filter((value) => value !== rate) : [...current, rate])} />)}<ChoiceChip label="FC" selected={fcOnly} onPress={() => setFcOnly((value) => !value)} /></View>
-        {!parsedFilters ? <Text style={[styles.errorText, { color: theme.danger }]}>请检查数量、筛选范围，并至少选择一个难度</Text> : null}
-      </View> : null}
-
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
       <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
+        <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
+          <View style={styles.overflowCopy}><Text style={[styles.styleName, { color: theme.text }]}>OVER FLOW</Text><Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text></View>
+          <View style={styles.overflowChoices}>{OVERFLOW_COUNTS.map((count) => <ChoiceChip key={count} label={`${count} 个`} selected={stylePrefs.overflowCount === count} onPress={() => setStylePrefs((current) => ({ ...current, overflowCount: count }))} />)}</View>
+        </View>
         {(['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
           <View style={styles.stylePreview}>{kind === 'avatar' ? (avatarData ? <Image source={{ uri: avatarData }} style={styles.avatarPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>) : (backgroundData ? <Image source={{ uri: backgroundData }} style={styles.backgroundPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>)}</View>
           <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{kind === 'avatar' ? '头像' : '背景'}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{styleValue(kind)}</Text></View>
@@ -334,7 +308,7 @@ export function PhigrosBestImageScreen() {
         const selected = width === item;
         return <Pressable key={item} accessibilityLabel={`宽度 ${item} 像素`} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => setWidth(item)} style={[styles.widthOption, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}><Text style={[styles.widthOptionText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item}px</Text></Pressable>;
       })}</View>
-      <Text style={[styles.dimensionMeta, { color: theme.textMuted }]}>{width} × {outputHeight} px · 每页最多 30 张 · 第 {pageIndex + 1}/{pages.length} 页</Text>
+      <Text style={[styles.dimensionMeta, { color: theme.textMuted }]}>{width} × {outputHeight} px · 每页最多 {type === 'best30' ? 30 + stylePrefs.overflowCount : 30} 张 · 第 {pageIndex + 1}/{pages.length} 页</Text>
 
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>预览</Text>
       <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -348,10 +322,10 @@ export function PhigrosBestImageScreen() {
         }} /> : <View style={styles.loadingPreview}>{templateAssetError ? <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? '正在加载原始 B30 模板与字体' : assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View>}</View>}
       </View>
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === pageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || (!parsedFilters && type === 'custom') || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text></Pressable>
       <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="phigros-best-image-webview-status">{previewStatus}</Text>
     </ScrollView>
-    <Modal visible={picker !== null} animationType="slide" onRequestClose={() => setPicker(null)}><View style={[styles.modal, { backgroundColor: theme.background }]}><View style={styles.modalHeader}><Text style={[styles.modalTitle, { color: theme.text }]}>选择{picker === 'avatar' ? '头像' : '背景'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭素材选择" onPress={() => setPicker(null)}><Text style={[styles.modalCloseText, { color: theme.accent }]}>完成</Text></Pressable></View><View style={styles.chipRow}><ChoiceChip label="玩家当前" selected={picker ? stylePrefs[picker].mode === 'current' : false} onPress={() => chooseStyle({ mode: 'current' })} /><ChoiceChip label="随机" selected={picker ? stylePrefs[picker].mode === 'random' : false} onPress={() => chooseStyle({ mode: 'random' })} /><ChoiceChip label="关闭" selected={picker ? stylePrefs[picker].mode === 'off' : false} onPress={() => chooseStyle({ mode: 'off' })} /></View><FlatList contentContainerStyle={styles.pickerList} data={pickerItems} keyExtractor={(item) => item.key} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`选择素材 ${item.label}`} onPress={() => chooseStyle({ mode: 'item', key: item.key })} style={({ pressed }) => [styles.pickerItem, { backgroundColor: theme.surface, borderColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}><Text numberOfLines={1} style={[styles.pickerItemText, { color: theme.text }]}>{item.label}</Text><Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text></Pressable>} /></View></Modal>
+    <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />
     <Modal visible={exportIndex !== null} transparent={false} animationType="none" onRequestClose={() => exportReject.current?.(new Error('导出已取消'))}>{exportIndex !== null && sources?.[exportIndex] ? <View style={styles.exportRoot}><View ref={exportCaptureRef} collapsable={false} style={{ width: width / PixelRatio.get(), height: exportHeight / PixelRatio.get() }}><WebView key={`phi-export-${exportIndex}-${width}`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={templateAssets?.allowingReadAccessToUrl} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={sources[exportIndex]} style={styles.webview} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} /></View><View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View></View> : null}</Modal>
   </>;
 }
@@ -364,18 +338,13 @@ const styles = StyleSheet.create({
   segmentedControl: { flexDirection: 'row', padding: 4, borderRadius: 14 },
   segment: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   segmentText: { fontSize: 14, fontWeight: '700' },
-  customPanel: { marginTop: 16, padding: 14, gap: 10, borderRadius: 16 },
-  panelTitle: { fontSize: 15, fontWeight: '800' },
-  fieldRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  textFieldWrap: { flex: 1, minWidth: 0 },
-  fieldLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
-  textInput: { minHeight: 40, paddingHorizontal: 11, borderWidth: 1, borderRadius: 10, fontSize: 14 },
-  textInputError: { borderColor: '#D92D20' },
-  errorText: { marginTop: 4, fontSize: 10, lineHeight: 14 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: { minWidth: 46, height: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderWidth: 1, borderRadius: 999 },
   chipText: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
   styleList: { overflow: 'hidden', borderRadius: 16 },
+  overflowStyleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
+  overflowCopy: { flex: 1, minWidth: 0 },
+  overflowChoices: { flexDirection: 'row', gap: 6 },
   styleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
   stylePreview: { width: 132, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   avatarPreview: { width: 46, height: 46, borderRadius: 10 },
@@ -403,13 +372,6 @@ const styles = StyleSheet.create({
   exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   webViewStatusText: { marginTop: 7, fontSize: 11, lineHeight: 16, textAlign: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  modal: { flex: 1, padding: 16, paddingTop: 54 },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  modalTitle: { fontSize: 20, fontWeight: '800' },
-  modalCloseText: { fontSize: 15, fontWeight: '800' },
-  pickerList: { gap: 8, paddingTop: 18, paddingBottom: 32 },
-  pickerItem: { minHeight: 54, paddingHorizontal: 14, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  pickerItemText: { flex: 1, fontSize: 14, fontWeight: '700' },
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#111111' },
   exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12 },
   exportOverlayText: { fontSize: 14, fontWeight: '700' },

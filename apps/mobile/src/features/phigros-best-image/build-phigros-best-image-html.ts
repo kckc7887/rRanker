@@ -59,13 +59,13 @@ function suggestion(
   referenceRks: number,
   playerRks: number,
   allowPerfectFallback: boolean,
-): { label: string; type: number } {
-  if (difficulty <= 0 || referenceRks <= 0) return { label: '无法推分', type: 5 };
+): { label: string; type: number | null } {
+  if (difficulty <= 0 || referenceRks <= 0) return { label: '无法推分', type: null };
   let minimumIncrease = Math.floor(playerRks * 100) / 100 + 0.005 - playerRks;
   if (minimumIncrease < 0) minimumIncrease += 0.01;
   const acc = 45 * Math.sqrt((referenceRks + minimumIncrease * 30) / difficulty) + 55;
   if (!Number.isFinite(acc) || acc >= 100) {
-    return allowPerfectFallback ? { label: '100.00%', type: 5 } : { label: '无法推分', type: 5 };
+    return allowPerfectFallback ? { label: '100.00%', type: 5 } : { label: '无法推分', type: null };
   }
   const type = acc < 98.5 ? 0 : acc < 99 ? 1 : acc < 99.5 ? 2 : acc < 99.7 ? 3 : acc < 99.85 ? 4 : 5;
   return { label: `${acc.toFixed(2)}%`, type };
@@ -94,7 +94,7 @@ function scoreCard(
   const illustration = input.illustrations[record.songId];
   const rating = ratingName(score, record.fc);
   const ratingUrl = input.templateAssets.ratingIconUrls[rating] ?? input.templateAssets.ratingIconUrls.F;
-  const push = isPhi || record.achievements >= 100 ? { label: '无法推分', type: 5 } : suggestion(
+  const push = isPhi || record.achievements >= 100 ? { label: '无法推分', type: null } : suggestion(
     record.difficultyConstant,
     referenceRks,
     Number(input.rks),
@@ -109,7 +109,7 @@ function scoreCard(
     </div>
     <div class="info-${escapePhigrosBestImageHtml(level)}">
       <div class="songname"><p name="pvis">${escapePhigrosBestImageHtml(title)}</p></div>
-      <div class="songinfo"><div class="Rating"><img src="${escapePhigrosBestImageHtml(ratingUrl)}" alt="${rating}"></div><div class="chengji"><div class="score"><p>${score}</p></div><div class="line"></div><div class="acc-box"><div class="acc"><p>${record.achievements.toFixed(2)}%</p></div><div class="suggest suggest-kind-${push.type}"><div class="suggest-tip"></div><p>${push.label}</p></div></div></div></div>
+      <div class="songinfo"><div class="Rating"><img src="${escapePhigrosBestImageHtml(ratingUrl)}" alt="${rating}"></div><div class="chengji"><div class="score"><p>${score}</p></div><div class="line"></div><div class="acc-box"><div class="acc"><p>${record.achievements.toFixed(2)}%</p></div><div class="suggest${push.type === null ? '' : ` suggest-kind-${push.type}`}"><div class="suggest-tip"></div><p>${push.label}</p></div></div></div></div>
     </div>${averageRibbon(average)}
   </div>`;
 }
@@ -173,6 +173,6 @@ ${templateCss}
 html{margin:0;width:${input.width}px;min-height:${minimumHeight}px;overflow:hidden;background:#111}body{min-height:${baseHeight}px;zoom:${scale};overflow:hidden}
 </style></head><body id="canvas" class="elem-hydro default-mode"><div class="background"><img src="${escapePhigrosBestImageHtml(backgroundUrl)}" alt="曲绘-模糊"></div>
 <div class="title"><div class="playerInfo"><div class="blackBlock clip-box"></div><div class="avatar clip-box"><img src="${escapePhigrosBestImageHtml(avatarUrl)}" alt="avatar"></div><div class="playerId"><p name="pvis">${escapePhigrosBestImageHtml(input.playerName)}</p></div><div class="rks clip-box"><p>${escapePhigrosBestImageHtml(input.rks)}</p></div><div class="clgBox"><div class="Challenge"><img src="${escapePhigrosBestImageHtml(challengeUrl)}" alt="Challenge"><p>${escapePhigrosBestImageHtml(input.challenge)}</p></div></div><div class="date"><p>${escapePhigrosBestImageHtml(input.syncedAt)}</p></div><div class="dataBox clip-box"><img src="${escapePhigrosBestImageHtml(input.templateAssets.dataIconUrl)}" alt="data"><p>${escapePhigrosBestImageHtml(input.dataAmount)}</p></div></div><div class="recordInfo clip-box"><div class="whiteLine clip-box"></div><div class="sheet">${stats(input)}</div></div></div>
-<div class="b19">${scoreCards(input)}</div><div class="createdbox"><div class="phi-plugin"><p>Phi-Plugin</p></div><div class="ver"><p>v1.0.1</p></div></div>
+<div class="b19">${scoreCards(input)}</div><div class="createdbox"><div class="phi-plugin"><p>rRanker</p></div></div>
 <script>(()=>{const W=${input.width},MIN=${minimumHeight},canvas=document.getElementById('canvas'),post=m=>window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(m));let last=MIN;function adjustFontSize(){document.getElementsByName('pvis').forEach(node=>{const parent=node.parentElement;if(!parent)return;node.style.fontSize='';let size=parseFloat(getComputedStyle(node).fontSize)||16;if(node.scrollWidth<=parent.offsetWidth&&node.scrollHeight<=parent.offsetHeight)return;let low=0,high=Math.floor(size);while(low<high){const mid=Math.floor((low+high+1)/2);node.style.fontSize=mid+'px';if(node.scrollWidth>parent.offsetWidth||node.scrollHeight>parent.offsetHeight)high=mid-1;else low=mid}node.style.fontSize=low+'px'})}post({type:'best-image-runtime',width:W,userAgent:navigator.userAgent||''});const fit=()=>{canvas.style.transform='none';last=Math.max(MIN,Math.ceil(canvas.getBoundingClientRect().height));const vw=innerWidth||W,vh=innerHeight||MIN,exportView=Math.abs(vw-W)<2&&vh+2>=Math.min(last,MIN),viewScale=exportView?1:Math.min(vw/W,vh/last);canvas.style.left=exportView?'0px':Math.max(0,(vw-W*viewScale)/2)+'px';canvas.style.top=exportView?'0px':Math.max(0,(vh-last*viewScale)/2)+'px';canvas.style.transform='scale('+viewScale+')';post({type:'best-image-height',width:W,height:last})};addEventListener('resize',()=>{adjustFontSize();fit()});const images=[...document.images].map(i=>i.complete?Promise.resolve():new Promise(r=>{i.onload=i.onerror=r}));Promise.race([Promise.all([document.fonts?document.fonts.ready:Promise.resolve(),...images]),new Promise(r=>setTimeout(r,12000))]).then(()=>requestAnimationFrame(()=>requestAnimationFrame(()=>{adjustFontSize();fit();const m={type:'best-image-ready',width:W,height:last};post(m);setTimeout(()=>post(m),250)})));fit()})();</script></body></html>`;
 }
