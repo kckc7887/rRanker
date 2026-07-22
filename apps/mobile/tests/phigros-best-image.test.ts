@@ -131,12 +131,14 @@ describe('Phigros 成绩图', () => {
     const records = [
       record('xing-good', { achievements: goodAcc, rating: 14 }),
       record('xing-miss', { achievements: missAcc, rating: 13 }),
+      record('xing-miss-fc', { achievements: missAcc, rating: 14.5, fc: 'ap', rate: 'v' }),
       record('near', { achievements: Math.round((goodAcc - 0.01) * 100) / 100, rating: 12 }),
       record('no-notes', { achievements: goodAcc, rating: 15, songId: 'missing-notes' }),
     ];
     const noteTotalByKey = {
       [phigrosChartNoteKey('xing-good', 2)]: 500,
       [phigrosChartNoteKey('xing-miss', 2)]: 500,
+      [phigrosChartNoteKey('xing-miss-fc', 2)]: 500,
       [phigrosChartNoteKey('near', 2)]: 500,
     };
     const goodOnly = buildCustomPhigrosBestImageSections(
