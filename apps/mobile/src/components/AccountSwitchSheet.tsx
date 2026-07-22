@@ -34,9 +34,9 @@ export function AccountSwitchSheet({
       onRequestClose={onClose}
     >
       <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={styles.grabber} />
+        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
         <View style={styles.header}>
-          <Text style={styles.title}>切换账号</Text>
+          <Text style={[styles.title, { color: theme.text }]}>切换账号</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="关闭"
@@ -44,7 +44,7 @@ export function AccountSwitchSheet({
             onPress={onClose}
             style={({ pressed }) => [styles.closeHit, pressed && styles.softPressed]}
           >
-            <Text style={styles.close}>完成</Text>
+            <Text style={[styles.close, { color: theme.accent }]}>完成</Text>
           </Pressable>
         </View>
 
