@@ -5,6 +5,7 @@ import {
 } from '@/storage/storage-clear-prefs-store';
 import { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
+import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
 
 describe('storage-clear-prefs', () => {
   const allowed: StorageClearCategoryId[] = ['maimai', 'phigros', 'shared'];
@@ -46,5 +47,14 @@ describe('durable maimai local accounts', () => {
     expect(isDurableMaimaiAccountId('maimai:local:abc')).toBe(true);
     expect(isDurableMaimaiAccountId('maimai:diving-fish:u1')).toBe(false);
     expect(isDurableMaimaiAccountId('maimai:test')).toBe(false);
+  });
+});
+
+describe('expo system cache entries', () => {
+  it('recognizes ExponentAsset files used by icon fonts', () => {
+    expect(isExpoSystemCacheEntry('ExponentAsset-123.ttf')).toBe(true);
+    expect(isExpoSystemCacheEntry('ExponentAsset-abc.png')).toBe(true);
+    expect(isExpoSystemCacheEntry('rranker-best-image-1-0.html')).toBe(false);
+    expect(isExpoSystemCacheEntry('rRanker-backup-x.json')).toBe(false);
   });
 });

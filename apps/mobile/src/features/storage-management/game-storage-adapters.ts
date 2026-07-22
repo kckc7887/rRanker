@@ -4,12 +4,14 @@ import { clearPhigrosIllustrationStage, phigrosIllustrationStageDirectory } from
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
 import {
   clearDirectoryContents,
   measureDirectoryBytes,
   APP_CACHE_ROOT,
   PHIGROS_FONT_ROOT,
 } from '@/features/storage-management/fs-storage';
+import { reloadUiIconFonts } from '@/features/storage-management/ui-icon-fonts';
 
 export { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 
@@ -171,11 +173,12 @@ export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | unde
 }
 
 export async function measureSharedCacheBytes(): Promise<number> {
-  return measureDirectoryBytes(APP_CACHE_ROOT());
+  // 不计 ExponentAsset-*：那是 expo-asset 图标字体等系统资源，不可清且清了会导致全站图标空白。
+  return measureDirectoryBytes(APP_CACHE_ROOT(), { skip: isExpoSystemCacheEntry });
 }
 
 export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }> {
-  clearDirectoryContents(APP_CACHE_ROOT());
+  clearDirectoryContents(APP_CACHE_ROOT(), { skip: isExpoSystemCacheEntry });
   let imageCacheCleared = false;
   try {
     const { Image } = await import('expo-image');
@@ -187,9 +190,11 @@ export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }
   } catch {
     imageCacheCleared = false;
   }
+  // 即便误删过字体，也尝试重新拉取并注册 Ionicons，避免界面图标持续空白。
+  await reloadUiIconFonts();
   return { imageCacheCleared };
 }
 
 export function sharedCacheNote(): string {
-  return '含图片缓存（体积未计入）';
+  return '含临时文件与图片缓存（体积未计入）；保留系统图标字体';
 }

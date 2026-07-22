@@ -1,16 +1,29 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 export { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
+export { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
+
+type DirectoryListOptions = {
+  /** 按条目名跳过（不计入体积 / 不删除） */
+  skip?: (name: string) => boolean;
+};
 
 /** 递归统计目录占用；目录不存在或无法读取时返回 0。 */
-export function measureDirectoryBytes(directory: Directory): number {
+export function measureDirectoryBytes(
+  directory: Directory,
+  options?: DirectoryListOptions,
+): number {
   try {
     if (!directory.exists) return 0;
-    const info = directory.info();
-    if (typeof info.size === 'number' && info.size >= 0) return info.size;
+    const skip = options?.skip;
+    if (!skip) {
+      const info = directory.info();
+      if (typeof info.size === 'number' && info.size >= 0) return info.size;
+    }
     let total = 0;
     for (const item of directory.list()) {
-      if (item instanceof Directory) total += measureDirectoryBytes(item);
+      if (skip?.(item.name)) continue;
+      if (item instanceof Directory) total += measureDirectoryBytes(item, options);
       else if (item instanceof File) total += item.size ?? 0;
     }
     return total;
@@ -19,11 +32,16 @@ export function measureDirectoryBytes(directory: Directory): number {
   }
 }
 
-/** 删除目录内全部内容（保留目录本身）；用于 Paths.cache。 */
-export function clearDirectoryContents(directory: Directory): void {
+/** 删除目录内内容（保留目录本身）；可通过 skip 保留系统资源。 */
+export function clearDirectoryContents(
+  directory: Directory,
+  options?: DirectoryListOptions,
+): void {
   try {
     if (!directory.exists) return;
+    const skip = options?.skip;
     for (const item of directory.list()) {
+      if (skip?.(item.name)) continue;
       try {
         item.delete();
       } catch {
