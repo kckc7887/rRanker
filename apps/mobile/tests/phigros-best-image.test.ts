@@ -12,6 +12,9 @@ import {
 } from '@/features/phigros-best-image/build-phigros-best-image-html';
 import { parsePhigrosBestImageStylePreferences } from '@/features/phigros-best-image/phigros-best-image-preferences';
 import { parsePhigrosUser } from '@/domain/phigros';
+import {
+  calculatePhigrosXingAcc, isPhigrosXingAcc, phigrosChartNoteKey,
+} from '@/domain/phigros-xing';
 import { matchesPhigrosScoreRange } from '@/domain/phigros-filters';
 
 function record(id: string, overrides: Partial<ScoreRecord> = {}): ScoreRecord {
@@ -111,6 +114,53 @@ describe('Phigros 成绩图', () => {
       .toEqual(['in-v']);
     expect(buildCustomPhigrosBestImageSections(records, filters({ rank: 'phi', quantity: 0 }))[0]?.records.map((item) => item.songId))
       .toEqual(['in-phi']);
+  });
+
+  it('XING Acc 按物量公式两位小数计算，并用于自定义筛选', () => {
+    // N=1000：Good → 99.97；Miss → 99.90
+    expect(calculatePhigrosXingAcc(1000, 'good')).toBe(99.97);
+    expect(calculatePhigrosXingAcc(1000, 'miss')).toBe(99.9);
+    expect(isPhigrosXingAcc(99.97, 1000, 'good')).toBe(true);
+    expect(isPhigrosXingAcc(99.9, 1000, 'miss')).toBe(true);
+    expect(isPhigrosXingAcc(99.97, 1000, 'miss')).toBe(false);
+    expect(isPhigrosXingAcc(100, 1000, 'good')).toBe(false);
+    expect(Number.isNaN(calculatePhigrosXingAcc(0, 'good'))).toBe(true);
+
+    const goodAcc = calculatePhigrosXingAcc(500, 'good');
+    const missAcc = calculatePhigrosXingAcc(500, 'miss');
+    const records = [
+      record('xing-good', { achievements: goodAcc, rating: 14 }),
+      record('xing-miss', { achievements: missAcc, rating: 13 }),
+      record('near', { achievements: Math.round((goodAcc - 0.01) * 100) / 100, rating: 12 }),
+      record('no-notes', { achievements: goodAcc, rating: 15, songId: 'missing-notes' }),
+    ];
+    const noteTotalByKey = {
+      [phigrosChartNoteKey('xing-good', 2)]: 500,
+      [phigrosChartNoteKey('xing-miss', 2)]: 500,
+      [phigrosChartNoteKey('near', 2)]: 500,
+    };
+    const goodOnly = buildCustomPhigrosBestImageSections(
+      records, filters({ xing: 'good', quantity: 0 }), noteTotalByKey,
+    );
+    expect(goodOnly[0]?.title).toBe('XING-Good Best1');
+    expect(goodOnly[0]?.records.map((item) => item.songId)).toEqual(['xing-good']);
+
+    const missOnly = buildCustomPhigrosBestImageSections(
+      records, filters({ xing: 'miss', quantity: 0 }), noteTotalByKey,
+    );
+    expect(missOnly[0]?.title).toBe('XING-Miss Best1');
+    expect(missOnly[0]?.records.map((item) => item.songId)).toEqual(['xing-miss']);
+
+    const withLevel = buildCustomPhigrosBestImageSections(
+      records, filters({ xing: 'good', level: 2, quantity: 0 }), noteTotalByKey,
+    );
+    expect(withLevel[0]?.title).toBe('XING-Good IN1');
+
+    expect(buildCustomPhigrosBestImageSections(
+      [record('missing-notes', { achievements: goodAcc })],
+      filters({ xing: 'good', quantity: 0 }),
+      {},
+    )[0]?.records).toEqual([]);
   });
 
   it('分数区间与 Acc/分数解析边界合法', () => {

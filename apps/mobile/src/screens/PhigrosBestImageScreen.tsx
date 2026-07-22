@@ -14,6 +14,7 @@ import {
   type PhigrosRankFilter,
 } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
+import type { PhigrosXingKind } from '@/domain/phigros-xing';
 import { phigrosLevelColors } from '@/domain/phigros-level-theme';
 import { loadPhigrosAvatarCatalog } from '@/domain/phigros-avatar-resolver';
 import {
@@ -33,7 +34,8 @@ import {
   loadPhigrosAccAverages, type PhigrosAccAverage,
 } from '@/features/phigros-best-image/load-phigros-acc-averages';
 import {
-  buildCustomPhigrosBestImageSections, DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS,
+  buildCustomPhigrosBestImageSections, buildPhigrosNoteTotalByKey,
+  DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS,
   isCustomPhigrosBestImageFiltersValid, parseBestImageQuantity,
   parsePhigrosBestImageAccuracyBound, parsePhigrosBestImageScoreBound,
   type CustomPhigrosBestImageFilters,
@@ -187,11 +189,12 @@ export function PhigrosBestImageScreen() {
       setAvatarItems([...new Set([...bundled, ...remote])]);
     }).catch(() => setAvatarItems(bundled));
   }, [provider]);
+  const noteTotalByKey = useMemo(() => buildPhigrosNoteTotalByKey(songs), [songs]);
   const sections = useMemo(() => {
     if (!payload) return [];
     if (type === 'best30') return appendPhigrosOverflowRecords(payload.bestSections, payload.records, stylePrefs.overflowCount);
-    return buildCustomPhigrosBestImageSections(payload.records, customFilters);
-  }, [customFilters, payload, stylePrefs.overflowCount, type]);
+    return buildCustomPhigrosBestImageSections(payload.records, customFilters, noteTotalByKey);
+  }, [customFilters, noteTotalByKey, payload, stylePrefs.overflowCount, type]);
   const quantityError = parseBestImageQuantity(quantityText) === null ? '数量必须是非负整数，0 表示不限制' : null;
   const scoreMinError = parsePhigrosBestImageScoreBound(scoreMinText) === null ? '分数须在 0–1000000' : null;
   const scoreMaxError = parsePhigrosBestImageScoreBound(scoreMaxText) === null ? '分数须在 0–1000000' : null;
@@ -517,6 +520,27 @@ export function PhigrosBestImageScreen() {
             <RankFilterChip key={item.value} value={item.value} selected={customFilters.rank === item.value} onPress={() => setCustomFilters((current) => ({ ...current, rank: item.value }))} />
           ))}
         </ScrollView>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>XING</Text>
+        <View style={styles.chipRow}>
+          <ChoiceChip
+            label="关闭"
+            accessibilityLabel="XING 筛选 关闭"
+            selected={customFilters.xing === null}
+            onPress={() => setCustomFilters((current) => ({ ...current, xing: null }))}
+          />
+          {([
+            { value: 'good' as const, label: 'Good' },
+            { value: 'miss' as const, label: 'Miss' },
+          ] satisfies { value: PhigrosXingKind; label: string }[]).map((item) => (
+            <ChoiceChip
+              key={item.value}
+              label={item.label}
+              accessibilityLabel={`XING 筛选 ${item.label}`}
+              selected={customFilters.xing === item.value}
+              onPress={() => setCustomFilters((current) => ({ ...current, xing: item.value }))}
+            />
+          ))}
+        </View>
       </View> : null}
 
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
