@@ -39,13 +39,17 @@ jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
   loadPhigrosAccAverages: jest.fn(async () => ({})),
   phigrosAccAverageKey: (record: { songId: string; levelIndex: number }) => `${record.songId}:${record.levelIndex}`,
 }));
+jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
+  PHIGROS_FONT_MANIFEST: Array.from({ length: 12 }, (_, index) => ({ name: `font-${index}` })),
+  preparePhigrosFonts: jest.fn(),
+}));
 jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
   getPhigrosReferenceAvatarKeys: () => ['Introduction', 'avatar.test'],
   getPhigrosReferenceAvatarSource: () => 1,
   findPhigrosReferenceAvatarKey: (key: string) => key,
   loadPhigrosReferenceAvatarUrl: jest.fn(async () => 'data:image/png;base64,avatar'),
   loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
-    css: '@font-face{font-family:"PHI";src:url("file:///reference/phi.ttf")} .song{width:360px}.Rating img{width:100%}',
+    css: '@font-face{font-family:"PHI";src:url("./font/phi.ttf")} .song{width:360px}.Rating img{width:100%}',
     dataIconUrl: 'data:image/png;base64,data', fallbackBackgroundUrl: 'data:image/png;base64,background', fallbackAvatarUrl: 'data:image/png;base64,avatar',
     challengeIconUrls: Array.from({ length: 6 }, (_, index) => `data:image/png;base64,challenge-${index}`),
     ratingIconUrls: { F: 'data:image/png;base64,F', FC: 'data:image/png;base64,FC', V: 'data:image/png;base64,V', phi: 'data:image/png;base64,phi' },
@@ -99,6 +103,63 @@ jest.mock('@/hooks/use-game-data', () => ({
 }));
 
 describe('Phigros 生成图片页', () => {
+  beforeEach(() => {
+    const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
+    preparePhigrosFonts.mockReset().mockImplementation(async (...args: unknown[]) => {
+      const onProgress = args[0] as (value: Record<string, unknown>) => void;
+      onProgress({ phase: 'core-ready', completed: 2, total: 12, currentFont: null });
+      return {
+        directory: { uri: 'file:///reference/' },
+        fullReady: Promise.resolve().then(() => onProgress({ phase: 'ready', completed: 12, total: 12, currentFont: null })),
+      };
+    });
+  });
+
+  it('shows the core preview while extensions download and enables export only after 12/12 fonts', async () => {
+    const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
+    let finish!: () => void;
+    preparePhigrosFonts.mockImplementationOnce(async (...args: unknown[]) => {
+      const onProgress = args[0] as (value: Record<string, unknown>) => void;
+      return {
+        directory: { uri: 'file:///reference/' },
+        fullReady: new Promise<void>((resolve) => {
+          finish = () => {
+            onProgress({ phase: 'ready', completed: 12, total: 12, currentFont: null });
+            resolve();
+          };
+        }),
+      };
+    });
+    const screen = await render(<SafeAreaProvider initialMetrics={{
+      frame: { x: 0, y: 0, width: 390, height: 844 },
+      insets: { top: 0, left: 0, right: 0, bottom: 0 },
+    }}><PhigrosBestImageScreen /></SafeAreaProvider>);
+    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByText(/全部完成后可导出/u)).toBeTruthy();
+    await act(async () => finish());
+    await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
+    expect(screen.getByText('导出到相册')).toBeTruthy();
+  });
+
+  it('keeps the core preview, blocks export, and retries a failed extension download', async () => {
+    const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
+    preparePhigrosFonts.mockImplementationOnce(async () => ({
+      directory: { uri: 'file:///reference/' },
+      fullReady: Promise.reject(new Error('扩展字体准备失败：network down')),
+    }));
+    const screen = await render(<SafeAreaProvider initialMetrics={{
+      frame: { x: 0, y: 0, width: 390, height: 844 },
+      insets: { top: 0, left: 0, right: 0, bottom: 0 },
+    }}><PhigrosBestImageScreen /></SafeAreaProvider>);
+    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('扩展字体准备失败：network down')).toBeTruthy());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
+    fireEvent.press(screen.getByLabelText('重试字体下载'));
+    await waitFor(() => expect(preparePhigrosFonts).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
+  });
+
   it('沿用舞萌板块的页面顺序、控件样式和预览导出布局', async () => {
     const { captureRef } = jest.requireMock('react-native-view-shot') as { captureRef: jest.Mock };
     const { requestBestImageExportPermission } = jest.requireMock('@/features/best-image/best-image-export') as { requestBestImageExportPermission: jest.Mock };
@@ -121,7 +182,7 @@ describe('Phigros 生成图片页', () => {
     expect(preview.props.source.html).toContain('class="song phi_song"');
     expect(preview.props.source.html).toContain('data:image/png;base64,avatar');
     expect(preview.props.source.html).toContain('data:image/png;base64,FC');
-    expect(preview.props.source.html).toContain('file:///reference/phi.ttf');
+    expect(preview.props.source.html).toContain('./font/phi.ttf');
     expect(preview.props.source.html).not.toContain('file:///reference/avatar.png');
     expect(preview.props.source.baseUrl).toBe('file:///reference/');
     expect(preview.props.allowingReadAccessToURL).toBe('file:///reference/');
@@ -161,6 +222,7 @@ describe('Phigros 生成图片页', () => {
       height: expectedHeight,
       format: 'png',
     })));
+    await waitFor(() => expect(screen.getByText('导出到相册')).toBeTruthy());
 
     fireEvent.press(screen.getByLabelText('自定义'));
     expect(screen.queryByText('自定义 BestN')).toBeNull();

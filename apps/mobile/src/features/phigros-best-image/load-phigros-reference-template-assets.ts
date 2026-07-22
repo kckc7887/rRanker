@@ -1,5 +1,5 @@
 import { Asset } from 'expo-asset';
-import { File, Paths } from 'expo-file-system';
+import { File } from 'expo-file-system';
 import { Image } from 'react-native';
 import { normalizePhigrosAvatarKey } from '@/domain/phigros-avatar-resolver';
 import {
@@ -25,21 +25,6 @@ const CSS_SOURCES = {
   common: require('../../../assets/phigros-b30-reference/common/common.css') as number,
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   snow: require('../../../assets/phigros-b30-reference/common/theme/snow/snow.css') as number,
-};
-
-const FONT_SOURCES: Readonly<Record<string, number>> = {
-  '吞弥恰俊.ttf': require('../../../assets/phigros-b30-reference/common/font/吞弥恰俊.ttf') as number,
-  'phi.ttf': require('../../../assets/phigros-b30-reference/common/font/phi.ttf') as number,
-  'HIMALAYA.TTF': require('../../../assets/phigros-b30-reference/common/font/HIMALAYA.ttf') as number,
-  'NotoSans-Regular.ttf': require('../../../assets/phigros-b30-reference/common/font/NotoSans-Regular.ttf') as number,
-  'NotoSansSymbols2.ttf': require('../../../assets/phigros-b30-reference/common/font/NotoSansSymbols2.ttf') as number,
-  'NotoSansArabic.ttf': require('../../../assets/phigros-b30-reference/common/font/NotoSansArabic.ttf') as number,
-  'NotoSansJP.ttf': require('../../../assets/phigros-b30-reference/common/font/NotoSansJP.ttf') as number,
-  'Aldrich-Regular.ttf': require('../../../assets/phigros-b30-reference/common/font/Aldrich-Regular.ttf') as number,
-  'NotoSansKannada.ttf': require('../../../assets/phigros-b30-reference/common/font/NotoSansKannada.ttf') as number,
-  'NotoSansCanadianAboriginal.ttf': require('../../../assets/phigros-b30-reference/common/font/NotoSansCanadianAboriginal.ttf') as number,
-  'NotoColorEmoji-Regular.ttf': require('../../../assets/phigros-b30-reference/common/font/NotoColorEmoji-Regular.ttf') as number,
-  'NotoSansMath-Regular.ttf': require('../../../assets/phigros-b30-reference/common/font/NotoSansMath-Regular.ttf') as number,
 };
 
 const CHALLENGE_SOURCES = [
@@ -155,16 +140,15 @@ function withoutImport(css: string, importPath: string): string {
   return css.replace(`@import "${importPath}";`, '');
 }
 
-export async function loadPhigrosReferenceTemplateAssets(): Promise<PhigrosReferenceTemplateAssets> {
+export async function loadPhigrosReferenceTemplateAssets(
+  allowingReadAccessToUrl: string,
+): Promise<PhigrosReferenceTemplateAssets> {
   if (templatePromise) return templatePromise;
   templatePromise = (async () => {
-    const [b19Css, commonCssSource, snowCss, fontEntries, challengeIconUrls, ratingEntries, dataIconUrl, fallbackBackgroundUrl, fallbackAvatarUrl] = await Promise.all([
+    const [b19Css, commonCssSource, snowCss, challengeIconUrls, ratingEntries, dataIconUrl, fallbackBackgroundUrl, fallbackAvatarUrl] = await Promise.all([
       loadAssetText(CSS_SOURCES.b19),
       loadAssetText(CSS_SOURCES.common),
       loadAssetText(CSS_SOURCES.snow),
-      // Fonts total nearly 45 MiB. Keeping them as cached files avoids rebuilding
-      // roughly 60 MiB of Base64 CSS whenever a preview option changes.
-      Promise.all(Object.entries(FONT_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetUri(source)] as const)),
       Promise.all(CHALLENGE_SOURCES.map((source) => loadPhigrosReferenceAssetDataUri(source, 'image/png'))),
       Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetDataUri(source, 'image/png')] as const)),
       loadPhigrosReferenceAssetDataUri(DATA_ICON_SOURCE, 'image/png'),
@@ -173,9 +157,6 @@ export async function loadPhigrosReferenceTemplateAssets(): Promise<PhigrosRefer
     ]);
 
     let commonCss = withoutImport(commonCssSource, './theme/snow/snow.css');
-    for (const [name, uri] of fontEntries) {
-      commonCss = commonCss.replace(`./font/${name}`, uri);
-    }
     commonCss = commonCss.replace('../otherimg/phigros.png', fallbackBackgroundUrl);
 
     return {
@@ -185,7 +166,7 @@ export async function loadPhigrosReferenceTemplateAssets(): Promise<PhigrosRefer
       fallbackAvatarUrl,
       challengeIconUrls,
       ratingIconUrls: Object.fromEntries(ratingEntries),
-      allowingReadAccessToUrl: Paths.cache.uri,
+      allowingReadAccessToUrl,
     };
   })();
   try {

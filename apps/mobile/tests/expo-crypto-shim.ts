@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export const CryptoDigestAlgorithm = {
   SHA1: 'SHA-1',
   SHA256: 'SHA-256',
@@ -35,4 +37,12 @@ export async function digestStringAsync(
     return Buffer.from(hex, 'hex').toString('base64');
   }
   return hex;
+}
+
+export async function digest(_algorithm: string, data: BufferSource): Promise<ArrayBuffer> {
+  const bytes = ArrayBuffer.isView(data)
+    ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+    : new Uint8Array(data);
+  const hash = createHash('sha256').update(bytes).digest();
+  return Uint8Array.from(hash).buffer;
 }
