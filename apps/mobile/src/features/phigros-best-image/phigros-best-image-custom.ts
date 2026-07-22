@@ -119,6 +119,8 @@ function matchesXingFilter(
   noteTotalByKey: Readonly<Record<string, number>>,
 ): boolean {
   if (xing === null) return true;
+  // Miss 必断连击，排除 FC（存档映射为 fc === 'ap'）
+  if (xing === 'miss' && record.fc === 'ap') return false;
   const total = noteTotalByKey[phigrosChartNoteKey(record.songId, record.levelIndex)];
   if (total === undefined) return false;
   return isPhigrosXingAcc(record.achievements, total, xing);
