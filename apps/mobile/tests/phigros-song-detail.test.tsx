@@ -210,6 +210,8 @@ describe('Phigros song detail', () => {
   it('renders title, illustrator and AT→EZ chart cards defaulting to IN', async () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByText('测试曲')).toBeTruthy());
+    expect(screen.getByTestId('phigros-song-title-scroll').props.horizontal).toBe(true);
+    expect(screen.getByText('测试曲').props.numberOfLines).toBe(1);
     expect(screen.getByText('测试曲绘师')).toBeTruthy();
     expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy();

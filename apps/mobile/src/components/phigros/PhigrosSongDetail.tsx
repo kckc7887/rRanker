@@ -283,7 +283,13 @@ function Detail({
         />
         <View style={styles.heroCopy}>
           <Text numberOfLines={1} style={styles.songId}>#{song.id}</Text>
-          <Text numberOfLines={2} style={styles.title}>{song.title}</Text>
+          <AutoScrollText
+            testID="phigros-song-title-scroll"
+            text={song.title}
+            textStyle={styles.title}
+            style={styles.singleLine}
+            contentContainerStyle={styles.singleLineContent}
+          />
           <Text numberOfLines={1} style={styles.artist}>{song.artist ?? '曲师未知'}</Text>
         </View>
       </View>
@@ -619,6 +625,88 @@ function DetailRateBadge({ record }: { record: ScoreRecord }) {
   return <PhigrosRateBadge rate={resolvePhigrosRate(record)} fc={record.fc === 'ap'} />;
 }
 
+function AutoScrollText({
+  text,
+  textStyle,
+  style,
+  contentContainerStyle,
+  testID,
+}: {
+  text: string;
+  textStyle: object;
+  style?: object;
+  contentContainerStyle?: object;
+  testID?: string;
+}) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [scrolling, setScrolling] = useState(false);
+  const offsetRef = useRef(0);
+  const directionRef = useRef(1);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    offsetRef.current = 0;
+    directionRef.current = 1;
+    setScrolling(false);
+    scrollRef.current?.scrollTo({ x: 0, animated: false });
+  }, [text]);
+
+  useEffect(() => {
+    if (contentWidth <= 0 || containerWidth <= 0) return;
+    const overflow = contentWidth - containerWidth;
+    setScrolling((current) => {
+      if (current) return overflow > 2;
+      return overflow > 8;
+    });
+  }, [contentWidth, containerWidth]);
+
+  useEffect(() => {
+    if (!scrolling || dragging) {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      return;
+    }
+    const maxOffset = Math.max(0, contentWidth - containerWidth);
+    const tick = () => {
+      const next = offsetRef.current + directionRef.current * 0.45;
+      if (next >= maxOffset) directionRef.current = -1;
+      else if (next <= 0) directionRef.current = 1;
+      offsetRef.current = Math.max(0, Math.min(next, maxOffset));
+      scrollRef.current?.scrollTo({ x: offsetRef.current, animated: false });
+      frameRef.current = requestAnimationFrame(tick);
+    };
+    frameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    };
+  }, [scrolling, dragging, contentWidth, containerWidth]);
+
+  return <ScrollView
+    ref={scrollRef}
+    testID={testID}
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    style={style}
+    contentContainerStyle={contentContainerStyle}
+    scrollEnabled={scrolling}
+    onContentSizeChange={(width) => setContentWidth(width)}
+    onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
+    onScrollBeginDrag={() => setDragging(true)}
+    onScrollEndDrag={(event) => {
+      offsetRef.current = event.nativeEvent.contentOffset.x;
+      setDragging(false);
+      directionRef.current = 1;
+    }}
+    scrollEventThrottle={32}
+  >
+    <Text numberOfLines={1} style={textStyle}>{text}</Text>
+  </ScrollView>;
+}
+
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingBottom: 48 },
@@ -628,6 +716,8 @@ const styles = StyleSheet.create({
   heroPlaceholderNote: { color: '#6B7280', fontSize: 64 },
   heroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
   heroCopy: { position: 'absolute', left: 18, right: 18, bottom: 20, gap: 2 },
+  singleLine: { flexGrow: 0 },
+  singleLineContent: { paddingRight: 18 },
   songId: { color: 'rgba(255,255,255,0.78)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
   title: {
     color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6,
