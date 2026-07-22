@@ -71,9 +71,9 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
       clearCategoryId: adapter.gameId as GameId,
       color: SEGMENT_COLORS[adapter.gameId] ?? '#6366F1',
       ...(adapter.gameId === 'maimai'
-        ? { note: '不含本地账号成绩' }
+        ? { note: '游戏资源，不含本地账号成绩' }
         : adapter.gameId === 'phigros'
-          ? { note: '字体与头像缓存；不含登录态与成绩' }
+          ? { note: '游戏资源' }
           : {}),
     })),
     {
