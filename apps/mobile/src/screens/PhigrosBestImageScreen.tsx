@@ -17,8 +17,7 @@ import {
   shouldUseBestImageRenderInContext,
 } from '@/features/best-image/best-image-export';
 import {
-  inlineBestImageWebViewSources, prepareAndroidBestImageWebViewSources,
-  type BestImageWebViewSource,
+  prepareBestImageWebViewSources, type BestImageWebViewSource,
 } from '@/features/best-image/prepare-best-image-webview-sources';
 import { buildPhigrosBestImageHtml } from '@/features/phigros-best-image/build-phigros-best-image-html';
 import {
@@ -209,9 +208,8 @@ export function PhigrosBestImageScreen() {
   useEffect(() => {
     setSources(null); setPageHeights({}); setPageIndex(0); setPreviewStates({});
     if (!htmlPages) return;
-    if (Platform.OS !== 'android') { setSources(inlineBestImageWebViewSources(htmlPages, templateAssets?.allowingReadAccessToUrl)); return; }
-    const prepared = prepareAndroidBestImageWebViewSources(htmlPages); setSources(prepared.sources); return prepared.dispose;
-  }, [htmlPages, templateAssets?.allowingReadAccessToUrl]);
+    const prepared = prepareBestImageWebViewSources(htmlPages); setSources(prepared.sources); return prepared.dispose;
+  }, [htmlPages]);
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);

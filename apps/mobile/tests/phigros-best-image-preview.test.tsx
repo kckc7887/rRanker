@@ -9,6 +9,12 @@ jest.mock('react-native-webview', () => {
   return { WebView: (props: Record<string, unknown>) => React.createElement(ReactNative.View, props) };
 });
 jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn(async () => 'file:///capture.png') }));
+jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
+  prepareBestImageWebViewSources: (htmlPages: string[]) => ({
+    sources: htmlPages.map((html) => ({ html, baseUrl: 'file:///reference/' })),
+    dispose: jest.fn(),
+  }),
+}));
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
 }));
@@ -104,6 +110,7 @@ describe('Phigros 生成图片页', () => {
     expect(preview.props.source.html).toContain('file:///reference/phi.ttf');
     expect(preview.props.source.html).not.toContain('file:///reference/avatar.png');
     expect(preview.props.source.baseUrl).toBe('file:///reference/');
+    expect(preview.props.allowingReadAccessToURL).toBe('file:///reference/');
     expect(screen.getByLabelText('导出成绩图片')).toBeTruthy();
     expect(screen.getByTestId('phigros-best-image-webview-status')).toBeTruthy();
 
