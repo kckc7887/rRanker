@@ -213,7 +213,7 @@ export function PhigrosBestImageScreen() {
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);
-  const previewWidth = Math.min(720, Math.max(280, window.width - 32)); const previewHeight = previewWidth * .75;
+  const previewWidth = Math.min(720, Math.max(280, window.width - 32)); const previewHeight = previewWidth * outputHeight / width;
   const currentPreviewState = previewStates[currentPage.id];
   const previewStatus = currentPreviewState
     ? `${PREVIEW_PHASE_LABEL[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
@@ -249,8 +249,8 @@ export function PhigrosBestImageScreen() {
     exportTimer.current = setTimeout(() => reject(new Error('图片渲染超时')), 30_000);
   });
   const handleExportMessage = (value: string) => {
-    const measured = parseBestImageHeightMessage(value, width); if (measured != null) setExportHeight(measured);
-    const ready = parseBestImageReadyMessage(value, width); if (ready == null || !exportResolve.current) return;
+    const measured = parseBestImageHeightMessage(value, width, 1); if (measured != null) setExportHeight(measured);
+    const ready = parseBestImageReadyMessage(value, width, 1); if (ready == null || !exportResolve.current) return;
     const resolve = exportResolve.current; exportResolve.current = null; if (exportTimer.current) clearTimeout(exportTimer.current); setTimeout(() => resolve(ready), 320);
   };
   const exportImages = async () => {
@@ -314,8 +314,8 @@ export function PhigrosBestImageScreen() {
           const pageId = pages[index]!.id;
           return <View style={{ width: previewWidth, height: previewHeight }}><WebView testID={`phigros-best-image-html-preview-${index}`} accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={templateAssets?.allowingReadAccessToUrl} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} onError={() => updatePreviewState(pageId, 'error')} onLoadStart={() => updatePreviewState(pageId, 'loading')} onLoadEnd={() => setPreviewStates((current) => current[pageId] && current[pageId]!.phase !== 'loading' ? current : { ...current, [pageId]: { phase: 'loaded', version: current[pageId]?.version ?? null } })} onRenderProcessGone={(event) => updatePreviewState(pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated')} onMessage={(event) => {
             const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, width); if (runtime) updatePreviewState(pageId, 'rendering', runtime.version);
-            const height = parseBestImageHeightMessage(event.nativeEvent.data, width); if (height != null) { setPageHeights((current) => ({ ...current, [pageId]: height })); updatePreviewState(pageId, 'rendering'); }
-            const ready = parseBestImageReadyMessage(event.nativeEvent.data, width); if (ready != null) updatePreviewState(pageId, 'ready');
+            const height = parseBestImageHeightMessage(event.nativeEvent.data, width, 1); if (height != null) { setPageHeights((current) => ({ ...current, [pageId]: height })); updatePreviewState(pageId, 'rendering'); }
+            const ready = parseBestImageReadyMessage(event.nativeEvent.data, width, 1); if (ready != null) updatePreviewState(pageId, 'ready');
           }} /></View>;
         }} /> : <View style={styles.loadingPreview}>{templateAssetError ? <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? '正在加载原始 B30 模板与字体' : assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View>}</View>}
       </View>

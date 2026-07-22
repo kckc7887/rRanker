@@ -76,27 +76,35 @@ export const BEST_IMAGE_RATING_FRAME_MINS = [
   0, 1000, 2000, 4000, 7000, 10000, 12000, 13000, 14000, 14500, 15000,
 ] as const;
 
-export function parseBestImageHeightMessage(data: string, expectedWidth: number): number | null {
+export function parseBestImageHeightMessage(
+  data: string,
+  expectedWidth: number,
+  minimumHeight = minimumBestImageHeight(expectedWidth),
+): number | null {
   try {
     const value: unknown = JSON.parse(data);
     if (!value || typeof value !== 'object') return null;
     const message = value as { type?: unknown; width?: unknown; height?: unknown };
     if (message.type !== 'best-image-height' || message.width !== expectedWidth) return null;
     if (typeof message.height !== 'number' || !Number.isFinite(message.height)) return null;
-    return Math.max(minimumBestImageHeight(expectedWidth), Math.round(message.height));
+    return Math.max(1, Math.round(minimumHeight), Math.round(message.height));
   } catch {
     return null;
   }
 }
 
-export function parseBestImageReadyMessage(data: string, expectedWidth: number): number | null {
+export function parseBestImageReadyMessage(
+  data: string,
+  expectedWidth: number,
+  minimumHeight = minimumBestImageHeight(expectedWidth),
+): number | null {
   try {
     const value: unknown = JSON.parse(data);
     if (!value || typeof value !== 'object') return null;
     const message = value as { type?: unknown; width?: unknown; height?: unknown };
     if (message.type !== 'best-image-ready' || message.width !== expectedWidth) return null;
     if (typeof message.height !== 'number' || !Number.isFinite(message.height)) return null;
-    return Math.max(minimumBestImageHeight(expectedWidth), Math.round(message.height));
+    return Math.max(1, Math.round(minimumHeight), Math.round(message.height));
   } catch {
     return null;
   }
