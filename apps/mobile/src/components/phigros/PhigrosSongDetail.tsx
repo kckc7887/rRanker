@@ -23,11 +23,13 @@ import { Card } from '@/components/Card';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
+import { PhigrosXingBadge } from './PhigrosXingBadge';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { Chart, PhigrosChartNotes, ScoreRecord, Song } from '@/domain/models';
 import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
+import { resolvePhigrosXingKind } from '@/domain/phigros-xing';
 import { buildTagHistory } from '@/domain/user-library';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
@@ -460,6 +462,14 @@ function ChartCard({
     : formatPhigrosSongRks(rks);
   const isPhi = score === PHIGROS_MAX_SCORE;
   const isFc = !!best && best.fc === 'ap' && !isPhi;
+  const noteTotal = chart.notes?.total;
+  const xingKind = best
+    ? resolvePhigrosXingKind(
+      best.achievements,
+      typeof noteTotal === 'number' ? noteTotal : undefined,
+      best.fc === 'ap',
+    )
+    : null;
 
   return (
     <View
@@ -504,7 +514,12 @@ function ChartCard({
             lineHeight={DETAIL_SCORE_LINE_HEIGHT}
           />
         )}
-        {best ? <DetailRateBadge record={best} /> : null}
+        {best || xingKind ? (
+          <View style={styles.badgeRow}>
+            {best ? <DetailRateBadge record={best} /> : null}
+            {xingKind ? <PhigrosXingBadge kind={xingKind} /> : null}
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.statRow}>
@@ -765,6 +780,7 @@ const styles = StyleSheet.create({
   level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
   constant: { fontSize: 11, fontWeight: '600' },
   resultBlock: { marginTop: 22, alignItems: 'flex-start', gap: 6 },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
   resultLabel: { fontSize: 12, fontWeight: '700' },
   scoreValue: {
     fontSize: DETAIL_SCORE_FONT_SIZE,
