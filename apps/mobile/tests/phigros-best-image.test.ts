@@ -58,8 +58,42 @@ describe('Phigros 成绩图', () => {
     const result = sortPhigrosBestImageRecords(records);
     expect(result.map((item) => item.songId)).toEqual(['highest', 'first', 'second', 'lower']);
     const limited = buildCustomPhigrosBestImageSections(records, filters({ quantity: 2 }));
-    expect(limited[0]?.title).toBe('自定义2');
+    expect(limited[0]?.title).toBe('Best2');
+    expect(limited[0]?.titleNote).toBeUndefined();
     expect(limited[0]?.records.map((item) => item.songId)).toEqual(['highest', 'first']);
+  });
+
+  it('自定义分隔线标题按难度、评价与分数 Acc 规则生成', () => {
+    const records = [
+      record('in-v', { levelIndex: 2, achievements: 99, dxScore: 990_000, fc: null, rate: 'v' }),
+      record('at-s', { levelIndex: 3, level: 'AT', difficulty: 'master', achievements: 96, dxScore: 960_000, fc: null, rate: 's' }),
+      record('in-phi', { levelIndex: 2, achievements: 100, dxScore: 1_000_000, fc: 'ap', rate: 'phi' }),
+      record('at-phi', { levelIndex: 3, level: 'AT', difficulty: 'master', achievements: 100, dxScore: 1_000_000, fc: 'ap', rate: 'phi' }),
+    ];
+    expect(buildCustomPhigrosBestImageSections(records, filters({ level: 3, quantity: 0 }))[0]?.title).toBe('AT2');
+    expect(buildCustomPhigrosBestImageSections(records, filters({ rank: 'phi', quantity: 0 }))[0]?.title).toBe('φ2');
+    expect(buildCustomPhigrosBestImageSections(records, filters({ level: 3, rank: 'phi', quantity: 0 }))[0]?.title).toBe('AT φ1');
+    const scored = buildCustomPhigrosBestImageSections(records, filters({
+      scoreMin: '990000', accuracyMin: '99', quantity: 0,
+    }));
+    expect(scored[0]?.title).toBe('Best3');
+    expect(scored[0]?.titleNote).toBe('分数≥990000 Acc≥99%');
+    const html = buildPhigrosBestImageHtml({
+      type: 'custom', width: 1080,
+      page: { id: 'page', pageIndex: 0, pageCount: 1, sections: scored },
+      playerName: '尘言', rks: '16.1053', dataAmount: '1MiB', challenge: '0', challengeModeRank: 0,
+      syncedAt: '2026/07/23 01:00:00', progress: { cleared: [0, 0, 0, 0], fullCombo: [0, 0, 0, 0], phi: [0, 0, 0, 0] },
+      titles: Object.fromEntries(scored[0]!.records.map((item) => [item.songId, item.title])),
+      illustrations: Object.fromEntries(scored[0]!.records.map((item) => [item.songId, null])),
+      templateAssets: {
+        css: '.song{width:360px}', dataIconUrl: 'file:///data.png', fallbackBackgroundUrl: 'file:///bg.png', fallbackAvatarUrl: 'file:///avatar.png',
+        challengeIconUrls: Array.from({ length: 6 }, (_, index) => `file:///${index}.png`),
+        ratingIconUrls: { F: 'file:///F.png', V: 'file:///V.png', FC: 'file:///FC.png', phi: 'file:///phi.png' },
+        allowingReadAccessToUrl: 'file:///',
+      },
+    });
+    expect(html).toContain('<div class="section-divider"><span>Best3<small class="section-divider-note">（分数≥990000 Acc≥99%）</small></span></div>');
+    expect(html).toContain('margin:14px 0 20px');
   });
 
   it('自定义支持难度、分数、Acc、评价筛选组合', () => {

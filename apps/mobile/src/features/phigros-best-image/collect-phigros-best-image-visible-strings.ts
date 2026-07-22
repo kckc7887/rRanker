@@ -34,6 +34,8 @@ export function collectPhigrosBestImageVisibleStrings(input: PhigrosBestImageFon
   ];
   for (const page of input.pages) {
     for (const section of page.sections) {
+      values.push(section.title);
+      if (section.titleNote) values.push(section.titleNote);
       for (const record of section.records) {
         values.push(input.titles[record.songId] ?? record.title ?? record.songId);
         values.push(record.level);

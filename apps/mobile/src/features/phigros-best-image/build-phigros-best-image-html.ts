@@ -114,8 +114,11 @@ function scoreCard(
   </div>`;
 }
 
-function sectionDivider(title: string): string {
-  return `<div class="section-divider"><span>${escapePhigrosBestImageHtml(title)}</span></div>`;
+function sectionDivider(title: string, titleNote?: string): string {
+  const note = titleNote
+    ? `<small class="section-divider-note">（${escapePhigrosBestImageHtml(titleNote)}）</small>`
+    : '';
+  return `<div class="section-divider"><span>${escapePhigrosBestImageHtml(title)}${note}</span></div>`;
 }
 
 function scoreCards(input: PhigrosBestImageHtmlInput): string {
@@ -153,7 +156,7 @@ function scoreCards(input: PhigrosBestImageHtmlInput): string {
         !lowestPhiRks || record.rating > lowestPhiRks,
       );
     }).join('');
-    return `${sectionDivider(section.title)}${cards}`;
+    return `${sectionDivider(section.title, section.titleNote)}${cards}`;
   }).join('');
 }
 
@@ -185,10 +188,11 @@ export function buildPhigrosBestImageHtml(input: PhigrosBestImageHtmlInput): str
   return `<!doctype html><html lang="zh-cn"><head><meta charset="utf-8"><meta name="viewport" content="width=${input.width}, initial-scale=1, maximum-scale=1, user-scalable=no"><title>phi-plugin</title><style>
 ${templateCss}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}body{display:block;position:fixed;inset:0;background:#111}#canvas{isolation:isolate;display:flex;position:absolute;width:${BASE_WIDTH}px;height:fit-content;flex-direction:column;margin:0;background:#111;transform-origin:top left}
-.section-divider{display:flex;width:100%;flex-basis:100%;box-sizing:border-box;align-items:center;gap:14px;margin:8px 0 12px;color:rgba(255,255,255,.88);font:800 22px/1.2 Aldrich,PHI,system-ui,sans-serif;letter-spacing:1px;white-space:nowrap}
+.section-divider{display:flex;width:100%;flex-basis:100%;box-sizing:border-box;align-items:center;gap:14px;margin:14px 0 20px;color:rgba(255,255,255,.88);font:800 22px/1.2 Aldrich,PHI,system-ui,sans-serif;letter-spacing:1px;white-space:nowrap}
 .section-divider::before,.section-divider::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55))}
 .section-divider::after{background:linear-gradient(90deg,rgba(255,255,255,.55),transparent)}
 .section-divider span{flex:0 0 auto}
+.section-divider-note{margin-left:6px;font-size:14px;font-weight:600;letter-spacing:0;opacity:.72}
 </style></head><body><main id="canvas" class="elem-hydro default-mode"><div class="background"><img src="${escapePhigrosBestImageHtml(backgroundUrl)}" alt="曲绘-模糊"></div>
 <div class="title" data-layout-content><div class="playerInfo"><div class="blackBlock clip-box"></div><div class="avatar clip-box"><img src="${escapePhigrosBestImageHtml(avatarUrl)}" alt="avatar"></div><div class="playerId"><p name="pvis">${escapePhigrosBestImageHtml(input.playerName)}</p></div><div class="rks clip-box"><p>${escapePhigrosBestImageHtml(input.rks)}</p></div><div class="clgBox"><div class="Challenge"><img src="${escapePhigrosBestImageHtml(challengeUrl)}" alt="Challenge"><p>${escapePhigrosBestImageHtml(input.challenge)}</p></div></div><div class="date"><p>${escapePhigrosBestImageHtml(input.syncedAt)}</p></div><div class="dataBox clip-box"><img src="${escapePhigrosBestImageHtml(input.templateAssets.dataIconUrl)}" alt="data"><p>${escapePhigrosBestImageHtml(input.dataAmount)}</p></div></div><div class="recordInfo clip-box"><div class="whiteLine clip-box"></div><div class="sheet">${stats(input)}</div></div></div>
 <div class="b19" data-layout-content>${scoreCards(input)}</div><div class="createdbox" data-layout-content><div class="phi-plugin"><p>rRanker</p></div></div></main>
