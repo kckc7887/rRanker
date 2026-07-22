@@ -39,6 +39,7 @@ jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => {
   );
   return {
     ...actual,
+    phigrosReadableRootDirectory: () => ({ uri: 'file:///reference/' }),
     loadPhigrosIllustrations: jest.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `data:image/png;base64,${id}`]))),
     loadRemoteImageDataUri: jest.fn(async () => 'data:image/png;base64,style'),
   };
@@ -84,7 +85,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
         getIllustrationBlurUrl: (id: string) => `https://example.test/illustration/${id}.png`,
         getIllustrationLowresUrl: (id: string) => `https://example.test/illustration-lowres/${id}.png`,
       },
-      snapshot: { songs: [{ id: 'song-1', title: 'テスト曲目' }] },
+      snapshot: { songs: [{ id: 'song-1', title: 'テスト曲目', charts: [] }] },
     } };
     return () => result;
   })(),
@@ -262,6 +263,9 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByLabelText('最高 Acc')).toBeTruthy();
     expect(screen.getByLabelText('筛选难度 IN')).toBeTruthy();
     expect(screen.getByLabelText('筛选评价 φ')).toBeTruthy();
+    expect(screen.getByLabelText('XING 筛选 关闭')).toBeTruthy();
+    expect(screen.getByLabelText('XING 筛选 Good')).toBeTruthy();
+    expect(screen.getByLabelText('XING 筛选 Miss')).toBeTruthy();
     expect(screen.queryByText('OVER FLOW')).toBeNull();
 
     fireEvent.press(screen.getByLabelText('选择头像'));
