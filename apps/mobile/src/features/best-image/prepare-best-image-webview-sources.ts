@@ -9,14 +9,11 @@ export type PreparedBestImageWebViewSources = {
 
 let sourceBatch = 0;
 
-export function inlineBestImageWebViewSources(
-  htmlPages: readonly string[],
-  baseUrl = 'https://assets2.lxns.net/',
-): BestImageWebViewSource[] {
-  return htmlPages.map((html) => ({ html, baseUrl }));
+export function inlineBestImageWebViewSources(htmlPages: readonly string[]): BestImageWebViewSource[] {
+  return htmlPages.map((html) => ({ html, baseUrl: 'https://assets2.lxns.net/' }));
 }
 
-export function prepareAndroidBestImageWebViewSources(htmlPages: readonly string[]): PreparedBestImageWebViewSources {
+export function prepareBestImageWebViewSources(htmlPages: readonly string[]): PreparedBestImageWebViewSources {
   sourceBatch += 1;
   const files: File[] = [];
   try {
@@ -36,3 +33,5 @@ export function prepareAndroidBestImageWebViewSources(htmlPages: readonly string
     throw error;
   }
 }
+
+export const prepareAndroidBestImageWebViewSources = prepareBestImageWebViewSources;
