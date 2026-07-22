@@ -1,6 +1,7 @@
 import {
   matchesPhigrosLevel,
   matchesPhigrosRankFilter,
+  matchesPhigrosScoreRange,
   phigrosLevelToDifficulty,
   phigrosRankFilterLabel,
 } from '@/domain/phigros-filters';
@@ -48,5 +49,14 @@ describe('phigros rank filters', () => {
 
   it('allows all ranks when filter is null', () => {
     expect(matchesPhigrosRankFilter({ dxScore: 100, fc: null }, null)).toBe(true);
+  });
+});
+
+describe('phigros score range filters', () => {
+  it('matches inclusive score bounds and rejects inverted ranges', () => {
+    expect(matchesPhigrosScoreRange(950_000, '', '')).toBe(true);
+    expect(matchesPhigrosScoreRange(950_000, '900000', '980000')).toBe(true);
+    expect(matchesPhigrosScoreRange(null, '900000', '')).toBe(false);
+    expect(matchesPhigrosScoreRange(950_000, '980000', '900000')).toBe(false);
   });
 });

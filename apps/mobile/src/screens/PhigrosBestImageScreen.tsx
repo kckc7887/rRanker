@@ -2,12 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Directory } from 'expo-file-system';
 import {
   ActivityIndicator, FlatList, Image, Modal, PixelRatio, Platform, Pressable, ScrollView,
-  StyleSheet, Text, useWindowDimensions, View,
+  StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { captureRef } from 'react-native-view-shot';
 import { useNotification } from '@/components/AppNotification';
+import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { formatPhigrosChallengeBadge } from '@/domain/phigros-challenge-theme';
+import {
+  PHIGROS_LEVELS, PHIGROS_RANK_FILTERS, phigrosLevelLabel, phigrosRankFilterLabel,
+  type PhigrosRankFilter,
+} from '@/domain/phigros-filters';
+import type { PhigrosLevel } from '@/domain/phigros';
+import { phigrosLevelColors } from '@/domain/phigros-level-theme';
 import { loadPhigrosAvatarCatalog } from '@/domain/phigros-avatar-resolver';
 import {
   parseBestImageHeightMessage, parseBestImageReadyMessage, parseBestImageRuntimeMessage,
@@ -26,8 +33,14 @@ import {
   loadPhigrosAccAverages, type PhigrosAccAverage,
 } from '@/features/phigros-best-image/load-phigros-acc-averages';
 import {
+  buildCustomPhigrosBestImageSections, DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS,
+  isCustomPhigrosBestImageFiltersValid, parseBestImageQuantity,
+  parsePhigrosBestImageAccuracyBound, parsePhigrosBestImageScoreBound,
+  type CustomPhigrosBestImageFilters,
+} from '@/features/phigros-best-image/phigros-best-image-custom';
+import {
   appendPhigrosOverflowRecords, paginatePhigrosBestImageSections,
-  sortPhigrosBestImageRecords, type PhigrosBestImageOverflowCount, type PhigrosBestImageType,
+  type PhigrosBestImageOverflowCount, type PhigrosBestImageType,
 } from '@/features/phigros-best-image/phigros-best-image';
 import {
   loadPhigrosIllustrations, loadRemoteImageDataUri,
@@ -68,11 +81,31 @@ const PREVIEW_PHASE_LABEL: Record<PreviewPhase, string> = {
   error: '加载失败', crashed: '渲染进程崩溃', terminated: '渲染进程已终止',
 };
 
-function ChoiceChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+function ChoiceChip({ label, selected, onPress, accessibilityLabel }: { label: string; selected: boolean; onPress: () => void; accessibilityLabel?: string }) {
   const theme = useAppTheme();
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={label}
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={accessibilityLabel ?? label}
     onPress={onPress} style={[styles.chip, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}>
     <Text style={[styles.chipText, { color: theme.textSecondary }, selected && { color: theme.accent }]}>{label}</Text>
+  </Pressable>;
+}
+
+function LevelFilterChip({ level, selected, onPress }: { level: PhigrosLevel; selected: boolean; onPress: () => void }) {
+  const theme = useAppTheme();
+  const colors = phigrosLevelColors(level);
+  const label = phigrosLevelLabel(level);
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`筛选难度 ${label}`}
+    onPress={onPress} style={[styles.filterChip, { backgroundColor: colors.bg }, selected && { borderColor: theme.accent }]}>
+    <Text style={[styles.filterChipText, { color: colors.fg }]}>{label}</Text>
+  </Pressable>;
+}
+
+function RankFilterChip({ value, selected, onPress }: { value: PhigrosRankFilter; selected: boolean; onPress: () => void }) {
+  const theme = useAppTheme();
+  const badgeRate = value === 'fc' ? 'v' : value;
+  const badgeFc = value === 'fc';
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={`筛选评价 ${phigrosRankFilterLabel(value)}`}
+    onPress={onPress} style={[styles.rankChipWrap, selected && { borderColor: theme.accent }]}>
+    <PhigrosRateBadge rate={badgeRate} fc={badgeFc} />
   </Pressable>;
 }
 
@@ -110,6 +143,12 @@ export function PhigrosBestImageScreen() {
   const songs = useMemo(() => catalog.data?.snapshot.songs ?? [], [catalog.data?.snapshot.songs]);
   const [type, setType] = useState<PhigrosBestImageType>('best30');
   const [width, setWidth] = useState<(typeof WIDTHS)[number]>(1080);
+  const [quantityText, setQuantityText] = useState(String(DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS.quantity));
+  const [scoreMinText, setScoreMinText] = useState('');
+  const [scoreMaxText, setScoreMaxText] = useState('');
+  const [accuracyMinText, setAccuracyMinText] = useState('');
+  const [accuracyMaxText, setAccuracyMaxText] = useState('');
+  const [customFilters, setCustomFilters] = useState<CustomPhigrosBestImageFilters>(DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS);
   const [stylePrefs, setStylePrefs] = useState(DEFAULT_STYLES); const [prefsReady, setPrefsReady] = useState(false);
   const [avatarItems, setAvatarItems] = useState<string[]>(() => [...getPhigrosReferenceAvatarKeys()]); const [picker, setPicker] = useState<PhigrosBestImagePickerKind | null>(null);
   const [illustrations, setIllustrations] = useState<Record<string, string | null> | null>(null);
@@ -147,8 +186,21 @@ export function PhigrosBestImageScreen() {
   const sections = useMemo(() => {
     if (!payload) return [];
     if (type === 'best30') return appendPhigrosOverflowRecords(payload.bestSections, payload.records, stylePrefs.overflowCount);
-    return [{ id: 'custom', title: '自定义', records: sortPhigrosBestImageRecords(payload.records) }];
-  }, [payload, stylePrefs.overflowCount, type]);
+    return buildCustomPhigrosBestImageSections(payload.records, customFilters);
+  }, [customFilters, payload, stylePrefs.overflowCount, type]);
+  const quantityError = parseBestImageQuantity(quantityText) === null ? '数量必须是非负整数，0 表示不限制' : null;
+  const scoreMinError = parsePhigrosBestImageScoreBound(scoreMinText) === null ? '分数须在 0–1000000' : null;
+  const scoreMaxError = parsePhigrosBestImageScoreBound(scoreMaxText) === null ? '分数须在 0–1000000' : null;
+  const accuracyMinError = parsePhigrosBestImageAccuracyBound(accuracyMinText) === null ? 'Acc 须在 0–100' : null;
+  const accuracyMaxError = parsePhigrosBestImageAccuracyBound(accuracyMaxText) === null ? 'Acc 须在 0–100' : null;
+  const customInputValid = isCustomPhigrosBestImageFiltersValid({
+    quantityText,
+    scoreMin: scoreMinText,
+    scoreMax: scoreMaxText,
+    accuracyMin: accuracyMinText,
+    accuracyMax: accuracyMaxText,
+  });
+  const formValid = type !== 'custom' || customInputValid;
   const pages = useMemo(() => paginatePhigrosBestImageSections(
     sections,
     type === 'best30' ? 30 + stylePrefs.overflowCount : 30,
@@ -331,7 +383,7 @@ export function PhigrosBestImageScreen() {
     setTimeout(() => resolve(ready), 320);
   };
   const exportImages = async () => {
-    if (!payload || !sources || !htmlPages || !fontsReady || exportStatus) return;
+    if (!payload || !sources || !htmlPages || !fontsReady || !formValid || exportStatus) return;
     const captures: { uri: string; filename: string }[] = [];
     try {
       await requestBestImageExportPermission();
@@ -359,24 +411,77 @@ export function PhigrosBestImageScreen() {
       <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
         {([{ id: 'best30', label: 'Best30' }, { id: 'custom', label: '自定义' }] as const).map((item) => {
           const selected = type === item.id;
-          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => {
-            if (item.id === 'custom') {
-              showNotification({ title: '自定义模式', message: '暂未开放，请先使用 Best30。', variant: 'info' });
-              return;
-            }
-            setType(item.id);
-          }} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setType(item.id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
             <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item.label}</Text>
           </Pressable>;
         })}
       </View>
 
+      {type === 'custom' ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
+        <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
+        <View style={styles.textFieldWrap}>
+          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
+          <TextInput accessibilityLabel="自定义数量" autoCorrect={false} keyboardType="number-pad" value={quantityText} onChangeText={(value) => {
+            setQuantityText(value);
+            const parsed = parseBestImageQuantity(value);
+            if (parsed !== null) setCustomFilters((current) => ({ ...current, quantity: parsed }));
+          }} placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, quantityError && styles.textInputError]} />
+          {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
+        </View>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>难度</Text>
+        <View style={styles.chipRow}>
+          <ChoiceChip label="全部" accessibilityLabel="筛选难度 全部" selected={customFilters.level === 'all'} onPress={() => setCustomFilters((current) => ({ ...current, level: 'all' }))} />
+          {PHIGROS_LEVELS.map((level) => (
+            <LevelFilterChip key={level} level={level} selected={customFilters.level === level} onPress={() => setCustomFilters((current) => ({ ...current, level }))} />
+          ))}
+        </View>
+        <View style={styles.fieldRow}>
+          <View style={styles.textFieldWrap}>
+            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>分数</Text>
+            <View style={styles.rangeRow}>
+              <TextInput accessibilityLabel="最低分数" autoCorrect={false} keyboardType="number-pad" value={scoreMinText} onChangeText={(value) => {
+                setScoreMinText(value);
+                if (parsePhigrosBestImageScoreBound(value) !== null) setCustomFilters((current) => ({ ...current, scoreMin: value }));
+              }} placeholder="下限" placeholderTextColor={theme.textMuted} style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, scoreMinError && styles.textInputError]} />
+              <Text style={[styles.rangeSeparator, { color: theme.textMuted }]}>~</Text>
+              <TextInput accessibilityLabel="最高分数" autoCorrect={false} keyboardType="number-pad" value={scoreMaxText} onChangeText={(value) => {
+                setScoreMaxText(value);
+                if (parsePhigrosBestImageScoreBound(value) !== null) setCustomFilters((current) => ({ ...current, scoreMax: value }));
+              }} placeholder="上限" placeholderTextColor={theme.textMuted} style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, scoreMaxError && styles.textInputError]} />
+            </View>
+            {scoreMinError || scoreMaxError ? <Text style={[styles.errorText, { color: theme.danger }]}>{scoreMinError ?? scoreMaxError}</Text> : null}
+          </View>
+          <View style={styles.textFieldWrap}>
+            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Acc</Text>
+            <View style={styles.rangeRow}>
+              <TextInput accessibilityLabel="最低 Acc" autoCorrect={false} keyboardType="decimal-pad" value={accuracyMinText} onChangeText={(value) => {
+                setAccuracyMinText(value);
+                if (parsePhigrosBestImageAccuracyBound(value) !== null) setCustomFilters((current) => ({ ...current, accuracyMin: value }));
+              }} placeholder="下限" placeholderTextColor={theme.textMuted} style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, accuracyMinError && styles.textInputError]} />
+              <Text style={[styles.rangeSeparator, { color: theme.textMuted }]}>~</Text>
+              <TextInput accessibilityLabel="最高 Acc" autoCorrect={false} keyboardType="decimal-pad" value={accuracyMaxText} onChangeText={(value) => {
+                setAccuracyMaxText(value);
+                if (parsePhigrosBestImageAccuracyBound(value) !== null) setCustomFilters((current) => ({ ...current, accuracyMax: value }));
+              }} placeholder="上限" placeholderTextColor={theme.textMuted} style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, accuracyMaxError && styles.textInputError]} />
+            </View>
+            {accuracyMinError || accuracyMaxError ? <Text style={[styles.errorText, { color: theme.danger }]}>{accuracyMinError ?? accuracyMaxError}</Text> : null}
+          </View>
+        </View>
+        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>评价</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+          <ChoiceChip label="全部" accessibilityLabel="筛选评价 全部" selected={customFilters.rank === null} onPress={() => setCustomFilters((current) => ({ ...current, rank: null }))} />
+          {PHIGROS_RANK_FILTERS.map((item) => (
+            <RankFilterChip key={item.value} value={item.value} selected={customFilters.rank === item.value} onPress={() => setCustomFilters((current) => ({ ...current, rank: item.value }))} />
+          ))}
+        </ScrollView>
+      </View> : null}
+
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
       <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
-        <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
+        {type === 'best30' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
           <View style={styles.overflowCopy}><Text style={[styles.styleName, { color: theme.text }]}>OVER FLOW</Text><Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text></View>
           <View style={styles.overflowChoices}>{OVERFLOW_COUNTS.map((count) => <ChoiceChip key={count} label={`${count} 个`} selected={stylePrefs.overflowCount === count} onPress={() => setStylePrefs((current) => ({ ...current, overflowCount: count }))} />)}</View>
-        </View>
+        </View> : null}
         {(['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
           <View style={styles.stylePreview}>{kind === 'avatar' ? (avatarData ? <Image source={{ uri: avatarData }} style={styles.avatarPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>) : (backgroundData ? <Image source={{ uri: backgroundData }} style={styles.backgroundPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>)}</View>
           <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{kind === 'avatar' ? '头像' : '背景'}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{styleValue(kind)}</Text></View>
@@ -404,7 +509,7 @@ export function PhigrosBestImageScreen() {
       </View>
       {sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；所需字体完成后可导出</Text></>}</View> : null}
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === pageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
-      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || !fontsReady || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !fontsReady || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? (fontsReady ? '导出到相册' : '所需字体准备完成后可导出')}</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="导出成绩图片" disabled={!sources || !fontsReady || !formValid || !!exportStatus} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!sources || !fontsReady || !formValid || !!exportStatus) && styles.exportButtonDisabled]}>{exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportButtonText}>{exportStatus ?? (fontsReady ? '导出到相册' : '所需字体准备完成后可导出')}</Text></Pressable>
       <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="phigros-best-image-webview-status">{previewStatus}</Text>
     </ScrollView>
     <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />
@@ -420,9 +525,23 @@ const styles = StyleSheet.create({
   segmentedControl: { flexDirection: 'row', padding: 4, borderRadius: 14 },
   segment: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
   segmentText: { fontSize: 14, fontWeight: '700' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  customPanel: { marginTop: 16, padding: 14, gap: 10, borderRadius: 16 },
+  panelTitle: { fontSize: 15, fontWeight: '800' },
+  fieldRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  textFieldWrap: { flex: 1, gap: 6 },
+  fieldLabel: { fontSize: 12, fontWeight: '700' },
+  textInput: { minHeight: 40, paddingHorizontal: 11, borderWidth: 1, borderRadius: 10, fontSize: 14 },
+  textInputError: { borderColor: '#D92D20' },
+  errorText: { fontSize: 11, fontWeight: '600' },
+  rangeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  rangeInput: { flex: 1, minHeight: 40, paddingHorizontal: 10, borderWidth: 1, borderRadius: 10, fontSize: 14 },
+  rangeSeparator: { fontSize: 13, fontWeight: '700' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, alignItems: 'center' },
   chip: { minWidth: 46, height: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderWidth: 1, borderRadius: 999 },
   chipText: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
+  filterChip: { minHeight: 28, minWidth: 36, paddingHorizontal: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
+  filterChipText: { fontSize: 12, fontWeight: '800' },
+  rankChipWrap: { borderWidth: 2, borderColor: 'transparent', borderRadius: 8, padding: 2 },
   styleList: { overflow: 'hidden', borderRadius: 16 },
   overflowStyleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
   overflowCopy: { flex: 1, minWidth: 0 },
