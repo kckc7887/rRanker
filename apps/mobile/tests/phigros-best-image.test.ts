@@ -170,18 +170,27 @@ describe('Phigros 成绩图', () => {
     }
   });
 
-  it('输出原模板 Avg 条和 OVER FLOW 分隔结构', () => {
-    const best = Array.from({ length: 28 }, (_, index) => record(`b${index + 1}`, {
-      rating: 16 - index / 100,
+  it('输出原模板 Avg 条和舞萌式分区分隔线', () => {
+    const phi = [record('p1', { rating: 16.2 }), record('p2', { rating: 16.1 }), record('p3', { rating: 16.0 })];
+    const best = Array.from({ length: 27 }, (_, index) => record(`b${index + 1}`, {
+      rating: 15.9 - index / 100,
       ...(index === 0 ? { achievements: 100, dxScore: 1_000_000, fc: 'ap', rate: 'phi' } : {}),
     }));
+    const overflow = [record('o1', { rating: 12.5 }), record('o2', { rating: 12.4 }), record('o3', { rating: 12.3 })];
     const html = buildPhigrosBestImageHtml({
       type: 'best30', width: 1080,
-      page: { id: 'page', pageIndex: 0, pageCount: 1, sections: [{ id: 'b27', title: 'Best27', records: best }] },
+      page: {
+        id: 'page', pageIndex: 0, pageCount: 1,
+        sections: [
+          { id: 'phi3', title: 'Phi3', records: phi },
+          { id: 'b27', title: 'Best27', records: best },
+          { id: 'overflow', title: 'OVER FLOW', records: overflow },
+        ],
+      },
       playerName: '尘言', rks: '16.1053', dataAmount: '386MiB 289KiB', challenge: '42', challengeModeRank: 442,
       syncedAt: '2026/03/27 07:19:55', progress: { cleared: [0, 31, 221, 39], fullCombo: [0, 12, 111, 4], phi: [0, 4, 16, 2] },
-      titles: Object.fromEntries(best.map((item) => [item.songId, item.title])),
-      illustrations: Object.fromEntries(best.map((item) => [item.songId, 'file:///cover.png'])),
+      titles: Object.fromEntries([...phi, ...best, ...overflow].map((item) => [item.songId, item.title])),
+      illustrations: Object.fromEntries([...phi, ...best, ...overflow].map((item) => [item.songId, 'file:///cover.png'])),
       accAverages: { 'b1:2': { value: 98.5004, kind: 'Higher' } },
       templateAssets: {
         css: '.song{width:360px}', dataIconUrl: 'file:///data.png', fallbackBackgroundUrl: 'file:///bg.png', fallbackAvatarUrl: 'file:///avatar.png',
@@ -192,8 +201,12 @@ describe('Phigros 成绩图', () => {
     });
     expect(html).toContain('class="accAvg accHigher clip-box"');
     expect(html).toContain('Avg: 98.5004%');
-    expect(html).toContain('class="over_flow"');
-    expect(html).toContain('<i>OVER FLOW</i>');
+    expect(html).toContain('<div class="section-divider"><span>Phi3</span></div>');
+    expect(html).toContain('<div class="section-divider"><span>Best27</span></div>');
+    expect(html).toContain('<div class="section-divider"><span>OVER FLOW</span></div>');
+    expect(html).toContain('.section-divider{display:flex');
+    expect(html).not.toContain('class="over_flow"');
+    expect(html).not.toContain('flow_line');
     expect(html).toContain('<div class="suggest"><div class="suggest-tip"></div><p>无法推分</p>');
     expect(html).not.toContain('suggest-kind-null');
   });

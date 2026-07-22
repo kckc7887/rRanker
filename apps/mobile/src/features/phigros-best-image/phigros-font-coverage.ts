@@ -19,7 +19,7 @@ export const PHIGROS_FONT_CSS_FAMILY: Readonly<Record<string, string>> = {
   'NotoSansMath-Regular': 'NotoSansMath-Regular',
 };
 
-/** body 字体栈顺序（不含 Aldrich；Aldrich 仅用于页脚 / OVER FLOW）。 */
+/** body 字体栈顺序（不含 Aldrich；Aldrich 仅用于页脚 / 分区分隔线）。 */
 export const PHIGROS_BODY_FONT_STACK_ORDER = [
   'phi',
   'NotoSansArabic',
