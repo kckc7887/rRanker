@@ -117,7 +117,10 @@ describe('Phigros 成绩图', () => {
       expect(html).toContain('.song{width:360px}');
       expect(html).toContain(`zoom:${width / 1200}`);
       expect(html).not.toContain('body{min-height:');
-      expect(html).toContain("last=Math.max(1,Math.ceil(canvas.getBoundingClientRect().height))");
+      expect(html).toContain(`name="viewport" content="width=${width}, initial-scale=1`);
+      expect(html).toContain("[canvas,...canvas.querySelectorAll('*')]");
+      expect(html).toContain('node.getBoundingClientRect().bottom-rect.top');
+      expect(html).toContain("Math.abs(vh-last)<3");
       expect(html).toContain('<p>rRanker</p>');
       expect(html).not.toContain('<p>Phi-Plugin</p>');
       expect(html).not.toContain('<div class="ver">');

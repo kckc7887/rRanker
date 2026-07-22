@@ -247,13 +247,27 @@ export function PhigrosBestImageScreen() {
     setPreviewStates((current) => ({ ...current, [pageId]: { phase, version: version === undefined ? current[pageId]?.version ?? null : version } }));
   };
   const waitForExport = (index: number) => new Promise<number>((resolve, reject) => {
-    exportResolve.current = resolve; exportReject.current = reject; setExportHeight(pageHeights[pages[index]!.id] ?? Math.ceil(width * .75)); setExportIndex(index);
-    exportTimer.current = setTimeout(() => reject(new Error('图片渲染超时')), 30_000);
+    if (exportTimer.current) clearTimeout(exportTimer.current);
+    exportResolve.current = resolve;
+    exportReject.current = reject;
+    setExportHeight(pageHeights[pages[index]!.id] ?? Math.ceil(width * .75));
+    setExportIndex(index);
+    exportTimer.current = setTimeout(() => {
+      exportResolve.current = null;
+      exportReject.current = null;
+      reject(new Error('图片渲染超时'));
+    }, 30_000);
   });
   const handleExportMessage = (value: string) => {
     const measured = parseBestImageHeightMessage(value, width, 1); if (measured != null) setExportHeight(measured);
     const ready = parseBestImageReadyMessage(value, width, 1); if (ready == null || !exportResolve.current) return;
-    const resolve = exportResolve.current; exportResolve.current = null; if (exportTimer.current) clearTimeout(exportTimer.current); setTimeout(() => resolve(ready), 320);
+    setExportHeight(ready);
+    const resolve = exportResolve.current;
+    exportResolve.current = null;
+    exportReject.current = null;
+    if (exportTimer.current) clearTimeout(exportTimer.current);
+    exportTimer.current = null;
+    setTimeout(() => resolve(ready), 320);
   };
   const exportImages = async () => {
     if (!payload || !sources || !htmlPages || exportStatus) return;
@@ -326,7 +340,7 @@ export function PhigrosBestImageScreen() {
       <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="phigros-best-image-webview-status">{previewStatus}</Text>
     </ScrollView>
     <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />
-    <Modal visible={exportIndex !== null} transparent={false} animationType="none" onRequestClose={() => exportReject.current?.(new Error('导出已取消'))}>{exportIndex !== null && sources?.[exportIndex] ? <View style={styles.exportRoot}><View ref={exportCaptureRef} collapsable={false} style={{ width: width / PixelRatio.get(), height: exportHeight / PixelRatio.get() }}><WebView key={`phi-export-${exportIndex}-${width}`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={templateAssets?.allowingReadAccessToUrl} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={sources[exportIndex]} style={styles.webview} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} /></View><View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View></View> : null}</Modal>
+    <Modal visible={exportIndex !== null} transparent={false} animationType="none" onRequestClose={() => exportReject.current?.(new Error('导出已取消'))}>{exportIndex !== null && sources?.[exportIndex] ? <View style={styles.exportRoot}><View accessibilityLabel={`导出画布 第${exportIndex + 1}页`} ref={exportCaptureRef} collapsable={false} style={{ width: width / PixelRatio.get(), height: exportHeight / PixelRatio.get() }}><WebView accessibilityLabel={`导出渲染 第${exportIndex + 1}页`} key={`phi-export-${exportIndex}-${width}`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={templateAssets?.allowingReadAccessToUrl} androidLayerType="software" bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={sources[exportIndex]} style={styles.webview} onMessage={(event) => handleExportMessage(event.nativeEvent.data)} /></View><View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View></View> : null}</Modal>
   </>;
 }
 

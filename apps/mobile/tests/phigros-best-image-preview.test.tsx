@@ -1,5 +1,6 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { PixelRatio, Platform, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
 
@@ -9,6 +10,15 @@ jest.mock('react-native-webview', () => {
   return { WebView: (props: Record<string, unknown>) => React.createElement(ReactNative.View, props) };
 });
 jest.mock('react-native-view-shot', () => ({ captureRef: jest.fn(async () => 'file:///capture.png') }));
+jest.mock('@/features/best-image/best-image-export', () => {
+  const actual = jest.requireActual<typeof import('@/features/best-image/best-image-export')>('@/features/best-image/best-image-export');
+  return {
+    ...actual,
+    requestBestImageExportPermission: jest.fn(async () => undefined),
+    saveBestImageCapture: jest.fn(async () => undefined),
+    deleteBestImageCapture: jest.fn(),
+  };
+});
 jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
   prepareBestImageWebViewSources: (htmlPages: string[]) => ({
     sources: htmlPages.map((html) => ({ html, baseUrl: 'file:///reference/' })),
@@ -90,6 +100,10 @@ jest.mock('@/hooks/use-game-data', () => ({
 
 describe('Phigros 生成图片页', () => {
   it('沿用舞萌板块的页面顺序、控件样式和预览导出布局', async () => {
+    const { captureRef } = jest.requireMock('react-native-view-shot') as { captureRef: jest.Mock };
+    const { requestBestImageExportPermission } = jest.requireMock('@/features/best-image/best-image-export') as { requestBestImageExportPermission: jest.Mock };
+    captureRef.mockClear();
+    requestBestImageExportPermission.mockClear();
     const screen = await render(<SafeAreaProvider initialMetrics={{
       frame: { x: 0, y: 0, width: 390, height: 844 },
       insets: { top: 0, left: 0, right: 0, bottom: 0 },
@@ -120,6 +134,33 @@ describe('Phigros 生成图片页', () => {
     await waitFor(() => expect(screen.getByText(/1080 × 1215 px/u)).toBeTruthy());
     const previewFrameStyle = screen.getByLabelText('HTML图片预览窗').props.style[1];
     expect(previewFrameStyle.height).toBeCloseTo(previewFrameStyle.width * 4 / 3);
+    fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({
+      type: 'best-image-height', width: 1080, height: 1400,
+    }) } });
+    await waitFor(() => expect(screen.getByText(/1080 × 1400 px/u)).toBeTruthy());
+
+    fireEvent.press(screen.getByLabelText('导出成绩图片'));
+    await waitFor(() => expect(requestBestImageExportPermission).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getAllByText('正在导出 1/1')).toHaveLength(2));
+    const renderer = await screen.findByLabelText('导出渲染 第1页');
+    await act(async () => {
+      fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({
+        type: 'best-image-height', width: 1080, height: 1500,
+      }) } });
+      fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({
+        type: 'best-image-ready', width: 1080, height: 1666,
+      }) } });
+    });
+
+    await waitFor(() => expect(StyleSheet.flatten(screen.getByLabelText('导出画布 第1页').props.style).height).toBeCloseTo(1666 / PixelRatio.get()));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 360)); });
+    const expectedWidth = Platform.OS === 'ios' ? 1080 / PixelRatio.get() : 1080;
+    const expectedHeight = Platform.OS === 'ios' ? 1666 / PixelRatio.get() : 1666;
+    await waitFor(() => expect(captureRef).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      width: expectedWidth,
+      height: expectedHeight,
+      format: 'png',
+    })));
 
     fireEvent.press(screen.getByLabelText('自定义'));
     expect(screen.queryByText('自定义 BestN')).toBeNull();
