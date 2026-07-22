@@ -482,7 +482,7 @@ function ChartCard({
 
       <View style={styles.resultBlock}>
         <Text style={[styles.resultLabel, { color: theme.textMuted }]}>Score</Text>
-        {score === undefined ? (
+        {score == null ? (
           <Text
             accessibilityLabel="未游玩"
             style={[styles.scoreValue, { color: theme.text }]}

@@ -29,7 +29,6 @@ import {
   type ProviderOption,
 } from '@/domain/game-bind-options';
 import { useUserLibrary } from '@/hooks/use-user-library';
-import type { ProviderSession } from '@/providers/contracts';
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
@@ -46,20 +45,10 @@ const snapshots = new SqliteSnapshotRepository();
 const localAccounts = new LocalAccountStore();
 const demoAccounts = new DemoAccountStore();
 
-function sessionModeLabel(session: ProviderSession | undefined): string {
-  if (!session) return '无凭据';
-  if (session.mode === 'jwt') return '仅登录（不可上传）';
-  if (session.mode === 'import-token') return '已可上传';
-  if (session.mode === 'lxns-oauth') return 'OAuth（可上传）';
-  if (session.mode === 'phi-session') return 'TapTap 授权';
-  return 'Cookie（当前会话）';
-}
-
 export function GameAccountsScreen() {
   const theme = useAppTheme();
   const { showActionNotification, showNotification } = useNotification();
   const boundAccounts = useSession((s) => s.boundAccounts);
-  const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const activeAccountId = useSession((s) => s.activeAccountId);
   const selectBoundAccount = useSession((s) => s.selectBoundAccount);
   const upsertBoundAccount = useSession((s) => s.upsertBoundAccount);
@@ -87,30 +76,43 @@ export function GameAccountsScreen() {
     }
   };
 
-  const unbindAccount = async (accountId: string, includePersonalData: boolean) => {
+  const isLastGameAccount = (account: BoundAccount) => (
+    boundAccounts.filter((item) => item.gameId === account.gameId).length === 1
+  );
+
+  const unbindAccount = async (account: BoundAccount, includePersonalData: boolean) => {
     setBusy(true);
     const failures: string[] = [];
     const attempt = async (label: string, action: () => Promise<unknown>) => {
       try { await action(); } catch { failures.push(label); }
     };
-    await attempt('凭据', () => sessions.removeAccount(accountId));
-    await attempt('缓存', () => snapshots.clear(accountId));
-    if (includePersonalData) await attempt('个人数据', () => library.clearUserData());
-    removeBoundAccount(accountId);
+    await attempt('凭据', () => sessions.removeAccount(account.id));
+    await attempt('缓存', () => snapshots.clear(account.id));
+    if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
+    removeBoundAccount(account.id);
+    await attempt('当前账号', persistActiveAccountId);
     clearRemoteCaches();
     if (failures.length > 0) setMessage(`部分清除失败（${failures.join('、')}），其余项目已清除，请重试`);
     else setMessage(includePersonalData ? '已解除绑定并清除个人数据' : '已解除绑定；个人数据已保留');
     setBusy(false);
   };
 
-  const promptUnbind = (account: BoundAccount) => showActionNotification({
-    title: '解除绑定',
-    message: `将清除「${account.displayName}」的本机凭据和成绩缓存。是否同时删除收藏、练习清单和本地标签？`,
+  const promptUnbind = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
+    title: '解除最后一个账号',
+    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
     variant: 'warning',
     actions: [
       { label: '取消', tone: 'cancel' },
-      { label: '仅凭据与缓存', onPress: () => unbindAccount(account.id, false) },
-      { label: '同时删除个人数据', tone: 'destructive', onPress: () => unbindAccount(account.id, true) },
+      { label: '确认解绑并保留个人数据', tone: 'destructive', onPress: () => unbindAccount(account, false) },
+      { label: '解绑并清除个人数据', tone: 'destructive', onPress: () => unbindAccount(account, true) },
+    ],
+  } : {
+    title: '解除绑定',
+    message: `将清除「${account.displayName}」的本机凭据和成绩缓存。`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认解绑', tone: 'destructive', onPress: () => unbindAccount(account, false) },
     ],
   });
 
@@ -187,22 +189,25 @@ export function GameAccountsScreen() {
     setMessage(`已将本地玩家改名为「${displayName}」`);
   };
 
-  const persistActiveAccountId = async () => {
+  async function persistActiveAccountId() {
     const nextId = useSession.getState().activeAccountId;
     if (!nextId || nextId === UNBOUND_ACCOUNT_ID) {
       await sessions.setActiveAccountId(null);
       return;
     }
     await sessions.setActiveAccountId(nextId);
-  };
+  }
 
-  const removeLocalAccount = async (account: BoundAccount) => {
+  const removeLocalAccount = async (account: BoundAccount, includePersonalData: boolean) => {
     setBusy(true);
     const failures: string[] = [];
     try { await localAccounts.remove(account.id); } catch { failures.push('账号'); }
     try { await snapshots.clear(account.id); } catch { failures.push('成绩'); }
+    if (includePersonalData) {
+      try { await library.clearGameUserData(account.gameId); } catch { failures.push('个人数据'); }
+    }
     removeBoundAccount(account.id);
-    await persistActiveAccountId();
+    try { await persistActiveAccountId(); } catch { failures.push('当前账号'); }
     clearRemoteCaches();
     setMessage(failures.length > 0
       ? `本地玩家已从列表移除，但${failures.join('、')}数据清理失败`
@@ -210,33 +215,57 @@ export function GameAccountsScreen() {
     setBusy(false);
   };
 
-  const removeDemoAccount = async (account: BoundAccount) => {
+  const removeDemoAccount = async (account: BoundAccount, includePersonalData: boolean) => {
     setBusy(true);
-    try { await demoAccounts.remove(account.id); } catch { /* ignore */ }
+    const failures: string[] = [];
+    try { await demoAccounts.remove(account.id); } catch { failures.push('账号'); }
+    if (includePersonalData) {
+      try { await library.clearGameUserData(account.gameId); } catch { failures.push('个人数据'); }
+    }
     removeBoundAccount(account.id);
-    await persistActiveAccountId();
+    try { await persistActiveAccountId(); } catch { failures.push('当前账号'); }
     clearRemoteCaches();
-    setMessage(`已删除示例账号「${account.displayName}」`);
+    setMessage(failures.length > 0
+      ? `示例账号已从列表移除，但${failures.join('、')}清理失败`
+      : `已删除示例账号「${account.displayName}」`);
     setBusy(false);
   };
 
-  const promptRemoveLocal = (account: BoundAccount) => showActionNotification({
+  const promptRemoveLocal = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
+    title: '删除最后一个本地玩家',
+    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认删除并保留个人数据', tone: 'destructive', onPress: () => removeLocalAccount(account, false) },
+      { label: '删除并清除个人数据', tone: 'destructive', onPress: () => removeLocalAccount(account, true) },
+    ],
+  } : {
     title: '删除本地玩家',
     message: `将删除「${account.displayName}」及其本机成绩，且无法恢复。`,
     variant: 'warning',
     actions: [
       { label: '取消', tone: 'cancel' },
-      { label: '删除', tone: 'destructive', onPress: () => removeLocalAccount(account) },
+      { label: '确认删除', tone: 'destructive', onPress: () => removeLocalAccount(account, false) },
     ],
   });
 
-  const promptRemoveDemo = (account: BoundAccount) => showActionNotification({
+  const promptRemoveDemo = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
+    title: '删除最后一个示例账号',
+    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认删除并保留个人数据', tone: 'destructive', onPress: () => removeDemoAccount(account, false) },
+      { label: '删除并清除个人数据', tone: 'destructive', onPress: () => removeDemoAccount(account, true) },
+    ],
+  } : {
     title: '删除示例账号',
     message: `将移除「${account.displayName}」。之后可在添加菜单中重新加入示例查分器。`,
     variant: 'warning',
     actions: [
       { label: '取消', tone: 'cancel' },
-      { label: '删除', tone: 'destructive', onPress: () => removeDemoAccount(account) },
+      { label: '确认删除', tone: 'destructive', onPress: () => removeDemoAccount(account, false) },
     ],
   });
 
@@ -296,28 +325,12 @@ export function GameAccountsScreen() {
   });
 
   const renderAccountActions = (account: BoundAccount) => {
-    const accountSession = sessionsByAccountId[account.id];
     const isActive = account.id === activeAccountId;
     const isLocal = account.providerId === 'local';
     const isGeneratedTest = account.providerId === 'maimai-test';
     const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
     return (
       <>
-        <Text style={[styles.game, { color: theme.textMuted }]}>
-          {findGame(account.gameId)?.title} · {account.providerTitle}
-        </Text>
-        <Text style={[styles.meta, { color: theme.textSecondary }]}>
-          {isLocal
-            ? '数据位置：仅本机 SQLite'
-            : isGeneratedTest
-              ? '数据来源：曲库动态生成'
-              : isRemote
-                ? `登录方式：${sessionModeLabel(accountSession)}`
-                : `数据来源：${account.providerTitle}`}
-        </Text>
-        <Text style={[styles.state, { color: theme.accent }]}>
-          {isActive ? '当前使用中' : isLocal || isGeneratedTest ? '可随时删除' : '已绑定'}
-        </Text>
         {!isActive ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`切换到 ${account.displayName}`}
             disabled={busy} onPress={() => onSelectAccount(account)}>

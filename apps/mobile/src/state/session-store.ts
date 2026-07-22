@@ -141,6 +141,7 @@ interface SessionState {
     scoreDisplay: string,
     displayName?: string,
     avatarUrl?: string | null,
+    challengeModeRank?: number | null,
   ) => void;
   renameLocalAccount: (accountId: string, displayName: string) => void;
   selectBoundAccount: (accountId: string) => void;
@@ -240,10 +241,13 @@ function activateAccount(
 
 function boundFromStored(account: StoredProviderAccount): BoundAccount {
   if (account.gameId === 'phigros' && account.providerId === 'phi-taptap') {
-    return createPhigrosBoundAccount({
+    const rating = Number(account.scoreDisplay);
+    const restored = createPhigrosBoundAccount({
       playerId: account.displayName,
-      rating: Number.parseInt(account.scoreDisplay, 10) || 0,
+      rating: Number.isFinite(rating) ? rating : 0,
+      challengeModeRank: account.challengeModeRank,
     });
+    return Number.isFinite(rating) ? restored : { ...restored, scoreDisplay: '—' };
   }
   return createMaimaiBoundAccount({
     providerId: account.providerId,
@@ -317,7 +321,7 @@ export const useSession = create<SessionState>((set, get) => ({
   upsertBoundAccount: (account) => {
     set({ boundAccounts: upsertAccountList(get().boundAccounts, account) });
   },
-  updateBoundAccountScore: (accountId, scoreDisplay, displayName, avatarUrl) => {
+  updateBoundAccountScore: (accountId, scoreDisplay, displayName, avatarUrl, challengeModeRank) => {
     if (!get().boundAccounts.some((account) => account.id === accountId)) return;
     set({
       boundAccounts: get().boundAccounts.map((account) => {
@@ -327,6 +331,7 @@ export const useSession = create<SessionState>((set, get) => ({
           scoreDisplay,
           displayName: displayName ?? account.displayName,
           ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+          ...(challengeModeRank !== undefined ? { challengeModeRank } : {}),
         };
       }),
     });

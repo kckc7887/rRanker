@@ -48,10 +48,11 @@ describe('game-aware toolbox screen', () => {
     expect(screen.getByText('版本对照与总结')).toBeTruthy();
   });
 
-  it('renders the active game empty state without a maimai branch', async () => {
+  it('renders the active Phigros tools without a maimai branch', async () => {
     mockActiveGameId = 'phigros';
     const screen = await render(<ToolsScreen />);
-    expect(screen.getByText('Phigros 工具正在准备中。')).toBeTruthy();
+    expect(screen.getByText('推分计算')).toBeTruthy();
+    expect(screen.getByText('生成成绩图片')).toBeTruthy();
     expect(screen.queryByText('DX Rating 计算器')).toBeNull();
   });
 

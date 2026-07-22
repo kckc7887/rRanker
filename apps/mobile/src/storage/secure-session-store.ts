@@ -13,6 +13,8 @@ export type StoredProviderAccount = {
   providerId: RemoteProviderId;
   displayName: string;
   scoreDisplay: string;
+  /** Phigros 课题模式分数；旧 v2 记录可缺省。 */
+  challengeModeRank?: number | null;
   session: ProviderSession;
 };
 
@@ -129,6 +131,22 @@ export class SecureSessionStore {
       activeAccountId: vault.activeAccountId,
       accounts: vault.accounts.map((account) => (
         account.id === accountId ? { ...account, session } : account
+      )),
+    });
+  }
+
+  /** 更新展示元数据而不改变凭据或当前账号。 */
+  async updateAccountMetadata(
+    accountId: string,
+    metadata: Pick<StoredProviderAccount, 'displayName' | 'scoreDisplay'>
+      & Partial<Pick<StoredProviderAccount, 'challengeModeRank'>>,
+  ): Promise<void> {
+    const vault = await this.loadVault();
+    if (!vault.accounts.some((account) => account.id === accountId)) return;
+    await this.saveVault({
+      ...vault,
+      accounts: vault.accounts.map((account) => (
+        account.id === accountId ? { ...account, ...metadata } : account
       )),
     });
   }

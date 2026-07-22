@@ -15,6 +15,8 @@ export type BoundAccount = {
   providerTitle: string;
   /** 玩家头像 URL；Phigros / 落雪等远程账号优先展示。 */
   avatarUrl?: string | null;
+  /** Phigros 课题模式分数；旧账号未刷新前为空。 */
+  challengeModeRank?: number | null;
 };
 
 export const TEST_ACCOUNT_ID = 'test:empty';
@@ -115,6 +117,7 @@ export function createMaimaiBoundAccount(input: {
 export function createPhigrosBoundAccount(input: {
   playerId: string;
   rating: number;
+  challengeModeRank?: number | null;
 }): BoundAccount {
   const profile = getGameProfile('phigros');
   return {
@@ -123,8 +126,9 @@ export function createPhigrosBoundAccount(input: {
     providerId: 'phi-taptap',
     displayName: input.playerId,
     scoreLabel: profile.ratingLabel,
-    scoreDisplay: formatPlayerScore(input.rating, profile.ratingDigits),
+    scoreDisplay: Number.isFinite(input.rating) ? input.rating.toFixed(4) : '—',
     providerTitle: PROVIDER_TITLES['phi-taptap'],
+    challengeModeRank: input.challengeModeRank ?? null,
   };
 }
 

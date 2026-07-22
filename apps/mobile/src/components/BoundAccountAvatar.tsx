@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { Image as ExpoImage } from 'expo-image';
 import { Image, StyleSheet, View, type ImageStyle } from 'react-native';
-import { findGame, findProvider, type GameId } from '@/domain/game-bind-options';
+import { findGame, findProvider, type GameId, type ProviderId } from '@/domain/game-bind-options';
 import { useSession } from '@/state/session-store';
 import { syncAllAccountAvatars } from '@/services/resolve-account-avatar';
 
-function fallbackIcon(account: { gameId: GameId; providerId: string | null }) {
+function fallbackIcon(account: { gameId: GameId; providerId: ProviderId | null }) {
   return account.providerId
     ? findProvider(account.providerId)?.icon ?? findGame(account.gameId)?.icon
     : findGame(account.gameId)?.icon;

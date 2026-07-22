@@ -16,6 +16,7 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
+import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const repository = new SqliteSnapshotRepository();
 const GAME_DATA_QUERY_VERSION = 15;
@@ -48,12 +49,13 @@ export function useGameData() {
           const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
             ? catalogProvider
             : new PhigrosCatalogProvider();
-          const [player, records, bestSections, gameVersion, summary] = await Promise.all([
+          const [player, records, bestSections, gameVersion, summary, userProfile] = await Promise.all([
             scoreProvider.getPlayer(),
             scoreProvider.getRecords(),
             scoreProvider.getBestSections(),
             phiCatalog.getGameVersion(),
             scoreProvider.getSummary(),
+            scoreProvider.getUserProfile(),
           ]);
 
           const syncedAt = scoreProvider.getSyncedAt() ?? new Date().toISOString();
@@ -89,6 +91,13 @@ export function useGameData() {
               source,
               catalogSource,
               avatarUrl,
+              avatarKey: userProfile?.avatar || summary.avatar || null,
+              backgroundSongId: userProfile?.backgroundSongId || null,
+              progress: {
+                cleared: summary.cleared,
+                fullCombo: summary.fullCombo,
+                phi: summary.phi,
+              },
             },
           };
         }
@@ -153,7 +162,13 @@ export function useGameData() {
         d.payload.playerScore.display,
         d.payload.player.displayName,
         d.payload.avatarUrl ?? undefined,
+        d.payload.challengeModeRank,
       );
+      void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
+        displayName: d.payload.player.displayName,
+        scoreDisplay: d.payload.playerScore.display,
+        challengeModeRank: d.payload.challengeModeRank,
+      }).catch(() => undefined);
       if (d.payload.avatarUrl) {
         void persistBoundAccountAvatar(activeAccountId, d.payload.avatarUrl);
       }

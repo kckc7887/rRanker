@@ -1,7 +1,10 @@
 import { Animated } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
+
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockPush(...args) } }));
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
@@ -78,5 +81,7 @@ describe('Phigros best list', () => {
     expect(screen.getByText('Best27')).toBeTruthy();
     expect(screen.getByText('1. 测试曲')).toBeTruthy();
     expect(screen.getAllByText('1,000,000').length).toBeGreaterThan(0);
+    await fireEvent.press(screen.getByLabelText('生成B30图片'));
+    expect(mockPush).toHaveBeenCalledWith('/best-image');
   });
 });

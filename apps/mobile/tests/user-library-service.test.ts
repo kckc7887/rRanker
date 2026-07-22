@@ -43,4 +43,14 @@ describe('UserLibraryService', () => {
     await service.setTags({ kind: 'song', gameId: 'phigros', songId: 'Song.A' }, ['喜欢']);
     expect(repository.items.map((item) => item.key).sort()).toEqual(['song:maimai:Song.A', 'song:phigros:Song.A']);
   });
+
+  it('clears only the requested game data', async () => {
+    const repository = new MemoryRepository();
+    const service = new UserLibraryService(repository, () => now);
+    await service.setSongFavorite('maimai', 'Song.A', true);
+    await service.setSongFavorite('phigros', 'Song.A', true);
+    await service.setChartPractice('phigros', 'Song.A', 'SD', 2, true);
+    await service.clearGame('phigros');
+    expect(repository.items.map((item) => item.key)).toEqual(['song:maimai:Song.A']);
+  });
 });
