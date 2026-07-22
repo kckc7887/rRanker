@@ -114,9 +114,8 @@ function scoreCard(
   </div>`;
 }
 
-function overflowDivider(): string {
-  const lines = '<div class="flow_line"></div>'.repeat(6);
-  return `<div class="over_flow"><div class="flow_line_box_l">${lines}</div><p><i>OVER FLOW</i></p><div class="flow_line_box_r">${lines}</div></div>`;
+function sectionDivider(title: string): string {
+  return `<div class="section-divider"><span>${escapePhigrosBestImageHtml(title)}</span></div>`;
 }
 
 function scoreCards(input: PhigrosBestImageHtmlInput): string {
@@ -129,19 +128,33 @@ function scoreCards(input: PhigrosBestImageHtmlInput): string {
   const cutoffIndex = input.type === 'best30' ? 26 : 29;
   const cutoffRks = bestRecords[Math.min(cutoffIndex, bestRecords.length - 1)]?.rating ?? bestRecords.at(-1)?.rating ?? 0;
   const lowestPhiRks = phiRecords.at(-1)?.rating ?? 0;
-  const phiHtml = phiRecords.map((record, index) => scoreCard(input, record, `P${index + 1}`, true, false, cutoffRks, false)).join('');
   const pageOffset = input.type === 'custom' ? input.page.pageIndex * 30 : 0;
   const bestLimit = input.type === 'best30' ? 27 : 30;
-  const bestHtml = bestRecords.map((record, index) => `${index === bestLimit ? overflowDivider() : ''}${scoreCard(
-    input,
-    record,
-    `#${pageOffset + index + 1}`,
-    false,
-    index < bestLimit,
-    index < cutoffIndex ? record.rating : cutoffRks,
-    !lowestPhiRks || record.rating > lowestPhiRks,
-  )}`).join('');
-  return `${phiHtml}${bestHtml}`;
+  let phiIndex = 0;
+  let bestIndex = 0;
+  return input.page.sections.map((section) => {
+    if (!section.records.length) return '';
+    const isPhi = input.type === 'best30' && section.id.toLowerCase().includes('phi');
+    const cards = section.records.map((record) => {
+      if (isPhi) {
+        const rank = `P${phiIndex + 1}`;
+        phiIndex += 1;
+        return scoreCard(input, record, rank, true, false, cutoffRks, false);
+      }
+      const index = bestIndex;
+      bestIndex += 1;
+      return scoreCard(
+        input,
+        record,
+        `#${pageOffset + index + 1}`,
+        false,
+        index < bestLimit,
+        index < cutoffIndex ? record.rating : cutoffRks,
+        !lowestPhiRks || record.rating > lowestPhiRks,
+      );
+    }).join('');
+    return `${sectionDivider(section.title)}${cards}`;
+  }).join('');
 }
 
 function stats(input: PhigrosBestImageHtmlInput): string {
@@ -160,8 +173,9 @@ function stats(input: PhigrosBestImageHtmlInput): string {
 
 export function buildPhigrosBestImageHtml(input: PhigrosBestImageHtmlInput): string {
   const recordCount = input.page.sections.reduce((sum, section) => sum + section.records.length, 0);
+  const sectionCount = input.page.sections.filter((section) => section.records.length > 0).length;
   const scale = input.width / BASE_WIDTH;
-  const baseHeight = Math.max(900, 285 + Math.ceil(recordCount / 3) * 125 + 130);
+  const baseHeight = Math.max(900, 285 + Math.ceil(recordCount / 3) * 125 + 130 + sectionCount * 40);
   const fallbackHeight = Math.ceil(baseHeight * scale);
   const challengeLevel = Math.min(5, Math.max(0, Math.floor(input.challengeModeRank / 100)));
   const challengeUrl = input.templateAssets.challengeIconUrls[challengeLevel] ?? input.templateAssets.challengeIconUrls[0];
@@ -171,6 +185,10 @@ export function buildPhigrosBestImageHtml(input: PhigrosBestImageHtmlInput): str
   return `<!doctype html><html lang="zh-cn"><head><meta charset="utf-8"><meta name="viewport" content="width=${input.width}, initial-scale=1, maximum-scale=1, user-scalable=no"><title>phi-plugin</title><style>
 ${templateCss}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}body{display:block;position:fixed;inset:0;background:#111}#canvas{isolation:isolate;display:flex;position:absolute;width:${BASE_WIDTH}px;height:fit-content;flex-direction:column;margin:0;background:#111;transform-origin:top left}
+.section-divider{display:flex;width:100%;flex-basis:100%;box-sizing:border-box;align-items:center;gap:14px;margin:8px 0 12px;color:rgba(255,255,255,.88);font:800 22px/1.2 Aldrich,PHI,system-ui,sans-serif;letter-spacing:1px;white-space:nowrap}
+.section-divider::before,.section-divider::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55))}
+.section-divider::after{background:linear-gradient(90deg,rgba(255,255,255,.55),transparent)}
+.section-divider span{flex:0 0 auto}
 </style></head><body><main id="canvas" class="elem-hydro default-mode"><div class="background"><img src="${escapePhigrosBestImageHtml(backgroundUrl)}" alt="曲绘-模糊"></div>
 <div class="title" data-layout-content><div class="playerInfo"><div class="blackBlock clip-box"></div><div class="avatar clip-box"><img src="${escapePhigrosBestImageHtml(avatarUrl)}" alt="avatar"></div><div class="playerId"><p name="pvis">${escapePhigrosBestImageHtml(input.playerName)}</p></div><div class="rks clip-box"><p>${escapePhigrosBestImageHtml(input.rks)}</p></div><div class="clgBox"><div class="Challenge"><img src="${escapePhigrosBestImageHtml(challengeUrl)}" alt="Challenge"><p>${escapePhigrosBestImageHtml(input.challenge)}</p></div></div><div class="date"><p>${escapePhigrosBestImageHtml(input.syncedAt)}</p></div><div class="dataBox clip-box"><img src="${escapePhigrosBestImageHtml(input.templateAssets.dataIconUrl)}" alt="data"><p>${escapePhigrosBestImageHtml(input.dataAmount)}</p></div></div><div class="recordInfo clip-box"><div class="whiteLine clip-box"></div><div class="sheet">${stats(input)}</div></div></div>
 <div class="b19" data-layout-content>${scoreCards(input)}</div><div class="createdbox" data-layout-content><div class="phi-plugin"><p>rRanker</p></div></div></main>
