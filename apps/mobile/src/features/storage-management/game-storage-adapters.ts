@@ -1,5 +1,6 @@
 import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
+import { clearPhigrosIllustrationStage, phigrosIllustrationStageDirectory } from '@/features/phigros-best-image/load-phigros-image-assets';
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
@@ -148,11 +149,14 @@ const phigrosAdapter: GameStorageAdapter = {
   title: findGame('phigros')?.title ?? 'Phigros',
   async measure(snapshots) {
     const sqlite = await measureGameSqliteBytes(snapshots, 'phigros', false);
-    return sqlite + measureDirectoryBytes(PHIGROS_FONT_ROOT());
+    return sqlite
+      + measureDirectoryBytes(PHIGROS_FONT_ROOT())
+      + measureDirectoryBytes(phigrosIllustrationStageDirectory());
   },
   async clear(snapshots) {
     await clearGameSqlite(snapshots, 'phigros', false);
     clearPhigrosFontCache();
+    clearPhigrosIllustrationStage();
   },
 };
 
