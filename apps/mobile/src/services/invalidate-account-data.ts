@@ -25,6 +25,16 @@ export async function invalidateAccountDataQueries(
 }
 
 /**
+ * 同步清空账号相关查询缓存。切换账号时在更新 activeAccountId 前调用，
+ * 避免下一帧仍渲染旧 RQ 缓存并叠加重拉导致卡顿。
+ */
+export function clearAccountDataQueries(client: QueryClient = queryClient): void {
+  for (const queryKey of ACCOUNT_DATA_QUERY_KEYS) {
+    client.removeQueries({ queryKey: [...queryKey] });
+  }
+}
+
+/**
  * 本地玩家改名只需同步展示名，不应触发曲库/牌子等全量 refetch（会卡死命名弹层）。
  * queryKey: ['game-data', version, accountId, ...]
  */

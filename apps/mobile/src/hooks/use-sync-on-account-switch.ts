@@ -1,10 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
+import {
+  clearAccountDataQueries,
+} from '@/services/invalidate-account-data';
+import { consumeAccountSwitchCacheCleared } from '@/services/switch-bound-account';
 import { useSession } from '@/state/session-store';
 
 /**
  * 当前绑定账号变化时（换游戏 / 换查分器 / 换同查分器另一号），
- * 自动对该账号同步一次远程数据。首次 restore 就绪不触发，避免启动双拉。
+ * 清空账号查询缓存并让总览等页进入加载态后重新拉取。
+ * 首次 restore 就绪不触发，避免启动双拉。
+ * switchBoundAccount 已同步清缓存时跳过，避免打断刚发起的请求。
  */
 export function useSyncOnAccountSwitch(): void {
   const activeAccountId = useSession((state) => state.activeAccountId);
@@ -23,6 +28,7 @@ export function useSyncOnAccountSwitch(): void {
 
     if (previousAccountId.current === activeAccountId) return;
     previousAccountId.current = activeAccountId;
-    void invalidateAccountDataQueries();
+    if (consumeAccountSwitchCacheCleared()) return;
+    clearAccountDataQueries();
   }, [activeAccountId, restoreStatus]);
 }
