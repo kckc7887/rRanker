@@ -154,6 +154,33 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
     });
   }
 
+  /** 估算个人曲库相关表占用（按文本字段长度，不含索引开销）。 */
+  async measureBytes(): Promise<number> {
+    await this.initialize();
+    const db = await this.databasePromise;
+    const [items, tags, presets, itemTags] = await Promise.all([
+      db.getFirstAsync<{ bytes: number }>(
+        `SELECT COALESCE(SUM(
+          LENGTH(item_key) + LENGTH(game_id) + LENGTH(kind) + LENGTH(song_id)
+          + IFNULL(LENGTH(chart_type), 0) + LENGTH(created_at) + LENGTH(updated_at) + 8
+        ), 0) AS bytes FROM user_library_items`,
+      ),
+      db.getFirstAsync<{ bytes: number }>(
+        `SELECT COALESCE(SUM(LENGTH(normalized_name) + LENGTH(display_name) + LENGTH(created_at)), 0) AS bytes
+         FROM user_library_tags`,
+      ),
+      db.getFirstAsync<{ bytes: number }>(
+        `SELECT COALESCE(SUM(
+          LENGTH(normalized_name) + LENGTH(display_name) + LENGTH(created_at) + 4
+        ), 0) AS bytes FROM user_library_tag_presets`,
+      ),
+      db.getFirstAsync<{ bytes: number }>(
+        `SELECT COALESCE(SUM(LENGTH(item_key) + 8), 0) AS bytes FROM user_library_item_tags`,
+      ),
+    ]);
+    return (items?.bytes ?? 0) + (tags?.bytes ?? 0) + (presets?.bytes ?? 0) + (itemTags?.bytes ?? 0);
+  }
+
   private async writeTagPresets(db: DatabaseAccess, values: readonly string[]): Promise<void> {
     await db.runAsync('DELETE FROM user_library_tag_presets');
     const timestamp = new Date().toISOString();

@@ -228,3 +228,9 @@ export function createPhigrosFontPreparer(
 }
 
 export const preparePhigrosFonts = createPhigrosFontPreparer();
+
+/** 清除成绩图字体本地下载缓存（Documents/rranker/phigros-fonts）。 */
+export function clearPhigrosFontCache(): void {
+  const root = new Directory(Paths.document, 'rranker', 'phigros-fonts');
+  if (root.exists) root.delete();
+}
