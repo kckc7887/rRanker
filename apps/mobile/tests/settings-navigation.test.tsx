@@ -12,7 +12,18 @@ const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: [
 const mockCollect = jest.fn(async () => ({ segments: [], totalBytes: 12 * 1024 }));
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href) } }));
+jest.mock('expo-router', () => {
+  const React = jest.requireActual('react') as typeof import('react');
+  return {
+    router: { push: (href: unknown) => mockPush(href) },
+    useFocusEffect: (effect: () => void | (() => void)) => {
+      React.useEffect(() => {
+        const cleanup = effect();
+        return typeof cleanup === 'function' ? cleanup : undefined;
+      }, [effect]);
+    },
+  };
+});
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/storage/theme-preferences-store', () => ({
   DEFAULT_THEME_PREFERENCES: { version: 2, appearance: 'system', accent: 'blue', customHex: '#246BFD' },
