@@ -5,7 +5,10 @@ import {
 } from '@/storage/storage-clear-prefs-store';
 import { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
-import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
+import {
+  isAppOwnedCacheEntry,
+  isExpoSystemCacheEntry,
+} from '@/features/storage-management/expo-system-cache';
 
 describe('storage-clear-prefs', () => {
   const allowed: StorageClearCategoryId[] = ['maimai', 'phigros', 'shared'];
@@ -56,5 +59,14 @@ describe('expo system cache entries', () => {
     expect(isExpoSystemCacheEntry('ExponentAsset-abc.png')).toBe(true);
     expect(isExpoSystemCacheEntry('rranker-best-image-1-0.html')).toBe(false);
     expect(isExpoSystemCacheEntry('rRanker-backup-x.json')).toBe(false);
+  });
+});
+
+describe('app-owned cache entries', () => {
+  it('only treats rranker temp files as clearable shared cache', () => {
+    expect(isAppOwnedCacheEntry('rranker-best-image-1-0.html')).toBe(true);
+    expect(isAppOwnedCacheEntry('rRanker-backup-x.json')).toBe(true);
+    expect(isAppOwnedCacheEntry('ExponentAsset-123.ttf')).toBe(false);
+    expect(isAppOwnedCacheEntry('Image')).toBe(false);
   });
 });

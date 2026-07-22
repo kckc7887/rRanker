@@ -49,6 +49,26 @@
       "expo-secure-store",
       "expo-asset",
       [
+        "expo-font",
+        {
+          "fonts": ["./assets/fonts/Ionicons.ttf"],
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "ionicons",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/Ionicons.ttf",
+                    "weight": 400,
+                    "style": "normal"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      [
         "expo-media-library",
         {
           "photosPermission": "允许 rRanker 访问照片。",

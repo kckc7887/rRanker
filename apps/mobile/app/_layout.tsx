@@ -1,7 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Appearance, AppState, StyleSheet, View } from 'react-native';
@@ -29,7 +28,7 @@ import {
 import { NotificationProvider } from '@/components/AppNotification';
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
-import { UI_ICON_FONTS } from '@/features/storage-management/ui-icon-fonts';
+import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -83,7 +82,17 @@ export default function RootLayout() {
   const themeHydrated = useThemeStore((state) => state.hydrated);
   const hydrateTheme = useThemeStore((state) => state.hydrate);
   const appearance = useThemeStore((state) => state.appearance);
-  const [iconFontsLoaded] = useFonts(UI_ICON_FONTS);
+  const [iconFontsReady, setIconFontsReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void ensureUiIconFontsLoaded()
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setIconFontsReady(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (restoreStatus === 'restoring') {
@@ -99,7 +108,7 @@ export default function RootLayout() {
   useEffect(() => { void hydrateTheme(); }, [hydrateTheme]);
   useEffect(() => { Appearance.setColorScheme(appearance === 'system' ? null : appearance); }, [appearance]);
 
-  if (restoreStatus === 'restoring' || !themeHydrated || !iconFontsLoaded) {
+  if (restoreStatus === 'restoring' || !themeHydrated || !iconFontsReady) {
     return <View style={styles.loading}><ActivityIndicator color="#246BFD" /></View>;
   }
 

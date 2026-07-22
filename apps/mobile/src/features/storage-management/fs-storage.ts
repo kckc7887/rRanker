@@ -1,7 +1,11 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 export { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
-export { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
+export {
+  isAppOwnedCacheEntry,
+  isExpoSystemCacheEntry,
+} from '@/features/storage-management/expo-system-cache';
+import { isAppOwnedCacheEntry } from '@/features/storage-management/expo-system-cache';
 
 type DirectoryListOptions = {
   /** 按条目名跳过（不计入体积 / 不删除） */
@@ -51,6 +55,16 @@ export function clearDirectoryContents(
   } catch {
     // ignore
   }
+}
+
+/**
+ * 只删除应用自有的缓存文件，绝不碰 ExponentAsset-* 等系统资源。
+ * 整目录清空 Paths.cache 会破坏 @expo/vector-icons 字体。
+ */
+export function clearAppOwnedCacheContents(directory: Directory = APP_CACHE_ROOT()): void {
+  clearDirectoryContents(directory, {
+    skip: (name) => !isAppOwnedCacheEntry(name),
+  });
 }
 
 export const PHIGROS_FONT_ROOT = () => new Directory(Paths.document, 'rranker', 'phigros-fonts');
