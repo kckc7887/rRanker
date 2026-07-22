@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { router, type Href } from 'expo-router';
+import { router, useFocusEffect, type Href } from 'expo-router';
 import { AccentColorPicker } from '@/components/AccentColorPicker';
 import { useNotification } from '@/components/AppNotification';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -50,9 +50,11 @@ export default function SettingsScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    void refreshStorageLabel();
-  }, [refreshStorageLabel]);
+  useFocusEffect(
+    useCallback(() => {
+      void refreshStorageLabel();
+    }, [refreshStorageLabel]),
+  );
 
   const handleQuickClear = async () => {
     if (quickClearing) return;
