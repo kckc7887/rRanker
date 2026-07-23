@@ -18,6 +18,7 @@
     "prebuild:android": "expo prebuild --platform android --no-install",
     "apk:debug": "expo prebuild --platform android && cd android && gradlew.bat assembleDebug",
     "apk:release": "expo prebuild --platform android && cd android && gradlew.bat assembleRelease",
+    "apk:release:abi": "cd android && gradlew.bat assembleRelease",
     "eas:apk": "eas build -p android --profile preview"
   },
   "dependencies": {
