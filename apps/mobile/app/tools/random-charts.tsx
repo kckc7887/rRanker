@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { Card } from '@/components/Card';
@@ -15,11 +15,13 @@ import {
   type RandomChartPick,
   type RandomPlayedFilter,
 } from '@/domain/random-charts';
+import type { RandomChartsCount } from '@/features/toolbox/random-charts-preferences';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
+import { useRandomChartsFilter } from '@/state/random-charts-filter';
 import { useAppTheme } from '@/theme/app-theme';
 
-const COUNTS = [1, 2, 3, 4] as const;
+const COUNTS: readonly RandomChartsCount[] = [1, 2, 3, 4];
 const DIFFICULTIES: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 'remaster'];
 const PLAYED_OPTIONS: readonly { value: RandomPlayedFilter; label: string }[] = [
   { value: 'all', label: '全部' },
@@ -27,7 +29,7 @@ const PLAYED_OPTIONS: readonly { value: RandomPlayedFilter; label: string }[] = 
   { value: 'unplayed', label: '未游玩' },
 ];
 
-function toggleDifficulty(current: Difficulty[], difficulty: Difficulty): Difficulty[] {
+function toggleDifficulty(current: readonly Difficulty[], difficulty: Difficulty): Difficulty[] {
   return current.includes(difficulty)
     ? current.filter((item) => item !== difficulty)
     : [...current, difficulty];
@@ -109,13 +111,16 @@ export default function RandomChartsToolScreen() {
   const theme = useAppTheme();
   const catalog = useDetailedCatalog();
   const scores = useScoreSnapshot();
-  const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
-  const [difficulties, setDifficulties] = useState<Difficulty[]>([]);
-  const [constantMin, setConstantMin] = useState('');
-  const [constantMax, setConstantMax] = useState('');
-  const [played, setPlayed] = useState<RandomPlayedFilter>('all');
+  const {
+    count, difficulties, constantMin, constantMax, played,
+    hydrate, setCount, setDifficulties, setConstantMin, setConstantMax, setPlayed,
+  } = useRandomChartsFilter();
   const [results, setResults] = useState<RandomChartPick[] | null>(null);
   const [lastSeed, setLastSeed] = useState<string | null>(null);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
 
   const records = scores.data?.records ?? [];
   const scoresAvailable = !!scores.data;
@@ -215,7 +220,7 @@ export default function RandomChartsToolScreen() {
                         key={difficulty}
                         active={active}
                         accessibilityLabel={`筛选难度 ${DIFFICULTY_VISUAL[difficulty].label}`}
-                        onPress={() => setDifficulties((current) => toggleDifficulty(current, difficulty))}
+                        onPress={() => setDifficulties(toggleDifficulty(difficulties, difficulty))}
                       >
                         <DifficultyBadge difficulty={difficulty} compact />
                       </FilterChipFrame>
