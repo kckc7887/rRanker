@@ -18,8 +18,8 @@ describe('per-game toolbox registry', () => {
 
   it('gives Phigros a push-rks toolbox entry', () => {
     const toolbox = getGameToolbox('phigros');
-    expect(toolbox.tools.map((tool) => tool.id)).toEqual(['push-rks', 'best-image']);
-    expect(summarizeGameTools('phigros')).toBe('推分计算 · 成绩图片');
+    expect(toolbox.tools.map((tool) => tool.id)).toEqual(['push-rks', 'random-charts', 'best-image']);
+    expect(summarizeGameTools('phigros')).toBe('推分计算 · 随机歌曲 · 成绩图片');
   });
 
   it('keeps profile capabilities consistent with registered tools', () => {

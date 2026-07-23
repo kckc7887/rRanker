@@ -1,35 +1,44 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router, type Href } from 'expo-router';
 import { Card } from '@/components/Card';
-import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
-import { ScoreRecordCard, type ScoreRecordCardData } from '@/components/ScoreRecordCard';
-import { DIFFICULTY_VISUAL, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SourceStatus } from '@/components/SourceStatus';
-import { chartVersionKey, normalizeSongId } from '@/domain/catalog';
+import { LevelChip, NeutralChip } from '@/components/phigros/PhigrosFilterBar';
+import { PhigrosDifficultyBadge } from '@/components/phigros/PhigrosDifficultyBadge';
+import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
+import { chartVersionKey } from '@/domain/catalog';
 import type { CatalogSnapshot, Difficulty, ScoreRecord } from '@/domain/models';
+import {
+  PHIGROS_LEVELS,
+  phigrosLevelToDifficulty,
+} from '@/domain/phigros-filters';
+import type { PhigrosLevel } from '@/domain/phigros';
 import {
   filterRandomCharts,
   pickRandomCharts,
   type RandomChartPick,
   type RandomPlayedFilter,
 } from '@/domain/random-charts';
-import type { RandomChartsCount } from '@/features/toolbox/random-charts-preferences';
-import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
-import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
-import { PhigrosRandomChartsScreen } from '@/screens/PhigrosRandomChartsScreen';
-import { useRandomChartsFilter } from '@/state/random-charts-filter';
-import { useSession } from '@/state/session-store';
+import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
+import type { PhigrosRandomChartsCount } from '@/features/toolbox/phigros-random-charts-preferences';
+import { useGameData } from '@/hooks/use-game-data';
+import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { phigrosChartNoteKey } from '@/domain/phigros-xing';
+import { usePhigrosRandomChartsFilter } from '@/state/phigros-random-charts-filter';
 import { useAppTheme } from '@/theme/app-theme';
 
-const COUNTS: readonly RandomChartsCount[] = [1, 2, 3, 4];
-const DIFFICULTIES: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+const COUNTS: readonly PhigrosRandomChartsCount[] = [1, 2, 3, 4];
 const PLAYED_OPTIONS: readonly { value: RandomPlayedFilter; label: string }[] = [
   { value: 'all', label: '全部' },
   { value: 'played', label: '已游玩' },
   { value: 'unplayed', label: '未游玩' },
 ];
+
+function difficultyToLevel(difficulty: Difficulty): PhigrosLevel | null {
+  const match = PHIGROS_LEVELS.find((level) => phigrosLevelToDifficulty(level) === difficulty);
+  return match ?? null;
+}
 
 function toggleDifficulty(current: readonly Difficulty[], difficulty: Difficulty): Difficulty[] {
   return current.includes(difficulty)
@@ -37,7 +46,17 @@ function toggleDifficulty(current: readonly Difficulty[], difficulty: Difficulty
     : [...current, difficulty];
 }
 
-function Chip({
+function buildBestRecordMap(records: readonly ScoreRecord[]): Map<string, ScoreRecord> {
+  const best = new Map<string, ScoreRecord>();
+  for (const record of records) {
+    const key = chartVersionKey(record.songId, record.type, record.levelIndex);
+    const current = best.get(key);
+    if (!current || record.achievements > current.achievements) best.set(key, record);
+  }
+  return best;
+}
+
+function CountChip({
   label,
   active,
   onPress,
@@ -68,55 +87,39 @@ function Chip({
   );
 }
 
-function buildBestRecordMap(records: readonly ScoreRecord[]): Map<string, ScoreRecord> {
-  const best = new Map<string, ScoreRecord>();
-  for (const record of records) {
-    const key = chartVersionKey(record.songId, record.type, record.levelIndex);
-    const current = best.get(key);
-    if (!current || record.achievements > current.achievements) best.set(key, record);
-  }
-  return best;
-}
-
-function toScoreCardData(
-  pick: RandomChartPick,
-  bestByChart: Map<string, ScoreRecord>,
-): ScoreRecordCardData {
-  const key = chartVersionKey(pick.songId, pick.type, pick.levelIndex);
-  const record = bestByChart.get(key);
-  if (record) {
-    return {
-      songId: normalizeSongId(record.songId),
-      title: record.title,
-      type: record.type,
-      difficulty: record.difficulty,
-      difficultyConstant: record.difficultyConstant,
-      levelIndex: record.levelIndex,
-      achievements: record.achievements,
-      rating: record.rating,
-      fc: record.fc,
-      fs: record.fs,
-      rate: record.rate,
-    };
-  }
-  return {
-    songId: pick.songId,
-    title: pick.title,
-    type: pick.type,
-    difficulty: pick.difficulty,
-    difficultyConstant: pick.difficultyConstant,
-    levelIndex: pick.levelIndex,
-  };
-}
-
-function MaimaiRandomChartsScreen() {
+function UnplayedChartCard({ pick }: { pick: RandomChartPick }) {
   const theme = useAppTheme();
-  const catalog = useDetailedCatalog();
-  const scores = useScoreSnapshot();
+  const openDetail = () => router.push({
+    pathname: '/songs/[songId]',
+    params: { songId: pick.songId, levelIndex: String(pick.levelIndex) },
+  } as Href);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`查看谱面 ${pick.title}`}
+      onPress={openDetail}
+      style={[styles.unplayedCard, { backgroundColor: theme.surface }]}
+    >
+      <View style={styles.unplayedMain}>
+        <Text numberOfLines={1} style={[styles.unplayedTitle, { color: theme.text }]}>{pick.title}</Text>
+        <View style={styles.unplayedTags}>
+          <PhigrosDifficultyBadge levelIndex={pick.levelIndex} constant={pick.difficultyConstant} />
+          <Text style={[styles.unplayedHint, { color: theme.textMuted }]}>未游玩</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+export function PhigrosRandomChartsScreen() {
+  const theme = useAppTheme();
+  const catalogQuery = usePhigrosCatalog();
+  const gameData = useGameData();
   const {
     count, difficulties, constantMin, constantMax, played,
     hydrate, setCount, setDifficulties, setConstantMin, setConstantMax, setPlayed,
-  } = useRandomChartsFilter();
+  } = usePhigrosRandomChartsFilter();
   const [results, setResults] = useState<RandomChartPick[] | null>(null);
   const [lastSeed, setLastSeed] = useState<string | null>(null);
 
@@ -124,9 +127,15 @@ function MaimaiRandomChartsScreen() {
     void hydrate();
   }, [hydrate]);
 
-  const records = scores.data?.records ?? [];
-  const scoresAvailable = !!scores.data;
+  const catalog = catalogQuery.data?.snapshot;
+  const phigrosPayload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
+  const records = phigrosPayload?.records ?? [];
+  const scoresAvailable = !!phigrosPayload;
   const bestByChart = useMemo(() => buildBestRecordMap(records), [records]);
+  const noteTotalByKey = useMemo(
+    () => buildPhigrosNoteTotalByKey(catalog?.songs ?? []),
+    [catalog?.songs],
+  );
   const filters = useMemo(() => ({
     difficulties,
     constantMin,
@@ -134,22 +143,23 @@ function MaimaiRandomChartsScreen() {
     played,
   }), [difficulties, constantMin, constantMax, played]);
 
-  const poolSize = useMemo(() => {
-    if (!catalog.data) return 0;
-    if (played !== 'all' && !scoresAvailable) return 0;
-    return filterRandomCharts(catalog.data, records, filters).length;
-  }, [catalog.data, filters, played, records, scoresAvailable]);
+  const selectedLevels = useMemo(() => {
+    const levels = new Set<PhigrosLevel>();
+    for (const difficulty of difficulties) {
+      const level = difficultyToLevel(difficulty);
+      if (level != null) levels.add(level);
+    }
+    return levels;
+  }, [difficulties]);
 
-  const resultCards = useMemo(() => {
-    if (!results) return [];
-    return results.map((pick) => ({
-      key: `${lastSeed}-${pick.songId}:${pick.type}:${pick.levelIndex}`,
-      data: toScoreCardData(pick, bestByChart),
-    }));
-  }, [bestByChart, lastSeed, results]);
+  const poolSize = useMemo(() => {
+    if (!catalog) return 0;
+    if (played !== 'all' && !scoresAvailable) return 0;
+    return filterRandomCharts(catalog, records, filters).length;
+  }, [catalog, filters, played, records, scoresAvailable]);
 
   const draw = () => {
-    if (!catalog.data) return;
+    if (!catalog) return;
     if (played !== 'all' && !scoresAvailable) {
       setResults([]);
       setLastSeed(null);
@@ -158,7 +168,7 @@ function MaimaiRandomChartsScreen() {
     const seed = `${Date.now()}-${Math.random()}`;
     setLastSeed(seed);
     setResults(pickRandomCharts({
-      catalog: catalog.data,
+      catalog,
       records,
       filters,
       count,
@@ -170,12 +180,12 @@ function MaimaiRandomChartsScreen() {
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: '随机歌曲' }} />
       <QueryStateView<CatalogSnapshot>
-        isLoading={catalog.isLoading}
-        isError={catalog.isError}
+        isLoading={catalogQuery.isLoading}
+        isError={catalogQuery.isError}
         isEmpty={false}
-        error={catalog.error}
-        onRetry={() => { void catalog.refetch(); void scores.refetch(); }}
-        data={catalog.data}
+        error={catalogQuery.error}
+        onRetry={() => { void catalogQuery.refetch(); void gameData.refetch(); }}
+        data={catalog}
         renderData={(data) => (
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <SourceStatus items={[
@@ -187,9 +197,9 @@ function MaimaiRandomChartsScreen() {
               },
               {
                 key: 'scores',
-                label: scores.data?.source?.label ?? '成绩不可用，已游玩筛选暂不可用',
-                updatedAt: scores.data?.source?.updatedAt,
-                state: !scores.data ? 'unavailable' : scores.data.source?.isStale ? 'cache' : 'live',
+                label: phigrosPayload?.source.label ?? '成绩不可用，已游玩筛选暂不可用',
+                updatedAt: phigrosPayload?.source.updatedAt,
+                state: !phigrosPayload ? 'unavailable' : phigrosPayload.source.isStale ? 'cache' : 'live',
               },
             ]} />
 
@@ -197,7 +207,7 @@ function MaimaiRandomChartsScreen() {
               <Text style={[styles.heading, { color: theme.text }]}>抽取数量</Text>
               <View style={styles.chipRow}>
                 {COUNTS.map((value) => (
-                  <Chip
+                  <CountChip
                     key={value}
                     label={String(value)}
                     active={count === value}
@@ -215,17 +225,16 @@ function MaimaiRandomChartsScreen() {
                     active={difficulties.length === 0}
                     onPress={() => setDifficulties([])}
                   />
-                  {DIFFICULTIES.map((difficulty) => {
-                    const active = difficulties.includes(difficulty);
+                  {PHIGROS_LEVELS.map((level) => {
+                    const difficulty = phigrosLevelToDifficulty(level);
+                    const active = selectedLevels.has(level);
                     return (
-                      <FilterChipFrame
-                        key={difficulty}
+                      <LevelChip
+                        key={level}
+                        level={level}
                         active={active}
-                        accessibilityLabel={`筛选难度 ${DIFFICULTY_VISUAL[difficulty].label}`}
                         onPress={() => setDifficulties(toggleDifficulty(difficulties, difficulty))}
-                      >
-                        <DifficultyBadge difficulty={difficulty} compact />
-                      </FilterChipFrame>
+                      />
                     );
                   })}
                 </ScrollView>
@@ -261,7 +270,7 @@ function MaimaiRandomChartsScreen() {
               <Text style={[styles.heading, styles.sectionGap, { color: theme.text }]}>游玩状态</Text>
               <View style={styles.chipRow}>
                 {PLAYED_OPTIONS.map((option) => (
-                  <Chip
+                  <CountChip
                     key={option.value}
                     label={option.label}
                     active={played === option.value}
@@ -293,15 +302,27 @@ function MaimaiRandomChartsScreen() {
                   <Card>
                     <Text style={[styles.emptyText, { color: theme.textMuted }]}>
                       {played !== 'all' && !scoresAvailable
-                        ? '需要成绩数据才能按已游玩/未游玩筛选，请先绑定查分器或导入成绩。'
+                        ? '需要成绩数据才能按已游玩/未游玩筛选，请先绑定 TapTap 云存档。'
                         : '没有符合条件的谱面，请放宽筛选后再试。'}
                     </Text>
                   </Card>
                 ) : (
                   <View style={styles.resultList}>
-                    {resultCards.map((item) => (
-                      <ScoreRecordCard key={item.key} record={item.data} />
-                    ))}
+                    {results.map((pick) => {
+                      const key = `${lastSeed}-${pick.songId}:${pick.type}:${pick.levelIndex}`;
+                      const record = bestByChart.get(chartVersionKey(pick.songId, pick.type, pick.levelIndex));
+                      if (record) {
+                        return (
+                          <PhigrosScoreCard
+                            key={key}
+                            record={record}
+                            catalogTitle={pick.title}
+                            totalNotes={noteTotalByKey[phigrosChartNoteKey(record.songId, record.levelIndex)]}
+                          />
+                        );
+                      }
+                      return <UnplayedChartCard key={key} pick={pick} />;
+                    })}
                     {results.length < count && poolSize > 0 ? (
                       <Text style={[styles.hint, { color: theme.textMuted }]}>
                         候选不足 {count} 条，已返回全部 {results.length} 条
@@ -316,11 +337,6 @@ function MaimaiRandomChartsScreen() {
       />
     </View>
   );
-}
-
-export default function RandomChartsToolScreen() {
-  const activeGameId = useSession((s) => s.activeGameId);
-  return activeGameId === 'phigros' ? <PhigrosRandomChartsScreen /> : <MaimaiRandomChartsScreen />;
 }
 
 const styles = StyleSheet.create({
@@ -370,4 +386,9 @@ const styles = StyleSheet.create({
   resultSection: { gap: 10 },
   resultList: { gap: 10 },
   emptyText: { fontSize: 13, lineHeight: 20 },
+  unplayedCard: { borderRadius: 14, padding: 14 },
+  unplayedMain: { gap: 6 },
+  unplayedTitle: { fontSize: 15, fontWeight: '700' },
+  unplayedTags: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  unplayedHint: { fontSize: 12, fontWeight: '600' },
 });

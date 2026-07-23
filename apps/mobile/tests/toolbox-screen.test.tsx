@@ -53,6 +53,7 @@ describe('game-aware toolbox screen', () => {
     mockActiveGameId = 'phigros';
     const screen = await render(<ToolsScreen />);
     expect(screen.getByText('推分计算')).toBeTruthy();
+    expect(screen.getByText('随机歌曲')).toBeTruthy();
     expect(screen.getByText('生成成绩图片')).toBeTruthy();
     expect(screen.queryByText('DX Rating 计算器')).toBeNull();
   });
