@@ -1,11 +1,32 @@
 import { memo } from 'react';
 import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import type { ScoreRecord } from '@/domain/models';
+import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
 import { AchievementValue, ChartTypeBadge, DifficultyBadge, ScoreStatusBadges } from './ScoreVisuals';
 import { useAppTheme } from '@/theme/app-theme';
 
-export const ScoreRecordCard = memo(function ScoreRecordCard({ record, rank }: { record: ScoreRecord; rank?: number }) {
+/** 成绩页卡片数据；未游玩谱面可省略达成率/Rating/成就字段。 */
+export type ScoreRecordCardData = {
+  songId: string;
+  title: string;
+  type: ChartType;
+  difficulty: Difficulty;
+  difficultyConstant: number;
+  levelIndex: number;
+  achievements?: number;
+  rating?: number;
+  fc?: string | null;
+  fs?: string | null;
+  rate?: string | null;
+};
+
+export const ScoreRecordCard = memo(function ScoreRecordCard({
+  record,
+  rank,
+}: {
+  record: ScoreRecord | ScoreRecordCardData;
+  rank?: number;
+}) {
   const theme = useAppTheme();
   const openDetail = () => router.push({
     pathname: '/songs/[songId]',
@@ -25,7 +46,9 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({ record, rank }: {
     </View>
     <View style={styles.ratingBlock}>
       <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
-      <Text style={[styles.rating, { color: theme.accent }]}>{record.rating}</Text>
+      <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>
+        {record.rating === undefined ? '—' : record.rating}
+      </Text>
     </View>
   </Pressable>;
 });
