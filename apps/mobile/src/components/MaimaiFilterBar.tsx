@@ -326,7 +326,7 @@ function ResetFilterButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-function NeutralChip({ label, active, onPress, accessibilityLabel }: {
+export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   label: string; active: boolean; onPress: () => void; accessibilityLabel?: string;
 }) {
   const theme = useAppTheme();
@@ -339,7 +339,7 @@ function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   );
 }
 
-function FilterChipFrame({
+export function FilterChipFrame({
   active,
   accessibilityLabel,
   onPress,
