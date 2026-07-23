@@ -291,7 +291,9 @@ export function OverviewScreen() {
             <Pressable accessibilityRole="button" onPress={() => router.push('/tools' as Href)}>
               <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <Text style={[styles.cardTitle, { color: theme.text }]}>工具箱</Text>
-                <Text style={[styles.body, { color: theme.textSecondary }]}>{summarizeGameTools(bundle.gameId)}</Text>
+                <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.body, { color: theme.textSecondary }]}>
+                  {summarizeGameTools(bundle.gameId)}
+                </Text>
                 <Text style={[styles.toolLink, { color: theme.accent }]}>打开工具箱 →</Text>
               </View>
             </Pressable>
