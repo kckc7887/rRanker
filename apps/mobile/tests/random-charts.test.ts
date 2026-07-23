@@ -196,3 +196,57 @@ describe('pickRandomCharts', () => {
     expect(under).toHaveLength(1);
   });
 });
+
+describe('filterRandomCharts with Phigros-shaped charts', () => {
+  const phigrosSongs: Song[] = [
+    {
+      id: 'Glaciaxion.SunsetRay',
+      title: 'Glaciaxion',
+      artist: 'SunsetRay',
+      version: 'Chapter 1',
+      charts: [
+        { songId: 'Glaciaxion.SunsetRay', type: 'SD', levelIndex: 0, level: '1', difficulty: 'basic', difficultyConstant: 1.0 },
+        { songId: 'Glaciaxion.SunsetRay', type: 'SD', levelIndex: 1, level: '6', difficulty: 'advanced', difficultyConstant: 6.5 },
+        { songId: 'Glaciaxion.SunsetRay', type: 'SD', levelIndex: 2, level: '12', difficulty: 'expert', difficultyConstant: 12.3 },
+        { songId: 'Glaciaxion.SunsetRay', type: 'SD', levelIndex: 3, level: '15', difficulty: 'master', difficultyConstant: 15.4 },
+      ],
+    },
+  ];
+  const phigrosCatalog: CatalogSnapshot = {
+    currentVersion: { id: 1, title: 'Chapter 1' },
+    versions: [{ id: 1, title: 'Chapter 1' }],
+    songs: phigrosSongs,
+    chartVersionIndex: {},
+    source: fixtureSource,
+  };
+  const phigrosRecords: ScoreRecord[] = [
+    {
+      songId: 'Glaciaxion.SunsetRay',
+      title: 'Glaciaxion',
+      type: 'SD',
+      levelIndex: 2,
+      level: '12',
+      difficulty: 'expert',
+      difficultyConstant: 12.3,
+      achievements: 98.5,
+      dxScore: 900000,
+      rating: 12.1,
+      fc: null,
+      fs: null,
+      rate: 'v',
+      version: 'Chapter 1',
+    },
+  ];
+
+  it('filters EZ-AT difficulties and played status', () => {
+    const pool = filterRandomCharts(phigrosCatalog, phigrosRecords, {
+      difficulties: ['expert', 'master'],
+      constantMin: '',
+      constantMax: '',
+      played: 'unplayed',
+    });
+    expect(pool).toHaveLength(1);
+    expect(pool[0]?.difficulty).toBe('master');
+    expect(pool[0]?.played).toBe(false);
+  });
+});
