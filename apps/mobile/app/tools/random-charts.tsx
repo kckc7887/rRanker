@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router, Stack, type Href } from 'expo-router';
+import { Stack } from 'expo-router';
 import { Card } from '@/components/Card';
+import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
-import { ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge } from '@/components/ScoreVisuals';
-import { SongCover } from '@/components/SongCover';
+import { ScoreRecordCard, type ScoreRecordCardData } from '@/components/ScoreRecordCard';
+import { DIFFICULTY_VISUAL, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SourceStatus } from '@/components/SourceStatus';
-import type { CatalogSnapshot, Difficulty } from '@/domain/models';
+import { chartVersionKey, normalizeSongId } from '@/domain/catalog';
+import type { CatalogSnapshot, Difficulty, ScoreRecord } from '@/domain/models';
 import {
   filterRandomCharts,
   pickRandomCharts,
@@ -62,6 +64,47 @@ function Chip({
   );
 }
 
+function buildBestRecordMap(records: readonly ScoreRecord[]): Map<string, ScoreRecord> {
+  const best = new Map<string, ScoreRecord>();
+  for (const record of records) {
+    const key = chartVersionKey(record.songId, record.type, record.levelIndex);
+    const current = best.get(key);
+    if (!current || record.achievements > current.achievements) best.set(key, record);
+  }
+  return best;
+}
+
+function toScoreCardData(
+  pick: RandomChartPick,
+  bestByChart: Map<string, ScoreRecord>,
+): ScoreRecordCardData {
+  const key = chartVersionKey(pick.songId, pick.type, pick.levelIndex);
+  const record = bestByChart.get(key);
+  if (record) {
+    return {
+      songId: normalizeSongId(record.songId),
+      title: record.title,
+      type: record.type,
+      difficulty: record.difficulty,
+      difficultyConstant: record.difficultyConstant,
+      levelIndex: record.levelIndex,
+      achievements: record.achievements,
+      rating: record.rating,
+      fc: record.fc,
+      fs: record.fs,
+      rate: record.rate,
+    };
+  }
+  return {
+    songId: pick.songId,
+    title: pick.title,
+    type: pick.type,
+    difficulty: pick.difficulty,
+    difficultyConstant: pick.difficultyConstant,
+    levelIndex: pick.levelIndex,
+  };
+}
+
 export default function RandomChartsToolScreen() {
   const theme = useAppTheme();
   const catalog = useDetailedCatalog();
@@ -76,6 +119,7 @@ export default function RandomChartsToolScreen() {
 
   const records = scores.data?.records ?? [];
   const scoresAvailable = !!scores.data;
+  const bestByChart = useMemo(() => buildBestRecordMap(records), [records]);
   const filters = useMemo(() => ({
     difficulties,
     constantMin,
@@ -88,6 +132,14 @@ export default function RandomChartsToolScreen() {
     if (played !== 'all' && !scoresAvailable) return 0;
     return filterRandomCharts(catalog.data, records, filters).length;
   }, [catalog.data, filters, played, records, scoresAvailable]);
+
+  const resultCards = useMemo(() => {
+    if (!results) return [];
+    return results.map((pick) => ({
+      key: `${lastSeed}-${pick.songId}:${pick.type}:${pick.levelIndex}`,
+      data: toScoreCardData(pick, bestByChart),
+    }));
+  }, [bestByChart, lastSeed, results]);
 
   const draw = () => {
     if (!catalog.data) return;
@@ -148,53 +200,55 @@ export default function RandomChartsToolScreen() {
                 ))}
               </View>
 
-              <Text style={[styles.heading, styles.sectionGap, { color: theme.text }]}>难度</Text>
-              <Text style={[styles.hint, { color: theme.textMuted }]}>未选表示不限；可多选</Text>
-              <View style={styles.chipRow}>
-                {DIFFICULTIES.map((difficulty) => {
-                  const active = difficulties.includes(difficulty);
-                  return (
-                    <Pressable
-                      key={difficulty}
-                      accessibilityRole="button"
-                      accessibilityLabel={`筛选难度 ${DIFFICULTY_VISUAL[difficulty].label}`}
-                      accessibilityState={{ selected: active }}
-                      onPress={() => setDifficulties((current) => toggleDifficulty(current, difficulty))}
-                      style={[
-                        styles.difficultyChip,
-                        { borderColor: theme.border, backgroundColor: theme.surfaceMuted },
-                        active && { borderColor: theme.accent, backgroundColor: theme.accentSoft },
-                      ]}
-                    >
-                      <DifficultyBadge difficulty={difficulty} compact />
-                    </Pressable>
-                  );
-                })}
+              <View style={[styles.filterRow, styles.sectionGap]}>
+                <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.difficultyChipRow}>
+                  <NeutralChip
+                    label="全部"
+                    active={difficulties.length === 0}
+                    onPress={() => setDifficulties([])}
+                  />
+                  {DIFFICULTIES.map((difficulty) => {
+                    const active = difficulties.includes(difficulty);
+                    return (
+                      <FilterChipFrame
+                        key={difficulty}
+                        active={active}
+                        accessibilityLabel={`筛选难度 ${DIFFICULTY_VISUAL[difficulty].label}`}
+                        onPress={() => setDifficulties((current) => toggleDifficulty(current, difficulty))}
+                      >
+                        <DifficultyBadge difficulty={difficulty} compact />
+                      </FilterChipFrame>
+                    );
+                  })}
+                </ScrollView>
               </View>
 
-              <Text style={[styles.heading, styles.sectionGap, { color: theme.text }]}>定数</Text>
-              <View style={styles.rangeRow}>
-                <TextInput
-                  accessibilityLabel="最低定数"
-                  autoCorrect={false}
-                  keyboardType="decimal-pad"
-                  placeholder="下限"
-                  placeholderTextColor={theme.textMuted}
-                  value={constantMin}
-                  onChangeText={setConstantMin}
-                  style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-                />
-                <Text style={[styles.rangeSeparator, { color: theme.textMuted }]}>~</Text>
-                <TextInput
-                  accessibilityLabel="最高定数"
-                  autoCorrect={false}
-                  keyboardType="decimal-pad"
-                  placeholder="上限"
-                  placeholderTextColor={theme.textMuted}
-                  value={constantMax}
-                  onChangeText={setConstantMax}
-                  style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-                />
+              <View style={[styles.filterRow, styles.sectionGap]}>
+                <Text style={[styles.filterLabel, { color: theme.textMuted }]}>定数</Text>
+                <View style={styles.rangeRow}>
+                  <TextInput
+                    accessibilityLabel="最低定数"
+                    autoCorrect={false}
+                    keyboardType="decimal-pad"
+                    placeholder="下限"
+                    placeholderTextColor={theme.textMuted}
+                    value={constantMin}
+                    onChangeText={setConstantMin}
+                    style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
+                  />
+                  <Text style={[styles.rangeSeparator, { color: theme.textMuted }]}>~</Text>
+                  <TextInput
+                    accessibilityLabel="最高定数"
+                    autoCorrect={false}
+                    keyboardType="decimal-pad"
+                    placeholder="上限"
+                    placeholderTextColor={theme.textMuted}
+                    value={constantMax}
+                    onChangeText={setConstantMax}
+                    style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
+                  />
+                </View>
               </View>
 
               <Text style={[styles.heading, styles.sectionGap, { color: theme.text }]}>游玩状态</Text>
@@ -226,18 +280,20 @@ export default function RandomChartsToolScreen() {
             </Card>
 
             {results ? (
-              <Card>
+              <View style={styles.resultSection}>
                 <Text style={[styles.heading, { color: theme.text }]}>抽取结果</Text>
                 {results.length === 0 ? (
-                  <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-                    {played !== 'all' && !scoresAvailable
-                      ? '需要成绩数据才能按已游玩/未游玩筛选，请先绑定查分器或导入成绩。'
-                      : '没有符合条件的谱面，请放宽筛选后再试。'}
-                  </Text>
+                  <Card>
+                    <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                      {played !== 'all' && !scoresAvailable
+                        ? '需要成绩数据才能按已游玩/未游玩筛选，请先绑定查分器或导入成绩。'
+                        : '没有符合条件的谱面，请放宽筛选后再试。'}
+                    </Text>
+                  </Card>
                 ) : (
                   <View style={styles.resultList}>
-                    {results.map((item) => (
-                      <ResultRow key={`${lastSeed}-${item.songId}:${item.type}:${item.levelIndex}`} item={item} />
+                    {resultCards.map((item) => (
+                      <ScoreRecordCard key={item.key} record={item.data} />
                     ))}
                     {results.length < count && poolSize > 0 ? (
                       <Text style={[styles.hint, { color: theme.textMuted }]}>
@@ -246,7 +302,7 @@ export default function RandomChartsToolScreen() {
                     ) : null}
                   </View>
                 )}
-              </Card>
+              </View>
             ) : null}
           </ScrollView>
         )}
@@ -255,43 +311,17 @@ export default function RandomChartsToolScreen() {
   );
 }
 
-function ResultRow({ item }: { item: RandomChartPick }) {
-  const theme = useAppTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${item.title} ${item.type} ${DIFFICULTY_VISUAL[item.difficulty].label}`}
-      onPress={() => router.push(`/songs/${encodeURIComponent(item.songId)}` as Href)}
-      style={[styles.resultRow, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
-    >
-      <SongCover songId={item.songId} size={52} />
-      <View style={styles.resultMain}>
-        <Text numberOfLines={2} style={[styles.resultTitle, { color: theme.text }]}>{item.title}</Text>
-        <View style={styles.resultMeta}>
-          <ChartTypeBadge type={item.type} />
-          <DifficultyBadge
-            difficulty={item.difficulty}
-            constant={item.difficultyConstant}
-            display="label-and-constant"
-            compact
-          />
-        </View>
-        <Text style={[styles.playedLabel, { color: item.played ? theme.accent : theme.textMuted }]}>
-          {item.played ? '已游玩' : '未游玩'}
-        </Text>
-      </View>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { padding: 16, gap: 12, paddingBottom: 32 },
   heading: { fontSize: 16, fontWeight: '700' },
   sectionGap: { marginTop: 16 },
-  hint: { fontSize: 12, marginTop: 4, marginBottom: 8 },
+  hint: { fontSize: 12, marginTop: 4 },
   poolHint: { fontSize: 12, marginTop: 14, marginBottom: 10 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  filterLabel: { fontSize: 12, fontWeight: '600', width: 36 },
+  difficultyChipRow: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingRight: 4 },
   chip: {
     minHeight: 34,
     minWidth: 40,
@@ -303,22 +333,21 @@ const styles = StyleSheet.create({
   },
   chipText: { fontSize: 13, fontWeight: '700' },
   chipTextActive: { color: '#FFFFFF' },
-  difficultyChip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  rangeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
   rangeInput: {
     flex: 1,
-    minHeight: 40,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    minWidth: 0,
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 0,
     fontSize: 14,
+    lineHeight: 20,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
-  rangeSeparator: { fontSize: 14, fontWeight: '700' },
+  rangeSeparator: { fontSize: 13, fontWeight: '700' },
   drawButton: {
     minHeight: 44,
     borderRadius: 12,
@@ -326,17 +355,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   drawButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  resultList: { gap: 10, marginTop: 10 },
-  resultRow: {
-    flexDirection: 'row',
-    gap: 12,
-    padding: 10,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  resultMain: { flex: 1, gap: 6, justifyContent: 'center' },
-  resultTitle: { fontSize: 15, fontWeight: '700' },
-  resultMeta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
-  playedLabel: { fontSize: 12, fontWeight: '600' },
-  emptyText: { fontSize: 13, marginTop: 10, lineHeight: 20 },
+  resultSection: { gap: 10 },
+  resultList: { gap: 10 },
+  emptyText: { fontSize: 13, lineHeight: 20 },
 });
