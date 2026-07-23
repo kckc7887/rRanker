@@ -75,6 +75,13 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         summaryLabel: '推分计算',
       },
       {
+        id: 'random-charts',
+        href: '/tools/random-charts',
+        title: '随机歌曲',
+        detail: '按难度、定数与游玩状态随机抽取谱面',
+        summaryLabel: '随机歌曲',
+      },
+      {
         id: 'best-image',
         href: '/best-image',
         title: '生成成绩图片',

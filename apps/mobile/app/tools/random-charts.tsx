@@ -18,7 +18,9 @@ import {
 import type { RandomChartsCount } from '@/features/toolbox/random-charts-preferences';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
+import { PhigrosRandomChartsScreen } from '@/screens/PhigrosRandomChartsScreen';
 import { useRandomChartsFilter } from '@/state/random-charts-filter';
+import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
 const COUNTS: readonly RandomChartsCount[] = [1, 2, 3, 4];
@@ -107,7 +109,7 @@ function toScoreCardData(
   };
 }
 
-export default function RandomChartsToolScreen() {
+function MaimaiRandomChartsScreen() {
   const theme = useAppTheme();
   const catalog = useDetailedCatalog();
   const scores = useScoreSnapshot();
@@ -314,6 +316,11 @@ export default function RandomChartsToolScreen() {
       />
     </View>
   );
+}
+
+export default function RandomChartsToolScreen() {
+  const activeGameId = useSession((s) => s.activeGameId);
+  return activeGameId === 'phigros' ? <PhigrosRandomChartsScreen /> : <MaimaiRandomChartsScreen />;
 }
 
 const styles = StyleSheet.create({
