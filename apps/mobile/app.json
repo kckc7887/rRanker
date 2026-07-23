@@ -12,7 +12,15 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.rranker.app",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["tapiosdk", "tapsdk", "taptap"]
+        "LSApplicationQueriesSchemes": [
+          "tapiosdk",
+          "tapsdk",
+          "taptap",
+          "tapiosdk",
+          "tapsdk",
+          "taptap"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -25,7 +33,13 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES"
+      ]
     },
     "web": {
       "output": "static",
@@ -45,13 +59,16 @@
           }
         }
       ],
+      "./plugins/with-android-abi-splits.js",
       "expo-sqlite",
       "expo-secure-store",
       "expo-asset",
       [
         "expo-font",
         {
-          "fonts": ["./assets/fonts/Ionicons.ttf"],
+          "fonts": [
+            "./assets/fonts/Ionicons.ttf"
+          ],
           "android": {
             "fonts": [
               {
@@ -73,13 +90,21 @@
         {
           "photosPermission": "允许 rRanker 访问照片。",
           "savePhotosPermission": "允许 rRanker 将成绩图片保存到相册。",
-          "granularPermissions": ["photo"]
+          "granularPermissions": [
+            "photo"
+          ]
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4b379638-fb34-4c0d-a727-492030855870"
+      }
     }
   }
 }
