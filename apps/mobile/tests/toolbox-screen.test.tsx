@@ -46,6 +46,7 @@ describe('game-aware toolbox screen', () => {
     const screen = await render(<ToolsScreen />);
     expect(screen.getByText('DX Rating 计算器')).toBeTruthy();
     expect(screen.getByText('版本对照与总结')).toBeTruthy();
+    expect(screen.getByText('随机歌曲')).toBeTruthy();
   });
 
   it('renders the active Phigros tools without a maimai branch', async () => {

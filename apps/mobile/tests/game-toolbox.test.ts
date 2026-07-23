@@ -10,9 +10,10 @@ describe('per-game toolbox registry', () => {
       'tolerance',
       'plates',
       'versions',
+      'random-charts',
       'best-image',
     ]);
-    expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 成绩图片');
+    expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 随机歌曲 · 成绩图片');
   });
 
   it('gives Phigros a push-rks toolbox entry', () => {
