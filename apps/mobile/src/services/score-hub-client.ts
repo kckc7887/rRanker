@@ -432,11 +432,11 @@ export async function loginByQrUntilToken(input: {
 export async function pollLoginUntilToken(input: {
   jobId: string;
   signal?: ScoreHubAbortSignal;
+  onSendingFriend?: (info: { botFriendCode: string | null; stage: string | null }) => void;
   onWaitingFriend?: (info: { botFriendCode: string | null; stage: string | null }) => void;
 }): Promise<string> {
   const deadline = Date.now() + LOGIN_TIMEOUT_MS;
   let lastVerifyAt = 0;
-  let notifiedFriend = false;
 
   while (Date.now() < deadline) {
     if (input.signal?.aborted) throw new ScoreHubError('已取消');
@@ -472,12 +472,10 @@ export async function pollLoginUntilToken(input: {
     }
 
     if (stage === 'wait_acceptance' || stage === 'wait_user_request') {
-      if (!notifiedFriend) {
-        notifiedFriend = true;
-        input.onWaitingFriend?.({ botFriendCode: bot, stage });
-      } else {
-        input.onWaitingFriend?.({ botFriendCode: bot, stage });
-      }
+      input.onWaitingFriend?.({ botFriendCode: bot, stage });
+    } else {
+      // send_request 等发送阶段：尚未发出申请，不要提示「等待同意」
+      input.onSendingFriend?.({ botFriendCode: bot, stage });
     }
 
     const now = Date.now();

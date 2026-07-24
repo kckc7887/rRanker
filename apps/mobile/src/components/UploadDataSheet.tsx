@@ -59,6 +59,7 @@ function phaseLabel(phase: UploadPhase): string {
     case 'idle':
       return '';
     case 'logging_in':
+    case 'sending_friend':
     case 'awaiting_friend':
     case 'fetching_scores':
     case 'binding':
