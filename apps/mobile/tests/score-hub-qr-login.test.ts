@@ -48,8 +48,8 @@ describe('score-hub qr-login', () => {
       message: { code: 'qr_expired', message: '二维码已过期' },
     })).toBe(true);
     expect(() => parseQrLoginInitBody(400, {
-      message: { code: 'qr_expired', message: '二维码已过期，请刷新机台二维码后再试' },
-    })).toThrow(/已过期/);
+      message: { code: 'qr_expired', message: '二维码已过期' },
+    })).toThrow(/玩家二维码/);
   });
 
   it('文本凭证走 JSON POST', async () => {
