@@ -190,19 +190,22 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.queryByLabelText('开始上传')).toBeNull();
   });
 
-  it('已绑定时默认神秘二维码且可缺少凭证提示', async () => {
+  it('已绑定时默认好友码，神秘二维码为可选项', async () => {
     mockLoadHubAccount.mockResolvedValue({
       friendCode: '111111111111111',
       hasCabinetBound: true,
     });
     const screen = await renderSheet([water.id]);
-    expect(await screen.findByLabelText('神秘二维码字符串')).toBeTruthy();
-    expect(screen.queryByLabelText('score-hub 近一小时统计')).toBeNull();
+    expect(await screen.findByLabelText('舞萌好友码')).toBeTruthy();
+    expect(screen.getByLabelText('玩家二维码已绑定')).toBeTruthy();
+    expect(screen.getByLabelText('score-hub 近一小时统计')).toBeTruthy();
     expect(screen.queryByLabelText('绑定玩家二维码')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
+    expect(await screen.findByLabelText('神秘二维码字符串')).toBeTruthy();
+    expect(screen.getByText(/仅在不想走好友码时/)).toBeTruthy();
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
     await fireEvent.press(screen.getByLabelText('开始上传'));
     expect(await screen.findByText('缺少二维码')).toBeTruthy();
-    expect(screen.getByText('请粘贴神秘二维码字符串，或从相册选择图片识别。')).toBeTruthy();
   });
 
   it('每次只临时勾选当前可写账号且不保存目标变化', async () => {
@@ -274,6 +277,7 @@ describe('当前查分器上传弹窗临时选项', () => {
 
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
+    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     await fireEvent.press(screen.getByLabelText('从相册选择二维码图片'));
     await waitFor(() => {
       expect(screen.getByLabelText('神秘二维码字符串').props.value).toBe('SGWCMAIDFROMIMAGE');
@@ -309,6 +313,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     (clipboard.getStringAsync as jest.Mock).mockResolvedValueOnce('SGWCMAIDFROMCLIP');
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
+    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     await fireEvent.press(screen.getByLabelText('粘贴二维码字符串'));
     await waitFor(() => {
       expect(screen.getByLabelText('神秘二维码字符串').props.value).toBe('SGWCMAIDFROMCLIP');

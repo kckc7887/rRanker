@@ -174,7 +174,7 @@ export function UploadDataSheet({
       if (!active) return;
       setFriendCode(prefs.friendCode || hubAccount.friendCode);
       setHasCabinetBound(hubAccount.hasCabinetBound);
-      setAuthMode(hubAccount.hasCabinetBound ? 'qr' : 'friend_code');
+      setAuthMode('friend_code');
       const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
         .filter((target) => target.writable)
         .map((target) => target.account.id);
@@ -464,10 +464,16 @@ export function UploadDataSheet({
       });
       setHasCabinetBound(true);
       setBindQrText('');
-      setAuthMode('qr');
+      setAuthMode('friend_code');
+      applyPhase({
+        kind: 'done',
+        message: '玩家二维码已绑定。日常请继续用好友码上传；仅在需要时再切到神秘二维码。',
+        uploaded: 0,
+        skipped: 0,
+      });
       showNotification({
         title: '绑定成功',
-        message: '之后可用「神秘二维码」快速上传。',
+        message: '已绑定。请继续用好友码上传成绩；神秘二维码仅作可选快路径。',
         variant: 'success',
       });
     } catch (error) {
@@ -576,7 +582,7 @@ export function UploadDataSheet({
               <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
               {hasCabinetBound ? (
                 <Text accessibilityLabel="玩家二维码已绑定" style={[styles.hint, { color: theme.success }]}>
-                  玩家二维码已绑定，也可改用「神秘二维码」快速上传。
+                  玩家二维码已绑定。日常直接用好友码上传即可；神秘二维码为可选快路径。
                 </Text>
               ) : (
                 <Text style={[styles.hint, { color: theme.textMuted }]}>
@@ -586,7 +592,10 @@ export function UploadDataSheet({
             </>
           ) : hasCabinetBound ? (
             <>
-              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>神秘二维码</Text>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>神秘二维码（可选）</Text>
+              <Text style={[styles.hint, { color: theme.textMuted }]}>
+                已绑定。仅在不想走好友码时，粘贴最新的公众号玩家二维码即可快速上传；日常可留在「好友码」。
+              </Text>
               <TextInput
                 accessibilityLabel="神秘二维码字符串"
                 value={qrText}
@@ -598,7 +607,7 @@ export function UploadDataSheet({
                 contextMenuHidden={false}
                 selectTextOnFocus={false}
                 multiline
-                placeholder="粘贴 SGWCMAID… 字符串"
+                placeholder="粘贴 SGWCMAID… 字符串（可选）"
                 placeholderTextColor={theme.textMuted}
                 editable={!busy && prefsReady}
                 style={[
@@ -647,7 +656,7 @@ export function UploadDataSheet({
                 </Pressable>
               </View>
               <Text style={[styles.hint, { color: theme.textMuted }]}>
-                在“舞萌-中二公众号 → 玩家二维码”复制字符串后点「粘贴」，或截图后从相册选择；选图后会自动识别并填入输入框。
+                在“舞萌-中二公众号 → 玩家二维码”复制字符串后点「粘贴」，或截图后从相册选择。
               </Text>
             </>
           ) : (
