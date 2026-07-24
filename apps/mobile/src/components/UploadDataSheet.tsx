@@ -117,6 +117,7 @@ export function UploadDataSheet({
   const abortRef = useRef<ScoreHubAbortSignal>({ aborted: false });
   const uploadInFlightRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistedSelectedIdsRef = useRef<string[]>([]);
   const wasVisibleRef = useRef(false);
   const bindLookupSeqRef = useRef(0);
@@ -163,6 +164,17 @@ export function UploadDataSheet({
   const applyPhase = useCallback((next: UploadPhase) => {
     setPhase(next);
     onPhaseChange?.(next);
+    if (idleResetTimerRef.current) {
+      clearTimeout(idleResetTimerRef.current);
+      idleResetTimerRef.current = null;
+    }
+    if (next.kind === 'done') {
+      idleResetTimerRef.current = setTimeout(() => {
+        idleResetTimerRef.current = null;
+        setPhase({ kind: 'idle' });
+        onPhaseChange?.({ kind: 'idle' });
+      }, 5_000);
+    }
   }, [onPhaseChange]);
 
   const refreshStoredList = useCallback(async () => {
@@ -323,6 +335,7 @@ export function UploadDataSheet({
     abortRef.current.aborted = true;
     uploadInFlightRef.current = false;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
   }, []);
 
   const close = () => {
