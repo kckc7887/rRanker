@@ -10,8 +10,12 @@ const mocks = vi.hoisted(() => ({
   pollUpdateScoreUntilDone: vi.fn(),
   fetchLatestSync: vi.fn(),
   loginByQrUntilToken: vi.fn(),
+  bindCabinetByQr: vi.fn(),
+  fetchMe: vi.fn(),
   uploadDivingFish: vi.fn(),
   saveSnapshot: vi.fn(),
+  accountLoad: vi.fn(),
+  accountPatch: vi.fn(),
 }));
 
 vi.mock('@/services/score-hub-client', async () => {
@@ -26,6 +30,8 @@ vi.mock('@/services/score-hub-client', async () => {
     pollUpdateScoreUntilDone: mocks.pollUpdateScoreUntilDone,
     fetchLatestSync: mocks.fetchLatestSync,
     loginByQrUntilToken: mocks.loginByQrUntilToken,
+    bindCabinetByQr: mocks.bindCabinetByQr,
+    fetchMe: mocks.fetchMe,
   };
 });
 vi.mock('@/services/diving-fish-upload', () => ({
@@ -36,10 +42,17 @@ vi.mock('@/storage/sqlite-snapshot-repository', () => ({
     save = mocks.saveSnapshot;
   },
 }));
+vi.mock('@/storage/score-hub-account-store', () => ({
+  scoreHubAccountStore: {
+    load: (...args: unknown[]) => mocks.accountLoad(...args),
+    patch: (...args: unknown[]) => mocks.accountPatch(...args),
+  },
+}));
 
 // Must be imported after the hoisted workflow mocks.
 // eslint-disable-next-line import/first
 import {
+  QR_REQUIRES_BIND_MESSAGE,
   resolveUploadTargets,
   uploadMaimaiFromFriendCode,
   uploadMaimaiFromQrLogin,
@@ -74,6 +87,10 @@ describe('好友码多目标写入', () => {
       }],
     });
     mocks.saveSnapshot.mockResolvedValue(undefined);
+    mocks.accountLoad.mockResolvedValue({ friendCode: '', hasCabinetBound: true });
+    mocks.accountPatch.mockResolvedValue({ friendCode: '', hasCabinetBound: true });
+    mocks.bindCabinetByQr.mockResolvedValue({ ok: true, alreadyBound: false });
+    mocks.fetchMe.mockResolvedValue({ friendCode: '123456789012345', hasCabinetUserId: true });
   });
 
   it('单个目标失败不回滚已经成功的本地写入', async () => {
@@ -109,6 +126,51 @@ describe('好友码多目标写入', () => {
     expect(phases.at(-1)).toBe('done');
   });
 
+  it('好友码路径在 sync 后绑定玩家二维码', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const phases: string[] = [];
+    const result = await uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      cabinetQrCode: 'SGWCMAIDBIND',
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      catalog,
+      signal: { aborted: false },
+      onPhase: (phase) => phases.push(phase.kind),
+      onNeedFriendAccept: vi.fn(),
+    });
+
+    expect(mocks.bindCabinetByQr).toHaveBeenCalledWith('hub-token', 'SGWCMAIDBIND', expect.anything());
+    expect(mocks.accountPatch).toHaveBeenCalledWith(expect.objectContaining({
+      hasCabinetBound: true,
+    }));
+    expect(result.cabinetBound).toBe(true);
+    expect(phases).toContain('binding');
+    expect(phases.at(-1)).toBe('done');
+  });
+
+  it('绑定失败不阻断成绩写出', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    mocks.bindCabinetByQr.mockRejectedValue(new Error('成绩匹配不足'));
+    const result = await uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      cabinetQrCode: 'SGWCMAIDBAD',
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      catalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    });
+
+    expect(result.uploaded).toBe(1);
+    expect(result.cabinetBound).toBe(false);
+    expect(result.cabinetBindError).toMatch(/成绩匹配不足/);
+    expect(mocks.saveSnapshot).toHaveBeenCalledTimes(1);
+  });
+
   it('二维码登录拿到 token 后复用同一写出链路且不传 friendshipJobId', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
     mocks.loginByQrUntilToken.mockResolvedValue({
@@ -138,5 +200,20 @@ describe('好友码多目标写入', () => {
     expect(result.uploaded).toBe(1);
     expect(phases.some((phase) => phase.kind === 'logging_in' && phase.authMode === 'qr')).toBe(true);
     expect(phases.at(-1)?.kind).toBe('done');
+  });
+
+  it('未绑定本地状态时拒绝二维码上传', async () => {
+    mocks.accountLoad.mockResolvedValue({ friendCode: '', hasCabinetBound: false });
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    await expect(uploadMaimaiFromQrLogin({
+      credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      catalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+    })).rejects.toThrow(QR_REQUIRES_BIND_MESSAGE);
+    expect(mocks.loginByQrUntilToken).not.toHaveBeenCalled();
   });
 });
