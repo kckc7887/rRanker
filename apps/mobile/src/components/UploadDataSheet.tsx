@@ -9,7 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
+import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BoundAccount } from '@/domain/bound-account';
 import { findGame, findProvider } from '@/domain/game-bind-options';
@@ -232,10 +233,19 @@ export function UploadDataSheet({
 
   const pickQrImage = async () => {
     if (running) return;
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ['image/png', 'image/jpeg', 'image/webp', 'image/*'],
-      copyToCacheDirectory: true,
-      multiple: false,
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      showNotification({
+        title: '需要相册权限',
+        message: '请允许访问相册后再选择二维码图片。',
+        variant: 'warning',
+      });
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: false,
+      quality: 1,
     });
     if (result.canceled) return;
     const asset = result.assets[0];
@@ -243,12 +253,29 @@ export function UploadDataSheet({
       showNotification({ title: '选择图片失败', message: '没有读取到二维码图片。', variant: 'warning' });
       return;
     }
+    const fileName = asset.fileName
+      ?? (asset.uri.split('/').pop() || 'qr.jpg');
     setQrImage({
       uri: asset.uri,
       mimeType: asset.mimeType ?? undefined,
-      fileName: asset.name ?? undefined,
+      fileName,
     });
     setQrText('');
+  };
+
+  const pasteQrText = async () => {
+    if (running) return;
+    const text = (await Clipboard.getStringAsync()).trim();
+    if (!text) {
+      showNotification({
+        title: '剪贴板为空',
+        message: '请先复制公众号玩家二维码字符串。',
+        variant: 'warning',
+      });
+      return;
+    }
+    setQrImage(null);
+    setQrText(text);
   };
 
   const clearQrImage = () => {
@@ -457,17 +484,45 @@ export function UploadDataSheet({
                   setQrText(value);
                   if (value.trim()) setQrImage(null);
                 }}
-                autoCapitalize="characters"
+                autoCapitalize="none"
                 autoCorrect={false}
+                autoComplete="off"
+                textContentType="none"
+                contextMenuHidden={false}
+                selectTextOnFocus={false}
+                multiline
                 placeholder="粘贴 SGWCMAID… 字符串"
                 placeholderTextColor={theme.textMuted}
                 editable={!running && prefsReady && !qrImage}
-                style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
+                style={[
+                  styles.input,
+                  styles.qrInput,
+                  {
+                    backgroundColor: theme.input,
+                    borderColor: theme.border,
+                    color: theme.text,
+                    borderWidth: 1,
+                  },
+                ]}
               />
               <View style={styles.qrActions}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="选择二维码图片"
+                  accessibilityLabel="粘贴二维码字符串"
+                  disabled={running || !prefsReady || !!qrImage}
+                  onPress={() => void pasteQrText()}
+                  style={({ pressed }) => [
+                    styles.secondary,
+                    { borderColor: theme.border, backgroundColor: theme.surface },
+                    (running || !prefsReady || !!qrImage) && styles.primaryDisabled,
+                    pressed && !running && styles.softPressed,
+                  ]}
+                >
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>粘贴</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="从相册选择二维码图片"
                   disabled={running || !prefsReady}
                   onPress={() => void pickQrImage()}
                   style={({ pressed }) => [
@@ -477,7 +532,7 @@ export function UploadDataSheet({
                     pressed && !running && styles.softPressed,
                   ]}
                 >
-                  <Text style={[styles.secondaryText, { color: theme.accent }]}>选择图片</Text>
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>从相册选择</Text>
                 </Pressable>
                 {qrImage ? (
                   <Pressable
@@ -492,7 +547,7 @@ export function UploadDataSheet({
                       pressed && !running && styles.softPressed,
                     ]}
                   >
-                    <Text style={[styles.secondaryText, { color: theme.danger }]}>清除图片</Text>
+                    <Text style={[styles.secondaryText, { color: theme.danger }]}>清除</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -502,7 +557,7 @@ export function UploadDataSheet({
                 </Text>
               ) : null}
               <Text style={[styles.hint, { color: theme.textMuted }]}>
-                在“舞萌-中二公众号 → 玩家二维码”打开二维码后粘贴字符串，或截图后选择图片。二维码会过期，请尽快提交。
+                在“舞萌-中二公众号 → 玩家二维码”复制字符串后点「粘贴」，或截图后从相册选择图片。二维码会过期，请尽快提交。
               </Text>
             </>
           )}
@@ -704,6 +759,11 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: '#111827',
     letterSpacing: 1,
+  },
+  qrInput: {
+    letterSpacing: 0,
+    minHeight: 72,
+    textAlignVertical: 'top',
   },
   hint: { color: '#9CA3AF', fontSize: 12, lineHeight: 18 },
   qrActions: { flexDirection: 'row', gap: 8 },

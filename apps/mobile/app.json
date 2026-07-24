@@ -94,6 +94,13 @@
             "photo"
           ]
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "允许 rRanker 从相册选择玩家二维码图片。",
+          "microphonePermission": false
+        }
       ]
     ],
     "experiments": {

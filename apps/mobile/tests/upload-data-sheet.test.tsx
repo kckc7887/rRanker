@@ -28,6 +28,13 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('expo-document-picker', () => ({
   getDocumentAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
 }));
+jest.mock('expo-image-picker', () => ({
+  requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true })),
+  launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
+}));
+jest.mock('expo-clipboard', () => ({
+  getStringAsync: jest.fn(async () => ''),
+}));
 jest.mock('react-native-gesture-handler', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };
@@ -166,12 +173,25 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.getByLabelText('score-hub 近一小时统计')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     expect(screen.getByLabelText('神秘二维码字符串')).toBeTruthy();
-    expect(screen.getByLabelText('选择二维码图片')).toBeTruthy();
+    expect(screen.getByLabelText('粘贴二维码字符串')).toBeTruthy();
+    expect(screen.getByLabelText('从相册选择二维码图片')).toBeTruthy();
     expect(screen.getByText(/舞萌-中二公众号 → 玩家二维码/)).toBeTruthy();
     expect(screen.queryByLabelText('score-hub 近一小时统计')).toBeNull();
     await fireEvent.press(screen.getByLabelText('开始上传'));
     expect(await screen.findByText('缺少二维码')).toBeTruthy();
     expect(screen.getByText('请粘贴神秘二维码字符串，或选择二维码图片。')).toBeTruthy();
+  });
+
+  it('粘贴按钮可写入剪贴板中的二维码字符串', async () => {
+    const clipboard = jest.requireMock<typeof import('expo-clipboard')>('expo-clipboard');
+    (clipboard.getStringAsync as jest.Mock).mockResolvedValueOnce('SGWCMAIDFROMCLIP');
+    const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
+    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
+    await fireEvent.press(screen.getByLabelText('粘贴二维码字符串'));
+    await waitFor(() => {
+      expect(screen.getByLabelText('神秘二维码字符串').props.value).toBe('SGWCMAIDFROMCLIP');
+    });
   });
 
   it('维护窗口内停止上传并显示统一通知', async () => {
