@@ -31,7 +31,7 @@ import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
 
 export type UploadPhase =
   | { kind: 'idle' }
-  | { kind: 'logging_in'; message: string; authMode?: 'friend_code' | 'qr' }
+  | { kind: 'logging_in'; message: string; authMode?: 'friend_code' | 'qr' | 'session' }
   | { kind: 'awaiting_friend'; message: string; botFriendCode: string | null }
   | { kind: 'fetching_scores'; message: string }
   | { kind: 'binding'; message: string }
@@ -100,7 +100,9 @@ export function scoreProgressMessage(progress: ScoreHubScoreProgress | null): st
 export function compactUploadPhaseLabel(phase: UploadPhase): string {
   switch (phase.kind) {
     case 'logging_in':
-      return phase.authMode === 'qr' ? '二维码登录中' : '好友申请中';
+      if (phase.authMode === 'qr') return '二维码登录中';
+      if (phase.authMode === 'session') return '会话拉分中';
+      return '好友申请中';
     case 'awaiting_friend':
       return '好友申请中';
     case 'fetching_scores':
@@ -534,7 +536,7 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
   input.onPhase({
     kind: 'logging_in',
     message: '正在使用已登录的 ScoreHub 会话…',
-    authMode: 'qr',
+    authMode: 'session',
   });
 
   const cached = await scoreHubAccountStore.load();
