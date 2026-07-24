@@ -7,6 +7,7 @@ const SCORE_POLL_MS = 5_000;
 const LOGIN_TIMEOUT_MS = 8 * 60_000;
 const SCORE_TIMEOUT_MS = 20 * 60_000;
 const VERIFY_EVERY_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 
 export type ScoreHubSyncScore = {
   musicId: string;
@@ -36,15 +37,54 @@ export type ScoreHubScoreProgress = {
 
 export class ScoreHubError extends Error {
   readonly status?: number;
+  readonly retryable: boolean;
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, retryable = false) {
     super(message);
     this.name = 'ScoreHubError';
     this.status = status;
+    this.retryable = retryable;
   }
 }
 
 export type ScoreHubAbortSignal = { aborted: boolean };
+
+function normalizeNetworkErrorMessage(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes('terminated') || lower.includes('connection') || lower.includes('network')) {
+    return '网络连接中断，正在重试…';
+  }
+  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('aborted')) {
+    return 'score-hub 请求超时，正在重试…';
+  }
+  return raw;
+}
+
+/** 轮询期间可恢复的瞬时错误（单次请求失败不应直接终止整次拉成绩）。 */
+export function isRetryableScoreHubError(error: unknown): boolean {
+  if (error instanceof ScoreHubError) {
+    if (error.message === '已取消') return false;
+    if (error.retryable) return true;
+    const lower = error.message.toLowerCase();
+    return lower.includes('超时')
+      || lower.includes('中断')
+      || lower.includes('无法连接')
+      || lower.includes('terminated')
+      || lower.includes('fetch failed')
+      || lower.includes('network');
+  }
+  if (error instanceof Error) {
+    const lower = error.message.toLowerCase();
+    return lower.includes('terminated')
+      || lower.includes('fetch failed')
+      || lower.includes('network')
+      || lower.includes('timeout')
+      || lower.includes('aborted')
+      || error.name === 'AbortError'
+      || error.name === 'FetchError';
+  }
+  return false;
+}
 
 async function requestJson(
   method: string,
@@ -73,7 +113,7 @@ async function requestJson(
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, 60_000);
+  }, REQUEST_TIMEOUT_MS);
   const abortWatch = options?.signal ? setInterval(() => {
     if (options.signal?.aborted) controller.abort();
   }, 100) : null;
@@ -95,11 +135,16 @@ async function requestJson(
     }
     return { status: response.status, body };
   } catch (error) {
+    if (options?.signal?.aborted && !timedOut) throw new ScoreHubError('已取消');
     if (error instanceof Error && error.name === 'AbortError') {
-      if (options?.signal?.aborted && !timedOut) throw new ScoreHubError('已取消');
-      throw new ScoreHubError('score-hub 请求超时', undefined);
+      throw new ScoreHubError(
+        timedOut ? 'score-hub 请求超时，正在重试…' : '已取消',
+        undefined,
+        timedOut,
+      );
     }
-    throw new ScoreHubError(error instanceof Error ? error.message : '无法连接 score-hub');
+    const raw = error instanceof Error ? error.message : '无法连接 score-hub';
+    throw new ScoreHubError(normalizeNetworkErrorMessage(raw), undefined, true);
   } finally {
     clearTimeout(timeout);
     if (abortWatch !== null) clearInterval(abortWatch);
@@ -169,11 +214,19 @@ export async function pollLoginUntilToken(input: {
 
   while (Date.now() < deadline) {
     if (input.signal?.aborted) throw new ScoreHubError('已取消');
-    const { status, body } = await requestJson(
-      'GET',
-      `/auth/login-requests/${encodeURIComponent(input.jobId)}`,
-      { signal: input.signal },
-    );
+    let status: number;
+    let body: unknown;
+    try {
+      ({ status, body } = await requestJson(
+        'GET',
+        `/auth/login-requests/${encodeURIComponent(input.jobId)}`,
+        { signal: input.signal },
+      ));
+    } catch (error) {
+      if (!isRetryableScoreHubError(error)) throw error;
+      await sleep(LOGIN_POLL_MS, input.signal);
+      continue;
+    }
     if (status !== 200 || !body || typeof body !== 'object') {
       await sleep(LOGIN_POLL_MS, input.signal);
       continue;
@@ -254,11 +307,28 @@ export async function pollUpdateScoreUntilDone(input: {
   const deadline = Date.now() + SCORE_TIMEOUT_MS;
   while (Date.now() < deadline) {
     if (input.signal?.aborted) throw new ScoreHubError('已取消');
-    const { status, body } = await requestJson(
-      'GET',
-      `/me/dxnet-jobs/${encodeURIComponent(input.jobId)}`,
-      { token: input.token, signal: input.signal },
-    );
+    let status: number;
+    let body: unknown;
+    try {
+      ({ status, body } = await requestJson(
+        'GET',
+        `/me/dxnet-jobs/${encodeURIComponent(input.jobId)}`,
+        { token: input.token, signal: input.signal },
+      ));
+    } catch (error) {
+      if (!isRetryableScoreHubError(error)) throw error;
+      // 服务端任务可能仍在抓取；单次 poll 断连（如 terminated）不应整段放弃。
+      const message = error instanceof Error
+        ? error.message
+        : '网络连接中断，正在重试…';
+      input.onProgress?.({
+        status: 'processing',
+        stage: message.includes('重试') ? message : '网络连接中断，正在重试…',
+        progress: null,
+      });
+      await sleep(SCORE_POLL_MS, input.signal);
+      continue;
+    }
     if (status !== 200 || !body || typeof body !== 'object') {
       await sleep(SCORE_POLL_MS, input.signal);
       continue;
