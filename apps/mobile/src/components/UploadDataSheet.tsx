@@ -114,6 +114,8 @@ export function UploadDataSheet({
       setPrefsReady(false);
       return;
     }
+    // 上传进行中不要因 accounts/session 变化重置表单与阶段，否则进度会被打断。
+    if (running) return;
     let active = true;
     setPrefsReady(false);
     setLastResult(null);
@@ -135,7 +137,7 @@ export function UploadDataSheet({
     return () => {
       active = false;
     };
-  }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds, applyPhase]);
+  }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds, applyPhase, running]);
 
   useEffect(() => () => {
     abortRef.current.aborted = true;
