@@ -148,23 +148,25 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.getAllByText(/多刷新几次才能看到申请/).length).toBeGreaterThan(0);
   });
 
-  it('未绑定时好友码模式展示独立绑定区，开始上传不依赖绑定码', async () => {
+  it('未绑定时好友码模式不展示绑定区', async () => {
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
-    expect(await screen.findByLabelText('绑定用玩家二维码字符串')).toBeTruthy();
-    expect(screen.getByLabelText('绑定玩家二维码')).toBeTruthy();
-    expect(screen.getByText(/与上方「开始上传」互不影响/)).toBeTruthy();
-    expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false);
+    expect(screen.queryByLabelText('绑定用玩家二维码字符串')).toBeNull();
+    expect(screen.queryByLabelText('绑定玩家二维码')).toBeNull();
+    expect(screen.getByText(/再到「神秘二维码」完成绑定/)).toBeTruthy();
   });
 
-  it('未绑定时切换二维码模式展示引导且禁用开始上传', async () => {
+  it('未绑定时神秘二维码页展示绑定表单', async () => {
     const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
+    await waitFor(() => expect(screen.getByLabelText('开始上传')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     expect(await screen.findByLabelText('二维码需先绑定说明')).toBeTruthy();
-    expect(screen.getByLabelText('切换到好友码上传并绑定')).toBeTruthy();
+    expect(screen.getByLabelText('绑定用舞萌好友码')).toBeTruthy();
+    expect(screen.getByLabelText('绑定用玩家二维码字符串')).toBeTruthy();
+    expect(screen.getByLabelText('绑定玩家二维码')).toBeTruthy();
+    expect(screen.getByLabelText('切换到好友码上传成绩')).toBeTruthy();
     expect(screen.queryByLabelText('神秘二维码字符串')).toBeNull();
-    expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: true });
+    expect(screen.queryByLabelText('开始上传')).toBeNull();
   });
 
   it('已绑定时默认神秘二维码且可缺少凭证提示', async () => {
@@ -227,8 +229,10 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.queryByTestId('app-notification-root-overlay')).toBeNull();
   });
 
-  it('未绑定且点仅绑定时缺少绑定二维码会提示', async () => {
+  it('未绑定且在神秘二维码页点绑定时缺少二维码会提示', async () => {
     const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(screen.getByLabelText('开始上传')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     await waitFor(() => expect(screen.getByLabelText('绑定玩家二维码')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('绑定玩家二维码'));
     expect(await screen.findByText('缺少绑定二维码')).toBeTruthy();
@@ -256,7 +260,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(await screen.findByText('已识别二维码')).toBeTruthy();
   });
 
-  it('未绑定时相册识码写入绑定框', async () => {
+  it('未绑定时在神秘二维码页相册识码写入绑定框', async () => {
     const imagePicker = jest.requireMock<typeof import('expo-image-picker')>('expo-image-picker');
     const decode = jest.requireMock<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
     (imagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValueOnce({
@@ -266,6 +270,8 @@ describe('当前查分器上传弹窗临时选项', () => {
     (decode.decodeMaimaiQrFromImageUri as jest.Mock).mockResolvedValueOnce('SGWCMAIDBIND');
 
     const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(screen.getByLabelText('开始上传')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     await waitFor(() => expect(screen.getByLabelText('绑定用玩家二维码字符串')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('从相册选择绑定用二维码图片'));
     await waitFor(() => {

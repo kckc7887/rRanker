@@ -259,13 +259,13 @@ export function UploadDataSheet({
     if (mode === 'qr') setLastResult(null);
   };
 
-  const applyQrText = (raw: string, target: 'login' | 'bind' = authMode === 'friend_code' ? 'bind' : 'login') => {
+  const applyQrText = (raw: string, target: 'login' | 'bind' = authMode === 'qr' && !hasCabinetBound ? 'bind' : 'login') => {
     const extracted = extractMaimaiQrPayload(raw) ?? raw.trim();
     if (target === 'bind') setBindQrText(extracted);
     else setQrText(extracted);
   };
 
-  const pickQrImage = async (target: 'login' | 'bind' = authMode === 'friend_code' ? 'bind' : 'login') => {
+  const pickQrImage = async (target: 'login' | 'bind' = authMode === 'qr' && !hasCabinetBound ? 'bind' : 'login') => {
     if (running || decodingQr) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -295,7 +295,7 @@ export function UploadDataSheet({
       showNotification({
         title: '已识别二维码',
         message: target === 'bind'
-          ? '绑定用字符串已填入，可点「仅绑定二维码」。'
+          ? '绑定用字符串已填入，可点「绑定二维码」。'
           : '字符串已填入输入框，可直接开始上传。',
         variant: 'success',
       });
@@ -309,7 +309,7 @@ export function UploadDataSheet({
     }
   };
 
-  const pasteQrText = async (target: 'login' | 'bind' = authMode === 'friend_code' ? 'bind' : 'login') => {
+  const pasteQrText = async (target: 'login' | 'bind' = authMode === 'qr' && !hasCabinetBound ? 'bind' : 'login') => {
     if (running || decodingQr) return;
     const text = (await Clipboard.getStringAsync()).trim();
     if (!text) {
@@ -584,7 +584,11 @@ export function UploadDataSheet({
                 <Text accessibilityLabel="玩家二维码已绑定" style={[styles.hint, { color: theme.success }]}>
                   玩家二维码已绑定，也可改用「神秘二维码」快速上传。
                 </Text>
-              ) : null}
+              ) : (
+                <Text style={[styles.hint, { color: theme.textMuted }]}>
+                  若要用神秘二维码快速上传，请先在本页传一次成绩，再到「神秘二维码」完成绑定。
+                </Text>
+              )}
             </>
           ) : hasCabinetBound ? (
             <>
@@ -653,115 +657,24 @@ export function UploadDataSheet({
               </Text>
             </>
           ) : (
-            <View style={[styles.statusBox, { backgroundColor: theme.surface }]}>
-              <Text accessibilityLabel="二维码需先绑定说明" style={[styles.statusText, { color: theme.textSecondary }]}>
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>首次绑定玩家二维码</Text>
+              <Text accessibilityLabel="二维码需先绑定说明" style={[styles.hint, { color: theme.textMuted }]}>
                 {QR_REQUIRES_BIND_MESSAGE}
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="切换到好友码上传并绑定"
-                onPress={() => switchAuthMode('friend_code')}
-                style={({ pressed }) => [
-                  styles.secondary,
-                  { borderColor: theme.border, backgroundColor: theme.input, marginTop: 4 },
-                  pressed && styles.softPressed,
-                ]}
-              >
-                <Text style={[styles.secondaryText, { color: theme.accent }]}>去好友码上传 / 绑定</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {authMode === 'friend_code' ? (
-            <>
-              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>服务状态</Text>
-              <View style={[styles.statusBox, { backgroundColor: theme.surface, marginTop: 0 }]}>
-                {statsStatus === 'loading' ? (
-                  <ActivityIndicator color={theme.accent} style={styles.statusSpinner} />
-                ) : null}
-                <Text accessibilityLabel="score-hub 近一小时统计" style={[styles.statusText, { color: theme.textSecondary }]}>
-                  {statsSummary}
-                </Text>
-                {statsHint ? (
-                  <Text accessibilityLabel="score-hub 成功率提示" style={[styles.statusBot, { color: theme.textMuted }]}>
-                    {statsHint}
-                  </Text>
-                ) : null}
-              </View>
-            </>
-          ) : null}
-
-          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>上传到</Text>
-          <View style={[styles.listCard, { backgroundColor: theme.surface }]}>
-            {targets.length === 0 ? (
-              <Text style={[styles.empty, { color: theme.textMuted }]}>当前游戏没有已绑定查分器</Text>
-            ) : (
-              targets.map((target, index) => {
-                const checked = selectedIds.includes(target.account.id);
-                const icon = accountIcon(target.account);
-                return (
-                  <Pressable
-                    key={target.account.id}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel={`上传到 ${target.account.displayName}（${target.account.providerTitle}）`}
-                    accessibilityState={{ checked, disabled: !target.writable || busy }}
-                    disabled={!target.writable || busy}
-                    onPress={() => toggleAccount(target.account.id, target.writable)}
-                    style={({ pressed }) => [
-                      styles.row,
-                      index > 0 && [styles.rowBorder, { borderTopColor: theme.border }],
-                      pressed && target.writable && styles.softPressed,
-                      !target.writable && styles.rowDisabled,
-                    ]}
-                  >
-                    <View style={[
-                      styles.box,
-                      { borderColor: theme.border, backgroundColor: theme.input },
-                      checked && target.writable && { backgroundColor: theme.accent, borderColor: theme.accent },
-                    ]}
-                    >
-                      {checked && target.writable ? <Text style={styles.boxMark}>✓</Text> : null}
-                    </View>
-                    {icon ? <Image source={icon} style={styles.icon} /> : (
-                      <View style={[styles.iconPlaceholder, { backgroundColor: theme.surfaceMuted }]} />
-                    )}
-                    <View style={styles.rowBody}>
-                      <Text style={[styles.rowTitle, { color: theme.text }]}>{target.account.displayName}</Text>
-                      <Text style={[styles.rowSub, { color: theme.textMuted }]}>{target.account.providerTitle}</Text>
-                      {target.disableReason ? (
-                        <Text style={[styles.rowWarn, { color: theme.warning }]}>{target.disableReason}</Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })
-            )}
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="开始上传"
-            disabled={busy || !prefsReady || (authMode === 'qr' && !hasCabinetBound)}
-            onPress={() => void startUpload()}
-            style={({ pressed }) => [
-              styles.primary, { backgroundColor: theme.accent },
-              (busy || !prefsReady || (authMode === 'qr' && !hasCabinetBound)) && styles.primaryDisabled,
-              pressed && !busy && styles.softPressed,
-            ]}
-          >
-            {running ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryText}>开始上传</Text>
-            )}
-          </Pressable>
-
-          {authMode === 'friend_code' && !hasCabinetBound ? (
-            <>
-              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>绑定玩家二维码（可选）</Text>
-              <Text style={[styles.hint, { color: theme.textMuted }]}>
-                与上方「开始上传」互不影响。建议先上传一次成绩，再粘贴公众号玩家二维码单独绑定；绑定后可用神秘二维码快速上传。
-              </Text>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码（绑定登录）</Text>
+              <TextInput
+                accessibilityLabel="绑定用舞萌好友码"
+                value={friendCode}
+                onChangeText={onFriendCodeChange}
+                keyboardType="number-pad"
+                maxLength={15}
+                placeholder="15 位数字"
+                placeholderTextColor={theme.textMuted}
+                editable={!busy && prefsReady}
+                style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
+              />
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>玩家二维码</Text>
               <TextInput
                 accessibilityLabel="绑定用玩家二维码字符串"
                 value={bindQrText}
@@ -826,13 +739,118 @@ export function UploadDataSheet({
                 disabled={busy || !prefsReady}
                 onPress={() => void startBindCabinet()}
                 style={({ pressed }) => [
-                  styles.secondary,
-                  { borderColor: theme.accent, backgroundColor: theme.surface },
+                  styles.primary, { backgroundColor: theme.accent },
                   (busy || !prefsReady) && styles.primaryDisabled,
                   pressed && !busy && styles.softPressed,
                 ]}
               >
-                <Text style={[styles.secondaryText, { color: theme.accent }]}>仅绑定二维码</Text>
+                {running ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.primaryText}>绑定二维码</Text>
+                )}
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="切换到好友码上传成绩"
+                disabled={busy}
+                onPress={() => switchAuthMode('friend_code')}
+                style={({ pressed }) => [
+                  styles.secondary,
+                  { borderColor: theme.border, backgroundColor: theme.surface },
+                  busy && styles.primaryDisabled,
+                  pressed && !busy && styles.softPressed,
+                ]}
+              >
+                <Text style={[styles.secondaryText, { color: theme.accent }]}>先去好友码上传成绩</Text>
+              </Pressable>
+            </>
+          )}
+
+          {authMode === 'friend_code' ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>服务状态</Text>
+              <View style={[styles.statusBox, { backgroundColor: theme.surface, marginTop: 0 }]}>
+                {statsStatus === 'loading' ? (
+                  <ActivityIndicator color={theme.accent} style={styles.statusSpinner} />
+                ) : null}
+                <Text accessibilityLabel="score-hub 近一小时统计" style={[styles.statusText, { color: theme.textSecondary }]}>
+                  {statsSummary}
+                </Text>
+                {statsHint ? (
+                  <Text accessibilityLabel="score-hub 成功率提示" style={[styles.statusBot, { color: theme.textMuted }]}>
+                    {statsHint}
+                  </Text>
+                ) : null}
+              </View>
+            </>
+          ) : null}
+
+          {authMode === 'friend_code' || hasCabinetBound ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>上传到</Text>
+              <View style={[styles.listCard, { backgroundColor: theme.surface }]}>
+                {targets.length === 0 ? (
+                  <Text style={[styles.empty, { color: theme.textMuted }]}>当前游戏没有已绑定查分器</Text>
+                ) : (
+                  targets.map((target, index) => {
+                    const checked = selectedIds.includes(target.account.id);
+                    const icon = accountIcon(target.account);
+                    return (
+                      <Pressable
+                        key={target.account.id}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={`上传到 ${target.account.displayName}（${target.account.providerTitle}）`}
+                        accessibilityState={{ checked, disabled: !target.writable || busy }}
+                        disabled={!target.writable || busy}
+                        onPress={() => toggleAccount(target.account.id, target.writable)}
+                        style={({ pressed }) => [
+                          styles.row,
+                          index > 0 && [styles.rowBorder, { borderTopColor: theme.border }],
+                          pressed && target.writable && styles.softPressed,
+                          !target.writable && styles.rowDisabled,
+                        ]}
+                      >
+                        <View style={[
+                          styles.box,
+                          { borderColor: theme.border, backgroundColor: theme.input },
+                          checked && target.writable && { backgroundColor: theme.accent, borderColor: theme.accent },
+                        ]}
+                        >
+                          {checked && target.writable ? <Text style={styles.boxMark}>✓</Text> : null}
+                        </View>
+                        {icon ? <Image source={icon} style={styles.icon} /> : (
+                          <View style={[styles.iconPlaceholder, { backgroundColor: theme.surfaceMuted }]} />
+                        )}
+                        <View style={styles.rowBody}>
+                          <Text style={[styles.rowTitle, { color: theme.text }]}>{target.account.displayName}</Text>
+                          <Text style={[styles.rowSub, { color: theme.textMuted }]}>{target.account.providerTitle}</Text>
+                          {target.disableReason ? (
+                            <Text style={[styles.rowWarn, { color: theme.warning }]}>{target.disableReason}</Text>
+                          ) : null}
+                        </View>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="开始上传"
+                disabled={busy || !prefsReady}
+                onPress={() => void startUpload()}
+                style={({ pressed }) => [
+                  styles.primary, { backgroundColor: theme.accent },
+                  (busy || !prefsReady) && styles.primaryDisabled,
+                  pressed && !busy && styles.softPressed,
+                ]}
+              >
+                {running ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.primaryText}>开始上传</Text>
+                )}
               </Pressable>
             </>
           ) : null}

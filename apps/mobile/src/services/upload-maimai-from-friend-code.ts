@@ -70,7 +70,7 @@ export type UploadTarget = {
 };
 
 export const QR_REQUIRES_BIND_MESSAGE =
-  '请先用好友码上传成绩，再单独绑定玩家二维码；绑定后即可用二维码快速上传。';
+  '首次使用前请在此绑定玩家二维码。绑定需用好友码登录，建议先到「好友码」上传一次成绩。';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
   0: 'BASIC',
