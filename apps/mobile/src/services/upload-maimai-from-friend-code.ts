@@ -6,9 +6,11 @@ import {
   createFriendLoginJob,
   createUpdateScoreJob,
   fetchLatestSync,
+  loginByQrUntilToken,
   pollLoginUntilToken,
   pollUpdateScoreUntilDone,
   ScoreHubError,
+  type QrLoginCredential,
   type ScoreHubAbortSignal,
   type ScoreHubScoreProgress,
 } from '@/services/score-hub-client';
@@ -26,7 +28,7 @@ import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 
 export type UploadPhase =
   | { kind: 'idle' }
-  | { kind: 'logging_in'; message: string }
+  | { kind: 'logging_in'; message: string; authMode?: 'friend_code' | 'qr' }
   | { kind: 'awaiting_friend'; message: string; botFriendCode: string | null }
   | { kind: 'fetching_scores'; message: string }
   | { kind: 'uploading'; message: string; providerTitle: string }
@@ -86,6 +88,7 @@ export function scoreProgressMessage(progress: ScoreHubScoreProgress | null): st
 export function compactUploadPhaseLabel(phase: UploadPhase): string {
   switch (phase.kind) {
     case 'logging_in':
+      return phase.authMode === 'qr' ? '二维码登录中' : '好友申请中';
     case 'awaiting_friend':
       return '好友申请中';
     case 'fetching_scores':
@@ -189,67 +192,36 @@ export function resolveUploadTargets(
     });
 }
 
-export async function uploadMaimaiFromFriendCode(input: {
-  friendCode: string;
+type UploadCommonInput = {
   selectedAccountIds: string[];
   targets: UploadTarget[];
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
   catalog: CatalogSnapshot;
   signal: ScoreHubAbortSignal;
   onPhase: (phase: UploadPhase) => void;
-  onNeedFriendAccept: (botFriendCode: string | null) => void;
   onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
-}): Promise<UploadResult> {
-  const friendCode = input.friendCode.trim();
-  if (!/^\d{15}$/.test(friendCode)) {
-    throw new ScoreHubError('请输入 15 位好友码');
-  }
+};
 
+function resolveSelectedTargets(input: UploadCommonInput): UploadTarget[] {
   const selected = input.targets.filter(
     (target) => target.writable && input.selectedAccountIds.includes(target.account.id),
   );
   if (selected.length === 0) {
     throw new ScoreHubError('请至少勾选一个可上传的查分器');
   }
-  input.onPhase({ kind: 'logging_in', message: '正在创建好友申请任务…' });
-  const login = await createFriendLoginJob(friendCode, input.signal);
+  return selected;
+}
 
-  let token: string;
-  let friendshipJobId: string | null = null;
-
-  if (typeof login.body.__skipAuthToken === 'string') {
-    token = login.body.__skipAuthToken;
-  } else {
-    friendshipJobId = login.jobId;
-    if (login.botFriendCode) {
-      input.onPhase({
-        kind: 'awaiting_friend',
-        message: '等待同意好友中…',
-        botFriendCode: login.botFriendCode,
-      });
-    }
-    let alerted = false;
-    token = await pollLoginUntilToken({
-      jobId: login.jobId,
-      signal: input.signal,
-      onWaitingFriend: ({ botFriendCode }) => {
-        input.onPhase({
-          kind: 'awaiting_friend',
-          message: '等待同意好友中…请到“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 好友申请',
-          botFriendCode,
-        });
-        if (!alerted) {
-          alerted = true;
-          input.onNeedFriendAccept(botFriendCode ?? login.botFriendCode);
-        }
-      },
-    });
-  }
-
+async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
+  token: string;
+  friendshipJobId: string | null;
+  playerIdForLocal: string;
+  selected: UploadTarget[];
+}): Promise<UploadResult> {
   input.onPhase({ kind: 'fetching_scores', message: '获取各难度成绩中…' });
-  const scoreJobId = await createUpdateScoreJob(token, friendshipJobId, input.signal);
+  const scoreJobId = await createUpdateScoreJob(input.token, input.friendshipJobId, input.signal);
   await pollUpdateScoreUntilDone({
-    token,
+    token: input.token,
     jobId: scoreJobId,
     signal: input.signal,
     onProgress: ({ progress, stage }) => {
@@ -261,7 +233,7 @@ export async function uploadMaimaiFromFriendCode(input: {
     },
   });
 
-  const sync = await fetchLatestSync(token, input.signal);
+  const sync = await fetchLatestSync(input.token, input.signal);
   const scores = sync?.scores ?? [];
   if (scores.length === 0) {
     throw new ScoreHubError('未获取到成绩数据');
@@ -281,7 +253,7 @@ export async function uploadMaimaiFromFriendCode(input: {
   const refreshFailedAccountIds = new Set<string>();
   const uploadedDivingFishAccounts: BoundAccount[] = [];
 
-  for (const target of selected) {
+  for (const target of input.selected) {
     if (input.signal.aborted) throw new ScoreHubError('已取消');
     let written = 0;
     let targetSkipped = 0;
@@ -305,7 +277,7 @@ export async function uploadMaimaiFromFriendCode(input: {
           isStale: false,
         };
         const snapshot = buildScoreSnapshot({
-          id: friendCode,
+          id: input.playerIdForLocal,
           displayName: target.account.displayName,
           rating: 0,
           additionalRating: 0,
@@ -452,4 +424,88 @@ export async function uploadMaimaiFromFriendCode(input: {
     failedAccountNames,
     targetResults,
   };
+}
+
+export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
+  friendCode: string;
+  onNeedFriendAccept: (botFriendCode: string | null) => void;
+}): Promise<UploadResult> {
+  const friendCode = input.friendCode.trim();
+  if (!/^\d{15}$/.test(friendCode)) {
+    throw new ScoreHubError('请输入 15 位好友码');
+  }
+
+  const selected = resolveSelectedTargets(input);
+  input.onPhase({ kind: 'logging_in', message: '正在创建好友申请任务…', authMode: 'friend_code' });
+  const login = await createFriendLoginJob(friendCode, input.signal);
+
+  let token: string;
+  let friendshipJobId: string | null = null;
+
+  if (typeof login.body.__skipAuthToken === 'string') {
+    token = login.body.__skipAuthToken;
+  } else {
+    friendshipJobId = login.jobId;
+    if (login.botFriendCode) {
+      input.onPhase({
+        kind: 'awaiting_friend',
+        message: '等待同意好友中…',
+        botFriendCode: login.botFriendCode,
+      });
+    }
+    let alerted = false;
+    token = await pollLoginUntilToken({
+      jobId: login.jobId,
+      signal: input.signal,
+      onWaitingFriend: ({ botFriendCode }) => {
+        input.onPhase({
+          kind: 'awaiting_friend',
+          message: '等待同意好友中…请到“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 好友申请',
+          botFriendCode,
+        });
+        if (!alerted) {
+          alerted = true;
+          input.onNeedFriendAccept(botFriendCode ?? login.botFriendCode);
+        }
+      },
+    });
+  }
+
+  return uploadMaimaiAfterScoreHubToken({
+    ...input,
+    selected,
+    token,
+    friendshipJobId,
+    playerIdForLocal: friendCode,
+  });
+}
+
+export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
+  credential: QrLoginCredential;
+}): Promise<UploadResult> {
+  const selected = resolveSelectedTargets(input);
+  input.onPhase({
+    kind: 'logging_in',
+    message: '正在提交神秘二维码…',
+    authMode: 'qr',
+  });
+
+  const login = await loginByQrUntilToken({
+    credential: input.credential,
+    signal: input.signal,
+    onProgress: ({ message }) => {
+      input.onPhase({ kind: 'logging_in', message, authMode: 'qr' });
+    },
+  });
+
+  const fallbackPlayerId = selected.find((target) => target.account.providerId === 'local')?.account.id
+    ?? selected[0]!.account.id;
+
+  return uploadMaimaiAfterScoreHubToken({
+    ...input,
+    selected,
+    token: login.token,
+    friendshipJobId: null,
+    playerIdForLocal: login.friendCode ?? fallbackPlayerId,
+  });
 }

@@ -20,6 +20,7 @@ describe('好友码上传进度', () => {
 
   it.each<[UploadPhase, string]>([
     [{ kind: 'logging_in', message: '' }, '好友申请中'],
+    [{ kind: 'logging_in', message: '', authMode: 'qr' }, '二维码登录中'],
     [{ kind: 'awaiting_friend', message: '', botFriendCode: null }, '好友申请中'],
     [{ kind: 'fetching_scores', message: '' }, '获取成绩中'],
     [{ kind: 'uploading', message: '', providerTitle: '水鱼' }, '上传成绩中'],

@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BoundAccount } from '@/domain/bound-account';
 import { findGame, findProvider } from '@/domain/game-bind-options';
@@ -22,6 +23,7 @@ import {
   resolveUploadTargets,
   scoreHubSuccessHint,
   uploadMaimaiFromFriendCode,
+  uploadMaimaiFromQrLogin,
   type UploadPhase,
   type UploadResult,
 } from '@/services/upload-maimai-from-friend-code';
@@ -32,6 +34,14 @@ import { useNotification } from '@/components/AppNotification';
 import { AppModal } from '@/components/AppModal';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
+
+type UploadAuthMode = 'friend_code' | 'qr';
+
+type QrImagePick = {
+  uri: string;
+  mimeType?: string;
+  fileName?: string;
+};
 
 function accountIcon(account: BoundAccount) {
   if (account.providerId) {
@@ -83,7 +93,10 @@ export function UploadDataSheet({
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { showActionNotification, showNotification } = useNotification();
+  const [authMode, setAuthMode] = useState<UploadAuthMode>('friend_code');
   const [friendCode, setFriendCode] = useState('');
+  const [qrText, setQrText] = useState('');
+  const [qrImage, setQrImage] = useState<QrImagePick | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [prefsReady, setPrefsReady] = useState(false);
   const [phase, setPhase] = useState<UploadPhase>({ kind: 'idle' });
@@ -134,6 +147,9 @@ export function UploadDataSheet({
     let active = true;
     setPrefsReady(false);
     setLastResult(null);
+    setAuthMode('friend_code');
+    setQrText('');
+    setQrImage(null);
     applyPhase({ kind: 'idle' });
     void uploadPrefsStore.load().then((prefs) => {
       if (!active) return;
@@ -207,14 +223,55 @@ export function UploadDataSheet({
     persist(digits, selectedIds);
   };
 
+  const switchAuthMode = (mode: UploadAuthMode) => {
+    if (running || mode === authMode) return;
+    setAuthMode(mode);
+    applyPhase({ kind: 'idle' });
+    setLastResult(null);
+  };
+
+  const pickQrImage = async () => {
+    if (running) return;
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['image/png', 'image/jpeg', 'image/webp', 'image/*'],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset?.uri) {
+      showNotification({ title: '选择图片失败', message: '没有读取到二维码图片。', variant: 'warning' });
+      return;
+    }
+    setQrImage({
+      uri: asset.uri,
+      mimeType: asset.mimeType ?? undefined,
+      fileName: asset.name ?? undefined,
+    });
+    setQrText('');
+  };
+
+  const clearQrImage = () => {
+    if (running) return;
+    setQrImage(null);
+  };
+
   const startUpload = async () => {
     if (running) return;
     if (isMaimaiMaintenanceWindow()) {
       showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
       return;
     }
-    if (!/^\d{15}$/.test(friendCode.trim())) {
+    if (authMode === 'friend_code' && !/^\d{15}$/.test(friendCode.trim())) {
       showNotification({ title: '好友码无效', message: '请输入 15 位数字好友码。', variant: 'warning' });
+      return;
+    }
+    if (authMode === 'qr' && !qrImage && !qrText.trim()) {
+      showNotification({
+        title: '缺少二维码',
+        message: '请粘贴神秘二维码字符串，或选择二维码图片。',
+        variant: 'warning',
+      });
       return;
     }
     if (selectedIds.filter((id) => targets.some((t) => t.writable && t.account.id === id)).length === 0) {
@@ -228,29 +285,51 @@ export function UploadDataSheet({
 
     abortRef.current = { aborted: false };
     setRunning(true);
-    applyPhase({ kind: 'logging_in', message: '正在创建好友申请任务…' });
+    applyPhase({
+      kind: 'logging_in',
+      message: authMode === 'qr' ? '正在提交神秘二维码…' : '正在创建好友申请任务…',
+      authMode,
+    });
 
     try {
-      const result = await uploadMaimaiFromFriendCode({
-        friendCode,
-        selectedAccountIds: selectedIds,
-        targets,
-        sessionsByAccountId,
-        catalog,
-        signal: abortRef.current,
-        onPhase: applyPhase,
-        onNeedFriendAccept: (botFriendCode) => {
-          showActionNotification({
-            title: '请同意好友申请',
-            message: botFriendCode
-              ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
-              : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
-            variant: 'info',
-            actions: [{ label: '知道了', tone: 'default' }],
-          });
-        },
-        onLxnsTokensRotated,
-      });
+      const result = authMode === 'qr'
+        ? await uploadMaimaiFromQrLogin({
+          credential: qrImage
+            ? {
+                kind: 'image',
+                imageUri: qrImage.uri,
+                mimeType: qrImage.mimeType,
+                fileName: qrImage.fileName,
+              }
+            : { kind: 'text', qrCode: qrText.trim() },
+          selectedAccountIds: selectedIds,
+          targets,
+          sessionsByAccountId,
+          catalog,
+          signal: abortRef.current,
+          onPhase: applyPhase,
+          onLxnsTokensRotated,
+        })
+        : await uploadMaimaiFromFriendCode({
+          friendCode,
+          selectedAccountIds: selectedIds,
+          targets,
+          sessionsByAccountId,
+          catalog,
+          signal: abortRef.current,
+          onPhase: applyPhase,
+          onNeedFriendAccept: (botFriendCode) => {
+            showActionNotification({
+              title: '请同意好友申请',
+              message: botFriendCode
+                ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
+                : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
+              variant: 'info',
+              actions: [{ label: '知道了', tone: 'default' }],
+            });
+          },
+          onLxnsTokensRotated,
+        });
       setLastResult(result);
       try {
         await onFinished?.(result);
@@ -307,20 +386,126 @@ export function UploadDataSheet({
         </View>
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码</Text>
-          <TextInput
-            accessibilityLabel="舞萌好友码"
-            value={friendCode}
-            onChangeText={onFriendCodeChange}
-            keyboardType="number-pad"
-            maxLength={15}
-            placeholder="15 位数字"
-            placeholderTextColor={theme.textMuted}
-            editable={!running && prefsReady}
-            style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
-          />
-          <Text style={[styles.hint, { color: theme.textMuted }]}>从游戏服务器取成绩后上传到下方勾选的查分器。</Text>
-          <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
+          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>登录方式</Text>
+          <View style={[styles.modeRow, { backgroundColor: theme.surface }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="使用好友码上传"
+              accessibilityState={{ selected: authMode === 'friend_code', disabled: running }}
+              disabled={running}
+              onPress={() => switchAuthMode('friend_code')}
+              style={({ pressed }) => [
+                styles.modeButton,
+                authMode === 'friend_code' && { backgroundColor: theme.accent },
+                pressed && !running && styles.softPressed,
+              ]}
+            >
+              <Text style={[
+                styles.modeButtonText,
+                { color: authMode === 'friend_code' ? '#FFFFFF' : theme.textSecondary },
+              ]}
+              >
+                好友码
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="使用神秘二维码上传"
+              accessibilityState={{ selected: authMode === 'qr', disabled: running }}
+              disabled={running}
+              onPress={() => switchAuthMode('qr')}
+              style={({ pressed }) => [
+                styles.modeButton,
+                authMode === 'qr' && { backgroundColor: theme.accent },
+                pressed && !running && styles.softPressed,
+              ]}
+            >
+              <Text style={[
+                styles.modeButtonText,
+                { color: authMode === 'qr' ? '#FFFFFF' : theme.textSecondary },
+              ]}
+              >
+                神秘二维码
+              </Text>
+            </Pressable>
+          </View>
+
+          {authMode === 'friend_code' ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码</Text>
+              <TextInput
+                accessibilityLabel="舞萌好友码"
+                value={friendCode}
+                onChangeText={onFriendCodeChange}
+                keyboardType="number-pad"
+                maxLength={15}
+                placeholder="15 位数字"
+                placeholderTextColor={theme.textMuted}
+                editable={!running && prefsReady}
+                style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
+              />
+              <Text style={[styles.hint, { color: theme.textMuted }]}>从游戏服务器取成绩后上传到下方勾选的查分器。</Text>
+              <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>神秘二维码</Text>
+              <TextInput
+                accessibilityLabel="神秘二维码字符串"
+                value={qrText}
+                onChangeText={(value) => {
+                  setQrText(value);
+                  if (value.trim()) setQrImage(null);
+                }}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                placeholder="粘贴 SGWCMAID… 字符串"
+                placeholderTextColor={theme.textMuted}
+                editable={!running && prefsReady && !qrImage}
+                style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
+              />
+              <View style={styles.qrActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="选择二维码图片"
+                  disabled={running || !prefsReady}
+                  onPress={() => void pickQrImage()}
+                  style={({ pressed }) => [
+                    styles.secondary,
+                    { borderColor: theme.border, backgroundColor: theme.surface },
+                    (running || !prefsReady) && styles.primaryDisabled,
+                    pressed && !running && styles.softPressed,
+                  ]}
+                >
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>选择图片</Text>
+                </Pressable>
+                {qrImage ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="清除已选二维码图片"
+                    disabled={running}
+                    onPress={clearQrImage}
+                    style={({ pressed }) => [
+                      styles.secondary,
+                      { borderColor: theme.border, backgroundColor: theme.surface },
+                      running && styles.primaryDisabled,
+                      pressed && !running && styles.softPressed,
+                    ]}
+                  >
+                    <Text style={[styles.secondaryText, { color: theme.danger }]}>清除图片</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              {qrImage ? (
+                <Text accessibilityLabel="已选二维码图片名" style={[styles.hint, { color: theme.textSecondary }]}>
+                  已选图片：{qrImage.fileName ?? '二维码图片'}
+                </Text>
+              ) : null}
+              <Text style={[styles.hint, { color: theme.textMuted }]}>
+                在机台「二维码登录」页刷新神秘二维码后粘贴字符串，或截图后选择图片。二维码会过期，请尽快提交。
+              </Text>
+            </>
+          )}
 
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>服务状态</Text>
           <View style={[styles.statusBox, { backgroundColor: theme.surface, marginTop: 0 }]}>
@@ -492,6 +677,21 @@ const styles = StyleSheet.create({
   softPressed: { opacity: 0.7 },
   content: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   sectionLabel: { color: '#6B7280', fontSize: 13, fontWeight: '600', marginTop: 4 },
+  modeRow: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+  },
+  modeButton: {
+    flex: 1,
+    minHeight: 36,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  modeButtonText: { fontSize: 14, fontWeight: '700' },
   input: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -502,6 +702,16 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   hint: { color: '#9CA3AF', fontSize: 12, lineHeight: 18 },
+  qrActions: { flexDirection: 'row', gap: 8 },
+  secondary: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryText: { fontSize: 14, fontWeight: '700' },
   listCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
