@@ -3,9 +3,11 @@ import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
 import {
+  bindCabinetByQr,
   createFriendLoginJob,
   createUpdateScoreJob,
   fetchLatestSync,
+  fetchMe,
   loginByQrUntilToken,
   pollLoginUntilToken,
   pollUpdateScoreUntilDone,
@@ -25,12 +27,14 @@ import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
 import { uploadRecordsToLxns } from '@/services/lxns-upload';
 import { buildScoreSnapshot } from '@/services/score-service';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
+import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
 
 export type UploadPhase =
   | { kind: 'idle' }
   | { kind: 'logging_in'; message: string; authMode?: 'friend_code' | 'qr' }
   | { kind: 'awaiting_friend'; message: string; botFriendCode: string | null }
   | { kind: 'fetching_scores'; message: string }
+  | { kind: 'binding'; message: string }
   | { kind: 'uploading'; message: string; providerTitle: string }
   | { kind: 'syncing'; message: string; providerTitle: string }
   | { kind: 'canceling'; message: string }
@@ -43,6 +47,8 @@ export type UploadResult = {
   refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[];
   failedAccountNames: string[];
   targetResults: UploadTargetResult[];
+  cabinetBound?: boolean;
+  cabinetBindError?: string;
 };
 
 export type UploadTargetResult = {
@@ -59,6 +65,9 @@ export type UploadTarget = {
   writable: boolean;
   disableReason: string | null;
 };
+
+export const QR_REQUIRES_BIND_MESSAGE =
+  '请先用好友码完成首次上传并绑定玩家二维码，之后即可用二维码快速上传。';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
   0: 'BASIC',
@@ -93,6 +102,8 @@ export function compactUploadPhaseLabel(phase: UploadPhase): string {
       return '好友申请中';
     case 'fetching_scores':
       return '获取成绩中';
+    case 'binding':
+      return '绑定二维码中';
     case 'uploading':
     case 'syncing':
       return '上传成绩中';
@@ -217,6 +228,8 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
   friendshipJobId: string | null;
   playerIdForLocal: string;
   selected: UploadTarget[];
+  cabinetQrCode?: string | null;
+  persistFriendCode?: string | null;
 }): Promise<UploadResult> {
   input.onPhase({ kind: 'fetching_scores', message: '获取各难度成绩中…' });
   const scoreJobId = await createUpdateScoreJob(input.token, input.friendshipJobId, input.signal);
@@ -237,6 +250,27 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
   const scores = sync?.scores ?? [];
   if (scores.length === 0) {
     throw new ScoreHubError('未获取到成绩数据');
+  }
+
+  let cabinetBound: boolean | undefined;
+  let cabinetBindError: string | undefined;
+  const cabinetQr = input.cabinetQrCode?.trim() ?? '';
+  if (cabinetQr) {
+    input.onPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
+    try {
+      await bindCabinetByQr(input.token, cabinetQr, input.signal);
+      cabinetBound = true;
+      const me = await fetchMe(input.token, input.signal).catch(() => null);
+      await scoreHubAccountStore.patch({
+        friendCode: me?.friendCode ?? input.persistFriendCode ?? input.playerIdForLocal,
+        hasCabinetBound: true,
+        token: input.token,
+      });
+    } catch (error) {
+      cabinetBound = false;
+      cabinetBindError = error instanceof Error ? error.message : '绑定玩家二维码失败';
+      // 绑定失败不阻断成绩写出
+    }
   }
 
   const divingFishMapped = convertHubScoresToDivingFishRecords(
@@ -403,17 +437,25 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
       refreshedAccounts,
       failedAccountNames,
       targetResults,
+      cabinetBound,
+      cabinetBindError,
     };
   }
+
+  const bindSuffix = cabinetBindError
+    ? `；二维码绑定失败：${cabinetBindError}`
+    : cabinetBound
+      ? '；玩家二维码已绑定，之后可用二维码快速上传'
+      : '';
   input.onPhase({
     kind: 'done',
     message: failedTargets.length > 0
-      ? `部分完成：写入 ${uploadedTotal} 条；失败 ${failedTargets.map((item) => item.account.displayName).join('、')}`
+      ? `部分完成：写入 ${uploadedTotal} 条；失败 ${failedTargets.map((item) => item.account.displayName).join('、')}${bindSuffix}`
       : failedAccountNames.length > 0
-        ? `写入完成：${uploadedTotal} 条；${failedAccountNames.join('、')}应用内刷新失败`
+        ? `写入完成：${uploadedTotal} 条；${failedAccountNames.join('、')}应用内刷新失败${bindSuffix}`
         : skipped > 0
-          ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条`
-          : `完成：写入 ${uploadedTotal} 条`,
+          ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条${bindSuffix}`
+          : `完成：写入 ${uploadedTotal} 条${bindSuffix}`,
     uploaded: uploadedTotal,
     skipped,
   });
@@ -423,11 +465,14 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
     refreshedAccounts,
     failedAccountNames,
     targetResults,
+    cabinetBound,
+    cabinetBindError,
   };
 }
 
 export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
   friendCode: string;
+  cabinetQrCode?: string | null;
   onNeedFriendAccept: (botFriendCode: string | null) => void;
 }): Promise<UploadResult> {
   const friendCode = input.friendCode.trim();
@@ -471,18 +516,33 @@ export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
     });
   }
 
+  await scoreHubAccountStore.patch({
+    friendCode,
+    token,
+  });
+
   return uploadMaimaiAfterScoreHubToken({
     ...input,
     selected,
     token,
     friendshipJobId,
     playerIdForLocal: friendCode,
+    cabinetQrCode: input.cabinetQrCode,
+    persistFriendCode: friendCode,
   });
 }
 
 export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
   credential: QrLoginCredential;
+  requireCabinetBound?: boolean;
 }): Promise<UploadResult> {
+  if (input.requireCabinetBound !== false) {
+    const account = await scoreHubAccountStore.load();
+    if (!account.hasCabinetBound) {
+      throw new ScoreHubError(QR_REQUIRES_BIND_MESSAGE);
+    }
+  }
+
   const selected = resolveSelectedTargets(input);
   input.onPhase({
     kind: 'logging_in',
@@ -490,13 +550,44 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
     authMode: 'qr',
   });
 
-  const login = await loginByQrUntilToken({
-    credential: input.credential,
-    signal: input.signal,
-    onProgress: ({ message }) => {
-      input.onPhase({ kind: 'logging_in', message, authMode: 'qr' });
-    },
-  });
+  let login: { token: string; friendCode: string | null };
+  try {
+    login = await loginByQrUntilToken({
+      credential: input.credential,
+      signal: input.signal,
+      onProgress: ({ message }) => {
+        input.onPhase({ kind: 'logging_in', message, authMode: 'qr' });
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '神秘二维码登录失败';
+    if (
+      message.includes('好友列表')
+      || message.includes('候选好友')
+      || message.includes('改用好友码')
+    ) {
+      throw new ScoreHubError(
+        `${message}。请改用好友码上传并绑定玩家二维码后再试。`,
+      );
+    }
+    throw error;
+  }
+
+  try {
+    const me = await fetchMe(login.token, input.signal);
+    await scoreHubAccountStore.patch({
+      friendCode: me.friendCode ?? login.friendCode ?? '',
+      hasCabinetBound: me.hasCabinetUserId,
+      token: login.token,
+    });
+  } catch {
+    if (login.friendCode) {
+      await scoreHubAccountStore.patch({
+        friendCode: login.friendCode,
+        token: login.token,
+      });
+    }
+  }
 
   const fallbackPlayerId = selected.find((target) => target.account.providerId === 'local')?.account.id
     ?? selected[0]!.account.id;
@@ -507,5 +598,6 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
     token: login.token,
     friendshipJobId: null,
     playerIdForLocal: login.friendCode ?? fallbackPlayerId,
+    persistFriendCode: login.friendCode,
   });
 }
