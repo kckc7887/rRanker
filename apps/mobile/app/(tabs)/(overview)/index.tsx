@@ -220,12 +220,12 @@ export function OverviewScreen() {
             {bundle.payload.kind === 'maimai' && bundle.providerId === 'local' ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="同步本地查分器数据，使用好友码"
+                accessibilityLabel={`同步本地查分器数据，${compactUploadPhaseLabel(uploadPhase)}`}
                 onPress={openUpload}
                 style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed]}
               >
                 <Text style={styles.syncText}>同步数据</Text>
-                <Text style={styles.actionHint}>好友码</Text>
+                <Text style={styles.actionHint}>{compactUploadPhaseLabel(uploadPhase)}</Text>
               </Pressable>
             ) : bundle.payload.kind === 'maimai' ? (
               <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>

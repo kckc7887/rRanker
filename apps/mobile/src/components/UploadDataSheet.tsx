@@ -14,10 +14,13 @@ import type { BoundAccount } from '@/domain/bound-account';
 import { findGame, findProvider } from '@/domain/game-bind-options';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
-import type { ScoreHubAbortSignal } from '@/services/score-hub-client';
-import { ScoreHubError } from '@/services/score-hub-client';
+import type { ScoreHubAbortSignal, ScoreHubDxnetJobStats } from '@/services/score-hub-client';
+import { fetchScoreHubStatistics, ScoreHubError } from '@/services/score-hub-client';
 import {
+  FRIEND_REQUEST_REFRESH_HINT,
+  formatScoreHubStatsSummary,
   resolveUploadTargets,
+  scoreHubSuccessHint,
   uploadMaimaiFromFriendCode,
   type UploadPhase,
   type UploadResult,
@@ -86,11 +89,23 @@ export function UploadDataSheet({
   const [phase, setPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState<UploadResult | null>(null);
+  const [stats, setStats] = useState<ScoreHubDxnetJobStats | null>(null);
+  const [statsStatus, setStatsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const abortRef = useRef<ScoreHubAbortSignal>({ aborted: false });
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistedSelectedIdsRef = useRef<string[]>([]);
 
   const targets = resolveUploadTargets(accounts, sessionsByAccountId);
+  const statsSummary = statsStatus === 'loading'
+    ? '正在获取服务状态…'
+    : statsStatus === 'error'
+      ? '服务状态暂不可用'
+      : formatScoreHubStatsSummary(stats);
+  const statsHint = statsStatus === 'ready'
+    ? scoreHubSuccessHint(stats?.successRate ?? null, stats?.totalCount ?? 0)
+    : statsStatus === 'error'
+      ? '无法获取近一小时公开统计，上传仍可继续尝试。'
+      : null;
 
   const persist = useCallback((nextCode: string, nextIds: string[]) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -138,6 +153,27 @@ export function UploadDataSheet({
       active = false;
     };
   }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds, applyPhase, running]);
+
+  useEffect(() => {
+    if (!visible || running) return;
+    let active = true;
+    setStatsStatus('loading');
+    setStats(null);
+    void fetchScoreHubStatistics()
+      .then((payload) => {
+        if (!active) return;
+        setStats(payload.dxnetJobs);
+        setStatsStatus('ready');
+      })
+      .catch(() => {
+        if (!active) return;
+        setStats(null);
+        setStatsStatus('error');
+      });
+    return () => {
+      active = false;
+    };
+  }, [visible, running]);
 
   useEffect(() => () => {
     abortRef.current.aborted = true;
@@ -284,6 +320,22 @@ export function UploadDataSheet({
             style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
           />
           <Text style={[styles.hint, { color: theme.textMuted }]}>从游戏服务器取成绩后上传到下方勾选的查分器。</Text>
+          <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
+
+          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>服务状态</Text>
+          <View style={[styles.statusBox, { backgroundColor: theme.surface, marginTop: 0 }]}>
+            {statsStatus === 'loading' ? (
+              <ActivityIndicator color={theme.accent} style={styles.statusSpinner} />
+            ) : null}
+            <Text accessibilityLabel="score-hub 近一小时统计" style={[styles.statusText, { color: theme.textSecondary }]}>
+              {statsSummary}
+            </Text>
+            {statsHint ? (
+              <Text accessibilityLabel="score-hub 成功率提示" style={[styles.statusBot, { color: theme.textMuted }]}>
+                {statsHint}
+              </Text>
+            ) : null}
+          </View>
 
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>上传到</Text>
           <View style={[styles.listCard, { backgroundColor: theme.surface }]}>
@@ -383,7 +435,10 @@ export function UploadDataSheet({
               </Text>
               {botHint ? <Text style={[styles.statusBot, { color: theme.textMuted }]}>{botHint}</Text> : null}
               {phase.kind === 'awaiting_friend' ? (
-                <Text style={[styles.statusBot, { color: theme.textMuted }]}>打开“舞萌-中二公众号-我的记录-舞萌DX”接受好友申请后将自动继续</Text>
+                <>
+                  <Text style={[styles.statusBot, { color: theme.textMuted }]}>打开“舞萌-中二公众号-我的记录-舞萌DX”接受好友申请后将自动继续</Text>
+                  <Text style={[styles.statusBot, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
+                </>
               ) : null}
             </View>
           ) : null}

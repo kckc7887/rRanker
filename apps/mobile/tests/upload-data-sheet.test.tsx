@@ -12,6 +12,15 @@ const mockLoadPrefs = jest.fn(async (): Promise<TestUploadPrefs> => ({
 }));
 const mockSavePrefs = jest.fn(async (_prefs: TestUploadPrefs) => undefined);
 const mockIsMaimaiMaintenance = jest.fn(() => false);
+const mockFetchStatistics = jest.fn(async () => ({
+  dxnetJobs: {
+    totalCount: 20,
+    completedCount: 18,
+    failedCount: 2,
+    successRate: 90,
+    avgDuration: 80_000,
+  },
+}));
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -30,6 +39,13 @@ jest.mock('@/domain/maimai-maintenance', () => ({
   isMaimaiMaintenanceWindow: () => mockIsMaimaiMaintenance(),
   MAIMAI_MAINTENANCE_MESSAGE: '维护窗口说明',
 }));
+jest.mock('@/services/score-hub-client', () => {
+  const actual = jest.requireActual<typeof import('@/services/score-hub-client')>('@/services/score-hub-client');
+  return {
+    ...actual,
+    fetchScoreHubStatistics: () => mockFetchStatistics(),
+  };
+});
 
 const local = createLocalMaimaiAccount('本地玩家', 0);
 const water = createMaimaiBoundAccount({
@@ -72,10 +88,28 @@ describe('当前查分器上传弹窗临时选项', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsMaimaiMaintenance.mockReturnValue(false);
+    mockFetchStatistics.mockResolvedValue({
+      dxnetJobs: {
+        totalCount: 20,
+        completedCount: 18,
+        failedCount: 2,
+        successRate: 90,
+        avgDuration: 80_000,
+      },
+    });
     mockLoadPrefs.mockResolvedValue({
       friendCode: '111111111111111',
       selectedAccountIds: [water.id],
     });
+  });
+
+  it('打开时展示近一小时统计、分档提示与好友申请刷新说明', async () => {
+    const screen = await renderSheet([water.id]);
+    expect(await screen.findByLabelText('score-hub 近一小时统计')).toBeTruthy();
+    expect(screen.getByText(/近 1 小时成功率 90%/)).toBeTruthy();
+    expect(screen.getByLabelText('score-hub 成功率提示')).toBeTruthy();
+    expect(screen.getByText('近一小时成功率良好，通常可顺利完成。')).toBeTruthy();
+    expect(screen.getAllByText(/多刷新几次才能看到申请/).length).toBeGreaterThan(0);
   });
 
   it('每次只临时勾选当前可写账号且不保存目标变化', async () => {

@@ -105,6 +105,42 @@ export function compactUploadPhaseLabel(phase: UploadPhase): string {
   }
 }
 
+/** 好友申请可能延迟出现，需多次刷新列表。 */
+export const FRIEND_REQUEST_REFRESH_HINT =
+  '好友申请发出后，可能需在“舞萌-中二公众号 → 我的记录 → 舞萌DX”多刷新几次才能看到申请。';
+
+/** 按近一小时公开成功率给出分档提示（rate 为 0–100）。 */
+export function scoreHubSuccessHint(rate: number | null, totalCount: number): string {
+  if (totalCount <= 0 || rate === null || !Number.isFinite(rate)) {
+    return '近一小时暂无公开任务统计，服务状态不明，可稍后再试。';
+  }
+  if (rate >= 100) return '近一小时同步非常畅通，可以放心上传。';
+  if (rate >= 85) return '近一小时成功率良好，通常可顺利完成。';
+  if (rate >= 70) return '近一小时成功率一般，可能稍慢，请耐心等待。';
+  if (rate >= 50) return '近一小时成功率偏低，建议错峰或多试一次。';
+  if (rate >= 30) return '近一小时成功率较差，失败概率较高，建议稍后再试。';
+  return '近一小时服务很不稳定，不建议现在上传。';
+}
+
+export function formatScoreHubStatsSummary(stats: {
+  totalCount: number;
+  completedCount: number;
+  failedCount: number;
+  successRate: number;
+  avgDuration: number | null;
+} | null): string {
+  if (!stats || stats.totalCount <= 0) {
+    return '近 1 小时：暂无公开任务样本';
+  }
+  const rate = Number.isFinite(stats.successRate)
+    ? `${stats.successRate.toFixed(stats.successRate % 1 === 0 ? 0 : 1)}%`
+    : '—';
+  const duration = typeof stats.avgDuration === 'number' && stats.avgDuration > 0
+    ? `，平均约 ${Math.max(1, Math.round(stats.avgDuration / 1000))} 秒`
+    : '';
+  return `近 1 小时成功率 ${rate}（成功 ${stats.completedCount} / 失败 ${stats.failedCount} / 共 ${stats.totalCount}）${duration}`;
+}
+
 export function resolveUploadTargets(
   accounts: readonly BoundAccount[],
   sessionsByAccountId: Record<string, ProviderSession | undefined>,
