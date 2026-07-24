@@ -35,6 +35,18 @@ export type ScoreHubScoreProgress = {
   totalDiffs: number;
 };
 
+export type ScoreHubDxnetJobStats = {
+  totalCount: number;
+  completedCount: number;
+  failedCount: number;
+  successRate: number;
+  avgDuration: number | null;
+};
+
+export type ScoreHubStatistics = {
+  dxnetJobs: ScoreHubDxnetJobStats;
+};
+
 export class ScoreHubError extends Error {
   readonly status?: number;
   readonly retryable: boolean;
@@ -369,4 +381,37 @@ export async function fetchLatestSync(
     throw new ScoreHubError('sync 响应无效');
   }
   return body as ScoreHubLatestSync;
+}
+
+function parseDxnetJobStats(raw: unknown): ScoreHubDxnetJobStats | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.totalCount !== 'number'
+    || typeof record.completedCount !== 'number'
+    || typeof record.failedCount !== 'number'
+    || typeof record.successRate !== 'number') {
+    return null;
+  }
+  return {
+    totalCount: record.totalCount,
+    completedCount: record.completedCount,
+    failedCount: record.failedCount,
+    successRate: record.successRate,
+    avgDuration: typeof record.avgDuration === 'number' ? record.avgDuration : null,
+  };
+}
+
+/** 公开接口：近一小时 DXNet update_score 任务统计。 */
+export async function fetchScoreHubStatistics(
+  signal?: ScoreHubAbortSignal,
+): Promise<ScoreHubStatistics> {
+  const { status, body } = await requestJson('GET', '/statistics', { signal });
+  if (status !== 200 || !body || typeof body !== 'object') {
+    throw new ScoreHubError(`拉取服务统计失败（HTTP ${status}）`, status, true);
+  }
+  const dxnetJobs = parseDxnetJobStats((body as Record<string, unknown>).dxnetJobs);
+  if (!dxnetJobs) {
+    throw new ScoreHubError('服务统计响应无效', status, true);
+  }
+  return { dxnetJobs };
 }
