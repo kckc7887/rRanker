@@ -314,7 +314,8 @@ export function GameAccountsScreen() {
   };
 
   const onSelectAccount = (account: BoundAccount) => {
-    switchBoundAccount(account.id);
+    // 游戏管理内切换：只换会话，留在本页，不跳总览。
+    switchBoundAccount(account.id, { navigateToOverview: false });
   };
 
   const toggleGame = (gameId: GameId) => setCollapsedManagedGameIds((current) => {
