@@ -35,6 +35,17 @@ jest.mock('expo-image-picker', () => ({
 jest.mock('expo-clipboard', () => ({
   getStringAsync: jest.fn(async () => ''),
 }));
+jest.mock('expo-image-manipulator', () => ({
+  manipulateAsync: jest.fn(),
+  SaveFormat: { JPEG: 'jpeg' },
+}));
+jest.mock('@/services/maimai-qr-decode', () => {
+  const actual = jest.requireActual<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
+  return {
+    ...actual,
+    decodeMaimaiQrFromImageUri: jest.fn(async () => 'SGWCMAIDDECODED'),
+  };
+});
 jest.mock('react-native-gesture-handler', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };
@@ -179,7 +190,26 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.queryByLabelText('score-hub 近一小时统计')).toBeNull();
     await fireEvent.press(screen.getByLabelText('开始上传'));
     expect(await screen.findByText('缺少二维码')).toBeTruthy();
-    expect(screen.getByText('请粘贴神秘二维码字符串，或选择二维码图片。')).toBeTruthy();
+    expect(screen.getByText('请粘贴神秘二维码字符串，或从相册选择图片识别。')).toBeTruthy();
+  });
+
+  it('从相册选择后把识别到的字符串填入输入框', async () => {
+    const imagePicker = jest.requireMock<typeof import('expo-image-picker')>('expo-image-picker');
+    const decode = jest.requireMock<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
+    (imagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValueOnce({
+      canceled: false,
+      assets: [{ uri: 'file:///qr.jpg', fileName: 'qr.jpg' }],
+    });
+    (decode.decodeMaimaiQrFromImageUri as jest.Mock).mockResolvedValueOnce('SGWCMAIDFROMIMAGE');
+
+    const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
+    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
+    await fireEvent.press(screen.getByLabelText('从相册选择二维码图片'));
+    await waitFor(() => {
+      expect(screen.getByLabelText('神秘二维码字符串').props.value).toBe('SGWCMAIDFROMIMAGE');
+    });
+    expect(await screen.findByText('已识别二维码')).toBeTruthy();
   });
 
   it('粘贴按钮可写入剪贴板中的二维码字符串', async () => {
