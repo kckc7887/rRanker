@@ -35,6 +35,19 @@ const mockSelect = jest.fn(async (friendCode: string) => {
     : { friendCode: friendCode.trim(), hasCabinetBound: false };
   return { ...mockHubState };
 });
+const mockRemove = jest.fn(async (friendCode: string) => {
+  mockHubAccounts.delete(friendCode.trim());
+  if (mockHubState.friendCode === friendCode.trim()) {
+    const next = [...mockHubAccounts.values()][0];
+    mockHubState = next
+      ? { friendCode: next.friendCode, hasCabinetBound: next.hasCabinetBound, token: next.token }
+      : { friendCode: '', hasCabinetBound: false };
+  }
+  return {
+    activeFriendCode: mockHubState.friendCode,
+    accounts: Object.fromEntries([...mockHubAccounts.entries()]),
+  };
+});
 const mockUpsert = jest.fn(async (partial: {
   friendCode: string;
   token?: string;
@@ -122,6 +135,7 @@ jest.mock('@/storage/score-hub-account-store', () => ({
     listWithToken: () => mockListWithToken(),
     getByFriendCode: (friendCode: string) => mockGetByFriendCode(friendCode),
     select: (friendCode: string) => mockSelect(friendCode),
+    remove: (friendCode: string) => mockRemove(friendCode),
   },
 }));
 jest.mock('@/services/upload-maimai-from-friend-code', () => {
@@ -304,7 +318,7 @@ describe('好友码统一上传弹窗', () => {
     await waitFor(() => expect(mockUploadFriend).toHaveBeenCalled());
   });
 
-  it('历史按钮可切换已保存好友码并查询绑定', async () => {
+  it('历史下拉可切换已保存好友码并支持删除', async () => {
     setHubEntry({
       friendCode: '111111111111111',
       token: 'tok-a',
@@ -324,11 +338,17 @@ describe('好友码统一上传弹窗', () => {
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('通过神秘二维码绑定')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
-    expect(await screen.findByLabelText('选择好友码 222222222222222')).toBeTruthy();
+    expect(await screen.findByLabelText('ScoreHub 好友码历史列表')).toBeTruthy();
+    expect(screen.getByLabelText('删除好友码 222222222222222')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('选择好友码 222222222222222'));
     await waitFor(() => expect(screen.getByLabelText('舞萌好友码').props.value).toBe('222222222222222'));
     await waitFor(() => expect(screen.getByLabelText('玩家二维码已绑定')).toBeTruthy());
     expect(screen.queryByLabelText('通过神秘二维码绑定')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
+    await fireEvent.press(screen.getByLabelText('删除好友码 111111111111111'));
+    await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('111111111111111'));
+    await waitFor(() => expect(screen.queryByLabelText('选择好友码 111111111111111')).toBeNull());
   });
 
   it('每次只临时勾选当前可写账号且不保存目标变化', async () => {

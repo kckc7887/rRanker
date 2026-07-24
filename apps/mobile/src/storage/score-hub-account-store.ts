@@ -230,6 +230,20 @@ export class ScoreHubAccountStore {
     await SecureStore.deleteItemAsync(ACCOUNT_KEY_V2);
     await SecureStore.deleteItemAsync(ACCOUNT_KEY_V1);
   }
+
+  /** 删除指定好友码的本地 JWT 条目。 */
+  async remove(friendCode: string): Promise<ScoreHubAccountsState> {
+    const code = friendCode.trim();
+    const state = await this.readAll();
+    if (code && state.accounts[code]) {
+      delete state.accounts[code];
+    }
+    if (state.activeFriendCode === code) {
+      state.activeFriendCode = Object.keys(state.accounts)[0] ?? '';
+    }
+    await this.writeAll(state);
+    return state;
+  }
 }
 
 export const scoreHubAccountStore = new ScoreHubAccountStore();
