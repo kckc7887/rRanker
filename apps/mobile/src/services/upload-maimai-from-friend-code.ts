@@ -216,7 +216,11 @@ export async function uploadMaimaiFromFriendCode(input: {
     token,
     jobId: scoreJobId,
     signal: input.signal,
-    onProgress: ({ progress }) => {
+    onProgress: ({ progress, stage }) => {
+      if (typeof stage === 'string' && stage.includes('重试')) {
+        input.onPhase({ kind: 'fetching_scores', message: stage });
+        return;
+      }
       input.onPhase({ kind: 'fetching_scores', message: scoreProgressMessage(progress) });
     },
   });
