@@ -278,12 +278,18 @@ async function loginScoreHubWithFriendCode(input: {
     });
   }
 
-  await scoreHubAccountStore.patch({
+  await scoreHubAccountStore.upsert({
     friendCode,
     token,
   });
 
   return { token, friendshipJobId };
+}
+
+/** ScoreHub JWT 失效（需回退好友码登录）。 */
+export function isScoreHubAuthExpired(error: unknown): boolean {
+  return error instanceof ScoreHubError
+    && (error.status === 401 || error.status === 403);
 }
 
 async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
@@ -526,7 +532,7 @@ export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
 }
 
 /**
- * 已绑定机台后：复用本地 ScoreHub 会话直接拉分写出，
+ * 已绑定机台后：复用指定好友码的本地 ScoreHub JWT 直接拉分写出，
  * 不创建 login-requests / 好友申请。
  */
 export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput & {
@@ -539,17 +545,28 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
     authMode: 'session',
   });
 
-  const cached = await scoreHubAccountStore.load();
+  const expected = input.expectedFriendCode?.trim() ?? '';
+  const entry = expected
+    ? await scoreHubAccountStore.getByFriendCode(expected)
+    : null;
+  const cached = entry
+    ? {
+      friendCode: entry.friendCode,
+      token: entry.token,
+      hasCabinetBound: entry.hasCabinetBound,
+    }
+    : await scoreHubAccountStore.load();
+
   if (!cached.token) {
     throw new ScoreHubError(
-      '尚未登录 ScoreHub。请先到「好友码」完成一次上传登录，再回来拉取成绩。',
+      '尚未登录 ScoreHub。请先完成一次好友码上传登录，再回来拉取成绩。',
+      401,
     );
   }
 
-  const expected = input.expectedFriendCode?.trim() ?? '';
   if (expected && cached.friendCode && expected !== cached.friendCode) {
     throw new ScoreHubError(
-      '好友码与当前登录会话不一致，请到「好友码」重新登录后再试。',
+      '好友码与当前登录会话不一致，请重新用该好友码登录后再试。',
     );
   }
 
@@ -557,17 +574,16 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
   try {
     const me = await fetchMe(cached.token, input.signal);
     friendCode = me.friendCode ?? friendCode;
-    await scoreHubAccountStore.patch({
+    await scoreHubAccountStore.upsert({
       friendCode,
       hasCabinetBound: me.hasCabinetUserId || cached.hasCabinetBound,
       token: cached.token,
     });
   } catch (error) {
-    const status = error instanceof ScoreHubError ? error.status : undefined;
-    if (status === 401 || status === 403) {
+    if (isScoreHubAuthExpired(error)) {
       throw new ScoreHubError(
-        '登录已失效。请先到「好友码」重新上传一次以登录 ScoreHub。',
-        status,
+        '登录已失效。将改用好友码重新登录。',
+        error instanceof ScoreHubError ? error.status : 401,
       );
     }
     // /me 短暂失败时仍尝试用缓存 token 拉分
@@ -575,23 +591,35 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
 
   if (!friendCode) {
     throw new ScoreHubError(
-      '本地会话缺少好友码。请先到「好友码」完成一次上传登录。',
+      '本地会话缺少好友码。请先完成一次好友码上传登录。',
+      401,
     );
   }
 
-  return uploadMaimaiAfterScoreHubToken({
-    ...input,
-    selected,
-    token: cached.token,
-    friendshipJobId: null,
-    playerIdForLocal: friendCode,
-    persistFriendCode: friendCode,
-  });
+  try {
+    return await uploadMaimaiAfterScoreHubToken({
+      ...input,
+      selected,
+      token: cached.token,
+      friendshipJobId: null,
+      playerIdForLocal: friendCode,
+      persistFriendCode: friendCode,
+    });
+  } catch (error) {
+    if (isScoreHubAuthExpired(error)) {
+      throw new ScoreHubError(
+        '登录已失效。将改用好友码重新登录。',
+        error instanceof ScoreHubError ? error.status : 401,
+      );
+    }
+    throw error;
+  }
 }
 
-/** 独立绑定玩家二维码：仅用本地 ScoreHub 会话 PUT /me/cabinet，不走好友码同步登录。 */
+/** 独立绑定玩家二维码：仅用指定好友码的 ScoreHub 会话 PUT /me/cabinet。 */
 export async function bindScoreHubCabinetByQr(input: {
   qrCode: string;
+  friendCode?: string | null;
   signal: ScoreHubAbortSignal;
   onPhase: (phase: UploadPhase) => void;
 }): Promise<BindCabinetResult> {
@@ -600,24 +628,34 @@ export async function bindScoreHubCabinetByQr(input: {
     throw new ScoreHubError('请提供玩家二维码字符串');
   }
 
-  const cached = await scoreHubAccountStore.load();
+  const preferred = input.friendCode?.trim() ?? '';
+  const entry = preferred
+    ? await scoreHubAccountStore.getByFriendCode(preferred)
+    : null;
+  const cached = entry
+    ? {
+      friendCode: entry.friendCode,
+      token: entry.token,
+      hasCabinetBound: entry.hasCabinetBound,
+    }
+    : await scoreHubAccountStore.load();
+
   if (!cached.token) {
     throw new ScoreHubError(
-      '尚未登录 ScoreHub。请先到「好友码」完成一次上传，再回来绑定玩家二维码。',
+      '尚未登录 ScoreHub。请先完成一次好友码上传，再回来绑定玩家二维码。',
     );
   }
 
   input.onPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
 
-  let token = cached.token;
+  const token = cached.token;
   try {
     await fetchMe(token, input.signal);
   } catch (error) {
-    const status = error instanceof ScoreHubError ? error.status : undefined;
-    if (status === 401 || status === 403) {
+    if (isScoreHubAuthExpired(error)) {
       throw new ScoreHubError(
-        '登录已失效。请先到「好友码」再上传一次成绩，然后再绑定玩家二维码。',
-        status,
+        '登录已失效。请先用好友码再上传一次成绩，然后再绑定玩家二维码。',
+        error instanceof ScoreHubError ? error.status : 401,
       );
     }
     // 其他 /me 失败仍尝试绑定；由 bind 接口给出最终错误
@@ -626,8 +664,8 @@ export async function bindScoreHubCabinetByQr(input: {
   try {
     const bind = await bindCabinetByQr(token, qrCode, input.signal);
     const me = await fetchMe(token, input.signal).catch(() => null);
-    const friendCode = me?.friendCode ?? cached.friendCode;
-    await scoreHubAccountStore.patch({
+    const friendCode = me?.friendCode ?? cached.friendCode ?? preferred;
+    await scoreHubAccountStore.upsert({
       friendCode,
       hasCabinetBound: true,
       token,
@@ -636,8 +674,8 @@ export async function bindScoreHubCabinetByQr(input: {
     input.onPhase({
       kind: 'done',
       message: bind.alreadyBound
-        ? '玩家二维码此前已绑定，可直接使用神秘二维码上传'
-        : '玩家二维码已绑定，之后可用神秘二维码快速上传',
+        ? '玩家二维码此前已绑定，之后将复用会话快速拉分'
+        : '玩家二维码已绑定，之后将复用会话快速拉分',
       uploaded: 0,
       skipped: 0,
     });
@@ -647,11 +685,10 @@ export async function bindScoreHubCabinetByQr(input: {
       alreadyBound: bind.alreadyBound,
     };
   } catch (error) {
-    const status = error instanceof ScoreHubError ? error.status : undefined;
-    if (status === 401 || status === 403) {
+    if (isScoreHubAuthExpired(error)) {
       throw new ScoreHubError(
-        '登录已失效。请先到「好友码」再上传一次成绩，然后再绑定玩家二维码。',
-        status,
+        '登录已失效。请先用好友码再上传一次成绩，然后再绑定玩家二维码。',
+        error instanceof ScoreHubError ? error.status : 401,
       );
     }
     throw error;
@@ -701,14 +738,14 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
 
   try {
     const me = await fetchMe(login.token, input.signal);
-    await scoreHubAccountStore.patch({
+    await scoreHubAccountStore.upsert({
       friendCode: me.friendCode ?? login.friendCode ?? '',
       hasCabinetBound: me.hasCabinetUserId,
       token: login.token,
     });
   } catch {
     if (login.friendCode) {
-      await scoreHubAccountStore.patch({
+      await scoreHubAccountStore.upsert({
         friendCode: login.friendCode,
         token: login.token,
       });
