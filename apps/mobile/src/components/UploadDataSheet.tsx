@@ -25,6 +25,7 @@ import {
 } from '@/services/maimai-qr-decode';
 import {
   FRIEND_REQUEST_REFRESH_HINT,
+  bindScoreHubCabinetByFriendCode,
   formatScoreHubStatsSummary,
   QR_REQUIRES_BIND_MESSAGE,
   resolveUploadTargets,
@@ -294,7 +295,7 @@ export function UploadDataSheet({
       showNotification({
         title: '已识别二维码',
         message: target === 'bind'
-          ? '绑定用字符串已填入，可开始上传。'
+          ? '绑定用字符串已填入，可点「仅绑定二维码」。'
           : '字符串已填入输入框，可直接开始上传。',
         variant: 'success',
       });
@@ -341,14 +342,6 @@ export function UploadDataSheet({
       showNotification({ title: '好友码无效', message: '请输入 15 位数字好友码。', variant: 'warning' });
       return;
     }
-    if (authMode === 'friend_code' && !hasCabinetBound && !bindQrText.trim()) {
-      showNotification({
-        title: '缺少绑定二维码',
-        message: '首次上传请粘贴或识别玩家二维码，用于绑定后下次快速登录。',
-        variant: 'warning',
-      });
-      return;
-    }
     if (authMode === 'qr' && !qrText.trim()) {
       showNotification({
         title: '缺少二维码',
@@ -389,7 +382,6 @@ export function UploadDataSheet({
         })
         : await uploadMaimaiFromFriendCode({
           friendCode,
-          cabinetQrCode: hasCabinetBound ? null : bindQrText.trim(),
           selectedAccountIds: selectedIds,
           targets,
           sessionsByAccountId,
@@ -409,10 +401,6 @@ export function UploadDataSheet({
           onLxnsTokensRotated,
         });
       setLastResult(result);
-      if (result.cabinetBound) {
-        setHasCabinetBound(true);
-        setBindQrText('');
-      }
       try {
         await onFinished?.(result);
       } catch (refreshError) {
@@ -434,6 +422,69 @@ export function UploadDataSheet({
             ? error.message
             : '上传失败';
         applyPhase({ kind: 'error', message });
+      }
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const startBindCabinet = async () => {
+    if (running || decodingQr || hasCabinetBound) return;
+    if (isMaimaiMaintenanceWindow()) {
+      showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
+      return;
+    }
+    if (!/^\d{15}$/.test(friendCode.trim())) {
+      showNotification({ title: '好友码无效', message: '请先输入 15 位数字好友码再绑定。', variant: 'warning' });
+      return;
+    }
+    if (!bindQrText.trim()) {
+      showNotification({
+        title: '缺少绑定二维码',
+        message: '请粘贴或识别公众号玩家二维码后再绑定。',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    abortRef.current = { aborted: false };
+    setRunning(true);
+    setLastResult(null);
+    applyPhase({ kind: 'logging_in', message: '正在创建好友申请任务…', authMode: 'friend_code' });
+
+    try {
+      await bindScoreHubCabinetByFriendCode({
+        friendCode,
+        qrCode: bindQrText.trim(),
+        signal: abortRef.current,
+        onPhase: applyPhase,
+        onNeedFriendAccept: (botFriendCode) => {
+          showActionNotification({
+            title: '请同意好友申请',
+            message: botFriendCode
+              ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
+              : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
+            variant: 'info',
+            actions: [{ label: '知道了', tone: 'default' }],
+          });
+        },
+      });
+      setHasCabinetBound(true);
+      setBindQrText('');
+      showNotification({
+        title: '绑定成功',
+        message: '之后可用「神秘二维码」快速上传。',
+        variant: 'success',
+      });
+    } catch (error) {
+      if (abortRef.current.aborted) {
+        applyPhase({ kind: 'idle' });
+      } else {
+        const message = error instanceof ScoreHubError || error instanceof Error
+          ? error.message
+          : '绑定失败';
+        applyPhase({ kind: 'error', message });
+        showNotification({ title: '绑定失败', message, variant: 'error' });
       }
     } finally {
       setRunning(false);
@@ -529,76 +580,11 @@ export function UploadDataSheet({
               />
               <Text style={[styles.hint, { color: theme.textMuted }]}>从游戏服务器取成绩后上传到下方勾选的查分器。</Text>
               <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
-              {!hasCabinetBound ? (
-                <>
-                  <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>绑定玩家二维码（首次）</Text>
-                  <TextInput
-                    accessibilityLabel="绑定用玩家二维码字符串"
-                    value={bindQrText}
-                    onChangeText={setBindQrText}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="off"
-                    textContentType="none"
-                    contextMenuHidden={false}
-                    multiline
-                    placeholder="粘贴 SGWCMAID… 字符串"
-                    placeholderTextColor={theme.textMuted}
-                    editable={!busy && prefsReady}
-                    style={[
-                      styles.input,
-                      styles.qrInput,
-                      {
-                        backgroundColor: theme.input,
-                        borderColor: theme.border,
-                        color: theme.text,
-                        borderWidth: 1,
-                      },
-                    ]}
-                  />
-                  <View style={styles.qrActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="粘贴绑定用二维码字符串"
-                      disabled={busy || !prefsReady}
-                      onPress={() => void pasteQrText('bind')}
-                      style={({ pressed }) => [
-                        styles.secondary,
-                        { borderColor: theme.border, backgroundColor: theme.surface },
-                        (busy || !prefsReady) && styles.primaryDisabled,
-                        pressed && !busy && styles.softPressed,
-                      ]}
-                    >
-                      <Text style={[styles.secondaryText, { color: theme.accent }]}>粘贴</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="从相册选择绑定用二维码图片"
-                      disabled={busy || !prefsReady}
-                      onPress={() => void pickQrImage('bind')}
-                      style={({ pressed }) => [
-                        styles.secondary,
-                        { borderColor: theme.border, backgroundColor: theme.surface },
-                        (busy || !prefsReady) && styles.primaryDisabled,
-                        pressed && !busy && styles.softPressed,
-                      ]}
-                    >
-                      {decodingQr ? (
-                        <ActivityIndicator color={theme.accent} />
-                      ) : (
-                        <Text style={[styles.secondaryText, { color: theme.accent }]}>从相册选择</Text>
-                      )}
-                    </Pressable>
-                  </View>
-                  <Text style={[styles.hint, { color: theme.textMuted }]}>
-                    首次需同时绑定“舞萌-中二公众号 → 玩家二维码”，之后可用神秘二维码快速上传。
-                  </Text>
-                </>
-              ) : (
+              {hasCabinetBound ? (
                 <Text accessibilityLabel="玩家二维码已绑定" style={[styles.hint, { color: theme.success }]}>
                   玩家二维码已绑定，也可改用「神秘二维码」快速上传。
                 </Text>
-              )}
+              ) : null}
             </>
           ) : hasCabinetBound ? (
             <>
@@ -673,7 +659,7 @@ export function UploadDataSheet({
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="切换到好友码完成首次绑定"
+                accessibilityLabel="切换到好友码上传并绑定"
                 onPress={() => switchAuthMode('friend_code')}
                 style={({ pressed }) => [
                   styles.secondary,
@@ -681,7 +667,7 @@ export function UploadDataSheet({
                   pressed && styles.softPressed,
                 ]}
               >
-                <Text style={[styles.secondaryText, { color: theme.accent }]}>去好友码绑定</Text>
+                <Text style={[styles.secondaryText, { color: theme.accent }]}>去好友码上传 / 绑定</Text>
               </Pressable>
             </View>
           )}
@@ -770,6 +756,87 @@ export function UploadDataSheet({
             )}
           </Pressable>
 
+          {authMode === 'friend_code' && !hasCabinetBound ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>绑定玩家二维码（可选）</Text>
+              <Text style={[styles.hint, { color: theme.textMuted }]}>
+                与上方「开始上传」互不影响。建议先上传一次成绩，再粘贴公众号玩家二维码单独绑定；绑定后可用神秘二维码快速上传。
+              </Text>
+              <TextInput
+                accessibilityLabel="绑定用玩家二维码字符串"
+                value={bindQrText}
+                onChangeText={setBindQrText}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                textContentType="none"
+                contextMenuHidden={false}
+                multiline
+                placeholder="粘贴 SGWCMAID… 字符串"
+                placeholderTextColor={theme.textMuted}
+                editable={!busy && prefsReady}
+                style={[
+                  styles.input,
+                  styles.qrInput,
+                  {
+                    backgroundColor: theme.input,
+                    borderColor: theme.border,
+                    color: theme.text,
+                    borderWidth: 1,
+                  },
+                ]}
+              />
+              <View style={styles.qrActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="粘贴绑定用二维码字符串"
+                  disabled={busy || !prefsReady}
+                  onPress={() => void pasteQrText('bind')}
+                  style={({ pressed }) => [
+                    styles.secondary,
+                    { borderColor: theme.border, backgroundColor: theme.surface },
+                    (busy || !prefsReady) && styles.primaryDisabled,
+                    pressed && !busy && styles.softPressed,
+                  ]}
+                >
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>粘贴</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="从相册选择绑定用二维码图片"
+                  disabled={busy || !prefsReady}
+                  onPress={() => void pickQrImage('bind')}
+                  style={({ pressed }) => [
+                    styles.secondary,
+                    { borderColor: theme.border, backgroundColor: theme.surface },
+                    (busy || !prefsReady) && styles.primaryDisabled,
+                    pressed && !busy && styles.softPressed,
+                  ]}
+                >
+                  {decodingQr ? (
+                    <ActivityIndicator color={theme.accent} />
+                  ) : (
+                    <Text style={[styles.secondaryText, { color: theme.accent }]}>从相册选择</Text>
+                  )}
+                </Pressable>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="绑定玩家二维码"
+                disabled={busy || !prefsReady}
+                onPress={() => void startBindCabinet()}
+                style={({ pressed }) => [
+                  styles.secondary,
+                  { borderColor: theme.accent, backgroundColor: theme.surface },
+                  (busy || !prefsReady) && styles.primaryDisabled,
+                  pressed && !busy && styles.softPressed,
+                ]}
+              >
+                <Text style={[styles.secondaryText, { color: theme.accent }]}>仅绑定二维码</Text>
+              </Pressable>
+            </>
+          ) : null}
+
           {running ? (
             <Pressable
               accessibilityRole="button"
@@ -813,21 +880,6 @@ export function UploadDataSheet({
 
           {lastResult ? (
             <View style={[styles.resultList, { backgroundColor: theme.surface }]}>
-              {typeof lastResult.cabinetBound === 'boolean' ? (
-                <View style={styles.resultRow}>
-                  <Text style={lastResult.cabinetBound
-                    ? [styles.resultSuccess, { color: theme.success }]
-                    : [styles.resultFailure, { color: theme.danger }]}
-                  >
-                    {lastResult.cabinetBound ? '✓ 玩家二维码已绑定' : '× 玩家二维码绑定失败'}
-                  </Text>
-                  {lastResult.cabinetBindError ? (
-                    <Text style={[styles.resultDetail, { color: theme.textMuted }]}>
-                      {lastResult.cabinetBindError}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
               {lastResult.targetResults.map((result) => (
                 <View key={result.account.id} style={styles.resultRow}>
                   <Text style={result.status === 'success'

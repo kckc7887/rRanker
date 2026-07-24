@@ -148,11 +148,13 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.getAllByText(/多刷新几次才能看到申请/).length).toBeGreaterThan(0);
   });
 
-  it('未绑定时好友码模式展示绑定二维码输入', async () => {
+  it('未绑定时好友码模式展示独立绑定区，开始上传不依赖绑定码', async () => {
     const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
     expect(await screen.findByLabelText('绑定用玩家二维码字符串')).toBeTruthy();
-    expect(screen.getByLabelText('粘贴绑定用二维码字符串')).toBeTruthy();
-    expect(screen.getByText(/首次需同时绑定/)).toBeTruthy();
+    expect(screen.getByLabelText('绑定玩家二维码')).toBeTruthy();
+    expect(screen.getByText(/与上方「开始上传」互不影响/)).toBeTruthy();
+    expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false);
   });
 
   it('未绑定时切换二维码模式展示引导且禁用开始上传', async () => {
@@ -160,7 +162,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
     await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     expect(await screen.findByLabelText('二维码需先绑定说明')).toBeTruthy();
-    expect(screen.getByLabelText('切换到好友码完成首次绑定')).toBeTruthy();
+    expect(screen.getByLabelText('切换到好友码上传并绑定')).toBeTruthy();
     expect(screen.queryByLabelText('神秘二维码字符串')).toBeNull();
     expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: true });
   });
@@ -173,6 +175,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     const screen = await renderSheet([water.id]);
     expect(await screen.findByLabelText('神秘二维码字符串')).toBeTruthy();
     expect(screen.queryByLabelText('score-hub 近一小时统计')).toBeNull();
+    expect(screen.queryByLabelText('绑定玩家二维码')).toBeNull();
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
     await fireEvent.press(screen.getByLabelText('开始上传'));
     expect(await screen.findByText('缺少二维码')).toBeTruthy();
@@ -224,10 +227,10 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.queryByTestId('app-notification-root-overlay')).toBeNull();
   });
 
-  it('未绑定且缺少绑定二维码时提示', async () => {
+  it('未绑定且点仅绑定时缺少绑定二维码会提示', async () => {
     const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
-    await fireEvent.press(screen.getByLabelText('开始上传'));
+    await waitFor(() => expect(screen.getByLabelText('绑定玩家二维码')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('绑定玩家二维码'));
     expect(await screen.findByText('缺少绑定二维码')).toBeTruthy();
   });
 
