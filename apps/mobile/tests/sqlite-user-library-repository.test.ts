@@ -2,9 +2,9 @@ const sqlite = vi.hoisted(() => {
   const db = {
     execAsync: vi.fn().mockResolvedValue(undefined),
     getFirstAsync: vi.fn(), getAllAsync: vi.fn(), runAsync: vi.fn().mockResolvedValue(undefined),
-    withExclusiveTransactionAsync: vi.fn(),
+    withTransactionAsync: vi.fn(),
   };
-  db.withExclusiveTransactionAsync.mockImplementation(async (task: (txn: typeof db) => Promise<void>) => task(db));
+  db.withTransactionAsync.mockImplementation(async (task: () => Promise<void>) => task());
   return { db, openDatabaseAsync: vi.fn(async () => db) };
 });
 
@@ -27,7 +27,7 @@ describe('SqliteUserLibraryRepository', () => {
     sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1 });
     sqlite.db.getAllAsync.mockResolvedValue([]);
     sqlite.db.runAsync.mockResolvedValue(undefined);
-    sqlite.db.withExclusiveTransactionAsync.mockImplementation(async (task: (txn: typeof sqlite.db) => Promise<void>) => task(sqlite.db));
+    sqlite.db.withTransactionAsync.mockImplementation(async (task: () => Promise<void>) => task());
   });
 
   it('creates independent versioned tables and reads an empty library', async () => {
@@ -39,15 +39,15 @@ describe('SqliteUserLibraryRepository', () => {
     expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM user_library_items');
   });
 
-  it('clears personal tables inside an exclusive transaction', async () => {
+  it('clears personal tables inside a same-connection transaction', async () => {
     const repository = new SqliteUserLibraryRepository();
     await repository.clear();
-    expect(sqlite.db.withExclusiveTransactionAsync).toHaveBeenCalled();
+    expect(sqlite.db.withTransactionAsync).toHaveBeenCalled();
     expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM user_library_items');
     expect(sqlite.db.runAsync).not.toHaveBeenCalledWith(expect.stringContaining('score_snapshots'));
   });
 
-  it('writes a library item through the exclusive update transaction', async () => {
+  it('writes a library item through the update transaction', async () => {
     const repository = new SqliteUserLibraryRepository();
     await repository.update(() => [{
       key: 'song:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: [],
@@ -58,7 +58,7 @@ describe('SqliteUserLibraryRepository', () => {
   });
 
   it('propagates transaction failure without reporting success', async () => {
-    sqlite.db.withExclusiveTransactionAsync.mockRejectedValueOnce(new Error('rollback'));
+    sqlite.db.withTransactionAsync.mockRejectedValueOnce(new Error('rollback'));
     const repository = new SqliteUserLibraryRepository();
     await expect(repository.restore([], 'replace')).rejects.toThrow('rollback');
   });
