@@ -770,7 +770,7 @@ export function UploadDataSheet({
             ) : null}
           </View>
           <Text style={[styles.hint, { color: theme.textMuted }]}>
-            从游戏服务器取成绩后上传到下方勾选的查分器。
+            经 Score Hub 相关服务取成绩后，上传到下方勾选的查分器。
           </Text>
           <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
           {bindingLookup ? (
