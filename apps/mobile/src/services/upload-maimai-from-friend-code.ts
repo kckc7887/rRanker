@@ -32,6 +32,7 @@ import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
 export type UploadPhase =
   | { kind: 'idle' }
   | { kind: 'logging_in'; message: string; authMode?: 'friend_code' | 'qr' | 'session' }
+  | { kind: 'sending_friend'; message: string; botFriendCode: string | null }
   | { kind: 'awaiting_friend'; message: string; botFriendCode: string | null }
   | { kind: 'fetching_scores'; message: string }
   | { kind: 'binding'; message: string }
@@ -102,9 +103,11 @@ export function compactUploadPhaseLabel(phase: UploadPhase): string {
     case 'logging_in':
       if (phase.authMode === 'qr') return '二维码登录中';
       if (phase.authMode === 'session') return '会话拉分中';
-      return '好友申请中';
+      return '创建任务中';
+    case 'sending_friend':
+      return '发送申请中';
     case 'awaiting_friend':
-      return '好友申请中';
+      return '等待同意中';
     case 'fetching_scores':
       return '获取成绩中';
     case 'binding':
@@ -253,17 +256,22 @@ async function loginScoreHubWithFriendCode(input: {
     token = login.body.__skipAuthToken;
   } else {
     friendshipJobId = login.jobId;
-    if (login.botFriendCode) {
-      input.onPhase({
-        kind: 'awaiting_friend',
-        message: '等待同意好友中…',
-        botFriendCode: login.botFriendCode,
-      });
-    }
+    input.onPhase({
+      kind: 'sending_friend',
+      message: '正在发送好友申请…',
+      botFriendCode: login.botFriendCode,
+    });
     let alerted = false;
     token = await pollLoginUntilToken({
       jobId: login.jobId,
       signal: input.signal,
+      onSendingFriend: ({ botFriendCode }) => {
+        input.onPhase({
+          kind: 'sending_friend',
+          message: '正在发送好友申请…',
+          botFriendCode: botFriendCode ?? login.botFriendCode,
+        });
+      },
       onWaitingFriend: ({ botFriendCode }) => {
         input.onPhase({
           kind: 'awaiting_friend',

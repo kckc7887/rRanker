@@ -143,6 +143,42 @@ describe('好友码多目标写入', () => {
     expect(phases.at(-1)).toBe('done');
   });
 
+  it('好友码登录先进入发送申请阶段，再进入等待同意并弹通知', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    mocks.createFriendLoginJob.mockResolvedValue({
+      jobId: 'login-job',
+      botFriendCode: '999999999999999',
+      body: {},
+    });
+    const onNeedFriendAccept = vi.fn();
+    mocks.pollLoginUntilToken.mockImplementation(async (input: {
+      onSendingFriend?: (info: { botFriendCode: string | null; stage: string | null }) => void;
+      onWaitingFriend?: (info: { botFriendCode: string | null; stage: string | null }) => void;
+    }) => {
+      input.onSendingFriend?.({ botFriendCode: '999999999999999', stage: 'send_request' });
+      input.onWaitingFriend?.({ botFriendCode: '999999999999999', stage: 'wait_acceptance' });
+      return 'hub-token';
+    });
+    const phases: string[] = [];
+    await uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      catalog,
+      signal: { aborted: false },
+      onPhase: (phase) => phases.push(phase.kind),
+      onNeedFriendAccept,
+    });
+
+    const sendAt = phases.indexOf('sending_friend');
+    const waitAt = phases.indexOf('awaiting_friend');
+    expect(sendAt).toBeGreaterThanOrEqual(0);
+    expect(waitAt).toBeGreaterThan(sendAt);
+    expect(onNeedFriendAccept).toHaveBeenCalledTimes(1);
+    expect(phases.at(0)).toBe('logging_in');
+  });
+
   it('好友码路径只传成绩，不同时绑定二维码', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
     const phases: string[] = [];
