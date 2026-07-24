@@ -74,7 +74,7 @@ rRanker 是一个聚合了多家音乐游戏数据的数据管理应用，提供
 ```bash
 cd apps\mobile
 npm install
-npm start   
+npm start
 ```
 ## 技术栈
 
