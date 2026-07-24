@@ -86,6 +86,9 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [落雪咖啡屋](https://maimai.lxns.net/)
 - [Phi-plugin](https://github.com/Catrong/phi-plugin)
 
+## 声明
+本项目仅提供数据管理功能，本项目与相关的任何游戏官方没有任何关系。
+
 ## 许可证
 
 本项目采用 [GNU Affero General Public License v3.0](LICENSE)（SPDX：`AGPL-3.0-only`），Copyright (c) 2026 Chnynnya。
