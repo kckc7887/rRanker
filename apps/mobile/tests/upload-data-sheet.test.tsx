@@ -7,7 +7,16 @@ import type { ProviderSession } from '@/providers/contracts';
 import { NotificationProvider } from '@/components/AppNotification';
 import { ScoreHubError } from '@/services/score-hub-client';
 
-type TestUploadPrefs = { friendCode: string; selectedAccountIds: string[] };
+type TestUploadPrefs = {
+  friendCode: string;
+  selectedAccountIds: string[];
+  selectionsByFriendCode?: Record<string, string[]>;
+};
+type TestSavePrefs = {
+  friendCode: string;
+  selectedAccountIds?: string[];
+  writeSelection?: boolean;
+};
 type TestHubAccount = { friendCode: string; hasCabinetBound: boolean; token?: string };
 type TestHubEntry = {
   friendCode: string;
@@ -15,11 +24,12 @@ type TestHubEntry = {
   hasCabinetBound: boolean;
   updatedAt: number;
 };
-
 const mockLoadPrefs = jest.fn(async (): Promise<TestUploadPrefs> => ({
-  friendCode: '', selectedAccountIds: [],
+  friendCode: '', selectedAccountIds: [], selectionsByFriendCode: {},
 }));
-const mockSavePrefs = jest.fn(async (_prefs: TestUploadPrefs) => undefined);
+const mockSavePrefs = jest.fn(async (_prefs: TestSavePrefs) => undefined);
+const mockRemoveSelection = jest.fn(async (_friendCode: string) => undefined);
+
 let mockHubState: TestHubAccount = { friendCode: '', hasCabinetBound: false };
 const mockHubAccounts = new Map<string, TestHubEntry>();
 
@@ -120,7 +130,8 @@ jest.mock('react-native-gesture-handler', () => {
 jest.mock('@/storage/upload-prefs-store', () => ({
   uploadPrefsStore: {
     load: () => mockLoadPrefs(),
-    save: (prefs: TestUploadPrefs) => mockSavePrefs(prefs),
+    save: (prefs: TestSavePrefs) => mockSavePrefs(prefs),
+    removeSelection: (friendCode: string) => mockRemoveSelection(friendCode),
   },
 }));
 jest.mock('@/storage/score-hub-account-store', () => ({
@@ -224,6 +235,9 @@ describe('好友码统一上传弹窗', () => {
     mockLoadPrefs.mockResolvedValue({
       friendCode: '111111111111111',
       selectedAccountIds: [water.id],
+      selectionsByFriendCode: {
+        '111111111111111': [water.id],
+      },
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
     mockBindCabinet.mockReset();
@@ -348,6 +362,7 @@ describe('好友码统一上传弹窗', () => {
     await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
     await fireEvent.press(screen.getByLabelText('删除好友码 111111111111111'));
     await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('111111111111111'));
+    await waitFor(() => expect(mockRemoveSelection).toHaveBeenCalledWith('111111111111111'));
     await waitFor(() => expect(screen.queryByLabelText('选择好友码 111111111111111')).toBeNull());
   });
 
@@ -363,7 +378,8 @@ describe('好友码统一上传弹窗', () => {
     await waitFor(() => expect(mockSavePrefs).toHaveBeenCalled(), { timeout: 1000 });
     expect(mockSavePrefs).toHaveBeenLastCalledWith({
       friendCode: '222222222222222',
-      selectedAccountIds: [water.id],
+      selectedAccountIds: [local.id, water.id],
+      writeSelection: false,
     });
     await act(async () => localOpen.unmount());
 
@@ -372,6 +388,44 @@ describe('好友码统一上传弹窗', () => {
     const restoredWater = normalOpen.getByLabelText('上传到 水鱼玩家（水鱼查分器）');
     expect(restoredLocal.props.accessibilityState).toMatchObject({ checked: false });
     expect(restoredWater.props.accessibilityState).toMatchObject({ checked: true });
+  });
+
+  it('切换好友码时恢复各自「上传到」勾选', async () => {
+    setHubEntry({
+      friendCode: '111111111111111',
+      token: 'tok-a',
+      hasCabinetBound: false,
+      updatedAt: 2,
+    });
+    mockHubAccounts.set('222222222222222', {
+      friendCode: '222222222222222',
+      token: 'tok-b',
+      hasCabinetBound: false,
+      updatedAt: 1,
+    });
+    mockLoadPrefs.mockResolvedValue({
+      friendCode: '111111111111111',
+      selectedAccountIds: [local.id],
+      selectionsByFriendCode: {
+        '111111111111111': [local.id],
+        '222222222222222': [water.id],
+      },
+    });
+    mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
+
+    const screen = await renderSheet();
+    await waitFor(() => {
+      expect(screen.getByLabelText('上传到 本地玩家（本地查分器）').props.accessibilityState).toMatchObject({ checked: true });
+    });
+    expect(screen.getByLabelText('上传到 水鱼玩家（水鱼查分器）').props.accessibilityState).toMatchObject({ checked: false });
+
+    await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
+    await fireEvent.press(screen.getByLabelText('选择好友码 222222222222222'));
+    await waitFor(() => expect(screen.getByLabelText('舞萌好友码').props.value).toBe('222222222222222'));
+    await waitFor(() => {
+      expect(screen.getByLabelText('上传到 水鱼玩家（水鱼查分器）').props.accessibilityState).toMatchObject({ checked: true });
+    });
+    expect(screen.getByLabelText('上传到 本地玩家（本地查分器）').props.accessibilityState).toMatchObject({ checked: false });
   });
 
   it('当前账号不可写时不预选目标但仍展示禁用原因', async () => {
@@ -386,7 +440,11 @@ describe('好友码统一上传弹窗', () => {
   });
 
   it('好友码无效时显示顶部警告通知', async () => {
-    mockLoadPrefs.mockResolvedValueOnce({ friendCode: '', selectedAccountIds: [water.id] });
+    mockLoadPrefs.mockResolvedValueOnce({
+      friendCode: '',
+      selectedAccountIds: [water.id],
+      selectionsByFriendCode: {},
+    });
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
     await fireEvent.press(screen.getByLabelText('开始上传'));
