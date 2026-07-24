@@ -536,6 +536,49 @@ describe('好友码统一上传弹窗', () => {
     });
   });
 
+  it('上传完成后 5 秒将按钮小字阶段归零为 idle', async () => {
+    jest.useFakeTimers({ advanceTimers: true });
+    try {
+      setHubEntry({
+        friendCode: '111111111111111',
+        token: 'tok',
+        hasCabinetBound: false,
+        updatedAt: 1,
+      });
+      mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
+      mockBindCabinet.mockResolvedValueOnce({ friendCode: '111111111111111', alreadyBound: false });
+      const onPhaseChange = jest.fn();
+      const view = await render(
+        <NotificationProvider>
+          <UploadDataSheet
+            visible
+            accounts={[local, water]}
+            sessionsByAccountId={{ [water.id]: waterSession }}
+            catalog={catalog}
+            onClose={jest.fn()}
+            onPhaseChange={onPhaseChange}
+            temporarySelectedAccountIds={[water.id]}
+          />
+        </NotificationProvider>,
+      );
+
+      await waitFor(() => expect(view.getByLabelText('通过神秘二维码绑定')).toBeTruthy());
+      await fireEvent.press(view.getByLabelText('通过神秘二维码绑定'));
+      await fireEvent.changeText(view.getByLabelText('绑定用玩家二维码字符串'), 'SGWCMAIDBIND');
+      await fireEvent.press(view.getByLabelText('绑定玩家二维码'));
+      await waitFor(() => {
+        expect(onPhaseChange).toHaveBeenCalledWith(expect.objectContaining({ kind: 'done' }));
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(5_000);
+      });
+      expect(onPhaseChange).toHaveBeenCalledWith({ kind: 'idle' });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('维护窗口内停止上传并显示统一通知', async () => {
     mockIsMaimaiMaintenance.mockReturnValue(true);
     const screen = await renderSheet([water.id]);
