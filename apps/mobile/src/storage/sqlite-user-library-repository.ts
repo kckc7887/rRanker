@@ -1,4 +1,3 @@
-import * as SQLite from 'expo-sqlite';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { GameId } from '@/domain/game-bind-options';
 import {
@@ -12,6 +11,7 @@ import {
 } from '@/domain/user-library';
 import type { RestoreMode, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
+import { getRrankerDatabase } from '@/storage/rranker-database';
 
 const USER_LIBRARY_SCHEMA_VERSION = 4;
 type DatabaseAccess = Pick<SQLiteDatabase, 'getAllAsync' | 'getFirstAsync' | 'runAsync'>;
@@ -31,18 +31,40 @@ interface ItemRow {
 
 interface TagRow { item_key: string; display_name: string }
 
-export class SqliteUserLibraryRepository implements UserLibraryRepository {
-  private databasePromise = SQLite.openDatabaseAsync('rranker.db');
-  private initialized?: Promise<void>;
+let schemaReady: Promise<void> | null = null;
 
-  private initialize(): Promise<void> {
-    if (!this.initialized) this.initialized = this.initializeDatabase();
-    return this.initialized;
+async function writeTagPresets(db: DatabaseAccess, values: readonly string[]): Promise<void> {
+  await db.runAsync('DELETE FROM user_library_tag_presets');
+  const timestamp = new Date().toISOString();
+  for (const [index, value] of normalizeTags(values).entries()) {
+    const normalized = normalizeTagName(value);
+    await db.runAsync(
+      'INSERT INTO user_library_tag_presets (normalized_name, display_name, sort_order, created_at) VALUES (?, ?, ?, ?)',
+      normalized.key, normalized.displayName, index, timestamp,
+    );
   }
+}
 
-  private async initializeDatabase(): Promise<void> {
-    const db = await this.databasePromise;
-    await db.execAsync(`PRAGMA foreign_keys = ON;
+async function ensureGameIdColumn(db: DatabaseAccess): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(user_library_items)');
+  if (!columns.some((column) => column.name === 'game_id')) {
+    await db.runAsync('ALTER TABLE user_library_items ADD COLUMN game_id TEXT NOT NULL DEFAULT \'maimai\'');
+  }
+}
+
+async function ensureUserLibrarySchema(): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = initializeUserLibrarySchema().catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
+  }
+  return schemaReady;
+}
+
+async function initializeUserLibrarySchema(): Promise<void> {
+  const db = await getRrankerDatabase();
+  await db.execAsync(`PRAGMA foreign_keys = ON;
       CREATE TABLE IF NOT EXISTS user_library_meta (
         id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL
       );
@@ -69,43 +91,46 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
         normalized_name TEXT PRIMARY KEY, display_name TEXT NOT NULL,
         sort_order INTEGER NOT NULL, created_at TEXT NOT NULL
       );`);
-    const row = await db.getFirstAsync<{ schema_version: number }>('SELECT schema_version FROM user_library_meta WHERE id = 1');
-    if (!row) {
-      await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
-      await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
-    } else if (row.schema_version < USER_LIBRARY_SCHEMA_VERSION) {
-      // 按游戏隔离后不再迁移旧收藏：升级时直接清空，避免跨游戏混用与错误归属。
-      await this.ensureGameIdColumn(db);
-      if (row.schema_version === 1) await this.writeTagPresets(db, DEFAULT_TAG_PRESETS);
-      await db.withExclusiveTransactionAsync(async (txn) => {
-        await txn.runAsync('DELETE FROM user_library_item_tags');
-        await txn.runAsync('DELETE FROM user_library_items');
-        await txn.runAsync('DELETE FROM user_library_tags');
-      });
-      await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
-    } else if (row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {
-      throw new Error(`不支持的个人数据版本：${row?.schema_version ?? '未知'}`);
-    } else {
-      await this.ensureGameIdColumn(db);
-    }
+  const row = await db.getFirstAsync<{ schema_version: number }>('SELECT schema_version FROM user_library_meta WHERE id = 1');
+  if (!row) {
+    await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
+    await writeTagPresets(db, DEFAULT_TAG_PRESETS);
+  } else if (row.schema_version < USER_LIBRARY_SCHEMA_VERSION) {
+    // 按游戏隔离后不再迁移旧收藏：升级时直接清空，避免跨游戏混用与错误归属。
+    await ensureGameIdColumn(db);
+    if (row.schema_version === 1) await writeTagPresets(db, DEFAULT_TAG_PRESETS);
+    await db.withExclusiveTransactionAsync(async (txn) => {
+      await txn.runAsync('DELETE FROM user_library_item_tags');
+      await txn.runAsync('DELETE FROM user_library_items');
+      await txn.runAsync('DELETE FROM user_library_tags');
+    });
+    await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
+  } else if (row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {
+    throw new Error(`不支持的个人数据版本：${row?.schema_version ?? '未知'}`);
+  } else {
+    await ensureGameIdColumn(db);
   }
+}
 
-  private async ensureGameIdColumn(db: DatabaseAccess): Promise<void> {
-    const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(user_library_items)');
-    if (!columns.some((column) => column.name === 'game_id')) {
-      await db.runAsync('ALTER TABLE user_library_items ADD COLUMN game_id TEXT NOT NULL DEFAULT \'maimai\'');
-    }
+/** 测试用：重置模块级 schema 初始化锁。 */
+export function resetUserLibrarySchemaForTests(): void {
+  schemaReady = null;
+}
+
+export class SqliteUserLibraryRepository implements UserLibraryRepository {
+  private initialize(): Promise<void> {
+    return ensureUserLibrarySchema();
   }
 
   async list(gameId?: GameId): Promise<UserLibraryItem[]> {
     await this.initialize();
-    const items = await this.readFrom(await this.databasePromise);
+    const items = await this.readFrom(await getRrankerDatabase());
     return gameId ? items.filter((item) => item.gameId === gameId) : items;
   }
 
   async listTagPresets(): Promise<string[]> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await getRrankerDatabase();
     const rows = await db.getAllAsync<{ display_name: string }>(
       'SELECT display_name FROM user_library_tag_presets ORDER BY sort_order, normalized_name',
     );
@@ -115,14 +140,14 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
   async setTagPresets(values: readonly string[]): Promise<string[]> {
     await this.initialize();
     const normalized = normalizeTags(values);
-    const db = await this.databasePromise;
-    await db.withExclusiveTransactionAsync((txn) => this.writeTagPresets(txn, normalized));
+    const db = await getRrankerDatabase();
+    await db.withExclusiveTransactionAsync((txn) => writeTagPresets(txn, normalized));
     return normalized;
   }
 
   async update(transform: (items: UserLibraryItem[]) => UserLibraryItem[]): Promise<UserLibraryItem[]> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await getRrankerDatabase();
     let result: UserLibraryItem[] = [];
     await db.withExclusiveTransactionAsync(async (txn) => {
       result = transform(await this.readFrom(txn)).map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
@@ -133,7 +158,7 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
 
   async restore(items: UserLibraryItem[], mode: RestoreMode): Promise<UserLibraryItem[]> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await getRrankerDatabase();
     let result: UserLibraryItem[] = [];
     await db.withExclusiveTransactionAsync(async (txn) => {
       const imported = items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
@@ -145,19 +170,19 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
 
   async clear(): Promise<void> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await getRrankerDatabase();
     await db.withExclusiveTransactionAsync(async (txn) => {
       await txn.runAsync('DELETE FROM user_library_item_tags');
       await txn.runAsync('DELETE FROM user_library_items');
       await txn.runAsync('DELETE FROM user_library_tags');
-      await this.writeTagPresets(txn, DEFAULT_TAG_PRESETS);
+      await writeTagPresets(txn, DEFAULT_TAG_PRESETS);
     });
   }
 
   /** 估算个人曲库相关表占用（按文本字段长度，不含索引开销）。 */
   async measureBytes(): Promise<number> {
     await this.initialize();
-    const db = await this.databasePromise;
+    const db = await getRrankerDatabase();
     const [items, tags, presets, itemTags] = await Promise.all([
       db.getFirstAsync<{ bytes: number }>(
         `SELECT COALESCE(SUM(
@@ -179,18 +204,6 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
       ),
     ]);
     return (items?.bytes ?? 0) + (tags?.bytes ?? 0) + (presets?.bytes ?? 0) + (itemTags?.bytes ?? 0);
-  }
-
-  private async writeTagPresets(db: DatabaseAccess, values: readonly string[]): Promise<void> {
-    await db.runAsync('DELETE FROM user_library_tag_presets');
-    const timestamp = new Date().toISOString();
-    for (const [index, value] of normalizeTags(values).entries()) {
-      const normalized = normalizeTagName(value);
-      await db.runAsync(
-        'INSERT INTO user_library_tag_presets (normalized_name, display_name, sort_order, created_at) VALUES (?, ?, ?, ?)',
-        normalized.key, normalized.displayName, index, timestamp,
-      );
-    }
   }
 
   private async readFrom(db: DatabaseAccess): Promise<UserLibraryItem[]> {

@@ -12,10 +12,17 @@ vi.mock('expo-sqlite', () => ({ openDatabaseAsync: sqlite.openDatabaseAsync }));
 
 // Native SQLite must be mocked before importing the repository.
 // eslint-disable-next-line import/first
-import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repository';
+import { resetRrankerDatabaseForTests } from '@/storage/rranker-database';
+// eslint-disable-next-line import/first
+import {
+  resetUserLibrarySchemaForTests,
+  SqliteUserLibraryRepository,
+} from '@/storage/sqlite-user-library-repository';
 
 describe('SqliteUserLibraryRepository', () => {
   beforeEach(() => {
+    resetRrankerDatabaseForTests();
+    resetUserLibrarySchemaForTests();
     vi.clearAllMocks();
     sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1 });
     sqlite.db.getAllAsync.mockResolvedValue([]);
@@ -54,5 +61,14 @@ describe('SqliteUserLibraryRepository', () => {
     sqlite.db.withExclusiveTransactionAsync.mockRejectedValueOnce(new Error('rollback'));
     const repository = new SqliteUserLibraryRepository();
     await expect(repository.restore([], 'replace')).rejects.toThrow('rollback');
+  });
+
+  it('opens the database once across concurrent repository instances', async () => {
+    const a = new SqliteUserLibraryRepository();
+    const b = new SqliteUserLibraryRepository();
+    await Promise.all([a.list(), b.list(), a.list()]);
+    expect(sqlite.openDatabaseAsync).toHaveBeenCalledTimes(1);
+    expect(sqlite.openDatabaseAsync).toHaveBeenCalledWith('rranker.db');
+    expect(sqlite.db.execAsync).toHaveBeenCalledTimes(1);
   });
 });
