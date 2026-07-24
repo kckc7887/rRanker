@@ -110,6 +110,7 @@ export function UploadDataSheet({
   const [stats, setStats] = useState<ScoreHubDxnetJobStats | null>(null);
   const [statsStatus, setStatsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const abortRef = useRef<ScoreHubAbortSignal>({ aborted: false });
+  const uploadInFlightRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistedSelectedIdsRef = useRef<string[]>([]);
   const wasVisibleRef = useRef(false);
@@ -143,11 +144,9 @@ export function UploadDataSheet({
     onPhaseChange?.(next);
   }, [onPhaseChange]);
 
-  // 关闭时中止进行中的上传/绑定，避免离开后再打开仍卡在 running。
+  // 关闭弹窗不中止上传，以便总览按钮小字继续显示进度；仅显式取消/卸载时 abort。
   useEffect(() => {
     if (!visible) {
-      abortRef.current.aborted = true;
-      setRunning(false);
       setDecodingQr(false);
       setPrefsReady(false);
       wasVisibleRef.current = false;
@@ -158,13 +157,18 @@ export function UploadDataSheet({
     if (!justOpened) return;
 
     let active = true;
-    abortRef.current = { aborted: false };
-    setRunning(false);
-    setPrefsReady(false);
-    setLastResult(null);
-    setBindQrText('');
+    const inFlight = uploadInFlightRef.current;
     setDecodingQr(false);
-    applyPhase({ kind: 'idle' });
+    setPrefsReady(false);
+    if (inFlight) {
+      setRunning(true);
+    } else {
+      abortRef.current = { aborted: false };
+      setRunning(false);
+      setLastResult(null);
+      setBindQrText('');
+      // 不强制 idle：保留上次进度/结果，总览小字可继续展示
+    }
     void Promise.all([
       uploadPrefsStore.load(),
       scoreHubAccountStore.load(),
@@ -172,7 +176,9 @@ export function UploadDataSheet({
       if (!active) return;
       setFriendCode(prefs.friendCode || hubAccount.friendCode);
       setHasCabinetBound(hubAccount.hasCabinetBound);
-      setAuthMode('friend_code');
+      if (!inFlight) {
+        setAuthMode(hubAccount.hasCabinetBound ? 'qr' : 'friend_code');
+      }
       const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
         .filter((target) => target.writable)
         .map((target) => target.account.id);
@@ -187,7 +193,7 @@ export function UploadDataSheet({
     return () => {
       active = false;
     };
-  }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds, applyPhase]);
+  }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds]);
 
   // 打开期间账号变化时，仅收敛勾选，不重置登录方式。
   useEffect(() => {
@@ -223,12 +229,11 @@ export function UploadDataSheet({
 
   useEffect(() => () => {
     abortRef.current.aborted = true;
+    uploadInFlightRef.current = false;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
   }, []);
 
   const close = () => {
-    abortRef.current.aborted = true;
-    setRunning(false);
     setDecodingQr(false);
     onClose();
   };
@@ -359,6 +364,7 @@ export function UploadDataSheet({
     }
 
     abortRef.current = { aborted: false };
+    uploadInFlightRef.current = true;
     setRunning(true);
     setLastResult(null);
     applyPhase({
@@ -366,7 +372,7 @@ export function UploadDataSheet({
       message: useScoreHubSession
         ? '正在使用已登录的 ScoreHub 会话…'
         : '正在创建好友申请任务…',
-      authMode: useScoreHubSession ? 'qr' : 'friend_code',
+      authMode: useScoreHubSession ? 'session' : 'friend_code',
     });
 
     try {
@@ -425,6 +431,7 @@ export function UploadDataSheet({
         applyPhase({ kind: 'error', message });
       }
     } finally {
+      uploadInFlightRef.current = false;
       setRunning(false);
     }
   };
@@ -445,6 +452,7 @@ export function UploadDataSheet({
     }
 
     abortRef.current = { aborted: false };
+    uploadInFlightRef.current = true;
     setRunning(true);
     setLastResult(null);
     applyPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
@@ -480,6 +488,7 @@ export function UploadDataSheet({
         showNotification({ title: '绑定失败', message, variant: 'error' });
       }
     } finally {
+      uploadInFlightRef.current = false;
       setRunning(false);
     }
   };

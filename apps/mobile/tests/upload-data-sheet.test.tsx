@@ -281,9 +281,81 @@ describe('当前查分器上传弹窗临时选项', () => {
     });
   });
 
-  it('关闭弹窗后重新打开会解除上传中状态并可切换到神秘二维码', async () => {
-    mockBindCabinet.mockImplementationOnce(() => new Promise(() => {
-      /* pending forever until aborted/unmounted */
+  it('关闭弹窗不中止上传，进度继续回调且重开仍为进行中', async () => {
+    let resolveBind: (() => void) | null = null;
+    mockBindCabinet.mockImplementationOnce(() => new Promise((resolve) => {
+      resolveBind = () => resolve({ friendCode: '123456789012345', alreadyBound: false });
+    }));
+    const onPhaseChange = jest.fn();
+    const onClose = jest.fn();
+    let sheetVisible = true;
+
+    const renderVisible = (visible: boolean) => (
+      <NotificationProvider>
+        <UploadDataSheet
+          visible={visible}
+          accounts={[local, water]}
+          sessionsByAccountId={{ [water.id]: waterSession }}
+          catalog={catalog}
+          onClose={onClose}
+          onPhaseChange={onPhaseChange}
+          temporarySelectedAccountIds={[water.id]}
+        />
+      </NotificationProvider>
+    );
+
+    const view = await render(renderVisible(true));
+
+    await waitFor(() => expect(view.getByLabelText('开始上传')).toBeTruthy());
+    await fireEvent.press(view.getByLabelText('使用神秘二维码上传'));
+    await fireEvent.changeText(view.getByLabelText('绑定用玩家二维码字符串'), 'SGWCMAIDBIND');
+    await fireEvent.press(view.getByLabelText('绑定玩家二维码'));
+    await waitFor(() => expect(mockBindCabinet).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(onPhaseChange).toHaveBeenCalledWith(expect.objectContaining({ kind: 'binding' }));
+    });
+
+    await fireEvent.press(view.getByLabelText('关闭上传'));
+    expect(onClose).toHaveBeenCalled();
+    // 关闭后最新阶段仍应是 binding，不得被清回 idle
+    expect(onPhaseChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'binding' }));
+
+    sheetVisible = false;
+    await act(async () => {
+      view.rerender(renderVisible(sheetVisible));
+    });
+
+    // 关闭期间仍应保持 binding，不应回 idle
+    expect(onPhaseChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'binding' }));
+
+    sheetVisible = true;
+    await act(async () => {
+      view.rerender(renderVisible(sheetVisible));
+    });
+
+    await waitFor(() => expect(view.getByLabelText('取消当前操作')).toBeTruthy());
+    expect(view.getByLabelText('绑定玩家二维码').props.accessibilityState?.disabled).toBe(true);
+    expect(view.getByText('正在绑定玩家二维码…')).toBeTruthy();
+
+    await act(async () => {
+      resolveBind?.();
+    });
+    await waitFor(() => {
+      expect(onPhaseChange).toHaveBeenCalledWith(expect.objectContaining({ kind: 'done' }));
+    });
+    await waitFor(() => {
+      expect(view.queryByLabelText('取消当前操作')).toBeNull();
+    });
+  });
+
+  it('卸载组件才会中止进行中的绑定', async () => {
+    mockBindCabinet.mockImplementationOnce(({ signal }: { signal: { aborted: boolean } }) => new Promise((_resolve, reject) => {
+      const timer = setInterval(() => {
+        if (signal.aborted) {
+          clearInterval(timer);
+          reject(new Error('aborted'));
+        }
+      }, 20);
     }));
 
     const first = await renderSheet([water.id]);
@@ -292,7 +364,6 @@ describe('当前查分器上传弹窗临时选项', () => {
     await fireEvent.changeText(first.getByLabelText('绑定用玩家二维码字符串'), 'SGWCMAIDBIND');
     await fireEvent.press(first.getByLabelText('绑定玩家二维码'));
     await waitFor(() => expect(mockBindCabinet).toHaveBeenCalled());
-    await fireEvent.press(first.getByLabelText('关闭上传'));
     await act(async () => {
       first.unmount();
     });
