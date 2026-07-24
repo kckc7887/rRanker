@@ -190,7 +190,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(screen.queryByLabelText('开始上传')).toBeNull();
   });
 
-  it('已绑定时默认好友码，神秘二维码为可选项', async () => {
+  it('已绑定时神秘二维码页用好友码上传且不再要粘贴二维码', async () => {
     mockLoadHubAccount.mockResolvedValue({
       friendCode: '111111111111111',
       hasCabinetBound: true,
@@ -198,14 +198,14 @@ describe('当前查分器上传弹窗临时选项', () => {
     const screen = await renderSheet([water.id]);
     expect(await screen.findByLabelText('舞萌好友码')).toBeTruthy();
     expect(screen.getByLabelText('玩家二维码已绑定')).toBeTruthy();
-    expect(screen.getByLabelText('score-hub 近一小时统计')).toBeTruthy();
-    expect(screen.queryByLabelText('绑定玩家二维码')).toBeNull();
     await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
-    expect(await screen.findByLabelText('神秘二维码字符串')).toBeTruthy();
-    expect(screen.getByText(/仅在不想走好友码时/)).toBeTruthy();
-    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
-    await fireEvent.press(screen.getByLabelText('开始上传'));
-    expect(await screen.findByText('缺少二维码')).toBeTruthy();
+    expect(await screen.findByText(/无需再粘贴二维码/)).toBeTruthy();
+    expect(screen.getByLabelText('舞萌好友码')).toBeTruthy();
+    expect(screen.queryByLabelText('神秘二维码字符串')).toBeNull();
+    expect(screen.queryByLabelText('绑定用玩家二维码字符串')).toBeNull();
+    expect(screen.queryByLabelText('绑定玩家二维码')).toBeNull();
+    expect(screen.getByLabelText('开始上传')).toBeTruthy();
+    expect(screen.getByLabelText('score-hub 近一小时统计')).toBeTruthy();
   });
 
   it('每次只临时勾选当前可写账号且不保存目标变化', async () => {
@@ -262,29 +262,6 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(await screen.findByText('缺少绑定二维码')).toBeTruthy();
   });
 
-  it('已绑定时从相册选择后把识别到的字符串填入登录框', async () => {
-    mockLoadHubAccount.mockResolvedValue({
-      friendCode: '111111111111111',
-      hasCabinetBound: true,
-    });
-    const imagePicker = jest.requireMock<typeof import('expo-image-picker')>('expo-image-picker');
-    const decode = jest.requireMock<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
-    (imagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValueOnce({
-      canceled: false,
-      assets: [{ uri: 'file:///qr.jpg', fileName: 'qr.jpg' }],
-    });
-    (decode.decodeMaimaiQrFromImageUri as jest.Mock).mockResolvedValueOnce('SGWCMAIDFROMIMAGE');
-
-    const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
-    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
-    await fireEvent.press(screen.getByLabelText('从相册选择二维码图片'));
-    await waitFor(() => {
-      expect(screen.getByLabelText('神秘二维码字符串').props.value).toBe('SGWCMAIDFROMIMAGE');
-    });
-    expect(await screen.findByText('已识别二维码')).toBeTruthy();
-  });
-
   it('未绑定时在神秘二维码页相册识码写入绑定框', async () => {
     const imagePicker = jest.requireMock<typeof import('expo-image-picker')>('expo-image-picker');
     const decode = jest.requireMock<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
@@ -301,22 +278,6 @@ describe('当前查分器上传弹窗临时选项', () => {
     await fireEvent.press(screen.getByLabelText('从相册选择绑定用二维码图片'));
     await waitFor(() => {
       expect(screen.getByLabelText('绑定用玩家二维码字符串').props.value).toBe('SGWCMAIDBIND');
-    });
-  });
-
-  it('已绑定时粘贴按钮可写入剪贴板中的二维码字符串', async () => {
-    mockLoadHubAccount.mockResolvedValue({
-      friendCode: '111111111111111',
-      hasCabinetBound: true,
-    });
-    const clipboard = jest.requireMock<typeof import('expo-clipboard')>('expo-clipboard');
-    (clipboard.getStringAsync as jest.Mock).mockResolvedValueOnce('SGWCMAIDFROMCLIP');
-    const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
-    await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
-    await fireEvent.press(screen.getByLabelText('粘贴二维码字符串'));
-    await waitFor(() => {
-      expect(screen.getByLabelText('神秘二维码字符串').props.value).toBe('SGWCMAIDFROMCLIP');
     });
   });
 
