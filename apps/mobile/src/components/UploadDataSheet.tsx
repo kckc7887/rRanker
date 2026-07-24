@@ -31,6 +31,7 @@ import {
   resolveUploadTargets,
   scoreHubSuccessHint,
   uploadMaimaiFromFriendCode,
+  uploadMaimaiWithScoreHubSession,
   type UploadPhase,
   type UploadResult,
 } from '@/services/upload-maimai-from-friend-code';
@@ -339,8 +340,13 @@ export function UploadDataSheet({
       });
       return;
     }
-    if (!/^\d{15}$/.test(friendCode.trim())) {
+    const useScoreHubSession = authMode === 'qr' && hasCabinetBound;
+    if (!useScoreHubSession && !/^\d{15}$/.test(friendCode.trim())) {
       showNotification({ title: '好友码无效', message: '请输入 15 位数字好友码。', variant: 'warning' });
+      return;
+    }
+    if (useScoreHubSession && friendCode.trim() && !/^\d{15}$/.test(friendCode.trim())) {
+      showNotification({ title: '好友码无效', message: '请输入 15 位数字好友码，或留空使用已登录会话。', variant: 'warning' });
       return;
     }
     if (selectedIds.filter((id) => targets.some((t) => t.writable && t.account.id === id)).length === 0) {
@@ -357,31 +363,44 @@ export function UploadDataSheet({
     setLastResult(null);
     applyPhase({
       kind: 'logging_in',
-      message: '正在创建好友申请任务…',
-      authMode: 'friend_code',
+      message: useScoreHubSession
+        ? '正在使用已登录的 ScoreHub 会话…'
+        : '正在创建好友申请任务…',
+      authMode: useScoreHubSession ? 'qr' : 'friend_code',
     });
 
     try {
-      const result = await uploadMaimaiFromFriendCode({
-        friendCode,
-        selectedAccountIds: selectedIds,
-        targets,
-        sessionsByAccountId,
-        catalog,
-        signal: abortRef.current,
-        onPhase: applyPhase,
-        onNeedFriendAccept: (botFriendCode) => {
-          showActionNotification({
-            title: '请同意好友申请',
-            message: botFriendCode
-              ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
-              : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
-            variant: 'info',
-            actions: [{ label: '知道了', tone: 'default' }],
-          });
-        },
-        onLxnsTokensRotated,
-      });
+      const result = useScoreHubSession
+        ? await uploadMaimaiWithScoreHubSession({
+          expectedFriendCode: friendCode.trim() || null,
+          selectedAccountIds: selectedIds,
+          targets,
+          sessionsByAccountId,
+          catalog,
+          signal: abortRef.current,
+          onPhase: applyPhase,
+          onLxnsTokensRotated,
+        })
+        : await uploadMaimaiFromFriendCode({
+          friendCode,
+          selectedAccountIds: selectedIds,
+          targets,
+          sessionsByAccountId,
+          catalog,
+          signal: abortRef.current,
+          onPhase: applyPhase,
+          onNeedFriendAccept: (botFriendCode) => {
+            showActionNotification({
+              title: '请同意好友申请',
+              message: botFriendCode
+                ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
+                : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
+              variant: 'info',
+              actions: [{ label: '知道了', tone: 'default' }],
+            });
+          },
+          onLxnsTokensRotated,
+        });
       setLastResult(result);
       try {
         await onFinished?.(result);
@@ -441,13 +460,13 @@ export function UploadDataSheet({
       setAuthMode('qr');
       applyPhase({
         kind: 'done',
-        message: '玩家二维码已绑定。之后在此页用好友码登录 ScoreHub 即可上传，无需再粘贴二维码。',
+        message: '玩家二维码已绑定。之后在此页将复用登录会话拉分，不会再次发起好友申请。',
         uploaded: 0,
         skipped: 0,
       });
       showNotification({
         title: '绑定成功',
-        message: '已绑定。请用好友码登录 ScoreHub 上传，无需再粘贴二维码。',
+        message: '已绑定。本页将使用已登录会话拉分，无需再走好友申请。',
         variant: 'success',
       });
     } catch (error) {
@@ -567,24 +586,23 @@ export function UploadDataSheet({
           ) : hasCabinetBound ? (
             <>
               <Text accessibilityLabel="玩家二维码已绑定" style={[styles.hint, { color: theme.success }]}>
-                玩家二维码已绑定，无需再粘贴二维码。
+                玩家二维码已绑定。将复用已登录的 ScoreHub 会话拉分，不会再次发起好友申请。
               </Text>
-              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码</Text>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>当前会话好友码</Text>
               <TextInput
                 accessibilityLabel="舞萌好友码"
                 value={friendCode}
                 onChangeText={onFriendCodeChange}
                 keyboardType="number-pad"
                 maxLength={15}
-                placeholder="15 位数字"
+                placeholder="已登录会话的好友码"
                 placeholderTextColor={theme.textMuted}
                 editable={!busy && prefsReady}
                 style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
               />
               <Text style={[styles.hint, { color: theme.textMuted }]}>
-                用好友码登录 ScoreHub 后取成绩并上传到下方查分器。
+                若会话失效，请先到「好友码」重新上传一次完成登录，再回到本页拉分。
               </Text>
-              <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
             </>
           ) : (
             <>

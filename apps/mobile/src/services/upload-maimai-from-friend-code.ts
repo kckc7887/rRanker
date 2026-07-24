@@ -523,6 +523,70 @@ export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
   });
 }
 
+/**
+ * 已绑定机台后：复用本地 ScoreHub 会话直接拉分写出，
+ * 不创建 login-requests / 好友申请。
+ */
+export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput & {
+  expectedFriendCode?: string | null;
+}): Promise<UploadResult> {
+  const selected = resolveSelectedTargets(input);
+  input.onPhase({
+    kind: 'logging_in',
+    message: '正在使用已登录的 ScoreHub 会话…',
+    authMode: 'qr',
+  });
+
+  const cached = await scoreHubAccountStore.load();
+  if (!cached.token) {
+    throw new ScoreHubError(
+      '尚未登录 ScoreHub。请先到「好友码」完成一次上传登录，再回来拉取成绩。',
+    );
+  }
+
+  const expected = input.expectedFriendCode?.trim() ?? '';
+  if (expected && cached.friendCode && expected !== cached.friendCode) {
+    throw new ScoreHubError(
+      '好友码与当前登录会话不一致，请到「好友码」重新登录后再试。',
+    );
+  }
+
+  let friendCode = cached.friendCode || expected;
+  try {
+    const me = await fetchMe(cached.token, input.signal);
+    friendCode = me.friendCode ?? friendCode;
+    await scoreHubAccountStore.patch({
+      friendCode,
+      hasCabinetBound: me.hasCabinetUserId || cached.hasCabinetBound,
+      token: cached.token,
+    });
+  } catch (error) {
+    const status = error instanceof ScoreHubError ? error.status : undefined;
+    if (status === 401 || status === 403) {
+      throw new ScoreHubError(
+        '登录已失效。请先到「好友码」重新上传一次以登录 ScoreHub。',
+        status,
+      );
+    }
+    // /me 短暂失败时仍尝试用缓存 token 拉分
+  }
+
+  if (!friendCode) {
+    throw new ScoreHubError(
+      '本地会话缺少好友码。请先到「好友码」完成一次上传登录。',
+    );
+  }
+
+  return uploadMaimaiAfterScoreHubToken({
+    ...input,
+    selected,
+    token: cached.token,
+    friendshipJobId: null,
+    playerIdForLocal: friendCode,
+    persistFriendCode: friendCode,
+  });
+}
+
 /** 独立绑定玩家二维码：仅用本地 ScoreHub 会话 PUT /me/cabinet，不走好友码同步登录。 */
 export async function bindScoreHubCabinetByQr(input: {
   qrCode: string;
