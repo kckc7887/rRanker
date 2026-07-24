@@ -11,7 +11,7 @@ import {
 } from '@/domain/user-library';
 import type { RestoreMode, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
-import { getRrankerDatabase } from '@/storage/rranker-database';
+import { getRrankerDatabase, runSerializedSchemaInit } from '@/storage/rranker-database';
 
 const USER_LIBRARY_SCHEMA_VERSION = 4;
 type DatabaseAccess = Pick<SQLiteDatabase, 'getAllAsync' | 'getFirstAsync' | 'runAsync'>;
@@ -32,6 +32,14 @@ interface ItemRow {
 interface TagRow { item_key: string; display_name: string }
 
 let schemaReady: Promise<void> | null = null;
+/** 曲库写操作串行，避免 withTransactionAsync 与并发写交叉。 */
+let writeChain: Promise<void> = Promise.resolve();
+
+function withLibraryWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(task, task);
+  writeChain = run.then(() => undefined, () => undefined);
+  return run;
+}
 
 async function writeTagPresets(db: DatabaseAccess, values: readonly string[]): Promise<void> {
   await db.runAsync('DELETE FROM user_library_tag_presets');
@@ -54,7 +62,7 @@ async function ensureGameIdColumn(db: DatabaseAccess): Promise<void> {
 
 async function ensureUserLibrarySchema(): Promise<void> {
   if (!schemaReady) {
-    schemaReady = initializeUserLibrarySchema().catch((error) => {
+    schemaReady = runSerializedSchemaInit(initializeUserLibrarySchema).catch((error) => {
       schemaReady = null;
       throw error;
     });
@@ -99,10 +107,11 @@ async function initializeUserLibrarySchema(): Promise<void> {
     // 按游戏隔离后不再迁移旧收藏：升级时直接清空，避免跨游戏混用与错误归属。
     await ensureGameIdColumn(db);
     if (row.schema_version === 1) await writeTagPresets(db, DEFAULT_TAG_PRESETS);
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      await txn.runAsync('DELETE FROM user_library_item_tags');
-      await txn.runAsync('DELETE FROM user_library_items');
-      await txn.runAsync('DELETE FROM user_library_tags');
+    // 使用同连接事务，避免 withExclusiveTransactionAsync 另开连接锁死单例连接。
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('DELETE FROM user_library_item_tags');
+      await db.runAsync('DELETE FROM user_library_items');
+      await db.runAsync('DELETE FROM user_library_tags');
     });
     await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
   } else if (row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {
@@ -115,6 +124,7 @@ async function initializeUserLibrarySchema(): Promise<void> {
 /** 测试用：重置模块级 schema 初始化锁。 */
 export function resetUserLibrarySchemaForTests(): void {
   schemaReady = null;
+  writeChain = Promise.resolve();
 }
 
 export class SqliteUserLibraryRepository implements UserLibraryRepository {
@@ -140,42 +150,50 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
   async setTagPresets(values: readonly string[]): Promise<string[]> {
     await this.initialize();
     const normalized = normalizeTags(values);
-    const db = await getRrankerDatabase();
-    await db.withExclusiveTransactionAsync((txn) => writeTagPresets(txn, normalized));
+    await withLibraryWrite(async () => {
+      const db = await getRrankerDatabase();
+      await db.withTransactionAsync(() => writeTagPresets(db, normalized));
+    });
     return normalized;
   }
 
   async update(transform: (items: UserLibraryItem[]) => UserLibraryItem[]): Promise<UserLibraryItem[]> {
     await this.initialize();
-    const db = await getRrankerDatabase();
-    let result: UserLibraryItem[] = [];
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      result = transform(await this.readFrom(txn)).map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
-      await this.writeAll(txn, result);
+    return withLibraryWrite(async () => {
+      const db = await getRrankerDatabase();
+      let result: UserLibraryItem[] = [];
+      await db.withTransactionAsync(async () => {
+        result = transform(await this.readFrom(db)).map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
+        await this.writeAll(db, result);
+      });
+      return result;
     });
-    return result;
   }
 
   async restore(items: UserLibraryItem[], mode: RestoreMode): Promise<UserLibraryItem[]> {
     await this.initialize();
-    const db = await getRrankerDatabase();
-    let result: UserLibraryItem[] = [];
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      const imported = items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
-      result = mode === 'merge' ? mergeLibraryItems(await this.readFrom(txn), imported) : mergeLibraryItems([], imported);
-      await this.writeAll(txn, result);
+    return withLibraryWrite(async () => {
+      const db = await getRrankerDatabase();
+      let result: UserLibraryItem[] = [];
+      await db.withTransactionAsync(async () => {
+        const imported = items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
+        result = mode === 'merge' ? mergeLibraryItems(await this.readFrom(db), imported) : mergeLibraryItems([], imported);
+        await this.writeAll(db, result);
+      });
+      return result;
     });
-    return result;
   }
 
   async clear(): Promise<void> {
     await this.initialize();
-    const db = await getRrankerDatabase();
-    await db.withExclusiveTransactionAsync(async (txn) => {
-      await txn.runAsync('DELETE FROM user_library_item_tags');
-      await txn.runAsync('DELETE FROM user_library_items');
-      await txn.runAsync('DELETE FROM user_library_tags');
-      await writeTagPresets(txn, DEFAULT_TAG_PRESETS);
+    await withLibraryWrite(async () => {
+      const db = await getRrankerDatabase();
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM user_library_item_tags');
+        await db.runAsync('DELETE FROM user_library_items');
+        await db.runAsync('DELETE FROM user_library_tags');
+        await writeTagPresets(db, DEFAULT_TAG_PRESETS);
+      });
     });
   }
 

@@ -3,7 +3,7 @@ import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import type { ResourceRepository } from '@/repositories/resource-repository';
-import { getRrankerDatabase } from '@/storage/rranker-database';
+import { getRrankerDatabase, runSerializedSchemaInit } from '@/storage/rranker-database';
 
 const SNAPSHOT_SCHEMA_VERSION = 5;
 const CATALOG_SCHEMA_VERSION = 1;
@@ -16,9 +16,11 @@ let schemaReady: Promise<void> | null = null;
 
 async function ensureSnapshotSchema(): Promise<void> {
   if (!schemaReady) {
-    schemaReady = (async () => {
+    schemaReady = runSerializedSchemaInit(async () => {
       const db = await getRrankerDatabase();
-      await db.execAsync(`PRAGMA journal_mode = WAL;
+      // 不切换 journal_mode：在单例连接上改 WAL 易与 withExclusiveTransactionAsync
+      // 另开的连接互锁，Android 上会卡住原生队列并拖垮同步轮询。
+      await db.execAsync(`
       CREATE TABLE IF NOT EXISTS score_snapshots (
         id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL,
         updated_at TEXT NOT NULL, payload TEXT NOT NULL
@@ -35,7 +37,7 @@ async function ensureSnapshotSchema(): Promise<void> {
         account_id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
         updated_at TEXT NOT NULL, payload TEXT NOT NULL
       );`);
-    })().catch((error) => {
+    }).catch((error) => {
       schemaReady = null;
       throw error;
     });
