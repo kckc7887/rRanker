@@ -8,6 +8,24 @@ const LOGIN_TIMEOUT_MS = 8 * 60_000;
 const SCORE_TIMEOUT_MS = 20 * 60_000;
 const VERIFY_EVERY_MS = 20_000;
 const REQUEST_TIMEOUT_MS = 60_000;
+const QR_LOGIN_POST_TIMEOUT_MS = 150_000;
+const QR_POLL_MS = 1_000;
+const QR_LOGIN_TIMEOUT_MS = 5 * 60_000;
+
+export const QR_LOGIN_STATUS_LABEL: Record<string, string> = {
+  pending: '正在准备登录…',
+  adding_rival: '正在添加好友…',
+  waiting_snapshot: '确认好友身份中（通常需要 1 分钟）…',
+};
+
+export type QrLoginCredential =
+  | { kind: 'text'; qrCode: string }
+  | { kind: 'image'; imageUri: string; mimeType?: string; fileName?: string };
+
+export type QrLoginTokenResult = {
+  token: string;
+  friendCode: string | null;
+};
 
 export type ScoreHubSyncScore = {
   musicId: string;
@@ -98,13 +116,15 @@ export function isRetryableScoreHubError(error: unknown): boolean {
   return false;
 }
 
-async function requestJson(
+async function requestRaw(
   method: string,
   path: string,
   options?: {
-    body?: unknown;
+    jsonBody?: unknown;
+    formData?: FormData;
     token?: string;
     signal?: ScoreHubAbortSignal;
+    timeoutMs?: number;
   },
 ): Promise<{ status: number; body: unknown }> {
   if (options?.signal?.aborted) {
@@ -114,7 +134,7 @@ async function requestJson(
     Accept: 'application/json',
     'User-Agent': 'rRanker-mobile/1.0',
   };
-  if (options?.body !== undefined) {
+  if (options?.jsonBody !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
   if (options?.token) {
@@ -122,10 +142,11 @@ async function requestJson(
   }
   const controller = new AbortController();
   let timedOut = false;
+  const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
   const abortWatch = options?.signal ? setInterval(() => {
     if (options.signal?.aborted) controller.abort();
   }, 100) : null;
@@ -133,7 +154,11 @@ async function requestJson(
     const response = await expoFetch(`${SCORE_HUB_API_BASE}${path}`, {
       method,
       headers,
-      body: options?.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options?.formData !== undefined
+        ? options.formData
+        : options?.jsonBody === undefined
+          ? undefined
+          : JSON.stringify(options.jsonBody),
       signal: controller.signal,
     });
     const text = await response.text();
@@ -161,6 +186,80 @@ async function requestJson(
     clearTimeout(timeout);
     if (abortWatch !== null) clearInterval(abortWatch);
   }
+}
+
+async function requestJson(
+  method: string,
+  path: string,
+  options?: {
+    body?: unknown;
+    token?: string;
+    signal?: ScoreHubAbortSignal;
+    timeoutMs?: number;
+  },
+): Promise<{ status: number; body: unknown }> {
+  return requestRaw(method, path, {
+    jsonBody: options?.body,
+    token: options?.token,
+    signal: options?.signal,
+    timeoutMs: options?.timeoutMs,
+  });
+}
+
+function friendCodeFromUser(user: unknown): string | null {
+  if (!user || typeof user !== 'object') return null;
+  const friendCode = (user as { friendCode?: unknown }).friendCode;
+  return typeof friendCode === 'string' && friendCode.trim() ? friendCode.trim() : null;
+}
+
+function qrLoginErrorMessage(body: unknown, status: number): string {
+  if (body && typeof body === 'object') {
+    const record = body as Record<string, unknown>;
+    const message = record.message;
+    if (typeof message === 'object' && message && typeof (message as { message?: unknown }).message === 'string') {
+      return String((message as { message: string }).message);
+    }
+    if (typeof message === 'string' && message && message !== 'Bad Request') {
+      return message;
+    }
+    if (typeof record.error === 'string' && record.error) {
+      return record.error;
+    }
+  }
+  return `神秘二维码登录失败（HTTP ${status}）`;
+}
+
+export function isQrExpiredErrorBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const message = (body as { message?: unknown }).message;
+  if (typeof message === 'object' && message && (message as { code?: unknown }).code === 'qr_expired') {
+    return true;
+  }
+  return (body as { code?: unknown }).code === 'qr_expired';
+}
+
+export type QrLoginInitResult =
+  | { kind: 'fast'; token: string; friendCode: string | null }
+  | { kind: 'async'; attemptId: string };
+
+export function parseQrLoginInitBody(status: number, body: unknown): QrLoginInitResult {
+  if ((status === 200 || status === 201) && body && typeof body === 'object') {
+    const record = body as Record<string, unknown>;
+    if (record.kind === 'fast' && typeof record.token === 'string' && record.token) {
+      return { kind: 'fast', token: record.token, friendCode: friendCodeFromUser(record.user) };
+    }
+    if (record.kind === 'async' && typeof record.attemptId === 'string' && record.attemptId) {
+      return { kind: 'async', attemptId: record.attemptId };
+    }
+    // 兼容旧版直接返回 token
+    if (typeof record.token === 'string' && record.token) {
+      return { kind: 'fast', token: record.token, friendCode: friendCodeFromUser(record.user) };
+    }
+  }
+  if (isQrExpiredErrorBody(body)) {
+    throw new ScoreHubError('神秘二维码已过期，请刷新机台二维码后重试', status);
+  }
+  throw new ScoreHubError(qrLoginErrorMessage(body, status), status);
 }
 
 function sleep(ms: number, signal?: ScoreHubAbortSignal): Promise<void> {
@@ -213,6 +312,121 @@ export async function createFriendLoginJob(
 
 export async function verifyLoginJob(jobId: string, signal?: ScoreHubAbortSignal): Promise<void> {
   await requestJson('POST', `/auth/login-requests/${encodeURIComponent(jobId)}/verify`, { signal });
+}
+
+/** 机台神秘二维码登录：提交文本或图片，返回快路径 token 或慢路径 attemptId。 */
+export async function loginByQr(
+  credential: QrLoginCredential,
+  signal?: ScoreHubAbortSignal,
+): Promise<QrLoginInitResult> {
+  if (credential.kind === 'text') {
+    const qrCode = credential.qrCode.trim();
+    if (!qrCode) {
+      throw new ScoreHubError('请粘贴神秘二维码字符串');
+    }
+    const { status, body } = await requestJson('POST', '/auth/qr-login', {
+      body: { qrCode },
+      signal,
+      timeoutMs: QR_LOGIN_POST_TIMEOUT_MS,
+    });
+    return parseQrLoginInitBody(status, body);
+  }
+
+  const formData = new FormData();
+  const fileName = credential.fileName?.trim() || 'qr.jpg';
+  const mimeType = credential.mimeType?.trim() || 'image/jpeg';
+  formData.append('image', {
+    uri: credential.imageUri,
+    name: fileName,
+    type: mimeType,
+  } as unknown as Blob);
+
+  const { status, body } = await requestRaw('POST', '/auth/qr-login', {
+    formData,
+    signal,
+    timeoutMs: QR_LOGIN_POST_TIMEOUT_MS,
+  });
+  return parseQrLoginInitBody(status, body);
+}
+
+export async function pollQrLoginUntilToken(input: {
+  attemptId: string;
+  signal?: ScoreHubAbortSignal;
+  onProgress?: (info: { status: string; message: string }) => void;
+}): Promise<QrLoginTokenResult> {
+  const deadline = Date.now() + QR_LOGIN_TIMEOUT_MS;
+  let consecutiveFailures = 0;
+
+  while (Date.now() < deadline) {
+    if (input.signal?.aborted) throw new ScoreHubError('已取消');
+    let status: number;
+    let body: unknown;
+    try {
+      ({ status, body } = await requestJson(
+        'GET',
+        `/auth/qr-login/${encodeURIComponent(input.attemptId)}`,
+        { signal: input.signal },
+      ));
+      consecutiveFailures = 0;
+    } catch (error) {
+      if (!isRetryableScoreHubError(error)) throw error;
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= 5) {
+        throw error instanceof ScoreHubError
+          ? error
+          : new ScoreHubError('神秘二维码登录网络异常，请稍后重试');
+      }
+      await sleep(QR_POLL_MS * consecutiveFailures, input.signal);
+      continue;
+    }
+
+    if (status !== 200 || !body || typeof body !== 'object') {
+      await sleep(QR_POLL_MS, input.signal);
+      continue;
+    }
+
+    const record = body as Record<string, unknown>;
+    const attemptStatus = String(record.status ?? 'pending');
+    const label = QR_LOGIN_STATUS_LABEL[attemptStatus] ?? attemptStatus;
+    input.onProgress?.({ status: attemptStatus, message: label });
+
+    if (attemptStatus === 'matched' && typeof record.token === 'string' && record.token) {
+      return {
+        token: record.token,
+        friendCode: friendCodeFromUser(record.user)
+          ?? (typeof record.resolvedFriendCode === 'string' ? record.resolvedFriendCode : null),
+      };
+    }
+    if (attemptStatus === 'failed') {
+      throw new ScoreHubError(
+        typeof record.error === 'string' && record.error
+          ? record.error
+          : '神秘二维码登录失败，请改用好友码上传',
+      );
+    }
+
+    await sleep(QR_POLL_MS, input.signal);
+  }
+  throw new ScoreHubError('神秘二维码登录超时，请刷新二维码后重试或改用好友码');
+}
+
+/** 完整二维码登录：提交凭证并在需要时轮询慢路径，最终返回 token。 */
+export async function loginByQrUntilToken(input: {
+  credential: QrLoginCredential;
+  signal?: ScoreHubAbortSignal;
+  onProgress?: (info: { status: string; message: string }) => void;
+}): Promise<QrLoginTokenResult> {
+  input.onProgress?.({ status: 'pending', message: '正在提交神秘二维码…' });
+  const init = await loginByQr(input.credential, input.signal);
+  if (init.kind === 'fast') {
+    return { token: init.token, friendCode: init.friendCode };
+  }
+  input.onProgress?.({ status: 'pending', message: QR_LOGIN_STATUS_LABEL.pending });
+  return pollQrLoginUntilToken({
+    attemptId: init.attemptId,
+    signal: input.signal,
+    onProgress: input.onProgress,
+  });
 }
 
 export async function pollLoginUntilToken(input: {

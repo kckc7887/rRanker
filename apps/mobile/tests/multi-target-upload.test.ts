@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   pollLoginUntilToken: vi.fn(),
   pollUpdateScoreUntilDone: vi.fn(),
   fetchLatestSync: vi.fn(),
+  loginByQrUntilToken: vi.fn(),
   uploadDivingFish: vi.fn(),
   saveSnapshot: vi.fn(),
 }));
@@ -24,6 +25,7 @@ vi.mock('@/services/score-hub-client', async () => {
     pollLoginUntilToken: mocks.pollLoginUntilToken,
     pollUpdateScoreUntilDone: mocks.pollUpdateScoreUntilDone,
     fetchLatestSync: mocks.fetchLatestSync,
+    loginByQrUntilToken: mocks.loginByQrUntilToken,
   };
 });
 vi.mock('@/services/diving-fish-upload', () => ({
@@ -37,7 +39,11 @@ vi.mock('@/storage/sqlite-snapshot-repository', () => ({
 
 // Must be imported after the hoisted workflow mocks.
 // eslint-disable-next-line import/first
-import { resolveUploadTargets, uploadMaimaiFromFriendCode } from '@/services/upload-maimai-from-friend-code';
+import {
+  resolveUploadTargets,
+  uploadMaimaiFromFriendCode,
+  uploadMaimaiFromQrLogin,
+} from '@/services/upload-maimai-from-friend-code';
 
 const catalog: CatalogSnapshot = {
   currentVersion: { id: 2, title: '当前版本' },
@@ -101,5 +107,36 @@ describe('好友码多目标写入', () => {
       expect.objectContaining({ account: water, status: 'failed', errorMessage: '水鱼暂时不可用' }),
     ]);
     expect(phases.at(-1)).toBe('done');
+  });
+
+  it('二维码登录拿到 token 后复用同一写出链路且不传 friendshipJobId', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    mocks.loginByQrUntilToken.mockResolvedValue({
+      token: 'qr-token',
+      friendCode: '987654321098765',
+    });
+    const phases: Array<{ kind: string; authMode?: string }> = [];
+    const result = await uploadMaimaiFromQrLogin({
+      credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      catalog,
+      signal: { aborted: false },
+      onPhase: (phase) => {
+        phases.push({
+          kind: phase.kind,
+          authMode: phase.kind === 'logging_in' ? phase.authMode : undefined,
+        });
+      },
+    });
+
+    expect(mocks.loginByQrUntilToken).toHaveBeenCalledTimes(1);
+    expect(mocks.createUpdateScoreJob).toHaveBeenCalledWith('qr-token', null, expect.anything());
+    expect(mocks.saveSnapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.saveSnapshot.mock.calls[0]?.[1]?.player?.id).toBe('987654321098765');
+    expect(result.uploaded).toBe(1);
+    expect(phases.some((phase) => phase.kind === 'logging_in' && phase.authMode === 'qr')).toBe(true);
+    expect(phases.at(-1)?.kind).toBe('done');
   });
 });
