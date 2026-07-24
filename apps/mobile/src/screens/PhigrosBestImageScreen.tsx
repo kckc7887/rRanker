@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
   filterChip: { minHeight: 28, minWidth: 36, paddingHorizontal: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
   filterChipText: { fontSize: 12, fontWeight: '800' },
-  rankChipWrap: { borderWidth: 2, borderColor: 'transparent', borderRadius: 8, padding: 2 },
+  rankChipWrap: { borderWidth: 2, borderColor: 'transparent', borderRadius: 10, padding: 2 },
   styleList: { overflow: 'hidden', borderRadius: 16 },
   overflowStyleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
   overflowCopy: { flex: 1, minWidth: 0 },

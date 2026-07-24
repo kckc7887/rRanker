@@ -274,7 +274,6 @@ export function LevelChip({ level, active, onPress }: {
 function RankChip({ value, active, onPress }: {
   value: PhigrosRankFilter; active: boolean; onPress: () => void;
 }) {
-  // 成绩卡上 FC 体现为 V 标签的 FC 配色，文案仍是 V
   const badgeRate = value === 'fc' ? 'v' : value;
   const badgeFc = value === 'fc';
   return (
@@ -284,9 +283,7 @@ function RankChip({ value, active, onPress }: {
       accessibilityLabel={`筛选评价 ${phigrosRankFilterLabel(value)}`}
       onPress={onPress}
     >
-      <View style={styles.rankChip}>
-        <PhigrosRateBadge rate={badgeRate} fc={badgeFc} />
-      </View>
+      <PhigrosRateBadge rate={badgeRate} fc={badgeFc} />
     </FilterChipFrame>
   );
 }
@@ -301,9 +298,7 @@ function XingChip({ value, active, onPress }: {
       accessibilityLabel={`XING 筛选 ${phigrosXingLabel(value)}`}
       onPress={onPress}
     >
-      <View style={styles.rankChip}>
-        <PhigrosXingBadge kind={value} />
-      </View>
+      <PhigrosXingBadge kind={value} />
     </FilterChipFrame>
   );
 }
@@ -344,7 +339,7 @@ const styles = StyleSheet.create({
   neutralChip: { minHeight: 30, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
   neutralChipText: { color: '#374151', fontSize: 12 },
   neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
-  levelChip: { minHeight: 30, borderRadius: 8, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  levelChip: { minHeight: 30, borderRadius: 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   levelChipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
   rankChip: { minHeight: 30, borderRadius: 8, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
