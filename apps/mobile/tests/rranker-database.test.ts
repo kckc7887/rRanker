@@ -4,9 +4,9 @@ const sqlite = vi.hoisted(() => {
     getFirstAsync: vi.fn(),
     getAllAsync: vi.fn(),
     runAsync: vi.fn().mockResolvedValue(undefined),
-    withExclusiveTransactionAsync: vi.fn(),
+    withTransactionAsync: vi.fn(),
   };
-  db.withExclusiveTransactionAsync.mockImplementation(async (task: (txn: typeof db) => Promise<void>) => task(db));
+  db.withTransactionAsync.mockImplementation(async (task: () => Promise<void>) => task());
   return { db, openDatabaseAsync: vi.fn(async () => db) };
 });
 
@@ -34,9 +34,7 @@ describe('shared rranker.db access', () => {
     sqlite.db.getFirstAsync.mockResolvedValue(null);
     sqlite.db.getAllAsync.mockResolvedValue([]);
     sqlite.db.runAsync.mockResolvedValue(undefined);
-    sqlite.db.withExclusiveTransactionAsync.mockImplementation(
-      async (task: (txn: typeof sqlite.db) => Promise<void>) => task(sqlite.db),
-    );
+    sqlite.db.withTransactionAsync.mockImplementation(async (task: () => Promise<void>) => task());
   });
 
   it('shares one open across snapshot and user-library first reads', async () => {
@@ -51,5 +49,8 @@ describe('shared rranker.db access', () => {
     expect(sqlite.db.execAsync).toHaveBeenCalledTimes(2);
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('account_score_snapshots'));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('user_library_meta'));
+    expect(sqlite.db.execAsync.mock.calls.some(
+      ([sql]: [string]) => sql.includes('journal_mode'),
+    )).toBe(false);
   });
 });
