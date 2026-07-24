@@ -31,7 +31,6 @@ import {
   resolveUploadTargets,
   scoreHubSuccessHint,
   uploadMaimaiFromFriendCode,
-  uploadMaimaiFromQrLogin,
   type UploadPhase,
   type UploadResult,
 } from '@/services/upload-maimai-from-friend-code';
@@ -99,7 +98,6 @@ export function UploadDataSheet({
   const { showActionNotification, showNotification } = useNotification();
   const [authMode, setAuthMode] = useState<UploadAuthMode>('friend_code');
   const [friendCode, setFriendCode] = useState('');
-  const [qrText, setQrText] = useState('');
   const [bindQrText, setBindQrText] = useState('');
   const [hasCabinetBound, setHasCabinetBound] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -163,7 +161,6 @@ export function UploadDataSheet({
     setRunning(false);
     setPrefsReady(false);
     setLastResult(null);
-    setQrText('');
     setBindQrText('');
     setDecodingQr(false);
     applyPhase({ kind: 'idle' });
@@ -203,7 +200,7 @@ export function UploadDataSheet({
   }, [visible, running, accounts, sessionsByAccountId]);
 
   useEffect(() => {
-    if (!visible || running || authMode !== 'friend_code') return;
+    if (!visible || running || (authMode !== 'friend_code' && !(authMode === 'qr' && hasCabinetBound))) return;
     let active = true;
     setStatsStatus('loading');
     setStats(null);
@@ -221,7 +218,7 @@ export function UploadDataSheet({
     return () => {
       active = false;
     };
-  }, [visible, running, authMode]);
+  }, [visible, running, authMode, hasCabinetBound]);
 
   useEffect(() => () => {
     abortRef.current.aborted = true;
@@ -267,14 +264,13 @@ export function UploadDataSheet({
     if (mode === 'qr') setLastResult(null);
   };
 
-  const applyQrText = (raw: string, target: 'login' | 'bind' = authMode === 'qr' && !hasCabinetBound ? 'bind' : 'login') => {
+  const applyQrText = (raw: string) => {
     const extracted = extractMaimaiQrPayload(raw) ?? raw.trim();
-    if (target === 'bind') setBindQrText(extracted);
-    else setQrText(extracted);
+    setBindQrText(extracted);
   };
 
-  const pickQrImage = async (target: 'login' | 'bind' = authMode === 'qr' && !hasCabinetBound ? 'bind' : 'login') => {
-    if (running || decodingQr) return;
+  const pickQrImage = async () => {
+    if (running || decodingQr || hasCabinetBound || authMode !== 'qr') return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       showNotification({
@@ -299,12 +295,10 @@ export function UploadDataSheet({
     setDecodingQr(true);
     try {
       const payload = await decodeMaimaiQrFromImageUri(asset.uri);
-      applyQrText(payload, target);
+      applyQrText(payload);
       showNotification({
         title: '已识别二维码',
-        message: target === 'bind'
-          ? '绑定用字符串已填入，可点「绑定二维码」。'
-          : '字符串已填入输入框，可直接开始上传。',
+        message: '绑定用字符串已填入，可点「绑定二维码」。',
         variant: 'success',
       });
     } catch (error) {
@@ -317,8 +311,8 @@ export function UploadDataSheet({
     }
   };
 
-  const pasteQrText = async (target: 'login' | 'bind' = authMode === 'qr' && !hasCabinetBound ? 'bind' : 'login') => {
-    if (running || decodingQr) return;
+  const pasteQrText = async () => {
+    if (running || decodingQr || hasCabinetBound || authMode !== 'qr') return;
     const text = (await Clipboard.getStringAsync()).trim();
     if (!text) {
       showNotification({
@@ -328,7 +322,7 @@ export function UploadDataSheet({
       });
       return;
     }
-    applyQrText(text, target);
+    applyQrText(text);
   };
 
   const startUpload = async () => {
@@ -343,19 +337,10 @@ export function UploadDataSheet({
         message: QR_REQUIRES_BIND_MESSAGE,
         variant: 'warning',
       });
-      setAuthMode('friend_code');
       return;
     }
-    if (authMode === 'friend_code' && !/^\d{15}$/.test(friendCode.trim())) {
+    if (!/^\d{15}$/.test(friendCode.trim())) {
       showNotification({ title: '好友码无效', message: '请输入 15 位数字好友码。', variant: 'warning' });
-      return;
-    }
-    if (authMode === 'qr' && !qrText.trim()) {
-      showNotification({
-        title: '缺少二维码',
-        message: '请粘贴神秘二维码字符串，或从相册选择图片识别。',
-        variant: 'warning',
-      });
       return;
     }
     if (selectedIds.filter((id) => targets.some((t) => t.writable && t.account.id === id)).length === 0) {
@@ -372,42 +357,31 @@ export function UploadDataSheet({
     setLastResult(null);
     applyPhase({
       kind: 'logging_in',
-      message: authMode === 'qr' ? '正在提交神秘二维码…' : '正在创建好友申请任务…',
-      authMode,
+      message: '正在创建好友申请任务…',
+      authMode: 'friend_code',
     });
 
     try {
-      const result = authMode === 'qr'
-        ? await uploadMaimaiFromQrLogin({
-          credential: { kind: 'text', qrCode: qrText.trim() },
-          selectedAccountIds: selectedIds,
-          targets,
-          sessionsByAccountId,
-          catalog,
-          signal: abortRef.current,
-          onPhase: applyPhase,
-          onLxnsTokensRotated,
-        })
-        : await uploadMaimaiFromFriendCode({
-          friendCode,
-          selectedAccountIds: selectedIds,
-          targets,
-          sessionsByAccountId,
-          catalog,
-          signal: abortRef.current,
-          onPhase: applyPhase,
-          onNeedFriendAccept: (botFriendCode) => {
-            showActionNotification({
-              title: '请同意好友申请',
-              message: botFriendCode
-                ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
-                : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
-              variant: 'info',
-              actions: [{ label: '知道了', tone: 'default' }],
-            });
-          },
-          onLxnsTokensRotated,
-        });
+      const result = await uploadMaimaiFromFriendCode({
+        friendCode,
+        selectedAccountIds: selectedIds,
+        targets,
+        sessionsByAccountId,
+        catalog,
+        signal: abortRef.current,
+        onPhase: applyPhase,
+        onNeedFriendAccept: (botFriendCode) => {
+          showActionNotification({
+            title: '请同意好友申请',
+            message: botFriendCode
+              ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
+              : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
+            variant: 'info',
+            actions: [{ label: '知道了', tone: 'default' }],
+          });
+        },
+        onLxnsTokensRotated,
+      });
       setLastResult(result);
       try {
         await onFinished?.(result);
@@ -464,16 +438,16 @@ export function UploadDataSheet({
       });
       setHasCabinetBound(true);
       setBindQrText('');
-      setAuthMode('friend_code');
+      setAuthMode('qr');
       applyPhase({
         kind: 'done',
-        message: '玩家二维码已绑定。日常请继续用好友码上传；仅在需要时再切到神秘二维码。',
+        message: '玩家二维码已绑定。之后在此页用好友码登录 ScoreHub 即可上传，无需再粘贴二维码。',
         uploaded: 0,
         skipped: 0,
       });
       showNotification({
         title: '绑定成功',
-        message: '已绑定。请继续用好友码上传成绩；神秘二维码仅作可选快路径。',
+        message: '已绑定。请用好友码登录 ScoreHub 上传，无需再粘贴二维码。',
         variant: 'success',
       });
     } catch (error) {
@@ -582,82 +556,35 @@ export function UploadDataSheet({
               <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
               {hasCabinetBound ? (
                 <Text accessibilityLabel="玩家二维码已绑定" style={[styles.hint, { color: theme.success }]}>
-                  玩家二维码已绑定。日常直接用好友码上传即可；神秘二维码为可选快路径。
+                  玩家二维码已绑定。也可切到「神秘二维码」用好友码登录 ScoreHub 上传。
                 </Text>
               ) : (
                 <Text style={[styles.hint, { color: theme.textMuted }]}>
-                  若要用神秘二维码快速上传，请先在本页传一次成绩，再到「神秘二维码」完成绑定。
+                  若要用神秘二维码能力，请先在本页传一次成绩，再到「神秘二维码」完成绑定。
                 </Text>
               )}
             </>
           ) : hasCabinetBound ? (
             <>
-              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>神秘二维码（可选）</Text>
-              <Text style={[styles.hint, { color: theme.textMuted }]}>
-                已绑定。仅在不想走好友码时，粘贴最新的公众号玩家二维码即可快速上传；日常可留在「好友码」。
+              <Text accessibilityLabel="玩家二维码已绑定" style={[styles.hint, { color: theme.success }]}>
+                玩家二维码已绑定，无需再粘贴二维码。
               </Text>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码</Text>
               <TextInput
-                accessibilityLabel="神秘二维码字符串"
-                value={qrText}
-                onChangeText={(value) => setQrText(value)}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-                textContentType="none"
-                contextMenuHidden={false}
-                selectTextOnFocus={false}
-                multiline
-                placeholder="粘贴 SGWCMAID… 字符串（可选）"
+                accessibilityLabel="舞萌好友码"
+                value={friendCode}
+                onChangeText={onFriendCodeChange}
+                keyboardType="number-pad"
+                maxLength={15}
+                placeholder="15 位数字"
                 placeholderTextColor={theme.textMuted}
                 editable={!busy && prefsReady}
-                style={[
-                  styles.input,
-                  styles.qrInput,
-                  {
-                    backgroundColor: theme.input,
-                    borderColor: theme.border,
-                    color: theme.text,
-                    borderWidth: 1,
-                  },
-                ]}
+                style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
               />
-              <View style={styles.qrActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="粘贴二维码字符串"
-                  disabled={busy || !prefsReady}
-                  onPress={() => void pasteQrText('login')}
-                  style={({ pressed }) => [
-                    styles.secondary,
-                    { borderColor: theme.border, backgroundColor: theme.surface },
-                    (busy || !prefsReady) && styles.primaryDisabled,
-                    pressed && !busy && styles.softPressed,
-                  ]}
-                >
-                  <Text style={[styles.secondaryText, { color: theme.accent }]}>粘贴</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="从相册选择二维码图片"
-                  disabled={busy || !prefsReady}
-                  onPress={() => void pickQrImage('login')}
-                  style={({ pressed }) => [
-                    styles.secondary,
-                    { borderColor: theme.border, backgroundColor: theme.surface },
-                    (busy || !prefsReady) && styles.primaryDisabled,
-                    pressed && !busy && styles.softPressed,
-                  ]}
-                >
-                  {decodingQr ? (
-                    <ActivityIndicator color={theme.accent} />
-                  ) : (
-                    <Text style={[styles.secondaryText, { color: theme.accent }]}>从相册选择</Text>
-                  )}
-                </Pressable>
-              </View>
               <Text style={[styles.hint, { color: theme.textMuted }]}>
-                在“舞萌-中二公众号 → 玩家二维码”复制字符串后点「粘贴」，或截图后从相册选择。
+                用好友码登录 ScoreHub 后取成绩并上传到下方查分器。
               </Text>
+              <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
             </>
           ) : (
             <>
@@ -695,7 +622,7 @@ export function UploadDataSheet({
                   accessibilityRole="button"
                   accessibilityLabel="粘贴绑定用二维码字符串"
                   disabled={busy || !prefsReady}
-                  onPress={() => void pasteQrText('bind')}
+                  onPress={() => void pasteQrText()}
                   style={({ pressed }) => [
                     styles.secondary,
                     { borderColor: theme.border, backgroundColor: theme.surface },
@@ -709,7 +636,7 @@ export function UploadDataSheet({
                   accessibilityRole="button"
                   accessibilityLabel="从相册选择绑定用二维码图片"
                   disabled={busy || !prefsReady}
-                  onPress={() => void pickQrImage('bind')}
+                  onPress={() => void pickQrImage()}
                   style={({ pressed }) => [
                     styles.secondary,
                     { borderColor: theme.border, backgroundColor: theme.surface },
@@ -758,7 +685,7 @@ export function UploadDataSheet({
             </>
           )}
 
-          {authMode === 'friend_code' ? (
+          {authMode === 'friend_code' || (authMode === 'qr' && hasCabinetBound) ? (
             <>
               <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>服务状态</Text>
               <View style={[styles.statusBox, { backgroundColor: theme.surface, marginTop: 0 }]}>
