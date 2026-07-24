@@ -25,7 +25,7 @@ import {
 } from '@/services/maimai-qr-decode';
 import {
   FRIEND_REQUEST_REFRESH_HINT,
-  bindScoreHubCabinetByFriendCode,
+  bindScoreHubCabinetByQr,
   formatScoreHubStatsSummary,
   QR_REQUIRES_BIND_MESSAGE,
   resolveUploadTargets,
@@ -144,9 +144,12 @@ export function UploadDataSheet({
     onPhaseChange?.(next);
   }, [onPhaseChange]);
 
-  // 仅在弹窗刚打开时重置表单；上传结束不要切回好友码或清空进度/错误。
+  // 关闭时中止进行中的上传/绑定，避免离开后再打开仍卡在 running。
   useEffect(() => {
     if (!visible) {
+      abortRef.current.aborted = true;
+      setRunning(false);
+      setDecodingQr(false);
       setPrefsReady(false);
       wasVisibleRef.current = false;
       return;
@@ -156,6 +159,8 @@ export function UploadDataSheet({
     if (!justOpened) return;
 
     let active = true;
+    abortRef.current = { aborted: false };
+    setRunning(false);
     setPrefsReady(false);
     setLastResult(null);
     setQrText('');
@@ -224,13 +229,16 @@ export function UploadDataSheet({
   }, []);
 
   const close = () => {
+    abortRef.current.aborted = true;
+    setRunning(false);
+    setDecodingQr(false);
     onClose();
   };
 
   const cancelUpload = () => {
     if (!running || abortRef.current.aborted) return;
     abortRef.current.aborted = true;
-    applyPhase({ kind: 'canceling', message: '正在取消上传…' });
+    applyPhase({ kind: 'canceling', message: '正在取消…' });
   };
 
   const toggleAccount = (accountId: string, writable: boolean) => {
@@ -434,10 +442,6 @@ export function UploadDataSheet({
       showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
       return;
     }
-    if (!/^\d{15}$/.test(friendCode.trim())) {
-      showNotification({ title: '好友码无效', message: '请先输入 15 位数字好友码再绑定。', variant: 'warning' });
-      return;
-    }
     if (!bindQrText.trim()) {
       showNotification({
         title: '缺少绑定二维码',
@@ -450,27 +454,17 @@ export function UploadDataSheet({
     abortRef.current = { aborted: false };
     setRunning(true);
     setLastResult(null);
-    applyPhase({ kind: 'logging_in', message: '正在创建好友申请任务…', authMode: 'friend_code' });
+    applyPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
 
     try {
-      await bindScoreHubCabinetByFriendCode({
-        friendCode,
+      await bindScoreHubCabinetByQr({
         qrCode: bindQrText.trim(),
         signal: abortRef.current,
         onPhase: applyPhase,
-        onNeedFriendAccept: (botFriendCode) => {
-          showActionNotification({
-            title: '请同意好友申请',
-            message: botFriendCode
-              ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
-              : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
-            variant: 'info',
-            actions: [{ label: '知道了', tone: 'default' }],
-          });
-        },
       });
       setHasCabinetBound(true);
       setBindQrText('');
+      setAuthMode('qr');
       showNotification({
         title: '绑定成功',
         message: '之后可用「神秘二维码」快速上传。',
@@ -662,18 +656,6 @@ export function UploadDataSheet({
               <Text accessibilityLabel="二维码需先绑定说明" style={[styles.hint, { color: theme.textMuted }]}>
                 {QR_REQUIRES_BIND_MESSAGE}
               </Text>
-              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码（绑定登录）</Text>
-              <TextInput
-                accessibilityLabel="绑定用舞萌好友码"
-                value={friendCode}
-                onChangeText={onFriendCodeChange}
-                keyboardType="number-pad"
-                maxLength={15}
-                placeholder="15 位数字"
-                placeholderTextColor={theme.textMuted}
-                editable={!busy && prefsReady}
-                style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
-              />
               <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>玩家二维码</Text>
               <TextInput
                 accessibilityLabel="绑定用玩家二维码字符串"
@@ -858,7 +840,7 @@ export function UploadDataSheet({
           {running ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="取消上传"
+              accessibilityLabel="取消当前操作"
               disabled={phase.kind === 'canceling'}
               onPress={cancelUpload}
               style={({ pressed }) => [
@@ -869,7 +851,7 @@ export function UploadDataSheet({
               ]}
             >
               <Text style={styles.primaryText}>
-                {phase.kind === 'canceling' ? '正在取消…' : '取消上传'}
+                {phase.kind === 'canceling' ? '正在取消…' : '取消'}
               </Text>
             </Pressable>
           ) : null}

@@ -16,6 +16,7 @@ const mockLoadHubAccount = jest.fn(async (): Promise<TestHubAccount> => ({
   friendCode: '',
   hasCabinetBound: false,
 }));
+const mockBindCabinet = jest.fn(async () => ({ friendCode: '', alreadyBound: false }));
 const mockIsMaimaiMaintenance = jest.fn(() => false);
 const mockFetchStatistics = jest.fn(async () => ({
   dxnetJobs: {
@@ -67,6 +68,15 @@ jest.mock('@/storage/score-hub-account-store', () => ({
     patch: jest.fn(),
   },
 }));
+jest.mock('@/services/upload-maimai-from-friend-code', () => {
+  const actual = jest.requireActual<typeof import('@/services/upload-maimai-from-friend-code')>(
+    '@/services/upload-maimai-from-friend-code',
+  );
+  return {
+    ...actual,
+    bindScoreHubCabinetByQr: (...args: unknown[]) => mockBindCabinet(...args),
+  };
+});
 jest.mock('@/domain/maimai-maintenance', () => ({
   isMaimaiMaintenanceWindow: () => mockIsMaimaiMaintenance(),
   MAIMAI_MAINTENANCE_MESSAGE: '维护窗口说明',
@@ -95,23 +105,32 @@ const catalog: CatalogSnapshot = {
   source: { kind: 'lxns', label: 'test', updatedAt: '2026-07-17T00:00:00.000Z', isStale: false },
 };
 
-function sheet(temporarySelectedAccountIds?: readonly string[], accounts = [local, water]) {
+function sheet(
+  temporarySelectedAccountIds?: readonly string[],
+  accounts = [local, water],
+  visible = true,
+  onClose = jest.fn(),
+) {
   return (
     <UploadDataSheet
-      visible
+      visible={visible}
       accounts={accounts}
       sessionsByAccountId={{ [water.id]: waterSession }}
       catalog={catalog}
-      onClose={jest.fn()}
+      onClose={onClose}
       temporarySelectedAccountIds={temporarySelectedAccountIds}
     />
   );
 }
 
-function renderSheet(temporarySelectedAccountIds?: readonly string[], accounts = [local, water]) {
+function renderSheet(
+  temporarySelectedAccountIds?: readonly string[],
+  accounts = [local, water],
+  visible = true,
+) {
   return render(
     <NotificationProvider>
-      {sheet(temporarySelectedAccountIds, accounts)}
+      {sheet(temporarySelectedAccountIds, accounts, visible)}
     </NotificationProvider>,
   );
 }
@@ -137,6 +156,8 @@ describe('当前查分器上传弹窗临时选项', () => {
       friendCode: '',
       hasCabinetBound: false,
     });
+    mockBindCabinet.mockReset();
+    mockBindCabinet.mockResolvedValue({ friendCode: '', alreadyBound: false });
   });
 
   it('打开时展示近一小时统计、分档提示与好友申请刷新说明', async () => {
@@ -161,7 +182,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     await waitFor(() => expect(screen.getByLabelText('开始上传')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     expect(await screen.findByLabelText('二维码需先绑定说明')).toBeTruthy();
-    expect(screen.getByLabelText('绑定用舞萌好友码')).toBeTruthy();
+    expect(screen.queryByLabelText('绑定用舞萌好友码')).toBeNull();
     expect(screen.getByLabelText('绑定用玩家二维码字符串')).toBeTruthy();
     expect(screen.getByLabelText('绑定玩家二维码')).toBeTruthy();
     expect(screen.getByLabelText('切换到好友码上传成绩')).toBeTruthy();
@@ -292,6 +313,29 @@ describe('当前查分器上传弹窗临时选项', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('神秘二维码字符串').props.value).toBe('SGWCMAIDFROMCLIP');
     });
+  });
+
+  it('关闭弹窗后重新打开会解除上传中状态并可切换到神秘二维码', async () => {
+    mockBindCabinet.mockImplementationOnce(() => new Promise(() => {
+      /* pending forever until aborted/unmounted */
+    }));
+
+    const first = await renderSheet([water.id]);
+    await waitFor(() => expect(first.getByLabelText('开始上传')).toBeTruthy());
+    await fireEvent.press(first.getByLabelText('使用神秘二维码上传'));
+    await fireEvent.changeText(first.getByLabelText('绑定用玩家二维码字符串'), 'SGWCMAIDBIND');
+    await fireEvent.press(first.getByLabelText('绑定玩家二维码'));
+    await waitFor(() => expect(mockBindCabinet).toHaveBeenCalled());
+    await fireEvent.press(first.getByLabelText('关闭上传'));
+    await act(async () => {
+      first.unmount();
+    });
+
+    const second = await renderSheet([water.id]);
+    await waitFor(() => expect(second.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
+    await fireEvent.press(second.getByLabelText('使用神秘二维码上传'));
+    expect(await second.findByLabelText('绑定玩家二维码')).toBeTruthy();
+    expect(second.getByLabelText('绑定玩家二维码').props.accessibilityState?.disabled).not.toBe(true);
   });
 
   it('维护窗口内停止上传并显示统一通知', async () => {
