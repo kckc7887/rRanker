@@ -150,14 +150,15 @@ describe('总览上传和同步操作', () => {
   it('本地查分器页只显示使用好友码的同步按钮', async () => {
     mockProviderId = 'local';
     const screen = await render(<OverviewScreen />);
-    expect(screen.getByLabelText('同步本地查分器数据，使用好友码')).toBeTruthy();
+    expect(screen.getByLabelText('同步本地查分器数据，好友码')).toBeTruthy();
+    expect(screen.getByText('好友码')).toBeTruthy();
     expect(screen.queryByText('上传数据')).toBeNull();
   });
 
   it('额外本地玩家同步时只临时勾选当前玩家', async () => {
     mockProviderId = 'local';
     const screen = await render(<OverviewScreen />);
-    await fireEvent.press(screen.getByLabelText('同步本地查分器数据，使用好友码'));
+    await fireEvent.press(screen.getByLabelText('同步本地查分器数据，好友码'));
     await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockExtraLocal.id]));
   });
 
