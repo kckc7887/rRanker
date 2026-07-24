@@ -199,7 +199,7 @@ describe('当前查分器上传弹窗临时选项', () => {
     expect(await screen.findByLabelText('舞萌好友码')).toBeTruthy();
     expect(screen.getByLabelText('玩家二维码已绑定')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
-    expect(await screen.findByText(/无需再粘贴二维码/)).toBeTruthy();
+    expect(await screen.findByText(/不会再次发起好友申请/)).toBeTruthy();
     expect(screen.getByLabelText('舞萌好友码')).toBeTruthy();
     expect(screen.queryByLabelText('神秘二维码字符串')).toBeNull();
     expect(screen.queryByLabelText('绑定用玩家二维码字符串')).toBeNull();
