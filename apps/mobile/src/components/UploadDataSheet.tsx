@@ -19,6 +19,11 @@ import type { ProviderSession } from '@/providers/contracts';
 import type { ScoreHubAbortSignal, ScoreHubDxnetJobStats } from '@/services/score-hub-client';
 import { fetchScoreHubStatistics, ScoreHubError } from '@/services/score-hub-client';
 import {
+  decodeMaimaiQrFromImageUri,
+  extractMaimaiQrPayload,
+  QrDecodeError,
+} from '@/services/maimai-qr-decode';
+import {
   FRIEND_REQUEST_REFRESH_HINT,
   formatScoreHubStatsSummary,
   resolveUploadTargets,
@@ -37,12 +42,6 @@ import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/
 import { useAppTheme } from '@/theme/app-theme';
 
 type UploadAuthMode = 'friend_code' | 'qr';
-
-type QrImagePick = {
-  uri: string;
-  mimeType?: string;
-  fileName?: string;
-};
 
 function accountIcon(account: BoundAccount) {
   if (account.providerId) {
@@ -97,17 +96,18 @@ export function UploadDataSheet({
   const [authMode, setAuthMode] = useState<UploadAuthMode>('friend_code');
   const [friendCode, setFriendCode] = useState('');
   const [qrText, setQrText] = useState('');
-  const [qrImage, setQrImage] = useState<QrImagePick | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [prefsReady, setPrefsReady] = useState(false);
   const [phase, setPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [running, setRunning] = useState(false);
+  const [decodingQr, setDecodingQr] = useState(false);
   const [lastResult, setLastResult] = useState<UploadResult | null>(null);
   const [stats, setStats] = useState<ScoreHubDxnetJobStats | null>(null);
   const [statsStatus, setStatsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const abortRef = useRef<ScoreHubAbortSignal>({ aborted: false });
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistedSelectedIdsRef = useRef<string[]>([]);
+  const wasVisibleRef = useRef(false);
 
   const targets = resolveUploadTargets(accounts, sessionsByAccountId);
   const statsSummary = statsStatus === 'loading'
@@ -138,19 +138,23 @@ export function UploadDataSheet({
     onPhaseChange?.(next);
   }, [onPhaseChange]);
 
+  // 仅在弹窗刚打开时重置表单；上传结束不要切回好友码或清空进度/错误。
   useEffect(() => {
     if (!visible) {
       setPrefsReady(false);
+      wasVisibleRef.current = false;
       return;
     }
-    // 上传进行中不要因 accounts/session 变化重置表单与阶段，否则进度会被打断。
-    if (running) return;
+    const justOpened = !wasVisibleRef.current;
+    wasVisibleRef.current = true;
+    if (!justOpened) return;
+
     let active = true;
     setPrefsReady(false);
     setLastResult(null);
     setAuthMode('friend_code');
     setQrText('');
-    setQrImage(null);
+    setDecodingQr(false);
     applyPhase({ kind: 'idle' });
     void uploadPrefsStore.load().then((prefs) => {
       if (!active) return;
@@ -169,10 +173,21 @@ export function UploadDataSheet({
     return () => {
       active = false;
     };
-  }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds, applyPhase, running]);
+  }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds, applyPhase]);
 
+  // 打开期间账号变化时，仅收敛勾选，不重置登录方式。
   useEffect(() => {
     if (!visible || running) return;
+    const writableIds = new Set(
+      resolveUploadTargets(accounts, sessionsByAccountId)
+        .filter((target) => target.writable)
+        .map((target) => target.account.id),
+    );
+    setSelectedIds((prev) => prev.filter((id) => writableIds.has(id)));
+  }, [visible, running, accounts, sessionsByAccountId]);
+
+  useEffect(() => {
+    if (!visible || running || authMode !== 'friend_code') return;
     let active = true;
     setStatsStatus('loading');
     setStats(null);
@@ -190,7 +205,7 @@ export function UploadDataSheet({
     return () => {
       active = false;
     };
-  }, [visible, running]);
+  }, [visible, running, authMode]);
 
   useEffect(() => () => {
     abortRef.current.aborted = true;
@@ -225,14 +240,21 @@ export function UploadDataSheet({
   };
 
   const switchAuthMode = (mode: UploadAuthMode) => {
-    if (running || mode === authMode) return;
+    if (running || decodingQr || mode === authMode) return;
     setAuthMode(mode);
-    applyPhase({ kind: 'idle' });
-    setLastResult(null);
+    if (phase.kind === 'error' || phase.kind === 'done' || phase.kind === 'idle') {
+      applyPhase({ kind: 'idle' });
+    }
+    if (mode === 'qr') setLastResult(null);
+  };
+
+  const applyQrText = (raw: string) => {
+    const extracted = extractMaimaiQrPayload(raw) ?? raw.trim();
+    setQrText(extracted);
   };
 
   const pickQrImage = async () => {
-    if (running) return;
+    if (running || decodingQr) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       showNotification({
@@ -253,18 +275,28 @@ export function UploadDataSheet({
       showNotification({ title: '选择图片失败', message: '没有读取到二维码图片。', variant: 'warning' });
       return;
     }
-    const fileName = asset.fileName
-      ?? (asset.uri.split('/').pop() || 'qr.jpg');
-    setQrImage({
-      uri: asset.uri,
-      mimeType: asset.mimeType ?? undefined,
-      fileName,
-    });
-    setQrText('');
+
+    setDecodingQr(true);
+    try {
+      const payload = await decodeMaimaiQrFromImageUri(asset.uri);
+      applyQrText(payload);
+      showNotification({
+        title: '已识别二维码',
+        message: '字符串已填入输入框，可直接开始上传。',
+        variant: 'success',
+      });
+    } catch (error) {
+      const message = error instanceof QrDecodeError || error instanceof Error
+        ? error.message
+        : '识别二维码失败';
+      showNotification({ title: '识别失败', message, variant: 'error' });
+    } finally {
+      setDecodingQr(false);
+    }
   };
 
   const pasteQrText = async () => {
-    if (running) return;
+    if (running || decodingQr) return;
     const text = (await Clipboard.getStringAsync()).trim();
     if (!text) {
       showNotification({
@@ -274,17 +306,11 @@ export function UploadDataSheet({
       });
       return;
     }
-    setQrImage(null);
-    setQrText(text);
-  };
-
-  const clearQrImage = () => {
-    if (running) return;
-    setQrImage(null);
+    applyQrText(text);
   };
 
   const startUpload = async () => {
-    if (running) return;
+    if (running || decodingQr) return;
     if (isMaimaiMaintenanceWindow()) {
       showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
       return;
@@ -293,10 +319,10 @@ export function UploadDataSheet({
       showNotification({ title: '好友码无效', message: '请输入 15 位数字好友码。', variant: 'warning' });
       return;
     }
-    if (authMode === 'qr' && !qrImage && !qrText.trim()) {
+    if (authMode === 'qr' && !qrText.trim()) {
       showNotification({
         title: '缺少二维码',
-        message: '请粘贴神秘二维码字符串，或选择二维码图片。',
+        message: '请粘贴神秘二维码字符串，或从相册选择图片识别。',
         variant: 'warning',
       });
       return;
@@ -312,6 +338,7 @@ export function UploadDataSheet({
 
     abortRef.current = { aborted: false };
     setRunning(true);
+    setLastResult(null);
     applyPhase({
       kind: 'logging_in',
       message: authMode === 'qr' ? '正在提交神秘二维码…' : '正在创建好友申请任务…',
@@ -321,14 +348,7 @@ export function UploadDataSheet({
     try {
       const result = authMode === 'qr'
         ? await uploadMaimaiFromQrLogin({
-          credential: qrImage
-            ? {
-                kind: 'image',
-                imageUri: qrImage.uri,
-                mimeType: qrImage.mimeType,
-                fileName: qrImage.fileName,
-              }
-            : { kind: 'text', qrCode: qrText.trim() },
+          credential: { kind: 'text', qrCode: qrText.trim() },
           selectedAccountIds: selectedIds,
           targets,
           sessionsByAccountId,
@@ -389,6 +409,7 @@ export function UploadDataSheet({
   const botHint = phase.kind === 'awaiting_friend' && phase.botFriendCode
     ? `Bot 好友码：${phase.botFriendCode}`
     : null;
+  const busy = running || decodingQr;
 
   return (
     <AppModal
@@ -418,13 +439,13 @@ export function UploadDataSheet({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="使用好友码上传"
-              accessibilityState={{ selected: authMode === 'friend_code', disabled: running }}
-              disabled={running}
+              accessibilityState={{ selected: authMode === 'friend_code', disabled: busy }}
+              disabled={busy}
               onPress={() => switchAuthMode('friend_code')}
               style={({ pressed }) => [
                 styles.modeButton,
                 authMode === 'friend_code' && { backgroundColor: theme.accent },
-                pressed && !running && styles.softPressed,
+                pressed && !busy && styles.softPressed,
               ]}
             >
               <Text style={[
@@ -438,13 +459,13 @@ export function UploadDataSheet({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="使用神秘二维码上传"
-              accessibilityState={{ selected: authMode === 'qr', disabled: running }}
-              disabled={running}
+              accessibilityState={{ selected: authMode === 'qr', disabled: busy }}
+              disabled={busy}
               onPress={() => switchAuthMode('qr')}
               style={({ pressed }) => [
                 styles.modeButton,
                 authMode === 'qr' && { backgroundColor: theme.accent },
-                pressed && !running && styles.softPressed,
+                pressed && !busy && styles.softPressed,
               ]}
             >
               <Text style={[
@@ -468,7 +489,7 @@ export function UploadDataSheet({
                 maxLength={15}
                 placeholder="15 位数字"
                 placeholderTextColor={theme.textMuted}
-                editable={!running && prefsReady}
+                editable={!busy && prefsReady}
                 style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 }]}
               />
               <Text style={[styles.hint, { color: theme.textMuted }]}>从游戏服务器取成绩后上传到下方勾选的查分器。</Text>
@@ -480,10 +501,7 @@ export function UploadDataSheet({
               <TextInput
                 accessibilityLabel="神秘二维码字符串"
                 value={qrText}
-                onChangeText={(value) => {
-                  setQrText(value);
-                  if (value.trim()) setQrImage(null);
-                }}
+                onChangeText={(value) => setQrText(value)}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete="off"
@@ -493,7 +511,7 @@ export function UploadDataSheet({
                 multiline
                 placeholder="粘贴 SGWCMAID… 字符串"
                 placeholderTextColor={theme.textMuted}
-                editable={!running && prefsReady && !qrImage}
+                editable={!busy && prefsReady}
                 style={[
                   styles.input,
                   styles.qrInput,
@@ -509,13 +527,13 @@ export function UploadDataSheet({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="粘贴二维码字符串"
-                  disabled={running || !prefsReady || !!qrImage}
+                  disabled={busy || !prefsReady}
                   onPress={() => void pasteQrText()}
                   style={({ pressed }) => [
                     styles.secondary,
                     { borderColor: theme.border, backgroundColor: theme.surface },
-                    (running || !prefsReady || !!qrImage) && styles.primaryDisabled,
-                    pressed && !running && styles.softPressed,
+                    (busy || !prefsReady) && styles.primaryDisabled,
+                    pressed && !busy && styles.softPressed,
                   ]}
                 >
                   <Text style={[styles.secondaryText, { color: theme.accent }]}>粘贴</Text>
@@ -523,41 +541,24 @@ export function UploadDataSheet({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="从相册选择二维码图片"
-                  disabled={running || !prefsReady}
+                  disabled={busy || !prefsReady}
                   onPress={() => void pickQrImage()}
                   style={({ pressed }) => [
                     styles.secondary,
                     { borderColor: theme.border, backgroundColor: theme.surface },
-                    (running || !prefsReady) && styles.primaryDisabled,
-                    pressed && !running && styles.softPressed,
+                    (busy || !prefsReady) && styles.primaryDisabled,
+                    pressed && !busy && styles.softPressed,
                   ]}
                 >
-                  <Text style={[styles.secondaryText, { color: theme.accent }]}>从相册选择</Text>
+                  {decodingQr ? (
+                    <ActivityIndicator color={theme.accent} />
+                  ) : (
+                    <Text style={[styles.secondaryText, { color: theme.accent }]}>从相册选择</Text>
+                  )}
                 </Pressable>
-                {qrImage ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="清除已选二维码图片"
-                    disabled={running}
-                    onPress={clearQrImage}
-                    style={({ pressed }) => [
-                      styles.secondary,
-                      { borderColor: theme.border, backgroundColor: theme.surface },
-                      running && styles.primaryDisabled,
-                      pressed && !running && styles.softPressed,
-                    ]}
-                  >
-                    <Text style={[styles.secondaryText, { color: theme.danger }]}>清除</Text>
-                  </Pressable>
-                ) : null}
               </View>
-              {qrImage ? (
-                <Text accessibilityLabel="已选二维码图片名" style={[styles.hint, { color: theme.textSecondary }]}>
-                  已选图片：{qrImage.fileName ?? '二维码图片'}
-                </Text>
-              ) : null}
               <Text style={[styles.hint, { color: theme.textMuted }]}>
-                在“舞萌-中二公众号 → 玩家二维码”复制字符串后点「粘贴」，或截图后从相册选择图片。二维码会过期，请尽快提交。
+                在“舞萌-中二公众号 → 玩家二维码”复制字符串后点「粘贴」，或截图后从相册选择；选图后会自动识别并填入输入框。
               </Text>
             </>
           )}
@@ -594,8 +595,8 @@ export function UploadDataSheet({
                     key={target.account.id}
                     accessibilityRole="checkbox"
                     accessibilityLabel={`上传到 ${target.account.displayName}（${target.account.providerTitle}）`}
-                    accessibilityState={{ checked, disabled: !target.writable || running }}
-                    disabled={!target.writable || running}
+                    accessibilityState={{ checked, disabled: !target.writable || busy }}
+                    disabled={!target.writable || busy}
                     onPress={() => toggleAccount(target.account.id, target.writable)}
                     style={({ pressed }) => [
                       styles.row,
@@ -631,12 +632,12 @@ export function UploadDataSheet({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="开始上传"
-            disabled={running || !prefsReady}
+            disabled={busy || !prefsReady}
             onPress={() => void startUpload()}
             style={({ pressed }) => [
               styles.primary, { backgroundColor: theme.accent },
-              (running || !prefsReady) && styles.primaryDisabled,
-              pressed && !running && styles.softPressed,
+              (busy || !prefsReady) && styles.primaryDisabled,
+              pressed && !busy && styles.softPressed,
             ]}
           >
             {running ? (
