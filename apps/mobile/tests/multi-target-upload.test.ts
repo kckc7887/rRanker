@@ -53,6 +53,7 @@ vi.mock('@/storage/score-hub-account-store', () => ({
 // eslint-disable-next-line import/first
 import {
   QR_REQUIRES_BIND_MESSAGE,
+  bindScoreHubCabinetByFriendCode,
   resolveUploadTargets,
   uploadMaimaiFromFriendCode,
   uploadMaimaiFromQrLogin,
@@ -126,12 +127,11 @@ describe('好友码多目标写入', () => {
     expect(phases.at(-1)).toBe('done');
   });
 
-  it('好友码路径在 sync 后绑定玩家二维码', async () => {
+  it('好友码路径只传成绩，不同时绑定二维码', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
     const phases: string[] = [];
     const result = await uploadMaimaiFromFriendCode({
       friendCode: '123456789012345',
-      cabinetQrCode: 'SGWCMAIDBIND',
       selectedAccountIds: [local.id],
       targets: resolveUploadTargets([local], {}),
       sessionsByAccountId: {},
@@ -141,34 +141,43 @@ describe('好友码多目标写入', () => {
       onNeedFriendAccept: vi.fn(),
     });
 
+    expect(mocks.bindCabinetByQr).not.toHaveBeenCalled();
+    expect(result.uploaded).toBe(1);
+    expect(phases).not.toContain('binding');
+    expect(phases.at(-1)).toBe('done');
+  });
+
+  it('独立绑定流程登录后 PUT cabinet 且不写出查分器', async () => {
+    const phases: string[] = [];
+    const result = await bindScoreHubCabinetByFriendCode({
+      friendCode: '123456789012345',
+      qrCode: 'SGWCMAIDBIND',
+      signal: { aborted: false },
+      onPhase: (phase) => phases.push(phase.kind),
+      onNeedFriendAccept: vi.fn(),
+    });
+
     expect(mocks.bindCabinetByQr).toHaveBeenCalledWith('hub-token', 'SGWCMAIDBIND', expect.anything());
+    expect(mocks.createUpdateScoreJob).not.toHaveBeenCalled();
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
     expect(mocks.accountPatch).toHaveBeenCalledWith(expect.objectContaining({
       hasCabinetBound: true,
     }));
-    expect(result.cabinetBound).toBe(true);
+    expect(result.alreadyBound).toBe(false);
     expect(phases).toContain('binding');
     expect(phases.at(-1)).toBe('done');
   });
 
-  it('绑定失败不阻断成绩写出', async () => {
-    const local = createLocalMaimaiAccount('本地玩家', 0);
+  it('绑定失败时不写出成绩', async () => {
     mocks.bindCabinetByQr.mockRejectedValue(new Error('成绩匹配不足'));
-    const result = await uploadMaimaiFromFriendCode({
+    await expect(bindScoreHubCabinetByFriendCode({
       friendCode: '123456789012345',
-      cabinetQrCode: 'SGWCMAIDBAD',
-      selectedAccountIds: [local.id],
-      targets: resolveUploadTargets([local], {}),
-      sessionsByAccountId: {},
-      catalog,
+      qrCode: 'SGWCMAIDBAD',
       signal: { aborted: false },
       onPhase: vi.fn(),
       onNeedFriendAccept: vi.fn(),
-    });
-
-    expect(result.uploaded).toBe(1);
-    expect(result.cabinetBound).toBe(false);
-    expect(result.cabinetBindError).toMatch(/成绩匹配不足/);
-    expect(mocks.saveSnapshot).toHaveBeenCalledTimes(1);
+    })).rejects.toThrow(/成绩匹配不足/);
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
   });
 
   it('二维码登录拿到 token 后复用同一写出链路且不传 friendshipJobId', async () => {

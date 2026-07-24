@@ -47,8 +47,11 @@ export type UploadResult = {
   refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[];
   failedAccountNames: string[];
   targetResults: UploadTargetResult[];
-  cabinetBound?: boolean;
-  cabinetBindError?: string;
+};
+
+export type BindCabinetResult = {
+  friendCode: string;
+  alreadyBound: boolean;
 };
 
 export type UploadTargetResult = {
@@ -67,7 +70,7 @@ export type UploadTarget = {
 };
 
 export const QR_REQUIRES_BIND_MESSAGE =
-  '请先用好友码完成首次上传并绑定玩家二维码，之后即可用二维码快速上传。';
+  '请先用好友码上传成绩，再单独绑定玩家二维码；绑定后即可用二维码快速上传。';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
   0: 'BASIC',
@@ -223,12 +226,65 @@ function resolveSelectedTargets(input: UploadCommonInput): UploadTarget[] {
   return selected;
 }
 
+async function loginScoreHubWithFriendCode(input: {
+  friendCode: string;
+  signal: ScoreHubAbortSignal;
+  onPhase: (phase: UploadPhase) => void;
+  onNeedFriendAccept: (botFriendCode: string | null) => void;
+}): Promise<{ token: string; friendshipJobId: string | null }> {
+  const friendCode = input.friendCode.trim();
+  if (!/^\d{15}$/.test(friendCode)) {
+    throw new ScoreHubError('请输入 15 位好友码');
+  }
+
+  input.onPhase({ kind: 'logging_in', message: '正在创建好友申请任务…', authMode: 'friend_code' });
+  const login = await createFriendLoginJob(friendCode, input.signal);
+
+  let token: string;
+  let friendshipJobId: string | null = null;
+
+  if (typeof login.body.__skipAuthToken === 'string') {
+    token = login.body.__skipAuthToken;
+  } else {
+    friendshipJobId = login.jobId;
+    if (login.botFriendCode) {
+      input.onPhase({
+        kind: 'awaiting_friend',
+        message: '等待同意好友中…',
+        botFriendCode: login.botFriendCode,
+      });
+    }
+    let alerted = false;
+    token = await pollLoginUntilToken({
+      jobId: login.jobId,
+      signal: input.signal,
+      onWaitingFriend: ({ botFriendCode }) => {
+        input.onPhase({
+          kind: 'awaiting_friend',
+          message: '等待同意好友中…请到“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 好友申请',
+          botFriendCode,
+        });
+        if (!alerted) {
+          alerted = true;
+          input.onNeedFriendAccept(botFriendCode ?? login.botFriendCode);
+        }
+      },
+    });
+  }
+
+  await scoreHubAccountStore.patch({
+    friendCode,
+    token,
+  });
+
+  return { token, friendshipJobId };
+}
+
 async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
   token: string;
   friendshipJobId: string | null;
   playerIdForLocal: string;
   selected: UploadTarget[];
-  cabinetQrCode?: string | null;
   persistFriendCode?: string | null;
 }): Promise<UploadResult> {
   input.onPhase({ kind: 'fetching_scores', message: '获取各难度成绩中…' });
@@ -250,27 +306,6 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
   const scores = sync?.scores ?? [];
   if (scores.length === 0) {
     throw new ScoreHubError('未获取到成绩数据');
-  }
-
-  let cabinetBound: boolean | undefined;
-  let cabinetBindError: string | undefined;
-  const cabinetQr = input.cabinetQrCode?.trim() ?? '';
-  if (cabinetQr) {
-    input.onPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
-    try {
-      await bindCabinetByQr(input.token, cabinetQr, input.signal);
-      cabinetBound = true;
-      const me = await fetchMe(input.token, input.signal).catch(() => null);
-      await scoreHubAccountStore.patch({
-        friendCode: me?.friendCode ?? input.persistFriendCode ?? input.playerIdForLocal,
-        hasCabinetBound: true,
-        token: input.token,
-      });
-    } catch (error) {
-      cabinetBound = false;
-      cabinetBindError = error instanceof Error ? error.message : '绑定玩家二维码失败';
-      // 绑定失败不阻断成绩写出
-    }
   }
 
   const divingFishMapped = convertHubScoresToDivingFishRecords(
@@ -437,25 +472,18 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
       refreshedAccounts,
       failedAccountNames,
       targetResults,
-      cabinetBound,
-      cabinetBindError,
     };
   }
 
-  const bindSuffix = cabinetBindError
-    ? `；二维码绑定失败：${cabinetBindError}`
-    : cabinetBound
-      ? '；玩家二维码已绑定，之后可用二维码快速上传'
-      : '';
   input.onPhase({
     kind: 'done',
     message: failedTargets.length > 0
-      ? `部分完成：写入 ${uploadedTotal} 条；失败 ${failedTargets.map((item) => item.account.displayName).join('、')}${bindSuffix}`
+      ? `部分完成：写入 ${uploadedTotal} 条；失败 ${failedTargets.map((item) => item.account.displayName).join('、')}`
       : failedAccountNames.length > 0
-        ? `写入完成：${uploadedTotal} 条；${failedAccountNames.join('、')}应用内刷新失败${bindSuffix}`
+        ? `写入完成：${uploadedTotal} 条；${failedAccountNames.join('、')}应用内刷新失败`
         : skipped > 0
-          ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条${bindSuffix}`
-          : `完成：写入 ${uploadedTotal} 条${bindSuffix}`,
+          ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条`
+          : `完成：写入 ${uploadedTotal} 条`,
     uploaded: uploadedTotal,
     skipped,
   });
@@ -465,60 +493,20 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
     refreshedAccounts,
     failedAccountNames,
     targetResults,
-    cabinetBound,
-    cabinetBindError,
   };
 }
 
 export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
   friendCode: string;
-  cabinetQrCode?: string | null;
   onNeedFriendAccept: (botFriendCode: string | null) => void;
 }): Promise<UploadResult> {
   const friendCode = input.friendCode.trim();
-  if (!/^\d{15}$/.test(friendCode)) {
-    throw new ScoreHubError('请输入 15 位好友码');
-  }
-
   const selected = resolveSelectedTargets(input);
-  input.onPhase({ kind: 'logging_in', message: '正在创建好友申请任务…', authMode: 'friend_code' });
-  const login = await createFriendLoginJob(friendCode, input.signal);
-
-  let token: string;
-  let friendshipJobId: string | null = null;
-
-  if (typeof login.body.__skipAuthToken === 'string') {
-    token = login.body.__skipAuthToken;
-  } else {
-    friendshipJobId = login.jobId;
-    if (login.botFriendCode) {
-      input.onPhase({
-        kind: 'awaiting_friend',
-        message: '等待同意好友中…',
-        botFriendCode: login.botFriendCode,
-      });
-    }
-    let alerted = false;
-    token = await pollLoginUntilToken({
-      jobId: login.jobId,
-      signal: input.signal,
-      onWaitingFriend: ({ botFriendCode }) => {
-        input.onPhase({
-          kind: 'awaiting_friend',
-          message: '等待同意好友中…请到“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 好友申请',
-          botFriendCode,
-        });
-        if (!alerted) {
-          alerted = true;
-          input.onNeedFriendAccept(botFriendCode ?? login.botFriendCode);
-        }
-      },
-    });
-  }
-
-  await scoreHubAccountStore.patch({
+  const { token, friendshipJobId } = await loginScoreHubWithFriendCode({
     friendCode,
-    token,
+    signal: input.signal,
+    onPhase: input.onPhase,
+    onNeedFriendAccept: input.onNeedFriendAccept,
   });
 
   return uploadMaimaiAfterScoreHubToken({
@@ -527,9 +515,53 @@ export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
     token,
     friendshipJobId,
     playerIdForLocal: friendCode,
-    cabinetQrCode: input.cabinetQrCode,
     persistFriendCode: friendCode,
   });
+}
+
+/** 独立绑定玩家二维码：好友码登录后 PUT /me/cabinet，不拉写查分器成绩。 */
+export async function bindScoreHubCabinetByFriendCode(input: {
+  friendCode: string;
+  qrCode: string;
+  signal: ScoreHubAbortSignal;
+  onPhase: (phase: UploadPhase) => void;
+  onNeedFriendAccept: (botFriendCode: string | null) => void;
+}): Promise<BindCabinetResult> {
+  const friendCode = input.friendCode.trim();
+  const qrCode = input.qrCode.trim();
+  if (!qrCode) {
+    throw new ScoreHubError('请提供玩家二维码字符串');
+  }
+
+  const { token } = await loginScoreHubWithFriendCode({
+    friendCode,
+    signal: input.signal,
+    onPhase: input.onPhase,
+    onNeedFriendAccept: input.onNeedFriendAccept,
+  });
+
+  input.onPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
+  const bind = await bindCabinetByQr(token, qrCode, input.signal);
+  const me = await fetchMe(token, input.signal).catch(() => null);
+  await scoreHubAccountStore.patch({
+    friendCode: me?.friendCode ?? friendCode,
+    hasCabinetBound: true,
+    token,
+  });
+
+  input.onPhase({
+    kind: 'done',
+    message: bind.alreadyBound
+      ? '玩家二维码此前已绑定，可直接使用神秘二维码上传'
+      : '玩家二维码已绑定，之后可用神秘二维码快速上传',
+    uploaded: 0,
+    skipped: 0,
+  });
+
+  return {
+    friendCode: me?.friendCode ?? friendCode,
+    alreadyBound: bind.alreadyBound,
+  };
 }
 
 export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
