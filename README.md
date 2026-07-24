@@ -80,6 +80,12 @@ npm start
 
 Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict · Zustand · TanStack Query · Expo SQLite · Expo SecureStore
 
+## 致谢
+- [Score Hub](https://github.com/bakapiano/maimai-score-hub)
+- [水鱼查分器](https://maimai.diving-fish.com)
+- [落雪咖啡屋](https://maimai.lxns.net/)
+- [Phi-plugin](https://github.com/Catrong/phi-plugin)
+
 ## 许可证
 
 本项目采用 [GNU Affero General Public License v3.0](LICENSE)（SPDX：`AGPL-3.0-only`），Copyright (c) 2026 Chnynnya。
