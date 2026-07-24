@@ -57,6 +57,7 @@ import {
   resolveUploadTargets,
   uploadMaimaiFromFriendCode,
   uploadMaimaiFromQrLogin,
+  uploadMaimaiWithScoreHubSession,
 } from '@/services/upload-maimai-from-friend-code';
 
 const catalog: CatalogSnapshot = {
@@ -184,6 +185,35 @@ describe('好友码多目标写入', () => {
     })).rejects.toThrow(/请先到「好友码」完成一次上传/);
     expect(mocks.createFriendLoginJob).not.toHaveBeenCalled();
     expect(mocks.bindCabinetByQr).not.toHaveBeenCalled();
+  });
+
+  it('已绑定会话上传复用 token 且不创建好友申请任务', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    mocks.accountLoad.mockResolvedValue({
+      friendCode: '123456789012345',
+      hasCabinetBound: true,
+      token: 'session-token',
+    });
+    mocks.fetchMe.mockResolvedValue({
+      friendCode: '123456789012345',
+      hasCabinetUserId: true,
+    });
+    const phases: string[] = [];
+    const result = await uploadMaimaiWithScoreHubSession({
+      expectedFriendCode: '123456789012345',
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      catalog,
+      signal: { aborted: false },
+      onPhase: (phase) => phases.push(phase.kind),
+    });
+
+    expect(mocks.createFriendLoginJob).not.toHaveBeenCalled();
+    expect(mocks.createUpdateScoreJob).toHaveBeenCalledWith('session-token', null, expect.anything());
+    expect(result.uploaded).toBe(1);
+    expect(phases).not.toContain('awaiting_friend');
+    expect(phases.at(-1)).toBe('done');
   });
 
   it('二维码登录拿到 token 后复用同一写出链路且不传 friendshipJobId', async () => {
