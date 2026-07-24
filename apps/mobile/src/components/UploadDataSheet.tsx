@@ -502,25 +502,29 @@ export function UploadDataSheet({
                 </Text>
               ) : null}
               <Text style={[styles.hint, { color: theme.textMuted }]}>
-                在机台「二维码登录」页刷新神秘二维码后粘贴字符串，或截图后选择图片。二维码会过期，请尽快提交。
+                在“舞萌-中二公众号 → 玩家二维码”打开二维码后粘贴字符串，或截图后选择图片。二维码会过期，请尽快提交。
               </Text>
             </>
           )}
 
-          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>服务状态</Text>
-          <View style={[styles.statusBox, { backgroundColor: theme.surface, marginTop: 0 }]}>
-            {statsStatus === 'loading' ? (
-              <ActivityIndicator color={theme.accent} style={styles.statusSpinner} />
-            ) : null}
-            <Text accessibilityLabel="score-hub 近一小时统计" style={[styles.statusText, { color: theme.textSecondary }]}>
-              {statsSummary}
-            </Text>
-            {statsHint ? (
-              <Text accessibilityLabel="score-hub 成功率提示" style={[styles.statusBot, { color: theme.textMuted }]}>
-                {statsHint}
-              </Text>
-            ) : null}
-          </View>
+          {authMode === 'friend_code' ? (
+            <>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>服务状态</Text>
+              <View style={[styles.statusBox, { backgroundColor: theme.surface, marginTop: 0 }]}>
+                {statsStatus === 'loading' ? (
+                  <ActivityIndicator color={theme.accent} style={styles.statusSpinner} />
+                ) : null}
+                <Text accessibilityLabel="score-hub 近一小时统计" style={[styles.statusText, { color: theme.textSecondary }]}>
+                  {statsSummary}
+                </Text>
+                {statsHint ? (
+                  <Text accessibilityLabel="score-hub 成功率提示" style={[styles.statusBot, { color: theme.textMuted }]}>
+                    {statsHint}
+                  </Text>
+                ) : null}
+              </View>
+            </>
+          ) : null}
 
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>上传到</Text>
           <View style={[styles.listCard, { backgroundColor: theme.surface }]}>

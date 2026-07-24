@@ -257,7 +257,7 @@ export function parseQrLoginInitBody(status: number, body: unknown): QrLoginInit
     }
   }
   if (isQrExpiredErrorBody(body)) {
-    throw new ScoreHubError('神秘二维码已过期，请刷新机台二维码后重试', status);
+    throw new ScoreHubError('神秘二维码已过期，请在公众号重新打开玩家二维码后重试', status);
   }
   throw new ScoreHubError(qrLoginErrorMessage(body, status), status);
 }
@@ -314,7 +314,7 @@ export async function verifyLoginJob(jobId: string, signal?: ScoreHubAbortSignal
   await requestJson('POST', `/auth/login-requests/${encodeURIComponent(jobId)}/verify`, { signal });
 }
 
-/** 机台神秘二维码登录：提交文本或图片，返回快路径 token 或慢路径 attemptId。 */
+/** 公众号玩家二维码登录：提交文本或图片，返回快路径 token 或慢路径 attemptId。 */
 export async function loginByQr(
   credential: QrLoginCredential,
   signal?: ScoreHubAbortSignal,
