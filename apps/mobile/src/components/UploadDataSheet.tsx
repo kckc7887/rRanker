@@ -135,17 +135,30 @@ export function UploadDataSheet({
   const showBindButton = hasStoredToken && !hasCabinetBound;
   const useSessionUpload = hasStoredToken && hasCabinetBound;
 
-  const persist = useCallback((nextCode: string, nextIds: string[]) => {
+  const persist = useCallback((nextCode: string, nextIds: string[], writeSelection = true) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       void uploadPrefsStore.save({
         friendCode: nextCode,
-        selectedAccountIds: temporarySelectedAccountIds
-          ? persistedSelectedIdsRef.current
-          : nextIds,
+        selectedAccountIds: nextIds,
+        // 临时勾选仅改当前会话 UI，不写入该好友码的持久勾选
+        writeSelection: temporarySelectedAccountIds ? false : writeSelection,
       });
     }, 300);
   }, [temporarySelectedAccountIds]);
+
+  const resolveSelectionForCode = useCallback((
+    code: string,
+    prefs: Awaited<ReturnType<typeof uploadPrefsStore.load>>,
+    writableIds: string[],
+  ) => {
+    const trimmed = code.trim();
+    const map = prefs.selectionsByFriendCode ?? {};
+    const stored = map[trimmed]
+      ?? (prefs.friendCode === trimmed ? prefs.selectedAccountIds : []);
+    const restored = (stored ?? []).filter((id) => writableIds.includes(id));
+    return restored.length > 0 ? restored : writableIds;
+  }, []);
 
   const applyPhase = useCallback((next: UploadPhase) => {
     setPhase(next);
@@ -253,8 +266,7 @@ export function UploadDataSheet({
       const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
         .filter((target) => target.writable)
         .map((target) => target.account.id);
-      const restored = prefs.selectedAccountIds.filter((id) => writableIds.includes(id));
-      const persisted = restored.length > 0 ? restored : writableIds;
+      const persisted = resolveSelectionForCode(code, prefs, writableIds);
       persistedSelectedIdsRef.current = persisted;
       const temporary = temporarySelectedAccountIds
         ?.filter((id) => writableIds.includes(id)) ?? [];
@@ -267,7 +279,14 @@ export function UploadDataSheet({
     return () => {
       active = false;
     };
-  }, [visible, accounts, sessionsByAccountId, temporarySelectedAccountIds, refreshBindStatus]);
+  }, [
+    visible,
+    accounts,
+    sessionsByAccountId,
+    temporarySelectedAccountIds,
+    refreshBindStatus,
+    resolveSelectionForCode,
+  ]);
 
   useEffect(() => {
     if (!visible || running) return;
@@ -332,9 +351,20 @@ export function UploadDataSheet({
   const onFriendCodeChange = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 15);
     setFriendCode(digits);
-    persist(digits, selectedIds);
+    persist(digits, selectedIds, /^\d{15}$/.test(digits));
     if (digits.length === 15) {
-      void refreshBindStatus(digits);
+      void (async () => {
+        if (!temporarySelectedAccountIds) {
+          const prefs = await uploadPrefsStore.load();
+          const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
+            .filter((target) => target.writable)
+            .map((target) => target.account.id);
+          const nextIds = resolveSelectionForCode(digits, prefs, writableIds);
+          setSelectedIds(nextIds);
+          persistedSelectedIdsRef.current = nextIds;
+        }
+        await refreshBindStatus(digits);
+      })();
     } else {
       void scoreHubAccountStore.getByFriendCode(digits).then((entry) => {
         applyLocalAccountState(digits, entry);
@@ -347,7 +377,18 @@ export function UploadDataSheet({
     if (running || decodingQr) return;
     setHistoryVisible(false);
     setFriendCode(code);
-    persist(code, selectedIds);
+    if (!temporarySelectedAccountIds) {
+      const prefs = await uploadPrefsStore.load();
+      const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
+        .filter((target) => target.writable)
+        .map((target) => target.account.id);
+      const nextIds = resolveSelectionForCode(code, prefs, writableIds);
+      setSelectedIds(nextIds);
+      persistedSelectedIdsRef.current = nextIds;
+      persist(code, nextIds, false);
+    } else {
+      persist(code, selectedIds, false);
+    }
     await scoreHubAccountStore.select(code);
     await refreshBindStatus(code);
   };
@@ -355,11 +396,11 @@ export function UploadDataSheet({
   const removeStoredFriendCode = async (code: string) => {
     if (running || decodingQr) return;
     await scoreHubAccountStore.remove(code);
+    await uploadPrefsStore.removeSelection(code);
     const list = await refreshStoredList();
     if (list.length === 0) setHistoryVisible(false);
     if (friendCode.trim() === code.trim()) {
       setHasStoredToken(false);
-      // 删除当前码的会话后，绑定态以本地缓存失效，回到未登录提示
       setHasCabinetBound(false);
       setBindPanelOpen(false);
     }
