@@ -46,6 +46,21 @@ vi.mock('@/storage/score-hub-account-store', () => ({
   scoreHubAccountStore: {
     load: (...args: unknown[]) => mocks.accountLoad(...args),
     patch: (...args: unknown[]) => mocks.accountPatch(...args),
+    upsert: (...args: unknown[]) => mocks.accountPatch(...args),
+    getByFriendCode: async (friendCode: string) => {
+      const current = await mocks.accountLoad();
+      if (current?.token && (!friendCode || current.friendCode === friendCode || !current.friendCode)) {
+        return {
+          friendCode: current.friendCode || friendCode,
+          token: current.token,
+          hasCabinetBound: current.hasCabinetBound === true,
+          updatedAt: Date.now(),
+        };
+      }
+      return null;
+    },
+    select: (...args: unknown[]) => mocks.accountLoad(...args),
+    listWithToken: async () => [],
   },
 }));
 
@@ -182,7 +197,7 @@ describe('好友码多目标写入', () => {
       qrCode: 'SGWCMAIDBAD',
       signal: { aborted: false },
       onPhase: vi.fn(),
-    })).rejects.toThrow(/请先到「好友码」完成一次上传/);
+    })).rejects.toThrow(/请先完成一次好友码上传/);
     expect(mocks.createFriendLoginJob).not.toHaveBeenCalled();
     expect(mocks.bindCabinetByQr).not.toHaveBeenCalled();
   });
