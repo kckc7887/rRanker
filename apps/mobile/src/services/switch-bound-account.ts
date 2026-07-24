@@ -25,8 +25,9 @@ function navigateToOverviewAccountPage(): void {
 }
 
 /**
- * 切换到指定已绑定账号：先清账号查询缓存，再更新会话，并进入对应游戏总览账号页；
- * 页面在数据就绪前保持加载态，避免缓存命中时边渲染边重拉导致卡顿。
+ * 切换到指定已绑定账号：先清账号查询缓存，再更新会话；
+ * 默认进入对应游戏总览账号页（`navigateToOverview: false` 时留在当前页）。
+ * 总览等页在数据就绪前保持加载态，避免缓存命中时边渲染边重拉导致卡顿。
  */
 export function switchBoundAccount(
   accountId: string,
