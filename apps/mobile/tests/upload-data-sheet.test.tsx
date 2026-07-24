@@ -163,9 +163,12 @@ describe('当前查分器上传弹窗临时选项', () => {
   it('可切换到神秘二维码并在缺少凭证时提示', async () => {
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
+    expect(screen.getByLabelText('score-hub 近一小时统计')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('使用神秘二维码上传'));
     expect(screen.getByLabelText('神秘二维码字符串')).toBeTruthy();
     expect(screen.getByLabelText('选择二维码图片')).toBeTruthy();
+    expect(screen.getByText(/舞萌-中二公众号 → 玩家二维码/)).toBeTruthy();
+    expect(screen.queryByLabelText('score-hub 近一小时统计')).toBeNull();
     await fireEvent.press(screen.getByLabelText('开始上传'));
     expect(await screen.findByText('缺少二维码')).toBeTruthy();
     expect(screen.getByText('请粘贴神秘二维码字符串，或选择二维码图片。')).toBeTruthy();
