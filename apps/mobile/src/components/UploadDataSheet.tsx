@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -353,6 +352,19 @@ export function UploadDataSheet({
     await refreshBindStatus(code);
   };
 
+  const removeStoredFriendCode = async (code: string) => {
+    if (running || decodingQr) return;
+    await scoreHubAccountStore.remove(code);
+    const list = await refreshStoredList();
+    if (list.length === 0) setHistoryVisible(false);
+    if (friendCode.trim() === code.trim()) {
+      setHasStoredToken(false);
+      // 删除当前码的会话后，绑定态以本地缓存失效，回到未登录提示
+      setHasCabinetBound(false);
+      setBindPanelOpen(false);
+    }
+  };
+
   const applyQrText = (raw: string) => {
     const extracted = extractMaimaiQrPayload(raw) ?? raw.trim();
     setBindQrText(extracted);
@@ -615,38 +627,92 @@ export function UploadDataSheet({
 
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码</Text>
-          <View style={styles.friendCodeRow}>
-            <TextInput
-              accessibilityLabel="舞萌好友码"
-              value={friendCode}
-              onChangeText={onFriendCodeChange}
-              keyboardType="number-pad"
-              maxLength={15}
-              placeholder="15 位数字"
-              placeholderTextColor={theme.textMuted}
-              editable={!busy && prefsReady}
-              style={[
-                styles.input,
-                styles.friendCodeInput,
-                { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 },
-              ]}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="选择已保存的 ScoreHub 好友码"
-              disabled={busy || !prefsReady || storedAccounts.length === 0}
-              onPress={() => {
-                void refreshStoredList().then(() => setHistoryVisible(true));
-              }}
-              style={({ pressed }) => [
-                styles.historyButton,
-                { borderColor: theme.border, backgroundColor: theme.surface },
-                (busy || !prefsReady || storedAccounts.length === 0) && styles.primaryDisabled,
-                pressed && !busy && styles.softPressed,
-              ]}
-            >
-              <Text style={[styles.secondaryText, { color: theme.accent }]}>历史</Text>
-            </Pressable>
+          <View style={styles.friendCodeBlock}>
+            <View style={styles.friendCodeRow}>
+              <TextInput
+                accessibilityLabel="舞萌好友码"
+                value={friendCode}
+                onChangeText={onFriendCodeChange}
+                keyboardType="number-pad"
+                maxLength={15}
+                placeholder="15 位数字"
+                placeholderTextColor={theme.textMuted}
+                editable={!busy && prefsReady}
+                style={[
+                  styles.input,
+                  styles.friendCodeInput,
+                  { backgroundColor: theme.input, borderColor: theme.border, color: theme.text, borderWidth: 1 },
+                ]}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="选择已保存的 ScoreHub 好友码"
+                accessibilityState={{ expanded: historyVisible }}
+                disabled={busy || !prefsReady || storedAccounts.length === 0}
+                onPress={() => {
+                  if (historyVisible) {
+                    setHistoryVisible(false);
+                    return;
+                  }
+                  void refreshStoredList().then((list) => {
+                    if (list.length > 0) setHistoryVisible(true);
+                  });
+                }}
+                style={({ pressed }) => [
+                  styles.historyButton,
+                  { borderColor: theme.border, backgroundColor: theme.surface },
+                  historyVisible && { borderColor: theme.accent },
+                  (busy || !prefsReady || storedAccounts.length === 0) && styles.primaryDisabled,
+                  pressed && !busy && styles.softPressed,
+                ]}
+              >
+                <Text style={[styles.secondaryText, { color: theme.accent }]}>
+                  {historyVisible ? '收起' : '历史'}
+                </Text>
+              </Pressable>
+            </View>
+            {historyVisible && storedAccounts.length > 0 ? (
+              <View
+                accessibilityLabel="ScoreHub 好友码历史列表"
+                style={[styles.historyDropdown, { backgroundColor: theme.surface, borderColor: theme.border }]}
+              >
+                {storedAccounts.map((entry, index) => (
+                  <View
+                    key={entry.friendCode}
+                    style={[
+                      styles.historyRow,
+                      index > 0 && [styles.historyRowBorder, { borderTopColor: theme.border }],
+                    ]}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`选择好友码 ${entry.friendCode}`}
+                      disabled={busy}
+                      onPress={() => void selectStoredFriendCode(entry.friendCode)}
+                      style={({ pressed }) => [styles.historySelect, pressed && !busy && styles.softPressed]}
+                    >
+                      <Text style={[styles.historyCode, { color: theme.text }]}>{entry.friendCode}</Text>
+                      <Text style={[styles.historyMeta, { color: theme.textMuted }]}>
+                        {entry.hasCabinetBound ? '已绑定二维码' : '未绑定二维码'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`删除好友码 ${entry.friendCode}`}
+                      disabled={busy}
+                      hitSlop={8}
+                      onPress={() => void removeStoredFriendCode(entry.friendCode)}
+                      style={({ pressed }) => [
+                        styles.historyDelete,
+                        pressed && !busy && styles.softPressed,
+                      ]}
+                    >
+                      <Text style={[styles.historyDeleteText, { color: theme.danger }]}>删除</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
           <Text style={[styles.hint, { color: theme.textMuted }]}>
             从游戏服务器取成绩后上传到下方勾选的查分器。
@@ -913,47 +979,6 @@ export function UploadDataSheet({
           ) : null}
         </ScrollView>
       </View>
-
-      <Modal
-        visible={historyVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setHistoryVisible(false)}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="关闭好友码历史"
-          style={styles.historyBackdrop}
-          onPress={() => setHistoryVisible(false)}
-        >
-          <Pressable
-            style={[styles.historySheet, { backgroundColor: theme.surface }]}
-            onPress={(event) => event.stopPropagation()}
-          >
-            <Text style={[styles.historyTitle, { color: theme.text }]}>已保存的 ScoreHub 好友码</Text>
-            <ScrollView style={styles.historyList}>
-              {storedAccounts.map((entry) => (
-                <Pressable
-                  key={entry.friendCode}
-                  accessibilityRole="button"
-                  accessibilityLabel={`选择好友码 ${entry.friendCode}`}
-                  onPress={() => void selectStoredFriendCode(entry.friendCode)}
-                  style={({ pressed }) => [
-                    styles.historyRow,
-                    { borderBottomColor: theme.border },
-                    pressed && styles.softPressed,
-                  ]}
-                >
-                  <Text style={[styles.historyCode, { color: theme.text }]}>{entry.friendCode}</Text>
-                  <Text style={[styles.historyMeta, { color: theme.textMuted }]}>
-                    {entry.hasCabinetBound ? '已绑定二维码' : '未绑定二维码'}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </AppModal>
   );
 }
@@ -982,6 +1007,7 @@ const styles = StyleSheet.create({
   softPressed: { opacity: 0.7 },
   content: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   sectionLabel: { color: '#6B7280', fontSize: 13, fontWeight: '600', marginTop: 4 },
+  friendCodeBlock: { gap: 8 },
   friendCodeRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   friendCodeInput: { flex: 1 },
   historyButton: {
@@ -993,6 +1019,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  historyDropdown: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingLeft: 12,
+    paddingRight: 8,
+    paddingVertical: 10,
+  },
+  historyRowBorder: { borderTopWidth: StyleSheet.hairlineWidth },
+  historySelect: { flex: 1, gap: 2, paddingVertical: 2 },
+  historyCode: { fontSize: 15, fontWeight: '600', letterSpacing: 1 },
+  historyMeta: { fontSize: 12 },
+  historyDelete: {
+    minHeight: 36,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  historyDeleteText: { fontSize: 13, fontWeight: '700' },
   input: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -1082,30 +1132,4 @@ const styles = StyleSheet.create({
   resultSuccess: { color: '#16803A', fontWeight: '700' },
   resultFailure: { color: '#B42318', fontWeight: '700' },
   resultDetail: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
-  historyBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
-  },
-  historySheet: {
-    maxHeight: '55%',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingTop: 16,
-    paddingBottom: 28,
-  },
-  historyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    paddingHorizontal: 20,
-    marginBottom: 8,
-  },
-  historyList: { paddingHorizontal: 8 },
-  historyRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  historyCode: { fontSize: 16, fontWeight: '600', letterSpacing: 1 },
-  historyMeta: { fontSize: 12, marginTop: 4 },
 });
