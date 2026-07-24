@@ -1,14 +1,13 @@
 <div align="center">
 
-# rRanker
-
 ![banner](./assets/images/rRanker%20banner.svg "rRanker")
 
+# rRanker
+
 </div>
+rRanker 是一个聚合了多家音乐游戏数据的查分器应用，提供基本的玩家数据查询与其他便利功能。目前已经支持了以下游戏：
 
-
-
-## 项目介绍
+- Phigros [[Apple Store]](https://apps.apple.com/cn/app/phigros/id1454809109) [[TapTap]](https://www.taptap.cn/app/165287?os=android)
 
 ## 技术栈
 
