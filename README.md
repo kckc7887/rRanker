@@ -65,10 +65,17 @@ rRanker 是一个聚合了多家音乐游戏数据的查分器应用，提供基
 |Phigros部分·基础功能实现|✅|
 |存储管理与缓存清理|✅|
 |深色模式适配与主题色切换|✅|
-|编写一份完整的`README.md`|✅|
+|撰写一份完整的`README.md`|✅|
 |收藏系统|✅|
 |中二节奏部分·基础功能实现|🚧|
 |喵斯快跑部分·基础功能实现|🚧|
+
+##  快速开始
+```bash
+cd apps\mobile
+npm install
+npm start   
+```
 ## 技术栈
 
 Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict · Zustand · TanStack Query · Expo SQLite · Expo SecureStore
