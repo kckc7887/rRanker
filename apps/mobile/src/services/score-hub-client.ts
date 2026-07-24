@@ -597,6 +597,85 @@ export async function fetchLatestSync(
   return body as ScoreHubLatestSync;
 }
 
+export type ScoreHubMeProfile = {
+  friendCode: string | null;
+  hasCabinetUserId: boolean;
+};
+
+export async function fetchMe(
+  token: string,
+  signal?: ScoreHubAbortSignal,
+): Promise<ScoreHubMeProfile> {
+  const { status, body } = await requestJson('GET', '/me', { token, signal });
+  if (status !== 200 || !body || typeof body !== 'object') {
+    throw new ScoreHubError(`拉取账号信息失败（HTTP ${status}）`, status);
+  }
+  const record = body as Record<string, unknown>;
+  return {
+    friendCode: typeof record.friendCode === 'string' ? record.friendCode : null,
+    hasCabinetUserId: record.hasCabinetUserId === true,
+  };
+}
+
+function bindCabinetErrorMessage(body: unknown, status: number): string {
+  if (body && typeof body === 'object') {
+    const record = body as Record<string, unknown>;
+    if (status === 409) {
+      if (record.verification === 'profile') {
+        return '二维码反查出的好友码与当前登录账号不一致，请确认使用本人的玩家二维码';
+      }
+      const matched = typeof record.matchedRows === 'number' ? record.matchedRows : 0;
+      const required = typeof record.requiredRows === 'number' ? record.requiredRows : 10;
+      return `绑定失败：成绩匹配 ${matched}/${required} 条，请先完成成绩同步后再试`;
+    }
+    const message = record.message;
+    if (typeof message === 'string' && message && message !== 'Bad Request') {
+      return message;
+    }
+    if (typeof record.error === 'string' && record.error) {
+      return record.error;
+    }
+  }
+  return `绑定玩家二维码失败（HTTP ${status}）`;
+}
+
+export type BindCabinetResult = {
+  ok: true;
+  alreadyBound: boolean;
+};
+
+/** 已登录用户绑定玩家二维码（PUT /me/cabinet）。已绑定视为成功。 */
+export async function bindCabinetByQr(
+  token: string,
+  qrCode: string,
+  signal?: ScoreHubAbortSignal,
+): Promise<BindCabinetResult> {
+  const trimmed = qrCode.trim();
+  if (!trimmed) {
+    throw new ScoreHubError('请提供玩家二维码字符串');
+  }
+  const { status, body } = await requestJson('PUT', '/me/cabinet', {
+    body: { qrCode: trimmed },
+    token,
+    signal,
+    timeoutMs: QR_LOGIN_POST_TIMEOUT_MS,
+  });
+  if (status === 201) {
+    return { ok: true, alreadyBound: false };
+  }
+  if (status === 400 && body && typeof body === 'object') {
+    const message = String(
+      (body as { message?: unknown }).message
+      ?? (body as { error?: unknown }).error
+      ?? '',
+    );
+    if (message.includes('已绑定')) {
+      return { ok: true, alreadyBound: true };
+    }
+  }
+  throw new ScoreHubError(bindCabinetErrorMessage(body, status), status);
+}
+
 function parseDxnetJobStats(raw: unknown): ScoreHubDxnetJobStats | null {
   if (!raw || typeof raw !== 'object') return null;
   const record = raw as Record<string, unknown>;
