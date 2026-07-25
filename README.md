@@ -56,6 +56,7 @@ rRanker 是一个聚合了多家音乐游戏数据的数据管理应用，提供
     - 分辨率选择：1080p、1440p、2160p。
     - 筛选难度、评价、性歌（支持性GOOD与性MISS，应用内显示为XING-GOOD/XING-MISS）。
     - 限定分数与Acc范围。
+
 ## 待办事项
 | 功能 | 状态 |
 | --- | --- |
@@ -90,5 +91,4 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 本项目仅提供数据管理功能，本项目与相关的任何游戏官方没有任何关系。
 
 ## 许可证
-
-本项目采用 [GNU Affero General Public License v3.0](LICENSE)（SPDX：`AGPL-3.0-only`），Copyright (c) 2026 Chnynnya。
+本项目采用 [GNU Affero General Public License v3.0](LICENSE)（SPDX：`AGPL-3.0-only`），Copyright (c) 2026 尘言。
