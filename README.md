@@ -10,6 +10,13 @@ rRanker 是一个聚合了多家音乐游戏数据的数据管理应用，提供
 - 舞萌DX [[网站]](https://wc.wahlap.net/maidx/play/)
 - Phigros [[Apple Store]](https://apps.apple.com/cn/app/phigros/id1454809109) [[TapTap]](https://www.taptap.cn/app/165287?os=android) [[Google Play]](https://play.google.com/store/apps/details?id=com.PigeonGames.Phigros)
 
+## 一些图片
+
+### 舞萌DX
+|总览|成绩|筛选|牌子|歌曲详情|导出图片|
+|--|--|--|--|--|--|
+|<img src="assets\images\app\舞萌DX\总览页.JPG" alt="舞萌DX总览页" width="100">|<img src="assets\images\app\舞萌DX\成绩页.JPG" alt="舞萌DX成绩页" width="100">|<img src="assets\images\app\舞萌DX\成绩页-筛选.JPG" alt="舞萌DX筛选页" width="100">|<img src="assets\images\app\舞萌DX\牌子进度页.JPG" alt="舞萌DX牌子页" width="100">|<img src="assets\images\app\舞萌DX\歌曲详情-难度卡片.JPG" alt="舞萌DX歌曲详情页" width="100">|<img src="assets\images\app\舞萌DX\导出页-样式.JPG" alt="舞萌DX导出图片" width="100">|
+
 ## 主要功能
 
 1. 🔑 登录玩家账号。
