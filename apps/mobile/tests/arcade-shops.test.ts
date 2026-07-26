@@ -2,7 +2,8 @@ import {
   buildAndroidAmapNavigateUri,
   buildAppleMapsNavigateUri,
   buildArcadeFilterSummary,
-  buildGeoNavigateUri,
+  buildArcadeMapNavigateUri,
+  buildBaiduMapsNavigateUri,
   buildIosAmapNavigateUri,
   FALLBACK_ARCADE_GAME_TITLES,
   filterArcadeShops,
@@ -11,6 +12,7 @@ import {
   formatArcadeGamesSummary,
   formatArcadeBusinessStatus,
   formatArcadeOpeningHoursLines,
+  listArcadeMapApps,
   resolveArcadeBusinessStatus,
   shopMatchesGameTitles,
   shopMatchesNameKeyword,
@@ -191,11 +193,17 @@ describe('arcade navigation URIs', () => {
     addressGeneral: ['中国', '上海市'],
   };
 
+  it('lists map apps by platform', () => {
+    expect(listArcadeMapApps('ios').map((app) => app.id)).toEqual(['apple', 'amap', 'baidu']);
+    expect(listArcadeMapApps('android').map((app) => app.id)).toEqual(['amap', 'baidu']);
+  });
+
   it('builds platform navigation deep links from address', () => {
     const destination = '上海市徐汇区某某路 1 号';
     const iosUri = buildIosAmapNavigateUri(target);
     const androidUri = buildAndroidAmapNavigateUri(target);
     const appleUri = buildAppleMapsNavigateUri(target);
+    const baiduUri = buildBaiduMapsNavigateUri(target);
     expect(iosUri.startsWith('iosamap://path?')).toBe(true);
     expect(iosUri).not.toContain('dlat=');
     expect(new URLSearchParams(iosUri.split('?')[1]).get('dname')).toBe(destination);
@@ -203,11 +211,15 @@ describe('arcade navigation URIs', () => {
     expect(new URLSearchParams(androidUri.split('?')[1]).get('dname')).toBe(destination);
     expect(appleUri).toContain('maps.apple.com');
     expect(new URLSearchParams(appleUri.split('?')[1]).get('daddr')).toBe(destination);
-    expect(buildGeoNavigateUri(target)).toBe(`geo:0,0?q=${encodeURIComponent(destination)}`);
+    expect(baiduUri.startsWith('baidumap://map/direction?')).toBe(true);
+    expect(new URLSearchParams(baiduUri.split('?')[1]).get('destination')).toBe(destination);
+    expect(buildArcadeMapNavigateUri('amap', target, 'ios')).toBe(iosUri);
+    expect(buildArcadeMapNavigateUri('amap', target, 'android')).toBe(androidUri);
   });
 
   it('falls back to shop name when address is empty', () => {
     const fallback = { name: '仅店名机厅', addressDetailed: '', addressGeneral: [] };
-    expect(buildGeoNavigateUri(fallback)).toBe(`geo:0,0?q=${encodeURIComponent('仅店名机厅')}`);
+    expect(new URLSearchParams(buildBaiduMapsNavigateUri(fallback).split('?')[1]).get('destination'))
+      .toBe('仅店名机厅');
   });
 });
