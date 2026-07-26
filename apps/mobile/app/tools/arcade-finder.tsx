@@ -218,6 +218,7 @@ export default function ArcadeFinderScreen() {
         onReset={resetFilters}
       />
 
+      <View style={styles.resultsArea}>
       {isLoading && !shops ? (
         <View style={styles.center}>
           <ActivityIndicator color={theme.accent} />
@@ -254,6 +255,7 @@ export default function ArcadeFinderScreen() {
           ) : null}
         />
       )}
+      </View>
     </View>
   );
 }
@@ -262,6 +264,7 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   searchArea: { padding: 12, paddingBottom: 8 },
   searchBox: { borderWidth: 1, borderRadius: 10, padding: 11, fontSize: 16 },
+  resultsArea: { flex: 1, minHeight: 0 },
   listContent: { padding: 16, gap: 12, paddingBottom: 32 },
   shopCard: { gap: 8 },
   shopHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },

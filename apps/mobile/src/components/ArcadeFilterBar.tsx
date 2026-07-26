@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NeutralChip } from '@/components/MaimaiFilterBar';
 import {
@@ -8,6 +8,9 @@ import {
   type ArcadeRadiusKm,
 } from '@/domain/arcade-shops';
 import { useAppTheme } from '@/theme/app-theme';
+
+/** Keep room for search + a slice of the shop list when filters are expanded. */
+const EXPANDED_BODY_MAX_RATIO = 0.52;
 
 export type ArcadeFilterBarProps = {
   collapsed: boolean;
@@ -31,6 +34,8 @@ export function ArcadeFilterBar({
   onReset,
 }: ArcadeFilterBarProps) {
   const theme = useAppTheme();
+  const { height: windowHeight } = useWindowDimensions();
+  const expandedBodyMaxHeight = Math.round(windowHeight * EXPANDED_BODY_MAX_RATIO);
   const summary = buildArcadeFilterSummary({ radiusKm, titleIds, gameTitles });
 
   const toggleTitleId = (titleId: number) => {
@@ -65,7 +70,13 @@ export function ArcadeFilterBar({
   }
 
   return (
-    <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+    <View
+      style={[
+        styles.filterBar,
+        styles.filterBarExpanded,
+        { backgroundColor: theme.surface, borderBottomColor: theme.border },
+      ]}
+    >
       <View style={styles.expandedHeader}>
         <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
         <View style={styles.headerActions}>
@@ -83,35 +94,43 @@ export function ArcadeFilterBar({
         </View>
       </View>
 
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>距离</Text>
-        <View style={styles.chipWrap}>
-          {ARCADE_RADIUS_OPTIONS.map((radius) => (
-            <NeutralChip
-              key={radius}
-              label={`${radius} km`}
-              active={radiusKm === radius}
-              onPress={() => onRadiusChange(radius)}
-              accessibilityLabel={`筛选距离 ${radius} 公里`}
-            />
-          ))}
+      <ScrollView
+        style={{ maxHeight: expandedBodyMaxHeight }}
+        contentContainerStyle={styles.expandedBody}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+      >
+        <View style={styles.filterRow}>
+          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>距离</Text>
+          <View style={styles.chipWrap}>
+            {ARCADE_RADIUS_OPTIONS.map((radius) => (
+              <NeutralChip
+                key={radius}
+                label={`${radius} km`}
+                active={radiusKm === radius}
+                onPress={() => onRadiusChange(radius)}
+                accessibilityLabel={`筛选距离 ${radius} 公里`}
+              />
+            ))}
+          </View>
         </View>
-      </View>
 
-      <View style={[styles.filterRow, styles.filterRowTop]}>
-        <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>机型</Text>
-        <View style={styles.chipWrap}>
-          {gameTitles.map((title) => (
-            <NeutralChip
-              key={title.id}
-              label={title.name}
-              active={titleIds.includes(title.id)}
-              onPress={() => toggleTitleId(title.id)}
-              accessibilityLabel={`筛选机型 ${title.name}`}
-            />
-          ))}
+        <View style={[styles.filterRow, styles.filterRowTop]}>
+          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>机型</Text>
+          <View style={styles.chipWrap}>
+            {gameTitles.map((title) => (
+              <NeutralChip
+                key={title.id}
+                label={title.name}
+                active={titleIds.includes(title.id)}
+                onPress={() => toggleTitleId(title.id)}
+                accessibilityLabel={`筛选机型 ${title.name}`}
+              />
+            ))}
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -143,6 +162,8 @@ function ResetFilterButton({ onPress }: { onPress: () => void }) {
 
 const styles = StyleSheet.create({
   filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  filterBarExpanded: { flexShrink: 1 },
+  expandedBody: { gap: 10, paddingBottom: 4 },
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   filterRowTop: { alignItems: 'flex-start' },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
