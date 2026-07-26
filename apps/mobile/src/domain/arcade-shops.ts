@@ -123,6 +123,22 @@ export function filterArcadeShops(
     .sort((a, b) => a.distanceKm - b.distanceKm || a.name.localeCompare(b.name, 'zh'));
 }
 
+export function buildArcadeFilterSummary(options: {
+  radiusKm: ArcadeRadiusKm;
+  titleIds: readonly number[];
+  gameTitles: readonly ArcadeGameTitle[];
+}): string {
+  const selectedNames = options.gameTitles
+    .filter((title) => options.titleIds.includes(title.id))
+    .map((title) => title.name);
+  const gamesLabel = selectedNames.length === 0
+    ? '未选机型'
+    : selectedNames.length <= 2
+      ? selectedNames.join('、')
+      : `${selectedNames.slice(0, 2).join('、')} 等${selectedNames.length}种`;
+  return `${options.radiusKm} km · ${gamesLabel}`;
+}
+
 export function buildIosAmapNavigateUri(shop: Pick<ArcadeShop, 'name' | 'latitude' | 'longitude'>): string {
   const params = new URLSearchParams({
     sourceApplication: 'rRanker',

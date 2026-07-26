@@ -1,8 +1,10 @@
 import {
   buildAndroidAmapNavigateUri,
   buildAppleMapsNavigateUri,
+  buildArcadeFilterSummary,
   buildGeoNavigateUri,
   buildIosAmapNavigateUri,
+  FALLBACK_ARCADE_GAME_TITLES,
   filterArcadeShops,
   formatArcadeAddress,
   formatArcadeDistanceKm,
@@ -99,6 +101,28 @@ describe('arcade shop formatting', () => {
       { gameId: 1, titleId: 1, name: '舞萌DX', version: '', quantity: 4, cost: '' },
       { gameId: 2, titleId: 3, name: '中二节奏', version: '', quantity: 0, cost: '' },
     ])).toBe('舞萌DX×4 · 中二节奏');
+  });
+});
+
+describe('arcade filter summary', () => {
+  it('summarizes radius and selected game titles', () => {
+    expect(buildArcadeFilterSummary({
+      radiusKm: 10,
+      titleIds: [1],
+      gameTitles: FALLBACK_ARCADE_GAME_TITLES,
+    })).toBe('10 km · 舞萌DX');
+
+    expect(buildArcadeFilterSummary({
+      radiusKm: 5,
+      titleIds: [1, 3, 4],
+      gameTitles: FALLBACK_ARCADE_GAME_TITLES,
+    })).toBe('5 km · 舞萌DX、中二节奏 等3种');
+
+    expect(buildArcadeFilterSummary({
+      radiusKm: 15,
+      titleIds: [],
+      gameTitles: FALLBACK_ARCADE_GAME_TITLES,
+    })).toBe('15 km · 未选机型');
   });
 });
 
