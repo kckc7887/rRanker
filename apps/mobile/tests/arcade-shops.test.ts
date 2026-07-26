@@ -11,6 +11,7 @@ import {
   formatArcadeDistanceKm,
   formatArcadeGamesSummary,
   formatArcadeBusinessStatus,
+  formatArcadeGeocodedLabel,
   formatArcadeOpeningHoursLines,
   listArcadeMapApps,
   resolveArcadeBusinessStatus,
@@ -164,6 +165,22 @@ describe('arcade opening hours formatting', () => {
   });
 });
 
+describe('arcade geocoded origin label', () => {
+  it('joins city district and street when available', () => {
+    expect(formatArcadeGeocodedLabel({
+      city: '上海市',
+      district: '徐汇区',
+      street: '漕溪北路',
+      streetNumber: '88号',
+    })).toBe('上海市徐汇区漕溪北路88号');
+  });
+
+  it('falls back to region or generic label', () => {
+    expect(formatArcadeGeocodedLabel({ region: '上海市' })).toBe('上海市');
+    expect(formatArcadeGeocodedLabel({})).toBe('已选位置');
+  });
+});
+
 describe('arcade filter summary', () => {
   it('summarizes radius and selected game titles', () => {
     expect(buildArcadeFilterSummary({
@@ -183,6 +200,15 @@ describe('arcade filter summary', () => {
       titleIds: [],
       gameTitles: FALLBACK_ARCADE_GAME_TITLES,
     })).toBe('15 km · 未选机型');
+  });
+
+  it('prefixes origin label when provided', () => {
+    expect(buildArcadeFilterSummary({
+      radiusKm: 10,
+      titleIds: [1],
+      gameTitles: FALLBACK_ARCADE_GAME_TITLES,
+      originLabel: '徐家汇',
+    })).toBe('徐家汇 · 10 km · 舞萌DX');
   });
 });
 
