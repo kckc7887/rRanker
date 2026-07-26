@@ -14,6 +14,7 @@ import * as Location from 'expo-location';
 import { useNotification } from '@/components/AppNotification';
 import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
+import { ArcadeOriginPickerSheet } from '@/components/ArcadeOriginPickerSheet';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import {
@@ -21,8 +22,10 @@ import {
   formatArcadeAddress,
   formatArcadeDistanceKm,
   formatArcadeGamesSummary,
+  formatArcadeGeocodedLabel,
   filterArcadeShops,
   type ArcadeGameTitle,
+  type ArcadeOrigin,
   type ArcadeRadiusKm,
   type ArcadeShop,
 } from '@/domain/arcade-shops';
@@ -37,6 +40,28 @@ import { useAppTheme } from '@/theme/app-theme';
 import { openArcadeNavigation } from '@/utils/open-arcade-navigation';
 
 type LoadErrorKind = 'permission' | 'location' | 'network' | null;
+
+async function acquireGpsOrigin(): Promise<ArcadeOrigin> {
+  const permission = await Location.requestForegroundPermissionsAsync();
+  if (permission.status !== 'granted') {
+    throw new Error('permission');
+  }
+  const position = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
+  });
+  const latitude = position.coords.latitude;
+  const longitude = position.coords.longitude;
+  let label = '当前位置';
+  try {
+    const places = await Location.reverseGeocodeAsync({ latitude, longitude });
+    if (places[0]) {
+      label = formatArcadeGeocodedLabel(places[0]) || label;
+    }
+  } catch {
+    // Keep the generic GPS label when reverse geocode is unavailable.
+  }
+  return { source: 'gps', latitude, longitude, label };
+}
 
 function ArcadeShopCard({
   shop,
@@ -98,6 +123,9 @@ export default function ArcadeFinderScreen() {
   const [radiusKm, setRadiusKm] = useState<ArcadeRadiusKm>(10);
   const [titleIds, setTitleIds] = useState<number[]>(() => defaultArcadeFinderPreferences().titleIds);
   const [filtersCollapsed, setFiltersCollapsed] = useState(true);
+  const [origin, setOrigin] = useState<ArcadeOrigin | null>(null);
+  const [originPickerVisible, setOriginPickerVisible] = useState(false);
+  const [locatingOrigin, setLocatingOrigin] = useState(false);
   const [gameTitles, setGameTitles] = useState<readonly ArcadeGameTitle[]>(FALLBACK_ARCADE_GAME_TITLES);
   const [shops, setShops] = useState<ArcadeShop[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -134,41 +162,53 @@ export default function ArcadeFinderScreen() {
     };
   }, []);
 
-  const loadShops = useCallback(async () => {
-    setIsLoading(true);
+  const useGpsOrigin = useCallback(async () => {
+    setLocatingOrigin(true);
     setErrorKind(null);
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== 'granted') {
-        setShops(null);
-        setErrorKind('permission');
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const next = await fetchNearcadeDiscover({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        radiusKm,
-      });
-      setShops(next);
-      setErrorKind(null);
+      const next = await acquireGpsOrigin();
+      setOrigin(next);
     } catch (error) {
-      setShops(null);
       const message = error instanceof Error ? error.message : String(error);
-      setErrorKind(message.includes('discover') || message.includes('HTTP') || message.includes('Network')
-        ? 'network'
-        : 'location');
+      setErrorKind(message === 'permission' ? 'permission' : 'location');
+      if (!origin) setShops(null);
     } finally {
-      setIsLoading(false);
+      setLocatingOrigin(false);
     }
-  }, [radiusKm]);
+  }, [origin]);
 
   useEffect(() => {
-    if (!hydrated || activeGameId !== 'maimai') return;
-    void loadShops();
-  }, [activeGameId, hydrated, loadShops]);
+    if (!hydrated || activeGameId !== 'maimai' || origin) return;
+    void useGpsOrigin();
+  }, [activeGameId, hydrated, origin, useGpsOrigin]);
+
+  useEffect(() => {
+    if (!hydrated || activeGameId !== 'maimai' || !origin) return;
+    let cancelled = false;
+    void (async () => {
+      setIsLoading(true);
+      setErrorKind(null);
+      try {
+        const next = await fetchNearcadeDiscover({
+          latitude: origin.latitude,
+          longitude: origin.longitude,
+          radiusKm,
+        });
+        if (cancelled) return;
+        setShops(next);
+        setErrorKind(null);
+      } catch {
+        if (cancelled) return;
+        setShops(null);
+        setErrorKind('network');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeGameId, hydrated, origin, radiusKm]);
 
   const filtered = useMemo(() => {
     if (!shops) return [];
@@ -179,6 +219,15 @@ export default function ArcadeFinderScreen() {
     const defaults = defaultArcadeFinderPreferences();
     setRadiusKm(defaults.radiusKm);
     setTitleIds(defaults.titleIds);
+    void useGpsOrigin();
+  };
+
+  const retryLoad = () => {
+    if (origin && errorKind === 'network') {
+      setOrigin({ ...origin });
+      return;
+    }
+    void useGpsOrigin();
   };
 
   const openDetail = useCallback((shop: ArcadeShop) => {
@@ -240,26 +289,32 @@ export default function ArcadeFinderScreen() {
       <ArcadeFilterBar
         collapsed={filtersCollapsed}
         onCollapsedChange={setFiltersCollapsed}
+        origin={origin}
+        locatingOrigin={locatingOrigin}
         radiusKm={radiusKm}
         titleIds={titleIds}
         gameTitles={gameTitles}
+        onUseGpsOrigin={() => { void useGpsOrigin(); }}
+        onEditOrigin={() => setOriginPickerVisible(true)}
         onRadiusChange={setRadiusKm}
         onTitleIdsChange={setTitleIds}
         onReset={resetFilters}
       />
 
       <View style={styles.resultsArea}>
-      {isLoading && !shops ? (
+      {((isLoading || locatingOrigin) && !shops) ? (
         <View style={styles.center}>
           <ActivityIndicator color={theme.accent} />
-          <Text style={[styles.statusText, { color: theme.textMuted }]}>正在定位并加载附近机厅…</Text>
+          <Text style={[styles.statusText, { color: theme.textMuted }]}>
+            {locatingOrigin ? '正在定位…' : '正在加载附近机厅…'}
+          </Text>
         </View>
       ) : errorText ? (
         <View style={styles.center}>
           <Text style={[styles.statusText, { color: theme.textMuted }]}>{errorText}</Text>
           <Pressable
             style={[styles.retryButton, { backgroundColor: theme.accent }]}
-            onPress={() => { void loadShops(); }}
+            onPress={retryLoad}
           >
             <Text style={styles.retryText}>重试</Text>
           </Pressable>
@@ -277,15 +332,23 @@ export default function ArcadeFinderScreen() {
               </Text>
             </View>
           )}
-          ListHeaderComponent={isLoading ? (
+          ListHeaderComponent={isLoading || locatingOrigin ? (
             <View style={styles.refreshRow}>
               <ActivityIndicator color={theme.accent} size="small" />
-              <Text style={[styles.refreshText, { color: theme.textMuted }]}>刷新中…</Text>
+              <Text style={[styles.refreshText, { color: theme.textMuted }]}>
+                {locatingOrigin ? '定位中…' : '刷新中…'}
+              </Text>
             </View>
           ) : null}
         />
       )}
       </View>
+
+      <ArcadeOriginPickerSheet
+        visible={originPickerVisible}
+        onClose={() => setOriginPickerVisible(false)}
+        onSelect={setOrigin}
+      />
     </View>
   );
 }
