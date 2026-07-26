@@ -11,10 +11,10 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import * as Location from 'expo-location';
+import { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import {
-  ARCADE_RADIUS_OPTIONS,
   FALLBACK_ARCADE_GAME_TITLES,
   formatArcadeAddress,
   formatArcadeDistanceKm,
@@ -35,35 +35,6 @@ import { useAppTheme } from '@/theme/app-theme';
 import { openArcadeNavigation } from '@/utils/open-arcade-navigation';
 
 type LoadErrorKind = 'permission' | 'location' | 'network' | null;
-
-function Chip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  const theme = useAppTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
-      onPress={onPress}
-      style={[
-        styles.chip,
-        { backgroundColor: theme.surfaceMuted, borderColor: theme.border },
-        active && { backgroundColor: theme.accent, borderColor: theme.accent },
-      ]}
-    >
-      <Text style={[styles.chipText, { color: theme.textSecondary }, active && styles.chipTextActive]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
 
 function ArcadeShopCard({
   shop,
@@ -186,26 +157,11 @@ export default function ArcadeFinderScreen() {
     return filterArcadeShops(shops, { keyword: debouncedKeyword, titleIds });
   }, [debouncedKeyword, shops, titleIds]);
 
-  const toggleTitleId = (titleId: number) => {
-    setTitleIds((current) => (
-      current.includes(titleId)
-        ? current.filter((id) => id !== titleId)
-        : [...current, titleId]
-    ));
+  const resetFilters = () => {
+    const defaults = defaultArcadeFinderPreferences();
+    setRadiusKm(defaults.radiusKm);
+    setTitleIds(defaults.titleIds);
   };
-
-  const filterSummary = useMemo(() => {
-    const radiusLabel = `${radiusKm} km`;
-    const selectedNames = gameTitles
-      .filter((title) => titleIds.includes(title.id))
-      .map((title) => title.name);
-    const gamesLabel = selectedNames.length === 0
-      ? '未选机型'
-      : selectedNames.length <= 2
-        ? selectedNames.join('、')
-        : `${selectedNames.slice(0, 2).join('、')} 等${selectedNames.length}种`;
-    return `${radiusLabel} · ${gamesLabel}`;
-  }, [gameTitles, radiusKm, titleIds]);
 
   const renderItem = useCallback<ListRenderItem<ArcadeShop>>(({ item }) => (
     <ArcadeShopCard shop={item} onNavigate={(shop) => { void openArcadeNavigation(shop); }} />
@@ -231,14 +187,15 @@ export default function ArcadeFinderScreen() {
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: '机厅查找' }} />
-      <View style={styles.header}>
+      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput
+          accessibilityLabel="机厅搜索"
           value={keyword}
           onChangeText={setKeyword}
           placeholder="搜索机厅名字"
           placeholderTextColor={theme.textMuted}
           style={[
-            styles.search,
+            styles.searchBox,
             {
               backgroundColor: theme.input,
               borderColor: theme.border,
@@ -249,43 +206,17 @@ export default function ArcadeFinderScreen() {
           autoCapitalize="none"
           clearButtonMode="while-editing"
         />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={filtersCollapsed ? '展开筛选' : '收起筛选'}
-          onPress={() => setFiltersCollapsed((value) => !value)}
-          style={[styles.filterToggle, { backgroundColor: theme.surface, borderColor: theme.border }]}
-        >
-          <Text style={[styles.filterToggleText, { color: theme.textSecondary }]} numberOfLines={1}>
-            {filtersCollapsed ? `筛选 · ${filterSummary}` : '收起筛选'}
-          </Text>
-        </Pressable>
-        {!filtersCollapsed ? (
-          <View style={[styles.filterPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.filterLabel, { color: theme.textMuted }]}>距离</Text>
-            <View style={styles.chipRow}>
-              {ARCADE_RADIUS_OPTIONS.map((radius) => (
-                <Chip
-                  key={radius}
-                  label={`${radius} km`}
-                  active={radiusKm === radius}
-                  onPress={() => setRadiusKm(radius)}
-                />
-              ))}
-            </View>
-            <Text style={[styles.filterLabel, { color: theme.textMuted }]}>游戏机类型</Text>
-            <View style={styles.chipRow}>
-              {gameTitles.map((title) => (
-                <Chip
-                  key={title.id}
-                  label={title.name}
-                  active={titleIds.includes(title.id)}
-                  onPress={() => toggleTitleId(title.id)}
-                />
-              ))}
-            </View>
-          </View>
-        ) : null}
       </View>
+      <ArcadeFilterBar
+        collapsed={filtersCollapsed}
+        onCollapsedChange={setFiltersCollapsed}
+        radiusKm={radiusKm}
+        titleIds={titleIds}
+        gameTitles={gameTitles}
+        onRadiusChange={setRadiusKm}
+        onTitleIdsChange={setTitleIds}
+        onReset={resetFilters}
+      />
 
       {isLoading && !shops ? (
         <View style={styles.center}>
@@ -329,37 +260,8 @@ export default function ArcadeFinderScreen() {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingTop: 12, gap: 10 },
-  search: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  filterToggle: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  filterToggleText: { fontSize: 14, fontWeight: '600' },
-  filterPanel: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    padding: 12,
-    gap: 8,
-  },
-  filterLabel: { fontSize: 12, fontWeight: '600' },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  chipText: { fontSize: 13, fontWeight: '600' },
-  chipTextActive: { color: '#FFFFFF' },
+  searchArea: { padding: 12, paddingBottom: 8 },
+  searchBox: { borderWidth: 1, borderRadius: 10, padding: 11, fontSize: 16 },
   listContent: { padding: 16, gap: 12, paddingBottom: 32 },
   shopCard: { gap: 8 },
   shopHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
