@@ -12,39 +12,63 @@ class MemoryStore {
 }
 
 describe('arcade finder preferences', () => {
-  it('returns defaults for invalid payloads', () => {
-    expect(parseArcadeFinderPreferences(null)).toEqual(defaultArcadeFinderPreferences());
-    expect(parseArcadeFinderPreferences({ version: 2, radiusKm: 5 })).toEqual(defaultArcadeFinderPreferences());
+  it('defaults by game: maimai selects 舞萌DX, phigros selects none', () => {
+    expect(defaultArcadeFinderPreferences('maimai')).toEqual({
+      radiusKm: 10,
+      titleIds: [1],
+    });
+    expect(defaultArcadeFinderPreferences('phigros')).toEqual({
+      radiusKm: 10,
+      titleIds: [],
+    });
   });
 
-  it('keeps valid radius and title ids', () => {
+  it('returns defaults for invalid payloads', () => {
+    expect(parseArcadeFinderPreferences(null, 'maimai')).toEqual(defaultArcadeFinderPreferences('maimai'));
+    expect(parseArcadeFinderPreferences({ version: 2, radiusKm: 5 }, 'phigros'))
+      .toEqual(defaultArcadeFinderPreferences('phigros'));
+  });
+
+  it('keeps valid radius and title ids including empty', () => {
     expect(parseArcadeFinderPreferences({
       version: 1,
       radiusKm: 15,
       titleIds: [1, 1, 3, -1, 'x'],
       extra: true,
-    })).toEqual({
+    }, 'maimai')).toEqual({
       radiusKm: 15,
       titleIds: [1, 3],
     });
-  });
 
-  it('falls back to default title ids when empty', () => {
     expect(parseArcadeFinderPreferences({
       version: 1,
       radiusKm: 5,
       titleIds: [],
-    })).toEqual({
+    }, 'phigros')).toEqual({
       radiusKm: 5,
-      titleIds: [1],
+      titleIds: [],
     });
   });
 
-  it('persists and restores preferences', async () => {
+  it('persists preferences per game', async () => {
     const storage = new MemoryStore();
     const store = new ArcadeFinderPreferencesStore(storage);
-    const value = { radiusKm: 20 as const, titleIds: [1, 3] };
-    await store.save(value);
-    await expect(store.load()).resolves.toEqual(value);
+    await store.save('maimai', { radiusKm: 20, titleIds: [1, 3] });
+    await store.save('phigros', { radiusKm: 5, titleIds: [] });
+    await expect(store.load('maimai')).resolves.toEqual({ radiusKm: 20, titleIds: [1, 3] });
+    await expect(store.load('phigros')).resolves.toEqual({ radiusKm: 5, titleIds: [] });
+  });
+
+  it('migrates legacy shared key into maimai prefs', async () => {
+    const storage = new MemoryStore();
+    await storage.setItem('rranker.toolbox.arcade-finder.v1', JSON.stringify({
+      version: 1,
+      radiusKm: 15,
+      titleIds: [1],
+    }));
+    const store = new ArcadeFinderPreferencesStore(storage);
+    await expect(store.load('maimai')).resolves.toEqual({ radiusKm: 15, titleIds: [1] });
+    expect(await storage.getItem('rranker.toolbox.arcade-finder.v1')).toBeNull();
+    await expect(store.load('phigros')).resolves.toEqual(defaultArcadeFinderPreferences('phigros'));
   });
 });

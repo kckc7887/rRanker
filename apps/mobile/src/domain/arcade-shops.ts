@@ -224,12 +224,12 @@ export function shopMatchesNameKeyword(
   return name.includes(q) || address.includes(q);
 }
 
-/** AND semantics: shop must include every selected titleId. Empty selection → no shops. */
+/** AND semantics: shop must include every selected titleId. Empty selection → all shops. */
 export function shopMatchesGameTitles(
   shop: Pick<ArcadeShop, 'games'>,
   titleIds: readonly number[],
 ): boolean {
-  if (titleIds.length === 0) return false;
+  if (titleIds.length === 0) return true;
   const present = new Set(shop.games.map((game) => game.titleId));
   return titleIds.every((titleId) => present.has(titleId));
 }
@@ -285,7 +285,7 @@ export function buildArcadeFilterSummary(options: {
     .filter((title) => options.titleIds.includes(title.id))
     .map((title) => title.name);
   const gamesLabel = selectedNames.length === 0
-    ? '未选机型'
+    ? '全部机型'
     : selectedNames.length <= 2
       ? selectedNames.join('、')
       : `${selectedNames.slice(0, 2).join('、')} 等${selectedNames.length}种`;
