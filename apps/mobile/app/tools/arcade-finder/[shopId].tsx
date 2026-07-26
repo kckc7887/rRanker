@@ -95,7 +95,7 @@ export default function ArcadeShopDetailScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`导航到${shop.name}`}
-              onPress={() => { void openArcadeNavigation(shop); }}
+              onPress={() => { openArcadeNavigation(shop); }}
               style={[styles.primaryButton, { backgroundColor: theme.accent, alignSelf: 'flex-start' }]}
             >
               <Text style={styles.primaryButtonText}>导航</Text>

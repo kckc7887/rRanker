@@ -186,7 +186,7 @@ export default function ArcadeFinderScreen() {
   const renderItem = useCallback<ListRenderItem<ArcadeShop>>(({ item }) => (
     <ArcadeShopCard
       shop={item}
-      onNavigate={(shop) => { void openArcadeNavigation(shop); }}
+      onNavigate={(shop) => { openArcadeNavigation(shop); }}
       onOpenDetail={openDetail}
     />
   ), [openDetail]);

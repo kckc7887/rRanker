@@ -263,10 +263,29 @@ export function buildArcadeFilterSummary(options: {
 
 export type ArcadeNavigateTarget = Pick<ArcadeShop, 'name' | 'addressDetailed' | 'addressGeneral'>;
 
+export type ArcadeMapAppId = 'apple' | 'amap' | 'baidu';
+
+export type ArcadeMapAppOption = {
+  id: ArcadeMapAppId;
+  label: string;
+};
+
 /** Prefer formatted address; fall back to shop name when address is empty. */
 export function resolveArcadeNavigateDestination(shop: ArcadeNavigateTarget): string {
   const address = formatArcadeAddress(shop).trim();
   return address || shop.name.trim();
+}
+
+/** iOS: Apple / Amap / Baidu. Android: Amap / Baidu (no Apple Maps). */
+export function listArcadeMapApps(platform: 'ios' | 'android' | 'windows' | 'macos' | 'web'): readonly ArcadeMapAppOption[] {
+  const shared: ArcadeMapAppOption[] = [
+    { id: 'amap', label: '高德地图' },
+    { id: 'baidu', label: '百度地图' },
+  ];
+  if (platform === 'ios') {
+    return [{ id: 'apple', label: '苹果地图' }, ...shared];
+  }
+  return shared;
 }
 
 export function buildIosAmapNavigateUri(shop: ArcadeNavigateTarget): string {
@@ -288,10 +307,6 @@ export function buildAppleMapsNavigateUri(shop: ArcadeNavigateTarget): string {
   return `http://maps.apple.com/?${params.toString()}`;
 }
 
-export function buildGeoNavigateUri(shop: ArcadeNavigateTarget): string {
-  return `geo:0,0?q=${encodeURIComponent(resolveArcadeNavigateDestination(shop))}`;
-}
-
 export function buildAndroidAmapNavigateUri(shop: ArcadeNavigateTarget): string {
   const params = new URLSearchParams({
     sourceApplication: 'rRanker',
@@ -300,4 +315,29 @@ export function buildAndroidAmapNavigateUri(shop: ArcadeNavigateTarget): string 
     t: '0',
   });
   return `androidamap://route?${params.toString()}`;
+}
+
+export function buildBaiduMapsNavigateUri(shop: ArcadeNavigateTarget): string {
+  const destination = resolveArcadeNavigateDestination(shop);
+  const params = new URLSearchParams({
+    destination,
+    mode: 'driving',
+    src: 'rRanker',
+  });
+  return `baidumap://map/direction?${params.toString()}`;
+}
+
+export function buildArcadeMapNavigateUri(
+  app: ArcadeMapAppId,
+  shop: ArcadeNavigateTarget,
+  platform: 'ios' | 'android' | 'windows' | 'macos' | 'web',
+): string {
+  switch (app) {
+    case 'apple':
+      return buildAppleMapsNavigateUri(shop);
+    case 'amap':
+      return platform === 'ios' ? buildIosAmapNavigateUri(shop) : buildAndroidAmapNavigateUri(shop);
+    case 'baidu':
+      return buildBaiduMapsNavigateUri(shop);
+  }
 }

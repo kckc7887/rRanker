@@ -17,7 +17,9 @@
           "tapsdk",
           "taptap",
           "iosamap",
-          "androidamap"
+          "androidamap",
+          "baidumap",
+          "baidumaps"
         ],
         "ITSAppUsesNonExemptEncryption": false
       }
