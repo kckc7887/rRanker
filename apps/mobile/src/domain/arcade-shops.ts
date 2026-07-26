@@ -160,13 +160,6 @@ export function formatArcadeBusinessStatus(status: ArcadeBusinessStatus): string
   }
 }
 
-/** @deprecated Prefer `formatArcadeBusinessStatus(resolveArcadeBusinessStatus(...))`. */
-export function formatArcadeOpenStatus(isOpen: boolean | null): string {
-  if (isOpen === true) return '营业中';
-  if (isOpen === false) return '休息中';
-  return '营业状态未知';
-}
-
 /**
  * Resolve open / closing-soon / closed from local clock + openingHours.
  * Overnight ranges (close <= open) are supported.
