@@ -83,6 +83,24 @@ export function localizeArcadeGameTitleName(key: string, apiName: string): strin
   return FALLBACK_NAME_BY_KEY.get(key) ?? apiName;
 }
 
+/** Strip HTML tags/entities from nearcade free-text fields for plain Text display. */
+export function stripArcadeHtml(value: string): string {
+  return value
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/\s*p\s*>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/gi, '&')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 export function formatArcadeAddress(shop: Pick<ArcadeShop, 'addressDetailed' | 'addressGeneral'>): string {
   const detailed = shop.addressDetailed.trim();
   if (detailed) return detailed;

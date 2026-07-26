@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   FALLBACK_ARCADE_GAME_TITLES,
   localizeArcadeGameTitleName,
+  stripArcadeHtml,
   type ArcadeGameTitle,
   type ArcadeOpeningDay,
   type ArcadeShop,
@@ -79,11 +80,11 @@ function mapShopGame(game: z.infer<typeof shopGameSchema>): ArcadeShopGame {
   return {
     gameId: game.gameId,
     titleId: game.titleId,
-    name: game.name,
-    version: game.version,
-    comment: game.comment,
+    name: stripArcadeHtml(game.name),
+    version: stripArcadeHtml(game.version),
+    comment: stripArcadeHtml(game.comment),
     quantity: game.quantity,
-    cost: game.cost,
+    cost: stripArcadeHtml(game.cost),
   };
 }
 
@@ -98,10 +99,10 @@ function mapShop(shop: z.infer<typeof shopSchema>): ArcadeShop {
   const [longitude, latitude] = shop.location.coordinates;
   return {
     id: shop.id,
-    name: shop.name,
-    comment: shop.comment,
-    addressDetailed: shop.address.detailed,
-    addressGeneral: shop.address.general,
+    name: stripArcadeHtml(shop.name),
+    comment: stripArcadeHtml(shop.comment),
+    addressDetailed: stripArcadeHtml(shop.address.detailed),
+    addressGeneral: shop.address.general.map((part) => stripArcadeHtml(part)).filter(Boolean),
     latitude,
     longitude,
     distanceKm: shop.distance,
