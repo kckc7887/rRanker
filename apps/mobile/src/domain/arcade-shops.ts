@@ -102,14 +102,14 @@ export function shopMatchesNameKeyword(
   return name.includes(q) || address.includes(q);
 }
 
-/** OR semantics: shop must include at least one selected titleId. Empty selection → no shops. */
+/** AND semantics: shop must include every selected titleId. Empty selection → no shops. */
 export function shopMatchesGameTitles(
   shop: Pick<ArcadeShop, 'games'>,
   titleIds: readonly number[],
 ): boolean {
   if (titleIds.length === 0) return false;
-  const selected = new Set(titleIds);
-  return shop.games.some((game) => selected.has(game.titleId));
+  const present = new Set(shop.games.map((game) => game.titleId));
+  return titleIds.every((titleId) => present.has(titleId));
 }
 
 export function filterArcadeShops(
