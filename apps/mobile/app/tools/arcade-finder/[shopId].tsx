@@ -11,6 +11,7 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { useNotification } from '@/components/AppNotification';
 import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { Card } from '@/components/Card';
+import { ExpandableText } from '@/components/ExpandableText';
 import {
   formatArcadeAddress,
   formatArcadeOpeningHoursLines,
@@ -85,7 +86,11 @@ export default function ArcadeShopDetailScreen() {
             {shop.comment.trim() ? (
               <>
                 <Text style={[styles.metaLabel, { color: theme.textMuted }]}>备注</Text>
-                <Text style={[styles.metaValue, { color: theme.textSecondary }]}>{shop.comment}</Text>
+                <ExpandableText
+                  text={shop.comment}
+                  collapsedLines={4}
+                  style={[styles.metaValue, { color: theme.textSecondary }]}
+                />
               </>
             ) : null}
             <Text style={[styles.metaLabel, { color: theme.textMuted }]}>营业状态</Text>
@@ -125,7 +130,11 @@ export default function ArcadeShopDetailScreen() {
                     <Text style={[styles.gameMeta, { color: theme.textMuted }]}>价格 {game.cost}</Text>
                   ) : null}
                   {game.comment.trim() ? (
-                    <Text style={[styles.gameMeta, { color: theme.textSecondary }]}>{game.comment}</Text>
+                    <ExpandableText
+                      text={game.comment}
+                      collapsedLines={2}
+                      style={[styles.gameMeta, { color: theme.textSecondary }]}
+                    />
                   ) : null}
                 </View>
               ))
