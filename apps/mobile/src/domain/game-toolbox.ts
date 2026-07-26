@@ -89,6 +89,13 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         summaryLabel: '随机歌曲',
       },
       {
+        id: 'arcade-finder',
+        href: '/tools/arcade-finder',
+        title: '机厅查找',
+        detail: '按定位查看附近机厅，搜索店名与跳转导航',
+        summaryLabel: '机厅查找',
+      },
+      {
         id: 'best-image',
         href: '/best-image',
         title: '生成成绩图片',

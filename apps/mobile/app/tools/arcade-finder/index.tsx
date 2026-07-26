@@ -16,7 +16,6 @@ import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabe
 import { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
 import { ArcadeOriginPickerSheet } from '@/components/ArcadeOriginPickerSheet';
 import { Card } from '@/components/Card';
-import { EmptyDataView } from '@/components/EmptyDataView';
 import {
   FALLBACK_ARCADE_GAME_TITLES,
   formatArcadeAddress,
@@ -35,7 +34,6 @@ import {
 } from '@/features/toolbox/arcade-finder-preferences';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { fetchNearcadeDiscover, fetchNearcadeGameTitles } from '@/services/nearcade-client';
-import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { openArcadeNavigation } from '@/utils/open-arcade-navigation';
 
@@ -117,7 +115,6 @@ function ArcadeShopCard({
 export default function ArcadeFinderScreen() {
   const theme = useAppTheme();
   const { showActionNotification, showNotification } = useNotification();
-  const activeGameId = useSession((s) => s.activeGameId);
   const [hydrated, setHydrated] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [radiusKm, setRadiusKm] = useState<ArcadeRadiusKm>(10);
@@ -178,12 +175,12 @@ export default function ArcadeFinderScreen() {
   }, [origin]);
 
   useEffect(() => {
-    if (!hydrated || activeGameId !== 'maimai' || origin) return;
+    if (!hydrated || origin) return;
     void useGpsOrigin();
-  }, [activeGameId, hydrated, origin, useGpsOrigin]);
+  }, [hydrated, origin, useGpsOrigin]);
 
   useEffect(() => {
-    if (!hydrated || activeGameId !== 'maimai' || !origin) return;
+    if (!hydrated || !origin) return;
     let cancelled = false;
     void (async () => {
       setIsLoading(true);
@@ -208,7 +205,7 @@ export default function ArcadeFinderScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activeGameId, hydrated, origin, radiusKm]);
+  }, [hydrated, origin, radiusKm]);
 
   const filtered = useMemo(() => {
     if (!shops) return [];
@@ -245,15 +242,6 @@ export default function ArcadeFinderScreen() {
       onOpenDetail={openDetail}
     />
   ), [openDetail, openNavigation]);
-
-  if (activeGameId !== 'maimai') {
-    return (
-      <>
-        <Stack.Screen options={{ title: '机厅查找' }} />
-        <EmptyDataView title="仅舞萌可用" detail="机厅查找目前挂在舞萌 DX 工具箱。" />
-      </>
-    );
-  }
 
   const errorText = errorKind === 'permission'
     ? '需要定位权限才能查找附近机厅'
