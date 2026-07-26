@@ -107,13 +107,13 @@ function mapShop(shop: z.infer<typeof shopSchema>): ArcadeShop {
     longitude,
     distanceKm: shop.distance,
     games: shop.games.map(mapShopGame),
+    openingHours: mapOpeningHours(shop.openingHours),
   };
 }
 
 function mapShopDetail(shop: z.infer<typeof shopSchema>): ArcadeShopDetail {
   return {
     ...mapShop(shop),
-    openingHours: mapOpeningHours(shop.openingHours),
     isOpen: shop.isOpen ?? null,
   };
 }

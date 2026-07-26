@@ -26,12 +26,17 @@ export type ArcadeShop = {
   longitude: number;
   distanceKm: number;
   games: ArcadeShopGame[];
+  openingHours: ArcadeOpeningDay[];
 };
 
 export type ArcadeShopDetail = ArcadeShop & {
-  openingHours: ArcadeOpeningDay[];
   isOpen: boolean | null;
 };
+
+/** Matches nearcade “即将打烊” window (10 minutes before close). */
+export const ARCADE_CLOSING_SOON_MINUTES = 10;
+
+export type ArcadeBusinessStatus = 'open' | 'closing_soon' | 'closed' | 'unknown';
 
 export type ArcadeGameTitle = {
   id: number;
@@ -123,10 +128,15 @@ export function formatArcadeGamesSummary(games: readonly ArcadeShopGame[]): stri
     .join(' · ');
 }
 
-const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] as const;
+/** Align with JS `Date#getDay()` / nearcade (`Sunday = 0`). */
+const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
+}
+
+function minutesOfDay(time: ArcadeOpeningTime): number {
+  return time.hour * 60 + time.minute;
 }
 
 export function formatArcadeClock(time: ArcadeOpeningTime): string {
@@ -137,10 +147,65 @@ export function formatArcadeOpeningSlot(day: ArcadeOpeningDay): string {
   return `${formatArcadeClock(day[0])}–${formatArcadeClock(day[1])}`;
 }
 
+export function formatArcadeBusinessStatus(status: ArcadeBusinessStatus): string {
+  switch (status) {
+    case 'open':
+      return '营业中';
+    case 'closing_soon':
+      return '将休息';
+    case 'closed':
+      return '休息中';
+    default:
+      return '营业状态未知';
+  }
+}
+
+/** @deprecated Prefer `formatArcadeBusinessStatus(resolveArcadeBusinessStatus(...))`. */
 export function formatArcadeOpenStatus(isOpen: boolean | null): string {
   if (isOpen === true) return '营业中';
   if (isOpen === false) return '休息中';
   return '营业状态未知';
+}
+
+/**
+ * Resolve open / closing-soon / closed from local clock + openingHours.
+ * Overnight ranges (close <= open) are supported.
+ */
+export function resolveArcadeBusinessStatus(
+  openingHours: readonly ArcadeOpeningDay[],
+  now: Date = new Date(),
+  closingSoonMinutes: number = ARCADE_CLOSING_SOON_MINUTES,
+): ArcadeBusinessStatus {
+  if (openingHours.length === 0) return 'unknown';
+  const slot = openingHours.length === 1
+    ? openingHours[0]
+    : openingHours[now.getDay()] ?? openingHours[0];
+  if (!slot) return 'unknown';
+
+  const openMin = minutesOfDay(slot[0]);
+  const closeMin = minutesOfDay(slot[1]);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const dayMinutes = 24 * 60;
+
+  let isOpen: boolean;
+  let minutesToClose: number;
+  if (closeMin > openMin) {
+    isOpen = nowMin >= openMin && nowMin < closeMin;
+    minutesToClose = closeMin - nowMin;
+  } else if (closeMin < openMin) {
+    // e.g. 10:00–02:00
+    isOpen = nowMin >= openMin || nowMin < closeMin;
+    minutesToClose = nowMin >= openMin
+      ? dayMinutes - nowMin + closeMin
+      : closeMin - nowMin;
+  } else {
+    // open === close → treat as closed / unknown hours
+    return 'unknown';
+  }
+
+  if (!isOpen) return 'closed';
+  if (minutesToClose <= closingSoonMinutes) return 'closing_soon';
+  return 'open';
 }
 
 /** Human-readable opening hours lines for detail UI. */

@@ -8,11 +8,11 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { Card } from '@/components/Card';
 import {
   formatArcadeAddress,
   formatArcadeOpeningHoursLines,
-  formatArcadeOpenStatus,
   type ArcadeShopDetail,
 } from '@/domain/arcade-shops';
 import { fetchNearcadeShop } from '@/services/nearcade-client';
@@ -75,7 +75,10 @@ export default function ArcadeShopDetailScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Card style={styles.section}>
-            <Text style={[styles.shopName, { color: theme.text }]}>{shop.name}</Text>
+            <View style={styles.titleRow}>
+              <Text style={[styles.shopName, { color: theme.text, flex: 1 }]}>{shop.name}</Text>
+              <ArcadeBusinessStatusLabel openingHours={shop.openingHours} />
+            </View>
             <Text style={[styles.metaLabel, { color: theme.textMuted }]}>地址</Text>
             <Text style={[styles.metaValue, { color: theme.textSecondary }]}>
               {formatArcadeAddress(shop) || '地址未知'}
@@ -87,9 +90,7 @@ export default function ArcadeShopDetailScreen() {
               </>
             ) : null}
             <Text style={[styles.metaLabel, { color: theme.textMuted }]}>营业状态</Text>
-            <Text style={[styles.metaValue, { color: theme.textSecondary }]}>
-              {formatArcadeOpenStatus(shop.isOpen)}
-            </Text>
+            <ArcadeBusinessStatusLabel openingHours={shop.openingHours} />
             <Text style={[styles.metaLabel, { color: theme.textMuted }]}>营业时间</Text>
             {openingLines.map((line) => (
               <Text key={line} style={[styles.metaValue, { color: theme.textSecondary }]}>{line}</Text>
@@ -141,7 +142,8 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { padding: 16, gap: 12, paddingBottom: 32 },
   section: { gap: 8 },
-  shopName: { fontSize: 20, fontWeight: '800', marginBottom: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 4 },
+  shopName: { fontSize: 20, fontWeight: '800' },
   sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
   metaLabel: { fontSize: 12, fontWeight: '700', marginTop: 4 },
   metaValue: { fontSize: 14, lineHeight: 20 },
