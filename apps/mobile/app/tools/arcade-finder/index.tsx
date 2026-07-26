@@ -11,9 +11,9 @@ import {
 } from 'react-native';
 import { router, Stack, type Href } from 'expo-router';
 import * as Location from 'expo-location';
+import { useNotification } from '@/components/AppNotification';
 import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
-import { ArcadeMapPickerSheet } from '@/components/ArcadeMapPickerSheet';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import {
@@ -23,7 +23,6 @@ import {
   formatArcadeGamesSummary,
   filterArcadeShops,
   type ArcadeGameTitle,
-  type ArcadeNavigateTarget,
   type ArcadeRadiusKm,
   type ArcadeShop,
 } from '@/domain/arcade-shops';
@@ -35,6 +34,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { fetchNearcadeDiscover, fetchNearcadeGameTitles } from '@/services/nearcade-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { openArcadeNavigation } from '@/utils/open-arcade-navigation';
 
 type LoadErrorKind = 'permission' | 'location' | 'network' | null;
 
@@ -91,6 +91,7 @@ function ArcadeShopCard({
 
 export default function ArcadeFinderScreen() {
   const theme = useAppTheme();
+  const { showActionNotification, showNotification } = useNotification();
   const activeGameId = useSession((s) => s.activeGameId);
   const [hydrated, setHydrated] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -101,7 +102,6 @@ export default function ArcadeFinderScreen() {
   const [shops, setShops] = useState<ArcadeShop[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorKind, setErrorKind] = useState<LoadErrorKind>(null);
-  const [mapTarget, setMapTarget] = useState<ArcadeNavigateTarget | null>(null);
   const debouncedKeyword = useDebouncedValue(keyword);
 
   useEffect(() => {
@@ -185,13 +185,17 @@ export default function ArcadeFinderScreen() {
     router.push(`/tools/arcade-finder/${shop.id}` as Href);
   }, []);
 
+  const openNavigation = useCallback((shop: ArcadeShop) => {
+    openArcadeNavigation(shop, { showActionNotification, showNotification });
+  }, [showActionNotification, showNotification]);
+
   const renderItem = useCallback<ListRenderItem<ArcadeShop>>(({ item }) => (
     <ArcadeShopCard
       shop={item}
-      onNavigate={setMapTarget}
+      onNavigate={openNavigation}
       onOpenDetail={openDetail}
     />
-  ), [openDetail]);
+  ), [openDetail, openNavigation]);
 
   if (activeGameId !== 'maimai') {
     return (
@@ -282,11 +286,6 @@ export default function ArcadeFinderScreen() {
         />
       )}
       </View>
-      <ArcadeMapPickerSheet
-        visible={mapTarget != null}
-        shop={mapTarget}
-        onClose={() => setMapTarget(null)}
-      />
     </View>
   );
 }

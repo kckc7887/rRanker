@@ -8,8 +8,8 @@ import {
   View,
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
+import { useNotification } from '@/components/AppNotification';
 import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
-import { ArcadeMapPickerSheet } from '@/components/ArcadeMapPickerSheet';
 import { Card } from '@/components/Card';
 import {
   formatArcadeAddress,
@@ -18,15 +18,16 @@ import {
 } from '@/domain/arcade-shops';
 import { fetchNearcadeShop } from '@/services/nearcade-client';
 import { useAppTheme } from '@/theme/app-theme';
+import { openArcadeNavigation } from '@/utils/open-arcade-navigation';
 
 export default function ArcadeShopDetailScreen() {
   const theme = useAppTheme();
+  const { showActionNotification, showNotification } = useNotification();
   const { shopId: shopIdParam } = useLocalSearchParams<{ shopId?: string }>();
   const shopId = Number(shopIdParam);
   const [shop, setShop] = useState<ArcadeShopDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
-  const [mapPickerVisible, setMapPickerVisible] = useState(false);
 
   const load = useCallback(async () => {
     if (!Number.isInteger(shopId) || shopId <= 0) {
@@ -96,7 +97,7 @@ export default function ArcadeShopDetailScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`导航到${shop.name}`}
-              onPress={() => setMapPickerVisible(true)}
+              onPress={() => openArcadeNavigation(shop, { showActionNotification, showNotification })}
               style={[styles.primaryButton, { backgroundColor: theme.accent, alignSelf: 'flex-start' }]}
             >
               <Text style={styles.primaryButtonText}>导航</Text>
@@ -132,11 +133,6 @@ export default function ArcadeShopDetailScreen() {
           </Card>
         </ScrollView>
       )}
-      <ArcadeMapPickerSheet
-        visible={mapPickerVisible && shop != null}
-        shop={shop}
-        onClose={() => setMapPickerVisible(false)}
-      />
     </View>
   );
 }
