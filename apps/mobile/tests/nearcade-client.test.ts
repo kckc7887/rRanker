@@ -1,4 +1,8 @@
-import { parseDiscoverResponse, parseGameTitlesResponse } from '@/services/nearcade-client';
+import {
+  parseDiscoverResponse,
+  parseGameTitlesResponse,
+  parseShopDetailResponse,
+} from '@/services/nearcade-client';
 
 describe('nearcade client parsing', () => {
   it('maps discover shops into domain models', () => {
@@ -49,12 +53,68 @@ describe('nearcade client parsing', () => {
             titleId: 1,
             name: '舞萌DX',
             version: 'BUDDiES PLUS',
+            comment: '',
             quantity: 4,
             cost: '1币1局',
           },
         ],
       },
     ]);
+  });
+
+  it('maps shop detail with opening hours and open status', () => {
+    const shop = parseShopDetailResponse({
+      shop: {
+        id: 7,
+        name: '详情机厅',
+        comment: '有空调',
+        address: {
+          general: ['中国', '上海市'],
+          detailed: '测试路 2 号',
+        },
+        location: {
+          type: 'Point',
+          coordinates: [121.5, 31.2],
+        },
+        games: [
+          {
+            gameId: 1,
+            titleId: 1,
+            name: '舞萌DX',
+            version: 'PRiSM',
+            comment: '新框',
+            quantity: 2,
+            cost: '1币',
+          },
+        ],
+        openingHours: [[{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }]],
+        isOpen: true,
+      },
+    });
+
+    expect(shop).toEqual({
+      id: 7,
+      name: '详情机厅',
+      comment: '有空调',
+      addressDetailed: '测试路 2 号',
+      addressGeneral: ['中国', '上海市'],
+      latitude: 31.2,
+      longitude: 121.5,
+      distanceKm: 0,
+      games: [
+        {
+          gameId: 1,
+          titleId: 1,
+          name: '舞萌DX',
+          version: 'PRiSM',
+          comment: '新框',
+          quantity: 2,
+          cost: '1币',
+        },
+      ],
+      openingHours: [[{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }]],
+      isOpen: true,
+    });
   });
 
   it('localizes known game title keys', () => {
