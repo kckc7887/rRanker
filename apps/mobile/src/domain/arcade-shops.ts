@@ -139,36 +139,41 @@ export function buildArcadeFilterSummary(options: {
   return `${options.radiusKm} km · ${gamesLabel}`;
 }
 
-export function buildIosAmapNavigateUri(shop: Pick<ArcadeShop, 'name' | 'latitude' | 'longitude'>): string {
+export type ArcadeNavigateTarget = Pick<ArcadeShop, 'name' | 'addressDetailed' | 'addressGeneral'>;
+
+/** Prefer formatted address; fall back to shop name when address is empty. */
+export function resolveArcadeNavigateDestination(shop: ArcadeNavigateTarget): string {
+  const address = formatArcadeAddress(shop).trim();
+  return address || shop.name.trim();
+}
+
+export function buildIosAmapNavigateUri(shop: ArcadeNavigateTarget): string {
   const params = new URLSearchParams({
     sourceApplication: 'rRanker',
-    dname: shop.name,
-    dlat: String(shop.latitude),
-    dlon: String(shop.longitude),
+    dname: resolveArcadeNavigateDestination(shop),
     dev: '0',
     t: '0',
   });
   return `iosamap://path?${params.toString()}`;
 }
 
-export function buildAppleMapsNavigateUri(shop: Pick<ArcadeShop, 'name' | 'latitude' | 'longitude'>): string {
+export function buildAppleMapsNavigateUri(shop: ArcadeNavigateTarget): string {
+  const destination = resolveArcadeNavigateDestination(shop);
   const params = new URLSearchParams({
-    daddr: `${shop.latitude},${shop.longitude}`,
-    q: shop.name,
+    daddr: destination,
+    q: destination,
   });
   return `http://maps.apple.com/?${params.toString()}`;
 }
 
-export function buildGeoNavigateUri(shop: Pick<ArcadeShop, 'name' | 'latitude' | 'longitude'>): string {
-  return `geo:${shop.latitude},${shop.longitude}?q=${encodeURIComponent(shop.name)}`;
+export function buildGeoNavigateUri(shop: ArcadeNavigateTarget): string {
+  return `geo:0,0?q=${encodeURIComponent(resolveArcadeNavigateDestination(shop))}`;
 }
 
-export function buildAndroidAmapNavigateUri(shop: Pick<ArcadeShop, 'name' | 'latitude' | 'longitude'>): string {
+export function buildAndroidAmapNavigateUri(shop: ArcadeNavigateTarget): string {
   const params = new URLSearchParams({
     sourceApplication: 'rRanker',
-    dname: shop.name,
-    dlat: String(shop.latitude),
-    dlon: String(shop.longitude),
+    dname: resolveArcadeNavigateDestination(shop),
     dev: '0',
     t: '0',
   });

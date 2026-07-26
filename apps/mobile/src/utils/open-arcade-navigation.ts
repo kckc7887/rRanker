@@ -4,12 +4,10 @@ import {
   buildAppleMapsNavigateUri,
   buildGeoNavigateUri,
   buildIosAmapNavigateUri,
-  type ArcadeShop,
+  type ArcadeNavigateTarget,
 } from '@/domain/arcade-shops';
 
-export async function openArcadeNavigation(
-  shop: Pick<ArcadeShop, 'name' | 'latitude' | 'longitude'>,
-): Promise<void> {
+export async function openArcadeNavigation(shop: ArcadeNavigateTarget): Promise<void> {
   if (Platform.OS === 'ios') {
     try {
       await Linking.openURL(buildIosAmapNavigateUri(shop));
