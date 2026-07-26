@@ -13,6 +13,7 @@ import { router, Stack, type Href } from 'expo-router';
 import * as Location from 'expo-location';
 import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
+import { ArcadeMapPickerSheet } from '@/components/ArcadeMapPickerSheet';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import {
@@ -22,6 +23,7 @@ import {
   formatArcadeGamesSummary,
   filterArcadeShops,
   type ArcadeGameTitle,
+  type ArcadeNavigateTarget,
   type ArcadeRadiusKm,
   type ArcadeShop,
 } from '@/domain/arcade-shops';
@@ -33,7 +35,6 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { fetchNearcadeDiscover, fetchNearcadeGameTitles } from '@/services/nearcade-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
-import { openArcadeNavigation } from '@/utils/open-arcade-navigation';
 
 type LoadErrorKind = 'permission' | 'location' | 'network' | null;
 
@@ -100,6 +101,7 @@ export default function ArcadeFinderScreen() {
   const [shops, setShops] = useState<ArcadeShop[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorKind, setErrorKind] = useState<LoadErrorKind>(null);
+  const [mapTarget, setMapTarget] = useState<ArcadeNavigateTarget | null>(null);
   const debouncedKeyword = useDebouncedValue(keyword);
 
   useEffect(() => {
@@ -186,7 +188,7 @@ export default function ArcadeFinderScreen() {
   const renderItem = useCallback<ListRenderItem<ArcadeShop>>(({ item }) => (
     <ArcadeShopCard
       shop={item}
-      onNavigate={(shop) => { openArcadeNavigation(shop); }}
+      onNavigate={setMapTarget}
       onOpenDetail={openDetail}
     />
   ), [openDetail]);
@@ -280,6 +282,11 @@ export default function ArcadeFinderScreen() {
         />
       )}
       </View>
+      <ArcadeMapPickerSheet
+        visible={mapTarget != null}
+        shop={mapTarget}
+        onClose={() => setMapTarget(null)}
+      />
     </View>
   );
 }
