@@ -46,11 +46,12 @@ export function ArcadeFilterBar({
   const { height: windowHeight } = useWindowDimensions();
   const expandedBodyMaxHeight = Math.round(windowHeight * EXPANDED_BODY_MAX_RATIO);
   const originLabel = origin?.label?.trim() || (locatingOrigin ? '定位中…' : '未设置');
+  // Collapsed summary only shows a custom origin address; GPS "当前位置" stays out of the chip line.
   const summary = buildArcadeFilterSummary({
     radiusKm,
     titleIds,
     gameTitles,
-    originLabel,
+    originLabel: origin?.source === 'custom' ? originLabel : undefined,
   });
 
   const toggleTitleId = (titleId: number) => {
