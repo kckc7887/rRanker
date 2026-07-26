@@ -23,9 +23,9 @@ rRanker 是一个聚合了多家音乐游戏数据的数据管理应用，提供
 |<img src="assets\images\app\Phigros\总览页.JPG" alt="Phigros总览页" width="100">|<img src="assets\images\app\Phigros\成绩页-筛选.JPG" alt="Phigros成绩页" width="100">|<img src="assets\images\app\Phigros\推分计算.JPG" alt="Phigros推分计算页" width="100">|<img src="assets\images\app\Phigros\歌曲详情-难度卡片.JPG" alt="Phigros歌曲详情页" width="100">|
 
 ### 其它
-|随机歌曲|曲库|主题|存储管理|
-|--|--|--|--|
-|<img src="assets\images\app\Phigros\随机歌曲.JPG" alt="随机歌曲" width="100">|<img src="assets\images\app\舞萌DX\曲库页.JPG" alt="曲库" width="100">|<img src="assets\images\app\深色模式与主题切换.JPG" alt="主题" width="100">|<img src="assets\images\app\存储管理.JPG" alt="存储管理" width="100">|
+|随机歌曲|曲库|主题|存储管理|机厅查找|
+|--|--|--|--|--|
+|<img src="assets\images\app\Phigros\随机歌曲.JPG" alt="随机歌曲" width="100">|<img src="assets\images\app\舞萌DX\曲库页.JPG" alt="曲库" width="100">|<img src="assets\images\app\深色模式与主题切换.JPG" alt="主题" width="100">|<img src="assets\images\app\存储管理.JPG" alt="存储管理" width="100">|<img src="assets\images\app\机厅查找.JPG" alt="机厅查找" width="100">|
 
 ## 主要功能
 
