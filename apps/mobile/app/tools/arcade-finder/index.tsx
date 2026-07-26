@@ -34,6 +34,7 @@ import {
 } from '@/features/toolbox/arcade-finder-preferences';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { fetchNearcadeDiscover, fetchNearcadeGameTitles } from '@/services/nearcade-client';
+import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { openArcadeNavigation } from '@/utils/open-arcade-navigation';
 
@@ -115,10 +116,11 @@ function ArcadeShopCard({
 export default function ArcadeFinderScreen() {
   const theme = useAppTheme();
   const { showActionNotification, showNotification } = useNotification();
+  const activeGameId = useSession((s) => s.activeGameId);
   const [hydrated, setHydrated] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [radiusKm, setRadiusKm] = useState<ArcadeRadiusKm>(10);
-  const [titleIds, setTitleIds] = useState<number[]>(() => defaultArcadeFinderPreferences().titleIds);
+  const [titleIds, setTitleIds] = useState<number[]>([]);
   const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const [origin, setOrigin] = useState<ArcadeOrigin | null>(null);
   const [originPickerVisible, setOriginPickerVisible] = useState(false);
@@ -131,8 +133,9 @@ export default function ArcadeFinderScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    setHydrated(false);
     void (async () => {
-      const prefs = await arcadeFinderPreferencesStore.load();
+      const prefs = await arcadeFinderPreferencesStore.load(activeGameId);
       if (cancelled) return;
       setRadiusKm(prefs.radiusKm);
       setTitleIds(prefs.titleIds);
@@ -141,12 +144,12 @@ export default function ArcadeFinderScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeGameId]);
 
   useEffect(() => {
     if (!hydrated) return;
-    void arcadeFinderPreferencesStore.save({ radiusKm, titleIds });
-  }, [hydrated, radiusKm, titleIds]);
+    void arcadeFinderPreferencesStore.save(activeGameId, { radiusKm, titleIds });
+  }, [activeGameId, hydrated, radiusKm, titleIds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,7 +216,7 @@ export default function ArcadeFinderScreen() {
   }, [debouncedKeyword, shops, titleIds]);
 
   const resetFilters = () => {
-    const defaults = defaultArcadeFinderPreferences();
+    const defaults = defaultArcadeFinderPreferences(activeGameId);
     setRadiusKm(defaults.radiusKm);
     setTitleIds(defaults.titleIds);
     void useGpsOrigin();

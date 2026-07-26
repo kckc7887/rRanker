@@ -71,18 +71,22 @@ describe('arcade shop filters', () => {
     expect(shopMatchesNameKeyword(shops[0], '  ')).toBe(true);
   });
 
-  it('matches game titles with AND semantics', () => {
+  it('matches game titles with AND semantics; empty means all', () => {
     expect(shopMatchesGameTitles(shops[0], [1])).toBe(true);
     expect(shopMatchesGameTitles(shops[1], [1])).toBe(false);
     expect(shopMatchesGameTitles(shops[1], [1, 3])).toBe(false);
     expect(shopMatchesGameTitles(shops[0], [1, 3])).toBe(true);
-    expect(shopMatchesGameTitles(shops[0], [])).toBe(false);
+    expect(shopMatchesGameTitles(shops[0], [])).toBe(true);
   });
 
   it('filters and sorts by distance then name', () => {
     const filtered = filterArcadeShops(shops, { keyword: '', titleIds: [1] });
     expect(filtered.map((item) => item.id)).toEqual([1, 3]);
     expect(filtered[0].distanceKm).toBeLessThanOrEqual(filtered[1].distanceKm);
+  });
+
+  it('keeps all shops in range when no game titles selected', () => {
+    expect(filterArcadeShops(shops, { keyword: '', titleIds: [] }).map((item) => item.id)).toEqual([2, 1, 3]);
   });
 
   it('requires all selected titles when filtering multiple games', () => {
@@ -199,7 +203,7 @@ describe('arcade filter summary', () => {
       radiusKm: 15,
       titleIds: [],
       gameTitles: FALLBACK_ARCADE_GAME_TITLES,
-    })).toBe('15 km · 未选机型');
+    })).toBe('15 km · 全部机型');
   });
 
   it('prefixes origin label when provided', () => {
