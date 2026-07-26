@@ -58,6 +58,7 @@ describe('nearcade client parsing', () => {
             cost: '1币1局',
           },
         ],
+        openingHours: [],
       },
     ]);
   });
@@ -115,6 +116,7 @@ describe('nearcade client parsing', () => {
       openingHours: [[{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }]],
       isOpen: true,
     });
+    expect(shop.openingHours).toEqual([[{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }]]);
   });
 
   it('strips html from shop text fields', () => {
