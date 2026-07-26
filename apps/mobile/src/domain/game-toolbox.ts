@@ -59,7 +59,7 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         id: 'arcade-finder',
         href: '/tools/arcade-finder',
         title: '机厅查找',
-        detail: '按定位查看附近机厅，搜索店名并跳转导航',
+        detail: '按定位查看附近机厅，搜索店名与跳转导航',
         summaryLabel: '机厅查找',
       },
       {
