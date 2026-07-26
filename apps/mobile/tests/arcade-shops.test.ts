@@ -13,6 +13,7 @@ import {
   formatArcadeOpenStatus,
   shopMatchesGameTitles,
   shopMatchesNameKeyword,
+  stripArcadeHtml,
   type ArcadeShop,
 } from '@/domain/arcade-shops';
 
@@ -109,6 +110,14 @@ describe('arcade shop formatting', () => {
       { gameId: 1, titleId: 1, name: '舞萌DX', version: '', comment: '', quantity: 4, cost: '' },
       { gameId: 2, titleId: 3, name: '中二节奏', version: '', comment: '', quantity: 0, cost: '' },
     ])).toBe('舞萌DX×4 · 中二节奏');
+  });
+});
+
+describe('stripArcadeHtml', () => {
+  it('removes tags and decodes common entities', () => {
+    expect(stripArcadeHtml('<b>舞萌</b>DX<br>新框&nbsp;1台')).toBe('舞萌DX\n新框 1台');
+    expect(stripArcadeHtml('A &amp; B &lt;C&gt;')).toBe('A & B <C>');
+    expect(stripArcadeHtml('  <p>备注</p>  ')).toBe('备注');
   });
 });
 

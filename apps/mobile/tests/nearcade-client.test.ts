@@ -117,6 +117,34 @@ describe('nearcade client parsing', () => {
     });
   });
 
+  it('strips html from shop text fields', () => {
+    const shop = parseShopDetailResponse({
+      shop: {
+        id: 8,
+        name: '<b>标签店</b>',
+        comment: '备注<br><b>加粗</b>',
+        address: { general: ['中国'], detailed: '路&nbsp;1号' },
+        location: { type: 'Point', coordinates: [121.5, 31.2] },
+        games: [{
+          gameId: 1,
+          titleId: 1,
+          name: '<i>舞萌</i>DX',
+          version: 'v1',
+          comment: '机台<br>说明',
+          quantity: 1,
+          cost: '1币',
+        }],
+        openingHours: [],
+        isOpen: null,
+      },
+    });
+    expect(shop.name).toBe('标签店');
+    expect(shop.comment).toBe('备注\n加粗');
+    expect(shop.addressDetailed).toBe('路 1号');
+    expect(shop.games[0].name).toBe('舞萌DX');
+    expect(shop.games[0].comment).toBe('机台\n说明');
+  });
+
   it('localizes known game title keys', () => {
     const titles = parseGameTitlesResponse({
       titles: [
