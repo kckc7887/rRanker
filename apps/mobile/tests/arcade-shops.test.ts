@@ -133,14 +133,29 @@ describe('arcade filter summary', () => {
 });
 
 describe('arcade navigation URIs', () => {
-  const target = { name: '测试机厅', latitude: 31.23, longitude: 121.47 };
+  const target = {
+    name: '测试机厅',
+    addressDetailed: '上海市徐汇区某某路 1 号',
+    addressGeneral: ['中国', '上海市'],
+  };
 
-  it('builds platform navigation deep links', () => {
-    expect(buildIosAmapNavigateUri(target)).toContain('iosamap://path?');
-    expect(buildIosAmapNavigateUri(target)).toContain('dlat=31.23');
-    expect(buildAndroidAmapNavigateUri(target)).toContain('androidamap://route?');
-    expect(buildAppleMapsNavigateUri(target)).toContain('maps.apple.com');
-    expect(buildAppleMapsNavigateUri(target)).toContain('daddr=31.23%2C121.47');
-    expect(buildGeoNavigateUri(target)).toBe('geo:31.23,121.47?q=%E6%B5%8B%E8%AF%95%E6%9C%BA%E5%8E%85');
+  it('builds platform navigation deep links from address', () => {
+    const destination = '上海市徐汇区某某路 1 号';
+    const iosUri = buildIosAmapNavigateUri(target);
+    const androidUri = buildAndroidAmapNavigateUri(target);
+    const appleUri = buildAppleMapsNavigateUri(target);
+    expect(iosUri.startsWith('iosamap://path?')).toBe(true);
+    expect(iosUri).not.toContain('dlat=');
+    expect(new URLSearchParams(iosUri.split('?')[1]).get('dname')).toBe(destination);
+    expect(androidUri.startsWith('androidamap://route?')).toBe(true);
+    expect(new URLSearchParams(androidUri.split('?')[1]).get('dname')).toBe(destination);
+    expect(appleUri).toContain('maps.apple.com');
+    expect(new URLSearchParams(appleUri.split('?')[1]).get('daddr')).toBe(destination);
+    expect(buildGeoNavigateUri(target)).toBe(`geo:0,0?q=${encodeURIComponent(destination)}`);
+  });
+
+  it('falls back to shop name when address is empty', () => {
+    const fallback = { name: '仅店名机厅', addressDetailed: '', addressGeneral: [] };
+    expect(buildGeoNavigateUri(fallback)).toBe(`geo:0,0?q=${encodeURIComponent('仅店名机厅')}`);
   });
 });
