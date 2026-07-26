@@ -16,9 +16,8 @@
           "tapiosdk",
           "tapsdk",
           "taptap",
-          "tapiosdk",
-          "tapsdk",
-          "taptap"
+          "iosamap",
+          "androidamap"
         ],
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -100,6 +99,12 @@
         {
           "photosPermission": "允许 rRanker 从相册选择玩家二维码图片。",
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "允许 rRanker 使用定位以显示附近机厅。"
         }
       ]
     ],
