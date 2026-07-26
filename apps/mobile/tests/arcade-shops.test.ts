@@ -63,10 +63,11 @@ describe('arcade shop filters', () => {
     expect(shopMatchesNameKeyword(shops[0], '  ')).toBe(true);
   });
 
-  it('matches game titles with OR semantics', () => {
+  it('matches game titles with AND semantics', () => {
     expect(shopMatchesGameTitles(shops[0], [1])).toBe(true);
     expect(shopMatchesGameTitles(shops[1], [1])).toBe(false);
-    expect(shopMatchesGameTitles(shops[1], [1, 3])).toBe(true);
+    expect(shopMatchesGameTitles(shops[1], [1, 3])).toBe(false);
+    expect(shopMatchesGameTitles(shops[0], [1, 3])).toBe(true);
     expect(shopMatchesGameTitles(shops[0], [])).toBe(false);
   });
 
@@ -76,9 +77,14 @@ describe('arcade shop filters', () => {
     expect(filtered[0].distanceKm).toBeLessThanOrEqual(filtered[1].distanceKm);
   });
 
+  it('requires all selected titles when filtering multiple games', () => {
+    expect(filterArcadeShops(shops, { keyword: '', titleIds: [1, 3] }).map((item) => item.id)).toEqual([1]);
+  });
+
   it('applies name keyword together with title filter', () => {
-    const filtered = filterArcadeShops(shops, { keyword: '远方', titleIds: [1, 3] });
+    const filtered = filterArcadeShops(shops, { keyword: '远方', titleIds: [1] });
     expect(filtered.map((item) => item.id)).toEqual([3]);
+    expect(filterArcadeShops(shops, { keyword: '远方', titleIds: [1, 3] })).toEqual([]);
   });
 });
 
