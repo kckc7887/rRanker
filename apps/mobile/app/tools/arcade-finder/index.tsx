@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { router, Stack, type Href } from 'expo-router';
 import * as Location from 'expo-location';
+import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
@@ -49,9 +50,12 @@ function ArcadeShopCard({
   return (
     <Card style={styles.shopCard}>
       <View style={styles.shopHeader}>
-        <Text style={[styles.shopName, { color: theme.text }]} numberOfLines={2}>
-          {shop.name}
-        </Text>
+        <View style={styles.shopTitleBlock}>
+          <Text style={[styles.shopName, { color: theme.text }]} numberOfLines={2}>
+            {shop.name}
+          </Text>
+          <ArcadeBusinessStatusLabel openingHours={shop.openingHours} />
+        </View>
         <Text style={[styles.shopDistance, { color: theme.accent }]}>
           {formatArcadeDistanceKm(shop.distanceKm)}
         </Text>
@@ -288,7 +292,8 @@ const styles = StyleSheet.create({
   listContent: { padding: 16, gap: 12, paddingBottom: 32 },
   shopCard: { gap: 8 },
   shopHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  shopName: { flex: 1, fontSize: 17, fontWeight: '700' },
+  shopTitleBlock: { flex: 1, minWidth: 0, gap: 4 },
+  shopName: { fontSize: 17, fontWeight: '700' },
   shopDistance: { fontSize: 14, fontWeight: '700' },
   shopAddress: { fontSize: 13, lineHeight: 18 },
   shopGames: { fontSize: 13, lineHeight: 18 },
