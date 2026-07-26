@@ -5,6 +5,7 @@ import {
   ARCADE_RADIUS_OPTIONS,
   buildArcadeFilterSummary,
   type ArcadeGameTitle,
+  type ArcadeOrigin,
   type ArcadeRadiusKm,
 } from '@/domain/arcade-shops';
 import { useAppTheme } from '@/theme/app-theme';
@@ -14,10 +15,14 @@ const EXPANDED_BODY_MAX_RATIO = 0.52;
 
 export type ArcadeFilterBarProps = {
   collapsed: boolean;
+  origin: ArcadeOrigin | null;
   radiusKm: ArcadeRadiusKm;
   titleIds: readonly number[];
   gameTitles: readonly ArcadeGameTitle[];
+  locatingOrigin?: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  onUseGpsOrigin: () => void;
+  onEditOrigin: () => void;
   onRadiusChange: (radiusKm: ArcadeRadiusKm) => void;
   onTitleIdsChange: (titleIds: number[]) => void;
   onReset: () => void;
@@ -25,10 +30,14 @@ export type ArcadeFilterBarProps = {
 
 export function ArcadeFilterBar({
   collapsed,
+  origin,
   radiusKm,
   titleIds,
   gameTitles,
+  locatingOrigin = false,
   onCollapsedChange,
+  onUseGpsOrigin,
+  onEditOrigin,
   onRadiusChange,
   onTitleIdsChange,
   onReset,
@@ -36,7 +45,13 @@ export function ArcadeFilterBar({
   const theme = useAppTheme();
   const { height: windowHeight } = useWindowDimensions();
   const expandedBodyMaxHeight = Math.round(windowHeight * EXPANDED_BODY_MAX_RATIO);
-  const summary = buildArcadeFilterSummary({ radiusKm, titleIds, gameTitles });
+  const originLabel = origin?.label?.trim() || (locatingOrigin ? '定位中…' : '未设置');
+  const summary = buildArcadeFilterSummary({
+    radiusKm,
+    titleIds,
+    gameTitles,
+    originLabel,
+  });
 
   const toggleTitleId = (titleId: number) => {
     onTitleIdsChange(
@@ -101,6 +116,29 @@ export function ArcadeFilterBar({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
       >
+        <View style={[styles.filterRow, styles.filterRowTop]}>
+          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>原点</Text>
+          <View style={styles.originBlock}>
+            <Text numberOfLines={2} style={[styles.originLabel, { color: theme.text }]}>
+              {originLabel}
+            </Text>
+            <View style={styles.chipWrap}>
+              <NeutralChip
+                label={locatingOrigin && origin?.source !== 'custom' ? '定位中…' : '当前位置'}
+                active={origin?.source === 'gps'}
+                onPress={onUseGpsOrigin}
+                accessibilityLabel="使用当前定位作为搜索原点"
+              />
+              <NeutralChip
+                label="搜索地址"
+                active={origin?.source === 'custom'}
+                onPress={onEditOrigin}
+                accessibilityLabel="搜索地址设为搜索原点"
+              />
+            </View>
+          </View>
+        </View>
+
         <View style={styles.filterRow}>
           <Text style={[styles.filterLabel, { color: theme.textMuted }]}>距离</Text>
           <View style={styles.chipWrap}>
@@ -169,6 +207,8 @@ const styles = StyleSheet.create({
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
   wideFilterLabel: { width: 44 },
   chipWrap: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
+  originBlock: { flex: 1, minWidth: 0, gap: 8 },
+  originLabel: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
   collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
   collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
   collapsedLabel: { fontSize: 12, fontWeight: '700' },
