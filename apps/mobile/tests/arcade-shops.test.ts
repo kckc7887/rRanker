@@ -9,6 +9,8 @@ import {
   formatArcadeAddress,
   formatArcadeDistanceKm,
   formatArcadeGamesSummary,
+  formatArcadeOpeningHoursLines,
+  formatArcadeOpenStatus,
   shopMatchesGameTitles,
   shopMatchesNameKeyword,
   type ArcadeShop,
@@ -35,8 +37,8 @@ describe('arcade shop filters', () => {
       addressDetailed: '徐汇区某某路 1 号',
       distanceKm: 2.4,
       games: [
-        { gameId: 1, titleId: 1, name: '舞萌DX', version: '', quantity: 4, cost: '' },
-        { gameId: 2, titleId: 3, name: '中二节奏', version: '', quantity: 2, cost: '' },
+        { gameId: 1, titleId: 1, name: '舞萌DX', version: '', comment: '', quantity: 4, cost: '' },
+        { gameId: 2, titleId: 3, name: '中二节奏', version: '', comment: '', quantity: 2, cost: '' },
       ],
     }),
     shop({
@@ -44,7 +46,7 @@ describe('arcade shop filters', () => {
       name: '纯中二馆',
       addressDetailed: '浦东新区',
       distanceKm: 0.8,
-      games: [{ gameId: 3, titleId: 3, name: '中二节奏', version: '', quantity: 1, cost: '' }],
+      games: [{ gameId: 3, titleId: 3, name: '中二节奏', version: '', comment: '', quantity: 1, cost: '' }],
     }),
     shop({
       id: 3,
@@ -52,7 +54,7 @@ describe('arcade shop filters', () => {
       addressDetailed: '',
       addressGeneral: ['中国', '浙江省'],
       distanceKm: 12,
-      games: [{ gameId: 4, titleId: 1, name: '舞萌DX', version: '', quantity: 2, cost: '' }],
+      games: [{ gameId: 4, titleId: 1, name: '舞萌DX', version: '', comment: '', quantity: 2, cost: '' }],
     }),
   ];
 
@@ -104,9 +106,30 @@ describe('arcade shop formatting', () => {
     expect(formatArcadeDistanceKm(0.35)).toBe('350 m');
     expect(formatArcadeDistanceKm(2.4)).toBe('2.4 km');
     expect(formatArcadeGamesSummary([
-      { gameId: 1, titleId: 1, name: '舞萌DX', version: '', quantity: 4, cost: '' },
-      { gameId: 2, titleId: 3, name: '中二节奏', version: '', quantity: 0, cost: '' },
+      { gameId: 1, titleId: 1, name: '舞萌DX', version: '', comment: '', quantity: 4, cost: '' },
+      { gameId: 2, titleId: 3, name: '中二节奏', version: '', comment: '', quantity: 0, cost: '' },
     ])).toBe('舞萌DX×4 · 中二节奏');
+  });
+});
+
+describe('arcade opening hours formatting', () => {
+  it('formats open status and daily/weekly hours', () => {
+    expect(formatArcadeOpenStatus(true)).toBe('营业中');
+    expect(formatArcadeOpenStatus(false)).toBe('休息中');
+    expect(formatArcadeOpenStatus(null)).toBe('营业状态未知');
+    expect(formatArcadeOpeningHoursLines([])).toEqual(['营业时间未知']);
+    expect(formatArcadeOpeningHoursLines([
+      [{ hour: 10, minute: 0 }, { hour: 22, minute: 30 }],
+    ])).toEqual(['每日 10:00–22:30']);
+    expect(formatArcadeOpeningHoursLines([
+      [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
+      [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
+      [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
+      [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
+      [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
+      [{ hour: 12, minute: 0 }, { hour: 23, minute: 0 }],
+      [{ hour: 12, minute: 0 }, { hour: 23, minute: 0 }],
+    ])[5]).toBe('周六 12:00–23:00');
   });
 });
 

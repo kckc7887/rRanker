@@ -3,9 +3,18 @@ export type ArcadeShopGame = {
   titleId: number;
   name: string;
   version: string;
+  comment: string;
   quantity: number;
   cost: string;
 };
+
+export type ArcadeOpeningTime = {
+  hour: number;
+  minute: number;
+};
+
+/** One day slot: [open, close]. Length 1 = same for whole week; 7 = Mon–Sun. */
+export type ArcadeOpeningDay = readonly [ArcadeOpeningTime, ArcadeOpeningTime];
 
 export type ArcadeShop = {
   id: number;
@@ -17,6 +26,11 @@ export type ArcadeShop = {
   longitude: number;
   distanceKm: number;
   games: ArcadeShopGame[];
+};
+
+export type ArcadeShopDetail = ArcadeShop & {
+  openingHours: ArcadeOpeningDay[];
+  isOpen: boolean | null;
 };
 
 export type ArcadeGameTitle = {
@@ -89,6 +103,38 @@ export function formatArcadeGamesSummary(games: readonly ArcadeShopGame[]): stri
       return `${game.name}${qty}`;
     })
     .join(' · ');
+}
+
+const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] as const;
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+export function formatArcadeClock(time: ArcadeOpeningTime): string {
+  return `${pad2(time.hour)}:${pad2(time.minute)}`;
+}
+
+export function formatArcadeOpeningSlot(day: ArcadeOpeningDay): string {
+  return `${formatArcadeClock(day[0])}–${formatArcadeClock(day[1])}`;
+}
+
+export function formatArcadeOpenStatus(isOpen: boolean | null): string {
+  if (isOpen === true) return '营业中';
+  if (isOpen === false) return '休息中';
+  return '营业状态未知';
+}
+
+/** Human-readable opening hours lines for detail UI. */
+export function formatArcadeOpeningHoursLines(openingHours: readonly ArcadeOpeningDay[]): string[] {
+  if (openingHours.length === 0) return ['营业时间未知'];
+  if (openingHours.length === 1) {
+    return [`每日 ${formatArcadeOpeningSlot(openingHours[0])}`];
+  }
+  if (openingHours.length === 7) {
+    return openingHours.map((day, index) => `${WEEKDAY_LABELS[index]} ${formatArcadeOpeningSlot(day)}`);
+  }
+  return openingHours.map((day, index) => `时段 ${index + 1} ${formatArcadeOpeningSlot(day)}`);
 }
 
 export function shopMatchesNameKeyword(

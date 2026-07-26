@@ -3,7 +3,9 @@ import {
   FALLBACK_ARCADE_GAME_TITLES,
   localizeArcadeGameTitleName,
   type ArcadeGameTitle,
+  type ArcadeOpeningDay,
   type ArcadeShop,
+  type ArcadeShopDetail,
   type ArcadeShopGame,
 } from '@/domain/arcade-shops';
 
@@ -19,6 +21,13 @@ const shopGameSchema = z.object({
   cost: z.string().optional().default(''),
 });
 
+const openingTimeSchema = z.object({
+  hour: z.number().int().min(0).max(23),
+  minute: z.number().int().min(0).max(59),
+});
+
+const openingDaySchema = z.tuple([openingTimeSchema, openingTimeSchema]);
+
 const shopSchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -33,12 +42,18 @@ const shopSchema = z.object({
   }),
   games: z.array(shopGameSchema).optional().default([]),
   distance: z.number().optional().default(0),
+  openingHours: z.array(openingDaySchema).optional().default([]),
+  isOpen: z.boolean().nullable().optional().default(null),
 });
 
 const discoverResponseSchema = z.object({
   shops: z.array(shopSchema),
   radius: z.number().optional(),
   limit: z.number().optional(),
+});
+
+const shopDetailResponseSchema = z.object({
+  shop: shopSchema,
 });
 
 const gameTitleSchema = z.object({
@@ -66,9 +81,17 @@ function mapShopGame(game: z.infer<typeof shopGameSchema>): ArcadeShopGame {
     titleId: game.titleId,
     name: game.name,
     version: game.version,
+    comment: game.comment,
     quantity: game.quantity,
     cost: game.cost,
   };
+}
+
+function mapOpeningHours(hours: z.infer<typeof openingDaySchema>[]): ArcadeOpeningDay[] {
+  return hours.map((day) => [
+    { hour: day[0].hour, minute: day[0].minute },
+    { hour: day[1].hour, minute: day[1].minute },
+  ] as const);
 }
 
 function mapShop(shop: z.infer<typeof shopSchema>): ArcadeShop {
@@ -83,6 +106,14 @@ function mapShop(shop: z.infer<typeof shopSchema>): ArcadeShop {
     longitude,
     distanceKm: shop.distance,
     games: shop.games.map(mapShopGame),
+  };
+}
+
+function mapShopDetail(shop: z.infer<typeof shopSchema>): ArcadeShopDetail {
+  return {
+    ...mapShop(shop),
+    openingHours: mapOpeningHours(shop.openingHours),
+    isOpen: shop.isOpen ?? null,
   };
 }
 
@@ -105,6 +136,19 @@ export async function fetchNearcadeDiscover(query: DiscoverQuery): Promise<Arcad
   const json: unknown = await res.json();
   const parsed = discoverResponseSchema.parse(json);
   return parsed.shops.map(mapShop);
+}
+
+export async function fetchNearcadeShop(shopId: number, signal?: AbortSignal): Promise<ArcadeShopDetail> {
+  const params = new URLSearchParams({ includeTimeInfo: 'true' });
+  const res = await fetch(`${NEARCADE_API_BASE}/shops/${shopId}?${params.toString()}`, {
+    signal,
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) {
+    throw new Error(`nearcade shop failed: HTTP ${res.status}`);
+  }
+  const json: unknown = await res.json();
+  return parseShopDetailResponse(json);
 }
 
 export async function fetchNearcadeGameTitles(signal?: AbortSignal): Promise<ArcadeGameTitle[]> {
@@ -132,6 +176,10 @@ export async function fetchNearcadeGameTitles(signal?: AbortSignal): Promise<Arc
 /** Exposed for unit tests. */
 export function parseDiscoverResponse(json: unknown): ArcadeShop[] {
   return discoverResponseSchema.parse(json).shops.map(mapShop);
+}
+
+export function parseShopDetailResponse(json: unknown): ArcadeShopDetail {
+  return mapShopDetail(shopDetailResponseSchema.parse(json).shop);
 }
 
 export function parseGameTitlesResponse(json: unknown): ArcadeGameTitle[] {
