@@ -1,4 +1,4 @@
-import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import {
   GestureHandlerRootView,
+  Pressable as GesturePressable,
   ScrollView as GestureScrollView,
 } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -67,6 +68,12 @@ const DIFFICULTY_CARD_VISUAL: Record<ChunithmLevelIndex, { color: string; tint: 
 };
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
+
+function DetailPressable(props: ComponentProps<typeof Pressable>) {
+  return Platform.OS === 'android'
+    ? <Pressable {...props} />
+    : <GesturePressable {...props as ComponentProps<typeof GesturePressable>} />;
+}
 
 function mergeSong(
   catalogSong: ChunithmSong | undefined,
@@ -625,7 +632,7 @@ function DifficultyCard({
           ) : null}
         </View>
       )}
-      <Pressable
+      <DetailPressable
         accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
         accessibilityRole="button"
         disabled={library.isUpdating}
@@ -635,32 +642,30 @@ function DifficultyCard({
           difficulty.difficulty,
           !practice,
         )}
-        style={({ pressed }) => [
-          styles.actionButton,
+        style={[
+          styles.action,
           chartActionStyle(theme.dark, visual, Boolean(practice)),
-          pressed && styles.pressed,
           library.isUpdating && styles.disabled,
         ]}
       >
         <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, Boolean(practice))]}>
           {practice ? '已加入练习清单' : '加入练习清单'}
         </Text>
-      </Pressable>
-      <Pressable
+      </DetailPressable>
+      <DetailPressable
         accessibilityLabel={`搜索谱面确认：${searchQuery}`}
         accessibilityRole="link"
         onPress={() => void openBilibiliChartSearch(searchQuery)}
-        style={({ pressed }) => [
-          styles.actionButton,
+        style={[
+          styles.action,
           styles.chartSearchAction,
           chartActionStyle(theme.dark, visual, false),
-          pressed && styles.pressed,
         ]}
       >
         <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, false)]}>
           搜索谱面确认
         </Text>
-      </Pressable>
+      </DetailPressable>
       <View style={[styles.tagBox, { borderTopColor: theme.border }]}>
         <TagEditor
           disabled={library.isUpdating}
@@ -688,7 +693,7 @@ function chartActionStyle(
   if (dark) {
     return { backgroundColor: visual.color, borderColor: visual.color };
   }
-  if (!filled) return { backgroundColor: 'transparent', borderColor: visual.color };
+  if (!filled) return { borderColor: visual.color };
   return { backgroundColor: visual.color, borderColor: visual.color };
 }
 
@@ -903,19 +908,18 @@ const styles = StyleSheet.create({
   notesValue: { fontSize: 11, fontWeight: '900' },
   notesUnavailable: { minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 5 },
   retryText: { fontSize: 12, fontWeight: '800' },
-  actionButton: {
+  action: {
     marginTop: 13,
     marginBottom: 10,
-    minHeight: 42,
     borderWidth: 1,
+    borderColor: '#667085',
     borderRadius: 11,
+    padding: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    backgroundColor: 'transparent',
   },
   chartSearchAction: { marginTop: 0 },
-  actionText: { fontSize: 12, fontWeight: '800', textAlign: 'center' },
+  actionText: { fontWeight: '700' },
   tagBox: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   noCharts: { padding: 24, alignItems: 'center' },
   details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },

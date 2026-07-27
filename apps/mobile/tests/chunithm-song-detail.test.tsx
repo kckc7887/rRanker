@@ -129,6 +129,14 @@ jest.mock('expo-image', () => {
   };
 });
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('react-native-gesture-handler', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    GestureHandlerRootView: RN.View,
+    Pressable: RN.Pressable,
+    ScrollView: RN.ScrollView,
+  };
+});
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
@@ -224,20 +232,25 @@ describe('Chunithm song detail', () => {
     };
   });
 
-  it('defaults to MASTER and renders score, notes, actions and data status', async () => {
+  it('defaults to MASTER and renders score, notes, actions and song tags', async () => {
     const openUrl = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
     const screen = await render(<ChunithmSongDetail songId="3" />);
 
     expect(screen.getByText('#3')).toBeTruthy();
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
-    expect(screen.getByText('CHUNITHM VERSE')).toBeTruthy();
+    expect(screen.getAllByText('CHUNITHM VERSE').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('中二难度卡片').props.contentOffset.x).toBeGreaterThan(0);
 
     const master = within(screen.getByTestId('chunithm-detail-difficulty-3'));
     expect(master.getByText('MASTER')).toBeTruthy();
     expect(master.getByText('12+')).toBeTruthy();
-    expect(master.getByText('定数 12.5')).toBeTruthy();
+    expect(master.getByText('12.5')).toBeTruthy();
+    expect(master.queryByText('定数 12.5')).toBeNull();
+    expect(master.getByText('Score')).toBeTruthy();
     expect(master.getByLabelText('1,009,000')).toBeTruthy();
+    expect(master.getByText('SSS+')).toBeTruthy();
+    expect(master.getByText('AJ')).toBeTruthy();
+    expect(master.getByText('CLEAR')).toBeTruthy();
     expect(master.getByText('15.25')).toBeTruthy();
     expect(master.getByText('98.12')).toBeTruthy();
     expect(master.getByText('谱师：Master Designer')).toBeTruthy();
@@ -268,7 +281,7 @@ describe('Chunithm song detail', () => {
       `bilibili://search?keyword=${encodeURIComponent('中二节奏 B.B.K.K.B.K.K. MASTER 谱面确认')}`,
     ));
     expect(screen.getByText('版权：TEST RIGHTS')).toBeTruthy();
-    expect(screen.getByLabelText('数据来源状态')).toBeTruthy();
+    expect(screen.queryByLabelText('数据来源状态')).toBeNull();
   });
 
   it("uses WORLD'S END attributes and never treats level_value as a constant", async () => {
@@ -279,7 +292,8 @@ describe('Chunithm song detail', () => {
     const worldsEnd = within(screen.getByTestId('chunithm-detail-difficulty-5'));
     expect(worldsEnd.getByText("WORLD'S END")).toBeTruthy();
     expect(worldsEnd.getByText('止☆1')).toBeTruthy();
-    expect(worldsEnd.getByText('定数 —')).toBeTruthy();
+    expect(worldsEnd.getAllByText('—').length).toBeGreaterThan(0);
+    expect(worldsEnd.queryByText('定数 —')).toBeNull();
     expect(worldsEnd.queryByText('定数 0.0')).toBeNull();
   });
 
