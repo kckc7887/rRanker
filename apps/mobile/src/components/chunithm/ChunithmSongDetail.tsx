@@ -14,10 +14,13 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import {
+  GestureHandlerRootView,
+  ScrollView as GestureScrollView,
+} from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
@@ -30,6 +33,7 @@ import {
   buildTagHistory,
 } from '@/domain/user-library';
 import {
+  chunithmAchievementBadges,
   chunithmRankFromScore,
   chunithmRankUsesGradient,
   formatChunithmRating,
@@ -43,7 +47,11 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useAppTheme } from '@/theme/app-theme';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
-import { ChunithmGradientScore } from './ChunithmScoreCard';
+import {
+  AchievementBadge,
+  ChunithmGradientScore,
+  RankBadge,
+} from './ChunithmScoreCard';
 import { chunithmJacketUrl } from './ChunithmSongRow';
 
 const CARD_GAP = 12;
@@ -158,14 +166,11 @@ export function ChunithmSongDetail({
           onRetry={retry}
           renderData={(item) => (
             <ChunithmDetailBody
-              catalogSource={catalog.data?.source}
               detailError={detail.isError}
-              detailSource={detail.data?.source}
               initialLevelIndex={initialLevelIndex}
               library={library}
               onRetryDetail={() => void detail.refetch()}
               scores={payload?.scores ?? []}
-              scoreSource={payload?.hasSyncedData ? payload.source : undefined}
               song={item}
             />
           )}
@@ -247,9 +252,6 @@ function ChunithmDetailBody({
   scores,
   library,
   initialLevelIndex,
-  catalogSource,
-  detailSource,
-  scoreSource,
   detailError,
   onRetryDetail,
 }: {
@@ -257,9 +259,6 @@ function ChunithmDetailBody({
   scores: readonly ChunithmScore[];
   library: LibraryHook;
   initialLevelIndex?: number;
-  catalogSource?: import('@/domain/models').DataSource;
-  detailSource?: import('@/domain/models').DataSource;
-  scoreSource?: import('@/domain/models').DataSource;
   detailError: boolean;
   onRetryDetail: () => void;
 }) {
@@ -275,6 +274,8 @@ function ChunithmDetailBody({
     : difficulties.findIndex((difficulty) => difficulty.difficulty === initialLevelIndex);
   const masterIndex = difficulties.findIndex((difficulty) => difficulty.difficulty === 3);
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex >= 0 ? masterIndex : 0;
+  const songItem = library.data?.find((item) => item.key === library.songKey(String(song.id)));
+  const mapValue = song.map?.trim();
 
   return (
     <ScrollView
@@ -287,10 +288,10 @@ function ChunithmDetailBody({
         accessibilityLabel="中二歌曲详情数据"
         style={[styles.metadataTable, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}
       >
-        <MetadataCell label="分类" value={song.genre || '未提供'} />
-        <MetadataCell label="BPM" value={song.bpm ? String(song.bpm) : '未提供'} />
-        <MetadataCell label="版本" value={song.versionTitle || '未提供'} />
-        <MetadataCell label="地图" value={song.map || '未提供'} />
+        <MetadataCell flex={1} label="分类" value={song.genre || '未提供'} />
+        <MetadataCell flex={1} label="BPM" value={song.bpm ? String(song.bpm) : '未提供'} />
+        <MetadataCell flex={1} label="版本" value={song.versionTitle || '未提供'} />
+        {mapValue ? <MetadataCell flex={1} label="地图" value={mapValue} /> : null}
       </View>
 
       <DifficultyCarousel
@@ -305,28 +306,16 @@ function ChunithmDetailBody({
       />
 
       <View style={styles.details}>
-        <SourceStatus items={[
-          {
-            key: 'catalog',
-            label: catalogSource?.label ?? 'LXNS 中二节奏公共曲库暂不可用',
-            updatedAt: catalogSource?.updatedAt,
-            state: !catalogSource ? 'unavailable' : catalogSource.isStale ? 'cache' : 'live',
-          },
-          {
-            key: 'detail',
-            label: detailSource?.label ?? (detailError
-              ? 'LXNS 中二节奏单曲详情暂不可用'
-              : 'LXNS 中二节奏单曲详情加载中'),
-            updatedAt: detailSource?.updatedAt,
-            state: !detailSource ? 'unavailable' : detailSource.isStale ? 'cache' : 'live',
-          },
-          {
-            key: 'scores',
-            label: scoreSource?.label ?? '中二个人成绩未同步',
-            updatedAt: scoreSource?.updatedAt,
-            state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live',
-          },
-        ]} />
+        <Card>
+          <TagEditor
+            disabled={library.isUpdating}
+            historyTags={buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
+            onChange={(tags) => library.setTags({ kind: 'song', songId: String(song.id) }, tags)}
+            onPresetsChange={library.setTagPresets}
+            presets={library.tagPresets ?? []}
+            tags={songItem?.kind === 'song' ? songItem.tags : []}
+          />
+        </Card>
         <Card style={styles.copyrightCard}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>歌曲与版权信息</Text>
           <Text style={[styles.body, { color: theme.textSecondary }]}>
@@ -377,13 +366,64 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
   );
 }
 
-function MetadataCell({ label, value }: { label: string; value: string }) {
+function MetadataValue({
+  label,
+  value,
+  expanded,
+  onOverflowChange,
+}: {
+  label: string;
+  value: string;
+  expanded: boolean;
+  onOverflowChange: (overflow: boolean) => void;
+}) {
   const theme = useAppTheme();
   return (
-    <View style={styles.metadataCell}>
-      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>{label}</Text>
-      <Text numberOfLines={2} style={[styles.metadataValue, { color: theme.text }]}>{value}</Text>
+    <View style={styles.metadataValueBlock}>
+      <Text
+        accessible={false}
+        onTextLayout={(event) => onOverflowChange(event.nativeEvent.lines.length > 2)}
+        style={[styles.metadataValue, styles.metadataValueMeasure, { color: theme.text }]}
+        testID={`chunithm-metadata-measure-${label}`}
+      >
+        {value}
+      </Text>
+      <Text
+        ellipsizeMode="tail"
+        numberOfLines={expanded ? undefined : 2}
+        style={[styles.metadataValue, { color: theme.text }]}
+        testID={`chunithm-metadata-value-${label}`}
+      >
+        {value}
+      </Text>
     </View>
+  );
+}
+
+function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
+  const theme = useAppTheme();
+  const [expanded, setExpanded] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    setExpanded(false);
+    setOverflow(false);
+  }, [value]);
+  return (
+    <Pressable
+      accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}${label}` : undefined}
+      accessibilityRole={overflow ? 'button' : undefined}
+      disabled={!overflow}
+      onPress={() => setExpanded((current) => !current)}
+      style={[styles.metadataCell, { flex }]}
+    >
+      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>{label}</Text>
+      <MetadataValue
+        expanded={expanded}
+        label={label}
+        onOverflowChange={setOverflow}
+        value={value}
+      />
+    </Pressable>
   );
 }
 
@@ -407,7 +447,7 @@ function DifficultyCarousel({
   onRetryDetail: () => void;
 }) {
   const interval = cardWidth + CARD_GAP;
-  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
   useEffect(() => {
     const timer = setTimeout(() => {
       scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
@@ -418,33 +458,37 @@ function DifficultyCarousel({
     return <View style={styles.noCharts}><Text style={styles.body}>暂无可用难度</Text></View>;
   }
   return (
-    <ScrollView
-      accessibilityLabel="中二难度卡片"
-      contentContainerStyle={styles.carousel}
-      contentOffset={{ x: initialIndex * interval, y: 0 }}
-      decelerationRate="fast"
-      disableIntervalMomentum
-      directionalLockEnabled
-      horizontal
-      ref={scrollRef}
-      showsHorizontalScrollIndicator={false}
-      snapToAlignment="start"
-      snapToInterval={interval}
-      style={styles.carouselScroll}
-    >
-      {difficulties.map((difficulty) => (
-        <DifficultyCard
-          detailError={detailError}
-          difficulty={difficulty}
-          key={difficulty.difficulty}
-          library={library}
-          onRetryDetail={onRetryDetail}
-          score={bestScoreForDifficulty(scores, song.id, difficulty.difficulty)}
-          song={song}
-          width={cardWidth}
-        />
-      ))}
-    </ScrollView>
+    <GestureHandlerRootView style={styles.carouselRoot}>
+      <GestureScrollView
+        accessibilityLabel="中二难度卡片"
+        contentContainerStyle={styles.carousel}
+        contentOffset={{ x: initialIndex * interval, y: 0 }}
+        decelerationRate="fast"
+        disableIntervalMomentum
+        directionalLockEnabled
+        horizontal
+        nestedScrollEnabled
+        ref={scrollRef}
+        removeClippedSubviews={false}
+        showsHorizontalScrollIndicator={false}
+        snapToAlignment="start"
+        snapToInterval={interval}
+        style={styles.carouselScroll}
+      >
+        {difficulties.map((difficulty) => (
+          <DifficultyCard
+            detailError={detailError}
+            difficulty={difficulty}
+            key={difficulty.difficulty}
+            library={library}
+            onRetryDetail={onRetryDetail}
+            score={bestScoreForDifficulty(scores, song.id, difficulty.difficulty)}
+            song={song}
+            width={cardWidth}
+          />
+        ))}
+      </GestureScrollView>
+    </GestureHandlerRootView>
   );
 }
 
@@ -498,6 +542,14 @@ function DifficultyCard({
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const difficultyName = CHUNITHM_DIFFICULTY_LABELS[difficulty.difficulty];
   const searchQuery = `中二节奏 ${song.title} ${difficultyName} 谱面确认`;
+  const rank = score ? chunithmRankFromScore(score.score) : undefined;
+  const achievements = score
+    ? chunithmAchievementBadges({
+      fullCombo: score.full_combo,
+      fullChain: score.full_chain,
+      clear: score.clear,
+    })
+    : [];
   return (
     <View
       style={[
@@ -522,22 +574,40 @@ function DifficultyCard({
             {worldsEnd ? worldsEndLabel : difficulty.level}
           </Text>
           <Text style={[styles.constant, { color: theme.textMuted }]}>
-            定数 {worldsEnd ? '—' : difficulty.levelValue.toFixed(1)}
+            {worldsEnd ? '—' : difficulty.levelValue.toFixed(1)}
           </Text>
         </View>
       </View>
-      <ScoreValue score={score} />
-      <View style={styles.scoreMetaRow}>
-        <Text style={[styles.scoreMeta, { color: theme.textSecondary }]}>
-          Rating <Text style={[styles.scoreMetaValue, { color: theme.text }]}>
+      <View style={styles.resultBlock}>
+        <Text style={[styles.scoreLabel, { color: theme.textMuted }]}>Score</Text>
+        <ScoreValue score={score} />
+        {score && rank ? (
+          <View style={styles.badgeRow}>
+            <RankBadge rank={rank} />
+            {achievements.map((achievement) => (
+              <AchievementBadge
+                key={achievement.id}
+                label={achievement.label}
+                testID={`chunithm-detail-${achievement.id}-${achievement.tone}`}
+                tone={achievement.tone}
+              />
+            ))}
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.statRow}>
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: theme.textMuted }]}>Rating</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>
             {formatChunithmRating(score?.rating)}
           </Text>
-        </Text>
-        <Text style={[styles.scoreMeta, { color: theme.textSecondary }]}>
-          OVER POWER <Text style={[styles.scoreMetaValue, { color: theme.text }]}>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: theme.textMuted }]}>OVER POWER</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>
             {formatOptionalValue(score?.over_power)}
           </Text>
-        </Text>
+        </View>
       </View>
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
       <Text style={[styles.charter, { color: theme.textSecondary }]}>
@@ -555,43 +625,42 @@ function DifficultyCard({
           ) : null}
         </View>
       )}
-      <View style={styles.actionRow}>
-        <Pressable
-          accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
-          accessibilityRole="button"
-          disabled={library.isUpdating}
-          onPress={() => void library.setChartPractice(
-            String(song.id),
-            CHUNITHM_CHART_TYPE,
-            difficulty.difficulty,
-            !practice,
-          )}
-          style={({ pressed }) => [
-            styles.actionButton,
-            chartActionStyle(theme.dark, visual, Boolean(practice)),
-            pressed && styles.pressed,
-            library.isUpdating && styles.disabled,
-          ]}
-        >
-          <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, Boolean(practice))]}>
-            {practice ? '已加入练习清单' : '加入练习清单'}
-          </Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel={`搜索谱面确认：${searchQuery}`}
-          accessibilityRole="link"
-          onPress={() => void openBilibiliChartSearch(searchQuery)}
-          style={({ pressed }) => [
-            styles.actionButton,
-            chartActionStyle(theme.dark, visual, false),
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, false)]}>
-            搜索谱面确认
-          </Text>
-        </Pressable>
-      </View>
+      <Pressable
+        accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
+        accessibilityRole="button"
+        disabled={library.isUpdating}
+        onPress={() => void library.setChartPractice(
+          String(song.id),
+          CHUNITHM_CHART_TYPE,
+          difficulty.difficulty,
+          !practice,
+        )}
+        style={({ pressed }) => [
+          styles.actionButton,
+          chartActionStyle(theme.dark, visual, Boolean(practice)),
+          pressed && styles.pressed,
+          library.isUpdating && styles.disabled,
+        ]}
+      >
+        <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, Boolean(practice))]}>
+          {practice ? '已加入练习清单' : '加入练习清单'}
+        </Text>
+      </Pressable>
+      <Pressable
+        accessibilityLabel={`搜索谱面确认：${searchQuery}`}
+        accessibilityRole="link"
+        onPress={() => void openBilibiliChartSearch(searchQuery)}
+        style={({ pressed }) => [
+          styles.actionButton,
+          styles.chartSearchAction,
+          chartActionStyle(theme.dark, visual, false),
+          pressed && styles.pressed,
+        ]}
+      >
+        <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, false)]}>
+          搜索谱面确认
+        </Text>
+      </Pressable>
       <View style={[styles.tagBox, { borderTopColor: theme.border }]}>
         <TagEditor
           disabled={library.isUpdating}
@@ -789,10 +858,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 12,
   },
-  metadataCell: { flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
+  metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
   metadataLabel: { fontSize: 10, fontWeight: '800' },
+  metadataValueBlock: { position: 'relative', minWidth: 0, alignSelf: 'stretch' },
+  metadataValueMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
   metadataValue: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center' },
-  carouselScroll: { marginTop: 14 },
+  carouselRoot: { flexGrow: 0 },
+  carouselScroll: { flexGrow: 0, marginTop: 14 },
   carousel: { paddingHorizontal: 20, gap: CARD_GAP, paddingBottom: 4 },
   difficultyCard: {
     borderRadius: 24,
@@ -809,10 +881,14 @@ const styles = StyleSheet.create({
   levelBlock: { alignItems: 'flex-end' },
   level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
   constant: { fontSize: 11, fontWeight: '600' },
+  resultBlock: { alignItems: 'flex-start', gap: 2 },
+  scoreLabel: { fontSize: 12, fontWeight: '700' },
   score: { fontSize: 34, lineHeight: 42, fontWeight: '900', letterSpacing: -0.5 },
-  scoreMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  scoreMeta: { fontSize: 12, fontWeight: '700' },
-  scoreMetaValue: { fontWeight: '900' },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 29, marginTop: 7 },
+  statRow: { flexDirection: 'row', marginTop: 6, gap: 24 },
+  statCell: { gap: 2 },
+  statLabel: { fontSize: 12, fontWeight: '700' },
+  statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
   charter: { fontSize: 12, fontWeight: '700' },
   notesTable: {
@@ -827,16 +903,18 @@ const styles = StyleSheet.create({
   notesValue: { fontSize: 11, fontWeight: '900' },
   notesUnavailable: { minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 5 },
   retryText: { fontSize: 12, fontWeight: '800' },
-  actionRow: { flexDirection: 'row', gap: 8 },
   actionButton: {
-    flex: 1,
+    marginTop: 13,
+    marginBottom: 10,
     minHeight: 42,
     borderWidth: 1,
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
+    paddingVertical: 10,
   },
+  chartSearchAction: { marginTop: 0 },
   actionText: { fontSize: 12, fontWeight: '800', textAlign: 'center' },
   tagBox: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   noCharts: { padding: 24, alignItems: 'center' },
