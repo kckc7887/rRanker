@@ -8,7 +8,7 @@ import { ResourceService } from '@/services/resource-service';
 import { useSession } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
-const CHUNITHM_CATALOG_SCHEMA_VERSION = 1;
+const CHUNITHM_CATALOG_SCHEMA_VERSION = 2;
 const repository = new SqliteSnapshotRepository();
 const provider = new ChunithmCatalogProvider();
 
