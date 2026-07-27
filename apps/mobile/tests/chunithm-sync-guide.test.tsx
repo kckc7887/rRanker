@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { StyleSheet } from 'react-native';
 import {
   CHUNITHM_OFFLINE_SYNC_URL,
   CHUNITHM_PROXY_ADDRESS,
@@ -15,7 +16,7 @@ jest.mock('expo-clipboard', () => ({
   setStringAsync: (value: string) => mockSetStringAsync(value),
 }));
 jest.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+  useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('@/components/AppModal', () => ({
   AppModal: ({ visible, children }: { visible?: boolean; children: unknown }) => (
@@ -37,11 +38,33 @@ jest.mock('@/theme/app-theme', () => ({
     textSecondary: '#4B5563',
     textMuted: '#6B7280',
     warning: '#B45309',
+    overlay: 'rgba(17,24,39,0.58)',
   }),
 }));
 
 describe('Chunithm sync guide', () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it('uses a layered bottom sheet without adding the top safe area as an empty header', async () => {
+    const screen = await render(
+      <ChunithmSyncGuideSheet
+        visible
+        syncing={false}
+        onClose={jest.fn()}
+        onSync={jest.fn(async () => false)}
+      />,
+    );
+
+    expect(StyleSheet.flatten(screen.getByTestId('chunithm-sync-guide-layer').props.style))
+      .toEqual(expect.objectContaining({ flex: 1, justifyContent: 'flex-end' }));
+    expect(StyleSheet.flatten(screen.getByTestId('chunithm-sync-guide-sheet').props.style))
+      .toEqual(expect.objectContaining({
+        height: '88%',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+      }));
+    expect(screen.getByLabelText('关闭中二同步引导背景')).toBeTruthy();
+  });
 
   it('copies all proxy forms and the offline WeChat link without a direct-open action', async () => {
     const screen = await render(
