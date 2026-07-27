@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import {
   CHUNITHM_OFFLINE_SYNC_URL,
@@ -19,9 +20,22 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('@/components/AppModal', () => ({
-  AppModal: ({ visible, children }: { visible?: boolean; children: unknown }) => (
-    visible ? children : null
-  ),
+  AppModal: ({
+    visible,
+    children,
+    presentationStyle,
+  }: {
+    visible?: boolean;
+    children: ReactNode;
+    presentationStyle?: string;
+  }) => {
+    const RN = jest.requireActual<typeof import('react-native')>('react-native');
+    return visible ? (
+      <RN.View accessibilityLabel={presentationStyle} testID="mock-app-modal">
+        {children}
+      </RN.View>
+    ) : null;
+  },
 }));
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification }),
@@ -45,7 +59,7 @@ jest.mock('@/theme/app-theme', () => ({
 describe('Chunithm sync guide', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('uses a layered bottom sheet without adding the top safe area as an empty header', async () => {
+  it('uses the same native page sheet structure as account login without a top safe-area spacer', async () => {
     const screen = await render(
       <ChunithmSyncGuideSheet
         visible
@@ -55,15 +69,16 @@ describe('Chunithm sync guide', () => {
       />,
     );
 
-    expect(StyleSheet.flatten(screen.getByTestId('chunithm-sync-guide-layer').props.style))
-      .toEqual(expect.objectContaining({ flex: 1, justifyContent: 'flex-end' }));
-    expect(StyleSheet.flatten(screen.getByTestId('chunithm-sync-guide-sheet').props.style))
+    expect(screen.getByTestId('mock-app-modal').props.accessibilityLabel).toBe('pageSheet');
+    expect(StyleSheet.flatten(screen.getByTestId('chunithm-sync-guide-root').props.style))
       .toEqual(expect.objectContaining({
-        height: '88%',
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
+        flex: 1,
+        backgroundColor: '#F7F8FA',
+        paddingBottom: 34,
       }));
-    expect(screen.getByLabelText('关闭中二同步引导背景')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId('chunithm-sync-guide-root').props.style))
+      .not.toHaveProperty('paddingTop');
+    expect(screen.queryByLabelText('关闭中二同步引导背景')).toBeNull();
   });
 
   it('copies all proxy forms and the offline WeChat link without a direct-open action', async () => {
