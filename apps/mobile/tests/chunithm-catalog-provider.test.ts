@@ -110,11 +110,18 @@ describe('ChunithmCatalogProvider', () => {
     ]);
   });
 
-  it("filters WORLD'S END charts and removes entertainment-only songs", () => {
+  it("keeps WORLD'S END charts with their dedicated display metadata", () => {
     const catalog = mapChunithmCatalog(responsePayload);
-    expect(catalog.songs.map((song) => song.id)).toEqual([3]);
-    expect(catalog.songs.flatMap((song) => song.difficulties))
-      .not.toContainEqual(expect.objectContaining({ difficulty: 5 }));
+    expect(catalog.songs.map((song) => song.id)).toEqual([3, 90001]);
+    expect(catalog.songs[1]?.difficulties).toEqual([
+      expect.objectContaining({
+        difficulty: 5,
+        originId: 1234,
+        kanji: '避',
+        star: 4,
+        levelValue: 14,
+      }),
+    ]);
   });
 
   it('rejects an invalid upstream envelope', () => {
@@ -145,6 +152,6 @@ describe('ChunithmCatalogProvider', () => {
 
     expect(getResource).toHaveBeenCalledTimes(1);
     expect(result.source).toMatchObject({ kind: 'cache', isStale: true });
-    expect(result.songs).toHaveLength(1);
+    expect(result.songs).toHaveLength(2);
   });
 });

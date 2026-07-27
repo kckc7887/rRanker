@@ -3,6 +3,7 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
+import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
 
 const mockRefetchGame = jest.fn(async () => undefined);
 const mockRefetchCatalog = jest.fn(async () => undefined);
@@ -64,6 +65,17 @@ const mockRecords = [
     full_combo: 'alljustice',
     full_chain: 'fullchain2',
   },
+  {
+    id: 3,
+    song_name: 'WORLD END',
+    level: '！',
+    level_index: 5,
+    score: 1_007_500,
+    rating: 15,
+    clear: 'hard',
+    full_combo: null,
+    full_chain: null,
+  },
 ] as const;
 
 jest.mock('@/hooks/use-game-data', () => ({
@@ -77,8 +89,8 @@ jest.mock('@/hooks/use-game-data', () => ({
         player: { name: '中二玩家' },
         scores: mockRecords,
         bestSections: [
-          { id: 'b30', title: 'Best 30', scores: [mockRecords[0], mockRecords[1]] },
-          { id: 'new20', title: 'New 20', scores: [mockRecords[0]] },
+          { id: 'b30', title: 'Best 30', scores: [mockRecords[0], mockRecords[1], mockRecords[2]] },
+          { id: 'new20', title: 'New 20', scores: [mockRecords[2]] },
         ],
         playerScore: { label: 'RATING', value: 17.25, display: '17.25' },
         source: mockSource,
@@ -136,6 +148,28 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
             versionTitle: 'CHUNITHM VERSE',
           }],
         },
+        {
+          id: 3,
+          title: 'WORLD END 曲目',
+          artist: 'WE 艺术家',
+          genre: 'WORLD END',
+          bpm: 200,
+          versionId: 23000,
+          versionTitle: 'CHUNITHM VERSE',
+          locked: false,
+          disabled: false,
+          difficulties: [{
+            difficulty: 5,
+            level: '14',
+            levelValue: 14,
+            noteDesigner: 'WE 谱师',
+            versionId: 23000,
+            versionTitle: 'CHUNITHM VERSE',
+            originId: 1,
+            kanji: '狂',
+            star: 4,
+          }],
+        },
       ],
       source: mockSource,
     },
@@ -156,6 +190,7 @@ describe('Chunithm records and B50 screens', () => {
     const cards = screen.getAllByTestId(/^chunithm-score-card-/);
     expect(cards.map((card) => card.props.testID)).toEqual([
       'chunithm-score-card-2-3',
+      'chunithm-score-card-3-5',
       'chunithm-score-card-1-2',
     ]);
 
@@ -171,8 +206,9 @@ describe('Chunithm records and B50 screens', () => {
     expect(screen.getByText('New 20')).toBeTruthy();
     expect(screen.queryByText('Selection 10')).toBeNull();
     expect(screen.getByText('1. 第二首歌')).toBeTruthy();
-    expect(screen.getAllByText('1. 第一首歌')).toHaveLength(1);
-    expect(screen.getByText('2. 第一首歌')).toBeTruthy();
+    expect(screen.getByText('1. WORLD END 曲目')).toBeTruthy();
+    expect(screen.getByText('2. WORLD END 曲目')).toBeTruthy();
+    expect(screen.getByText('3. 第一首歌')).toBeTruthy();
   });
 
   it('uses fixed primary/achievement rows and the correct static/flowing score styles', async () => {
@@ -181,8 +217,14 @@ describe('Chunithm records and B50 screens', () => {
     expect(screen.getByTestId('chunithm-achievement-tags-1-2')).toBeTruthy();
     expect(screen.getByTestId('flowing-chunithm-score')).toBeTruthy();
     expect(screen.getByTestId('flowing-chunithm-rank')).toBeTruthy();
-    expect(screen.getByTestId('gradient-chunithm-score')).toBeTruthy();
-    expect(screen.getByText('13.4')).toBeTruthy();
+    expect(screen.getAllByTestId('gradient-chunithm-score')).toHaveLength(2);
+    expect(screen.getByText('EXPERT (13.4)')).toBeTruthy();
+    expect(screen.getByText("WORLD'S END (狂☆4)")).toBeTruthy();
+    expect(screen.queryByText("WORLD'S END (14.0)")).toBeNull();
+    expect(screen.getByTestId('chunithm-worlds-end-badge')).toBeTruthy();
+    expect(CHUNITHM_WORLDS_END_GRADIENT).toEqual([
+      '#37E6FF', '#7B61FF', '#F24FD4', '#FF8A3D',
+    ]);
     expect(screen.getByText('SSS+')).toBeTruthy();
     expect(screen.getByTestId('chunithm-full-combo-rainbow')).toBeTruthy();
     expect(screen.getByTestId('chunithm-full-chain-gold')).toBeTruthy();

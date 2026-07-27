@@ -220,8 +220,10 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
           <View style={styles.tagRow} testID={`chunithm-primary-tags-${record.key}`}>
             <ChunithmDifficultyBadge
               constant={record.difficultyConstant}
+              display="label-and-value"
               level={record.level}
               levelIndex={record.levelIndex}
+              worldsEndLabel={record.worldsEndLabel}
             />
             <RankBadge record={record} />
           </View>

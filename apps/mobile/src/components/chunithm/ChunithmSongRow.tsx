@@ -4,13 +4,17 @@ import { StyleSheet, Text, View } from 'react-native';
 import {
   type ChunithmSong,
 } from '@/domain/chunithm';
+import { formatChunithmWorldsEndLabel } from '@/domain/chunithm-score-presentation';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const CHUNITHM_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
 
 export function chunithmJacketUrl(song: ChunithmSong): string {
-  return `${CHUNITHM_JACKET_ROOT}/${song.id}.png`;
+  const worldsEndOriginId = song.difficulties.find(
+    (difficulty) => difficulty.difficulty === 5,
+  )?.originId;
+  return `${CHUNITHM_JACKET_ROOT}/${worldsEndOriginId ?? song.id}.png`;
 }
 
 export const ChunithmSongRow = memo(function ChunithmSongRow({
@@ -62,6 +66,12 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
               key={`${song.id}-${difficulty.difficulty}`}
               level={difficulty.level}
               levelIndex={difficulty.difficulty}
+              worldsEndLabel={difficulty.difficulty === 5
+                ? formatChunithmWorldsEndLabel({
+                  kanji: difficulty.kanji,
+                  star: difficulty.star,
+                })
+                : undefined}
             />
           ))}
         </View>

@@ -26,6 +26,7 @@ export type ChunithmScoreCardData = {
   levelIndex: ChunithmLevelIndex;
   level?: string;
   difficultyConstant?: number;
+  worldsEndLabel?: string;
   score: number;
   rating?: number;
   rank: ChunithmRank;
@@ -96,6 +97,21 @@ function findSong(
   return songsById.get(String(score.id));
 }
 
+export function formatChunithmWorldsEndLabel({
+  kanji,
+  star,
+  scoreLevel,
+}: {
+  kanji?: string;
+  star?: number;
+  scoreLevel?: string;
+}): string {
+  const normalizedKanji = kanji?.trim();
+  if (normalizedKanji && star !== undefined) return `${normalizedKanji}☆${star}`;
+  if (normalizedKanji) return normalizedKanji;
+  return scoreLevel?.trim() || '—';
+}
+
 export function buildChunithmScoreCards(
   scores: readonly ChunithmScore[],
   catalog: ChunithmCatalogSnapshot | undefined,
@@ -104,11 +120,12 @@ export function buildChunithmScoreCards(
     (catalog?.songs ?? []).map((song) => [String(song.id), song] as const),
   );
   return scores.flatMap((score) => {
-    if (score.level_index < 0 || score.level_index > 4) return [];
+    if (score.level_index < 0 || score.level_index > 5) return [];
     const song = findSong(songsById, score);
     const difficulty = song?.difficulties.find(
       (candidate) => candidate.difficulty === score.level_index,
     );
+    const worldsEnd = score.level_index === 5;
     return [{
       key: scoreKey(score),
       songId: String(score.id),
@@ -117,7 +134,14 @@ export function buildChunithmScoreCards(
       noteDesigner: difficulty?.noteDesigner,
       levelIndex: score.level_index as ChunithmLevelIndex,
       level: score.level ?? difficulty?.level,
-      difficultyConstant: difficulty?.levelValue,
+      difficultyConstant: worldsEnd ? undefined : difficulty?.levelValue,
+      worldsEndLabel: worldsEnd
+        ? formatChunithmWorldsEndLabel({
+          kanji: difficulty?.kanji,
+          star: difficulty?.star,
+          scoreLevel: score.level,
+        })
+        : undefined,
       score: score.score,
       rating: score.rating,
       rank: chunithmRankFromScore(score.score),

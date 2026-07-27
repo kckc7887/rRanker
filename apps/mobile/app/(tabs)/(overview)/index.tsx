@@ -8,6 +8,7 @@ import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
+import { ChunithmSyncGuideSheet } from '@/components/chunithm/ChunithmSyncGuideSheet';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
@@ -18,6 +19,7 @@ import { selectGameTools, summarizeGameTools } from '@/domain/game-toolbox';
 import { calculatePlateProgress } from '@/domain/plates';
 import type { ScoreRecord } from '@/domain/models';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePlates } from '@/hooks/use-plates';
@@ -47,6 +49,7 @@ export function OverviewScreen() {
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
   const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useDetailedCatalog();
+  const chunithmCatalog = useChunithmCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const activeAccountId = useSession((s) => s.activeAccountId);
@@ -59,6 +62,7 @@ export function OverviewScreen() {
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [uploadVisible, setUploadVisible] = useState(false);
+  const [chunithmSyncGuideVisible, setChunithmSyncGuideVisible] = useState(false);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -80,8 +84,8 @@ export function OverviewScreen() {
     void hydratePins();
   }, [hydratePins]);
 
-  const syncData = useCallback(async () => {
-    if (refreshingRef.current) return;
+  const syncData = useCallback(async (): Promise<boolean> => {
+    if (refreshingRef.current) return false;
     refreshingRef.current = true;
     setRefreshing(true);
     setSyncing(true);
@@ -108,19 +112,37 @@ export function OverviewScreen() {
       }
       // 先把相关页面标为过期但不并发请求，再只刷新当前总览一次。
       await invalidateAccountDataQueries(queryClient, 'none');
-      await refetch();
+      const refreshed = await refetch();
+      if (activeGameId === 'chunithm') {
+        const payload = refreshed.data?.payload;
+        const isFreshChunithmData = payload?.kind === 'chunithm'
+          && payload.hasSyncedData
+          && !payload.source.isStale;
+        if (!isFreshChunithmData) {
+          showNotification({
+            title: '尚未读取到新数据',
+            message: payload?.kind === 'chunithm' && payload.source.isStale
+              ? '本次仅读取到缓存，请关闭代理并检查网络后重试。'
+              : '请确认微信已提示上传完成、代理已经关闭，再重试同步。',
+            variant: 'warning',
+          });
+          return false;
+        }
+      }
+      return true;
     } catch (syncError) {
       showNotification({
         title: '同步失败',
         message: syncError instanceof Error ? syncError.message : '暂时无法同步成绩，请稍后重试。',
         variant: 'error',
       });
+      return false;
     } finally {
       refreshingRef.current = false;
       setRefreshing(false);
       setSyncing(false);
     }
-  }, [activeAccountId, activeSession, boundAccounts, catalogData, catalogError, profile.ratingDigits,
+  }, [activeAccountId, activeGameId, activeSession, boundAccounts, catalogData, catalogError, profile.ratingDigits,
     refetch, refetchCatalog, showNotification, updateBoundAccountScore]);
 
   const finishUpload = useCallback(async (result: UploadResult) => {
@@ -196,16 +218,29 @@ export function OverviewScreen() {
                 { key: 'catalog', label: bundle.payload.catalogSource.label, updatedAt: bundle.payload.catalogSource.updatedAt, state: bundle.payload.catalogSource.isStale ? 'cache' : 'live' },
               ]} />
             ) : bundle.payload.kind === 'chunithm' ? (
-              <SourceStatus items={[{
-                key: 'scores',
-                label: bundle.payload.hasSyncedData
-                  ? bundle.payload.source.label
-                  : '落雪账号尚未同步中二数据',
-                updatedAt: bundle.payload.source.updatedAt,
-                state: bundle.payload.hasSyncedData
-                  ? (bundle.payload.source.isStale ? 'cache' : 'live')
-                  : 'unavailable',
-              }]} />
+              <SourceStatus items={[
+                {
+                  key: 'scores',
+                  label: bundle.payload.hasSyncedData
+                    ? bundle.payload.source.label
+                    : '落雪账号尚未同步中二数据',
+                  updatedAt: bundle.payload.source.updatedAt,
+                  state: bundle.payload.hasSyncedData
+                    ? (bundle.payload.source.isStale ? 'cache' : 'live')
+                    : 'unavailable',
+                },
+                {
+                  key: 'catalog',
+                  label: chunithmCatalog.data?.source.label
+                    ?? (chunithmCatalog.isLoading
+                      ? 'LXNS 中二节奏公共曲库加载中'
+                      : 'LXNS 中二节奏公共曲库暂不可用'),
+                  updatedAt: chunithmCatalog.data?.source.updatedAt,
+                  state: chunithmCatalog.data
+                    ? (chunithmCatalog.data.source.isStale ? 'cache' : 'live')
+                    : 'unavailable',
+                },
+              ]} />
             ) : (
               <SourceStatus items={[
                 {
@@ -285,13 +320,12 @@ export function OverviewScreen() {
               <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="上传数据，暂未开放"
-                  accessibilityState={{ disabled: true }}
-                  disabled
-                  style={[styles.actionHalf, styles.sealedAction]}
+                  accessibilityLabel="上传数据，打开同步引导"
+                  onPress={() => setChunithmSyncGuideVisible(true)}
+                  style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
                 >
                   <Text style={styles.syncText}>上传数据</Text>
-                  <Text style={styles.actionHint}>暂未开放</Text>
+                  <Text style={styles.actionHint}>同步引导</Text>
                 </Pressable>
                 <View style={styles.actionDivider} />
                 <Pressable
@@ -388,14 +422,14 @@ export function OverviewScreen() {
               ) : bundle.payload.kind === 'chunithm' ? (
                 <>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>
-                    成绩：{bundle.payload.hasSyncedData
-                      ? `${bundle.payload.scores.length} 条最佳成绩`
-                      : '落雪尚无同步数据'}
-                  </Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>
                     来源：{bundle.payload.source.label}
                   </Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>曲库：LXNS 中二节奏公共曲库</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>
+                    曲库：{chunithmCatalog.data?.source.label
+                      ?? (chunithmCatalog.isLoading
+                        ? 'LXNS 中二节奏公共曲库加载中'
+                        : 'LXNS 中二节奏公共曲库暂不可用')}
+                  </Text>
                 </>
               ) : (
                 <Text style={[styles.body, { color: theme.textSecondary }]}>当前游戏暂未接入数据</Text>
@@ -425,6 +459,12 @@ export function OverviewScreen() {
         onFinished={finishUpload}
         temporarySelectedAccountIds={currentUploadSelection}
         onLxnsTokensRotated={applyLxnsTokenRotation}
+      />
+      <ChunithmSyncGuideSheet
+        visible={chunithmSyncGuideVisible}
+        syncing={syncBusy}
+        onClose={() => setChunithmSyncGuideVisible(false)}
+        onSync={syncData}
       />
     </View>
   );
@@ -546,7 +586,6 @@ const styles = StyleSheet.create({
   actionHint: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '600', lineHeight: 14 },
   syncPressed: { opacity: 0.88 },
   syncDisabled: { opacity: 0.65 },
-  sealedAction: { opacity: 0.48 },
   syncText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, gap: 8 },
   pinnedToolCard: { borderWidth: StyleSheet.hairlineWidth, borderColor: '#AFC7FF' },
