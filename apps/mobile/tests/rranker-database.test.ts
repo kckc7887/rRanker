@@ -50,7 +50,7 @@ describe('shared rranker.db access', () => {
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('account_score_snapshots'));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('user_library_meta'));
     expect(sqlite.db.execAsync.mock.calls.some(
-      ([sql]: [string]) => sql.includes('journal_mode'),
+      ([sql]) => String(sql).includes('journal_mode'),
     )).toBe(false);
   });
 });
