@@ -430,6 +430,12 @@ export function OverviewScreen() {
                         ? 'LXNS 中二节奏公共曲库加载中'
                         : 'LXNS 中二节奏公共曲库暂不可用')}
                   </Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>
+                    当前版本：{chunithmCatalog.data?.currentVersion.title ?? '—'}
+                  </Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>
+                    更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}
+                  </Text>
                 </>
               ) : (
                 <Text style={[styles.body, { color: theme.textSecondary }]}>当前游戏暂未接入数据</Text>
