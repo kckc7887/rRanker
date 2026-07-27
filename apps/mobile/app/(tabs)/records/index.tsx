@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useMemo } from 'react';
+import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -9,15 +9,22 @@ import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
+import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { matchesAchievementRange, matchesConstantRange, matchesMultiAchievementFilter, matchesSoloAchievementFilter } from '@/domain/maimai-filters';
 import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
 import { matchesPhigrosXingFilter, phigrosChartNoteKey } from '@/domain/phigros-xing';
+import {
+  buildChunithmScoreCards,
+  compareChunithmScores,
+  type ChunithmScoreCardData,
+} from '@/domain/chunithm-score-presentation';
 import type { DataSource, ScoreRecord } from '@/domain/models';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
@@ -96,6 +103,10 @@ export function RecordsScreen() {
     return <PhigrosRecordsScreen />;
   }
 
+  if (activeGameId === 'chunithm') {
+    return <ChunithmRecordsScreen />;
+  }
+
   if (activeGameId !== 'maimai') {
     return <EmptyDataView title="暂无成绩" detail="当前游戏暂未接入成绩数据" />;
   }
@@ -164,6 +175,147 @@ const renderRecord: ListRenderItem<ScoreRecord> = ({ item }) => <ScoreRecordCard
 function recordKey(record: ScoreRecord): string {
   return `${record.songId}-${record.type}-${record.levelIndex}`;
 }
+
+function ChunithmRecordsScreen() {
+  const gameData = useGameData();
+  const catalogQuery = useChunithmCatalog();
+  const activeProviderId = useSession((state) => state.activeProviderId);
+  const tabBottomInset = useNativeTabBottomInset();
+  const theme = useAppTheme();
+  const [keyword, setKeyword] = useState('');
+  const debouncedKeyword = useDebouncedValue(keyword);
+  const payload = gameData.data?.payload.kind === 'chunithm'
+    ? gameData.data.payload
+    : null;
+  const cards = useMemo(
+    () => buildChunithmScoreCards(
+      payload?.scores ?? [],
+      catalogQuery.data,
+    ).sort(compareChunithmScores),
+    [catalogQuery.data, payload?.scores],
+  );
+  const searchDocuments = useMemo(() => new Map(
+    cards.map((card) => [
+      card.key,
+      buildSearchDocument([
+        card.title,
+        card.songId,
+        card.artist ?? '',
+        card.noteDesigner ?? '',
+      ]),
+    ]),
+  ), [cards]);
+  const filtered = useMemo(() => {
+    if (!debouncedKeyword.trim()) return cards;
+    return cards.filter((card) => {
+      const document = searchDocuments.get(card.key);
+      return document ? searchDocumentMatches(document, debouncedKeyword) : false;
+    });
+  }, [cards, debouncedKeyword, searchDocuments]);
+  const isLoading = gameData.isLoading || catalogQuery.isLoading;
+  const isError = gameData.isError || catalogQuery.isError;
+  const error = gameData.error ?? catalogQuery.error;
+  const retry = () => {
+    void Promise.all([gameData.refetch(), catalogQuery.refetch()]);
+  };
+
+  if (activeProviderId !== 'lxns' && !isLoading) {
+    return (
+      <EmptyDataView
+        detail="请在游戏管理中绑定中二节奏的落雪账号"
+        title="尚未绑定落雪账号"
+      />
+    );
+  }
+
+  return (
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
+      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
+        <TextInput
+          accessibilityLabel="中二成绩搜索"
+          autoCapitalize="none"
+          autoCorrect={false}
+          onChangeText={setKeyword}
+          placeholder="曲名 / ID / 艺术家 / 谱师"
+          placeholderTextColor={theme.textMuted}
+          style={[
+            styles.searchBox,
+            { backgroundColor: theme.input, borderColor: theme.border, color: theme.text },
+          ]}
+          value={keyword}
+        />
+      </View>
+      <QueryStateView<ChunithmScoreCardData[]>
+        data={!isLoading && filtered.length ? filtered : undefined}
+        emptyText={keyword.trim() ? '没有匹配的中二成绩' : '落雪尚未同步中二成绩'}
+        error={error}
+        isEmpty={!isLoading && filtered.length === 0}
+        isError={isError}
+        isLoading={isLoading}
+        onRetry={retry}
+        renderData={(entries) => (
+          <ChunithmRecordList
+            catalogSource={catalogQuery.data?.source}
+            entries={entries}
+            scoreSource={payload?.source}
+            tabBottomInset={tabBottomInset}
+          />
+        )}
+      />
+    </View>
+  );
+}
+
+const ChunithmRecordList = memo(function ChunithmRecordList({
+  entries,
+  scoreSource,
+  catalogSource,
+  tabBottomInset,
+}: {
+  entries: ChunithmScoreCardData[];
+  scoreSource?: DataSource;
+  catalogSource?: DataSource;
+  tabBottomInset: number;
+}) {
+  const header = useMemo(() => (
+    <View style={styles.header}>
+      <SourceStatus items={[
+        ...(scoreSource ? [{
+          key: 'scores' as const,
+          label: scoreSource.label,
+          updatedAt: scoreSource.updatedAt,
+          state: scoreSource.isStale ? 'cache' as const : 'live' as const,
+        }] : []),
+        ...(catalogSource ? [{
+          key: 'catalog' as const,
+          label: catalogSource.label,
+          updatedAt: catalogSource.updatedAt,
+          state: catalogSource.isStale ? 'cache' as const : 'live' as const,
+        }] : []),
+      ]} />
+      <Text style={styles.note}>共 {entries.length} 条成绩</Text>
+    </View>
+  ), [catalogSource, entries.length, scoreSource]);
+  const renderItem = useCallback<ListRenderItem<ChunithmScoreCardData>>(
+    ({ item }) => <ChunithmScoreCard record={item} />,
+    [],
+  );
+
+  return (
+    <FlatList
+      {...TAB_LIST_CACHE_PROPS}
+      contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
+      contentInsetAdjustmentBehavior="automatic"
+      data={entries}
+      keyExtractor={(item) => item.key}
+      ListHeaderComponent={header}
+      renderItem={renderItem}
+      scrollIndicatorInsets={{ bottom: tabBottomInset }}
+      style={styles.list}
+      testID="chunithm-records-list"
+    />
+  );
+});
 
 function PhigrosRecordsScreen() {
   const session = useSession((s) => s.session);

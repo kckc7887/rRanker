@@ -10,6 +10,7 @@ import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
+import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
 import { formatPhigrosChallengeBadge, resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
@@ -221,11 +222,11 @@ export function OverviewScreen() {
               <DxRatingCard
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
-                rating={bundle.payload.playerScore.value}
+                rating={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData
+                  ? null
+                  : bundle.payload.playerScore.value}
                 meta={bundle.payload.kind === 'chunithm'
-                  ? (bundle.payload.hasSyncedData
-                    ? `已读取 ${bundle.payload.scores.length} 条最佳成绩`
-                    : '落雪账号已绑定 · 等待同步中二数据')
+                  ? formatChunithmBestMeta(bundle.payload.bestSections)
                   : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
                 themeOverride={bundle.payload.kind === 'phigros'
                   ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
@@ -280,18 +281,38 @@ export function OverviewScreen() {
                   <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
+            ) : bundle.payload.kind === 'chunithm' ? (
+              <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="上传数据，暂未开放"
+                  accessibilityState={{ disabled: true }}
+                  disabled
+                  style={[styles.actionHalf, styles.sealedAction]}
+                >
+                  <Text style={styles.syncText}>上传数据</Text>
+                  <Text style={styles.actionHint}>暂未开放</Text>
+                </Pressable>
+                <View style={styles.actionDivider} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
+                  disabled={syncBusy}
+                  onPress={() => void syncData()}
+                  style={({ pressed }) => [
+                    styles.actionHalf,
+                    pressed && styles.syncPressed,
+                    syncBusy && styles.syncDisabled,
+                  ]}
+                >
+                  <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
+                  <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
+                </Pressable>
+              </View>
             ) : bundle.gameId === 'chunithm' ? (
               <View style={[styles.card, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>
-                  {bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
-                    ? '账号数据已接入'
-                    : '落雪账号待同步'}
-                </Text>
-                <Text style={[styles.body, { color: theme.textSecondary }]}>
-                  {bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
-                    ? `已拉取 ${bundle.payload.scores.length} 条最佳成绩；Best 与成绩页面将在后续开放。`
-                    : '当前落雪账号尚无中二数据；代理与微信同步引导将在后续开放。'}
-                </Text>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>临时账号不含成绩</Text>
+                <Text style={[styles.body, { color: theme.textSecondary }]}>请在游戏管理中绑定落雪账号以同步中二节奏数据。</Text>
               </View>
             ) : (
               <Pressable
@@ -484,6 +505,14 @@ function syncProviderHint(providerId: ProviderId | null): string {
   return '本地';
 }
 
+function formatChunithmBestMeta(
+  sections: Extract<GameDataBundle['payload'], { kind: 'chunithm' }>['bestSections'],
+): string {
+  const best30 = sections.find((section) => section.id === 'b30');
+  const new20 = sections.find((section) => section.id === 'new20');
+  return `Best30 ${averageChunithmRating(best30?.scores ?? [])} · New20 ${averageChunithmRating(new20?.scores ?? [])}`;
+}
+
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   scroll: { flex: 1 },
@@ -517,6 +546,7 @@ const styles = StyleSheet.create({
   actionHint: { color: 'rgba(255,255,255,0.75)', fontSize: 11, fontWeight: '600', lineHeight: 14 },
   syncPressed: { opacity: 0.88 },
   syncDisabled: { opacity: 0.65 },
+  sealedAction: { opacity: 0.48 },
   syncText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   card: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18, gap: 8 },
   pinnedToolCard: { borderWidth: StyleSheet.hairlineWidth, borderColor: '#AFC7FF' },

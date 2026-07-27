@@ -2,52 +2,15 @@ import { memo, useState } from 'react';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
 import {
-  CHUNITHM_DIFFICULTY_LABELS,
-  type ChunithmDifficulty,
-  type ChunithmLevelIndex,
   type ChunithmSong,
 } from '@/domain/chunithm';
-import { formatDifficultyConstant } from '@/components/ScoreVisuals';
+import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const CHUNITHM_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
 
-const DIFFICULTY_THEME: Record<ChunithmLevelIndex, {
-  background: string;
-  border: string;
-  text: string;
-}> = {
-  0: { background: '#4AA58A', border: '#4AA58A', text: '#FFFFFF' },
-  1: { background: '#E27A24', border: '#E27A24', text: '#FFFFFF' },
-  2: { background: '#D6403A', border: '#D6403A', text: '#FFFFFF' },
-  3: { background: '#7526CF', border: '#7526CF', text: '#FFFFFF' },
-  4: { background: '#17171A', border: '#E83A58', text: '#FFFFFF' },
-};
-
 export function chunithmJacketUrl(song: ChunithmSong): string {
   return `${CHUNITHM_JACKET_ROOT}/${song.id}.png`;
-}
-
-function difficultyText(difficulty: ChunithmDifficulty): string {
-  return formatDifficultyConstant(difficulty.levelValue);
-}
-
-function DifficultyChip({ difficulty }: { difficulty: ChunithmDifficulty }) {
-  const colors = DIFFICULTY_THEME[difficulty.difficulty];
-  const label = CHUNITHM_DIFFICULTY_LABELS[difficulty.difficulty];
-  return (
-    <View
-      accessibilityLabel={`${label}，标级 ${difficulty.level}，定数 ${difficulty.levelValue.toFixed(1)}`}
-      style={[
-        styles.difficulty,
-        { backgroundColor: colors.background, borderColor: colors.border },
-      ]}
-    >
-      <Text style={[styles.difficultyText, { color: colors.text }]}>
-        {difficultyText(difficulty)}
-      </Text>
-    </View>
-  );
 }
 
 export const ChunithmSongRow = memo(function ChunithmSongRow({
@@ -94,9 +57,11 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
         </Text>
         <View style={styles.difficulties}>
           {difficulties.map((difficulty) => (
-            <DifficultyChip
+            <ChunithmDifficultyBadge
+              constant={difficulty.levelValue}
               key={`${song.id}-${difficulty.difficulty}`}
-              difficulty={difficulty}
+              level={difficulty.level}
+              levelIndex={difficulty.difficulty}
             />
           ))}
         </View>
@@ -139,11 +104,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   difficulties: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  difficulty: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-  },
-  difficultyText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.25 },
 });

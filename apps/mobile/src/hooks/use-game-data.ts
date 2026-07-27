@@ -65,6 +65,10 @@ export function useGameData() {
               kind: 'chunithm',
               player: snapshot.player,
               scores: snapshot.scores,
+              bestSections: [
+                { id: 'b30', title: 'Best 30', scores: snapshot.bests.bests },
+                { id: 'new20', title: 'New 20', scores: snapshot.bests.new_bests },
+              ],
               playerScore: {
                 label: 'RATING',
                 value: snapshot.player?.rating ?? 0,

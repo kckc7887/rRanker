@@ -57,6 +57,12 @@ const scores = [
   },
 ];
 
+const bests = {
+  bests: [scores[0], scores[1]],
+  selections: [scores[0]],
+  new_bests: [scores[1]],
+};
+
 function response(data: unknown, status = 200): Response {
   return new Response(JSON.stringify({ success: status === 200, code: status, data }), {
     status,
@@ -70,13 +76,15 @@ describe('ChunithmScoreProvider', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reads the two personal endpoints with the same bearer token and removes WORLD’S END', async () => {
+  it('reads all three personal endpoints with the same bearer token and removes WORLD’S END', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({
         Accept: 'application/json',
         Authorization: 'Bearer access-token',
       });
-      return url.endsWith('/scores') ? response(scores) : response(player);
+      if (url.endsWith('/scores')) return response(scores);
+      if (url.endsWith('/bests')) return response(bests);
+      return response(player);
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -85,6 +93,7 @@ describe('ChunithmScoreProvider', () => {
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(expect.arrayContaining([
       'https://maimai.lxns.net/api/v0/user/chunithm/player',
       'https://maimai.lxns.net/api/v0/user/chunithm/player/scores',
+      'https://maimai.lxns.net/api/v0/user/chunithm/player/bests',
     ]));
     expect(snapshot.player).toMatchObject({
       name: '中二玩家',
@@ -94,6 +103,11 @@ describe('ChunithmScoreProvider', () => {
     expect(snapshot.scores).toEqual([
       expect.objectContaining({ id: 3, level_index: 4, score: 1009000 }),
     ]);
+    expect(snapshot.bests).toMatchObject({
+      bests: [expect.objectContaining({ id: 3 })],
+      selections: [expect.objectContaining({ id: 3 })],
+      new_bests: [],
+    });
   });
 
   it('accepts an authenticated account without synchronized Chunithm data', async () => {
@@ -140,7 +154,9 @@ describe('ChunithmScoreProvider', () => {
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       expect(init?.headers).toMatchObject({ Authorization: 'Bearer fresh-access' });
-      return url.endsWith('/scores') ? response([]) : response(player);
+      if (url.endsWith('/scores')) return response([]);
+      if (url.endsWith('/bests')) return response({ bests: [], selections: [], new_bests: [] });
+      return response(player);
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -193,7 +209,9 @@ describe('ChunithmScoreProvider', () => {
       },
     };
     const repository: ResourceRepository = {
-      getResource: async <T>() => cached as T,
+      getResource: async <T>(_key: string, schemaVersion: number) => (
+        schemaVersion === 1 ? cached as T : null
+      ),
       saveResource: async () => undefined,
       deleteResource: async () => undefined,
     };
@@ -207,6 +225,7 @@ describe('ChunithmScoreProvider', () => {
       'chunithm:lxns:1',
     ).load();
 
+    expect(result.bests).toEqual({ bests: [], selections: [], new_bests: [] });
     expect(result.source).toMatchObject({ isStale: true, label: '落雪咖啡屋（缓存）' });
     expect(result.player?.name).toBe('中二玩家');
   });
