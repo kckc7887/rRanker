@@ -15,14 +15,15 @@ export const CHUNITHM_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
 
 const DIFFICULTY_THEME: Record<ChunithmLevelIndex, {
   background: string;
+  border: string;
   text: string;
 }> = {
-  0: { background: '#3E9D6B', text: '#FFFFFF' },
-  1: { background: '#E39124', text: '#FFFFFF' },
-  2: { background: '#D84B68', text: '#FFFFFF' },
-  3: { background: '#7137C8', text: '#FFFFFF' },
-  4: { background: '#2D3037', text: '#FFFFFF' },
-  5: { background: '#1767A6', text: '#FFFFFF' },
+  0: { background: '#4AA58A', border: '#4AA58A', text: '#FFFFFF' },
+  1: { background: '#E27A24', border: '#E27A24', text: '#FFFFFF' },
+  2: { background: '#D6403A', border: '#D6403A', text: '#FFFFFF' },
+  3: { background: '#7526CF', border: '#7526CF', text: '#FFFFFF' },
+  4: { background: '#17171A', border: '#E83A58', text: '#FFFFFF' },
+  5: { background: '#1767A6', border: '#1767A6', text: '#FFFFFF' },
 };
 
 export function chunithmJacketUrl(song: ChunithmSong): string {
@@ -39,7 +40,10 @@ function DifficultyChip({ difficulty }: { difficulty: ChunithmDifficulty }) {
   return (
     <View
       accessibilityLabel={`${label}，标级 ${difficulty.level}，定数 ${difficulty.levelValue.toFixed(1)}`}
-      style={[styles.difficulty, { backgroundColor: colors.background }]}
+      style={[
+        styles.difficulty,
+        { backgroundColor: colors.background, borderColor: colors.border },
+      ]}
     >
       <Text style={[styles.difficultyText, { color: colors.text }]}>
         {difficultyText(difficulty)}
@@ -138,6 +142,7 @@ const styles = StyleSheet.create({
   },
   difficulties: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   difficulty: {
+    borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 5,
