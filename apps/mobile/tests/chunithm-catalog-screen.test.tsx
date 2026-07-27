@@ -1,6 +1,7 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
+import { router } from 'expo-router';
 import { SearchScreen } from '../app/(tabs)/search';
 import {
   chunithmJacketUrl,
@@ -64,6 +65,9 @@ const mockCatalog: ChunithmCatalogSnapshot = {
 };
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('expo-router', () => ({
+  router: { push: jest.fn() },
+}));
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {
@@ -167,7 +171,7 @@ describe('Chunithm catalog screen', () => {
       borderRadius: 999,
     }));
     expect(screen.queryByText('高级筛选器')).toBeNull();
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.queryAllByRole('button')).toHaveLength(2);
 
     await fireEvent.changeText(screen.getByLabelText('中二节奏歌曲搜索'), 'Redarrow');
 
@@ -176,14 +180,23 @@ describe('Chunithm catalog screen', () => {
     expect(screen.queryByText('Only My Railgun')).toBeNull();
   });
 
-  it('uses the standard song id for the jacket and keeps rows non-interactive', async () => {
+  it('uses the standard song id for the jacket and opens the song detail', async () => {
     const song = mockCatalog.songs[0]!;
     expect(chunithmJacketUrl(song)).toBe(
       'https://assets2.lxns.net/chunithm/jacket/3.png',
     );
     const screen = await render(<ChunithmSongRow song={song} />);
     expect(screen.getByText('13.7')).toBeTruthy();
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    await fireEvent.press(screen.getByLabelText('打开歌曲详情 B.B.K.K.B.K.K.'));
+    expect(router.push).toHaveBeenCalledWith('/songs/3');
+  });
+
+  it('does not show locked or disabled status labels', async () => {
+    const screen = await render(
+      <ChunithmSongRow song={{ ...mockCatalog.songs[0]!, locked: true, disabled: true }} />,
+    );
+    expect(screen.queryByText('需解锁')).toBeNull();
+    expect(screen.queryByText('已禁用')).toBeNull();
   });
 
   it("uses origin_id and attribute stars for WORLD'S END without showing level_value", async () => {

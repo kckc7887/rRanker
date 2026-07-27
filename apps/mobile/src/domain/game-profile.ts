@@ -53,9 +53,10 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     bestSections: [],
     capabilities: {
       hasCatalog: true,
-      hasRecords: false,
-      hasBestList: false,
-      hasTools: false,
+      hasRecords: true,
+      hasBestList: true,
+      // 中二首版先开放标准工具箱空态，具体工具后续注册。
+      hasTools: true,
     },
   },
   test: {

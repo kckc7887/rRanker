@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
+import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
 import { PhigrosSongDetail } from '@/components/phigros/PhigrosSongDetail';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
@@ -31,7 +32,16 @@ import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
-import type { Chart, ChartNotes, ChartType, CollectionItem, Difficulty, ScoreRecord, Song } from '@/domain/models';
+import type {
+  Chart,
+  ChartNotes,
+  ChartType,
+  CollectionItem,
+  DataSource,
+  Difficulty,
+  ScoreRecord,
+  Song,
+} from '@/domain/models';
 import { buildTagHistory } from '@/domain/user-library';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
 import {
@@ -63,6 +73,9 @@ export default function SongDetailScreen() {
 
   if (activeGameId === 'phigros') {
     return <PhigrosSongDetail songId={songId} levelIndex={initialLevelIndex} />;
+  }
+  if (activeGameId === 'chunithm') {
+    return <ChunithmSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
   }
 
   return <MaimaiSongDetailScreen
@@ -97,6 +110,9 @@ function MaimaiSongDetailScreen({
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
+  const detailData = song && catalog.data
+    ? { song, catalogSource: catalog.data.source }
+    : undefined;
   return <>
     <Stack.Screen options={{
       // Android 的透明空标题栏仍会截获其下方按钮的触控；隐藏该层，保留原样式的页面内按钮与满幅封面。
@@ -109,10 +125,13 @@ function MaimaiSongDetailScreen({
     }} />
     <StatusBar style="light" />
     <View style={[styles.page, { backgroundColor: themeBackground }]}>
-      <QueryStateView<Song> isLoading={catalog.isLoading} isError={catalog.isError} isEmpty={!!catalog.data && !song}
+      <QueryStateView<{ song: Song; catalogSource: DataSource }>
+        isLoading={catalog.isLoading}
+        isError={catalog.isError}
+        isEmpty={!!catalog.data && !song}
         error={catalog.error} onRetry={() => void catalog.refetch()}
-        emptyText="找不到这首歌曲" data={song} renderData={(item) => <Detail song={item} records={scores.data?.records ?? []}
-          catalogSource={catalog.data!.source} scoreSource={scores.data?.source} library={library}
+        emptyText="找不到这首歌曲" data={detailData} renderData={(item) => <Detail song={item.song} records={scores.data?.records ?? []}
+          catalogSource={item.catalogSource} scoreSource={scores.data?.source} library={library}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
       <SongDetailChrome
         song={song} favorite={favorite}

@@ -50,6 +50,7 @@ export async function clearStorageByCategories(
       'songs',
       'detailed-catalog',
       'chunithm-catalog',
+      'chunithm-song-detail',
       'plates',
       'collections',
     ]) {
