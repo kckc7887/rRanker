@@ -17,6 +17,12 @@ export type PlayerScoreSummary = {
   display: string;
 };
 
+export type ChunithmBestListSection = {
+  id: 'b30' | 'new20';
+  title: 'Best 30' | 'New 20';
+  scores: ChunithmScore[];
+};
+
 /**
  * 分游戏载荷。新游戏新增 kind，不要往舞萌字段里塞无关数据。
  * - maimai：DX Rating + B35/B15 + 水鱼/落雪成绩曲库
@@ -61,6 +67,7 @@ export type GamePayload =
       kind: 'chunithm';
       player: ChunithmPlayer | null;
       scores: ChunithmScore[];
+      bestSections: ChunithmBestListSection[];
       playerScore: PlayerScoreSummary;
       source: DataSource;
       hasSyncedData: boolean;
