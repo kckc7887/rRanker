@@ -194,6 +194,17 @@ export function OverviewScreen() {
                 { key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt, state: bundle.payload.source.isStale ? 'cache' : 'live' },
                 { key: 'catalog', label: bundle.payload.catalogSource.label, updatedAt: bundle.payload.catalogSource.updatedAt, state: bundle.payload.catalogSource.isStale ? 'cache' : 'live' },
               ]} />
+            ) : bundle.payload.kind === 'chunithm' ? (
+              <SourceStatus items={[{
+                key: 'scores',
+                label: bundle.payload.hasSyncedData
+                  ? bundle.payload.source.label
+                  : '落雪账号尚未同步中二数据',
+                updatedAt: bundle.payload.source.updatedAt,
+                state: bundle.payload.hasSyncedData
+                  ? (bundle.payload.source.isStale ? 'cache' : 'live')
+                  : 'unavailable',
+              }]} />
             ) : (
               <SourceStatus items={[
                 {
@@ -204,12 +215,18 @@ export function OverviewScreen() {
               ]} />
             )}
 
-            {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
+            {bundle.payload.kind === 'maimai'
+              || bundle.payload.kind === 'phigros'
+              || bundle.payload.kind === 'chunithm' ? (
               <DxRatingCard
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
                 rating={bundle.payload.playerScore.value}
-                meta={formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
+                meta={bundle.payload.kind === 'chunithm'
+                  ? (bundle.payload.hasSyncedData
+                    ? `已读取 ${bundle.payload.scores.length} 条最佳成绩`
+                    : '落雪账号已绑定 · 等待同步中二数据')
+                  : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
                 themeOverride={bundle.payload.kind === 'phigros'
                   ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
                   : undefined}
@@ -265,9 +282,15 @@ export function OverviewScreen() {
               </View>
             ) : bundle.gameId === 'chunithm' ? (
               <View style={[styles.card, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>当前仅开放曲库</Text>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>
+                  {bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
+                    ? '账号数据已接入'
+                    : '落雪账号待同步'}
+                </Text>
                 <Text style={[styles.body, { color: theme.textSecondary }]}>
-                  临时账号不包含成绩；请点击底部“曲库”浏览 LXNS 中二节奏曲目。
+                  {bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
+                    ? `已拉取 ${bundle.payload.scores.length} 条最佳成绩；Best 与成绩页面将在后续开放。`
+                    : '当前落雪账号尚无中二数据；代理与微信同步引导将在后续开放。'}
                 </Text>
               </View>
             ) : (
@@ -341,9 +364,16 @@ export function OverviewScreen() {
                   ) : null}
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
-              ) : bundle.gameId === 'chunithm' ? (
+              ) : bundle.payload.kind === 'chunithm' ? (
                 <>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>成绩：暂未接入</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>
+                    成绩：{bundle.payload.hasSyncedData
+                      ? `${bundle.payload.scores.length} 条最佳成绩`
+                      : '落雪尚无同步数据'}
+                  </Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>
+                    来源：{bundle.payload.source.label}
+                  </Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>曲库：LXNS 中二节奏公共曲库</Text>
                 </>
               ) : (
@@ -412,6 +442,9 @@ function PinnedPlateCards({ plateIds, records }: { plateIds: readonly number[]; 
 function displayName(bundle: GameDataBundle): string {
   if (bundle.payload.kind === 'maimai') return bundle.payload.player.displayName;
   if (bundle.payload.kind === 'phigros') return bundle.payload.player.displayName;
+  if (bundle.payload.kind === 'chunithm') {
+    return bundle.payload.player?.name ?? '落雪账号（待同步）';
+  }
   return bundle.payload.displayName;
 }
 

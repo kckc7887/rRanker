@@ -11,22 +11,33 @@ import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
 import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService } from '@/services/score-service';
 import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
-import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
+import {
+  applyLxnsTokenRotation,
+  UNBOUND_ACCOUNT_ID,
+  useSession,
+} from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
+import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
 import { SecureSessionStore } from '@/storage/secure-session-store';
+import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
+import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
+import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 16;
+const GAME_DATA_QUERY_VERSION = 17;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
   const activeGameId = useSession((s) => s.activeGameId);
   const activeProviderId = useSession((s) => s.activeProviderId);
   const activeAccountId = useSession((s) => s.activeAccountId);
+  const activeAccount = useSession((s) => (
+    s.boundAccounts.find((account) => account.id === s.activeAccountId)
+  ));
   const updateBoundAccountScore = useSession((s) => s.updateBoundAccountScore);
   const scoreProvider = useSession((s) => s.scoreProvider);
   const catalogProvider = useSession((s) => s.catalogProvider);
@@ -36,6 +47,34 @@ export function useGameData() {
     queryKey: ['game-data', GAME_DATA_QUERY_VERSION, activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'none'],
     queryFn: async (): Promise<GameDataBundle> => {
       if (activeGameId === 'chunithm') {
+        if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {
+          const provider = new ChunithmScoreProvider(
+            session,
+            (next) => applyLxnsTokenRotation(activeAccountId, next),
+          );
+          const snapshot = await new ChunithmPersonalService(
+            provider,
+            repository,
+            activeAccountId,
+          ).load();
+          return {
+            gameId: 'chunithm',
+            providerId: 'lxns',
+            profile: getGameProfile('chunithm'),
+            payload: {
+              kind: 'chunithm',
+              player: snapshot.player,
+              scores: snapshot.scores,
+              playerScore: {
+                label: 'RATING',
+                value: snapshot.player?.rating ?? 0,
+                display: snapshot.player ? snapshot.player.rating.toFixed(2) : '—',
+              },
+              source: snapshot.source,
+              hasSyncedData: snapshot.player !== null,
+            },
+          };
+        }
         return {
           gameId: 'chunithm',
           providerId: activeProviderId,
@@ -132,6 +171,18 @@ export function useGameData() {
         };
       }
 
+      if (activeProviderId === 'lxns'
+        && activeAccount?.scoreDisplay === '—'
+        && scoreProvider instanceof LxnsScoreProvider
+        && await scoreProvider.getOptionalPlayer() === null) {
+        return {
+          gameId: 'maimai',
+          providerId: 'lxns',
+          profile: getGameProfile('maimai'),
+          payload: emptyGamePayload('maimai', activeAccount.displayName),
+        };
+      }
+
       const persistScores = shouldPersistScoreSnapshot(activeProviderId);
       const persistCatalog = shouldPersistMaimaiCatalog(activeProviderId);
       const snapshot = await new ScoreService(
@@ -185,6 +236,22 @@ export function useGameData() {
         void persistBoundAccountAvatar(activeAccountId, d.payload.avatarUrl);
       }
     }
+    if (d.payload.kind === 'chunithm') {
+      const avatarUrl = buildChunithmMapIconUrl(d.payload.player?.map_icon?.id);
+      updateBoundAccountScore(
+        activeAccountId,
+        d.payload.playerScore.display,
+        d.payload.player?.name,
+        avatarUrl ?? undefined,
+      );
+      void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
+        displayName: d.payload.player?.name ?? '落雪账号（待同步）',
+        scoreDisplay: d.payload.playerScore.display,
+      }).catch(() => undefined);
+      if (avatarUrl) {
+        void persistBoundAccountAvatar(activeAccountId, avatarUrl);
+      }
+    }
   }, [activeAccountId, query.data, updateBoundAccountScore]);
 
   return {
@@ -193,7 +260,11 @@ export function useGameData() {
     activeGameId,
     activeProviderId,
     activeAccountId,
-    isDataStale: !!query.data && (query.data.payload.kind === 'maimai' || query.data.payload.kind === 'phigros')
-      && (query.data.payload.source.isStale || query.data.payload.catalogSource.isStale),
+    isDataStale: !!query.data && (
+      query.data.payload.kind === 'chunithm'
+        ? query.data.payload.source.isStale
+        : (query.data.payload.kind === 'maimai' || query.data.payload.kind === 'phigros')
+          && (query.data.payload.source.isStale || query.data.payload.catalogSource.isStale)
+    ),
   };
 }

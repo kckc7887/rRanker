@@ -1,4 +1,5 @@
 import { accountAvatarResourceKey } from '@/domain/account-avatar';
+import { chunithmPersonalResourceKey } from '@/domain/chunithm-personal';
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
@@ -186,6 +187,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
       await this.deleteResource(scoreResourceKey(accountId));
       await this.deleteResource(accountAvatarResourceKey(accountId));
+      await this.deleteResource(chunithmPersonalResourceKey(accountId));
     }
   }
 
@@ -209,6 +211,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
       await this.deleteResource(scoreResourceKey(accountId));
       await this.deleteResource(accountAvatarResourceKey(accountId));
+      await this.deleteResource(chunithmPersonalResourceKey(accountId));
       return;
     }
     await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);

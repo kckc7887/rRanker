@@ -15,7 +15,6 @@ import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import {
-  createChunithmTempAccount,
   createAdditionalLocalMaimaiAccountId,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
@@ -186,28 +185,6 @@ export function GameAccountsScreen() {
     }
   };
 
-  const addChunithmTempAccount = async () => {
-    setBusy(true);
-    try {
-      const account = boundAccounts.find((item) => item.providerId === 'chunithm-temp')
-        ?? createChunithmTempAccount();
-      await chunithmTempAccount.enable();
-      upsertBoundAccount(account);
-      setPickerVisible(false);
-      InteractionManager.runAfterInteractions(() => {
-        switchBoundAccount(account.id);
-      });
-    } catch (error) {
-      showNotification({
-        title: '添加失败',
-        message: error instanceof Error ? error.message : '无法添加中二节奏临时账号，请重试。',
-        variant: 'error',
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const saveLocalAccountName = async (account: BoundAccount, displayName: string) => {
     await localAccounts.upsert({ id: account.id, displayName });
     renameLocalAccount(account.id, displayName);
@@ -338,10 +315,6 @@ export function GameAccountsScreen() {
       void addDemoAccount();
       return;
     }
-    if (provider.id === 'chunithm-temp') {
-      void addChunithmTempAccount();
-      return;
-    }
     setExpandedPickerGameId(gameId);
     setLoginGameId(gameId);
     setLoginProviderId(provider.id);
@@ -451,7 +424,8 @@ export function GameAccountsScreen() {
           title, message: `${detail}，待后续开放。`, variant: 'info',
         })} />
 
-      <ProviderLoginSheet visible={loginVisible} provider={loginProvider} gameTitle={loginGame?.title ?? ''}
+      <ProviderLoginSheet visible={loginVisible} provider={loginProvider}
+        gameId={loginGame?.id ?? 'maimai'} gameTitle={loginGame?.title ?? ''}
         onClose={() => closeLogin({ reopenPicker: true })} onSuccess={finishLogin} />
 
       <RenameLocalAccountSheet visible={renameAccount !== null} initialName={renameAccount?.displayName ?? ''}

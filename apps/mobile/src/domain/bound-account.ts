@@ -111,15 +111,38 @@ export function createChunithmTempAccount(): BoundAccount {
   };
 }
 
+export function createChunithmBoundAccount(input: {
+  displayName: string;
+  rating: number | null;
+  playerId?: string;
+  accountId?: string;
+  avatarUrl?: string | null;
+}): BoundAccount {
+  const profile = getGameProfile('chunithm');
+  return {
+    id: input.accountId ?? `chunithm:lxns:${input.playerId ?? input.displayName}`,
+    gameId: 'chunithm',
+    providerId: 'lxns',
+    displayName: input.displayName,
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: input.rating === null || !Number.isFinite(input.rating)
+      ? '—'
+      : input.rating.toFixed(2),
+    providerTitle: PROVIDER_TITLES.lxns,
+    avatarUrl: input.avatarUrl,
+  };
+}
+
 export function createMaimaiBoundAccount(input: {
   providerId: ProviderId;
   displayName: string;
   rating: number;
   playerId?: string;
+  accountId?: string;
 }): BoundAccount {
   const profile = getGameProfile('maimai');
   return {
-    id: `maimai:${input.providerId}:${input.playerId ?? input.displayName}`,
+    id: input.accountId ?? `maimai:${input.providerId}:${input.playerId ?? input.displayName}`,
     gameId: 'maimai',
     providerId: input.providerId,
     displayName: input.displayName,
