@@ -45,6 +45,19 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ],
     capabilities: { ...commonNav, hasTools: getGameToolbox('maimai').tools.length > 0 },
   },
+  chunithm: {
+    id: 'chunithm',
+    title: '中二节奏',
+    ratingLabel: 'RATING',
+    ratingDigits: 0,
+    bestSections: [],
+    capabilities: {
+      hasCatalog: true,
+      hasRecords: false,
+      hasBestList: false,
+      hasTools: false,
+    },
+  },
   test: {
     id: 'test',
     title: '测试游戏',

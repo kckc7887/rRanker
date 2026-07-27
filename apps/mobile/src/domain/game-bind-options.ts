@@ -1,8 +1,14 @@
 import type { ImageSourcePropType } from 'react-native';
 
-export type ProviderId = 'diving-fish' | 'lxns' | 'local' | 'maimai-test' | 'phi-taptap';
+export type ProviderId =
+  | 'diving-fish'
+  | 'lxns'
+  | 'local'
+  | 'maimai-test'
+  | 'phi-taptap'
+  | 'chunithm-temp';
 export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
-export type GameId = 'maimai' | 'phigros' | 'test';
+export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'test';
 
 export type ProviderOption = {
   id: ProviderId;
@@ -27,6 +33,7 @@ const lxnsIcon = require('../../assets/images/lxns.png') as ImageSourcePropType;
 const maimaiTestIcon = require('../../assets/images/maimai-test.png') as ImageSourcePropType;
 const phigrosIcon = require('../../assets/images/phigros.png') as ImageSourcePropType;
 const taptapIcon = require('../../assets/images/taptap.png') as ImageSourcePropType;
+const chunithmIcon = require('../../assets/images/chunithm.png') as ImageSourcePropType;
 const testGameIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
@@ -63,6 +70,22 @@ export const GAME_OPTIONS: GameOption[] = [
         title: '示例查分器',
         detail: '全曲全谱面满成绩 · 可删除后重新添加',
         icon: maimaiTestIcon,
+        available: true,
+      },
+    ],
+  },
+  {
+    id: 'chunithm',
+    title: '中二节奏',
+    icon: chunithmIcon,
+    available: true,
+    pendingDetail: '',
+    providers: [
+      {
+        id: 'chunithm-temp',
+        title: '临时账号',
+        detail: '无成绩 · 当前仅开放曲库',
+        icon: chunithmIcon,
         available: true,
       },
     ],

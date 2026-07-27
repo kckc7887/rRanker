@@ -6,6 +6,7 @@ const ACCOUNT_DATA_QUERY_KEYS = [
   ['game-data'],
   ['score-snapshot'],
   ['detailed-catalog'],
+  ['chunithm-catalog'],
   ['plates'],
   ['collections'],
   ['songs'],

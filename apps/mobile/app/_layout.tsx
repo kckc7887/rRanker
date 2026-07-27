@@ -21,10 +21,12 @@ import {
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSyncOnAccountSwitch } from '@/hooks/use-sync-on-account-switch';
 import {
+  createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
 } from '@/domain/bound-account';
+import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
 import { NotificationProvider } from '@/components/AppNotification';
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
@@ -33,6 +35,7 @@ import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-f
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
 const demoAccounts = new DemoAccountStore();
+const chunithmTempAccount = new ChunithmTempAccountStore();
 const snapshots = new SqliteSnapshotRepository();
 
 async function loadLocalBoundAccounts() {
@@ -64,11 +67,16 @@ async function loadDemoBoundAccounts() {
 }
 
 async function loadOptionalBoundAccounts() {
-  const [locals, demos] = await Promise.all([
+  const [locals, demos, hasChunithmTemp] = await Promise.all([
     loadLocalBoundAccounts(),
     loadDemoBoundAccounts(),
+    chunithmTempAccount.load(),
   ]);
-  return [...locals, ...demos];
+  return [
+    ...locals,
+    ...demos,
+    ...(hasChunithmTemp ? [createChunithmTempAccount()] : []),
+  ];
 }
 
 function AccountSwitchSync() {

@@ -44,7 +44,15 @@ export async function clearStorageByCategories(
 
   if (clearedIds.length > 0) {
     await invalidateAccountDataQueries(client, 'active');
-    for (const key of ['score-snapshot', 'game-data', 'songs', 'detailed-catalog', 'plates', 'collections']) {
+    for (const key of [
+      'score-snapshot',
+      'game-data',
+      'songs',
+      'detailed-catalog',
+      'chunithm-catalog',
+      'plates',
+      'collections',
+    ]) {
       client.removeQueries({ queryKey: [key] });
     }
   }

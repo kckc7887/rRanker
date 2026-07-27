@@ -51,7 +51,7 @@ export function resetSnapshotSchemaForTests(): void {
 }
 
 export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepository, ResourceRepository {
-  private initialize(): Promise<void> {
+  initialize(): Promise<void> {
     return ensureSnapshotSchema();
   }
 

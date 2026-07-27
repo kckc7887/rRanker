@@ -196,7 +196,11 @@ export function OverviewScreen() {
               ]} />
             ) : (
               <SourceStatus items={[
-                { key: 'scores', label: '空', state: 'unavailable' },
+                {
+                  key: 'scores',
+                  label: bundle.gameId === 'chunithm' ? '成绩暂未接入' : '空',
+                  state: 'unavailable',
+                },
               ]} />
             )}
 
@@ -214,7 +218,12 @@ export function OverviewScreen() {
                   : undefined}
               />
             ) : (
-              <DxRatingCard label={profile.ratingLabel} display="—" rating={null} meta="当前游戏暂未提供评分" />
+              <DxRatingCard
+                label={profile.ratingLabel}
+                display="—"
+                rating={null}
+                meta={bundle.gameId === 'chunithm' ? '临时账号不含成绩' : '当前游戏暂未提供评分'}
+              />
             )}
 
             {bundle.payload.kind === 'maimai' && bundle.providerId === 'local' ? (
@@ -254,6 +263,13 @@ export function OverviewScreen() {
                   <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
+            ) : bundle.gameId === 'chunithm' ? (
+              <View style={[styles.card, { backgroundColor: theme.surface }]}>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>当前仅开放曲库</Text>
+                <Text style={[styles.body, { color: theme.textSecondary }]}>
+                  临时账号不包含成绩；请点击底部“曲库”浏览 LXNS 中二节奏曲目。
+                </Text>
+              </View>
             ) : (
               <Pressable
                 accessibilityRole="button"
@@ -288,27 +304,31 @@ export function OverviewScreen() {
               </Pressable>
             ))}
 
-            <Pressable accessibilityRole="button" onPress={() => router.push('/tools' as Href)}>
-              <View style={[styles.card, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>工具箱</Text>
-                <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.body, { color: theme.textSecondary }]}>
-                  {summarizeGameTools(bundle.gameId)}
-                </Text>
-                <Text style={[styles.toolLink, { color: theme.accent }]}>打开工具箱 →</Text>
-              </View>
-            </Pressable>
+            {bundle.profile.capabilities.hasTools ? (
+              <Pressable accessibilityRole="button" onPress={() => router.push('/tools' as Href)}>
+                <View style={[styles.card, { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>工具箱</Text>
+                  <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.body, { color: theme.textSecondary }]}>
+                    {summarizeGameTools(bundle.gameId)}
+                  </Text>
+                  <Text style={[styles.toolLink, { color: theme.accent }]}>打开工具箱 →</Text>
+                </View>
+              </Pressable>
+            ) : null}
 
-            <Pressable accessibilityRole="button" onPress={() => router.push('/library' as Href)}>
-              <View style={[styles.card, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>我的曲库</Text>
-                <Text style={[styles.body, { color: theme.textSecondary }]}>
-                  {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros'
-                    ? (library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
-                    : '当前游戏暂未开放个人曲库'}
-                </Text>
-                <Text style={[styles.toolLink, { color: theme.accent }]}>打开收藏与练习清单 →</Text>
-              </View>
-            </Pressable>
+            {bundle.gameId !== 'chunithm' ? (
+              <Pressable accessibilityRole="button" onPress={() => router.push('/library' as Href)}>
+                <View style={[styles.card, { backgroundColor: theme.surface }]}>
+                  <Text style={[styles.cardTitle, { color: theme.text }]}>我的曲库</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>
+                    {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros'
+                      ? (library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
+                      : '当前游戏暂未开放个人曲库'}
+                  </Text>
+                  <Text style={[styles.toolLink, { color: theme.accent }]}>打开收藏与练习清单 →</Text>
+                </View>
+              </Pressable>
+            ) : null}
 
             <View style={[styles.card, { backgroundColor: theme.surface }]}>
               <Text style={[styles.cardTitle, { color: theme.text }]}>数据状态</Text>
@@ -320,6 +340,11 @@ export function OverviewScreen() {
                     <Text style={[styles.body, { color: theme.textSecondary }]}>当前版本：{bundle.payload.currentVersionTitle}</Text>
                   ) : null}
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
+                </>
+              ) : bundle.gameId === 'chunithm' ? (
+                <>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>成绩：暂未接入</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>曲库：LXNS 中二节奏公共曲库</Text>
                 </>
               ) : (
                 <Text style={[styles.body, { color: theme.textSecondary }]}>当前游戏暂未接入数据</Text>
@@ -422,6 +447,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'phi-taptap') return 'TapTap 云存档';
   if (providerId === 'local') return '本地查分器';
   if (providerId === 'maimai-test') return '示例查分器';
+  if (providerId === 'chunithm-temp') return '无成绩临时账号';
   return '本地';
 }
 

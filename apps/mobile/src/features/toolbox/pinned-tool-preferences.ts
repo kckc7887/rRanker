@@ -23,14 +23,14 @@ type StoredPinnedToolsV1 = {
 };
 
 const STORE_KEY = 'rranker.toolbox.pinned-tools.v1';
-const GAME_IDS: readonly GameId[] = ['maimai', 'phigros', 'test'];
+const GAME_IDS: readonly GameId[] = ['maimai', 'chunithm', 'phigros', 'test'];
 
 export function emptyPinnedToolIdsByGame(): PinnedToolIdsByGame {
-  return { maimai: [], phigros: [], test: [] };
+  return { maimai: [], chunithm: [], phigros: [], test: [] };
 }
 
 export function emptyPinnedPlateIdsByGame(): PinnedPlateIdsByGame {
-  return { maimai: [], phigros: [], test: [] };
+  return { maimai: [], chunithm: [], phigros: [], test: [] };
 }
 
 export function emptyHomePinPreferences(): HomePinPreferences {

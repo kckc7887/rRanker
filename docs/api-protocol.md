@@ -60,6 +60,26 @@
 - 姓名框预览地址为 `https://assets2.lxns.net/maimai/plate/{plate_id}.png`（公共资源，与查分器账号无关；`plate_id` 来自 LXNS `/plate/list`）。水鱼无对应图床。
 - 舞萌玩家成绩也可经由下方「LXNS OAuth 个人 API」绑定；公共曲库职责不变。好友码成绩可经 `write_player` 上传到已授权的落雪账号。
 
+## LXNS 中二节奏公共曲库
+
+基础：`https://maimai.lxns.net/api/v0/chunithm`
+
+| 端点 | 方法 | Auth | 说明 |
+|------|------|------|------|
+| `/song/list` | GET | 无 | 曲目、分类、版本与平铺谱面难度 |
+| `/song/list?notes=true` | GET | 无 | 额外包含 TAP/HOLD/SLIDE/AIR/FLICK 物量；首版暂不请求 |
+| `/alias/list` | GET | 无 | 歌曲别名；首版暂不请求 |
+
+> last_verified: 2026-07-27 — 官方文档和实时公共响应已复核。默认曲库返回 1464 首歌曲、7 个分类、19 个版本，最大主版本为 `23000 / CHUNITHM VERSE`。`Song.difficulties` 是数组，而非舞萌的 `standard/dx` 分组；难度序号 `0-5` 分别为 BASIC、ADVANCED、EXPERT、MASTER、ULTIMA、WORLD'S END。
+
+当前职责边界：
+
+- 中二曲库使用独立 schema、provider 和缓存键 `chunithm-catalog`，不把谱面伪装成舞萌 SD/DX。
+- `Song.version` 与谱面 `version` 按 `versions[].version` 向下匹配最近主版本；没有可匹配项时保留原始数字。
+- 首版搜索仅使用歌曲 ID、曲名、艺术家和谱师，不拉取别名，也不提供高级筛选。
+- 曲绘地址为 `https://assets2.lxns.net/chunithm/jacket/{song_id}.png`；WORLD'S END 使用谱面 `origin_id`。列表只加载可见项并使用磁盘缓存，避免触发素材访问频率限制。
+- 当前仅有无成绩临时账号与公共曲库；OAuth、玩家信息、成绩、同步、收藏品和歌曲详情继续按 TODO #134-#136 推进。
+
 ## LXNS OAuth / 个人 API（读写绑定）
 
 基础：`https://maimai.lxns.net`
