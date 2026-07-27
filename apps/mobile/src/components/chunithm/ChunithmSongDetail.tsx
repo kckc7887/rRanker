@@ -666,21 +666,19 @@ function DifficultyCard({
           搜索谱面确认
         </Text>
       </DetailPressable>
-      <View style={[styles.tagBox, { borderTopColor: theme.border }]}>
-        <TagEditor
-          disabled={library.isUpdating}
-          historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
-          onChange={(tags) => library.setTags({
-            kind: 'chart',
-            songId: String(song.id),
-            type: CHUNITHM_CHART_TYPE,
-            levelIndex: difficulty.difficulty,
-          }, tags)}
-          onPresetsChange={library.setTagPresets}
-          presets={library.tagPresets ?? []}
-          tags={chartItem?.tags ?? []}
-        />
-      </View>
+      <TagEditor
+        disabled={library.isUpdating}
+        historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
+        onChange={(tags) => library.setTags({
+          kind: 'chart',
+          songId: String(song.id),
+          type: CHUNITHM_CHART_TYPE,
+          levelIndex: difficulty.difficulty,
+        }, tags)}
+        onPresetsChange={library.setTagPresets}
+        presets={library.tagPresets ?? []}
+        tags={chartItem?.tags ?? []}
+      />
     </View>
   );
 }
@@ -875,7 +873,6 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     padding: 18,
-    gap: 10,
     shadowColor: '#1A2232',
     shadowOffset: { width: 0, height: 7 },
     shadowOpacity: 0.1,
@@ -886,27 +883,28 @@ const styles = StyleSheet.create({
   levelBlock: { alignItems: 'flex-end' },
   level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
   constant: { fontSize: 11, fontWeight: '600' },
-  resultBlock: { alignItems: 'flex-start', gap: 2 },
-  scoreLabel: { fontSize: 12, fontWeight: '700' },
+  resultBlock: { alignItems: 'flex-start', gap: 2, marginTop: 22 },
+  scoreLabel: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
   score: { fontSize: 34, lineHeight: 42, fontWeight: '900', letterSpacing: -0.5 },
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 29, marginTop: 7 },
-  statRow: { flexDirection: 'row', marginTop: 6, gap: 24 },
+  statRow: { flexDirection: 'row', marginTop: 16, gap: 24 },
   statCell: { gap: 2 },
   statLabel: { fontSize: 12, fontWeight: '700' },
   statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: 2 },
-  charter: { fontSize: 12, fontWeight: '700' },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
+  charter: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
   notesTable: {
+    marginTop: 9,
     flexDirection: 'row',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
+    borderRadius: 9,
     overflow: 'hidden',
     paddingVertical: 8,
   },
   notesCell: { flex: 1, alignItems: 'center', gap: 3 },
   notesLabel: { fontSize: 8, fontWeight: '900' },
   notesValue: { fontSize: 11, fontWeight: '900' },
-  notesUnavailable: { minHeight: 50, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  notesUnavailable: { minHeight: 50, marginTop: 9, alignItems: 'center', justifyContent: 'center', gap: 5 },
   retryText: { fontSize: 12, fontWeight: '800' },
   action: {
     marginTop: 13,
@@ -920,7 +918,6 @@ const styles = StyleSheet.create({
   },
   chartSearchAction: { marginTop: 0 },
   actionText: { fontWeight: '700' },
-  tagBox: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   noCharts: { padding: 24, alignItems: 'center' },
   details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
   copyrightCard: { gap: 7 },
