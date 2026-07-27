@@ -3,33 +3,52 @@ import { Image } from 'expo-image';
 import { router, type Href } from 'expo-router';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SongCover } from '@/components/SongCover';
+import { chunithmJacketUrl } from '@/components/chunithm/ChunithmSongRow';
+import {
+  CHUNITHM_DIFFICULTY_LABELS,
+  type ChunithmSong,
+} from '@/domain/chunithm';
 import type { Song } from '@/domain/models';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
 type Mode = 'all' | 'favorite' | 'practice';
+type LibrarySong = Song | ChunithmSong;
+
+function isChunithmSong(song: LibrarySong): song is ChunithmSong {
+  return 'difficulties' in song;
+}
 
 export default function UserLibraryScreen() {
   const library = useUserLibrary();
   const activeGameId = useSession((state) => state.activeGameId);
   const theme = useAppTheme();
   const maimaiCatalog = useDetailedCatalog();
+  const chunithmCatalog = useChunithmCatalog();
   const phigrosCatalog = usePhigrosCatalog();
   const [mode, setMode] = useState<Mode>('all');
   const [tag, setTag] = useState<string>();
   const songsById = useMemo(() => {
-    const map = new Map<string, Song>();
-    if (activeGameId === 'phigros') {
+    const map = new Map<string, LibrarySong>();
+    if (activeGameId === 'chunithm') {
+      for (const song of chunithmCatalog.data?.songs ?? []) map.set(String(song.id), song);
+    } else if (activeGameId === 'phigros') {
       for (const song of phigrosCatalog.data?.snapshot.songs ?? []) map.set(song.id, song);
     } else {
       for (const song of maimaiCatalog.data?.songs ?? []) map.set(song.id, song);
     }
     return map;
-  }, [activeGameId, maimaiCatalog.data?.songs, phigrosCatalog.data?.snapshot.songs]);
+  }, [
+    activeGameId,
+    chunithmCatalog.data?.songs,
+    maimaiCatalog.data?.songs,
+    phigrosCatalog.data?.snapshot.songs,
+  ]);
   const phigrosBlurUrls = useMemo(() => {
     const map = new Map<string, string>();
     const data = phigrosCatalog.data;
@@ -74,22 +93,43 @@ export default function UserLibraryScreen() {
   </View>;
 }
 
-function LibraryRow({ item, song, blurUrl }: { item: UserLibraryItem; song?: Song; blurUrl: string | null }) {
+function LibraryRow({
+  item,
+  song,
+  blurUrl,
+}: {
+  item: UserLibraryItem;
+  song?: LibrarySong;
+  blurUrl: string | null;
+}) {
   const theme = useAppTheme();
+  const chunithmSong = song && isChunithmSong(song) ? song : undefined;
+  const standardSong = song && !isChunithmSong(song) ? song : undefined;
   const chart = item.kind === 'chart'
-    ? song?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex)
+    ? standardSong?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex)
+    : undefined;
+  const chunithmDifficulty = item.kind === 'chart'
+    ? chunithmSong?.difficulties.find((value) => value.difficulty === item.levelIndex)
     : undefined;
   const chartLabel = item.kind === 'chart'
-    ? chart
+    ? chunithmDifficulty
+      ? CHUNITHM_DIFFICULTY_LABELS[chunithmDifficulty.difficulty]
+      : chart
       ? (['EZ', 'HD', 'IN', 'AT'].includes(chart.level)
         ? chart.level
         : `${item.type} ${chart.difficulty.toUpperCase()}`)
-      : `${item.type} 难度 ${item.levelIndex}`
+      : chunithmSong
+        ? `难度 ${item.levelIndex}`
+        : `${item.type} 难度 ${item.levelIndex}`
     : '';
   return <Pressable accessibilityRole="button" onPress={() => router.push({
     pathname: '/songs/[songId]',
     params: item.kind === 'chart'
-      ? { songId: item.songId, chartType: item.type, levelIndex: String(item.levelIndex) }
+      ? {
+          songId: item.songId,
+          ...(chunithmSong ? {} : { chartType: item.type }),
+          levelIndex: String(item.levelIndex),
+        }
       : { songId: item.songId },
   } as Href)} style={[styles.row, { backgroundColor: theme.surface }]}>
     <LibrarySongCover song={song} blurUrl={blurUrl} />
@@ -103,12 +143,24 @@ function LibraryRow({ item, song, blurUrl }: { item: UserLibraryItem; song?: Son
   </Pressable>;
 }
 
-function LibrarySongCover({ song, blurUrl }: { song?: Song; blurUrl: string | null }) {
+function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: string | null }) {
   if (!song) {
     return <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   if (blurUrl) {
     return <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={blurUrl} style={styles.cover} transition={120} />;
+  }
+  if (isChunithmSong(song)) {
+    return (
+      <Image
+        accessibilityLabel="曲绘"
+        cachePolicy="disk"
+        contentFit="cover"
+        source={chunithmJacketUrl(song)}
+        style={styles.cover}
+        transition={120}
+      />
+    );
   }
   return <SongCover songId={song.id} />;
 }

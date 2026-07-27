@@ -42,9 +42,9 @@ describe('per-game data model', () => {
     const payload = emptyGamePayload('chunithm', '临时账号');
     expect(profile.capabilities).toMatchObject({
       hasCatalog: true,
-      hasRecords: false,
-      hasBestList: false,
-      hasTools: false,
+      hasRecords: true,
+      hasBestList: true,
+      hasTools: true,
     });
     expect(payload).toMatchObject({
       kind: 'empty',

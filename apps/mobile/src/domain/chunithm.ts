@@ -1,8 +1,18 @@
 import type { DataSource, GameVersion } from './models';
 
 export const CHUNITHM_CATALOG_RESOURCE_KEY = 'chunithm-catalog';
+export const CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX = 'chunithm-song-detail:';
 
 export type ChunithmLevelIndex = 0 | 1 | 2 | 3 | 4 | 5;
+
+export type ChunithmNotes = {
+  total: number;
+  tap: number;
+  hold: number;
+  slide: number;
+  air: number;
+  flick: number;
+};
 
 export type ChunithmDifficulty = {
   difficulty: ChunithmLevelIndex;
@@ -14,6 +24,7 @@ export type ChunithmDifficulty = {
   originId?: number;
   kanji?: string;
   star?: number;
+  notes?: ChunithmNotes;
 };
 
 export type ChunithmSong = {
@@ -43,6 +54,15 @@ export type ChunithmCatalogSnapshot = {
   songs: ChunithmSong[];
   source: DataSource;
 };
+
+export type ChunithmSongDetailSnapshot = {
+  song: ChunithmSong;
+  source: DataSource;
+};
+
+export function chunithmSongDetailResourceKey(songId: string | number): string {
+  return `${CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX}${songId}`;
+}
 
 export const CHUNITHM_DIFFICULTY_LABELS: Record<ChunithmLevelIndex, string> = {
   0: 'BASIC',

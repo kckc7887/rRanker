@@ -139,7 +139,7 @@ export interface CollectionSnapshot {
 }
 
 export interface SourceStatusItem {
-  key: 'scores' | 'catalog' | 'aliases' | 'plates' | 'collections';
+  key: 'scores' | 'catalog' | 'detail' | 'aliases' | 'plates' | 'collections';
   label: string;
   updatedAt?: string;
   state: 'live' | 'cache' | 'unavailable';

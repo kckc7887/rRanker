@@ -5,6 +5,7 @@ import { createChunithmBoundAccount } from '@/domain/bound-account';
 
 const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
 const mockShowNotification = jest.fn();
+let mockMaintenance = false;
 const mockAccount = createChunithmBoundAccount({
   displayName: '中二玩家',
   rating: 17.25,
@@ -34,7 +35,7 @@ const mockBundle = {
       hasCatalog: true,
       hasRecords: true,
       hasBestList: true,
-      hasTools: false,
+      hasTools: true,
     },
   },
   payload: {
@@ -172,10 +173,15 @@ jest.mock('@/services/invalidate-account-data', () => ({
 jest.mock('@/services/refresh-diving-fish-accounts', () => ({
   refreshDivingFishAccounts: jest.fn(),
 }));
+jest.mock('@/domain/chunithm-maintenance', () => ({
+  CHUNITHM_MAINTENANCE_MESSAGE: '维护窗口说明',
+  isChunithmMaintenanceWindow: () => mockMaintenance,
+}));
 
 describe('Chunithm overview', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockMaintenance = false;
     mockRefetch.mockResolvedValue({ data: mockBundle });
   });
 
@@ -188,6 +194,8 @@ describe('Chunithm overview', () => {
     expect(screen.queryByText(/成绩：/)).toBeNull();
     expect(screen.getByText('当前版本：CHUNITHM VERSE')).toBeTruthy();
     expect(screen.getByText(/^更新时间：/)).toBeTruthy();
+    expect(screen.getByText('收藏 0 首 · 练习 0 张')).toBeTruthy();
+    expect(screen.getByText('中二节奏工具正在准备中。')).toBeTruthy();
     const upload = screen.getByLabelText('上传数据，打开同步引导');
     expect(screen.getByText('同步引导')).toBeTruthy();
 
@@ -198,5 +206,21 @@ describe('Chunithm overview', () => {
     await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(mockShowNotification).not.toHaveBeenCalled();
+  });
+
+  it('blocks only the upload guide during maintenance and keeps normal sync working', async () => {
+    mockMaintenance = true;
+    const screen = await render(<OverviewScreen />);
+
+    await fireEvent.press(screen.getByLabelText('上传数据，打开同步引导'));
+    expect(screen.queryByText('中二同步引导已打开')).toBeNull();
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '游戏服务器维护中',
+      message: '维护窗口说明',
+      variant: 'warning',
+    });
+
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
+    await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
   });
 });

@@ -12,6 +12,7 @@ import {
 
 const mockSetStringAsync = jest.fn(async (_value: string) => undefined);
 const mockShowNotification = jest.fn();
+let mockMaintenance = false;
 
 jest.mock('expo-clipboard', () => ({
   setStringAsync: (value: string) => mockSetStringAsync(value),
@@ -40,6 +41,10 @@ jest.mock('@/components/AppModal', () => ({
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification }),
 }));
+jest.mock('@/domain/chunithm-maintenance', () => ({
+  CHUNITHM_MAINTENANCE_MESSAGE: '维护窗口说明',
+  isChunithmMaintenanceWindow: () => mockMaintenance,
+}));
 jest.mock('@/theme/app-theme', () => ({
   useAppTheme: () => ({
     accent: '#246BFD',
@@ -57,7 +62,10 @@ jest.mock('@/theme/app-theme', () => ({
 }));
 
 describe('Chunithm sync guide', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockMaintenance = false;
+  });
 
   it('uses the same native page sheet structure as account login without a top safe-area spacer', async () => {
     const screen = await render(
@@ -127,5 +135,29 @@ describe('Chunithm sync guide', () => {
 
     await fireEvent.press(screen.getByLabelText('从同步引导同步中二数据'));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('blocks guide copy actions during maintenance but does not replace the sync action', async () => {
+    mockMaintenance = true;
+    const onSync = jest.fn(async () => false);
+    const screen = await render(
+      <ChunithmSyncGuideSheet
+        visible
+        syncing={false}
+        onClose={jest.fn()}
+        onSync={onSync}
+      />,
+    );
+
+    await fireEvent.press(screen.getByLabelText('复制服务器'));
+    expect(mockSetStringAsync).not.toHaveBeenCalled();
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '游戏服务器维护中',
+      message: '维护窗口说明',
+      variant: 'warning',
+    });
+
+    await fireEvent.press(screen.getByLabelText('从同步引导同步中二数据'));
+    await waitFor(() => expect(onSync).toHaveBeenCalledTimes(1));
   });
 });

@@ -18,6 +18,7 @@ const mockBack = jest.fn();
 const mockPush = jest.fn();
 const mockStackScreen = jest.fn((_props: unknown) => null);
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
+let mockDetailedCatalogAvailable = true;
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('react-native-gesture-handler', () => {
@@ -44,7 +45,7 @@ jest.mock('expo-router', () => ({
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
-  return { data: { ...fixtures.fixtureCatalog,
+  const data = { ...fixtures.fixtureCatalog,
     versions: [...fixtures.fixtureCatalog.versions, { id: 25500, title: '舞萌DX 2026' }],
     songs: fixtures.fixtureCatalog.songs.map((song: { id: string }) => song.id === '1' ? {
     ...song, aliases: ['唯一别名', '这是用于验证超出一行后才会出现展开按钮的很长很长别名'], version: '舞萌DX 2026', versionId: undefined,
@@ -60,7 +61,14 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
       { songId: '1', type: 'SD', levelIndex: 0, level: '5', difficulty: 'basic', difficultyConstant: 5.0, charter: 'SD基础谱师' },
       { songId: '1', type: 'SD', levelIndex: 3, level: '12+', difficulty: 'master', difficultyConstant: 12.8, charter: 'SD主谱师' },
     ],
-  } : song) }, isLoading: false, isError: false, error: null, refetch: jest.fn() };
+  } : song) };
+  return {
+    data: mockDetailedCatalogAvailable ? data : undefined,
+    isLoading: !mockDetailedCatalogAvailable,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  };
 } }));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
@@ -89,6 +97,7 @@ jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }
 describe('M2 song query screens', () => {
   beforeEach(() => {
     mockSongRouteParams = { songId: '1' };
+    mockDetailedCatalogAvailable = true;
     useCatalogFilter.getState().reset();
     jest.clearAllMocks();
   });
@@ -97,6 +106,13 @@ describe('M2 song query screens', () => {
     const screen = await render(<SongDetailScreen />);
     await fireEvent.press(screen.getByLabelText('返回'));
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('does not dereference catalog source while the detail catalog is unavailable', async () => {
+    mockDetailedCatalogAvailable = false;
+    const screen = await render(<SongDetailScreen />);
+    expect(screen.queryByText('歌曲信息')).toBeNull();
+    expect(screen.getByLabelText('返回')).toBeTruthy();
   });
 
   it('keeps the immersive cover and uses native RN pressables throughout Android details', async () => {

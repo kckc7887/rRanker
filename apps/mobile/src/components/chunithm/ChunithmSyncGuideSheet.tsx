@@ -4,6 +4,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppModal } from '@/components/AppModal';
 import { useNotification } from '@/components/AppNotification';
+import {
+  CHUNITHM_MAINTENANCE_MESSAGE,
+  isChunithmMaintenanceWindow,
+} from '@/domain/chunithm-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const CHUNITHM_PROXY_SERVER = 'proxy.maimai.lxns.net';
@@ -29,6 +33,14 @@ export function ChunithmSyncGuideSheet({
   const busy = syncing || submitting;
 
   const copy = async (label: string, value: string) => {
+    if (isChunithmMaintenanceWindow()) {
+      showNotification({
+        title: '游戏服务器维护中',
+        message: CHUNITHM_MAINTENANCE_MESSAGE,
+        variant: 'warning',
+      });
+      return;
+    }
     try {
       await Clipboard.setStringAsync(value);
       showNotification({

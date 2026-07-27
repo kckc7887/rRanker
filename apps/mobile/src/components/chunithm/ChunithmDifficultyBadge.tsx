@@ -22,7 +22,7 @@ export const CHUNITHM_WORLDS_END_GRADIENT = [
   '#37E6FF', '#7B61FF', '#F24FD4', '#FF8A3D',
 ] as const;
 
-export type ChunithmDifficultyBadgeDisplay = 'constant' | 'label-and-value';
+export type ChunithmDifficultyBadgeDisplay = 'constant' | 'label' | 'label-and-value';
 
 export function ChunithmDifficultyBadge({
   levelIndex,
@@ -41,7 +41,11 @@ export function ChunithmDifficultyBadge({
   const label = CHUNITHM_DIFFICULTY_LABELS[levelIndex];
   const constantText = constant === undefined ? '—' : constant.toFixed(1);
   const valueText = levelIndex === 5 ? (worldsEndLabel?.trim() || '—') : constantText;
-  const text = display === 'label-and-value' ? `${label} (${valueText})` : valueText;
+  const text = display === 'label'
+    ? label
+    : display === 'label-and-value'
+      ? `${label} (${valueText})`
+      : valueText;
   const accessibilityLabel = levelIndex === 5
     ? `${label}，属性星级 ${valueText}`
     : `${label}，标级 ${level ?? '未知'}，定数 ${constantText}`;
