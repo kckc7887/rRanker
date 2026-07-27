@@ -70,7 +70,7 @@
 | `/song/list?notes=true` | GET | 无 | 额外包含 TAP/HOLD/SLIDE/AIR/FLICK 物量；首版暂不请求 |
 | `/alias/list` | GET | 无 | 歌曲别名；首版暂不请求 |
 
-> last_verified: 2026-07-27 — 官方文档和实时公共响应已复核。默认曲库返回 1464 首歌曲、7 个分类、19 个版本，最大主版本为 `23000 / CHUNITHM VERSE`。`Song.difficulties` 是数组，而非舞萌的 `standard/dx` 分组；上游难度序号 `0-5` 分别为 BASIC、ADVANCED、EXPERT、MASTER、ULTIMA、WORLD'S END，应用只映射 `0-4`。
+> last_verified: 2026-07-28 — 官方文档和实时公共响应已复核。默认曲库返回 1464 首歌曲、7 个分类、19 个版本，最大主版本为 `23000 / CHUNITHM VERSE`。`Song.difficulties` 是数组，而非舞萌的 `standard/dx` 分组；上游难度序号 `0-5` 分别为 BASIC、ADVANCED、EXPERT、MASTER、ULTIMA、WORLD'S END，应用完整映射 `0-5`。
 
 当前职责边界：
 
@@ -78,7 +78,7 @@
 - `Song.version` 与谱面 `version` 按 `versions[].version` 向下匹配最近主版本；没有可匹配项时保留原始数字。
 - 首版搜索仅使用歌曲 ID、曲名、艺术家和谱师，不拉取别名，也不提供高级筛选。
 - 曲绘地址为 `https://assets2.lxns.net/chunithm/jacket/{song_id}.png`。列表只加载可见项并使用磁盘缓存，避免触发素材访问频率限制。
-- WORLD'S END 与舞萌宴会场同属娱乐谱面，不纳入查分范围；Provider 在领域映射前过滤 `difficulty=5`，过滤后没有常规谱面的歌曲也不会进入曲库。
+- WORLD'S END 保留 `origin_id / kanji / star` 专属字段；曲绘优先使用 `origin_id`，难度以 `{kanji}☆{star}` 展示，`level_value` 仅为协议保真字段，不作为普通定数展示或推算 Rating。
 - 中二已复用 LXNS PKCE + OOB OAuth，个人玩家和成绩使用独立模型；旧临时账号只作历史兼容，正式绑定后自动移除。
 
 ## LXNS OAuth / 个人 API（读写绑定）
@@ -98,6 +98,7 @@
 | `/api/v0/user/chunithm/player` | GET | `Authorization: Bearer` | 当前用户中二玩家信息；未同步时允许为空 |
 | `/api/v0/user/chunithm/player/scores` | GET | `Authorization: Bearer` | 当前用户中二全部最佳成绩 |
 | `/api/v0/user/chunithm/player/bests` | GET | `Authorization: Bearer` | 当前用户中二 Rating 构成：`bests / selections / new_bests` |
+| `/api/v0/chunithm/wechat/auth` | GET | 微信内打开 | 中二离线同步授权入口；应用仅复制链接，不在应用内直接打开 |
 
 > player last_verified: 2026-07-15 — 官方 `Player` 契约包含 `name`、`rating`、`friend_code`，以及可空的 `icon.id`、`name_plate.id`、`trophy.{id,name,color}`；头像与姓名框分别使用公共资源 `/icon/{id}.png`、`/plate/{id}.png`。水鱼玩家契约没有头像/姓名框资源 ID，预览不得伪造。
 
@@ -119,11 +120,12 @@ OAuth 约束（官方文档）：
 - score-hub 的 `fdx` / `fdxp` 分别映射为 LXNS `fsd` / `fsdp`；`fc` 只接受 `fc/fcp/ap/app`；无法确认的曲目、谱面、达成率或枚举计数后跳过。
 - 上传体只包含官方 `Score` 写入字段，按 `{ scores: [...] }` 发送；当前实现保留参考实现兼容字段 `dx_star: 0`，DXScore 缺失时为 `null`。
 - Access Token 到期前自动刷新；刷新返回的新 access/refresh token 必须一起更新内存会话与 SecureStore。401/403 不重试，429/5xx/网络超时沿用可重试错误语义，取消信号立即中止当前或后续目标。
-- 中二 Player/Score 不映射成舞萌 `Player/ScoreRecord`；个人成绩校验允许 `level_index=0-5`，领域映射只保留 BASIC 至 ULTIMA，WORLD'S END 不进入缓存和查分页面。
+- 中二 Player/Score 不映射成舞萌 `Player/ScoreRecord`；个人成绩校验与领域映射均保留 `level_index=0-5`，WORLD'S END 正常进入全成绩与 B50。
 - 中二个人快照 v2 使用分账号资源键 `chunithm-score:{accountId}`，并保存玩家、全部成绩和 B50 三部分；网络失败优先回退 v2，只有旧缓存时兼容读取 v1 并将 B50 置空，鉴权失败不得使用缓存掩盖。
 - 中二 B50 页面只消费 `bests`（Best 30）与 `new_bests`（New 20），不展示娱乐/候补性质的 `selections`。两个分区独立按单曲 Rating、score 降序。
 - 中二成绩评价由整数 score 在本地按 SSS+ 至 D 的边界计算，不依赖上游 `rank`；S 至 SSS 使用静态蓝白粉金渐变，只有 SSS+ 使用流动版本。
-- 中二成绩页以曲目 ID 和 `level_index` 关联公共曲库，补齐曲名、艺术家、谱师和定数；关联失败时保留接口曲名或 ID，不把游戏标级当作定数。
+- 中二成绩页以曲目 ID 和 `level_index` 关联公共曲库，补齐曲名、艺术家、谱师和定数；普通谱面显示完整难度名与定数，WORLD'S END 使用属性汉字与星级，关联失败时回退 Score 的 `level`，不得回退到 `level_value`。
+- 中二同步引导展示 HTTP 代理 `proxy.maimai.lxns.net:8080` 与固定微信离线同步链接；同步按钮复用个人资料、全成绩和 B50 刷新流程，只有拿到非缓存的有效玩家数据才视为完成。
 
 > last_verified: 2026-07-17 — 按官方舞萌 API 文档复核个人上传端点为 `POST /api/v0/user/maimai/player/scores`，Bearer OAuth，请求体 `{ scores: Score[] }`；官方枚举确认 FDX=`fsd`、FDX+=`fsdp`。自动测试覆盖请求体、ID/谱面/宴会场/FDX 映射、token 轮换、权限错误、重试、取消与多目标部分成功。真实外部账号写入仅人工验证。
 

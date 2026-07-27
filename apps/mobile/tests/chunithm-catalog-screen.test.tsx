@@ -6,6 +6,7 @@ import {
   chunithmJacketUrl,
   ChunithmSongRow,
 } from '@/components/chunithm/ChunithmSongRow';
+import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
 
 const source = {
@@ -185,7 +186,33 @@ describe('Chunithm catalog screen', () => {
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 
-  it('uses the official five-difficulty color language from the reference image', async () => {
+  it("uses origin_id and attribute stars for WORLD'S END without showing level_value", async () => {
+    const song = {
+      ...mockCatalog.songs[0]!,
+      id: 90001,
+      difficulties: [{
+        ...mockCatalog.songs[0]!.difficulties[0]!,
+        difficulty: 5 as const,
+        level: '14',
+        levelValue: 14,
+        originId: 1234,
+        kanji: '狂',
+        star: 4,
+      }],
+    };
+    expect(chunithmJacketUrl(song)).toBe(
+      'https://assets2.lxns.net/chunithm/jacket/1234.png',
+    );
+    const screen = await render(<ChunithmSongRow song={song} />);
+    expect(screen.getByText('狂☆4')).toBeTruthy();
+    expect(screen.queryByText('14.0')).toBeNull();
+    expect(screen.getByTestId('chunithm-worlds-end-badge')).toBeTruthy();
+    expect(CHUNITHM_WORLDS_END_GRADIENT).toEqual([
+      '#37E6FF', '#7B61FF', '#F24FD4', '#FF8A3D',
+    ]);
+  });
+
+  it('uses the five regular difficulty colors plus the WORLD’S END neon theme', async () => {
     const paletteSong = {
       ...mockCatalog.songs[0]!,
       difficulties: [
@@ -194,6 +221,14 @@ describe('Chunithm catalog screen', () => {
         { ...mockCatalog.songs[0]!.difficulties[0]!, difficulty: 2 as const, level: '10', levelValue: 10 },
         { ...mockCatalog.songs[0]!.difficulties[0]!, difficulty: 3 as const, level: '12', levelValue: 12 },
         { ...mockCatalog.songs[0]!.difficulties[0]!, difficulty: 4 as const, level: '13+', levelValue: 13.7 },
+        {
+          ...mockCatalog.songs[0]!.difficulties[0]!,
+          difficulty: 5 as const,
+          level: '14',
+          levelValue: 14,
+          kanji: '狂',
+          star: 4,
+        },
       ],
     };
     const screen = await render(<ChunithmSongRow song={paletteSong} />);
@@ -210,5 +245,7 @@ describe('Chunithm catalog screen', () => {
         expect.objectContaining({ backgroundColor, borderColor, borderRadius: 999 }),
       );
     }
+    expect(screen.getByText('狂☆4')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-worlds-end-badge')).toBeTruthy();
   });
 });

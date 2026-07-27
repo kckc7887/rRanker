@@ -137,13 +137,12 @@ export class ChunithmScoreProvider {
     if (!Array.isArray(result.data)) {
       throw new ProviderError('upstream_schema', '落雪中二成绩响应结构与已验证契约不一致', true);
     }
-    return result.data.flatMap((item) => {
+    return result.data.map((item) => {
       const parsed = ChunithmScoreSchema.safeParse(item);
       if (!parsed.success) {
         throw new ProviderError('upstream_schema', '落雪中二成绩条目与已验证契约不一致', true);
       }
-      // WORLD'S END 属于娱乐谱面，不进入 rRanker 查分数据。
-      return parsed.data.level_index === 5 ? [] : [parsed.data];
+      return parsed.data;
     });
   }
 
@@ -155,9 +154,9 @@ export class ChunithmScoreProvider {
       throw new ProviderError('upstream_schema', '落雪中二 B50 响应结构与已验证契约不一致', true);
     }
     return {
-      bests: parsed.data.bests.filter((score) => score.level_index !== 5),
-      selections: parsed.data.selections.filter((score) => score.level_index !== 5),
-      new_bests: parsed.data.new_bests.filter((score) => score.level_index !== 5),
+      bests: parsed.data.bests,
+      selections: parsed.data.selections,
+      new_bests: parsed.data.new_bests,
     };
   }
 

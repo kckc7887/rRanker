@@ -97,6 +97,15 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({
   data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog,
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }) }));
+jest.mock('@/hooks/use-chunithm-catalog', () => ({
+  useChunithmCatalog: () => ({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  }),
+}));
 jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({
     data: { snapshot: { songs: [] }, provider: null },

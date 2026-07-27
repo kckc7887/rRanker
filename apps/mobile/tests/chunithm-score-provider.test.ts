@@ -76,7 +76,7 @@ describe('ChunithmScoreProvider', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reads all three personal endpoints with the same bearer token and removes WORLD’S END', async () => {
+  it('reads all three personal endpoints with the same bearer token and keeps WORLD’S END', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       expect(init?.headers).toMatchObject({
         Accept: 'application/json',
@@ -102,11 +102,15 @@ describe('ChunithmScoreProvider', () => {
     });
     expect(snapshot.scores).toEqual([
       expect.objectContaining({ id: 3, level_index: 4, score: 1009000 }),
+      expect.objectContaining({ id: 90001, level_index: 5, score: 1010000 }),
     ]);
     expect(snapshot.bests).toMatchObject({
-      bests: [expect.objectContaining({ id: 3 })],
+      bests: [
+        expect.objectContaining({ id: 3 }),
+        expect.objectContaining({ id: 90001, level_index: 5 }),
+      ],
       selections: [expect.objectContaining({ id: 3 })],
-      new_bests: [],
+      new_bests: [expect.objectContaining({ id: 90001, level_index: 5 })],
     });
   });
 

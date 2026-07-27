@@ -27,6 +27,9 @@ const DifficultySchema = z.object({
   level_value: z.number().finite().nonnegative(),
   note_designer: z.string().nullish(),
   version: z.number().int().positive(),
+  origin_id: z.number().int().nonnegative().nullish(),
+  kanji: z.string().nullish(),
+  star: z.number().int().nonnegative().nullish(),
 }).passthrough();
 
 const SongSchema = z.object({
@@ -138,7 +141,6 @@ export function mapChunithmCatalog(input: unknown): ChunithmCatalogSnapshot {
     songs: parsed.data.songs.flatMap((song) => {
       const songVersion = versionAtOrBefore(parsed.data.versions, song.version);
       const difficulties = song.difficulties
-        .filter((difficulty) => difficulty.difficulty <= 4)
         .map((difficulty): ChunithmDifficulty => {
           const chartVersion = versionAtOrBefore(parsed.data.versions, difficulty.version);
           return {
@@ -148,6 +150,9 @@ export function mapChunithmCatalog(input: unknown): ChunithmCatalogSnapshot {
             noteDesigner: difficulty.note_designer ?? undefined,
             versionId: chartVersion?.version ?? difficulty.version,
             versionTitle: chartVersion?.title ?? String(difficulty.version),
+            originId: difficulty.origin_id ?? undefined,
+            kanji: difficulty.kanji?.trim() || undefined,
+            star: difficulty.star ?? undefined,
           };
         });
       if (difficulties.length === 0) return [];
