@@ -5,14 +5,21 @@ import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
+import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
-import type { BestListSection } from '@/domain/game-data';
+import {
+  buildChunithmScoreCards,
+  compareChunithmScores,
+  type ChunithmScoreCardData,
+} from '@/domain/chunithm-score-presentation';
+import type { BestListSection, ChunithmBestListSection } from '@/domain/game-data';
 import type { DataSource, ScoreRecord } from '@/domain/models';
 import { phigrosChartNoteKey } from '@/domain/phigros-xing';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useGameData } from '@/hooks/use-game-data';
+import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useSession } from '@/state/session-store';
@@ -39,10 +46,101 @@ export default function Best50TabScreen() {
 
 export function Best50Screen() {
   const activeGameId = useSession((s) => s.activeGameId);
+  if (activeGameId === 'chunithm') {
+    return <ChunithmBestScreen />;
+  }
   if (activeGameId === 'phigros') {
     return <PhigrosBestScreen />;
   }
   return <MaimaiBest50Screen />;
+}
+
+type ChunithmBestSection = ChunithmBestListSection & { data: ChunithmScoreCardData[] };
+
+function ChunithmBestScreen() {
+  const session = useSession((s) => s.session);
+  const gameData = useGameData();
+  const catalogQuery = useChunithmCatalog();
+  const tabBottomInset = useNativeTabBottomInset();
+  const theme = useAppTheme();
+  const hasSession = session?.mode === 'lxns-oauth';
+  const payload = gameData.data?.payload.kind === 'chunithm' ? gameData.data.payload : null;
+
+  const sections = useMemo<ChunithmBestSection[]>(() => {
+    if (!payload || !catalogQuery.data) return [];
+    return payload.bestSections.map((section) => ({
+      ...section,
+      data: buildChunithmScoreCards(section.scores, catalogQuery.data)
+        .sort(compareChunithmScores),
+    }));
+  }, [catalogQuery.data, payload]);
+
+  const recordCount = sections.reduce((sum, section) => sum + section.data.length, 0);
+  const isGameLoading = gameData.isLoading || catalogQuery.isLoading;
+  const isGameError = gameData.isError || catalogQuery.isError;
+  const error = gameData.error ?? catalogQuery.error;
+  const refetchAll = () => {
+    void Promise.all([gameData.refetch(), catalogQuery.refetch()]);
+  };
+
+  if (!hasSession && !isGameLoading) {
+    return (
+      <View style={[styles.page, { backgroundColor: theme.background }]}>
+        <View style={styles.center}>
+          <Text style={[styles.statusText, { color: theme.textMuted }]}>尚未绑定落雪账号</Text>
+          <Text style={[styles.statusHint, { color: theme.textMuted }]}>请在游戏管理中绑定中二节奏的落雪账号</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
+      <QueryStateView<ChunithmBestSection[]>
+        isLoading={isGameLoading}
+        isError={isGameError}
+        isEmpty={!isGameLoading && recordCount === 0}
+        error={error}
+        onRetry={refetchAll}
+        emptyText="当前账号暂无 Best 30 与 New 20 成绩"
+        data={!isGameLoading && recordCount > 0 ? sections : undefined}
+        renderData={(list) => (
+          <SectionList
+            testID="chunithm-best-results-list"
+            contentInsetAdjustmentBehavior="automatic"
+            style={styles.list}
+            contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
+            scrollIndicatorInsets={{ bottom: tabBottomInset }}
+            sections={list}
+            {...TAB_LIST_CACHE_PROPS}
+            stickySectionHeadersEnabled={false}
+            keyExtractor={(record, index) => `${record.songId}-${record.levelIndex}-${index}`}
+            ListHeaderComponent={<SourceStatus items={payload ? [
+              {
+                key: 'scores',
+                label: payload.source.label,
+                updatedAt: payload.source.updatedAt,
+                state: payload.source.isStale ? 'cache' : 'live',
+              },
+              {
+                key: 'catalog',
+                label: catalogQuery.data?.source.label ?? 'LXNS 中二节奏公共曲库',
+                updatedAt: catalogQuery.data?.source.updatedAt,
+                state: catalogQuery.data?.source.isStale ? 'cache' : 'live',
+              },
+            ] : []} />}
+            renderSectionHeader={({ section }) => (
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
+                <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 张谱面</Text>
+              </View>
+            )}
+            renderItem={({ item, index }) => <ChunithmScoreCard record={item} position={index + 1} />}
+          />
+        )}
+      />
+    </View>
+  );
 }
 
 function MaimaiBest50Screen() {

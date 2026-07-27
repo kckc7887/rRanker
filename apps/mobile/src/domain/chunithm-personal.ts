@@ -54,13 +54,33 @@ export const ChunithmScoreSchema = z.object({
 export type ChunithmPlayer = z.infer<typeof ChunithmPlayerSchema>;
 export type ChunithmScore = z.infer<typeof ChunithmScoreSchema>;
 
+export const ChunithmBestsSchema = z.object({
+  bests: z.array(ChunithmScoreSchema),
+  selections: z.array(ChunithmScoreSchema).optional().default([]),
+  new_bests: z.array(ChunithmScoreSchema).optional().default([]),
+}).passthrough();
+
+export type ChunithmBests = z.infer<typeof ChunithmBestsSchema>;
+
 export type ChunithmPersonalSnapshot = {
   player: ChunithmPlayer | null;
   scores: ChunithmScore[];
+  bests: ChunithmBests;
   source: DataSource;
 };
 
-export const CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION = 1;
+export type LegacyChunithmPersonalSnapshot = Omit<ChunithmPersonalSnapshot, 'bests'>;
+
+export const CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION = 2;
+export const CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION = 1;
+
+export function emptyChunithmBests(): ChunithmBests {
+  return {
+    bests: [],
+    selections: [],
+    new_bests: [],
+  };
+}
 
 export function chunithmPersonalResourceKey(accountId: string): string {
   return `chunithm-score:${accountId}`;

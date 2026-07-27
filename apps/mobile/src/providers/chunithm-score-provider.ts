@@ -1,7 +1,10 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import {
+  ChunithmBestsSchema,
   ChunithmPlayerSchema,
   ChunithmScoreSchema,
+  emptyChunithmBests,
+  type ChunithmBests,
   type ChunithmPersonalSnapshot,
   type ChunithmPlayer,
   type ChunithmScore,
@@ -144,14 +147,30 @@ export class ChunithmScoreProvider {
     });
   }
 
+  async getBests(): Promise<ChunithmBests> {
+    const result = await this.request('/user/chunithm/player/bests', true);
+    if (!result.found) return emptyChunithmBests();
+    const parsed = ChunithmBestsSchema.safeParse(result.data);
+    if (!parsed.success) {
+      throw new ProviderError('upstream_schema', '落雪中二 B50 响应结构与已验证契约不一致', true);
+    }
+    return {
+      bests: parsed.data.bests.filter((score) => score.level_index !== 5),
+      selections: parsed.data.selections.filter((score) => score.level_index !== 5),
+      new_bests: parsed.data.new_bests.filter((score) => score.level_index !== 5),
+    };
+  }
+
   async getSnapshot(): Promise<ChunithmPersonalSnapshot> {
-    const [player, scores] = await Promise.all([
+    const [player, scores, bests] = await Promise.all([
       this.getPlayer(),
       this.getScores(),
+      this.getBests(),
     ]);
     return {
       player,
       scores,
+      bests,
       source: this.source(),
     };
   }
