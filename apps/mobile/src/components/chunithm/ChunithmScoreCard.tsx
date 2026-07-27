@@ -1,7 +1,17 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { router, type Href } from 'expo-router';
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type TextStyle,
+} from 'react-native';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import {
@@ -72,7 +82,17 @@ function useFlowingProgress(enabled: boolean, duration = 1_400): Animated.Value 
   return progress;
 }
 
-function GradientScore({ text, flowing }: { text: string; flowing: boolean }) {
+export function ChunithmGradientScore({
+  text,
+  flowing,
+  height = 30,
+  textStyle,
+}: {
+  text: string;
+  flowing: boolean;
+  height?: number;
+  textStyle?: StyleProp<TextStyle>;
+}) {
   const [width, setWidth] = useState(180);
   const progress = useFlowingProgress(flowing, 1_800);
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
@@ -80,9 +100,9 @@ function GradientScore({ text, flowing }: { text: string; flowing: boolean }) {
     <MaskedView
       accessibilityLabel={text}
       onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-      style={styles.scoreMask}
+      style={[styles.scoreMask, { height }]}
       testID={flowing ? 'flowing-chunithm-score' : 'gradient-chunithm-score'}
-      maskElement={<Text style={[styles.score, styles.maskText]}>{text}</Text>}
+      maskElement={<Text style={[styles.score, textStyle, styles.maskText]}>{text}</Text>}
     >
       {flowing ? (
         <Animated.View style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
@@ -202,9 +222,18 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
   const scoreGradient = chunithmRankUsesGradient(record.rank);
 
   return (
-    <View
+    <Pressable
       accessibilityLabel={`${record.title}，分数 ${scoreText}，评价 ${record.rank}，Rating ${formatChunithmRating(record.rating)}`}
-      style={[styles.card, { backgroundColor: theme.surface }]}
+      accessibilityRole="button"
+      onPress={() => router.push({
+        pathname: '/songs/[songId]',
+        params: { songId: record.songId, levelIndex: String(record.levelIndex) },
+      } as Href)}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: theme.surface },
+        pressed && styles.pressed,
+      ]}
       testID={`chunithm-score-card-${record.key}`}
     >
       <View style={styles.main}>
@@ -212,7 +241,7 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
           {position ? `${position}. ` : ''}{record.title}
         </Text>
         {scoreGradient ? (
-          <GradientScore flowing={record.rank === 'SSS+'} text={scoreText} />
+          <ChunithmGradientScore flowing={record.rank === 'SSS+'} text={scoreText} />
         ) : (
           <Text style={[styles.score, { color: theme.text }]}>{scoreText}</Text>
         )}
@@ -245,7 +274,7 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
           {formatChunithmRating(record.rating)}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 });
 
@@ -257,6 +286,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  pressed: { opacity: 0.72 },
   main: { flex: 1, minWidth: 0, gap: 3 },
   title: { fontSize: 15, fontWeight: '700' },
   score: { fontSize: 24, lineHeight: 30, fontWeight: '900', letterSpacing: -0.4 },

@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { Image } from 'expo-image';
-import { StyleSheet, Text, View } from 'react-native';
+import { router, type Href } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   type ChunithmSong,
 } from '@/domain/chunithm';
@@ -29,9 +30,16 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
   );
 
   return (
-    <View
+    <Pressable
+      accessibilityLabel={`打开歌曲详情 ${song.title}`}
+      accessibilityRole="button"
+      onPress={() => router.push(`/songs/${encodeURIComponent(String(song.id))}` as Href)}
       testID={`chunithm-song-${song.id}`}
-      style={[styles.row, { backgroundColor: theme.surface }]}
+      style={({ pressed }) => [
+        styles.row,
+        { backgroundColor: theme.surface },
+        pressed && styles.pressed,
+      ]}
     >
       {coverFailed ? (
         <View style={[styles.cover, styles.coverPlaceholder]}>
@@ -53,8 +61,6 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
           <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>
             {song.title}
           </Text>
-          {song.locked ? <Text style={styles.status}>需解锁</Text> : null}
-          {song.disabled ? <Text style={styles.status}>已禁用</Text> : null}
         </View>
         <Text numberOfLines={1} style={[styles.meta, { color: theme.textMuted }]}>
           {song.artist ?? '艺术家未知'} · {song.versionTitle}
@@ -76,7 +82,7 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
           ))}
         </View>
       </View>
-    </View>
+    </Pressable>
   );
 });
 
@@ -103,15 +109,6 @@ const styles = StyleSheet.create({
   titleLine: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   title: { flexShrink: 1, fontWeight: '700' },
   meta: { fontSize: 11 },
-  status: {
-    color: '#7C4A03',
-    backgroundColor: '#FFF3CD',
-    overflow: 'hidden',
-    borderRadius: 5,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    fontSize: 10,
-    fontWeight: '700',
-  },
+  pressed: { opacity: 0.72 },
   difficulties: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
 });

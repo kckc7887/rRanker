@@ -7,6 +7,7 @@ import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDiff
 
 const mockRefetchGame = jest.fn(async () => undefined);
 const mockRefetchCatalog = jest.fn(async () => undefined);
+const mockPush = jest.fn();
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
@@ -15,6 +16,9 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
 jest.mock('@/components/CachedTabScreen', () => ({
   CachedTabScreen: ({ children }: { children: unknown }) => children,
   useCachedTabActive: () => true,
+}));
+jest.mock('expo-router', () => ({
+  router: { push: (...args: unknown[]) => mockPush(...args) },
 }));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: string) => value }));
@@ -193,6 +197,11 @@ describe('Chunithm records and B50 screens', () => {
       'chunithm-score-card-3-5',
       'chunithm-score-card-1-2',
     ]);
+    await fireEvent.press(cards[0]!);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/songs/[songId]',
+      params: { songId: '2', levelIndex: '3' },
+    });
 
     await fireEvent.changeText(screen.getByLabelText('中二成绩搜索'), '目标艺术家');
     expect(screen.getByText('第一首歌')).toBeTruthy();

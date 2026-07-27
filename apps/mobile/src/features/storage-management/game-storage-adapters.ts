@@ -1,6 +1,9 @@
 import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
-import { CHUNITHM_CATALOG_RESOURCE_KEY } from '@/domain/chunithm';
+import {
+  CHUNITHM_CATALOG_RESOURCE_KEY,
+  CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX,
+} from '@/domain/chunithm';
 import { clearPhigrosIllustrationStage, phigrosIllustrationStageDirectory } from '@/features/phigros-best-image/load-phigros-image-assets';
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
@@ -52,6 +55,9 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   }
   if (gameId === 'chunithm'
     && (CHUNITHM_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
+    return true;
+  }
+  if (gameId === 'chunithm' && key.startsWith(CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX)) {
     return true;
   }
   const accountId = accountIdFromResourceKey(key);

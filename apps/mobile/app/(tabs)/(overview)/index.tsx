@@ -11,6 +11,10 @@ import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { ChunithmSyncGuideSheet } from '@/components/chunithm/ChunithmSyncGuideSheet';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
+import {
+  CHUNITHM_MAINTENANCE_MESSAGE,
+  isChunithmMaintenanceWindow,
+} from '@/domain/chunithm-maintenance';
 import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
@@ -178,6 +182,17 @@ export function OverviewScreen() {
   };
 
   const closeUpload = () => setUploadVisible(false);
+  const openChunithmUpload = () => {
+    if (isChunithmMaintenanceWindow()) {
+      showNotification({
+        title: '游戏服务器维护中',
+        message: CHUNITHM_MAINTENANCE_MESSAGE,
+        variant: 'warning',
+      });
+      return;
+    }
+    setChunithmSyncGuideVisible(true);
+  };
 
   return (
     <View collapsable={false} style={[styles.page, { backgroundColor: theme.background }]}>
@@ -321,7 +336,7 @@ export function OverviewScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="上传数据，打开同步引导"
-                  onPress={() => setChunithmSyncGuideVisible(true)}
+                  onPress={openChunithmUpload}
                   style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
                 >
                   <Text style={styles.syncText}>上传数据</Text>
@@ -394,19 +409,19 @@ export function OverviewScreen() {
               </Pressable>
             ) : null}
 
-            {bundle.gameId !== 'chunithm' ? (
-              <Pressable accessibilityRole="button" onPress={() => router.push('/library' as Href)}>
-                <View style={[styles.card, { backgroundColor: theme.surface }]}>
-                  <Text style={[styles.cardTitle, { color: theme.text }]}>我的曲库</Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>
-                    {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros'
-                      ? (library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
-                      : '当前游戏暂未开放个人曲库'}
-                  </Text>
-                  <Text style={[styles.toolLink, { color: theme.accent }]}>打开收藏与练习清单 →</Text>
-                </View>
-              </Pressable>
-            ) : null}
+            <Pressable accessibilityRole="button" onPress={() => router.push('/library' as Href)}>
+              <View style={[styles.card, { backgroundColor: theme.surface }]}>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>我的曲库</Text>
+                <Text style={[styles.body, { color: theme.textSecondary }]}>
+                  {bundle.payload.kind === 'maimai'
+                    || bundle.payload.kind === 'phigros'
+                    || bundle.payload.kind === 'chunithm'
+                    ? (library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
+                    : '当前游戏暂未开放个人曲库'}
+                </Text>
+                <Text style={[styles.toolLink, { color: theme.accent }]}>打开收藏与练习清单 →</Text>
+              </View>
+            </Pressable>
 
             <View style={[styles.card, { backgroundColor: theme.surface }]}>
               <Text style={[styles.cardTitle, { color: theme.text }]}>数据状态</Text>

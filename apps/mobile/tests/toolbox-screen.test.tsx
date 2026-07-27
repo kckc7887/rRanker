@@ -63,6 +63,13 @@ describe('game-aware toolbox screen', () => {
     expect(screen.queryByText('DX Rating 计算器')).toBeNull();
   });
 
+  it('opens the standard empty toolbox for Chunithm', async () => {
+    mockActiveGameId = 'chunithm';
+    const screen = await render(<ToolsScreen />);
+    expect(screen.getByText('工具箱')).toBeTruthy();
+    expect(screen.getByText('中二节奏工具正在准备中。')).toBeTruthy();
+  });
+
   it('toggles a tool pin without opening the tool card', async () => {
     const screen = await render(<ToolsScreen />);
     await fireEvent.press(screen.getByLabelText('置顶 DX Rating 计算器'));

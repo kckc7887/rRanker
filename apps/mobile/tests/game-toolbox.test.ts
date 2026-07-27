@@ -31,8 +31,13 @@ describe('per-game toolbox registry', () => {
   it('keeps profile capabilities consistent with registered tools', () => {
     const gameIds: GameId[] = ['maimai', 'chunithm', 'phigros', 'test'];
     for (const gameId of gameIds) {
-      expect(getGameProfile(gameId).capabilities.hasTools)
-        .toBe(getGameToolbox(gameId).tools.length > 0);
+      if (gameId === 'chunithm') {
+        expect(getGameProfile(gameId).capabilities.hasTools).toBe(true);
+        expect(getGameToolbox(gameId).tools).toHaveLength(0);
+      } else {
+        expect(getGameProfile(gameId).capabilities.hasTools)
+          .toBe(getGameToolbox(gameId).tools.length > 0);
+      }
     }
   });
 });
