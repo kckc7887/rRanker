@@ -37,6 +37,9 @@ jest.mock('@/components/UploadDataSheet', () => ({
     return null;
   },
 }));
+jest.mock('@/components/chunithm/ChunithmSyncGuideSheet', () => ({
+  ChunithmSyncGuideSheet: () => null,
+}));
 jest.mock('@/components/SourceStatus', () => ({ SourceStatus: () => null }));
 jest.mock('@/components/DxRatingCard', () => ({ DxRatingCard: () => null }));
 jest.mock('@/components/QueryStateView', () => ({
@@ -56,6 +59,9 @@ jest.mock('@/hooks/use-user-library', () => ({
 }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, error: null, refetch: jest.fn(async () => ({ data: undefined })) }),
+}));
+jest.mock('@/hooks/use-chunithm-catalog', () => ({
+  useChunithmCatalog: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: () => ({
