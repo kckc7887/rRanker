@@ -462,20 +462,11 @@ describe('好友码统一上传弹窗', () => {
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
     const imagePicker = jest.requireMock<typeof import('expo-image-picker')>('expo-image-picker');
     const decode = jest.requireMock<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
-    const launchImageLibraryAsync = imagePicker.launchImageLibraryAsync as unknown as {
-      mockResolvedValueOnce(value: {
-        canceled: boolean;
-        assets: { uri: string; fileName: string }[];
-      }): void;
-    };
-    const decodeMaimaiQrFromImageUri = decode.decodeMaimaiQrFromImageUri as unknown as {
-      mockResolvedValueOnce(value: string): void;
-    };
-    launchImageLibraryAsync.mockResolvedValueOnce({
+    (imagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValueOnce({
       canceled: false,
       assets: [{ uri: 'file:///bind-qr.jpg', fileName: 'bind-qr.jpg' }],
     });
-    decodeMaimaiQrFromImageUri.mockResolvedValueOnce('SGWCMAIDBIND');
+    (decode.decodeMaimaiQrFromImageUri as jest.Mock).mockResolvedValueOnce('SGWCMAIDBIND');
 
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('通过神秘二维码绑定')).toBeTruthy());
