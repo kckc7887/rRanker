@@ -58,12 +58,18 @@ import { chunithmJacketUrl } from './ChunithmSongRow';
 const CARD_GAP = 12;
 const CHUNITHM_CHART_TYPE = 'SD' as const;
 
-const DIFFICULTY_CARD_VISUAL: Record<ChunithmLevelIndex, { color: string; tint: string }> = {
+const DIFFICULTY_CARD_VISUAL: Record<ChunithmLevelIndex, {
+  color: string;
+  tint: string;
+  border?: string;
+  darkAction?: string;
+}> = {
   0: { color: '#4AA58A', tint: '#ECF8F3' },
   1: { color: '#E27A24', tint: '#FFF6E8' },
   2: { color: '#D6403A', tint: '#FFF0F0' },
   3: { color: '#7526CF', tint: '#F3EAFD' },
-  4: { color: '#E83A58', tint: '#FFF0F3' },
+  // ULTIMA：灰黑主体、红色点缀（对齐难度标签黑底红边）
+  4: { color: '#17171A', tint: '#ECECED', border: '#E83A58', darkAction: '#E83A58' },
   5: { color: '#7B61FF', tint: '#F3EEFF' },
 };
 
@@ -564,7 +570,7 @@ function DifficultyCard({
         {
           width,
           backgroundColor: theme.dark ? theme.surface : visual.tint,
-          borderColor: visual.color,
+          borderColor: visual.border ?? visual.color,
         },
       ]}
       testID={`chunithm-detail-difficulty-${difficulty.difficulty}`}
@@ -621,7 +627,7 @@ function DifficultyCard({
         谱师：{difficulty.noteDesigner || '未提供'}
       </Text>
       {difficulty.notes ? (
-        <NotesTable notes={difficulty.notes} />
+        <NotesTable levelIndex={difficulty.difficulty} notes={difficulty.notes} />
       ) : (
         <View style={styles.notesUnavailable}>
           <Text style={[styles.body, { color: theme.textMuted }]}>物量暂不可用</Text>
@@ -685,35 +691,52 @@ function DifficultyCard({
 
 function chartActionStyle(
   dark: boolean,
-  visual: { color: string; tint: string },
+  visual: { color: string; tint: string; border?: string; darkAction?: string },
   filled: boolean,
 ) {
+  const actionColor = dark ? (visual.darkAction ?? visual.color) : visual.color;
   if (dark) {
-    return { backgroundColor: visual.color, borderColor: visual.color };
+    return { backgroundColor: actionColor, borderColor: actionColor };
   }
-  if (!filled) return { borderColor: visual.color };
-  return { backgroundColor: visual.color, borderColor: visual.color };
+  if (!filled) return { borderColor: actionColor };
+  return { backgroundColor: actionColor, borderColor: actionColor };
 }
 
 function chartActionTextStyle(
   dark: boolean,
-  visual: { color: string; tint: string },
+  visual: { color: string; tint: string; border?: string; darkAction?: string },
   filled: boolean,
 ) {
+  const actionColor = dark ? (visual.darkAction ?? visual.color) : visual.color;
   if (dark) return { color: '#FFFFFF' };
-  return { color: filled ? '#FFFFFF' : visual.color };
+  return { color: filled ? '#FFFFFF' : actionColor };
 }
 
-function NotesTable({ notes }: { notes: NonNullable<ChunithmDifficulty['notes']> }) {
+function NotesTable({
+  notes,
+  levelIndex,
+}: {
+  notes: NonNullable<ChunithmDifficulty['notes']>;
+  levelIndex: ChunithmLevelIndex;
+}) {
   const theme = useAppTheme();
-  const values = [
-    ['TAP', notes.tap],
-    ['HOLD', notes.hold],
-    ['SLIDE', notes.slide],
-    ['AIR', notes.air],
-    ['FLICK', notes.flick],
-    ['总计', notes.total],
-  ] as const;
+  const showFlick = levelIndex === 3 || levelIndex === 4;
+  const values: readonly (readonly [string, number])[] = showFlick
+    ? [
+      ['TAP', notes.tap],
+      ['HOLD', notes.hold],
+      ['SLIDE', notes.slide],
+      ['AIR', notes.air],
+      ['FLICK', notes.flick],
+      ['总计', notes.total],
+    ]
+    : [
+      ['TAP', notes.tap],
+      ['HOLD', notes.hold],
+      ['SLIDE', notes.slide],
+      ['AIR', notes.air],
+      ['总计', notes.total],
+    ];
   return (
     <View accessibilityLabel="中二谱面物量" style={[styles.notesTable, { borderColor: theme.border }]}>
       {values.map(([label, value]) => (
@@ -879,8 +902,13 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 4,
   },
-  chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  levelBlock: { alignItems: 'flex-end' },
+  chartHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  levelBlock: { alignItems: 'flex-end', paddingTop: 10 },
   level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
   constant: { fontSize: 11, fontWeight: '600' },
   resultBlock: { alignItems: 'flex-start', gap: 2, marginTop: 22 },

@@ -262,6 +262,13 @@ describe('Chunithm song detail', () => {
       expect(notes.getByText(value)).toBeTruthy();
     }
 
+    const basic = within(screen.getByTestId('chunithm-detail-difficulty-0'));
+    const basicNotes = within(basic.getByLabelText('中二谱面物量'));
+    expect(basicNotes.queryByText('FLICK')).toBeNull();
+    for (const label of ['TAP', 'HOLD', 'SLIDE', 'AIR', '总计']) {
+      expect(basicNotes.getByText(label)).toBeTruthy();
+    }
+
     await fireEvent.press(screen.getByLabelText('收藏 B.B.K.K.B.K.K.'));
     expect(mockSetSongFavorite).toHaveBeenCalledWith('3', true);
     await fireEvent.press(master.getByLabelText('加入练习清单'));
