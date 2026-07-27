@@ -1,0 +1,16 @@
+{
+  "name": "rranker",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test:core": "npm run test --workspace @rranker/core",
+    "test:desktop": "npm run test --workspace desktop",
+    "test:mobile": "npm run test --workspace mobile",
+    "typecheck": "npm run typecheck --workspace @rranker/core && npm run typecheck --workspace desktop && npm run typecheck --workspace mobile",
+    "desktop:dev": "npm run tauri:dev --workspace desktop",
+    "desktop:build": "npm run tauri:build --workspace desktop"
+  }
+}
