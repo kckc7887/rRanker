@@ -62,6 +62,7 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
                   key={`${chart.songId}-${chart.levelIndex}`}
                   levelIndex={chart.levelIndex}
                   constant={chart.difficultyConstant}
+                  showLabel={false}
                 />
               ))}
           </View>
