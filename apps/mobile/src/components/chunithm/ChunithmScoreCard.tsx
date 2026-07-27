@@ -27,7 +27,7 @@ import { useAppTheme } from '@/theme/app-theme';
 type GradientColors = readonly [string, string, ...string[]];
 
 export const CHUNITHM_RANK_GRADIENT: GradientColors = [
-  '#73CFFF', '#FFFFFF', '#F5A9D7', '#EFCB63',
+  '#73CFFF', '#EFCB63', '#F5A9D7',
 ];
 const FLOWING_RANK_GRADIENT: GradientColors = [
   ...CHUNITHM_RANK_GRADIENT, ...CHUNITHM_RANK_GRADIENT, CHUNITHM_RANK_GRADIENT[0],
@@ -39,7 +39,7 @@ const BADGE_TONES: Record<Exclude<ChunithmAchievementTone, 'neutral'> | 'rank', 
   text: string;
 }> = {
   rank: {
-    border: ['#287DA8', '#AEB6C2', '#A84F82', '#8C6A14'],
+    border: ['#287DA8', '#8C6A14', '#A84F82'],
     fill: CHUNITHM_RANK_GRADIENT,
     text: '#303136',
   },
