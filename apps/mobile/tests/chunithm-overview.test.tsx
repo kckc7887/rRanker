@@ -110,6 +110,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({
 jest.mock('@/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: {
+      currentVersion: { id: 23000, title: 'CHUNITHM VERSE' },
       source: {
         kind: 'lxns',
         label: 'LXNS 中二节奏公共曲库',
@@ -185,6 +186,8 @@ describe('Chunithm overview', () => {
     expect(screen.getByText('scores:落雪咖啡屋')).toBeTruthy();
     expect(screen.getByText('catalog:LXNS 中二节奏公共曲库')).toBeTruthy();
     expect(screen.queryByText(/成绩：/)).toBeNull();
+    expect(screen.getByText('当前版本：CHUNITHM VERSE')).toBeTruthy();
+    expect(screen.getByText(/^更新时间：/)).toBeTruthy();
     const upload = screen.getByLabelText('上传数据，打开同步引导');
     expect(screen.getByText('同步引导')).toBeTruthy();
 
