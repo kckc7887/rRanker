@@ -162,7 +162,7 @@ export default function ArcadeFinderScreen() {
     };
   }, []);
 
-  const resolveGpsOrigin = useCallback(async () => {
+  const useGpsOrigin = useCallback(async () => {
     setLocatingOrigin(true);
     setErrorKind(null);
     try {
@@ -179,8 +179,8 @@ export default function ArcadeFinderScreen() {
 
   useEffect(() => {
     if (!hydrated || origin) return;
-    void resolveGpsOrigin();
-  }, [hydrated, origin, resolveGpsOrigin]);
+    void useGpsOrigin();
+  }, [hydrated, origin, useGpsOrigin]);
 
   useEffect(() => {
     if (!hydrated || !origin) return;
@@ -219,7 +219,7 @@ export default function ArcadeFinderScreen() {
     const defaults = defaultArcadeFinderPreferences(activeGameId);
     setRadiusKm(defaults.radiusKm);
     setTitleIds(defaults.titleIds);
-    void resolveGpsOrigin();
+    void useGpsOrigin();
   };
 
   const retryLoad = () => {
@@ -227,7 +227,7 @@ export default function ArcadeFinderScreen() {
       setOrigin({ ...origin });
       return;
     }
-    void resolveGpsOrigin();
+    void useGpsOrigin();
   };
 
   const openDetail = useCallback((shop: ArcadeShop) => {
@@ -285,7 +285,7 @@ export default function ArcadeFinderScreen() {
         radiusKm={radiusKm}
         titleIds={titleIds}
         gameTitles={gameTitles}
-        onUseGpsOrigin={() => { void resolveGpsOrigin(); }}
+        onUseGpsOrigin={() => { void useGpsOrigin(); }}
         onEditOrigin={() => setOriginPickerVisible(true)}
         onRadiusChange={setRadiusKm}
         onTitleIdsChange={setTitleIds}
