@@ -175,31 +175,13 @@ describe('Chunithm catalog screen', () => {
     expect(screen.queryByText('Only My Railgun')).toBeNull();
   });
 
-  it("uses WORLD'S END origin id for the jacket and keeps rows non-interactive", async () => {
-    const worldsEndSong = {
-      ...mockCatalog.songs[0]!,
-      id: 99999,
-      difficulties: [{
-        ...mockCatalog.songs[0]!.difficulties[0]!,
-        difficulty: 5 as const,
-        originId: 314,
-        kanji: '避',
-        star: 4,
-      }],
-    };
-
-    expect(chunithmJacketUrl(worldsEndSong)).toBe(
-      'https://assets2.lxns.net/chunithm/jacket/314.png',
+  it('uses the standard song id for the jacket and keeps rows non-interactive', async () => {
+    const song = mockCatalog.songs[0]!;
+    expect(chunithmJacketUrl(song)).toBe(
+      'https://assets2.lxns.net/chunithm/jacket/3.png',
     );
-    const screen = await render(<ChunithmSongRow song={worldsEndSong} />);
+    const screen = await render(<ChunithmSongRow song={song} />);
     expect(screen.getByText('13.7')).toBeTruthy();
-    expect(screen.queryByText('WE 避 ★4')).toBeNull();
-    expect(StyleSheet.flatten(
-      screen.getByLabelText("WORLD'S END，标级 13+，定数 13.7").props.style,
-    )).toEqual(expect.objectContaining({
-      backgroundColor: '#1767A6',
-      borderRadius: 999,
-    }));
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 

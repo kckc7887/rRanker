@@ -70,14 +70,15 @@
 | `/song/list?notes=true` | GET | 无 | 额外包含 TAP/HOLD/SLIDE/AIR/FLICK 物量；首版暂不请求 |
 | `/alias/list` | GET | 无 | 歌曲别名；首版暂不请求 |
 
-> last_verified: 2026-07-27 — 官方文档和实时公共响应已复核。默认曲库返回 1464 首歌曲、7 个分类、19 个版本，最大主版本为 `23000 / CHUNITHM VERSE`。`Song.difficulties` 是数组，而非舞萌的 `standard/dx` 分组；难度序号 `0-5` 分别为 BASIC、ADVANCED、EXPERT、MASTER、ULTIMA、WORLD'S END。
+> last_verified: 2026-07-27 — 官方文档和实时公共响应已复核。默认曲库返回 1464 首歌曲、7 个分类、19 个版本，最大主版本为 `23000 / CHUNITHM VERSE`。`Song.difficulties` 是数组，而非舞萌的 `standard/dx` 分组；上游难度序号 `0-5` 分别为 BASIC、ADVANCED、EXPERT、MASTER、ULTIMA、WORLD'S END，应用只映射 `0-4`。
 
 当前职责边界：
 
 - 中二曲库使用独立 schema、provider 和缓存键 `chunithm-catalog`，不把谱面伪装成舞萌 SD/DX。
 - `Song.version` 与谱面 `version` 按 `versions[].version` 向下匹配最近主版本；没有可匹配项时保留原始数字。
 - 首版搜索仅使用歌曲 ID、曲名、艺术家和谱师，不拉取别名，也不提供高级筛选。
-- 曲绘地址为 `https://assets2.lxns.net/chunithm/jacket/{song_id}.png`；WORLD'S END 使用谱面 `origin_id`。列表只加载可见项并使用磁盘缓存，避免触发素材访问频率限制。
+- 曲绘地址为 `https://assets2.lxns.net/chunithm/jacket/{song_id}.png`。列表只加载可见项并使用磁盘缓存，避免触发素材访问频率限制。
+- WORLD'S END 与舞萌宴会场同属娱乐谱面，不纳入查分范围；Provider 在领域映射前过滤 `difficulty=5`，过滤后没有常规谱面的歌曲也不会进入曲库。
 - 当前仅有无成绩临时账号与公共曲库；OAuth、玩家信息、成绩、同步、收藏品和歌曲详情继续按 TODO #134-#136 推进。
 
 ## LXNS OAuth / 个人 API（读写绑定）

@@ -2,7 +2,7 @@ import type { DataSource, GameVersion } from './models';
 
 export const CHUNITHM_CATALOG_RESOURCE_KEY = 'chunithm-catalog';
 
-export type ChunithmLevelIndex = 0 | 1 | 2 | 3 | 4 | 5;
+export type ChunithmLevelIndex = 0 | 1 | 2 | 3 | 4;
 
 export type ChunithmDifficulty = {
   difficulty: ChunithmLevelIndex;
@@ -11,9 +11,6 @@ export type ChunithmDifficulty = {
   noteDesigner?: string;
   versionId: number;
   versionTitle: string;
-  originId?: number;
-  kanji?: string;
-  star?: number;
 };
 
 export type ChunithmSong = {
@@ -50,12 +47,4 @@ export const CHUNITHM_DIFFICULTY_LABELS: Record<ChunithmLevelIndex, string> = {
   2: 'EXPERT',
   3: 'MASTER',
   4: 'ULTIMA',
-  5: "WORLD'S END",
 };
-
-export function chunithmJacketId(song: ChunithmSong): number {
-  const worldsEnd = song.difficulties.find(
-    (difficulty) => difficulty.difficulty === 5 && difficulty.originId !== undefined,
-  );
-  return worldsEnd?.originId ?? song.id;
-}
