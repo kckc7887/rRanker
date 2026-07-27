@@ -82,10 +82,10 @@ export const GAME_OPTIONS: GameOption[] = [
     pendingDetail: '',
     providers: [
       {
-        id: 'chunithm-temp',
-        title: '临时账号',
-        detail: '无成绩 · 当前仅开放曲库',
-        icon: chunithmIcon,
+        id: 'lxns',
+        title: '落雪查分器',
+        detail: 'OAuth 授权（粘贴授权码）',
+        icon: lxnsIcon,
         available: true,
       },
     ],

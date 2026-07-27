@@ -41,6 +41,7 @@ function accountIdBelongsToGame(accountId: string, gameId: GameId): boolean {
 
 function accountIdFromResourceKey(key: string): string | null {
   if (key.startsWith('score:')) return key.slice('score:'.length);
+  if (key.startsWith('chunithm-score:')) return key.slice('chunithm-score:'.length);
   if (key.startsWith('account-avatar:')) return key.slice('account-avatar:'.length);
   return null;
 }

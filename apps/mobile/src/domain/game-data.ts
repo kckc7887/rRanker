@@ -1,6 +1,7 @@
 import type { GameId, ProviderId } from './game-bind-options';
 import type { GameProfile } from './game-profile';
 import type { DataSource, Player, ScoreRecord, ScoreSnapshot } from './models';
+import type { ChunithmPlayer, ChunithmScore } from './chunithm-personal';
 
 /** 通用 BestN 分区；具体谱面条目仍可按游戏扩展。 */
 export type BestListSection = {
@@ -55,6 +56,14 @@ export type GamePayload =
         fullCombo: [number, number, number, number];
         phi: [number, number, number, number];
       };
+    }
+  | {
+      kind: 'chunithm';
+      player: ChunithmPlayer | null;
+      scores: ChunithmScore[];
+      playerScore: PlayerScoreSummary;
+      source: DataSource;
+      hasSyncedData: boolean;
     }
   | {
       kind: 'empty';

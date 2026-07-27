@@ -3,7 +3,6 @@ import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
 import {
-  createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaimaiBoundAccount,
   createMaxedMaimaiTestAccount,
@@ -16,7 +15,6 @@ import { NotificationProvider } from '@/components/AppNotification';
 
 const mockUpsertDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveDemoAccount = jest.fn(async (_accountId?: string) => undefined);
-const mockEnableChunithmTempAccount = jest.fn(async () => undefined);
 const mockRemoveChunithmTempAccount = jest.fn(async () => undefined);
 const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockSetActiveAccountId = jest.fn(async (_accountId?: string | null) => undefined);
@@ -101,7 +99,6 @@ jest.mock('@/storage/demo-account-store', () => ({
 }));
 jest.mock('@/storage/chunithm-temp-account-store', () => ({
   ChunithmTempAccountStore: jest.fn(() => ({
-    enable: () => mockEnableChunithmTempAccount(),
     remove: () => mockRemoveChunithmTempAccount(),
   })),
 }));
@@ -224,16 +221,15 @@ describe('M3A game account management', () => {
     expect(mockUpsertDemoAccount).not.toHaveBeenCalled();
   });
 
-  it('adds the persistent Chunithm temporary account and enters it', async () => {
+  it('opens the LXNS login sheet instead of adding a new Chunithm temporary account', async () => {
     mockExpandedGameId = 'chunithm';
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
-    await fireEvent.press(screen.getByLabelText('临时账号'));
+    await fireEvent.press(screen.getByLabelText('落雪查分器'));
 
-    await waitFor(() => expect(mockEnableChunithmTempAccount).toHaveBeenCalledTimes(1));
-    const account = mockUpsertBoundAccount.mock.calls[0]?.[0] as BoundAccount;
-    expect(account).toEqual(createChunithmTempAccount());
-    expect(mockSwitchBoundAccount).toHaveBeenCalledWith(account.id, undefined);
+    expect(screen.getByText('登录查分器')).toBeTruthy();
+    expect(screen.getByText('用于绑定 中二节奏')).toBeTruthy();
+    expect(mockUpsertBoundAccount).not.toHaveBeenCalled();
   });
 
   it('renames a local player from its account card', async () => {

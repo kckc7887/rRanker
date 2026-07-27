@@ -1,8 +1,15 @@
 import { buildLxnsIconUrl } from '@/domain/account-avatar';
 import type { BoundAccount } from '@/domain/bound-account';
+import {
+  buildChunithmMapIconUrl,
+  CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+  chunithmPersonalResourceKey,
+  type ChunithmPersonalSnapshot,
+} from '@/domain/chunithm-personal';
 import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
 import type { ProviderSession } from '@/providers/contracts';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
+import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { applyLxnsTokenRotation } from '@/state/session-store';
@@ -31,13 +38,27 @@ async function resolveLxnsAvatarUrl(
   account: BoundAccount,
   session: ProviderSession | undefined,
 ): Promise<string | null> {
-  const snapshot = await repository.getLatest(account.id);
-  const fromSnapshot = buildLxnsIconUrl(snapshot?.player.presentation?.iconId);
+  const fromSnapshot = account.gameId === 'chunithm'
+    ? buildChunithmMapIconUrl((
+      await repository.getResource<ChunithmPersonalSnapshot>(
+        chunithmPersonalResourceKey(account.id),
+        CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+      )
+    )?.player?.map_icon?.id)
+    : buildLxnsIconUrl((await repository.getLatest(account.id))?.player.presentation?.iconId);
   if (fromSnapshot) return fromSnapshot;
 
   if (session?.mode !== 'lxns-oauth') return null;
 
   try {
+    if (account.gameId === 'chunithm') {
+      const provider = new ChunithmScoreProvider(
+        session,
+        (next) => applyLxnsTokenRotation(account.id, next),
+      );
+      const player = await provider.getPlayer();
+      return buildChunithmMapIconUrl(player?.map_icon?.id);
+    }
     const provider = new LxnsScoreProvider(
       session,
       (next) => applyLxnsTokenRotation(account.id, next),

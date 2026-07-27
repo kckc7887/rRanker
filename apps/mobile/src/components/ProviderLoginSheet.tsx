@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Image,
   Linking,
@@ -12,16 +12,24 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createMaimaiBoundAccount, createPhigrosBoundAccount, LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
-import type { ProviderOption } from '@/domain/game-bind-options';
+import {
+  CHUNITHM_TEMP_ACCOUNT_ID,
+  createMaimaiBoundAccount,
+  createPhigrosBoundAccount,
+  LOCAL_MAIMAI_ACCOUNT_ID,
+  type BoundAccount,
+} from '@/domain/bound-account';
+import type { GameId, ProviderOption } from '@/domain/game-bind-options';
+import { reusableLxnsAccounts } from '@/domain/lxns-account-reuse';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { ProviderError } from '@/providers/errors';
 import type { ProviderSession } from '@/providers/contracts';
 import { beginLxnsAuthorize, exchangeLxnsAuthorizationCode } from '@/providers/lxns-oauth';
-import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { PhigrosScoreProvider, type DeviceCodeResult } from '@/providers/phigros-score-provider';
+import { bindLxnsAccount, type LxnsBindingResult } from '@/services/lxns-account-binding';
 import { validateAndActivateSession } from '@/services/session-validation';
+import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
@@ -29,16 +37,19 @@ import { useAppTheme } from '@/theme/app-theme';
 
 const auth = new DivingFishAuthProvider();
 const sessions = new SecureSessionStore();
+const chunithmTempAccount = new ChunithmTempAccountStore();
 
 export function ProviderLoginSheet({
   visible,
   provider,
+  gameId,
   gameTitle,
   onClose,
   onSuccess,
 }: {
   visible: boolean;
   provider: ProviderOption | null;
+  gameId: GameId;
   gameTitle: string;
   onClose: () => void;
   onSuccess: () => void;
@@ -46,6 +57,10 @@ export function ProviderLoginSheet({
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const setSession = useSession((s) => s.setSession);
+  const boundAccounts = useSession((s) => s.boundAccounts);
+  const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
+  const credentialIdsByAccountId = useSession((s) => s.credentialIdsByAccountId);
+  const removeBoundAccount = useSession((s) => s.removeBoundAccount);
   const boundMaimaiCount = useSession((s) => s.boundAccounts.filter(
     (account) => account.gameId === 'maimai' && account.id !== LOCAL_MAIMAI_ACCOUNT_ID,
   ).length);
@@ -57,10 +72,26 @@ export function ProviderLoginSheet({
   const [busy, setBusy] = useState(false);
   const [phiDevice, setPhiDevice] = useState<DeviceCodeResult | null>(null);
   const [phiExpiresAt, setPhiExpiresAt] = useState(0);
+  const [showReusableAccounts, setShowReusableAccounts] = useState(false);
   const phiTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isLxns = provider?.id === 'lxns';
   const isPhigros = provider?.id === 'phi-taptap';
+  const reusableAccounts = useMemo(() => {
+    if (!isLxns || (gameId !== 'maimai' && gameId !== 'chunithm')) return [];
+    return reusableLxnsAccounts({
+      targetGameId: gameId,
+      accounts: boundAccounts,
+      sessionsByAccountId,
+      credentialIdsByAccountId,
+    });
+  }, [
+    boundAccounts,
+    credentialIdsByAccountId,
+    gameId,
+    isLxns,
+    sessionsByAccountId,
+  ]);
 
   const reset = () => {
     setUsername('');
@@ -71,6 +102,7 @@ export function ProviderLoginSheet({
     setBusy(false);
     setPhiDevice(null);
     setPhiExpiresAt(0);
+    setShowReusableAccounts(false);
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
   };
 
@@ -88,13 +120,11 @@ export function ProviderLoginSheet({
   };
 
   const validateAndActivate = async (newSession: ProviderSession) => {
-    const providerId = provider?.id === 'lxns' ? 'lxns' : 'diving-fish';
+    const providerId = 'diving-fish';
     try {
       await validateAndActivateSession(newSession, {
         createProvider: (session) => (
-          providerId === 'lxns'
-            ? new LxnsScoreProvider(session)
-            : new DivingFishProvider(session)
+          new DivingFishProvider(session)
         ),
         save: async (sessionToSave, player) => {
           const account = createMaimaiBoundAccount({
@@ -130,6 +160,24 @@ export function ProviderLoginSheet({
     }
   };
 
+  const activateLxnsBinding = async (result: LxnsBindingResult) => {
+    const rating = Number(result.account.scoreDisplay);
+    setSession(result.session, {
+      accountId: result.account.id,
+      credentialId: result.credentialId,
+      displayName: result.account.displayName,
+      rating: Number.isFinite(rating) ? rating : null,
+      providerId: 'lxns',
+      gameId: result.account.gameId,
+      avatarUrl: result.account.avatarUrl,
+    });
+    if (result.account.gameId === 'chunithm') {
+      removeBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
+      await chunithmTempAccount.remove().catch(() => undefined);
+    }
+    invalidateAll();
+  };
+
   const openLxnsAuthorize = async () => {
     setBusy(true);
     setMessage('正在打开落雪授权页…');
@@ -150,7 +198,35 @@ export function ProviderLoginSheet({
     setMessage('正在换取令牌并验证成绩…');
     try {
       const newSession = await exchangeLxnsAuthorizationCode(authCode);
-      await validateAndActivate(newSession);
+      const result = await bindLxnsAccount({
+        gameId: gameId === 'chunithm' ? 'chunithm' : 'maimai',
+        session: newSession,
+      });
+      await activateLxnsBinding(result);
+      reset();
+      onSuccess();
+    } catch (error) {
+      setMessage(messageFor(error));
+      setBusy(false);
+    }
+  };
+
+  const connectWithExistingLxns = async (account: BoundAccount) => {
+    const session = sessionsByAccountId[account.id];
+    const credentialId = credentialIdsByAccountId[account.id];
+    if (session?.mode !== 'lxns-oauth' || !credentialId) {
+      setMessage('已有落雪账号凭据不可用，请重新授权');
+      return;
+    }
+    setBusy(true);
+    setMessage(`正在使用「${account.displayName}」绑定 ${gameTitle}…`);
+    try {
+      const result = await bindLxnsAccount({
+        gameId: gameId === 'chunithm' ? 'chunithm' : 'maimai',
+        session,
+        credentialId,
+      });
+      await activateLxnsBinding(result);
       reset();
       onSuccess();
     } catch (error) {
@@ -366,6 +442,50 @@ export function ProviderLoginSheet({
                 <Text style={styles.security}>
                   Access Token 约 15 分钟过期；刷新令牌保存在系统 SecureStore，不进入 SQLite 或日志。
                 </Text>
+                {reusableAccounts.length > 0 ? (
+                  <View style={[styles.reuseSection, { borderTopColor: theme.border }]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="使用已有落雪账号"
+                      disabled={busy}
+                      onPress={() => setShowReusableAccounts((current) => !current)}
+                      style={({ pressed }) => [
+                        styles.secondary,
+                        { borderColor: theme.accent },
+                        pressed && !busy && styles.secondaryPressed,
+                      ]}
+                    >
+                      <Text style={[styles.secondaryText, { color: theme.accent }]}>
+                        使用已有落雪账号
+                      </Text>
+                    </Pressable>
+                    {showReusableAccounts ? (
+                      <View style={styles.reuseList}>
+                        {reusableAccounts.map((account) => (
+                          <Pressable
+                            key={credentialIdsByAccountId[account.id]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`使用已有落雪账号 ${account.displayName}`}
+                            disabled={busy}
+                            onPress={() => void connectWithExistingLxns(account)}
+                            style={({ pressed }) => [
+                              styles.reuseAccount,
+                              { backgroundColor: theme.surfaceMuted, borderColor: theme.border },
+                              pressed && !busy && styles.secondaryPressed,
+                            ]}
+                          >
+                            <Text style={[styles.reuseName, { color: theme.text }]}>
+                              {account.displayName}
+                            </Text>
+                            <Text style={[styles.hint, { color: theme.textMuted }]}>
+                              已绑定{account.gameId === 'maimai' ? '舞萌 DX' : '中二节奏'}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
               </>
             ) : (
               <>
@@ -478,4 +598,8 @@ const styles = StyleSheet.create({
   hint: { color: '#6B7280', fontSize: 12, lineHeight: 16 },
   security: { color: '#6B7280', fontSize: 12, lineHeight: 18, marginTop: 4 },
   phiStatus: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  reuseSection: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 4, paddingTop: 14, gap: 10 },
+  reuseList: { gap: 8 },
+  reuseAccount: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, gap: 2 },
+  reuseName: { fontSize: 15, fontWeight: '700' },
 });
