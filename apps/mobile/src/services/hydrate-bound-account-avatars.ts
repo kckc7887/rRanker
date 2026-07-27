@@ -3,6 +3,12 @@ import {
   buildLxnsIconUrl,
 } from '@/domain/account-avatar';
 import type { BoundAccount } from '@/domain/bound-account';
+import {
+  buildChunithmMapIconUrl,
+  CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+  chunithmPersonalResourceKey,
+  type ChunithmPersonalSnapshot,
+} from '@/domain/chunithm-personal';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSession } from '@/state/session-store';
 import { syncAllAccountAvatars } from '@/services/resolve-account-avatar';
@@ -20,6 +26,13 @@ export async function resolveBoundAccountAvatarUrl(account: BoundAccount): Promi
   if (account.avatarUrl) return account.avatarUrl;
 
   if (account.providerId === 'lxns') {
+    if (account.gameId === 'chunithm') {
+      const snapshot = await repository.getResource<ChunithmPersonalSnapshot>(
+        chunithmPersonalResourceKey(account.id),
+        CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+      );
+      return buildChunithmMapIconUrl(snapshot?.player?.map_icon?.id);
+    }
     const snapshot = await repository.getLatest(account.id);
     return buildLxnsIconUrl(snapshot?.player.presentation?.iconId);
   }

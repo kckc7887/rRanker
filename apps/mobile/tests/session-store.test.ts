@@ -15,7 +15,12 @@ import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
-import { restoreSession, UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
+import {
+  applyLxnsTokenRotation,
+  restoreSession,
+  UNBOUND_ACCOUNT_ID,
+  useSession,
+} from '@/state/session-store';
 
 vi.mock('expo-secure-store', () => ({
   getItemAsync: vi.fn(async () => null),
@@ -255,14 +260,20 @@ describe('useSession store', () => {
     expect(useSession.getState().scoreProvider).toBeInstanceOf(DivingFishProvider);
   });
 
-  it('restores Phigros RKS precision and challenge metadata from v2 vault', () => {
+  it('restores Phigros RKS precision and challenge metadata from v3 vault', () => {
     const session = { mode: 'phi-session', sessionToken: 'phi-token', playerId: 'phi-player', persistable: true } as const;
     useSession.getState().finishRestore({
-      version: 2,
+      version: 3,
       activeAccountId: 'phigros:phi-taptap:phi-player',
+      credentials: [{
+        id: 'credential:phi',
+        providerId: 'phi-taptap',
+        session,
+      }],
       accounts: [{
         id: 'phigros:phi-taptap:phi-player', gameId: 'phigros', providerId: 'phi-taptap',
-        displayName: 'phi-player', scoreDisplay: '15.4321', challengeModeRank: 523, session,
+        credentialId: 'credential:phi',
+        displayName: 'phi-player', scoreDisplay: '15.4321', challengeModeRank: 523,
       }],
     });
     expect(useSession.getState().boundAccounts[0]).toMatchObject({
@@ -272,24 +283,28 @@ describe('useSession store', () => {
 
   it('restores a multi-account vault', async () => {
     await restoreSession(async () => ({
-      version: 2 as const,
+      version: 3 as const,
       activeAccountId: 'maimai:diving-fish:a1',
+      credentials: [
+        { id: 'credential:a1', providerId: 'diving-fish' as const, session: tokenSessionA },
+        { id: 'credential:b2', providerId: 'diving-fish' as const, session: tokenSessionB },
+      ],
       accounts: [
         {
           id: 'maimai:diving-fish:a1',
           gameId: 'maimai' as const,
           providerId: 'diving-fish' as const,
+          credentialId: 'credential:a1',
           displayName: '账号甲',
           scoreDisplay: '14000',
-          session: tokenSessionA,
         },
         {
           id: 'maimai:diving-fish:b2',
           gameId: 'maimai' as const,
           providerId: 'diving-fish' as const,
+          credentialId: 'credential:b2',
           displayName: '账号乙',
           scoreDisplay: '15000',
-          session: tokenSessionB,
         },
       ],
     }));
@@ -301,11 +316,100 @@ describe('useSession store', () => {
     );
   });
 
+  it('propagates an LXNS token rotation to every account sharing the credential', async () => {
+    const lxnsSession = {
+      mode: 'lxns-oauth',
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      expiresAt: Date.now() + 60_000,
+      persistable: true,
+    } as const;
+    useSession.getState().finishRestore({
+      version: 3,
+      activeAccountId: 'chunithm:lxns:2',
+      credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: lxnsSession }],
+      accounts: [
+        {
+          id: 'maimai:lxns:1',
+          gameId: 'maimai',
+          providerId: 'lxns',
+          credentialId: 'lxns:shared',
+          displayName: '舞萌玩家',
+          scoreDisplay: '15000',
+        },
+        {
+          id: 'chunithm:lxns:2',
+          gameId: 'chunithm',
+          providerId: 'lxns',
+          credentialId: 'lxns:shared',
+          displayName: '中二玩家',
+          scoreDisplay: '17.25',
+        },
+      ],
+    });
+    const rotated = {
+      ...lxnsSession,
+      accessToken: 'access-b',
+      refreshToken: 'refresh-b',
+    };
+
+    await applyLxnsTokenRotation('chunithm:lxns:2', rotated);
+
+    expect(useSession.getState().sessionsByAccountId).toMatchObject({
+      'maimai:lxns:1': rotated,
+      'chunithm:lxns:2': rotated,
+    });
+    expect(useSession.getState().session).toEqual(rotated);
+  });
+
+  it('propagates the final session when reusing one credential for another game', () => {
+    const originalSession = {
+      mode: 'lxns-oauth',
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      expiresAt: Date.now() + 60_000,
+      persistable: true,
+    } as const;
+    const refreshedSession = {
+      ...originalSession,
+      accessToken: 'access-b',
+      refreshToken: 'refresh-b',
+    };
+    useSession.getState().finishRestore({
+      version: 3,
+      activeAccountId: 'maimai:lxns:1',
+      credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: originalSession }],
+      accounts: [{
+        id: 'maimai:lxns:1',
+        gameId: 'maimai',
+        providerId: 'lxns',
+        credentialId: 'lxns:shared',
+        displayName: '舞萌玩家',
+        scoreDisplay: '15000',
+      }],
+    });
+
+    useSession.getState().setSession(refreshedSession, {
+      accountId: 'chunithm:lxns:2',
+      credentialId: 'lxns:shared',
+      displayName: '中二玩家',
+      rating: 17.25,
+      providerId: 'lxns',
+      gameId: 'chunithm',
+    });
+
+    expect(useSession.getState().sessionsByAccountId).toMatchObject({
+      'maimai:lxns:1': refreshedSession,
+      'chunithm:lxns:2': refreshedSession,
+    });
+  });
+
   it('restores a demo account only when it is provided in optional accounts', async () => {
     await restoreSession(
       async () => ({
-        version: 2 as const,
+        version: 3 as const,
         activeAccountId: MAIMAI_TEST_ACCOUNT_ID,
+        credentials: [],
         accounts: [],
       }),
       async () => [createMaxedMaimaiTestAccount()],
@@ -318,8 +422,9 @@ describe('useSession store', () => {
 
   it('falls back to unbound empty when demo is not among optional accounts', async () => {
     await restoreSession(async () => ({
-      version: 2 as const,
+      version: 3 as const,
       activeAccountId: MAIMAI_TEST_ACCOUNT_ID,
+      credentials: [],
       accounts: [],
     }));
     const state = useSession.getState();
@@ -331,7 +436,12 @@ describe('useSession store', () => {
   it('restores an additional local player as the active account', async () => {
     const extra = createLocalMaimaiAccount('离线二号', 13579, 'maimai:local:offline-2');
     await restoreSession(
-      async () => ({ version: 2 as const, activeAccountId: extra.id, accounts: [] }),
+      async () => ({
+        version: 3 as const,
+        activeAccountId: extra.id,
+        credentials: [],
+        accounts: [],
+      }),
       async () => [createLocalMaimaiAccount('默认玩家', 0), extra],
     );
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import {
+  createChunithmBoundAccount,
   createMaimaiBoundAccount,
   createPhigrosBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
@@ -28,12 +29,19 @@ type LxnsOAuthSession = Extract<ProviderSession, { mode: 'lxns-oauth' }>;
 
 export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthSession): Promise<void> {
   const state = useSession.getState();
+  const credentialId = state.credentialIdsByAccountId[accountId];
+  const linkedAccountIds = credentialId
+    ? Object.entries(state.credentialIdsByAccountId)
+      .filter(([, value]) => value === credentialId)
+      .map(([id]) => id)
+    : [accountId];
+  const sessionsByAccountId = { ...state.sessionsByAccountId };
+  for (const linkedAccountId of linkedAccountIds) {
+    sessionsByAccountId[linkedAccountId] = next;
+  }
   useSession.setState({
-    sessionsByAccountId: {
-      ...state.sessionsByAccountId,
-      [accountId]: next,
-    },
-    session: state.activeAccountId === accountId ? next : state.session,
+    sessionsByAccountId,
+    session: linkedAccountIds.includes(state.activeAccountId) ? next : state.session,
   });
   const { SecureSessionStore } = await import('@/storage/secure-session-store');
   await new SecureSessionStore().updateAccountSession(accountId, next);
@@ -119,6 +127,7 @@ export type SessionsByAccountId = Record<string, ProviderSession>;
 
 interface SessionState {
   sessionsByAccountId: SessionsByAccountId;
+  credentialIdsByAccountId: Record<string, string>;
   boundAccounts: BoundAccount[];
   activeAccountId: string;
   activeGameId: GameId;
@@ -131,9 +140,13 @@ interface SessionState {
   session: ProviderSession | null;
   setSession: (session: ProviderSession, accountMeta?: {
     displayName: string;
-    rating: number;
+    rating: number | null;
     playerId?: string;
     providerId?: RemoteProviderId;
+    gameId?: GameId;
+    accountId?: string;
+    credentialId?: string;
+    avatarUrl?: string | null;
   }) => void;
   upsertBoundAccount: (account: BoundAccount) => void;
   updateBoundAccountScore: (
@@ -186,6 +199,7 @@ function upsertAccountList(accounts: BoundAccount[], next: BoundAccount): BoundA
 function unboundState(extra?: Partial<SessionState>) {
   return {
     sessionsByAccountId: {} as SessionsByAccountId,
+    credentialIdsByAccountId: {} as Record<string, string>,
     session: null as ProviderSession | null,
     boundAccounts: [] as BoundAccount[],
     activeAccountId: UNBOUND_ACCOUNT_ID,
@@ -218,6 +232,7 @@ function pickActiveAccount(
 function activateAccount(
   accounts: BoundAccount[],
   sessionsByAccountId: SessionsByAccountId,
+  credentialIdsByAccountId: Record<string, string>,
   preferredId: string | null | undefined,
 ) {
   const boundAccounts = dedupeAccounts(accounts);
@@ -228,6 +243,7 @@ function activateAccount(
   const session = sessionsByAccountId[active.id] ?? null;
   return {
     sessionsByAccountId,
+    credentialIdsByAccountId,
     session,
     boundAccounts,
     activeAccountId: active.id,
@@ -249,6 +265,14 @@ function boundFromStored(account: StoredProviderAccount): BoundAccount {
     });
     return Number.isFinite(rating) ? restored : { ...restored, scoreDisplay: '—' };
   }
+  if (account.gameId === 'chunithm' && account.providerId === 'lxns') {
+    const rating = Number(account.scoreDisplay);
+    return createChunithmBoundAccount({
+      accountId: account.id,
+      displayName: account.displayName,
+      rating: Number.isFinite(rating) ? rating : null,
+    });
+  }
   return createMaimaiBoundAccount({
     providerId: account.providerId,
     displayName: account.displayName,
@@ -258,11 +282,38 @@ function boundFromStored(account: StoredProviderAccount): BoundAccount {
 }
 
 function sessionsMapFromVault(vault: SessionVault): SessionsByAccountId {
+  const credentials = new Map(
+    vault.credentials.map((credential) => [credential.id, credential.session] as const),
+  );
   const map: SessionsByAccountId = {};
   for (const account of vault.accounts) {
-    map[account.id] = account.session;
+    const session = credentials.get(account.credentialId);
+    if (session) map[account.id] = session;
   }
   return map;
+}
+
+function credentialIdsMapFromVault(vault: SessionVault): Record<string, string> {
+  return Object.fromEntries(
+    vault.accounts.map((account) => [account.id, account.credentialId]),
+  );
+}
+
+function sessionsWithSharedCredential(
+  sessionsByAccountId: SessionsByAccountId,
+  credentialIdsByAccountId: Record<string, string>,
+  accountId: string,
+  credentialId: string,
+  session: ProviderSession,
+): SessionsByAccountId {
+  const next = {
+    ...sessionsByAccountId,
+    [accountId]: session,
+  };
+  for (const [linkedAccountId, linkedCredentialId] of Object.entries(credentialIdsByAccountId)) {
+    if (linkedCredentialId === credentialId) next[linkedAccountId] = session;
+  }
+  return next;
 }
 
 export const useSession = create<SessionState>((set, get) => ({
@@ -279,8 +330,13 @@ export const useSession = create<SessionState>((set, get) => ({
         ...get().sessionsByAccountId,
         [phigrosAccount.id]: session,
       };
+      const credentialIdsByAccountId = {
+        ...get().credentialIdsByAccountId,
+        [phigrosAccount.id]: accountMeta?.credentialId ?? `credential:${phigrosAccount.id}`,
+      };
       set({
         sessionsByAccountId,
+        credentialIdsByAccountId,
         session,
         boundAccounts: upsertAccountList(get().boundAccounts, phigrosAccount),
         activeAccountId: phigrosAccount.id,
@@ -295,25 +351,72 @@ export const useSession = create<SessionState>((set, get) => ({
 
     const providerId = accountMeta?.providerId
       ?? (session.mode === 'lxns-oauth' ? 'lxns' : 'diving-fish');
+    if (accountMeta?.gameId === 'chunithm') {
+      const chunithmAccount = createChunithmBoundAccount({
+        accountId: accountMeta.accountId,
+        displayName: accountMeta.displayName,
+        rating: accountMeta.rating,
+        playerId: accountMeta.playerId,
+        avatarUrl: accountMeta.avatarUrl,
+      });
+      const credentialId = accountMeta.credentialId ?? `credential:${chunithmAccount.id}`;
+      const sessionsByAccountId = sessionsWithSharedCredential(
+        get().sessionsByAccountId,
+        get().credentialIdsByAccountId,
+        chunithmAccount.id,
+        credentialId,
+        session,
+      );
+      const credentialIdsByAccountId = {
+        ...get().credentialIdsByAccountId,
+        [chunithmAccount.id]: credentialId,
+      };
+      set({
+        sessionsByAccountId,
+        credentialIdsByAccountId,
+        session,
+        boundAccounts: upsertAccountList(get().boundAccounts, chunithmAccount),
+        activeAccountId: chunithmAccount.id,
+        activeGameId: 'chunithm',
+        activeProviderId: 'lxns',
+        ...emptyProviders(),
+        restoreStatus: 'ready',
+        restoreError: null,
+      });
+      return;
+    }
     const maimaiAccount = createMaimaiBoundAccount({
+      accountId: accountMeta?.accountId,
       providerId,
       displayName: accountMeta?.displayName
         ?? (providerId === 'lxns' ? '落雪玩家' : '水鱼玩家'),
       rating: accountMeta?.rating ?? 0,
       playerId: accountMeta?.playerId,
     });
-    const sessionsByAccountId = {
-      ...get().sessionsByAccountId,
-      [maimaiAccount.id]: session,
+    const visibleMaimaiAccount = accountMeta?.rating === null
+      ? { ...maimaiAccount, scoreDisplay: '—' }
+      : maimaiAccount;
+    const credentialId = accountMeta?.credentialId ?? `credential:${visibleMaimaiAccount.id}`;
+    const sessionsByAccountId = sessionsWithSharedCredential(
+      get().sessionsByAccountId,
+      get().credentialIdsByAccountId,
+      visibleMaimaiAccount.id,
+      credentialId,
+      session,
+    );
+    const credentialIdsByAccountId = {
+      ...get().credentialIdsByAccountId,
+      [visibleMaimaiAccount.id]: credentialId,
     };
     set({
       sessionsByAccountId,
+      credentialIdsByAccountId,
       session,
-      boundAccounts: upsertAccountList(get().boundAccounts, maimaiAccount),
-      activeAccountId: maimaiAccount.id,
+      boundAccounts: upsertAccountList(get().boundAccounts, visibleMaimaiAccount),
+      activeAccountId: visibleMaimaiAccount.id,
       activeGameId: 'maimai',
       activeProviderId: providerId,
-      ...maimaiProviders(providerId, session, maimaiAccount.id),
+      ...maimaiProviders(providerId, session, visibleMaimaiAccount.id),
       restoreStatus: 'ready',
       restoreError: null,
     });
@@ -366,12 +469,19 @@ export const useSession = create<SessionState>((set, get) => ({
     });
   },
   removeBoundAccount: (accountId) => {
-    const { sessionsByAccountId, boundAccounts, activeAccountId } = get();
+    const {
+      sessionsByAccountId,
+      credentialIdsByAccountId,
+      boundAccounts,
+      activeAccountId,
+    } = get();
     const { [accountId]: _removed, ...restSessions } = sessionsByAccountId;
+    const { [accountId]: _removedCredential, ...restCredentialIds } = credentialIdsByAccountId;
     const nextAccounts = dedupeAccounts(boundAccounts.filter((account) => account.id !== accountId));
     set(activateAccount(
       nextAccounts,
       restSessions,
+      restCredentialIds,
       activeAccountId === accountId ? null : activeAccountId,
     ));
   },
@@ -399,7 +509,7 @@ export const useSession = create<SessionState>((set, get) => ({
         || account.providerId === 'maimai-test'
         || account.providerId === 'chunithm-temp',
     );
-    set(activateAccount(kept, {}, kept[0]?.id ?? null));
+    set(activateAccount(kept, {}, {}, kept[0]?.id ?? null));
   },
   finishRestore: (input, optionalAccounts = []) => {
     // 兼容旧单会话 restore
@@ -414,6 +524,7 @@ export const useSession = create<SessionState>((set, get) => ({
       set(activateAccount(
         [...optionalAccounts, pending],
         { [pending.id]: session },
+        { [pending.id]: `credential:${pending.id}` },
         pending.id,
       ));
       return;
@@ -422,15 +533,23 @@ export const useSession = create<SessionState>((set, get) => ({
     const vault = input as SessionVault | null;
     if (vault) {
       const sessionsByAccountId = sessionsMapFromVault(vault);
+      const credentialIdsByAccountId = credentialIdsMapFromVault(vault);
+      const hasFormalChunithmAccount = vault.accounts.some(
+        (account) => account.gameId === 'chunithm' && account.providerId === 'lxns',
+      );
+      const compatibleOptionalAccounts = hasFormalChunithmAccount
+        ? optionalAccounts.filter((account) => account.providerId !== 'chunithm-temp')
+        : optionalAccounts;
       set(activateAccount(
-        [...optionalAccounts, ...vault.accounts.map(boundFromStored)],
+        [...compatibleOptionalAccounts, ...vault.accounts.map(boundFromStored)],
         sessionsByAccountId,
+        credentialIdsByAccountId,
         vault.activeAccountId,
       ));
       return;
     }
 
-    set(activateAccount(optionalAccounts, {}, optionalAccounts[0]?.id ?? null));
+    set(activateAccount(optionalAccounts, {}, {}, optionalAccounts[0]?.id ?? null));
   },
   failRestore: (message) => {
     set({

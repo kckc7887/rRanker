@@ -79,7 +79,7 @@
 - 首版搜索仅使用歌曲 ID、曲名、艺术家和谱师，不拉取别名，也不提供高级筛选。
 - 曲绘地址为 `https://assets2.lxns.net/chunithm/jacket/{song_id}.png`。列表只加载可见项并使用磁盘缓存，避免触发素材访问频率限制。
 - WORLD'S END 与舞萌宴会场同属娱乐谱面，不纳入查分范围；Provider 在领域映射前过滤 `difficulty=5`，过滤后没有常规谱面的歌曲也不会进入曲库。
-- 当前仅有无成绩临时账号与公共曲库；OAuth、玩家信息、成绩、同步、收藏品和歌曲详情继续按 TODO #134-#136 推进。
+- 中二已复用 LXNS PKCE + OOB OAuth，个人玩家和成绩使用独立模型；旧临时账号只作历史兼容，正式绑定后自动移除。
 
 ## LXNS OAuth / 个人 API（读写绑定）
 
@@ -95,6 +95,8 @@
 | `/api/v0/user/maimai/player` | GET | `Authorization: Bearer` | 当前用户玩家信息 |
 | `/api/v0/user/maimai/player/scores` | GET | `Authorization: Bearer` | 当前用户全部成绩 `Score[]` |
 | `/api/v0/user/maimai/player/scores` | POST | `Authorization: Bearer` | 上传 `{ scores: Score[] }`（scope `write_player`） |
+| `/api/v0/user/chunithm/player` | GET | `Authorization: Bearer` | 当前用户中二玩家信息；未同步时允许为空 |
+| `/api/v0/user/chunithm/player/scores` | GET | `Authorization: Bearer` | 当前用户中二全部最佳成绩 |
 
 > player last_verified: 2026-07-15 — 官方 `Player` 契约包含 `name`、`rating`、`friend_code`，以及可空的 `icon.id`、`name_plate.id`、`trophy.{id,name,color}`；头像与姓名框分别使用公共资源 `/icon/{id}.png`、`/plate/{id}.png`。水鱼玩家契约没有头像/姓名框资源 ID，预览不得伪造。
 
@@ -104,6 +106,8 @@ OAuth 约束（官方文档）：
 - Token 成功响应字段在**顶层**；旧 `data.*` 包装已废弃，解析时顶层优先。
 - Token 错误响应为 `{ error, error_description }`，无 `success/code/data`。
 - 用户 API 成功信封：`{ success, code, message, data }`。
+- `read_player` 同时覆盖舞萌和中二个人读取；同一 OAuth 凭据可建立两个独立游戏账号，无需重复授权。
+- SecureStore v3 将游戏账号元数据与远程凭据分离；账号通过 `credentialId` 引用唯一 token。刷新时按凭据原子轮换，解绑单个游戏不会使另一个游戏掉线。
 
 成绩映射：
 
@@ -114,6 +118,8 @@ OAuth 约束（官方文档）：
 - score-hub 的 `fdx` / `fdxp` 分别映射为 LXNS `fsd` / `fsdp`；`fc` 只接受 `fc/fcp/ap/app`；无法确认的曲目、谱面、达成率或枚举计数后跳过。
 - 上传体只包含官方 `Score` 写入字段，按 `{ scores: [...] }` 发送；当前实现保留参考实现兼容字段 `dx_star: 0`，DXScore 缺失时为 `null`。
 - Access Token 到期前自动刷新；刷新返回的新 access/refresh token 必须一起更新内存会话与 SecureStore。401/403 不重试，429/5xx/网络超时沿用可重试错误语义，取消信号立即中止当前或后续目标。
+- 中二 Player/Score 不映射成舞萌 `Player/ScoreRecord`；个人成绩校验允许 `level_index=0-5`，领域映射只保留 BASIC 至 ULTIMA，WORLD'S END 不进入缓存和查分页面。
+- 中二个人快照使用分账号资源键 `chunithm-score:{accountId}`；网络失败可回退最近有效快照，鉴权失败不得使用缓存掩盖。
 
 > last_verified: 2026-07-17 — 按官方舞萌 API 文档复核个人上传端点为 `POST /api/v0/user/maimai/player/scores`，Bearer OAuth，请求体 `{ scores: Score[] }`；官方枚举确认 FDX=`fsd`、FDX+=`fsdp`。自动测试覆盖请求体、ID/谱面/宴会场/FDX 映射、token 轮换、权限错误、重试、取消与多目标部分成功。真实外部账号写入仅人工验证。
 

@@ -74,6 +74,11 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
                 {current ? <Text style={[styles.currentBadge, { color: theme.accent, backgroundColor: theme.accentSoft }]}>当前</Text> : null}
               </View>
               {account.gameId === 'maimai' ? <DxRatingTag rating={ratingNumber(account.scoreDisplay)} display={account.scoreDisplay} /> : null}
+              {account.gameId === 'chunithm' ? (
+                <Text style={[styles.chunithmRating, { color: theme.accent, backgroundColor: theme.accentSoft }]}>
+                  RATING {account.scoreDisplay}
+                </Text>
+              ) : null}
               {account.gameId === 'phigros' ? <PhigrosAccountTags rks={account.scoreDisplay} challengeModeRank={account.challengeModeRank} /> : null}
               <Text style={[styles.providerLine, { color: theme.textMuted }]}>{account.providerTitle}</Text></View>
             </Pressable>
@@ -94,5 +99,6 @@ const styles = StyleSheet.create({
   accountRow: { paddingHorizontal: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   providerIcon: { width: 40, height: 40, borderRadius: 10 }, titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   accountName: { fontSize: 17, fontWeight: '700' }, providerLine: { fontSize: 12, marginTop: 2 }, currentBadge: { fontSize: 11, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  chunithmRating: { alignSelf: 'flex-start', fontSize: 12, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, marginTop: 2 },
   actions: { borderTopWidth: StyleSheet.hairlineWidth, padding: 10, gap: 6 },
 });

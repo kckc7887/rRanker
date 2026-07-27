@@ -68,7 +68,7 @@ export class LxnsScoreProvider implements ScoreProvider {
     return this.session.accessToken;
   }
 
-  private async request(path: string): Promise<unknown> {
+  private async request(path: string, optional = false): Promise<unknown | null> {
     const accessToken = await this.ensureFreshAccessToken();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -80,6 +80,7 @@ export class LxnsScoreProvider implements ScoreProvider {
         },
         signal: controller.signal,
       });
+      if (optional && response.status === 404) return null;
       if (!response.ok) {
         const error = lxnsErrorFromStatus(response.status);
         throw new ProviderError(error.code, `${error.message}（${path}）`, error.retryable, { cause: error });
@@ -90,12 +91,14 @@ export class LxnsScoreProvider implements ScoreProvider {
         throw new ProviderError('upstream_schema', '落雪响应结构与已验证契约不一致', true);
       }
       if (!envelope.data.success) {
+        if (optional && envelope.data.code === 404) return null;
         throw new ProviderError(
           'authentication',
           envelope.data.message ?? '落雪拒绝了本次请求',
           false,
         );
       }
+      if (optional && (envelope.data.data === null || envelope.data.data === undefined)) return null;
       return envelope.data.data;
     } catch (error) {
       if (error instanceof ProviderError) throw error;
@@ -132,6 +135,28 @@ export class LxnsScoreProvider implements ScoreProvider {
     };
   }
 
+  async getOptionalPlayer(): Promise<Player | null> {
+    const data = await this.request('/user/maimai/player', true);
+    if (data === null) return null;
+    const player = LxnsPlayerSchema.safeParse(data);
+    if (!player.success) {
+      throw new ProviderError('upstream_schema', '落雪玩家响应结构与已验证契约不一致', true);
+    }
+    return {
+      id: String(player.data.friend_code),
+      displayName: player.data.name,
+      rating: player.data.rating,
+      presentation: {
+        iconId: player.data.icon?.id,
+        namePlateId: player.data.name_plate?.id,
+        frameId: player.data.frame?.id,
+        trophyName: player.data.trophy?.name,
+        trophyColor: player.data.trophy?.color,
+      },
+      source: this.source(),
+    };
+  }
+
   async getRecords(): Promise<ScoreRecord[]> {
     const data = await this.request('/user/maimai/player/scores');
     if (!Array.isArray(data)) {
@@ -145,6 +170,24 @@ export class LxnsScoreProvider implements ScoreProvider {
       }
       // rRanker 当前成绩模型只有 SD / DX。落雪宴会场的 level_index
       // 按接口契约固定为 0，若继续映射会被错误显示成 BASIC。
+      if (parsed.data.type === 'utage') continue;
+      records.push(mapLxnsScore(parsed.data));
+    }
+    return records;
+  }
+
+  async getOptionalRecords(): Promise<ScoreRecord[]> {
+    const data = await this.request('/user/maimai/player/scores', true);
+    if (data === null) return [];
+    if (!Array.isArray(data)) {
+      throw new ProviderError('upstream_schema', '落雪成绩响应结构与已验证契约不一致', true);
+    }
+    const records: ScoreRecord[] = [];
+    for (const item of data) {
+      const parsed = LxnsScoreSchema.safeParse(item);
+      if (!parsed.success) {
+        throw new ProviderError('upstream_schema', '落雪成绩条目与已验证契约不一致', true);
+      }
       if (parsed.data.type === 'utage') continue;
       records.push(mapLxnsScore(parsed.data));
     }
