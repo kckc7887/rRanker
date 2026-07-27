@@ -27,9 +27,6 @@ const DifficultySchema = z.object({
   level_value: z.number().finite().nonnegative(),
   note_designer: z.string().nullish(),
   version: z.number().int().positive(),
-  origin_id: z.number().int().nonnegative().nullish(),
-  kanji: z.string().nullish(),
-  star: z.number().int().nonnegative().nullish(),
 }).passthrough();
 
 const SongSchema = z.object({
@@ -138,9 +135,23 @@ export function mapChunithmCatalog(input: unknown): ChunithmCatalogSnapshot {
     currentVersion: { id: current.version, title: current.title },
     versions,
     genres: parsed.data.genres.map((item) => ({ id: item.id, title: item.genre })),
-    songs: parsed.data.songs.map((song) => {
+    songs: parsed.data.songs.flatMap((song) => {
       const songVersion = versionAtOrBefore(parsed.data.versions, song.version);
-      return {
+      const difficulties = song.difficulties
+        .filter((difficulty) => difficulty.difficulty <= 4)
+        .map((difficulty): ChunithmDifficulty => {
+          const chartVersion = versionAtOrBefore(parsed.data.versions, difficulty.version);
+          return {
+            difficulty: difficulty.difficulty as ChunithmLevelIndex,
+            level: difficulty.level,
+            levelValue: difficulty.level_value,
+            noteDesigner: difficulty.note_designer ?? undefined,
+            versionId: chartVersion?.version ?? difficulty.version,
+            versionTitle: chartVersion?.title ?? String(difficulty.version),
+          };
+        });
+      if (difficulties.length === 0) return [];
+      return [{
         id: song.id,
         title: song.title,
         artist: song.artist ?? undefined,
@@ -152,21 +163,8 @@ export function mapChunithmCatalog(input: unknown): ChunithmCatalogSnapshot {
         versionTitle: songVersion?.title ?? String(song.version),
         locked: song.locked ?? false,
         disabled: song.disabled ?? false,
-        difficulties: song.difficulties.map((difficulty): ChunithmDifficulty => {
-          const chartVersion = versionAtOrBefore(parsed.data.versions, difficulty.version);
-          return {
-            difficulty: difficulty.difficulty as ChunithmLevelIndex,
-            level: difficulty.level,
-            levelValue: difficulty.level_value,
-            noteDesigner: difficulty.note_designer ?? undefined,
-            versionId: chartVersion?.version ?? difficulty.version,
-            versionTitle: chartVersion?.title ?? String(difficulty.version),
-            originId: difficulty.origin_id ?? undefined,
-            kanji: difficulty.kanji ?? undefined,
-            star: difficulty.star ?? undefined,
-          };
-        }),
-      };
+        difficulties,
+      }];
     }),
     source: source(),
   };

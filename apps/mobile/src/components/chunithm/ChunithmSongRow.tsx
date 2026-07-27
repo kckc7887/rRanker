@@ -3,7 +3,6 @@ import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
-  chunithmJacketId,
   type ChunithmDifficulty,
   type ChunithmLevelIndex,
   type ChunithmSong,
@@ -23,11 +22,10 @@ const DIFFICULTY_THEME: Record<ChunithmLevelIndex, {
   2: { background: '#D6403A', border: '#D6403A', text: '#FFFFFF' },
   3: { background: '#7526CF', border: '#7526CF', text: '#FFFFFF' },
   4: { background: '#17171A', border: '#E83A58', text: '#FFFFFF' },
-  5: { background: '#1767A6', border: '#1767A6', text: '#FFFFFF' },
 };
 
 export function chunithmJacketUrl(song: ChunithmSong): string {
-  return `${CHUNITHM_JACKET_ROOT}/${chunithmJacketId(song)}.png`;
+  return `${CHUNITHM_JACKET_ROOT}/${song.id}.png`;
 }
 
 function difficultyText(difficulty: ChunithmDifficulty): string {
@@ -97,7 +95,7 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
         <View style={styles.difficulties}>
           {difficulties.map((difficulty) => (
             <DifficultyChip
-              key={`${song.id}-${difficulty.difficulty}-${difficulty.originId ?? 'main'}`}
+              key={`${song.id}-${difficulty.difficulty}`}
               difficulty={difficulty}
             />
           ))}

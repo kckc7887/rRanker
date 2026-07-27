@@ -1,7 +1,4 @@
-import {
-  chunithmJacketId,
-  type ChunithmCatalogSnapshot,
-} from '@/domain/chunithm';
+import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
 import {
   ChunithmCatalogProvider,
   mapChunithmCatalog,
@@ -113,17 +110,11 @@ describe('ChunithmCatalogProvider', () => {
     ]);
   });
 
-  it("preserves WORLD'S END metadata and resolves its origin jacket id", () => {
+  it("filters WORLD'S END charts and removes entertainment-only songs", () => {
     const catalog = mapChunithmCatalog(responsePayload);
-    const song = catalog.songs[1]!;
-    expect(song).toMatchObject({ artist: undefined, disabled: true });
-    expect(song.difficulties[0]).toMatchObject({
-      difficulty: 5,
-      originId: 1234,
-      kanji: '避',
-      star: 4,
-    });
-    expect(chunithmJacketId(song)).toBe(1234);
+    expect(catalog.songs.map((song) => song.id)).toEqual([3]);
+    expect(catalog.songs.flatMap((song) => song.difficulties))
+      .not.toContainEqual(expect.objectContaining({ difficulty: 5 }));
   });
 
   it('rejects an invalid upstream envelope', () => {
@@ -146,7 +137,7 @@ describe('ChunithmCatalogProvider', () => {
 
     const result = await service.load<ChunithmCatalogSnapshot>(
       'chunithm-catalog',
-      1,
+      2,
       async () => {
       throw new Error('network');
       },
@@ -154,6 +145,6 @@ describe('ChunithmCatalogProvider', () => {
 
     expect(getResource).toHaveBeenCalledTimes(1);
     expect(result.source).toMatchObject({ kind: 'cache', isStale: true });
-    expect(result.songs).toHaveLength(2);
+    expect(result.songs).toHaveLength(1);
   });
 });
