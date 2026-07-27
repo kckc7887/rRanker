@@ -20,27 +20,35 @@ import {
   formatChunithmRating,
   formatChunithmScore,
   type ChunithmAchievementTone,
+  type ChunithmRank,
   type ChunithmScoreCardData,
 } from '@/domain/chunithm-score-presentation';
 import { useAppTheme } from '@/theme/app-theme';
 
 type GradientColors = readonly [string, string, ...string[]];
+type GradientLocations = readonly [number, number, ...number[]];
 
 export const CHUNITHM_RANK_GRADIENT: GradientColors = [
-  '#73CFFF', '#EFCB63', '#F5A9D7',
+  '#73CFFF', '#EFCB63', '#FF8EC8',
 ];
+export const CHUNITHM_RANK_GRADIENT_LOCATIONS: GradientLocations = [0, 0.38, 1];
 const FLOWING_RANK_GRADIENT: GradientColors = [
   ...CHUNITHM_RANK_GRADIENT, ...CHUNITHM_RANK_GRADIENT, CHUNITHM_RANK_GRADIENT[0],
+];
+const FLOWING_RANK_LOCATIONS: GradientLocations = [
+  0, 0.19, 0.5, 0.501, 0.69, 0.999, 1,
 ];
 
 const BADGE_TONES: Record<Exclude<ChunithmAchievementTone, 'neutral'> | 'rank', {
   border: GradientColors;
   fill: GradientColors;
+  locations?: GradientLocations;
   text: string;
 }> = {
   rank: {
     border: ['#287DA8', '#8C6A14', '#A84F82'],
     fill: CHUNITHM_RANK_GRADIENT,
+    locations: CHUNITHM_RANK_GRADIENT_LOCATIONS,
     text: '#303136',
   },
   rainbow: {
@@ -109,6 +117,7 @@ export function ChunithmGradientScore({
           <LinearGradient
             colors={FLOWING_RANK_GRADIENT}
             end={{ x: 1, y: 0.5 }}
+            locations={FLOWING_RANK_LOCATIONS}
             start={{ x: 0, y: 0.5 }}
             style={StyleSheet.absoluteFill}
           />
@@ -117,6 +126,7 @@ export function ChunithmGradientScore({
         <LinearGradient
           colors={CHUNITHM_RANK_GRADIENT}
           end={{ x: 1, y: 0.5 }}
+          locations={CHUNITHM_RANK_GRADIENT_LOCATIONS}
           start={{ x: 0, y: 0.5 }}
           style={StyleSheet.absoluteFill}
         />
@@ -144,6 +154,7 @@ function GradientBadge({
     <LinearGradient
       colors={colors.border}
       end={{ x: 1, y: 0.5 }}
+      {...(colors.locations ? { locations: colors.locations } : {})}
       start={{ x: 0, y: 0.5 }}
       style={styles.badgeFrame}
       testID={testID}
@@ -151,6 +162,7 @@ function GradientBadge({
       <LinearGradient
         colors={colors.fill}
         end={{ x: 1, y: 0.5 }}
+        {...(colors.locations ? { locations: colors.locations } : {})}
         onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
         start={{ x: 0, y: 0.5 }}
         style={styles.badgeFill}
@@ -172,25 +184,25 @@ function GradientBadge({
   );
 }
 
-function RankBadge({ record }: { record: ChunithmScoreCardData }) {
-  if (chunithmRankUsesGradient(record.rank)) {
+export function RankBadge({ rank }: { rank: ChunithmRank }) {
+  if (chunithmRankUsesGradient(rank)) {
     return (
       <GradientBadge
-        flowing={record.rank === 'SSS+'}
-        label={record.rank}
-        testID={record.rank === 'SSS+' ? 'flowing-chunithm-rank' : `chunithm-rank-${record.rank}`}
+        flowing={rank === 'SSS+'}
+        label={rank}
+        testID={rank === 'SSS+' ? 'flowing-chunithm-rank' : `chunithm-rank-${rank}`}
         tone="rank"
       />
     );
   }
   return (
-    <View style={styles.normalBadge} testID={`chunithm-rank-${record.rank}`}>
-      <Text style={styles.normalBadgeText}>{record.rank}</Text>
+    <View style={styles.normalBadge} testID={`chunithm-rank-${rank}`}>
+      <Text style={styles.normalBadgeText}>{rank}</Text>
     </View>
   );
 }
 
-function AchievementBadge({
+export function AchievementBadge({
   label,
   tone,
   testID,
@@ -254,7 +266,7 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
               levelIndex={record.levelIndex}
               worldsEndLabel={record.worldsEndLabel}
             />
-            <RankBadge record={record} />
+            <RankBadge rank={record.rank} />
           </View>
           <View style={styles.tagRow} testID={`chunithm-achievement-tags-${record.key}`}>
             {achievements.map((achievement) => (
