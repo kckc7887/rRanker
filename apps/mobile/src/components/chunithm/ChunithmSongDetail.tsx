@@ -22,6 +22,7 @@ import { TagEditor } from '@/components/TagEditor';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
   type ChunithmDifficulty,
+  type ChunithmLevelIndex,
   type ChunithmSong,
 } from '@/domain/chunithm';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
@@ -47,6 +48,15 @@ import { chunithmJacketUrl } from './ChunithmSongRow';
 
 const CARD_GAP = 12;
 const CHUNITHM_CHART_TYPE = 'SD' as const;
+
+const DIFFICULTY_CARD_VISUAL: Record<ChunithmLevelIndex, { color: string; tint: string }> = {
+  0: { color: '#4AA58A', tint: '#ECF8F3' },
+  1: { color: '#E27A24', tint: '#FFF6E8' },
+  2: { color: '#D6403A', tint: '#FFF0F0' },
+  3: { color: '#7526CF', tint: '#F3EAFD' },
+  4: { color: '#E83A58', tint: '#FFF0F3' },
+  5: { color: '#7B61FF', tint: '#F3EEFF' },
+};
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
@@ -359,9 +369,9 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
         style={StyleSheet.absoluteFill}
       />
       <View style={styles.heroCopy}>
-        <Text numberOfLines={1} style={styles.songId}>#{song.id}</Text>
-        <Text numberOfLines={1} style={styles.songTitle}>{song.title}</Text>
-        <Text numberOfLines={1} style={styles.artist}>{song.artist ?? '艺术家未知'}</Text>
+        <HorizontalText text={`#${song.id}`} textStyle={styles.songId} />
+        <HorizontalText text={song.title} textStyle={styles.songTitle} />
+        <HorizontalText text={song.artist ?? '艺术家未知'} textStyle={styles.artist} />
       </View>
     </View>
   );
@@ -478,6 +488,7 @@ function DifficultyCard({
   onRetryDetail: () => void;
 }) {
   const theme = useAppTheme();
+  const visual = DIFFICULTY_CARD_VISUAL[difficulty.difficulty];
   const worldsEnd = difficulty.difficulty === 5;
   const worldsEndLabel = worldsEnd
     ? formatChunithmWorldsEndLabel({ kanji: difficulty.kanji, star: difficulty.star })
@@ -489,7 +500,14 @@ function DifficultyCard({
   const searchQuery = `中二节奏 ${song.title} ${difficultyName} 谱面确认`;
   return (
     <View
-      style={[styles.difficultyCard, { width, backgroundColor: theme.surface, borderColor: theme.border }]}
+      style={[
+        styles.difficultyCard,
+        {
+          width,
+          backgroundColor: theme.dark ? theme.surface : visual.tint,
+          borderColor: visual.color,
+        },
+      ]}
       testID={`chunithm-detail-difficulty-${difficulty.difficulty}`}
     >
       <View style={styles.chartHeader}>
@@ -550,12 +568,12 @@ function DifficultyCard({
           )}
           style={({ pressed }) => [
             styles.actionButton,
-            { backgroundColor: theme.accentSoft, borderColor: theme.accent },
+            chartActionStyle(theme.dark, visual, Boolean(practice)),
             pressed && styles.pressed,
             library.isUpdating && styles.disabled,
           ]}
         >
-          <Text style={[styles.actionText, { color: theme.accent }]}>
+          <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, Boolean(practice))]}>
             {practice ? '已加入练习清单' : '加入练习清单'}
           </Text>
         </Pressable>
@@ -565,11 +583,13 @@ function DifficultyCard({
           onPress={() => void openBilibiliChartSearch(searchQuery)}
           style={({ pressed }) => [
             styles.actionButton,
-            { backgroundColor: theme.accentSoft, borderColor: theme.accent },
+            chartActionStyle(theme.dark, visual, false),
             pressed && styles.pressed,
           ]}
         >
-          <Text style={[styles.actionText, { color: theme.accent }]}>搜索谱面确认</Text>
+          <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, false)]}>
+            搜索谱面确认
+          </Text>
         </Pressable>
       </View>
       <View style={[styles.tagBox, { borderTopColor: theme.border }]}>
@@ -589,6 +609,27 @@ function DifficultyCard({
       </View>
     </View>
   );
+}
+
+function chartActionStyle(
+  dark: boolean,
+  visual: { color: string; tint: string },
+  filled: boolean,
+) {
+  if (dark) {
+    return { backgroundColor: visual.color, borderColor: visual.color };
+  }
+  if (!filled) return { backgroundColor: 'transparent', borderColor: visual.color };
+  return { backgroundColor: visual.color, borderColor: visual.color };
+}
+
+function chartActionTextStyle(
+  dark: boolean,
+  visual: { color: string; tint: string },
+  filled: boolean,
+) {
+  if (dark) return { color: '#FFFFFF' };
+  return { color: filled ? '#FFFFFF' : visual.color };
 }
 
 function NotesTable({ notes }: { notes: NonNullable<ChunithmDifficulty['notes']> }) {
@@ -627,6 +668,93 @@ async function openBilibiliChartSearch(query: string): Promise<void> {
   }
 }
 
+function AutoScrollText({ text, textStyle, style, contentContainerStyle }: {
+  text: string;
+  textStyle: object;
+  style?: object;
+  contentContainerStyle?: object;
+}) {
+  const scrollRef = useRef<ScrollView>(null);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [scrolling, setScrolling] = useState(false);
+  const offsetRef = useRef(0);
+  const directionRef = useRef(1);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    offsetRef.current = 0;
+    directionRef.current = 1;
+    setScrolling(false);
+    scrollRef.current?.scrollTo({ x: 0, animated: false });
+  }, [text]);
+
+  useEffect(() => {
+    if (contentWidth <= 0 || containerWidth <= 0) return;
+    const overflow = contentWidth - containerWidth;
+    setScrolling((current) => {
+      if (current) return overflow > 2;
+      return overflow > 8;
+    });
+  }, [contentWidth, containerWidth]);
+
+  useEffect(() => {
+    if (!scrolling || dragging) {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      return;
+    }
+    const maxOffset = Math.max(0, contentWidth - containerWidth);
+    const tick = () => {
+      const next = offsetRef.current + directionRef.current * 0.45;
+      if (next >= maxOffset) directionRef.current = -1;
+      else if (next <= 0) directionRef.current = 1;
+      offsetRef.current = Math.max(0, Math.min(next, maxOffset));
+      scrollRef.current?.scrollTo({ x: offsetRef.current, animated: false });
+      frameRef.current = requestAnimationFrame(tick);
+    };
+    frameRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    };
+  }, [scrolling, dragging, contentWidth, containerWidth]);
+
+  return (
+    <ScrollView
+      contentContainerStyle={contentContainerStyle}
+      horizontal
+      onContentSizeChange={(w) => setContentWidth(w)}
+      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+      onScrollBeginDrag={() => setDragging(true)}
+      onScrollEndDrag={(e) => {
+        offsetRef.current = e.nativeEvent.contentOffset.x;
+        setDragging(false);
+        directionRef.current = 1;
+      }}
+      ref={scrollRef}
+      scrollEnabled={scrolling}
+      scrollEventThrottle={32}
+      showsHorizontalScrollIndicator={false}
+      style={style}
+    >
+      <Text numberOfLines={1} style={textStyle}>{text}</Text>
+    </ScrollView>
+  );
+}
+
+function HorizontalText({ text, textStyle }: { text: string; textStyle: object }) {
+  return (
+    <AutoScrollText
+      contentContainerStyle={styles.singleLineContent}
+      style={styles.singleLine}
+      text={text}
+      textStyle={textStyle}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingBottom: 32 },
@@ -650,6 +778,8 @@ const styles = StyleSheet.create({
   },
   heroPlaceholderText: { color: '#6B7280', fontSize: 60 },
   heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
+  singleLine: { flexGrow: 0 },
+  singleLineContent: { paddingRight: 18 },
   songId: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   songTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900' },
   artist: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
@@ -665,15 +795,20 @@ const styles = StyleSheet.create({
   carouselScroll: { marginTop: 14 },
   carousel: { paddingHorizontal: 20, gap: CARD_GAP, paddingBottom: 4 },
   difficultyCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18,
     gap: 10,
+    shadowColor: '#1A2232',
+    shadowOffset: { width: 0, height: 7 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 4,
   },
-  chartHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  levelBlock: { alignItems: 'flex-end', gap: 1 },
-  level: { fontSize: 23, lineHeight: 27, fontWeight: '900' },
-  constant: { fontSize: 11, fontWeight: '700' },
+  chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  levelBlock: { alignItems: 'flex-end' },
+  level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
+  constant: { fontSize: 11, fontWeight: '600' },
   score: { fontSize: 34, lineHeight: 42, fontWeight: '900', letterSpacing: -0.5 },
   scoreMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   scoreMeta: { fontSize: 12, fontWeight: '700' },
@@ -696,7 +831,7 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     minHeight: 42,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
