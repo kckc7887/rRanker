@@ -8,21 +8,21 @@ import {
   type ChunithmLevelIndex,
   type ChunithmSong,
 } from '@/domain/chunithm';
+import { formatDifficultyConstant } from '@/components/ScoreVisuals';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const CHUNITHM_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
 
 const DIFFICULTY_THEME: Record<ChunithmLevelIndex, {
-  short: string;
   background: string;
   text: string;
 }> = {
-  0: { short: 'BAS', background: '#E8F7EE', text: '#237B4B' },
-  1: { short: 'ADV', background: '#FFF6DB', text: '#9A6900' },
-  2: { short: 'EXP', background: '#FDE9ED', text: '#B12C48' },
-  3: { short: 'MAS', background: '#EEE7FB', text: '#6732A8' },
-  4: { short: 'ULT', background: '#ECEDEF', text: '#2D3037' },
-  5: { short: 'WE', background: '#E6F3FF', text: '#1767A6' },
+  0: { background: '#3E9D6B', text: '#FFFFFF' },
+  1: { background: '#E39124', text: '#FFFFFF' },
+  2: { background: '#D84B68', text: '#FFFFFF' },
+  3: { background: '#7137C8', text: '#FFFFFF' },
+  4: { background: '#2D3037', text: '#FFFFFF' },
+  5: { background: '#1767A6', text: '#FFFFFF' },
 };
 
 export function chunithmJacketUrl(song: ChunithmSong): string {
@@ -30,12 +30,7 @@ export function chunithmJacketUrl(song: ChunithmSong): string {
 }
 
 function difficultyText(difficulty: ChunithmDifficulty): string {
-  if (difficulty.difficulty === 5) {
-    const property = difficulty.kanji?.trim();
-    const stars = difficulty.star === undefined ? '' : ` ★${difficulty.star}`;
-    return `WE${property ? ` ${property}` : ''}${stars}`;
-  }
-  return `${DIFFICULTY_THEME[difficulty.difficulty].short} ${difficulty.levelValue.toFixed(1)}`;
+  return formatDifficultyConstant(difficulty.levelValue);
 }
 
 function DifficultyChip({ difficulty }: { difficulty: ChunithmDifficulty }) {
@@ -143,9 +138,9 @@ const styles = StyleSheet.create({
   },
   difficulties: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   difficulty: {
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
-  difficultyText: { fontSize: 10, fontWeight: '800' },
+  difficultyText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.25 },
 });

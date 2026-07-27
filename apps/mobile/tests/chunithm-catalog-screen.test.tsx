@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { StyleSheet } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
 import {
   chunithmJacketUrl,
@@ -154,6 +155,15 @@ describe('Chunithm catalog screen', () => {
     expect(screen.getByText('共 2 首')).toBeTruthy();
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
     expect(screen.getByText('Only My Railgun')).toBeTruthy();
+    expect(screen.getByText('13.7')).toBeTruthy();
+    expect(screen.getByText('12.4')).toBeTruthy();
+    expect(screen.queryByText(/ULT|MAS/)).toBeNull();
+    expect(StyleSheet.flatten(
+      screen.getByLabelText('ULTIMA，标级 13+，定数 13.7').props.style,
+    )).toEqual(expect.objectContaining({
+      backgroundColor: '#2D3037',
+      borderRadius: 999,
+    }));
     expect(screen.queryByText('高级筛选器')).toBeNull();
     expect(screen.queryAllByRole('button')).toHaveLength(0);
 
@@ -181,7 +191,14 @@ describe('Chunithm catalog screen', () => {
       'https://assets2.lxns.net/chunithm/jacket/314.png',
     );
     const screen = await render(<ChunithmSongRow song={worldsEndSong} />);
-    expect(screen.getByText('WE 避 ★4')).toBeTruthy();
+    expect(screen.getByText('13.7')).toBeTruthy();
+    expect(screen.queryByText('WE 避 ★4')).toBeNull();
+    expect(StyleSheet.flatten(
+      screen.getByLabelText("WORLD'S END，标级 13+，定数 13.7").props.style,
+    )).toEqual(expect.objectContaining({
+      backgroundColor: '#1767A6',
+      borderRadius: 999,
+    }));
     expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 });
