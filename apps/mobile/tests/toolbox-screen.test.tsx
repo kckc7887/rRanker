@@ -28,7 +28,12 @@ jest.mock('@/state/toolbox-pins', () => ({
     hydrate: typeof mockHydratePins;
     togglePinnedTool: typeof mockTogglePinnedTool;
   }) => unknown) => selector({
-    pinnedToolIdsByGame: { maimai: mockPinnedToolIds, phigros: [], test: [] },
+    pinnedToolIdsByGame: {
+      maimai: mockPinnedToolIds,
+      chunithm: [],
+      phigros: [],
+      test: [],
+    },
     hydrate: mockHydratePins,
     togglePinnedTool: mockTogglePinnedTool,
   }),

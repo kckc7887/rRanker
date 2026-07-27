@@ -3,17 +3,21 @@ import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
 import {
+  createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaimaiBoundAccount,
   createMaxedMaimaiTestAccount,
   createTestBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
+import type { GameId } from '@/domain/game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
 import { NotificationProvider } from '@/components/AppNotification';
 
 const mockUpsertDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveDemoAccount = jest.fn(async (_accountId?: string) => undefined);
+const mockEnableChunithmTempAccount = jest.fn(async () => undefined);
+const mockRemoveChunithmTempAccount = jest.fn(async () => undefined);
 const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockSetActiveAccountId = jest.fn(async (_accountId?: string | null) => undefined);
 const mockClearSnapshots = jest.fn(async () => undefined);
@@ -25,6 +29,9 @@ const mockRenameLocalAccount = jest.fn();
 const mockUpsertLocalAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveLocalAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockRemoveQueries = jest.fn();
+const mockSwitchBoundAccount = jest.fn(
+  (accountId: string, _options?: unknown) => mockSelectBoundAccount(accountId),
+);
 const mockClearOrder: string[] = [];
 const mockSession: ProviderSession = { mode: 'jwt', value: 'token', persistable: true };
 const mockAccount = createMaimaiBoundAccount({
@@ -37,6 +44,7 @@ const mockLocalAccount = createLocalMaimaiAccount('本地玩家', 0);
 const mockTestAccount = createMaxedMaimaiTestAccount();
 const mockEmptyGameAccount = createTestBoundAccount();
 let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount];
+let mockExpandedGameId: GameId = 'maimai';
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -91,6 +99,17 @@ jest.mock('@/storage/demo-account-store', () => ({
   DEFAULT_DEMO_PLAYER_NAME: '示例账号',
   isMaimaiDemoAccountId: (accountId: string) => accountId === 'maimai:test' || accountId.startsWith('maimai:test:'),
 }));
+jest.mock('@/storage/chunithm-temp-account-store', () => ({
+  ChunithmTempAccountStore: jest.fn(() => ({
+    enable: () => mockEnableChunithmTempAccount(),
+    remove: () => mockRemoveChunithmTempAccount(),
+  })),
+}));
+jest.mock('@/services/switch-bound-account', () => ({
+  switchBoundAccount: (accountId: string, options?: unknown) => (
+    mockSwitchBoundAccount(accountId, options)
+  ),
+}));
 jest.mock('@/state/query-client', () => ({ queryClient: {
   invalidateQueries: jest.fn(),
   setQueriesData: jest.fn(),
@@ -116,11 +135,11 @@ jest.mock('@/state/session-store', () => {
 });
 jest.mock('@/state/game-picker-ui', () => ({
   useGamePickerUi: (selector: (state: {
-    expandedGameId: 'maimai';
+    expandedGameId: GameId;
     setExpandedGameId: () => void;
     toggleExpandedGameId: () => void;
   }) => unknown) => selector({
-    expandedGameId: 'maimai',
+    expandedGameId: mockExpandedGameId,
     setExpandedGameId: jest.fn(),
     toggleExpandedGameId: jest.fn(),
   }),
@@ -134,7 +153,12 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
 
 describe('M3A game account management', () => {
-  beforeEach(() => { jest.clearAllMocks(); mockClearOrder.length = 0; mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount]; });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockClearOrder.length = 0;
+    mockExpandedGameId = 'maimai';
+    mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount];
+  });
 
   const renderScreen = () => render(
     <NotificationProvider>
@@ -200,6 +224,18 @@ describe('M3A game account management', () => {
     expect(mockUpsertDemoAccount).not.toHaveBeenCalled();
   });
 
+  it('adds the persistent Chunithm temporary account and enters it', async () => {
+    mockExpandedGameId = 'chunithm';
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    await fireEvent.press(screen.getByLabelText('临时账号'));
+
+    await waitFor(() => expect(mockEnableChunithmTempAccount).toHaveBeenCalledTimes(1));
+    const account = mockUpsertBoundAccount.mock.calls[0]?.[0] as BoundAccount;
+    expect(account).toEqual(createChunithmTempAccount());
+    expect(mockSwitchBoundAccount).toHaveBeenCalledWith(account.id, undefined);
+  });
+
   it('renames a local player from its account card', async () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('修改名称 本地玩家'));
@@ -241,7 +277,7 @@ describe('M3A game account management', () => {
     expect(mockRemoveAccount).toHaveBeenCalledWith(mockAccount.id);
     expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id);
     expect(mockClearOrder).toEqual(['credentials', 'cache']);
-    expect(mockRemoveQueries).toHaveBeenCalledTimes(5);
+    expect(mockRemoveQueries).toHaveBeenCalledTimes(6);
     expect(mockRemoveQueries).toHaveBeenCalledWith({ queryKey: ['detailed-catalog'] });
     expect(mockRemoveQueries).not.toHaveBeenCalledWith({ queryKey: ['user-library'] });
   });
@@ -266,7 +302,7 @@ describe('M3A game account management', () => {
     await waitFor(() => expect(screen.getByText('部分清除失败（缓存），其余项目已清除，请重试')).toBeTruthy());
     expect(mockClearUserData).toHaveBeenCalledTimes(1);
     expect(mockRemoveBoundAccount).toHaveBeenCalledTimes(1);
-    expect(mockRemoveQueries).toHaveBeenCalledTimes(5);
+    expect(mockRemoveQueries).toHaveBeenCalledTimes(6);
     expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
   });
 });

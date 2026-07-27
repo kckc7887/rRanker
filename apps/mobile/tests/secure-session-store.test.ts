@@ -1,4 +1,8 @@
-import { LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
+import {
+  CHUNITHM_TEMP_ACCOUNT_ID,
+  LOCAL_MAIMAI_ACCOUNT_ID,
+  MAIMAI_TEST_ACCOUNT_ID,
+} from '@/domain/bound-account';
 import type { StoredProviderAccount } from '@/storage/secure-session-store';
 
 const secure = vi.hoisted(() => ({ values: new Map<string, string>() }));
@@ -42,6 +46,14 @@ describe('SecureSessionStore 内置账号兼容', () => {
     await store.setActiveAccountId('maimai:local:second');
     const vault = await store.loadVault();
     expect(vault.activeAccountId).toBe('maimai:local:second');
+    expect(vault.accounts).toEqual([]);
+  });
+
+  it('允许中二临时账号作为上次活跃账号', async () => {
+    const store = new SecureSessionStore();
+    await store.setActiveAccountId(CHUNITHM_TEMP_ACCOUNT_ID);
+    const vault = await store.loadVault();
+    expect(vault.activeAccountId).toBe(CHUNITHM_TEMP_ACCOUNT_ID);
     expect(vault.accounts).toEqual([]);
   });
 

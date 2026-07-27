@@ -154,7 +154,7 @@ interface SessionState {
 }
 
 function providersForAccount(account: BoundAccount, sessionsByAccountId: SessionsByAccountId) {
-  if (account.gameId === 'test' || !account.providerId) {
+  if (account.gameId === 'test' || account.gameId === 'chunithm' || !account.providerId) {
     return emptyProviders();
   }
   if (account.gameId === 'phigros') {
@@ -395,7 +395,9 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   clearSession: () => {
     const kept = get().boundAccounts.filter(
-      (account) => account.providerId === 'local' || account.providerId === 'maimai-test',
+      (account) => account.providerId === 'local'
+        || account.providerId === 'maimai-test'
+        || account.providerId === 'chunithm-temp',
     );
     set(activateAccount(kept, {}, kept[0]?.id ?? null));
   },

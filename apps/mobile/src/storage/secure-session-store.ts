@@ -1,6 +1,11 @@
 import * as SecureStore from 'expo-secure-store';
 import type { GameId, RemoteProviderId } from '@/domain/game-bind-options';
-import { isLocalMaimaiAccountId, MAIMAI_TEST_ACCOUNT_ID, TEST_ACCOUNT_ID } from '@/domain/bound-account';
+import {
+  CHUNITHM_TEMP_ACCOUNT_ID,
+  isLocalMaimaiAccountId,
+  MAIMAI_TEST_ACCOUNT_ID,
+  TEST_ACCOUNT_ID,
+} from '@/domain/bound-account';
 import { isMaimaiDemoAccountId } from '@/storage/demo-account-store';
 import type { ProviderSession } from '@/providers/contracts';
 
@@ -44,7 +49,10 @@ function parseVault(raw: string): SessionVault | null {
     const accounts = parsed.accounts.filter((account): account is StoredProviderAccount => {
       if (!account || typeof account !== 'object') return false;
       if (typeof account.id !== 'string' || typeof account.displayName !== 'string') return false;
-      if (account.gameId !== 'maimai' && account.gameId !== 'phigros' && account.gameId !== 'test') return false;
+      if (account.gameId !== 'maimai'
+        && account.gameId !== 'chunithm'
+        && account.gameId !== 'phigros'
+        && account.gameId !== 'test') return false;
       if (account.providerId !== 'diving-fish' && account.providerId !== 'lxns' && account.providerId !== 'phi-taptap') return false;
       return isPersistableSession(account.session);
     });
@@ -169,6 +177,7 @@ export class SecureSessionStore {
     const builtin = isLocalMaimaiAccountId(accountId)
       || isMaimaiDemoAccountId(accountId)
       || accountId === MAIMAI_TEST_ACCOUNT_ID
+      || accountId === CHUNITHM_TEMP_ACCOUNT_ID
       || accountId === TEST_ACCOUNT_ID;
     if (!builtin && !vault.accounts.some((account) => account.id === accountId)) return;
     await this.saveVault({ ...vault, activeAccountId: accountId });

@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useMemo } from 'react';
+import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { router, type Href } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
@@ -12,18 +12,27 @@ import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
+import { ChunithmSongRow } from '@/components/chunithm/ChunithmSongRow';
+import type { ChunithmSong } from '@/domain/chunithm';
 import { parseConstantBound } from '@/domain/maimai-filters';
 import { phigrosLevelToDifficulty } from '@/domain/phigros-filters';
 import type { Chart, ChartType, DataSource, Song } from '@/domain/models';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useCatalogFilter } from '@/state/catalog-filter';
 import { usePhigrosCatalogFilter } from '@/state/phigros-catalog-filter';
-import { buildSongSearchIndex, EMPTY_SONG_FILTERS, searchSongs } from '@/utils/search';
+import {
+  buildSearchDocument,
+  buildSongSearchIndex,
+  EMPTY_SONG_FILTERS,
+  searchDocumentMatches,
+  searchSongs,
+} from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
 
 const TYPES: ChartType[] = ['SD', 'DX'];
@@ -69,6 +78,10 @@ export function SearchScreen() {
 
   if (activeGameId === 'phigros') {
     return <PhigrosSearchScreen />;
+  }
+
+  if (activeGameId === 'chunithm') {
+    return <ChunithmSearchScreen />;
   }
 
   if (activeGameId !== 'maimai') {
@@ -175,6 +188,115 @@ const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { song
 });
 
 function songKey(song: Song): string { return song.id; }
+
+function ChunithmSearchScreen() {
+  const query = useChunithmCatalog();
+  const tabBottomInset = useNativeTabBottomInset();
+  const theme = useAppTheme();
+  const [keyword, setKeyword] = useState('');
+  const debouncedKeyword = useDebouncedValue(keyword);
+  const searchDocuments = useMemo(() => new Map(
+    (query.data?.songs ?? []).map((song) => [
+      song.id,
+      buildSearchDocument([
+        String(song.id),
+        song.title,
+        ...(song.artist ? [song.artist] : []),
+        ...song.difficulties.flatMap(
+          (difficulty) => difficulty.noteDesigner ? [difficulty.noteDesigner] : [],
+        ),
+      ]),
+    ] as const),
+  ), [query.data?.songs]);
+  const filtered = useMemo(() => {
+    const songs = query.data?.songs ?? [];
+    if (!debouncedKeyword.trim()) return songs;
+    return songs.filter((song) => {
+      const document = searchDocuments.get(song.id);
+      return document ? searchDocumentMatches(document, debouncedKeyword) : false;
+    });
+  }, [debouncedKeyword, query.data?.songs, searchDocuments]);
+  const isSearching = keyword !== debouncedKeyword;
+  const viewData = query.data && filtered.length > 0
+    ? { songs: filtered, source: query.data.source }
+    : undefined;
+
+  return (
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
+      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
+        <TextInput
+          accessibilityLabel="中二节奏歌曲搜索"
+          autoCapitalize="none"
+          autoCorrect={false}
+          placeholder="曲名 / ID / 曲师 / 谱师"
+          placeholderTextColor={theme.textMuted}
+          value={keyword}
+          onChangeText={setKeyword}
+          style={[
+            styles.searchBox,
+            { backgroundColor: theme.input, borderColor: theme.border, color: theme.text },
+          ]}
+        />
+        <Text style={[styles.resultCount, { color: theme.textMuted }]}>
+          {isSearching ? '正在搜索…' : `共 ${filtered.length} 首`}
+        </Text>
+      </View>
+      <QueryStateView<{ songs: ChunithmSong[]; source: DataSource }>
+        isLoading={query.isLoading}
+        isError={query.isError}
+        isEmpty={!!query.data && filtered.length === 0}
+        error={query.error}
+        onRetry={() => void query.refetch()}
+        emptyText={keyword.trim() ? '搜索结果为空' : '暂无曲库数据'}
+        data={viewData}
+        renderData={(result) => (
+          <ChunithmCatalogList
+            songs={result.songs}
+            source={result.source}
+            tabBottomInset={tabBottomInset}
+          />
+        )}
+      />
+    </View>
+  );
+}
+
+const ChunithmCatalogList = memo(function ChunithmCatalogList({
+  songs,
+  source,
+  tabBottomInset,
+}: {
+  songs: ChunithmSong[];
+  source: DataSource;
+  tabBottomInset: number;
+}) {
+  const renderItem = useCallback<ListRenderItem<ChunithmSong>>(
+    ({ item }) => <ChunithmSongRow song={item} />,
+    [],
+  );
+  const sourceHeader = useMemo(() => (
+    <SourceStatus items={[{
+      key: 'catalog',
+      label: source.label,
+      updatedAt: source.updatedAt,
+      state: source.isStale ? 'cache' : 'live',
+    }]} />
+  ), [source]);
+
+  return (
+    <FlatList
+      testID="chunithm-catalog-results-list"
+      contentInsetAdjustmentBehavior="automatic"
+      data={songs}
+      keyExtractor={(song) => String(song.id)}
+      {...TAB_LIST_CACHE_PROPS}
+      contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 20 }]}
+      scrollIndicatorInsets={{ bottom: tabBottomInset }}
+      ListHeaderComponent={sourceHeader}
+      renderItem={renderItem}
+    />
+  );
+});
 
 function PhigrosSearchScreen() {
   const query = usePhigrosCatalog();

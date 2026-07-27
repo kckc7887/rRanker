@@ -18,22 +18,29 @@ describe('pinned tool preferences', () => {
       version: 1,
       pinnedToolIdsByGame: {
         maimai: ['rating', 'rating', 'unknown', 3],
+        chunithm: ['rating'],
         phigros: ['rating'],
         test: [],
       },
-    })).toEqual({ maimai: ['rating'], phigros: [], test: [] });
+    })).toEqual({ maimai: ['rating'], chunithm: [], phigros: [], test: [] });
   });
 
   it('keeps valid plate ids only for games with a plate tool', () => {
     expect(parseHomePinPreferences({
       version: 1,
-      pinnedToolIdsByGame: { maimai: [], phigros: [], test: [] },
+      pinnedToolIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
       pinnedPlateIdsByGame: {
         maimai: [6101, 6101, -1, 1.5, '6102'],
+        chunithm: [6101],
         phigros: [6101],
         test: [],
       },
-    }).pinnedPlateIdsByGame).toEqual({ maimai: [6101], phigros: [], test: [] });
+    }).pinnedPlateIdsByGame).toEqual({
+      maimai: [6101],
+      chunithm: [],
+      phigros: [],
+      test: [],
+    });
   });
 
   it('migrates existing tool-only preferences with empty plate pins', () => {
@@ -41,8 +48,8 @@ describe('pinned tool preferences', () => {
       version: 1,
       pinnedToolIdsByGame: { maimai: ['rating'], phigros: [], test: [] },
     })).toEqual({
-      pinnedToolIdsByGame: { maimai: ['rating'], phigros: [], test: [] },
-      pinnedPlateIdsByGame: { maimai: [], phigros: [], test: [] },
+      pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], test: [] },
+      pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
     });
   });
 
@@ -50,12 +57,32 @@ describe('pinned tool preferences', () => {
     const storage = new MemoryStore();
     const store = new PinnedToolPreferencesStore(storage);
     await store.save({
-      pinnedToolIdsByGame: { maimai: ['rating', 'versions'], phigros: [], test: [] },
-      pinnedPlateIdsByGame: { maimai: [6101, 6102], phigros: [], test: [] },
+      pinnedToolIdsByGame: {
+        maimai: ['rating', 'versions'],
+        chunithm: [],
+        phigros: [],
+        test: [],
+      },
+      pinnedPlateIdsByGame: {
+        maimai: [6101, 6102],
+        chunithm: [],
+        phigros: [],
+        test: [],
+      },
     });
     await expect(store.load()).resolves.toEqual({
-      pinnedToolIdsByGame: { maimai: ['rating', 'versions'], phigros: [], test: [] },
-      pinnedPlateIdsByGame: { maimai: [6101, 6102], phigros: [], test: [] },
+      pinnedToolIdsByGame: {
+        maimai: ['rating', 'versions'],
+        chunithm: [],
+        phigros: [],
+        test: [],
+      },
+      pinnedPlateIdsByGame: {
+        maimai: [6101, 6102],
+        chunithm: [],
+        phigros: [],
+        test: [],
+      },
     });
   });
 
