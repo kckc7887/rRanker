@@ -15,6 +15,7 @@ import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import {
+  createChunithmTempAccount,
   createAdditionalLocalMaimaiAccountId,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
@@ -36,6 +37,7 @@ import { queryClient } from '@/state/query-client';
 import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
 import { DemoAccountStore } from '@/storage/demo-account-store';
+import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
 import { patchMaimaiPlayerDisplayName } from '@/services/invalidate-account-data';
 import { switchBoundAccount } from '@/services/switch-bound-account';
 import { useNotification } from '@/components/AppNotification';
@@ -45,6 +47,7 @@ const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
 const localAccounts = new LocalAccountStore();
 const demoAccounts = new DemoAccountStore();
+const chunithmTempAccount = new ChunithmTempAccountStore();
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
@@ -72,7 +75,7 @@ export function GameAccountsScreen() {
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
 
   const clearRemoteCaches = () => {
-    for (const key of ['score-snapshot', 'game-data', 'songs', 'detailed-catalog', 'plates']) {
+    for (const key of ['score-snapshot', 'game-data', 'songs', 'detailed-catalog', 'chunithm-catalog', 'plates']) {
       queryClient.removeQueries({ queryKey: [key] });
     }
   };
@@ -183,6 +186,28 @@ export function GameAccountsScreen() {
     }
   };
 
+  const addChunithmTempAccount = async () => {
+    setBusy(true);
+    try {
+      const account = boundAccounts.find((item) => item.providerId === 'chunithm-temp')
+        ?? createChunithmTempAccount();
+      await chunithmTempAccount.enable();
+      upsertBoundAccount(account);
+      setPickerVisible(false);
+      InteractionManager.runAfterInteractions(() => {
+        switchBoundAccount(account.id);
+      });
+    } catch (error) {
+      showNotification({
+        title: '添加失败',
+        message: error instanceof Error ? error.message : '无法添加中二节奏临时账号，请重试。',
+        variant: 'error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveLocalAccountName = async (account: BoundAccount, displayName: string) => {
     await localAccounts.upsert({ id: account.id, displayName });
     renameLocalAccount(account.id, displayName);
@@ -232,6 +257,19 @@ export function GameAccountsScreen() {
     setBusy(false);
   };
 
+  const removeChunithmTempAccount = async (account: BoundAccount) => {
+    setBusy(true);
+    const failures: string[] = [];
+    try { await chunithmTempAccount.remove(); } catch { failures.push('账号'); }
+    removeBoundAccount(account.id);
+    try { await persistActiveAccountId(); } catch { failures.push('当前账号'); }
+    clearRemoteCaches();
+    setMessage(failures.length > 0
+      ? `临时账号已从列表移除，但${failures.join('、')}清理失败`
+      : '已删除中二节奏临时账号');
+    setBusy(false);
+  };
+
   const promptRemoveLocal = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
     title: '删除最后一个本地玩家',
     message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
@@ -270,6 +308,16 @@ export function GameAccountsScreen() {
     ],
   });
 
+  const promptRemoveChunithmTemp = (account: BoundAccount) => showActionNotification({
+    title: '删除临时账号',
+    message: '将移除中二节奏临时账号；当前账号不含成绩数据，之后可重新添加。',
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认删除', tone: 'destructive', onPress: () => removeChunithmTempAccount(account) },
+    ],
+  });
+
   const openPicker = () => {
     setExpandedPickerGameId('maimai');
     setPickerVisible(true);
@@ -288,6 +336,10 @@ export function GameAccountsScreen() {
     }
     if (provider.id === 'maimai-test') {
       void addDemoAccount();
+      return;
+    }
+    if (provider.id === 'chunithm-temp') {
+      void addChunithmTempAccount();
       return;
     }
     setExpandedPickerGameId(gameId);
@@ -329,6 +381,7 @@ export function GameAccountsScreen() {
     const isActive = account.id === activeAccountId;
     const isLocal = account.providerId === 'local';
     const isGeneratedTest = account.providerId === 'maimai-test';
+    const isChunithmTemp = account.providerId === 'chunithm-temp';
     const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
     return (
       <>
@@ -353,6 +406,11 @@ export function GameAccountsScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel={`删除示例账号 ${account.displayName}`}
             disabled={busy} onPress={() => promptRemoveDemo(account)}>
             <Text style={styles.unbind}>删除示例账号</Text>
+          </Pressable>
+        ) : isChunithmTemp ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`删除临时账号 ${account.displayName}`}
+            disabled={busy} onPress={() => promptRemoveChunithmTemp(account)}>
+            <Text style={styles.unbind}>删除临时账号</Text>
           </Pressable>
         ) : isRemote ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}

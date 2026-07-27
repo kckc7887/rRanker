@@ -105,6 +105,10 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     ],
     emptyDetail: 'Phigros 工具正在准备中。',
   },
+  chunithm: {
+    tools: [],
+    emptyDetail: '中二节奏工具正在准备中。',
+  },
   test: {
     tools: [],
     emptyDetail: '测试游戏暂无可用工具。',

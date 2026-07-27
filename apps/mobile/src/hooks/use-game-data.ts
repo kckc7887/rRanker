@@ -35,6 +35,14 @@ export function useGameData() {
   const query = useQuery({
     queryKey: ['game-data', GAME_DATA_QUERY_VERSION, activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'none'],
     queryFn: async (): Promise<GameDataBundle> => {
+      if (activeGameId === 'chunithm') {
+        return {
+          gameId: 'chunithm',
+          providerId: activeProviderId,
+          profile: getGameProfile('chunithm'),
+          payload: emptyGamePayload('chunithm', '临时账号'),
+        };
+      }
       if (activeGameId === 'test') {
         return {
           gameId: 'test',

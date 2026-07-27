@@ -1,4 +1,6 @@
 import {
+  CHUNITHM_TEMP_ACCOUNT_ID,
+  createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
   createTestBoundAccount,
@@ -163,6 +165,18 @@ describe('useSession store', () => {
     expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
   });
 
+  it('switches to the no-score Chunithm temporary account', () => {
+    useSession.getState().upsertBoundAccount(createChunithmTempAccount());
+    useSession.getState().selectBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
+    const state = useSession.getState();
+    expect(state.activeAccountId).toBe(CHUNITHM_TEMP_ACCOUNT_ID);
+    expect(state.activeGameId).toBe('chunithm');
+    expect(state.activeProviderId).toBe('chunithm-temp');
+    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
+    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(state.session).toBeNull();
+  });
+
   it('switches to the generated maxed maimai demo account', () => {
     useSession.getState().selectBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
     const state = useSession.getState();
@@ -202,6 +216,7 @@ describe('useSession store', () => {
   });
 
   it('clears remote binds and keeps remaining local/demo accounts', () => {
+    useSession.getState().upsertBoundAccount(createChunithmTempAccount());
     useSession.getState().setSession(jwtSession, { displayName: '尘言', rating: 1 });
     useSession.getState().clearSession();
     const state = useSession.getState();
@@ -209,6 +224,7 @@ describe('useSession store', () => {
     expect(state.scoreProvider).toBeInstanceOf(LocalMaimaiScoreProvider);
     expect(state.boundAccounts.some((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.id === MAIMAI_TEST_ACCOUNT_ID)).toBe(true);
+    expect(state.boundAccounts.some((account) => account.id === CHUNITHM_TEMP_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.providerId === 'diving-fish')).toBe(false);
   });
 

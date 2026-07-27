@@ -10,8 +10,8 @@ export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
 export const MAX_BACKUP_ITEMS = 5000;
 
-const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'phigros', 'test']);
-const GameIdSchema = z.enum(['maimai', 'phigros', 'test']);
+const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'chunithm', 'phigros', 'test']);
+const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'test']);
 
 export interface SongLibraryTarget {
   kind: 'song';

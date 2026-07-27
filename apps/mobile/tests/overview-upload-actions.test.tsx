@@ -64,6 +64,12 @@ jest.mock('@/hooks/use-game-data', () => ({
       providerId: mockProviderId,
       profile: {
         title: '舞萌 DX', ratingLabel: 'DX RATING', ratingDigits: 5,
+        capabilities: {
+          hasCatalog: true,
+          hasRecords: true,
+          hasBestList: true,
+          hasTools: true,
+        },
         bestSections: [{ id: 'b35', title: 'B35' }, { id: 'b15', title: 'B15' }],
       },
       payload: {
@@ -115,12 +121,12 @@ jest.mock('@/state/session-store', () => ({
 }));
 jest.mock('@/state/toolbox-pins', () => ({
   useToolboxPins: (selector: (state: {
-    pinnedToolIdsByGame: { maimai: string[]; phigros: string[]; test: string[] };
-    pinnedPlateIdsByGame: { maimai: number[]; phigros: number[]; test: number[] };
+    pinnedToolIdsByGame: { maimai: string[]; chunithm: string[]; phigros: string[]; test: string[] };
+    pinnedPlateIdsByGame: { maimai: number[]; chunithm: number[]; phigros: number[]; test: number[] };
     hydrate: typeof mockHydratePins;
   }) => unknown) => selector({
-    pinnedToolIdsByGame: { maimai: mockPinnedToolIds, phigros: [], test: [] },
-    pinnedPlateIdsByGame: { maimai: mockPinnedPlateIds, phigros: [], test: [] },
+    pinnedToolIdsByGame: { maimai: mockPinnedToolIds, chunithm: [], phigros: [], test: [] },
+    pinnedPlateIdsByGame: { maimai: mockPinnedPlateIds, chunithm: [], phigros: [], test: [] },
     hydrate: mockHydratePins,
   }),
 }));
@@ -188,7 +194,7 @@ describe('总览上传和同步操作', () => {
   it('工具箱入口描述超过一行时单行省略', async () => {
     mockProviderId = 'local';
     const screen = await render(<OverviewScreen />);
-    const summary = screen.getByText('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 随机歌曲 · 成绩图片');
+    const summary = screen.getByText('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 随机歌曲 · 机厅查找 · 成绩图片');
     expect(summary.props.numberOfLines).toBe(1);
     expect(summary.props.ellipsizeMode).toBe('tail');
   });

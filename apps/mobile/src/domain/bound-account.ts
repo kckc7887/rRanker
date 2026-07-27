@@ -22,6 +22,7 @@ export type BoundAccount = {
 export const TEST_ACCOUNT_ID = 'test:empty';
 export const LOCAL_MAIMAI_ACCOUNT_ID = 'maimai:local';
 export const MAIMAI_TEST_ACCOUNT_ID = 'maimai:test';
+export const CHUNITHM_TEMP_ACCOUNT_ID = 'chunithm:temp';
 
 export function isLocalMaimaiAccountId(accountId: string): boolean {
   return accountId === LOCAL_MAIMAI_ACCOUNT_ID
@@ -48,6 +49,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   local: '本地查分器',
   'maimai-test': '示例查分器',
   'phi-taptap': 'TapTap 云存档',
+  'chunithm-temp': '无成绩临时账号',
 };
 
 export function createTestBoundAccount(): BoundAccount {
@@ -96,6 +98,19 @@ export function createMaxedMaimaiTestAccount(
   };
 }
 
+export function createChunithmTempAccount(): BoundAccount {
+  const profile = getGameProfile('chunithm');
+  return {
+    id: CHUNITHM_TEMP_ACCOUNT_ID,
+    gameId: 'chunithm',
+    providerId: 'chunithm-temp',
+    displayName: '临时账号',
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: '—',
+    providerTitle: PROVIDER_TITLES['chunithm-temp'],
+  };
+}
+
 export function createMaimaiBoundAccount(input: {
   providerId: ProviderId;
   displayName: string;
@@ -133,6 +148,6 @@ export function createPhigrosBoundAccount(input: {
 }
 
 export function groupBoundAccountGameIds(accounts: BoundAccount[]): GameId[] {
-  const order: GameId[] = ['maimai', 'test', 'phigros'];
+  const order: GameId[] = ['maimai', 'chunithm', 'phigros', 'test'];
   return order.filter((gameId) => accounts.some((account) => account.gameId === gameId));
 }

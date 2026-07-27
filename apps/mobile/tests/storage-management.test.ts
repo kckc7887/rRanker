@@ -11,12 +11,12 @@ import {
 } from '@/features/storage-management/expo-system-cache';
 
 describe('storage-clear-prefs', () => {
-  const allowed: StorageClearCategoryId[] = ['maimai', 'phigros', 'shared'];
+  const allowed: StorageClearCategoryId[] = ['maimai', 'chunithm', 'phigros', 'shared'];
 
   it('defaults to all allowed ids when empty', () => {
     expect(parseStorageClearPreferences(null, allowed)).toEqual({
       version: 1,
-      selectedIds: ['maimai', 'phigros', 'shared'],
+      selectedIds: ['maimai', 'chunithm', 'phigros', 'shared'],
     });
   });
 

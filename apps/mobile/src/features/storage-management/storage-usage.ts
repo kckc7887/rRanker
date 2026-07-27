@@ -29,6 +29,7 @@ export type StorageUsageReport = {
 const SEGMENT_COLORS: Record<string, string> = {
   app: '#94A3B8',
   maimai: '#F43F5E',
+  chunithm: '#27A7E7',
   phigros: '#8B5CF6',
   shared: '#0EA5E9',
   test: '#64748B',

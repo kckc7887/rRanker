@@ -1,5 +1,6 @@
 import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
+import { CHUNITHM_CATALOG_RESOURCE_KEY } from '@/domain/chunithm';
 import { clearPhigrosIllustrationStage, phigrosIllustrationStageDirectory } from '@/features/phigros-best-image/load-phigros-image-assets';
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
@@ -20,6 +21,9 @@ export const MAIMAI_CATALOG_RESOURCE_KEYS = [
   'aliases',
   'plates',
   'collections',
+] as const;
+export const CHUNITHM_CATALOG_RESOURCE_KEYS = [
+  CHUNITHM_CATALOG_RESOURCE_KEY,
 ] as const;
 
 export type StorageSegmentId = 'app' | 'shared' | GameId;
@@ -43,6 +47,10 @@ function accountIdFromResourceKey(key: string): string | null {
 
 function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   if (gameId === 'maimai' && (MAIMAI_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
+    return true;
+  }
+  if (gameId === 'chunithm'
+    && (CHUNITHM_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
     return true;
   }
   const accountId = accountIdFromResourceKey(key);
@@ -162,9 +170,17 @@ const phigrosAdapter: GameStorageAdapter = {
   },
 };
 
+const chunithmAdapter: GameStorageAdapter = {
+  gameId: 'chunithm',
+  title: findGame('chunithm')?.title ?? '中二节奏',
+  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'chunithm', false),
+  clear: (snapshots) => clearGameSqlite(snapshots, 'chunithm', false),
+};
+
 /** 新游戏接入：在此注册 measure/clear 即可出现在环形图与勾选列表。 */
 export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   maimaiAdapter,
+  chunithmAdapter,
   phigrosAdapter,
 ];
 

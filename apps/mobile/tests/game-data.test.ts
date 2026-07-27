@@ -36,4 +36,21 @@ describe('per-game data model', () => {
     expect(payload).not.toHaveProperty('playerScore');
     expect(payload).not.toHaveProperty('bestSections');
   });
+
+  it('models the Chunithm temporary account without maimai score fields', () => {
+    const profile = getGameProfile('chunithm');
+    const payload = emptyGamePayload('chunithm', '临时账号');
+    expect(profile.capabilities).toMatchObject({
+      hasCatalog: true,
+      hasRecords: false,
+      hasBestList: false,
+      hasTools: false,
+    });
+    expect(payload).toMatchObject({
+      kind: 'empty',
+      gameId: 'chunithm',
+      displayName: '临时账号',
+    });
+    expect(payload).not.toHaveProperty('records');
+  });
 });
