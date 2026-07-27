@@ -59,99 +59,114 @@ export function ChunithmSyncGuideSheet({
     <AppModal
       animationType="slide"
       onRequestClose={busy ? undefined : onClose}
-      presentationStyle="pageSheet"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      transparent
       visible={visible}
     >
-      <View style={[styles.root, { backgroundColor: theme.background, paddingTop: insets.top }]}>
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>上传中二数据</Text>
-          <Pressable
-            accessibilityLabel="关闭中二同步引导"
-            accessibilityRole="button"
-            disabled={busy}
-            onPress={onClose}
-            style={({ pressed }) => [styles.closeHit, pressed && styles.pressed, busy && styles.disabled]}
-          >
-            <Text style={[styles.close, { color: theme.accent }]}>关闭</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 28 }]}
-          contentInsetAdjustmentBehavior="automatic"
+      <View style={styles.layer} testID="chunithm-sync-guide-layer">
+        <Pressable
+          accessibilityLabel="关闭中二同步引导背景"
+          accessibilityRole="button"
+          disabled={busy}
+          onPress={onClose}
+          style={[StyleSheet.absoluteFill, { backgroundColor: theme.overlay }]}
+        />
+        <View
+          style={[styles.sheet, { backgroundColor: theme.background }]}
+          testID="chunithm-sync-guide-sheet"
         >
-          <Text style={[styles.intro, { color: theme.textSecondary }]}>
-            当前暂不提供应用内上传入口。请按以下步骤通过落雪离线同步，再返回应用读取成绩。
-          </Text>
-
-          <GuideStep number="1" title="配置 HTTP 代理">
-            <Text style={[styles.body, { color: theme.textSecondary }]}>
-              在系统、Wi-Fi 或 APN 设置中挂载以下 HTTP 代理。同步结束后必须关闭代理。
-            </Text>
-            <CopyRow
-              label="服务器"
-              value={CHUNITHM_PROXY_SERVER}
-              onCopy={() => void copy('代理服务器', CHUNITHM_PROXY_SERVER)}
-            />
-            <CopyRow
-              label="端口"
-              value={CHUNITHM_PROXY_PORT}
-              onCopy={() => void copy('代理端口', CHUNITHM_PROXY_PORT)}
-            />
-            <CopyRow
-              label="完整地址"
-              value={CHUNITHM_PROXY_ADDRESS}
-              onCopy={() => void copy('代理完整地址', CHUNITHM_PROXY_ADDRESS)}
-            />
-          </GuideStep>
-
-          <GuideStep number="2" title="在微信中打开离线同步链接">
-            <Text style={[styles.body, { color: theme.textSecondary }]}>
-              将链接发送到安全的微信聊天（如文件传输助手），再从聊天消息中点击。不要把链接粘贴到搜索框。
-            </Text>
-            <View style={[styles.linkBox, { backgroundColor: theme.input, borderColor: theme.border }]}>
-              <Text selectable style={[styles.link, { color: theme.textSecondary }]}>
-                {CHUNITHM_OFFLINE_SYNC_URL}
-              </Text>
-            </View>
+          <View style={[styles.grabber, { backgroundColor: theme.border }]} />
+          <View style={styles.header}>
+            <Text style={[styles.title, { color: theme.text }]}>上传中二数据</Text>
             <Pressable
-              accessibilityLabel="复制中二离线同步链接"
+              accessibilityLabel="关闭中二同步引导"
               accessibilityRole="button"
-              onPress={() => void copy('中二离线同步链接', CHUNITHM_OFFLINE_SYNC_URL)}
-              style={({ pressed }) => [
-                styles.copyWide,
-                { borderColor: theme.accent, backgroundColor: theme.surface },
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.copyText, { color: theme.accent }]}>复制离线同步链接</Text>
-            </Pressable>
-          </GuideStep>
-
-          <GuideStep number="3" title="关闭代理并同步数据">
-            <View style={[styles.warning, { backgroundColor: theme.surfaceMuted }]}>
-              <Text style={[styles.warningText, { color: theme.warning }]}>
-                等待微信页面提示上传完成后，请先自行关闭 HTTP 代理，再点击下方按钮。
-              </Text>
-            </View>
-            <Pressable
-              accessibilityLabel="从同步引导同步中二数据"
-              accessibilityRole="button"
-              accessibilityState={{ disabled: busy }}
               disabled={busy}
-              onPress={() => void sync()}
-              style={({ pressed }) => [
-                styles.sync,
-                { backgroundColor: theme.accent },
-                pressed && !busy && styles.pressed,
-                busy && styles.disabled,
-              ]}
+              onPress={onClose}
+              style={({ pressed }) => [styles.closeHit, pressed && styles.pressed, busy && styles.disabled]}
             >
-              <Text style={styles.syncText}>{busy ? '同步中…' : '同步数据'}</Text>
-              <Text style={styles.syncHint}>落雪咖啡屋</Text>
+              <Text style={[styles.close, { color: theme.accent }]}>关闭</Text>
             </Pressable>
-          </GuideStep>
-        </ScrollView>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 28 }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={[styles.intro, { color: theme.textSecondary }]}>
+              当前暂不提供应用内上传入口。请按以下步骤通过落雪离线同步，再返回应用读取成绩。
+            </Text>
+
+            <GuideStep number="1" title="配置 HTTP 代理">
+              <Text style={[styles.body, { color: theme.textSecondary }]}>
+                在系统、Wi-Fi 或 APN 设置中挂载以下 HTTP 代理。同步结束后必须关闭代理。
+              </Text>
+              <CopyRow
+                label="服务器"
+                value={CHUNITHM_PROXY_SERVER}
+                onCopy={() => void copy('代理服务器', CHUNITHM_PROXY_SERVER)}
+              />
+              <CopyRow
+                label="端口"
+                value={CHUNITHM_PROXY_PORT}
+                onCopy={() => void copy('代理端口', CHUNITHM_PROXY_PORT)}
+              />
+              <CopyRow
+                label="完整地址"
+                value={CHUNITHM_PROXY_ADDRESS}
+                onCopy={() => void copy('代理完整地址', CHUNITHM_PROXY_ADDRESS)}
+              />
+            </GuideStep>
+
+            <GuideStep number="2" title="在微信中打开离线同步链接">
+              <Text style={[styles.body, { color: theme.textSecondary }]}>
+                将链接发送到安全的微信聊天（如文件传输助手），再从聊天消息中点击。不要把链接粘贴到搜索框。
+              </Text>
+              <View style={[styles.linkBox, { backgroundColor: theme.input, borderColor: theme.border }]}>
+                <Text selectable style={[styles.link, { color: theme.textSecondary }]}>
+                  {CHUNITHM_OFFLINE_SYNC_URL}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="复制中二离线同步链接"
+                accessibilityRole="button"
+                onPress={() => void copy('中二离线同步链接', CHUNITHM_OFFLINE_SYNC_URL)}
+                style={({ pressed }) => [
+                  styles.copyWide,
+                  { borderColor: theme.accent, backgroundColor: theme.surface },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.copyText, { color: theme.accent }]}>复制离线同步链接</Text>
+              </Pressable>
+            </GuideStep>
+
+            <GuideStep number="3" title="关闭代理并同步数据">
+              <View style={[styles.warning, { backgroundColor: theme.surfaceMuted }]}>
+                <Text style={[styles.warningText, { color: theme.warning }]}>
+                  等待微信页面提示上传完成后，请先自行关闭 HTTP 代理，再点击下方按钮。
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="从同步引导同步中二数据"
+                accessibilityRole="button"
+                accessibilityState={{ disabled: busy }}
+                disabled={busy}
+                onPress={() => void sync()}
+                style={({ pressed }) => [
+                  styles.sync,
+                  { backgroundColor: theme.accent },
+                  pressed && !busy && styles.pressed,
+                  busy && styles.disabled,
+                ]}
+              >
+                <Text style={styles.syncText}>{busy ? '同步中…' : '同步数据'}</Text>
+                <Text style={styles.syncHint}>落雪咖啡屋</Text>
+              </Pressable>
+            </GuideStep>
+          </ScrollView>
+        </View>
       </View>
     </AppModal>
   );
@@ -213,7 +228,21 @@ function CopyRow({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  layer: { flex: 1, justifyContent: 'flex-end' },
+  sheet: {
+    height: '88%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
+  },
+  grabber: {
+    alignSelf: 'center',
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 10,
+    marginBottom: 4,
+  },
   header: {
     minHeight: 52,
     paddingHorizontal: 20,
