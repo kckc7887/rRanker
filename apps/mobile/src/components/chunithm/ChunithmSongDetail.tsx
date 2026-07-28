@@ -73,7 +73,7 @@ const DIFFICULTY_CARD_VISUAL: Record<ChunithmLevelIndex, {
   3: { color: '#7526CF', tint: '#F3EAFD' },
   // ULTIMA：黑底红边，对齐难度标签
   4: { color: '#E83A58', tint: '#17171A', border: '#E83A58', darkAction: '#E83A58' },
-  5: { color: '#FFFFFF', tint: '#F3EEFF' },
+  5: { color: '#7B61FF', tint: '#F3EEFF' },
 };
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
@@ -561,11 +561,25 @@ function DifficultyCard({
   const visual = DIFFICULTY_CARD_VISUAL[difficulty.difficulty];
   const ultima = difficulty.difficulty === 4;
   const worldsEnd = difficulty.difficulty === 5;
-  const inverted = ultima || worldsEnd;
-  const primaryText = inverted ? '#FFFFFF' : theme.text;
-  const secondaryText = inverted ? 'rgba(255,255,255,0.78)' : theme.textMuted;
-  const tertiaryText = inverted ? 'rgba(255,255,255,0.88)' : theme.textSecondary;
-  const dividerColor = inverted ? 'rgba(255,255,255,0.32)' : theme.border;
+  const specialCard = ultima || worldsEnd;
+  const inverted = ultima;
+  const primaryText = ultima ? '#FFFFFF' : worldsEnd ? '#261C38' : theme.text;
+  const secondaryText = ultima
+    ? 'rgba(255,255,255,0.78)'
+    : worldsEnd
+      ? 'rgba(38,28,56,0.70)'
+      : theme.textMuted;
+  const tertiaryText = ultima
+    ? 'rgba(255,255,255,0.88)'
+    : worldsEnd
+      ? 'rgba(38,28,56,0.82)'
+      : theme.textSecondary;
+  const dividerColor = ultima
+    ? 'rgba(255,255,255,0.32)'
+    : worldsEnd
+      ? 'rgba(38,28,56,0.18)'
+      : theme.border;
+  const actionDark = theme.dark && !worldsEnd;
   const worldsEndLabel = worldsEnd
     ? formatChunithmWorldsEndLabel({ kanji: difficulty.kanji, star: difficulty.star })
     : undefined;
@@ -648,7 +662,12 @@ function DifficultyCard({
           <Text style={[styles.body, { color: secondaryText }]}>物量暂不可用</Text>
           {detailError ? (
             <Pressable accessibilityRole="button" onPress={onRetryDetail}>
-              <Text style={[styles.retryText, { color: inverted ? '#FFFFFF' : theme.accent }]}>
+              <Text
+                style={[
+                  styles.retryText,
+                  { color: ultima ? '#FFFFFF' : worldsEnd ? visual.color : theme.accent },
+                ]}
+              >
                 重试读取单曲详情
               </Text>
             </Pressable>
@@ -667,14 +686,14 @@ function DifficultyCard({
         )}
         style={[
           styles.action,
-          chartActionStyle(theme.dark, visual, Boolean(practice), inverted),
+          chartActionStyle(actionDark, visual, Boolean(practice), inverted),
           library.isUpdating && styles.disabled,
         ]}
       >
         <Text
           style={[
             styles.actionText,
-            chartActionTextStyle(theme.dark, visual, Boolean(practice), inverted),
+            chartActionTextStyle(actionDark, visual, Boolean(practice), inverted),
           ]}
         >
           {practice ? '已加入练习清单' : '加入练习清单'}
@@ -687,14 +706,14 @@ function DifficultyCard({
         style={[
           styles.action,
           styles.chartSearchAction,
-          chartActionStyle(theme.dark, visual, false, inverted),
+          chartActionStyle(actionDark, visual, false, inverted),
         ]}
       >
-        <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, false, inverted)]}>
+        <Text style={[styles.actionText, chartActionTextStyle(actionDark, visual, false, inverted)]}>
           搜索谱面确认
         </Text>
       </DetailPressable>
-      <View style={inverted ? styles.invertedTagEditorSurface : undefined}>
+      <View style={specialCard ? styles.invertedTagEditorSurface : undefined}>
         <TagEditor
           disabled={library.isUpdating}
           historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
@@ -727,7 +746,11 @@ function DifficultyCard({
         style={cardStyle}
         testID={`chunithm-detail-difficulty-${difficulty.difficulty}`}
       >
-        <View pointerEvents="none" style={styles.worldsEndCardOverlay} />
+        <View
+          pointerEvents="none"
+          style={styles.worldsEndCardOverlay}
+          testID="chunithm-worlds-end-card-overlay"
+        />
         {content}
       </LinearGradient>
     );
@@ -975,7 +998,7 @@ const styles = StyleSheet.create({
   },
   worldsEndCardOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20,14,38,0.24)',
+    backgroundColor: 'rgba(255,255,255,0.52)',
     borderRadius: 23,
   },
   invertedTagEditorSurface: {
