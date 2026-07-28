@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import type { ReactNode } from 'react';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
 import type { ProviderId } from '@/domain/game-bind-options';
@@ -31,12 +32,66 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('@/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: () => null }));
 let mockTemporarySelectedAccountIds: readonly string[] | undefined;
-jest.mock('@/components/UploadDataSheet', () => ({
-  UploadDataSheet: ({ temporarySelectedAccountIds }: { temporarySelectedAccountIds?: readonly string[] }) => {
+jest.mock('@/components/UploadDataSheet', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    UploadDataSheet: ({
+      visible,
+      temporarySelectedAccountIds,
+      headerAccessory,
+      contentOverride,
+    }: {
+      visible: boolean;
+      temporarySelectedAccountIds?: readonly string[];
+      headerAccessory?: ReactNode;
+      contentOverride?: ReactNode;
+    }) => {
     mockTemporarySelectedAccountIds = temporarySelectedAccountIds;
-    return null;
-  },
-}));
+      return visible ? (
+        <>
+          {headerAccessory}
+          {contentOverride ?? <RN.Text>好友码上传界面</RN.Text>}
+        </>
+      ) : null;
+    },
+  };
+});
+jest.mock('@/components/maimai/MaimaiUploadTabs', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    MaimaiUploadTabs: ({
+      value,
+      disabled,
+      onChange,
+    }: {
+      value: 'friend_code' | 'lxns_guide';
+      disabled: boolean;
+      onChange: (value: 'friend_code' | 'lxns_guide') => void;
+    }) => (
+      <>
+        <RN.Text>上传顶部选择栏</RN.Text>
+        <RN.Pressable
+          accessibilityLabel="测试切换好友码"
+          accessibilityState={{ selected: value === 'friend_code', disabled }}
+          disabled={disabled}
+          onPress={() => onChange('friend_code')}
+        />
+        <RN.Pressable
+          accessibilityLabel="测试切换同步引导"
+          accessibilityState={{ selected: value === 'lxns_guide', disabled }}
+          disabled={disabled}
+          onPress={() => onChange('lxns_guide')}
+        />
+      </>
+    ),
+  };
+});
+jest.mock('@/components/maimai/MaimaiSyncGuideSheet', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    MaimaiSyncGuideContent: () => <RN.Text>舞萌同步引导界面</RN.Text>,
+  };
+});
 jest.mock('@/components/chunithm/ChunithmSyncGuideSheet', () => ({
   ChunithmSyncGuideSheet: () => null,
 }));
@@ -119,7 +174,14 @@ jest.mock('@/state/session-store', () => ({
         : mockExtraWater.id,
     session: mockProviderId === 'local'
       ? null
-      : { mode: 'import-token', value: 'token', persistable: true },
+      : mockProviderId === 'lxns'
+        ? {
+            mode: 'lxns-oauth',
+            accessToken: 'access',
+            refreshToken: 'refresh',
+            expiresAt: '2026-08-01T00:00:00.000Z',
+          }
+        : { mode: 'import-token', value: 'token', persistable: true },
     sessionsByAccountId: {},
     selectBoundAccount: jest.fn(),
     updateBoundAccountScore: jest.fn(),
@@ -178,16 +240,30 @@ describe('总览上传和同步操作', () => {
     mockProviderId = 'diving-fish';
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('上传数据')).toBeTruthy();
+    expect(screen.getByText('好友码')).toBeTruthy();
     expect(screen.getByLabelText('同步数据，当前 水鱼查分器')).toBeTruthy();
     await fireEvent.press(screen.getByText('上传数据'));
+    expect(screen.getByText('好友码上传界面')).toBeTruthy();
+    expect(screen.queryByText('上传顶部选择栏')).toBeNull();
     await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockExtraWater.id]));
   });
 
-  it('落雪页面同样只按当前具体账号预选', async () => {
+  it('落雪页面正常打开好友码界面，并在顶部切换同步引导', async () => {
     mockProviderId = 'lxns';
     const screen = await render(<OverviewScreen />);
     await fireEvent.press(screen.getByText('上传数据'));
+    expect(screen.getByText('好友码上传界面')).toBeTruthy();
+    expect(screen.getByText('上传顶部选择栏')).toBeTruthy();
+    expect(screen.getByLabelText('测试切换好友码').props.accessibilityState.selected).toBe(true);
     await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockLxns.id]));
+
+    await fireEvent.press(screen.getByLabelText('测试切换同步引导'));
+    expect(screen.getByText('舞萌同步引导界面')).toBeTruthy();
+    expect(screen.queryByText('好友码上传界面')).toBeNull();
+    expect(screen.getByLabelText('测试切换同步引导').props.accessibilityState.selected).toBe(true);
+
+    await fireEvent.press(screen.getByLabelText('测试切换好友码'));
+    expect(screen.getByText('好友码上传界面')).toBeTruthy();
   });
 
   it('在总览外显当前游戏的置顶工具', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -84,6 +84,9 @@ export function UploadDataSheet({
   onFinished,
   temporarySelectedAccountIds,
   onLxnsTokensRotated,
+  headerAccessory,
+  contentOverride,
+  externalBusy = false,
 }: {
   visible: boolean;
   accounts: BoundAccount[];
@@ -95,6 +98,11 @@ export function UploadDataSheet({
   /** 仅本次打开使用；不覆盖用户平时保存的上传目标。 */
   temporarySelectedAccountIds?: readonly string[];
   onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
+  /** 可选的页内顶部导航，仅在特定账号提供其它上传页面时显示。 */
+  headerAccessory?: ReactNode;
+  /** 替换好友码页面内容，但保留同一个原生上传弹层与顶部导航。 */
+  contentOverride?: ReactNode;
+  externalBusy?: boolean;
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -340,6 +348,7 @@ export function UploadDataSheet({
   }, []);
 
   const close = () => {
+    if (externalBusy) return;
     setDecodingQr(false);
     setHistoryVisible(false);
     onClose();
@@ -656,14 +665,14 @@ export function UploadDataSheet({
   const botHint = phase.kind === 'awaiting_friend' && phase.botFriendCode
     ? `Bot 好友码：${phase.botFriendCode}`
     : null;
-  const busy = running || decodingQr;
+  const busy = running || decodingQr || externalBusy;
 
   return (
     <AppModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={close}
+      onRequestClose={externalBusy ? undefined : close}
     >
       <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
         <View style={[styles.grabber, { backgroundColor: theme.border }]} />
@@ -672,15 +681,22 @@ export function UploadDataSheet({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="关闭上传"
+            disabled={externalBusy}
             hitSlop={12}
             onPress={close}
-            style={({ pressed }) => [styles.closeHit, pressed && styles.softPressed]}
+            style={({ pressed }) => [
+              styles.closeHit,
+              pressed && !externalBusy && styles.softPressed,
+              externalBusy && styles.primaryDisabled,
+            ]}
           >
             <Text style={[styles.close, { color: theme.accent }]}>关闭</Text>
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {headerAccessory}
+        {contentOverride ?? (
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码</Text>
           <View style={styles.friendCodeBlock}>
             <View style={styles.friendCodeRow}>
@@ -1032,7 +1048,8 @@ export function UploadDataSheet({
               ))}
             </View>
           ) : null}
-        </ScrollView>
+          </ScrollView>
+        )}
       </View>
     </AppModal>
   );

@@ -9,6 +9,11 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { ChunithmSyncGuideSheet } from '@/components/chunithm/ChunithmSyncGuideSheet';
+import { MaimaiSyncGuideContent } from '@/components/maimai/MaimaiSyncGuideSheet';
+import {
+  MaimaiUploadTabs,
+  type MaimaiUploadPage,
+} from '@/components/maimai/MaimaiUploadTabs';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import {
@@ -66,6 +71,7 @@ export function OverviewScreen() {
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [uploadVisible, setUploadVisible] = useState(false);
+  const [maimaiUploadPage, setMaimaiUploadPage] = useState<MaimaiUploadPage>('friend_code');
   const [chunithmSyncGuideVisible, setChunithmSyncGuideVisible] = useState(false);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [refreshing, setRefreshing] = useState(false);
@@ -74,6 +80,11 @@ export function OverviewScreen() {
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
   const syncBusy = syncing;
+  const maimaiLxnsGuideAvailable = activeGameId === 'maimai'
+    && boundAccounts.find((account) => account.id === activeAccountId)?.providerId === 'lxns'
+    && activeSession?.mode === 'lxns-oauth';
+  const friendCodeUploadBusy = !['idle', 'done', 'error'].includes(uploadPhase.kind);
+  const showingMaimaiSyncGuide = maimaiLxnsGuideAvailable && maimaiUploadPage === 'lxns_guide';
   const currentUploadSelection = useMemo(() => [activeAccountId], [activeAccountId]);
   const toolboxGameId = data?.gameId ?? activeGameId;
   const pinnedToolIds = useToolboxPins((s) => s.pinnedToolIdsByGame[toolboxGameId]);
@@ -117,7 +128,20 @@ export function OverviewScreen() {
       // 先把相关页面标为过期但不并发请求，再只刷新当前总览一次。
       await invalidateAccountDataQueries(queryClient, 'none');
       const refreshed = await refetch();
-      if (activeGameId === 'chunithm') {
+      if (activeGameId === 'maimai' && account?.providerId === 'lxns') {
+        const payload = refreshed.data?.payload;
+        const isFreshMaimaiData = payload?.kind === 'maimai' && !payload.source.isStale;
+        if (!isFreshMaimaiData) {
+          showNotification({
+            title: '尚未读取到新数据',
+            message: payload?.kind === 'maimai' && payload.source.isStale
+              ? '本次仅读取到缓存，请关闭代理并检查网络后重试。'
+              : '请确认微信已完成上传、代理已经关闭，再重试同步。',
+            variant: 'warning',
+          });
+          return false;
+        }
+      } else if (activeGameId === 'chunithm') {
         const payload = refreshed.data?.payload;
         const isFreshChunithmData = payload?.kind === 'chunithm'
           && payload.hasSyncedData
@@ -178,10 +202,14 @@ export function OverviewScreen() {
       showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
       return;
     }
+    setMaimaiUploadPage('friend_code');
     setUploadVisible(true);
   };
 
-  const closeUpload = () => setUploadVisible(false);
+  const closeUpload = () => {
+    setUploadVisible(false);
+    setMaimaiUploadPage('friend_code');
+  };
   const openChunithmUpload = () => {
     if (isChunithmMaintenanceWindow()) {
       showNotification({
@@ -480,6 +508,21 @@ export function OverviewScreen() {
         onFinished={finishUpload}
         temporarySelectedAccountIds={currentUploadSelection}
         onLxnsTokensRotated={applyLxnsTokenRotation}
+        headerAccessory={maimaiLxnsGuideAvailable ? (
+          <MaimaiUploadTabs
+            value={maimaiUploadPage}
+            disabled={friendCodeUploadBusy || syncBusy}
+            onChange={setMaimaiUploadPage}
+          />
+        ) : undefined}
+        contentOverride={showingMaimaiSyncGuide ? (
+          <MaimaiSyncGuideContent
+            syncing={syncBusy}
+            onClose={closeUpload}
+            onSync={syncData}
+          />
+        ) : undefined}
+        externalBusy={showingMaimaiSyncGuide && syncBusy}
       />
       <ChunithmSyncGuideSheet
         visible={chunithmSyncGuideVisible}

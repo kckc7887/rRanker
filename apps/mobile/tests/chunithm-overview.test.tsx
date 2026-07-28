@@ -63,6 +63,8 @@ jest.mock('@/components/AppNotification', () => ({
 }));
 jest.mock('@/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: () => null }));
 jest.mock('@/components/UploadDataSheet', () => ({ UploadDataSheet: () => null }));
+jest.mock('@/components/maimai/MaimaiUploadTabs', () => ({ MaimaiUploadTabs: () => null }));
+jest.mock('@/components/maimai/MaimaiSyncGuideSheet', () => ({ MaimaiSyncGuideContent: () => null }));
 jest.mock('@/components/chunithm/ChunithmSyncGuideSheet', () => ({
   ChunithmSyncGuideSheet: ({
     visible,
