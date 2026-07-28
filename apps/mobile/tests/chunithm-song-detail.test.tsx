@@ -115,6 +115,7 @@ let mockDetailState: {
   error: null,
 };
 let mockCatalogState = mockCatalog;
+let mockDarkTheme = false;
 
 jest.mock('expo-router', () => ({
   router: { back: mockBack },
@@ -142,7 +143,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('@/theme/app-theme', () => ({
   useAppTheme: () => ({
-    dark: false,
+    dark: mockDarkTheme,
     accent: '#246BFD',
     accentSoft: '#EAF1FF',
     background: '#F7F8FA',
@@ -223,6 +224,7 @@ jest.mock('@/components/TagEditor', () => ({
 describe('Chunithm song detail', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDarkTheme = false;
     mockCatalogState = mockCatalog;
     mockDetailState = {
       data: mockDetail,
@@ -311,6 +313,20 @@ describe('Chunithm song detail', () => {
     expect(worldsEnd.getAllByText('—').length).toBeGreaterThan(0);
     expect(worldsEnd.queryByText('定数 —')).toBeNull();
     expect(worldsEnd.queryByText('定数 0.0')).toBeNull();
+  });
+
+  it("adapts the WORLD'S END card to dark mode", async () => {
+    mockDarkTheme = true;
+    const screen = await render(<ChunithmSongDetail songId="3" initialLevelIndex={5} />);
+    const worldsEnd = within(screen.getByTestId('chunithm-detail-difficulty-5'));
+
+    expect(StyleSheet.flatten(worldsEnd.getByTestId('chunithm-worlds-end-card-overlay').props.style))
+      .toMatchObject({ backgroundColor: 'rgba(20,14,38,0.62)' });
+    expect(StyleSheet.flatten(worldsEnd.getByText('止☆1').props.style))
+      .toMatchObject({ color: '#FFFFFF' });
+    expect(StyleSheet.flatten(
+      worldsEnd.getByTestId('chunithm-special-tag-surface-5').props.style,
+    )).toMatchObject({ backgroundColor: 'rgba(12,9,22,0.76)' });
   });
 
   it('falls back to catalog metadata and offers detail retry when notes are unavailable', async () => {

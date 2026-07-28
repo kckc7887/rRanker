@@ -562,24 +562,24 @@ function DifficultyCard({
   const ultima = difficulty.difficulty === 4;
   const worldsEnd = difficulty.difficulty === 5;
   const specialCard = ultima || worldsEnd;
-  const inverted = ultima;
-  const primaryText = ultima ? '#FFFFFF' : worldsEnd ? '#261C38' : theme.text;
-  const secondaryText = ultima
+  const inverted = ultima || (worldsEnd && theme.dark);
+  const primaryText = inverted ? '#FFFFFF' : worldsEnd ? '#261C38' : theme.text;
+  const secondaryText = inverted
     ? 'rgba(255,255,255,0.78)'
     : worldsEnd
       ? 'rgba(38,28,56,0.70)'
       : theme.textMuted;
-  const tertiaryText = ultima
+  const tertiaryText = inverted
     ? 'rgba(255,255,255,0.88)'
     : worldsEnd
       ? 'rgba(38,28,56,0.82)'
       : theme.textSecondary;
-  const dividerColor = ultima
-    ? 'rgba(255,255,255,0.32)'
+  const dividerColor = inverted
+    ? 'rgba(255,255,255,0.28)'
     : worldsEnd
       ? 'rgba(38,28,56,0.18)'
       : theme.border;
-  const actionDark = theme.dark && !worldsEnd;
+  const actionDark = theme.dark;
   const worldsEndLabel = worldsEnd
     ? formatChunithmWorldsEndLabel({ kanji: difficulty.kanji, star: difficulty.star })
     : undefined;
@@ -665,7 +665,7 @@ function DifficultyCard({
               <Text
                 style={[
                   styles.retryText,
-                  { color: ultima ? '#FFFFFF' : worldsEnd ? visual.color : theme.accent },
+                  { color: inverted ? '#FFFFFF' : worldsEnd ? visual.color : theme.accent },
                 ]}
               >
                 重试读取单曲详情
@@ -713,7 +713,19 @@ function DifficultyCard({
           搜索谱面确认
         </Text>
       </DetailPressable>
-      <View style={specialCard ? styles.invertedTagEditorSurface : undefined}>
+      <View
+        style={[
+          specialCard && styles.specialTagEditorSurface,
+          specialCard && {
+            backgroundColor: theme.dark
+              ? 'rgba(12,9,22,0.76)'
+              : 'rgba(255,255,255,0.94)',
+          },
+        ]}
+        testID={specialCard
+          ? `chunithm-special-tag-surface-${difficulty.difficulty}`
+          : undefined}
+      >
         <TagEditor
           disabled={library.isUpdating}
           historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
@@ -748,7 +760,14 @@ function DifficultyCard({
       >
         <View
           pointerEvents="none"
-          style={styles.worldsEndCardOverlay}
+          style={[
+            styles.worldsEndCardOverlay,
+            {
+              backgroundColor: theme.dark
+                ? 'rgba(20,14,38,0.62)'
+                : 'rgba(255,255,255,0.52)',
+            },
+          ]}
           testID="chunithm-worlds-end-card-overlay"
         />
         {content}
@@ -998,14 +1017,12 @@ const styles = StyleSheet.create({
   },
   worldsEndCardOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.52)',
     borderRadius: 23,
   },
-  invertedTagEditorSurface: {
+  specialTagEditorSurface: {
     paddingHorizontal: 10,
     paddingBottom: 10,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.94)',
   },
   chartHeader: {
     flexDirection: 'row',
