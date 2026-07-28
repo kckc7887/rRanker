@@ -33,6 +33,7 @@ import { TagEditor } from '@/components/TagEditor';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
 import type {
+  BuddyChartNotes,
   Chart,
   ChartNotes,
   ChartType,
@@ -57,7 +58,7 @@ import { useAppTheme } from '@/theme/app-theme';
 
 const CARD_GAP = 12;
 const DIFFICULTY_ORDER: Record<Difficulty, number> = {
-  remaster: 0, master: 1, expert: 2, advanced: 3, basic: 4, unknown: 5,
+  utage: 0, remaster: 1, master: 2, expert: 3, advanced: 4, basic: 5, unknown: 6,
 };
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
@@ -105,7 +106,9 @@ function MaimaiSongDetailScreen({
     return songs?.find((item) => item.id === songId) ??
       (songId ? songs?.find((item) => item.id === normalizeSongId(songId)) : undefined);
   }, [catalog.data?.songs, songId]);
-  const initialChartType = chartType === 'SD' || chartType === 'DX' ? chartType : undefined;
+  const initialChartType = chartType === 'SD' || chartType === 'DX' || chartType === 'UTAGE'
+    ? chartType
+    : undefined;
   const songItem = song ? library.data?.find((item) => item.key === library.songKey(song.id)) : undefined;
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
@@ -200,14 +203,23 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
   const songItem = library.data?.find((item) => item.key === library.songKey(song.id));
   const versionName = localizedVersionName(song.versionId, song.version, versionLocale);
   const availableChartTypes = useMemo(() => new Set(song.charts.map((chart) => chart.type)), [song.charts]);
+  const availableChartTypeList = useMemo(
+    () => (['DX', 'SD', 'UTAGE'] as const).filter((type) => availableChartTypes.has(type)),
+    [availableChartTypes],
+  );
   const defaultChartType: ChartType = initialChartType && availableChartTypes.has(initialChartType)
-    ? initialChartType : availableChartTypes.has('DX') ? 'DX' : 'SD';
+    ? initialChartType
+    : availableChartTypeList[0] ?? 'SD';
   const [selectedChartType, setSelectedChartType] = useState<ChartType>(defaultChartType);
   useEffect(() => setSelectedChartType(defaultChartType), [defaultChartType, song.id]);
   const sortedCharts = useMemo(() => song.charts.filter((chart) => chart.type === selectedChartType)
     .sort((left, right) => DIFFICULTY_ORDER[left.difficulty] - DIFFICULTY_ORDER[right.difficulty]),
   [selectedChartType, song.charts]);
-  const canSwitchChartType = availableChartTypes.has('SD') && availableChartTypes.has('DX');
+  const canSwitchChartType = availableChartTypeList.length > 1;
+  const selectedChartTypeIndex = availableChartTypeList.indexOf(selectedChartType);
+  const nextChartType = canSwitchChartType
+    ? availableChartTypeList[(selectedChartTypeIndex + 1) % availableChartTypeList.length]
+    : undefined;
   const cardWidth = Math.max(280, width - 40);
   const masterIndex = Math.max(0, sortedCharts.findIndex((chart) => chart.difficulty === 'master'));
   const requestedIndex = selectedChartType === initialChartType && initialLevelIndex !== undefined
@@ -244,7 +256,8 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
     {deferredReady ? <>
       <ChartCarousel key={`${song.id}:${selectedChartType}:${initialIndex}`} charts={sortedCharts} records={records} song={song}
         library={library} cardWidth={cardWidth} initialIndex={initialIndex} canSwitchChartType={canSwitchChartType}
-        onToggleChartType={() => setSelectedChartType((type) => type === 'DX' ? 'SD' : 'DX')} />
+        nextChartType={nextChartType}
+        onToggleChartType={() => nextChartType && setSelectedChartType(nextChartType)} />
 
       <View style={styles.details}>
         <SourceStatus items={[
@@ -465,7 +478,7 @@ function VersionMetadataCell({ value, onToggle }: {
   </DetailGestureRoot>;
 }
 
-function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, onToggleChartType }: {
+function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, onToggleChartType }: {
   charts: Chart[];
   records: ScoreRecord[];
   song: Song;
@@ -473,6 +486,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   cardWidth: number;
   initialIndex: number;
   canSwitchChartType: boolean;
+  nextChartType?: ChartType;
   onToggleChartType: () => void;
 }) {
   const interval = cardWidth + CARD_GAP;
@@ -497,6 +511,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
           .sort((left, right) => right.achievements - left.achievements)[0];
         return <ChartCard key={`${chart.type}:${chart.levelIndex}`} chart={chart} best={best} song={song}
           library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
+          nextChartType={nextChartType}
           onToggleChartType={onToggleChartType} />;
       })}
     </GestureScrollView>
@@ -517,13 +532,14 @@ async function openBilibiliChartSearch(query: string): Promise<void> {
   }
 }
 
-function ChartCard({ chart, best, song, library, width, canSwitchChartType, onToggleChartType }: {
+function ChartCard({ chart, best, song, library, width, canSwitchChartType, nextChartType, onToggleChartType }: {
   chart: Chart;
   best?: ScoreRecord;
   song: Song;
   library: LibraryHook;
   width: number;
   canSwitchChartType: boolean;
+  nextChartType?: ChartType;
   onToggleChartType: () => void;
 }) {
   const theme = useAppTheme();
@@ -536,28 +552,42 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, onTo
     <View style={styles.chartHeader}>
       <View style={styles.chartIdentity}>
         <DifficultyBadge difficulty={chart.difficulty} />
-        <ChartTypeSwitch type={chart.type} canSwitch={canSwitchChartType} onToggle={onToggleChartType} />
+        {chart.type === 'UTAGE' && !canSwitchChartType ? null
+          : <ChartTypeSwitch type={chart.type} nextType={nextChartType}
+              canSwitch={canSwitchChartType} onToggle={onToggleChartType} />}
       </View>
-      <View style={styles.levelBlock}><Text style={[styles.level, { color: theme.text }]}>{chart.level}</Text><Text style={[styles.constant, { color: theme.textMuted }]}>{chart.difficultyConstant.toFixed(1)}</Text></View>
+      <View style={styles.levelBlock}>
+        <Text style={[styles.level, { color: theme.text }]}>{chart.type === 'UTAGE' ? chart.utage?.kanji ?? chart.level : chart.level}</Text>
+        {chart.type === 'UTAGE' ? null
+          : <Text style={[styles.constant, { color: theme.textMuted }]}>{chart.difficultyConstant.toFixed(1)}</Text>}
+      </View>
     </View>
     <View style={styles.resultRow}>
       <View style={styles.resultMain}>
         <Text style={[styles.achievementLabel, { color: theme.textMuted }]}>达成率</Text>
         <AchievementValue value={best?.achievements} />
+        {chart.type === 'UTAGE'
+          ? <Text style={[styles.utageDxScore, { color: theme.textSecondary }]}>DX分数 {best?.dxScore ?? '—'}</Text>
+          : null}
         <View style={styles.statusRow}>
           <ScoreStatusBadges rate={best?.rate} achievements={best?.achievements} fc={best?.fc} fs={best?.fs} />
         </View>
-        <DetailPressable accessibilityRole="link" accessibilityLabel={`使用定数 ${chart.difficultyConstant.toFixed(1)} 打开 Rating 计算器`}
-          onPress={() => router.push({ pathname: '/tools/rating', params: { constant: chart.difficultyConstant.toFixed(1) } } as Href)}
-          style={({ pressed }) => [styles.ratingAction, pressed && styles.switchPressed]}>
-          <Text style={[styles.rating, { color: theme.textMuted }]}>Rating <Text style={[styles.ratingValue, { color: theme.text }]}>{best?.rating ?? '—'}</Text></Text>
-          <Text style={[styles.ratingHint, { color: theme.textMuted }]}>点击 Rating，前往计算器并带入定数</Text>
-        </DetailPressable>
+        {chart.type === 'UTAGE'
+          ? <Text style={[styles.rating, { color: theme.textMuted }]}>Rating <Text style={[styles.ratingValue, { color: theme.textMuted }]}>—</Text></Text>
+          : <DetailPressable accessibilityRole="link" accessibilityLabel={`使用定数 ${chart.difficultyConstant.toFixed(1)} 打开 Rating 计算器`}
+              onPress={() => router.push({ pathname: '/tools/rating', params: { constant: chart.difficultyConstant.toFixed(1) } } as Href)}
+              style={({ pressed }) => [styles.ratingAction, pressed && styles.switchPressed]}>
+              <Text style={[styles.rating, { color: theme.textMuted }]}>Rating <Text style={[styles.ratingValue, { color: theme.text }]}>{best?.rating ?? '—'}</Text></Text>
+              <Text style={[styles.ratingHint, { color: theme.textMuted }]}>点击 Rating，前往计算器并带入定数</Text>
+            </DetailPressable>}
       </View>
     </View>
     <View style={[styles.chartDivider, { backgroundColor: theme.border }]} />
     <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
-    <NotesTable notes={chart.notes && 'slide' in chart.notes ? chart.notes : undefined} />
+    {chart.utage?.description
+      ? <Text style={[styles.utageDescription, { color: theme.textSecondary }]}>{chart.utage.description}</Text>
+      : null}
+    <ChartNotesTables chart={chart} />
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
       onPress={() => void library.setChartPractice(song.id, chart.type, chart.levelIndex, !practice)}
@@ -607,12 +637,12 @@ function chartActionTextStyle(
   return { color: filled ? '#FFFFFF' : visual.color };
 }
 
-function ChartTypeSwitch({ type, canSwitch, onToggle }: {
-  type: ChartType; canSwitch: boolean; onToggle: () => void;
+function ChartTypeSwitch({ type, nextType, canSwitch, onToggle }: {
+  type: ChartType; nextType?: ChartType; canSwitch: boolean; onToggle: () => void;
 }) {
   const theme = useAppTheme();
   return <DetailPressable accessibilityRole="button"
-    accessibilityLabel={canSwitch ? `切换为${type === 'DX' ? 'SD' : 'DX'}谱面` : `${type}谱面`}
+    accessibilityLabel={canSwitch && nextType ? `切换为${nextType}谱面` : `${type}谱面`}
     accessibilityState={{ disabled: !canSwitch }} disabled={!canSwitch} onPress={onToggle}
     style={({ pressed }) => [styles.chartTypeRow, pressed && styles.switchPressed]}>
     <View pointerEvents="none"><ChartTypeBadge type={type} /></View>
@@ -625,7 +655,29 @@ const NOTE_COLUMNS: readonly { label: string; key: keyof ChartNotes }[] = [
   { label: 'TOUCH', key: 'touch' }, { label: 'BREAK', key: 'break' }, { label: '总计', key: 'total' },
 ];
 
-function NotesTable({ notes }: { notes?: ChartNotes }) {
+function isBuddyChartNotes(notes: Chart['notes']): notes is BuddyChartNotes {
+  return !!notes && 'left' in notes && 'right' in notes;
+}
+
+function isMaimaiChartNotes(notes: Chart['notes']): notes is ChartNotes {
+  return !!notes && 'slide' in notes && 'touch' in notes;
+}
+
+function ChartNotesTables({ chart }: { chart: Chart }) {
+  const theme = useAppTheme();
+  if (chart.utage?.isBuddy) {
+    if (!isBuddyChartNotes(chart.notes)) {
+      return <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>物量未提供</Text>;
+    }
+    return <View style={styles.buddyNotes}>
+      <NotesTable label="1P" notes={chart.notes.left} />
+      <NotesTable label="2P" notes={chart.notes.right} />
+    </View>;
+  }
+  return <NotesTable notes={isMaimaiChartNotes(chart.notes) ? chart.notes : undefined} />;
+}
+
+function NotesTable({ notes, label }: { notes?: ChartNotes; label?: string }) {
   const theme = useAppTheme();
   if (!notes) return <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>物量未提供</Text>;
   const openTolerance = () => router.push({
@@ -635,8 +687,9 @@ function NotesTable({ notes }: { notes?: ChartNotes }) {
       touch: String(notes.touch), break: String(notes.break),
     },
   } as Href);
-  return <DetailPressable accessibilityRole="button" accessibilityLabel="使用此谱面物量计算容错"
+  return <DetailPressable accessibilityRole="button" accessibilityLabel={`使用${label ? `${label} ` : '此'}谱面物量计算容错`}
     onPress={openTolerance} style={({ pressed }) => [styles.notesAction, pressed && styles.notesActionPressed]}>
+    {label ? <Text style={[styles.notesPlayerLabel, { color: theme.text }]}>{label}</Text> : null}
     <View accessibilityLabel="谱面物量" style={[styles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
       <View style={[styles.notesRow, styles.notesHeaderRow]}>
         {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
@@ -695,10 +748,14 @@ const styles = StyleSheet.create({
   gradientFill: { ...StyleSheet.absoluteFillObject },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 29, marginTop: 7 },
   rating: { color: '#667085', fontSize: 12, fontWeight: '700', marginTop: 10 }, ratingValue: { color: '#172033', fontSize: 17, fontWeight: '900' },
+  utageDxScore: { fontSize: 12, fontWeight: '800', marginTop: 3 },
   chartDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(51,65,85,0.18)', marginVertical: 16 },
   chartMeta: { color: '#4C586A', fontSize: 12, lineHeight: 18 },
+  utageDescription: { fontSize: 12, lineHeight: 18, marginTop: 4 },
+  buddyNotes: { gap: 9 },
   notesTable: { marginTop: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(76,88,106,0.28)', borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.38)' },
   notesAction: { borderRadius: 9 }, notesActionPressed: { opacity: 0.62 }, notesHint: { color: '#697386', fontSize: 9, lineHeight: 13, textAlign: 'center', marginTop: 4 },
+  notesPlayerLabel: { fontSize: 11, fontWeight: '900', marginTop: 9, marginBottom: -4 },
   notesRow: { minHeight: 26, flexDirection: 'row', alignItems: 'center' }, notesHeaderRow: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(76,88,106,0.22)' },
   notesCell: { flex: 1, minWidth: 0, textAlign: 'center' }, notesHeader: { color: '#697386', fontSize: 8, fontWeight: '800' }, notesValue: { color: '#253047', fontSize: 10, fontWeight: '800' },
   section: { fontWeight: '700', color: '#111827', marginBottom: 7 }, body: { color: '#374151', lineHeight: 20 }, meta: { color: '#6B7280', fontSize: 12 },

@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { GameId } from '@/domain/game-bind-options';
+import type { ChartType } from '@/domain/models';
 import {
   DEFAULT_TAG_PRESETS,
   inferGameIdFromKey,
@@ -21,7 +22,7 @@ interface ItemRow {
   game_id: string | null;
   kind: 'song' | 'chart';
   song_id: string;
-  chart_type: 'SD' | 'DX' | null;
+  chart_type: ChartType | null;
   level_index: number | null;
   is_favorite: number;
   is_practice: number;
@@ -60,6 +61,49 @@ async function ensureGameIdColumn(db: DatabaseAccess): Promise<void> {
   }
 }
 
+async function ensureUtageChartType(db: SQLiteDatabase): Promise<void> {
+  const table = await db.getFirstAsync<{ sql: string | null }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_library_items'",
+  );
+  if (!table?.sql || table.sql.includes("'UTAGE'")) return;
+  await db.execAsync('PRAGMA foreign_keys = OFF');
+  try {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE user_library_item_tags RENAME TO user_library_item_tags_legacy;
+        ALTER TABLE user_library_items RENAME TO user_library_items_legacy;
+        CREATE TABLE user_library_items (
+          item_key TEXT PRIMARY KEY, game_id TEXT NOT NULL DEFAULT 'maimai',
+          kind TEXT NOT NULL CHECK (kind IN ('song', 'chart')),
+          song_id TEXT NOT NULL, chart_type TEXT, level_index INTEGER,
+          is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+          is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          CHECK ((kind = 'song' AND chart_type IS NULL AND level_index IS NULL) OR
+                 (kind = 'chart' AND chart_type IN ('SD', 'DX', 'UTAGE') AND level_index >= 0))
+        );
+        CREATE TABLE user_library_item_tags (
+          item_key TEXT NOT NULL REFERENCES user_library_items(item_key) ON DELETE CASCADE,
+          tag_id INTEGER NOT NULL REFERENCES user_library_tags(id) ON DELETE CASCADE,
+          PRIMARY KEY (item_key, tag_id)
+        );
+        INSERT INTO user_library_items
+          (item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
+          SELECT item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at
+          FROM user_library_items_legacy;
+        INSERT INTO user_library_item_tags (item_key, tag_id)
+          SELECT item_key, tag_id FROM user_library_item_tags_legacy;
+        DROP TABLE user_library_item_tags_legacy;
+        DROP TABLE user_library_items_legacy;
+      `);
+    });
+  } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON');
+  }
+  const violations = await db.getAllAsync('PRAGMA foreign_key_check');
+  if (violations.length > 0) throw new Error('个人曲库 UTAGE 迁移后外键校验失败');
+}
+
 async function ensureUserLibrarySchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = runSerializedSchemaInit(initializeUserLibrarySchema).catch((error) => {
@@ -84,7 +128,7 @@ async function initializeUserLibrarySchema(): Promise<void> {
         is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
         CHECK ((kind = 'song' AND chart_type IS NULL AND level_index IS NULL) OR
-               (kind = 'chart' AND chart_type IN ('SD', 'DX') AND level_index >= 0))
+               (kind = 'chart' AND chart_type IN ('SD', 'DX', 'UTAGE') AND level_index >= 0))
       );
       CREATE TABLE IF NOT EXISTS user_library_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT, normalized_name TEXT NOT NULL UNIQUE,
@@ -119,6 +163,7 @@ async function initializeUserLibrarySchema(): Promise<void> {
   } else {
     await ensureGameIdColumn(db);
   }
+  await ensureUtageChartType(db);
 }
 
 /** 测试用：重置模块级 schema 初始化锁。 */

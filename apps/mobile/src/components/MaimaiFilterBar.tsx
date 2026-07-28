@@ -15,7 +15,7 @@ import type { ChartType, Difficulty } from '@/domain/models';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
 import { useAppTheme } from '@/theme/app-theme';
 
-const DIFFICULTIES: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+const DIFFICULTIES: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 'remaster', 'utage'];
 const TYPES: ChartType[] = ['SD', 'DX'];
 type OpenDropdown = 'version' | 'solo' | 'multi' | null;
 type VersionSheetValue = string | 'all';

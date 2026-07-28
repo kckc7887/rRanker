@@ -1,6 +1,7 @@
 import { createUserDataBackup, DEFAULT_TAG_PRESETS, libraryTargetKey, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
 import type { LibraryTarget, RestoreMode, UserDataBackup, UserDataBackupV3, UserLibraryItem } from '@/domain/user-library';
 import type { GameId } from '@/domain/game-bind-options';
+import type { ChartType } from '@/domain/models';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 
 export class UserLibraryService {
@@ -23,7 +24,7 @@ export class UserLibraryService {
     }));
   }
 
-  setChartPractice(gameId: GameId, songId: string, type: 'SD' | 'DX', levelIndex: number, practice: boolean): Promise<UserLibraryItem[]> {
+  setChartPractice(gameId: GameId, songId: string, type: ChartType, levelIndex: number, practice: boolean): Promise<UserLibraryItem[]> {
     const target: LibraryTarget = { kind: 'chart', gameId, songId, type, levelIndex };
     return this.updateTarget(target, (current, timestamp) => ({
       key: current?.key ?? libraryTargetKey(target), gameId, kind: 'chart', songId, type, levelIndex,

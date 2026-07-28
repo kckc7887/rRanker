@@ -100,7 +100,7 @@ const SongItemSchema = z.object({
 const ChartItemSchema = z.object({
   ...CommonItemShape,
   kind: z.literal('chart'),
-  type: z.enum(['SD', 'DX']),
+  type: z.enum(['SD', 'DX', 'UTAGE']),
   levelIndex: z.number().int().min(0).max(255),
   practice: z.boolean(),
 }).strict();

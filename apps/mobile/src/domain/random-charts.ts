@@ -77,6 +77,7 @@ export function filterRandomCharts(
   for (const song of catalog.songs) {
     const songId = normalizeSongId(song.id);
     for (const chart of song.charts) {
+      if (chart.type === 'UTAGE') continue;
       if (requireDifficulty && !difficultySet.has(chart.difficulty)) continue;
       if (!matchesConstantRange(chart.difficultyConstant, filters.constantMin, filters.constantMax)) continue;
       const key = chartVersionKey(chart.songId, chart.type, chart.levelIndex);

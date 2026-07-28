@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { normalizeMaimaiFc, normalizeMaimaiFs } from './maimai-filters';
-import type { Difficulty, ScoreRecord } from './models';
+import type { ChartType, Difficulty, ScoreRecord } from './models';
 import { calculateChartRating } from './rating';
 
 function mapKnownFc(value: string | null | undefined): string | null {
@@ -102,18 +102,23 @@ export const LxnsScoreSchema = z.object({
   type: z.enum(['standard', 'dx', 'utage']),
 }).passthrough();
 
-function mapLxnsSongType(type: string): 'SD' | 'DX' {
+function mapLxnsSongType(type: string): ChartType {
   const normalized = type.toLowerCase();
   if (normalized === 'dx') return 'DX';
   if (normalized === 'standard') return 'SD';
-  throw new TypeError('宴会场成绩不能映射为标准 SD/DX 谱面');
+  if (normalized === 'utage') return 'UTAGE';
+  throw new TypeError(`不支持的舞萌谱面类型：${type}`);
 }
 
 export function mapLxnsScore(input: unknown): ScoreRecord {
   const raw = LxnsScoreSchema.parse(input);
-  const difficulty = LEVEL_INDEX_DIFFICULTY[raw.level_index] ?? 'unknown';
+  const difficulty = raw.type === 'utage'
+    ? 'utage'
+    : LEVEL_INDEX_DIFFICULTY[raw.level_index] ?? 'unknown';
   const level = raw.level ?? String(raw.level_index);
-  const rating = raw.dx_rating !== undefined
+  const rating = raw.type === 'utage'
+    ? 0
+    : raw.dx_rating !== undefined
     ? Math.floor(raw.dx_rating)
     : calculateChartRating(0, raw.achievements);
   const fc = mapKnownFc(raw.fc);

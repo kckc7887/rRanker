@@ -1,10 +1,11 @@
-export type ChartType = 'SD' | 'DX';
+export type ChartType = 'SD' | 'DX' | 'UTAGE';
 export type Difficulty =
   | 'basic'
   | 'advanced'
   | 'expert'
   | 'master'
   | 'remaster'
+  | 'utage'
   | 'unknown';
 export type DataSourceKind = 'fixture' | 'diving-fish' | 'lxns' | 'local' | 'generated' | 'cache';
 
@@ -56,6 +57,19 @@ export interface ChartNotes {
   total: number;
 }
 
+export interface BuddyChartNotes {
+  left: ChartNotes;
+  right: ChartNotes;
+  /** 物量总计必须分别从 left/right 读取，禁止误当成单人谱面。 */
+  total?: never;
+}
+
+export interface UtageChartMetadata {
+  kanji?: string;
+  description?: string;
+  isBuddy: boolean;
+}
+
 /** Phigros 谱面物量：[Tap, Hold, Drag, Flick] */
 export interface PhigrosChartNotes {
   tap: number;
@@ -87,7 +101,8 @@ export interface Chart {
   difficultyConstant: number;
   charter?: string;
   versionId?: number;
-  notes?: ChartNotes | PhigrosChartNotes;
+  notes?: ChartNotes | BuddyChartNotes | PhigrosChartNotes;
+  utage?: UtageChartMetadata;
 }
 
 export interface SongAlias {

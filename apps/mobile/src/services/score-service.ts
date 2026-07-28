@@ -16,7 +16,7 @@ export function buildScoreSnapshot(
   catalog: CatalogSnapshot,
 ): ScoreSnapshot {
   const records = enrichRecordsWithCatalog(
-    rawRecords.filter((record) => !isUtageSongId(record.songId)),
+    rawRecords.filter((record) => !isUtageSongId(record.songId) || record.type === 'UTAGE'),
     catalog,
   );
   let best50 = buildBest50(player, records, catalog, player.source);
@@ -34,12 +34,20 @@ export function buildScoreSnapshot(
   };
 }
 
-function withoutUtageRecords(snapshot: ScoreSnapshot): ScoreSnapshot {
-  const records = snapshot.records.filter((record) => !isUtageSongId(record.songId));
-  const b35 = snapshot.best50.b35.filter((record) => !isUtageSongId(record.songId));
-  const b15 = snapshot.best50.b15.filter((record) => !isUtageSongId(record.songId));
-  const removed = snapshot.records.length - records.length;
-  if (removed === 0 && b35.length === snapshot.best50.b35.length && b15.length === snapshot.best50.b15.length) {
+function withoutInvalidUtageRecords(snapshot: ScoreSnapshot): ScoreSnapshot {
+  const records = snapshot.records.filter(
+    (record) => !isUtageSongId(record.songId) || record.type === 'UTAGE',
+  );
+  const removedInvalidRecordCount = snapshot.records.length - records.length;
+  const b35 = snapshot.best50.b35.filter(
+    (record) => !isUtageSongId(record.songId) && record.type !== 'UTAGE',
+  );
+  const b15 = snapshot.best50.b15.filter(
+    (record) => !isUtageSongId(record.songId) && record.type !== 'UTAGE',
+  );
+  if (records.length === snapshot.records.length &&
+    b35.length === snapshot.best50.b35.length &&
+    b15.length === snapshot.best50.b15.length) {
     return snapshot;
   }
   return {
@@ -49,7 +57,11 @@ function withoutUtageRecords(snapshot: ScoreSnapshot): ScoreSnapshot {
       ...snapshot.best50,
       b35,
       b15,
-      unmatchedRecordCount: Math.max(0, snapshot.best50.unmatchedRecordCount - removed),
+      rating: [...b35, ...b15].reduce((total, record) => total + record.rating, 0),
+      unmatchedRecordCount: Math.max(
+        0,
+        snapshot.best50.unmatchedRecordCount - removedInvalidRecordCount,
+      ),
     },
   };
 }
@@ -107,7 +119,7 @@ export class ScoreService {
     } catch (error) {
       const cached = await this.snapshotRepository?.getLatest(this.accountId);
       if (cached) {
-        const sanitized = withoutUtageRecords(cached);
+        const sanitized = withoutInvalidUtageRecords(cached);
         const needsLogin = error instanceof ProviderError && (error.code === 'authentication' || error.code === 'permission');
         return {
           ...sanitized,

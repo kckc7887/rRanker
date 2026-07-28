@@ -35,6 +35,22 @@ describe('custom best image', () => {
     expect(sections[0]?.records.map((item) => item.songId)).toEqual(['2', '1']);
   });
 
+  it('excludes U·TA·GE records from custom best images', () => {
+    const sections = buildCustomBestImageSections([
+      score({ songId: 'regular', rating: 100 }),
+      score({
+        songId: '100123',
+        type: 'UTAGE',
+        levelIndex: 0,
+        difficulty: 'utage',
+        difficultyConstant: 0,
+        rating: 0,
+      }),
+    ], '当前版本', filters({ quantity: 50 }));
+
+    expect(sections[0]?.records.map((item) => item.songId)).toEqual(['regular']);
+  });
+
   it('splits versions and applies the quantity independently', () => {
     const records = [
       score({ songId: '1', rating: 300 }), score({ songId: '2', rating: 200 }),

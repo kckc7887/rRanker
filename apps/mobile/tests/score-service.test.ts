@@ -42,6 +42,24 @@ describe('ScoreService', () => {
     const snapshot = buildScoreSnapshot(fixturePlayer, [fixtureRecords[0]!, utage], fixtureCatalog);
     expect(snapshot.records.map((record) => record.songId)).toEqual([fixtureRecords[0]!.songId]);
   });
+  it('keeps mapped UTAGE records out of B35/B15 and total rating', () => {
+    const utage = {
+      ...fixtureRecords[0]!,
+      songId: '100123',
+      title: 'U·TA·GE',
+      levelIndex: 0,
+      difficulty: 'utage' as const,
+      type: 'UTAGE' as const,
+      rating: 0,
+    };
+    const snapshot = buildScoreSnapshot(fixturePlayer, [fixtureRecords[0]!, utage], fixtureCatalog);
+    expect(snapshot.records).toEqual(expect.arrayContaining([
+      expect.objectContaining({ songId: '100123', type: 'UTAGE', difficulty: 'utage' }),
+    ]));
+    expect([...snapshot.best50.b35, ...snapshot.best50.b15]
+      .some((record) => record.type === 'UTAGE')).toBe(false);
+    expect(snapshot.best50.rating).toBe(fixtureRecords[0]!.rating);
+  });
   it('returns stale cache without overwriting it when upstream fails', async () => {
     const repository = new MemoryRepository();
     await new ScoreService(
@@ -77,6 +95,38 @@ describe('ScoreService', () => {
     ).load();
     expect(snapshot.records.some((record) => record.songId === '100123')).toBe(false);
     expect(snapshot.best50.b35.some((record) => record.songId === '100123')).toBe(false);
+  });
+
+  it('keeps cached UTAGE scores visible while removing them from cached Rating totals', async () => {
+    const repository = new MemoryRepository();
+    await new ScoreService(
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a', repository, repository,
+    ).load();
+    const cached = repository.byAccount.get('acct-a')!;
+    const originalRating = cached.best50.rating;
+    const utage = {
+      ...cached.records[0]!,
+      songId: '100123',
+      title: 'U·TA·GE',
+      levelIndex: 0,
+      difficulty: 'utage' as const,
+      type: 'UTAGE' as const,
+      rating: 999,
+    };
+    cached.records.push(utage);
+    cached.best50.b35.push(utage);
+    cached.best50.rating += utage.rating;
+    const fail = async (): Promise<never> => { throw new Error('network'); };
+
+    const snapshot = await new ScoreService(
+      { getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-a', repository, repository,
+    ).load();
+    expect(snapshot.records).toEqual(expect.arrayContaining([
+      expect.objectContaining({ songId: '100123', type: 'UTAGE' }),
+    ]));
+    expect([...snapshot.best50.b35, ...snapshot.best50.b15]
+      .some((record) => record.type === 'UTAGE')).toBe(false);
+    expect(snapshot.best50.rating).toBe(originalRating);
   });
 
   it('isolates score cache by account id', async () => {

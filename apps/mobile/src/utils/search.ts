@@ -152,12 +152,14 @@ export function searchSongs(index: readonly SongSearchEntry[], filters: SongSear
   const keyword = normalizeSearchText(filters.keyword);
   const min = filters.constantMin ?? Number.NEGATIVE_INFINITY;
   const max = filters.constantMax ?? Number.POSITIVE_INFINITY;
+  const hasConstantFilter = filters.constantMin !== undefined || filters.constantMax !== undefined;
   return index.filter(({ song, ...document }) => {
     if (keyword && !searchDocumentMatches(document, keyword)) return false;
     if (!includesNumber(filters.songVersionIds, song.versionId)) return false;
     const chartMatch = song.charts.some((chart) =>
       (filters.types.length === 0 || filters.types.includes(chart.type)) &&
       (filters.difficulties.length === 0 || filters.difficulties.includes(chart.difficulty)) &&
+      !(chart.type === 'UTAGE' && hasConstantFilter) &&
       chart.difficultyConstant >= min && chart.difficultyConstant <= max &&
       includesNumber(filters.chartVersionIds, chart.versionId));
     return chartMatch;

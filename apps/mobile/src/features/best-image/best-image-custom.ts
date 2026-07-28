@@ -112,6 +112,7 @@ export function buildCustomBestImageSections(
   if (selected.size === 0) return [];
   const minimum = achievementTenThousandths(filters.minimumAchievement);
   const filtered = records.filter((record) => {
+    if (record.type === 'UTAGE') return false;
     if (record.version === 'unknown') return false;
     const version = record.version === currentVersionTitle ? 'current' : 'past';
     return selected.has(version)

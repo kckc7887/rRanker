@@ -4,6 +4,7 @@ import {
   CHUNITHM_DIFFICULTY_LABELS,
   type ChunithmLevelIndex,
 } from '@/domain/chunithm';
+import { SPECIAL_DIFFICULTY_GRADIENT } from '@/components/special-difficulty-theme';
 
 const DIFFICULTY_THEME: Record<ChunithmLevelIndex, {
   background: string;
@@ -18,9 +19,7 @@ const DIFFICULTY_THEME: Record<ChunithmLevelIndex, {
   5: { background: '#7B61FF', border: '#F24FD4', text: '#FFFFFF' },
 };
 
-export const CHUNITHM_WORLDS_END_GRADIENT = [
-  '#37E6FF', '#7B61FF', '#F24FD4', '#FF8A3D',
-] as const;
+export const CHUNITHM_WORLDS_END_GRADIENT = SPECIAL_DIFFICULTY_GRADIENT;
 
 export type ChunithmDifficultyBadgeDisplay = 'constant' | 'label' | 'label-and-value';
 
