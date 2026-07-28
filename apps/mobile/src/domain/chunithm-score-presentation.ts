@@ -165,9 +165,9 @@ export function chunithmAchievementBadges(
   }
 
   if (score.fullChain === 'fullchain') {
-    badges.push({ id: 'full-chain', label: 'FULL CHAIN', tone: 'gold' });
-  } else if (score.fullChain === 'fullchain2') {
     badges.push({ id: 'full-chain', label: 'FULL CHAIN', tone: 'platinum' });
+  } else if (score.fullChain === 'fullchain2') {
+    badges.push({ id: 'full-chain', label: 'FULL CHAIN', tone: 'gold' });
   }
 
   const clearBadge: Record<ChunithmScoreCardData['clear'], Omit<ChunithmAchievementBadgeData, 'id'>> = {
