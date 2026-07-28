@@ -56,8 +56,19 @@ describe('LxnsCatalogProvider', () => {
   it('maps U·TA·GE metadata and BUDDY notes without treating level index 0 as BASIC', async () => {
     const utageSongs = [
       {
+        id: 122,
+        title: '原曲',
+        artist: '原曲曲师',
+        bpm: 222,
+        genre: '原曲分类',
+        map: '原曲区域',
+        rights: '原曲版权',
+        version: 15000,
+        difficulties: { standard: [], dx: [] },
+      },
+      {
         id: 100122,
-        title: 'U·TA·GE',
+        title: '[光] U·TA·GE',
         artist: '测试曲师',
         version: 25500,
         difficulties: {
@@ -109,7 +120,8 @@ describe('LxnsCatalogProvider', () => {
     }), { status: 200 })));
 
     const catalog = await new LxnsCatalogProvider().getDetailedCatalog();
-    const regular = catalog.songs.find((song) => song.id === '100122')?.charts[0];
+    const regularSong = catalog.songs.find((song) => song.id === '100122');
+    const regular = regularSong?.charts[0];
     const buddy = catalog.songs.find((song) => song.id === '100123')?.charts[0];
 
     expect(regular).toMatchObject({
@@ -118,6 +130,16 @@ describe('LxnsCatalogProvider', () => {
       difficulty: 'utage',
       utage: { kanji: '光', description: '普通说明', isBuddy: false },
       notes: { total: 100 },
+    });
+    expect(regularSong).toMatchObject({
+      title: 'U·TA·GE',
+      artist: '原曲曲师',
+      bpm: 222,
+      genre: '原曲分类',
+      region: '原曲区域',
+      rights: '原曲版权',
+      versionId: 15000,
+      version: 'ORANGE PLUS',
     });
     expect(buddy).toMatchObject({
       type: 'UTAGE',

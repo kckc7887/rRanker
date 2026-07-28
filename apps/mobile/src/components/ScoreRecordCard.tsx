@@ -48,12 +48,12 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({
         <ScoreStatusBadges rate={record.rate} achievements={record.achievements} fc={record.fc} fs={record.fs} nearMissFirst />
       </View>
     </View>
-    <View style={styles.ratingBlock}>
+    {record.type === 'UTAGE' ? null : <View style={styles.ratingBlock}>
       <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
-      <Text style={[styles.rating, { color: record.rating === undefined || record.type === 'UTAGE' ? theme.textMuted : theme.accent }]}>
-        {record.rating === undefined || record.type === 'UTAGE' ? '—' : record.rating}
+      <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>
+        {record.rating === undefined ? '—' : record.rating}
       </Text>
-    </View>
+    </View>}
   </Pressable>;
 });
 

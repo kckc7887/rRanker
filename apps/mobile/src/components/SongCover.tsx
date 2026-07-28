@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
-
-export const LXNS_ASSET_ROOT = 'https://assets2.lxns.net/maimai/jacket';
+import { maimaiJacketUrl } from '@/domain/maimai-assets';
 
 export function SongCover({ songId, size = 58, borderRadius = 9 }: { songId: string; size?: number; borderRadius?: number }) {
   const [failed, setFailed] = useState(false);
@@ -13,7 +12,7 @@ export function SongCover({ songId, size = 58, borderRadius = 9 }: { songId: str
       cachePolicy="disk"
       contentFit="cover"
       onError={() => setFailed(true)}
-      source={`${LXNS_ASSET_ROOT}/${songId}.png`}
+      source={maimaiJacketUrl(songId)}
       style={{ width: size, height: size, borderRadius }}
       transition={120}
     />
