@@ -4,10 +4,21 @@ import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
 import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
+import {
+  CHUNITHM_FLOWING_RANK_GRADIENT,
+  CHUNITHM_FLOWING_RANK_LOCATIONS,
+  CHUNITHM_RANK_GRADIENT,
+  CHUNITHM_RANK_GRADIENT_LOCATIONS,
+} from '@/components/chunithm/ChunithmScoreCard';
 
 const mockRefetchGame = jest.fn(async () => undefined);
 const mockRefetchCatalog = jest.fn(async () => undefined);
 const mockPush = jest.fn();
+const mockSessionState = {
+  activeGameId: 'chunithm',
+  activeProviderId: 'lxns',
+  session: { mode: 'lxns-oauth' } as { mode: string } | null,
+};
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
@@ -32,11 +43,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
 }));
 jest.mock('@/state/session-store', () => ({
-  useSession: (selector: (state: unknown) => unknown) => selector({
-    activeGameId: 'chunithm',
-    activeProviderId: 'lxns',
-    session: { mode: 'lxns-oauth' },
-  }),
+  useSession: (selector: (state: unknown) => unknown) => selector(mockSessionState),
 }));
 
 const mockSource = {
@@ -185,7 +192,29 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
 }));
 
 describe('Chunithm records and B50 screens', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSessionState.activeProviderId = 'lxns';
+    mockSessionState.session = { mode: 'lxns-oauth' };
+  });
+
+  it('allows the generated sample provider to open records without LXNS credentials', async () => {
+    mockSessionState.activeProviderId = 'chunithm-test';
+    mockSessionState.session = null;
+
+    const records = await render(<RecordsScreen />);
+    expect(records.getByTestId('chunithm-records-list')).toBeTruthy();
+    expect(records.queryByText('尚未绑定落雪账号')).toBeNull();
+  });
+
+  it('allows the generated sample provider to open the best page without LXNS credentials', async () => {
+    mockSessionState.activeProviderId = 'chunithm-test';
+    mockSessionState.session = null;
+
+    const best = await render(<Best50Screen />);
+    expect(best.getByTestId('chunithm-best-results-list')).toBeTruthy();
+    expect(best.queryByText('尚未绑定落雪账号')).toBeNull();
+  });
 
   it('shows all scores ordered by Rating, supports local metadata search and has no filter controls', async () => {
     const screen = await render(<RecordsScreen />);
@@ -227,6 +256,23 @@ describe('Chunithm records and B50 screens', () => {
     expect(screen.getByTestId('flowing-chunithm-score')).toBeTruthy();
     expect(screen.getByTestId('flowing-chunithm-rank')).toBeTruthy();
     expect(screen.getAllByTestId('gradient-chunithm-score')).toHaveLength(2);
+    expect(CHUNITHM_RANK_GRADIENT).toEqual([
+      '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',
+    ]);
+    expect(CHUNITHM_RANK_GRADIENT_LOCATIONS).toEqual([0, 1 / 3, 2 / 3, 1]);
+    expect(CHUNITHM_FLOWING_RANK_GRADIENT).toEqual([
+      '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',
+      '#EFCB63', '#FF8EC8', '#73CFFF',
+    ]);
+    expect(CHUNITHM_FLOWING_RANK_LOCATIONS).toEqual([
+      0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1,
+    ]);
+    const flowingGradient = screen.getByTestId('chunithm-flowing-score-gradient');
+    expect(flowingGradient.props.colors).toHaveLength(CHUNITHM_FLOWING_RANK_GRADIENT.length);
+    expect(flowingGradient.props.locations).toEqual(CHUNITHM_FLOWING_RANK_LOCATIONS);
+    const staticGradient = screen.getAllByTestId('chunithm-static-score-gradient')[0]!;
+    expect(staticGradient.props.colors).toHaveLength(CHUNITHM_RANK_GRADIENT.length);
+    expect(staticGradient.props.locations).toEqual(CHUNITHM_RANK_GRADIENT_LOCATIONS);
     expect(screen.getByText('EXPERT (13.4)')).toBeTruthy();
     expect(screen.getByText("WORLD'S END (狂☆4)")).toBeTruthy();
     expect(screen.queryByText("WORLD'S END (14.0)")).toBeNull();

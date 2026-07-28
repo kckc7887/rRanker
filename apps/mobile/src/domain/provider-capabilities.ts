@@ -1,5 +1,13 @@
 import type { ProviderId } from './game-bind-options';
 
+export function canReadChunithmScores(
+  providerId: ProviderId | null,
+  sessionMode: string | null | undefined,
+): boolean {
+  return providerId === 'chunithm-test'
+    || (providerId === 'lxns' && sessionMode === 'lxns-oauth');
+}
+
 export function shouldPersistScoreSnapshot(providerId: ProviderId | null): boolean {
   return providerId !== null
     && providerId !== 'maimai-test'

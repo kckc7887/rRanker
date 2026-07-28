@@ -19,6 +19,7 @@ import {
   type ChunithmScoreCardData,
 } from '@/domain/chunithm-score-presentation';
 import type { DataSource, ScoreRecord } from '@/domain/models';
+import { canReadChunithmScores } from '@/domain/provider-capabilities';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
@@ -185,6 +186,7 @@ function ChunithmRecordsScreen() {
   const gameData = useGameData();
   const catalogQuery = useChunithmCatalog();
   const activeProviderId = useSession((state) => state.activeProviderId);
+  const session = useSession((state) => state.session);
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const [keyword, setKeyword] = useState('');
@@ -224,7 +226,7 @@ function ChunithmRecordsScreen() {
     void Promise.all([gameData.refetch(), catalogQuery.refetch()]);
   };
 
-  if (activeProviderId !== 'lxns' && !isLoading) {
+  if (!canReadChunithmScores(activeProviderId, session?.mode) && !isLoading) {
     return (
       <EmptyDataView
         detail="请在游戏管理中绑定中二节奏的落雪账号"

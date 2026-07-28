@@ -438,6 +438,7 @@ export function OverviewScreen() {
               || bundle.payload.kind === 'phigros'
               || bundle.payload.kind === 'chunithm' ? (
               <DxRatingCard
+                borderless={bundle.payload.kind === 'chunithm'}
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
                 rating={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData

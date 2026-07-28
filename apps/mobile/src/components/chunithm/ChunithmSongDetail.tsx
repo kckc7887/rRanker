@@ -830,7 +830,7 @@ function NotesTable({
   valueColor?: string;
 }) {
   const theme = useAppTheme();
-  const showFlick = levelIndex === 3 || levelIndex === 4;
+  const showFlick = levelIndex >= 3;
   const values: readonly (readonly [string, number])[] = showFlick
     ? [
       ['TAP', notes.tap],

@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { DxRatingTag } from '@/components/DxRatingTag';
@@ -49,6 +50,7 @@ describe('DX Rating components', () => {
   it('renders Chunithm possession background and rainbow Rating independently', async () => {
     const screen = await render(
       <DxRatingCard
+        borderless
         label="RATING"
         display="17.25"
         meta="Best30 17.20 · New20 17.30"
@@ -58,6 +60,10 @@ describe('DX Rating components', () => {
       />,
     );
     expect(screen.getByTestId('dx-rating-card-value-gradient')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-borderless').props.style))
+      .toMatchObject({ borderRadius: 18, padding: 0 });
+    expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-inner-borderless').props.style))
+      .toMatchObject({ borderRadius: 18, padding: 22 });
     expect(screen.getByLabelText(/档位 虹，背景 虹领域/)).toBeTruthy();
     expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
   });

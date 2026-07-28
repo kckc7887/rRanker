@@ -29,14 +29,17 @@ type GradientColors = readonly [string, string, ...string[]];
 type GradientLocations = readonly [number, number, ...number[]];
 
 export const CHUNITHM_RANK_GRADIENT: GradientColors = [
-  '#73CFFF', '#EFCB63', '#FF8EC8',
+  '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',
 ];
-export const CHUNITHM_RANK_GRADIENT_LOCATIONS: GradientLocations = [0, 0.38, 1];
-const FLOWING_RANK_GRADIENT: GradientColors = [
-  ...CHUNITHM_RANK_GRADIENT, ...CHUNITHM_RANK_GRADIENT, CHUNITHM_RANK_GRADIENT[0],
+export const CHUNITHM_RANK_GRADIENT_LOCATIONS: GradientLocations = [
+  0, 1 / 3, 2 / 3, 1,
 ];
-const FLOWING_RANK_LOCATIONS: GradientLocations = [
-  0, 0.19, 0.5, 0.501, 0.69, 0.999, 1,
+export const CHUNITHM_FLOWING_RANK_GRADIENT: GradientColors = [
+  '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',
+  '#EFCB63', '#FF8EC8', '#73CFFF',
+];
+export const CHUNITHM_FLOWING_RANK_LOCATIONS: GradientLocations = [
+  0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1,
 ];
 
 const BADGE_TONES: Record<Exclude<ChunithmAchievementTone, 'neutral'> | 'rank', {
@@ -46,7 +49,7 @@ const BADGE_TONES: Record<Exclude<ChunithmAchievementTone, 'neutral'> | 'rank', 
   text: string;
 }> = {
   rank: {
-    border: ['#287DA8', '#8C6A14', '#A84F82'],
+    border: ['#287DA8', '#8C6A14', '#A84F82', '#287DA8'],
     fill: CHUNITHM_RANK_GRADIENT,
     locations: CHUNITHM_RANK_GRADIENT_LOCATIONS,
     text: '#303136',
@@ -115,11 +118,12 @@ export function ChunithmGradientScore({
       {flowing ? (
         <Animated.View style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
           <LinearGradient
-            colors={FLOWING_RANK_GRADIENT}
+            colors={CHUNITHM_FLOWING_RANK_GRADIENT}
             end={{ x: 1, y: 0.5 }}
-            locations={FLOWING_RANK_LOCATIONS}
+            locations={CHUNITHM_FLOWING_RANK_LOCATIONS}
             start={{ x: 0, y: 0.5 }}
             style={StyleSheet.absoluteFill}
+            testID="chunithm-flowing-score-gradient"
           />
         </Animated.View>
       ) : (
@@ -129,6 +133,7 @@ export function ChunithmGradientScore({
           locations={CHUNITHM_RANK_GRADIENT_LOCATIONS}
           start={{ x: 0, y: 0.5 }}
           style={StyleSheet.absoluteFill}
+          testID="chunithm-static-score-gradient"
         />
       )}
     </MaskedView>
