@@ -129,9 +129,11 @@ OAuth 约束（官方文档）：
 - 中二 B50 页面只消费 `bests`（Best 30）与 `new_bests`（New 20），不展示娱乐/候补性质的 `selections`。两个分区独立按单曲 Rating、score 降序。
 - 中二成绩评价由整数 score 在本地按 SSS+ 至 D 的边界计算，不依赖上游 `rank`；S 至 SSS 使用静态蓝白粉金渐变，只有 SSS+ 使用流动版本。
 - 中二成绩页以曲目 ID 和 `level_index` 关联公共曲库，补齐曲名、艺术家、谱师和定数；普通谱面显示完整难度名与定数，WORLD'S END 使用属性汉字与星级，关联失败时回退 Score 的 `level`，不得回退到 `level_value`。
-- 中二同步引导展示 HTTP 代理 `proxy.maimai.lxns.net:8080` 与固定微信离线同步链接；同步按钮复用个人资料、全成绩和 B50 刷新流程，只有拿到非缓存的有效玩家数据才视为完成。
+- 落雪离线同步统一使用 HTTP 代理 `proxy.maimai.lxns.net:8080`；舞萌与中二固定微信链接分别为 `/api/v0/maimai/wechat/auth`、`/api/v0/chunithm/wechat/auth`。离线同步不能首次绑定查分器账号，也不能查询处理状态；同步按钮仅在对应落雪账号中复用个人数据刷新流程，缓存回退不视为完成。
 
 > last_verified: 2026-07-17 — 按官方舞萌 API 文档复核个人上传端点为 `POST /api/v0/user/maimai/player/scores`，Bearer OAuth，请求体 `{ scores: Score[] }`；官方枚举确认 FDX=`fsd`、FDX+=`fsdp`。自动测试覆盖请求体、ID/谱面/宴会场/FDX 映射、token 轮换、权限错误、重试、取消与多目标部分成功。真实外部账号写入仅人工验证。
+>
+> offline sync last_verified: 2026-07-28 — 按落雪官方《同步游戏数据》文档复核代理地址、舞萌/中二固定微信 OAuth 链接、长期有效、不可查询离线同步结果及不能首次绑定账号等边界。
 
 ## 华立公众号爬虫
 
