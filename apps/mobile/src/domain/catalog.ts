@@ -15,6 +15,26 @@ export function isUtageSongId(songId: string | number): boolean {
   return Number.isSafeInteger(numericId) && numericId > 100000;
 }
 
+export function originalSongIdForUtage(songId: string | number): string | undefined {
+  const numericId = Number(songId);
+  return Number.isSafeInteger(numericId) && numericId > 100000
+    ? String(numericId - 100000)
+    : undefined;
+}
+
+export function stripUtageTitlePrefix(title: string): string {
+  return title.replace(/^\s*[\[［【][^\]］】]+[\]］】]\s*/u, '');
+}
+
+export function aliasesForCatalogSong(
+  songId: string,
+  aliases: ReadonlyMap<string, string[]>,
+): string[] {
+  const originalSongId = originalSongIdForUtage(songId);
+  if (!originalSongId) return [...(aliases.get(songId) ?? [])];
+  return [...(aliases.get(originalSongId) ?? aliases.get(normalizeSongId(originalSongId)) ?? [])];
+}
+
 export function chartVersionKey(songId: string | number, type: ChartType, levelIndex: number): string {
   return `${normalizeSongId(songId)}:${type}:${levelIndex}`;
 }
@@ -37,6 +57,7 @@ export function enrichRecordsWithCatalog(
     const versionId = catalog.chartVersionIndex[chartVersionKey(record.songId, record.type, record.levelIndex)];
     return {
       ...record,
+      title: record.type === 'UTAGE' && song ? song.title : record.title,
       level: chart?.level ?? record.level,
       difficulty: chart?.difficulty ?? record.difficulty,
       difficultyConstant: chart?.difficultyConstant ?? record.difficultyConstant,

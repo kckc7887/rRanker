@@ -66,12 +66,13 @@ export function formatDifficultyConstant(constant: number): string {
   return Number.isInteger(constant) ? String(constant) : constant.toFixed(1);
 }
 
-export function DifficultyBadge({ difficulty, constant, display, compact = false, mini = false }: {
+export function DifficultyBadge({ difficulty, constant, display, compact = false, mini = false, specialLabel }: {
   difficulty: Difficulty;
   constant?: number;
   display?: DifficultyBadgeDisplay;
   compact?: boolean;
   mini?: boolean;
+  specialLabel?: string;
 }) {
   const visual = DIFFICULTY_VISUAL[difficulty];
   const effectiveDisplay = display ?? (constant === undefined ? 'label' : 'label-and-constant');
@@ -93,15 +94,16 @@ export function DifficultyBadge({ difficulty, constant, display, compact = false
     { color: visual.badgeText },
   ];
   if (difficulty === 'utage') {
+    const label = specialLabel?.trim() || 'U·TA·GE';
     return <LinearGradient
-      accessibilityLabel="U·TA·GE"
+      accessibilityLabel={label}
       colors={SPECIAL_DIFFICULTY_GRADIENT}
       end={{ x: 1, y: 0.5 }}
       start={{ x: 0, y: 0.5 }}
       style={badgeStyle}
       testID="maimai-utage-difficulty-badge">
       <View pointerEvents="none" style={styles.utageOverlay} />
-      <Text numberOfLines={1} style={textStyle}>U·TA·GE</Text>
+      <Text numberOfLines={1} style={textStyle}>{label}</Text>
     </LinearGradient>;
   }
   return <View style={[

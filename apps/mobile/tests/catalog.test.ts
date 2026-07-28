@@ -1,5 +1,14 @@
-import { chartVersionKey, enrichRecordsWithCatalog, isUtageSongId, normalizeSongId } from '@/domain/catalog';
+import {
+  aliasesForCatalogSong,
+  chartVersionKey,
+  enrichRecordsWithCatalog,
+  isUtageSongId,
+  normalizeSongId,
+  originalSongIdForUtage,
+  stripUtageTitlePrefix,
+} from '@/domain/catalog';
 import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
+import { maimaiJacketUrl } from '@/domain/maimai-assets';
 
 describe('catalog identity mapping', () => {
   it('normalizes DivingFish DX ids to the shared LXNS song id', () => {
@@ -11,6 +20,23 @@ describe('catalog identity mapping', () => {
     expect(normalizeSongId(111388)).toBe('111388');
     expect(isUtageSongId(111388)).toBe(true);
     expect(isUtageSongId(11806)).toBe(false);
+    expect(originalSongIdForUtage(100123)).toBe('123');
+    expect(originalSongIdForUtage(110123)).toBe('10123');
+    expect(originalSongIdForUtage(11806)).toBeUndefined();
+    expect(maimaiJacketUrl('100123')).toBe('https://assets2.lxns.net/maimai/jacket/123.png');
+    expect(maimaiJacketUrl('110123')).toBe('https://assets2.lxns.net/maimai/jacket/10123.png');
+  });
+
+  it('uses the original song title and aliases for U·TA·GE presentation', () => {
+    const aliases = new Map([
+      ['123', ['原曲别名']],
+      ['100123', ['特殊谱面别名']],
+    ]);
+    expect(stripUtageTitlePrefix('[協] 原曲标题')).toBe('原曲标题');
+    expect(stripUtageTitlePrefix('【光】原曲标题')).toBe('原曲标题');
+    expect(aliasesForCatalogSong('100123', aliases)).toEqual(['原曲别名']);
+    expect(aliasesForCatalogSong('123', aliases)).toEqual(['原曲别名']);
+    expect(aliasesForCatalogSong('110123', aliases)).toEqual(['原曲别名']);
   });
 
   it('copies chart note totals into enriched score records for theoretical DXScore', () => {

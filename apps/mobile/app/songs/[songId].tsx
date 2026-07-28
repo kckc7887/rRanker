@@ -557,9 +557,10 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
               canSwitch={canSwitchChartType} onToggle={onToggleChartType} />}
       </View>
       <View style={styles.levelBlock}>
-        <Text style={[styles.level, { color: theme.text }]}>{chart.type === 'UTAGE' ? chart.utage?.kanji ?? chart.level : chart.level}</Text>
-        {chart.type === 'UTAGE' ? null
-          : <Text style={[styles.constant, { color: theme.textMuted }]}>{chart.difficultyConstant.toFixed(1)}</Text>}
+        <Text style={[styles.level, { color: theme.text }]}>{chart.type === 'UTAGE' ? chart.utage?.kanji ?? 'U·TA·GE' : chart.level}</Text>
+        <Text style={[styles.constant, { color: theme.textMuted }]}>
+          {chart.type === 'UTAGE' ? chart.level : chart.difficultyConstant.toFixed(1)}
+        </Text>
       </View>
     </View>
     <View style={styles.resultRow}>
@@ -572,8 +573,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
         <View style={styles.statusRow}>
           <ScoreStatusBadges rate={best?.rate} achievements={best?.achievements} fc={best?.fc} fs={best?.fs} />
         </View>
-        {chart.type === 'UTAGE'
-          ? <Text style={[styles.rating, { color: theme.textMuted }]}>Rating <Text style={[styles.ratingValue, { color: theme.textMuted }]}>—</Text></Text>
+        {chart.type === 'UTAGE' ? null
           : <DetailPressable accessibilityRole="link" accessibilityLabel={`使用定数 ${chart.difficultyConstant.toFixed(1)} 打开 Rating 计算器`}
               onPress={() => router.push({ pathname: '/tools/rating', params: { constant: chart.difficultyConstant.toFixed(1) } } as Href)}
               style={({ pressed }) => [styles.ratingAction, pressed && styles.switchPressed]}>
@@ -583,7 +583,8 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       </View>
     </View>
     <View style={[styles.chartDivider, { backgroundColor: theme.border }]} />
-    <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
+    {chart.type === 'UTAGE' ? null
+      : <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>}
     {chart.utage?.description
       ? <Text style={[styles.utageDescription, { color: theme.textSecondary }]}>{chart.utage.description}</Text>
       : null}

@@ -1,6 +1,12 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
-import { chartVersionKey, difficultyFromIndex } from '@/domain/catalog';
+import {
+  chartVersionKey,
+  difficultyFromIndex,
+  normalizeSongId,
+  originalSongIdForUtage,
+  stripUtageTitlePrefix,
+} from '@/domain/catalog';
 import type {
   AliasSnapshot, BuddyChartNotes, CatalogSnapshot, Chart, ChartNotes, ChartType, CollectionItem,
   CollectionKind, CollectionSnapshot, DataSource, PlateRequirement, PlateSnapshot, Song,
@@ -140,7 +146,7 @@ function mapCatalog(input: unknown, label: string): CatalogSnapshot {
   const current = parsed.data.versions.reduce((latest, item) => item.version > latest.version ? item : latest);
   const chartVersionIndex: Record<string, number> = {};
   let currentChartCount = 0;
-  const songs: Song[] = parsed.data.songs.map((rawSong) => {
+  const mappedSongs: Song[] = parsed.data.songs.map((rawSong) => {
     const standardCharts: Chart[] = [...rawSong.difficulties.standard, ...rawSong.difficulties.dx].map((raw) => {
       const type = chartType(raw.type);
       const chartVersion = versionAtOrBefore(parsed.data.versions, raw.version);
@@ -201,6 +207,25 @@ function mapCatalog(input: unknown, label: string): CatalogSnapshot {
       rights: rawSong.rights ?? undefined,
       locked: rawSong.locked, disabled: rawSong.disabled, versionId: songVersion?.version ?? rawSong.version,
       version: songVersion?.title ?? String(rawSong.version), charts,
+    };
+  });
+  const songsById = new Map(mappedSongs.map((song) => [song.id, song]));
+  const songs = mappedSongs.map((song) => {
+    if (!song.charts.some((chart) => chart.type === 'UTAGE')) return song;
+    const originalSongId = originalSongIdForUtage(song.id);
+    const originalSong = originalSongId
+      ? songsById.get(originalSongId) ?? songsById.get(normalizeSongId(originalSongId))
+      : undefined;
+    return {
+      ...song,
+      title: stripUtageTitlePrefix(song.title),
+      artist: originalSong?.artist ?? song.artist,
+      bpm: originalSong?.bpm ?? song.bpm,
+      genre: originalSong?.genre ?? song.genre,
+      region: originalSong?.region ?? song.region,
+      rights: originalSong?.rights ?? song.rights,
+      versionId: originalSong?.versionId ?? song.versionId,
+      version: originalSong?.version ?? song.version,
     };
   });
   if (currentChartCount === 0) throw new ProviderError('upstream_schema', 'LXNS 最新版本没有可用谱面，拒绝猜测当前版本', true);
