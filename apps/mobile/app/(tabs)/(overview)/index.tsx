@@ -505,8 +505,7 @@ export function OverviewScreen() {
                   <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
-            ) : bundle.payload.kind === 'chunithm' && bundle.providerId === 'chunithm-test' ? null
-              : bundle.payload.kind === 'chunithm' ? (
+            ) : bundle.payload.kind === 'chunithm' ? (
               <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
                 <Pressable
                   accessibilityRole="button"

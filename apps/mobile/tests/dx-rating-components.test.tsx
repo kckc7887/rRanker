@@ -60,7 +60,8 @@ describe('DX Rating components', () => {
         valueTheme={resolveChunithmRatingTier(17.25)}
       />,
     );
-    expect(screen.getByTestId('dx-rating-card-value-gradient')).toBeTruthy();
+    expect(screen.getByTestId('dx-rating-card-value-gradient').props.androidRenderingMode)
+      .toBe('software');
     expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value').props.style))
       .toMatchObject({ color: possessionTheme.textColor });
     expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-borderless').props.style))
