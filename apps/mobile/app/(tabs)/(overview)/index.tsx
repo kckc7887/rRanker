@@ -20,6 +20,10 @@ import {
   CHUNITHM_MAINTENANCE_MESSAGE,
   isChunithmMaintenanceWindow,
 } from '@/domain/chunithm-maintenance';
+import {
+  resolveChunithmPossessionTheme,
+  resolveChunithmRatingTier,
+} from '@/domain/chunithm-rating-theme';
 import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
@@ -444,6 +448,11 @@ export function OverviewScreen() {
                   : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
                 themeOverride={bundle.payload.kind === 'phigros'
                   ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
+                  : bundle.payload.kind === 'chunithm'
+                    ? resolveChunithmPossessionTheme(bundle.payload.player?.rating_possession)
+                    : undefined}
+                valueTheme={bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
+                  ? resolveChunithmRatingTier(bundle.payload.playerScore.value)
                   : undefined}
                 sideBadge={bundle.payload.kind === 'phigros'
                   ? { title: '课题模式', value: formatPhigrosChallengeBadge(bundle.payload.challengeModeRank) }
@@ -495,7 +504,8 @@ export function OverviewScreen() {
                   <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
-            ) : bundle.payload.kind === 'chunithm' ? (
+            ) : bundle.payload.kind === 'chunithm' && bundle.providerId === 'chunithm-test' ? null
+              : bundle.payload.kind === 'chunithm' ? (
               <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
                 <Pressable
                   accessibilityRole="button"
@@ -756,6 +766,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'phi-taptap') return 'TapTap 云存档';
   if (providerId === 'local') return '本地查分器';
   if (providerId === 'maimai-test') return '示例查分器';
+  if (providerId === 'chunithm-test') return '示例查分器';
   if (providerId === 'chunithm-temp') return '无成绩临时账号';
   return '本地';
 }

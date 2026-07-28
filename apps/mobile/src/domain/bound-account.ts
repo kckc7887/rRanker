@@ -22,6 +22,7 @@ export type BoundAccount = {
 export const TEST_ACCOUNT_ID = 'test:empty';
 export const LOCAL_MAIMAI_ACCOUNT_ID = 'maimai:local';
 export const MAIMAI_TEST_ACCOUNT_ID = 'maimai:test';
+export const CHUNITHM_TEST_ACCOUNT_ID = 'chunithm:test';
 export const CHUNITHM_TEMP_ACCOUNT_ID = 'chunithm:temp';
 
 export function isLocalMaimaiAccountId(accountId: string): boolean {
@@ -48,6 +49,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   lxns: '落雪查分器',
   local: '本地查分器',
   'maimai-test': '示例查分器',
+  'chunithm-test': '示例查分器',
   'phi-taptap': 'TapTap 云存档',
   'chunithm-temp': '无成绩临时账号',
 };
@@ -108,6 +110,22 @@ export function createChunithmTempAccount(): BoundAccount {
     scoreLabel: profile.ratingLabel,
     scoreDisplay: '—',
     providerTitle: PROVIDER_TITLES['chunithm-temp'],
+  };
+}
+
+export function createMaxedChunithmTestAccount(
+  rating = 0,
+  displayName = '示例账号',
+): BoundAccount {
+  const profile = getGameProfile('chunithm');
+  return {
+    id: CHUNITHM_TEST_ACCOUNT_ID,
+    gameId: 'chunithm',
+    providerId: 'chunithm-test',
+    displayName,
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: Number.isFinite(rating) ? rating.toFixed(2) : '—',
+    providerTitle: PROVIDER_TITLES['chunithm-test'],
   };
 }
 

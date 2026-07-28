@@ -506,6 +506,7 @@ export const useSession = create<SessionState>((set, get) => ({
     const kept = get().boundAccounts.filter(
       (account) => account.providerId === 'local'
         || account.providerId === 'maimai-test'
+        || account.providerId === 'chunithm-test'
         || account.providerId === 'chunithm-temp',
     );
     set(activateAccount(kept, {}, {}, kept[0]?.id ?? null));

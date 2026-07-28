@@ -1,4 +1,5 @@
 import {
+  CHUNITHM_TEST_ACCOUNT_ID,
   CHUNITHM_TEMP_ACCOUNT_ID,
   LOCAL_MAIMAI_ACCOUNT_ID,
   MAIMAI_TEST_ACCOUNT_ID,
@@ -71,6 +72,15 @@ describe('SecureSessionStore 内置账号兼容', () => {
     const vault = await store.loadVault();
     expect(vault.activeAccountId).toBe(CHUNITHM_TEMP_ACCOUNT_ID);
     expect(vault.accounts).toEqual([]);
+  });
+
+  it('允许中二示例账号作为活跃账号且不写入远程凭据', async () => {
+    const store = createStore();
+    await store.setActiveAccountId(CHUNITHM_TEST_ACCOUNT_ID);
+    const vault = await store.loadVault();
+    expect(vault.activeAccountId).toBe(CHUNITHM_TEST_ACCOUNT_ID);
+    expect(vault.accounts).toEqual([]);
+    expect(vault.credentials).toEqual([]);
   });
 
   it('远程账号删除仍保留其他远程账号和内置活跃状态', async () => {

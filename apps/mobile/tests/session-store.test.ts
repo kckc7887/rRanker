@@ -1,5 +1,7 @@
 import {
+  CHUNITHM_TEST_ACCOUNT_ID,
   CHUNITHM_TEMP_ACCOUNT_ID,
+  createMaxedChunithmTestAccount,
   createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
@@ -192,6 +194,18 @@ describe('useSession store', () => {
     expect(state.catalogProvider).toBeInstanceOf(LxnsCatalogProvider);
   });
 
+  it('switches to the generated maxed Chunithm demo account', () => {
+    useSession.getState().upsertBoundAccount(createMaxedChunithmTestAccount());
+    useSession.getState().selectBoundAccount(CHUNITHM_TEST_ACCOUNT_ID);
+    const state = useSession.getState();
+    expect(state.activeAccountId).toBe(CHUNITHM_TEST_ACCOUNT_ID);
+    expect(state.activeGameId).toBe('chunithm');
+    expect(state.activeProviderId).toBe('chunithm-test');
+    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
+    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(state.session).toBeNull();
+  });
+
   it('keeps multiple local players and rebuilds the active provider after renaming', async () => {
     const extra = createLocalMaimaiAccount('第二位玩家', 12345, 'maimai:local:second');
     useSession.getState().upsertBoundAccount(extra);
@@ -222,6 +236,7 @@ describe('useSession store', () => {
 
   it('clears remote binds and keeps remaining local/demo accounts', () => {
     useSession.getState().upsertBoundAccount(createChunithmTempAccount());
+    useSession.getState().upsertBoundAccount(createMaxedChunithmTestAccount());
     useSession.getState().setSession(jwtSession, { displayName: '尘言', rating: 1 });
     useSession.getState().clearSession();
     const state = useSession.getState();
@@ -230,6 +245,7 @@ describe('useSession store', () => {
     expect(state.boundAccounts.some((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.id === MAIMAI_TEST_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.id === CHUNITHM_TEMP_ACCOUNT_ID)).toBe(true);
+    expect(state.boundAccounts.some((account) => account.id === CHUNITHM_TEST_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.providerId === 'diving-fish')).toBe(false);
   });
 

@@ -5,6 +5,7 @@ import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
 import {
   createLocalMaimaiAccount,
   createMaimaiBoundAccount,
+  createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
   createTestBoundAccount,
   type BoundAccount,
@@ -16,6 +17,8 @@ import { NotificationProvider } from '@/components/AppNotification';
 const mockUpsertDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveDemoAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockRemoveChunithmTempAccount = jest.fn(async () => undefined);
+const mockSaveChunithmDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
+const mockRemoveChunithmDemoAccount = jest.fn(async () => undefined);
 const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockSetActiveAccountId = jest.fn(async (_accountId?: string | null) => undefined);
 const mockClearSnapshots = jest.fn(async () => undefined);
@@ -101,6 +104,13 @@ jest.mock('@/storage/chunithm-temp-account-store', () => ({
   ChunithmTempAccountStore: jest.fn(() => ({
     remove: () => mockRemoveChunithmTempAccount(),
   })),
+}));
+jest.mock('@/storage/chunithm-demo-account-store', () => ({
+  ChunithmDemoAccountStore: jest.fn(() => ({
+    save: (profile: { id: string; displayName: string }) => mockSaveChunithmDemoAccount(profile),
+    remove: () => mockRemoveChunithmDemoAccount(),
+  })),
+  isChunithmDemoAccountId: (accountId: string) => accountId === 'chunithm:test',
 }));
 jest.mock('@/services/switch-bound-account', () => ({
   switchBoundAccount: (accountId: string, options?: unknown) => (
@@ -230,6 +240,21 @@ describe('M3A game account management', () => {
     expect(screen.getByText('登录查分器')).toBeTruthy();
     expect(screen.getByText('用于绑定 中二节奏')).toBeTruthy();
     expect(mockUpsertBoundAccount).not.toHaveBeenCalled();
+  });
+
+  it('adds the generated maxed Chunithm demo account', async () => {
+    mockExpandedGameId = 'chunithm';
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    await fireEvent.press(screen.getByLabelText('示例查分器'));
+
+    const expected = createMaxedChunithmTestAccount();
+    await waitFor(() => expect(mockSaveChunithmDemoAccount).toHaveBeenCalledWith({
+      id: expected.id,
+      displayName: expected.displayName,
+    }));
+    expect(mockUpsertBoundAccount).toHaveBeenCalledWith(expected);
+    await waitFor(() => expect(mockSelectBoundAccount).toHaveBeenCalledWith(expected.id));
   });
 
   it('renames a local player from its account card', async () => {
