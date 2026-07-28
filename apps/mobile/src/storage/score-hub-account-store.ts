@@ -1,7 +1,11 @@
 import * as SecureStore from 'expo-secure-store';
+import Storage from 'expo-sqlite/kv-store';
+import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
 
 const ACCOUNT_KEY_V1 = 'rranker.scorehub.account.v1';
 const ACCOUNT_KEY_V2 = 'rranker.scorehub.account.v2';
+const ACCOUNT_INDEX_KEY = 'rranker.scorehub.accounts.v3';
+const LEGACY_ACCOUNT_KEYS = [ACCOUNT_KEY_V2, ACCOUNT_KEY_V1] as const;
 
 /** 兼容旧调用：当前 active 账号的扁平视图。 */
 export type ScoreHubAccountState = {
@@ -22,13 +26,25 @@ export type ScoreHubAccountsState = {
   accounts: Record<string, ScoreHubAccountEntry>;
 };
 
+type StoredScoreHubAccountEntry = Omit<ScoreHubAccountEntry, 'token'> & {
+  tokenRef: string;
+};
+
+type ScoreHubAccountIndex = {
+  version: 3;
+  activeFriendCode: string;
+  accounts: Record<string, StoredScoreHubAccountEntry>;
+};
+
+type KeyValueStore = {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<unknown>;
+  removeItem(key: string): Promise<unknown>;
+};
+
 const EMPTY_ALL: ScoreHubAccountsState = {
   activeFriendCode: '',
   accounts: {},
-};
-
-const STORE_OPTS = {
-  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
 
 function activeView(state: ScoreHubAccountsState): ScoreHubAccountState {
@@ -42,6 +58,41 @@ function activeView(state: ScoreHubAccountsState): ScoreHubAccountState {
     hasCabinetBound: entry.hasCabinetBound,
     token: entry.token,
   };
+}
+
+function parseIndex(raw: string): ScoreHubAccountIndex | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<ScoreHubAccountIndex>;
+    if (parsed.version !== 3 || !parsed.accounts || typeof parsed.accounts !== 'object') {
+      return null;
+    }
+    const accounts: Record<string, StoredScoreHubAccountEntry> = {};
+    for (const [key, value] of Object.entries(parsed.accounts)) {
+      if (!value || typeof value !== 'object') continue;
+      const friendCode = typeof value.friendCode === 'string'
+        ? value.friendCode.trim()
+        : key.trim();
+      if (!friendCode || typeof value.tokenRef !== 'string' || !value.tokenRef) continue;
+      accounts[friendCode] = {
+        friendCode,
+        tokenRef: value.tokenRef,
+        hasCabinetBound: value.hasCabinetBound === true,
+        updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : Date.now(),
+      };
+    }
+    const requestedActive = typeof parsed.activeFriendCode === 'string'
+      ? parsed.activeFriendCode.trim()
+      : '';
+    return {
+      version: 3,
+      activeFriendCode: requestedActive && accounts[requestedActive]
+        ? requestedActive
+        : (Object.keys(accounts)[0] ?? requestedActive),
+      accounts,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function parseV2(raw: string): ScoreHubAccountsState | null {
@@ -98,12 +149,74 @@ function parseV1(raw: string): ScoreHubAccountsState | null {
   }
 }
 
+async function deleteLegacyAccountKeys(): Promise<void> {
+  for (const key of LEGACY_ACCOUNT_KEYS) {
+    await SecureStore.deleteItemAsync(key).catch(() => undefined);
+  }
+}
+
 export class ScoreHubAccountStore {
+  constructor(
+    private readonly storage: KeyValueStore = Storage,
+    private readonly secrets = new LargeSecureValueStore(),
+  ) {}
+
+  private async loadIndexedState(index: ScoreHubAccountIndex): Promise<ScoreHubAccountsState> {
+    const accounts: Record<string, ScoreHubAccountEntry> = {};
+    for (const item of Object.values(index.accounts)) {
+      const token = await this.secrets.read(item.tokenRef);
+      if (!token) continue;
+      accounts[item.friendCode] = {
+        friendCode: item.friendCode,
+        token,
+        hasCabinetBound: item.hasCabinetBound,
+        updatedAt: item.updatedAt,
+      };
+    }
+    return {
+      activeFriendCode: index.activeFriendCode && accounts[index.activeFriendCode]
+        ? index.activeFriendCode
+        : (Object.keys(accounts)[0] ?? index.activeFriendCode),
+      accounts,
+    };
+  }
+
+  private async migrateLegacyState(state: ScoreHubAccountsState): Promise<ScoreHubAccountsState | null> {
+    try {
+      await this.writeAll(state);
+      const raw = await this.storage.getItem(ACCOUNT_INDEX_KEY);
+      const index = raw ? parseIndex(raw) : null;
+      const verified = index ? await this.loadIndexedState(index) : null;
+      if (!verified || JSON.stringify(verified) !== JSON.stringify(state)) {
+        await this.clearIndexedState();
+        return null;
+      }
+      return verified;
+    } catch {
+      await this.clearIndexedState().catch(() => undefined);
+      return null;
+    }
+  }
+
   private async readAll(): Promise<ScoreHubAccountsState> {
+    const indexRaw = await this.storage.getItem(ACCOUNT_INDEX_KEY);
+    if (indexRaw) {
+      const index = parseIndex(indexRaw);
+      if (index) return this.loadIndexedState(index);
+      await this.storage.removeItem(ACCOUNT_INDEX_KEY);
+    }
+
     const rawV2 = await SecureStore.getItemAsync(ACCOUNT_KEY_V2);
     if (rawV2) {
       const parsed = parseV2(rawV2);
-      if (parsed) return parsed;
+      if (parsed) {
+        const migrated = await this.migrateLegacyState(parsed);
+        if (migrated) {
+          await deleteLegacyAccountKeys();
+          return migrated;
+        }
+        return parsed;
+      }
       await SecureStore.deleteItemAsync(ACCOUNT_KEY_V2);
     }
 
@@ -111,8 +224,11 @@ export class ScoreHubAccountStore {
     if (rawV1) {
       const migrated = parseV1(rawV1);
       if (migrated) {
-        await this.writeAll(migrated);
-        await SecureStore.deleteItemAsync(ACCOUNT_KEY_V1);
+        const stored = await this.migrateLegacyState(migrated);
+        if (stored) {
+          await deleteLegacyAccountKeys();
+          return stored;
+        }
         return migrated;
       }
       await SecureStore.deleteItemAsync(ACCOUNT_KEY_V1);
@@ -121,7 +237,47 @@ export class ScoreHubAccountStore {
   }
 
   private async writeAll(state: ScoreHubAccountsState): Promise<void> {
-    await SecureStore.setItemAsync(ACCOUNT_KEY_V2, JSON.stringify(state), STORE_OPTS);
+    const currentRaw = await this.storage.getItem(ACCOUNT_INDEX_KEY);
+    const current = currentRaw ? parseIndex(currentRaw) : null;
+    const accounts: Record<string, StoredScoreHubAccountEntry> = {};
+    const newSecretRefs: string[] = [];
+
+    try {
+      for (const entry of Object.values(state.accounts)) {
+        const previous = current?.accounts[entry.friendCode];
+        const previousToken = previous ? await this.secrets.read(previous.tokenRef) : null;
+        let tokenRef = previous?.tokenRef;
+        if (!tokenRef || previousToken !== entry.token) {
+          tokenRef = this.secrets.createReference('scorehub-token');
+          await this.secrets.write(tokenRef, entry.token);
+          newSecretRefs.push(tokenRef);
+        }
+        accounts[entry.friendCode] = {
+          friendCode: entry.friendCode,
+          tokenRef,
+          hasCabinetBound: entry.hasCabinetBound,
+          updatedAt: entry.updatedAt,
+        };
+      }
+      const index: ScoreHubAccountIndex = {
+        version: 3,
+        activeFriendCode: state.activeFriendCode,
+        accounts,
+      };
+      await this.storage.setItem(ACCOUNT_INDEX_KEY, JSON.stringify(index));
+    } catch (error) {
+      for (const secretRef of newSecretRefs) {
+        await this.secrets.delete(secretRef).catch(() => undefined);
+      }
+      throw error;
+    }
+
+    const retained = new Set(Object.values(accounts).map((item) => item.tokenRef));
+    for (const previous of Object.values(current?.accounts ?? {})) {
+      if (!retained.has(previous.tokenRef)) {
+        await this.secrets.delete(previous.tokenRef).catch(() => undefined);
+      }
+    }
   }
 
   /** 当前 active 账号扁平视图（兼容旧调用）。 */
@@ -227,6 +383,7 @@ export class ScoreHubAccountStore {
   }
 
   async clear(): Promise<void> {
+    await this.clearIndexedState();
     await SecureStore.deleteItemAsync(ACCOUNT_KEY_V2);
     await SecureStore.deleteItemAsync(ACCOUNT_KEY_V1);
   }
@@ -243,6 +400,15 @@ export class ScoreHubAccountStore {
     }
     await this.writeAll(state);
     return state;
+  }
+
+  private async clearIndexedState(): Promise<void> {
+    const raw = await this.storage.getItem(ACCOUNT_INDEX_KEY);
+    const index = raw ? parseIndex(raw) : null;
+    for (const account of Object.values(index?.accounts ?? {})) {
+      await this.secrets.delete(account.tokenRef).catch(() => undefined);
+    }
+    await this.storage.removeItem(ACCOUNT_INDEX_KEY);
   }
 }
 
