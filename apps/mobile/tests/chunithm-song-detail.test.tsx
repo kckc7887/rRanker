@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Linking } from 'react-native';
+import { Linking, StyleSheet } from 'react-native';
 import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
 import type {
   ChunithmCatalogSnapshot,
@@ -268,6 +268,11 @@ describe('Chunithm song detail', () => {
     for (const label of ['TAP', 'HOLD', 'SLIDE', 'AIR', '总计']) {
       expect(basicNotes.getByText(label)).toBeTruthy();
     }
+    expect(StyleSheet.flatten(screen.getByTestId('chunithm-detail-difficulty-4').props.style))
+      .toMatchObject({
+        backgroundColor: '#17171A',
+        borderColor: '#E83A58',
+      });
 
     await fireEvent.press(screen.getByLabelText('收藏 B.B.K.K.B.K.K.'));
     expect(mockSetSongFavorite).toHaveBeenCalledWith('3', true);
@@ -297,6 +302,8 @@ describe('Chunithm song detail', () => {
     expect(screen.getByLabelText('歌曲封面 B.B.K.K.B.K.K.').props.source.uri)
       .toBe('https://assets2.lxns.net/chunithm/jacket/163.png');
     const worldsEnd = within(screen.getByTestId('chunithm-detail-difficulty-5'));
+    expect(screen.getByTestId('chunithm-detail-difficulty-5').props.colors)
+      .toEqual(worldsEnd.getByTestId('chunithm-worlds-end-badge').props.colors);
     expect(worldsEnd.getByText("WORLD'S END")).toBeTruthy();
     expect(worldsEnd.getByText('止☆1')).toBeTruthy();
     expect(worldsEnd.getAllByText('—').length).toBeGreaterThan(0);
