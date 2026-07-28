@@ -80,12 +80,17 @@ describe('mapLxnsScore', () => {
     });
     expect(dx.type).toBe('DX');
     expect(dx.rating).toBe(12);
-    expect(() => mapLxnsScore({
+    expect(mapLxnsScore({
       id: 100123,
       level_index: 0,
       achievements: 99,
       type: 'utage',
       dx_score: null,
-    })).toThrow('宴会场成绩不能映射');
+    })).toMatchObject({
+      songId: '100123',
+      type: 'UTAGE',
+      difficulty: 'utage',
+      rating: 0,
+    });
   });
 });

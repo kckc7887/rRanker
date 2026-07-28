@@ -81,15 +81,20 @@ export function RecordsScreen() {
     if (deferredFilterSpec.type !== 'all') {
       list = list.filter((record) => record.type === deferredFilterSpec.type);
     }
-    list = list.filter((record) => matchesConstantRange(
-      record.difficultyConstant, deferredFilterSpec.constantMin, deferredFilterSpec.constantMax,
-    ));
+    const hasConstantFilter = !!(deferredFilterSpec.constantMin || deferredFilterSpec.constantMax);
+    list = list.filter((record) => !(record.type === 'UTAGE' && hasConstantFilter) &&
+      matchesConstantRange(
+        record.difficultyConstant, deferredFilterSpec.constantMin, deferredFilterSpec.constantMax,
+      ));
     list = list.filter((record) => matchesAchievementRange(
       record.achievements, deferredFilterSpec.achievementMin, deferredFilterSpec.achievementMax,
     ));
     list = list.filter((record) => matchesSoloAchievementFilter(record, deferredFilterSpec.soloAchievement));
     list = list.filter((record) => matchesMultiAchievementFilter(record, deferredFilterSpec.multiAchievement));
-    return list.sort((a, b) => b.rating - a.rating || b.achievements - a.achievements);
+    return list.sort((a, b) =>
+      Number(a.type === 'UTAGE') - Number(b.type === 'UTAGE') ||
+      b.rating - a.rating ||
+      b.achievements - a.achievements);
   }, [data, deferredFilterSpec, searchBySongId]);
 
   const viewData = data && filtered.length > 0 ? {

@@ -39,6 +39,33 @@ describe('SqliteUserLibraryRepository', () => {
     expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM user_library_items');
   });
 
+  it('expands the chart type constraint in place while preserving items and tags', async () => {
+    sqlite.db.getFirstAsync.mockImplementation(async (sql: string) => {
+      if (sql.includes('sqlite_master')) {
+        return {
+          sql: "CREATE TABLE user_library_items (chart_type TEXT CHECK (chart_type IN ('SD', 'DX')))",
+        };
+      }
+      return { schema_version: 4 };
+    });
+
+    const repository = new SqliteUserLibraryRepository();
+    await expect(repository.list()).resolves.toEqual([]);
+
+    expect(sqlite.db.execAsync).toHaveBeenCalledWith('PRAGMA foreign_keys = OFF');
+    expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
+      'ALTER TABLE user_library_items RENAME TO user_library_items_legacy',
+    ));
+    expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
+      "chart_type IN ('SD', 'DX', 'UTAGE')",
+    ));
+    expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
+      'INSERT INTO user_library_item_tags',
+    ));
+    expect(sqlite.db.execAsync).toHaveBeenCalledWith('PRAGMA foreign_keys = ON');
+    expect(sqlite.db.getAllAsync).toHaveBeenCalledWith('PRAGMA foreign_key_check');
+  });
+
   it('clears personal tables inside a same-connection transaction', async () => {
     const repository = new SqliteUserLibraryRepository();
     await repository.clear();

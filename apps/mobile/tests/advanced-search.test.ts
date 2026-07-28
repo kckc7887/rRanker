@@ -4,6 +4,12 @@ import { buildSongSearchIndex, EMPTY_SONG_FILTERS, normalizeSearchText, searchSo
 const songs: Song[] = [{
   id: '1806', title: 'Ｆｒａｑ', artist: 'Team Grimoire', version: '2026', versionId: 25500,
   aliases: ['测试别名'], charts: [{ songId: '1806', type: 'DX', levelIndex: 3, difficulty: 'master', level: '13+', difficultyConstant: 13.7, charter: 'あま猫', versionId: 25500 }],
+}, {
+  id: '100123', title: '協 U·TA·GE', artist: '测试曲师', version: '2026', versionId: 25500,
+  charts: [{
+    songId: '100123', type: 'UTAGE', levelIndex: 0, difficulty: 'utage', level: '宴',
+    difficultyConstant: 0, versionId: 25500,
+  }],
 }];
 describe('advanced song search', () => {
   it('normalizes NFKC and searches aliases and charter', () => {
@@ -34,5 +40,15 @@ describe('advanced song search', () => {
       chartVersionIds: [25500],
     });
     expect(result).toHaveLength(0);
+  });
+
+  it('includes U·TA·GE by default and keeps it independent from DX and constant filters', () => {
+    const index = buildSongSearchIndex(songs);
+    expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, difficulties: ['utage'] })
+      .map((song) => song.id)).toEqual(['100123']);
+    expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, types: ['DX'] })
+      .map((song) => song.id)).toEqual(['1806']);
+    expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, constantMax: 1 })
+      .some((song) => song.id === '100123')).toBe(false);
   });
 });

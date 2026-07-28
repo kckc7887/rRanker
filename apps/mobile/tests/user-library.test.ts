@@ -39,6 +39,28 @@ describe('user library domain', () => {
     expect(() => parseUserDataBackup({ ...backup, version: 4 })).toThrow();
   });
 
+  it('preserves U·TA·GE chart items in backup data without changing its version', () => {
+    const utageChart: ChartLibraryItem = {
+      ...chart,
+      songId: '100123',
+      type: 'UTAGE',
+      levelIndex: 0,
+      key: chartLibraryKey('maimai', '100123', 'UTAGE', 0),
+    };
+    const backup = createUserDataBackup([utageChart], updatedAt);
+    const parsed = parseUserDataBackup(backup);
+
+    expect(backup.version).toBe(3);
+    expect(parsed.items).toEqual([
+      expect.objectContaining({
+        key: 'chart:maimai:100123:UTAGE:0',
+        type: 'UTAGE',
+        levelIndex: 0,
+        practice: true,
+      }),
+    ]);
+  });
+
   it('imports legacy v2 backups as maimai library items', () => {
     const legacy = {
       format: 'rranker-user-data' as const,

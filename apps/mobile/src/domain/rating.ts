@@ -51,7 +51,7 @@ export function buildBest50(
   source: DataSource,
   generatedAt = new Date().toISOString(),
 ): Best50Snapshot {
-  const classified = records.map((record) => ({
+  const classified = records.filter((record) => record.type !== 'UTAGE').map((record) => ({
     record,
     version: catalog.chartVersionIndex[chartVersionKey(record.songId, record.type, record.levelIndex)],
   }));

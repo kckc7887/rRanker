@@ -54,7 +54,7 @@ describe('LXNS player presentation', () => {
     await expect(provider.getRecords()).resolves.toMatchObject([{ dxScore: 1836 }]);
   });
 
-  it('omits utage records instead of exposing their fixed level_index 0 as BASIC', async () => {
+  it('maps utage records without exposing their fixed level_index 0 as BASIC', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: true,
       code: 200,
@@ -76,6 +76,7 @@ describe('LXNS player presentation', () => {
 
     await expect(provider.getRecords()).resolves.toMatchObject([
       { songId: '834', title: '标准 BASIC', difficulty: 'basic', type: 'SD' },
+      { songId: '100123', title: '宴会场', difficulty: 'utage', type: 'UTAGE', rating: 0 },
     ]);
   });
 });

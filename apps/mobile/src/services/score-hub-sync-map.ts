@@ -108,6 +108,7 @@ function normalizedHubType(type: string): 'standard' | 'dx' | 'utage' | null {
 }
 
 function chartTypeForHub(type: 'standard' | 'dx' | 'utage'): ChartType {
+  if (type === 'utage') return 'UTAGE';
   return type === 'standard' ? 'SD' : 'DX';
 }
 
@@ -123,8 +124,8 @@ export function convertHubScoresToLocalRecords(
 
   for (const score of scores) {
     const hubType = normalizedHubType(score.type);
-    if (!hubType || hubType === 'utage' || !Number.isInteger(score.chartIndex)
-      || score.chartIndex < 0 || score.chartIndex > 4) {
+    const levelIndex = hubType === 'utage' ? 0 : score.chartIndex;
+    if (!hubType || !Number.isInteger(levelIndex) || levelIndex < 0 || levelIndex > 4) {
       skippedUnsupportedChart += 1;
       continue;
     }
@@ -135,7 +136,7 @@ export function convertHubScoresToLocalRecords(
     }
     const type = chartTypeForHub(hubType);
     const chart = song.charts.find(
-      (item) => item.type === type && item.levelIndex === score.chartIndex,
+      (item) => item.type === type && item.levelIndex === levelIndex,
     );
     if (!chart) {
       skippedUnsupportedChart += 1;
@@ -153,7 +154,7 @@ export function convertHubScoresToLocalRecords(
       difficulty: chart.difficulty ?? difficultyFromIndex(chart.levelIndex),
       achievements,
       dxScore: toDxScore(score.dxScore),
-      rating: calculateChartRating(chart.difficultyConstant, achievements),
+      rating: type === 'UTAGE' ? 0 : calculateChartRating(chart.difficultyConstant, achievements),
       fc: mapHubFcToCanonical(score.fc),
       fs: mapHubFsToCanonical(score.fs),
       rate: scoreRateFromAchievement(achievements),
@@ -187,12 +188,10 @@ export function convertHubScoresToLxnsRecords(
       skippedNoSong += 1;
       continue;
     }
-    if (type !== 'utage') {
-      const chartType = chartTypeForHub(type);
-      if (!song.charts.some((chart) => chart.type === chartType && chart.levelIndex === levelIndex)) {
-        skippedUnsupportedChart += 1;
-        continue;
-      }
+    const chartType = chartTypeForHub(type);
+    if (!song.charts.some((chart) => chart.type === chartType && chart.levelIndex === levelIndex)) {
+      skippedUnsupportedChart += 1;
+      continue;
     }
     const achievements = parseHubAchievement(score.score);
     if (achievements === null || achievements < 0 || achievements > 101) {

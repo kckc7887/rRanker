@@ -19,7 +19,7 @@ export function buildMaxedMaimaiRecords(catalog: CatalogSnapshot): ScoreRecord[]
       ...chart,
       title: song.title,
       achievements: 101,
-      dxScore: chart.notes ? chart.notes.total * 3 : null,
+      dxScore: chart.notes && typeof chart.notes.total === 'number' ? chart.notes.total * 3 : null,
       rating: calculateChartRating(chart.difficultyConstant, 101),
       fc: 'app',
       fs: 'fsdp',
