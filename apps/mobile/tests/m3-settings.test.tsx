@@ -10,7 +10,7 @@ import {
   createTestBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
-import type { GameId } from '@/domain/game-bind-options';
+import { findGame, type GameId } from '@/domain/game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
 import { NotificationProvider } from '@/components/AppNotification';
 
@@ -46,6 +46,16 @@ const mockTestAccount = createMaxedMaimaiTestAccount();
 const mockEmptyGameAccount = createTestBoundAccount();
 let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount];
 let mockExpandedGameId: GameId = 'maimai';
+
+describe('示例账号图标', () => {
+  it('中二示例账号与舞萌示例账号复用同一图标', () => {
+    const maimaiIcon = findGame('maimai')?.providers
+      .find((provider) => provider.id === 'maimai-test')?.icon;
+    const chunithmIcon = findGame('chunithm')?.providers
+      .find((provider) => provider.id === 'chunithm-test')?.icon;
+    expect(chunithmIcon).toBe(maimaiIcon);
+  });
+});
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));

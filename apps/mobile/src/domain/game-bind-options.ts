@@ -31,7 +31,7 @@ export type GameOption = {
 const maimaiIcon = require('../../assets/images/maimai-dx.png') as ImageSourcePropType;
 const divingFishIcon = require('../../assets/images/diving-fish.png') as ImageSourcePropType;
 const lxnsIcon = require('../../assets/images/lxns.png') as ImageSourcePropType;
-const maimaiTestIcon = require('../../assets/images/maimai-test.png') as ImageSourcePropType;
+const exampleAccountIcon = require('../../assets/images/maimai-test.png') as ImageSourcePropType;
 const phigrosIcon = require('../../assets/images/phigros.png') as ImageSourcePropType;
 const taptapIcon = require('../../assets/images/taptap.png') as ImageSourcePropType;
 const chunithmIcon = require('../../assets/images/chunithm.png') as ImageSourcePropType;
@@ -70,7 +70,7 @@ export const GAME_OPTIONS: GameOption[] = [
         id: 'maimai-test',
         title: '示例查分器',
         detail: '全曲全谱面满成绩 · 可删除后重新添加',
-        icon: maimaiTestIcon,
+        icon: exampleAccountIcon,
         available: true,
       },
     ],
@@ -93,7 +93,7 @@ export const GAME_OPTIONS: GameOption[] = [
         id: 'chunithm-test',
         title: '示例查分器',
         detail: '全曲全谱面满成绩 · 可删除后重新添加',
-        icon: chunithmIcon,
+        icon: exampleAccountIcon,
         available: true,
       },
     ],
