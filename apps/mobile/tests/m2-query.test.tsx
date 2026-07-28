@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import { Animated, InteractionManager, Platform, processColor, StyleSheet } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
+import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
 import { useCatalogFilter } from '@/state/catalog-filter';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
@@ -45,9 +46,32 @@ jest.mock('expo-router', () => ({
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+  const utageSong = {
+    id: '100123',
+    title: '協 U·TA·GE',
+    artist: '测试曲师',
+    aliases: [],
+    version: '舞萌DX 2026',
+    versionId: 25500,
+    charts: [{
+      songId: '100123',
+      type: 'UTAGE',
+      levelIndex: 0,
+      level: '宴',
+      difficulty: 'utage',
+      difficultyConstant: 0,
+      charter: '協谱师',
+      versionId: 25500,
+      utage: { kanji: '協', description: '两人协力', isBuddy: true },
+      notes: {
+        left: { tap: 51, hold: 10, slide: 20, touch: 10, break: 10, total: 101 },
+        right: { tap: 52, hold: 10, slide: 20, touch: 10, break: 10, total: 102 },
+      },
+    }],
+  };
   const data = { ...fixtures.fixtureCatalog,
     versions: [...fixtures.fixtureCatalog.versions, { id: 25500, title: '舞萌DX 2026' }],
-    songs: fixtures.fixtureCatalog.songs.map((song: { id: string }) => song.id === '1' ? {
+    songs: [...fixtures.fixtureCatalog.songs.map((song: { id: string }) => song.id === '1' ? {
     ...song, aliases: ['唯一别名', '这是用于验证超出一行后才会出现展开按钮的很长很长别名'], version: '舞萌DX 2026', versionId: undefined,
     genre: 'POPS＆ANIME', bpm: 180, region: '未来都市',
     charts: [
@@ -61,7 +85,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
       { songId: '1', type: 'SD', levelIndex: 0, level: '5', difficulty: 'basic', difficultyConstant: 5.0, charter: 'SD基础谱师' },
       { songId: '1', type: 'SD', levelIndex: 3, level: '12+', difficulty: 'master', difficultyConstant: 12.8, charter: 'SD主谱师' },
     ],
-  } : song) };
+  } : song), utageSong] };
   return {
     data: mockDetailedCatalogAvailable ? data : undefined,
     isLoading: !mockDetailedCatalogAvailable,
@@ -79,6 +103,9 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
     { ...base, songId: '1', levelIndex: 2, difficulty: 'expert', achievements: 99.5, rating: 140, rate: 'ssp', fc: 'ap', fs: 'fsd' },
     { ...base, songId: '1', levelIndex: 3, difficulty: 'master', achievements: 99.9999, rating: 160, rate: 'sss', fc: 'app', fs: 'fsdp' },
     { ...base, songId: '1', levelIndex: 4, difficulty: 'remaster', achievements: 100.5, rating: 180, rate: 'sssp', fc: null, fs: null },
+    { ...base, songId: '100123', title: '協 U·TA·GE', type: 'UTAGE', levelIndex: 0,
+      level: '宴', difficulty: 'utage', difficultyConstant: 0, achievements: 101,
+      dxScore: 300, rating: 0, rate: 'sssp', fc: 'app', fs: 'fsdp' },
   ];
   return { data: { records: [...fixtures.fixtureRecords, ...visualRecords], source: fixtures.fixtureSource }, isLoading: false, isError: false, error: null, refetch: jest.fn() };
 } }));
@@ -182,6 +209,7 @@ describe('M2 song query screens', () => {
       padding: 2,
       borderColor: '#246BFD',
     }));
+    expect(screen.getByLabelText('筛选难度 U·TA·GE')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('重置筛选'));
     expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 BASIC').props.style)).toEqual(expect.objectContaining({
       borderColor: 'transparent',
@@ -317,6 +345,30 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('song-alias-text').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起别名'));
     expect(screen.getByTestId('song-alias-text').props.numberOfLines).toBe(1);
+  });
+
+  it('renders U·TA·GE without Rating calculation and shows separate 1P/2P notes', async () => {
+    mockSongRouteParams = { songId: '100123', chartType: 'UTAGE', levelIndex: '0' };
+    const screen = await render(<SongDetailScreen />);
+
+    expect(screen.getByText('U·TA·GE')).toBeTruthy();
+    expect(screen.getByTestId('maimai-utage-difficulty-badge').props.colors)
+      .toEqual(CHUNITHM_WORLDS_END_GRADIENT.map((color) => processColor(color)));
+    expect(screen.getByText('協')).toBeTruthy();
+    expect(screen.getByText('两人协力')).toBeTruthy();
+    expect(screen.getByText('DX分数 300')).toBeTruthy();
+    expect(screen.getByText('1P')).toBeTruthy();
+    expect(screen.getByText('2P')).toBeTruthy();
+    expect(screen.getByText('101')).toBeTruthy();
+    expect(screen.getByText('102')).toBeTruthy();
+    expect(screen.queryByLabelText(/打开 Rating 计算器/)).toBeNull();
+    expect(screen.getByText('—')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('使用1P 谱面物量计算容错'));
+    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
+      pathname: '/tools/tolerance',
+      params: expect.objectContaining({ tap: '51', hold: '10', slide: '20', touch: '10', break: '10' }),
+    }));
   });
 
   it('opens the chart type and exact difficulty supplied by a score card', async () => {

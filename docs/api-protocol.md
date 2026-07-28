@@ -35,7 +35,7 @@
 | 端点 | 方法 | Auth | 说明 |
 |------|------|------|------|
 | `/maimai/song/list` | GET | 无 | 曲目、谱面、版本与定数元数据 |
-| `/maimai/song/list?notes=true` | GET | 无 | 详细曲库、谱师与 TAP/HOLD/SLIDE/TOUCH/BREAK 物量 |
+| `/maimai/song/list?notes=true` | GET | 无 | 详细曲库、谱师、U·TA·GE 元数据与 TAP/HOLD/SLIDE/TOUCH/BREAK 物量；`協`谱面物量位于 `notes.left/right` |
 | `/maimai/alias/list` | GET | 无 | 歌曲别名 |
 | `/maimai/plate/list?required=true` | GET | 无 | 带歌曲、难度、rate、FC、FS 条件的姓名框要求 |
 | `/maimai/{trophy\|icon\|plate\|frame}/list?required=true` | GET | 无 | 收藏品列表；响应键分别为 `trophies` / `icons` / `plates` / `frames`，项内可选 `required[].songs` |
@@ -49,6 +49,9 @@
 - 当前版本取 `versions[].version` 中最大有效值，并要求至少存在一张同版本、未禁用谱面；否则拒绝生成 B50，不猜版本。
 - `Song.version` 与谱面 `version` 可能是 `15007` 这类细分版本号；显示、筛选和版本统计均按 `versions[]` 降序取“不大于原值的最大主版本”，不能用精确 Map 查找或简单千位取整。
 - B35/B15 按 LXNS 的谱面级 `version` 分类，不再使用水鱼歌曲级 `basic_info.from` 字符串分类。
+- `difficulties.utage` 映射为独立 `UTAGE` 类型和 `utage` 难度；固定 `level_index=0` 只作为接口索引，领域键为 `UTAGE:0`，不得映射为 BASIC 或 DX。
+- U·TA·GE 保留 `kanji`、`description`、`is_buddy`；`is_buddy=true` 时分别解析 `notes.left/right`，单侧缺失或结构不合法时不猜测物量。
+- U·TA·GE 成绩可进入全成绩展示，但不使用 `level_value` 定数、不计算 Rating，并排除 B35/B15、总 Rating、未匹配数量、最佳图片和随机谱面。
 - 普通水鱼 DX 曲目 ID 大于 10000 时对 10000 取模后与 LXNS ID 对齐；宴会场 ID 大于 100000 时保留。
 - 匹配键为规范化歌曲 ID、谱面类型与难度序号；无法匹配的成绩不进入 B35/B15，并在界面显示数量。
 - LXNS 请求失败时使用最近有效曲库缓存；无曲库缓存时只允许回退到最近完整成绩快照。
@@ -113,10 +116,10 @@ OAuth 约束（官方文档）：
 
 成绩映射：
 
-- `type`：`standard`→`SD`，`dx`/`utage`→`DX`。
-- `dx_rating` 向下取整为单曲 Rating；定数由 LXNS 公共曲库 enrich。
+- `type`：`standard`→`SD`，`dx`→`DX`，`utage`→`UTAGE`。
+- 普通谱面将 `dx_rating` 向下取整为单曲 Rating，定数由 LXNS 公共曲库 enrich；U·TA·GE 的 Rating 固定不参与计算，界面显示 `—`。
 - `fc` / `fs` / `rate` / `level_index` 与文档枚举一致。
-- 上传前用详细曲库确认曲目和谱面；普通 SD/DX 曲目 ID 去除 `+10000` 偏移，宴会场大于 `100000` 的 ID 保留，宴会场 `level_index` 固定为 `0`。
+- 上传前用详细曲库确认曲目和谱面；普通 SD/DX 曲目 ID 去除 `+10000` 偏移，U·TA·GE 大于 `100000` 的 ID 保留且 `level_index` 固定为 `0`。
 - score-hub 的 `fdx` / `fdxp` 分别映射为 LXNS `fsd` / `fsdp`；`fc` 只接受 `fc/fcp/ap/app`；无法确认的曲目、谱面、达成率或枚举计数后跳过。
 - 上传体只包含官方 `Score` 写入字段，按 `{ scores: [...] }` 发送；当前实现保留参考实现兼容字段 `dx_star: 0`，DXScore 缺失时为 `null`。
 - Access Token 到期前自动刷新；刷新返回的新 access/refresh token 必须一起更新内存会话与 SecureStore。401/403 不重试，429/5xx/网络超时沿用可重试错误语义，取消信号立即中止当前或后续目标。

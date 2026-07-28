@@ -53,6 +53,82 @@ describe('LxnsCatalogProvider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('maps U·TA·GE metadata and BUDDY notes without treating level index 0 as BASIC', async () => {
+    const utageSongs = [
+      {
+        id: 100122,
+        title: 'U·TA·GE',
+        artist: '测试曲师',
+        version: 25500,
+        difficulties: {
+          standard: [],
+          dx: [],
+          utage: [{
+            type: 'utage',
+            difficulty: 4,
+            level: '宴',
+            level_value: 0,
+            version: 25500,
+            note_designer: '宴谱师',
+            kanji: '光',
+            description: '普通说明',
+            is_buddy: false,
+            notes: { total: 100, tap: 50, hold: 10, slide: 20, touch: 10, break: 10 },
+          }],
+        },
+      },
+      {
+        id: 100123,
+        title: '協 U·TA·GE',
+        artist: '测试曲师',
+        version: 25500,
+        difficulties: {
+          standard: [],
+          dx: [],
+          utage: [{
+            type: 'utage',
+            difficulty: 0,
+            level: '宴',
+            level_value: 0,
+            version: 25500,
+            note_designer: '協谱师',
+            kanji: '協',
+            description: '两人协力',
+            is_buddy: true,
+            notes: {
+              left: { total: 101, tap: 51, hold: 10, slide: 20, touch: 10, break: 10 },
+              right: { total: 102, tap: 52, hold: 10, slide: 20, touch: 10, break: 10 },
+            },
+          }],
+        },
+      },
+    ];
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...responsePayload,
+      songs: [...responsePayload.songs, ...utageSongs],
+    }), { status: 200 })));
+
+    const catalog = await new LxnsCatalogProvider().getDetailedCatalog();
+    const regular = catalog.songs.find((song) => song.id === '100122')?.charts[0];
+    const buddy = catalog.songs.find((song) => song.id === '100123')?.charts[0];
+
+    expect(regular).toMatchObject({
+      type: 'UTAGE',
+      levelIndex: 0,
+      difficulty: 'utage',
+      utage: { kanji: '光', description: '普通说明', isBuddy: false },
+      notes: { total: 100 },
+    });
+    expect(buddy).toMatchObject({
+      type: 'UTAGE',
+      levelIndex: 0,
+      difficulty: 'utage',
+      utage: { kanji: '協', description: '两人协力', isBuddy: true },
+      notes: { left: { total: 101 }, right: { total: 102 } },
+    });
+    expect(catalog.chartVersionIndex[chartVersionKey(100123, 'UTAGE', 0)]).toBe(25500);
+  });
+
   it('merges trophy/icon/plate/frame lists into one collection snapshot', async () => {
     const required = [{ difficulties: [0, 1, 2, 3], songs: [{ id: 1424, title: 'Estahv', type: 'dx' as const }] }];
     const byKind: Record<string, unknown> = {

@@ -2,7 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import { chartVersionKey, difficultyFromIndex } from '@/domain/catalog';
 import type {
-  AliasSnapshot, CatalogSnapshot, Chart, ChartNotes, ChartType, CollectionItem,
+  AliasSnapshot, BuddyChartNotes, CatalogSnapshot, Chart, ChartNotes, ChartType, CollectionItem,
   CollectionKind, CollectionSnapshot, DataSource, PlateRequirement, PlateSnapshot, Song,
 } from '@/domain/models';
 import type { DetailedCatalogProvider } from './contracts';
@@ -18,11 +18,23 @@ const NotesSchema = z.object({
   hold: z.number().int().nonnegative(), slide: z.number().int().nonnegative(),
   touch: z.number().int().nonnegative(), break: z.number().int().nonnegative(),
 }).passthrough();
+const BuddyNotesSchema = z.object({
+  left: NotesSchema,
+  right: NotesSchema,
+}).passthrough();
 const DifficultySchema = z.object({
   type: z.enum(['standard', 'dx']), difficulty: z.number().int().min(0),
   level: z.string(), level_value: z.number().finite().nonnegative(),
   version: z.number().int().positive(), note_designer: z.string().nullish(),
   notes: NotesSchema.nullish(),
+}).passthrough();
+const UtageDifficultySchema = z.object({
+  type: z.literal('utage'), difficulty: z.number().int().min(0),
+  level: z.string(), level_value: z.number().finite().nonnegative(),
+  version: z.number().int().positive(), note_designer: z.string().nullish(),
+  kanji: z.string().nullish(), description: z.string().nullish(),
+  is_buddy: z.boolean().default(false),
+  notes: z.union([NotesSchema, BuddyNotesSchema]).nullish(),
 }).passthrough();
 const SongSchema = z.object({
   id: z.number().int().nonnegative(), title: z.string(), artist: z.string().optional(),
@@ -32,6 +44,7 @@ const SongSchema = z.object({
   disabled: z.boolean().optional(), locked: z.boolean().optional(),
   difficulties: z.object({
     standard: z.array(DifficultySchema).default([]), dx: z.array(DifficultySchema).default([]),
+    utage: z.array(UtageDifficultySchema).default([]),
   }).passthrough(),
 }).passthrough();
 const CatalogResponseSchema = z.object({
@@ -49,7 +62,7 @@ const RequirementSchema = z.object({
   rate: z.string().nullish(), fc: z.string().nullish(), fs: z.string().nullish(),
   songs: z.array(z.union([
     z.number().int().nonnegative(),
-    z.object({ id: z.number().int().nonnegative(), title: z.string(), type: z.enum(['standard', 'dx']) }).passthrough(),
+    z.object({ id: z.number().int().nonnegative(), title: z.string(), type: z.enum(['standard', 'dx', 'utage']) }).passthrough(),
   ])).default([]),
 }).passthrough();
 const CollectionSchema = z.object({
@@ -94,7 +107,10 @@ function collectionEntries(
 function source(label: string): DataSource {
   return { kind: 'lxns', label, updatedAt: new Date().toISOString(), isStale: false };
 }
-function chartType(type: 'standard' | 'dx'): ChartType { return type === 'dx' ? 'DX' : 'SD'; }
+function chartType(type: 'standard' | 'dx' | 'utage'): ChartType {
+  if (type === 'utage') return 'UTAGE';
+  return type === 'dx' ? 'DX' : 'SD';
+}
 
 function versionAtOrBefore<T extends { version: number }>(versions: readonly T[], rawVersion: number): T | undefined {
   return versions.reduce<T | undefined>((matched, item) =>
@@ -125,7 +141,7 @@ function mapCatalog(input: unknown, label: string): CatalogSnapshot {
   const chartVersionIndex: Record<string, number> = {};
   let currentChartCount = 0;
   const songs: Song[] = parsed.data.songs.map((rawSong) => {
-    const charts: Chart[] = [...rawSong.difficulties.standard, ...rawSong.difficulties.dx].map((raw) => {
+    const standardCharts: Chart[] = [...rawSong.difficulties.standard, ...rawSong.difficulties.dx].map((raw) => {
       const type = chartType(raw.type);
       const chartVersion = versionAtOrBefore(parsed.data.versions, raw.version);
       const chartVersionId = chartVersion?.version ?? raw.version;
@@ -140,6 +156,44 @@ function mapCatalog(input: unknown, label: string): CatalogSnapshot {
         notes: raw.notes ? { ...raw.notes } satisfies ChartNotes : undefined,
       };
     });
+    const utageCharts: Chart[] = rawSong.difficulties.utage.map((raw) => {
+      const type = chartType(raw.type);
+      const levelIndex = 0;
+      const chartVersion = versionAtOrBefore(parsed.data.versions, raw.version);
+      const chartVersionId = chartVersion?.version ?? raw.version;
+      if (!rawSong.disabled) {
+        chartVersionIndex[chartVersionKey(rawSong.id, type, levelIndex)] = chartVersionId;
+        if (chartVersionId === current.version) currentChartCount += 1;
+      }
+      const buddyNotes = BuddyNotesSchema.safeParse(raw.notes);
+      const singleNotes = NotesSchema.safeParse(raw.notes);
+      const notes = buddyNotes.success
+        ? {
+            left: { ...buddyNotes.data.left },
+            right: { ...buddyNotes.data.right },
+          } satisfies BuddyChartNotes
+        : singleNotes.success
+          ? { ...singleNotes.data } satisfies ChartNotes
+          : undefined;
+      return {
+        songId: String(rawSong.id),
+        type,
+        // LXNS 固定用 0 标识 U·TA·GE 的接口索引；领域难度仍为 utage，不能映射成 BASIC。
+        levelIndex,
+        level: raw.level,
+        difficulty: 'utage',
+        difficultyConstant: raw.level_value,
+        charter: raw.note_designer ?? undefined,
+        versionId: chartVersionId,
+        notes,
+        utage: {
+          kanji: raw.kanji?.trim() || undefined,
+          description: raw.description?.trim() || undefined,
+          isBuddy: raw.is_buddy,
+        },
+      };
+    });
+    const charts = [...standardCharts, ...utageCharts];
     const songVersion = versionAtOrBefore(parsed.data.versions, rawSong.version);
     return {
       id: String(rawSong.id), title: rawSong.title, artist: rawSong.artist,

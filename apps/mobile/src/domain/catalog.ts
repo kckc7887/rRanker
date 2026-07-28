@@ -37,8 +37,12 @@ export function enrichRecordsWithCatalog(
     const versionId = catalog.chartVersionIndex[chartVersionKey(record.songId, record.type, record.levelIndex)];
     return {
       ...record,
+      level: chart?.level ?? record.level,
+      difficulty: chart?.difficulty ?? record.difficulty,
       difficultyConstant: chart?.difficultyConstant ?? record.difficultyConstant,
+      charter: chart?.charter ?? record.charter,
       notes: chart?.notes ?? record.notes,
+      utage: chart?.utage ?? record.utage,
       version: versionId === undefined
         ? 'unknown'
         : versionTitles.get(versionId) ?? String(versionId),

@@ -115,7 +115,19 @@ describe('score-hub-sync-map', () => {
             },
           ],
         },
-        { id: '100123', title: '宴会场', version: 'current', charts: [] },
+        {
+          id: '100123',
+          title: 'U·TA·GE',
+          version: 'current',
+          charts: [{
+            songId: '100123',
+            type: 'UTAGE',
+            levelIndex: 0,
+            level: '宴',
+            difficulty: 'utage',
+            difficultyConstant: 0,
+          }],
+        },
       ],
       chartVersionIndex: {
         '1696:SD:3': 2,
@@ -140,13 +152,16 @@ describe('score-hub-sync-map', () => {
     ];
 
     const local = convertHubScoresToLocalRecords(hubScores, catalog);
-    expect(local.records).toHaveLength(2);
+    expect(local.records).toHaveLength(3);
     expect(local.records[0]).toMatchObject({
       songId: '1696', type: 'DX', levelIndex: 4, achievements: 100.5,
       dxScore: 2000, fc: 'app', fs: 'fsdp', rate: 'sssp',
     });
     expect(local.records[1]).toMatchObject({ type: 'SD', fs: 'fsd', rate: 'ssp' });
-    expect(local.skippedUnsupportedChart).toBe(1);
+    expect(local.records[2]).toMatchObject({
+      songId: '100123', type: 'UTAGE', difficulty: 'utage', levelIndex: 0, rating: 0,
+    });
+    expect(local.skippedUnsupportedChart).toBe(0);
     expect(local.skippedNoSong).toBe(1);
 
     const lxns = convertHubScoresToLxnsRecords(hubScores, catalog);

@@ -48,6 +48,7 @@ const DIFFICULTY_COLORS: Record<ScoreRecord['difficulty'], string> = {
   expert: '#D84B68',
   master: '#7137C8',
   remaster: '#A65DB9',
+  utage: '#7B61FF',
   unknown: '#6B7280',
 };
 const RATE_LABELS: Record<string, string> = {
@@ -207,7 +208,9 @@ function renderScoreCard(
   const jacketUrl = hasPreparedJacket
     ? coverUrls[record.songId]
     : `${LXNS_ASSET_ROOT}/jacket/${encodeURIComponent(record.songId)}.png`;
-  const theoreticalDxScore = record.notes ? record.notes.total * 3 : null;
+  const theoreticalDxScore = record.notes && typeof record.notes.total === 'number'
+    ? record.notes.total * 3
+    : null;
   const actualDxScore = record.dxScore === null ? '—' : String(record.dxScore);
   const maximumDxScore = theoreticalDxScore === null ? '—' : String(theoreticalDxScore);
   const difficultyColor = DIFFICULTY_COLORS[record.difficulty];

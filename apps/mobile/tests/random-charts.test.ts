@@ -37,6 +37,14 @@ const songs: Song[] = [
       { songId: '3', type: 'DX', levelIndex: 0, level: '7', difficulty: 'basic', difficultyConstant: 7.0 },
     ],
   },
+  {
+    id: '100123',
+    title: 'U·TA·GE',
+    version: '测试版本',
+    charts: [
+      { songId: '100123', type: 'UTAGE', levelIndex: 0, level: '宴', difficulty: 'utage', difficultyConstant: 0 },
+    ],
+  },
 ];
 
 const catalog: CatalogSnapshot = {
@@ -93,6 +101,7 @@ describe('filterRandomCharts', () => {
   it('returns every chart when filters are open', () => {
     const pool = filterRandomCharts(catalog, records, allFilters);
     expect(pool).toHaveLength(6);
+    expect(pool.some((item) => item.type === 'UTAGE')).toBe(false);
   });
 
   it('filters by difficulty multi-select', () => {

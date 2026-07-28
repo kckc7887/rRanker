@@ -35,7 +35,7 @@ import {
 } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
 
-const TYPES: ChartType[] = ['SD', 'DX'];
+const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
 export default function SearchTabScreen() {
@@ -179,7 +179,7 @@ const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { song
         .sort((left, right) => left.levelIndex - right.levelIndex);
       if (!typeCharts.length) return null;
       return <View key={chartType} style={styles.chartGroup}>
-        <ChartTypeBadge type={chartType} />
+        {chartType === 'UTAGE' ? null : <ChartTypeBadge type={chartType} />}
         {typeCharts.map((chart) => <DifficultyBadge key={`${chart.type}-${chart.levelIndex}`}
           difficulty={chart.difficulty} constant={chart.difficultyConstant} display="constant" compact />)}
       </View>;
