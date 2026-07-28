@@ -26,6 +26,12 @@ import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
+import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
+import {
+  CHUNITHM_CATALOG_QUERY_KEY,
+  loadChunithmCatalog,
+} from '@/services/chunithm-catalog-loader';
+import { queryClient } from '@/state/query-client';
 
 const repository = new SqliteSnapshotRepository();
 const GAME_DATA_QUERY_VERSION = 17;
@@ -47,6 +53,37 @@ export function useGameData() {
     queryKey: ['game-data', GAME_DATA_QUERY_VERSION, activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'none'],
     queryFn: async (): Promise<GameDataBundle> => {
       if (activeGameId === 'chunithm') {
+        if (activeProviderId === 'chunithm-test') {
+          const catalog = await queryClient.fetchQuery({
+            queryKey: CHUNITHM_CATALOG_QUERY_KEY,
+            queryFn: loadChunithmCatalog,
+          });
+          const snapshot = buildMaxedChunithmSnapshot(
+            catalog,
+            activeAccount?.displayName ?? '示例账号',
+          );
+          return {
+            gameId: 'chunithm',
+            providerId: 'chunithm-test',
+            profile: getGameProfile('chunithm'),
+            payload: {
+              kind: 'chunithm',
+              player: snapshot.player,
+              scores: snapshot.scores,
+              bestSections: [
+                { id: 'b30', title: 'Best 30', scores: snapshot.bests.bests },
+                { id: 'new20', title: 'New 20', scores: snapshot.bests.new_bests },
+              ],
+              playerScore: {
+                label: 'RATING',
+                value: snapshot.player.rating,
+                display: snapshot.player.rating.toFixed(2),
+              },
+              source: snapshot.source,
+              hasSyncedData: true,
+            },
+          };
+        }
         if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {
           const provider = new ChunithmScoreProvider(
             session,
@@ -248,10 +285,12 @@ export function useGameData() {
         d.payload.player?.name,
         avatarUrl ?? undefined,
       );
-      void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
-        displayName: d.payload.player?.name ?? '落雪账号（待同步）',
-        scoreDisplay: d.payload.playerScore.display,
-      }).catch(() => undefined);
+      if (d.providerId === 'lxns') {
+        void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
+          displayName: d.payload.player?.name ?? '落雪账号（待同步）',
+          scoreDisplay: d.payload.playerScore.display,
+        }).catch(() => undefined);
+      }
       if (avatarUrl) {
         void persistBoundAccountAvatar(activeAccountId, avatarUrl);
       }

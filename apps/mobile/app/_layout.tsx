@@ -21,12 +21,17 @@ import {
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSyncOnAccountSwitch } from '@/hooks/use-sync-on-account-switch';
 import {
+  createMaxedChunithmTestAccount,
   createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
+import {
+  ChunithmDemoAccountStore,
+  DEFAULT_CHUNITHM_DEMO_PLAYER_NAME,
+} from '@/storage/chunithm-demo-account-store';
 import { NotificationProvider } from '@/components/AppNotification';
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
@@ -36,6 +41,7 @@ import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-ava
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
 const demoAccounts = new DemoAccountStore();
+const chunithmDemoAccount = new ChunithmDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 const snapshots = new SqliteSnapshotRepository();
 
@@ -67,15 +73,27 @@ async function loadDemoBoundAccounts() {
   ));
 }
 
+async function loadChunithmDemoBoundAccount() {
+  const stored = await chunithmDemoAccount.load();
+  return stored
+    ? createMaxedChunithmTestAccount(
+        0,
+        stored.displayName || DEFAULT_CHUNITHM_DEMO_PLAYER_NAME,
+      )
+    : null;
+}
+
 async function loadOptionalBoundAccounts() {
-  const [locals, demos, hasChunithmTemp] = await Promise.all([
+  const [locals, demos, chunithmDemo, hasChunithmTemp] = await Promise.all([
     loadLocalBoundAccounts(),
     loadDemoBoundAccounts(),
+    loadChunithmDemoBoundAccount(),
     chunithmTempAccount.load(),
   ]);
   return [
     ...locals,
     ...demos,
+    ...(chunithmDemo ? [chunithmDemo] : []),
     ...(hasChunithmTemp ? [createChunithmTempAccount()] : []),
   ];
 }
