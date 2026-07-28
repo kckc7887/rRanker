@@ -181,7 +181,8 @@ const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { song
       return <View key={chartType} style={styles.chartGroup}>
         {chartType === 'UTAGE' ? null : <ChartTypeBadge type={chartType} />}
         {typeCharts.map((chart) => <DifficultyBadge key={`${chart.type}-${chart.levelIndex}`}
-          difficulty={chart.difficulty} constant={chart.difficultyConstant} display="constant" compact />)}
+          difficulty={chart.difficulty} constant={chart.difficultyConstant} display="constant" compact
+          specialLabel={chart.utage?.kanji} />)}
       </View>;
     })}
   </View>;

@@ -57,7 +57,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
       songId: '100123',
       type: 'UTAGE',
       levelIndex: 0,
-      level: '宴',
+      level: '14+?',
       difficulty: 'utage',
       difficultyConstant: 0,
       charter: '協谱师',
@@ -202,6 +202,13 @@ describe('M2 song query screens', () => {
         borderColor: '#246BFD',
       }));
     }
+    await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '協 U·TA·GE');
+    await waitFor(() => expect(screen.getByTestId('song-chart-badges-100123')).toBeTruthy());
+    const utageBadges = within(screen.getByTestId('song-chart-badges-100123'));
+    expect(utageBadges.getByText('協')).toBeTruthy();
+    expect(utageBadges.queryByText('U·TA·GE')).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '');
+    await waitFor(() => expect(screen.getByText('共 9 首')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('筛选难度 BASIC'));
     expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 BASIC').props.style)).toEqual(expect.objectContaining({
       borderWidth: 2,
@@ -355,6 +362,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('maimai-utage-difficulty-badge').props.colors)
       .toEqual(CHUNITHM_WORLDS_END_GRADIENT.map((color) => processColor(color)));
     expect(screen.getByText('協')).toBeTruthy();
+    expect(screen.getByText('14+?')).toBeTruthy();
     expect(screen.getByText('两人协力')).toBeTruthy();
     expect(screen.getByText('DX分数 300')).toBeTruthy();
     expect(screen.getByText('1P')).toBeTruthy();
@@ -362,7 +370,8 @@ describe('M2 song query screens', () => {
     expect(screen.getByText('101')).toBeTruthy();
     expect(screen.getByText('102')).toBeTruthy();
     expect(screen.queryByLabelText(/打开 Rating 计算器/)).toBeNull();
-    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.queryByText(/Rating/)).toBeNull();
+    expect(screen.queryByText(/谱师/)).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('使用1P 谱面物量计算容错'));
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({

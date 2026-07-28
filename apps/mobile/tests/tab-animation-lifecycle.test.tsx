@@ -1,4 +1,4 @@
-import { act, render } from '@testing-library/react-native';
+import { act, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, InteractionManager } from 'react-native';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -58,5 +58,26 @@ describe('cached tab animation lifecycle', () => {
     await act(() => { secondCleanup?.(); });
     expect(resumedAnimations.every((animation) => animation.stop.mock.calls.length === 1)).toBe(true);
     expect(animations).toHaveLength(foregroundAnimations.length * 2);
+  });
+
+  it('shows U·TA·GE score data without a Rating block', async () => {
+    const record = {
+      ...fixtureRecords[0]!,
+      songId: '100123',
+      title: '原曲标题',
+      type: 'UTAGE' as const,
+      levelIndex: 0,
+      difficulty: 'utage' as const,
+      difficultyConstant: 0,
+      achievements: 100.5,
+      dxScore: 1234,
+      rating: 0,
+      rate: 'sssp',
+    };
+    const screen = await render(<ScoreRecordCard record={record} />);
+    const card = within(screen.getByLabelText('查看谱面 原曲标题 UTAGE utage'));
+
+    expect(card.getByText('DX分数 1234')).toBeTruthy();
+    expect(card.queryByText('Rating')).toBeNull();
   });
 });

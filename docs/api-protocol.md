@@ -51,7 +51,8 @@
 - B35/B15 按 LXNS 的谱面级 `version` 分类，不再使用水鱼歌曲级 `basic_info.from` 字符串分类。
 - `difficulties.utage` 映射为独立 `UTAGE` 类型和 `utage` 难度；固定 `level_index=0` 只作为接口索引，领域键为 `UTAGE:0`，不得映射为 BASIC 或 DX。
 - U·TA·GE 保留 `kanji`、`description`、`is_buddy`；`is_buddy=true` 时分别解析 `notes.left/right`，单侧缺失或结构不合法时不猜测物量。
-- U·TA·GE 成绩可进入全成绩展示，但不使用 `level_value` 定数、不计算 Rating，并排除 B35/B15、总 Rating、未匹配数量、最佳图片和随机谱面。
+- U·TA·GE 曲目标题移除开头的方括号属性，封面使用 `song_id - 100000` 对应的原曲资源；曲师、BPM、分类、地区、版权、版本与别名沿用原曲，收藏和个人曲库仍使用 U·TA·GE 自身歌曲 ID。
+- U·TA·GE 成绩可进入全成绩展示，但不使用 `level_value` 定数、不计算或显示 Rating，并排除 B35/B15、总 Rating、未匹配数量、最佳图片和随机谱面。
 - 普通水鱼 DX 曲目 ID 大于 10000 时对 10000 取模后与 LXNS ID 对齐；宴会场 ID 大于 100000 时保留。
 - 匹配键为规范化歌曲 ID、谱面类型与难度序号；无法匹配的成绩不进入 B35/B15，并在界面显示数量。
 - LXNS 请求失败时使用最近有效曲库缓存；无曲库缓存时只允许回退到最近完整成绩快照。
@@ -117,7 +118,7 @@ OAuth 约束（官方文档）：
 成绩映射：
 
 - `type`：`standard`→`SD`，`dx`→`DX`，`utage`→`UTAGE`。
-- 普通谱面将 `dx_rating` 向下取整为单曲 Rating，定数由 LXNS 公共曲库 enrich；U·TA·GE 的 Rating 固定不参与计算，界面显示 `—`。
+- 普通谱面将 `dx_rating` 向下取整为单曲 Rating，定数由 LXNS 公共曲库 enrich；U·TA·GE 的 Rating 不参与计算且界面不显示 Rating 区域。
 - `fc` / `fs` / `rate` / `level_index` 与文档枚举一致。
 - 上传前用详细曲库确认曲目和谱面；普通 SD/DX 曲目 ID 去除 `+10000` 偏移，U·TA·GE 大于 `100000` 的 ID 保留且 `level_index` 固定为 `0`。
 - score-hub 的 `fdx` / `fdxp` 分别映射为 LXNS `fsd` / `fsdp`；`fc` 只接受 `fc/fcp/ap/app`；无法确认的曲目、谱面、达成率或枚举计数后跳过。
