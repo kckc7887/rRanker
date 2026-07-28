@@ -182,7 +182,9 @@ const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { song
         {chartType === 'UTAGE' ? null : <ChartTypeBadge type={chartType} />}
         {typeCharts.map((chart) => <DifficultyBadge key={`${chart.type}-${chart.levelIndex}`}
           difficulty={chart.difficulty} constant={chart.difficultyConstant} display="constant" compact
-          specialLabel={chart.utage?.kanji} />)}
+          specialLabel={chart.type === 'UTAGE'
+            ? `${chart.utage?.kanji?.trim() || 'U·TA·GE'} ${chart.level}`.trim()
+            : undefined} />)}
       </View>;
     })}
   </View>;

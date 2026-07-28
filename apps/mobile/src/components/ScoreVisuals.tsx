@@ -15,7 +15,10 @@ import {
   BEST_IMAGE_RAINBOW_COLORS,
   STATUS_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
-import { SPECIAL_DIFFICULTY_GRADIENT } from '@/components/special-difficulty-theme';
+import {
+  MAIMAI_UTAGE_COLOR,
+  MAIMAI_UTAGE_TINT,
+} from '@/components/special-difficulty-theme';
 
 type GradientColors = readonly [string, string, ...string[]];
 
@@ -56,7 +59,14 @@ export const DIFFICULTY_VISUAL: Record<Difficulty, DifficultyVisual> = {
   expert: { label: 'EXPERT', color: '#D84B68', tint: '#FFF0F3', badgeBackground: '#D84B68', badgeText: '#FFFFFF', badgeBorder: '#D84B68' },
   advanced: { label: 'ADVANCED', color: '#E39124', tint: '#FFF6E8', badgeBackground: '#E39124', badgeText: '#FFFFFF', badgeBorder: '#E39124' },
   basic: { label: 'BASIC', color: '#3E9D6B', tint: '#ECF8F1', badgeBackground: '#3E9D6B', badgeText: '#FFFFFF', badgeBorder: '#3E9D6B' },
-  utage: { label: 'U·TA·GE', color: '#7B61FF', tint: '#F3EDFF', badgeBackground: '#7B61FF', badgeText: '#FFFFFF', badgeBorder: '#F24FD4' },
+  utage: {
+    label: 'U·TA·GE',
+    color: MAIMAI_UTAGE_COLOR,
+    tint: MAIMAI_UTAGE_TINT,
+    badgeBackground: MAIMAI_UTAGE_COLOR,
+    badgeText: '#FFFFFF',
+    badgeBorder: MAIMAI_UTAGE_COLOR,
+  },
   unknown: { label: 'UNKNOWN', color: '#6B7280', tint: '#F3F4F6', badgeBackground: '#6B7280', badgeText: '#FFFFFF', badgeBorder: '#6B7280' },
 };
 
@@ -95,16 +105,15 @@ export function DifficultyBadge({ difficulty, constant, display, compact = false
   ];
   if (difficulty === 'utage') {
     const label = specialLabel?.trim() || 'U·TA·GE';
-    return <LinearGradient
+    return <View
       accessibilityLabel={label}
-      colors={SPECIAL_DIFFICULTY_GRADIENT}
-      end={{ x: 1, y: 0.5 }}
-      start={{ x: 0, y: 0.5 }}
-      style={badgeStyle}
+      style={[...badgeStyle, {
+        backgroundColor: MAIMAI_UTAGE_COLOR,
+        borderColor: MAIMAI_UTAGE_COLOR,
+      }]}
       testID="maimai-utage-difficulty-badge">
-      <View pointerEvents="none" style={styles.utageOverlay} />
       <Text numberOfLines={1} style={textStyle}>{label}</Text>
-    </LinearGradient>;
+    </View>;
   }
   return <View style={[
     ...badgeStyle,
@@ -116,11 +125,9 @@ export function DifficultyBadge({ difficulty, constant, display, compact = false
 
 export function ChartTypeBadge({ type }: { type: ChartType }) {
   if (type === 'UTAGE') {
-    return <LinearGradient colors={SPECIAL_DIFFICULTY_GRADIENT}
-      end={{ x: 1, y: 0.5 }} start={{ x: 0, y: 0.5 }} style={styles.chartTypeBadge}>
-      <View pointerEvents="none" style={styles.utageOverlay} />
+    return <View style={[styles.chartTypeBadge, { backgroundColor: MAIMAI_UTAGE_COLOR }]}>
       <Text style={styles.utageTypeText}>U·TA·GE</Text>
-    </LinearGradient>;
+    </View>;
   }
   return <View style={[styles.chartTypeBadge, type === 'SD' ? styles.sdTypeBadge : styles.dxTypeBadge]}>
     {type === 'SD' ? <Text style={styles.sdTypeText}>SD</Text> :
@@ -289,7 +296,6 @@ const styles = StyleSheet.create({
   difficultyText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7 },
   difficultyTextCompact: { fontSize: 9, letterSpacing: 0.25 },
   difficultyTextMini: { fontSize: 8, letterSpacing: 0.1, fontWeight: '800' },
-  utageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(20,14,38,0.24)' },
   chartTypeBadge: { minWidth: 31, height: 18, borderRadius: 6, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   utageTypeText: { color: '#FFFFFF', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 0.1 },
   sdTypeBadge: { backgroundColor: '#3286E6' },
