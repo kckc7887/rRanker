@@ -47,7 +47,10 @@ import { useChunithmSongDetail } from '@/hooks/use-chunithm-song-detail';
 import { useGameData } from '@/hooks/use-game-data';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useAppTheme } from '@/theme/app-theme';
-import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
+import {
+  CHUNITHM_WORLDS_END_GRADIENT,
+  ChunithmDifficultyBadge,
+} from './ChunithmDifficultyBadge';
 import {
   AchievementBadge,
   ChunithmGradientScore,
@@ -68,9 +71,9 @@ const DIFFICULTY_CARD_VISUAL: Record<ChunithmLevelIndex, {
   1: { color: '#E27A24', tint: '#FFF6E8' },
   2: { color: '#D6403A', tint: '#FFF0F0' },
   3: { color: '#7526CF', tint: '#F3EAFD' },
-  // ULTIMA：灰黑主体、红色点缀（对齐难度标签黑底红边）
-  4: { color: '#17171A', tint: '#ECECED', border: '#E83A58', darkAction: '#E83A58' },
-  5: { color: '#7B61FF', tint: '#F3EEFF' },
+  // ULTIMA：黑底红边，对齐难度标签
+  4: { color: '#E83A58', tint: '#17171A', border: '#E83A58', darkAction: '#E83A58' },
+  5: { color: '#FFFFFF', tint: '#F3EEFF' },
 };
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
@@ -505,9 +508,19 @@ function DifficultyCarousel({
   );
 }
 
-function ScoreValue({ score }: { score?: ChunithmScore }) {
+function ScoreValue({
+  score,
+  textColor,
+  mutedColor,
+}: {
+  score?: ChunithmScore;
+  textColor?: string;
+  mutedColor?: string;
+}) {
   const theme = useAppTheme();
-  if (!score) return <Text style={[styles.score, { color: theme.textMuted }]}>—</Text>;
+  if (!score) {
+    return <Text style={[styles.score, { color: mutedColor ?? theme.textMuted }]}>—</Text>;
+  }
   const rank = chunithmRankFromScore(score.score);
   const text = formatChunithmScore(score.score);
   if (chunithmRankUsesGradient(rank)) {
@@ -520,7 +533,7 @@ function ScoreValue({ score }: { score?: ChunithmScore }) {
       />
     );
   }
-  return <Text style={[styles.score, { color: theme.text }]}>{text}</Text>;
+  return <Text style={[styles.score, { color: textColor ?? theme.text }]}>{text}</Text>;
 }
 
 function formatOptionalValue(value: number | undefined): string {
@@ -546,7 +559,13 @@ function DifficultyCard({
 }) {
   const theme = useAppTheme();
   const visual = DIFFICULTY_CARD_VISUAL[difficulty.difficulty];
+  const ultima = difficulty.difficulty === 4;
   const worldsEnd = difficulty.difficulty === 5;
+  const inverted = ultima || worldsEnd;
+  const primaryText = inverted ? '#FFFFFF' : theme.text;
+  const secondaryText = inverted ? 'rgba(255,255,255,0.78)' : theme.textMuted;
+  const tertiaryText = inverted ? 'rgba(255,255,255,0.88)' : theme.textSecondary;
+  const dividerColor = inverted ? 'rgba(255,255,255,0.32)' : theme.border;
   const worldsEndLabel = worldsEnd
     ? formatChunithmWorldsEndLabel({ kanji: difficulty.kanji, star: difficulty.star })
     : undefined;
@@ -563,18 +582,8 @@ function DifficultyCard({
       clear: score.clear,
     })
     : [];
-  return (
-    <View
-      style={[
-        styles.difficultyCard,
-        {
-          width,
-          backgroundColor: theme.dark ? theme.surface : visual.tint,
-          borderColor: visual.border ?? visual.color,
-        },
-      ]}
-      testID={`chunithm-detail-difficulty-${difficulty.difficulty}`}
-    >
+  const content = (
+    <>
       <View style={styles.chartHeader}>
         <ChunithmDifficultyBadge
           display="label"
@@ -583,17 +592,17 @@ function DifficultyCard({
           worldsEndLabel={worldsEndLabel}
         />
         <View style={styles.levelBlock}>
-          <Text style={[styles.level, { color: theme.text }]}>
+          <Text style={[styles.level, { color: primaryText }]}>
             {worldsEnd ? worldsEndLabel : difficulty.level}
           </Text>
-          <Text style={[styles.constant, { color: theme.textMuted }]}>
+          <Text style={[styles.constant, { color: secondaryText }]}>
             {worldsEnd ? '—' : difficulty.levelValue.toFixed(1)}
           </Text>
         </View>
       </View>
       <View style={styles.resultBlock}>
-        <Text style={[styles.scoreLabel, { color: theme.textMuted }]}>Score</Text>
-        <ScoreValue score={score} />
+        <Text style={[styles.scoreLabel, { color: secondaryText }]}>Score</Text>
+        <ScoreValue mutedColor={secondaryText} score={score} textColor={primaryText} />
         {score && rank ? (
           <View style={styles.badgeRow}>
             <RankBadge rank={rank} />
@@ -610,30 +619,38 @@ function DifficultyCard({
       </View>
       <View style={styles.statRow}>
         <View style={styles.statCell}>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>Rating</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>
+          <Text style={[styles.statLabel, { color: secondaryText }]}>Rating</Text>
+          <Text style={[styles.statValue, { color: primaryText }]}>
             {formatChunithmRating(score?.rating)}
           </Text>
         </View>
         <View style={styles.statCell}>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>OVER POWER</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>
+          <Text style={[styles.statLabel, { color: secondaryText }]}>OVER POWER</Text>
+          <Text style={[styles.statValue, { color: primaryText }]}>
             {formatOptionalValue(score?.over_power)}
           </Text>
         </View>
       </View>
-      <View style={[styles.divider, { backgroundColor: theme.border }]} />
-      <Text style={[styles.charter, { color: theme.textSecondary }]}>
+      <View style={[styles.divider, { backgroundColor: dividerColor }]} />
+      <Text style={[styles.charter, { color: tertiaryText }]}>
         谱师：{difficulty.noteDesigner || '未提供'}
       </Text>
       {difficulty.notes ? (
-        <NotesTable levelIndex={difficulty.difficulty} notes={difficulty.notes} />
+        <NotesTable
+          borderColor={dividerColor}
+          labelColor={secondaryText}
+          levelIndex={difficulty.difficulty}
+          notes={difficulty.notes}
+          valueColor={primaryText}
+        />
       ) : (
         <View style={styles.notesUnavailable}>
-          <Text style={[styles.body, { color: theme.textMuted }]}>物量暂不可用</Text>
+          <Text style={[styles.body, { color: secondaryText }]}>物量暂不可用</Text>
           {detailError ? (
             <Pressable accessibilityRole="button" onPress={onRetryDetail}>
-              <Text style={[styles.retryText, { color: theme.accent }]}>重试读取单曲详情</Text>
+              <Text style={[styles.retryText, { color: inverted ? '#FFFFFF' : theme.accent }]}>
+                重试读取单曲详情
+              </Text>
             </Pressable>
           ) : null}
         </View>
@@ -650,11 +667,16 @@ function DifficultyCard({
         )}
         style={[
           styles.action,
-          chartActionStyle(theme.dark, visual, Boolean(practice)),
+          chartActionStyle(theme.dark, visual, Boolean(practice), inverted),
           library.isUpdating && styles.disabled,
         ]}
       >
-        <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, Boolean(practice))]}>
+        <Text
+          style={[
+            styles.actionText,
+            chartActionTextStyle(theme.dark, visual, Boolean(practice), inverted),
+          ]}
+        >
           {practice ? '已加入练习清单' : '加入练习清单'}
         </Text>
       </DetailPressable>
@@ -665,26 +687,60 @@ function DifficultyCard({
         style={[
           styles.action,
           styles.chartSearchAction,
-          chartActionStyle(theme.dark, visual, false),
+          chartActionStyle(theme.dark, visual, false, inverted),
         ]}
       >
-        <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, false)]}>
+        <Text style={[styles.actionText, chartActionTextStyle(theme.dark, visual, false, inverted)]}>
           搜索谱面确认
         </Text>
       </DetailPressable>
-      <TagEditor
-        disabled={library.isUpdating}
-        historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
-        onChange={(tags) => library.setTags({
-          kind: 'chart',
-          songId: String(song.id),
-          type: CHUNITHM_CHART_TYPE,
-          levelIndex: difficulty.difficulty,
-        }, tags)}
-        onPresetsChange={library.setTagPresets}
-        presets={library.tagPresets ?? []}
-        tags={chartItem?.tags ?? []}
-      />
+      <View style={inverted ? styles.invertedTagEditorSurface : undefined}>
+        <TagEditor
+          disabled={library.isUpdating}
+          historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
+          onChange={(tags) => library.setTags({
+            kind: 'chart',
+            songId: String(song.id),
+            type: CHUNITHM_CHART_TYPE,
+            levelIndex: difficulty.difficulty,
+          }, tags)}
+          onPresetsChange={library.setTagPresets}
+          presets={library.tagPresets ?? []}
+          tags={chartItem?.tags ?? []}
+        />
+      </View>
+    </>
+  );
+  const cardStyle = [
+    styles.difficultyCard,
+    {
+      width,
+      borderColor: worldsEnd ? 'transparent' : visual.border ?? visual.color,
+    },
+  ];
+  if (worldsEnd) {
+    return (
+      <LinearGradient
+        colors={CHUNITHM_WORLDS_END_GRADIENT}
+        end={{ x: 1, y: 0.5 }}
+        start={{ x: 0, y: 0.5 }}
+        style={cardStyle}
+        testID={`chunithm-detail-difficulty-${difficulty.difficulty}`}
+      >
+        <View pointerEvents="none" style={styles.worldsEndCardOverlay} />
+        {content}
+      </LinearGradient>
+    );
+  }
+  return (
+    <View
+      style={[
+        ...cardStyle,
+        { backgroundColor: ultima ? visual.tint : theme.dark ? theme.surface : visual.tint },
+      ]}
+      testID={`chunithm-detail-difficulty-${difficulty.difficulty}`}
+    >
+      {content}
     </View>
   );
 }
@@ -693,8 +749,12 @@ function chartActionStyle(
   dark: boolean,
   visual: { color: string; tint: string; border?: string; darkAction?: string },
   filled: boolean,
+  inverted = false,
 ) {
   const actionColor = dark ? (visual.darkAction ?? visual.color) : visual.color;
+  if (inverted && !filled) {
+    return { backgroundColor: 'rgba(0,0,0,0.12)', borderColor: actionColor };
+  }
   if (dark) {
     return { backgroundColor: actionColor, borderColor: actionColor };
   }
@@ -706,8 +766,10 @@ function chartActionTextStyle(
   dark: boolean,
   visual: { color: string; tint: string; border?: string; darkAction?: string },
   filled: boolean,
+  inverted = false,
 ) {
   const actionColor = dark ? (visual.darkAction ?? visual.color) : visual.color;
+  if (inverted) return { color: filled ? '#FFFFFF' : actionColor };
   if (dark) return { color: '#FFFFFF' };
   return { color: filled ? '#FFFFFF' : actionColor };
 }
@@ -715,9 +777,15 @@ function chartActionTextStyle(
 function NotesTable({
   notes,
   levelIndex,
+  borderColor,
+  labelColor,
+  valueColor,
 }: {
   notes: NonNullable<ChunithmDifficulty['notes']>;
   levelIndex: ChunithmLevelIndex;
+  borderColor?: string;
+  labelColor?: string;
+  valueColor?: string;
 }) {
   const theme = useAppTheme();
   const showFlick = levelIndex === 3 || levelIndex === 4;
@@ -738,11 +806,14 @@ function NotesTable({
       ['总计', notes.total],
     ];
   return (
-    <View accessibilityLabel="中二谱面物量" style={[styles.notesTable, { borderColor: theme.border }]}>
+    <View
+      accessibilityLabel="中二谱面物量"
+      style={[styles.notesTable, { borderColor: borderColor ?? theme.border }]}
+    >
       {values.map(([label, value]) => (
         <View key={label} style={styles.notesCell}>
-          <Text style={[styles.notesLabel, { color: theme.textMuted }]}>{label}</Text>
-          <Text style={[styles.notesValue, { color: theme.text }]}>{value}</Text>
+          <Text style={[styles.notesLabel, { color: labelColor ?? theme.textMuted }]}>{label}</Text>
+          <Text style={[styles.notesValue, { color: valueColor ?? theme.text }]}>{value}</Text>
         </View>
       ))}
     </View>
@@ -901,6 +972,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 16,
     elevation: 4,
+  },
+  worldsEndCardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(20,14,38,0.24)',
+    borderRadius: 23,
+  },
+  invertedTagEditorSurface: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.94)',
   },
   chartHeader: {
     flexDirection: 'row',
