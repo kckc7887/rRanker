@@ -48,6 +48,7 @@ describe('DX Rating components', () => {
   });
 
   it('renders Chunithm possession background and rainbow Rating independently', async () => {
+    const possessionTheme = resolveChunithmPossessionTheme('rainbow');
     const screen = await render(
       <DxRatingCard
         borderless
@@ -55,16 +56,39 @@ describe('DX Rating components', () => {
         display="17.25"
         meta="Best30 17.20 · New20 17.30"
         rating={17.25}
-        themeOverride={resolveChunithmPossessionTheme('rainbow')}
+        themeOverride={possessionTheme}
         valueTheme={resolveChunithmRatingTier(17.25)}
       />,
     );
     expect(screen.getByTestId('dx-rating-card-value-gradient')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value').props.style))
+      .toMatchObject({ color: possessionTheme.textColor });
     expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-borderless').props.style))
       .toMatchObject({ borderRadius: 18, padding: 0 });
     expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-inner-borderless').props.style))
       .toMatchObject({ borderRadius: 18, padding: 22 });
     expect(screen.getByLabelText(/档位 虹，背景 虹领域/)).toBeTruthy();
     expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
+  });
+
+  it('uses the card text color as the Rating fill and a solid tier color as its outline', async () => {
+    const possessionTheme = resolveChunithmPossessionTheme('gold');
+    const tierTheme = resolveChunithmRatingTier(14.5);
+    const screen = await render(
+      <DxRatingCard
+        borderless
+        label="RATING"
+        display="14.50"
+        meta="Best30 14.50 · New20 14.50"
+        rating={14.5}
+        themeOverride={possessionTheme}
+        valueTheme={tierTheme}
+      />,
+    );
+
+    expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value').props.style))
+      .toMatchObject({ color: possessionTheme.textColor });
+    expect(screen.getByTestId('dx-rating-card-value-outline-solid').props.children)
+      .toHaveLength(8);
   });
 });

@@ -27,11 +27,10 @@ export function DxRatingCard({
   rating: number | null;
   /** 自定义主题（如 Phigros 课题模式） */
   themeOverride?: DxRatingTheme;
-  /** 仅覆盖 Rating 数字的颜色；多色时渲染为横向渐变。 */
+  /** 使用档位色描边 Rating 数字；多色时描边渲染为横向渐变。 */
   valueTheme?: {
     label: string;
     colors: readonly [string, ...string[]];
-    shadowColor?: string;
   };
   sideBadge?: {
     title: string;
@@ -96,20 +95,14 @@ function RatingValue({
   valueTheme?: {
     label: string;
     colors: readonly [string, ...string[]];
-    shadowColor?: string;
   };
 }) {
-  const shadowStyle = valueTheme ? {
-    textShadowColor: valueTheme.shadowColor ?? 'rgba(2,6,18,0.96)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 5,
-  } as const : null;
   const colors = valueTheme?.colors;
-  if (!colors || colors.length < 2) {
+  if (!colors) {
     return (
       <Text
         testID="dx-rating-card-value"
-        style={[styles.rating, { color: colors?.[0] ?? fallbackColor }, shadowStyle]}
+        style={[styles.rating, { color: fallbackColor }]}
       >
         {display}
       </Text>
@@ -117,26 +110,78 @@ function RatingValue({
   }
 
   return (
-    <View style={styles.gradientValueWrap}>
+    <View style={styles.outlinedValueWrap}>
+      {colors.length >= 2 ? (
+        <MaskedView
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+          testID="dx-rating-card-value-gradient"
+          maskElement={<RatingOutlineMask display={display} />}
+        >
+          <LinearGradient
+            colors={colors as readonly [string, string, ...string[]]}
+            end={{ x: 1, y: 0.5 }}
+            start={{ x: 0, y: 0.5 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </MaskedView>
+      ) : (
+        <View
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+          testID="dx-rating-card-value-outline-solid"
+        >
+          {RATING_OUTLINE_OFFSETS.map(({ x, y }) => (
+            <Text
+              key={`${x}:${y}`}
+              style={[
+                styles.rating,
+                styles.outlineText,
+                { color: colors[0], transform: [{ translateX: x }, { translateY: y }] },
+              ]}
+            >
+              {display}
+            </Text>
+          ))}
+        </View>
+      )}
       <Text
-        pointerEvents="none"
-        style={[styles.rating, styles.gradientValueShadow, shadowStyle]}
+        testID="dx-rating-card-value"
+        style={[styles.rating, styles.outlinedValueFill, { color: fallbackColor }]}
       >
         {display}
       </Text>
-      <MaskedView
-        pointerEvents="none"
-        style={StyleSheet.absoluteFill}
-        testID="dx-rating-card-value-gradient"
-        maskElement={<Text style={[styles.rating, styles.gradientValueMask]}>{display}</Text>}
-      >
-        <LinearGradient
-          colors={colors as readonly [string, string, ...string[]]}
-          end={{ x: 1, y: 0.5 }}
-          start={{ x: 0, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </MaskedView>
+    </View>
+  );
+}
+
+const RATING_OUTLINE_OFFSETS = [
+  { x: -1, y: -1 },
+  { x: 0, y: -1 },
+  { x: 1, y: -1 },
+  { x: -1, y: 0 },
+  { x: 1, y: 0 },
+  { x: -1, y: 1 },
+  { x: 0, y: 1 },
+  { x: 1, y: 1 },
+] as const;
+
+function RatingOutlineMask({ display }: { display: string }) {
+  return (
+    <View style={styles.outlineMask}>
+      {RATING_OUTLINE_OFFSETS.map(({ x, y }) => (
+        <Text
+          key={`${x}:${y}`}
+          style={[
+            styles.rating,
+            styles.outlineText,
+            styles.outlineMaskText,
+            { transform: [{ translateX: x }, { translateY: y }] },
+          ]}
+        >
+          {display}
+        </Text>
+      ))}
     </View>
   );
 }
@@ -150,9 +195,11 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: 6 },
   cardLabel: { fontSize: 12, fontWeight: '700' },
   rating: { fontSize: 42, fontWeight: '800', letterSpacing: 2 },
-  gradientValueWrap: { height: 51, alignSelf: 'stretch' },
-  gradientValueShadow: { color: '#020612' },
-  gradientValueMask: { color: '#000000' },
+  outlinedValueWrap: { height: 51, alignSelf: 'stretch' },
+  outlinedValueFill: { zIndex: 1 },
+  outlineMask: { flex: 1 },
+  outlineText: { ...StyleSheet.absoluteFillObject },
+  outlineMaskText: { color: '#000000' },
   meta: { fontSize: 14, opacity: 0.78 },
   stars: { maxWidth: 96, fontSize: 20, lineHeight: 28, fontWeight: '800', letterSpacing: 2, textAlign: 'right' },
   badgeWrap: { alignItems: 'flex-end', alignSelf: 'flex-start', gap: 6 },
