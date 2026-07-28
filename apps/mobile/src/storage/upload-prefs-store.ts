@@ -1,7 +1,10 @@
 import * as SecureStore from 'expo-secure-store';
+import Storage from 'expo-sqlite/kv-store';
 
 const PREFS_KEY_V1 = 'rranker.upload.prefs.v1';
 const PREFS_KEY_V2 = 'rranker.upload.prefs.v2';
+const PREFS_KEY_V3 = 'rranker.upload.prefs.v3';
+const LEGACY_PREFS_KEYS = [PREFS_KEY_V2, PREFS_KEY_V1] as const;
 
 export type UploadPrefs = {
   friendCode: string;
@@ -17,8 +20,10 @@ const EMPTY: UploadPrefs = {
   selectionsByFriendCode: {},
 };
 
-const STORE_OPTS = {
-  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+type KeyValueStore = {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<unknown>;
+  removeItem(key: string): Promise<unknown>;
 };
 
 function sanitizeIds(value: unknown): string[] {
@@ -83,12 +88,40 @@ function parseV1(raw: string): UploadPrefs | null {
   }
 }
 
+async function deleteLegacyPrefsKeys(): Promise<void> {
+  for (const key of LEGACY_PREFS_KEYS) {
+    await SecureStore.deleteItemAsync(key).catch(() => undefined);
+  }
+}
+
 export class UploadPrefsStore {
+  constructor(private readonly storage: KeyValueStore = Storage) {}
+
   private async read(): Promise<UploadPrefs> {
+    const rawV3 = await this.storage.getItem(PREFS_KEY_V3);
+    if (rawV3) {
+      const parsed = parseV2(rawV3);
+      if (parsed) return parsed;
+      await this.storage.removeItem(PREFS_KEY_V3);
+    }
+
     const rawV2 = await SecureStore.getItemAsync(PREFS_KEY_V2);
     if (rawV2) {
       const parsed = parseV2(rawV2);
-      if (parsed) return parsed;
+      if (parsed) {
+        try {
+          await this.write(parsed);
+          const verifiedRaw = await this.storage.getItem(PREFS_KEY_V3);
+          const verified = verifiedRaw ? parseV2(verifiedRaw) : null;
+          if (verified && JSON.stringify(verified) === JSON.stringify(parsed)) {
+            await deleteLegacyPrefsKeys();
+            return verified;
+          }
+        } catch {
+          // 保留旧 SecureStore 数据，供下次启动重试迁移。
+        }
+        return parsed;
+      }
       await SecureStore.deleteItemAsync(PREFS_KEY_V2);
     }
 
@@ -96,8 +129,17 @@ export class UploadPrefsStore {
     if (rawV1) {
       const migrated = parseV1(rawV1);
       if (migrated) {
-        await this.write(migrated);
-        await SecureStore.deleteItemAsync(PREFS_KEY_V1);
+        try {
+          await this.write(migrated);
+          const verifiedRaw = await this.storage.getItem(PREFS_KEY_V3);
+          const verified = verifiedRaw ? parseV2(verifiedRaw) : null;
+          if (verified && JSON.stringify(verified) === JSON.stringify(migrated)) {
+            await deleteLegacyPrefsKeys();
+            return verified;
+          }
+        } catch {
+          // 保留旧 SecureStore 数据，供下次启动重试迁移。
+        }
         return migrated;
       }
       await SecureStore.deleteItemAsync(PREFS_KEY_V1);
@@ -113,7 +155,7 @@ export class UploadPrefsStore {
       selectedAccountIds: friendCode && map[friendCode] ? map[friendCode] : [],
       selectionsByFriendCode: map,
     };
-    await SecureStore.setItemAsync(PREFS_KEY_V2, JSON.stringify(payload), STORE_OPTS);
+    await this.storage.setItem(PREFS_KEY_V3, JSON.stringify(payload));
   }
 
   async load(): Promise<UploadPrefs> {
@@ -164,6 +206,7 @@ export class UploadPrefsStore {
   }
 
   async clear(): Promise<void> {
+    await this.storage.removeItem(PREFS_KEY_V3);
     await SecureStore.deleteItemAsync(PREFS_KEY_V2);
     await SecureStore.deleteItemAsync(PREFS_KEY_V1);
   }
