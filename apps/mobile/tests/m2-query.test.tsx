@@ -3,7 +3,10 @@ import { jest } from '@jest/globals';
 import { Animated, InteractionManager, Platform, processColor, StyleSheet } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
-import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
+import {
+  MAIMAI_UTAGE_COLOR,
+  MAIMAI_UTAGE_TINT,
+} from '@/components/special-difficulty-theme';
 import { useCatalogFilter } from '@/state/catalog-filter';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
@@ -205,7 +208,12 @@ describe('M2 song query screens', () => {
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '協 U·TA·GE');
     await waitFor(() => expect(screen.getByTestId('song-chart-badges-100123')).toBeTruthy());
     const utageBadges = within(screen.getByTestId('song-chart-badges-100123'));
-    expect(utageBadges.getByText('協')).toBeTruthy();
+    expect(utageBadges.getByText('協 14+?')).toBeTruthy();
+    expect(StyleSheet.flatten(utageBadges.getByTestId('maimai-utage-difficulty-badge').props.style))
+      .toMatchObject({
+        backgroundColor: MAIMAI_UTAGE_COLOR,
+        borderColor: MAIMAI_UTAGE_COLOR,
+      });
     expect(utageBadges.queryByText('U·TA·GE')).toBeNull();
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '');
     await waitFor(() => expect(screen.getByText('共 9 首')).toBeTruthy());
@@ -359,8 +367,16 @@ describe('M2 song query screens', () => {
     const screen = await render(<SongDetailScreen />);
 
     expect(screen.getByText('U·TA·GE')).toBeTruthy();
-    expect(screen.getByTestId('maimai-utage-difficulty-badge').props.colors)
-      .toEqual(CHUNITHM_WORLDS_END_GRADIENT.map((color) => processColor(color)));
+    expect(StyleSheet.flatten(screen.getByTestId('maimai-utage-difficulty-badge').props.style))
+      .toMatchObject({
+        backgroundColor: MAIMAI_UTAGE_COLOR,
+        borderColor: MAIMAI_UTAGE_COLOR,
+      });
+    expect(StyleSheet.flatten(screen.getByTestId('maimai-utage-chart-card').props.style))
+      .toMatchObject({
+        backgroundColor: MAIMAI_UTAGE_TINT,
+        borderColor: MAIMAI_UTAGE_COLOR,
+      });
     expect(screen.getByText('協')).toBeTruthy();
     expect(screen.getByText('14+?')).toBeTruthy();
     expect(screen.getByText('两人协力')).toBeTruthy();

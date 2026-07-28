@@ -548,7 +548,13 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const chartTypeKeyword = canSwitchChartType ? ` ${chart.type}` : '';
   const chartSearchQuery = `${song.title}${chartTypeKeyword} ${visual.label} 谱面确认`;
-  return <View style={[styles.chartCard, { width, backgroundColor: theme.dark ? theme.surface : visual.tint, borderColor: visual.color }]}>
+  return <View
+    testID={chart.type === 'UTAGE' ? 'maimai-utage-chart-card' : undefined}
+    style={[styles.chartCard, {
+      width,
+      backgroundColor: theme.dark ? theme.surface : visual.tint,
+      borderColor: visual.color,
+    }]}>
     <View style={styles.chartHeader}>
       <View style={styles.chartIdentity}>
         <DifficultyBadge difficulty={chart.difficulty} />
