@@ -2,6 +2,10 @@ import { render } from '@testing-library/react-native';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { DxRatingTag } from '@/components/DxRatingTag';
 import { resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
+import {
+  resolveChunithmPossessionTheme,
+  resolveChunithmRatingTier,
+} from '@/domain/chunithm-rating-theme';
 
 describe('DX Rating components', () => {
   it('shows tier stars on the overview card without the old medal dot', async () => {
@@ -39,6 +43,22 @@ describe('DX Rating components', () => {
     );
     expect(screen.getByText('课题模式')).toBeTruthy();
     expect(screen.getByText('42')).toBeTruthy();
+    expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
+  });
+
+  it('renders Chunithm possession background and rainbow Rating independently', async () => {
+    const screen = await render(
+      <DxRatingCard
+        label="RATING"
+        display="17.25"
+        meta="Best30 17.20 · New20 17.30"
+        rating={17.25}
+        themeOverride={resolveChunithmPossessionTheme('rainbow')}
+        valueTheme={resolveChunithmRatingTier(17.25)}
+      />,
+    );
+    expect(screen.getByTestId('dx-rating-card-value-gradient')).toBeTruthy();
+    expect(screen.getByLabelText(/档位 虹，背景 虹领域/)).toBeTruthy();
     expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
   });
 });

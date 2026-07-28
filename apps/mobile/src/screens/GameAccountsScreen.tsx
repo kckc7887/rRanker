@@ -17,6 +17,7 @@ import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import {
   createAdditionalLocalMaimaiAccountId,
   createLocalMaimaiAccount,
+  createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
@@ -37,6 +38,7 @@ import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
 import { DemoAccountStore } from '@/storage/demo-account-store';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
+import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store';
 import { patchMaimaiPlayerDisplayName } from '@/services/invalidate-account-data';
 import { switchBoundAccount } from '@/services/switch-bound-account';
 import { useNotification } from '@/components/AppNotification';
@@ -46,6 +48,7 @@ const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
 const localAccounts = new LocalAccountStore();
 const demoAccounts = new DemoAccountStore();
+const chunithmDemoAccount = new ChunithmDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 
 export function GameAccountsScreen() {
@@ -185,6 +188,38 @@ export function GameAccountsScreen() {
     }
   };
 
+  const addChunithmDemoAccount = async () => {
+    setBusy(true);
+    try {
+      const existing = boundAccounts.find((account) => account.providerId === 'chunithm-test');
+      if (existing) {
+        setPickerVisible(false);
+        InteractionManager.runAfterInteractions(() => {
+          onSelectAccount(existing);
+          setMessage(`示例账号「${existing.displayName}」已在列表中，已切换到该账号`);
+        });
+        return;
+      }
+      const account = createMaxedChunithmTestAccount();
+      await chunithmDemoAccount.save({ id: account.id, displayName: account.displayName });
+      upsertBoundAccount(account);
+      setPickerVisible(false);
+      InteractionManager.runAfterInteractions(() => {
+        selectBoundAccount(account.id);
+        void sessions.setActiveAccountId(account.id);
+        setMessage(`已添加中二节奏示例账号「${account.displayName}」`);
+      });
+    } catch (error) {
+      showNotification({
+        title: '添加失败',
+        message: error instanceof Error ? error.message : '无法添加中二节奏示例账号，请重试。',
+        variant: 'error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveLocalAccountName = async (account: BoundAccount, displayName: string) => {
     await localAccounts.upsert({ id: account.id, displayName });
     renameLocalAccount(account.id, displayName);
@@ -221,7 +256,12 @@ export function GameAccountsScreen() {
   const removeDemoAccount = async (account: BoundAccount, includePersonalData: boolean) => {
     setBusy(true);
     const failures: string[] = [];
-    try { await demoAccounts.remove(account.id); } catch { failures.push('账号'); }
+    try {
+      if (account.providerId === 'chunithm-test') await chunithmDemoAccount.remove();
+      else await demoAccounts.remove(account.id);
+    } catch {
+      failures.push('账号');
+    }
     if (includePersonalData) {
       try { await library.clearGameUserData(account.gameId); } catch { failures.push('个人数据'); }
     }
@@ -315,6 +355,10 @@ export function GameAccountsScreen() {
       void addDemoAccount();
       return;
     }
+    if (provider.id === 'chunithm-test') {
+      void addChunithmDemoAccount();
+      return;
+    }
     setExpandedPickerGameId(gameId);
     setLoginGameId(gameId);
     setLoginProviderId(provider.id);
@@ -353,7 +397,8 @@ export function GameAccountsScreen() {
   const renderAccountActions = (account: BoundAccount) => {
     const isActive = account.id === activeAccountId;
     const isLocal = account.providerId === 'local';
-    const isGeneratedTest = account.providerId === 'maimai-test';
+    const isGeneratedTest = account.providerId === 'maimai-test'
+      || account.providerId === 'chunithm-test';
     const isChunithmTemp = account.providerId === 'chunithm-temp';
     const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
     return (

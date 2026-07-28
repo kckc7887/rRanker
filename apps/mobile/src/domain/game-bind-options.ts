@@ -5,6 +5,7 @@ export type ProviderId =
   | 'lxns'
   | 'local'
   | 'maimai-test'
+  | 'chunithm-test'
   | 'phi-taptap'
   | 'chunithm-temp';
 export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
@@ -86,6 +87,13 @@ export const GAME_OPTIONS: GameOption[] = [
         title: '落雪查分器',
         detail: 'OAuth 授权（粘贴授权码）',
         icon: lxnsIcon,
+        available: true,
+      },
+      {
+        id: 'chunithm-test',
+        title: '示例查分器',
+        detail: '全曲全谱面满成绩 · 可删除后重新添加',
+        icon: chunithmIcon,
         available: true,
       },
     ],

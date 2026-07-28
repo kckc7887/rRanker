@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { resolveDxRatingTheme, type DxRatingTheme } from '@/domain/dx-rating-theme';
 
 const EMPTY_THEME: DxRatingTheme = {
@@ -15,6 +16,7 @@ export function DxRatingCard({
   meta,
   rating,
   themeOverride,
+  valueTheme,
   sideBadge,
 }: {
   label: string;
@@ -24,6 +26,12 @@ export function DxRatingCard({
   rating: number | null;
   /** 自定义主题（如 Phigros 课题模式） */
   themeOverride?: DxRatingTheme;
+  /** 仅覆盖 Rating 数字的颜色；多色时渲染为横向渐变。 */
+  valueTheme?: {
+    label: string;
+    colors: readonly [string, ...string[]];
+    shadowColor?: string;
+  };
   sideBadge?: {
     title: string;
     value: string;
@@ -31,6 +39,10 @@ export function DxRatingCard({
 }) {
   const theme = themeOverride ?? (rating == null ? EMPTY_THEME : resolveDxRatingTheme(rating));
   const stars = '★'.repeat(theme.starCount);
+  const valueLabel = valueTheme?.label ?? theme.label;
+  const accessibilityLabel = valueTheme
+    ? `${label} ${display}，档位 ${valueLabel}，背景 ${theme.label}`
+    : `${label} ${display}，档位 ${theme.label}${theme.starCount ? `，${theme.starCount} 星` : ''}`;
 
   return (
     <LinearGradient
@@ -39,7 +51,7 @@ export function DxRatingCard({
       start={{ x: 0, y: 0.5 }}
       end={{ x: 1, y: 0.5 }}
       style={styles.card}
-      accessibilityLabel={`${label} ${display}，档位 ${theme.label}${theme.starCount ? `，${theme.starCount} 星` : ''}`}
+      accessibilityLabel={accessibilityLabel}
     >
       <LinearGradient
         colors={[...theme.fillColors]}
@@ -52,7 +64,7 @@ export function DxRatingCard({
         <View style={styles.row}>
           <View style={styles.copy}>
             <Text style={[styles.cardLabel, { color: theme.textColor }]}>{label}</Text>
-            <Text style={[styles.rating, { color: theme.textColor }]}>{display}</Text>
+            <RatingValue display={display} fallbackColor={theme.textColor} valueTheme={valueTheme} />
             <Text style={[styles.meta, { color: theme.textColor }]}>{meta}</Text>
           </View>
           {sideBadge ? (
@@ -69,6 +81,61 @@ export function DxRatingCard({
   );
 }
 
+function RatingValue({
+  display,
+  fallbackColor,
+  valueTheme,
+}: {
+  display: string;
+  fallbackColor: string;
+  valueTheme?: {
+    label: string;
+    colors: readonly [string, ...string[]];
+    shadowColor?: string;
+  };
+}) {
+  const shadowStyle = valueTheme ? {
+    textShadowColor: valueTheme.shadowColor ?? 'rgba(2,6,18,0.96)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 5,
+  } as const : null;
+  const colors = valueTheme?.colors;
+  if (!colors || colors.length < 2) {
+    return (
+      <Text
+        testID="dx-rating-card-value"
+        style={[styles.rating, { color: colors?.[0] ?? fallbackColor }, shadowStyle]}
+      >
+        {display}
+      </Text>
+    );
+  }
+
+  return (
+    <View style={styles.gradientValueWrap}>
+      <Text
+        pointerEvents="none"
+        style={[styles.rating, styles.gradientValueShadow, shadowStyle]}
+      >
+        {display}
+      </Text>
+      <MaskedView
+        pointerEvents="none"
+        style={StyleSheet.absoluteFill}
+        testID="dx-rating-card-value-gradient"
+        maskElement={<Text style={[styles.rating, styles.gradientValueMask]}>{display}</Text>}
+      >
+        <LinearGradient
+          colors={colors as readonly [string, string, ...string[]]}
+          end={{ x: 1, y: 0.5 }}
+          start={{ x: 0, y: 0.5 }}
+          style={StyleSheet.absoluteFill}
+        />
+      </MaskedView>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   card: { borderRadius: 18, padding: 3 },
   inner: { borderRadius: 15, padding: 19, overflow: 'hidden' },
@@ -76,6 +143,9 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: 6 },
   cardLabel: { fontSize: 12, fontWeight: '700' },
   rating: { fontSize: 42, fontWeight: '800', letterSpacing: 2 },
+  gradientValueWrap: { height: 51, alignSelf: 'stretch' },
+  gradientValueShadow: { color: '#020612' },
+  gradientValueMask: { color: '#000000' },
   meta: { fontSize: 14, opacity: 0.78 },
   stars: { maxWidth: 96, fontSize: 20, lineHeight: 28, fontWeight: '800', letterSpacing: 2, textAlign: 'right' },
   badgeWrap: { alignItems: 'flex-end', alignSelf: 'flex-start', gap: 6 },
