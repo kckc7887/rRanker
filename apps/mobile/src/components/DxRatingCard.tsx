@@ -18,6 +18,7 @@ export function DxRatingCard({
   themeOverride,
   valueTheme,
   sideBadge,
+  borderless = false,
 }: {
   label: string;
   display: string;
@@ -36,6 +37,8 @@ export function DxRatingCard({
     title: string;
     value: string;
   };
+  /** 移除外层渐变边框，并补偿内边距以保持卡片尺寸与内容位置。 */
+  borderless?: boolean;
 }) {
   const theme = themeOverride ?? (rating == null ? EMPTY_THEME : resolveDxRatingTheme(rating));
   const stars = '★'.repeat(theme.starCount);
@@ -46,19 +49,21 @@ export function DxRatingCard({
 
   return (
     <LinearGradient
-      colors={[...theme.borderColors]}
-      locations={[...theme.borderLocations]}
+      colors={[...(borderless ? theme.fillColors : theme.borderColors)]}
+      locations={[...(borderless ? theme.fillLocations : theme.borderLocations)]}
       start={{ x: 0, y: 0.5 }}
       end={{ x: 1, y: 0.5 }}
-      style={styles.card}
+      style={[styles.card, borderless && styles.cardBorderless]}
       accessibilityLabel={accessibilityLabel}
+      testID={borderless ? 'dx-rating-card-borderless' : 'dx-rating-card'}
     >
       <LinearGradient
         colors={[...theme.fillColors]}
         locations={[...theme.fillLocations]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
-        style={styles.inner}
+        style={[styles.inner, borderless && styles.innerBorderless]}
+        testID={borderless ? 'dx-rating-card-inner-borderless' : 'dx-rating-card-inner'}
       >
         <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: theme.overlayColor }]} />
         <View style={styles.row}>
@@ -138,7 +143,9 @@ function RatingValue({
 
 const styles = StyleSheet.create({
   card: { borderRadius: 18, padding: 3 },
+  cardBorderless: { padding: 0 },
   inner: { borderRadius: 15, padding: 19, overflow: 'hidden' },
+  innerBorderless: { borderRadius: 18, padding: 22 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   copy: { flex: 1, gap: 6 },
   cardLabel: { fontSize: 12, fontWeight: '700' },

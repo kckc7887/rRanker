@@ -1,4 +1,4 @@
-import type { DxRatingTheme } from './dx-rating-theme';
+import { resolveDxRatingTheme, type DxRatingTheme } from './dx-rating-theme';
 
 export type ChunithmRatingTierId =
   | 'green'
@@ -43,15 +43,12 @@ const RATING_TIERS: readonly RatingTier[] = [
   },
 ];
 
-const POSSESSION_COLORS: Record<
-  ChunithmPossessionId,
-  readonly [string, string, ...string[]]
-> = {
-  none: ['#070B16', '#111C34', '#1B2C4D'],
-  silver: ['#15263A', '#4F7F9C', '#9EDDF5'],
-  gold: ['#281500', '#9A5700', '#FFBD00'],
-  platinum: ['#092232', '#1F7F9E', '#85E8FF'],
-  rainbow: ['#8D0D62', '#E53822', '#E4A700', '#00A86B', '#008ED6', '#5B32D6'],
+const POSSESSION_DX_RATINGS: Record<ChunithmPossessionId, number> = {
+  none: 0,
+  silver: 13_000,
+  gold: 14_000,
+  platinum: 14_500,
+  rainbow: 15_000,
 };
 
 const POSSESSION_LABELS: Record<ChunithmPossessionId, string> = {
@@ -61,11 +58,6 @@ const POSSESSION_LABELS: Record<ChunithmPossessionId, string> = {
   platinum: '铂金领域',
   rainbow: '虹领域',
 };
-
-function evenlySpacedLocations(length: number): readonly [number, number, ...number[]] {
-  return Array.from({ length }, (_, index) => index / (length - 1)) as unknown as
-    readonly [number, number, ...number[]];
-}
 
 export function resolveChunithmRatingTier(rating: number): ChunithmRatingTierTheme {
   const value = Number.isFinite(rating) ? Math.max(0, rating) : 0;
@@ -90,17 +82,11 @@ export function resolveChunithmPossessionTheme(
   value: string | null | undefined,
 ): DxRatingTheme {
   const id = normalizeChunithmPossession(value);
-  const fillColors = POSSESSION_COLORS[id];
+  const dxTheme = resolveDxRatingTheme(POSSESSION_DX_RATINGS[id]);
   return {
+    ...dxTheme,
     id: `chunithm-possession-${id}`,
     label: POSSESSION_LABELS[id],
-    fillColors,
-    fillLocations: evenlySpacedLocations(fillColors.length),
-    borderColors: ['rgba(255,255,255,0.46)', 'rgba(255,255,255,0.18)'],
-    borderLocations: [0, 1],
-    overlayColor: 'rgba(2,6,18,0.16)',
-    textColor: '#F7FBFF',
-    starColor: '#F7FBFF',
     starCount: 0,
   };
 }

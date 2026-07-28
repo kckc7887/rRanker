@@ -16,6 +16,7 @@ import {
 } from '@/domain/chunithm-score-presentation';
 import type { BestListSection, ChunithmBestListSection } from '@/domain/game-data';
 import type { DataSource, ScoreRecord } from '@/domain/models';
+import { canReadChunithmScores } from '@/domain/provider-capabilities';
 import { phigrosChartNoteKey } from '@/domain/phigros-xing';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useGameData } from '@/hooks/use-game-data';
@@ -59,11 +60,12 @@ type ChunithmBestSection = ChunithmBestListSection & { data: ChunithmScoreCardDa
 
 function ChunithmBestScreen() {
   const session = useSession((s) => s.session);
+  const activeProviderId = useSession((s) => s.activeProviderId);
   const gameData = useGameData();
   const catalogQuery = useChunithmCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
-  const hasSession = session?.mode === 'lxns-oauth';
+  const canReadScores = canReadChunithmScores(activeProviderId, session?.mode);
   const payload = gameData.data?.payload.kind === 'chunithm' ? gameData.data.payload : null;
 
   const sections = useMemo<ChunithmBestSection[]>(() => {
@@ -83,7 +85,7 @@ function ChunithmBestScreen() {
     void Promise.all([gameData.refetch(), catalogQuery.refetch()]);
   };
 
-  if (!hasSession && !isGameLoading) {
+  if (!canReadScores && !isGameLoading) {
     return (
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <View style={styles.center}>

@@ -313,6 +313,9 @@ describe('Chunithm song detail', () => {
     expect(worldsEnd.getAllByText('—').length).toBeGreaterThan(0);
     expect(worldsEnd.queryByText('定数 —')).toBeNull();
     expect(worldsEnd.queryByText('定数 0.0')).toBeNull();
+    const worldsEndNotes = within(worldsEnd.getByLabelText('中二谱面物量'));
+    expect(worldsEndNotes.getByText('FLICK')).toBeTruthy();
+    expect(worldsEndNotes.getByText('0')).toBeTruthy();
   });
 
   it("adapts the WORLD'S END card to dark mode", async () => {
