@@ -380,7 +380,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByText('協')).toBeTruthy();
     expect(screen.getByText('14+?')).toBeTruthy();
     expect(screen.getByText('两人协力')).toBeTruthy();
-    expect(screen.getByText('DX分数 300')).toBeTruthy();
+    expect(screen.queryByText('DX分数 300')).toBeNull();
     expect(screen.getByText('1P')).toBeTruthy();
     expect(screen.getByText('2P')).toBeTruthy();
     expect(screen.getByText('101')).toBeTruthy();
