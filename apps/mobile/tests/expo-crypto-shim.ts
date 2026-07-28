@@ -21,6 +21,13 @@ export function getRandomBytes(byteCount: number): Uint8Array {
   return new Uint8Array(byteCount).map((_, index) => (index * 17 + 3) % 256);
 }
 
+let uuidCounter = 0;
+
+export function randomUUID(): string {
+  uuidCounter += 1;
+  return `00000000-0000-4000-8000-${uuidCounter.toString().padStart(12, '0')}`;
+}
+
 export async function digestStringAsync(
   _algorithm: string,
   data: string,

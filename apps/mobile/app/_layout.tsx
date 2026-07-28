@@ -31,6 +31,7 @@ import { NotificationProvider } from '@/components/AppNotification';
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
+import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -104,7 +105,8 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (restoreStatus === 'restoring') {
-      void restoreSession(() => sessions.loadVault(), loadOptionalBoundAccounts);
+      void restoreSession(() => sessions.loadVault(), loadOptionalBoundAccounts)
+        .then(() => hydrateBoundAccountAvatars().catch(() => undefined));
     }
   }, [restoreStatus]);
 

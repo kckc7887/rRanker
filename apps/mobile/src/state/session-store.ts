@@ -17,7 +17,6 @@ import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider'
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import type { SessionVault, StoredProviderAccount } from '@/storage/secure-session-store';
-import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const localRepository = new SqliteSnapshotRepository();
@@ -570,7 +569,6 @@ export async function restoreSession(
       ? await loadOptionalAccounts().catch(() => [])
       : [];
     useSession.getState().finishRestore(input, optionalAccounts);
-    await hydrateBoundAccountAvatars();
   } catch {
     useSession.getState().failRestore('无法读取本机登录状态，当前未加载任何账号');
   }
