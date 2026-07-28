@@ -37,9 +37,14 @@ import { switchBoundAccount } from '@/services/switch-bound-account';
 import { refreshDivingFishAccounts } from '@/services/refresh-diving-fish-accounts';
 import {
   compactUploadPhaseLabel,
+  resolveUploadTargets,
   type UploadPhase,
   type UploadResult,
 } from '@/services/upload-maimai-from-friend-code';
+import {
+  transferMaimaiFromLxns,
+  type LxnsTransferPhase,
+} from '@/services/transfer-maimai-from-lxns';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { queryClient } from '@/state/query-client';
@@ -72,6 +77,8 @@ export function OverviewScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [uploadVisible, setUploadVisible] = useState(false);
   const [maimaiUploadPage, setMaimaiUploadPage] = useState<MaimaiUploadPage>('friend_code');
+  const [maimaiSourceAccountId, setMaimaiSourceAccountId] = useState<string | null>(null);
+  const [maimaiTransferTargetIds, setMaimaiTransferTargetIds] = useState<string[]>([]);
   const [chunithmSyncGuideVisible, setChunithmSyncGuideVisible] = useState(false);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>({ kind: 'idle' });
   const [refreshing, setRefreshing] = useState(false);
@@ -80,9 +87,19 @@ export function OverviewScreen() {
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
   const syncBusy = syncing;
-  const maimaiLxnsGuideAvailable = activeGameId === 'maimai'
-    && boundAccounts.find((account) => account.id === activeAccountId)?.providerId === 'lxns'
-    && activeSession?.mode === 'lxns-oauth';
+  const maimaiLxnsSources = useMemo(
+    () => boundAccounts.filter((account) => (
+      account.gameId === 'maimai'
+      && account.providerId === 'lxns'
+      && sessionsByAccountId[account.id]?.mode === 'lxns-oauth'
+    )),
+    [boundAccounts, sessionsByAccountId],
+  );
+  const maimaiTransferTargets = useMemo(
+    () => resolveUploadTargets(boundAccounts, sessionsByAccountId),
+    [boundAccounts, sessionsByAccountId],
+  );
+  const maimaiLxnsGuideAvailable = activeGameId === 'maimai';
   const friendCodeUploadBusy = !['idle', 'done', 'error'].includes(uploadPhase.kind);
   const showingMaimaiSyncGuide = maimaiLxnsGuideAvailable && maimaiUploadPage === 'lxns_guide';
   const currentUploadSelection = useMemo(() => [activeAccountId], [activeAccountId]);
@@ -185,6 +202,116 @@ export function OverviewScreen() {
     await invalidateAccountDataQueries();
   }, [profile.ratingDigits, updateBoundAccountScore]);
 
+  const syncMaimaiFromLxns = useCallback(async (): Promise<boolean> => {
+    if (refreshingRef.current) return false;
+    const sourceAccount = maimaiLxnsSources.find((account) => account.id === maimaiSourceAccountId);
+    const sourceSession = sourceAccount
+      ? sessionsByAccountId[sourceAccount.id]
+      : undefined;
+    const selected = maimaiTransferTargets.filter((target) => (
+      target.account.id !== sourceAccount?.id
+      && maimaiTransferTargetIds.includes(target.account.id)
+      && target.writable
+    ));
+    if (!sourceAccount || sourceSession?.mode !== 'lxns-oauth') {
+      showNotification({
+        title: '请选择数据来源',
+        message: '需要选择一个已授权的舞萌落雪账号。',
+        variant: 'warning',
+      });
+      return false;
+    }
+    if (selected.length === 0) {
+      showNotification({
+        title: '请选择上传目标',
+        message: '请至少勾选一个可写的查分器账号。',
+        variant: 'warning',
+      });
+      return false;
+    }
+
+    refreshingRef.current = true;
+    setSyncing(true);
+    try {
+      const catalog = catalogData ?? (await refetchCatalog()).data;
+      if (!catalog) throw catalogError ?? new Error('舞萌曲库尚未就绪，请稍后重试');
+      const phaseLabel = (phase: LxnsTransferPhase) => {
+        if (phase.kind === 'reading') return `正在读取 ${phase.account.displayName} 的落雪成绩…`;
+        if (phase.kind === 'refreshing') return `正在刷新 ${phase.account.displayName}…`;
+        return `正在写入 ${phase.account.displayName}…`;
+      };
+      const result = await transferMaimaiFromLxns({
+        sourceAccount,
+        sourceSession,
+        selected,
+        sessionsByAccountId,
+        catalog,
+        onLxnsTokensRotated: applyLxnsTokenRotation,
+        onPhase: (phase) => setUploadPhase({
+          kind: phase.kind === 'refreshing' ? 'syncing' : 'uploading',
+          message: phaseLabel(phase),
+          providerTitle: phase.account.providerTitle,
+        }),
+      });
+      await finishUpload(result);
+
+      const failed = result.targetResults.filter((target) => target.status === 'failed');
+      if (failed.length > 0) {
+        showNotification({
+          title: failed.length === result.targetResults.length ? '传输失败' : '部分传输完成',
+          message: failed.map((target) => (
+            `${target.account.displayName}：${target.errorMessage ?? '写入失败'}`
+          )).join('；'),
+          variant: failed.length === result.targetResults.length ? 'error' : 'warning',
+        });
+        setUploadPhase({
+          kind: 'error',
+          message: failed.length === result.targetResults.length
+            ? '所有目标均写入失败'
+            : `部分完成，${failed.length} 个目标失败`,
+        });
+        return false;
+      }
+
+      const refreshWarning = result.failedAccountNames.length > 0
+        ? `；${result.failedAccountNames.join('、')}的应用内快照刷新失败`
+        : '';
+      showNotification({
+        title: '传输完成',
+        message: `已从 ${sourceAccount.displayName} 向 ${selected.length} 个账号写入 ${result.uploaded} 条成绩${refreshWarning}`,
+        variant: result.failedAccountNames.length > 0 ? 'warning' : 'success',
+      });
+      setUploadPhase({
+        kind: 'done',
+        message: `传输完成：写入 ${result.uploaded} 条`,
+        uploaded: result.uploaded,
+        skipped: result.skipped,
+      });
+      return true;
+    } catch (transferError) {
+      const message = transferError instanceof Error
+        ? transferError.message
+        : '暂时无法传输成绩，请稍后重试。';
+      setUploadPhase({ kind: 'error', message });
+      showNotification({ title: '传输失败', message, variant: 'error' });
+      return false;
+    } finally {
+      refreshingRef.current = false;
+      setSyncing(false);
+    }
+  }, [
+    catalogData,
+    catalogError,
+    finishUpload,
+    maimaiLxnsSources,
+    maimaiSourceAccountId,
+    maimaiTransferTargetIds,
+    maimaiTransferTargets,
+    refetchCatalog,
+    sessionsByAccountId,
+    showNotification,
+  ]);
+
   const openSwitchSheet = () => {
     const active = boundAccounts.find((account) => account.id === activeAccountId);
     setExpandedGameId(active?.gameId ?? null);
@@ -202,6 +329,15 @@ export function OverviewScreen() {
       showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
       return;
     }
+    const activeSource = maimaiLxnsSources.find((account) => account.id === activeAccountId);
+    const sourceId = activeSource?.id ?? maimaiLxnsSources[0]?.id ?? null;
+    const activeTarget = maimaiTransferTargets.find((target) => (
+      target.account.id === activeAccountId
+      && target.account.id !== sourceId
+      && target.writable
+    ));
+    setMaimaiSourceAccountId(sourceId);
+    setMaimaiTransferTargetIds(activeTarget ? [activeTarget.account.id] : []);
     setMaimaiUploadPage('friend_code');
     setUploadVisible(true);
   };
@@ -518,8 +654,23 @@ export function OverviewScreen() {
         contentOverride={showingMaimaiSyncGuide ? (
           <MaimaiSyncGuideContent
             syncing={syncBusy}
+            sourceAccounts={maimaiLxnsSources}
+            targets={maimaiTransferTargets}
+            selectedSourceAccountId={maimaiSourceAccountId}
+            selectedTargetAccountIds={maimaiTransferTargetIds}
+            onSelectSource={(accountId) => {
+              setMaimaiSourceAccountId(accountId);
+              setMaimaiTransferTargetIds((ids) => ids.filter((id) => id !== accountId));
+            }}
+            onToggleTarget={(accountId) => {
+              setMaimaiTransferTargetIds((ids) => (
+                ids.includes(accountId)
+                  ? ids.filter((id) => id !== accountId)
+                  : [...ids, accountId]
+              ));
+            }}
             onClose={closeUpload}
-            onSync={syncData}
+            onSync={syncMaimaiFromLxns}
           />
         ) : undefined}
         externalBusy={showingMaimaiSyncGuide && syncBusy}

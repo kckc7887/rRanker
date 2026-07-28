@@ -182,7 +182,17 @@ jest.mock('@/state/session-store', () => ({
             expiresAt: '2026-08-01T00:00:00.000Z',
           }
         : { mode: 'import-token', value: 'token', persistable: true },
-    sessionsByAccountId: {},
+    sessionsByAccountId: {
+      [mockWater.id]: { mode: 'import-token', value: 'water-token', persistable: true },
+      [mockExtraWater.id]: { mode: 'import-token', value: 'water-token-2', persistable: true },
+      [mockLxns.id]: {
+        mode: 'lxns-oauth',
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        expiresAt: Date.now() + 60_000,
+        persistable: true,
+      },
+    },
     selectBoundAccount: jest.fn(),
     updateBoundAccountScore: jest.fn(),
   }),
@@ -236,7 +246,7 @@ describe('总览上传和同步操作', () => {
     await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockExtraLocal.id]));
   });
 
-  it('其他舞萌查分器页仍显示上传与同步双按钮', async () => {
+  it('其他舞萌查分器页显示上传与同步双按钮，上传页也可切换同步引导', async () => {
     mockProviderId = 'diving-fish';
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('上传数据')).toBeTruthy();
@@ -244,8 +254,11 @@ describe('总览上传和同步操作', () => {
     expect(screen.getByLabelText('同步数据，当前 水鱼查分器')).toBeTruthy();
     await fireEvent.press(screen.getByText('上传数据'));
     expect(screen.getByText('好友码上传界面')).toBeTruthy();
-    expect(screen.queryByText('上传顶部选择栏')).toBeNull();
+    expect(screen.getByText('上传顶部选择栏')).toBeTruthy();
     await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockExtraWater.id]));
+
+    await fireEvent.press(screen.getByLabelText('测试切换同步引导'));
+    expect(screen.getByText('舞萌同步引导界面')).toBeTruthy();
   });
 
   it('落雪页面正常打开好友码界面，并在顶部切换同步引导', async () => {

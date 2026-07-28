@@ -19,6 +19,11 @@ export function LxnsSyncGuideSheet({
   testID,
   isMaintenanceWindow,
   maintenanceMessage,
+  beforeSteps,
+  syncDisabled = false,
+  syncButtonLabel = '同步数据',
+  syncBusyLabel = '同步中…',
+  syncHint = '落雪咖啡屋',
   onClose,
   onSync,
 }: {
@@ -30,6 +35,11 @@ export function LxnsSyncGuideSheet({
   testID: string;
   isMaintenanceWindow: () => boolean;
   maintenanceMessage: string;
+  beforeSteps?: ReactNode;
+  syncDisabled?: boolean;
+  syncButtonLabel?: string;
+  syncBusyLabel?: string;
+  syncHint?: string;
   onClose: () => void;
   onSync: () => Promise<boolean>;
 }) {
@@ -70,6 +80,11 @@ export function LxnsSyncGuideSheet({
           offlineSyncUrl={offlineSyncUrl}
           isMaintenanceWindow={isMaintenanceWindow}
           maintenanceMessage={maintenanceMessage}
+          beforeSteps={beforeSteps}
+          syncDisabled={syncDisabled}
+          syncButtonLabel={syncButtonLabel}
+          syncBusyLabel={syncBusyLabel}
+          syncHint={syncHint}
           onClose={onClose}
           onSync={onSync}
         />
@@ -84,6 +99,11 @@ export function LxnsSyncGuideContent({
   offlineSyncUrl,
   isMaintenanceWindow,
   maintenanceMessage,
+  beforeSteps,
+  syncDisabled = false,
+  syncButtonLabel = '同步数据',
+  syncBusyLabel = '同步中…',
+  syncHint = '落雪咖啡屋',
   onClose,
   onSync,
 }: {
@@ -92,6 +112,11 @@ export function LxnsSyncGuideContent({
   offlineSyncUrl: string;
   isMaintenanceWindow: () => boolean;
   maintenanceMessage: string;
+  beforeSteps?: ReactNode;
+  syncDisabled?: boolean;
+  syncButtonLabel?: string;
+  syncBusyLabel?: string;
+  syncHint?: string;
   onClose: () => void;
   onSync: () => Promise<boolean>;
 }) {
@@ -126,7 +151,7 @@ export function LxnsSyncGuideContent({
   };
 
   const sync = async () => {
-    if (busy) return;
+    if (busy || syncDisabled) return;
     setSubmitting(true);
     try {
       if (await onSync()) onClose();
@@ -143,6 +168,8 @@ export function LxnsSyncGuideContent({
           <Text style={[styles.intro, { color: theme.textSecondary }]}>
             请按以下步骤通过落雪离线同步，再返回应用读取成绩。离线同步仅更新已经与落雪账号绑定的玩家数据。
           </Text>
+
+          {beforeSteps}
 
           <GuideStep number="1" title="配置 HTTP 代理">
             <Text style={[styles.body, { color: theme.textSecondary }]}>
@@ -197,18 +224,18 @@ export function LxnsSyncGuideContent({
             <Pressable
               accessibilityLabel={`从同步引导同步${shortGameName}数据`}
               accessibilityRole="button"
-              accessibilityState={{ disabled: busy }}
-              disabled={busy}
+              accessibilityState={{ disabled: busy || syncDisabled }}
+              disabled={busy || syncDisabled}
               onPress={() => void sync()}
               style={({ pressed }) => [
                 styles.sync,
                 { backgroundColor: theme.accent },
-                pressed && !busy && styles.pressed,
-                busy && styles.disabled,
+                pressed && !busy && !syncDisabled && styles.pressed,
+                (busy || syncDisabled) && styles.disabled,
               ]}
             >
-              <Text style={styles.syncText}>{busy ? '同步中…' : '同步数据'}</Text>
-              <Text style={styles.syncHint}>落雪咖啡屋</Text>
+              <Text style={styles.syncText}>{busy ? syncBusyLabel : syncButtonLabel}</Text>
+              <Text style={styles.syncHint}>{syncHint}</Text>
             </Pressable>
           </GuideStep>
     </ScrollView>

@@ -7,8 +7,13 @@ import {
   MAIMAI_PROXY_ADDRESS,
   MAIMAI_PROXY_PORT,
   MAIMAI_PROXY_SERVER,
+  MaimaiSyncGuideContent,
   MaimaiSyncGuideSheet,
 } from '@/components/maimai/MaimaiSyncGuideSheet';
+import {
+  createLocalMaimaiAccount,
+  createMaimaiBoundAccount,
+} from '@/domain/bound-account';
 
 const mockSetStringAsync = jest.fn(async (_value: string) => undefined);
 const mockShowNotification = jest.fn();
@@ -41,6 +46,10 @@ jest.mock('@/components/AppModal', () => ({
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification }),
 }));
+jest.mock('@/components/BoundAccountAvatar', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return { BoundAccountAvatar: () => <RN.View testID="mock-account-avatar" /> };
+});
 jest.mock('@/domain/maimai-maintenance', () => ({
   MAIMAI_MAINTENANCE_MESSAGE: '舞萌维护窗口说明',
   isMaimaiMaintenanceWindow: () => mockMaintenance,
@@ -152,5 +161,52 @@ describe('Maimai sync guide', () => {
       message: '舞萌维护窗口说明',
       variant: 'warning',
     });
+  });
+
+  it('selects an LXNS source from an expandable list and checks upload targets', async () => {
+    const sourceA = createMaimaiBoundAccount({
+      providerId: 'lxns',
+      displayName: '落雪甲',
+      rating: 15000,
+      playerId: 'source-a',
+    });
+    const sourceB = createMaimaiBoundAccount({
+      providerId: 'lxns',
+      displayName: '落雪乙',
+      rating: 14500,
+      playerId: 'source-b',
+    });
+    const local = createLocalMaimaiAccount('本地目标', 0);
+    const onSelectSource = jest.fn();
+    const onToggleTarget = jest.fn();
+    const screen = await render(
+      <MaimaiSyncGuideContent
+        syncing={false}
+        sourceAccounts={[sourceA, sourceB]}
+        targets={[
+          { account: sourceA, writable: true, disableReason: null },
+          { account: sourceB, writable: true, disableReason: null },
+          { account: local, writable: true, disableReason: null },
+        ]}
+        selectedSourceAccountId={sourceA.id}
+        selectedTargetAccountIds={[]}
+        onSelectSource={onSelectSource}
+        onToggleTarget={onToggleTarget}
+        onClose={jest.fn()}
+        onSync={jest.fn(async () => false)}
+      />,
+    );
+
+    expect(screen.getByText('数据来源')).toBeTruthy();
+    expect(screen.getByText('上传到')).toBeTruthy();
+    expect(screen.queryByLabelText(`上传到 ${sourceA.displayName}（${sourceA.providerTitle}）`)).toBeNull();
+    expect(screen.getByLabelText('从同步引导同步舞萌数据').props.accessibilityState.disabled).toBe(true);
+
+    await fireEvent.press(screen.getByLabelText('展开数据来源列表'));
+    await fireEvent.press(screen.getByLabelText('数据来源 落雪乙'));
+    expect(onSelectSource).toHaveBeenCalledWith(sourceB.id);
+
+    await fireEvent.press(screen.getByLabelText(`上传到 ${local.displayName}（${local.providerTitle}）`));
+    expect(onToggleTarget).toHaveBeenCalledWith(local.id);
   });
 });
