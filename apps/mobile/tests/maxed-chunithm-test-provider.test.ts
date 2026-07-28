@@ -1,6 +1,7 @@
 import type { ChunithmCatalogSnapshot, ChunithmSong } from '@/domain/chunithm';
 import {
   buildMaxedChunithmSnapshot,
+  maxChunithmChartOverPower,
   maxChunithmChartRating,
 } from '@/providers/maxed-chunithm-test-provider';
 
@@ -62,6 +63,10 @@ describe('中二节奏全满示例账号', () => {
     expect(maxChunithmChartRating(14.8)).toBe(16.95);
   });
 
+  it('单谱面满 OVER POWER 为定数加 3 后乘 5', () => {
+    expect(maxChunithmChartOverPower(14.8)).toBe(89);
+  });
+
   it('生成所有未禁用谱面满成绩，并保留 WORLD’S END', () => {
     const snapshot = buildMaxedChunithmSnapshot(catalog);
     expect(snapshot.scores).toHaveLength(66);
@@ -71,9 +76,13 @@ describe('中二节奏全满示例账号', () => {
     expect(snapshot.scores.every((score) => score.full_combo === 'alljusticecritical')).toBe(true);
     expect(snapshot.scores.every((score) => score.full_chain === 'fullchain2')).toBe(true);
     expect(snapshot.scores.every((score) => score.clear === 'catastrophy')).toBe(true);
+    expect(snapshot.scores
+      .filter((score) => score.level_index !== 5)
+      .every((score) => score.over_power !== undefined && score.over_power > 0)).toBe(true);
     const worldsEnd = snapshot.scores.find((score) => score.id === 500);
     expect(worldsEnd).toMatchObject({ level_index: 5 });
     expect(worldsEnd?.rating).toBeUndefined();
+    expect(worldsEnd?.over_power).toBeUndefined();
   });
 
   it('构造唯一的 New20 与 Best30，并按 50 张计算玩家 Rating', () => {
@@ -94,6 +103,16 @@ describe('中二节奏全满示例账号', () => {
       rating_possession: 'rainbow',
       over_power_progress: 100,
     });
+    const expectedOverPower = catalog.songs
+      .filter((entry) => !entry.disabled)
+      .map((entry) => Math.max(
+        0,
+        ...entry.difficulties
+          .filter((difficulty) => difficulty.difficulty !== 5)
+          .map((difficulty) => maxChunithmChartOverPower(difficulty.levelValue)),
+      ))
+      .reduce((sum, value) => sum + value, 0);
+    expect(snapshot.player.over_power).toBe(expectedOverPower);
     expect(snapshot.source).toMatchObject({ kind: 'generated', isStale: false });
   });
 });

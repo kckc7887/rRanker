@@ -50,6 +50,11 @@ export function maxChunithmChartRating(levelValue: number): number {
   return roundToTwo(Math.max(0, levelValue) + 2.15);
 }
 
+/** 1,010,000 + AJC 时的单谱面理论 OVER POWER。 */
+export function maxChunithmChartOverPower(levelValue: number): number {
+  return roundToTwo((Math.max(0, levelValue) + 3) * 5);
+}
+
 export function buildMaxedChunithmScores(
   catalog: ChunithmCatalogSnapshot,
 ): ChunithmScore[] {
@@ -63,7 +68,10 @@ export function buildMaxedChunithmScores(
       score: 1_010_000,
       ...(difficulty.difficulty === 5
         ? {}
-        : { rating: maxChunithmChartRating(difficulty.levelValue) }),
+        : {
+            rating: maxChunithmChartRating(difficulty.levelValue),
+            over_power: maxChunithmChartOverPower(difficulty.levelValue),
+          }),
       clear: 'catastrophy',
       full_combo: 'alljusticecritical',
       full_chain: 'fullchain2',
@@ -114,6 +122,18 @@ export function buildMaxedChunithmSnapshot(
   const ratingTotal = [...bests.bests, ...bests.new_bests]
     .reduce((sum, score) => sum + (score.rating ?? 0), 0);
   const rating = truncateToTwo(ratingTotal / 50);
+  const maxOverPowerBySong = new Map<string, number>();
+  for (const score of scores) {
+    if (score.over_power === undefined) continue;
+    const key = String(score.id);
+    maxOverPowerBySong.set(
+      key,
+      Math.max(maxOverPowerBySong.get(key) ?? 0, score.over_power),
+    );
+  }
+  const overPower = roundToTwo(
+    [...maxOverPowerBySong.values()].reduce((sum, value) => sum + value, 0),
+  );
   const player: ChunithmPlayer = {
     name: displayName,
     level: 99,
@@ -122,7 +142,7 @@ export function buildMaxedChunithmSnapshot(
     friend_code: CHUNITHM_TEST_ACCOUNT_ID,
     class_emblem: { base: 0, medal: 0 },
     reborn_count: 0,
-    over_power: 0,
+    over_power: overPower,
     over_power_progress: 100,
     currency: 0,
     total_currency: 0,

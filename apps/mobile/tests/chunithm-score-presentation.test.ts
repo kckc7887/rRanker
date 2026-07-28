@@ -169,7 +169,7 @@ describe('chunithm score presentation', () => {
       clear: 'absolute',
     })).toEqual([
       { id: 'full-combo', label: 'FC', tone: 'gold' },
-      { id: 'full-chain', label: 'FULL CHAIN', tone: 'gold' },
+      { id: 'full-chain', label: 'FULL CHAIN', tone: 'platinum' },
       { id: 'clear', label: 'ABSOLUTE', tone: 'platinum' },
     ]);
     expect(chunithmAchievementBadges({
@@ -179,7 +179,7 @@ describe('chunithm score presentation', () => {
     })[0]).toEqual({
       id: 'full-chain',
       label: 'FULL CHAIN',
-      tone: 'platinum',
+      tone: 'gold',
     });
   });
 
