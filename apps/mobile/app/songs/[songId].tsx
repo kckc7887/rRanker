@@ -573,9 +573,6 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       <View style={styles.resultMain}>
         <Text style={[styles.achievementLabel, { color: theme.textMuted }]}>达成率</Text>
         <AchievementValue value={best?.achievements} />
-        {chart.type === 'UTAGE'
-          ? <Text style={[styles.utageDxScore, { color: theme.textSecondary }]}>DX分数 {best?.dxScore ?? '—'}</Text>
-          : null}
         <View style={styles.statusRow}>
           <ScoreStatusBadges rate={best?.rate} achievements={best?.achievements} fc={best?.fc} fs={best?.fs} />
         </View>
@@ -755,7 +752,6 @@ const styles = StyleSheet.create({
   gradientFill: { ...StyleSheet.absoluteFillObject },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 29, marginTop: 7 },
   rating: { color: '#667085', fontSize: 12, fontWeight: '700', marginTop: 10 }, ratingValue: { color: '#172033', fontSize: 17, fontWeight: '900' },
-  utageDxScore: { fontSize: 12, fontWeight: '800', marginTop: 3 },
   chartDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(51,65,85,0.18)', marginVertical: 16 },
   chartMeta: { color: '#4C586A', fontSize: 12, lineHeight: 18 },
   utageDescription: { fontSize: 12, lineHeight: 18, marginTop: 4 },
