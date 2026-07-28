@@ -6,6 +6,7 @@ import { createChunithmBoundAccount } from '@/domain/bound-account';
 const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
 const mockShowNotification = jest.fn();
 let mockMaintenance = false;
+let mockProviderId: 'lxns' | 'chunithm-test' = 'lxns';
 const mockAccount = createChunithmBoundAccount({
   displayName: '中二玩家',
   rating: 17.25,
@@ -127,7 +128,7 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
 }));
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: () => ({
-    data: mockBundle,
+    data: { ...mockBundle, providerId: mockProviderId },
     isLoading: false,
     isError: false,
     error: null,
@@ -184,6 +185,7 @@ describe('Chunithm overview', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockMaintenance = false;
+    mockProviderId = 'lxns';
     mockRefetch.mockResolvedValue({ data: mockBundle });
   });
 
@@ -224,5 +226,13 @@ describe('Chunithm overview', () => {
 
     await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps upload and sync actions for the example score provider', async () => {
+    mockProviderId = 'chunithm-test';
+    const screen = await render(<OverviewScreen />);
+
+    expect(screen.getByLabelText('上传数据，打开同步引导')).toBeTruthy();
+    expect(screen.getByLabelText('同步数据，当前 示例查分器')).toBeTruthy();
   });
 });

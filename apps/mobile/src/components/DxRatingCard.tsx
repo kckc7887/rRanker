@@ -113,6 +113,8 @@ function RatingValue({
     <View style={styles.outlinedValueWrap}>
       {colors.length >= 2 ? (
         <MaskedView
+          // Android 硬件模式可能缓存首次文字布局前的空遮罩，software 模式可随布局完成立即更新。
+          androidRenderingMode="software"
           pointerEvents="none"
           style={StyleSheet.absoluteFill}
           testID="dx-rating-card-value-gradient"
