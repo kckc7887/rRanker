@@ -271,3 +271,94 @@ export function convertHubScoresToDivingFishRecords(
 
   return { records, skippedNoTitle, skippedBadScore, skippedUnsupportedChart };
 }
+
+/** 将应用内标准舞萌成绩转换成水鱼批量写入契约；宴会场不受水鱼接口支持。 */
+export function convertScoreRecordsToDivingFishRecords(
+  scores: readonly ScoreRecord[],
+): SyncMapResult {
+  const records: DivingFishUploadRecord[] = [];
+  let skippedNoTitle = 0;
+  let skippedBadScore = 0;
+  let skippedUnsupportedChart = 0;
+
+  for (const score of scores) {
+    if (score.type !== 'SD' && score.type !== 'DX') {
+      skippedUnsupportedChart += 1;
+      continue;
+    }
+    if (!Number.isInteger(score.levelIndex) || score.levelIndex < 0 || score.levelIndex > 4) {
+      skippedUnsupportedChart += 1;
+      continue;
+    }
+    const title = score.title.trim();
+    if (!title || /^#\d+$/.test(title)) {
+      skippedNoTitle += 1;
+      continue;
+    }
+    if (!Number.isFinite(score.achievements)
+      || score.achievements < 0
+      || score.achievements > 101) {
+      skippedBadScore += 1;
+      continue;
+    }
+    records.push({
+      achievements: score.achievements,
+      dxScore: toDxScore(score.dxScore),
+      fc: mapHubFcToCanonical(score.fc),
+      fs: mapHubFsToCanonical(score.fs),
+      level_index: score.levelIndex,
+      title,
+      type: score.type,
+    });
+  }
+
+  return { records, skippedNoTitle, skippedBadScore, skippedUnsupportedChart };
+}
+
+/** 将应用内标准舞萌成绩转换成落雪批量写入契约。 */
+export function convertScoreRecordsToLxnsRecords(
+  scores: readonly ScoreRecord[],
+): GenericSyncMapResult<LxnsUploadScore> {
+  const records: LxnsUploadScore[] = [];
+  let skippedNoSong = 0;
+  let skippedBadScore = 0;
+  let skippedUnsupportedChart = 0;
+
+  for (const score of scores) {
+    const type = score.type === 'SD'
+      ? 'standard'
+      : score.type === 'DX'
+        ? 'dx'
+        : score.type === 'UTAGE'
+          ? 'utage'
+          : null;
+    const levelIndex = type === 'utage' ? 0 : score.levelIndex;
+    if (!type || !Number.isInteger(levelIndex) || levelIndex < 0 || levelIndex > 4) {
+      skippedUnsupportedChart += 1;
+      continue;
+    }
+    const id = Number(normalizeSongId(score.songId));
+    if (!Number.isSafeInteger(id) || id < 0) {
+      skippedNoSong += 1;
+      continue;
+    }
+    if (!Number.isFinite(score.achievements)
+      || score.achievements < 0
+      || score.achievements > 101) {
+      skippedBadScore += 1;
+      continue;
+    }
+    records.push({
+      id,
+      level_index: levelIndex,
+      achievements: score.achievements,
+      fc: mapHubFcToCanonical(score.fc),
+      fs: mapHubFsToCanonical(score.fs),
+      dx_score: toDxScore(score.dxScore),
+      dx_star: 0,
+      type,
+    });
+  }
+
+  return { records, skippedNoSong, skippedBadScore, skippedUnsupportedChart };
+}

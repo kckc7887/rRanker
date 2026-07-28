@@ -5,6 +5,8 @@ import {
   convertHubScoresToDivingFishRecords,
   convertHubScoresToLocalRecords,
   convertHubScoresToLxnsRecords,
+  convertScoreRecordsToDivingFishRecords,
+  convertScoreRecordsToLxnsRecords,
   mapHubFsToCanonical,
   mapHubTypeToDivingFish,
   parseHubAchievement,
@@ -173,6 +175,71 @@ describe('score-hub-sync-map', () => {
       expect.objectContaining({ id: 1696, type: 'standard', level_index: 3, fs: 'fsd' }),
       expect.objectContaining({ id: 100123, type: 'utage', level_index: 0 }),
     ]));
+    expect(lxns.skippedNoSong).toBe(1);
+  });
+
+  it('maps LXNS-backed app records to other probers and excludes unsupported entries', () => {
+    const base = {
+      level: '13+',
+      difficulty: 'master' as const,
+      difficultyConstant: 13.8,
+      rating: 300,
+      rate: 'sssp',
+      version: 'current',
+    };
+    const scores = [
+      {
+        ...base,
+        songId: '11696',
+        title: 'DX Song',
+        type: 'DX' as const,
+        levelIndex: 3,
+        achievements: 100.5,
+        dxScore: 2000,
+        fc: 'app',
+        fs: 'fsdp',
+      },
+      {
+        ...base,
+        songId: '100123',
+        title: 'U·TA·GE',
+        type: 'UTAGE' as const,
+        levelIndex: 7,
+        achievements: 101,
+        dxScore: 3000,
+        fc: null,
+        fs: null,
+      },
+      {
+        ...base,
+        songId: 'bad',
+        title: '#999',
+        type: 'SD' as const,
+        levelIndex: 2,
+        achievements: 99,
+        dxScore: null,
+        fc: null,
+        fs: null,
+      },
+    ];
+
+    const divingFish = convertScoreRecordsToDivingFishRecords(scores);
+    expect(divingFish.records).toEqual([
+      expect.objectContaining({
+        title: 'DX Song',
+        type: 'DX',
+        level_index: 3,
+        achievements: 100.5,
+      }),
+    ]);
+    expect(divingFish.skippedUnsupportedChart).toBe(1);
+    expect(divingFish.skippedNoTitle).toBe(1);
+
+    const lxns = convertScoreRecordsToLxnsRecords(scores);
+    expect(lxns.records).toEqual([
+      expect.objectContaining({ id: 1696, type: 'dx', level_index: 3 }),
+      expect.objectContaining({ id: 100123, type: 'utage', level_index: 0 }),
+    ]);
     expect(lxns.skippedNoSong).toBe(1);
   });
 });
