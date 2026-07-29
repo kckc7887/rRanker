@@ -1,11 +1,8 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useState } from 'react';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, type Href } from 'expo-router';
 import {
   Animated,
-  Easing,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -13,7 +10,7 @@ import {
   type TextStyle,
 } from 'react-native';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
-import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 import {
   chunithmAchievementBadges,
   chunithmRankUsesGradient,
@@ -24,6 +21,8 @@ import {
   type ChunithmScoreCardData,
 } from '@/domain/chunithm-score-presentation';
 import { useAppTheme } from '@/theme/app-theme';
+import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { presentChunithmScore } from '@/features/game-content/adapters';
 
 type GradientColors = readonly [string, string, ...string[]];
 type GradientLocations = readonly [number, number, ...number[]];
@@ -74,24 +73,6 @@ const BADGE_TONES: Record<Exclude<ChunithmAchievementTone, 'neutral'> | 'rank', 
 const SHIMMER: GradientColors = [
   'rgba(255,255,255,0)', 'rgba(255,255,255,0.28)', 'rgba(255,255,255,0)',
 ];
-
-function useFlowingProgress(enabled: boolean, duration = 1_400): Animated.Value {
-  const progress = useRef(new Animated.Value(0)).current;
-  const tabActive = useCachedTabActive();
-  useEffect(() => {
-    progress.setValue(0);
-    if (!enabled || !tabActive) return;
-    const animation = Animated.loop(Animated.timing(progress, {
-      toValue: 1,
-      duration,
-      easing: Easing.linear,
-      useNativeDriver: true,
-    }));
-    animation.start();
-    return () => animation.stop();
-  }, [duration, enabled, progress, tabActive]);
-  return progress;
-}
 
 export function ChunithmGradientScore({
   text,
@@ -153,7 +134,7 @@ function GradientBadge({
 }) {
   const colors = BADGE_TONES[tone];
   const [width, setWidth] = useState(60);
-  const progress = useFlowingProgress(flowing);
+  const progress = useFlowingProgress(flowing, 1_400);
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
   return (
     <LinearGradient
@@ -237,26 +218,23 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
   const scoreText = formatChunithmScore(record.score);
   const achievements = chunithmAchievementBadges(record);
   const scoreGradient = chunithmRankUsesGradient(record.rank);
+  const presentation = presentChunithmScore(record, position);
 
   return (
-    <Pressable
-      accessibilityLabel={`${record.title}，分数 ${scoreText}，评价 ${record.rank}，Rating ${formatChunithmRating(record.rating)}`}
-      accessibilityRole="button"
-      onPress={() => router.push({
-        pathname: '/songs/[songId]',
-        params: { songId: record.songId, levelIndex: String(record.levelIndex) },
-      } as Href)}
-      style={({ pressed }) => [
-        styles.card,
-        { backgroundColor: theme.surface },
-        pressed && styles.pressed,
-      ]}
-      testID={`chunithm-score-card-${record.key}`}
-    >
-      <View style={styles.main}>
-        <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-          {position ? `${position}. ` : ''}{record.title}
+    <GameScoreCard
+      cardStyle={styles.card}
+      mainStyle={styles.main}
+      presentation={presentation}
+      pressedStyle={styles.pressed}
+      side={<View style={styles.ratingBlock}>
+        <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
+        <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>
+          {formatChunithmRating(record.rating)}
         </Text>
+      </View>}
+      testID={`chunithm-score-card-${record.key}`}
+      titleStyle={styles.title}
+    >
         {scoreGradient ? (
           <ChunithmGradientScore flowing={record.rank === 'SSS+'} text={scoreText} />
         ) : (
@@ -284,14 +262,7 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
             ))}
           </View>
         </View>
-      </View>
-      <View style={styles.ratingBlock}>
-        <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
-        <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>
-          {formatChunithmRating(record.rating)}
-        </Text>
-      </View>
-    </Pressable>
+    </GameScoreCard>
   );
 });
 

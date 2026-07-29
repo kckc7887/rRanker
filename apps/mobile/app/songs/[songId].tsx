@@ -1,4 +1,4 @@
-import { type ComponentProps, type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
@@ -17,11 +17,14 @@ import {
 import {
   GestureHandlerRootView,
   Pressable as GesturePressable,
-  ScrollView as GestureScrollView,
 } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
+import { AutoScrollText } from '@/components/game-content/AutoScrollText';
+import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
+import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
 import { PhigrosSongDetail } from '@/components/phigros/PhigrosSongDetail';
@@ -353,73 +356,6 @@ function AliasLine({ aliases }: { aliases?: string[] }) {
 }
 
 
-function AutoScrollText({ text, textStyle, style, contentContainerStyle }: {
-  text: string; textStyle: object; style?: object; contentContainerStyle?: object;
-}) {
-  const scrollRef = useRef<ScrollView>(null);
-  const [contentWidth, setContentWidth] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [scrolling, setScrolling] = useState(false);
-  const offsetRef = useRef(0);
-  const directionRef = useRef(1);
-  const frameRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    offsetRef.current = 0;
-    directionRef.current = 1;
-    setScrolling(false);
-    scrollRef.current?.scrollTo({ x: 0, animated: false });
-  }, [text]);
-
-  useEffect(() => {
-    if (contentWidth <= 0 || containerWidth <= 0) return;
-    const overflow = contentWidth - containerWidth;
-    setScrolling((current) => {
-      if (current) return overflow > 2;
-      return overflow > 8;
-    });
-  }, [contentWidth, containerWidth]);
-
-  useEffect(() => {
-    if (!scrolling || dragging) {
-      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-      return;
-    }
-    const maxOffset = Math.max(0, contentWidth - containerWidth);
-    const tick = () => {
-      const next = offsetRef.current + directionRef.current * 0.45;
-      if (next >= maxOffset) directionRef.current = -1;
-      else if (next <= 0) directionRef.current = 1;
-      offsetRef.current = Math.max(0, Math.min(next, maxOffset));
-      scrollRef.current?.scrollTo({ x: offsetRef.current, animated: false });
-      frameRef.current = requestAnimationFrame(tick);
-    };
-    frameRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-    };
-  }, [scrolling, dragging, contentWidth, containerWidth]);
-
-  return <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false}
-    style={style}
-    contentContainerStyle={contentContainerStyle}
-    scrollEnabled={scrolling}
-    onContentSizeChange={(w) => setContentWidth(w)}
-    onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-    onScrollBeginDrag={() => setDragging(true)}
-    onScrollEndDrag={(e) => {
-      offsetRef.current = e.nativeEvent.contentOffset.x;
-      setDragging(false);
-      directionRef.current = 1;
-    }}
-    scrollEventThrottle={32}>
-    <Text numberOfLines={1} style={textStyle}>{text}</Text>
-  </ScrollView>;
-}
-
 function HorizontalText({ text, textStyle }: { text: string; textStyle: object }) {
   return <AutoScrollText text={text} textStyle={textStyle} style={styles.singleLine}
     contentContainerStyle={styles.singleLineContent} />;
@@ -489,33 +425,28 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   nextChartType?: ChartType;
   onToggleChartType: () => void;
 }) {
-  const interval = cardWidth + CARD_GAP;
-  const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [initialIndex, interval]);
-  if (charts.length === 0) return <View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>;
-  return <GestureHandlerRootView style={styles.carouselRoot}>
-    <GestureScrollView ref={scrollRef} horizontal decelerationRate="fast" snapToInterval={interval}
-      snapToAlignment="start" disableIntervalMomentum showsHorizontalScrollIndicator={false}
-      directionalLockEnabled nestedScrollEnabled removeClippedSubviews={false} style={styles.carouselScroll}
-      contentOffset={{ x: initialIndex * interval, y: 0 }}
-      contentContainerStyle={styles.carousel} accessibilityLabel="难度卡片">
-      {charts.map((chart) => {
+  return <SharedChartCarousel
+    accessibilityLabel="难度卡片"
+    cardWidth={cardWidth}
+    contentContainerStyle={styles.carousel}
+    empty={<View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>}
+    gap={CARD_GAP}
+    initialIndex={initialIndex}
+    items={charts}
+    keyExtractor={(chart) => `${chart.type}:${chart.levelIndex}`}
+    renderItem={(chart) => {
         const best = records.filter((record) =>
           (String(record.songId) === song.id || normalizeSongId(record.songId) === song.id) &&
           record.type === chart.type && record.levelIndex === chart.levelIndex)
           .sort((left, right) => right.achievements - left.achievements)[0];
-        return <ChartCard key={`${chart.type}:${chart.levelIndex}`} chart={chart} best={best} song={song}
+        return <ChartCard chart={chart} best={best} song={song}
           library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
           nextChartType={nextChartType}
           onToggleChartType={onToggleChartType} />;
-      })}
-    </GestureScrollView>
-  </GestureHandlerRootView>;
+    }}
+    rootStyle={styles.carouselRoot}
+    scrollStyle={styles.carouselScroll}
+  />;
 }
 
 async function openBilibiliChartSearch(query: string): Promise<void> {
@@ -548,7 +479,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const chartTypeKeyword = canSwitchChartType ? ` ${chart.type}` : '';
   const chartSearchQuery = `${song.title}${chartTypeKeyword} ${visual.label} 谱面确认`;
-  return <View
+  return <GameChartResultCard
     testID={chart.type === 'UTAGE' ? 'maimai-utage-chart-card' : undefined}
     style={[styles.chartCard, {
       width,
@@ -609,7 +540,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), library.tagPresets ?? [])}
       disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
-  </View>;
+  </GameChartResultCard>;
 }
 
 function chartActionStyle(
@@ -684,6 +615,15 @@ function ChartNotesTables({ chart }: { chart: Chart }) {
 function NotesTable({ notes, label }: { notes?: ChartNotes; label?: string }) {
   const theme = useAppTheme();
   if (!notes) return <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>物量未提供</Text>;
+  const noteGroup = {
+    key: label ?? 'notes',
+    label,
+    values: NOTE_COLUMNS.map((column) => ({
+      key: column.key,
+      label: column.label,
+      value: notes[column.key],
+    })),
+  };
   const openTolerance = () => router.push({
     pathname: '/tools/tolerance',
     params: {
@@ -694,16 +634,19 @@ function NotesTable({ notes, label }: { notes?: ChartNotes; label?: string }) {
   return <DetailPressable accessibilityRole="button" accessibilityLabel={`使用${label ? `${label} ` : '此'}谱面物量计算容错`}
     onPress={openTolerance} style={({ pressed }) => [styles.notesAction, pressed && styles.notesActionPressed]}>
     {label ? <Text style={[styles.notesPlayerLabel, { color: theme.text }]}>{label}</Text> : null}
-    <View accessibilityLabel="谱面物量" style={[styles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-      <View style={[styles.notesRow, styles.notesHeaderRow]}>
-        {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
-          style={[styles.notesCell, styles.notesHeader, { color: theme.textMuted }]}>{column.label}</Text>)}
-      </View>
-      <View style={styles.notesRow}>
-        {NOTE_COLUMNS.map((column) => <Text key={column.key} numberOfLines={1}
-          style={[styles.notesCell, styles.notesValue, { color: theme.text }]}>{notes[column.key]}</Text>)}
-      </View>
-    </View>
+    <GameNoteTable
+      accessibilityLabel="谱面物量"
+      containerStyle={[styles.notesTable, {
+        backgroundColor: theme.surfaceMuted,
+        borderColor: theme.border,
+      }]}
+      group={noteGroup}
+      headerRowStyle={styles.notesHeaderRow}
+      headerTextStyle={[styles.notesCell, styles.notesHeader, { color: theme.textMuted }]}
+      mode="grid"
+      rowStyle={styles.notesRow}
+      valueTextStyle={[styles.notesCell, styles.notesValue, { color: theme.text }]}
+    />
     <Text style={[styles.notesHint, { color: theme.textMuted }]}>点击物量表，前往达成率与容错计算</Text>
   </DetailPressable>;
 }

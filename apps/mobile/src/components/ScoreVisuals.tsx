@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { BlurView } from 'expo-blur';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
-import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 import { useAppTheme } from '@/theme/app-theme';
 import type { ChartType, Difficulty } from '@/domain/models';
 import { normalizeMaimaiFc, normalizeMaimaiFs } from '@/domain/maimai-filters';
@@ -249,21 +249,6 @@ function BlurBadge({ label, spec, flowing = false, testID }: {
     </Animated.View> : null}
     <Text style={[styles.statusText, { color: spec.text }]}>{label}</Text>
   </View>;
-}
-
-function useFlowingProgress(enabled: boolean, duration: number): Animated.Value {
-  const progress = useRef(new Animated.Value(0)).current;
-  const tabActive = useCachedTabActive();
-  useEffect(() => {
-    progress.setValue(0);
-    if (!enabled || !tabActive) return;
-    const animation = Animated.loop(Animated.timing(progress, {
-      toValue: 1, duration, easing: Easing.linear, useNativeDriver: true,
-    }));
-    animation.start();
-    return () => animation.stop();
-  }, [duration, enabled, progress, tabActive]);
-  return progress;
 }
 
 function getStatusSpec(kind: 'fc' | 'fs', rawValue: string): {
