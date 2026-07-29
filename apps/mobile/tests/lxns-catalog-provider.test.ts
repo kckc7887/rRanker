@@ -37,6 +37,48 @@ describe('LxnsCatalogProvider', () => {
     expect(catalog.songs[0]).toMatchObject({ id: '1806', title: 'Fraq', version: '舞萌DX 2026', region: '未来都市' });
   });
 
+  it('keeps SD and DX introduction versions separate on the same song', async () => {
+    const crossVersionSong = {
+      id: 363,
+      title: 'Oshama Scramble!',
+      artist: 't+pazolite',
+      version: 15000,
+      difficulties: {
+        standard: [{
+          type: 'standard',
+          difficulty: 3,
+          level: '13',
+          level_value: 13.4,
+          version: 15000,
+          note_designer: 'SD谱师',
+          notes: null,
+        }],
+        dx: [{
+          type: 'dx',
+          difficulty: 3,
+          level: '13+',
+          level_value: 13.7,
+          version: 25500,
+          note_designer: 'DX谱师',
+          notes: null,
+        }],
+      },
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...responsePayload,
+      songs: [crossVersionSong],
+    }), { status: 200 })));
+
+    const catalog = await new LxnsCatalogProvider().getCatalog();
+    const song = catalog.songs[0];
+
+    expect(song).toMatchObject({ versionId: 15000, version: 'ORANGE PLUS' });
+    expect(song.charts.find((chart) => chart.type === 'SD')).toMatchObject({ versionId: 15000 });
+    expect(song.charts.find((chart) => chart.type === 'DX')).toMatchObject({ versionId: 25500 });
+    expect(catalog.chartVersionIndex[chartVersionKey(363, 'SD', 3)]).toBe(15000);
+    expect(catalog.chartVersionIndex[chartVersionKey(363, 'DX', 3)]).toBe(25500);
+  });
+
   it('parses detailed notes, aliases and plate requirements independently', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(responsePayload), { status: 200 }))

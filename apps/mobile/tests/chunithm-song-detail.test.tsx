@@ -244,10 +244,15 @@ describe('Chunithm song detail', () => {
     await fireEvent(screen.getByTestId('chunithm-metadata-measure-版本'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
+    await fireEvent(screen.getByTestId('chunithm-metadata-measure-分类'), 'textLayout', {
+      nativeEvent: { lines: [{}, {}, {}] },
+    });
     await fireEvent.press(screen.getByLabelText('展开版本'));
     expect(screen.getByTestId('chunithm-metadata-value-版本').props.numberOfLines).toBeUndefined();
+    expect(screen.getByTestId('chunithm-metadata-value-分类').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起版本'));
     expect(screen.getByTestId('chunithm-metadata-value-版本').props.numberOfLines).toBe(2);
+    expect(screen.getByTestId('chunithm-metadata-value-分类').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('中二难度卡片').props.contentOffset.x).toBeGreaterThan(0);
 
     const master = within(screen.getByTestId('chunithm-detail-difficulty-3'));
