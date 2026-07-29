@@ -84,6 +84,7 @@ export async function bindLxnsAccount(input: {
     rating: player?.rating ?? null,
     playerId: player ? String(player.friend_code) : credentialId,
     avatarUrl: buildChunithmMapIconUrl(player?.map_icon?.id),
+    ratingPossession: player?.rating_possession ?? null,
   });
   const finalSession = provider.getSession();
   await snapshots.saveResource(
@@ -99,6 +100,7 @@ export async function bindLxnsAccount(input: {
     credentialId,
     displayName: account.displayName,
     scoreDisplay: account.scoreDisplay,
+    ratingPossession: account.ratingPossession,
     session: finalSession,
   });
   return {

@@ -4,21 +4,24 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
 import { BoundAccountAvatar } from '@/components/BoundAccountAvatar';
+import { ChunithmRatingTag } from '@/components/ChunithmRatingTag';
 import { DxRatingTag } from '@/components/DxRatingTag';
 import { PhigrosAccountTags } from '@/components/PhigrosAccountTags';
 import { groupBoundAccountGameIds, type BoundAccount } from '@/domain/bound-account';
 import { findGame, type GameId } from '@/domain/game-bind-options';
 import { useAppTheme } from '@/theme/app-theme';
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
+import { hydrateChunithmAccountSummaries } from '@/services/hydrate-chunithm-account-summaries';
 import { hydratePhigrosAccountSummaries } from '@/services/hydrate-phigros-account-summaries';
 
-function useHydrateAccountAvatars(accountIds: string): void {
+function useHydrateAccountSummaries(accountIds: string): void {
   const ranFor = useRef<string | null>(null);
   useEffect(() => {
     if (!accountIds) return;
     if (ranFor.current === accountIds) return;
     ranFor.current = accountIds;
     void hydrateBoundAccountAvatars();
+    void hydrateChunithmAccountSummaries();
     void hydratePhigrosAccountSummaries();
   }, [accountIds]);
 }
@@ -43,7 +46,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
     .filter((account) => account.providerId === 'lxns' || account.providerId === 'phi-taptap')
     .map((account) => account.id)
     .join('|');
-  useHydrateAccountAvatars(avatarHydrateKey);
+  useHydrateAccountSummaries(avatarHydrateKey);
   const groups = groupBoundAccountGameIds(accounts).flatMap((gameId) => {
     const game = findGame(gameId);
     return game ? [{ gameId, title: game.title, icon: game.icon, accounts: accounts.filter((item) => item.gameId === gameId) }] : [];
@@ -75,9 +78,10 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
               </View>
               {account.gameId === 'maimai' ? <DxRatingTag rating={ratingNumber(account.scoreDisplay)} display={account.scoreDisplay} /> : null}
               {account.gameId === 'chunithm' ? (
-                <Text style={[styles.chunithmRating, { color: theme.accent, backgroundColor: theme.accentSoft }]}>
-                  RATING {account.scoreDisplay}
-                </Text>
+                <ChunithmRatingTag
+                  display={account.scoreDisplay}
+                  ratingPossession={account.ratingPossession}
+                />
               ) : null}
               {account.gameId === 'phigros' ? <PhigrosAccountTags rks={account.scoreDisplay} challengeModeRank={account.challengeModeRank} /> : null}
               <Text style={[styles.providerLine, { color: theme.textMuted }]}>{account.providerTitle}</Text></View>
@@ -99,6 +103,5 @@ const styles = StyleSheet.create({
   accountRow: { paddingHorizontal: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   providerIcon: { width: 40, height: 40, borderRadius: 10 }, titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   accountName: { fontSize: 17, fontWeight: '700' }, providerLine: { fontSize: 12, marginTop: 2 }, currentBadge: { fontSize: 11, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  chunithmRating: { alignSelf: 'flex-start', fontSize: 12, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, marginTop: 2 },
   actions: { borderTopWidth: StyleSheet.hairlineWidth, padding: 10, gap: 6 },
 });
