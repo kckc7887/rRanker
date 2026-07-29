@@ -33,6 +33,7 @@ import {
   DEFAULT_CHUNITHM_DEMO_PLAYER_NAME,
 } from '@/storage/chunithm-demo-account-store';
 import { NotificationProvider } from '@/components/AppNotification';
+import { songDetailScreenOptions } from '@/components/game-content/SongDetailScreenOptions';
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
@@ -170,7 +171,7 @@ function ThemedNavigation() {
         <Stack.Screen name="game-management" options={{ title: '游戏管理' }} />
         <Stack.Screen name="storage-management" options={{ title: '存储管理' }} />
         <Stack.Screen name="best-image" options={{ title: '成绩图片' }} />
-        <Stack.Screen name="songs/[songId]" options={{ title: '歌曲详情' }} />
+        <Stack.Screen name="songs/[songId]" options={songDetailScreenOptions()} />
       </Stack>
       <StatusBar style={theme.statusBar} />
     </NotificationProvider>

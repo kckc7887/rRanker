@@ -13,7 +13,6 @@ jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callb
 
 const mockBack = jest.fn();
 const mockPush = jest.fn();
-const mockStackScreen = jest.fn((_props: unknown) => null);
 let mockSongRouteParams: { songId: string; levelIndex?: string } = { songId: 'Song.A' };
 
 function buildSampleSong(): Song {
@@ -62,7 +61,6 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('expo-router', () => ({
-  Stack: { Screen: (props: unknown) => mockStackScreen(props) },
   router: { push: (...args: unknown[]) => mockPush(...args), back: () => mockBack() },
   useLocalSearchParams: () => mockSongRouteParams,
 }));
@@ -212,7 +210,15 @@ describe('Phigros song detail', () => {
     await waitFor(() => expect(screen.getByText('测试曲')).toBeTruthy());
     expect(screen.getByTestId('phigros-song-title-scroll').props.horizontal).toBe(true);
     expect(screen.getByText('测试曲').props.numberOfLines).toBe(1);
-    expect(screen.getByText('测试曲绘师')).toBeTruthy();
+    expect(screen.getAllByText('测试曲绘师').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBe(2);
+    await fireEvent(screen.getByTestId('phigros-metadata-measure-曲绘师'), 'textLayout', {
+      nativeEvent: { lines: [{}, {}, {}] },
+    });
+    await fireEvent.press(screen.getByLabelText('展开曲绘师'));
+    expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBeUndefined();
+    await fireEvent.press(screen.getByLabelText('收起曲绘师'));
+    expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('HD 难度卡片')).toBeTruthy();

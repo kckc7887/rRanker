@@ -119,7 +119,6 @@ let mockDarkTheme = false;
 
 jest.mock('expo-router', () => ({
   router: { back: mockBack },
-  Stack: { Screen: () => null },
 }));
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -241,6 +240,14 @@ describe('Chunithm song detail', () => {
     expect(screen.getByText('#3')).toBeTruthy();
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
     expect(screen.getAllByText('CHUNITHM VERSE').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('chunithm-metadata-value-版本').props.numberOfLines).toBe(2);
+    await fireEvent(screen.getByTestId('chunithm-metadata-measure-版本'), 'textLayout', {
+      nativeEvent: { lines: [{}, {}, {}] },
+    });
+    await fireEvent.press(screen.getByLabelText('展开版本'));
+    expect(screen.getByTestId('chunithm-metadata-value-版本').props.numberOfLines).toBeUndefined();
+    await fireEvent.press(screen.getByLabelText('收起版本'));
+    expect(screen.getByTestId('chunithm-metadata-value-版本').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('中二难度卡片').props.contentOffset.x).toBeGreaterThan(0);
 
     const master = within(screen.getByTestId('chunithm-detail-difficulty-3'));

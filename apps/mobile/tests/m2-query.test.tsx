@@ -7,6 +7,7 @@ import {
   MAIMAI_UTAGE_COLOR,
   MAIMAI_UTAGE_TINT,
 } from '@/components/special-difficulty-theme';
+import { songDetailScreenOptions } from '@/components/game-content/SongDetailScreenOptions';
 import { useCatalogFilter } from '@/state/catalog-filter';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
@@ -20,7 +21,6 @@ jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callb
 const mockSetSongFavorite = jest.fn();
 const mockBack = jest.fn();
 const mockPush = jest.fn();
-const mockStackScreen = jest.fn((_props: unknown) => null);
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 let mockDetailedCatalogAvailable = true;
 
@@ -42,7 +42,6 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('expo-router', () => ({
-  Stack: { Screen: (props: unknown) => mockStackScreen(props) },
   router: { push: (...args: unknown[]) => mockPush(...args), back: () => mockBack() },
   useLocalSearchParams: () => mockSongRouteParams,
 }));
@@ -151,16 +150,10 @@ describe('M2 song query screens', () => {
     try {
       const screen = await render(<SongDetailScreen />);
       expect(screen.getByLabelText('返回')).toBeTruthy();
-      const stackProps = mockStackScreen.mock.calls.at(-1)?.[0] as {
-        options: {
-          headerBackVisible?: boolean;
-          headerShown?: boolean;
-          headerTransparent?: boolean;
-        };
-      };
-      expect(stackProps.options.headerShown).toBe(false);
-      expect(stackProps.options.headerBackVisible).toBe(false);
-      expect(stackProps.options.headerTransparent).toBe(true);
+      const screenOptions = songDetailScreenOptions();
+      expect(screenOptions.headerShown).toBe(false);
+      expect(screenOptions.headerBackVisible).toBe(false);
+      expect(screenOptions.headerTransparent).toBe(true);
       expect(screen.queryAllByTestId('gesture-handler-pressable')).toHaveLength(0);
 
       await fireEvent(screen.getByTestId('metadata-measure-分类'), 'textLayout', {
