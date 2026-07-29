@@ -284,11 +284,14 @@ export function useGameData() {
         d.payload.playerScore.display,
         d.payload.player?.name,
         avatarUrl ?? undefined,
+        undefined,
+        d.payload.player?.rating_possession ?? null,
       );
       if (d.providerId === 'lxns') {
         void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
           displayName: d.payload.player?.name ?? '落雪账号（待同步）',
           scoreDisplay: d.payload.playerScore.display,
+          ratingPossession: d.payload.player?.rating_possession ?? null,
         }).catch(() => undefined);
       }
       if (avatarUrl) {

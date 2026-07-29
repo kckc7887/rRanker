@@ -146,6 +146,7 @@ interface SessionState {
     accountId?: string;
     credentialId?: string;
     avatarUrl?: string | null;
+    ratingPossession?: string | null;
   }) => void;
   upsertBoundAccount: (account: BoundAccount) => void;
   updateBoundAccountScore: (
@@ -154,6 +155,7 @@ interface SessionState {
     displayName?: string,
     avatarUrl?: string | null,
     challengeModeRank?: number | null,
+    ratingPossession?: string | null,
   ) => void;
   renameLocalAccount: (accountId: string, displayName: string) => void;
   selectBoundAccount: (accountId: string) => void;
@@ -270,6 +272,7 @@ function boundFromStored(account: StoredProviderAccount): BoundAccount {
       accountId: account.id,
       displayName: account.displayName,
       rating: Number.isFinite(rating) ? rating : null,
+      ratingPossession: account.ratingPossession,
     });
   }
   return createMaimaiBoundAccount({
@@ -357,6 +360,7 @@ export const useSession = create<SessionState>((set, get) => ({
         rating: accountMeta.rating,
         playerId: accountMeta.playerId,
         avatarUrl: accountMeta.avatarUrl,
+        ratingPossession: accountMeta.ratingPossession,
       });
       const credentialId = accountMeta.credentialId ?? `credential:${chunithmAccount.id}`;
       const sessionsByAccountId = sessionsWithSharedCredential(
@@ -423,7 +427,14 @@ export const useSession = create<SessionState>((set, get) => ({
   upsertBoundAccount: (account) => {
     set({ boundAccounts: upsertAccountList(get().boundAccounts, account) });
   },
-  updateBoundAccountScore: (accountId, scoreDisplay, displayName, avatarUrl, challengeModeRank) => {
+  updateBoundAccountScore: (
+    accountId,
+    scoreDisplay,
+    displayName,
+    avatarUrl,
+    challengeModeRank,
+    ratingPossession,
+  ) => {
     if (!get().boundAccounts.some((account) => account.id === accountId)) return;
     set({
       boundAccounts: get().boundAccounts.map((account) => {
@@ -434,6 +445,7 @@ export const useSession = create<SessionState>((set, get) => ({
           displayName: displayName ?? account.displayName,
           ...(avatarUrl !== undefined ? { avatarUrl } : {}),
           ...(challengeModeRank !== undefined ? { challengeModeRank } : {}),
+          ...(ratingPossession !== undefined ? { ratingPossession } : {}),
         };
       }),
     });

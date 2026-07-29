@@ -33,6 +33,8 @@ export type StoredProviderAccount = {
   scoreDisplay: string;
   /** Phigros 课题模式分数；旧记录可缺省。 */
   challengeModeRank?: number | null;
+  /** 中二节奏 Rating 领域；旧记录可缺省。 */
+  ratingPossession?: string | null;
 };
 
 export type StoredProviderAccountInput = Omit<StoredProviderAccount, 'credentialId'> & {
@@ -132,6 +134,10 @@ function parseAccountMetadata(
     displayName: account.displayName,
     scoreDisplay: account.scoreDisplay,
     challengeModeRank: account.challengeModeRank,
+    ratingPossession: typeof account.ratingPossession === 'string'
+      || account.ratingPossession === null
+      ? account.ratingPossession
+      : undefined,
   };
 }
 
@@ -201,6 +207,7 @@ function parseV2Vault(raw: string): V2SessionVault | null {
         displayName: account.displayName,
         scoreDisplay: account.scoreDisplay,
         challengeModeRank: account.challengeModeRank,
+        ratingPossession: account.ratingPossession,
         session: account.session,
       }];
     });
@@ -524,6 +531,7 @@ export class SecureSessionStore {
       displayName: account.displayName,
       scoreDisplay: account.scoreDisplay,
       challengeModeRank: account.challengeModeRank,
+      ratingPossession: account.ratingPossession,
     };
     await this.saveVault({
       version: 3,
@@ -560,7 +568,7 @@ export class SecureSessionStore {
   async updateAccountMetadata(
     accountId: string,
     metadata: Pick<StoredProviderAccount, 'displayName' | 'scoreDisplay'>
-      & Partial<Pick<StoredProviderAccount, 'challengeModeRank'>>,
+      & Partial<Pick<StoredProviderAccount, 'challengeModeRank' | 'ratingPossession'>>,
   ): Promise<void> {
     const vault = await this.loadVault();
     if (!vault.accounts.some((account) => account.id === accountId)) return;

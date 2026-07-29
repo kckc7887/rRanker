@@ -170,6 +170,7 @@ export function ProviderLoginSheet({
       providerId: 'lxns',
       gameId: result.account.gameId,
       avatarUrl: result.account.avatarUrl,
+      ratingPossession: result.account.ratingPossession,
     });
     if (result.account.gameId === 'chunithm') {
       removeBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);

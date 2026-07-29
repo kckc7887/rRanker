@@ -94,19 +94,21 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect(vault.accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:a']);
   });
 
-  it('在 v3 记录中持久化可选课题模式元数据且不改变当前账号', async () => {
+  it('在 v3 记录中持久化可选评分元数据且不改变当前账号', async () => {
     const store = createStore();
     const stored = account('maimai:diving-fish:a');
     await store.upsertAccount(stored);
     await store.updateAccountMetadata(stored.id, {
-      displayName: 'Phigros 玩家',
+      displayName: '评分玩家',
       scoreDisplay: '15.4321',
       challengeModeRank: 523,
+      ratingPossession: 'gold',
     });
     const vault = await store.loadVault();
     expect(vault.activeAccountId).toBe(stored.id);
     expect(vault.accounts[0]).toMatchObject({
-      displayName: 'Phigros 玩家', scoreDisplay: '15.4321', challengeModeRank: 523,
+      displayName: '评分玩家', scoreDisplay: '15.4321', challengeModeRank: 523,
+      ratingPossession: 'gold',
     });
   });
 

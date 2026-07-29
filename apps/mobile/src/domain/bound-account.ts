@@ -17,6 +17,8 @@ export type BoundAccount = {
   avatarUrl?: string | null;
   /** Phigros 课题模式分数；旧账号未刷新前为空。 */
   challengeModeRank?: number | null;
+  /** 中二节奏 Rating 领域；旧账号未刷新前为空。 */
+  ratingPossession?: string | null;
 };
 
 export const TEST_ACCOUNT_ID = 'test:empty';
@@ -110,6 +112,7 @@ export function createChunithmTempAccount(): BoundAccount {
     scoreLabel: profile.ratingLabel,
     scoreDisplay: '—',
     providerTitle: PROVIDER_TITLES['chunithm-temp'],
+    ratingPossession: null,
   };
 }
 
@@ -126,6 +129,7 @@ export function createMaxedChunithmTestAccount(
     scoreLabel: profile.ratingLabel,
     scoreDisplay: Number.isFinite(rating) ? rating.toFixed(2) : '—',
     providerTitle: PROVIDER_TITLES['chunithm-test'],
+    ratingPossession: 'rainbow',
   };
 }
 
@@ -135,6 +139,7 @@ export function createChunithmBoundAccount(input: {
   playerId?: string;
   accountId?: string;
   avatarUrl?: string | null;
+  ratingPossession?: string | null;
 }): BoundAccount {
   const profile = getGameProfile('chunithm');
   return {
@@ -148,6 +153,7 @@ export function createChunithmBoundAccount(input: {
       : input.rating.toFixed(2),
     providerTitle: PROVIDER_TITLES.lxns,
     avatarUrl: input.avatarUrl,
+    ratingPossession: input.ratingPossession ?? null,
   };
 }
 
