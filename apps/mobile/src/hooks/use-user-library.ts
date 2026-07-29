@@ -25,6 +25,7 @@ const service = new UserLibraryService(new SqliteUserLibraryRepository());
 type Operation =
   | { type: 'favorite'; gameId: GameId; songId: string; value: boolean }
   | { type: 'practice'; gameId: GameId; songId: string; chartType: ChartType; levelIndex: number; value: boolean }
+  | { type: 'practice-id'; gameId: GameId; songId: string; chartId: string; value: boolean }
   | { type: 'tags'; target: LibraryTarget; values: string[] }
   | { type: 'restore'; backup: UserDataBackup; mode: RestoreMode }
   | { type: 'clear' }
@@ -52,6 +53,12 @@ export function useUserLibrary() {
       switch (operation.type) {
         case 'favorite': return service.setSongFavorite(operation.gameId, operation.songId, operation.value);
         case 'practice': return service.setChartPractice(operation.gameId, operation.songId, operation.chartType, operation.levelIndex, operation.value);
+        case 'practice-id': return service.setChartPracticeById(
+          operation.gameId,
+          operation.songId,
+          operation.chartId,
+          operation.value,
+        );
         case 'tags': return service.setTags(operation.target, operation.values);
         case 'restore': return service.restore(operation.backup, operation.mode);
         case 'clear': await service.clear(); return [];
@@ -76,6 +83,9 @@ export function useUserLibrary() {
     mutateAsync({ type: 'favorite', gameId: activeGameId, songId, value }), [activeGameId, mutateAsync]);
   const setChartPractice = useCallback((songId: string, chartType: ChartType, levelIndex: number, value: boolean) =>
     mutateAsync({ type: 'practice', gameId: activeGameId, songId, chartType, levelIndex, value }), [activeGameId, mutateAsync]);
+  const setChartPracticeById = useCallback((songId: string, chartId: string, value: boolean) =>
+    mutateAsync({ type: 'practice-id', gameId: activeGameId, songId, chartId, value }),
+  [activeGameId, mutateAsync]);
   const setTags = useCallback((target: Omit<SongLibraryTarget, 'gameId'> | Omit<ChartLibraryTarget, 'gameId'>, values: string[]) =>
     mutateAsync({ type: 'tags', target: { ...target, gameId: activeGameId }, values }), [activeGameId, mutateAsync]);
   const restoreBackup = useCallback((backup: UserDataBackup, mode: RestoreMode) =>
@@ -86,6 +96,8 @@ export function useUserLibrary() {
   const songKey = useCallback((songId: string | number) => songLibraryKey(activeGameId, songId), [activeGameId]);
   const chartKey = useCallback((songId: string | number, type: ChartType, levelIndex: number) =>
     chartLibraryKey(activeGameId, songId, type, levelIndex), [activeGameId]);
+  const chartKeyById = useCallback((songId: string | number, chartId: string) =>
+    chartLibraryKey(activeGameId, songId, chartId), [activeGameId]);
   return {
     ...query,
     activeGameId,
@@ -93,9 +105,11 @@ export function useUserLibrary() {
     updateError: mutation.error,
     setSongFavorite,
     setChartPractice,
+    setChartPracticeById,
     setTags,
     songKey,
     chartKey,
+    chartKeyById,
     tagPresets: presets.data ?? [...DEFAULT_TAG_PRESETS],
     tagPresetsLoading: presets.isLoading,
     setTagPresets,

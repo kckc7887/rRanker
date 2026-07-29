@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from './render-with-query';
 import { jest } from '@jest/globals';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createChunithmBoundAccount } from '@/domain/bound-account';

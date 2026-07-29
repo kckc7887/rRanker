@@ -24,7 +24,7 @@ describe('SqliteUserLibraryRepository', () => {
     resetRrankerDatabaseForTests();
     resetUserLibrarySchemaForTests();
     vi.clearAllMocks();
-    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1 });
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 5 });
     sqlite.db.getAllAsync.mockResolvedValue([]);
     sqlite.db.runAsync.mockResolvedValue(undefined);
     sqlite.db.withTransactionAsync.mockImplementation(async (task: () => Promise<void>) => task());
@@ -35,35 +35,31 @@ describe('SqliteUserLibraryRepository', () => {
     await expect(repository.list()).resolves.toEqual([]);
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('user_library_meta'));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('PRAGMA foreign_keys = ON'));
-    expect(sqlite.db.runAsync).toHaveBeenCalledWith('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', 4);
-    expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM user_library_items');
+    expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('chart_id TEXT'));
+    expect(sqlite.db.runAsync).not.toHaveBeenCalledWith('DELETE FROM user_library_items');
   });
 
-  it('expands the chart type constraint in place while preserving items and tags', async () => {
-    sqlite.db.getFirstAsync.mockImplementation(async (sql: string) => {
-      if (sql.includes('sqlite_master')) {
-        return {
-          sql: "CREATE TABLE user_library_items (chart_type TEXT CHECK (chart_type IN ('SD', 'DX')))",
-        };
-      }
-      return { schema_version: 4 };
-    });
+  it('rebuilds schema 4 as schema 5 and resets all personal data', async () => {
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 4 });
 
     const repository = new SqliteUserLibraryRepository();
     await expect(repository.list()).resolves.toEqual([]);
 
     expect(sqlite.db.execAsync).toHaveBeenCalledWith('PRAGMA foreign_keys = OFF');
-    expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
-      'ALTER TABLE user_library_items RENAME TO user_library_items_legacy',
-    ));
-    expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
-      "chart_type IN ('SD', 'DX', 'UTAGE')",
-    ));
-    expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
-      'INSERT INTO user_library_item_tags',
-    ));
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith('DROP TABLE IF EXISTS user_library_items');
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith('DROP TABLE IF EXISTS user_library_tag_presets');
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'UPDATE user_library_meta SET schema_version = ? WHERE id = 1',
+      5,
+    );
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO user_library_tag_presets'),
+      '爆发',
+      '爆发',
+      0,
+      expect.any(String),
+    );
     expect(sqlite.db.execAsync).toHaveBeenCalledWith('PRAGMA foreign_keys = ON');
-    expect(sqlite.db.getAllAsync).toHaveBeenCalledWith('PRAGMA foreign_key_check');
   });
 
   it('clears personal tables inside a same-connection transaction', async () => {
@@ -81,7 +77,8 @@ describe('SqliteUserLibraryRepository', () => {
       createdAt: '2026-07-13T00:00:00.000Z', updatedAt: '2026-07-13T00:00:00.000Z',
     }]);
     expect(sqlite.db.runAsync).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO user_library_items'),
-      'song:maimai:1', 'maimai', 'song', '1', null, null, 1, 0, '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z');
+      'song:maimai:1', 'maimai', 'song', '1', null, null, null, 1, 0,
+      '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z');
   });
 
   it('propagates transaction failure without reporting success', async () => {
@@ -96,6 +93,6 @@ describe('SqliteUserLibraryRepository', () => {
     await Promise.all([a.list(), b.list(), a.list()]);
     expect(sqlite.openDatabaseAsync).toHaveBeenCalledTimes(1);
     expect(sqlite.openDatabaseAsync).toHaveBeenCalledWith('rranker.db');
-    expect(sqlite.db.execAsync).toHaveBeenCalledTimes(1);
+    expect(sqlite.db.execAsync).toHaveBeenCalledTimes(2);
   });
 });
