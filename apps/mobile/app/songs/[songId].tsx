@@ -44,6 +44,7 @@ import type {
   CollectionItem,
   DataSource,
   Difficulty,
+  GameVersion,
   ScoreRecord,
   Song,
 } from '@/domain/models';
@@ -118,18 +119,18 @@ function MaimaiSongDetailScreen({
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
   const detailData = song && catalog.data
-    ? { song, catalogSource: catalog.data.source }
+    ? { song, versions: catalog.data.versions, catalogSource: catalog.data.source }
     : undefined;
   return <>
     <StatusBar style="light" />
     <View style={[styles.page, { backgroundColor: themeBackground }]}>
-      <QueryStateView<{ song: Song; catalogSource: DataSource }>
+      <QueryStateView<{ song: Song; versions: GameVersion[]; catalogSource: DataSource }>
         isLoading={catalog.isLoading}
         isError={catalog.isError}
         isEmpty={!!catalog.data && !song}
         error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={detailData} renderData={(item) => <Detail song={item.song} records={scores.data?.records ?? []}
-          catalogSource={item.catalogSource} scoreSource={scores.data?.source} library={library}
+          versions={item.versions} catalogSource={item.catalogSource} scoreSource={scores.data?.source} library={library}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
       <SongDetailChrome
         song={song} favorite={favorite}
@@ -183,8 +184,9 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
   </>;
 }
 
-function Detail({ song, records, catalogSource, scoreSource, library, initialChartType, initialLevelIndex }: {
+function Detail({ song, versions, records, catalogSource, scoreSource, library, initialChartType, initialLevelIndex }: {
   song: Song;
+  versions: GameVersion[];
   records: ScoreRecord[];
   catalogSource: import('@/domain/models').DataSource;
   scoreSource?: import('@/domain/models').DataSource;
@@ -196,7 +198,6 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
   const { width } = useWindowDimensions();
   const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
   const songItem = library.data?.find((item) => item.key === library.songKey(song.id));
-  const versionName = localizedVersionName(song.versionId, song.version, versionLocale);
   const availableChartTypes = useMemo(() => new Set(song.charts.map((chart) => chart.type)), [song.charts]);
   const availableChartTypeList = useMemo(
     () => (['DX', 'SD', 'UTAGE'] as const).filter((type) => availableChartTypes.has(type)),
@@ -220,6 +221,19 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
   const requestedIndex = selectedChartType === initialChartType && initialLevelIndex !== undefined
     ? sortedCharts.findIndex((chart) => chart.levelIndex === initialLevelIndex) : -1;
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex;
+  const [visibleChartState, setVisibleChartState] = useState<{
+    songId: string;
+    chartType: ChartType;
+    index: number;
+  }>({ songId: song.id, chartType: selectedChartType, index: initialIndex });
+  const visibleChartIndex = visibleChartState.songId === song.id &&
+    visibleChartState.chartType === selectedChartType
+    ? visibleChartState.index
+    : initialIndex;
+  const visibleChart = sortedCharts[visibleChartIndex] ?? sortedCharts[initialIndex];
+  const visibleVersionId = visibleChart?.versionId ?? song.versionId;
+  const visibleVersionTitle = versions.find((version) => version.id === visibleVersionId)?.title ?? song.version;
+  const versionName = localizedVersionName(visibleVersionId, visibleVersionTitle, versionLocale);
   const [deferredReady, setDeferredReady] = useState(false);
   useEffect(() => {
     setDeferredReady(false);
@@ -286,6 +300,11 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
       <ChartCarousel key={`${song.id}:${selectedChartType}:${initialIndex}`} charts={sortedCharts} records={records} song={song}
         library={library} cardWidth={cardWidth} initialIndex={initialIndex} canSwitchChartType={canSwitchChartType}
         nextChartType={nextChartType}
+        onVisibleIndexChange={(index) => setVisibleChartState({
+          songId: song.id,
+          chartType: selectedChartType,
+          index,
+        })}
         onToggleChartType={() => nextChartType && setSelectedChartType(nextChartType)} />
 
       <View style={styles.details}>
@@ -387,7 +406,7 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
     contentContainerStyle={styles.singleLineContent} />;
 }
 
-function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, onToggleChartType }: {
+function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, onVisibleIndexChange, onToggleChartType }: {
   charts: Chart[];
   records: ScoreRecord[];
   song: Song;
@@ -396,6 +415,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   initialIndex: number;
   canSwitchChartType: boolean;
   nextChartType?: ChartType;
+  onVisibleIndexChange: (index: number) => void;
   onToggleChartType: () => void;
 }) {
   return <SharedChartCarousel
@@ -407,6 +427,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
     initialIndex={initialIndex}
     items={charts}
     keyExtractor={(chart) => `${chart.type}:${chart.levelIndex}`}
+    onIndexChange={onVisibleIndexChange}
     renderItem={(chart) => {
         const best = records.filter((record) =>
           (String(record.songId) === song.id || normalizeSongId(record.songId) === song.id) &&
