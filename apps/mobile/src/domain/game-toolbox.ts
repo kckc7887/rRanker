@@ -106,7 +106,22 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     emptyDetail: 'Phigros 工具正在准备中。',
   },
   chunithm: {
-    tools: [],
+    tools: [
+      {
+        id: 'random-charts',
+        href: '/tools/random-charts',
+        title: '随机歌曲',
+        detail: '按难度、版本、定数与成绩条件随机抽取谱面',
+        summaryLabel: '随机歌曲',
+      },
+      {
+        id: 'arcade-finder',
+        href: '/tools/arcade-finder',
+        title: '机厅查找',
+        detail: '按定位查看附近机厅，搜索店名与跳转导航',
+        summaryLabel: '机厅查找',
+      },
+    ],
     emptyDetail: '中二节奏工具正在准备中。',
   },
   test: {

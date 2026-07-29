@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { Difficulty } from '@/domain/models';
-import type { RandomPlayedFilter } from '@/domain/random-charts';
+import type { PhigrosLevel } from '@/domain/phigros';
+import type { PhigrosRankFilter } from '@/domain/phigros-filters';
+import type { PhigrosXingKind } from '@/domain/phigros-xing';
 import {
   defaultPhigrosRandomChartsPreferences,
   phigrosRandomChartsPreferencesStore,
@@ -10,23 +11,34 @@ import {
 
 type PhigrosRandomChartsFilterState = PhigrosRandomChartsPreferences & {
   hydrated: boolean;
+  collapsed: boolean;
   hydrate: () => Promise<void>;
-  setCount: (count: PhigrosRandomChartsCount) => void;
-  setDifficulties: (difficulties: Difficulty[]) => void;
-  setConstantMin: (constantMin: string) => void;
-  setConstantMax: (constantMax: string) => void;
-  setPlayed: (played: RandomPlayedFilter) => void;
+  setCount: (value: PhigrosRandomChartsCount) => void;
+  setCollapsed: (value: boolean) => void;
+  setLevel: (value: PhigrosLevel | 'all') => void;
+  setConstantMin: (value: string) => void;
+  setConstantMax: (value: string) => void;
+  setAccuracyMin: (value: string) => void;
+  setAccuracyMax: (value: string) => void;
+  setRank: (value: PhigrosRankFilter | null) => void;
+  setXing: (value: PhigrosXingKind | null) => void;
+  clearFilters: () => void;
 };
 
 type PreferencesAccess = Pick<typeof phigrosRandomChartsPreferencesStore, 'load' | 'save'>;
 
-function preferencesFromState(state: PhigrosRandomChartsPreferences): PhigrosRandomChartsPreferences {
+function preferencesFromState(
+  state: PhigrosRandomChartsPreferences,
+): PhigrosRandomChartsPreferences {
   return {
     count: state.count,
-    difficulties: state.difficulties,
+    level: state.level,
     constantMin: state.constantMin,
     constantMax: state.constantMax,
-    played: state.played,
+    accuracyMin: state.accuracyMin,
+    accuracyMax: state.accuracyMax,
+    rank: state.rank,
+    xing: state.xing,
   };
 }
 
@@ -46,35 +58,48 @@ export function createPhigrosRandomChartsFilterStore(
       });
       saveQueue = operation.catch(() => undefined);
     };
-
     const update = (patch: Partial<PhigrosRandomChartsPreferences>) => {
       if (!get().hydrated) dirtyBeforeHydrate = true;
       set(patch);
       persist();
     };
+    const clearPatch = () => {
+      const defaults = defaultPhigrosRandomChartsPreferences();
+      return {
+        level: defaults.level,
+        constantMin: defaults.constantMin,
+        constantMax: defaults.constantMax,
+        accuracyMin: defaults.accuracyMin,
+        accuracyMax: defaults.accuracyMax,
+        rank: defaults.rank,
+        xing: defaults.xing,
+      };
+    };
 
     return {
       hydrated: false,
+      collapsed: true,
       ...defaultPhigrosRandomChartsPreferences(),
       hydrate: async () => {
         if (get().hydrated) return;
         hydrationPromise ??= preferences.load().then((stored) => {
           if (get().hydrated) return;
-          if (dirtyBeforeHydrate) {
-            set({ hydrated: true });
-            return;
-          }
-          set({ hydrated: true, ...stored });
+          set(dirtyBeforeHydrate ? { hydrated: true } : { hydrated: true, ...stored });
         }).finally(() => {
           hydrationPromise = null;
         });
         await hydrationPromise;
       },
       setCount: (count) => update({ count }),
-      setDifficulties: (difficulties) => update({ difficulties }),
+      setCollapsed: (collapsed) => set({ collapsed }),
+      setLevel: (level) => update({ level }),
       setConstantMin: (constantMin) => update({ constantMin }),
       setConstantMax: (constantMax) => update({ constantMax }),
-      setPlayed: (played) => update({ played }),
+      setAccuracyMin: (accuracyMin) => update({ accuracyMin }),
+      setAccuracyMax: (accuracyMax) => update({ accuracyMax }),
+      setRank: (rank) => update({ rank }),
+      setXing: (xing) => update({ xing }),
+      clearFilters: () => update(clearPatch()),
     };
   });
 }

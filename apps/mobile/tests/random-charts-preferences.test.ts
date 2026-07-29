@@ -12,73 +12,77 @@ class MemoryStore {
   async removeItem(key: string) { this.values.delete(key); }
 }
 
-describe('random charts preferences', () => {
+describe('maimai random charts preferences', () => {
   it('returns defaults for invalid payloads', () => {
     expect(parseRandomChartsPreferences(null)).toEqual(defaultRandomChartsPreferences());
-    expect(parseRandomChartsPreferences({ version: 2, count: 3 })).toEqual(defaultRandomChartsPreferences());
+    expect(parseRandomChartsPreferences({ schemaVersion: 9, count: 3 }))
+      .toEqual(defaultRandomChartsPreferences());
   });
 
-  it('keeps valid filter fields and drops unknowns', () => {
+  it('migrates legacy count, one difficulty and constants while dropping played', () => {
     expect(parseRandomChartsPreferences({
       version: 1,
       count: 3,
-      difficulties: ['master', 'master', 'unknown', 'remaster'],
+      difficulties: ['master'],
       constantMin: ' 13.0 ',
       constantMax: '14',
       played: 'unplayed',
-      extra: true,
     })).toEqual({
+      ...defaultRandomChartsPreferences(),
       count: 3,
-      difficulties: ['master', 'remaster'],
+      difficulty: 'master',
       constantMin: '13.0',
       constantMax: '14',
-      played: 'unplayed',
     });
+    expect(parseRandomChartsPreferences({
+      version: 1,
+      difficulties: ['master', 'remaster'],
+    }).difficulty).toBe('all');
   });
 
-  it('persists and restores preferences', async () => {
+  it('persists the complete independent records-style filter', async () => {
     const storage = new MemoryStore();
     const store = new RandomChartsPreferencesStore(storage);
     const value = {
+      ...defaultRandomChartsPreferences(),
       count: 2 as const,
-      difficulties: ['expert' as const],
-      constantMin: '12',
-      constantMax: '13.5',
-      played: 'played' as const,
+      difficulty: 'expert' as const,
+      version: '旧版本',
+      type: 'DX' as const,
+      achievementMin: '99',
+      soloAchievement: 'fc' as const,
+      versionLocale: 'japan' as const,
     };
     await store.save(value);
     await expect(store.load()).resolves.toEqual(value);
   });
 
-  it('hydrates zustand state and keeps subsequent edits', async () => {
+  it('hydrates Zustand state and persists subsequent edits', async () => {
     const storage = new MemoryStore();
     const preferences = new RandomChartsPreferencesStore(storage);
     await preferences.save({
+      ...defaultRandomChartsPreferences(),
       count: 4,
-      difficulties: ['basic'],
+      difficulty: 'basic',
       constantMin: '1',
       constantMax: '8',
-      played: 'all',
     });
     const useStore = createRandomChartsFilterStore(preferences);
     await useStore.getState().hydrate();
     expect(useStore.getState()).toMatchObject({
       hydrated: true,
       count: 4,
-      difficulties: ['basic'],
+      difficulty: 'basic',
       constantMin: '1',
       constantMax: '8',
-      played: 'all',
     });
     useStore.getState().setCount(2);
-    useStore.getState().setPlayed('unplayed');
+    useStore.getState().setAchievementMin('98');
     await vi.waitFor(async () => {
-      await expect(preferences.load()).resolves.toEqual({
+      await expect(preferences.load()).resolves.toMatchObject({
         count: 2,
-        difficulties: ['basic'],
-        constantMin: '1',
-        constantMax: '8',
-        played: 'unplayed',
+        difficulty: 'basic',
+        achievementMin: '98',
       });
     });
   });

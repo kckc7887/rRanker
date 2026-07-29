@@ -46,6 +46,7 @@ export type ArcadeGameTitle = {
 };
 
 export const MAIMAI_DX_TITLE_ID = 1;
+export const CHUNITHM_TITLE_ID = 3;
 
 export const ARCADE_RADIUS_OPTIONS = [1, 2, 5, 10, 15, 20, 30] as const;
 export type ArcadeRadiusKm = (typeof ARCADE_RADIUS_OPTIONS)[number];
