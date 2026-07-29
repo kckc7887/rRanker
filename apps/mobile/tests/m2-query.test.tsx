@@ -71,6 +71,24 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
       },
     }],
   };
+  const crossVersionSong = {
+    id: '7',
+    title: '跨版本双谱面',
+    artist: '版本测试曲师',
+    aliases: [],
+    version: '脱敏过往版本',
+    versionId: 1,
+    charts: [
+      {
+        songId: '7', type: 'SD', levelIndex: 3, level: '12+',
+        difficulty: 'master', difficultyConstant: 12.8, versionId: 1,
+      },
+      {
+        songId: '7', type: 'DX', levelIndex: 3, level: '13+',
+        difficulty: 'master', difficultyConstant: 13.7, versionId: 25500,
+      },
+    ],
+  };
   const data = { ...fixtures.fixtureCatalog,
     versions: [...fixtures.fixtureCatalog.versions, { id: 25500, title: '舞萌DX 2026' }],
     songs: [...fixtures.fixtureCatalog.songs.map((song: { id: string }) => song.id === '1' ? {
@@ -84,10 +102,12 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
         charter: 'DX主谱师', versionId: 25500,
         notes: { tap: 500, hold: 100, slide: 120, touch: 80, break: 20, total: 820 } },
       { songId: '1', type: 'DX', levelIndex: 4, level: '14+', difficulty: 'remaster', difficultyConstant: 14.7 },
-      { songId: '1', type: 'SD', levelIndex: 0, level: '5', difficulty: 'basic', difficultyConstant: 5.0, charter: 'SD基础谱师' },
-      { songId: '1', type: 'SD', levelIndex: 3, level: '12+', difficulty: 'master', difficultyConstant: 12.8, charter: 'SD主谱师' },
+      { songId: '1', type: 'SD', levelIndex: 0, level: '5', difficulty: 'basic', difficultyConstant: 5.0,
+        charter: 'SD基础谱师', versionId: 1 },
+      { songId: '1', type: 'SD', levelIndex: 3, level: '12+', difficulty: 'master', difficultyConstant: 12.8,
+        charter: 'SD主谱师', versionId: 1 },
     ],
-  } : song), utageSong] };
+  } : song), crossVersionSong, utageSong] };
   return {
     data: mockDetailedCatalogAvailable ? data : undefined,
     isLoading: !mockDetailedCatalogAvailable,
@@ -209,7 +229,13 @@ describe('M2 song query screens', () => {
       });
     expect(utageBadges.queryByText('U·TA·GE')).toBeNull();
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '');
-    await waitFor(() => expect(screen.getByText('共 9 首')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('共 10 首')).toBeTruthy());
+    await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '跨版本双谱面');
+    await waitFor(() => expect(screen.getByText(
+      '版本测试曲师 · SD 脱敏过往版本 · DX 舞萌DX 2026',
+    )).toBeTruthy());
+    await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '');
+    await waitFor(() => expect(screen.getByText('共 10 首')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('筛选难度 BASIC'));
     expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 BASIC').props.style)).toEqual(expect.objectContaining({
       borderWidth: 2,
@@ -244,6 +270,21 @@ describe('M2 song query screens', () => {
     await fireEvent.press(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS'));
     expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0);
+    const currentVersionBadges = within(screen.getByTestId('song-chart-badges-7'));
+    expect(currentVersionBadges.getByText('DX')).toBeTruthy();
+    expect(currentVersionBadges.queryByText('SD')).toBeNull();
+    expect(currentVersionBadges.getByText('13.7')).toBeTruthy();
+    expect(currentVersionBadges.queryByText('12.8')).toBeNull();
+    expect(screen.getByText('版本测试曲师 · maimai でらっくす PRiSM PLUS')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS'));
+    await fireEvent.press(screen.getByLabelText('选择版本 脱敏过往版本'));
+    const pastVersionBadges = within(screen.getByTestId('song-chart-badges-7'));
+    expect(pastVersionBadges.getByText('SD')).toBeTruthy();
+    expect(pastVersionBadges.queryByText('DX')).toBeNull();
+    expect(pastVersionBadges.getByText('12.8')).toBeTruthy();
+    expect(pastVersionBadges.queryByText('13.7')).toBeNull();
+    expect(screen.getByText('版本测试曲师 · 脱敏过往版本')).toBeTruthy();
 
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '完全不存在');
     await waitFor(() => expect(screen.getByText('筛选结果为空')).toBeTruthy());
@@ -264,10 +305,15 @@ describe('M2 song query screens', () => {
     await fireEvent(screen.getByTestId('metadata-measure-分类'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
+    await fireEvent(screen.getByTestId('metadata-measure-版本'), 'textLayout', {
+      nativeEvent: { lines: [{}, {}, {}] },
+    });
     await fireEvent.press(screen.getByLabelText('展开分类'));
     expect(screen.getByTestId('metadata-value-分类').props.numberOfLines).toBeUndefined();
+    expect(screen.getByTestId('metadata-value-版本').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起分类'));
     expect(screen.getByTestId('metadata-value-分类').props.numberOfLines).toBe(2);
+    expect(screen.getByTestId('metadata-value-版本').props.numberOfLines).toBe(2);
     expect(screen.getByText('版本')).toBeTruthy();
     expect(screen.getByTestId('metadata-value-版本').props.children).toBe('舞萌DX 2026');
     expect(screen.queryByText(/国服|日服/)).toBeNull();

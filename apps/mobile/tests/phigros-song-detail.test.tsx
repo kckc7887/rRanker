@@ -215,10 +215,15 @@ describe('Phigros song detail', () => {
     await fireEvent(screen.getByTestId('phigros-metadata-measure-曲绘师'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
+    await fireEvent(screen.getByTestId('phigros-metadata-measure-版本'), 'textLayout', {
+      nativeEvent: { lines: [{}, {}, {}] },
+    });
     await fireEvent.press(screen.getByLabelText('展开曲绘师'));
     expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBeUndefined();
+    expect(screen.getByTestId('phigros-metadata-value-版本').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起曲绘师'));
     expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBe(2);
+    expect(screen.getByTestId('phigros-metadata-value-版本').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('HD 难度卡片')).toBeTruthy();
