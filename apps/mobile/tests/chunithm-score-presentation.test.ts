@@ -115,14 +115,24 @@ describe('chunithm score presentation', () => {
       title: 'WORLD END 曲名',
       rank: 'SSS+',
       difficultyConstant: undefined,
+      versionId: 23000,
+      versionTitle: 'CHUNITHM VERSE',
       worldsEndLabel: '狂☆4',
     });
-    expect(cards[1]).toMatchObject({ title: '回退曲名', rank: 'SSS+', difficultyConstant: undefined });
+    expect(cards[1]).toMatchObject({
+      title: '回退曲名',
+      rank: 'SSS+',
+      difficultyConstant: undefined,
+      versionId: undefined,
+      versionTitle: undefined,
+    });
     expect(cards[2]).toMatchObject({
       title: '曲库曲名',
       artist: '艺术家',
       noteDesigner: '谱师',
       difficultyConstant: 14.8,
+      versionId: 23000,
+      versionTitle: 'CHUNITHM VERSE',
       rank: 'SS',
     });
   });

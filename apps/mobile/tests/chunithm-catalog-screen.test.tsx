@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { router } from 'expo-router';
@@ -9,6 +9,7 @@ import {
 } from '@/components/chunithm/ChunithmSongRow';
 import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
+import { useChunithmCatalogFilter } from '@/state/chunithm-catalog-filter';
 
 const source = {
   kind: 'lxns' as const,
@@ -19,7 +20,10 @@ const source = {
 
 const mockCatalog: ChunithmCatalogSnapshot = {
   currentVersion: { id: 23000, title: 'CHUNITHM VERSE' },
-  versions: [{ id: 23000, title: 'CHUNITHM VERSE' }],
+  versions: [
+    { id: 22000, title: 'CHUNITHM LUMINOUS PLUS' },
+    { id: 23000, title: 'CHUNITHM VERSE' },
+  ],
   genres: [{ id: 1, title: '其他游戏' }],
   source,
   songs: [
@@ -33,14 +37,24 @@ const mockCatalog: ChunithmCatalogSnapshot = {
       versionTitle: 'CHUNITHM VERSE',
       locked: false,
       disabled: false,
-      difficulties: [{
-        difficulty: 4,
-        level: '13+',
-        levelValue: 13.7,
-        noteDesigner: 'Redarrow',
-        versionId: 23000,
-        versionTitle: 'CHUNITHM VERSE',
-      }],
+      difficulties: [
+        {
+          difficulty: 3,
+          level: '12+',
+          levelValue: 12.8,
+          noteDesigner: '旧谱师',
+          versionId: 22000,
+          versionTitle: 'CHUNITHM LUMINOUS PLUS',
+        },
+        {
+          difficulty: 4,
+          level: '13+',
+          levelValue: 13.7,
+          noteDesigner: 'Redarrow',
+          versionId: 23000,
+          versionTitle: 'CHUNITHM VERSE',
+        },
+      ],
     },
     {
       id: 123,
@@ -151,16 +165,47 @@ jest.mock('@/components/MaimaiFilterBar', () => ({
     const RN = jest.requireActual<typeof import('react-native')>('react-native');
     return <RN.Text>高级筛选器</RN.Text>;
   },
+  NeutralChip: ({
+    label,
+    onPress,
+  }: {
+    label: string;
+    onPress: () => void;
+  }) => {
+    const RN = jest.requireActual<typeof import('react-native')>('react-native');
+    return <RN.Pressable onPress={onPress}><RN.Text>{label}</RN.Text></RN.Pressable>;
+  },
+  FilterChipFrame: ({
+    accessibilityLabel,
+    children,
+    onPress,
+  }: {
+    accessibilityLabel: string;
+    children: React.ReactNode;
+    onPress: () => void;
+  }) => {
+    const RN = jest.requireActual<typeof import('react-native')>('react-native');
+    return (
+      <RN.Pressable accessibilityLabel={accessibilityLabel} onPress={onPress}>
+        {children}
+      </RN.Pressable>
+    );
+  },
 }));
 
 describe('Chunithm catalog screen', () => {
-  it('shows a search-only catalog and filters by charter without advanced controls', async () => {
+  beforeEach(() => {
+    useChunithmCatalogFilter.getState().reset();
+  });
+
+  it('keeps the existing rows and metadata search with the filter bar collapsed by default', async () => {
     const screen = await render(<SearchScreen />);
 
     expect(screen.getByText('共 2 首')).toBeTruthy();
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
     expect(screen.getByText('Only My Railgun')).toBeTruthy();
     expect(screen.getByText('13.7')).toBeTruthy();
+    expect(screen.getByText('12.8')).toBeTruthy();
     expect(screen.getByText('12.4')).toBeTruthy();
     expect(screen.queryByText(/ULT|MAS/)).toBeNull();
     expect(StyleSheet.flatten(
@@ -170,14 +215,52 @@ describe('Chunithm catalog screen', () => {
       borderColor: '#E83A58',
       borderRadius: 999,
     }));
-    expect(screen.queryByText('高级筛选器')).toBeNull();
-    expect(screen.queryAllByRole('button')).toHaveLength(2);
+    expect(screen.getByLabelText('展开中二筛选，当前 全部')).toBeTruthy();
 
     await fireEvent.changeText(screen.getByLabelText('中二节奏歌曲搜索'), 'Redarrow');
 
     await waitFor(() => expect(screen.getByText('共 1 首')).toBeTruthy());
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
     expect(screen.queryByText('Only My Railgun')).toBeNull();
+  });
+
+  it('combines difficulty, chart version and constant on one chart and only shows matched badges', async () => {
+    const state = useChunithmCatalogFilter.getState();
+    state.setDifficulty(3);
+    state.setVersion('22000');
+    state.setConstantMin('12.5');
+    state.setConstantMax('13');
+
+    const screen = await render(<SearchScreen />);
+
+    expect(screen.getByText('共 1 首')).toBeTruthy();
+    expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
+    expect(screen.queryByText('Only My Railgun')).toBeNull();
+    expect(screen.getByText('12.8')).toBeTruthy();
+    expect(screen.queryByText('13.7')).toBeNull();
+    expect(screen.getAllByText(/CHUNITHM LUMINOUS PLUS/).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText(
+      '展开中二筛选，当前 MASTER · CHUNITHM LUMINOUS PLUS · 定数 12.5~13',
+    )).toBeTruthy();
+  });
+
+  it('expands the filter and resets search and chart conditions without changing rows', async () => {
+    const screen = await render(<SearchScreen />);
+    await fireEvent.press(screen.getByLabelText('展开中二筛选，当前 全部'));
+
+    expect(screen.getByLabelText('中二版本筛选，当前 全部')).toBeTruthy();
+    expect(screen.getByLabelText('中二最低定数')).toBeTruthy();
+    expect(screen.getByLabelText('中二最高定数')).toBeTruthy();
+
+    await act(() => {
+      useChunithmCatalogFilter.getState().setDifficulty(4);
+      useChunithmCatalogFilter.getState().setKeyword('不存在');
+    });
+    await waitFor(() => expect(screen.getByText('筛选结果为空')).toBeTruthy());
+
+    await fireEvent.press(screen.getByLabelText('重置中二筛选'));
+    expect(screen.getByText('共 2 首')).toBeTruthy();
+    expect(screen.getByLabelText('中二节奏歌曲搜索').props.value).toBe('');
   });
 
   it('uses the standard song id for the jacket and opens the song detail', async () => {
