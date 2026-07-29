@@ -1,0 +1,129 @@
+{
+  "schema": "rranker-game-model/v1",
+  "gameId": "test",
+  "overview": {
+    "accountName": "测试玩家",
+    "accountAction": {
+      "id": "switch-account",
+      "params": {}
+    },
+    "infoCard": {
+      "label": "Rating",
+      "value": "0",
+      "meta": "测试数据"
+    },
+    "syncActions": [
+      {
+        "title": "同步",
+        "subtitle": "同步测试数据",
+        "action": {
+          "id": "sync",
+          "params": {}
+        }
+      }
+    ],
+    "toolboxSummary": "暂无工具",
+    "librarySummary": "0 首收藏 · 0 张练习",
+    "sources": [
+      {
+        "id": "scores",
+        "label": "测试成绩",
+        "state": "unavailable"
+      },
+      {
+        "id": "catalog",
+        "label": "测试曲库",
+        "state": "unavailable"
+      }
+    ],
+    "currentVersion": "—"
+  },
+  "songs": [
+    {
+      "id": "song-1",
+      "title": "示例曲目",
+      "artist": "示例曲师",
+      "attributes": [],
+      "chartGroups": [
+        {
+          "charts": [
+            {
+              "id": "test:song-1:default:normal",
+              "difficulty": {
+                "groupId": "difficulty",
+                "itemId": "normal",
+                "value": {
+                  "kind": "string",
+                  "value": "1"
+                }
+              },
+              "attributes": [],
+              "filterValues": {}
+            }
+          ]
+        }
+      ],
+      "customSections": [],
+      "filterValues": {},
+      "searchText": "示例曲目 示例曲师"
+    }
+  ],
+  "records": [
+    {
+      "id": "score-1",
+      "songId": "song-1",
+      "chartId": "test:song-1:default:normal",
+      "title": "示例曲目",
+      "primaryValue": {
+        "groupId": "score",
+        "itemId": "value",
+        "value": {
+          "kind": "int",
+          "value": 1000000
+        }
+      },
+      "tagRows": [
+        [
+          {
+            "groupId": "difficulty",
+            "itemId": "normal",
+            "value": {
+              "kind": "string",
+              "value": "1"
+            }
+          }
+        ]
+      ],
+      "filterValues": {
+        "score": 1000000
+      },
+      "searchText": "示例曲目"
+    }
+  ],
+  "bestSections": [
+    {
+      "id": "best",
+      "title": "Best 1",
+      "chartCountLabel": "1 张谱面",
+      "records": [
+        {
+          "id": "score-1",
+          "songId": "song-1",
+          "chartId": "test:song-1:default:normal",
+          "title": "示例曲目",
+          "primaryValue": {
+            "groupId": "score",
+            "itemId": "value",
+            "value": {
+              "kind": "int",
+              "value": 1000000
+            }
+          },
+          "tagRows": [],
+          "filterValues": {},
+          "searchText": "示例曲目"
+        }
+      ]
+    }
+  ]
+}

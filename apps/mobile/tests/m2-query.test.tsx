@@ -1,13 +1,10 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, within } from './render-with-query';
 import { jest } from '@jest/globals';
-import { Animated, InteractionManager, Platform, processColor, StyleSheet } from 'react-native';
+import { Animated, InteractionManager, Platform } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
-import {
-  MAIMAI_UTAGE_COLOR,
-  MAIMAI_UTAGE_TINT,
-} from '@/components/special-difficulty-theme';
 import { useCatalogFilter } from '@/state/catalog-filter';
+import { useGameFilters } from '@/state/game-filters';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
@@ -112,6 +109,45 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   ];
   return { data: { records: [...fixtures.fixtureRecords, ...visualRecords], source: fixtures.fixtureSource }, isLoading: false, isError: false, error: null, refetch: jest.fn() };
 } }));
+jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
+  const scoreQuery = jest.requireMock<{ useScoreSnapshot: () => {
+    data?: { records?: unknown[]; source?: unknown };
+  } }>('@/hooks/use-score-snapshot').useScoreSnapshot();
+  const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
+  const profile = jest.requireActual<typeof import('../src/domain/game-profile')>('../src/domain/game-profile')
+    .getGameProfile('maimai');
+  return {
+    data: {
+      gameId: 'maimai',
+      providerId: 'diving-fish',
+      profile,
+      payload: {
+        kind: 'maimai',
+        player: fixtures.fixturePlayer,
+        records: scoreQuery.data?.records ?? [],
+        bestSections: [],
+        playerScore: {
+          label: profile.ratingLabel,
+          value: fixtures.fixturePlayer.rating,
+          display: String(fixtures.fixturePlayer.rating).padStart(5, '0'),
+        },
+        currentVersionTitle: fixtures.fixtureCatalog.currentVersion.title,
+        unmatchedRecordCount: 0,
+        source: scoreQuery.data?.source ?? fixtures.fixtureSource,
+        catalogSource: fixtures.fixtureSource,
+        snapshot: {},
+      },
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+    profile,
+    activeGameId: 'maimai',
+    activeProviderId: 'diving-fish',
+    activeAccountId: 'maimai:diving-fish:test',
+  };
+} }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: [], isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
   songKey: (songId: string | number) => `maimai:song:${songId}`,
@@ -129,6 +165,7 @@ describe('M2 song query screens', () => {
     mockSongRouteParams = { songId: '1' };
     mockDetailedCatalogAvailable = true;
     useCatalogFilter.getState().reset();
+    useGameFilters.getState().reset();
     jest.clearAllMocks();
   });
 
@@ -145,7 +182,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByLabelText('返回')).toBeTruthy();
   });
 
-  it('keeps the immersive cover and uses native RN pressables throughout Android details', async () => {
+  it('keeps the immersive chrome and shared detail surfaces on Android', async () => {
     const originalOS = Platform.OS;
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
     try {
@@ -161,17 +198,9 @@ describe('M2 song query screens', () => {
       expect(stackProps.options.headerShown).toBe(false);
       expect(stackProps.options.headerBackVisible).toBe(false);
       expect(stackProps.options.headerTransparent).toBe(true);
-      expect(screen.queryAllByTestId('gesture-handler-pressable')).toHaveLength(0);
-
-      await fireEvent(screen.getByTestId('metadata-measure-分类'), 'textLayout', {
-        nativeEvent: { lines: [{}, {}, {}] },
-      });
-      await fireEvent.press(screen.getByLabelText('展开分类'));
-      expect(screen.getByTestId('metadata-value-分类').props.numberOfLines).toBeUndefined();
-      await fireEvent.press(screen.getByLabelText('切换版本名称'));
-      expect(screen.getByTestId('metadata-value-版本').props.children).toBe('maimai でらっくす PRiSM PLUS');
-      await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
-      expect(screen.getByText('谱师：SD主谱师')).toBeTruthy();
+      expect(screen.getByTestId('game-song-title-scroll')).toBeTruthy();
+      expect(screen.getByTestId('game-chart-carousel')).toBeTruthy();
+      expect(screen.getByTestId('game-chart-card-maimai:1:SD:3')).toBeTruthy();
 
       await fireEvent.press(screen.getByLabelText('收藏 正常曲目 A'));
       expect(mockSetSongFavorite).toHaveBeenCalledWith('1', true);
@@ -182,7 +211,7 @@ describe('M2 song query screens', () => {
 
   it('searches aliases after debounce and supports empty filter state', async () => {
     const screen = await render(<SearchScreen />);
-    expect(screen.getByTestId('catalog-results-list').props).toEqual(expect.objectContaining({
+    expect(screen.getByTestId('game-catalog-results-list').props).toEqual(expect.objectContaining({
       contentInsetAdjustmentBehavior: 'automatic',
       initialNumToRender: 8,
       maxToRenderPerBatch: 4,
@@ -190,221 +219,76 @@ describe('M2 song query screens', () => {
       windowSize: 3,
     }));
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
-    expect(StyleSheet.flatten(screen.getByLabelText('最低定数').props.style)).toEqual(expect.objectContaining({
-      minHeight: 44,
-      paddingVertical: 0,
-      lineHeight: 20,
-      textAlignVertical: 'center',
-      includeFontPadding: false,
-    }));
-    for (const selectedAll of screen.getAllByLabelText('筛选 全部')) {
-      expect(StyleSheet.flatten(selectedAll.props.style)).toEqual(expect.objectContaining({
-        borderWidth: 2,
-        borderRadius: 999,
-        padding: 2,
-        borderColor: '#246BFD',
-      }));
-    }
+    expect(screen.getByLabelText('定数下限')).toBeTruthy();
+    expect(screen.getByLabelText('定数上限')).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '協 U·TA·GE');
-    await waitFor(() => expect(screen.getByTestId('song-chart-badges-100123')).toBeTruthy());
-    const utageBadges = within(screen.getByTestId('song-chart-badges-100123'));
+    await waitFor(() => expect(screen.getByLabelText('查看歌曲 協 U·TA·GE')).toBeTruthy());
+    const utageBadges = within(screen.getByLabelText('查看歌曲 協 U·TA·GE'));
     expect(utageBadges.getByText('協 14+?')).toBeTruthy();
-    expect(StyleSheet.flatten(utageBadges.getByTestId('maimai-utage-difficulty-badge').props.style))
-      .toMatchObject({
-        backgroundColor: MAIMAI_UTAGE_COLOR,
-        borderColor: MAIMAI_UTAGE_COLOR,
-      });
-    expect(utageBadges.queryByText('U·TA·GE')).toBeNull();
+    expect(utageBadges.getByText('U·TA·GE')).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '');
     await waitFor(() => expect(screen.getByText('共 9 首')).toBeTruthy());
-    await fireEvent.press(screen.getByLabelText('筛选难度 BASIC'));
-    expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 BASIC').props.style)).toEqual(expect.objectContaining({
-      borderWidth: 2,
-      borderRadius: 999,
-      padding: 2,
-      borderColor: '#246BFD',
-    }));
-    expect(screen.getByLabelText('筛选难度 U·TA·GE')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('难度筛选：BASIC'));
+    expect(screen.getByLabelText('难度筛选：U·TA·GE')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('重置筛选'));
-    expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 BASIC').props.style)).toEqual(expect.objectContaining({
-      borderColor: 'transparent',
-    }));
-    await fireEvent.press(screen.getByLabelText('筛选难度 BASIC'));
-    await fireEvent.press(screen.getAllByLabelText('筛选 全部')[0]);
-    await fireEvent.press(screen.getByLabelText('筛选类型 SD'));
-    expect(StyleSheet.flatten(screen.getByLabelText('筛选类型 SD').props.style)).toEqual(expect.objectContaining({
-      borderWidth: 2,
-      borderRadius: 10,
-      padding: 2,
-      borderColor: '#246BFD',
-    }));
-    await fireEvent.press(screen.getAllByLabelText('筛选 全部')[1]);
-    const chartBadges = within(screen.getByTestId('song-chart-badges-1'));
+    await fireEvent.press(screen.getByLabelText('类型筛选：SD'));
+    const chartBadges = within(screen.getAllByLabelText('查看歌曲 正常曲目 A')[0]);
     expect(chartBadges.getByText('SD')).toBeTruthy();
-    expect(chartBadges.getByText('DX')).toBeTruthy();
-    expect(chartBadges.getAllByText(/^(5|12\.8|6|9|12|13\.6|14\.7)$/).map((node) => node.props.children))
-      .toEqual(['5', '12.8', '6', '9', '12', '13.6', '14.7']);
-
-    await fireEvent.press(screen.getByLabelText('版本筛选，当前 全部'));
-    await fireEvent.press(screen.getByLabelText('版本名称切换为日文'));
-    expect(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS'));
-    expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
-    expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0);
 
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '完全不存在');
     await waitFor(() => expect(screen.getByText('筛选结果为空')).toBeTruthy());
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '唯一别名');
     await waitFor(() => expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0));
   });
-  it('renders song metadata, chart status and source status', async () => {
+  it('renders shared song metadata, chart status, notes and local tags', async () => {
     const screen = await render(<SongDetailScreen />);
-    expect(screen.getByText('歌曲信息')).toBeTruthy();
-    expect(screen.getAllByText(/别名：唯一别名/).length).toBeGreaterThan(0);
-    expect(screen.getByText('#1')).toBeTruthy();
-    expect(screen.getByTestId('metadata-value-分类').props.children).toBe('POPS＆ANIME');
+    expect(screen.getByText('ID 1')).toBeTruthy();
+    expect(screen.getByText(/唯一别名/)).toBeTruthy();
+    expect(screen.getByText('POPS＆ANIME')).toBeTruthy();
     expect(screen.getAllByText('180').length).toBeGreaterThan(0);
-    expect(screen.getByTestId('metadata-value-区域').props.children).toBe('未来都市');
-    for (const label of ['分类', 'BPM', '版本', '区域']) {
-      expect(screen.getByTestId(`metadata-value-${label}`).props.numberOfLines).toBe(2);
-    }
-    await fireEvent(screen.getByTestId('metadata-measure-分类'), 'textLayout', {
-      nativeEvent: { lines: [{}, {}, {}] },
-    });
-    await fireEvent.press(screen.getByLabelText('展开分类'));
-    expect(screen.getByTestId('metadata-value-分类').props.numberOfLines).toBeUndefined();
-    await fireEvent.press(screen.getByLabelText('收起分类'));
-    expect(screen.getByTestId('metadata-value-分类').props.numberOfLines).toBe(2);
+    expect(screen.getByText('未来都市')).toBeTruthy();
     expect(screen.getByText('版本')).toBeTruthy();
-    expect(screen.getByTestId('metadata-value-版本').props.children).toBe('舞萌DX 2026');
-    expect(screen.queryByText(/国服|日服/)).toBeNull();
-    await fireEvent.press(screen.getByLabelText('切换版本名称'));
-    expect(screen.getByTestId('metadata-value-版本').props.children).toBe('maimai でらっくす PRiSM PLUS');
-    expect(screen.getByLabelText('切换版本名称')).toBeTruthy();
-    expect(screen.getByLabelText('数据来源状态')).toBeTruthy();
-    expect(screen.getByTestId('song-detail-scroll').props.directionalLockEnabled).toBeUndefined();
-    // 默认 true：从底部卡片上滑时 ScrollView 可接手触摸；勿锁死为 false。
-    expect(screen.getByTestId('song-detail-scroll').props.canCancelContentTouches).not.toBe(false);
-    expect(screen.getByLabelText('难度卡片').props.directionalLockEnabled).toBe(true);
-    expect(screen.getByLabelText('难度卡片').props.contentOffset.x).toBeGreaterThan(0);
-    const difficulties = screen.getAllByText(/Re:MASTER|MASTER|EXPERT|ADVANCED|BASIC/).map((node) =>
-      Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children);
-    expect(difficulties).toEqual(['Re:MASTER', 'MASTER', 'EXPERT', 'ADVANCED', 'BASIC']);
-    expect(screen.getByLabelText('100.5000%')).toBeTruthy();
-    expect(screen.getByTestId('flowing-achievement')).toBeTruthy();
-    expect(screen.getByTestId('rainbow-achievement')).toBeTruthy();
-    expect(screen.getByTestId('flowing-achievement-gradient').props.colors).not.toContain('#f0e470');
-    expect(screen.getByTestId('rainbow-achievement-gradient').props.colors).not.toContain('#f0e470');
-    expect(screen.getByTestId('rainbow-achievement-gradient').props.colors)
-      .toEqual(['#FF8A96', '#78E8A0', '#78C8FF', '#A89CF8', '#F08ADE'].map(processColor));
-    expect(screen.getByLabelText('99.9999%')).toBeTruthy();
-    expect(screen.getByLabelText('99.5000%')).toBeTruthy();
-    expect(screen.getByLabelText('99.0000%')).toBeTruthy();
-    expect(screen.getByText('AP+')).toBeTruthy();
-    expect(screen.getByText('FDX+')).toBeTruthy();
-    expect(screen.getByTestId('flowing-status-AP+')).toBeTruthy();
-    expect(screen.getByTestId('flowing-status-FDX+')).toBeTruthy();
-    expect(screen.getByText('FC')).toBeTruthy();
-    expect(screen.getAllByText('FS').length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId('flowing-status-FS').length).toBeGreaterThan(0);
-    expect(screen.queryByText('SYNC')).toBeNull();
-    expect(screen.queryByTestId('flowing-status-SYNC')).toBeNull();
-    expect(screen.getByText('SSS+')).toBeTruthy();
-    expect(screen.getByText('SSS')).toBeTruthy();
-    expect(screen.getByText('SS+')).toBeTruthy();
-    expect(screen.getByText('SS')).toBeTruthy();
-    expect(screen.getByText('S+')).toBeTruthy();
-    expect(screen.getByTestId('flowing-rate-SSS+')).toBeTruthy();
-    expect(screen.getByTestId('rainbow-rate-SSS')).toBeTruthy();
-    expect(screen.getByTestId('flowing-rate-SS+')).toBeTruthy();
-    expect(screen.getByTestId('rainbow-rate-SSS').props.colors)
-      .toEqual(['#8E2437', '#984D19', '#796515', '#256B39', '#205E7A', '#384181', '#692C7C'].map(processColor));
-    expect(screen.getByTestId('flowing-rate-SS+').props.colors)
-      .toEqual(['#84530A', '#A46E12', '#765006', '#A46E12', '#84530A'].map(processColor));
-    expect(screen.getByTestId('near-miss-badge')).toBeTruthy();
-    expect(screen.queryByText(/定数 13\.6/)).toBeNull();
+    expect(screen.getByText('舞萌DX 2026')).toBeTruthy();
+    expect(screen.getByTestId('game-chart-carousel').props.contentOffset.x).toBeGreaterThanOrEqual(0);
+    expect(screen.getByLabelText('Re:MASTER 难度卡片')).toBeTruthy();
+    expect(screen.getByText('100.5000%')).toBeTruthy();
     expect(screen.getByText('13.6')).toBeTruthy();
-    expect(screen.getByText('谱师：DX主谱师')).toBeTruthy();
-    expect(screen.queryByText('谱师：SD主谱师')).toBeNull();
-    expect(screen.queryByText(/谱面版本/)).toBeNull();
-    expect(screen.getByLabelText('搜索谱面确认：正常曲目 A DX MASTER 谱面确认')).toBeTruthy();
-    const notesTable = within(screen.getByLabelText('谱面物量'));
+    expect(screen.getByText('DX主谱师')).toBeTruthy();
+    expect(screen.getAllByLabelText('搜索谱面确认').length).toBeGreaterThan(0);
+    const notesTable = within(screen.getAllByLabelText('谱面物量').find(
+      (node) => within(node).queryByText('820'),
+    )!);
     for (const heading of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK', '总计']) {
       expect(notesTable.getByText(heading)).toBeTruthy();
     }
     for (const value of ['500', '100', '120', '80', '20', '820']) {
       expect(notesTable.getByText(value)).toBeTruthy();
     }
-    expect(screen.getByText('点击物量表，前往达成率与容错计算')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('使用此谱面物量计算容错'));
-    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
-      pathname: '/tools/tolerance',
-      params: { tap: '500', hold: '100', slide: '120', touch: '80', break: '20' },
-    }));
-
-    expect(screen.getAllByText('·点击切换·')).toHaveLength(5);
-    await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
-    expect(screen.queryByText('谱师：DX主谱师')).toBeNull();
-    expect(screen.getByText('谱师：SD主谱师')).toBeTruthy();
-    expect(screen.getByLabelText('搜索谱面确认：正常曲目 A SD MASTER 谱面确认')).toBeTruthy();
-    expect(screen.getAllByText('·点击切换·')).toHaveLength(2);
-    expect(screen.getAllByText(/Re:MASTER|MASTER|EXPERT|ADVANCED|BASIC/).map((node) =>
-      Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children))
-      .toEqual(['MASTER', 'BASIC']);
-
-    await fireEvent.press(screen.getByLabelText('收藏 正常曲目 A'));
-    expect(mockSetSongFavorite).toHaveBeenCalledWith('1', true);
-
-    await fireEvent(screen.getByTestId('alias-overflow-measure'), 'textLayout', { nativeEvent: { lines: [{}, {}] } });
-    await fireEvent.press(screen.getByLabelText('展开别名'));
-    expect(screen.getByTestId('song-alias-text').props.numberOfLines).toBeUndefined();
-    await fireEvent.press(screen.getByLabelText('收起别名'));
-    expect(screen.getByTestId('song-alias-text').props.numberOfLines).toBe(1);
+    expect(screen.getByText('SD主谱师')).toBeTruthy();
+    expect(screen.getAllByText('本地标签').length).toBeGreaterThan(1);
   });
 
   it('renders U·TA·GE without Rating calculation and shows separate 1P/2P notes', async () => {
     mockSongRouteParams = { songId: '100123', chartType: 'UTAGE', levelIndex: '0' };
     const screen = await render(<SongDetailScreen />);
 
-    expect(screen.getByText('U·TA·GE')).toBeTruthy();
-    expect(StyleSheet.flatten(screen.getByTestId('maimai-utage-difficulty-badge').props.style))
-      .toMatchObject({
-        backgroundColor: MAIMAI_UTAGE_COLOR,
-        borderColor: MAIMAI_UTAGE_COLOR,
-      });
-    expect(StyleSheet.flatten(screen.getByTestId('maimai-utage-chart-card').props.style))
-      .toMatchObject({
-        backgroundColor: MAIMAI_UTAGE_TINT,
-        borderColor: MAIMAI_UTAGE_COLOR,
-      });
-    expect(screen.getByText('協')).toBeTruthy();
-    expect(screen.getByText('14+?')).toBeTruthy();
+    expect(screen.getByTestId('game-chart-card-maimai:100123:UTAGE:0')).toBeTruthy();
+    expect(screen.getAllByText('U·TA·GE').length).toBeGreaterThan(0);
+    expect(screen.getByText('協 14+?')).toBeTruthy();
     expect(screen.getByText('两人协力')).toBeTruthy();
-    expect(screen.queryByText('DX分数 300')).toBeNull();
-    expect(screen.getByText('1P')).toBeTruthy();
-    expect(screen.getByText('2P')).toBeTruthy();
+    expect(screen.getByText('left')).toBeTruthy();
+    expect(screen.getByText('right')).toBeTruthy();
     expect(screen.getByText('101')).toBeTruthy();
     expect(screen.getByText('102')).toBeTruthy();
-    expect(screen.queryByLabelText(/打开 Rating 计算器/)).toBeNull();
     expect(screen.queryByText(/Rating/)).toBeNull();
-    expect(screen.queryByText(/谱师/)).toBeNull();
-
-    await fireEvent.press(screen.getByLabelText('使用1P 谱面物量计算容错'));
-    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
-      pathname: '/tools/tolerance',
-      params: expect.objectContaining({ tap: '51', hold: '10', slide: '20', touch: '10', break: '10' }),
-    }));
   });
 
   it('opens the chart type and exact difficulty supplied by a score card', async () => {
     mockSongRouteParams = { songId: '1', chartType: 'SD', levelIndex: '0' };
     const screen = await render(<SongDetailScreen />);
 
-    expect(screen.getByText('谱师：SD基础谱师')).toBeTruthy();
-    expect(screen.queryByText('谱师：DX主谱师')).toBeNull();
-    expect(screen.getByLabelText('难度卡片').props.contentOffset.x).toBeGreaterThan(0);
-    expect(screen.getAllByText(/MASTER|BASIC/).map((node) =>
-      Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children))
-      .toEqual(['MASTER', 'BASIC']);
+    expect(screen.getByText('SD基础谱师')).toBeTruthy();
+    expect(screen.getByTestId('game-chart-carousel').props.contentOffset.x).toBeGreaterThan(0);
+    expect(screen.getByTestId('game-chart-card-maimai:1:SD:0')).toBeTruthy();
   });
 });

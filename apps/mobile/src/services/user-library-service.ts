@@ -1,8 +1,9 @@
 import { createUserDataBackup, DEFAULT_TAG_PRESETS, libraryTargetKey, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
-import type { LibraryTarget, RestoreMode, UserDataBackup, UserDataBackupV3, UserLibraryItem } from '@/domain/user-library';
+import type { LibraryTarget, RestoreMode, UserDataBackup, UserDataBackupV4, UserLibraryItem } from '@/domain/user-library';
 import type { GameId } from '@/domain/game-bind-options';
 import type { ChartType } from '@/domain/models';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
+import { canonicalChartId } from '@/domain/game-model';
 
 export class UserLibraryService {
   constructor(private readonly repository: UserLibraryRepository, private readonly now = () => new Date().toISOString()) {}
@@ -25,25 +26,55 @@ export class UserLibraryService {
   }
 
   setChartPractice(gameId: GameId, songId: string, type: ChartType, levelIndex: number, practice: boolean): Promise<UserLibraryItem[]> {
-    const target: LibraryTarget = { kind: 'chart', gameId, songId, type, levelIndex };
+    const chartId = canonicalChartId(gameId, songId, type, levelIndex);
+    const target: LibraryTarget = { kind: 'chart', gameId, songId, chartId, type, levelIndex };
     return this.updateTarget(target, (current, timestamp) => ({
-      key: current?.key ?? libraryTargetKey(target), gameId, kind: 'chart', songId, type, levelIndex,
+      key: current?.key ?? libraryTargetKey(target), gameId, kind: 'chart', songId, chartId, type, levelIndex,
       practice, tags: current?.tags ?? [], createdAt: current?.createdAt ?? timestamp, updatedAt: timestamp,
+    }));
+  }
+
+  setChartPracticeById(
+    gameId: GameId,
+    songId: string,
+    chartId: string,
+    practice: boolean,
+  ): Promise<UserLibraryItem[]> {
+    const target: LibraryTarget = { kind: 'chart', gameId, songId, chartId };
+    return this.updateTarget(target, (current, timestamp) => ({
+      key: current?.key ?? libraryTargetKey(target),
+      gameId,
+      kind: 'chart',
+      songId,
+      chartId,
+      practice,
+      tags: current?.tags ?? [],
+      createdAt: current?.createdAt ?? timestamp,
+      updatedAt: timestamp,
     }));
   }
 
   setTags(target: LibraryTarget, values: readonly string[]): Promise<UserLibraryItem[]> {
     const tags = normalizeTags(values);
+    const chartId = target.kind === 'chart'
+      ? target.chartId ?? canonicalChartId(
+        target.gameId,
+        target.songId,
+        target.type ?? 'SD',
+        target.levelIndex ?? 0,
+      )
+      : undefined;
     return this.updateTarget(target, (current, timestamp) => target.kind === 'song'
       ? { key: current?.key ?? libraryTargetKey(target), gameId: target.gameId, kind: 'song', songId: target.songId,
         favorite: current?.kind === 'song' ? current.favorite : false, tags,
         createdAt: current?.createdAt ?? timestamp, updatedAt: timestamp }
       : { key: current?.key ?? libraryTargetKey(target), gameId: target.gameId, kind: 'chart', songId: target.songId,
-        type: target.type, levelIndex: target.levelIndex, practice: current?.kind === 'chart' ? current.practice : false,
+        chartId, type: target.type, levelIndex: target.levelIndex,
+        practice: current?.kind === 'chart' ? current.practice : false,
         tags, createdAt: current?.createdAt ?? timestamp, updatedAt: timestamp });
   }
 
-  async createBackup(): Promise<UserDataBackupV3> {
+  async createBackup(): Promise<UserDataBackupV4> {
     const [items, tagPresets] = await Promise.all([this.repository.list(), this.listTagPresets()]);
     return createUserDataBackup(items, this.now(), tagPresets);
   }
