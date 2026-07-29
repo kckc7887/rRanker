@@ -17,6 +17,7 @@ import type { ChunithmSong } from '@/domain/chunithm';
 import { parseConstantBound } from '@/domain/maimai-filters';
 import { phigrosLevelToDifficulty } from '@/domain/phigros-filters';
 import type { Chart, ChartType, Song } from '@/domain/models';
+import { localizedVersionName } from '@/domain/version-names';
 import { presentStandardSong } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
@@ -69,6 +70,15 @@ export function SearchScreen() {
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
   const isFiltering = filterSpec !== deferredFilterSpec;
+  const versionLabelsById = useMemo(() => new Map(versions.flatMap((option) =>
+    option.versionId === undefined
+      ? []
+      : [[option.versionId, localizedVersionName(option.versionId, option.name, versionLocale)] as const],
+  )), [versionLocale, versions]);
+  const selectedChartVersionId = deferredFilterSpec.chartVersionIds[0];
+  const selectedVersionLabel = selectedChartVersionId === undefined
+    ? undefined
+    : versionLabelsById.get(selectedChartVersionId) ?? String(selectedChartVersionId);
   const favoriteSongIds = useMemo(
     () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
     [library.data],
@@ -83,8 +93,19 @@ export function SearchScreen() {
       favorite={favoriteSongIds.has(item.id)}
       favoritePending={library.isLoading || library.isUpdating}
       onFavoriteChange={toggleFavorite}
+      selectedChartVersionId={selectedChartVersionId}
+      selectedVersionLabel={selectedVersionLabel}
+      versionLabelsById={versionLabelsById}
     />
-  ), [favoriteSongIds, library.isLoading, library.isUpdating, toggleFavorite]);
+  ), [
+    favoriteSongIds,
+    library.isLoading,
+    library.isUpdating,
+    selectedChartVersionId,
+    selectedVersionLabel,
+    toggleFavorite,
+    versionLabelsById,
+  ]);
 
   if (activeGameId === 'phigros') {
     return <PhigrosSearchScreen />;
@@ -137,14 +158,29 @@ export function SearchScreen() {
   );
 }
 
-const CatalogSongRow = memo(function CatalogSongRow({ song, favorite, favoritePending, onFavoriteChange }: {
+const CatalogSongRow = memo(function CatalogSongRow({
+  song,
+  favorite,
+  favoritePending,
+  onFavoriteChange,
+  selectedChartVersionId,
+  selectedVersionLabel,
+  versionLabelsById,
+}: {
   song: Song;
   favorite: boolean;
   favoritePending: boolean;
   onFavoriteChange: (songId: string, favorite: boolean) => void;
+  selectedChartVersionId?: number;
+  selectedVersionLabel?: string;
+  versionLabelsById: ReadonlyMap<number, string>;
 }) {
   const theme = useAppTheme();
   const presentation = presentStandardSong('maimai', song);
+  const displayedCharts = selectedChartVersionId === undefined
+    ? song.charts
+    : song.charts.filter((chart) => chart.versionId === selectedChartVersionId);
+  const displayedVersion = selectedVersionLabel ?? songChartVersionLabel(song, versionLabelsById);
   return <GameSongRow
     presentation={presentation}
     accessibilityLabel={null}
@@ -153,15 +189,33 @@ const CatalogSongRow = memo(function CatalogSongRow({ song, favorite, favoritePe
     mainStyle={styles.main}
     titleStyle={styles.title}
     subtitleStyle={styles.meta}
-    subtitleContent={<>{song.artist ?? '曲师未知'} · {song.version}</>}
+    subtitleContent={<>{song.artist ?? '曲师未知'} · {displayedVersion}</>}
     cover={<SongCover songId={song.id} />}
-    badges={<SongChartBadges songId={song.id} charts={song.charts} />}
+    badges={<SongChartBadges songId={song.id} charts={displayedCharts} />}
     accessory={<Pressable accessibilityRole="button" accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
       disabled={favoritePending} onPress={() => onFavoriteChange(song.id, !favorite)} style={styles.favorite}>
       <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={theme.accent} size={24} />
     </Pressable>}
   />;
 });
+
+function songChartVersionLabel(song: Song, versionLabelsById: ReadonlyMap<number, string>): string {
+  const versionIds = new Set(song.charts.flatMap((chart) =>
+    chart.versionId === undefined ? [] : [chart.versionId]));
+  if (versionIds.size === 0) return song.version;
+  if (versionIds.size === 1) {
+    const [versionId] = versionIds;
+    return versionLabelsById.get(versionId) ?? String(versionId);
+  }
+  return TYPES.flatMap((chartType) => {
+    const typeVersionIds = [...new Set(song.charts.flatMap((chart) =>
+      chart.type === chartType && chart.versionId !== undefined ? [chart.versionId] : []))];
+    if (typeVersionIds.length === 0) return [];
+    const labels = typeVersionIds.map((versionId) =>
+      versionLabelsById.get(versionId) ?? String(versionId));
+    return [`${chartType} ${labels.join(' / ')}`];
+  }).join(' · ');
+}
 
 const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { songId: string; charts: Chart[] }) {
   return <View testID={`song-chart-badges-${songId}`} accessibilityLabel="谱面定数" style={styles.chartGroups}>

@@ -1,7 +1,7 @@
 import {
   type ComponentProps,
   type ReactNode,
-  useEffect,
+  useCallback,
   useState,
 } from 'react';
 import {
@@ -115,31 +115,33 @@ function ExpandableMetadataValue({
 function SongMetadataCell({
   cellRootStyle,
   cellStyle,
+  expanded,
   interaction,
   item,
   labelStyle,
   measureStyle,
+  onOverflowChange,
+  onToggleExpanded,
+  overflow,
   testIDPrefix,
   valueBlockStyle,
   valueStyle,
 }: Omit<SongMetadataTableProps, 'accessibilityLabel' | 'items' | 'style'> & {
+  expanded: boolean;
   interaction: NonNullable<SongMetadataTableProps['interaction']>;
   item: SongMetadataItem;
+  onOverflowChange: (key: string, overflow: boolean) => void;
+  onToggleExpanded: () => void;
+  overflow: boolean;
 }) {
   const theme = useAppTheme();
-  const [expanded, setExpanded] = useState(false);
-  const [overflow, setOverflow] = useState(false);
-  useEffect(() => {
-    setExpanded(false);
-    setOverflow(false);
-  }, [item.value]);
 
   const value = (
     <ExpandableMetadataValue
       expanded={expanded}
       label={item.label}
       measureStyle={measureStyle}
-      onOverflowChange={setOverflow}
+      onOverflowChange={(nextOverflow) => onOverflowChange(item.key, nextOverflow)}
       testIDPrefix={testIDPrefix}
       value={item.value}
       valueBlockStyle={valueBlockStyle}
@@ -150,7 +152,7 @@ function SongMetadataCell({
     accessibilityLabel: overflow ? `${expanded ? '收起' : '展开'}${item.label}` : undefined,
     accessibilityRole: overflow ? 'button' as const : undefined,
     disabled: !overflow,
-    onPress: () => setExpanded((current) => !current),
+    onPress: onToggleExpanded,
   };
   const cellContent = item.accessory ? (
     <View style={[cellStyle, item.cellStyle, !cellRootStyle && { flex: item.flex }]}>
@@ -187,7 +189,7 @@ function SongMetadataCell({
   ) : cellContent;
 }
 
-export function SongMetadataTable({
+function SongMetadataTableContent({
   accessibilityLabel,
   interaction = 'native',
   items,
@@ -195,6 +197,15 @@ export function SongMetadataTable({
   ...cellProps
 }: SongMetadataTableProps) {
   const theme = useAppTheme();
+  const [expanded, setExpanded] = useState(false);
+  const [overflowByKey, setOverflowByKey] = useState<Record<string, boolean>>({});
+  const handleOverflowChange = useCallback((key: string, overflow: boolean) => {
+    setOverflowByKey((current) => current[key] === overflow
+      ? current
+      : { ...current, [key]: overflow });
+  }, []);
+  const toggleExpanded = useCallback(() => setExpanded((current) => !current), []);
+
   return (
     <View
       accessibilityLabel={accessibilityLabel}
@@ -203,11 +214,20 @@ export function SongMetadataTable({
       {items.map((item) => (
         <SongMetadataCell
           {...cellProps}
+          expanded={expanded}
           interaction={interaction}
           item={item}
           key={item.key}
+          onOverflowChange={handleOverflowChange}
+          onToggleExpanded={toggleExpanded}
+          overflow={overflowByKey[item.key] ?? false}
         />
       ))}
     </View>
   );
+}
+
+export function SongMetadataTable(props: SongMetadataTableProps) {
+  const contentKey = JSON.stringify(props.items.map(({ key, value }) => [key, value]));
+  return <SongMetadataTableContent {...props} key={contentKey} />;
 }
