@@ -1,7 +1,7 @@
 import { type ComponentProps, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
+import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   InteractionManager,
@@ -25,6 +25,7 @@ import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
+import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
 import { PhigrosSongDetail } from '@/components/phigros/PhigrosSongDetail';
@@ -120,15 +121,6 @@ function MaimaiSongDetailScreen({
     ? { song, catalogSource: catalog.data.source }
     : undefined;
   return <>
-    <Stack.Screen options={{
-      // Android 的透明空标题栏仍会截获其下方按钮的触控；隐藏该层，保留原样式的页面内按钮与满幅封面。
-      // iOS 必须清掉全局 theme.surface 顶栏背景，否则透明 header 仍会画出挡封面的色块。
-      title: '', headerTransparent: true, headerShadowVisible: false, headerTintColor: '#FFFFFF',
-      headerStyle: { backgroundColor: 'transparent' },
-      headerBackground: () => null,
-      headerShown: Platform.OS !== 'android',
-      headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
-    }} />
     <StatusBar style="light" />
     <View style={[styles.page, { backgroundColor: themeBackground }]}>
       <QueryStateView<{ song: Song; catalogSource: DataSource }>
@@ -234,6 +226,34 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
     const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
     return () => task.cancel();
   }, [song.id]);
+  const metadataItems: SongMetadataItem[] = [
+    { key: 'genre', label: '分类', value: song.genre ?? '未知', flex: 1 },
+    { key: 'bpm', label: 'BPM', value: song.bpm?.toString() ?? '未知', flex: 0.65 },
+    {
+      key: 'version',
+      label: '版本',
+      value: versionName,
+      flex: 1.8,
+      cellStyle: styles.versionCell,
+      rootStyle: styles.versionCellRoot,
+      valueRowStyle: styles.versionValueRow,
+      valuePressableStyle: styles.versionName,
+      accessory: (
+        <DetailPressable
+          accessibilityLabel="切换版本名称"
+          accessibilityRole="button"
+          hitSlop={4}
+          onPress={() => setVersionLocale((value) => value === 'china' ? 'japan' : 'china')}
+          style={({ pressed }) => [styles.versionToggle, pressed && styles.switchPressed]}
+        >
+          <Ionicons name="swap-horizontal" color={theme.accent} size={14} />
+        </DetailPressable>
+      ),
+    },
+    ...(song.region
+      ? [{ key: 'region', label: '区域', value: song.region, flex: 1 }]
+      : []),
+  ];
 
   return <ScrollView testID="song-detail-scroll" contentContainerStyle={styles.content}
     keyboardShouldPersistTaps="handled">
@@ -248,13 +268,19 @@ function Detail({ song, records, catalogSource, scoreSource, library, initialCha
       </View>
     </View>
 
-    <View style={[styles.metadataTable, { backgroundColor: theme.surface, borderBottomColor: theme.border }]} accessibilityLabel="歌曲详情数据">
-      <MetadataCell label="分类" value={song.genre ?? '未知'} flex={1} />
-      <MetadataCell label="BPM" value={song.bpm?.toString() ?? '未知'} flex={0.65} />
-      <VersionMetadataCell value={versionName}
-        onToggle={() => setVersionLocale((value) => value === 'china' ? 'japan' : 'china')} />
-      {song.region ? <MetadataCell label="区域" value={song.region} flex={1} /> : null}
-    </View>
+    <SongMetadataTable
+      accessibilityLabel="歌曲详情数据"
+      cellRootStyle={styles.metadataCellRoot}
+      cellStyle={styles.metadataCell}
+      interaction="platform-detail"
+      items={metadataItems}
+      labelStyle={styles.metadataLabel}
+      measureStyle={styles.metadataValueMeasure}
+      style={styles.metadataTable}
+      testIDPrefix="metadata"
+      valueBlockStyle={styles.metadataValueBlock}
+      valueStyle={styles.metadataValue}
+    />
 
     {deferredReady ? <>
       <ChartCarousel key={`${song.id}:${selectedChartType}:${initialIndex}`} charts={sortedCharts} records={records} song={song}
@@ -359,59 +385,6 @@ function AliasLine({ aliases }: { aliases?: string[] }) {
 function HorizontalText({ text, textStyle }: { text: string; textStyle: object }) {
   return <AutoScrollText text={text} textStyle={textStyle} style={styles.singleLine}
     contentContainerStyle={styles.singleLineContent} />;
-}
-
-function MetadataValue({ label, value, expanded, onOverflowChange }: {
-  label: string; value: string; expanded: boolean; onOverflowChange: (overflow: boolean) => void;
-}) {
-  const theme = useAppTheme();
-  return <View style={styles.metadataValueBlock}>
-    <Text accessible={false} testID={`metadata-measure-${label}`}
-      style={[styles.metadataValue, styles.metadataValueMeasure, { color: theme.text }]}
-      onTextLayout={(event) => onOverflowChange(event.nativeEvent.lines.length > 2)}>{value}</Text>
-    <Text testID={`metadata-value-${label}`} numberOfLines={expanded ? undefined : 2} ellipsizeMode="tail"
-      style={[styles.metadataValue, { color: theme.text }]}>{value}</Text>
-  </View>;
-}
-
-function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
-  const theme = useAppTheme();
-  const [expanded, setExpanded] = useState(false);
-  const [overflow, setOverflow] = useState(false);
-  useEffect(() => { setExpanded(false); setOverflow(false); }, [value]);
-  return <DetailGestureRoot style={[styles.metadataCellRoot, { flex }]}>
-    <DetailPressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
-      accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}${label}` : undefined}
-      onPress={() => setExpanded((current) => !current)} style={styles.metadataCell}>
-      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>{label}</Text>
-      <MetadataValue label={label} value={value} expanded={expanded} onOverflowChange={setOverflow} />
-    </DetailPressable>
-  </DetailGestureRoot>;
-}
-
-function VersionMetadataCell({ value, onToggle }: {
-  value: string; onToggle: () => void;
-}) {
-  const theme = useAppTheme();
-  const [expanded, setExpanded] = useState(false);
-  const [overflow, setOverflow] = useState(false);
-  useEffect(() => { setExpanded(false); setOverflow(false); }, [value]);
-  return <DetailGestureRoot style={styles.versionCellRoot}>
-    <View style={[styles.metadataCell, styles.versionCell]}>
-      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>版本</Text>
-      <View style={styles.versionValueRow}>
-        <DetailPressable disabled={!overflow} accessibilityRole={overflow ? 'button' : undefined}
-          accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}版本` : undefined}
-          onPress={() => setExpanded((current) => !current)} style={styles.versionName}>
-          <MetadataValue label="版本" value={value} expanded={expanded} onOverflowChange={setOverflow} />
-        </DetailPressable>
-        <DetailPressable accessibilityRole="button" accessibilityLabel="切换版本名称" onPress={onToggle}
-          hitSlop={4} style={({ pressed }) => [styles.versionToggle, pressed && styles.switchPressed]}>
-          <Ionicons name="swap-horizontal" color={theme.accent} size={14} />
-        </DetailPressable>
-      </View>
-    </View>
-  </DetailGestureRoot>;
 }
 
 function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, onToggleChartType }: {

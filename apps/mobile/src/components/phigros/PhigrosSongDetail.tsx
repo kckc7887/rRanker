@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
+import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   InteractionManager,
@@ -20,6 +20,7 @@ import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
+import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
@@ -85,13 +86,6 @@ export function PhigrosSongDetail({
   const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
 
   return <>
-    <Stack.Screen options={{
-      title: '', headerTransparent: true, headerShadowVisible: false, headerTintColor: '#FFFFFF',
-      headerStyle: { backgroundColor: 'transparent' },
-      headerBackground: () => null,
-      headerShown: Platform.OS !== 'android',
-      headerBackVisible: false, headerLeft: () => null, headerRight: () => null,
-    }} />
     <StatusBar style="light" />
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <QueryStateView<Song>
@@ -248,6 +242,10 @@ function Detail({
     : coverStage === 'lowres'
       ? lowresUrl
       : blurUrl;
+  const metadataItems: SongMetadataItem[] = [
+    { key: 'illustrator', label: '曲绘师', value: song.illustrator ?? '未知', flex: 1 },
+    { key: 'version', label: '版本', value: song.version || '未知', flex: 1 },
+  ];
 
   return (
     <ScrollView testID="phigros-song-detail-scroll" contentContainerStyle={styles.content}>
@@ -296,13 +294,17 @@ function Detail({
         </View>
       </View>
 
-      <View
-        style={[styles.metadataTable, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}
+      <SongMetadataTable
         accessibilityLabel="歌曲详情数据"
-      >
-        <MetadataCell label="曲绘师" value={song.illustrator ?? '未知'} flex={1} />
-        <MetadataCell label="版本" value={song.version || '未知'} flex={1} />
-      </View>
+        cellStyle={styles.metadataCell}
+        items={metadataItems}
+        labelStyle={styles.metadataLabel}
+        measureStyle={styles.metadataValueMeasure}
+        style={styles.metadataTable}
+        testIDPrefix="phigros-metadata"
+        valueBlockStyle={styles.metadataValueBlock}
+        valueStyle={styles.metadataValue}
+      />
 
       {deferredReady ? <>
         <ChartCarousel
@@ -343,16 +345,6 @@ function Detail({
         </View>
       </> : <View testID="phigros-song-detail-deferred-placeholder" style={styles.deferredPlaceholder} />}
     </ScrollView>
-  );
-}
-
-function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
-  const theme = useAppTheme();
-  return (
-    <View style={[styles.metadataCell, { flex }]}>
-      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>{label}</Text>
-      <Text numberOfLines={2} style={[styles.metadataValue, { color: theme.text }]}>{value}</Text>
-    </View>
   );
 }
 
@@ -642,6 +634,8 @@ const styles = StyleSheet.create({
   },
   metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 },
   metadataLabel: { fontSize: 11, fontWeight: '700', lineHeight: 14 },
+  metadataValueBlock: { position: 'relative', minWidth: 0 },
+  metadataValueMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
   metadataValue: { fontSize: 13, lineHeight: 16, fontWeight: '700' },
   carouselRoot: { flexGrow: 0 },
   carouselScroll: { flexGrow: 0 },
