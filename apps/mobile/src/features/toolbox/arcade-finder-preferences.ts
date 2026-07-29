@@ -2,6 +2,7 @@ import Storage from 'expo-sqlite/kv-store';
 import type { GameId } from '@/domain/game-bind-options';
 import {
   ARCADE_RADIUS_OPTIONS,
+  CHUNITHM_TITLE_ID,
   MAIMAI_DX_TITLE_ID,
   type ArcadeRadiusKm,
 } from '@/domain/arcade-shops';
@@ -28,11 +29,17 @@ function storeKey(gameId: GameId): string {
   return `${LEGACY_STORE_KEY}:${gameId}`;
 }
 
-/** Maimai defaults to 舞萌DX; Phigros defaults to no game filter (all shops in range). */
+/** Each game gets its own first-visit default; persisted per-game choices remain authoritative. */
 export function defaultArcadeFinderPreferences(gameId: GameId = 'maimai'): ArcadeFinderPreferences {
+  const defaultTitleIds: Record<GameId, number[]> = {
+    maimai: [MAIMAI_DX_TITLE_ID],
+    chunithm: [CHUNITHM_TITLE_ID],
+    phigros: [],
+    test: [],
+  };
   return {
     radiusKm: 10,
-    titleIds: gameId === 'phigros' ? [] : [MAIMAI_DX_TITLE_ID],
+    titleIds: [...defaultTitleIds[gameId]],
   };
 }
 
