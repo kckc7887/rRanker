@@ -1,4 +1,4 @@
-import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,12 +14,12 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import {
-  GestureHandlerRootView,
-  ScrollView as GestureScrollView,
-} from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
+import { AutoScrollText } from '@/components/game-content/AutoScrollText';
+import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
+import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
@@ -373,49 +373,26 @@ function ChartCarousel({
   initialIndex: number;
   notesPending: boolean;
 }) {
-  const interval = cardWidth + CARD_GAP;
-  const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [initialIndex, interval]);
-
-  if (charts.length === 0) {
-    return (
-      <View style={styles.noCharts}>
-        <Text style={styles.meta}>暂无可用难度</Text>
-      </View>
-    );
-  }
-
   return (
-    <GestureHandlerRootView style={styles.carouselRoot}>
-      <GestureScrollView
-        ref={scrollRef}
-        horizontal
-        decelerationRate="fast"
-        snapToInterval={interval}
-        snapToAlignment="start"
-        disableIntervalMomentum
-        showsHorizontalScrollIndicator={false}
-        directionalLockEnabled
-        nestedScrollEnabled
-        removeClippedSubviews={false}
-        style={styles.carouselScroll}
-        contentOffset={{ x: initialIndex * interval, y: 0 }}
-        contentContainerStyle={styles.carousel}
-        accessibilityLabel="难度卡片"
-        testID="phigros-chart-carousel"
-      >
-        {charts.map((chart) => {
+    <SharedChartCarousel
+      accessibilityLabel="难度卡片"
+      cardWidth={cardWidth}
+      contentContainerStyle={styles.carousel}
+      empty={(
+        <View style={styles.noCharts}>
+          <Text style={styles.meta}>暂无可用难度</Text>
+        </View>
+      )}
+      gap={CARD_GAP}
+      initialIndex={initialIndex}
+      items={charts}
+      keyExtractor={(chart) => `${chart.songId}:${chart.levelIndex}`}
+      renderItem={(chart) => {
           const best = records
             .filter((record) => record.songId === song.id && record.levelIndex === chart.levelIndex)
             .sort((left, right) => (right.dxScore ?? 0) - (left.dxScore ?? 0))[0];
           return (
             <ChartCard
-              key={`${chart.songId}:${chart.levelIndex}`}
               chart={chart}
               best={best}
               song={song}
@@ -424,9 +401,11 @@ function ChartCarousel({
               notesPending={notesPending}
             />
           );
-        })}
-      </GestureScrollView>
-    </GestureHandlerRootView>
+      }}
+      rootStyle={styles.carouselRoot}
+      scrollStyle={styles.carouselScroll}
+      testID="phigros-chart-carousel"
+    />
   );
 }
 
@@ -472,7 +451,7 @@ function ChartCard({
     : null;
 
   return (
-    <View
+    <GameChartResultCard
       testID={`phigros-chart-card-${chart.levelIndex}`}
       accessibilityLabel={`${label} 难度卡片`}
       style={[
@@ -569,7 +548,7 @@ function ChartCard({
           levelIndex: chart.levelIndex,
         }, tags)}
       />
-    </View>
+    </GameChartResultCard>
   );
 }
 
@@ -595,34 +574,28 @@ function NotesTable({ notes, pending }: { notes?: PhigrosChartNotes; pending?: b
       </Text>
     );
   }
+  const noteGroup = {
+    key: 'notes',
+    values: NOTE_COLUMNS.map((column) => ({
+      key: column.key,
+      label: column.label,
+      value: notes[column.key],
+    })),
+  };
   return (
-    <View
+    <GameNoteTable
       accessibilityLabel="谱面物量"
-      style={[styles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
-    >
-      <View style={[styles.notesRow, styles.notesHeaderRow]}>
-        {NOTE_COLUMNS.map((column) => (
-          <Text
-            key={column.key}
-            numberOfLines={1}
-            style={[styles.notesCell, styles.notesHeader, { color: theme.textMuted }]}
-          >
-            {column.label}
-          </Text>
-        ))}
-      </View>
-      <View style={styles.notesRow}>
-        {NOTE_COLUMNS.map((column) => (
-          <Text
-            key={column.key}
-            numberOfLines={1}
-            style={[styles.notesCell, styles.notesValue, { color: theme.text }]}
-          >
-            {notes[column.key]}
-          </Text>
-        ))}
-      </View>
-    </View>
+      containerStyle={[styles.notesTable, {
+        backgroundColor: theme.surfaceMuted,
+        borderColor: theme.border,
+      }]}
+      group={noteGroup}
+      headerRowStyle={styles.notesHeaderRow}
+      headerTextStyle={[styles.notesCell, styles.notesHeader, { color: theme.textMuted }]}
+      mode="grid"
+      rowStyle={styles.notesRow}
+      valueTextStyle={[styles.notesCell, styles.notesValue, { color: theme.text }]}
+    />
   );
 }
 
@@ -638,88 +611,6 @@ function practiceTextStyle(fg: string, filled: boolean) {
 
 function DetailRateBadge({ record }: { record: ScoreRecord }) {
   return <PhigrosRateBadge rate={resolvePhigrosRate(record)} fc={record.fc === 'ap'} />;
-}
-
-function AutoScrollText({
-  text,
-  textStyle,
-  style,
-  contentContainerStyle,
-  testID,
-}: {
-  text: string;
-  textStyle: object;
-  style?: object;
-  contentContainerStyle?: object;
-  testID?: string;
-}) {
-  const scrollRef = useRef<ScrollView>(null);
-  const [contentWidth, setContentWidth] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [scrolling, setScrolling] = useState(false);
-  const offsetRef = useRef(0);
-  const directionRef = useRef(1);
-  const frameRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    offsetRef.current = 0;
-    directionRef.current = 1;
-    setScrolling(false);
-    scrollRef.current?.scrollTo({ x: 0, animated: false });
-  }, [text]);
-
-  useEffect(() => {
-    if (contentWidth <= 0 || containerWidth <= 0) return;
-    const overflow = contentWidth - containerWidth;
-    setScrolling((current) => {
-      if (current) return overflow > 2;
-      return overflow > 8;
-    });
-  }, [contentWidth, containerWidth]);
-
-  useEffect(() => {
-    if (!scrolling || dragging) {
-      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-      return;
-    }
-    const maxOffset = Math.max(0, contentWidth - containerWidth);
-    const tick = () => {
-      const next = offsetRef.current + directionRef.current * 0.45;
-      if (next >= maxOffset) directionRef.current = -1;
-      else if (next <= 0) directionRef.current = 1;
-      offsetRef.current = Math.max(0, Math.min(next, maxOffset));
-      scrollRef.current?.scrollTo({ x: offsetRef.current, animated: false });
-      frameRef.current = requestAnimationFrame(tick);
-    };
-    frameRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-    };
-  }, [scrolling, dragging, contentWidth, containerWidth]);
-
-  return <ScrollView
-    ref={scrollRef}
-    testID={testID}
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    style={style}
-    contentContainerStyle={contentContainerStyle}
-    scrollEnabled={scrolling}
-    onContentSizeChange={(width) => setContentWidth(width)}
-    onLayout={(event) => setContainerWidth(event.nativeEvent.layout.width)}
-    onScrollBeginDrag={() => setDragging(true)}
-    onScrollEndDrag={(event) => {
-      offsetRef.current = event.nativeEvent.contentOffset.x;
-      setDragging(false);
-      directionRef.current = 1;
-    }}
-    scrollEventThrottle={32}
-  >
-    <Text numberOfLines={1} style={textStyle}>{text}</Text>
-  </ScrollView>;
 }
 
 const styles = StyleSheet.create({

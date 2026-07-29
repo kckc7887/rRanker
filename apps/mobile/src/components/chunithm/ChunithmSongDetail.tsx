@@ -1,4 +1,4 @@
-import { type ComponentProps, type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,13 +14,13 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import {
-  GestureHandlerRootView,
-  Pressable as GesturePressable,
-  ScrollView as GestureScrollView,
-} from 'react-native-gesture-handler';
+import { Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
+import { AutoScrollText } from '@/components/game-content/AutoScrollText';
+import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
+import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
 import {
@@ -462,49 +462,31 @@ function DifficultyCarousel({
   detailError: boolean;
   onRetryDetail: () => void;
 }) {
-  const interval = cardWidth + CARD_GAP;
-  const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [initialIndex, interval, song.id]);
-  if (!difficulties.length) {
-    return <View style={styles.noCharts}><Text style={styles.body}>暂无可用难度</Text></View>;
-  }
   return (
-    <GestureHandlerRootView style={styles.carouselRoot}>
-      <GestureScrollView
-        accessibilityLabel="中二难度卡片"
-        contentContainerStyle={styles.carousel}
-        contentOffset={{ x: initialIndex * interval, y: 0 }}
-        decelerationRate="fast"
-        disableIntervalMomentum
-        directionalLockEnabled
-        horizontal
-        nestedScrollEnabled
-        ref={scrollRef}
-        removeClippedSubviews={false}
-        showsHorizontalScrollIndicator={false}
-        snapToAlignment="start"
-        snapToInterval={interval}
-        style={styles.carouselScroll}
-      >
-        {difficulties.map((difficulty) => (
-          <DifficultyCard
-            detailError={detailError}
-            difficulty={difficulty}
-            key={difficulty.difficulty}
-            library={library}
-            onRetryDetail={onRetryDetail}
-            score={bestScoreForDifficulty(scores, song.id, difficulty.difficulty)}
-            song={song}
-            width={cardWidth}
-          />
-        ))}
-      </GestureScrollView>
-    </GestureHandlerRootView>
+    <SharedChartCarousel
+      accessibilityLabel="中二难度卡片"
+      cardWidth={cardWidth}
+      contentContainerStyle={styles.carousel}
+      empty={<View style={styles.noCharts}><Text style={styles.body}>暂无可用难度</Text></View>}
+      gap={CARD_GAP}
+      initialIndex={initialIndex}
+      items={difficulties}
+      keyExtractor={(difficulty) => String(difficulty.difficulty)}
+      renderItem={(difficulty) => (
+        <DifficultyCard
+          detailError={detailError}
+          difficulty={difficulty}
+          library={library}
+          onRetryDetail={onRetryDetail}
+          score={bestScoreForDifficulty(scores, song.id, difficulty.difficulty)}
+          song={song}
+          width={cardWidth}
+        />
+      )}
+      resetKey={song.id}
+      rootStyle={styles.carouselRoot}
+      scrollStyle={styles.carouselScroll}
+    />
   );
 }
 
@@ -751,31 +733,35 @@ function DifficultyCard({
   ];
   if (worldsEnd) {
     return (
-      <LinearGradient
-        colors={CHUNITHM_WORLDS_END_GRADIENT}
-        end={{ x: 1, y: 0.5 }}
-        start={{ x: 0, y: 0.5 }}
+      <GameChartResultCard
+        beforeContent={(
+          <View
+            pointerEvents="none"
+            style={[
+              styles.worldsEndCardOverlay,
+              {
+                backgroundColor: theme.dark
+                  ? 'rgba(20,14,38,0.62)'
+                  : 'rgba(255,255,255,0.52)',
+              },
+            ]}
+            testID="chunithm-worlds-end-card-overlay"
+          />
+        )}
+        gradient={{
+          colors: CHUNITHM_WORLDS_END_GRADIENT,
+          end: { x: 1, y: 0.5 },
+          start: { x: 0, y: 0.5 },
+        }}
         style={cardStyle}
         testID={`chunithm-detail-difficulty-${difficulty.difficulty}`}
       >
-        <View
-          pointerEvents="none"
-          style={[
-            styles.worldsEndCardOverlay,
-            {
-              backgroundColor: theme.dark
-                ? 'rgba(20,14,38,0.62)'
-                : 'rgba(255,255,255,0.52)',
-            },
-          ]}
-          testID="chunithm-worlds-end-card-overlay"
-        />
         {content}
-      </LinearGradient>
+      </GameChartResultCard>
     );
   }
   return (
-    <View
+    <GameChartResultCard
       style={[
         ...cardStyle,
         { backgroundColor: ultima ? visual.tint : theme.dark ? theme.surface : visual.tint },
@@ -783,7 +769,7 @@ function DifficultyCard({
       testID={`chunithm-detail-difficulty-${difficulty.difficulty}`}
     >
       {content}
-    </View>
+    </GameChartResultCard>
   );
 }
 
@@ -847,18 +833,24 @@ function NotesTable({
       ['AIR', notes.air],
       ['总计', notes.total],
     ];
+  const noteGroup = {
+    key: 'notes',
+    values: values.map(([label, value]) => ({
+      key: label.toLowerCase(),
+      label,
+      value,
+    })),
+  };
   return (
-    <View
+    <GameNoteTable
       accessibilityLabel="中二谱面物量"
-      style={[styles.notesTable, { borderColor: borderColor ?? theme.border }]}
-    >
-      {values.map(([label, value]) => (
-        <View key={label} style={styles.notesCell}>
-          <Text style={[styles.notesLabel, { color: labelColor ?? theme.textMuted }]}>{label}</Text>
-          <Text style={[styles.notesValue, { color: valueColor ?? theme.text }]}>{value}</Text>
-        </View>
-      ))}
-    </View>
+      containerStyle={[styles.notesTable, { borderColor: borderColor ?? theme.border }]}
+      group={noteGroup}
+      itemStyle={styles.notesCell}
+      labelStyle={[styles.notesLabel, { color: labelColor ?? theme.textMuted }]}
+      mode="cells"
+      valueStyle={[styles.notesValue, { color: valueColor ?? theme.text }]}
+    />
   );
 }
 
@@ -874,82 +866,6 @@ async function openBilibiliChartSearch(query: string): Promise<void> {
   } catch {
     await Linking.openURL(webUrl);
   }
-}
-
-function AutoScrollText({ text, textStyle, style, contentContainerStyle }: {
-  text: string;
-  textStyle: object;
-  style?: object;
-  contentContainerStyle?: object;
-}) {
-  const scrollRef = useRef<ScrollView>(null);
-  const [contentWidth, setContentWidth] = useState(0);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [scrolling, setScrolling] = useState(false);
-  const offsetRef = useRef(0);
-  const directionRef = useRef(1);
-  const frameRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    offsetRef.current = 0;
-    directionRef.current = 1;
-    setScrolling(false);
-    scrollRef.current?.scrollTo({ x: 0, animated: false });
-  }, [text]);
-
-  useEffect(() => {
-    if (contentWidth <= 0 || containerWidth <= 0) return;
-    const overflow = contentWidth - containerWidth;
-    setScrolling((current) => {
-      if (current) return overflow > 2;
-      return overflow > 8;
-    });
-  }, [contentWidth, containerWidth]);
-
-  useEffect(() => {
-    if (!scrolling || dragging) {
-      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-      return;
-    }
-    const maxOffset = Math.max(0, contentWidth - containerWidth);
-    const tick = () => {
-      const next = offsetRef.current + directionRef.current * 0.45;
-      if (next >= maxOffset) directionRef.current = -1;
-      else if (next <= 0) directionRef.current = 1;
-      offsetRef.current = Math.max(0, Math.min(next, maxOffset));
-      scrollRef.current?.scrollTo({ x: offsetRef.current, animated: false });
-      frameRef.current = requestAnimationFrame(tick);
-    };
-    frameRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-    };
-  }, [scrolling, dragging, contentWidth, containerWidth]);
-
-  return (
-    <ScrollView
-      contentContainerStyle={contentContainerStyle}
-      horizontal
-      onContentSizeChange={(w) => setContentWidth(w)}
-      onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-      onScrollBeginDrag={() => setDragging(true)}
-      onScrollEndDrag={(e) => {
-        offsetRef.current = e.nativeEvent.contentOffset.x;
-        setDragging(false);
-        directionRef.current = 1;
-      }}
-      ref={scrollRef}
-      scrollEnabled={scrolling}
-      scrollEventThrottle={32}
-      showsHorizontalScrollIndicator={false}
-      style={style}
-    >
-      <Text numberOfLines={1} style={textStyle}>{text}</Text>
-    </ScrollView>
-  );
 }
 
 function HorizontalText({ text, textStyle }: { text: string; textStyle: object }) {

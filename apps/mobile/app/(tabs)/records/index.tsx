@@ -1,9 +1,9 @@
-import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { useDeferredValue, useMemo, useState } from 'react';
+import { StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
+import { RecordsListPage } from '@/components/game-content/GameListPages';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
-import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
@@ -98,11 +98,6 @@ export function RecordsScreen() {
       b.achievements - a.achievements);
   }, [data, deferredFilterSpec, searchBySongId]);
 
-  const viewData = data && filtered.length > 0 ? {
-    records: filtered,
-    source: data.source,
-    catalogSource: data.catalogSource,
-  } : undefined;
   const isEmpty = !!data && filtered.length === 0;
 
   if (activeGameId === 'phigros') {
@@ -136,46 +131,32 @@ export function RecordsScreen() {
         onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}
         onSoloAchievementChange={setSoloAchievement} onMultiAchievementChange={setMultiAchievement}
         onVersionLocaleChange={setVersionLocale} onReset={clearFilters} />
-      <QueryStateView<{ records: ScoreRecord[]; source: DataSource; catalogSource: DataSource }>
+      <RecordsListPage<ScoreRecord>
         isLoading={isLoading}
         isError={isError}
         isEmpty={isEmpty}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         emptyText="当前筛选条件下没有成绩"
-        data={viewData}
-        renderData={(result) => (
-          <RecordResultsList records={result.records} source={result.source} catalogSource={result.catalogSource}
-            tabBottomInset={tabBottomInset} />
-        )}
+        data={data && filtered.length > 0 ? filtered : undefined}
+        flatListProps={{
+          testID: 'records-results-list',
+          contentInsetAdjustmentBehavior: 'automatic',
+          style: styles.list,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          keyExtractor: recordKey,
+          ...TAB_LIST_CACHE_PROPS,
+          ListHeaderComponent: data ? <View style={styles.header}><SourceStatus items={[
+            { key: 'scores', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
+            { key: 'catalog', label: data.catalogSource.label, updatedAt: data.catalogSource.updatedAt, state: data.catalogSource.isStale ? 'cache' : 'live' },
+          ]} /><Text style={styles.note}>共 {filtered.length} 条成绩</Text></View> : null,
+          renderItem: renderRecord,
+        }}
       />
     </View>
   );
 }
-
-const RecordResultsList = memo(function RecordResultsList({
-  records,
-  source,
-  catalogSource,
-  tabBottomInset,
-}: {
-  records: ScoreRecord[];
-  source: DataSource;
-  catalogSource: DataSource;
-  tabBottomInset: number;
-}) {
-  const header = useMemo(() => <View style={styles.header}><SourceStatus items={[
-    { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
-    { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
-  ]} /><Text style={styles.note}>共 {records.length} 条成绩</Text></View>,
-  [catalogSource, records.length, source]);
-
-  return <FlatList testID="records-results-list" contentInsetAdjustmentBehavior="automatic" style={styles.list}
-    contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
-    scrollIndicatorInsets={{ bottom: tabBottomInset }} data={records} keyExtractor={recordKey}
-    {...TAB_LIST_CACHE_PROPS}
-    ListHeaderComponent={header} renderItem={renderRecord} />;
-});
 
 const renderRecord: ListRenderItem<ScoreRecord> = ({ item }) => <ScoreRecordCard record={item} />;
 function recordKey(record: ScoreRecord): string {
@@ -252,7 +233,7 @@ function ChunithmRecordsScreen() {
           value={keyword}
         />
       </View>
-      <QueryStateView<ChunithmScoreCardData[]>
+      <RecordsListPage<ChunithmScoreCardData>
         data={!isLoading && filtered.length ? filtered : undefined}
         emptyText={keyword.trim() ? '没有匹配的中二成绩' : '落雪尚未同步中二成绩'}
         error={error}
@@ -260,69 +241,37 @@ function ChunithmRecordsScreen() {
         isError={isError}
         isLoading={isLoading}
         onRetry={retry}
-        renderData={(entries) => (
-          <ChunithmRecordList
-            catalogSource={catalogQuery.data?.source}
-            entries={entries}
-            scoreSource={payload?.source}
-            tabBottomInset={tabBottomInset}
-          />
-        )}
+        flatListProps={{
+          ...TAB_LIST_CACHE_PROPS,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
+          contentInsetAdjustmentBehavior: 'automatic',
+          keyExtractor: (item) => item.key,
+          ListHeaderComponent: <View style={styles.header}>
+            <SourceStatus items={[
+              ...(payload?.source ? [{
+                key: 'scores' as const,
+                label: payload.source.label,
+                updatedAt: payload.source.updatedAt,
+                state: payload.source.isStale ? 'cache' as const : 'live' as const,
+              }] : []),
+              ...(catalogQuery.data?.source ? [{
+                key: 'catalog' as const,
+                label: catalogQuery.data.source.label,
+                updatedAt: catalogQuery.data.source.updatedAt,
+                state: catalogQuery.data.source.isStale ? 'cache' as const : 'live' as const,
+              }] : []),
+            ]} />
+            <Text style={styles.note}>共 {filtered.length} 条成绩</Text>
+          </View>,
+          renderItem: ({ item }) => <ChunithmScoreCard record={item} />,
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          style: styles.list,
+          testID: 'chunithm-records-list',
+        }}
       />
     </View>
   );
 }
-
-const ChunithmRecordList = memo(function ChunithmRecordList({
-  entries,
-  scoreSource,
-  catalogSource,
-  tabBottomInset,
-}: {
-  entries: ChunithmScoreCardData[];
-  scoreSource?: DataSource;
-  catalogSource?: DataSource;
-  tabBottomInset: number;
-}) {
-  const header = useMemo(() => (
-    <View style={styles.header}>
-      <SourceStatus items={[
-        ...(scoreSource ? [{
-          key: 'scores' as const,
-          label: scoreSource.label,
-          updatedAt: scoreSource.updatedAt,
-          state: scoreSource.isStale ? 'cache' as const : 'live' as const,
-        }] : []),
-        ...(catalogSource ? [{
-          key: 'catalog' as const,
-          label: catalogSource.label,
-          updatedAt: catalogSource.updatedAt,
-          state: catalogSource.isStale ? 'cache' as const : 'live' as const,
-        }] : []),
-      ]} />
-      <Text style={styles.note}>共 {entries.length} 条成绩</Text>
-    </View>
-  ), [catalogSource, entries.length, scoreSource]);
-  const renderItem = useCallback<ListRenderItem<ChunithmScoreCardData>>(
-    ({ item }) => <ChunithmScoreCard record={item} />,
-    [],
-  );
-
-  return (
-    <FlatList
-      {...TAB_LIST_CACHE_PROPS}
-      contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
-      contentInsetAdjustmentBehavior="automatic"
-      data={entries}
-      keyExtractor={(item) => item.key}
-      ListHeaderComponent={header}
-      renderItem={renderItem}
-      scrollIndicatorInsets={{ bottom: tabBottomInset }}
-      style={styles.list}
-      testID="chunithm-records-list"
-    />
-  );
-});
 
 function PhigrosRecordsScreen() {
   const session = useSession((s) => s.session);
@@ -454,7 +403,7 @@ function PhigrosRecordsScreen() {
         onRankChange={setRank} onXingChange={setXing}
         onReset={clearFilters}
       />
-      <QueryStateView<{ record: ScoreRecord; title: string }[]>
+      <RecordsListPage<{ record: ScoreRecord; title: string }>
         isLoading={isGameLoading}
         isError={isGameError}
         isEmpty={!isGameLoading && filtered.length === 0}
@@ -462,55 +411,35 @@ function PhigrosRecordsScreen() {
         onRetry={refetchAll}
         emptyText={hasActiveFilters ? '筛选结果为空' : '暂无成绩数据'}
         data={!isGameLoading && filtered.length > 0 ? filtered : undefined}
-        renderData={(entries) => (
-          <PhigrosRecordList
-            entries={entries}
-            source={source}
-            catalogSource={catalogSource}
-            noteTotalByKey={noteTotalByKey}
-            tabBottomInset={tabBottomInset}
-          />
-        )}
+        flatListProps={{
+          testID: 'phigros-records-list',
+          contentInsetAdjustmentBehavior: 'automatic',
+          style: styles.list,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          keyExtractor: (item) => recordKey(item.record),
+          ...TAB_LIST_CACHE_PROPS,
+          ListHeaderComponent: <View style={styles.header}>
+            <SourceStatus items={[
+              { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
+              { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
+            ]} />
+            <Text style={styles.note}>共 {filtered.length} 条成绩</Text>
+          </View>,
+          renderItem: ({ item }) => (
+            <PhigrosScoreCard
+              record={item.record}
+              catalogTitle={item.title}
+              totalNotes={noteTotalByKey[
+                phigrosChartNoteKey(item.record.songId, item.record.levelIndex)
+              ]}
+            />
+          ),
+        }}
       />
     </View>
   );
 }
-
-const PhigrosRecordList = memo(function PhigrosRecordList({
-  entries, source, catalogSource, noteTotalByKey, tabBottomInset,
-}: {
-  entries: { record: ScoreRecord; title: string }[];
-  source: DataSource;
-  catalogSource: DataSource;
-  noteTotalByKey: Readonly<Record<string, number>>;
-  tabBottomInset: number;
-}) {
-  const header = useMemo(() => (
-    <View style={styles.header}>
-      <SourceStatus items={[
-        { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
-        { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
-      ]} />
-      <Text style={styles.note}>共 {entries.length} 条成绩</Text>
-    </View>
-  ), [catalogSource, entries.length, source]);
-
-  const renderItem = useCallback<ListRenderItem<{ record: ScoreRecord; title: string }>>(({ item }) => (
-    <PhigrosScoreCard
-      record={item.record}
-      catalogTitle={item.title}
-      totalNotes={noteTotalByKey[phigrosChartNoteKey(item.record.songId, item.record.levelIndex)]}
-    />
-  ), [noteTotalByKey]);
-
-  return <FlatList testID="phigros-records-list" contentInsetAdjustmentBehavior="automatic"
-    style={styles.list}
-    contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
-    scrollIndicatorInsets={{ bottom: tabBottomInset }}
-    data={entries} keyExtractor={(item) => recordKey(item.record)}
-    {...TAB_LIST_CACHE_PROPS}
-    ListHeaderComponent={header} renderItem={renderItem} />;
-});
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
