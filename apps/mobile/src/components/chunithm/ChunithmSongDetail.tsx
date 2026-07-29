@@ -742,7 +742,7 @@ function DifficultyCard({
               {
                 backgroundColor: theme.dark
                   ? 'rgba(20,14,38,0.62)'
-                  : 'rgba(255,255,255,0.40)',
+                  : 'rgba(208,208,212,0.52)',
               },
             ]}
             testID="chunithm-worlds-end-card-overlay"
