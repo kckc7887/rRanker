@@ -1,10 +1,15 @@
 import { Animated } from 'react-native';
-import { fireEvent, render } from './render-with-query';
+import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
-import { getGameManifest } from '@/domain/game-manifests';
-import { useGameFilters } from '@/state/game-filters';
+import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
+import {
+  CHUNITHM_FLOWING_RANK_GRADIENT,
+  CHUNITHM_FLOWING_RANK_LOCATIONS,
+  CHUNITHM_RANK_GRADIENT,
+  CHUNITHM_RANK_GRADIENT_LOCATIONS,
+} from '@/components/chunithm/ChunithmScoreCard';
 
 const mockRefetchGame = jest.fn(async () => undefined);
 const mockRefetchCatalog = jest.fn(async () => undefined);
@@ -189,7 +194,6 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
 describe('Chunithm records and B50 screens', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    useGameFilters.getState().reset();
     mockSessionState.activeProviderId = 'lxns';
     mockSessionState.session = { mode: 'lxns-oauth' };
   });
@@ -199,7 +203,7 @@ describe('Chunithm records and B50 screens', () => {
     mockSessionState.session = null;
 
     const records = await render(<RecordsScreen />);
-    expect(records.getByTestId('game-records-results-list')).toBeTruthy();
+    expect(records.getByTestId('chunithm-records-list')).toBeTruthy();
     expect(records.queryByText('尚未绑定落雪账号')).toBeNull();
   });
 
@@ -208,34 +212,34 @@ describe('Chunithm records and B50 screens', () => {
     mockSessionState.session = null;
 
     const best = await render(<Best50Screen />);
-    expect(best.getByTestId('game-best-results-list')).toBeTruthy();
+    expect(best.getByTestId('chunithm-best-results-list')).toBeTruthy();
     expect(best.queryByText('尚未绑定落雪账号')).toBeNull();
   });
 
-  it('shows all scores ordered by Rating and supports shared metadata search', async () => {
+  it('shows all scores ordered by Rating, supports local metadata search and has no filter controls', async () => {
     const screen = await render(<RecordsScreen />);
-    expect(screen.getByTestId('game-records-results-list')).toBeTruthy();
-    expect(screen.getByText('筛选')).toBeTruthy();
-    const cards = screen.getAllByTestId(/^game-score-card-/);
+    expect(screen.getByTestId('chunithm-records-list')).toBeTruthy();
+    expect(screen.queryByText('筛选')).toBeNull();
+    const cards = screen.getAllByTestId(/^chunithm-score-card-/);
     expect(cards.map((card) => card.props.testID)).toEqual([
-      'game-score-card-2-3',
-      'game-score-card-3-5',
-      'game-score-card-1-2',
+      'chunithm-score-card-2-3',
+      'chunithm-score-card-3-5',
+      'chunithm-score-card-1-2',
     ]);
     await fireEvent.press(cards[0]!);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '2', chartId: 'chunithm:2:default:3' },
+      params: { songId: '2', levelIndex: '3' },
     });
 
-    await fireEvent.changeText(screen.getByLabelText('成绩搜索'), '目标艺术家');
+    await fireEvent.changeText(screen.getByLabelText('中二成绩搜索'), '目标艺术家');
     expect(screen.getByText('第一首歌')).toBeTruthy();
     expect(screen.queryByText('第二首歌')).toBeNull();
   });
 
   it('renders Best 30 before New 20, resets positions and never renders Selection 10', async () => {
     const screen = await render(<Best50Screen />);
-    expect(screen.getByTestId('game-best-results-list')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-best-results-list')).toBeTruthy();
     expect(screen.getByText('Best 30')).toBeTruthy();
     expect(screen.getByText('New 20')).toBeTruthy();
     expect(screen.queryByText('Selection 10')).toBeNull();
@@ -245,20 +249,40 @@ describe('Chunithm records and B50 screens', () => {
     expect(screen.getByText('3. 第一首歌')).toBeTruthy();
   });
 
-  it('uses fixed primary/achievement rows and JSON flowing score styles', async () => {
+  it('uses fixed primary/achievement rows and the correct static/flowing score styles', async () => {
     const screen = await render(<RecordsScreen />);
-    expect(screen.getByTestId('game-score-primary-1-2')).toBeTruthy();
-    expect(screen.getByTestId('game-score-tags-1-2-0')).toBeTruthy();
-    expect(screen.getByTestId('game-score-tags-1-2-1')).toBeTruthy();
-    expect(screen.getByText('EXPERT(13)')).toBeTruthy();
-    expect(screen.getByText("WORLD'S END(！)")).toBeTruthy();
-    expect(screen.getByText('评价 SSS+')).toBeTruthy();
-    const manifest = getGameManifest('chunithm');
-    const scoreStyle = manifest.tagGroups.find((group) => group.id === 'score')
-      ?.items.find((item) => item.id === 'flowing')?.style;
-    const goldStyle = manifest.tagGroups.find((group) => group.id === 'achievement')
-      ?.items.find((item) => item.id === 'gold')?.style;
-    expect(scoreStyle?.text.fill).toMatchObject({ kind: 'gradient', animated: true });
-    expect(goldStyle?.text.fill).toMatchObject({ kind: 'gradient', animated: true });
+    expect(screen.getByTestId('chunithm-primary-tags-1-2')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-achievement-tags-1-2')).toBeTruthy();
+    expect(screen.getByTestId('flowing-chunithm-score')).toBeTruthy();
+    expect(screen.getByTestId('flowing-chunithm-rank')).toBeTruthy();
+    expect(screen.getAllByTestId('gradient-chunithm-score')).toHaveLength(2);
+    expect(CHUNITHM_RANK_GRADIENT).toEqual([
+      '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',
+    ]);
+    expect(CHUNITHM_RANK_GRADIENT_LOCATIONS).toEqual([0, 1 / 3, 2 / 3, 1]);
+    expect(CHUNITHM_FLOWING_RANK_GRADIENT).toEqual([
+      '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',
+      '#EFCB63', '#FF8EC8', '#73CFFF',
+    ]);
+    expect(CHUNITHM_FLOWING_RANK_LOCATIONS).toEqual([
+      0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1,
+    ]);
+    const flowingGradient = screen.getByTestId('chunithm-flowing-score-gradient');
+    expect(flowingGradient.props.colors).toHaveLength(CHUNITHM_FLOWING_RANK_GRADIENT.length);
+    expect(flowingGradient.props.locations).toEqual(CHUNITHM_FLOWING_RANK_LOCATIONS);
+    const staticGradient = screen.getAllByTestId('chunithm-static-score-gradient')[0]!;
+    expect(staticGradient.props.colors).toHaveLength(CHUNITHM_RANK_GRADIENT.length);
+    expect(staticGradient.props.locations).toEqual(CHUNITHM_RANK_GRADIENT_LOCATIONS);
+    expect(screen.getByText('EXPERT (13.4)')).toBeTruthy();
+    expect(screen.getByText("WORLD'S END (狂☆4)")).toBeTruthy();
+    expect(screen.queryByText("WORLD'S END (14.0)")).toBeNull();
+    expect(screen.getByTestId('chunithm-worlds-end-badge')).toBeTruthy();
+    expect(CHUNITHM_WORLDS_END_GRADIENT).toEqual([
+      '#37E6FF', '#7B61FF', '#F24FD4', '#FF8A3D',
+    ]);
+    expect(screen.getByText('SSS+')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-full-combo-rainbow')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-full-chain-gold')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-clear-platinum')).toBeTruthy();
   });
 });

@@ -9,7 +9,6 @@ import {
   type ChunithmSong,
 } from '@/domain/chunithm';
 import type { Song } from '@/domain/models';
-import { parseCanonicalChartId } from '@/domain/game-model';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
@@ -106,19 +105,11 @@ function LibraryRow({
   const theme = useAppTheme();
   const chunithmSong = song && isChunithmSong(song) ? song : undefined;
   const standardSong = song && !isChunithmSong(song) ? song : undefined;
-  const chartIdentity = item.kind === 'chart' && item.chartId
-    ? parseCanonicalChartId(item.chartId)
-    : undefined;
-  const legacyLevelIndex = item.kind === 'chart' ? item.levelIndex : undefined;
-  const levelIndex = Number(chartIdentity?.difficultyId ?? legacyLevelIndex);
-  const typeId = chartIdentity?.typeId ?? (item.kind === 'chart' ? item.type : undefined);
   const chart = item.kind === 'chart'
-    ? standardSong?.charts.find((value) => (
-      (typeId === undefined || value.type === typeId) && value.levelIndex === levelIndex
-    ))
+    ? standardSong?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex)
     : undefined;
   const chunithmDifficulty = item.kind === 'chart'
-    ? chunithmSong?.difficulties.find((value) => value.difficulty === levelIndex)
+    ? chunithmSong?.difficulties.find((value) => value.difficulty === item.levelIndex)
     : undefined;
   const chartLabel = item.kind === 'chart'
     ? chunithmDifficulty
@@ -128,20 +119,16 @@ function LibraryRow({
         ? chart.level
         : `${item.type} ${chart.difficulty.toUpperCase()}`)
       : chunithmSong
-        ? `难度 ${levelIndex}`
-        : `${typeId ?? ''} 难度 ${levelIndex}`.trim()
+        ? `难度 ${item.levelIndex}`
+        : `${item.type} 难度 ${item.levelIndex}`
     : '';
   return <Pressable accessibilityRole="button" onPress={() => router.push({
     pathname: '/songs/[songId]',
     params: item.kind === 'chart'
       ? {
           songId: item.songId,
-          ...(item.chartId
-            ? { chartId: item.chartId }
-            : {
-                ...(chunithmSong ? {} : { chartType: item.type }),
-                levelIndex: String(item.levelIndex),
-              }),
+          ...(chunithmSong ? {} : { chartType: item.type }),
+          levelIndex: String(item.levelIndex),
         }
       : { songId: item.songId },
   } as Href)} style={[styles.row, { backgroundColor: theme.surface }]}>

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from './render-with-query';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { InteractionManager, Linking, Platform } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
@@ -51,7 +51,7 @@ const mockSessionState: {
 const timestamp = '2026-07-13T00:00:00.000Z';
 const mockItems: UserLibraryItem[] = [
   { key: 'song:maimai:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: ['喜欢'], createdAt: timestamp, updatedAt: timestamp },
-  { key: 'chart:maimai:maimai%3A1%3ADX%3A3', gameId: 'maimai', kind: 'chart', songId: '1', chartId: 'maimai:1:DX:3', practice: true, tags: ['耐力'], createdAt: timestamp, updatedAt: timestamp },
+  { key: 'chart:maimai:1:DX:3', gameId: 'maimai', kind: 'chart', songId: '1', type: 'DX', levelIndex: 3, practice: true, tags: ['耐力'], createdAt: timestamp, updatedAt: timestamp },
   { key: 'song:maimai:999', gameId: 'maimai', kind: 'song', songId: '999', favorite: true, tags: [], createdAt: timestamp, updatedAt: timestamp },
 ];
 
@@ -86,9 +86,9 @@ jest.mock('@/hooks/use-user-library', () => {
   const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
   return { useUserLibrary: () => ({
     data: mockItems, isLoading: false, isError: false, error: null, refetch: jest.fn(), isUpdating: false,
-    setSongFavorite: mockSetFavorite, setChartPracticeById: mockSetPractice, setTags: mockSetTags,
+    setSongFavorite: mockSetFavorite, setChartPractice: mockSetPractice, setTags: mockSetTags,
     songKey: (songId: string | number) => songLibraryKey('maimai', songId),
-    chartKeyById: (songId: string | number, chartId: string) => chartLibraryKey('maimai', songId, chartId),
+    chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('maimai', songId, type, levelIndex),
     tagPresets: ['爆发', '交互'],
     setTagPresets: jest.fn(),
   }) };
@@ -288,13 +288,13 @@ describe('M3A personal library screens', () => {
     expect(screen.queryByText('歌曲 ID 999')).toBeNull();
   });
 
-  it('opens practice chart detail with chartId', async () => {
+  it('opens practice chart detail with chartType and levelIndex', async () => {
     const screen = await render(<UserLibraryScreen />);
     await fireEvent.press(screen.getByText('练习'));
     await fireEvent.press(screen.getByText(/练习谱面/));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '1', chartId: 'maimai:1:DX:3' },
+      params: { songId: '1', chartType: 'DX', levelIndex: '3' },
     });
   });
 
@@ -315,8 +315,8 @@ describe('M3A personal library screens', () => {
       expect(mockBack).toHaveBeenCalledTimes(1);
       await fireEvent.press(screen.getByLabelText('取消收藏 正常曲目 A'));
       expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
-      await fireEvent.press(screen.getByText('移出练习清单'));
-      expect(mockSetPractice).toHaveBeenCalledWith('1', 'maimai:1:DX:3', false);
+      await fireEvent.press(screen.getByText('已加入练习清单'));
+      expect(mockSetPractice).toHaveBeenCalledWith('1', 'DX', 3, false);
       await fireEvent.press(screen.getByText('搜索谱面确认'));
       expect(openUrl).toHaveBeenCalledWith(
         `bilibili://search?keyword=${encodeURIComponent('正常曲目 A MASTER 谱面确认')}`,
@@ -330,7 +330,7 @@ describe('M3A personal library screens', () => {
       ));
       await fireEvent.press(screen.getByLabelText('删除标签 耐力'));
       expect(mockSetTags).toHaveBeenCalledWith(
-        { kind: 'chart', songId: '1', chartId: 'maimai:1:DX:3' },
+        { kind: 'chart', songId: '1', type: 'DX', levelIndex: 3 },
         [],
       );
       const inputs = screen.getAllByLabelText('新标签');
@@ -338,7 +338,7 @@ describe('M3A personal library screens', () => {
       const addButtons = screen.getAllByLabelText('添加标签');
       await fireEvent.press(addButtons[0]);
       expect(mockSetTags).toHaveBeenCalledWith(
-        { kind: 'chart', songId: '1', chartId: 'maimai:1:DX:3' },
+        { kind: 'chart', songId: '1', type: 'DX', levelIndex: 3 },
         ['耐力', '谱面标签'],
       );
       await fireEvent.changeText(inputs[inputs.length - 1], '新标签');

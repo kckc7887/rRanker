@@ -32,10 +32,7 @@ describe('UserLibraryService', () => {
     const service = new UserLibraryService(repository, () => now);
     await service.setSongFavorite('maimai', '1', true);
     await service.setChartPractice('maimai', '1', 'DX', 3, true);
-    expect(repository.items.map((item) => item.key).sort()).toEqual([
-      'chart:maimai:maimai%3A1%3ADX%3A3',
-      'song:maimai:1',
-    ]);
+    expect(repository.items.map((item) => item.key).sort()).toEqual(['chart:maimai:1:DX:3', 'song:maimai:1']);
   });
 
   it('isolates the same song id across games', async () => {

@@ -1,5 +1,5 @@
 import { Animated } from 'react-native';
-import { fireEvent, render } from './render-with-query';
+import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 
@@ -21,21 +21,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({
     data: {
       snapshot: {
-        songs: [{
-          id: 'Song.A',
-          title: '测试曲',
-          artist: '测试曲师',
-          version: '3.8.0',
-          charts: [{
-            type: 'SD',
-            levelIndex: 2,
-            level: 'IN',
-            difficulty: 'expert',
-            difficultyConstant: 15.2,
-            charter: '测试谱师',
-            notes: null,
-          }],
-        }],
+        songs: [{ id: 'Song.A', title: '测试曲' }],
         source: { kind: 'generated', label: 'Phigros3.8.0', updatedAt: '2026-07-20T00:00:00.000Z', isStale: false },
       },
     },
@@ -90,7 +76,7 @@ jest.mock('@/hooks/use-game-data', () => ({
 describe('Phigros best list', () => {
   it('renders Phi3 and Best27 sections with Phigros cards', async () => {
     const screen = await render(<Best50Screen />);
-    expect(screen.getByTestId('game-best-results-list')).toBeTruthy();
+    expect(screen.getByTestId('phigros-best-results-list')).toBeTruthy();
     expect(screen.getByText('Phi3')).toBeTruthy();
     expect(screen.getByText('Best27')).toBeTruthy();
     expect(screen.getByText('1. 测试曲')).toBeTruthy();
