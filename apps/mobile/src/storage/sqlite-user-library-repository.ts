@@ -31,6 +31,8 @@ interface ItemRow {
 }
 
 interface TagRow { item_key: string; display_name: string }
+interface ExperimentalV5ItemRow extends ItemRow { chart_id: string | null }
+interface ExperimentalV5TagLinkRow { item_key: string; tag_id: number }
 
 let schemaReady: Promise<void> | null = null;
 /** 曲库写操作串行，避免 withTransactionAsync 与并发写交叉。 */
@@ -149,6 +151,147 @@ function buildUtageMigrationSql(
   return `${statements.join(';\n')};`;
 }
 
+function experimentalV5ChartReference(row: ExperimentalV5ItemRow): {
+  type: ChartType;
+  levelIndex: number;
+} | undefined {
+  if (row.chart_type && ['SD', 'DX', 'UTAGE'].includes(row.chart_type)
+    && Number.isInteger(row.level_index) && row.level_index! >= 0 && row.level_index! <= 255) {
+    return { type: row.chart_type, levelIndex: row.level_index! };
+  }
+  if (!row.chart_id) return undefined;
+  const encoded = row.chart_id.split(':');
+  if (encoded.length !== 4) return undefined;
+  try {
+    const [gameId, songId, typeId, difficultyId] = encoded.map(decodeURIComponent);
+    const levelIndex = Number(difficultyId);
+    if (gameId !== row.game_id || songId !== row.song_id
+      || !Number.isInteger(levelIndex) || levelIndex < 0 || levelIndex > 255) {
+      return undefined;
+    }
+    if (gameId === 'maimai') {
+      return ['SD', 'DX', 'UTAGE'].includes(typeId)
+        ? { type: typeId as ChartType, levelIndex }
+        : undefined;
+    }
+    return typeId === 'default' ? { type: 'SD', levelIndex } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function experimentalV5Item(row: ExperimentalV5ItemRow): UserLibraryItem {
+  const gameId = (row.game_id as GameId | null) ?? inferGameIdFromKey(row.item_key);
+  const base = {
+    key: row.item_key,
+    gameId,
+    tags: [] as string[],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+  if (row.kind === 'song') {
+    return normalizeLibraryItem({
+      ...base,
+      kind: 'song',
+      songId: row.song_id,
+      favorite: row.is_favorite === 1,
+    });
+  }
+  const reference = experimentalV5ChartReference(row);
+  if (!reference) {
+    throw new Error(`实验版个人曲库谱面无法恢复：${row.item_key}`);
+  }
+  return normalizeLibraryItem({
+    ...base,
+    kind: 'chart',
+    songId: row.song_id,
+    ...reference,
+    practice: row.is_practice === 1,
+  });
+}
+
+async function restoreExperimentalV5Schema(db: SQLiteDatabase): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(user_library_items)');
+  if (!columns.some((column) => column.name === 'chart_id')) {
+    throw new Error('不支持的个人数据版本：5（结构不匹配）');
+  }
+  const [rawItems, rawTagLinks] = await Promise.all([
+    db.getAllAsync<ExperimentalV5ItemRow>(
+      `SELECT item_key, game_id, kind, song_id, chart_id, chart_type, level_index,
+              is_favorite, is_practice, created_at, updated_at
+       FROM user_library_items ORDER BY item_key`,
+    ),
+    db.getAllAsync<ExperimentalV5TagLinkRow>(
+      'SELECT item_key, tag_id FROM user_library_item_tags ORDER BY item_key, tag_id',
+    ),
+  ]);
+  const restoredItems = rawItems.map(experimentalV5Item);
+  const keyMap = new Map(rawItems.map((row, index) => [row.item_key, restoredItems[index]!.key]));
+  const migrationId = `${Date.now()}_${++utageMigrationSequence}`;
+  const nextItemsTable = `${UTAGE_ITEMS_TABLE_PREFIX}${migrationId}`;
+  const nextItemTagsTable = `${UTAGE_ITEM_TAGS_TABLE_PREFIX}${migrationId}`;
+  const nextItems = quoteLibraryTable(nextItemsTable);
+  const nextItemTags = quoteLibraryTable(nextItemTagsTable);
+
+  await db.execAsync('PRAGMA foreign_keys = OFF');
+  try {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        CREATE TABLE ${nextItems} (
+          item_key TEXT PRIMARY KEY, game_id TEXT NOT NULL DEFAULT 'maimai',
+          kind TEXT NOT NULL CHECK (kind IN ('song', 'chart')),
+          song_id TEXT NOT NULL, chart_type TEXT, level_index INTEGER,
+          is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+          is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          CHECK ((kind = 'song' AND chart_type IS NULL AND level_index IS NULL) OR
+                 (kind = 'chart' AND chart_type IN ('SD', 'DX', 'UTAGE') AND level_index >= 0))
+        );
+        CREATE TABLE ${nextItemTags} (
+          item_key TEXT NOT NULL REFERENCES ${nextItems}(item_key) ON DELETE CASCADE,
+          tag_id INTEGER NOT NULL REFERENCES user_library_tags(id) ON DELETE CASCADE,
+          PRIMARY KEY (item_key, tag_id)
+        );
+      `);
+      for (const item of restoredItems) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO ${nextItems}
+            (item_key, game_id, kind, song_id, chart_type, level_index,
+             is_favorite, is_practice, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          item.key, item.gameId, item.kind, item.songId, item.kind === 'chart' ? item.type : null,
+          item.kind === 'chart' ? item.levelIndex : null, item.kind === 'song' && item.favorite ? 1 : 0,
+          item.kind === 'chart' && item.practice ? 1 : 0, item.createdAt, item.updatedAt,
+        );
+      }
+      for (const link of rawTagLinks) {
+        const nextKey = keyMap.get(link.item_key);
+        if (nextKey) {
+          await db.runAsync(
+            `INSERT OR IGNORE INTO ${nextItemTags} (item_key, tag_id) VALUES (?, ?)`,
+            nextKey,
+            link.tag_id,
+          );
+        }
+      }
+      await db.execAsync(`
+        DROP TABLE ${quoteLibraryTable(CURRENT_ITEM_TAGS_TABLE)};
+        DROP TABLE ${quoteLibraryTable(CURRENT_ITEMS_TABLE)};
+        ALTER TABLE ${nextItems} RENAME TO ${quoteLibraryTable(CURRENT_ITEMS_TABLE)};
+        ALTER TABLE ${nextItemTags} RENAME TO ${quoteLibraryTable(CURRENT_ITEM_TAGS_TABLE)};
+      `);
+      await db.runAsync(
+        'UPDATE user_library_meta SET schema_version = ? WHERE id = 1',
+        USER_LIBRARY_SCHEMA_VERSION,
+      );
+    });
+  } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON');
+  }
+  const violations = await db.getAllAsync('PRAGMA foreign_key_check');
+  if (violations.length > 0) throw new Error('实验版个人曲库恢复后外键校验失败');
+}
+
 async function ensureUtageChartType(db: SQLiteDatabase): Promise<void> {
   const tables = await db.getAllAsync<LibraryTableRow>(
     `SELECT name, sql FROM sqlite_master
@@ -246,6 +389,8 @@ async function initializeUserLibrarySchema(): Promise<void> {
       await db.runAsync('DELETE FROM user_library_tags');
     });
     await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
+  } else if (row.schema_version === 5) {
+    await restoreExperimentalV5Schema(db);
   } else if (row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {
     throw new Error(`不支持的个人数据版本：${row?.schema_version ?? '未知'}`);
   } else {
