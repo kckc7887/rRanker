@@ -1,9 +1,10 @@
 import { memo } from 'react';
-import { router, type Href } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
 import { AchievementValue, ChartTypeBadge, DifficultyBadge, ScoreStatusBadges } from './ScoreVisuals';
 import { useAppTheme } from '@/theme/app-theme';
+import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { presentMaimaiScore } from '@/features/game-content/adapters';
 
 /** 成绩页卡片数据；未游玩谱面可省略达成率/Rating/成就字段。 */
 export type ScoreRecordCardData = {
@@ -29,15 +30,19 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({
   rank?: number;
 }) {
   const theme = useAppTheme();
-  const openDetail = () => router.push({
-    pathname: '/songs/[songId]',
-    params: { songId: record.songId, chartType: record.type, levelIndex: String(record.levelIndex) },
-  } as Href);
-  return <Pressable accessibilityRole="button"
-    accessibilityLabel={`查看谱面 ${record.title} ${record.type} ${record.difficulty}`}
-    onPress={openDetail} style={[styles.card, { backgroundColor: theme.surface }]}>
-    <View style={styles.main}>
-      <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>{rank ? `${rank}. ` : ''}{record.title}</Text>
+  const presentation = presentMaimaiScore(record, rank);
+  return <GameScoreCard
+    cardStyle={styles.card}
+    mainStyle={styles.main}
+    presentation={presentation}
+    side={record.type === 'UTAGE' ? null : <View style={styles.ratingBlock}>
+      <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
+      <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>
+        {record.rating === undefined ? '—' : record.rating}
+      </Text>
+    </View>}
+    titleStyle={styles.title}
+  >
       <AchievementValue value={record.achievements} compact />
       {record.type === 'UTAGE'
         ? <Text style={[styles.dxScore, { color: theme.textSecondary }]}>DX分数 {record.dxScore ?? '—'}</Text>
@@ -47,14 +52,7 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({
         {record.type === 'UTAGE' ? null : <ChartTypeBadge type={record.type} />}
         <ScoreStatusBadges rate={record.rate} achievements={record.achievements} fc={record.fc} fs={record.fs} nearMissFirst />
       </View>
-    </View>
-    {record.type === 'UTAGE' ? null : <View style={styles.ratingBlock}>
-      <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
-      <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>
-        {record.rating === undefined ? '—' : record.rating}
-      </Text>
-    </View>}
-  </Pressable>;
+  </GameScoreCard>;
 });
 
 const styles = StyleSheet.create({

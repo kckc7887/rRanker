@@ -1,11 +1,11 @@
 import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { router, type Href } from 'expo-router';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
+import { CatalogListPage } from '@/components/game-content/GameListPages';
+import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
-import { QueryStateView } from '@/components/QueryStateView';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
@@ -16,7 +16,8 @@ import { ChunithmSongRow } from '@/components/chunithm/ChunithmSongRow';
 import type { ChunithmSong } from '@/domain/chunithm';
 import { parseConstantBound } from '@/domain/maimai-filters';
 import { phigrosLevelToDifficulty } from '@/domain/phigros-filters';
-import type { Chart, ChartType, DataSource, Song } from '@/domain/models';
+import type { Chart, ChartType, Song } from '@/domain/models';
+import { presentStandardSong } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
@@ -36,8 +37,6 @@ import {
 import { useAppTheme } from '@/theme/app-theme';
 
 const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
-type LibraryHook = ReturnType<typeof useUserLibrary>;
-
 export default function SearchTabScreen() {
   return <CachedTabScreen><SearchScreen /></CachedTabScreen>;
 }
@@ -70,11 +69,22 @@ export function SearchScreen() {
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
   const isFiltering = filterSpec !== deferredFilterSpec;
-  const viewData = query.data && filtered.length > 0 ? { songs: filtered, source: query.data.source } : undefined;
   const favoriteSongIds = useMemo(
     () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
     [library.data],
   );
+  const setSongFavorite = library.setSongFavorite;
+  const toggleFavorite = useCallback((songId: string, favorite: boolean) => {
+    void setSongFavorite(songId, favorite);
+  }, [setSongFavorite]);
+  const renderCatalogItem = useCallback<ListRenderItem<Song>>(({ item }) => (
+    <CatalogSongRow
+      song={item}
+      favorite={favoriteSongIds.has(item.id)}
+      favoritePending={library.isLoading || library.isUpdating}
+      onFavoriteChange={toggleFavorite}
+    />
+  ), [favoriteSongIds, library.isLoading, library.isUpdating, toggleFavorite]);
 
   if (activeGameId === 'phigros') {
     return <PhigrosSearchScreen />;
@@ -103,52 +113,29 @@ export function SearchScreen() {
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onVersionLocaleChange={setVersionLocale} onReset={clearFilters} />
-      <QueryStateView<{ songs: Song[]; source: DataSource }> isLoading={query.isLoading} isError={query.isError}
+      <CatalogListPage<Song> isLoading={query.isLoading} isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}
         error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
-        data={viewData} renderData={(result) => (
-          <CatalogResultsList songs={result.songs} source={result.source} tabBottomInset={tabBottomInset}
-            favoriteSongIds={favoriteSongIds} favoritePending={library.isLoading || library.isUpdating}
-            setSongFavorite={library.setSongFavorite} />
-        )} />
+        data={query.data && filtered.length > 0 ? filtered : undefined}
+        flatListProps={{
+          testID: 'catalog-results-list',
+          contentInsetAdjustmentBehavior: 'automatic',
+          keyExtractor: songKey,
+          ...TAB_LIST_CACHE_PROPS,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          ListHeaderComponent: query.data ? <SourceStatus items={[{
+            key: 'catalog',
+            label: query.data.source.label,
+            updatedAt: query.data.source.updatedAt,
+            state: query.data.source.isStale ? 'cache' : 'live',
+          }]} /> : null,
+          renderItem: renderCatalogItem,
+        }}
+      />
     </View>
   );
 }
-
-const CatalogResultsList = memo(function CatalogResultsList({
-  songs,
-  source,
-  tabBottomInset,
-  favoriteSongIds,
-  favoritePending,
-  setSongFavorite,
-}: {
-  songs: Song[];
-  source: DataSource;
-  tabBottomInset: number;
-  favoriteSongIds: ReadonlySet<string>;
-  favoritePending: boolean;
-  setSongFavorite: LibraryHook['setSongFavorite'];
-}) {
-  const toggleFavorite = useCallback((songId: string, favorite: boolean) => {
-    void setSongFavorite(songId, favorite);
-  }, [setSongFavorite]);
-  const renderItem = useCallback<ListRenderItem<Song>>(({ item }) => {
-    const favorite = favoriteSongIds.has(item.id);
-    return <CatalogSongRow song={item} favorite={favorite} favoritePending={favoritePending}
-      onFavoriteChange={toggleFavorite} />;
-  }, [favoriteSongIds, favoritePending, toggleFavorite]);
-  const sourceHeader = useMemo(() => <SourceStatus items={[{
-    key: 'catalog', label: source.label, updatedAt: source.updatedAt,
-    state: source.isStale ? 'cache' : 'live',
-  }]} />, [source]);
-
-  return <FlatList testID="catalog-results-list" contentInsetAdjustmentBehavior="automatic"
-    data={songs} keyExtractor={songKey} {...TAB_LIST_CACHE_PROPS}
-    contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 20 }]}
-    scrollIndicatorInsets={{ bottom: tabBottomInset }} ListHeaderComponent={sourceHeader}
-    renderItem={renderItem} />;
-});
 
 const CatalogSongRow = memo(function CatalogSongRow({ song, favorite, favoritePending, onFavoriteChange }: {
   song: Song;
@@ -157,19 +144,23 @@ const CatalogSongRow = memo(function CatalogSongRow({ song, favorite, favoritePe
   onFavoriteChange: (songId: string, favorite: boolean) => void;
 }) {
   const theme = useAppTheme();
-  return <View style={[styles.row, { backgroundColor: theme.surface }]}>
-    <Pressable accessibilityRole="button" style={styles.openSong}
-      onPress={() => router.push(`/songs/${encodeURIComponent(song.id)}` as Href)}>
-      <SongCover songId={song.id} />
-      <View style={styles.main}><Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>{song.title}</Text>
-      <Text numberOfLines={1} style={[styles.meta, { color: theme.textMuted }]}>{song.artist ?? '曲师未知'} · {song.version}</Text>
-      <SongChartBadges songId={song.id} charts={song.charts} /></View>
-    </Pressable>
-    <Pressable accessibilityRole="button" accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
+  const presentation = presentStandardSong('maimai', song);
+  return <GameSongRow
+    presentation={presentation}
+    accessibilityLabel={null}
+    rowStyle={styles.row}
+    openStyle={styles.openSong}
+    mainStyle={styles.main}
+    titleStyle={styles.title}
+    subtitleStyle={styles.meta}
+    subtitleContent={<>{song.artist ?? '曲师未知'} · {song.version}</>}
+    cover={<SongCover songId={song.id} />}
+    badges={<SongChartBadges songId={song.id} charts={song.charts} />}
+    accessory={<Pressable accessibilityRole="button" accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
       disabled={favoritePending} onPress={() => onFavoriteChange(song.id, !favorite)} style={styles.favorite}>
       <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={theme.accent} size={24} />
-    </Pressable>
-  </View>;
+    </Pressable>}
+  />;
 });
 
 const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { songId: string; charts: Chart[] }) {
@@ -220,10 +211,6 @@ function ChunithmSearchScreen() {
     });
   }, [debouncedKeyword, query.data?.songs, searchDocuments]);
   const isSearching = keyword !== debouncedKeyword;
-  const viewData = query.data && filtered.length > 0
-    ? { songs: filtered, source: query.data.source }
-    : undefined;
-
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
@@ -244,62 +231,33 @@ function ChunithmSearchScreen() {
           {isSearching ? '正在搜索…' : `共 ${filtered.length} 首`}
         </Text>
       </View>
-      <QueryStateView<{ songs: ChunithmSong[]; source: DataSource }>
+      <CatalogListPage<ChunithmSong>
         isLoading={query.isLoading}
         isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}
         error={query.error}
         onRetry={() => void query.refetch()}
         emptyText={keyword.trim() ? '搜索结果为空' : '暂无曲库数据'}
-        data={viewData}
-        renderData={(result) => (
-          <ChunithmCatalogList
-            songs={result.songs}
-            source={result.source}
-            tabBottomInset={tabBottomInset}
-          />
-        )}
+        data={query.data && filtered.length > 0 ? filtered : undefined}
+        flatListProps={{
+          testID: 'chunithm-catalog-results-list',
+          contentInsetAdjustmentBehavior: 'automatic',
+          keyExtractor: (song) => String(song.id),
+          ...TAB_LIST_CACHE_PROPS,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          ListHeaderComponent: query.data ? <SourceStatus items={[{
+            key: 'catalog',
+            label: query.data.source.label,
+            updatedAt: query.data.source.updatedAt,
+            state: query.data.source.isStale ? 'cache' : 'live',
+          }]} /> : null,
+          renderItem: ({ item }) => <ChunithmSongRow song={item} />,
+        }}
       />
     </View>
   );
 }
-
-const ChunithmCatalogList = memo(function ChunithmCatalogList({
-  songs,
-  source,
-  tabBottomInset,
-}: {
-  songs: ChunithmSong[];
-  source: DataSource;
-  tabBottomInset: number;
-}) {
-  const renderItem = useCallback<ListRenderItem<ChunithmSong>>(
-    ({ item }) => <ChunithmSongRow song={item} />,
-    [],
-  );
-  const sourceHeader = useMemo(() => (
-    <SourceStatus items={[{
-      key: 'catalog',
-      label: source.label,
-      updatedAt: source.updatedAt,
-      state: source.isStale ? 'cache' : 'live',
-    }]} />
-  ), [source]);
-
-  return (
-    <FlatList
-      testID="chunithm-catalog-results-list"
-      contentInsetAdjustmentBehavior="automatic"
-      data={songs}
-      keyExtractor={(song) => String(song.id)}
-      {...TAB_LIST_CACHE_PROPS}
-      contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 20 }]}
-      scrollIndicatorInsets={{ bottom: tabBottomInset }}
-      ListHeaderComponent={sourceHeader}
-      renderItem={renderItem}
-    />
-  );
-});
 
 function PhigrosSearchScreen() {
   const query = usePhigrosCatalog();
@@ -340,6 +298,25 @@ function PhigrosSearchScreen() {
   }, [filtered, provider]);
 
   const source = useMemo(() => query.data?.snapshot.source, [query.data?.snapshot.source]);
+  const setSongFavorite = library.setSongFavorite;
+  const toggleFavorite = useCallback((songId: string, favorite: boolean) => {
+    void setSongFavorite(songId, favorite);
+  }, [setSongFavorite]);
+  const renderPhigrosItem = useCallback<ListRenderItem<Song>>(({ item }) => (
+    <PhigrosSongRow
+      song={item}
+      blurUrl={blurUrls.get(item.id) ?? null}
+      favorite={favoriteSongIds.has(item.id)}
+      favoritePending={library.isLoading || library.isUpdating}
+      onFavoriteChange={toggleFavorite}
+    />
+  ), [
+    blurUrls,
+    favoriteSongIds,
+    library.isLoading,
+    library.isUpdating,
+    toggleFavorite,
+  ]);
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
@@ -356,64 +333,30 @@ function PhigrosSearchScreen() {
         onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onReset={clearFilters}
       />
-      <QueryStateView<{ songs: Song[]; source?: DataSource }>
+      <CatalogListPage<Song>
         isLoading={query.isLoading} isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}
         error={query.error} onRetry={() => void query.refetch()}
         emptyText={hasActiveFilters ? '筛选结果为空' : '暂无曲库数据'}
-        data={query.data && filtered.length > 0 ? { songs: filtered, source } : undefined}
-        renderData={(result) => (
-          <PhigrosCatalogList
-            songs={result.songs}
-            blurUrls={blurUrls}
-            source={result.source}
-            tabBottomInset={tabBottomInset}
-            favoriteSongIds={favoriteSongIds}
-            favoritePending={library.isLoading || library.isUpdating}
-            setSongFavorite={library.setSongFavorite}
-          />
-        )}
+        data={query.data && filtered.length > 0 ? filtered : undefined}
+        flatListProps={{
+          testID: 'phigros-catalog-results-list',
+          keyExtractor: songKey,
+          ...TAB_LIST_CACHE_PROPS,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          ListHeaderComponent: source ? <SourceStatus items={[{
+            key: 'catalog',
+            label: source.label,
+            updatedAt: source.updatedAt,
+            state: source.isStale ? 'cache' : 'live',
+          }]} /> : null,
+          renderItem: renderPhigrosItem,
+        }}
       />
     </View>
   );
 }
-
-const PhigrosCatalogList = memo(function PhigrosCatalogList({
-  songs, blurUrls, source, tabBottomInset, favoriteSongIds, favoritePending, setSongFavorite,
-}: {
-  songs: Song[];
-  blurUrls: Map<string, string>;
-  source?: DataSource;
-  tabBottomInset: number;
-  favoriteSongIds: ReadonlySet<string>;
-  favoritePending: boolean;
-  setSongFavorite: LibraryHook['setSongFavorite'];
-}) {
-  const toggleFavorite = useCallback((songId: string, favorite: boolean) => {
-    void setSongFavorite(songId, favorite);
-  }, [setSongFavorite]);
-  const renderItem = useCallback<ListRenderItem<Song>>(({ item }) => (
-    <PhigrosSongRow
-      song={item}
-      blurUrl={blurUrls.get(item.id) ?? null}
-      favorite={favoriteSongIds.has(item.id)}
-      favoritePending={favoritePending}
-      onFavoriteChange={toggleFavorite}
-    />
-  ), [blurUrls, favoriteSongIds, favoritePending, toggleFavorite]);
-
-  const sourceHeader = useMemo(() => source ? <SourceStatus items={[{
-    key: 'catalog', label: source.label, updatedAt: source.updatedAt,
-    state: source.isStale ? 'cache' : 'live',
-  }]} /> : null, [source]);
-
-  return <FlatList testID="phigros-catalog-results-list"
-    data={songs} keyExtractor={songKey} {...TAB_LIST_CACHE_PROPS}
-    contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 20 }]}
-    scrollIndicatorInsets={{ bottom: tabBottomInset }}
-    ListHeaderComponent={sourceHeader}
-    renderItem={renderItem} />;
-});
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
