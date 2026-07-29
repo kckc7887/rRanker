@@ -122,54 +122,102 @@ function TagPresetSheet({ visible, tags, presets, historyTags, onClose, onSave, 
 
   return <AppModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}
     onShow={() => { setSelected(tags); setDraftPresets(presets); setMessage(''); setTimeout(capturePresetBounds, 0); }}>
-    <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}>
-      <View style={[styles.sheetHeader, { borderBottomColor: theme.border }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="取消标签选择" onPress={onClose}><Text style={{ color: theme.textMuted }}>取消</Text></Pressable>
+    <View testID="tag-preset-sheet" style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View testID="tag-preset-sheet-grabber" style={[styles.sheetGrabber, { backgroundColor: theme.border }]} />
+      <View style={styles.sheetHeader}>
         <Text style={[styles.sheetTitle, { color: theme.text }]}>标签预设</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="完成标签选择" onPress={() => void onSave(selected)}><Text style={{ color: theme.accent, fontWeight: '800' }}>完成</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="完成标签选择" hitSlop={12}
+          onPress={() => void onSave(selected)}
+          style={({ pressed }) => [styles.sheetDoneHit, pressed && styles.softPressed]}>
+          <Text style={[styles.sheetDone, { color: theme.accent }]}>完成</Text>
+        </Pressable>
       </View>
-      <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>预设标签</Text>
+      <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
+        <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>预设标签</Text>
         <Text style={[styles.sectionHint, { color: theme.textMuted }]}>点按选择；可删除或用箭头调整顺序</Text>
         <View ref={presetZone} onLayout={() => setTimeout(capturePresetBounds, 0)}
-          style={[styles.presetZone, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          {draftPresets.map((tag, index) => <View key={normalizeTagName(tag).key} style={styles.presetRow}>
-            <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)} onPress={() => toggle(tag)} />
-            <Pressable accessibilityLabel={`上移预设 ${tag}`} disabled={index === 0} onPress={() => {
+          testID="tag-preset-list" style={[styles.presetList, { backgroundColor: theme.surface }]}>
+          {draftPresets.map((tag, index) => <View key={normalizeTagName(tag).key}
+            style={[styles.presetRow, index > 0 && [styles.presetRowBorder, { borderTopColor: theme.border }]]}>
+            <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)}
+              layout="row" onPress={() => toggle(tag)} />
+            <Pressable accessibilityRole="button" accessibilityLabel={`上移预设 ${tag}`} disabled={index === 0}
+              onPress={() => {
               const next = [...draftPresets]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; void persistPresets(next);
-            }}><Text style={{ color: index === 0 ? theme.textMuted : theme.accent }}>↑</Text></Pressable>
-            <Pressable accessibilityLabel={`下移预设 ${tag}`} disabled={index === draftPresets.length - 1} onPress={() => {
+              }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                index === 0 && styles.disabled, pressed && index > 0 && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, { color: index === 0 ? theme.textMuted : theme.accent }]}>↑</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`下移预设 ${tag}`}
+              disabled={index === draftPresets.length - 1} onPress={() => {
               const next = [...draftPresets]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; void persistPresets(next);
-            }}><Text style={{ color: index === draftPresets.length - 1 ? theme.textMuted : theme.accent }}>↓</Text></Pressable>
-            <Pressable accessibilityLabel={`删除预设 ${tag}`} onPress={() => void persistPresets(draftPresets.filter((item) => item !== tag))}><Text style={{ color: theme.danger }}>×</Text></Pressable>
+              }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                index === draftPresets.length - 1 && styles.disabled,
+                pressed && index < draftPresets.length - 1 && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, {
+                color: index === draftPresets.length - 1 ? theme.textMuted : theme.accent,
+              }]}>↓</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`删除预设 ${tag}`}
+              onPress={() => void persistPresets(draftPresets.filter((item) => item !== tag))}
+              style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
+                pressed && styles.softPressed]}>
+              <Text style={[styles.iconButtonText, { color: theme.danger }]}>×</Text>
+            </Pressable>
           </View>)}
-          {!draftPresets.length ? <Text style={{ color: theme.textMuted }}>暂无预设，可从下方历史拖入</Text> : null}
+          {!draftPresets.length ? <Text style={[styles.presetEmptyText, { color: theme.textMuted }]}>暂无预设，可从下方历史拖入</Text> : null}
         </View>
         <View style={styles.inputRow}>
           <TextInput accessibilityLabel="新预设标签" placeholder="新增预设" placeholderTextColor={theme.textMuted}
             value={presetInput} onChangeText={setPresetInput} onSubmitEditing={() => void addPreset(presetInput)}
-            style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          <Pressable accessibilityLabel="添加预设标签" onPress={() => void addPreset(presetInput)} style={[styles.add, { backgroundColor: theme.accent }]}><Text style={styles.addText}>添加</Text></Pressable>
+            style={[styles.input, styles.sheetInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+          <Pressable accessibilityRole="button" accessibilityLabel="添加预设标签"
+            onPress={() => void addPreset(presetInput)}
+            style={({ pressed }) => [styles.sheetAdd, { backgroundColor: theme.accent }, pressed && styles.softPressed]}>
+            <Text style={styles.sheetAddText}>添加</Text>
+          </Pressable>
         </View>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>历史标签</Text>
+        <Text style={[styles.sectionLabel, styles.historyLabel, { color: theme.textMuted }]}>历史标签</Text>
         <Text style={[styles.sectionHint, { color: theme.textMuted }]}>点按选择；拖到上方可复制为预设</Text>
         <View style={styles.historyGrid}>
           {historyTags.map((tag) => <DraggableHistoryTag key={normalizeTagName(tag).key} tag={tag}
             selected={selectedKeys.has(normalizeTagName(tag).key)} onPress={() => toggle(tag)}
             onDrop={(pageY) => copyIfDropped(tag, pageY)} onCopy={() => void addPreset(tag)} />)}
-          {!historyTags.length ? <Text style={{ color: theme.textMuted }}>暂无其他歌曲使用过的标签</Text> : null}
+          {!historyTags.length ? <View style={[styles.historyEmpty, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.emptyCardText, { color: theme.textMuted }]}>暂无其他歌曲使用过的标签</Text>
+          </View> : null}
         </View>
-        {message ? <Text style={{ color: theme.danger }}>{message}</Text> : null}
+        {message ? <View style={[styles.messageCard, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.messageText, { color: theme.danger }]}>{message}</Text>
+        </View> : null}
       </ScrollView>
     </View>
   </AppModal>;
 }
 
-function SelectableTag({ tag, selected, onPress }: { tag: string; selected: boolean; onPress: () => void }) {
+function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
+  tag: string;
+  selected: boolean;
+  layout?: 'row' | 'chip';
+  onPress: () => void;
+}) {
   const theme = useAppTheme();
   return <Pressable accessibilityRole="checkbox" accessibilityLabel={`选择标签 ${tag}`} accessibilityState={{ checked: selected }}
-    onPress={onPress} style={[styles.selectableTag, { borderColor: selected ? theme.accent : theme.border, backgroundColor: selected ? theme.accentSoft : theme.surface }]}>
-    <Text style={{ color: selected ? theme.accent : theme.textSecondary, fontWeight: '700' }}>{tag}</Text>
+    onPress={onPress} style={({ pressed }) => [
+      layout === 'row' ? styles.rowSelection : styles.chipSelection,
+      layout === 'chip' && {
+        borderColor: selected ? theme.accent : theme.border,
+        backgroundColor: selected ? theme.accentSoft : theme.surface,
+      },
+      pressed && styles.softPressed,
+    ]}>
+    <View style={[styles.selectionBox, { borderColor: theme.border, backgroundColor: theme.input },
+      selected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
+      {selected ? <Text style={styles.selectionMark}>✓</Text> : null}
+    </View>
+    <Text style={[layout === 'row' ? styles.rowSelectionText : styles.chipSelectionText,
+      { color: selected ? theme.accent : theme.textSecondary }]}>{tag}</Text>
   </Pressable>;
 }
 
@@ -187,12 +235,13 @@ function DraggableHistoryTag({ tag, selected, onPress, onDrop, onCopy }: {
     onPanResponderTerminate: () => Animated.spring(offset, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start(),
   }), [offset, onDrop]);
   const theme = useAppTheme();
-  return <View style={styles.historyItem}>
+  return <View style={[styles.historyItem, { backgroundColor: theme.surface }]}>
     <Animated.View {...pan.panHandlers} style={{ transform: offset.getTranslateTransform(), zIndex: 10 }}>
       <SelectableTag tag={tag} selected={selected} onPress={onPress} />
     </Animated.View>
-    <Pressable accessibilityRole="button" accessibilityLabel={`复制到预设 ${tag}`} onPress={onCopy}>
-      <Text style={{ color: theme.accent, fontSize: 11 }}>复制到预设</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel={`复制到预设 ${tag}`} onPress={onCopy}
+      style={({ pressed }) => [styles.copyButton, pressed && styles.softPressed]}>
+      <Text style={[styles.copyText, { color: theme.accent }]}>复制到预设</Text>
     </Pressable>
   </View>;
 }
@@ -204,8 +253,101 @@ const styles = StyleSheet.create({
   input: { flex: 1, minHeight: 40, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 7 },
   add: { borderRadius: 8, paddingHorizontal: 13, justifyContent: 'center' }, addText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
   presetButton: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, justifyContent: 'center' }, presetText: { fontWeight: '700', fontSize: 12 },
-  error: { fontSize: 11 }, sheet: { flex: 1 }, sheetHeader: { minHeight: 56, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sheetTitle: { fontSize: 18, fontWeight: '800' }, sheetContent: { padding: 16, gap: 10 }, sectionTitle: { fontSize: 16, fontWeight: '800', marginTop: 6 }, sectionHint: { fontSize: 12 },
-  presetZone: { minHeight: 76, borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 }, presetRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  selectableTag: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 }, historyGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 10 }, historyItem: { alignItems: 'center', gap: 3 },
+  error: { fontSize: 11 },
+  sheet: { flex: 1 },
+  sheetGrabber: {
+    alignSelf: 'center',
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  sheetTitle: { fontSize: 18, fontWeight: '700' },
+  sheetDoneHit: { paddingVertical: 4, paddingHorizontal: 4 },
+  sheetDone: { fontSize: 16, fontWeight: '600' },
+  softPressed: { opacity: 0.7 },
+  disabled: { opacity: 0.55 },
+  sheetContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
+  sectionLabel: { fontSize: 13, fontWeight: '600', marginTop: 4 },
+  sectionHint: { fontSize: 12, lineHeight: 18, marginTop: -6 },
+  presetList: { minHeight: 76, borderRadius: 14, overflow: 'hidden' },
+  presetRow: {
+    minHeight: 58,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  presetRowBorder: { borderTopWidth: StyleSheet.hairlineWidth },
+  rowSelection: { flex: 1, minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rowSelectionText: { flex: 1, fontSize: 15, fontWeight: '600' },
+  chipSelection: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chipSelectionText: { fontSize: 14, fontWeight: '600' },
+  selectionBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectionMark: { color: '#FFF', fontSize: 14, fontWeight: '700', lineHeight: 16 },
+  iconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconButtonText: { fontSize: 17, fontWeight: '700', lineHeight: 20 },
+  emptyCardText: { fontSize: 13, lineHeight: 18 },
+  presetEmptyText: { padding: 16, fontSize: 13, lineHeight: 18 },
+  historyLabel: { marginTop: 8 },
+  sheetInput: {
+    minHeight: 48,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 17,
+  },
+  sheetAdd: {
+    minWidth: 72,
+    minHeight: 48,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetAddText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  historyGrid: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 10 },
+  historyItem: {
+    flexGrow: 1,
+    flexBasis: 140,
+    maxWidth: 240,
+    borderRadius: 12,
+    padding: 10,
+    gap: 4,
+  },
+  copyButton: { alignSelf: 'flex-end', minHeight: 28, paddingHorizontal: 4, justifyContent: 'center' },
+  copyText: { fontSize: 12, fontWeight: '600' },
+  historyEmpty: { flex: 1, borderRadius: 12, padding: 16 },
+  messageCard: { borderRadius: 12, padding: 14 },
+  messageText: { fontSize: 13, lineHeight: 18 },
 });
