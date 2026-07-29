@@ -116,6 +116,79 @@ describe('SqliteUserLibraryRepository', () => {
     expect(migrationSql).not.toContain('RENAME TO "user_library_items_legacy"');
   });
 
+  it('restores the rolled-back experimental schema 5 to the current schema', async () => {
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 5 });
+    const experimentalChartKey = 'chart:phigros:phigros%3A12%3Adefault%3A2';
+    sqlite.db.getAllAsync.mockImplementation(async (sql: string) => {
+      if (sql.includes('PRAGMA table_info(user_library_items)')) {
+        return [{ name: 'item_key' }, { name: 'chart_id' }];
+      }
+      if (sql.includes('SELECT item_key, game_id, kind, song_id, chart_id')) {
+        return [{
+          item_key: 'song:phigros:12',
+          game_id: 'phigros',
+          kind: 'song',
+          song_id: '12',
+          chart_id: null,
+          chart_type: null,
+          level_index: null,
+          is_favorite: 1,
+          is_practice: 0,
+          created_at: '2026-07-29T00:00:00.000Z',
+          updated_at: '2026-07-29T00:00:00.000Z',
+        }, {
+          item_key: experimentalChartKey,
+          game_id: 'phigros',
+          kind: 'chart',
+          song_id: '12',
+          chart_id: 'phigros:12:default:2',
+          chart_type: null,
+          level_index: null,
+          is_favorite: 0,
+          is_practice: 1,
+          created_at: '2026-07-29T00:00:00.000Z',
+          updated_at: '2026-07-29T00:00:00.000Z',
+        }];
+      }
+      if (sql.includes('SELECT item_key, tag_id FROM user_library_item_tags')) {
+        return [{ item_key: experimentalChartKey, tag_id: 7 }];
+      }
+      if (sql.includes('sqlite_master')) {
+        return [{
+          name: 'user_library_items',
+          sql: "CREATE TABLE user_library_items (chart_type TEXT CHECK (chart_type IN ('SD', 'DX', 'UTAGE')))",
+        }, {
+          name: 'user_library_item_tags',
+          sql: 'CREATE TABLE user_library_item_tags (item_key TEXT, tag_id INTEGER)',
+        }];
+      }
+      return [];
+    });
+
+    const repository = new SqliteUserLibraryRepository();
+    await expect(repository.list()).resolves.toEqual([]);
+
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT OR REPLACE INTO "user_library_items_utage_'),
+      'song:phigros:12', 'phigros', 'song', '12', null, null, 1, 0,
+      '2026-07-29T00:00:00.000Z', '2026-07-29T00:00:00.000Z',
+    );
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT OR REPLACE INTO "user_library_items_utage_'),
+      'chart:phigros:12:SD:2', 'phigros', 'chart', '12', 'SD', 2, 0, 1,
+      '2026-07-29T00:00:00.000Z', '2026-07-29T00:00:00.000Z',
+    );
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT OR IGNORE INTO "user_library_item_tags_utage_'),
+      'chart:phigros:12:SD:2',
+      7,
+    );
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'UPDATE user_library_meta SET schema_version = ? WHERE id = 1',
+      4,
+    );
+  });
+
   it('clears personal tables inside a same-connection transaction', async () => {
     const repository = new SqliteUserLibraryRepository();
     await repository.clear();
