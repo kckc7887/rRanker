@@ -1,6 +1,5 @@
 import { memo } from 'react';
-import { router, type Href } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
@@ -10,6 +9,8 @@ import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { formatPushAcc } from '@/domain/phigros-push';
 import { resolvePhigrosXingKind } from '@/domain/phigros-xing';
 import { useAppTheme } from '@/theme/app-theme';
+import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { presentPhigrosScore } from '@/features/game-content/adapters';
 
 export type PhigrosPushHint = {
   currentAcc: number;
@@ -42,22 +43,21 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   const rate = resolvePhigrosRate(record);
   const xingKind = resolvePhigrosXingKind(acc, totalNotes, record.fc === 'ap');
   const title = catalogTitle ?? record.title;
-  const openDetail = () => router.push({
-    pathname: '/songs/[songId]',
-    params: { songId: record.songId, levelIndex: String(record.levelIndex) },
-  } as Href);
+  const presentation = presentPhigrosScore(record, title, rank);
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`查看谱面 ${title}`}
-      onPress={openDetail}
-      style={[styles.card, { backgroundColor: theme.surface }]}
-    >
-      <View style={styles.main}>
-        <Text numberOfLines={1} style={[styles.title, { color: theme.text }]}>
-          {rank ? `${rank}. ` : ''}{title}
+    <GameScoreCard
+      cardStyle={styles.card}
+      mainStyle={styles.main}
+      presentation={presentation}
+      side={<View style={styles.stats}>
+        <Text style={[styles.acc, { color: theme.text }]}>
+          {pushHint ? formatPushAcc(pushHint.targetAcc) : accText}
         </Text>
+        <Text style={[styles.rks, { color: theme.accent }]}>{rksText}</Text>
+      </View>}
+      titleStyle={styles.title}
+    >
         <PhigrosScoreValue
           score={score}
           variant={isPhi ? 'phi' : isFc ? 'fc' : 'normal'}
@@ -81,14 +81,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
             </Text>
           </Text>
         ) : null}
-      </View>
-      <View style={styles.stats}>
-        <Text style={[styles.acc, { color: theme.text }]}>
-          {pushHint ? formatPushAcc(pushHint.targetAcc) : accText}
-        </Text>
-        <Text style={[styles.rks, { color: theme.accent }]}>{rksText}</Text>
-      </View>
-    </Pressable>
+    </GameScoreCard>
   );
 });
 
