@@ -80,7 +80,7 @@
 
 - 中二曲库使用独立 schema、provider 和缓存键 `chunithm-catalog`，不把谱面伪装成舞萌 SD/DX。
 - `Song.version` 与谱面 `version` 按 `versions[].version` 向下匹配最近主版本；没有可匹配项时保留原始数字。
-- 首版搜索仅使用歌曲 ID、曲名、艺术家和谱师，不拉取别名，也不提供高级筛选。
+- 搜索使用歌曲 ID、曲名、艺术家和谱师，不拉取别名；曲库和成绩按谱面难度、谱面版本、定数本地筛选，成绩另支持评价标签上下限。
 - 曲绘地址为 `https://assets2.lxns.net/chunithm/jacket/{song_id}.png`。列表只加载可见项并使用磁盘缓存，避免触发素材访问频率限制。
 - WORLD'S END 保留 `origin_id / kanji / star` 专属字段；曲绘优先使用 `origin_id`，难度以 `{kanji}☆{star}` 展示，`level_value` 仅为协议保真字段，不作为普通定数展示或推算 Rating。
 - 中二已复用 LXNS PKCE + OOB OAuth，个人玩家和成绩使用独立模型；旧临时账号只作历史兼容，正式绑定后自动移除。

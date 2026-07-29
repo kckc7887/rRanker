@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useMemo, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
@@ -13,7 +13,9 @@ import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import { ChunithmSongRow } from '@/components/chunithm/ChunithmSongRow';
+import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import type { ChunithmSong } from '@/domain/chunithm';
+import { matchesChunithmChartFilter } from '@/domain/chunithm-filters';
 import { parseConstantBound } from '@/domain/maimai-filters';
 import { phigrosLevelToDifficulty } from '@/domain/phigros-filters';
 import type { Chart, ChartType, Song } from '@/domain/models';
@@ -27,6 +29,7 @@ import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useCatalogFilter } from '@/state/catalog-filter';
+import { useChunithmCatalogFilter } from '@/state/chunithm-catalog-filter';
 import { usePhigrosCatalogFilter } from '@/state/phigros-catalog-filter';
 import {
   buildSearchDocument,
@@ -241,7 +244,10 @@ function ChunithmSearchScreen() {
   const query = useChunithmCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
-  const [keyword, setKeyword] = useState('');
+  const {
+    keyword, collapsed, difficulty, version, constantMin, constantMax,
+    setKeyword, setCollapsed, setDifficulty, setVersion, setConstantMin, setConstantMax, clearFilters,
+  } = useChunithmCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const searchDocuments = useMemo(() => new Map(
     (query.data?.songs ?? []).map((song) => [
@@ -256,15 +262,39 @@ function ChunithmSearchScreen() {
       ]),
     ] as const),
   ), [query.data?.songs]);
+  const filterSpec = useMemo(() => ({
+    keyword: debouncedKeyword,
+    difficulty,
+    version,
+    constantMin,
+    constantMax,
+  }), [constantMax, constantMin, debouncedKeyword, difficulty, version]);
+  const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo(() => {
     const songs = query.data?.songs ?? [];
-    if (!debouncedKeyword.trim()) return songs;
-    return songs.filter((song) => {
-      const document = searchDocuments.get(song.id);
-      return document ? searchDocumentMatches(document, debouncedKeyword) : false;
+    return songs.flatMap((song) => {
+      if (deferredFilterSpec.keyword.trim()) {
+        const document = searchDocuments.get(song.id);
+        if (!document || !searchDocumentMatches(document, deferredFilterSpec.keyword)) return [];
+      }
+      const difficulties = song.difficulties.filter((chart) => matchesChunithmChartFilter(
+        chart,
+        deferredFilterSpec,
+      ));
+      return difficulties.length ? [{ song, difficulties }] : [];
     });
-  }, [debouncedKeyword, query.data?.songs, searchDocuments]);
-  const isSearching = keyword !== debouncedKeyword;
+  }, [deferredFilterSpec, query.data?.songs, searchDocuments]);
+  const isFiltering = filterSpec !== deferredFilterSpec;
+  const selectedVersionTitle = deferredFilterSpec.version === 'all'
+    ? undefined
+    : query.data?.versions.find((item) => String(item.id) === deferredFilterSpec.version)?.title;
+  const hasActiveFilters = !!(
+    keyword.trim()
+    || difficulty !== 'all'
+    || version !== 'all'
+    || constantMin
+    || constantMax
+  );
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
@@ -282,21 +312,35 @@ function ChunithmSearchScreen() {
           ]}
         />
         <Text style={[styles.resultCount, { color: theme.textMuted }]}>
-          {isSearching ? '正在搜索…' : `共 ${filtered.length} 首`}
+          {isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}
         </Text>
       </View>
-      <CatalogListPage<ChunithmSong>
+      <ChunithmFilterBar
+        collapsed={collapsed}
+        constantMax={constantMax}
+        constantMin={constantMin}
+        difficulty={difficulty}
+        onCollapsedChange={setCollapsed}
+        onConstantMaxChange={setConstantMax}
+        onConstantMinChange={setConstantMin}
+        onDifficultyChange={setDifficulty}
+        onReset={clearFilters}
+        onVersionChange={setVersion}
+        version={version}
+        versions={query.data?.versions ?? []}
+      />
+      <CatalogListPage<{ song: ChunithmSong; difficulties: ChunithmSong['difficulties'] }>
         isLoading={query.isLoading}
         isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}
         error={query.error}
         onRetry={() => void query.refetch()}
-        emptyText={keyword.trim() ? '搜索结果为空' : '暂无曲库数据'}
+        emptyText={hasActiveFilters ? '筛选结果为空' : '暂无曲库数据'}
         data={query.data && filtered.length > 0 ? filtered : undefined}
         flatListProps={{
           testID: 'chunithm-catalog-results-list',
           contentInsetAdjustmentBehavior: 'automatic',
-          keyExtractor: (song) => String(song.id),
+          keyExtractor: (item) => String(item.song.id),
           ...TAB_LIST_CACHE_PROPS,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
           scrollIndicatorInsets: { bottom: tabBottomInset },
@@ -306,7 +350,13 @@ function ChunithmSearchScreen() {
             updatedAt: query.data.source.updatedAt,
             state: query.data.source.isStale ? 'cache' : 'live',
           }]} /> : null,
-          renderItem: ({ item }) => <ChunithmSongRow song={item} />,
+          renderItem: ({ item }) => (
+            <ChunithmSongRow
+              displayedDifficulties={item.difficulties}
+              displayedVersionTitle={selectedVersionTitle}
+              song={item.song}
+            />
+          ),
         }}
       />
     </View>

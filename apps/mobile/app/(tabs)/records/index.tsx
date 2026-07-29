@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useMemo } from 'react';
 import { StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -10,7 +10,9 @@ import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
+import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import { matchesAchievementRange, matchesConstantRange, matchesMultiAchievementFilter, matchesSoloAchievementFilter } from '@/domain/maimai-filters';
+import { matchesChunithmConstantRange, matchesChunithmRankRange } from '@/domain/chunithm-filters';
 import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
 import { matchesPhigrosXingFilter, phigrosChartNoteKey } from '@/domain/phigros-xing';
 import {
@@ -29,6 +31,7 @@ import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
+import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
@@ -170,7 +173,11 @@ function ChunithmRecordsScreen() {
   const session = useSession((state) => state.session);
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
-  const [keyword, setKeyword] = useState('');
+  const {
+    keyword, collapsed, difficulty, version, constantMin, constantMax, rankMin, rankMax,
+    setKeyword, setCollapsed, setDifficulty, setVersion, setConstantMin, setConstantMax,
+    setRankMin, setRankMax, clearFilters,
+  } = useChunithmRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const payload = gameData.data?.payload.kind === 'chunithm'
     ? gameData.data.payload
@@ -193,13 +200,47 @@ function ChunithmRecordsScreen() {
       ]),
     ]),
   ), [cards]);
+  const filterSpec = useMemo(() => ({
+    keyword: debouncedKeyword,
+    difficulty,
+    version,
+    constantMin,
+    constantMax,
+    rankMin,
+    rankMax,
+  }), [constantMax, constantMin, debouncedKeyword, difficulty, rankMax, rankMin, version]);
+  const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo(() => {
-    if (!debouncedKeyword.trim()) return cards;
     return cards.filter((card) => {
-      const document = searchDocuments.get(card.key);
-      return document ? searchDocumentMatches(document, debouncedKeyword) : false;
+      if (deferredFilterSpec.keyword.trim()) {
+        const document = searchDocuments.get(card.key);
+        if (!document || !searchDocumentMatches(document, deferredFilterSpec.keyword)) return false;
+      }
+      if (deferredFilterSpec.difficulty !== 'all' && card.levelIndex !== deferredFilterSpec.difficulty) {
+        return false;
+      }
+      if (deferredFilterSpec.version !== 'all' && String(card.versionId) !== deferredFilterSpec.version) {
+        return false;
+      }
+      if (!matchesChunithmConstantRange(
+        card.difficultyConstant,
+        deferredFilterSpec.constantMin,
+        deferredFilterSpec.constantMax,
+      )) {
+        return false;
+      }
+      return matchesChunithmRankRange(card.rank, deferredFilterSpec.rankMin, deferredFilterSpec.rankMax);
     });
-  }, [cards, debouncedKeyword, searchDocuments]);
+  }, [cards, deferredFilterSpec, searchDocuments]);
+  const hasActiveFilters = !!(
+    keyword.trim()
+    || difficulty !== 'all'
+    || version !== 'all'
+    || constantMin
+    || constantMax
+    || rankMin
+    || rankMax
+  );
   const isLoading = gameData.isLoading || catalogQuery.isLoading;
   const isError = gameData.isError || catalogQuery.isError;
   const error = gameData.error ?? catalogQuery.error;
@@ -233,9 +274,27 @@ function ChunithmRecordsScreen() {
           value={keyword}
         />
       </View>
+      <ChunithmFilterBar
+        collapsed={collapsed}
+        constantMax={constantMax}
+        constantMin={constantMin}
+        difficulty={difficulty}
+        onCollapsedChange={setCollapsed}
+        onConstantMaxChange={setConstantMax}
+        onConstantMinChange={setConstantMin}
+        onDifficultyChange={setDifficulty}
+        onRankMaxChange={setRankMax}
+        onRankMinChange={setRankMin}
+        onReset={clearFilters}
+        onVersionChange={setVersion}
+        rankMax={rankMax}
+        rankMin={rankMin}
+        version={version}
+        versions={catalogQuery.data?.versions ?? []}
+      />
       <RecordsListPage<ChunithmScoreCardData>
         data={!isLoading && filtered.length ? filtered : undefined}
-        emptyText={keyword.trim() ? '没有匹配的中二成绩' : '落雪尚未同步中二成绩'}
+        emptyText={hasActiveFilters ? '当前筛选条件下没有中二成绩' : '落雪尚未同步中二成绩'}
         error={error}
         isEmpty={!isLoading && filtered.length === 0}
         isError={isError}
