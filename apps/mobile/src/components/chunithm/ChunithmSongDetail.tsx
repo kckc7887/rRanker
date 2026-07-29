@@ -2,7 +2,7 @@ import { type ComponentProps, useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, Stack } from 'expo-router';
+import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   Linking,
@@ -21,6 +21,7 @@ import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
+import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
 import {
@@ -158,18 +159,6 @@ export function ChunithmSongDetail({
 
   return (
     <>
-      <Stack.Screen options={{
-        title: '',
-        headerTransparent: true,
-        headerShadowVisible: false,
-        headerTintColor: '#FFFFFF',
-        headerStyle: { backgroundColor: 'transparent' },
-        headerBackground: () => null,
-        headerShown: Platform.OS !== 'android',
-        headerBackVisible: false,
-        headerLeft: () => null,
-        headerRight: () => null,
-      }} />
       <StatusBar style="light" />
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <QueryStateView<ChunithmSong>
@@ -292,6 +281,12 @@ function ChunithmDetailBody({
   const initialIndex = requestedIndex >= 0 ? requestedIndex : masterIndex >= 0 ? masterIndex : 0;
   const songItem = library.data?.find((item) => item.key === library.songKey(String(song.id)));
   const mapValue = song.map?.trim();
+  const metadataItems: SongMetadataItem[] = [
+    { key: 'genre', label: '分类', value: song.genre || '未提供', flex: 1 },
+    { key: 'bpm', label: 'BPM', value: song.bpm ? String(song.bpm) : '未提供', flex: 1 },
+    { key: 'version', label: '版本', value: song.versionTitle || '未提供', flex: 1 },
+    ...(mapValue ? [{ key: 'map', label: '地图', value: mapValue, flex: 1 }] : []),
+  ];
 
   return (
     <ScrollView
@@ -300,15 +295,17 @@ function ChunithmDetailBody({
       testID="chunithm-song-detail-scroll"
     >
       <Hero song={song} width={width} />
-      <View
+      <SongMetadataTable
         accessibilityLabel="中二歌曲详情数据"
-        style={[styles.metadataTable, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}
-      >
-        <MetadataCell flex={1} label="分类" value={song.genre || '未提供'} />
-        <MetadataCell flex={1} label="BPM" value={song.bpm ? String(song.bpm) : '未提供'} />
-        <MetadataCell flex={1} label="版本" value={song.versionTitle || '未提供'} />
-        {mapValue ? <MetadataCell flex={1} label="地图" value={mapValue} /> : null}
-      </View>
+        cellStyle={styles.metadataCell}
+        items={metadataItems}
+        labelStyle={styles.metadataLabel}
+        measureStyle={styles.metadataValueMeasure}
+        style={styles.metadataTable}
+        testIDPrefix="chunithm-metadata"
+        valueBlockStyle={styles.metadataValueBlock}
+        valueStyle={styles.metadataValue}
+      />
 
       <DifficultyCarousel
         cardWidth={cardWidth}
@@ -379,67 +376,6 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
         <HorizontalText text={song.artist ?? '艺术家未知'} textStyle={styles.artist} />
       </View>
     </View>
-  );
-}
-
-function MetadataValue({
-  label,
-  value,
-  expanded,
-  onOverflowChange,
-}: {
-  label: string;
-  value: string;
-  expanded: boolean;
-  onOverflowChange: (overflow: boolean) => void;
-}) {
-  const theme = useAppTheme();
-  return (
-    <View style={styles.metadataValueBlock}>
-      <Text
-        accessible={false}
-        onTextLayout={(event) => onOverflowChange(event.nativeEvent.lines.length > 2)}
-        style={[styles.metadataValue, styles.metadataValueMeasure, { color: theme.text }]}
-        testID={`chunithm-metadata-measure-${label}`}
-      >
-        {value}
-      </Text>
-      <Text
-        ellipsizeMode="tail"
-        numberOfLines={expanded ? undefined : 2}
-        style={[styles.metadataValue, { color: theme.text }]}
-        testID={`chunithm-metadata-value-${label}`}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function MetadataCell({ label, value, flex }: { label: string; value: string; flex: number }) {
-  const theme = useAppTheme();
-  const [expanded, setExpanded] = useState(false);
-  const [overflow, setOverflow] = useState(false);
-  useEffect(() => {
-    setExpanded(false);
-    setOverflow(false);
-  }, [value]);
-  return (
-    <Pressable
-      accessibilityLabel={overflow ? `${expanded ? '收起' : '展开'}${label}` : undefined}
-      accessibilityRole={overflow ? 'button' : undefined}
-      disabled={!overflow}
-      onPress={() => setExpanded((current) => !current)}
-      style={[styles.metadataCell, { flex }]}
-    >
-      <Text numberOfLines={1} style={[styles.metadataLabel, { color: theme.textMuted }]}>{label}</Text>
-      <MetadataValue
-        expanded={expanded}
-        label={label}
-        onOverflowChange={setOverflow}
-        value={value}
-      />
-    </Pressable>
   );
 }
 
