@@ -10,7 +10,6 @@ import {
   type ListRenderItem,
 } from 'react-native';
 import { router, Stack, type Href } from 'expo-router';
-import * as Location from 'expo-location';
 import { useNotification } from '@/components/AppNotification';
 import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
@@ -21,7 +20,6 @@ import {
   formatArcadeAddress,
   formatArcadeDistanceKm,
   formatArcadeGamesSummary,
-  formatArcadeGeocodedLabel,
   filterArcadeShops,
   type ArcadeGameTitle,
   type ArcadeOrigin,
@@ -36,31 +34,10 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { fetchNearcadeDiscover, fetchNearcadeGameTitles } from '@/services/nearcade-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { acquireArcadeGpsOrigin } from '@/utils/acquire-arcade-gps-origin';
 import { openArcadeNavigation } from '@/utils/open-arcade-navigation';
 
 type LoadErrorKind = 'permission' | 'location' | 'network' | null;
-
-async function acquireGpsOrigin(): Promise<ArcadeOrigin> {
-  const permission = await Location.requestForegroundPermissionsAsync();
-  if (permission.status !== 'granted') {
-    throw new Error('permission');
-  }
-  const position = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.Balanced,
-  });
-  const latitude = position.coords.latitude;
-  const longitude = position.coords.longitude;
-  let label = '当前位置';
-  try {
-    const places = await Location.reverseGeocodeAsync({ latitude, longitude });
-    if (places[0]) {
-      label = formatArcadeGeocodedLabel(places[0]) || label;
-    }
-  } catch {
-    // Keep the generic GPS label when reverse geocode is unavailable.
-  }
-  return { source: 'gps', latitude, longitude, label };
-}
 
 function ArcadeShopCard({
   shop,
@@ -166,7 +143,7 @@ export default function ArcadeFinderScreen() {
     setLocatingOrigin(true);
     setErrorKind(null);
     try {
-      const next = await acquireGpsOrigin();
+      const next = await acquireArcadeGpsOrigin();
       setOrigin(next);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -249,7 +226,7 @@ export default function ArcadeFinderScreen() {
   const errorText = errorKind === 'permission'
     ? '需要定位权限才能查找附近机厅'
     : errorKind === 'location'
-      ? '定位失败，请稍后重试'
+      ? '定位失败，请开启系统定位或点击筛选栏设置搜索原点'
       : errorKind === 'network'
         ? '机厅数据加载失败，请检查网络后重试'
         : null;
