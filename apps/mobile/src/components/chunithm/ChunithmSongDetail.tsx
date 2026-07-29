@@ -544,7 +544,7 @@ function DifficultyCard({
   const ultima = difficulty.difficulty === 4;
   const worldsEnd = difficulty.difficulty === 5;
   const specialCard = ultima || worldsEnd;
-  const inverted = ultima || (worldsEnd && theme.dark);
+  const inverted = ultima || worldsEnd;
   const primaryText = inverted ? '#FFFFFF' : worldsEnd ? '#261C38' : theme.text;
   const secondaryText = inverted
     ? 'rgba(255,255,255,0.78)'
@@ -739,11 +739,7 @@ function DifficultyCard({
             pointerEvents="none"
             style={[
               styles.worldsEndCardOverlay,
-              {
-                backgroundColor: theme.dark
-                  ? 'rgba(20,14,38,0.62)'
-                  : 'rgba(208,208,212,0.52)',
-              },
+              { backgroundColor: 'rgba(20,14,38,0.62)' },
             ]}
             testID="chunithm-worlds-end-card-overlay"
           />

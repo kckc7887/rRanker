@@ -307,7 +307,12 @@ describe('Chunithm song detail', () => {
     expect(screen.getByTestId('chunithm-detail-difficulty-5').props.colors)
       .toEqual(worldsEnd.getByTestId('chunithm-worlds-end-badge').props.colors);
     expect(StyleSheet.flatten(worldsEnd.getByTestId('chunithm-worlds-end-card-overlay').props.style))
-      .toMatchObject({ backgroundColor: 'rgba(208,208,212,0.52)' });
+      .toMatchObject({ backgroundColor: 'rgba(20,14,38,0.62)' });
+    expect(StyleSheet.flatten(worldsEnd.getByText('止☆1').props.style))
+      .toMatchObject({ color: '#FFFFFF' });
+    expect(StyleSheet.flatten(
+      worldsEnd.getByTestId('chunithm-special-tag-surface-5').props.style,
+    )).toMatchObject({ backgroundColor: 'rgba(255,255,255,0.94)' });
     expect(worldsEnd.getByText("WORLD'S END")).toBeTruthy();
     expect(worldsEnd.getByText('止☆1')).toBeTruthy();
     expect(worldsEnd.getAllByText('—').length).toBeGreaterThan(0);
