@@ -14,71 +14,76 @@ class MemoryStore {
 
 describe('phigros random charts preferences', () => {
   it('returns defaults for invalid payloads', () => {
-    expect(parsePhigrosRandomChartsPreferences(null)).toEqual(defaultPhigrosRandomChartsPreferences());
-    expect(parsePhigrosRandomChartsPreferences({ version: 2, count: 3 })).toEqual(defaultPhigrosRandomChartsPreferences());
+    expect(parsePhigrosRandomChartsPreferences(null))
+      .toEqual(defaultPhigrosRandomChartsPreferences());
+    expect(parsePhigrosRandomChartsPreferences({ version: 9, count: 3 }))
+      .toEqual(defaultPhigrosRandomChartsPreferences());
   });
 
-  it('keeps valid filter fields and drops remaster/unknowns', () => {
+  it('migrates legacy count, one difficulty and constants while dropping played', () => {
     expect(parsePhigrosRandomChartsPreferences({
       version: 1,
       count: 3,
-      difficulties: ['master', 'master', 'unknown', 'remaster', 'expert'],
+      difficulties: ['expert'],
       constantMin: ' 13.0 ',
       constantMax: '15',
       played: 'unplayed',
-      extra: true,
     })).toEqual({
+      ...defaultPhigrosRandomChartsPreferences(),
       count: 3,
-      difficulties: ['master', 'expert'],
+      level: 2,
       constantMin: '13.0',
       constantMax: '15',
-      played: 'unplayed',
     });
+    expect(parsePhigrosRandomChartsPreferences({
+      version: 1,
+      difficulties: ['expert', 'master'],
+    }).level).toBe('all');
   });
 
-  it('persists and restores preferences', async () => {
+  it('persists the complete independent records-style filter', async () => {
     const storage = new MemoryStore();
     const store = new PhigrosRandomChartsPreferencesStore(storage);
     const value = {
+      ...defaultPhigrosRandomChartsPreferences(),
       count: 2 as const,
-      difficulties: ['expert' as const],
+      level: 2 as const,
       constantMin: '12',
       constantMax: '13.5',
-      played: 'played' as const,
+      accuracyMin: '99',
+      rank: 'v' as const,
+      xing: 'good' as const,
     };
     await store.save(value);
     await expect(store.load()).resolves.toEqual(value);
   });
 
-  it('hydrates zustand state and keeps subsequent edits', async () => {
+  it('hydrates Zustand state and persists subsequent edits', async () => {
     const storage = new MemoryStore();
     const preferences = new PhigrosRandomChartsPreferencesStore(storage);
     await preferences.save({
+      ...defaultPhigrosRandomChartsPreferences(),
       count: 4,
-      difficulties: ['basic'],
+      level: 0,
       constantMin: '1',
       constantMax: '8',
-      played: 'all',
     });
     const useStore = createPhigrosRandomChartsFilterStore(preferences);
     await useStore.getState().hydrate();
     expect(useStore.getState()).toMatchObject({
       hydrated: true,
       count: 4,
-      difficulties: ['basic'],
+      level: 0,
       constantMin: '1',
       constantMax: '8',
-      played: 'all',
     });
     useStore.getState().setCount(2);
-    useStore.getState().setPlayed('unplayed');
+    useStore.getState().setRank('v');
     await vi.waitFor(async () => {
-      await expect(preferences.load()).resolves.toEqual({
+      await expect(preferences.load()).resolves.toMatchObject({
         count: 2,
-        difficulties: ['basic'],
-        constantMin: '1',
-        constantMax: '8',
-        played: 'unplayed',
+        level: 0,
+        rank: 'v',
       });
     });
   });

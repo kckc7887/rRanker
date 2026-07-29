@@ -28,16 +28,20 @@ describe('per-game toolbox registry', () => {
     expect(summarizeGameTools('phigros')).toBe('推分计算 · 随机歌曲 · 机厅查找 · 成绩图片');
   });
 
+  it('registers random songs and arcade finder for Chunithm', () => {
+    const toolbox = getGameToolbox('chunithm');
+    expect(toolbox.tools.map((tool) => tool.id)).toEqual([
+      'random-charts',
+      'arcade-finder',
+    ]);
+    expect(summarizeGameTools('chunithm')).toBe('随机歌曲 · 机厅查找');
+  });
+
   it('keeps profile capabilities consistent with registered tools', () => {
     const gameIds: GameId[] = ['maimai', 'chunithm', 'phigros', 'test'];
     for (const gameId of gameIds) {
-      if (gameId === 'chunithm') {
-        expect(getGameProfile(gameId).capabilities.hasTools).toBe(true);
-        expect(getGameToolbox(gameId).tools).toHaveLength(0);
-      } else {
-        expect(getGameProfile(gameId).capabilities.hasTools)
-          .toBe(getGameToolbox(gameId).tools.length > 0);
-      }
+      expect(getGameProfile(gameId).capabilities.hasTools)
+        .toBe(getGameToolbox(gameId).tools.length > 0);
     }
   });
 });

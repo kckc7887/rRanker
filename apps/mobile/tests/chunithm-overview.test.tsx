@@ -199,7 +199,7 @@ describe('Chunithm overview', () => {
     expect(screen.getByText('当前版本：CHUNITHM VERSE')).toBeTruthy();
     expect(screen.getByText(/^更新时间：/)).toBeTruthy();
     expect(screen.getByText('收藏 0 首 · 练习 0 张')).toBeTruthy();
-    expect(screen.getByText('中二节奏工具正在准备中。')).toBeTruthy();
+    expect(screen.getByText('随机歌曲 · 机厅查找')).toBeTruthy();
     const upload = screen.getByLabelText('上传数据，打开同步引导');
     expect(screen.getByText('同步引导')).toBeTruthy();
 

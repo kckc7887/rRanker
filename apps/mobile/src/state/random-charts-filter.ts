@@ -1,21 +1,31 @@
 import { create } from 'zustand';
-import type { Difficulty } from '@/domain/models';
-import type { RandomPlayedFilter } from '@/domain/random-charts';
+import type { MaimaiFcAchievement, MaimaiFsAchievement } from '@/domain/maimai-filters';
+import type { ChartType, Difficulty } from '@/domain/models';
 import {
   defaultRandomChartsPreferences,
   randomChartsPreferencesStore,
   type RandomChartsCount,
   type RandomChartsPreferences,
 } from '@/features/toolbox/random-charts-preferences';
+import type { VersionNameLocale } from '@/domain/version-names';
 
 type RandomChartsFilterState = RandomChartsPreferences & {
   hydrated: boolean;
+  collapsed: boolean;
   hydrate: () => Promise<void>;
-  setCount: (count: RandomChartsCount) => void;
-  setDifficulties: (difficulties: Difficulty[]) => void;
-  setConstantMin: (constantMin: string) => void;
-  setConstantMax: (constantMax: string) => void;
-  setPlayed: (played: RandomPlayedFilter) => void;
+  setCount: (value: RandomChartsCount) => void;
+  setCollapsed: (value: boolean) => void;
+  setDifficulty: (value: Difficulty | 'all') => void;
+  setVersion: (value: string | 'all') => void;
+  setType: (value: ChartType | 'all') => void;
+  setConstantMin: (value: string) => void;
+  setConstantMax: (value: string) => void;
+  setAchievementMin: (value: string) => void;
+  setAchievementMax: (value: string) => void;
+  setSoloAchievement: (value: MaimaiFcAchievement | null) => void;
+  setMultiAchievement: (value: MaimaiFsAchievement | null) => void;
+  setVersionLocale: (value: VersionNameLocale) => void;
+  clearFilters: () => void;
 };
 
 type PreferencesAccess = Pick<typeof randomChartsPreferencesStore, 'load' | 'save'>;
@@ -23,10 +33,16 @@ type PreferencesAccess = Pick<typeof randomChartsPreferencesStore, 'load' | 'sav
 function preferencesFromState(state: RandomChartsPreferences): RandomChartsPreferences {
   return {
     count: state.count,
-    difficulties: state.difficulties,
+    difficulty: state.difficulty,
+    version: state.version,
+    type: state.type,
     constantMin: state.constantMin,
     constantMax: state.constantMax,
-    played: state.played,
+    achievementMin: state.achievementMin,
+    achievementMax: state.achievementMax,
+    soloAchievement: state.soloAchievement,
+    multiAchievement: state.multiAchievement,
+    versionLocale: state.versionLocale,
   };
 }
 
@@ -46,35 +62,53 @@ export function createRandomChartsFilterStore(
       });
       saveQueue = operation.catch(() => undefined);
     };
-
     const update = (patch: Partial<RandomChartsPreferences>) => {
       if (!get().hydrated) dirtyBeforeHydrate = true;
       set(patch);
       persist();
     };
+    const clearPatch = () => {
+      const defaults = defaultRandomChartsPreferences();
+      return {
+        difficulty: defaults.difficulty,
+        version: defaults.version,
+        type: defaults.type,
+        constantMin: defaults.constantMin,
+        constantMax: defaults.constantMax,
+        achievementMin: defaults.achievementMin,
+        achievementMax: defaults.achievementMax,
+        soloAchievement: defaults.soloAchievement,
+        multiAchievement: defaults.multiAchievement,
+      };
+    };
 
     return {
       hydrated: false,
+      collapsed: true,
       ...defaultRandomChartsPreferences(),
       hydrate: async () => {
         if (get().hydrated) return;
         hydrationPromise ??= preferences.load().then((stored) => {
           if (get().hydrated) return;
-          if (dirtyBeforeHydrate) {
-            set({ hydrated: true });
-            return;
-          }
-          set({ hydrated: true, ...stored });
+          set(dirtyBeforeHydrate ? { hydrated: true } : { hydrated: true, ...stored });
         }).finally(() => {
           hydrationPromise = null;
         });
         await hydrationPromise;
       },
       setCount: (count) => update({ count }),
-      setDifficulties: (difficulties) => update({ difficulties }),
+      setCollapsed: (collapsed) => set({ collapsed }),
+      setDifficulty: (difficulty) => update({ difficulty }),
+      setVersion: (version) => update({ version }),
+      setType: (type) => update({ type }),
       setConstantMin: (constantMin) => update({ constantMin }),
       setConstantMax: (constantMax) => update({ constantMax }),
-      setPlayed: (played) => update({ played }),
+      setAchievementMin: (achievementMin) => update({ achievementMin }),
+      setAchievementMax: (achievementMax) => update({ achievementMax }),
+      setSoloAchievement: (soloAchievement) => update({ soloAchievement }),
+      setMultiAchievement: (multiAchievement) => update({ multiAchievement }),
+      setVersionLocale: (versionLocale) => update({ versionLocale }),
+      clearFilters: () => update(clearPatch()),
     };
   });
 }

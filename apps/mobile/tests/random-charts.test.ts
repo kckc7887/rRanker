@@ -1,9 +1,11 @@
 import type { CatalogSnapshot, ScoreRecord, Song } from '@/domain/models';
 import {
   chartPickKey,
-  filterRandomCharts,
-  pickRandomCharts,
-  type RandomChartFilters,
+  filterMaimaiRandomCharts,
+  filterPhigrosRandomCharts,
+  pickRandomItems,
+  type MaimaiRandomChartFilters,
+  type PhigrosRandomChartFilters,
 } from '@/domain/random-charts';
 import { fixtureSource } from '@/fixtures/sanitized';
 
@@ -14,27 +16,27 @@ const songs: Song[] = [
     artist: '艺术家甲',
     version: '测试版本',
     charts: [
-      { songId: '1', type: 'DX', levelIndex: 2, level: '12', difficulty: 'expert', difficultyConstant: 12.0 },
-      { songId: '1', type: 'DX', levelIndex: 3, level: '13+', difficulty: 'master', difficultyConstant: 13.5 },
-      { songId: '1', type: 'DX', levelIndex: 4, level: '14', difficulty: 'remaster', difficultyConstant: 14.2 },
+      { songId: '1', type: 'DX', levelIndex: 2, level: '12', difficulty: 'expert', difficultyConstant: 12, versionId: 1 },
+      { songId: '1', type: 'DX', levelIndex: 3, level: '13+', difficulty: 'master', difficultyConstant: 13.5, versionId: 1 },
+      { songId: '1', type: 'DX', levelIndex: 4, level: '14', difficulty: 'remaster', difficultyConstant: 14.2, versionId: 2 },
     ],
   },
   {
     id: '2',
     title: '曲目乙',
     artist: '艺术家乙',
-    version: '测试版本',
+    version: '旧版本',
     charts: [
-      { songId: '2', type: 'SD', levelIndex: 1, level: '10', difficulty: 'advanced', difficultyConstant: 10.0 },
-      { songId: '2', type: 'SD', levelIndex: 3, level: '13', difficulty: 'master', difficultyConstant: 13.0 },
+      { songId: '2', type: 'SD', levelIndex: 1, level: '10', difficulty: 'advanced', difficultyConstant: 10, versionId: 1 },
+      { songId: '2', type: 'SD', levelIndex: 3, level: '13', difficulty: 'master', difficultyConstant: 13, versionId: 1 },
     ],
   },
   {
     id: '3',
     title: '曲目丙',
-    version: '测试版本',
+    version: '旧版本',
     charts: [
-      { songId: '3', type: 'DX', levelIndex: 0, level: '7', difficulty: 'basic', difficultyConstant: 7.0 },
+      { songId: '3', type: 'DX', levelIndex: 0, level: '7', difficulty: 'basic', difficultyConstant: 7, versionId: 1 },
     ],
   },
   {
@@ -42,14 +44,14 @@ const songs: Song[] = [
     title: 'U·TA·GE',
     version: '测试版本',
     charts: [
-      { songId: '100123', type: 'UTAGE', levelIndex: 0, level: '宴', difficulty: 'utage', difficultyConstant: 0 },
+      { songId: '100123', type: 'UTAGE', levelIndex: 0, level: '宴', difficulty: 'utage', difficultyConstant: 0, versionId: 2 },
     ],
   },
 ];
 
 const catalog: CatalogSnapshot = {
-  currentVersion: { id: 1, title: '测试版本' },
-  versions: [{ id: 1, title: '测试版本' }],
+  currentVersion: { id: 2, title: '测试版本' },
+  versions: [{ id: 1, title: '旧版本' }, { id: 2, title: '测试版本' }],
   songs,
   chartVersionIndex: {},
   source: fixtureSource,
@@ -67,10 +69,10 @@ const records: ScoreRecord[] = [
     achievements: 99,
     dxScore: 1000,
     rating: 200,
-    fc: null,
+    fc: 'ap',
     fs: null,
     rate: 'ss',
-    version: '测试版本',
+    version: '旧版本',
   },
   {
     songId: '2',
@@ -79,183 +81,177 @@ const records: ScoreRecord[] = [
     levelIndex: 1,
     level: '10',
     difficulty: 'advanced',
-    difficultyConstant: 10.0,
+    difficultyConstant: 10,
     achievements: 98,
     dxScore: null,
     rating: 150,
     fc: 'fc',
-    fs: null,
+    fs: 'fs',
     rate: 's',
-    version: '测试版本',
+    version: '旧版本',
   },
 ];
 
-const allFilters: RandomChartFilters = {
-  difficulties: [],
+const maimaiFilters: MaimaiRandomChartFilters = {
+  difficulty: 'all',
+  version: 'all',
+  type: 'all',
   constantMin: '',
   constantMax: '',
-  played: 'all',
+  achievementMin: '',
+  achievementMax: '',
+  soloAchievement: null,
+  multiAchievement: null,
 };
 
-describe('filterRandomCharts', () => {
-  it('returns every chart when filters are open', () => {
-    const pool = filterRandomCharts(catalog, records, allFilters);
-    expect(pool).toHaveLength(6);
-    expect(pool.some((item) => item.type === 'UTAGE')).toBe(false);
+describe('filterMaimaiRandomCharts', () => {
+  it('uses the full catalog and includes unplayed and U·TA·GE charts by default', () => {
+    const pool = filterMaimaiRandomCharts(catalog, records, maimaiFilters);
+    expect(pool).toHaveLength(7);
+    expect(pool.some((item) => !item.played)).toBe(true);
+    expect(pool.some((item) => item.type === 'UTAGE')).toBe(true);
   });
 
-  it('filters by difficulty multi-select', () => {
-    const pool = filterRandomCharts(catalog, records, {
-      ...allFilters,
-      difficulties: ['master', 'remaster'],
-    });
-    expect(pool.map((item) => item.difficulty).sort()).toEqual(['master', 'master', 'remaster']);
-  });
-
-  it('filters by constant range', () => {
-    const pool = filterRandomCharts(catalog, records, {
-      ...allFilters,
+  it('matches difficulty, chart version, type and constant against catalog charts', () => {
+    const pool = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      difficulty: 'master',
+      version: '旧版本',
+      type: 'DX',
       constantMin: '13',
-      constantMax: '13.5',
+      constantMax: '14',
     });
-    expect(pool.map((item) => item.difficultyConstant).sort()).toEqual([13, 13.5]);
+    expect(pool.map(chartPickKey)).toEqual(['1:DX:3']);
   });
 
-  it('filters played and unplayed charts', () => {
-    const played = filterRandomCharts(catalog, records, { ...allFilters, played: 'played' });
-    const unplayed = filterRandomCharts(catalog, records, { ...allFilters, played: 'unplayed' });
-    expect(played.map(chartPickKey).sort()).toEqual(['1:DX:3', '2:SD:1']);
-    expect(unplayed).toHaveLength(4);
-    expect(unplayed.every((item) => !item.played)).toBe(true);
+  it('excludes U·TA·GE when a constant bound is entered like the records page', () => {
+    const pool = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      difficulty: 'utage',
+      constantMin: '0',
+    });
+    expect(pool).toEqual([]);
   });
 
-  it('marks played status on each pick', () => {
-    const pool = filterRandomCharts(catalog, records, allFilters);
-    const master = pool.find((item) => item.songId === '1' && item.levelIndex === 3);
-    const remaster = pool.find((item) => item.songId === '1' && item.levelIndex === 4);
-    expect(master?.played).toBe(true);
-    expect(remaster?.played).toBe(false);
+  it('requires records only when achievement filters are valid and active', () => {
+    const filtered = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      achievementMin: '98.5',
+    });
+    expect(filtered.map(chartPickKey)).toEqual(['1:DX:3']);
+
+    const invalid = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      achievementMin: 'invalid',
+    });
+    expect(invalid).toHaveLength(7);
+  });
+
+  it('uses the same strict solo and multi achievement matching as records', () => {
+    const solo = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      soloAchievement: 'ap',
+    });
+    const multi = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      multiAchievement: 'fs',
+    });
+    expect(solo.map(chartPickKey)).toEqual(['1:DX:3']);
+    expect(multi.map(chartPickKey)).toEqual(['2:SD:1']);
   });
 });
 
-describe('pickRandomCharts', () => {
-  it('returns an empty list when the pool is empty', () => {
-    const picked = pickRandomCharts({
-      catalog,
-      records,
-      filters: { ...allFilters, constantMin: '20', constantMax: '21' },
-      count: 3,
-      seed: 'empty',
-    });
-    expect(picked).toEqual([]);
+describe('pickRandomItems', () => {
+  const values = ['a', 'b', 'c', 'd', 'e'];
+
+  it('is deterministic, unique and clamps count into 1-4', () => {
+    expect(pickRandomItems(values, 3, 'fixed')).toEqual(pickRandomItems(values, 3, 'fixed'));
+    expect(new Set(pickRandomItems(values, 4, 'unique')).size).toBe(4);
+    expect(pickRandomItems(values, 99, 'high')).toHaveLength(4);
+    expect(pickRandomItems(values, 0, 'low')).toHaveLength(1);
   });
 
-  it('returns the whole pool when count exceeds pool size', () => {
-    const picked = pickRandomCharts({
-      catalog,
-      records,
-      filters: { ...allFilters, difficulties: ['basic'] },
-      count: 4,
-      seed: 'small-pool',
-    });
-    expect(picked).toHaveLength(1);
-    expect(picked[0]?.difficulty).toBe('basic');
-  });
-
-  it('is reproducible for the same seed', () => {
-    const input = {
-      catalog,
-      records,
-      filters: allFilters,
-      count: 3 as const,
-      seed: 'fixed-seed',
-    };
-    const first = pickRandomCharts(input);
-    const second = pickRandomCharts(input);
-    expect(first.map(chartPickKey)).toEqual(second.map(chartPickKey));
-  });
-
-  it('does not repeat charts within one draw', () => {
-    const picked = pickRandomCharts({
-      catalog,
-      records,
-      filters: allFilters,
-      count: 4,
-      seed: 'no-dupes',
-    });
-    expect(new Set(picked.map(chartPickKey)).size).toBe(picked.length);
-  });
-
-  it('clamps count into 1-4', () => {
-    const over = pickRandomCharts({
-      catalog,
-      records,
-      filters: allFilters,
-      count: 99,
-      seed: 'clamp-high',
-    });
-    const under = pickRandomCharts({
-      catalog,
-      records,
-      filters: allFilters,
-      count: 0,
-      seed: 'clamp-low',
-    });
-    expect(over).toHaveLength(4);
-    expect(under).toHaveLength(1);
+  it('returns all candidates when the requested count exceeds the pool', () => {
+    expect(pickRandomItems(['only'], 4, 'small')).toEqual(['only']);
+    expect(pickRandomItems([], 4, 'empty')).toEqual([]);
   });
 });
 
-describe('filterRandomCharts with Phigros-shaped charts', () => {
-  const phigrosSongs: Song[] = [
-    {
-      id: 'Glaciaxion.SunsetRay',
-      title: 'Glaciaxion',
-      artist: 'SunsetRay',
-      version: 'Chapter 1',
-      charts: [
-        { songId: 'Glaciaxion.SunsetRay', type: 'SD', levelIndex: 0, level: '1', difficulty: 'basic', difficultyConstant: 1.0 },
-        { songId: 'Glaciaxion.SunsetRay', type: 'SD', levelIndex: 1, level: '6', difficulty: 'advanced', difficultyConstant: 6.5 },
-        { songId: 'Glaciaxion.SunsetRay', type: 'SD', levelIndex: 2, level: '12', difficulty: 'expert', difficultyConstant: 12.3 },
-        { songId: 'Glaciaxion.SunsetRay', type: 'SD', levelIndex: 3, level: '15', difficulty: 'master', difficultyConstant: 15.4 },
-      ],
-    },
-  ];
+describe('filterPhigrosRandomCharts', () => {
   const phigrosCatalog: CatalogSnapshot = {
-    currentVersion: { id: 1, title: 'Chapter 1' },
-    versions: [{ id: 1, title: 'Chapter 1' }],
-    songs: phigrosSongs,
-    chartVersionIndex: {},
+    currentVersion: { id: 0, title: 'test' },
+    versions: [{ id: 0, title: 'test' }],
     source: fixtureSource,
+    chartVersionIndex: {},
+    songs: [{
+      id: 'song',
+      title: 'Song',
+      version: 'test',
+      charts: [
+        { songId: 'song', type: 'SD', levelIndex: 0, level: '1', difficulty: 'basic', difficultyConstant: 1 },
+        { songId: 'song', type: 'SD', levelIndex: 2, level: '12', difficulty: 'expert', difficultyConstant: 12.3 },
+        { songId: 'song', type: 'SD', levelIndex: 3, level: '15', difficulty: 'master', difficultyConstant: 15.4 },
+      ],
+    }],
   };
-  const phigrosRecords: ScoreRecord[] = [
-    {
-      songId: 'Glaciaxion.SunsetRay',
-      title: 'Glaciaxion',
-      type: 'SD',
-      levelIndex: 2,
-      level: '12',
-      difficulty: 'expert',
-      difficultyConstant: 12.3,
-      achievements: 98.5,
-      dxScore: 900000,
-      rating: 12.1,
-      fc: null,
-      fs: null,
-      rate: 'v',
-      version: 'Chapter 1',
-    },
-  ];
+  const phigrosRecords: ScoreRecord[] = [{
+    songId: 'song',
+    title: 'Song',
+    type: 'SD',
+    levelIndex: 2,
+    level: '12',
+    difficulty: 'expert',
+    difficultyConstant: 12.3,
+    achievements: 99.65,
+    dxScore: 980000,
+    rating: 12,
+    fc: null,
+    fs: null,
+    rate: 'v',
+    version: 'test',
+  }];
+  const filters: PhigrosRandomChartFilters = {
+    level: 'all',
+    constantMin: '',
+    constantMax: '',
+    accuracyMin: '',
+    accuracyMax: '',
+    rank: null,
+    xing: null,
+  };
 
-  it('filters EZ-AT difficulties and played status', () => {
-    const pool = filterRandomCharts(phigrosCatalog, phigrosRecords, {
-      difficulties: ['expert', 'master'],
-      constantMin: '',
-      constantMax: '',
-      played: 'unplayed',
-    });
+  it('keeps unplayed catalog charts under basic filters', () => {
+    const pool = filterPhigrosRandomCharts(
+      phigrosCatalog,
+      phigrosRecords,
+      { ...filters, level: 3, constantMin: '15' },
+      {},
+    );
     expect(pool).toHaveLength(1);
-    expect(pool[0]?.difficulty).toBe('master');
     expect(pool[0]?.played).toBe(false);
+  });
+
+  it('requires a score for Acc, rank and XING filters', () => {
+    const accuracy = filterPhigrosRandomCharts(
+      phigrosCatalog,
+      phigrosRecords,
+      { ...filters, accuracyMin: '99' },
+      {},
+    );
+    const rank = filterPhigrosRandomCharts(
+      phigrosCatalog,
+      phigrosRecords,
+      { ...filters, rank: 'v' },
+      {},
+    );
+    const xing = filterPhigrosRandomCharts(
+      phigrosCatalog,
+      phigrosRecords,
+      { ...filters, xing: 'good' },
+      { 'song:2': 100 },
+    );
+    expect(accuracy.map(chartPickKey)).toEqual(['song:SD:2']);
+    expect(rank.map(chartPickKey)).toEqual(['song:SD:2']);
+    expect(xing.map(chartPickKey)).toEqual(['song:SD:2']);
   });
 });

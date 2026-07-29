@@ -1,19 +1,21 @@
 import Storage from 'expo-sqlite/kv-store';
-import type { Difficulty } from '@/domain/models';
-import type { RandomPlayedFilter } from '@/domain/random-charts';
+import type { MaimaiFcAchievement, MaimaiFsAchievement } from '@/domain/maimai-filters';
+import type { ChartType, Difficulty } from '@/domain/models';
+import type {
+  MaimaiRandomChartFilters,
+  RandomChartsCount,
+} from '@/domain/random-charts';
+import type { VersionNameLocale } from '@/domain/version-names';
 
-export type RandomChartsCount = 1 | 2 | 3 | 4;
+export type { RandomChartsCount };
 
-export type RandomChartsPreferences = {
+export type RandomChartsPreferences = MaimaiRandomChartFilters & {
   count: RandomChartsCount;
-  difficulties: Difficulty[];
-  constantMin: string;
-  constantMax: string;
-  played: RandomPlayedFilter;
+  versionLocale: VersionNameLocale;
 };
 
-export type RandomChartsPreferencesV1 = {
-  version: 1;
+type StoredRandomChartsPreferencesV2 = {
+  schemaVersion: 2;
 } & RandomChartsPreferences;
 
 type KeyValueStore = {
@@ -23,48 +25,98 @@ type KeyValueStore = {
 };
 
 const STORE_KEY = 'rranker.toolbox.random-charts.v1';
-const VALID_DIFFICULTIES = new Set<Difficulty>(['basic', 'advanced', 'expert', 'master', 'remaster']);
-const VALID_PLAYED = new Set<RandomPlayedFilter>(['all', 'played', 'unplayed']);
 const VALID_COUNTS = new Set<RandomChartsCount>([1, 2, 3, 4]);
+const VALID_DIFFICULTIES = new Set<Difficulty>([
+  'basic', 'advanced', 'expert', 'master', 'remaster', 'utage',
+]);
+const VALID_TYPES = new Set<ChartType>(['SD', 'DX', 'UTAGE']);
+const VALID_SOLO = new Set<MaimaiFcAchievement>(['fc', 'fcp', 'ap', 'app']);
+const VALID_MULTI = new Set<MaimaiFsAchievement>(['fs', 'fsp', 'fsd', 'fsdp']);
 
 export function defaultRandomChartsPreferences(): RandomChartsPreferences {
   return {
     count: 1,
-    difficulties: [],
+    difficulty: 'all',
+    version: 'all',
+    type: 'all',
     constantMin: '',
     constantMax: '',
-    played: 'all',
+    achievementMin: '',
+    achievementMax: '',
+    soloAchievement: null,
+    multiAchievement: null,
+    versionLocale: 'china',
   };
 }
 
-function parseConstantInput(value: unknown): string {
+function parseInput(value: unknown): string {
   if (typeof value !== 'string') return '';
-  return value.trim().slice(0, 8);
+  return value.trim().slice(0, 16);
+}
+
+function parseLegacyDifficulty(value: unknown): Difficulty | 'all' {
+  if (!Array.isArray(value)) return 'all';
+  const valid = [...new Set(value)].filter(
+    (item): item is Difficulty => typeof item === 'string' && VALID_DIFFICULTIES.has(item as Difficulty),
+  );
+  return valid.length === 1 ? valid[0]! : 'all';
 }
 
 export function parseRandomChartsPreferences(value: unknown): RandomChartsPreferences {
   const output = defaultRandomChartsPreferences();
   if (!value || typeof value !== 'object') return output;
   const raw = value as Record<string, unknown>;
-  if (raw.version !== 1) return output;
 
   if (typeof raw.count === 'number' && VALID_COUNTS.has(raw.count as RandomChartsCount)) {
     output.count = raw.count as RandomChartsCount;
   }
 
-  if (Array.isArray(raw.difficulties)) {
-    output.difficulties = [...new Set(raw.difficulties)]
-      .filter((item): item is Difficulty => typeof item === 'string' && VALID_DIFFICULTIES.has(item as Difficulty));
+  if (raw.version === 1 && raw.schemaVersion === undefined) {
+    output.difficulty = parseLegacyDifficulty(raw.difficulties);
+    output.constantMin = parseInput(raw.constantMin);
+    output.constantMax = parseInput(raw.constantMax);
+    return output;
   }
+  if (raw.schemaVersion !== 2) return defaultRandomChartsPreferences();
 
-  output.constantMin = parseConstantInput(raw.constantMin);
-  output.constantMax = parseConstantInput(raw.constantMax);
-
-  if (typeof raw.played === 'string' && VALID_PLAYED.has(raw.played as RandomPlayedFilter)) {
-    output.played = raw.played as RandomPlayedFilter;
+  if (raw.difficulty === 'all'
+    || (typeof raw.difficulty === 'string' && VALID_DIFFICULTIES.has(raw.difficulty as Difficulty))) {
+    output.difficulty = raw.difficulty as Difficulty | 'all';
   }
-
+  if (raw.version === 'all' || typeof raw.version === 'string') {
+    output.version = raw.version as string | 'all';
+  }
+  if (raw.type === 'all'
+    || (typeof raw.type === 'string' && VALID_TYPES.has(raw.type as ChartType))) {
+    output.type = raw.type as ChartType | 'all';
+  }
+  output.constantMin = parseInput(raw.constantMin);
+  output.constantMax = parseInput(raw.constantMax);
+  output.achievementMin = parseInput(raw.achievementMin);
+  output.achievementMax = parseInput(raw.achievementMax);
+  if (typeof raw.soloAchievement === 'string'
+    && VALID_SOLO.has(raw.soloAchievement as MaimaiFcAchievement)) {
+    output.soloAchievement = raw.soloAchievement as MaimaiFcAchievement;
+  }
+  if (typeof raw.multiAchievement === 'string'
+    && VALID_MULTI.has(raw.multiAchievement as MaimaiFsAchievement)) {
+    output.multiAchievement = raw.multiAchievement as MaimaiFsAchievement;
+  }
+  if (raw.versionLocale === 'china' || raw.versionLocale === 'japan') {
+    output.versionLocale = raw.versionLocale;
+  }
   return output;
+}
+
+function toStored(preferences: RandomChartsPreferences): StoredRandomChartsPreferencesV2 {
+  const parsed = parseRandomChartsPreferences({
+    ...preferences,
+    schemaVersion: 2,
+  });
+  return {
+    schemaVersion: 2,
+    ...parsed,
+  };
 }
 
 export class RandomChartsPreferencesStore {
@@ -81,9 +133,7 @@ export class RandomChartsPreferencesStore {
   }
 
   async save(preferences: RandomChartsPreferences): Promise<void> {
-    const parsed = parseRandomChartsPreferences({ version: 1, ...preferences });
-    const value: RandomChartsPreferencesV1 = { version: 1, ...parsed };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
+    await this.storage.setItem(STORE_KEY, JSON.stringify(toStored(preferences)));
   }
 }
 

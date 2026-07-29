@@ -12,12 +12,20 @@ class MemoryStore {
 }
 
 describe('arcade finder preferences', () => {
-  it('defaults by game: maimai selects 舞萌DX, phigros selects none', () => {
+  it('defaults by game: maimai selects 舞萌DX, chunithm selects 中二节奏, others select none', () => {
     expect(defaultArcadeFinderPreferences('maimai')).toEqual({
       radiusKm: 10,
       titleIds: [1],
     });
+    expect(defaultArcadeFinderPreferences('chunithm')).toEqual({
+      radiusKm: 10,
+      titleIds: [3],
+    });
     expect(defaultArcadeFinderPreferences('phigros')).toEqual({
+      radiusKm: 10,
+      titleIds: [],
+    });
+    expect(defaultArcadeFinderPreferences('test')).toEqual({
       radiusKm: 10,
       titleIds: [],
     });
@@ -54,8 +62,10 @@ describe('arcade finder preferences', () => {
     const storage = new MemoryStore();
     const store = new ArcadeFinderPreferencesStore(storage);
     await store.save('maimai', { radiusKm: 20, titleIds: [1, 3] });
+    await store.save('chunithm', { radiusKm: 15, titleIds: [3, 27] });
     await store.save('phigros', { radiusKm: 5, titleIds: [] });
     await expect(store.load('maimai')).resolves.toEqual({ radiusKm: 20, titleIds: [1, 3] });
+    await expect(store.load('chunithm')).resolves.toEqual({ radiusKm: 15, titleIds: [3, 27] });
     await expect(store.load('phigros')).resolves.toEqual({ radiusKm: 5, titleIds: [] });
   });
 
@@ -70,5 +80,6 @@ describe('arcade finder preferences', () => {
     await expect(store.load('maimai')).resolves.toEqual({ radiusKm: 15, titleIds: [1] });
     expect(await storage.getItem('rranker.toolbox.arcade-finder.v1')).toBeNull();
     await expect(store.load('phigros')).resolves.toEqual(defaultArcadeFinderPreferences('phigros'));
+    await expect(store.load('chunithm')).resolves.toEqual(defaultArcadeFinderPreferences('chunithm'));
   });
 });

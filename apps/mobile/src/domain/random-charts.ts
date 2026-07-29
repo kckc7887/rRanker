@@ -1,14 +1,47 @@
 import { chartVersionKey, normalizeSongId } from './catalog';
-import { matchesConstantRange } from './maimai-filters';
+import {
+  matchesAchievementRange,
+  matchesConstantRange,
+  matchesMultiAchievementFilter,
+  matchesSoloAchievementFilter,
+  parseAchievementBound,
+  type MaimaiFcAchievement,
+  type MaimaiFsAchievement,
+} from './maimai-filters';
 import type { CatalogSnapshot, ChartType, Difficulty, ScoreRecord } from './models';
+import {
+  matchesPhigrosLevel,
+  matchesPhigrosRankFilter,
+  type PhigrosRankFilter,
+} from './phigros-filters';
+import type { PhigrosLevel } from './phigros';
+import {
+  matchesPhigrosXingFilter,
+  type PhigrosXingKind,
+} from './phigros-xing';
 
-export type RandomPlayedFilter = 'all' | 'played' | 'unplayed';
+export type RandomChartsCount = 1 | 2 | 3 | 4;
 
-export type RandomChartFilters = {
-  difficulties: readonly Difficulty[];
+export type MaimaiRandomChartFilters = {
+  difficulty: Difficulty | 'all';
+  version: string | 'all';
+  type: ChartType | 'all';
   constantMin: string;
   constantMax: string;
-  played: RandomPlayedFilter;
+  achievementMin: string;
+  achievementMax: string;
+  soloAchievement: MaimaiFcAchievement | null;
+  multiAchievement: MaimaiFsAchievement | null;
+};
+
+export type PhigrosRandomChartFilters = {
+  level: PhigrosLevel | 'all';
+  constantMin: string;
+  constantMax: string;
+  accuracyMin: string;
+  accuracyMax: string;
+  rank: PhigrosRankFilter | null;
+  xing: PhigrosXingKind | null;
 };
 
 export type RandomChartPick = {
@@ -20,14 +53,6 @@ export type RandomChartPick = {
   levelIndex: number;
   difficultyConstant: number;
   played: boolean;
-};
-
-export type PickRandomChartsInput = {
-  catalog: CatalogSnapshot;
-  records: readonly ScoreRecord[];
-  filters: RandomChartFilters;
-  count: number;
-  seed: string;
 };
 
 function hashSeed(seed: string): number {
@@ -56,34 +81,84 @@ function clampCount(count: number): number {
   return Math.min(4, Math.max(1, Math.floor(count)));
 }
 
-function buildPlayedKeys(records: readonly ScoreRecord[]): Set<string> {
-  const keys = new Set<string>();
-  for (const record of records) {
-    keys.add(chartVersionKey(record.songId, record.type, record.levelIndex));
+/** Generic deterministic sampling without replacement; game-specific data stays outside this contract. */
+export function pickRandomItems<T>(
+  items: readonly T[],
+  count: number,
+  seed: string,
+): T[] {
+  const pool = [...items];
+  const size = Math.min(clampCount(count), pool.length);
+  if (size === 0) return [];
+
+  const random = createRng(seed);
+  const picked: T[] = [];
+  for (let index = 0; index < size; index += 1) {
+    const choice = Math.floor(random() * pool.length);
+    picked.push(pool[choice]!);
+    pool.splice(choice, 1);
   }
-  return keys;
+  return picked;
 }
 
-export function filterRandomCharts(
+export function buildBestRecordMap(
+  records: readonly ScoreRecord[],
+): Map<string, ScoreRecord> {
+  const best = new Map<string, ScoreRecord>();
+  for (const record of records) {
+    const key = chartVersionKey(record.songId, record.type, record.levelIndex);
+    const current = best.get(key);
+    if (!current || record.achievements > current.achievements) best.set(key, record);
+  }
+  return best;
+}
+
+function hasValidAchievementRange(minInput: string, maxInput: string): boolean {
+  return parseAchievementBound(minInput) !== undefined
+    || parseAchievementBound(maxInput) !== undefined;
+}
+
+export function filterMaimaiRandomCharts(
   catalog: CatalogSnapshot,
   records: readonly ScoreRecord[],
-  filters: RandomChartFilters,
+  filters: MaimaiRandomChartFilters,
 ): RandomChartPick[] {
-  const playedKeys = buildPlayedKeys(records);
-  const difficultySet = new Set(filters.difficulties);
-  const requireDifficulty = difficultySet.size > 0;
+  const bestByChart = buildBestRecordMap(records);
+  const versionTitleById = new Map(catalog.versions.map((version) => [version.id, version.title]));
+  const scoreFilterActive = hasValidAchievementRange(
+    filters.achievementMin,
+    filters.achievementMax,
+  ) || filters.soloAchievement !== null || filters.multiAchievement !== null;
+  const hasConstantFilter = !!(filters.constantMin || filters.constantMax);
   const picks: RandomChartPick[] = [];
 
   for (const song of catalog.songs) {
     const songId = normalizeSongId(song.id);
     for (const chart of song.charts) {
-      if (chart.type === 'UTAGE') continue;
-      if (requireDifficulty && !difficultySet.has(chart.difficulty)) continue;
-      if (!matchesConstantRange(chart.difficultyConstant, filters.constantMin, filters.constantMax)) continue;
+      if (filters.difficulty !== 'all' && chart.difficulty !== filters.difficulty) continue;
+      if (filters.type !== 'all' && chart.type !== filters.type) continue;
+      const chartVersion = chart.versionId === undefined
+        ? song.version
+        : versionTitleById.get(chart.versionId) ?? String(chart.versionId);
+      if (filters.version !== 'all' && chartVersion !== filters.version) continue;
+      if (chart.type === 'UTAGE' && hasConstantFilter) continue;
+      if (!matchesConstantRange(
+        chart.difficultyConstant,
+        filters.constantMin,
+        filters.constantMax,
+      )) continue;
+
       const key = chartVersionKey(chart.songId, chart.type, chart.levelIndex);
-      const played = playedKeys.has(key);
-      if (filters.played === 'played' && !played) continue;
-      if (filters.played === 'unplayed' && played) continue;
+      const record = bestByChart.get(key);
+      if (scoreFilterActive && !record) continue;
+      if (record && !matchesAchievementRange(
+        record.achievements,
+        filters.achievementMin,
+        filters.achievementMax,
+      )) continue;
+      if (record && !matchesSoloAchievementFilter(record, filters.soloAchievement)) continue;
+      if (record && !matchesMultiAchievementFilter(record, filters.multiAchievement)) continue;
+
       picks.push({
         songId,
         title: song.title,
@@ -92,27 +167,60 @@ export function filterRandomCharts(
         difficulty: chart.difficulty,
         levelIndex: chart.levelIndex,
         difficultyConstant: chart.difficultyConstant,
-        played,
+        played: record !== undefined,
       });
     }
   }
-
   return picks;
 }
 
-export function pickRandomCharts(input: PickRandomChartsInput): RandomChartPick[] {
-  const pool = [...filterRandomCharts(input.catalog, input.records, input.filters)];
-  const count = Math.min(clampCount(input.count), pool.length);
-  if (count === 0) return [];
+export function filterPhigrosRandomCharts(
+  catalog: CatalogSnapshot,
+  records: readonly ScoreRecord[],
+  filters: PhigrosRandomChartFilters,
+  noteTotalByKey: Readonly<Record<string, number>>,
+): RandomChartPick[] {
+  const bestByChart = buildBestRecordMap(records);
+  const scoreFilterActive = hasValidAchievementRange(
+    filters.accuracyMin,
+    filters.accuracyMax,
+  ) || filters.rank !== null || filters.xing !== null;
+  const picks: RandomChartPick[] = [];
 
-  const random = createRng(input.seed);
-  const picked: RandomChartPick[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const choice = Math.floor(random() * pool.length);
-    picked.push(pool[choice]!);
-    pool.splice(choice, 1);
+  for (const song of catalog.songs) {
+    const songId = normalizeSongId(song.id);
+    for (const chart of song.charts) {
+      if (!matchesPhigrosLevel(chart.levelIndex, filters.level)) continue;
+      if (!matchesConstantRange(
+        chart.difficultyConstant,
+        filters.constantMin,
+        filters.constantMax,
+      )) continue;
+
+      const key = chartVersionKey(chart.songId, chart.type, chart.levelIndex);
+      const record = bestByChart.get(key);
+      if (scoreFilterActive && !record) continue;
+      if (record && !matchesAchievementRange(
+        record.achievements,
+        filters.accuracyMin,
+        filters.accuracyMax,
+      )) continue;
+      if (record && !matchesPhigrosRankFilter(record, filters.rank)) continue;
+      if (record && !matchesPhigrosXingFilter(record, filters.xing, noteTotalByKey)) continue;
+
+      picks.push({
+        songId,
+        title: song.title,
+        artist: song.artist,
+        type: chart.type,
+        difficulty: chart.difficulty,
+        levelIndex: chart.levelIndex,
+        difficultyConstant: chart.difficultyConstant,
+        played: record !== undefined,
+      });
+    }
   }
-  return picked;
+  return picks;
 }
 
 export function chartPickKey(pick: RandomChartPick): string {
