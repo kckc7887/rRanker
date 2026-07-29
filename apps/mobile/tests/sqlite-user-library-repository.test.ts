@@ -25,7 +25,18 @@ describe('SqliteUserLibraryRepository', () => {
     resetUserLibrarySchemaForTests();
     vi.clearAllMocks();
     sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1 });
-    sqlite.db.getAllAsync.mockResolvedValue([]);
+    sqlite.db.getAllAsync.mockImplementation(async (sql: string) => {
+      if (sql.includes('sqlite_master')) {
+        return [{
+          name: 'user_library_items',
+          sql: "CREATE TABLE user_library_items (chart_type TEXT CHECK (chart_type IN ('SD', 'DX', 'UTAGE')))",
+        }, {
+          name: 'user_library_item_tags',
+          sql: 'CREATE TABLE user_library_item_tags (item_key TEXT, tag_id INTEGER)',
+        }];
+      }
+      return [];
+    });
     sqlite.db.runAsync.mockResolvedValue(undefined);
     sqlite.db.withTransactionAsync.mockImplementation(async (task: () => Promise<void>) => task());
   });
@@ -40,13 +51,18 @@ describe('SqliteUserLibraryRepository', () => {
   });
 
   it('expands the chart type constraint in place while preserving items and tags', async () => {
-    sqlite.db.getFirstAsync.mockImplementation(async (sql: string) => {
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 4 });
+    sqlite.db.getAllAsync.mockImplementation(async (sql: string) => {
       if (sql.includes('sqlite_master')) {
-        return {
+        return [{
+          name: 'user_library_items',
           sql: "CREATE TABLE user_library_items (chart_type TEXT CHECK (chart_type IN ('SD', 'DX')))",
-        };
+        }, {
+          name: 'user_library_item_tags',
+          sql: 'CREATE TABLE user_library_item_tags (item_key TEXT, tag_id INTEGER)',
+        }];
       }
-      return { schema_version: 4 };
+      return [];
     });
 
     const repository = new SqliteUserLibraryRepository();
@@ -54,16 +70,50 @@ describe('SqliteUserLibraryRepository', () => {
 
     expect(sqlite.db.execAsync).toHaveBeenCalledWith('PRAGMA foreign_keys = OFF');
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
-      'ALTER TABLE user_library_items RENAME TO user_library_items_legacy',
+      'INSERT OR REPLACE INTO "user_library_items_utage_',
     ));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
       "chart_type IN ('SD', 'DX', 'UTAGE')",
     ));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining(
-      'INSERT INTO user_library_item_tags',
+      'INSERT OR IGNORE INTO "user_library_item_tags_utage_',
     ));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith('PRAGMA foreign_keys = ON');
     expect(sqlite.db.getAllAsync).toHaveBeenCalledWith('PRAGMA foreign_key_check');
+  });
+
+  it('recovers interrupted UTAGE migration tables without colliding with fixed legacy names', async () => {
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 4 });
+    sqlite.db.getAllAsync.mockImplementation(async (sql: string) => {
+      if (sql.includes('sqlite_master')) {
+        return [{
+          name: 'user_library_items',
+          sql: "CREATE TABLE user_library_items (chart_type TEXT CHECK (chart_type IN ('SD', 'DX')))",
+        }, {
+          name: 'user_library_item_tags',
+          sql: 'CREATE TABLE user_library_item_tags (item_key TEXT, tag_id INTEGER)',
+        }, {
+          name: 'user_library_items_legacy',
+          sql: "CREATE TABLE user_library_items_legacy (chart_type TEXT CHECK (chart_type IN ('SD', 'DX')))",
+        }, {
+          name: 'user_library_item_tags_legacy',
+          sql: 'CREATE TABLE user_library_item_tags_legacy (item_key TEXT, tag_id INTEGER)',
+        }];
+      }
+      return [];
+    });
+
+    const repository = new SqliteUserLibraryRepository();
+    await expect(repository.list()).resolves.toEqual([]);
+
+    const migrationSql = sqlite.db.execAsync.mock.calls
+      .map(([sql]) => sql as string)
+      .find((sql) => sql.includes('INSERT OR REPLACE INTO "user_library_items_utage_'));
+    expect(migrationSql).toContain('FROM "user_library_items" AS source');
+    expect(migrationSql).toContain('FROM "user_library_items_legacy" AS source');
+    expect(migrationSql).toContain('FROM "user_library_item_tags_legacy" AS source');
+    expect(migrationSql).toContain('DROP TABLE "user_library_items_legacy"');
+    expect(migrationSql).not.toContain('RENAME TO "user_library_items_legacy"');
   });
 
   it('clears personal tables inside a same-connection transaction', async () => {

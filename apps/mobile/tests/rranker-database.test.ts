@@ -32,7 +32,18 @@ describe('shared rranker.db access', () => {
     resetUserLibrarySchemaForTests();
     vi.clearAllMocks();
     sqlite.db.getFirstAsync.mockResolvedValue(null);
-    sqlite.db.getAllAsync.mockResolvedValue([]);
+    sqlite.db.getAllAsync.mockImplementation(async (sql: string) => {
+      if (sql.includes('sqlite_master')) {
+        return [{
+          name: 'user_library_items',
+          sql: "CREATE TABLE user_library_items (chart_type TEXT CHECK (chart_type IN ('SD', 'DX', 'UTAGE')))",
+        }, {
+          name: 'user_library_item_tags',
+          sql: 'CREATE TABLE user_library_item_tags (item_key TEXT, tag_id INTEGER)',
+        }];
+      }
+      return [];
+    });
     sqlite.db.runAsync.mockResolvedValue(undefined);
     sqlite.db.withTransactionAsync.mockImplementation(async (task: () => Promise<void>) => task());
   });

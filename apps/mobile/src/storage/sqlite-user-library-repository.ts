@@ -35,6 +35,7 @@ interface TagRow { item_key: string; display_name: string }
 let schemaReady: Promise<void> | null = null;
 /** 曲库写操作串行，避免 withTransactionAsync 与并发写交叉。 */
 let writeChain: Promise<void> = Promise.resolve();
+let utageMigrationSequence = 0;
 
 function withLibraryWrite<T>(task: () => Promise<T>): Promise<T> {
   const run = writeChain.then(task, task);
@@ -61,41 +62,128 @@ async function ensureGameIdColumn(db: DatabaseAccess): Promise<void> {
   }
 }
 
+interface LibraryTableRow {
+  name: string;
+  sql: string | null;
+}
+
+const CURRENT_ITEMS_TABLE = 'user_library_items';
+const CURRENT_ITEM_TAGS_TABLE = 'user_library_item_tags';
+const LEGACY_ITEMS_TABLE = 'user_library_items_legacy';
+const LEGACY_ITEM_TAGS_TABLE = 'user_library_item_tags_legacy';
+const UTAGE_ITEMS_TABLE_PREFIX = 'user_library_items_utage_';
+const UTAGE_ITEM_TAGS_TABLE_PREFIX = 'user_library_item_tags_utage_';
+
+function quoteLibraryTable(name: string): string {
+  const valid = name === CURRENT_ITEMS_TABLE
+    || name === CURRENT_ITEM_TAGS_TABLE
+    || name === LEGACY_ITEMS_TABLE
+    || name === LEGACY_ITEM_TAGS_TABLE
+    || /^user_library_items_utage_\d+_\d+$/.test(name)
+    || /^user_library_item_tags_utage_\d+_\d+$/.test(name);
+  if (!valid) throw new Error(`个人曲库迁移遇到非法表名：${name}`);
+  return `"${name}"`;
+}
+
+function isItemsMigrationSource(name: string): boolean {
+  return name === CURRENT_ITEMS_TABLE
+    || name === LEGACY_ITEMS_TABLE
+    || name.startsWith(UTAGE_ITEMS_TABLE_PREFIX);
+}
+
+function isItemTagsMigrationSource(name: string): boolean {
+  return name === CURRENT_ITEM_TAGS_TABLE
+    || name === LEGACY_ITEM_TAGS_TABLE
+    || name.startsWith(UTAGE_ITEM_TAGS_TABLE_PREFIX);
+}
+
+function buildUtageMigrationSql(
+  itemSources: readonly string[],
+  itemTagSources: readonly string[],
+  nextItemsTable: string,
+  nextItemTagsTable: string,
+): string {
+  const nextItems = quoteLibraryTable(nextItemsTable);
+  const nextItemTags = quoteLibraryTable(nextItemTagsTable);
+  const statements = [
+    `CREATE TABLE ${nextItems} (
+      item_key TEXT PRIMARY KEY, game_id TEXT NOT NULL DEFAULT 'maimai',
+      kind TEXT NOT NULL CHECK (kind IN ('song', 'chart')),
+      song_id TEXT NOT NULL, chart_type TEXT, level_index INTEGER,
+      is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+      is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      CHECK ((kind = 'song' AND chart_type IS NULL AND level_index IS NULL) OR
+             (kind = 'chart' AND chart_type IN ('SD', 'DX', 'UTAGE') AND level_index >= 0))
+    )`,
+    ...itemSources.map((sourceName) => {
+      const source = quoteLibraryTable(sourceName);
+      return `INSERT OR REPLACE INTO ${nextItems}
+        (item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
+        SELECT source.item_key, source.game_id, source.kind, source.song_id, source.chart_type, source.level_index,
+               source.is_favorite, source.is_practice, source.created_at, source.updated_at
+        FROM ${source} AS source
+        WHERE NOT EXISTS (
+          SELECT 1 FROM ${nextItems} AS existing
+          WHERE existing.item_key = source.item_key AND existing.updated_at >= source.updated_at
+        )`;
+    }),
+    `CREATE TABLE ${nextItemTags} (
+      item_key TEXT NOT NULL REFERENCES ${nextItems}(item_key) ON DELETE CASCADE,
+      tag_id INTEGER NOT NULL REFERENCES user_library_tags(id) ON DELETE CASCADE,
+      PRIMARY KEY (item_key, tag_id)
+    )`,
+    ...itemTagSources.map((sourceName) => {
+      const source = quoteLibraryTable(sourceName);
+      return `INSERT OR IGNORE INTO ${nextItemTags} (item_key, tag_id)
+        SELECT source.item_key, source.tag_id
+        FROM ${source} AS source
+        JOIN ${nextItems} AS item ON item.item_key = source.item_key
+        JOIN user_library_tags AS tag ON tag.id = source.tag_id`;
+    }),
+    ...itemTagSources.map((name) => `DROP TABLE ${quoteLibraryTable(name)}`),
+    ...itemSources.map((name) => `DROP TABLE ${quoteLibraryTable(name)}`),
+    `ALTER TABLE ${nextItems} RENAME TO ${quoteLibraryTable(CURRENT_ITEMS_TABLE)}`,
+    `ALTER TABLE ${nextItemTags} RENAME TO ${quoteLibraryTable(CURRENT_ITEM_TAGS_TABLE)}`,
+  ];
+  return `${statements.join(';\n')};`;
+}
+
 async function ensureUtageChartType(db: SQLiteDatabase): Promise<void> {
-  const table = await db.getFirstAsync<{ sql: string | null }>(
-    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_library_items'",
+  const tables = await db.getAllAsync<LibraryTableRow>(
+    `SELECT name, sql FROM sqlite_master
+     WHERE type = 'table' AND (
+       name IN ('user_library_items', 'user_library_item_tags',
+                'user_library_items_legacy', 'user_library_item_tags_legacy')
+       OR name GLOB 'user_library_items_utage_[0-9]*_[0-9]*'
+       OR name GLOB 'user_library_item_tags_utage_[0-9]*_[0-9]*'
+     )`,
   );
-  if (!table?.sql || table.sql.includes("'UTAGE'")) return;
+  const currentItems = tables.find((table) => table.name === CURRENT_ITEMS_TABLE);
+  const recoveryTables = tables.filter((table) =>
+    table.name !== CURRENT_ITEMS_TABLE && table.name !== CURRENT_ITEM_TAGS_TABLE);
+  if (currentItems?.sql?.includes("'UTAGE'") && recoveryTables.length === 0) return;
+
+  const itemSources = tables.map((table) => table.name).filter(isItemsMigrationSource);
+  const itemTagSources = tables.map((table) => table.name).filter(isItemTagsMigrationSource);
+  if (itemSources.length === 0 || itemTagSources.length === 0) {
+    throw new Error('个人曲库表不完整，无法执行 U·TA·GE 兼容修复');
+  }
+  utageMigrationSequence += 1;
+  const migrationId = `${Date.now()}_${utageMigrationSequence}`;
+  const nextItemsTable = `${UTAGE_ITEMS_TABLE_PREFIX}${migrationId}`;
+  const nextItemTagsTable = `${UTAGE_ITEM_TAGS_TABLE_PREFIX}${migrationId}`;
+  const migrationSql = buildUtageMigrationSql(
+    itemSources,
+    itemTagSources,
+    nextItemsTable,
+    nextItemTagsTable,
+  );
+
   await db.execAsync('PRAGMA foreign_keys = OFF');
   try {
     await db.withTransactionAsync(async () => {
-      await db.execAsync(`
-        ALTER TABLE user_library_item_tags RENAME TO user_library_item_tags_legacy;
-        ALTER TABLE user_library_items RENAME TO user_library_items_legacy;
-        CREATE TABLE user_library_items (
-          item_key TEXT PRIMARY KEY, game_id TEXT NOT NULL DEFAULT 'maimai',
-          kind TEXT NOT NULL CHECK (kind IN ('song', 'chart')),
-          song_id TEXT NOT NULL, chart_type TEXT, level_index INTEGER,
-          is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
-          is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
-          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-          CHECK ((kind = 'song' AND chart_type IS NULL AND level_index IS NULL) OR
-                 (kind = 'chart' AND chart_type IN ('SD', 'DX', 'UTAGE') AND level_index >= 0))
-        );
-        CREATE TABLE user_library_item_tags (
-          item_key TEXT NOT NULL REFERENCES user_library_items(item_key) ON DELETE CASCADE,
-          tag_id INTEGER NOT NULL REFERENCES user_library_tags(id) ON DELETE CASCADE,
-          PRIMARY KEY (item_key, tag_id)
-        );
-        INSERT INTO user_library_items
-          (item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
-          SELECT item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at
-          FROM user_library_items_legacy;
-        INSERT INTO user_library_item_tags (item_key, tag_id)
-          SELECT item_key, tag_id FROM user_library_item_tags_legacy;
-        DROP TABLE user_library_item_tags_legacy;
-        DROP TABLE user_library_items_legacy;
-      `);
+      await db.execAsync(migrationSql);
     });
   } finally {
     await db.execAsync('PRAGMA foreign_keys = ON');
@@ -170,6 +258,7 @@ async function initializeUserLibrarySchema(): Promise<void> {
 export function resetUserLibrarySchemaForTests(): void {
   schemaReady = null;
   writeChain = Promise.resolve();
+  utageMigrationSequence = 0;
 }
 
 export class SqliteUserLibraryRepository implements UserLibraryRepository {
