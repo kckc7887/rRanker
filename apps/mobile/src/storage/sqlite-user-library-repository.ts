@@ -14,7 +14,7 @@ import type { RestoreMode, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 import { getRrankerDatabase, runSerializedSchemaInit } from '@/storage/rranker-database';
 
-const USER_LIBRARY_SCHEMA_VERSION = 5;
+const USER_LIBRARY_SCHEMA_VERSION = 4;
 type DatabaseAccess = Pick<SQLiteDatabase, 'getAllAsync' | 'getFirstAsync' | 'runAsync'>;
 
 interface ItemRow {
@@ -22,7 +22,6 @@ interface ItemRow {
   game_id: string | null;
   kind: 'song' | 'chart';
   song_id: string;
-  chart_id: string | null;
   chart_type: ChartType | null;
   level_index: number | null;
   is_favorite: number;
@@ -62,6 +61,49 @@ async function ensureGameIdColumn(db: DatabaseAccess): Promise<void> {
   }
 }
 
+async function ensureUtageChartType(db: SQLiteDatabase): Promise<void> {
+  const table = await db.getFirstAsync<{ sql: string | null }>(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'user_library_items'",
+  );
+  if (!table?.sql || table.sql.includes("'UTAGE'")) return;
+  await db.execAsync('PRAGMA foreign_keys = OFF');
+  try {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(`
+        ALTER TABLE user_library_item_tags RENAME TO user_library_item_tags_legacy;
+        ALTER TABLE user_library_items RENAME TO user_library_items_legacy;
+        CREATE TABLE user_library_items (
+          item_key TEXT PRIMARY KEY, game_id TEXT NOT NULL DEFAULT 'maimai',
+          kind TEXT NOT NULL CHECK (kind IN ('song', 'chart')),
+          song_id TEXT NOT NULL, chart_type TEXT, level_index INTEGER,
+          is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
+          is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+          CHECK ((kind = 'song' AND chart_type IS NULL AND level_index IS NULL) OR
+                 (kind = 'chart' AND chart_type IN ('SD', 'DX', 'UTAGE') AND level_index >= 0))
+        );
+        CREATE TABLE user_library_item_tags (
+          item_key TEXT NOT NULL REFERENCES user_library_items(item_key) ON DELETE CASCADE,
+          tag_id INTEGER NOT NULL REFERENCES user_library_tags(id) ON DELETE CASCADE,
+          PRIMARY KEY (item_key, tag_id)
+        );
+        INSERT INTO user_library_items
+          (item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
+          SELECT item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at
+          FROM user_library_items_legacy;
+        INSERT INTO user_library_item_tags (item_key, tag_id)
+          SELECT item_key, tag_id FROM user_library_item_tags_legacy;
+        DROP TABLE user_library_item_tags_legacy;
+        DROP TABLE user_library_items_legacy;
+      `);
+    });
+  } finally {
+    await db.execAsync('PRAGMA foreign_keys = ON');
+  }
+  const violations = await db.getAllAsync('PRAGMA foreign_key_check');
+  if (violations.length > 0) throw new Error('个人曲库 UTAGE 迁移后外键校验失败');
+}
+
 async function ensureUserLibrarySchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = runSerializedSchemaInit(initializeUserLibrarySchema).catch((error) => {
@@ -74,21 +116,19 @@ async function ensureUserLibrarySchema(): Promise<void> {
 
 async function initializeUserLibrarySchema(): Promise<void> {
   const db = await getRrankerDatabase();
-  const createV5Tables = async () => db.execAsync(`
+  await db.execAsync(`PRAGMA foreign_keys = ON;
       CREATE TABLE IF NOT EXISTS user_library_meta (
         id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS user_library_items (
         item_key TEXT PRIMARY KEY, game_id TEXT NOT NULL DEFAULT 'maimai',
         kind TEXT NOT NULL CHECK (kind IN ('song', 'chart')),
-        song_id TEXT NOT NULL, chart_id TEXT, chart_type TEXT, level_index INTEGER,
+        song_id TEXT NOT NULL, chart_type TEXT, level_index INTEGER,
         is_favorite INTEGER NOT NULL DEFAULT 0 CHECK (is_favorite IN (0, 1)),
         is_practice INTEGER NOT NULL DEFAULT 0 CHECK (is_practice IN (0, 1)),
         created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-        CHECK ((kind = 'song' AND chart_id IS NULL AND chart_type IS NULL AND level_index IS NULL) OR
-               (kind = 'chart' AND chart_id IS NOT NULL AND
-                ((chart_type IS NULL AND level_index IS NULL) OR
-                 (chart_type IN ('SD', 'DX', 'UTAGE') AND level_index >= 0))))
+        CHECK ((kind = 'song' AND chart_type IS NULL AND level_index IS NULL) OR
+               (kind = 'chart' AND chart_type IN ('SD', 'DX', 'UTAGE') AND level_index >= 0))
       );
       CREATE TABLE IF NOT EXISTS user_library_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT, normalized_name TEXT NOT NULL UNIQUE,
@@ -103,30 +143,27 @@ async function initializeUserLibrarySchema(): Promise<void> {
         normalized_name TEXT PRIMARY KEY, display_name TEXT NOT NULL,
         sort_order INTEGER NOT NULL, created_at TEXT NOT NULL
       );`);
-  await db.execAsync('PRAGMA foreign_keys = ON');
-  await createV5Tables();
   const row = await db.getFirstAsync<{ schema_version: number }>('SELECT schema_version FROM user_library_meta WHERE id = 1');
   if (!row) {
     await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
     await writeTagPresets(db, DEFAULT_TAG_PRESETS);
   } else if (row.schema_version < USER_LIBRARY_SCHEMA_VERSION) {
-    // 用户明确选择 4→5 重建并清空：收藏、练习、本地标签和自定义预设全部丢弃。
-    await db.execAsync('PRAGMA foreign_keys = OFF');
+    // 按游戏隔离后不再迁移旧收藏：升级时直接清空，避免跨游戏混用与错误归属。
+    await ensureGameIdColumn(db);
+    if (row.schema_version === 1) await writeTagPresets(db, DEFAULT_TAG_PRESETS);
+    // 使用同连接事务，避免 withExclusiveTransactionAsync 另开连接锁死单例连接。
     await db.withTransactionAsync(async () => {
-      await db.runAsync('DROP TABLE IF EXISTS user_library_item_tags');
-      await db.runAsync('DROP TABLE IF EXISTS user_library_items');
-      await db.runAsync('DROP TABLE IF EXISTS user_library_tags');
-      await db.runAsync('DROP TABLE IF EXISTS user_library_tag_presets');
+      await db.runAsync('DELETE FROM user_library_item_tags');
+      await db.runAsync('DELETE FROM user_library_items');
+      await db.runAsync('DELETE FROM user_library_tags');
     });
-    await db.execAsync('PRAGMA foreign_keys = ON');
-    await createV5Tables();
-    await writeTagPresets(db, DEFAULT_TAG_PRESETS);
     await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
   } else if (row.schema_version !== USER_LIBRARY_SCHEMA_VERSION) {
     throw new Error(`不支持的个人数据版本：${row?.schema_version ?? '未知'}`);
   } else {
     await ensureGameIdColumn(db);
   }
+  await ensureUtageChartType(db);
 }
 
 /** 测试用：重置模块级 schema 初始化锁。 */
@@ -213,8 +250,7 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
       db.getFirstAsync<{ bytes: number }>(
         `SELECT COALESCE(SUM(
           LENGTH(item_key) + LENGTH(game_id) + LENGTH(kind) + LENGTH(song_id)
-          + IFNULL(LENGTH(chart_id), 0) + IFNULL(LENGTH(chart_type), 0)
-          + LENGTH(created_at) + LENGTH(updated_at) + 8
+          + IFNULL(LENGTH(chart_type), 0) + LENGTH(created_at) + LENGTH(updated_at) + 8
         ), 0) AS bytes FROM user_library_items`,
       ),
       db.getFirstAsync<{ bytes: number }>(
@@ -252,15 +288,8 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
       };
       return row.kind === 'song'
         ? { ...base, kind: 'song', songId: row.song_id, favorite: row.is_favorite === 1 }
-        : {
-          ...base,
-          kind: 'chart',
-          songId: row.song_id,
-          chartId: row.chart_id!,
-          type: row.chart_type ?? undefined,
-          levelIndex: row.level_index ?? undefined,
-          practice: row.is_practice === 1,
-        };
+        : { ...base, kind: 'chart', songId: row.song_id, type: row.chart_type!, levelIndex: row.level_index!,
+          practice: row.is_practice === 1 };
     }).map(normalizeLibraryItem);
   }
 
@@ -272,13 +301,10 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
       const item = normalizeLibraryItem(rawItem);
       await db.runAsync(
         `INSERT INTO user_library_items
-          (item_key, game_id, kind, song_id, chart_id, chart_type, level_index,
-           is_favorite, is_practice, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        item.key, item.gameId, item.kind, item.songId, item.kind === 'chart' ? item.chartId ?? null : null,
-        item.kind === 'chart' ? item.type ?? null : null,
-        item.kind === 'chart' ? item.levelIndex ?? null : null,
-        item.kind === 'song' && item.favorite ? 1 : 0,
+          (item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        item.key, item.gameId, item.kind, item.songId, item.kind === 'chart' ? item.type : null,
+        item.kind === 'chart' ? item.levelIndex : null, item.kind === 'song' && item.favorite ? 1 : 0,
         item.kind === 'chart' && item.practice ? 1 : 0, item.createdAt, item.updatedAt,
       );
       for (const tag of item.tags) {

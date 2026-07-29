@@ -16,11 +16,9 @@ const chart: ChartLibraryItem = {
 describe('user library domain', () => {
   it('builds stable normalized song and chart keys per game', () => {
     expect(songLibraryKey('maimai', '10001')).toBe('song:maimai:1');
-    expect(chartLibraryKey('maimai', '10001', 'DX', 3))
-      .toBe('chart:maimai:maimai%3A1%3ADX%3A3');
+    expect(chartLibraryKey('maimai', '10001', 'DX', 3)).toBe('chart:maimai:1:DX:3');
     expect(songLibraryKey('phigros', 'Song.A')).toBe('song:phigros:Song.A');
-    expect(chartLibraryKey('phigros', 'Song.A', 'SD', 2))
-      .toBe('chart:phigros:phigros%3ASong.A%3ASD%3A2');
+    expect(chartLibraryKey('phigros', 'Song.A', 'SD', 2)).toBe('chart:phigros:Song.A:SD:2');
   });
 
   it('normalizes tags with NFKC, whitespace and case-insensitive deduplication', () => {
@@ -32,19 +30,16 @@ describe('user library domain', () => {
 
   it('creates a deterministic strict privacy backup', () => {
     const backup = createUserDataBackup([chart, song], updatedAt);
-    expect(backup.items.map((item) => item.key)).toEqual([
-      'chart:maimai:maimai%3A1%3ADX%3A3',
-      'song:maimai:1',
-    ]);
-    expect(backup.version).toBe(4);
+    expect(backup.items.map((item) => item.key)).toEqual(['chart:maimai:1:DX:3', 'song:maimai:1']);
+    expect(backup.version).toBe(3);
     expect(backup.tagPresets).toEqual(['爆发', '交互', '星星', '鬼歌', '大歌']);
     expect(backupPreview(backup)).toEqual({ songs: 1, charts: 1, tags: 2 });
     expect(JSON.stringify(backup)).not.toMatch(/token|cookie|player|records/i);
     expect(() => parseUserDataBackup({ ...backup, token: 'secret' })).toThrow();
-    expect(() => parseUserDataBackup({ ...backup, version: 5 })).toThrow();
+    expect(() => parseUserDataBackup({ ...backup, version: 4 })).toThrow();
   });
 
-  it('preserves U·TA·GE chart items in v4 backup data', () => {
+  it('preserves U·TA·GE chart items in backup data without changing its version', () => {
     const utageChart: ChartLibraryItem = {
       ...chart,
       songId: '100123',
@@ -55,11 +50,10 @@ describe('user library domain', () => {
     const backup = createUserDataBackup([utageChart], updatedAt);
     const parsed = parseUserDataBackup(backup);
 
-    expect(backup.version).toBe(4);
+    expect(backup.version).toBe(3);
     expect(parsed.items).toEqual([
       expect.objectContaining({
-        key: 'chart:maimai:maimai%3A100123%3AUTAGE%3A0',
-        chartId: 'maimai:100123:UTAGE:0',
+        key: 'chart:maimai:100123:UTAGE:0',
         type: 'UTAGE',
         levelIndex: 0,
         practice: true,
