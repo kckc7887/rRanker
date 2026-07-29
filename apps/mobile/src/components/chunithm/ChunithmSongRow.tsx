@@ -1,13 +1,13 @@
 import { memo, useState } from 'react';
 import { Image } from 'expo-image';
-import { router, type Href } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import {
   type ChunithmSong,
 } from '@/domain/chunithm';
 import { formatChunithmWorldsEndLabel } from '@/domain/chunithm-score-presentation';
+import { GameSongRow } from '@/components/game-content/GameSongRow';
+import { presentChunithmSong } from '@/features/game-content/adapters';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
-import { useAppTheme } from '@/theme/app-theme';
 
 export const CHUNITHM_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
 
@@ -23,25 +23,25 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
 }: {
   song: ChunithmSong;
 }) {
-  const theme = useAppTheme();
   const [coverFailed, setCoverFailed] = useState(false);
+  const presentation = presentChunithmSong(song);
   const difficulties = [...song.difficulties].sort(
     (left, right) => left.difficulty - right.difficulty,
   );
 
   return (
-    <Pressable
-      accessibilityLabel={`打开歌曲详情 ${song.title}`}
-      accessibilityRole="button"
-      onPress={() => router.push(`/songs/${encodeURIComponent(String(song.id))}` as Href)}
+    <GameSongRow
+      presentation={presentation}
       testID={`chunithm-song-${song.id}`}
-      style={({ pressed }) => [
-        styles.row,
-        { backgroundColor: theme.surface },
-        pressed && styles.pressed,
-      ]}
-    >
-      {coverFailed ? (
+      rowStyle={styles.row}
+      pressedStyle={styles.pressed}
+      wholeRowPressable
+      mainStyle={styles.main}
+      titleWrapperStyle={styles.titleLine}
+      titleStyle={styles.title}
+      subtitleStyle={styles.meta}
+      subtitleContent={<>{song.artist ?? '艺术家未知'} · {song.versionTitle}</>}
+      cover={coverFailed ? (
         <View style={[styles.cover, styles.coverPlaceholder]}>
           <Text style={styles.coverNote}>♪</Text>
         </View>
@@ -56,15 +56,7 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
           transition={120}
         />
       )}
-      <View style={styles.main}>
-        <View style={styles.titleLine}>
-          <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>
-            {song.title}
-          </Text>
-        </View>
-        <Text numberOfLines={1} style={[styles.meta, { color: theme.textMuted }]}>
-          {song.artist ?? '艺术家未知'} · {song.versionTitle}
-        </Text>
+      badges={(
         <View style={styles.difficulties}>
           {difficulties.map((difficulty) => (
             <ChunithmDifficultyBadge
@@ -81,8 +73,8 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
             />
           ))}
         </View>
-      </View>
-    </Pressable>
+      )}
+    />
   );
 });
 

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { Animated, StyleSheet, Text, View } from 'react-native';
+import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 
 type GradientColors = readonly [string, string, ...string[]];
 
@@ -85,7 +85,7 @@ function FlowingGradientText({
   accessibilityLabel: string;
 }) {
   const [width, setWidth] = useState(120);
-  const progress = useFlowingProgress(duration);
+  const progress = useFlowingProgress(true, duration);
   const measuredWidth = Math.max(width, 1);
   const trackWidth = measuredWidth * FLOW_GRADIENT_REPEATS;
   const translateX = progress.interpolate({
@@ -140,24 +140,6 @@ function FlowingGradientText({
       </MaskedView>
     </View>
   );
-}
-
-function useFlowingProgress(duration: number): Animated.Value {
-  const progress = useRef(new Animated.Value(0)).current;
-  const tabActive = useCachedTabActive();
-  useEffect(() => {
-    progress.setValue(0);
-    if (!tabActive) return;
-    const animation = Animated.loop(Animated.timing(progress, {
-      toValue: 1,
-      duration,
-      easing: Easing.linear,
-      useNativeDriver: true,
-    }));
-    animation.start();
-    return () => animation.stop();
-  }, [duration, progress, tabActive]);
-  return progress;
 }
 
 const styles = StyleSheet.create({

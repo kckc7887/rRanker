@@ -1,10 +1,11 @@
 import { memo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { router, type Href } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import type { Song } from '@/domain/models';
+import { presentStandardSong } from '@/features/game-content/adapters';
 import { useAppTheme } from '@/theme/app-theme';
 
 export const PhigrosSongRow = memo(function PhigrosSongRow({
@@ -22,16 +23,17 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
 }) {
   const theme = useAppTheme();
   const [coverFailed, setCoverFailed] = useState(false);
-  const openDetail = () => router.push(`/songs/${encodeURIComponent(song.id)}` as Href);
+  const presentation = presentStandardSong('phigros', song);
 
   return (
-    <View style={[styles.row, { backgroundColor: theme.surface }]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`查看歌曲 ${song.title}`}
-        onPress={openDetail}
-        style={styles.openSong}
-      >
+    <GameSongRow
+      presentation={presentation}
+      rowStyle={styles.row}
+      openStyle={styles.openSong}
+      mainStyle={styles.meta}
+      titleStyle={styles.title}
+      subtitleStyle={styles.composer}
+      cover={(
         <View style={styles.coverWrap}>
           {coverFailed || !blurUrl ? (
             <View style={[styles.placeholder, { backgroundColor: theme.input }]}>
@@ -49,12 +51,9 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
             />
           )}
         </View>
-        <View style={styles.meta}>
-          <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>{song.title}</Text>
-          <Text numberOfLines={1} style={[styles.composer, { color: theme.textMuted }]}>
-            {song.artist ?? '曲师未知'}
-          </Text>
-          <View style={styles.badges}>
+      )}
+      badges={(
+        <View style={styles.badges}>
             {[...(song.charts ?? [])]
               .sort((a, b) => a.levelIndex - b.levelIndex)
               .map((chart) => (
@@ -65,10 +64,9 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
                   showLabel={false}
                 />
               ))}
-          </View>
         </View>
-      </Pressable>
-      {onFavoriteChange ? (
+      )}
+      accessory={onFavoriteChange ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
@@ -79,7 +77,7 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
           <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={theme.accent} size={24} />
         </Pressable>
       ) : null}
-    </View>
+    />
   );
 });
 

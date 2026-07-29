@@ -1,9 +1,9 @@
-import { memo, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { router, type Href } from 'expo-router';
-import { Pressable, SectionList, StyleSheet, Text, View, type SectionListRenderItem } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type SectionListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
-import { QueryStateView } from '@/components/QueryStateView';
+import { BestListPage } from '@/components/game-content/GameListPages';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
@@ -98,7 +98,7 @@ function ChunithmBestScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <QueryStateView<ChunithmBestSection[]>
+      <BestListPage<ChunithmScoreCardData, ChunithmBestSection>
         isLoading={isGameLoading}
         isError={isGameError}
         isEmpty={!isGameLoading && recordCount === 0}
@@ -106,18 +106,16 @@ function ChunithmBestScreen() {
         onRetry={refetchAll}
         emptyText="当前账号暂无 Best 30 与 New 20 成绩"
         data={!isGameLoading && recordCount > 0 ? sections : undefined}
-        renderData={(list) => (
-          <SectionList
-            testID="chunithm-best-results-list"
-            contentInsetAdjustmentBehavior="automatic"
-            style={styles.list}
-            contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
-            scrollIndicatorInsets={{ bottom: tabBottomInset }}
-            sections={list}
-            {...TAB_LIST_CACHE_PROPS}
-            stickySectionHeadersEnabled={false}
-            keyExtractor={(record, index) => `${record.songId}-${record.levelIndex}-${index}`}
-            ListHeaderComponent={<SourceStatus items={payload ? [
+        sectionListProps={{
+          testID: 'chunithm-best-results-list',
+          contentInsetAdjustmentBehavior: 'automatic',
+          style: styles.list,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          ...TAB_LIST_CACHE_PROPS,
+          stickySectionHeadersEnabled: false,
+          keyExtractor: (record, index) => `${record.songId}-${record.levelIndex}-${index}`,
+          ListHeaderComponent: <SourceStatus items={payload ? [
               {
                 key: 'scores',
                 label: payload.source.label,
@@ -130,16 +128,17 @@ function ChunithmBestScreen() {
                 updatedAt: catalogQuery.data?.source.updatedAt,
                 state: catalogQuery.data?.source.isStale ? 'cache' : 'live',
               },
-            ] : []} />}
-            renderSectionHeader={({ section }) => (
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
-                <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 张谱面</Text>
-              </View>
-            )}
-            renderItem={({ item, index }) => <ChunithmScoreCard record={item} position={index + 1} />}
-          />
-        )}
+            ] : []} />,
+          renderSectionHeader: ({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
+              <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 张谱面</Text>
+            </View>
+          ),
+          renderItem: ({ item, index }) => (
+            <ChunithmScoreCard record={item} position={index + 1} />
+          ),
+        }}
       />
     </View>
   );
@@ -165,7 +164,7 @@ function MaimaiBest50Screen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <QueryStateView<BestSection[]>
+      <BestListPage<ScoreRecord, BestSection>
         isLoading={isLoading}
         isError={isError}
         isEmpty={!!maimai && recordCount === 0}
@@ -173,18 +172,16 @@ function MaimaiBest50Screen() {
         onRetry={refetch ? () => void refetch() : undefined}
         emptyText="当前账号暂无最佳成绩"
         data={recordCount > 0 ? sections : undefined}
-        renderData={(list) => (
-          <SectionList
-            testID="best50-results-list"
-            contentInsetAdjustmentBehavior="automatic"
-            style={styles.list}
-            contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
-            scrollIndicatorInsets={{ bottom: tabBottomInset }}
-            sections={list}
-            {...TAB_LIST_CACHE_PROPS}
-            stickySectionHeadersEnabled={false}
-            keyExtractor={(record) => `${record.songId}-${record.type}-${record.levelIndex}-${record.version}`}
-            ListHeaderComponent={<View style={styles.header}>
+        sectionListProps={{
+          testID: 'best50-results-list',
+          contentInsetAdjustmentBehavior: 'automatic',
+          style: styles.list,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          ...TAB_LIST_CACHE_PROPS,
+          stickySectionHeadersEnabled: false,
+          keyExtractor: (record) => `${record.songId}-${record.type}-${record.levelIndex}-${record.version}`,
+          ListHeaderComponent: <View style={styles.header}>
               <Pressable
                 accessibilityLabel="生成B50图片"
                 accessibilityRole="button"
@@ -197,14 +194,13 @@ function MaimaiBest50Screen() {
                 { key: 'scores', label: maimai.source.label, updatedAt: maimai.source.updatedAt, state: maimai.source.isStale ? 'cache' : 'live' },
                 { key: 'catalog', label: maimai.catalogSource.label, updatedAt: maimai.catalogSource.updatedAt, state: maimai.catalogSource.isStale ? 'cache' : 'live' },
               ] : []} />
-            </View>}
-            renderSectionHeader={({ section }) => <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
-              <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 张谱面</Text>
-            </View>}
-            renderItem={({ item, index }) => <ScoreRecordCard record={item} rank={index + 1} />}
-          />
-        )}
+            </View>,
+          renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
+            <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 张谱面</Text>
+          </View>,
+          renderItem: ({ item, index }) => <ScoreRecordCard record={item} rank={index + 1} />,
+        }}
       />
     </View>
   );
@@ -262,61 +258,7 @@ function PhigrosBestScreen() {
       updatedAt: new Date().toISOString(),
       isStale: false,
     };
-
-  if (!hasSession && !isGameLoading) {
-    return (
-      <View style={[styles.page, { backgroundColor: theme.background }]}>
-        <View style={styles.center}>
-          <Text style={[styles.statusText, { color: theme.textMuted }]}>尚未绑定 TapTap 账号</Text>
-          <Text style={[styles.statusHint, { color: theme.textMuted }]}>请在游戏管理中绑定 Phigros 的 TapTap 云存档</Text>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <QueryStateView<BestSection[]>
-        isLoading={isGameLoading}
-        isError={isGameError}
-        isEmpty={!isGameLoading && recordCount === 0}
-        error={error}
-        onRetry={refetchAll}
-        emptyText="当前账号暂无最佳成绩"
-        data={!isGameLoading && recordCount > 0 ? sections : undefined}
-        renderData={(list) => (
-          <PhigrosBestList
-            sections={list}
-            source={source}
-            catalogSource={catalogSource}
-            titleMap={titleMap}
-            noteTotalByKey={noteTotalByKey}
-            tabBottomInset={tabBottomInset}
-          />
-        )}
-      />
-    </View>
-  );
-}
-
-const PhigrosBestList = memo(function PhigrosBestList({
-  sections,
-  source,
-  catalogSource,
-  titleMap,
-  noteTotalByKey,
-  tabBottomInset,
-}: {
-  sections: BestSection[];
-  source: DataSource;
-  catalogSource: DataSource;
-  titleMap: Map<string, string>;
-  noteTotalByKey: Readonly<Record<string, number>>;
-  tabBottomInset: number;
-}) {
-  const theme = useAppTheme();
-
-  const header = useMemo(() => (
+  const listHeader = (
     <View style={styles.header}>
       <Pressable
         accessibilityLabel="生成B30图片"
@@ -331,41 +273,63 @@ const PhigrosBestList = memo(function PhigrosBestList({
         { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
       ]} />
     </View>
-  ), [catalogSource, source, theme.accent]);
-
+  );
   const renderSectionHeader = useCallback(({ section }: { section: BestSection }) => (
     <View style={styles.sectionHeader}>
       <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
       <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 张谱面</Text>
     </View>
   ), [theme.text, theme.textMuted]);
+  const renderItem: SectionListRenderItem<ScoreRecord, BestSection> = useCallback(
+    ({ item, index }) => (
+      <PhigrosScoreCard
+        record={item}
+        catalogTitle={titleMap.get(item.songId) ?? item.songId}
+        rank={index + 1}
+        totalNotes={noteTotalByKey[phigrosChartNoteKey(item.songId, item.levelIndex)]}
+      />
+    ),
+    [noteTotalByKey, titleMap],
+  );
 
-  const renderItem: SectionListRenderItem<ScoreRecord, BestSection> = useCallback(({ item, index }) => (
-    <PhigrosScoreCard
-      record={item}
-      catalogTitle={titleMap.get(item.songId) ?? item.songId}
-      rank={index + 1}
-      totalNotes={noteTotalByKey[phigrosChartNoteKey(item.songId, item.levelIndex)]}
-    />
-  ), [noteTotalByKey, titleMap]);
+  if (!hasSession && !isGameLoading) {
+    return (
+      <View style={[styles.page, { backgroundColor: theme.background }]}>
+        <View style={styles.center}>
+          <Text style={[styles.statusText, { color: theme.textMuted }]}>尚未绑定 TapTap 账号</Text>
+          <Text style={[styles.statusHint, { color: theme.textMuted }]}>请在游戏管理中绑定 Phigros 的 TapTap 云存档</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <SectionList
-      testID="phigros-best-results-list"
-      contentInsetAdjustmentBehavior="automatic"
-      style={styles.list}
-      contentContainerStyle={[styles.listContent, { paddingBottom: tabBottomInset + 16 }]}
-      scrollIndicatorInsets={{ bottom: tabBottomInset }}
-      sections={sections}
-      {...TAB_LIST_CACHE_PROPS}
-      stickySectionHeadersEnabled={false}
-      keyExtractor={(record) => `${record.songId}-${record.levelIndex}`}
-      ListHeaderComponent={header}
-      renderSectionHeader={renderSectionHeader}
-      renderItem={renderItem}
-    />
+    <View style={[styles.page, { backgroundColor: theme.background }]}>
+      <BestListPage<ScoreRecord, BestSection>
+        isLoading={isGameLoading}
+        isError={isGameError}
+        isEmpty={!isGameLoading && recordCount === 0}
+        error={error}
+        onRetry={refetchAll}
+        emptyText="当前账号暂无最佳成绩"
+        data={!isGameLoading && recordCount > 0 ? sections : undefined}
+        sectionListProps={{
+          testID: 'phigros-best-results-list',
+          contentInsetAdjustmentBehavior: 'automatic',
+          style: styles.list,
+          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
+          scrollIndicatorInsets: { bottom: tabBottomInset },
+          ...TAB_LIST_CACHE_PROPS,
+          stickySectionHeadersEnabled: false,
+          keyExtractor: (record) => `${record.songId}-${record.levelIndex}`,
+          ListHeaderComponent: listHeader,
+          renderSectionHeader,
+          renderItem,
+        }}
+      />
+    </View>
   );
-});
+}
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
