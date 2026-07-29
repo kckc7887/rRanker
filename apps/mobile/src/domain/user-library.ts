@@ -1,11 +1,10 @@
 import { z } from 'zod';
-import { normalizeSongId } from './catalog';
+import { chartVersionKey, normalizeSongId } from './catalog';
 import type { GameId } from './game-bind-options';
 import type { ChartType } from './models';
-import { canonicalChartId } from './game-model';
 
 export const USER_DATA_BACKUP_FORMAT = 'rranker-user-data' as const;
-export const USER_DATA_BACKUP_VERSION = 4 as const;
+export const USER_DATA_BACKUP_VERSION = 3 as const;
 export const DEFAULT_TAG_PRESETS = ['爆发', '交互', '星星', '鬼歌', '大歌'] as const;
 export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
@@ -24,11 +23,8 @@ export interface ChartLibraryTarget {
   kind: 'chart';
   gameId: GameId;
   songId: string;
-  /** 规范化后必有；可选仅用于读取 v1-v3 与迁移中的旧调用。 */
-  chartId?: string;
-  /** v1-v3 备份及旧谱面路由的兼容元数据；新游戏不得依赖这两个字段作为身份。 */
-  type?: ChartType;
-  levelIndex?: number;
+  type: ChartType;
+  levelIndex: number;
 }
 
 export type LibraryTarget = SongLibraryTarget | ChartLibraryTarget;
@@ -50,9 +46,8 @@ export interface SongLibraryItem extends LibraryItemBase {
 export interface ChartLibraryItem extends LibraryItemBase {
   kind: 'chart';
   songId: string;
-  chartId?: string;
-  type?: ChartType;
-  levelIndex?: number;
+  type: ChartType;
+  levelIndex: number;
   practice: boolean;
 }
 
@@ -76,21 +71,13 @@ export interface UserDataBackupV2 {
 
 export interface UserDataBackupV3 {
   format: typeof USER_DATA_BACKUP_FORMAT;
-  version: 3;
-  exportedAt: string;
-  items: UserLibraryItem[];
-  tagPresets: string[];
-}
-
-export interface UserDataBackupV4 {
-  format: typeof USER_DATA_BACKUP_FORMAT;
   version: typeof USER_DATA_BACKUP_VERSION;
   exportedAt: string;
   items: UserLibraryItem[];
   tagPresets: string[];
 }
 
-export type UserDataBackup = UserDataBackupV1 | UserDataBackupV2 | UserDataBackupV3 | UserDataBackupV4;
+export type UserDataBackup = UserDataBackupV1 | UserDataBackupV2 | UserDataBackupV3;
 
 const TimestampSchema = z.string().datetime();
 const SongIdSchema = z.string().trim().min(1).max(64);
@@ -110,7 +97,7 @@ const SongItemSchema = z.object({
   favorite: z.boolean(),
 }).strict();
 
-const LegacyChartItemSchema = z.object({
+const ChartItemSchema = z.object({
   ...CommonItemShape,
   kind: z.literal('chart'),
   type: z.enum(['SD', 'DX', 'UTAGE']),
@@ -118,44 +105,20 @@ const LegacyChartItemSchema = z.object({
   practice: z.boolean(),
 }).strict();
 
-const ChartItemSchema = z.object({
-  ...CommonItemShape,
-  kind: z.literal('chart'),
-  chartId: z.string().trim().min(1).max(512),
-  type: z.enum(['SD', 'DX', 'UTAGE']).optional(),
-  levelIndex: z.number().int().min(0).max(255).optional(),
-  practice: z.boolean(),
-}).strict().superRefine((item, context) => {
-  if ((item.type === undefined) !== (item.levelIndex === undefined)) {
-    context.addIssue({
-      code: 'custom',
-      message: '兼容 type 与 levelIndex 必须同时存在或同时省略',
-      path: ['type'],
-    });
-  }
-});
-
 const UserDataBackupV1Schema = z.object({
   format: z.literal(USER_DATA_BACKUP_FORMAT),
   version: z.literal(1),
   exportedAt: TimestampSchema,
-  items: z.array(z.discriminatedUnion('kind', [SongItemSchema, LegacyChartItemSchema])).max(MAX_BACKUP_ITEMS),
+  items: z.array(z.discriminatedUnion('kind', [SongItemSchema, ChartItemSchema])).max(MAX_BACKUP_ITEMS),
 }).strict();
 const UserDataBackupV2Schema = z.object({
   format: z.literal(USER_DATA_BACKUP_FORMAT),
   version: z.literal(2),
   exportedAt: TimestampSchema,
-  items: z.array(z.discriminatedUnion('kind', [SongItemSchema, LegacyChartItemSchema])).max(MAX_BACKUP_ITEMS),
+  items: z.array(z.discriminatedUnion('kind', [SongItemSchema, ChartItemSchema])).max(MAX_BACKUP_ITEMS),
   tagPresets: z.array(TagSchema).max(200),
 }).strict();
 const UserDataBackupV3Schema = z.object({
-  format: z.literal(USER_DATA_BACKUP_FORMAT),
-  version: z.literal(3),
-  exportedAt: TimestampSchema,
-  items: z.array(z.discriminatedUnion('kind', [SongItemSchema, LegacyChartItemSchema])).max(MAX_BACKUP_ITEMS),
-  tagPresets: z.array(TagSchema).max(200),
-}).strict();
-const UserDataBackupV4Schema = z.object({
   format: z.literal(USER_DATA_BACKUP_FORMAT),
   version: z.literal(USER_DATA_BACKUP_VERSION),
   exportedAt: TimestampSchema,
@@ -166,7 +129,6 @@ const UserDataBackupSchema = z.discriminatedUnion('version', [
   UserDataBackupV1Schema,
   UserDataBackupV2Schema,
   UserDataBackupV3Schema,
-  UserDataBackupV4Schema,
 ]);
 
 export function inferGameIdFromKey(key: string): GameId {
@@ -181,31 +143,14 @@ export function songLibraryKey(gameId: GameId, songId: string | number): string 
   return `song:${gameId}:${normalizeSongId(songId)}`;
 }
 
-export function chartLibraryKey(gameId: GameId, songId: string | number, chartId: string): string;
-export function chartLibraryKey(
-  gameId: GameId,
-  songId: string | number,
-  type: ChartType,
-  levelIndex: number,
-): string;
-export function chartLibraryKey(
-  gameId: GameId,
-  songId: string | number,
-  chartIdOrType: string,
-  levelIndex?: number,
-): string {
-  const chartId = levelIndex === undefined
-    ? chartIdOrType
-    : canonicalChartId(gameId, normalizeSongId(songId), chartIdOrType, levelIndex);
-  return `chart:${gameId}:${encodeURIComponent(chartId)}`;
+export function chartLibraryKey(gameId: GameId, songId: string | number, type: ChartType, levelIndex: number): string {
+  return `chart:${gameId}:${chartVersionKey(songId, type, levelIndex)}`;
 }
 
 export function libraryTargetKey(target: LibraryTarget): string {
   return target.kind === 'song'
     ? songLibraryKey(target.gameId, target.songId)
-    : target.chartId
-      ? chartLibraryKey(target.gameId, target.songId, target.chartId)
-      : chartLibraryKey(target.gameId, target.songId, target.type ?? 'SD', target.levelIndex ?? 0);
+    : chartLibraryKey(target.gameId, target.songId, target.type, target.levelIndex);
 }
 
 export function normalizeTagName(value: string): { displayName: string; key: string } {
@@ -254,27 +199,10 @@ export function normalizeLibraryItem(item: UserLibraryItem): UserLibraryItem {
   if (item.kind === 'song') {
     return { ...item, gameId, key: songLibraryKey(gameId, songId), songId, tags };
   }
-  const legacyLevelIndex = item.levelIndex;
-  const legacyType = item.type;
-  if ((legacyType === undefined) !== (legacyLevelIndex === undefined)) {
-    throw new Error('旧谱面类型与难度序号必须同时存在');
-  }
-  if (legacyLevelIndex !== undefined
-    && (!Number.isInteger(legacyLevelIndex) || legacyLevelIndex < 0 || legacyLevelIndex > 255)) {
+  if (!Number.isInteger(item.levelIndex) || item.levelIndex < 0 || item.levelIndex > 255) {
     throw new Error('谱面难度序号无效');
   }
-  const chartId = item.chartId || (legacyType !== undefined && legacyLevelIndex !== undefined
-    ? canonicalChartId(gameId, songId, legacyType, legacyLevelIndex)
-    : '');
-  if (!chartId) throw new Error('谱面 chartId 不能为空');
-  return {
-    ...item,
-    gameId,
-    key: chartLibraryKey(gameId, songId, chartId),
-    songId,
-    chartId,
-    tags,
-  };
+  return { ...item, gameId, key: chartLibraryKey(gameId, songId, item.type, item.levelIndex), songId, tags };
 }
 
 export function shouldKeepLibraryItem(item: UserLibraryItem): boolean {
@@ -285,7 +213,7 @@ export function createUserDataBackup(
   items: readonly UserLibraryItem[],
   exportedAt = new Date().toISOString(),
   tagPresets: readonly string[] = DEFAULT_TAG_PRESETS,
-): UserDataBackupV4 {
+): UserDataBackupV3 {
   return {
     format: USER_DATA_BACKUP_FORMAT,
     version: USER_DATA_BACKUP_VERSION,
@@ -297,20 +225,10 @@ export function createUserDataBackup(
 
 export function parseUserDataBackup(value: unknown): UserDataBackup {
   const parsed = UserDataBackupSchema.parse(value);
-  const items = parsed.items.map((item) => {
-    const legacy = item as typeof item & { type?: ChartType; levelIndex?: number };
-    const gameId = (item as UserLibraryItem).gameId ?? 'maimai';
-    const chartId = item.kind === 'chart' && !('chartId' in item)
-      ? canonicalChartId(gameId, item.songId, legacy.type, legacy.levelIndex ?? 0)
-      : item.kind === 'chart'
-        ? item.chartId
-        : undefined;
-    return normalizeLibraryItem({
-      ...(item as UserLibraryItem),
-      gameId,
-      ...(item.kind === 'chart' ? { chartId } : {}),
-    });
-  }).filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
+  const items = parsed.items.map((item) => normalizeLibraryItem({
+    ...(item as UserLibraryItem),
+    gameId: (item as UserLibraryItem).gameId ?? 'maimai',
+  })).filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
   return parsed.version === 1
     ? { ...parsed, items }
     : { ...parsed, items, tagPresets: normalizeTags(parsed.tagPresets) };
@@ -337,16 +255,7 @@ export function mergeLibraryItems(localItems: readonly UserLibraryItem[], import
     };
     merged.set(imported.key, local.kind === 'song'
       ? { ...common, kind: 'song', gameId: local.gameId, songId: local.songId, favorite: local.favorite || (imported as SongLibraryItem).favorite }
-      : {
-        ...common,
-        kind: 'chart',
-        gameId: local.gameId,
-        songId: local.songId,
-        chartId: local.chartId!,
-        type: local.type,
-        levelIndex: local.levelIndex,
-        practice: local.practice || (imported as ChartLibraryItem).practice,
-      });
+      : { ...common, kind: 'chart', gameId: local.gameId, songId: local.songId, type: local.type, levelIndex: local.levelIndex, practice: local.practice || (imported as ChartLibraryItem).practice });
   }
   return [...merged.values()].filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
 }
