@@ -1,0 +1,27 @@
+{
+  "schema": "rranker-game-model/v1",
+  "gameId": "test",
+  "displayName": "缺少难度轴",
+  "assetResolvers": [],
+  "tagGroups": [
+    {
+      "id": "attribute",
+      "role": "attribute",
+      "scope": "chart",
+      "shape": "none",
+      "items": [
+        {
+          "id": "value",
+          "label": "属性"
+        }
+      ]
+    }
+  ],
+  "pages": {
+    "overview": { "enabled": true },
+    "best": { "enabled": true },
+    "records": { "enabled": true },
+    "catalog": { "enabled": true },
+    "detail": { "enabled": true }
+  }
+}

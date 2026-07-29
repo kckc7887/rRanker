@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, waitFor, within } from './render-with-query';
 import { jest } from '@jest/globals';
 import { InteractionManager } from 'react-native';
 import SongDetailScreen from '../app/songs/[songId]';
@@ -171,11 +171,13 @@ jest.mock('@/hooks/use-user-library', () => {
       isUpdating: false,
       setSongFavorite: (...args: unknown[]) => mockSetSongFavorite(...args),
       setChartPractice: (...args: unknown[]) => mockSetChartPractice(...args),
+      setChartPracticeById: (...args: unknown[]) => mockSetChartPractice(...args),
       setTags: (...args: unknown[]) => mockSetTags(...args),
       setTagPresets: (...args: unknown[]) => mockSetTagPresets(...args),
       tagPresets: ['爆发', '交互'],
       songKey: (songId: string | number) => songLibraryKey('phigros', songId),
       chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('phigros', songId, type, levelIndex),
+      chartKeyById: (songId: string | number, chartId: string) => chartLibraryKey('phigros', songId, chartId),
     }),
   };
 });
@@ -210,7 +212,7 @@ describe('Phigros song detail', () => {
   it('renders title, illustrator and AT→EZ chart cards defaulting to IN', async () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByText('测试曲')).toBeTruthy());
-    expect(screen.getByTestId('phigros-song-title-scroll').props.horizontal).toBe(true);
+    expect(screen.getByTestId('game-song-title-scroll').props.horizontal).toBe(true);
     expect(screen.getByText('测试曲').props.numberOfLines).toBe(1);
     expect(screen.getByText('测试曲绘师')).toBeTruthy();
     expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy();
@@ -218,13 +220,13 @@ describe('Phigros song detail', () => {
     expect(screen.getByLabelText('HD 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('EZ 难度卡片')).toBeTruthy();
 
-    const cards = ['3', '2', '1', '0'].map((level) => screen.getByTestId(`phigros-chart-card-${level}`));
+    const cards = screen.getAllByLabelText(/难度卡片$/);
     expect(cards[0].props.accessibilityLabel).toBe('AT 难度卡片');
     expect(cards[1].props.accessibilityLabel).toBe('IN 难度卡片');
     expect(cards[2].props.accessibilityLabel).toBe('HD 难度卡片');
     expect(cards[3].props.accessibilityLabel).toBe('EZ 难度卡片');
 
-    const carousel = screen.getByTestId('phigros-chart-carousel');
+    const carousel = screen.getByTestId('game-chart-carousel');
     expect(carousel.props.contentOffset.x).toBeGreaterThan(0);
   });
 
@@ -232,10 +234,8 @@ describe('Phigros song detail', () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy());
     expect(screen.getAllByText('Score').length).toBeGreaterThan(0);
-    // IN constant 14.8 → floor 14
-    expect(screen.getByText('14')).toBeTruthy();
-    // AT constant 15.9 → floor 15
-    expect(screen.getByText('15')).toBeTruthy();
+    expect(screen.getAllByText('14.8').length).toBeGreaterThan(0);
+    expect(screen.getByText('15.9')).toBeTruthy();
   });
 
   it('shows note counts table on charts with notes and fallback when missing', async () => {
@@ -243,7 +243,7 @@ describe('Phigros song detail', () => {
     await waitFor(() => expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy());
 
     const tables = screen.getAllByLabelText('谱面物量');
-    expect(tables.length).toBe(3);
+    expect(tables.length).toBe(4);
     expect(screen.getAllByText('TAP').length).toBe(3);
     expect(screen.getAllByText('HOLD').length).toBe(3);
     expect(screen.getAllByText('DRAG').length).toBe(3);
@@ -274,8 +274,8 @@ describe('Phigros song detail', () => {
   it('opens requested levelIndex from route params', async () => {
     mockSongRouteParams = { songId: 'Song.A', levelIndex: '3' };
     const screen = await render(<SongDetailScreen />);
-    await waitFor(() => expect(screen.getByTestId('phigros-chart-carousel')).toBeTruthy());
-    const carousel = screen.getByTestId('phigros-chart-carousel');
+    await waitFor(() => expect(screen.getByTestId('game-chart-carousel')).toBeTruthy());
+    const carousel = screen.getByTestId('game-chart-carousel');
     expect(carousel.props.contentOffset.x).toBe(0);
   });
 
@@ -330,6 +330,10 @@ describe('Phigros song detail', () => {
     expect(mockSetTags).toHaveBeenCalledWith({ kind: 'song', songId: 'Song.A' }, ['测试标签']);
 
     fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
-    expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
+    expect(mockSetChartPractice).toHaveBeenCalledWith(
+      'Song.A',
+      expect.stringContaining('Song.A'),
+      true,
+    );
   });
 });

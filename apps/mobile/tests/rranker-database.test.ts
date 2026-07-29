@@ -46,7 +46,7 @@ describe('shared rranker.db access', () => {
     ]);
     expect(sqlite.openDatabaseAsync).toHaveBeenCalledTimes(1);
     expect(sqlite.openDatabaseAsync).toHaveBeenCalledWith('rranker.db');
-    expect(sqlite.db.execAsync).toHaveBeenCalledTimes(2);
+    expect(sqlite.db.execAsync).toHaveBeenCalledTimes(3);
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('account_score_snapshots'));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('user_library_meta'));
     expect(sqlite.db.execAsync.mock.calls.some(

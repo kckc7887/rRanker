@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from './render-with-query';
 import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { router } from 'expo-router';
@@ -102,6 +102,39 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
     refetch: jest.fn(),
   }),
 }));
+jest.mock('@/hooks/use-game-data', () => ({
+  useGameData: () => ({
+    data: {
+      gameId: 'chunithm',
+      providerId: null,
+      profile: { title: '中二节奏', ratingLabel: 'Rating' },
+      payload: { kind: 'empty', displayName: '中二节奏' },
+    },
+    activeGameId: 'chunithm',
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  }),
+}));
+jest.mock('@/hooks/use-phigros-catalog', () => ({
+  usePhigrosCatalog: () => ({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  }),
+}));
+jest.mock('@/hooks/use-collections', () => ({
+  useCollections: () => ({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  }),
+}));
 jest.mock('@/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({
     data: undefined,
@@ -154,7 +187,7 @@ jest.mock('@/components/MaimaiFilterBar', () => ({
 }));
 
 describe('Chunithm catalog screen', () => {
-  it('shows a search-only catalog and filters by charter without advanced controls', async () => {
+  it('uses the shared catalog, declarative filters and charter search', async () => {
     const screen = await render(<SearchScreen />);
 
     expect(screen.getByText('共 2 首')).toBeTruthy();
@@ -162,18 +195,10 @@ describe('Chunithm catalog screen', () => {
     expect(screen.getByText('Only My Railgun')).toBeTruthy();
     expect(screen.getByText('13.7')).toBeTruthy();
     expect(screen.getByText('12.4')).toBeTruthy();
-    expect(screen.queryByText(/ULT|MAS/)).toBeNull();
-    expect(StyleSheet.flatten(
-      screen.getByLabelText('ULTIMA，标级 13+，定数 13.7').props.style,
-    )).toEqual(expect.objectContaining({
-      backgroundColor: '#17171A',
-      borderColor: '#E83A58',
-      borderRadius: 999,
-    }));
-    expect(screen.queryByText('高级筛选器')).toBeNull();
-    expect(screen.queryAllByRole('button')).toHaveLength(2);
+    expect(screen.getByTestId('game-catalog-results-list')).toBeTruthy();
+    expect(screen.getByLabelText('展开筛选')).toBeTruthy();
 
-    await fireEvent.changeText(screen.getByLabelText('中二节奏歌曲搜索'), 'Redarrow');
+    await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), 'Redarrow');
 
     await waitFor(() => expect(screen.getByText('共 1 首')).toBeTruthy());
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
