@@ -17,6 +17,7 @@ type ChartCarouselProps<TItem> = {
   contentContainerStyle: StyleProp<ViewStyle>;
   keyExtractor: (item: TItem) => string;
   renderItem: (item: TItem) => ReactNode;
+  onIndexChange?: (index: number) => void;
   resetKey?: string | number;
   testID?: string;
 };
@@ -33,6 +34,7 @@ export function ChartCarousel<TItem>({
   contentContainerStyle,
   keyExtractor,
   renderItem,
+  onIndexChange,
   resetKey,
   testID,
 }: ChartCarouselProps<TItem>) {
@@ -58,6 +60,13 @@ export function ChartCarousel<TItem>({
         directionalLockEnabled
         horizontal
         nestedScrollEnabled
+        onMomentumScrollEnd={(event) => {
+          const nextIndex = Math.max(
+            0,
+            Math.min(items.length - 1, Math.round(event.nativeEvent.contentOffset.x / interval)),
+          );
+          onIndexChange?.(nextIndex);
+        }}
         ref={scrollRef}
         removeClippedSubviews={false}
         showsHorizontalScrollIndicator={false}

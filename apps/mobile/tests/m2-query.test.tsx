@@ -446,4 +446,13 @@ describe('M2 song query screens', () => {
       Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children))
       .toEqual(['MASTER', 'BASIC']);
   });
+
+  it('shows the version of the currently selected SD or DX chart', async () => {
+    mockSongRouteParams = { songId: '7', chartType: 'SD', levelIndex: '3' };
+    const screen = await render(<SongDetailScreen />);
+
+    expect(screen.getByTestId('metadata-value-版本').props.children).toBe('脱敏过往版本');
+    await fireEvent.press(screen.getByLabelText('切换为DX谱面'));
+    expect(screen.getByTestId('metadata-value-版本').props.children).toBe('舞萌DX 2026');
+  });
 });
