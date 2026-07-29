@@ -360,6 +360,7 @@ describe('useSession store', () => {
           credentialId: 'lxns:shared',
           displayName: '中二玩家',
           scoreDisplay: '17.25',
+          ratingPossession: 'rainbow',
         },
       ],
     });
@@ -375,6 +376,9 @@ describe('useSession store', () => {
       'maimai:lxns:1': rotated,
       'chunithm:lxns:2': rotated,
     });
+    expect(useSession.getState().boundAccounts.find(
+      (account) => account.id === 'chunithm:lxns:2',
+    )?.ratingPossession).toBe('rainbow');
     expect(useSession.getState().session).toEqual(rotated);
   });
 

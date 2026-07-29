@@ -9,12 +9,14 @@ export function PhigrosAccountTags({ rks, challengeModeRank }: {
   rks: string;
   challengeModeRank?: number | null;
 }) {
+  const rksNumber = Number(rks);
+  const rksDisplay = Number.isFinite(rksNumber) ? rksNumber.toFixed(2) : '—';
   const challenge = challengeModeRank == null
     ? null
     : resolvePhigrosChallengeTheme(challengeModeRank);
   return <View style={styles.row}>
-    <View style={[styles.tag, styles.rks]} accessibilityLabel={`RKS ${rks}`}>
-      <Text style={styles.rksLabel}>RKS</Text><Text style={styles.rksValue}>{rks}</Text>
+    <View style={[styles.tag, styles.rks]} accessibilityLabel={`RKS ${rksDisplay}`}>
+      <Text style={styles.rksValue}>{rksDisplay}</Text>
     </View>
     {challenge ? <LinearGradient
       colors={[...challenge.borderColors]}
@@ -36,7 +38,7 @@ export function PhigrosAccountTags({ rks, challengeModeRank }: {
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   tag: { minHeight: 28, borderRadius: 8, paddingHorizontal: 9, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 5 },
-  rks: { backgroundColor: '#242934' }, rksLabel: { color: '#9DE7E7', fontSize: 9, fontWeight: '800' },
+  rks: { backgroundColor: '#242934' },
   rksValue: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
   challengeBorder: { borderRadius: 9, padding: 1.5 }, challengeValue: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
   empty: { backgroundColor: '#E5E7EB' }, emptyValue: { color: '#6B7280', fontSize: 13, fontWeight: '800' },
