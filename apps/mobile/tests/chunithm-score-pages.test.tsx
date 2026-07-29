@@ -1,5 +1,5 @@
 import { Animated } from 'react-native';
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
@@ -10,6 +10,8 @@ import {
   CHUNITHM_RANK_GRADIENT,
   CHUNITHM_RANK_GRADIENT_LOCATIONS,
 } from '@/components/chunithm/ChunithmScoreCard';
+import { CHUNITHM_RANKS_DESC } from '@/domain/chunithm-filters';
+import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
 
 const mockRefetchGame = jest.fn(async () => undefined);
 const mockRefetchCatalog = jest.fn(async () => undefined);
@@ -118,7 +120,10 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
     data: {
       currentVersion: { id: 23000, title: 'CHUNITHM VERSE' },
-      versions: [{ id: 23000, title: 'CHUNITHM VERSE' }],
+      versions: [
+        { id: 22000, title: 'CHUNITHM LUMINOUS PLUS' },
+        { id: 23000, title: 'CHUNITHM VERSE' },
+      ],
       genres: [],
       songs: [
         {
@@ -136,8 +141,8 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
             level: '13',
             levelValue: 13.4,
             noteDesigner: '谱师甲',
-            versionId: 23000,
-            versionTitle: 'CHUNITHM VERSE',
+            versionId: 22000,
+            versionTitle: 'CHUNITHM LUMINOUS PLUS',
           }],
         },
         {
@@ -196,6 +201,7 @@ describe('Chunithm records and B50 screens', () => {
     jest.clearAllMocks();
     mockSessionState.activeProviderId = 'lxns';
     mockSessionState.session = { mode: 'lxns-oauth' };
+    useChunithmRecordsFilter.getState().reset();
   });
 
   it('allows the generated sample provider to open records without LXNS credentials', async () => {
@@ -216,10 +222,10 @@ describe('Chunithm records and B50 screens', () => {
     expect(best.queryByText('尚未绑定落雪账号')).toBeNull();
   });
 
-  it('shows all scores ordered by Rating, supports local metadata search and has no filter controls', async () => {
+  it('shows all scores ordered by Rating, supports local metadata search and keeps filters collapsed', async () => {
     const screen = await render(<RecordsScreen />);
     expect(screen.getByTestId('chunithm-records-list')).toBeTruthy();
-    expect(screen.queryByText('筛选')).toBeNull();
+    expect(screen.getByLabelText('展开中二筛选，当前 全部')).toBeTruthy();
     const cards = screen.getAllByTestId(/^chunithm-score-card-/);
     expect(cards.map((card) => card.props.testID)).toEqual([
       'chunithm-score-card-2-3',
@@ -235,6 +241,46 @@ describe('Chunithm records and B50 screens', () => {
     await fireEvent.changeText(screen.getByLabelText('中二成绩搜索'), '目标艺术家');
     expect(screen.getByText('第一首歌')).toBeTruthy();
     expect(screen.queryByText('第二首歌')).toBeNull();
+  });
+
+  it('shows two evaluation dropdowns containing every rank label', async () => {
+    const screen = await render(<RecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('展开中二筛选，当前 全部'));
+
+    expect(screen.getByLabelText('中二评价下限，当前 不限')).toBeTruthy();
+    expect(screen.getByLabelText('中二评价上限，当前 不限')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('中二评价下限，当前 不限'));
+    await waitFor(() => {
+      expect(screen.getByLabelText('选择中二评价下限 不限')).toBeTruthy();
+      for (const rank of CHUNITHM_RANKS_DESC) {
+        expect(screen.getByLabelText(`选择中二评价下限 ${rank}`)).toBeTruthy();
+      }
+    });
+  });
+
+  it("combines chart version, difficulty and rank filters and excludes WORLD'S END from constant ranges", async () => {
+    const screen = await render(<RecordsScreen />);
+
+    await act(() => {
+      const state = useChunithmRecordsFilter.getState();
+      state.setDifficulty(5);
+      state.setVersion('23000');
+      state.setRankMin('SSS');
+      state.setRankMax('SSS');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('WORLD END 曲目')).toBeTruthy();
+      expect(screen.queryByText('第一首歌')).toBeNull();
+      expect(screen.queryByText('第二首歌')).toBeNull();
+      expect(screen.getByText('共 1 条成绩')).toBeTruthy();
+    });
+
+    await act(() => {
+      useChunithmRecordsFilter.getState().setConstantMax('15');
+    });
+    await waitFor(() => expect(screen.getByText('当前筛选条件下没有中二成绩')).toBeTruthy());
   });
 
   it('renders Best 30 before New 20, resets positions and never renders Selection 10', async () => {

@@ -26,6 +26,8 @@ export type ChunithmScoreCardData = {
   levelIndex: ChunithmLevelIndex;
   level?: string;
   difficultyConstant?: number;
+  versionId?: number;
+  versionTitle?: string;
   worldsEndLabel?: string;
   score: number;
   rating?: number;
@@ -135,6 +137,8 @@ export function buildChunithmScoreCards(
       levelIndex: score.level_index as ChunithmLevelIndex,
       level: score.level ?? difficulty?.level,
       difficultyConstant: worldsEnd ? undefined : difficulty?.levelValue,
+      versionId: difficulty?.versionId,
+      versionTitle: difficulty?.versionTitle,
       worldsEndLabel: worldsEnd
         ? formatChunithmWorldsEndLabel({
           kanji: difficulty?.kanji,

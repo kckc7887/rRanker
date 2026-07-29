@@ -2,6 +2,7 @@ import { memo, useState } from 'react';
 import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
 import {
+  type ChunithmDifficulty,
   type ChunithmSong,
 } from '@/domain/chunithm';
 import { formatChunithmWorldsEndLabel } from '@/domain/chunithm-score-presentation';
@@ -20,12 +21,16 @@ export function chunithmJacketUrl(song: ChunithmSong): string {
 
 export const ChunithmSongRow = memo(function ChunithmSongRow({
   song,
+  displayedDifficulties,
+  displayedVersionTitle,
 }: {
   song: ChunithmSong;
+  displayedDifficulties?: readonly ChunithmDifficulty[];
+  displayedVersionTitle?: string;
 }) {
   const [coverFailed, setCoverFailed] = useState(false);
   const presentation = presentChunithmSong(song);
-  const difficulties = [...song.difficulties].sort(
+  const difficulties = [...(displayedDifficulties ?? song.difficulties)].sort(
     (left, right) => left.difficulty - right.difficulty,
   );
 
@@ -40,7 +45,7 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
       titleWrapperStyle={styles.titleLine}
       titleStyle={styles.title}
       subtitleStyle={styles.meta}
-      subtitleContent={<>{song.artist ?? '艺术家未知'} · {song.versionTitle}</>}
+      subtitleContent={<>{song.artist ?? '艺术家未知'} · {displayedVersionTitle ?? song.versionTitle}</>}
       cover={coverFailed ? (
         <View style={[styles.cover, styles.coverPlaceholder]}>
           <Text style={styles.coverNote}>♪</Text>
