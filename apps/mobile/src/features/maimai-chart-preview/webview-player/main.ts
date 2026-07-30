@@ -251,6 +251,17 @@ async function main(): Promise<void> {
   const btnLoopA = $('btn-loop-a') as HTMLButtonElement;
   const btnLoopB = $('btn-loop-b') as HTMLButtonElement;
   const btnFullscreen = $('btn-fullscreen') as HTMLButtonElement;
+  const fsOverlay = $('fs-overlay');
+  const fsLock = $('fs-lock') as HTMLButtonElement;
+  const fsTimelineHost = $('fs-timeline-host');
+  const fsTimelineBars = $('fs-timeline-bars');
+  const fsTimelineRuler = $('fs-timeline-ruler');
+  const fsTimelinePlayhead = $('fs-timeline-playhead');
+  const fsTimelineBadge = $('fs-timeline-badge');
+  const fsTimeLabel = $('fs-time-label');
+  const fsTransport = $('fs-transport');
+  const fsLoopA = $('fs-loop-a') as HTMLButtonElement;
+  const fsLoopB = $('fs-loop-b') as HTMLButtonElement;
   const timelineHost = $('timeline-host');
   const timelineBars = $('timeline-bars');
   const timelineRuler = $('timeline-ruler');
@@ -637,8 +648,10 @@ async function main(): Promise<void> {
       const pct = totalDurationMs > 0 ? (ms / totalDurationMs) * 100 : 0;
       const measure = Math.floor(preciseBeats / 4);
       updatePlayhead(pct, measure);
+      if (isFullscreen) updateFsPlayhead(pct, measure);
     }
     timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
+    if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
   };
 
   const updateOverlayDom = () => {
@@ -964,13 +977,183 @@ async function main(): Promise<void> {
     else renderAt(preciseBeats);
   });
 
-  btnFullscreen.addEventListener('click', () => {
-    document.body.classList.toggle('fullscreen');
-    requestAnimationFrame(() => {
-      resize();
-      renderAt(preciseBeats);
+  let isFullscreen = false;
+  let fsLocked = false;
+  let fsHideTimer: number | undefined;
+
+  const buildFsTimeline = () => {
+    fsTimelineBars.replaceChildren();
+    if (totalDurationMs <= 0) return;
+    const rect = fsTimelineHost.getBoundingClientRect();
+    const w = Math.max(1, Math.ceil(rect.width));
+    const bucketCount = Math.min(200, w);
+    const step = totalDurationMs / bucketCount;
+    const buckets: Record<string, number>[] = Array.from({ length: bucketCount }, (_, i) => ({ startMs: i * step, tap: 0, hold: 0, slide: 0, touch: 0, break: 0, total: 0 }));
+    for (const note of chart.notes ?? []) {
+      const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.timingMs / step)));
+      const b = buckets[idx]!;
+      switch (note.type) {
+        case 'tap': case 'simultaneous': b.tap++; break;
+        case 'hold-start': case 'hold-start-simultaneous': b.hold++; break;
+        case 'slide': b.slide++; break;
+        case 'touch': case 'touch-hold-start': b.touch++; break;
+        case 'break': b.break++; break;
+      }
+      b.total++;
+    }
+    let maxTotal = 1;
+    for (const b of buckets) { if (b.total > maxTotal) maxTotal = b.total; }
+    const barH = 22;
+    for (const b of buckets) {
+      if (b.total === 0) continue;
+      const h = Math.max(2, (b.total / maxTotal) * barH);
+      const left = ((b.startMs / totalDurationMs) * 100).toFixed(2);
+      const widthPct = ((step / totalDurationMs) * 100).toFixed(2);
+      const bar = document.createElement('div');
+      bar.className = 'fs-timeline-bar';
+      bar.style.left = `${left}%`;
+      bar.style.width = `${widthPct}%`;
+      bar.style.height = `${h}px`;
+      for (const key of ['tap', 'hold', 'slide', 'touch', 'break'] as const) {
+        const ratio = b[key] / b.total;
+        if (ratio === 0) continue;
+        const seg = document.createElement('div');
+        seg.style.flex = String(ratio);
+        seg.style.width = '100%';
+        seg.style.backgroundColor = NOTE_COLORS[key]!;
+        bar.appendChild(seg);
+      }
+      fsTimelineBars.appendChild(bar);
+    }
+    fsTimelineRuler.replaceChildren();
+    const rulerRect = fsTimelineRuler.getBoundingClientRect();
+    const rw = Math.max(1, rulerRect.width);
+    const tickStep = [1, 5, 10, 50, 100].find(s => maxMeasure > 0 && (rw * s) / maxMeasure >= 4) ?? 100;
+    const labelStep = [5, 10, 20, 50, 100, 200].find(s => maxMeasure > 0 && (rw * s) / maxMeasure >= 24) ?? 200;
+    for (let m = 0; m <= maxMeasure; m++) {
+      const pct = measurePercents[m] ?? 0;
+      if (m % tickStep === 0) {
+        const isMajor = m % 10 === 0;
+        const isMedium = m % 5 === 0;
+        const cls = isMajor ? 'major' : isMedium ? 'medium' : 'minor';
+        const tick = document.createElement('div');
+        tick.className = `fs-timeline-tick ${cls}`;
+        tick.style.left = `${pct}%`;
+        fsTimelineRuler.appendChild(tick);
+      }
+      if (m % labelStep === 0) {
+        const label = document.createElement('div');
+        label.className = 'fs-timeline-label';
+        label.style.left = `${pct}%`;
+        label.textContent = String(m);
+        fsTimelineRuler.appendChild(label);
+      }
+    }
+  };
+
+  const updateFsPlayhead = (pct: number, measure: number) => {
+    fsTimelinePlayhead.style.left = `${pct}%`;
+    fsTimelineBadge.style.left = `${pct}%`;
+    fsTimelineBadge.textContent = String(measure);
+  };
+
+  const showFsOverlay = () => {
+    if (fsLocked) return;
+    fsOverlay.classList.remove('hidden');
+    window.clearTimeout(fsHideTimer);
+    fsHideTimer = window.setTimeout(() => {
+      fsOverlay.classList.add('hidden');
+    }, 5000);
+  };
+
+  const hideFsOverlay = () => {
+    fsOverlay.classList.add('hidden');
+    window.clearTimeout(fsHideTimer);
+  };
+
+  const enterFullscreen = () => {
+    isFullscreen = true;
+    document.body.classList.add('fullscreen');
+    buildFsTimeline();
+    fsTransport.replaceChildren();
+    const makeBtn = (id: string, label: string, html: string) => {
+      const btn = document.createElement('button');
+      btn.className = 'transport-btn';
+      btn.id = id;
+      btn.setAttribute('aria-label', label);
+      btn.type = 'button';
+      btn.innerHTML = html;
+      return btn;
+    };
+    const left = document.createElement('div');
+    left.className = 'transport-side left';
+    const right = document.createElement('div');
+    right.className = 'transport-side right';
+    left.appendChild(makeBtn('fs-restart', '重播当前小节', btnRestart.innerHTML));
+    left.appendChild(makeBtn('fs-prev-measure', '上一小节', document.getElementById('btn-prev-measure')!.innerHTML));
+    left.appendChild(makeBtn('fs-step-back', '步退', document.getElementById('btn-step-back')!.innerHTML));
+    right.appendChild(makeBtn('fs-step-forward', '步进', document.getElementById('btn-step-forward')!.innerHTML));
+    right.appendChild(makeBtn('fs-next-measure', '下一小节', document.getElementById('btn-next-measure')!.innerHTML));
+    right.appendChild(makeBtn('fs-fullscreen', '退出全屏', document.getElementById('btn-fullscreen')!.innerHTML));
+    fsTransport.appendChild(left);
+    fsTransport.appendChild(right);
+    document.getElementById('fs-restart')!.addEventListener('click', () => { const m = Math.floor(preciseBeats / 4); preciseBeats = m * 4; if (isPlaying) void startPlayback(); else renderAt(preciseBeats); });
+    document.getElementById('fs-prev-measure')!.addEventListener('click', () => skipToMeasure(-1));
+    document.getElementById('fs-step-back')!.addEventListener('click', () => skipBeats(-1));
+    document.getElementById('fs-step-forward')!.addEventListener('click', () => skipBeats(1));
+    document.getElementById('fs-next-measure')!.addEventListener('click', () => skipToMeasure(1));
+    document.getElementById('fs-fullscreen')!.addEventListener('click', exitFullscreen);
+    fsLoopA.addEventListener('click', () => {
+      if (loopA !== null) { loopA = null; fsLoopA.classList.remove('on'); btnLoopA.classList.remove('on'); return; }
+      loopA = preciseBeats; fsLoopA.classList.add('on'); btnLoopA.classList.add('on');
+      if (loopB !== null && loopA > loopB) { [loopA, loopB] = [loopB, loopA]; fsLoopA.classList.add('on'); fsLoopB.classList.add('on'); btnLoopA.classList.add('on'); btnLoopB.classList.add('on'); }
     });
+    fsLoopB.addEventListener('click', () => {
+      if (loopB !== null) { loopB = null; fsLoopB.classList.remove('on'); btnLoopB.classList.remove('on'); return; }
+      loopB = preciseBeats; fsLoopB.classList.add('on'); btnLoopB.classList.add('on');
+      if (loopA !== null && loopA > loopB) { [loopA, loopB] = [loopB, loopA]; fsLoopA.classList.add('on'); fsLoopB.classList.add('on'); btnLoopA.classList.add('on'); btnLoopB.classList.add('on'); }
+    });
+    if (loopA !== null) fsLoopA.classList.add('on');
+    if (loopB !== null) fsLoopB.classList.add('on');
+    fsTimelineHost.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      const rect = fsTimelineHost.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+      seekToPosition(pct);
+      showFsOverlay();
+    });
+    postStatus('fullscreen', {});
+  };
+
+  const exitFullscreen = () => {
+    isFullscreen = false;
+    fsLocked = false;
+    fsLock.classList.remove('locked');
+    document.body.classList.remove('fullscreen');
+    hideFsOverlay();
+    postStatus('fullscreen', {});
+    requestAnimationFrame(() => { resize(); renderAt(preciseBeats); });
+  };
+
+  btnFullscreen.addEventListener('click', () => {
+    isFullscreen ? exitFullscreen() : enterFullscreen();
   });
+
+  canvasWrap.addEventListener('click', (e) => {
+    if (!isFullscreen) return;
+    e.stopPropagation();
+    if (fsLocked) { fsLocked = false; fsLock.classList.remove('locked'); return; }
+    fsOverlay.classList.contains('hidden') ? showFsOverlay() : hideFsOverlay();
+  });
+
+  fsLock.addEventListener('click', (e) => {
+    e.stopPropagation();
+    fsLocked = !fsLocked;
+    fsLock.classList.toggle('locked', fsLocked);
+    if (fsLocked) hideFsOverlay();
+  });
+
+  fsOverlay.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
 
   let loopA: number | null = null;
   let loopB: number | null = null;
