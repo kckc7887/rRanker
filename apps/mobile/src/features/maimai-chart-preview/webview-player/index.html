@@ -247,8 +247,6 @@
     #time-label {
       font-size: 12px;
       color: var(--muted);
-      min-width: 88px;
-      text-align: right;
       font-variant-numeric: tabular-nums;
     }
     .field {
@@ -392,16 +390,20 @@
     </div>
     <div id="controls">
       <div class="row">
-        <button id="play" type="button" aria-label="播放">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        </button>
         <div id="timeline-host">
           <div id="timeline-bars"></div>
           <div id="timeline-ruler"></div>
           <div id="timeline-playhead"></div>
           <div id="timeline-badge"></div>
         </div>
-        <div id="time-label">0:00 / 0:00</div>
+      </div>
+      <div class="row" style="justify-content:center">
+        <div id="time-label" style="min-width:auto;text-align:center">0:00 / 0:00</div>
+      </div>
+      <div class="row" style="justify-content:center">
+        <button id="play" type="button" aria-label="播放">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
       </div>
       <div class="row wrap">
         <div class="field wheel-field" id="hi-speed-field">
