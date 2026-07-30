@@ -1071,6 +1071,16 @@ async function main(): Promise<void> {
     window.clearTimeout(fsHideTimer);
   };
 
+  const exitFullscreen = () => {
+    isFullscreen = false;
+    fsLocked = false;
+    fsLock.classList.remove('locked');
+    document.body.classList.remove('fullscreen');
+    hideFsOverlay();
+    postStatus('fullscreen', {});
+    requestAnimationFrame(() => { resize(); renderAt(preciseBeats); });
+  };
+
   const enterFullscreen = () => {
     isFullscreen = true;
     document.body.classList.add('fullscreen');
@@ -1123,16 +1133,6 @@ async function main(): Promise<void> {
       showFsOverlay();
     });
     postStatus('fullscreen', {});
-  };
-
-  const exitFullscreen = () => {
-    isFullscreen = false;
-    fsLocked = false;
-    fsLock.classList.remove('locked');
-    document.body.classList.remove('fullscreen');
-    hideFsOverlay();
-    postStatus('fullscreen', {});
-    requestAnimationFrame(() => { resize(); renderAt(preciseBeats); });
   };
 
   btnFullscreen.addEventListener('click', () => {
