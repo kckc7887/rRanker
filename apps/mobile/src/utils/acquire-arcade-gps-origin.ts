@@ -1,5 +1,4 @@
-import { Platform } from 'react-native';
-import Geolocation from '@react-native-community/geolocation';
+import { NativeModules, Platform, TurboModuleRegistry } from 'react-native';
 import * as Location from 'expo-location';
 import { formatArcadeGeocodedLabel, type ArcadeOrigin } from '@/domain/arcade-shops';
 
@@ -8,21 +7,63 @@ type Coords = {
   longitude: number;
 };
 
-function ensureAndroidGeolocationConfig(): void {
-  Geolocation.setRNConfiguration({
+type CommunityGeolocation = {
+  setRNConfiguration: (config: {
+    skipPermissionRequests: boolean;
+    locationProvider?: 'playServices' | 'android' | 'auto';
+  }) => void;
+  getCurrentPosition: (
+    success: (position: { coords: { latitude: number; longitude: number } }) => void,
+    error?: (error: { message?: string }) => void,
+    options?: {
+      enableHighAccuracy?: boolean;
+      timeout?: number;
+      maximumAge?: number;
+    },
+  ) => void;
+};
+
+/** True only in Android builds that autolinked RNCGeolocation (not Expo Go). */
+function isAndroidCommunityGeolocationLinked(): boolean {
+  if (Platform.OS !== 'android') return false;
+  try {
+    if (TurboModuleRegistry.get('RNCGeolocation') != null) return true;
+  } catch {
+    // TurboModuleRegistry.get may throw when the module is missing.
+  }
+  return NativeModules.RNCGeolocation != null;
+}
+
+/**
+ * Lazily load community geolocation only when the native module is linked.
+ * A top-level import crashes Expo Go because the package is not in that client.
+ */
+async function tryLoadAndroidGeolocation(): Promise<CommunityGeolocation | null> {
+  if (!isAndroidCommunityGeolocationLinked()) return null;
+  try {
+    const mod = await import('@react-native-community/geolocation');
+    const geo = (mod as { default?: CommunityGeolocation }).default;
+    if (!geo || typeof geo.getCurrentPosition !== 'function') return null;
+    return geo;
+  } catch {
+    return null;
+  }
+}
+
+function getAndroidCurrentPosition(
+  geolocation: CommunityGeolocation,
+  options: {
+    enableHighAccuracy: boolean;
+    timeout: number;
+    maximumAge: number;
+  },
+): Promise<Coords> {
+  geolocation.setRNConfiguration({
     skipPermissionRequests: true,
     locationProvider: 'android',
   });
-}
-
-function getAndroidCurrentPosition(options: {
-  enableHighAccuracy: boolean;
-  timeout: number;
-  maximumAge: number;
-}): Promise<Coords> {
-  ensureAndroidGeolocationConfig();
   return new Promise((resolve, reject) => {
-    Geolocation.getCurrentPosition(
+    geolocation.getCurrentPosition(
       (position) => {
         resolve({
           latitude: position.coords.latitude,
@@ -30,23 +71,25 @@ function getAndroidCurrentPosition(options: {
         });
       },
       (error) => {
-        reject(new Error(error.message || 'location'));
+        reject(new Error(error?.message || 'location'));
       },
       options,
     );
   });
 }
 
-async function acquireAndroidCoords(): Promise<Coords> {
+async function acquireAndroidLocationManagerCoords(
+  geolocation: CommunityGeolocation,
+): Promise<Coords> {
   try {
-    return await getAndroidCurrentPosition({
+    return await getAndroidCurrentPosition(geolocation, {
       enableHighAccuracy: true,
       timeout: 15_000,
       maximumAge: 60_000,
     });
   } catch {
     // Soft fallback: accept coarser / older LocationManager cache without GMS.
-    return getAndroidCurrentPosition({
+    return getAndroidCurrentPosition(geolocation, {
       enableHighAccuracy: false,
       timeout: 10_000,
       maximumAge: 5 * 60_000,
@@ -54,7 +97,7 @@ async function acquireAndroidCoords(): Promise<Coords> {
   }
 }
 
-async function acquireIosCoords(): Promise<Coords> {
+async function acquireExpoCoords(): Promise<Coords> {
   const position = await Location.getCurrentPositionAsync({
     accuracy: Location.Accuracy.Balanced,
   });
@@ -77,7 +120,11 @@ async function labelForCoords(coords: Coords): Promise<string> {
   return label;
 }
 
-/** Resolve GPS origin for arcade finder. Android uses LocationManager (no GMS). */
+/**
+ * Resolve GPS origin for arcade finder.
+ * Android custom/EAS builds use LocationManager (no GMS) via community geolocation.
+ * Expo Go / iOS / unlinked native module fall back to expo-location.
+ */
 export async function acquireArcadeGpsOrigin(): Promise<ArcadeOrigin> {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (permission.status !== 'granted') {
@@ -89,9 +136,10 @@ export async function acquireArcadeGpsOrigin(): Promise<ArcadeOrigin> {
     throw new Error('location-services-disabled');
   }
 
-  const coords = Platform.OS === 'android'
-    ? await acquireAndroidCoords()
-    : await acquireIosCoords();
+  const androidGeo = await tryLoadAndroidGeolocation();
+  const coords = androidGeo
+    ? await acquireAndroidLocationManagerCoords(androidGeo)
+    : await acquireExpoCoords();
 
   const label = await labelForCoords(coords);
   return {
