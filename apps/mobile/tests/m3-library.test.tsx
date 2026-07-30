@@ -77,10 +77,12 @@ jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: {
     push: (...args: unknown[]) => mockPush(...args),
-    back: () => mockBack(),
-    canGoBack: () => mockCanGoBack(),
     replace: (...args: unknown[]) => mockReplace(...args),
   },
+  useNavigation: () => ({
+    canGoBack: () => mockCanGoBack(),
+    goBack: () => mockBack(),
+  }),
   useLocalSearchParams: () => ({ songId: '1' }),
 }));
 jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({

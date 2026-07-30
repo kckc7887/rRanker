@@ -21,7 +21,7 @@ import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { navigateBackFromSongDetail } from '@/components/game-content/SongDetailNavigation';
+import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
 import {
@@ -205,13 +205,14 @@ function DetailChrome({
   onToggleFavorite?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const navigateBack = useSongDetailBackNavigation();
   return (
     <>
       <Pressable
         accessibilityLabel="返回"
         accessibilityRole="button"
         hitSlop={12}
-        onPress={navigateBackFromSongDetail}
+        onPress={navigateBack}
         style={({ pressed }) => [
           styles.headerButton,
           { top: insets.top, left: 8 },

@@ -54,10 +54,12 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('expo-router', () => ({
   router: {
     push: (...args: unknown[]) => mockPush(...args),
-    back: () => mockBack(),
-    canGoBack: () => mockCanGoBack(),
     replace: (...args: unknown[]) => mockReplace(...args),
   },
+  useNavigation: () => ({
+    canGoBack: () => mockCanGoBack(),
+    goBack: () => mockBack(),
+  }),
   useLocalSearchParams: () => mockSongRouteParams,
 }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
