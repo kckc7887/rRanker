@@ -333,8 +333,8 @@ async function main(): Promise<void> {
   let preciseBeats = 0;
   let playbackSpeed = saved.playbackSpeed ?? 1;
   const musicOffset = 0;
-  let musicVolume = saved.musicVolume ?? 8;
-  let soundVolume = saved.soundVolume ?? 6;
+  let musicVolume = saved.musicVolume ?? 10;
+  let soundVolume = saved.soundVolume ?? 10;
   let rafId = 0;
   let seeking = false;
   let lastRafTs = 0;
@@ -543,7 +543,7 @@ async function main(): Promise<void> {
     0,
     10,
     0.1,
-    saved.musicVolume ?? 8,
+    saved.musicVolume ?? 10,
   );
 
   setupWheelPopup(
@@ -560,7 +560,7 @@ async function main(): Promise<void> {
     0,
     10,
     0.1,
-    saved.soundVolume ?? 6,
+    saved.soundVolume ?? 10,
   );
 
   const resize = () => {
