@@ -8,6 +8,8 @@ import type {
 } from '@/domain/chunithm';
 
 const mockBack = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
+const mockReplace = jest.fn();
 const mockSetSongFavorite = jest.fn(async () => undefined);
 const mockSetChartPractice = jest.fn(async () => undefined);
 const mockSetTags = jest.fn(async () => undefined);
@@ -118,7 +120,11 @@ let mockCatalogState = mockCatalog;
 let mockDarkTheme = false;
 
 jest.mock('expo-router', () => ({
-  router: { back: mockBack },
+  router: {
+    back: mockBack,
+    canGoBack: mockCanGoBack,
+    replace: mockReplace,
+  },
 }));
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -223,6 +229,7 @@ jest.mock('@/components/TagEditor', () => ({
 describe('Chunithm song detail', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCanGoBack.mockReturnValue(true);
     mockDarkTheme = false;
     mockCatalogState = mockCatalog;
     mockDetailState = {

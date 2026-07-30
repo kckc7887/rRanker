@@ -12,7 +12,9 @@ jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callb
 });
 
 const mockBack = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 let mockSongRouteParams: { songId: string; levelIndex?: string } = { songId: 'Song.A' };
 
 function buildSampleSong(): Song {
@@ -61,7 +63,12 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('expo-router', () => ({
-  router: { push: (...args: unknown[]) => mockPush(...args), back: () => mockBack() },
+  router: {
+    push: (...args: unknown[]) => mockPush(...args),
+    back: () => mockBack(),
+    canGoBack: () => mockCanGoBack(),
+    replace: (...args: unknown[]) => mockReplace(...args),
+  },
   useLocalSearchParams: () => mockSongRouteParams,
 }));
 jest.mock('@/state/session-store', () => ({
@@ -202,6 +209,7 @@ describe('Phigros song detail', () => {
   beforeEach(() => {
     mockSongRouteParams = { songId: 'Song.A' };
     libraryMock.__libraryMockState.data = [];
+    mockCanGoBack.mockReturnValue(true);
     jest.clearAllMocks();
   });
 
