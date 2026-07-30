@@ -7,6 +7,7 @@ const {
   reverseGeocodeAsync,
   setRNConfiguration,
   getCurrentPosition,
+  turboGet,
 } = vi.hoisted(() => ({
   requestForegroundPermissionsAsync: vi.fn(),
   hasServicesEnabledAsync: vi.fn(),
@@ -14,10 +15,13 @@ const {
   reverseGeocodeAsync: vi.fn(),
   setRNConfiguration: vi.fn(),
   getCurrentPosition: vi.fn(),
+  turboGet: vi.fn(),
 }));
 
 vi.mock('react-native', () => ({
   Platform: { OS: 'ios' },
+  NativeModules: {},
+  TurboModuleRegistry: { get: turboGet },
 }));
 
 vi.mock('expo-location', () => ({
@@ -35,13 +39,17 @@ vi.mock('@react-native-community/geolocation', () => ({
   },
 }));
 
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 import { acquireArcadeGpsOrigin } from '@/utils/acquire-arcade-gps-origin';
 
 describe('acquireArcadeGpsOrigin', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (Platform as { OS: string }).OS = 'ios';
+    turboGet.mockReturnValue(null);
+    Object.keys(NativeModules).forEach((key) => {
+      delete (NativeModules as Record<string, unknown>)[key];
+    });
     hasServicesEnabledAsync.mockResolvedValue(true);
     reverseGeocodeAsync.mockResolvedValue([]);
   });
@@ -83,8 +91,9 @@ describe('acquireArcadeGpsOrigin', () => {
     expect(setRNConfiguration).not.toHaveBeenCalled();
   });
 
-  it('uses Android LocationManager geolocation on Android', async () => {
+  it('uses Android LocationManager when community geolocation is linked', async () => {
     (Platform as { OS: string }).OS = 'android';
+    turboGet.mockReturnValue({});
     requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
     getCurrentPosition.mockImplementation((success) => {
       success({
@@ -107,8 +116,29 @@ describe('acquireArcadeGpsOrigin', () => {
     expect(getCurrentPositionAsync).not.toHaveBeenCalled();
   });
 
+  it('falls back to expo-location on Android when geolocation is not linked', async () => {
+    (Platform as { OS: string }).OS = 'android';
+    turboGet.mockReturnValue(null);
+    requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
+    getCurrentPositionAsync.mockResolvedValue({
+      coords: { latitude: 31.0, longitude: 121.0 },
+    });
+
+    await expect(acquireArcadeGpsOrigin()).resolves.toEqual({
+      source: 'gps',
+      latitude: 31.0,
+      longitude: 121.0,
+      label: '当前位置',
+    });
+
+    expect(getCurrentPositionAsync).toHaveBeenCalledWith({ accuracy: 3 });
+    expect(getCurrentPosition).not.toHaveBeenCalled();
+    expect(setRNConfiguration).not.toHaveBeenCalled();
+  });
+
   it('falls back to coarse Android location after high-accuracy failure', async () => {
     (Platform as { OS: string }).OS = 'android';
+    turboGet.mockReturnValue({});
     requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
     getCurrentPosition
       .mockImplementationOnce((_success, error) => {
@@ -138,6 +168,7 @@ describe('acquireArcadeGpsOrigin', () => {
 
   it('rejects when Android geolocation fails twice', async () => {
     (Platform as { OS: string }).OS = 'android';
+    turboGet.mockReturnValue({});
     requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
     getCurrentPosition.mockImplementation((_success, error) => {
       error?.({ message: 'POSITION_UNAVAILABLE', code: 2 });
