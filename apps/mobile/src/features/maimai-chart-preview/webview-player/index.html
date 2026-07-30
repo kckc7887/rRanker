@@ -119,6 +119,47 @@
       display: block;
     }
     #seek { flex: 1; }
+    #seek {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+    }
+    #seek::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid #fff;
+      cursor: pointer;
+    }
+    #seek::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid #fff;
+      cursor: pointer;
+    }
+    #info-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      flex-shrink: 0;
+      min-height: 18px;
+    }
+    .info-item { white-space: nowrap; }
+    .info-val { color: var(--text); font-variant-numeric: tabular-nums; }
+    .info-fps-green { color: #22c55e; }
+    .info-fps-yellow { color: #eab308; }
+    .info-fps-red { color: #ef4444; }
     #time-label {
       font-size: 12px;
       color: var(--muted);
@@ -199,6 +240,14 @@
       <div id="title">谱面确认</div>
       <div id="status">准备中…</div>
     </div>
+    <div id="info-bar">
+      <span class="info-item">BPM: <span class="info-val" id="info-bpm">--</span></span>
+      <span class="info-item"><span class="info-val" id="info-beat">0:0.00</span></span>
+      <span class="info-item"><span class="info-val" id="info-combo">0 / 0</span></span>
+      <span class="info-item" id="info-break-wrap" style="display:none">BREAK: <span class="info-val" id="info-break">0 / 0</span></span>
+      <span class="info-item" id="info-break-noex-wrap" style="display:none">无保护 <span class="info-val" id="info-break-noex">0 / 0</span></span>
+      <span class="info-item"><span class="info-val" id="info-fps">--</span></span>
+    </div>
     <div id="canvas-wrap">
       <div id="canvas-stage">
         <canvas id="chart-canvas"></canvas>
@@ -226,8 +275,8 @@
         <label class="field">倍速 <input id="playback-speed" type="range" min="0.25" max="1" step="0.05" value="1" /></label>
         <label class="field"><input id="music-enabled" type="checkbox" checked /> 音乐</label>
         <label class="field"><input id="sound-enabled" type="checkbox" checked /> 正解音</label>
-        <label class="field">乐音 <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.8" /></label>
-        <label class="field">打击 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.6" /></label>
+        <label class="field">音乐 <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.8" /></label>
+        <label class="field">打击音 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.6" /></label>
       </div>
     </div>
   </div>

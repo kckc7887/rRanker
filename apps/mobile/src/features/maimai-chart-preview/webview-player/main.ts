@@ -155,6 +155,14 @@ async function main(): Promise<void> {
   const soundToggle = $('sound-enabled') as HTMLInputElement;
   const musicVolumeInput = $('music-volume') as HTMLInputElement;
   const soundVolumeInput = $('sound-volume') as HTMLInputElement;
+  const infoBpm = $('info-bpm');
+  const infoBeat = $('info-beat');
+  const infoCombo = $('info-combo');
+  const infoBreak = $('info-break');
+  const infoBreakNoex = $('info-break-noex') as HTMLSpanElement;
+  const infoBreakWrap = $('info-break-wrap');
+  const infoBreakNoexWrap = $('info-break-noex-wrap');
+  const infoFps = $('info-fps');
 
   const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
@@ -218,6 +226,9 @@ async function main(): Promise<void> {
   renderer.setJudgmentLineDesign('sensor');
   renderer.setPlaybackSpeed(Number(speedInput.value) || 1);
   renderer.setHiSpeed(HI_SPEED_DEFAULT);
+  renderer.setShowBpm(false);
+  renderer.setShowNoteTotal(false);
+  renderer.setShowBreakCount(false);
 
   let audioContext: AudioContext | null = null;
   let musicGain: GainNode | null = null;
@@ -352,10 +363,39 @@ async function main(): Promise<void> {
     timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
   };
 
+  const updateOverlayDom = () => {
+    const ov = renderer.frameOverlay;
+    if (!ov) return;
+    infoBpm.textContent = `${Math.floor(ov.bpm)}`;
+    infoBeat.textContent = ov.beatText;
+    infoCombo.textContent = `${ov.completedNotes} / ${ov.totalNotes}`;
+    if (ov.totalBreaks > 0) {
+      infoBreakWrap.style.display = '';
+      infoBreak.textContent = `${ov.completedBreaks} / ${ov.totalBreaks}`;
+    } else {
+      infoBreakWrap.style.display = 'none';
+    }
+    if (ov.totalBreaksNoEx > 0) {
+      infoBreakNoexWrap.style.display = '';
+      infoBreakNoex.textContent = `${ov.completedBreaksNoEx} / ${ov.totalBreaksNoEx}`;
+    } else {
+      infoBreakNoexWrap.style.display = 'none';
+    }
+    const fps = ov.fps;
+    if (fps > 0) {
+      infoFps.textContent = `FPS: ${fps}`;
+      infoFps.className = fps >= 55 ? 'info-val info-fps-green' : fps >= 30 ? 'info-val info-fps-yellow' : 'info-val info-fps-red';
+    } else {
+      infoFps.textContent = '';
+      infoFps.className = 'info-val';
+    }
+  };
+
   const renderAt = (beats: number) => {
     preciseBeats = clamp(beats, 0, totalBeats);
     renderer.renderFrame(chart, preciseBeats, 4);
     updateSeekUi();
+    updateOverlayDom();
   };
 
   createHiSpeedWheel(

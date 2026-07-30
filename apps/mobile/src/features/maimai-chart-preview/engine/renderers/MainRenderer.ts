@@ -181,6 +181,18 @@ interface RenderFrameTiming {
   divisor: number;
 }
 
+export interface FrameOverlayInfo {
+  bpm: number;
+  beatText: string;
+  fps: number;
+  completedNotes: number;
+  totalNotes: number;
+  completedBreaks: number;
+  totalBreaks: number;
+  completedBreaksNoEx: number;
+  totalBreaksNoEx: number;
+}
+
 export class MainRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
@@ -217,6 +229,8 @@ export class MainRenderer {
   private bpmChangeTime: number = 0;
   private bpmChangeType: "up" | "down" | null = null;
   private isPlaying: boolean = false;
+
+  public frameOverlay: FrameOverlayInfo | null = null;
 
   private beatDisplayInfo: {
     measure: number;
@@ -457,6 +471,18 @@ export class MainRenderer {
     this.config.showHitEffect = enabled;
   }
 
+  setShowBpm(enabled: boolean): void {
+    this.config.showBpm = enabled;
+  }
+
+  setShowNoteTotal(enabled: boolean): void {
+    this.config.showNoteTotal = enabled;
+  }
+
+  setShowBreakCount(enabled: boolean): void {
+    this.config.showBreakCount = enabled;
+  }
+
   setFullscreenMaxPixels(maxPixels: number): void {
     this.fullscreenMaxPixels = maxPixels;
   }
@@ -581,6 +607,20 @@ export class MainRenderer {
   }
 
   private renderNotes(prepared: PreparedRenderNotes, timing: RenderFrameTiming): void {
+    const { measure, beat, fraction, divisor } = this.beatDisplayInfo ?? { measure: 0, beat: 1, fraction: 0, divisor: 4 };
+    const fractionStr = Math.floor(fraction * 100).toString().padStart(2, '0');
+    this.frameOverlay = {
+      bpm: timing.currentBpm,
+      beatText: `${measure}:${beat}.${fractionStr} [1/${divisor}]`,
+      fps: this.fps,
+      completedNotes: this.countCompleted(prepared.noteCompletionTimes, timing.currentTimeMs),
+      totalNotes: prepared.noteCompletionTimes.length,
+      completedBreaks: this.countCompleted(prepared.breakCompletionTimes, timing.currentTimeMs),
+      totalBreaks: prepared.breakCompletionTimes.length,
+      completedBreaksNoEx: this.countCompleted(prepared.breakNoExCompletionTimes, timing.currentTimeMs),
+      totalBreaksNoEx: prepared.breakNoExCompletionTimes.length,
+    };
+
     if (this.config.showBpm) {
       this.renderBpmDisplay(timing.currentBpm);
     }
