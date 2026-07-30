@@ -6,6 +6,7 @@ import {
   chartPreviewStopScript,
   parseChartPreviewBridgeMessage,
 } from '@/features/maimai-chart-preview/chart-preview-inject';
+import { chartPreviewCanvasSize } from '@/features/maimai-chart-preview/webview-player/fullscreenLayout';
 
 describe('chart preview webview helpers', () => {
   it('injects chart preview config before content loads', () => {
@@ -45,5 +46,26 @@ describe('chart preview webview helpers', () => {
     });
     expect(parseChartPreviewBridgeMessage('"fullscreen"')).toBeNull();
     expect(parseChartPreviewBridgeMessage('{')).toBeNull();
+  });
+
+  it('caps the canvas to the short viewport edge in and after fullscreen', () => {
+    expect(chartPreviewCanvasSize({
+      isFullscreen: true,
+      containerWidth: 844,
+      viewportWidth: 844,
+      viewportHeight: 390,
+    })).toBe(390);
+    expect(chartPreviewCanvasSize({
+      isFullscreen: false,
+      containerWidth: 844,
+      viewportWidth: 844,
+      viewportHeight: 390,
+    })).toBe(390);
+    expect(chartPreviewCanvasSize({
+      isFullscreen: false,
+      containerWidth: 390,
+      viewportWidth: 390,
+      viewportHeight: 844,
+    })).toBe(390);
   });
 });

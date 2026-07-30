@@ -326,13 +326,13 @@ describe('M3A personal library screens', () => {
       expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
       await fireEvent.press(screen.getByText('已加入练习清单'));
       expect(mockSetPractice).toHaveBeenCalledWith('1', 'DX', 3, false);
-      await fireEvent.press(screen.getByText('搜索谱面确认'));
+      await fireEvent.press(screen.getByText('搜索Ｂ站视频'));
       expect(openUrl).toHaveBeenCalledWith(
         `bilibili://search?keyword=${encodeURIComponent('正常曲目 A MASTER 谱面确认')}`,
       );
       expect(openUrl).toHaveBeenCalledTimes(1);
       openUrl.mockRejectedValueOnce(new Error('未安装哔哩哔哩')).mockResolvedValueOnce(undefined);
-      await fireEvent.press(screen.getByText('搜索谱面确认'));
+      await fireEvent.press(screen.getByText('搜索Ｂ站视频'));
       await waitFor(() => expect(openUrl).toHaveBeenNthCalledWith(
         3,
         `https://search.bilibili.com/all?keyword=${encodeURIComponent('正常曲目 A MASTER 谱面确认')}`,

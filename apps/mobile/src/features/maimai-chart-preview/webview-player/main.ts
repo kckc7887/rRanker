@@ -15,6 +15,7 @@ import {
   type PreparedAudioEvent,
 } from '../engine';
 import { PlaybackClock } from './playbackClock';
+import { chartPreviewCanvasSize } from './fullscreenLayout';
 import {
   beatsToMs,
   calculateMusicTime,
@@ -409,6 +410,18 @@ async function main(): Promise<void> {
   let isFullscreen = false;
   let fsLocked = false;
   let fsHideTimer: number | undefined;
+
+  const syncPlayButtons = () => {
+    const icon = isPlaying ? PAUSE_ICON : PLAY_ICON;
+    const label = isPlaying ? '暂停' : '播放';
+    playBtn.innerHTML = icon;
+    playBtn.setAttribute('aria-label', label);
+    const fsPlayBtn = document.getElementById('fs-play');
+    if (fsPlayBtn) {
+      fsPlayBtn.innerHTML = icon;
+      fsPlayBtn.setAttribute('aria-label', label);
+    }
+  };
 
   const saveSettings = (partial: Partial<ChartPreviewSettings>) => {
     postStatus('settings', partial);
@@ -813,8 +826,18 @@ async function main(): Promise<void> {
   setupToggle(toggleFirework, saved.showFireworks ?? true, (v) => { renderer.setShowFireworks(v); saveSettings({ showFireworks: v }); });
 
   const resize = () => {
+    if (!isFullscreen) canvasWrap.style.width = '';
     const rect = canvasWrap.getBoundingClientRect();
-    const size = Math.max(0, Math.floor(rect.width));
+    const viewport = window.visualViewport;
+    const viewportWidth = viewport?.width ?? document.documentElement.clientWidth;
+    const viewportHeight = viewport?.height ?? document.documentElement.clientHeight;
+    const size = chartPreviewCanvasSize({
+      isFullscreen,
+      containerWidth: rect.width,
+      viewportWidth,
+      viewportHeight,
+    });
+    canvasWrap.style.width = isFullscreen ? `${size}px` : '';
     canvasStage.style.width = `${size}px`;
     canvasStage.style.height = `${size}px`;
     canvasWrap.style.height = `${size}px`;
@@ -822,6 +845,7 @@ async function main(): Promise<void> {
     renderAt(preciseBeats);
   };
   window.addEventListener('resize', resize);
+  window.visualViewport?.addEventListener('resize', resize);
   new ResizeObserver(resize).observe(canvasWrap);
   resize();
 
@@ -865,8 +889,7 @@ async function main(): Promise<void> {
       renderer.setIsPlaying(false);
       stopSource(true);
       answerManager?.reset(undefined, true);
-      playBtn.innerHTML = PLAY_ICON;
-      playBtn.setAttribute('aria-label', '播放');
+      syncPlayButtons();
       renderAt(totalBeats);
       return;
     }
@@ -885,8 +908,7 @@ async function main(): Promise<void> {
     await ensureAudio();
     isPlaying = true;
     renderer.setIsPlaying(true);
-    playBtn.innerHTML = PAUSE_ICON;
-    playBtn.setAttribute('aria-label', '暂停');
+    syncPlayButtons();
     lastRafTs = 0;
     const musicTime = calculateMusicTime(
       preciseBeats,
@@ -909,8 +931,7 @@ async function main(): Promise<void> {
   const pausePlayback = () => {
     isPlaying = false;
     renderer.setIsPlaying(false);
-    playBtn.innerHTML = PLAY_ICON;
-    playBtn.setAttribute('aria-label', '播放');
+    syncPlayButtons();
     if (isSourcePlaying) {
       playbackClock.setOffset(getMusicTime());
       stopSource();
@@ -1057,15 +1078,16 @@ async function main(): Promise<void> {
   }
 
   function showFsOverlay() {
-    if (fsLocked) return;
     fsOverlay.classList.remove('hidden');
     window.clearTimeout(fsHideTimer);
+    if (fsLocked) return;
     fsHideTimer = window.setTimeout(() => {
       fsOverlay.classList.add('hidden');
     }, 5000);
   }
 
-  function hideFsOverlay() {
+  function hideFsOverlay(force = false) {
+    if (fsLocked && !force) return;
     fsOverlay.classList.add('hidden');
     window.clearTimeout(fsHideTimer);
   }
@@ -1076,7 +1098,7 @@ async function main(): Promise<void> {
     fsLocked = false;
     fsLock.classList.remove('locked');
     document.body.classList.remove('fullscreen');
-    hideFsOverlay();
+    hideFsOverlay(true);
     postStatus('fullscreen', { active: false });
     requestAnimationFrame(() => { resize(); renderAt(preciseBeats); });
   }
@@ -1099,6 +1121,12 @@ async function main(): Promise<void> {
     left.className = 'transport-side left';
     const right = document.createElement('div');
     right.className = 'transport-side right';
+    const fsPlay = makeBtn(
+      'fs-play',
+      isPlaying ? '暂停' : '播放',
+      isPlaying ? PAUSE_ICON : PLAY_ICON,
+    );
+    fsPlay.classList.add('play-toggle');
     left.appendChild(makeBtn('fs-restart', '重播当前小节', btnRestart.innerHTML));
     left.appendChild(makeBtn('fs-prev-measure', '上一小节', document.getElementById('btn-prev-measure')!.innerHTML));
     left.appendChild(makeBtn('fs-step-back', '步退', document.getElementById('btn-step-back')!.innerHTML));
@@ -1106,6 +1134,7 @@ async function main(): Promise<void> {
     right.appendChild(makeBtn('fs-next-measure', '下一小节', document.getElementById('btn-next-measure')!.innerHTML));
     right.appendChild(makeBtn('fs-fullscreen', '退出全屏', document.getElementById('btn-fullscreen')!.innerHTML));
     fsTransport.appendChild(left);
+    fsTransport.appendChild(fsPlay);
     fsTransport.appendChild(right);
     document.getElementById('fs-restart')!.addEventListener('click', () => { const m = Math.floor(preciseBeats / 4); preciseBeats = m * 4; if (isPlaying) void startPlayback(); else renderAt(preciseBeats); });
     document.getElementById('fs-prev-measure')!.addEventListener('click', () => skipToMeasure(-1));
@@ -1113,7 +1142,11 @@ async function main(): Promise<void> {
     document.getElementById('fs-step-forward')!.addEventListener('click', () => skipBeats(1));
     document.getElementById('fs-next-measure')!.addEventListener('click', () => skipToMeasure(1));
     document.getElementById('fs-fullscreen')!.addEventListener('click', exitFullscreen);
+    fsPlay.addEventListener('click', () => {
+      void (isPlaying ? pausePlayback() : startPlayback());
+    });
     syncLoopButtons();
+    showFsOverlay();
     postStatus('fullscreen', { active: true });
   }
 
@@ -1125,7 +1158,7 @@ async function main(): Promise<void> {
   canvasWrap.addEventListener('click', (e) => {
     if (!isFullscreen) return;
     e.stopPropagation();
-    if (fsLocked) { fsLocked = false; fsLock.classList.remove('locked'); return; }
+    if (fsLocked) return;
     if (fsOverlay.classList.contains('hidden')) showFsOverlay();
     else hideFsOverlay();
   });
@@ -1134,7 +1167,7 @@ async function main(): Promise<void> {
     e.stopPropagation();
     fsLocked = !fsLocked;
     fsLock.classList.toggle('locked', fsLocked);
-    if (fsLocked) hideFsOverlay();
+    showFsOverlay();
   });
 
   fsOverlay.addEventListener('pointerdown', (e) => { e.stopPropagation(); });

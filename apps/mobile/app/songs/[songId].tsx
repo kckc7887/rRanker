@@ -564,7 +564,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     <DetailPressable accessibilityRole="link" accessibilityLabel={`搜索谱面确认：${chartSearchQuery}`}
       onPress={() => void openBilibiliChartSearch(chartSearchQuery)}
       style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
-      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>搜索谱面确认</Text>
+      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>搜索Ｂ站视频</Text>
     </DetailPressable>
     <DetailPressable accessibilityRole="button" accessibilityLabel={`查看谱面确认：${previewTitle}`}
       onPress={handleViewChartPreview}
