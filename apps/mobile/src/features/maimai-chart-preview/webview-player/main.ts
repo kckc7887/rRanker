@@ -156,6 +156,9 @@ async function main(): Promise<void> {
   const musicVolumeInput = $('music-volume') as HTMLInputElement;
   const soundVolumeInput = $('sound-volume') as HTMLInputElement;
 
+  const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
+
   let config: ChartPreviewConfig | undefined;
   statusEl.textContent = '正在等待参数…';
   for (let i = 0; i < 200; i++) {
@@ -419,7 +422,8 @@ async function main(): Promise<void> {
       renderer.setIsPlaying(false);
       stopSource(true);
       answerManager?.reset(undefined, true);
-      playBtn.textContent = '播放';
+      playBtn.innerHTML = PLAY_ICON;
+      playBtn.setAttribute('aria-label', '播放');
       renderAt(totalBeats);
       return;
     }
@@ -436,7 +440,8 @@ async function main(): Promise<void> {
     await ensureAudio();
     isPlaying = true;
     renderer.setIsPlaying(true);
-    playBtn.textContent = '暂停';
+    playBtn.innerHTML = PAUSE_ICON;
+    playBtn.setAttribute('aria-label', '暂停');
     lastRafTs = 0;
     const musicTime = calculateMusicTime(
       preciseBeats,
@@ -459,7 +464,8 @@ async function main(): Promise<void> {
   const pausePlayback = () => {
     isPlaying = false;
     renderer.setIsPlaying(false);
-    playBtn.textContent = '播放';
+    playBtn.innerHTML = PLAY_ICON;
+    playBtn.setAttribute('aria-label', '播放');
     if (isSourcePlaying) {
       playbackClock.setOffset(getMusicTime());
       stopSource();
