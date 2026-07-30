@@ -1,9 +1,19 @@
 /** 纯函数：供 RN 壳与单元测试共用，避免拉取 react-native。 */
 
+export type ChartPreviewSettings = {
+  hiSpeed?: number;
+  playbackSpeed?: number;
+  musicEnabled?: boolean;
+  soundEnabled?: boolean;
+  musicVolume?: number;
+  soundVolume?: number;
+};
+
 export type ChartPreviewInjectConfig = {
   chartId: number;
   difficulty: number;
   title?: string;
+  settings?: ChartPreviewSettings;
 };
 
 export function buildChartPreviewConfigJson(config: ChartPreviewInjectConfig): string {
@@ -11,6 +21,7 @@ export function buildChartPreviewConfigJson(config: ChartPreviewInjectConfig): s
     chartId: config.chartId,
     difficulty: config.difficulty,
     title: config.title ?? '',
+    settings: config.settings ?? null,
   });
 }
 

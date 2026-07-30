@@ -228,12 +228,6 @@
       border-bottom: 1px solid rgba(91, 140, 255, 0.45);
       background: rgba(91, 140, 255, 0.12);
     }
-    #hi-speed-value {
-      min-width: 2.5em;
-      font-variant-numeric: tabular-nums;
-      color: var(--text);
-      font-weight: 700;
-    }
   </style>
 </head>
 <body>
@@ -272,9 +266,16 @@
             </div>
             <div class="wheel-highlight"></div>
           </div>
-          <span id="hi-speed-value">6.0</span>
         </div>
-        <label class="field">倍速 <input id="playback-speed" type="range" min="0.25" max="1" step="0.05" value="1" /></label>
+        <div class="field wheel-field">
+          倍速
+          <div class="wheel" aria-label="倍速滚轮">
+            <div class="wheel-viewport" id="speed-wheel">
+              <div class="wheel-list" id="speed-list"></div>
+            </div>
+            <div class="wheel-highlight"></div>
+          </div>
+        </div>
         <label class="field"><input id="music-enabled" type="checkbox" checked /> 音乐</label>
         <label class="field"><input id="sound-enabled" type="checkbox" checked /> 正解音</label>
         <label class="field">音乐 <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.8" /></label>
