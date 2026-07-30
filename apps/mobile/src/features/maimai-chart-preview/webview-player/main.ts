@@ -533,7 +533,7 @@ async function main(): Promise<void> {
     }
     let maxTotal = 1;
     for (const b of buckets) { if (b.total > maxTotal) maxTotal = b.total; }
-    const barH = 20;
+    const barH = 22;
     for (const b of buckets) {
       if (b.total === 0) continue;
       const h = Math.max(2, (b.total / maxTotal) * barH);
