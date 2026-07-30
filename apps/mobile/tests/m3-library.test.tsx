@@ -17,6 +17,8 @@ jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callb
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
+const mockReplace = jest.fn();
 const mockShowNotification = jest.fn();
 const mockSetFavorite = jest.fn(async () => []);
 const mockSetPractice = jest.fn(async () => []);
@@ -73,7 +75,12 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
-  router: { push: (...args: unknown[]) => mockPush(...args), back: () => mockBack() },
+  router: {
+    push: (...args: unknown[]) => mockPush(...args),
+    back: () => mockBack(),
+    canGoBack: () => mockCanGoBack(),
+    replace: (...args: unknown[]) => mockReplace(...args),
+  },
   useLocalSearchParams: () => ({ songId: '1' }),
 }));
 jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({

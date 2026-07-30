@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   InteractionManager,
@@ -21,6 +20,7 @@ import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
+import { navigateBackFromSongDetail } from '@/components/game-content/SongDetailNavigation';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
@@ -139,7 +139,7 @@ function PhigrosDetailChrome({
       accessibilityRole="button"
       accessibilityLabel="返回"
       hitSlop={12}
-      onPress={() => router.back()}
+      onPress={navigateBackFromSongDetail}
       style={({ pressed }) => [
         styles.headerButton,
         styles.headerFloatingButton,
