@@ -20,7 +20,7 @@ import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { navigateBackFromSongDetail } from '@/components/game-content/SongDetailNavigation';
+import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
@@ -134,12 +134,13 @@ function PhigrosDetailChrome({
   onToggleFavorite?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const navigateBack = useSongDetailBackNavigation();
   return <>
     <Pressable
       accessibilityRole="button"
       accessibilityLabel="返回"
       hitSlop={12}
-      onPress={navigateBackFromSongDetail}
+      onPress={navigateBack}
       style={({ pressed }) => [
         styles.headerButton,
         styles.headerFloatingButton,

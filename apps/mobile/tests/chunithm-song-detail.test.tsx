@@ -121,10 +121,12 @@ let mockDarkTheme = false;
 
 jest.mock('expo-router', () => ({
   router: {
-    back: mockBack,
-    canGoBack: mockCanGoBack,
     replace: mockReplace,
   },
+  useNavigation: () => ({
+    canGoBack: mockCanGoBack,
+    goBack: mockBack,
+  }),
 }));
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');

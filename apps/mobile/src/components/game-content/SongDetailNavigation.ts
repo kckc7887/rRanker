@@ -1,12 +1,17 @@
-import { router, type Href } from 'expo-router';
+import { useCallback } from 'react';
+import { router, useNavigation, type Href } from 'expo-router';
 
 const SONG_LIST_HREF = '/(tabs)/search' as Href;
 
-export function navigateBackFromSongDetail(): void {
-  if (router.canGoBack()) {
-    router.back();
-    return;
-  }
+export function useSongDetailBackNavigation(): () => void {
+  const navigation = useNavigation();
 
-  router.replace(SONG_LIST_HREF);
+  return useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    router.replace(SONG_LIST_HREF);
+  }, [navigation]);
 }
