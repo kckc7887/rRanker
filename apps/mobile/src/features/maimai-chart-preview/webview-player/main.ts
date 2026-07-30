@@ -406,6 +406,9 @@ async function main(): Promise<void> {
   let soundVolume = saved.soundVolume ?? 10;
   let rafId = 0;
   let lastRafTs = 0;
+  let isFullscreen = false;
+  let fsLocked = false;
+  let fsHideTimer: number | undefined;
 
   const saveSettings = (partial: Partial<ChartPreviewSettings>) => {
     postStatus('settings', partial);
@@ -976,10 +979,6 @@ async function main(): Promise<void> {
     if (isPlaying) void startPlayback();
     else renderAt(preciseBeats);
   });
-
-  let isFullscreen = false;
-  let fsLocked = false;
-  let fsHideTimer: number | undefined;
 
   function buildFsTimeline() {
     fsTimelineBars.replaceChildren();
