@@ -122,27 +122,29 @@
     #seek {
       -webkit-appearance: none;
       appearance: none;
-      height: 4px;
+      height: 2px;
       background: var(--border);
-      border-radius: 2px;
+      border-radius: 1px;
       outline: none;
     }
     #seek::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: var(--accent);
-      border: 2px solid #fff;
+      width: 8px;
+      height: 18px;
+      border-radius: 3px;
+      background: #fff;
+      border: 0;
+      box-shadow: 0 0 6px rgba(255,255,255,0.6);
       cursor: pointer;
     }
     #seek::-moz-range-thumb {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: var(--accent);
-      border: 2px solid #fff;
+      width: 8px;
+      height: 18px;
+      border-radius: 3px;
+      background: #fff;
+      border: 0;
+      box-shadow: 0 0 6px rgba(255,255,255,0.6);
       cursor: pointer;
     }
     #info-bar {
@@ -399,6 +401,8 @@
             </div>
           </div>
         </div>
+      </div>
+      <div class="row wrap">
         <button class="toggle" id="toggle-pink" type="button">粉色星星头</button>
         <button class="toggle" id="toggle-star-rot" type="button">星星头旋转</button>
         <button class="toggle" id="toggle-ex" type="button">高亮保护套</button>
