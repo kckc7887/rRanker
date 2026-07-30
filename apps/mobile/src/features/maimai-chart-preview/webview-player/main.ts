@@ -514,7 +514,7 @@ async function main(): Promise<void> {
     }
     if (ov.totalBreaksNoEx > 0) {
       infoBreakNoexWrap.style.display = '';
-      infoBreakNoex.textContent = `(${ov.completedBreaksNoEx} / ${ov.totalBreaksNoEx})`;
+      infoBreakNoex.textContent = `${ov.completedBreaksNoEx} / ${ov.totalBreaksNoEx}`;
     } else {
       infoBreakNoexWrap.style.display = 'none';
     }
