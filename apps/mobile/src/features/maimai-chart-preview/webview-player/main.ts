@@ -618,6 +618,7 @@ async function main(): Promise<void> {
       const mode = MIRROR_VALUES[idx] ?? 'none';
       saveSettings({ mirrorMode: mode });
       renderer.setMirrorMode(mode);
+      renderAt(preciseBeats);
     },
     0, 3, 1, mirrorIdx, MIRROR_LABELS,
   );
@@ -631,6 +632,7 @@ async function main(): Promise<void> {
       const design = STYLE_VALUES[idx] ?? 'sensor';
       saveSettings({ judgmentLineDesign: design });
       renderer.setJudgmentLineDesign(design);
+      renderAt(preciseBeats);
     },
     0, 3, 1, styleIdx, STYLE_LABELS,
   );
@@ -642,6 +644,7 @@ async function main(): Promise<void> {
       active = !active;
       btn.setAttribute('aria-pressed', String(active));
       onChange(active);
+      renderAt(preciseBeats);
     });
   };
 
