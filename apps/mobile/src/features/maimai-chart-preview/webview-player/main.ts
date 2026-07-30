@@ -154,7 +154,68 @@ function createWheel(
   scrollToValue(current);
   applySelection(current, false);
 
-  return { getValue: () => current };
+  return { getValue: () => current, scrollTo: scrollToValue };
+}
+
+function setupWheelPopup(
+  trigger: HTMLElement,
+  popup: HTMLElement,
+  viewport: HTMLElement,
+  list: HTMLElement,
+  valSpan: HTMLElement,
+  onChange: (value: number) => void,
+  min: number,
+  max: number,
+  step: number,
+  initial: number,
+): { getValue: () => number } {
+  const wheel = createWheel(viewport, list, (value) => {
+    valSpan.textContent = value.toFixed(1);
+    onChange(value);
+  }, min, max, step, initial);
+
+  let open = false;
+
+  const openPopup = () => {
+    open = true;
+    popup.style.display = '';
+    popup.style.visibility = 'hidden';
+    requestAnimationFrame(() => {
+      const popupH = popup.offsetHeight;
+      const triggerRect = trigger.getBoundingClientRect();
+      popup.style.bottom = `${window.innerHeight - triggerRect.top + 4}px`;
+      popup.style.left = `${triggerRect.left + triggerRect.width / 2}px`;
+      popup.style.transform = 'translateX(-50%)';
+      popup.style.visibility = '';
+      wheel.scrollTo(wheel.getValue());
+    });
+  };
+
+  const closePopup = () => {
+    open = false;
+    popup.style.display = 'none';
+  };
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (open) closePopup();
+    else openPopup();
+  });
+
+  document.addEventListener('click', () => {
+    if (open) closePopup();
+  });
+
+  popup.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+  popup.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+  });
+
+  valSpan.textContent = initial.toFixed(1);
+
+  return wheel;
 }
 
 async function main(): Promise<void> {
@@ -168,8 +229,14 @@ async function main(): Promise<void> {
   const timeLabel = $('time-label');
   const hiSpeedWheel = $('hi-speed-wheel');
   const hiSpeedList = $('hi-speed-list');
+  const hiSpeedTrigger = $('hi-speed-trigger');
+  const hiSpeedPopup = $('hi-speed-popup');
+  const hiSpeedVal = $('hi-speed-val');
   const speedWheel = $('speed-wheel');
   const speedList = $('speed-list');
+  const speedTrigger = $('speed-trigger');
+  const speedPopup = $('speed-popup');
+  const speedVal = $('speed-val');
   const musicToggle = $('music-enabled') as HTMLInputElement;
   const soundToggle = $('sound-enabled') as HTMLInputElement;
   const musicVolumeInput = $('music-volume') as HTMLInputElement;
@@ -428,9 +495,12 @@ async function main(): Promise<void> {
     updateOverlayDom();
   };
 
-  createWheel(
+  setupWheelPopup(
+    hiSpeedTrigger,
+    hiSpeedPopup,
     hiSpeedWheel,
     hiSpeedList,
+    hiSpeedVal,
     (hiSpeed) => {
       renderer.setHiSpeed(hiSpeed);
       saveSettings({ hiSpeed });
@@ -442,9 +512,12 @@ async function main(): Promise<void> {
     saved.hiSpeed ?? HI_SPEED_DEFAULT,
   );
 
-  createWheel(
+  setupWheelPopup(
+    speedTrigger,
+    speedPopup,
     speedWheel,
     speedList,
+    speedVal,
     (speed) => {
       playbackSpeed = clamp(speed, 0.1, 5);
       renderer.setPlaybackSpeed(playbackSpeed);
