@@ -3,8 +3,6 @@
 export type ChartPreviewSettings = {
   hiSpeed?: number;
   playbackSpeed?: number;
-  musicEnabled?: boolean;
-  soundEnabled?: boolean;
   musicVolume?: number;
   soundVolume?: number;
 };

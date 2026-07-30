@@ -177,24 +177,6 @@
       color: var(--muted);
     }
     .field input[type="range"] { width: 88px; }
-    .field input[type="checkbox"] { width: 16px; height: 16px; }
-    .toggle {
-      appearance: none;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: transparent;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 600;
-      padding: 4px 12px;
-      cursor: pointer;
-      font-family: inherit;
-    }
-    .toggle[aria-pressed="true"] {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-    }
     .wheel-field {
       align-items: center;
       gap: 8px;
@@ -331,8 +313,6 @@
             </div>
           </div>
         </div>
-        <button class="toggle" id="music-enabled" type="button">音乐</button>
-        <button class="toggle" id="sound-enabled" type="button">打击音</button>
         <label class="field">音乐 <input id="music-volume" type="range" min="0" max="1" step="0.05" value="0.8" /></label>
         <label class="field">打击音 <input id="sound-volume" type="range" min="0" max="1" step="0.05" value="0.6" /></label>
       </div>
