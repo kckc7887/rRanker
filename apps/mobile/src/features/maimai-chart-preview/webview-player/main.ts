@@ -234,8 +234,8 @@ async function main(): Promise<void> {
   const speedTrigger = $('speed-trigger');
   const speedPopup = $('speed-popup');
   const speedVal = $('speed-val');
-  const musicToggle = $('music-enabled') as HTMLInputElement;
-  const soundToggle = $('sound-enabled') as HTMLInputElement;
+  const musicToggle = $('music-enabled') as HTMLButtonElement;
+  const soundToggle = $('sound-enabled') as HTMLButtonElement;
   const musicVolumeInput = $('music-volume') as HTMLInputElement;
   const soundVolumeInput = $('sound-volume') as HTMLInputElement;
   const infoBpm = $('info-bpm');
@@ -337,8 +337,8 @@ async function main(): Promise<void> {
   let seeking = false;
   let lastRafTs = 0;
 
-  musicToggle.checked = musicEnabled;
-  soundToggle.checked = soundEnabled;
+  musicToggle.setAttribute('aria-pressed', String(musicEnabled));
+  soundToggle.setAttribute('aria-pressed', String(soundEnabled));
   musicVolumeInput.value = String(musicVolume);
   soundVolumeInput.value = String(soundVolume);
 
@@ -658,15 +658,17 @@ async function main(): Promise<void> {
     else renderAt(preciseBeats);
   });
 
-  musicToggle.addEventListener('change', () => {
-    musicEnabled = musicToggle.checked;
+  musicToggle.addEventListener('click', () => {
+    musicEnabled = !musicEnabled;
+    musicToggle.setAttribute('aria-pressed', String(musicEnabled));
     saveSettings({ musicEnabled });
     if (musicGain) musicGain.gain.value = musicEnabled ? musicVolume : 0;
     if (isPlaying) void startPlayback();
   });
 
-  soundToggle.addEventListener('change', () => {
-    soundEnabled = soundToggle.checked;
+  soundToggle.addEventListener('click', () => {
+    soundEnabled = !soundEnabled;
+    soundToggle.setAttribute('aria-pressed', String(soundEnabled));
     saveSettings({ soundEnabled });
     answerManager?.setEnabled(soundEnabled);
     if (!soundEnabled) {
