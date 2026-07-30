@@ -147,15 +147,17 @@
     }
     #info-bar {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
-      gap: 4px 12px;
-      font-size: 12px;
+      gap: 0 10px;
+      font-size: 11px;
       color: var(--muted);
       flex-shrink: 0;
-      min-height: 18px;
+      height: 16px;
+      overflow: hidden;
     }
-    .info-item { white-space: nowrap; }
+    .info-item { white-space: nowrap; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .info-item.static { flex-shrink: 0; }
     .info-val { color: var(--text); font-variant-numeric: tabular-nums; }
     .info-fps-green { color: #22c55e; }
     .info-fps-yellow { color: #eab308; }

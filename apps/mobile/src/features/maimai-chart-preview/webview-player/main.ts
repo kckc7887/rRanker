@@ -472,6 +472,7 @@ async function main(): Promise<void> {
     const currentMs = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
     renderer.renderFrame(chart, preciseBeats, 4);
     updateSeekUi();
+    updateOverlayDom();
     scheduleAnswers(currentMs);
     rafId = requestAnimationFrame(tick);
   };
