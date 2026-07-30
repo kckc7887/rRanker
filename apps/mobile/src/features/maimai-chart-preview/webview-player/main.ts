@@ -918,10 +918,29 @@ async function main(): Promise<void> {
     else renderAt(preciseBeats);
   };
 
-  btnPrevMeasure.addEventListener('click', () => skipToMeasure(-1));
-  btnNextMeasure.addEventListener('click', () => skipToMeasure(1));
-  btnStepBack.addEventListener('click', () => skipBeats(-1));
-  btnStepForward.addEventListener('click', () => skipBeats(1));
+  const setupRepeatButton = (btn: HTMLButtonElement, action: () => void) => {
+    let timer: number | undefined;
+    const startRepeat = () => {
+      action();
+      timer = window.setTimeout(() => {
+        timer = window.setInterval(action, 200);
+      }, 300);
+    };
+    const stopRepeat = () => {
+      window.clearTimeout(timer);
+      window.clearInterval(timer);
+      timer = undefined;
+    };
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); startRepeat(); });
+    btn.addEventListener('pointerup', stopRepeat);
+    btn.addEventListener('pointerleave', stopRepeat);
+    btn.addEventListener('pointercancel', stopRepeat);
+  };
+
+  setupRepeatButton(btnPrevMeasure, () => skipToMeasure(-1));
+  setupRepeatButton(btnNextMeasure, () => skipToMeasure(1));
+  setupRepeatButton(btnStepBack, () => skipBeats(-1));
+  setupRepeatButton(btnStepForward, () => skipBeats(1));
 
   window.addEventListener('message', (event) => {
     const data = event.data;
