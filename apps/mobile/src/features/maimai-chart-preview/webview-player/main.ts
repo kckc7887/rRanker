@@ -1071,12 +1071,13 @@ async function main(): Promise<void> {
   }
 
   function exitFullscreen() {
+    if (!isFullscreen) return;
     isFullscreen = false;
     fsLocked = false;
     fsLock.classList.remove('locked');
     document.body.classList.remove('fullscreen');
     hideFsOverlay();
-    postStatus('fullscreen', {});
+    postStatus('fullscreen', { active: false });
     requestAnimationFrame(() => { resize(); renderAt(preciseBeats); });
   }
 
@@ -1112,37 +1113,21 @@ async function main(): Promise<void> {
     document.getElementById('fs-step-forward')!.addEventListener('click', () => skipBeats(1));
     document.getElementById('fs-next-measure')!.addEventListener('click', () => skipToMeasure(1));
     document.getElementById('fs-fullscreen')!.addEventListener('click', exitFullscreen);
-    fsLoopA.addEventListener('click', () => {
-      if (loopA !== null) { loopA = null; fsLoopA.classList.remove('on'); btnLoopA.classList.remove('on'); return; }
-      loopA = preciseBeats; fsLoopA.classList.add('on'); btnLoopA.classList.add('on');
-      if (loopB !== null && loopA > loopB) { [loopA, loopB] = [loopB, loopA]; fsLoopA.classList.add('on'); fsLoopB.classList.add('on'); btnLoopA.classList.add('on'); btnLoopB.classList.add('on'); }
-    });
-    fsLoopB.addEventListener('click', () => {
-      if (loopB !== null) { loopB = null; fsLoopB.classList.remove('on'); btnLoopB.classList.remove('on'); return; }
-      loopB = preciseBeats; fsLoopB.classList.add('on'); btnLoopB.classList.add('on');
-      if (loopA !== null && loopA > loopB) { [loopA, loopB] = [loopB, loopA]; fsLoopA.classList.add('on'); fsLoopB.classList.add('on'); btnLoopA.classList.add('on'); btnLoopB.classList.add('on'); }
-    });
-    if (loopA !== null) fsLoopA.classList.add('on');
-    if (loopB !== null) fsLoopB.classList.add('on');
-    fsTimelineHost.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      const rect = fsTimelineHost.getBoundingClientRect();
-      const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-      seekToPosition(pct);
-      showFsOverlay();
-    });
-    postStatus('fullscreen', {});
+    syncLoopButtons();
+    postStatus('fullscreen', { active: true });
   }
 
   btnFullscreen.addEventListener('click', () => {
-    isFullscreen ? exitFullscreen() : enterFullscreen();
+    if (isFullscreen) exitFullscreen();
+    else enterFullscreen();
   });
 
   canvasWrap.addEventListener('click', (e) => {
     if (!isFullscreen) return;
     e.stopPropagation();
     if (fsLocked) { fsLocked = false; fsLock.classList.remove('locked'); return; }
-    fsOverlay.classList.contains('hidden') ? showFsOverlay() : hideFsOverlay();
+    if (fsOverlay.classList.contains('hidden')) showFsOverlay();
+    else hideFsOverlay();
   });
 
   fsLock.addEventListener('click', (e) => {
@@ -1162,26 +1147,43 @@ async function main(): Promise<void> {
     else btn.classList.remove('on');
   };
 
-  btnLoopA.addEventListener('click', () => {
-    if (loopA !== null) { loopA = null; updateLoopBtn(btnLoopA, false); return; }
-    loopA = preciseBeats;
-    updateLoopBtn(btnLoopA, true);
-    if (loopB !== null && loopA > loopB) {
-      [loopA, loopB] = [loopB, loopA];
-      updateLoopBtn(btnLoopA, true);
-      updateLoopBtn(btnLoopB, true);
-    }
-  });
+  const syncLoopButtons = () => {
+    updateLoopBtn(btnLoopA, loopA !== null);
+    updateLoopBtn(btnLoopB, loopB !== null);
+    updateLoopBtn(fsLoopA, loopA !== null);
+    updateLoopBtn(fsLoopB, loopB !== null);
+  };
 
-  btnLoopB.addEventListener('click', () => {
-    if (loopB !== null) { loopB = null; updateLoopBtn(btnLoopB, false); return; }
-    loopB = preciseBeats;
-    updateLoopBtn(btnLoopB, true);
-    if (loopA !== null && loopA > loopB) {
-      [loopA, loopB] = [loopB, loopA];
-      updateLoopBtn(btnLoopA, true);
-      updateLoopBtn(btnLoopB, true);
+  const toggleLoopA = () => {
+    loopA = loopA === null ? preciseBeats : null;
+    if (loopA !== null && loopB !== null && loopA > loopB) {
+      const previousLoopA = loopA;
+      loopA = loopB;
+      loopB = previousLoopA;
     }
+    syncLoopButtons();
+  };
+
+  const toggleLoopB = () => {
+    loopB = loopB === null ? preciseBeats : null;
+    if (loopA !== null && loopB !== null && loopA > loopB) {
+      const previousLoopA = loopA;
+      loopA = loopB;
+      loopB = previousLoopA;
+    }
+    syncLoopButtons();
+  };
+
+  btnLoopA.addEventListener('click', toggleLoopA);
+  btnLoopB.addEventListener('click', toggleLoopB);
+  fsLoopA.addEventListener('click', toggleLoopA);
+  fsLoopB.addEventListener('click', toggleLoopB);
+  fsTimelineHost.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    const rect = fsTimelineHost.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    seekToPosition(pct);
+    showFsOverlay();
   });
 
   const checkLoop = () => {
@@ -1196,6 +1198,7 @@ async function main(): Promise<void> {
   window.addEventListener('message', (event) => {
     const data = event.data;
     if (data === 'stop' || (typeof data === 'object' && data?.type === 'stop')) pausePlayback();
+    if (typeof data === 'object' && data?.type === 'exit-fullscreen') exitFullscreen();
   });
 
   document.addEventListener('visibilitychange', () => {

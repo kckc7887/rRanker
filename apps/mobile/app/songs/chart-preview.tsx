@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import Storage from 'expo-sqlite/kv-store';
@@ -12,7 +12,9 @@ import {
 import {
   buildChartPreviewInjectedJavaScript,
   chartPreviewAllowsFileAccess,
+  chartPreviewExitFullscreenScript,
   chartPreviewStopScript,
+  parseChartPreviewBridgeMessage,
   prepareChartPreviewWebViewSource,
   type ChartPreviewWebViewSource,
 } from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
@@ -85,6 +87,7 @@ export default function MaimaiChartPreviewScreen() {
   const [stageError, setStageError] = useState<string | null>(null);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +100,7 @@ export default function MaimaiChartPreviewScreen() {
 
     setSource(null);
     setReady(false);
+    setIsFullscreen(false);
     setPlayerError(null);
     setStageError(null);
 
@@ -120,6 +124,15 @@ export default function MaimaiChartPreviewScreen() {
     };
   }, [mapped]);
 
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      webRef.current?.injectJavaScript(chartPreviewExitFullscreenScript());
+      return true;
+    });
+    return () => subscription.remove();
+  }, [isFullscreen]);
+
   const injected = useMemo(() => {
     if ('error' in mapped) return 'true;';
     return buildChartPreviewInjectedJavaScript(mapped);
@@ -129,7 +142,14 @@ export default function MaimaiChartPreviewScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <Stack.Screen options={{ title: '谱面确认' }} />
+      <Stack.Screen options={{
+        title: '谱面确认',
+        headerShown: !isFullscreen,
+        orientation: isFullscreen ? 'landscape' : 'portrait_up',
+        statusBarHidden: isFullscreen,
+        navigationBarHidden: isFullscreen,
+        autoHideHomeIndicator: isFullscreen,
+      }} />
       {blockingError ? (
         <View style={styles.center} accessibilityLabel={`谱面确认错误：${blockingError}`}>
           <Text style={[styles.error, { color: theme.text }]}>{blockingError}</Text>
@@ -169,19 +189,29 @@ export default function MaimaiChartPreviewScreen() {
               webRef.current?.injectJavaScript(buildChartPreviewInjectedJavaScript(mapped));
             }}
             onMessage={(event) => {
-              try {
-                const data = JSON.parse(event.nativeEvent.data) as { type?: string; message?: string };
-                if (data.type === 'ready') setReady(true);
-                if (data.type === 'error') setPlayerError(data.message ?? '谱面播放失败');
-                if (data.type === 'settings') {
-                  void saveSettings(data as ChartPreviewSettings);
-                }
-              } catch {
-                /* ignore non-json */
+              const data = parseChartPreviewBridgeMessage(event.nativeEvent.data);
+              if (!data) return;
+              if (data.type === 'ready') setReady(true);
+              if (data.type === 'fullscreen' && typeof data.active === 'boolean') {
+                setIsFullscreen(data.active);
+              }
+              if (data.type === 'error') {
+                setIsFullscreen(false);
+                setPlayerError(data.message ?? '谱面播放失败');
+              }
+              if (data.type === 'settings') {
+                const { type: _type, message: _message, active: _active, ...settings } = data;
+                void saveSettings(settings);
               }
             }}
-            onError={() => setPlayerError('WebView 加载失败')}
-            onHttpError={() => setPlayerError('WebView 资源加载失败')}
+            onError={() => {
+              setIsFullscreen(false);
+              setPlayerError('WebView 加载失败');
+            }}
+            onHttpError={() => {
+              setIsFullscreen(false);
+              setPlayerError('WebView 资源加载失败');
+            }}
           />
         </View>
       )}
