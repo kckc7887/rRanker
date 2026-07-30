@@ -53,10 +53,8 @@
       color: var(--muted);
       flex-shrink: 0;
     }
-    /* 播放区占满剩余高度，内部用 JS 裁出最大正方形，避免圆形谱面被拉伸 */
     #canvas-wrap {
-      flex: 1;
-      min-height: 0;
+      flex-shrink: 0;
       display: grid;
       place-items: center;
       background: #000;
