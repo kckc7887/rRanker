@@ -120,8 +120,14 @@
     }
     .transport-group {
       justify-content: center;
+    }
+    .transport-side {
+      flex: 1;
+      display: flex;
       gap: 4px;
     }
+    .transport-side.left { justify-content: flex-end; }
+    .transport-side.right { justify-content: flex-start; }
     .transport-btn {
       width: 36px;
       height: 36px;
@@ -451,24 +457,28 @@
         <div id="time-label" style="min-width:auto;text-align:center">0:00 / 0:00</div>
       </div>
       <div class="row transport-group">
-        <button class="transport-btn" id="btn-prev-measure" type="button" aria-label="上一小节">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
-        </button>
-        <button class="transport-btn" id="btn-step-back" type="button" aria-label="步退">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
+        <div class="transport-side left">
+          <button class="transport-btn" id="btn-prev-measure" type="button" aria-label="上一小节">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+          </button>
+          <button class="transport-btn" id="btn-step-back" type="button" aria-label="步退">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
         <button id="play" type="button" aria-label="播放">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
-        <button class="transport-btn" id="btn-step-forward" type="button" aria-label="步进">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-        </button>
-        <button class="transport-btn" id="btn-next-measure" type="button" aria-label="下一小节">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
-        </button>
-        <button class="transport-btn" id="btn-restart" type="button" aria-label="重播当前小节">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h12"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H5"/></svg>
-        </button>
+        <div class="transport-side right">
+          <button class="transport-btn" id="btn-step-forward" type="button" aria-label="步进">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="transport-btn" id="btn-next-measure" type="button" aria-label="下一小节">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+          </button>
+          <button class="transport-btn" id="btn-restart" type="button" aria-label="重播当前小节">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h12"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H5"/></svg>
+          </button>
+        </div>
       </div>
       <div class="row loop-row">
         <button class="loop-btn" id="btn-loop-a" type="button">A</button>
