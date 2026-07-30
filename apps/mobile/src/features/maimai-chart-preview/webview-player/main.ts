@@ -54,6 +54,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+let activePopupClose: (() => void) | null = null;
+
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
 }
@@ -175,6 +177,7 @@ function setupWheelPopup(
   let open = false;
 
   const openPopup = () => {
+    activePopupClose?.();
     open = true;
     popup.style.visibility = '';
     popup.style.pointerEvents = '';
@@ -183,12 +186,14 @@ function setupWheelPopup(
     popup.style.left = `${triggerRect.left + triggerRect.width / 2}px`;
     popup.style.transform = 'translateX(-50%)';
     wheel.scrollTo(wheel.getValue());
+    activePopupClose = closePopup;
   };
 
   const closePopup = () => {
     open = false;
     popup.style.visibility = 'hidden';
     popup.style.pointerEvents = 'none';
+    if (activePopupClose === closePopup) activePopupClose = null;
   };
 
   trigger.addEventListener('click', (e) => {
