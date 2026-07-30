@@ -981,7 +981,7 @@ async function main(): Promise<void> {
   let fsLocked = false;
   let fsHideTimer: number | undefined;
 
-  const buildFsTimeline = () => {
+  function buildFsTimeline() {
     fsTimelineBars.replaceChildren();
     if (totalDurationMs <= 0) return;
     const rect = fsTimelineHost.getBoundingClientRect();
@@ -1049,29 +1049,29 @@ async function main(): Promise<void> {
         fsTimelineRuler.appendChild(label);
       }
     }
-  };
+  }
 
-  const updateFsPlayhead = (pct: number, measure: number) => {
+  function updateFsPlayhead(pct: number, measure: number) {
     fsTimelinePlayhead.style.left = `${pct}%`;
     fsTimelineBadge.style.left = `${pct}%`;
     fsTimelineBadge.textContent = String(measure);
-  };
+  }
 
-  const showFsOverlay = () => {
+  function showFsOverlay() {
     if (fsLocked) return;
     fsOverlay.classList.remove('hidden');
     window.clearTimeout(fsHideTimer);
     fsHideTimer = window.setTimeout(() => {
       fsOverlay.classList.add('hidden');
     }, 5000);
-  };
+  }
 
-  const hideFsOverlay = () => {
+  function hideFsOverlay() {
     fsOverlay.classList.add('hidden');
     window.clearTimeout(fsHideTimer);
-  };
+  }
 
-  const exitFullscreen = () => {
+  function exitFullscreen() {
     isFullscreen = false;
     fsLocked = false;
     fsLock.classList.remove('locked');
@@ -1079,9 +1079,9 @@ async function main(): Promise<void> {
     hideFsOverlay();
     postStatus('fullscreen', {});
     requestAnimationFrame(() => { resize(); renderAt(preciseBeats); });
-  };
+  }
 
-  const enterFullscreen = () => {
+  function enterFullscreen() {
     isFullscreen = true;
     document.body.classList.add('fullscreen');
     buildFsTimeline();
@@ -1133,7 +1133,7 @@ async function main(): Promise<void> {
       showFsOverlay();
     });
     postStatus('fullscreen', {});
-  };
+  }
 
   btnFullscreen.addEventListener('click', () => {
     isFullscreen ? exitFullscreen() : enterFullscreen();
