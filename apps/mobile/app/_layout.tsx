@@ -172,6 +172,7 @@ function ThemedNavigation() {
         <Stack.Screen name="storage-management" options={{ title: '存储管理' }} />
         <Stack.Screen name="best-image" options={{ title: '成绩图片' }} />
         <Stack.Screen name="songs/[songId]" options={songDetailScreenOptions()} />
+        <Stack.Screen name="songs/chart-preview" options={{ title: '谱面确认' }} />
       </Stack>
       <StatusBar style={theme.statusBar} />
     </NotificationProvider>

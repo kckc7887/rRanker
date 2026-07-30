@@ -5,7 +5,12 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/*'],
+    ignores: [
+      'dist/*',
+      'assets/maimai-chart-preview/player.js',
+      'src/features/maimai-chart-preview/engine/**',
+      'src/features/maimai-chart-preview/webview-player/**',
+    ],
     rules: {
       'no-restricted-imports': ['error', {
         paths: [{

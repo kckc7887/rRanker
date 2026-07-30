@@ -21,10 +21,18 @@ jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callb
 const mockSetSongFavorite = jest.fn();
 const mockBack = jest.fn();
 const mockPush = jest.fn();
+const mockShowActionNotification = jest.fn();
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 let mockDetailedCatalogAvailable = true;
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@/components/AppNotification', () => ({
+  useNotification: () => ({
+    showNotification: jest.fn(),
+    showActionNotification: mockShowActionNotification,
+  }),
+  useNotificationModalRequestClose: () => () => false,
+}));
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -367,6 +375,17 @@ describe('M2 song query screens', () => {
     expect(screen.queryByText('谱师：SD主谱师')).toBeNull();
     expect(screen.queryByText(/谱面版本/)).toBeNull();
     expect(screen.getByLabelText('搜索谱面确认：正常曲目 A DX MASTER 谱面确认')).toBeTruthy();
+    expect(screen.getByLabelText('查看谱面确认：正常曲目 A DX MASTER')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('查看谱面确认：正常曲目 A DX MASTER'));
+    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
+      pathname: '/songs/chart-preview',
+      params: expect.objectContaining({
+        songId: '1',
+        chartType: 'DX',
+        levelIndex: '3',
+        title: '正常曲目 A DX MASTER',
+      }),
+    }));
     const notesTable = within(screen.getByLabelText('谱面物量'));
     for (const heading of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK', '总计']) {
       expect(notesTable.getByText(heading)).toBeTruthy();
@@ -432,6 +451,27 @@ describe('M2 song query screens', () => {
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
       pathname: '/tools/tolerance',
       params: expect.objectContaining({ tap: '51', hold: '10', slide: '20', touch: '10', break: '10' }),
+    }));
+
+    await fireEvent.press(screen.getByLabelText('查看谱面确认：協 U·TA·GE U·TA·GE'));
+    expect(mockShowActionNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: '选择预览谱面',
+      actions: expect.arrayContaining([
+        expect.objectContaining({ label: '1P 谱面' }),
+        expect.objectContaining({ label: '2P 谱面' }),
+      ]),
+    }));
+    const notification = mockShowActionNotification.mock.calls.at(-1)?.[0] as {
+      actions?: Array<{ label: string; onPress?: () => void }>;
+    } | undefined;
+    notification?.actions?.find((action) => action.label === '1P 谱面')?.onPress?.();
+    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
+      pathname: '/songs/chart-preview',
+      params: expect.objectContaining({
+        songId: '100123',
+        chartType: 'UTAGE',
+        buddySide: '0',
+      }),
     }));
   });
 

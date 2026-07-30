@@ -14,5 +14,9 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "src/features/maimai-chart-preview/engine/**",
+    "src/features/maimai-chart-preview/webview-player/**"
   ]
 }
