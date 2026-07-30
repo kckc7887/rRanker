@@ -13,6 +13,7 @@
       --muted: #9aa3b2;
       --accent: #5b8cff;
       --border: #2a3140;
+      --wheel-item-h: 28px;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -38,6 +39,7 @@
       justify-content: space-between;
       gap: 8px;
       min-height: 24px;
+      flex-shrink: 0;
     }
     #title {
       font-size: 15px;
@@ -51,16 +53,22 @@
       color: var(--muted);
       flex-shrink: 0;
     }
+    /* 播放区占满剩余高度，内部用 JS 裁出最大正方形，避免圆形谱面被拉伸 */
     #canvas-wrap {
       flex: 1;
       min-height: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
       background: #000;
       border-radius: 12px;
       border: 1px solid var(--border);
       overflow: hidden;
+    }
+    #canvas-stage {
+      position: relative;
+      width: 0;
+      height: 0;
+      flex-shrink: 0;
     }
     #chart-canvas {
       width: 100%;
@@ -69,6 +77,7 @@
       touch-action: none;
     }
     #controls {
+      flex-shrink: 0;
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -112,6 +121,62 @@
     }
     .field input[type="range"] { width: 88px; }
     .field input[type="checkbox"] { width: 16px; height: 16px; }
+    .wheel-field {
+      align-items: center;
+      gap: 8px;
+    }
+    .wheel {
+      position: relative;
+      width: 72px;
+      height: calc(var(--wheel-item-h) * 3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0f131a;
+      overflow: hidden;
+      touch-action: pan-y;
+    }
+    .wheel-viewport {
+      height: 100%;
+      overflow-y: auto;
+      scroll-snap-type: y mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .wheel-viewport::-webkit-scrollbar { display: none; }
+    .wheel-list {
+      padding: var(--wheel-item-h) 0;
+    }
+    .wheel-item {
+      height: var(--wheel-item-h);
+      line-height: var(--wheel-item-h);
+      text-align: center;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      scroll-snap-align: center;
+    }
+    .wheel-item[aria-selected="true"] {
+      color: var(--text);
+      font-weight: 700;
+    }
+    .wheel-highlight {
+      pointer-events: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: var(--wheel-item-h);
+      transform: translateY(-50%);
+      border-top: 1px solid rgba(91, 140, 255, 0.45);
+      border-bottom: 1px solid rgba(91, 140, 255, 0.45);
+      background: rgba(91, 140, 255, 0.12);
+    }
+    #hi-speed-value {
+      min-width: 2.5em;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -121,7 +186,9 @@
       <div id="status">准备中…</div>
     </div>
     <div id="canvas-wrap">
-      <canvas id="chart-canvas"></canvas>
+      <div id="canvas-stage">
+        <canvas id="chart-canvas"></canvas>
+      </div>
     </div>
     <div id="controls">
       <div class="row">
@@ -130,7 +197,16 @@
         <div id="time-label">0:00 / 0:00</div>
       </div>
       <div class="row wrap">
-        <label class="field">流速 <input id="hi-speed" type="range" min="3" max="9" step="0.25" value="6" /></label>
+        <div class="field wheel-field">
+          流速
+          <div class="wheel" aria-label="流速滚轮">
+            <div class="wheel-viewport" id="hi-speed-wheel">
+              <div class="wheel-list" id="hi-speed-list"></div>
+            </div>
+            <div class="wheel-highlight"></div>
+          </div>
+          <span id="hi-speed-value">6.0</span>
+        </div>
         <label class="field">倍速 <input id="playback-speed" type="range" min="0.25" max="1" step="0.05" value="1" /></label>
         <label class="field"><input id="music-enabled" type="checkbox" checked /> 音乐</label>
         <label class="field"><input id="sound-enabled" type="checkbox" checked /> 正解音</label>
