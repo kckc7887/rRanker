@@ -102,7 +102,9 @@
       padding: 8px 16px;
       min-width: 72px;
     }
-    #play {
+    #play,
+    #fs-play,
+    .play-toggle {
       width: 40px;
       height: 40px;
       min-width: 0;
@@ -113,7 +115,9 @@
       border-radius: 50%;
       flex-shrink: 0;
     }
-    #play svg {
+    #play svg,
+    #fs-play svg,
+    .play-toggle svg {
       width: 20px;
       height: 20px;
       display: block;
@@ -172,7 +176,12 @@
     body.fullscreen #header,
     body.fullscreen #info-bar,
     body.fullscreen #controls { display: none; }
-    body.fullscreen #app { padding: 0; gap: 0; }
+    body.fullscreen #app {
+      padding: 0;
+      gap: 0;
+      align-items: center;
+      justify-content: center;
+    }
     body.fullscreen #canvas-wrap {
       border: 0;
       border-radius: 0;
@@ -203,6 +212,8 @@
       z-index: 2001;
       width: 36px;
       height: 36px;
+      min-width: 0;
+      padding: 0;
       border: 0;
       border-radius: 50%;
       background: rgba(11,13,18,0.6);
@@ -210,8 +221,9 @@
       cursor: pointer;
       align-items: center;
       justify-content: center;
+      flex: 0 0 36px;
     }
-    body.fullscreen #fs-lock { display: flex; }
+    body.fullscreen #fs-overlay:not(.hidden) + #fs-lock { display: flex; }
     #fs-lock.locked { color: var(--accent); background: rgba(11,13,18,0.8); }
     #fs-lock svg { width: 18px; height: 18px; }
     #fs-timeline-host {
