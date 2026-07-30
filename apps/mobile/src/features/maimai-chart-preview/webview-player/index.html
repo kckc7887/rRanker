@@ -149,13 +149,18 @@
     }
     #info-bar {
       display: flex;
-      flex-wrap: nowrap;
-      align-items: center;
-      gap: 0 10px;
+      flex-direction: column;
+      gap: 2px;
       font-size: 11px;
       color: var(--muted);
       flex-shrink: 0;
-      height: 16px;
+    }
+    .info-row {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 0 10px;
+      height: 14px;
       overflow: hidden;
     }
     .info-item { white-space: nowrap; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -294,12 +299,16 @@
       <div id="status">准备中…</div>
     </div>
     <div id="info-bar">
-      <span class="info-item">BPM: <span class="info-val" id="info-bpm">--</span></span>
-      <span class="info-item"><span class="info-val" id="info-beat">0:0.00</span></span>
-      <span class="info-item"><span class="info-val" id="info-combo">0 / 0</span></span>
-      <span class="info-item" id="info-break-wrap" style="display:none">BREAK: <span class="info-val" id="info-break">0 / 0</span></span>
-      <span class="info-item" id="info-break-noex-wrap" style="display:none">无保护 <span class="info-val" id="info-break-noex">0 / 0</span></span>
-      <span class="info-item"><span class="info-val" id="info-fps">--</span></span>
+      <div class="info-row">
+        <span class="info-item">BPM: <span class="info-val" id="info-bpm">--</span></span>
+        <span class="info-item"><span class="info-val" id="info-beat">0:0.00</span></span>
+        <span class="info-item"><span class="info-val" id="info-fps">--</span></span>
+      </div>
+      <div class="info-row">
+        <span class="info-item"><span class="info-val" id="info-combo">0 / 0</span></span>
+        <span class="info-item" id="info-break-wrap" style="display:none">BREAK: <span class="info-val" id="info-break">0 / 0</span></span>
+        <span class="info-item" id="info-break-noex-wrap" style="display:none">（无保护套 <span class="info-val" id="info-break-noex">0 / 0</span>）</span>
+      </div>
     </div>
     <div id="canvas-wrap">
       <div id="canvas-stage">
