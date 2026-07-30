@@ -102,6 +102,22 @@
       padding: 8px 16px;
       min-width: 72px;
     }
+    #play {
+      width: 40px;
+      height: 40px;
+      min-width: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    #play svg {
+      width: 20px;
+      height: 20px;
+      display: block;
+    }
     #seek { flex: 1; }
     #time-label {
       font-size: 12px;
@@ -190,7 +206,9 @@
     </div>
     <div id="controls">
       <div class="row">
-        <button id="play" type="button">播放</button>
+        <button id="play" type="button" aria-label="播放">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
         <input id="seek" type="range" min="0" max="1" step="0.001" value="0" />
         <div id="time-label">0:00 / 0:00</div>
       </div>
