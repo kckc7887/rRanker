@@ -34,6 +34,7 @@ import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, S
 import { SongCover } from '@/components/SongCover';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
+import { useNotification } from '@/components/AppNotification';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
 import type {
@@ -468,11 +469,44 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   onToggleChartType: () => void;
 }) {
   const theme = useAppTheme();
+  const { showActionNotification } = useNotification();
   const visual = DIFFICULTY_VISUAL[chart.difficulty];
   const chartItem = library.data?.find((item) => item.key === library.chartKey(song.id, chart.type, chart.levelIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const chartTypeKeyword = canSwitchChartType ? ` ${chart.type}` : '';
   const chartSearchQuery = `${song.title}${chartTypeKeyword} ${visual.label} 谱面确认`;
+  const previewTitle = `${song.title}${chartTypeKeyword} ${visual.label}`;
+
+  const openChartPreview = (buddySide?: 0 | 1) => {
+    router.push({
+      pathname: '/songs/chart-preview',
+      params: {
+        songId: song.id,
+        chartType: chart.type,
+        levelIndex: String(chart.levelIndex),
+        title: previewTitle,
+        ...(buddySide === undefined ? {} : { buddySide: String(buddySide) }),
+      },
+    } as Href);
+  };
+
+  const handleViewChartPreview = () => {
+    if (chart.utage?.isBuddy) {
+      showActionNotification({
+        title: '选择预览谱面',
+        message: '该宴谱为 Buddy 双人谱，请选择要确认的一侧。',
+        variant: 'info',
+        actions: [
+          { label: '1P 谱面', onPress: () => openChartPreview(0) },
+          { label: '2P 谱面', onPress: () => openChartPreview(1) },
+          { label: '取消', tone: 'cancel' },
+        ],
+      });
+      return;
+    }
+    openChartPreview();
+  };
+
   return <GameChartResultCard
     testID={chart.type === 'UTAGE' ? 'maimai-utage-chart-card' : undefined}
     style={[styles.chartCard, {
@@ -529,6 +563,11 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       onPress={() => void openBilibiliChartSearch(chartSearchQuery)}
       style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
       <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>搜索谱面确认</Text>
+    </DetailPressable>
+    <DetailPressable accessibilityRole="button" accessibilityLabel={`查看谱面确认：${previewTitle}`}
+      onPress={handleViewChartPreview}
+      style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
+      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>查看谱面确认</Text>
     </DetailPressable>
     <TagEditor tags={chartItem?.tags ?? []} presets={library.tagPresets ?? []}
       historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), library.tagPresets ?? [])}
