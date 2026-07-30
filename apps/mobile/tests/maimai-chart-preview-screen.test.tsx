@@ -104,7 +104,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
 
     await waitFor(() => expect(latestScreenOptions).toMatchObject({
       headerShown: false,
-      orientation: 'landscape',
+      orientation: 'landscape_left',
       statusBarHidden: true,
       navigationBarHidden: true,
       autoHideHomeIndicator: true,

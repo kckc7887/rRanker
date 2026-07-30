@@ -145,7 +145,7 @@ export default function MaimaiChartPreviewScreen() {
       <Stack.Screen options={{
         title: '谱面确认',
         headerShown: !isFullscreen,
-        orientation: isFullscreen ? 'landscape' : 'portrait_up',
+        orientation: isFullscreen ? 'landscape_left' : 'portrait_up',
         statusBarHidden: isFullscreen,
         navigationBarHidden: isFullscreen,
         autoHideHomeIndicator: isFullscreen,
