@@ -244,8 +244,8 @@ async function main(): Promise<void> {
   const canvasStage = $('canvas-stage');
   const playBtn = $('play') as HTMLButtonElement;
   const btnPrevMeasure = $('btn-prev-measure') as HTMLButtonElement;
-  const btnRewind = $('btn-rewind') as HTMLButtonElement;
-  const btnForward = $('btn-forward') as HTMLButtonElement;
+  const btnStepBack = $('btn-step-back') as HTMLButtonElement;
+  const btnStepForward = $('btn-step-forward') as HTMLButtonElement;
   const btnNextMeasure = $('btn-next-measure') as HTMLButtonElement;
   const timelineHost = $('timeline-host');
   const timelineBars = $('timeline-bars');
@@ -904,6 +904,12 @@ async function main(): Promise<void> {
     void (isPlaying ? pausePlayback() : startPlayback());
   });
 
+  const skipBeats = (deltaBeats: number) => {
+    preciseBeats = clamp(preciseBeats + deltaBeats, 0, totalBeats);
+    if (isPlaying) void startPlayback();
+    else renderAt(preciseBeats);
+  };
+
   const skipToMeasure = (direction: -1 | 1) => {
     const currentMeasure = Math.floor(preciseBeats / 4);
     const targetMeasure = clamp(currentMeasure + direction, 0, maxMeasure);
@@ -914,17 +920,8 @@ async function main(): Promise<void> {
 
   btnPrevMeasure.addEventListener('click', () => skipToMeasure(-1));
   btnNextMeasure.addEventListener('click', () => skipToMeasure(1));
-
-  const skipTime = (deltaSec: number) => {
-    const currentMs = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
-    const targetMs = clamp(currentMs + deltaSec * 1000, 0, totalDurationMs);
-    preciseBeats = msToBeats(targetMs, chart.bpmEvents, chart.bpm);
-    if (isPlaying) void startPlayback();
-    else renderAt(preciseBeats);
-  };
-
-  btnRewind.addEventListener('click', () => skipTime(-5));
-  btnForward.addEventListener('click', () => skipTime(5));
+  btnStepBack.addEventListener('click', () => skipBeats(-1));
+  btnStepForward.addEventListener('click', () => skipBeats(1));
 
   window.addEventListener('message', (event) => {
     const data = event.data;
