@@ -138,6 +138,31 @@
       cursor: pointer;
     }
     .transport-btn:active { color: var(--accent); }
+    .loop-row {
+      justify-content: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .loop-btn {
+      appearance: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 3px 14px;
+      cursor: pointer;
+      font-family: monospace;
+      min-width: 36px;
+    }
+    .loop-btn.on {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .loop-sep { margin: 0 2px; }
     .transport-btn svg {
       width: 20px;
       height: 20px;
@@ -441,6 +466,11 @@
         <button class="transport-btn" id="btn-next-measure" type="button" aria-label="下一小节">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
         </button>
+      </div>
+      <div class="row loop-row">
+        <button class="loop-btn" id="btn-loop-a" type="button">A</button>
+        <span class="loop-sep">⇌</span>
+        <button class="loop-btn" id="btn-loop-b" type="button">B</button>
       </div>
       <div class="row wrap">
         <div class="field wheel-field" id="hi-speed-field">
