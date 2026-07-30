@@ -631,11 +631,18 @@ async function main(): Promise<void> {
     preciseBeats = clamp(targetBeats, 0, totalBeats);
     const ms = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
     const measure = Math.floor(preciseBeats / 4);
-    updatePlayhead((ms / totalDurationMs) * 100, measure);
+    const pct = (ms / totalDurationMs) * 100;
+    updatePlayhead(pct, measure);
+    if (isFullscreen) updateFsPlayhead(pct, measure);
     timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
+    if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
+    // 拖动时实时渲染画面与信息栏，恢复"拖动即看到对应帧"的能力
+    renderer.renderFrame(chart, preciseBeats, 4);
+    updateOverlayDom();
   };
 
   timelineHost.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
     isDragging = true;
     wasPlaying = isPlaying;
     if (isPlaying) pausePlayback();
@@ -646,7 +653,8 @@ async function main(): Promise<void> {
 
   document.addEventListener('pointermove', (e) => {
     if (!isDragging) return;
-    const rect = timelineHost.getBoundingClientRect();
+    const host = isFullscreen ? fsTimelineHost : timelineHost;
+    const rect = host.getBoundingClientRect();
     const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
     seekToPosition(pct);
   });
@@ -656,6 +664,15 @@ async function main(): Promise<void> {
     isDragging = false;
     renderAt(preciseBeats);
     if (wasPlaying) void startPlayback();
+  });
+
+  // 移动设备拖动被系统中断（多指/来电/通知等）时，pointerup 不会触发；
+  // 若不重置 isDragging，后续 pointermove 会继续按拖动逻辑执行，干扰播放键等点击。
+  // 这里只重置状态并停留在当前帧，不自动恢复播放，避免中断后突然发声。
+  document.addEventListener('pointercancel', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    renderAt(preciseBeats);
   });
 
   const updateSeekUi = () => {
@@ -1212,7 +1229,11 @@ async function main(): Promise<void> {
   fsLoopA.addEventListener('click', toggleLoopA);
   fsLoopB.addEventListener('click', toggleLoopB);
   fsTimelineHost.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
     e.stopPropagation();
+    isDragging = true;
+    wasPlaying = isPlaying;
+    if (isPlaying) pausePlayback();
     const rect = fsTimelineHost.getBoundingClientRect();
     const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
     seekToPosition(pct);
