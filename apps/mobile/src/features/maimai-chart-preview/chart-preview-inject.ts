@@ -22,6 +22,23 @@ export type ChartPreviewInjectConfig = {
   settings?: ChartPreviewSettings;
 };
 
+export type ChartPreviewBridgeMessage = ChartPreviewSettings & {
+  type?: string;
+  message?: string;
+  active?: boolean;
+};
+
+export function parseChartPreviewBridgeMessage(raw: string): ChartPreviewBridgeMessage | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed !== null && typeof parsed === 'object'
+      ? parsed as ChartPreviewBridgeMessage
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildChartPreviewConfigJson(config: ChartPreviewInjectConfig): string {
   return JSON.stringify({
     chartId: config.chartId,
@@ -41,6 +58,10 @@ export function buildChartPreviewInjectedJavaScript(config: ChartPreviewInjectCo
 
 export function chartPreviewStopScript(): string {
   return `window.postMessage({type:'stop'}, '*');true;`;
+}
+
+export function chartPreviewExitFullscreenScript(): string {
+  return `window.postMessage({type:'exit-fullscreen'}, '*');true;`;
 }
 
 /** 把配置脚本写入 HTML 模板（file:// 下比 injectedJavaScript 更可靠）。 */

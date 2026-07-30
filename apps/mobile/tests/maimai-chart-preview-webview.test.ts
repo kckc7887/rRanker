@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   applyChartPreviewConfigToHtml,
   buildChartPreviewInjectedJavaScript,
+  chartPreviewExitFullscreenScript,
   chartPreviewStopScript,
+  parseChartPreviewBridgeMessage,
 } from '@/features/maimai-chart-preview/chart-preview-inject';
 
 describe('chart preview webview helpers', () => {
@@ -30,5 +32,18 @@ describe('chart preview webview helpers', () => {
 
   it('builds a stop script for leaving the page', () => {
     expect(chartPreviewStopScript()).toContain("type:'stop'");
+  });
+
+  it('builds a fullscreen-exit script for native back handling', () => {
+    expect(chartPreviewExitFullscreenScript()).toContain("type:'exit-fullscreen'");
+  });
+
+  it('parses native bridge messages and rejects non-object payloads', () => {
+    expect(parseChartPreviewBridgeMessage('{"type":"fullscreen","active":true}')).toEqual({
+      type: 'fullscreen',
+      active: true,
+    });
+    expect(parseChartPreviewBridgeMessage('"fullscreen"')).toBeNull();
+    expect(parseChartPreviewBridgeMessage('{')).toBeNull();
   });
 });
