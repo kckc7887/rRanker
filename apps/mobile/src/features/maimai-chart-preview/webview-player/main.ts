@@ -250,6 +250,7 @@ async function main(): Promise<void> {
   const btnRestart = $('btn-restart') as HTMLButtonElement;
   const btnLoopA = $('btn-loop-a') as HTMLButtonElement;
   const btnLoopB = $('btn-loop-b') as HTMLButtonElement;
+  const btnFullscreen = $('btn-fullscreen') as HTMLButtonElement;
   const timelineHost = $('timeline-host');
   const timelineBars = $('timeline-bars');
   const timelineRuler = $('timeline-ruler');
@@ -961,6 +962,14 @@ async function main(): Promise<void> {
     preciseBeats = currentMeasure * 4;
     if (isPlaying) void startPlayback();
     else renderAt(preciseBeats);
+  });
+
+  btnFullscreen.addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
   });
 
   let loopA: number | null = null;
