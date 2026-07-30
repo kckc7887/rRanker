@@ -63,15 +63,93 @@ function formatTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const HI_SPEED_MIN = 3;
+const HI_SPEED_MAX = 9;
+const HI_SPEED_STEP = 0.1;
+const HI_SPEED_DEFAULT = 6;
+const WHEEL_ITEM_HEIGHT = 28;
+
+function buildHiSpeedValues(): number[] {
+  const values: number[] = [];
+  for (let value = HI_SPEED_MIN; value <= HI_SPEED_MAX + 1e-9; value += HI_SPEED_STEP) {
+    values.push(Math.round(value * 10) / 10);
+  }
+  return values;
+}
+
+function createHiSpeedWheel(
+  viewport: HTMLElement,
+  list: HTMLElement,
+  valueLabel: HTMLElement,
+  onChange: (hiSpeed: number) => void,
+  initial = HI_SPEED_DEFAULT,
+): { getValue: () => number } {
+  const values = buildHiSpeedValues();
+  let current = values.includes(initial) ? initial : HI_SPEED_DEFAULT;
+  let settleTimer = 0;
+
+  list.replaceChildren(
+    ...values.map((value) => {
+      const item = document.createElement('div');
+      item.className = 'wheel-item';
+      item.dataset.value = String(value);
+      item.textContent = value.toFixed(1);
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', value === current ? 'true' : 'false');
+      return item;
+    }),
+  );
+
+  const indexOf = (value: number) =>
+    Math.max(0, values.findIndex((item) => Math.abs(item - value) < 1e-9));
+
+  const applySelection = (value: number, notify: boolean) => {
+    current = value;
+    valueLabel.textContent = value.toFixed(1);
+    for (const child of list.children) {
+      const el = child as HTMLElement;
+      el.setAttribute('aria-selected', el.dataset.value === String(value) ? 'true' : 'false');
+    }
+    if (notify) onChange(value);
+  };
+
+  const scrollToValue = (value: number, behavior: ScrollBehavior = 'auto') => {
+    const index = indexOf(value);
+    viewport.scrollTo({ top: index * WHEEL_ITEM_HEIGHT, behavior });
+  };
+
+  const valueFromScroll = () => {
+    const index = clamp(Math.round(viewport.scrollTop / WHEEL_ITEM_HEIGHT), 0, values.length - 1);
+    return values[index]!;
+  };
+
+  viewport.addEventListener('scroll', () => {
+    const next = valueFromScroll();
+    if (Math.abs(next - current) > 1e-9) applySelection(next, true);
+    window.clearTimeout(settleTimer);
+    settleTimer = window.setTimeout(() => {
+      scrollToValue(valueFromScroll(), 'smooth');
+    }, 80);
+  }, { passive: true });
+
+  scrollToValue(current);
+  applySelection(current, false);
+
+  return { getValue: () => current };
+}
+
 async function main(): Promise<void> {
   const statusEl = $('status');
   const titleEl = $('title');
   const canvas = $('chart-canvas') as HTMLCanvasElement;
   const canvasWrap = $('canvas-wrap');
+  const canvasStage = $('canvas-stage');
   const playBtn = $('play') as HTMLButtonElement;
   const seekInput = $('seek') as HTMLInputElement;
   const timeLabel = $('time-label');
-  const hiSpeedInput = $('hi-speed') as HTMLInputElement;
+  const hiSpeedWheel = $('hi-speed-wheel');
+  const hiSpeedList = $('hi-speed-list');
+  const hiSpeedValue = $('hi-speed-value');
   const speedInput = $('playback-speed') as HTMLInputElement;
   const musicToggle = $('music-enabled') as HTMLInputElement;
   const soundToggle = $('sound-enabled') as HTMLInputElement;
@@ -133,8 +211,8 @@ async function main(): Promise<void> {
 
   const renderer = new MainRenderer(canvas, { sensorImagePath: './sensor.webp' });
   renderer.setJudgmentLineDesign('sensor');
-  renderer.setHiSpeed(Number(hiSpeedInput.value) || 6);
   renderer.setPlaybackSpeed(Number(speedInput.value) || 1);
+  renderer.setHiSpeed(HI_SPEED_DEFAULT);
 
   let audioContext: AudioContext | null = null;
   let musicGain: GainNode | null = null;
@@ -275,7 +353,22 @@ async function main(): Promise<void> {
     updateSeekUi();
   };
 
+  createHiSpeedWheel(
+    hiSpeedWheel,
+    hiSpeedList,
+    hiSpeedValue,
+    (hiSpeed) => {
+      renderer.setHiSpeed(hiSpeed);
+      renderAt(preciseBeats);
+    },
+    HI_SPEED_DEFAULT,
+  );
+
   const resize = () => {
+    const rect = canvasWrap.getBoundingClientRect();
+    const size = Math.max(0, Math.floor(Math.min(rect.width, rect.height)));
+    canvasStage.style.width = `${size}px`;
+    canvasStage.style.height = `${size}px`;
     renderer.resize(false);
     renderAt(preciseBeats);
   };
@@ -390,11 +483,6 @@ async function main(): Promise<void> {
     preciseBeats = clamp(msToBeats(targetMs, chart.bpmEvents, chart.bpm), 0, totalBeats);
     if (isPlaying) void startPlayback();
     else renderAt(preciseBeats);
-  });
-
-  hiSpeedInput.addEventListener('input', () => {
-    renderer.setHiSpeed(Number(hiSpeedInput.value) || 6);
-    renderAt(preciseBeats);
   });
 
   speedInput.addEventListener('input', () => {
