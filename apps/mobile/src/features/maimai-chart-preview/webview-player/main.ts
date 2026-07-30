@@ -29,10 +29,20 @@ declare global {
   }
 }
 
+export interface ChartPreviewSettings {
+  hiSpeed?: number;
+  playbackSpeed?: number;
+  musicEnabled?: boolean;
+  soundEnabled?: boolean;
+  musicVolume?: number;
+  soundVolume?: number;
+}
+
 export interface ChartPreviewConfig {
   chartId: number;
   difficulty: ChartDifficulty;
   title?: string;
+  settings?: ChartPreviewSettings | null;
 }
 
 const CHART_BASE = 'https://assets2.lxns.net/maimai/chart';
@@ -63,49 +73,58 @@ function formatTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-const HI_SPEED_MIN = 3;
-const HI_SPEED_MAX = 9;
+const HI_SPEED_MIN = 0.1;
+const HI_SPEED_MAX = 20;
 const HI_SPEED_STEP = 0.1;
 const HI_SPEED_DEFAULT = 6;
+const SPEED_MIN = 0.1;
+const SPEED_MAX = 5;
+const SPEED_STEP = 0.1;
+const SPEED_DEFAULT = 1;
 const WHEEL_ITEM_HEIGHT = 28;
 
-function buildHiSpeedValues(): number[] {
+function buildWheelValues(min: number, max: number, step: number): number[] {
   const values: number[] = [];
-  for (let value = HI_SPEED_MIN; value <= HI_SPEED_MAX + 1e-9; value += HI_SPEED_STEP) {
+  for (let value = min; value <= max + 1e-9; value += step) {
     values.push(Math.round(value * 10) / 10);
   }
   return values;
 }
 
-function createHiSpeedWheel(
+function createWheel(
   viewport: HTMLElement,
   list: HTMLElement,
-  valueLabel: HTMLElement,
-  onChange: (hiSpeed: number) => void,
-  initial = HI_SPEED_DEFAULT,
+  onChange: (value: number) => void,
+  min: number,
+  max: number,
+  step: number,
+  initial: number,
 ): { getValue: () => number } {
-  const values = buildHiSpeedValues();
-  let current = values.includes(initial) ? initial : HI_SPEED_DEFAULT;
+  const values = buildWheelValues(min, max, step);
+  let current = values.includes(initial) ? initial : values[0] ?? min;
   let settleTimer = 0;
 
-  list.replaceChildren(
-    ...values.map((value) => {
-      const item = document.createElement('div');
-      item.className = 'wheel-item';
-      item.dataset.value = String(value);
-      item.textContent = value.toFixed(1);
-      item.setAttribute('role', 'option');
-      item.setAttribute('aria-selected', value === current ? 'true' : 'false');
-      return item;
-    }),
-  );
+  const refreshList = () => {
+    list.replaceChildren(
+      ...values.map((value) => {
+        const item = document.createElement('div');
+        item.className = 'wheel-item';
+        item.dataset.value = String(value);
+        item.textContent = value.toFixed(1);
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', value === current ? 'true' : 'false');
+        return item;
+      }),
+    );
+  };
+
+  refreshList();
 
   const indexOf = (value: number) =>
     Math.max(0, values.findIndex((item) => Math.abs(item - value) < 1e-9));
 
   const applySelection = (value: number, notify: boolean) => {
     current = value;
-    valueLabel.textContent = value.toFixed(1);
     for (const child of list.children) {
       const el = child as HTMLElement;
       el.setAttribute('aria-selected', el.dataset.value === String(value) ? 'true' : 'false');
@@ -149,8 +168,8 @@ async function main(): Promise<void> {
   const timeLabel = $('time-label');
   const hiSpeedWheel = $('hi-speed-wheel');
   const hiSpeedList = $('hi-speed-list');
-  const hiSpeedValue = $('hi-speed-value');
-  const speedInput = $('playback-speed') as HTMLInputElement;
+  const speedWheel = $('speed-wheel');
+  const speedList = $('speed-list');
   const musicToggle = $('music-enabled') as HTMLInputElement;
   const soundToggle = $('sound-enabled') as HTMLInputElement;
   const musicVolumeInput = $('music-volume') as HTMLInputElement;
@@ -185,6 +204,8 @@ async function main(): Promise<void> {
 
   titleEl.textContent = config.title?.trim() || `谱面 ${config.chartId}`;
   statusEl.textContent = '正在加载谱面…';
+
+  const saved = config.settings ?? {};
 
   const chartUrl = `${CHART_BASE}/${config.chartId}.txt`;
   const musicUrl = `${MUSIC_BASE}/${config.chartId % 10000}.mp3`;
@@ -224,8 +245,8 @@ async function main(): Promise<void> {
 
   const renderer = new MainRenderer(canvas, { sensorImagePath: './sensor.webp' });
   renderer.setJudgmentLineDesign('sensor');
-  renderer.setPlaybackSpeed(Number(speedInput.value) || 1);
-  renderer.setHiSpeed(HI_SPEED_DEFAULT);
+  renderer.setPlaybackSpeed(saved.playbackSpeed ?? 1);
+  renderer.setHiSpeed(saved.hiSpeed ?? HI_SPEED_DEFAULT);
   renderer.setShowBpm(false);
   renderer.setShowNoteTotal(false);
   renderer.setShowBreakCount(false);
@@ -242,15 +263,24 @@ async function main(): Promise<void> {
   let isSourcePlaying = false;
   let isPlaying = false;
   let preciseBeats = 0;
-  let playbackSpeed = Number(speedInput.value) || 1;
+  let playbackSpeed = saved.playbackSpeed ?? 1;
   const musicOffset = 0;
-  let musicVolume = Number(musicVolumeInput.value) || 0.8;
-  let soundVolume = Number(soundVolumeInput.value) || 0.6;
-  let musicEnabled = musicToggle.checked;
-  let soundEnabled = soundToggle.checked;
+  let musicVolume = saved.musicVolume ?? 0.8;
+  let soundVolume = saved.soundVolume ?? 0.6;
+  let musicEnabled = saved.musicEnabled ?? true;
+  let soundEnabled = saved.soundEnabled ?? true;
   let rafId = 0;
   let seeking = false;
   let lastRafTs = 0;
+
+  musicToggle.checked = musicEnabled;
+  soundToggle.checked = soundEnabled;
+  musicVolumeInput.value = String(musicVolume);
+  soundVolumeInput.value = String(soundVolume);
+
+  const saveSettings = (partial: Partial<ChartPreviewSettings>) => {
+    postStatus('settings', partial);
+  };
 
   const ensureAudio = async (): Promise<AudioContext> => {
     if (!audioContext) {
@@ -398,15 +428,38 @@ async function main(): Promise<void> {
     updateOverlayDom();
   };
 
-  createHiSpeedWheel(
+  createWheel(
     hiSpeedWheel,
     hiSpeedList,
-    hiSpeedValue,
     (hiSpeed) => {
       renderer.setHiSpeed(hiSpeed);
+      saveSettings({ hiSpeed });
       renderAt(preciseBeats);
     },
-    HI_SPEED_DEFAULT,
+    HI_SPEED_MIN,
+    HI_SPEED_MAX,
+    HI_SPEED_STEP,
+    saved.hiSpeed ?? HI_SPEED_DEFAULT,
+  );
+
+  createWheel(
+    speedWheel,
+    speedList,
+    (speed) => {
+      playbackSpeed = clamp(speed, 0.1, 5);
+      renderer.setPlaybackSpeed(playbackSpeed);
+      saveSettings({ playbackSpeed });
+      if (sourceNode && isSourcePlaying && audioContext) {
+        const startTime = audioContext.currentTime;
+        const outputTime = getAudioContextOutputTime(audioContext);
+        sourceNode.playbackRate.setValueAtTime(playbackSpeed, startTime);
+        playbackClock.appendSegment(startTime, playbackSpeed, outputTime);
+      }
+    },
+    SPEED_MIN,
+    SPEED_MAX,
+    SPEED_STEP,
+    saved.playbackSpeed ?? SPEED_DEFAULT,
   );
 
   const resize = () => {
@@ -535,36 +588,29 @@ async function main(): Promise<void> {
     else renderAt(preciseBeats);
   });
 
-  speedInput.addEventListener('input', () => {
-    playbackSpeed = clamp(Number(speedInput.value) || 1, 0.1, 1);
-    renderer.setPlaybackSpeed(playbackSpeed);
-    if (sourceNode && isSourcePlaying && audioContext) {
-      const startTime = audioContext.currentTime;
-      const outputTime = getAudioContextOutputTime(audioContext);
-      sourceNode.playbackRate.setValueAtTime(playbackSpeed, startTime);
-      playbackClock.appendSegment(startTime, playbackSpeed, outputTime);
-    }
-  });
-
   musicToggle.addEventListener('change', () => {
     musicEnabled = musicToggle.checked;
+    saveSettings({ musicEnabled });
     if (musicGain) musicGain.gain.value = musicEnabled ? musicVolume : 0;
     if (isPlaying) void startPlayback();
   });
 
   soundToggle.addEventListener('change', () => {
     soundEnabled = soundToggle.checked;
+    saveSettings({ soundEnabled });
     answerManager?.setEnabled(soundEnabled);
     if (!soundEnabled) answerManager?.reset(undefined, true);
   });
 
   musicVolumeInput.addEventListener('input', () => {
     musicVolume = Number(musicVolumeInput.value) || 0;
+    saveSettings({ musicVolume });
     if (musicGain) musicGain.gain.value = musicEnabled ? musicVolume : 0;
   });
 
   soundVolumeInput.addEventListener('input', () => {
     soundVolume = Number(soundVolumeInput.value) || 0;
+    saveSettings({ soundVolume });
     answerManager?.setVolume(soundVolume);
   });
 

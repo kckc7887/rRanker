@@ -403,7 +403,7 @@ export class MainRenderer {
   }
 
   setHiSpeed(hiSpeed: number): void {
-    if (hiSpeed >= 3 && hiSpeed <= 9) {
+    if (hiSpeed >= 0.1 && hiSpeed <= 20) {
       this.config.hiSpeed = hiSpeed * HI_SPEED_CONVERSION_FACTOR;
       this.updateRenderersContext();
     }
