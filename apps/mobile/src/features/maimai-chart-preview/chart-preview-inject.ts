@@ -5,6 +5,14 @@ export type ChartPreviewSettings = {
   playbackSpeed?: number;
   musicVolume?: number;
   soundVolume?: number;
+  mirrorMode?: string;
+  judgmentLineDesign?: string;
+  pinkSlideStart?: boolean;
+  slideRotation?: boolean;
+  highlightExNotes?: boolean;
+  normalColorBreakSlide?: boolean;
+  showHitEffect?: boolean;
+  showFireworks?: boolean;
 };
 
 export type ChartPreviewInjectConfig = {
