@@ -34,6 +34,14 @@ export interface ChartPreviewSettings {
   playbackSpeed?: number;
   musicVolume?: number;
   soundVolume?: number;
+  mirrorMode?: string;
+  judgmentLineDesign?: string;
+  pinkSlideStart?: boolean;
+  slideRotation?: boolean;
+  highlightExNotes?: boolean;
+  normalColorBreakSlide?: boolean;
+  showHitEffect?: boolean;
+  showFireworks?: boolean;
 }
 
 export interface ChartPreviewConfig {
@@ -99,10 +107,19 @@ function createWheel(
   max: number,
   step: number,
   initial: number,
-): { getValue: () => number } {
+  labels?: readonly string[],
+): { getValue: () => number; scrollTo: (v: number) => void } {
   const values = buildWheelValues(min, max, step);
   let current = values.includes(initial) ? initial : values[0] ?? min;
   let settleTimer = 0;
+
+  const itemLabel = (v: number) => {
+    if (labels) {
+      const i = values.indexOf(v);
+      return labels[i] ?? String(v);
+    }
+    return v.toFixed(1);
+  };
 
   const refreshList = () => {
     list.replaceChildren(
@@ -110,7 +127,7 @@ function createWheel(
         const item = document.createElement('div');
         item.className = 'wheel-item';
         item.dataset.value = String(value);
-        item.textContent = value.toFixed(1);
+        item.textContent = itemLabel(value);
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', value === current ? 'true' : 'false');
         return item;
@@ -168,11 +185,12 @@ function setupWheelPopup(
   max: number,
   step: number,
   initial: number,
+  labels?: readonly string[],
 ): { getValue: () => number } {
   const wheel = createWheel(viewport, list, (value) => {
-    valSpan.textContent = value.toFixed(1);
+    valSpan.textContent = labels ? (labels[value] ?? String(value)) : value.toFixed(1);
     onChange(value);
-  }, min, max, step, initial);
+  }, min, max, step, initial, labels);
 
   let open = false;
 
@@ -213,7 +231,7 @@ function setupWheelPopup(
     e.stopPropagation();
   });
 
-  valSpan.textContent = initial.toFixed(1);
+  valSpan.textContent = labels ? (labels[Math.round(initial)] ?? String(initial)) : initial.toFixed(1);
 
   return wheel;
 }
@@ -247,6 +265,22 @@ async function main(): Promise<void> {
   const soundVolumeTrigger = $('sound-vol-trigger');
   const soundVolumePopup = $('sound-vol-popup');
   const soundVolumeVal = $('sound-vol-val');
+  const mirrorWheel = $('mirror-wheel');
+  const mirrorList = $('mirror-list');
+  const mirrorTrigger = $('mirror-trigger');
+  const mirrorPopup = $('mirror-popup');
+  const mirrorVal = $('mirror-val');
+  const styleWheel = $('style-wheel');
+  const styleList = $('style-list');
+  const styleTrigger = $('style-trigger');
+  const stylePopup = $('style-popup');
+  const styleVal = $('style-val');
+  const togglePink = $('toggle-pink') as HTMLButtonElement;
+  const toggleStarRot = $('toggle-star-rot') as HTMLButtonElement;
+  const toggleEx = $('toggle-ex') as HTMLButtonElement;
+  const toggleBreakSlide = $('toggle-break-slide') as HTMLButtonElement;
+  const toggleHit = $('toggle-hit') as HTMLButtonElement;
+  const toggleFirework = $('toggle-firework') as HTMLButtonElement;
   const infoBpm = $('info-bpm');
   const infoBeat = $('info-beat');
   const infoCombo = $('info-combo');
@@ -317,12 +351,19 @@ async function main(): Promise<void> {
   }
 
   const renderer = new MainRenderer(canvas, { sensorImagePath: './sensor.webp' });
-  renderer.setJudgmentLineDesign('sensor');
+  renderer.setJudgmentLineDesign((saved.judgmentLineDesign as string) || 'sensor');
   renderer.setPlaybackSpeed(saved.playbackSpeed ?? 1);
   renderer.setHiSpeed(saved.hiSpeed ?? HI_SPEED_DEFAULT);
   renderer.setShowBpm(false);
   renderer.setShowNoteTotal(false);
   renderer.setShowBreakCount(false);
+  renderer.setMirrorMode((saved.mirrorMode as string) || 'none');
+  renderer.setPinkSlideStart(!!saved.pinkSlideStart);
+  renderer.setSlideRotation(saved.slideRotation ?? true);
+  renderer.setHighlightExNotes(saved.highlightExNotes ?? true);
+  renderer.setNormalColorBreakSlide(!!saved.normalColorBreakSlide);
+  renderer.setShowHitEffect(saved.showHitEffect ?? true);
+  renderer.setShowFireworks(saved.showFireworks ?? true);
 
   let audioContext: AudioContext | null = null;
   let musicGain: GainNode | null = null;
@@ -567,6 +608,49 @@ async function main(): Promise<void> {
     0.1,
     saved.soundVolume ?? 10,
   );
+
+  const MIRROR_LABELS = ['无', '左右反', '上下反', '全反'] as const;
+  const MIRROR_VALUES = ['none', 'horizontal', 'vertical', 'rotate180'] as const;
+  const mirrorIdx = Math.max(0, MIRROR_VALUES.indexOf((saved.mirrorMode as string) ?? 'none'));
+  setupWheelPopup(
+    mirrorTrigger, mirrorPopup, mirrorWheel, mirrorList, mirrorVal,
+    (idx) => {
+      const mode = MIRROR_VALUES[idx] ?? 'none';
+      saveSettings({ mirrorMode: mode });
+      renderer.setMirrorMode(mode);
+    },
+    0, 3, 1, mirrorIdx, MIRROR_LABELS,
+  );
+
+  const STYLE_LABELS = ['无', '判定点', '判定线', '判定区'] as const;
+  const STYLE_VALUES = ['blind', 'noLine', 'simple', 'sensor'] as const;
+  const styleIdx = Math.max(0, STYLE_VALUES.indexOf((saved.judgmentLineDesign as string) ?? 'sensor'));
+  setupWheelPopup(
+    styleTrigger, stylePopup, styleWheel, styleList, styleVal,
+    (idx) => {
+      const design = STYLE_VALUES[idx] ?? 'sensor';
+      saveSettings({ judgmentLineDesign: design });
+      renderer.setJudgmentLineDesign(design);
+    },
+    0, 3, 1, styleIdx, STYLE_LABELS,
+  );
+
+  const setupToggle = (btn: HTMLButtonElement, initial: boolean, onChange: (v: boolean) => void) => {
+    let active = initial;
+    btn.setAttribute('aria-pressed', String(active));
+    btn.addEventListener('click', () => {
+      active = !active;
+      btn.setAttribute('aria-pressed', String(active));
+      onChange(active);
+    });
+  };
+
+  setupToggle(togglePink, !!saved.pinkSlideStart, (v) => { renderer.setPinkSlideStart(v); saveSettings({ pinkSlideStart: v }); });
+  setupToggle(toggleStarRot, saved.slideRotation ?? true, (v) => { renderer.setSlideRotation(v); saveSettings({ slideRotation: v }); });
+  setupToggle(toggleEx, saved.highlightExNotes ?? true, (v) => { renderer.setHighlightExNotes(v); saveSettings({ highlightExNotes: v }); });
+  setupToggle(toggleBreakSlide, !!saved.normalColorBreakSlide, (v) => { renderer.setNormalColorBreakSlide(v); saveSettings({ normalColorBreakSlide: v }); });
+  setupToggle(toggleHit, saved.showHitEffect ?? true, (v) => { renderer.setShowHitEffect(v); saveSettings({ showHitEffect: v }); });
+  setupToggle(toggleFirework, saved.showFireworks ?? true, (v) => { renderer.setShowFireworks(v); saveSettings({ showFireworks: v }); });
 
   const resize = () => {
     const rect = canvasWrap.getBoundingClientRect();
