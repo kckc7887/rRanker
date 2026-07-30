@@ -965,11 +965,11 @@ async function main(): Promise<void> {
   });
 
   btnFullscreen.addEventListener('click', () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
+    document.body.classList.toggle('fullscreen');
+    requestAnimationFrame(() => {
+      resize();
+      renderAt(preciseBeats);
+    });
   });
 
   let loopA: number | null = null;
