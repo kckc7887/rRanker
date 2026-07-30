@@ -165,6 +165,7 @@ function ThemedNavigation() {
         headerBackButtonDisplayMode: 'minimal', headerBackButtonMenuEnabled: false,
         headerStyle: { backgroundColor: theme.surface }, headerTintColor: theme.text,
         contentStyle: { backgroundColor: theme.background },
+        orientation: 'portrait_up',
       }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false, title: 'rRanker' }} />
         <Stack.Screen name="library/index" options={{ title: '我的曲库' }} />

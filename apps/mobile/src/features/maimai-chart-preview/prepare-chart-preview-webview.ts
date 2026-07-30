@@ -10,7 +10,9 @@ export {
   applyChartPreviewConfigToHtml,
   buildChartPreviewConfigScript,
   buildChartPreviewInjectedJavaScript,
+  chartPreviewExitFullscreenScript,
   chartPreviewStopScript,
+  parseChartPreviewBridgeMessage,
   type ChartPreviewInjectConfig,
 } from './chart-preview-inject';
 
