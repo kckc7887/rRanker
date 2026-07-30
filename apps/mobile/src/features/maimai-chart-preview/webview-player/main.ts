@@ -669,7 +669,11 @@ async function main(): Promise<void> {
     soundEnabled = soundToggle.checked;
     saveSettings({ soundEnabled });
     answerManager?.setEnabled(soundEnabled);
-    if (!soundEnabled) answerManager?.reset(undefined, true);
+    if (!soundEnabled) {
+      answerManager?.reset(undefined, true);
+    } else {
+      answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
+    }
   });
 
   musicVolumeInput.addEventListener('input', () => {
