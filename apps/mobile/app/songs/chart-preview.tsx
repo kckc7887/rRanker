@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
+import Storage from 'expo-sqlite/kv-store';
 import type { ChartType } from '@/domain/models';
 import {
   maimaiChartPreviewBuddyEngineDifficulty,
@@ -15,11 +16,35 @@ import {
   prepareChartPreviewWebViewSource,
   type ChartPreviewWebViewSource,
 } from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
+import type { ChartPreviewSettings } from '@/features/maimai-chart-preview/chart-preview-inject';
 import { useAppTheme } from '@/theme/app-theme';
 
 function parseChartType(value: string | undefined): ChartType | null {
   if (value === 'SD' || value === 'DX' || value === 'UTAGE') return value;
   return null;
+}
+
+const SETTINGS_KEY = 'maimai-chart-preview-settings';
+
+async function loadSettings(): Promise<ChartPreviewSettings> {
+  try {
+    const raw = await Storage.getItem(SETTINGS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as ChartPreviewSettings;
+  } catch {
+    return {};
+  }
+}
+
+async function saveSettings(partial: ChartPreviewSettings): Promise<void> {
+  try {
+    const raw = await Storage.getItem(SETTINGS_KEY);
+    const current: ChartPreviewSettings = raw ? JSON.parse(raw) : {};
+    const merged = { ...current, ...partial };
+    await Storage.setItem(SETTINGS_KEY, JSON.stringify(merged));
+  } catch {
+    /* ignore */
+  }
 }
 
 export default function MaimaiChartPreviewScreen() {
@@ -77,7 +102,8 @@ export default function MaimaiChartPreviewScreen() {
 
     void (async () => {
       try {
-        const prepared = await prepareChartPreviewWebViewSource(mapped);
+        const settings = await loadSettings();
+        const prepared = await prepareChartPreviewWebViewSource({ ...mapped, settings });
         if (!cancelled) setSource(prepared);
       } catch (error) {
         if (!cancelled) {
@@ -147,6 +173,9 @@ export default function MaimaiChartPreviewScreen() {
                 const data = JSON.parse(event.nativeEvent.data) as { type?: string; message?: string };
                 if (data.type === 'ready') setReady(true);
                 if (data.type === 'error') setPlayerError(data.message ?? '谱面播放失败');
+                if (data.type === 'settings') {
+                  void saveSettings(data as ChartPreviewSettings);
+                }
               } catch {
                 /* ignore non-json */
               }
