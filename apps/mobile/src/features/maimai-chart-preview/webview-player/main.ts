@@ -243,7 +243,11 @@ async function main(): Promise<void> {
   const canvasWrap = $('canvas-wrap');
   const canvasStage = $('canvas-stage');
   const playBtn = $('play') as HTMLButtonElement;
-  const seekInput = $('seek') as HTMLInputElement;
+  const timelineHost = $('timeline-host');
+  const timelineBars = $('timeline-bars');
+  const timelineRuler = $('timeline-ruler');
+  const timelinePlayhead = $('timeline-playhead');
+  const timelineBadge = $('timeline-badge');
   const timeLabel = $('time-label');
   const hiSpeedWheel = $('hi-speed-wheel');
   const hiSpeedList = $('hi-speed-list');
@@ -382,7 +386,6 @@ async function main(): Promise<void> {
   let musicVolume = saved.musicVolume ?? 10;
   let soundVolume = saved.soundVolume ?? 10;
   let rafId = 0;
-  let seeking = false;
   let lastRafTs = 0;
 
   const saveSettings = (partial: Partial<ChartPreviewSettings>) => {
@@ -494,9 +497,139 @@ async function main(): Promise<void> {
   statusEl.textContent = '';
   postStatus('ready', { chartId: config.chartId, measures: chart.measures });
 
+  const NOTE_COLORS: Record<string, string> = {
+    tap: '#FFD700', hold: '#FF8C00', slide: '#00CED1', touch: '#0080FF', break: '#ff69b4',
+  };
+
+  const maxMeasure = Math.max(0, chart.measures - 1);
+  const measurePercents: number[] = [];
+  for (let m = 0; m <= maxMeasure; m++) {
+    measurePercents.push(Math.min(100, (beatsToMs(m * 4, chart.bpmEvents, chart.bpm) / totalDurationMs) * 100));
+  }
+
+  const buildTimeline = () => {
+    timelineBars.replaceChildren();
+    if (totalDurationMs <= 0) return;
+    const rect = timelineHost.getBoundingClientRect();
+    const w = Math.max(1, Math.ceil(rect.width));
+    const bucketCount = Math.min(200, w);
+    const step = totalDurationMs / bucketCount;
+    const buckets: Record<string, number>[] = Array.from({ length: bucketCount }, (_, i) => ({ startMs: i * step, tap: 0, hold: 0, slide: 0, touch: 0, break: 0, total: 0 }));
+    for (const note of chart.notes ?? []) {
+      const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.timingMs / step)));
+      const b = buckets[idx]!;
+      switch (note.type) {
+        case 'tap': case 'simultaneous': b.tap++; break;
+        case 'hold-start': case 'hold-start-simultaneous': b.hold++; break;
+        case 'slide': b.slide++; break;
+        case 'touch': case 'touch-hold-start': b.touch++; break;
+        case 'break': b.break++; break;
+      }
+      b.total++;
+    }
+    let maxTotal = 1;
+    for (const b of buckets) { if (b.total > maxTotal) maxTotal = b.total; }
+    const barH = 22;
+    for (const b of buckets) {
+      if (b.total === 0) continue;
+      const h = Math.max(2, (b.total / maxTotal) * barH);
+      const left = ((b.startMs / totalDurationMs) * 100).toFixed(2);
+      const widthPct = ((step / totalDurationMs) * 100).toFixed(2);
+      const bar = document.createElement('div');
+      bar.className = 'timeline-bar';
+      bar.style.left = `${left}%`;
+      bar.style.width = `${widthPct}%`;
+      bar.style.height = `${h}px`;
+      for (const key of ['tap', 'hold', 'slide', 'touch', 'break'] as const) {
+        const ratio = b[key] / b.total;
+        if (ratio === 0) continue;
+        const seg = document.createElement('div');
+        seg.style.flex = String(ratio);
+        seg.style.width = '100%';
+        seg.style.backgroundColor = NOTE_COLORS[key]!;
+        bar.appendChild(seg);
+      }
+      timelineBars.appendChild(bar);
+    }
+
+    timelineRuler.replaceChildren();
+    const rulerRect = timelineRuler.getBoundingClientRect();
+    const rw = Math.max(1, rulerRect.width);
+    const tickStep = [1, 5, 10, 50, 100].find(s => maxMeasure > 0 && (rw * s) / maxMeasure >= 4) ?? 100;
+    const labelStep = [5, 10, 20, 50, 100, 200].find(s => maxMeasure > 0 && (rw * s) / maxMeasure >= 24) ?? 200;
+    for (let m = 0; m <= maxMeasure; m++) {
+      const pct = measurePercents[m] ?? 0;
+      if (m % tickStep === 0) {
+        const isMajor = m % 10 === 0;
+        const isMedium = m % 5 === 0;
+        const cls = isMajor ? 'major' : isMedium ? 'medium' : 'minor';
+        const tick = document.createElement('div');
+        tick.className = `timeline-tick ${cls}`;
+        tick.style.left = `${pct}%`;
+        timelineRuler.appendChild(tick);
+      }
+      if (m % labelStep === 0) {
+        const label = document.createElement('div');
+        label.className = 'timeline-label';
+        label.style.left = `${pct}%`;
+        label.textContent = String(m);
+        timelineRuler.appendChild(label);
+      }
+    }
+  };
+  buildTimeline();
+  window.addEventListener('resize', buildTimeline);
+  new ResizeObserver(buildTimeline).observe(timelineHost);
+
+  const updatePlayhead = (percent: number, measure: number) => {
+    timelinePlayhead.style.left = `${percent}%`;
+    timelineBadge.style.left = `${percent}%`;
+    timelineBadge.textContent = String(measure);
+  };
+
+  let isDragging = false;
+  let wasPlaying = false;
+
+  const seekToPosition = (percent: number) => {
+    const targetMs = (percent / 100) * totalDurationMs;
+    const targetBeats = msToBeats(targetMs, chart.bpmEvents, chart.bpm);
+    preciseBeats = clamp(targetBeats, 0, totalBeats);
+    const ms = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
+    const measure = Math.floor(preciseBeats / 4);
+    updatePlayhead((ms / totalDurationMs) * 100, measure);
+    timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
+  };
+
+  timelineHost.addEventListener('pointerdown', (e) => {
+    isDragging = true;
+    wasPlaying = isPlaying;
+    if (isPlaying) pausePlayback();
+    const rect = timelineHost.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    seekToPosition(pct);
+  });
+
+  document.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+    const rect = timelineHost.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    seekToPosition(pct);
+  });
+
+  document.addEventListener('pointerup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    renderAt(preciseBeats);
+    if (wasPlaying) void startPlayback();
+  });
+
   const updateSeekUi = () => {
     const ms = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
-    if (!seeking) seekInput.value = String(clamp(totalDurationMs > 0 ? ms / totalDurationMs : 0, 0, 1));
+    if (!isDragging) {
+      const pct = totalDurationMs > 0 ? (ms / totalDurationMs) * 100 : 0;
+      const measure = Math.floor(preciseBeats / 4);
+      updatePlayhead(pct, measure);
+    }
     timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
   };
 
@@ -765,20 +898,6 @@ async function main(): Promise<void> {
 
   playBtn.addEventListener('click', () => {
     void (isPlaying ? pausePlayback() : startPlayback());
-  });
-
-  seekInput.addEventListener('pointerdown', () => {
-    seeking = true;
-  });
-  seekInput.addEventListener('pointerup', () => {
-    seeking = false;
-  });
-  seekInput.addEventListener('input', () => {
-    const ratio = Number(seekInput.value);
-    const targetMs = ratio * totalDurationMs;
-    preciseBeats = clamp(msToBeats(targetMs, chart.bpmEvents, chart.bpm), 0, totalBeats);
-    if (isPlaying) void startPlayback();
-    else renderAt(preciseBeats);
   });
 
   window.addEventListener('message', (event) => {
