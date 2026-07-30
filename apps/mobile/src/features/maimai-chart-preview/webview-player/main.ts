@@ -247,6 +247,8 @@ async function main(): Promise<void> {
   const btnStepBack = $('btn-step-back') as HTMLButtonElement;
   const btnStepForward = $('btn-step-forward') as HTMLButtonElement;
   const btnNextMeasure = $('btn-next-measure') as HTMLButtonElement;
+  const btnLoopA = $('btn-loop-a') as HTMLButtonElement;
+  const btnLoopB = $('btn-loop-b') as HTMLButtonElement;
   const timelineHost = $('timeline-host');
   const timelineBars = $('timeline-bars');
   const timelineRuler = $('timeline-ruler');
@@ -852,6 +854,7 @@ async function main(): Promise<void> {
     }
 
     preciseBeats = currentBeats;
+    checkLoop();
     const currentMs = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
     renderer.renderFrame(chart, preciseBeats, 4);
     updateSeekUi();
@@ -951,6 +954,54 @@ async function main(): Promise<void> {
   setupRepeatButton(btnNextMeasure, () => skipToMeasure(1));
   setupRepeatButton(btnStepBack, () => skipBeats(-1));
   setupRepeatButton(btnStepForward, () => skipBeats(1));
+
+  let loopA: number | null = null;
+  let loopB: number | null = null;
+
+  const updateLoopBtn = (btn: HTMLButtonElement, active: boolean) => {
+    if (active) btn.classList.add('on');
+    else btn.classList.remove('on');
+  };
+
+  btnLoopA.addEventListener('click', () => {
+    if (loopA !== null) { loopA = null; updateLoopBtn(btnLoopA, false); return; }
+    loopA = preciseBeats;
+    updateLoopBtn(btnLoopA, true);
+  });
+
+  btnLoopB.addEventListener('click', () => {
+    if (loopB !== null) { loopB = null; updateLoopBtn(btnLoopB, false); return; }
+    loopB = preciseBeats;
+    updateLoopBtn(btnLoopB, true);
+  });
+
+  const checkLoop = () => {
+    if (loopA === null || loopB === null) return;
+    const a = loopA;
+    const b = loopB;
+    const isForward = a <= b;
+    if (isForward) {
+      if (preciseBeats >= b) {
+        preciseBeats = a;
+        if (isPlaying) void startPlayback();
+        else renderAt(preciseBeats);
+      }
+    } else {
+      if (preciseBeats >= a && preciseBeats < a + 0.01) {
+        // just passed A going forward, continue to end then wrap to B area
+      }
+      if (preciseBeats >= totalBeats - 0.01) {
+        preciseBeats = 0;
+        if (isPlaying) void startPlayback();
+        else renderAt(preciseBeats);
+      }
+      if (preciseBeats >= b && preciseBeats < a) {
+        preciseBeats = a;
+        if (isPlaying) void startPlayback();
+        else renderAt(preciseBeats);
+      }
+    }
+  };
 
   window.addEventListener('message', (event) => {
     const data = event.data;
