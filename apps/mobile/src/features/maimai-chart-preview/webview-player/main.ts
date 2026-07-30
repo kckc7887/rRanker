@@ -178,22 +178,19 @@ function setupWheelPopup(
 
   const openPopup = () => {
     open = true;
-    popup.style.display = '';
-    popup.style.visibility = 'hidden';
-    requestAnimationFrame(() => {
-      const popupH = popup.offsetHeight;
-      const triggerRect = trigger.getBoundingClientRect();
-      popup.style.bottom = `${window.innerHeight - triggerRect.top + 4}px`;
-      popup.style.left = `${triggerRect.left + triggerRect.width / 2}px`;
-      popup.style.transform = 'translateX(-50%)';
-      popup.style.visibility = '';
-      wheel.scrollTo(wheel.getValue());
-    });
+    popup.style.visibility = '';
+    popup.style.pointerEvents = '';
+    const triggerRect = trigger.getBoundingClientRect();
+    popup.style.bottom = `${window.innerHeight - triggerRect.top + 4}px`;
+    popup.style.left = `${triggerRect.left + triggerRect.width / 2}px`;
+    popup.style.transform = 'translateX(-50%)';
+    wheel.scrollTo(wheel.getValue());
   };
 
   const closePopup = () => {
     open = false;
-    popup.style.display = 'none';
+    popup.style.visibility = 'hidden';
+    popup.style.pointerEvents = 'none';
   };
 
   trigger.addEventListener('click', (e) => {
