@@ -118,6 +118,30 @@
       height: 20px;
       display: block;
     }
+    .transport-group {
+      justify-content: center;
+      gap: 8px;
+    }
+    .transport-btn {
+      width: 36px;
+      height: 36px;
+      min-width: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .transport-btn svg {
+      width: 16px;
+      height: 16px;
+      display: block;
+    }
+    .transport-btn:active { background: var(--accent); color: #fff; }
     #seek { flex: 1; }
     #seek {
       -webkit-appearance: none;
@@ -400,9 +424,21 @@
       <div class="row" style="justify-content:center">
         <div id="time-label" style="min-width:auto;text-align:center">0:00 / 0:00</div>
       </div>
-      <div class="row" style="justify-content:center">
+      <div class="row transport-group">
+        <button class="transport-btn" id="btn-prev-measure" type="button" aria-label="前一小节">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="5" width="2" height="14"/><path d="M13 6v12l-5-6z"/><path d="M19 6v12l-5-6z"/></svg>
+        </button>
+        <button class="transport-btn" id="btn-rewind" type="button" aria-label="快退">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12l-8-6v12z"/><path d="M19 12l-8-6v12z"/></svg>
+        </button>
         <button id="play" type="button" aria-label="播放">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button class="transport-btn" id="btn-forward" type="button" aria-label="快进">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12l8-6v12z"/><path d="M5 12l8-6v12z"/></svg>
+        </button>
+        <button class="transport-btn" id="btn-next-measure" type="button" aria-label="后一小节">
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="18" y="5" width="2" height="14"/><path d="M11 6v12l5-6z"/><path d="M5 6v12l5-6z"/></svg>
         </button>
       </div>
       <div class="row wrap">
