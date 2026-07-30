@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyChartPreviewConfigToHtml,
   buildChartPreviewInjectedJavaScript,
   chartPreviewStopScript,
 } from '@/features/maimai-chart-preview/chart-preview-inject';
@@ -15,6 +16,16 @@ describe('chart preview webview helpers', () => {
     expect(script).toContain('"chartId":10834');
     expect(script).toContain('"difficulty":5');
     expect(script).toContain('true;');
+  });
+
+  it('writes config into html template marker for file:// loading', () => {
+    const html = applyChartPreviewConfigToHtml(
+      '<html><!--CHART_PREVIEW_CONFIG--><script src="./player.js"></script></html>',
+      { chartId: 834, difficulty: 4, title: 'SD' },
+    );
+    expect(html).toContain('window.__CHART_PREVIEW__=');
+    expect(html).toContain('"chartId":834');
+    expect(html).not.toContain('<!--CHART_PREVIEW_CONFIG-->');
   });
 
   it('builds a stop script for leaving the page', () => {

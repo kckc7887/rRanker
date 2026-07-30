@@ -1,5 +1,5 @@
 /**
- * 将谱面预览 WebView 播放器打包为自包含 index.html（内联 player 脚本）。
+ * 将谱面预览 WebView 播放器打包为 HTML + 独立 player.bundle（避免 file:// 内联大脚本）。
  */
 import * as esbuild from 'esbuild';
 import fs from 'node:fs';
@@ -12,14 +12,15 @@ const entry = path.join(root, 'src/features/maimai-chart-preview/webview-player/
 const htmlTemplate = path.join(root, 'src/features/maimai-chart-preview/webview-player/index.html');
 const outDir = path.join(root, 'assets/maimai-chart-preview');
 const outHtml = path.join(outDir, 'index.html');
-const outPlayer = path.join(outDir, 'player.js');
+const outPlayerJs = path.join(outDir, 'player.js');
+const outPlayerBundle = path.join(outDir, 'player.bundle');
 
 fs.mkdirSync(outDir, { recursive: true });
 
 await esbuild.build({
   entryPoints: [entry],
   bundle: true,
-  outfile: outPlayer,
+  outfile: outPlayerJs,
   format: 'iife',
   platform: 'browser',
   target: ['es2020'],
@@ -28,15 +29,16 @@ await esbuild.build({
   logLevel: 'info',
 });
 
-const playerJs = fs.readFileSync(outPlayer, 'utf8');
 let html = fs.readFileSync(htmlTemplate, 'utf8');
-if (!html.includes('<!--PLAYER_SCRIPT-->')) {
-  throw new Error('index.html template missing <!--PLAYER_SCRIPT--> marker');
+if (!html.includes('<!--CHART_PREVIEW_CONFIG-->') || !html.includes('<!--PLAYER_SCRIPT-->')) {
+  throw new Error('index.html template missing config/player markers');
 }
-html = html.replace(
-  '<!--PLAYER_SCRIPT-->',
-  `<script>\n${playerJs}\n</script>`,
-);
+html = html
+  .replace('<!--CHART_PREVIEW_CONFIG-->', '<!--CHART_PREVIEW_CONFIG-->')
+  .replace('<!--PLAYER_SCRIPT-->', '<script src="./player.js"></script>');
 fs.writeFileSync(outHtml, html, 'utf8');
-// 保留 player.js 便于调试；运行时以内联 HTML 为准。
-console.log(`built ${outHtml} (${Math.round(Buffer.byteLength(html) / 1024)}kb)`);
+fs.copyFileSync(outPlayerJs, outPlayerBundle);
+
+console.log(
+  `built ${outHtml} + ${path.basename(outPlayerBundle)} (${Math.round(fs.statSync(outPlayerBundle).size / 1024)}kb)`,
+);

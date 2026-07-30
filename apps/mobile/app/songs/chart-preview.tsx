@@ -63,9 +63,21 @@ export default function MaimaiChartPreviewScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    if ('error' in mapped) {
+      setSource(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setSource(null);
+    setReady(false);
+    setPlayerError(null);
+    setStageError(null);
+
     void (async () => {
       try {
-        const prepared = await prepareChartPreviewWebViewSource();
+        const prepared = await prepareChartPreviewWebViewSource(mapped);
         if (!cancelled) setSource(prepared);
       } catch (error) {
         if (!cancelled) {
@@ -73,13 +85,14 @@ export default function MaimaiChartPreviewScreen() {
         }
       }
     })();
+
     return () => {
       cancelled = true;
       // 卸载时停止播放；cleanup 必须读最新 webRef。
       // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional latest ref
       webRef.current?.injectJavaScript(chartPreviewStopScript());
     };
-  }, []);
+  }, [mapped]);
 
   const injected = useMemo(() => {
     if ('error' in mapped) return 'true;';
@@ -125,6 +138,10 @@ export default function MaimaiChartPreviewScreen() {
             source={{ uri: source.uri }}
             injectedJavaScriptBeforeContentLoaded={injected}
             style={styles.webview}
+            onLoadEnd={() => {
+              if ('error' in mapped) return;
+              webRef.current?.injectJavaScript(buildChartPreviewInjectedJavaScript(mapped));
+            }}
             onMessage={(event) => {
               try {
                 const data = JSON.parse(event.nativeEvent.data) as { type?: string; message?: string };

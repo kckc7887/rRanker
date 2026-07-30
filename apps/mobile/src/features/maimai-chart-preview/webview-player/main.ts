@@ -157,9 +157,11 @@ async function main(): Promise<void> {
   const soundVolumeInput = $('sound-volume') as HTMLInputElement;
 
   let config: ChartPreviewConfig | undefined;
-  for (let i = 0; i < 100; i++) {
-    if (window.__CHART_PREVIEW__?.chartId) {
-      config = window.__CHART_PREVIEW__;
+  statusEl.textContent = '正在等待参数…';
+  for (let i = 0; i < 200; i++) {
+    const incoming = window.__CHART_PREVIEW__;
+    if (incoming && Number.isFinite(incoming.chartId)) {
+      config = incoming;
       break;
     }
     await new Promise((r) => setTimeout(r, 50));
