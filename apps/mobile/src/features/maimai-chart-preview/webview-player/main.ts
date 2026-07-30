@@ -920,10 +920,20 @@ async function main(): Promise<void> {
 
   const setupRepeatButton = (btn: HTMLButtonElement, action: () => void) => {
     let timer: number | undefined;
+    let count = 0;
     const startRepeat = () => {
+      count = 0;
       action();
       timer = window.setTimeout(() => {
-        timer = window.setInterval(action, 200);
+        count = 1;
+        timer = window.setInterval(() => {
+          action();
+          count++;
+          if (count === 5 && timer) {
+            window.clearInterval(timer);
+            timer = window.setInterval(() => action(), 50);
+          }
+        }, 200);
       }, 300);
     };
     const stopRepeat = () => {
