@@ -232,8 +232,16 @@ async function main(): Promise<void> {
   const speedTrigger = $('speed-trigger');
   const speedPopup = $('speed-popup');
   const speedVal = $('speed-val');
-  const musicVolumeInput = $('music-volume') as HTMLInputElement;
-  const soundVolumeInput = $('sound-volume') as HTMLInputElement;
+  const musicVolumeWheel = $('music-vol-wheel');
+  const musicVolumeList = $('music-vol-list') as HTMLDivElement;
+  const musicVolumeTrigger = $('music-vol-trigger');
+  const musicVolumePopup = $('music-vol-popup');
+  const musicVolumeVal = $('music-vol-val');
+  const soundVolumeWheel = $('sound-vol-wheel');
+  const soundVolumeList = $('sound-vol-list') as HTMLDivElement;
+  const soundVolumeTrigger = $('sound-vol-trigger');
+  const soundVolumePopup = $('sound-vol-popup');
+  const soundVolumeVal = $('sound-vol-val');
   const infoBpm = $('info-bpm');
   const infoBeat = $('info-beat');
   const infoCombo = $('info-combo');
@@ -325,14 +333,11 @@ async function main(): Promise<void> {
   let preciseBeats = 0;
   let playbackSpeed = saved.playbackSpeed ?? 1;
   const musicOffset = 0;
-  let musicVolume = saved.musicVolume ?? 0.8;
-  let soundVolume = saved.soundVolume ?? 0.6;
+  let musicVolume = saved.musicVolume ?? 8;
+  let soundVolume = saved.soundVolume ?? 6;
   let rafId = 0;
   let seeking = false;
   let lastRafTs = 0;
-
-  musicVolumeInput.value = String(musicVolume);
-  soundVolumeInput.value = String(soundVolume);
 
   const saveSettings = (partial: Partial<ChartPreviewSettings>) => {
     postStatus('settings', partial);
@@ -342,7 +347,7 @@ async function main(): Promise<void> {
     if (!audioContext) {
       audioContext = new AudioContext();
       musicGain = audioContext.createGain();
-      musicGain.gain.value = musicVolume;
+      musicGain.gain.value = musicVolume / 10;
       musicGain.connect(audioContext.destination);
       answerGain = audioContext.createGain();
       answerGain.connect(audioContext.destination);
@@ -350,7 +355,7 @@ async function main(): Promise<void> {
         audioContext,
         outputNode: answerGain,
         answerSoundPath: './answer.wav',
-        initialVolume: soundVolume,
+        initialVolume: soundVolume / 10,
         initialTimingOffset: ANSWER_SOUND_BASE_OFFSET_MS,
       });
       answerManager.setEnabled(true);
@@ -524,6 +529,40 @@ async function main(): Promise<void> {
     saved.playbackSpeed ?? SPEED_DEFAULT,
   );
 
+  setupWheelPopup(
+    musicVolumeTrigger,
+    musicVolumePopup,
+    musicVolumeWheel,
+    musicVolumeList,
+    musicVolumeVal,
+    (vol) => {
+      musicVolume = clamp(vol, 0, 10);
+      saveSettings({ musicVolume });
+      if (musicGain) musicGain.gain.value = musicVolume / 10;
+    },
+    0,
+    10,
+    0.1,
+    saved.musicVolume ?? 8,
+  );
+
+  setupWheelPopup(
+    soundVolumeTrigger,
+    soundVolumePopup,
+    soundVolumeWheel,
+    soundVolumeList,
+    soundVolumeVal,
+    (vol) => {
+      soundVolume = clamp(vol, 0, 10);
+      saveSettings({ soundVolume });
+      answerManager?.setVolume(soundVolume / 10);
+    },
+    0,
+    10,
+    0.1,
+    saved.soundVolume ?? 6,
+  );
+
   const resize = () => {
     const rect = canvasWrap.getBoundingClientRect();
     const size = Math.max(0, Math.floor(rect.width));
@@ -648,18 +687,6 @@ async function main(): Promise<void> {
     preciseBeats = clamp(msToBeats(targetMs, chart.bpmEvents, chart.bpm), 0, totalBeats);
     if (isPlaying) void startPlayback();
     else renderAt(preciseBeats);
-  });
-
-  musicVolumeInput.addEventListener('input', () => {
-    musicVolume = Number(musicVolumeInput.value) || 0;
-    saveSettings({ musicVolume });
-    if (musicGain) musicGain.gain.value = musicVolume;
-  });
-
-  soundVolumeInput.addEventListener('input', () => {
-    soundVolume = Number(soundVolumeInput.value) || 0;
-    saveSettings({ soundVolume });
-    answerManager?.setVolume(soundVolume);
   });
 
   window.addEventListener('message', (event) => {
