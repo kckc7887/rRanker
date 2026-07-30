@@ -368,9 +368,10 @@ async function main(): Promise<void> {
 
   const resize = () => {
     const rect = canvasWrap.getBoundingClientRect();
-    const size = Math.max(0, Math.floor(Math.min(rect.width, rect.height)));
+    const size = Math.max(0, Math.floor(rect.width));
     canvasStage.style.width = `${size}px`;
     canvasStage.style.height = `${size}px`;
+    canvasWrap.style.height = `${size}px`;
     renderer.resize(false);
     renderAt(preciseBeats);
   };
