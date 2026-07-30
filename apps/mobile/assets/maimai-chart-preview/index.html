@@ -147,6 +147,81 @@
       box-shadow: 0 0 6px rgba(255,255,255,0.6);
       cursor: pointer;
     }
+    #timeline-host {
+      flex: 1;
+      position: relative;
+      height: 36px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+    }
+    #timeline-bars {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 14px;
+      height: 22px;
+      overflow: hidden;
+    }
+    .timeline-bar {
+      position: absolute;
+      bottom: 0;
+      min-width: 1px;
+      display: flex;
+      flex-direction: column-reverse;
+    }
+    #timeline-ruler {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 4px;
+      height: 10px;
+    }
+    .timeline-tick {
+      position: absolute;
+      bottom: 0;
+      width: 1px;
+      background: var(--border);
+    }
+    .timeline-tick.major { height: 8px; background: var(--accent); }
+    .timeline-tick.medium { height: 5px; }
+    .timeline-tick.minor { height: 3px; }
+    .timeline-label {
+      position: absolute;
+      bottom: 0;
+      font-size: 8px;
+      color: var(--muted);
+      font-family: monospace;
+      transform: translateX(-50%);
+    }
+    #timeline-playhead {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      border-radius: 2px;
+      background: #fff;
+      box-shadow: 0 0 8px rgba(255,255,255,0.7);
+      pointer-events: none;
+      transform: translateX(-1px);
+      z-index: 10;
+    }
+    #timeline-badge {
+      position: absolute;
+      top: -16px;
+      transform: translateX(-50%);
+      background: #fff;
+      color: #0b0d12;
+      font-size: 10px;
+      font-family: monospace;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 10;
+    }
     #info-bar {
       display: flex;
       flex-direction: column;
@@ -320,7 +395,12 @@
         <button id="play" type="button" aria-label="播放">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
-        <input id="seek" type="range" min="0" max="1" step="0.001" value="0" />
+        <div id="timeline-host">
+          <div id="timeline-bars"></div>
+          <div id="timeline-ruler"></div>
+          <div id="timeline-playhead"></div>
+          <div id="timeline-badge"></div>
+        </div>
         <div id="time-label">0:00 / 0:00</div>
       </div>
       <div class="row wrap">
