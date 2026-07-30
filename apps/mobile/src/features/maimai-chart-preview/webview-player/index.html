@@ -187,7 +187,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 44px;
+      min-width: 48px;
       height: 26px;
       padding: 0 6px;
       background: var(--panel);
@@ -196,7 +196,6 @@
       color: var(--text);
       font-size: 12px;
       font-weight: 700;
-      font-variant-numeric: tabular-nums;
       cursor: pointer;
       font-family: inherit;
     }
@@ -255,6 +254,24 @@
       border-bottom: 1px solid rgba(91, 140, 255, 0.45);
       background: rgba(91, 140, 255, 0.12);
     }
+    .toggle {
+      appearance: none;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .toggle[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
   </style>
 </head>
 <body>
@@ -283,6 +300,42 @@
         </button>
         <input id="seek" type="range" min="0" max="1" step="0.001" value="0" />
         <div id="time-label">0:00 / 0:00</div>
+      </div>
+      <div class="row wrap">
+        <div class="field wheel-field" id="mirror-field">
+          镜像
+          <button class="wheel-trigger" id="mirror-trigger" type="button">
+            <span id="mirror-val">无</span>
+          </button>
+          <div class="wheel-popup" id="mirror-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="镜像选项">
+              <div class="wheel-viewport" id="mirror-wheel">
+                <div class="wheel-list" id="mirror-list"></div>
+              </div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field wheel-field" id="style-field">
+          样式
+          <button class="wheel-trigger" id="style-trigger" type="button">
+            <span id="style-val">判定区</span>
+          </button>
+          <div class="wheel-popup" id="style-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="样式选项">
+              <div class="wheel-viewport" id="style-wheel">
+                <div class="wheel-list" id="style-list"></div>
+              </div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
+        <button class="toggle" id="toggle-pink" type="button">粉色星星头</button>
+        <button class="toggle" id="toggle-star-rot" type="button">星星头旋转</button>
+        <button class="toggle" id="toggle-ex" type="button">高亮保护套</button>
+        <button class="toggle" id="toggle-break-slide" type="button">标准色绝赞</button>
+        <button class="toggle" id="toggle-hit" type="button">打击特效</button>
+        <button class="toggle" id="toggle-firework" type="button">烟花特效</button>
       </div>
       <div class="row wrap">
         <div class="field wheel-field" id="hi-speed-field">
@@ -319,7 +372,7 @@
             <span id="music-vol-val">10.0</span>
           </button>
           <div class="wheel-popup" id="music-vol-popup" style="visibility:hidden;pointer-events:none">
-            <div class="wheel" aria-label="音质拨轮">
+            <div class="wheel" aria-label="音乐音量">
               <div class="wheel-viewport" id="music-vol-wheel">
                 <div class="wheel-list" id="music-vol-list"></div>
               </div>
@@ -333,7 +386,7 @@
             <span id="sound-vol-val">10.0</span>
           </button>
           <div class="wheel-popup" id="sound-vol-popup" style="visibility:hidden;pointer-events:none">
-            <div class="wheel" aria-label="打击音拨轮">
+            <div class="wheel" aria-label="打击音音量">
               <div class="wheel-viewport" id="sound-vol-wheel">
                 <div class="wheel-list" id="sound-vol-list"></div>
               </div>
