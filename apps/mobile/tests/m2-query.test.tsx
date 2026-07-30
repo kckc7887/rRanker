@@ -20,7 +20,9 @@ jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callb
 
 const mockSetSongFavorite = jest.fn();
 const mockBack = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockShowActionNotification = jest.fn();
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 let mockDetailedCatalogAvailable = true;
@@ -50,7 +52,12 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
 jest.mock('expo-router', () => ({
-  router: { push: (...args: unknown[]) => mockPush(...args), back: () => mockBack() },
+  router: {
+    push: (...args: unknown[]) => mockPush(...args),
+    back: () => mockBack(),
+    canGoBack: () => mockCanGoBack(),
+    replace: (...args: unknown[]) => mockReplace(...args),
+  },
   useLocalSearchParams: () => mockSongRouteParams,
 }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
@@ -155,6 +162,7 @@ describe('M2 song query screens', () => {
   beforeEach(() => {
     mockSongRouteParams = { songId: '1' };
     mockDetailedCatalogAvailable = true;
+    mockCanGoBack.mockReturnValue(true);
     useCatalogFilter.getState().reset();
     jest.clearAllMocks();
   });
@@ -163,6 +171,14 @@ describe('M2 song query screens', () => {
     const screen = await render(<SongDetailScreen />);
     await fireEvent.press(screen.getByLabelText('返回'));
     expect(mockBack).toHaveBeenCalled();
+  });
+
+  it('returns to the catalog when the detail route has no back history', async () => {
+    mockCanGoBack.mockReturnValue(false);
+    const screen = await render(<SongDetailScreen />);
+    await fireEvent.press(screen.getByLabelText('返回'));
+    expect(mockBack).not.toHaveBeenCalled();
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/search');
   });
 
   it('does not dereference catalog source while the detail catalog is unavailable', async () => {
