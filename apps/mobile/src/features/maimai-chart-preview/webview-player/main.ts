@@ -32,8 +32,6 @@ declare global {
 export interface ChartPreviewSettings {
   hiSpeed?: number;
   playbackSpeed?: number;
-  musicEnabled?: boolean;
-  soundEnabled?: boolean;
   musicVolume?: number;
   soundVolume?: number;
 }
@@ -234,8 +232,6 @@ async function main(): Promise<void> {
   const speedTrigger = $('speed-trigger');
   const speedPopup = $('speed-popup');
   const speedVal = $('speed-val');
-  const musicToggle = $('music-enabled') as HTMLButtonElement;
-  const soundToggle = $('sound-enabled') as HTMLButtonElement;
   const musicVolumeInput = $('music-volume') as HTMLInputElement;
   const soundVolumeInput = $('sound-volume') as HTMLInputElement;
   const infoBpm = $('info-bpm');
@@ -331,14 +327,10 @@ async function main(): Promise<void> {
   const musicOffset = 0;
   let musicVolume = saved.musicVolume ?? 0.8;
   let soundVolume = saved.soundVolume ?? 0.6;
-  let musicEnabled = saved.musicEnabled ?? true;
-  let soundEnabled = saved.soundEnabled ?? true;
   let rafId = 0;
   let seeking = false;
   let lastRafTs = 0;
 
-  musicToggle.setAttribute('aria-pressed', String(musicEnabled));
-  soundToggle.setAttribute('aria-pressed', String(soundEnabled));
   musicVolumeInput.value = String(musicVolume);
   soundVolumeInput.value = String(soundVolume);
 
@@ -350,7 +342,7 @@ async function main(): Promise<void> {
     if (!audioContext) {
       audioContext = new AudioContext();
       musicGain = audioContext.createGain();
-      musicGain.gain.value = musicEnabled ? musicVolume : 0;
+      musicGain.gain.value = musicVolume;
       musicGain.connect(audioContext.destination);
       answerGain = audioContext.createGain();
       answerGain.connect(audioContext.destination);
@@ -361,7 +353,7 @@ async function main(): Promise<void> {
         initialVolume: soundVolume,
         initialTimingOffset: ANSWER_SOUND_BASE_OFFSET_MS,
       });
-      answerManager.setEnabled(soundEnabled);
+      answerManager.setEnabled(true);
       await answerManager.init();
     }
     if (audioContext.state === 'suspended') await audioContext.resume();
@@ -405,7 +397,7 @@ async function main(): Promise<void> {
   };
 
   const playFromMusicPosition = async (positionSec: number) => {
-    if (!audioBuffer || !musicEnabled) return;
+    if (!audioBuffer) return;
     const ctx = await ensureAudio();
     if (!musicGain) return;
     stopSource(true);
@@ -546,7 +538,7 @@ async function main(): Promise<void> {
   resize();
 
   const scheduleAnswers = (currentMs: number) => {
-    if (!answerManager || !soundEnabled || !isPlaying) return;
+    if (!answerManager || !isPlaying) return;
     answerManager.schedule(
       answerEvents,
       currentMs,
@@ -559,7 +551,7 @@ async function main(): Promise<void> {
     if (!isPlaying) return;
     let currentBeats = preciseBeats;
 
-    if (musicEnabled && audioBuffer && isSourcePlaying && audioContext) {
+    if (audioBuffer && isSourcePlaying && audioContext) {
       const musicTime = getMusicTime();
       if (musicTime >= audioBuffer.duration - MUSIC_END_EPSILON_S) {
         stopSource(true);
@@ -615,7 +607,7 @@ async function main(): Promise<void> {
       chart.firstMs ?? 0,
     );
     answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
-    if (musicEnabled && audioBuffer && musicTime < audioBuffer.duration - MUSIC_END_EPSILON_S) {
+    if (audioBuffer && musicTime < audioBuffer.duration - MUSIC_END_EPSILON_S) {
       await playFromMusicPosition(Math.max(0, musicTime));
     } else {
       stopSource(true);
@@ -658,30 +650,10 @@ async function main(): Promise<void> {
     else renderAt(preciseBeats);
   });
 
-  musicToggle.addEventListener('click', () => {
-    musicEnabled = !musicEnabled;
-    musicToggle.setAttribute('aria-pressed', String(musicEnabled));
-    saveSettings({ musicEnabled });
-    if (musicGain) musicGain.gain.value = musicEnabled ? musicVolume : 0;
-    if (isPlaying) void startPlayback();
-  });
-
-  soundToggle.addEventListener('click', () => {
-    soundEnabled = !soundEnabled;
-    soundToggle.setAttribute('aria-pressed', String(soundEnabled));
-    saveSettings({ soundEnabled });
-    answerManager?.setEnabled(soundEnabled);
-    if (!soundEnabled) {
-      answerManager?.reset(undefined, true);
-    } else {
-      answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
-    }
-  });
-
   musicVolumeInput.addEventListener('input', () => {
     musicVolume = Number(musicVolumeInput.value) || 0;
     saveSettings({ musicVolume });
-    if (musicGain) musicGain.gain.value = musicEnabled ? musicVolume : 0;
+    if (musicGain) musicGain.gain.value = musicVolume;
   });
 
   soundVolumeInput.addEventListener('input', () => {
