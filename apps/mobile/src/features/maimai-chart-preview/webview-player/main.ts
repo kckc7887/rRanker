@@ -247,6 +247,7 @@ async function main(): Promise<void> {
   const btnStepBack = $('btn-step-back') as HTMLButtonElement;
   const btnStepForward = $('btn-step-forward') as HTMLButtonElement;
   const btnNextMeasure = $('btn-next-measure') as HTMLButtonElement;
+  const btnRestart = $('btn-restart') as HTMLButtonElement;
   const btnLoopA = $('btn-loop-a') as HTMLButtonElement;
   const btnLoopB = $('btn-loop-b') as HTMLButtonElement;
   const timelineHost = $('timeline-host');
@@ -955,6 +956,13 @@ async function main(): Promise<void> {
   setupRepeatButton(btnStepBack, () => skipBeats(-1));
   setupRepeatButton(btnStepForward, () => skipBeats(1));
 
+  btnRestart.addEventListener('click', () => {
+    const currentMeasure = Math.floor(preciseBeats / 4);
+    preciseBeats = currentMeasure * 4;
+    if (isPlaying) void startPlayback();
+    else renderAt(preciseBeats);
+  });
+
   let loopA: number | null = null;
   let loopB: number | null = null;
 
@@ -967,39 +975,30 @@ async function main(): Promise<void> {
     if (loopA !== null) { loopA = null; updateLoopBtn(btnLoopA, false); return; }
     loopA = preciseBeats;
     updateLoopBtn(btnLoopA, true);
+    if (loopB !== null && loopA > loopB) {
+      [loopA, loopB] = [loopB, loopA];
+      updateLoopBtn(btnLoopA, true);
+      updateLoopBtn(btnLoopB, true);
+    }
   });
 
   btnLoopB.addEventListener('click', () => {
     if (loopB !== null) { loopB = null; updateLoopBtn(btnLoopB, false); return; }
     loopB = preciseBeats;
     updateLoopBtn(btnLoopB, true);
+    if (loopA !== null && loopA > loopB) {
+      [loopA, loopB] = [loopB, loopA];
+      updateLoopBtn(btnLoopA, true);
+      updateLoopBtn(btnLoopB, true);
+    }
   });
 
   const checkLoop = () => {
-    if (loopA === null || loopB === null) return;
-    const a = loopA;
-    const b = loopB;
-    const isForward = a <= b;
-    if (isForward) {
-      if (preciseBeats >= b) {
-        preciseBeats = a;
-        if (isPlaying) void startPlayback();
-        else renderAt(preciseBeats);
-      }
-    } else {
-      if (preciseBeats >= a && preciseBeats < a + 0.01) {
-        // just passed A going forward, continue to end then wrap to B area
-      }
-      if (preciseBeats >= totalBeats - 0.01) {
-        preciseBeats = 0;
-        if (isPlaying) void startPlayback();
-        else renderAt(preciseBeats);
-      }
-      if (preciseBeats >= b && preciseBeats < a) {
-        preciseBeats = a;
-        if (isPlaying) void startPlayback();
-        else renderAt(preciseBeats);
-      }
+    if (loopA === null || loopB === null || loopA === loopB) return;
+    if (preciseBeats >= loopB) {
+      preciseBeats = loopA;
+      if (isPlaying) void startPlayback();
+      else renderAt(preciseBeats);
     }
   };
 
