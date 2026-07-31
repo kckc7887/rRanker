@@ -90,3 +90,18 @@ export function buildChunithmMapIconUrl(iconId: number | null | undefined): stri
   if (!Number.isSafeInteger(iconId) || (iconId ?? -1) < 0) return null;
   return `https://assets2.lxns.net/chunithm/icon/${iconId}.png`;
 }
+
+export function buildChunithmCharacterUrl(characterId: number | null | undefined): string | null {
+  if (!Number.isSafeInteger(characterId) || (characterId ?? -1) < 0) return null;
+  return `https://assets2.lxns.net/chunithm/character/${characterId}.png`;
+}
+
+export function buildChunithmNamePlateUrl(plateId: number | null | undefined): string | null {
+  if (!Number.isSafeInteger(plateId) || (plateId ?? -1) < 0) return null;
+  return `https://assets2.lxns.net/chunithm/plate/${plateId}.png`;
+}
+
+export function buildChunithmTrophyUrl(trophyId: number | null | undefined): string | null {
+  if (!Number.isSafeInteger(trophyId) || (trophyId ?? -1) < 0) return null;
+  return `https://assets2.lxns.net/chunithm/trophy/${trophyId}.png`;
+}

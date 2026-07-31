@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   PixelRatio,
   Platform,
@@ -41,9 +42,16 @@ import {
   type ChunithmBestImageSelectionCount,
 } from '@/features/chunithm-best-image/chunithm-best-image';
 import {
+  CHUNITHM_BEST_IMAGE_STYLE_KINDS,
   chunithmBestImagePreferencesStore,
-  type ChunithmBestImageStylePreferences,
+  DEFAULT_CHUNITHM_BEST_IMAGE_STYLES,
+  resolveChunithmBestImageStyleId,
+  type ChunithmBestImageStyleChoice,
+  type ChunithmBestImageStyleKind,
 } from '@/features/chunithm-best-image/chunithm-best-image-preferences';
+import { ChunithmBestImageStylePicker } from '@/features/chunithm-best-image/chunithm-best-image-style-picker';
+import type { ChunithmBestImageCollectionItem } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
+import { loadChunithmBestImageCollections } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
 import {
   loadChunithmBestImageJackets,
   loadChunithmRemoteImageDataUri,
@@ -53,17 +61,29 @@ import {
   buildChunithmScoreCards,
   compareChunithmScores,
 } from '@/domain/chunithm-score-presentation';
-import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
+import {
+  buildChunithmCharacterUrl,
+  buildChunithmNamePlateUrl,
+  buildChunithmTrophyUrl,
+} from '@/domain/chunithm-personal';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
 
 const WIDTHS = [1080, 1440, 2160] as const;
 const SELECTION_COUNTS: readonly ChunithmBestImageSelectionCount[] = [0, 5, 10];
-const DEFAULT_STYLES: ChunithmBestImageStylePreferences = {
-  version: 1,
-  selectionCount: 0,
+const STYLE_LABELS: Record<ChunithmBestImageStyleKind, string> = {
+  character: '角色',
+  plate: '名牌板',
+  trophy: '称号',
 };
+
+function resolvedRandom<T>(items: readonly T[], seed: string): T | undefined {
+  if (!items.length) return undefined;
+  let hash = 0;
+  for (const character of seed) hash = ((hash * 31) + character.charCodeAt(0)) | 0;
+  return items[Math.abs(hash) % items.length];
+}
 
 type PreviewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'error' | 'crashed' | 'terminated';
 
@@ -118,10 +138,14 @@ export function ChunithmBestImageScreen() {
   const catalog = catalogQuery.data;
 
   const [width, setWidth] = useState<(typeof WIDTHS)[number]>(1080);
-  const [stylePrefs, setStylePrefs] = useState(DEFAULT_STYLES);
+  const [stylePrefs, setStylePrefs] = useState(DEFAULT_CHUNITHM_BEST_IMAGE_STYLES);
   const [prefsReady, setPrefsReady] = useState(false);
+  const [collections, setCollections] = useState<Record<ChunithmBestImageStyleKind, ChunithmBestImageCollectionItem[]> | null>(null);
+  const [picker, setPicker] = useState<ChunithmBestImageStyleKind | null>(null);
   const [coverUrls, setCoverUrls] = useState<Record<string, string | null> | null>(null);
-  const [iconDataUri, setIconDataUri] = useState<string | null>(null);
+  const [characterDataUri, setCharacterDataUri] = useState<string | null>(null);
+  const [plateDataUri, setPlateDataUri] = useState<string | null>(null);
+  const [trophyDataUri, setTrophyDataUri] = useState<string | null>(null);
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
   const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
   const [androidSources, setAndroidSources] = useState<BestImageWebViewSource[] | null>(null);
@@ -135,6 +159,8 @@ export function ChunithmBestImageScreen() {
   const exportResolve = useRef<((height: number) => void) | null>(null);
   const exportReject = useRef<((error: Error) => void) | null>(null);
   const exportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const styleAssetKeyRef = useRef<string | null>(null);
+  const randomizedRef = useRef(new Set<string>());
 
   useEffect(() => {
     setPrefsReady(false);
@@ -143,6 +169,56 @@ export function ChunithmBestImageScreen() {
       setPrefsReady(true);
     });
   }, [gameData.activeAccountId]);
+
+  useEffect(() => {
+    randomizedRef.current.clear();
+  }, [gameData.activeAccountId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadChunithmBestImageCollections().then((loaded) => {
+      if (!cancelled) setCollections(loaded);
+    }).catch(() => {
+      if (!cancelled) {
+        setCollections({ character: [], plate: [], trophy: [] });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!prefsReady || !collections) return;
+    const accountKey = gameData.activeAccountId;
+    const needsUpdate = CHUNITHM_BEST_IMAGE_STYLE_KINDS.some((kind) => {
+      const choice = stylePrefs[kind];
+      if (choice.mode !== 'random') return false;
+      if (typeof choice.id === 'number') return false;
+      return !randomizedRef.current.has(`${accountKey}:${kind}`);
+    });
+    if (!needsUpdate) return;
+    setStylePrefs((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const kind of CHUNITHM_BEST_IMAGE_STYLE_KINDS) {
+        const choice = current[kind];
+        if (choice.mode !== 'random' || typeof choice.id === 'number') continue;
+        const randomKey = `${accountKey}:${kind}`;
+        if (randomizedRef.current.has(randomKey)) continue;
+        randomizedRef.current.add(randomKey);
+        const items = collections[kind];
+        const item = items.length
+          ? items[Math.floor(Math.random() * items.length)]!
+          : resolvedRandom(items, `${accountKey}:${kind}`);
+        if (item) {
+          next[kind] = { mode: 'random', id: item.id, name: item.name };
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [collections, gameData.activeAccountId, prefsReady, stylePrefs]);
 
   useEffect(() => {
     if (prefsReady) {
@@ -205,16 +281,70 @@ export function ChunithmBestImageScreen() {
     };
   }, [jacketKey, jacketIds, payload]);
 
+  const characterId = useMemo(
+    () => resolveChunithmBestImageStyleId(stylePrefs.character, payload?.player?.character?.id),
+    [payload?.player?.character?.id, stylePrefs.character],
+  );
+  const plateId = useMemo(
+    () => resolveChunithmBestImageStyleId(stylePrefs.plate, payload?.player?.name_plate?.id),
+    [payload?.player?.name_plate?.id, stylePrefs.plate],
+  );
+  const trophyId = useMemo(
+    () => resolveChunithmBestImageStyleId(stylePrefs.trophy, payload?.player?.trophy?.id),
+    [payload?.player?.trophy?.id, stylePrefs.trophy],
+  );
+  const hideCharacter = stylePrefs.character.mode === 'off'
+    || ((stylePrefs.character.mode === 'item' || stylePrefs.character.mode === 'random') && characterId === null);
+  const hidePlate = stylePrefs.plate.mode === 'off'
+    || ((stylePrefs.plate.mode === 'item' || stylePrefs.plate.mode === 'random') && plateId === null);
+  const hideTrophy = stylePrefs.trophy.mode === 'off'
+    || ((stylePrefs.trophy.mode === 'item' || stylePrefs.trophy.mode === 'random') && trophyId === null);
+  const trophyName = useMemo(() => {
+    const choice = stylePrefs.trophy;
+    if (choice.mode === 'off') return null;
+    if ((choice.mode === 'item' || choice.mode === 'random') && choice.name) return choice.name;
+    return payload?.player?.trophy?.name ?? null;
+  }, [payload?.player?.trophy?.name, stylePrefs.trophy]);
+  const styleAssetKey = [
+    stylePrefs.character.mode, characterId ?? '',
+    stylePrefs.plate.mode, plateId ?? '',
+    stylePrefs.trophy.mode, trophyId ?? '',
+  ].join('|');
+
   useEffect(() => {
     let cancelled = false;
-    const iconUrl = buildChunithmMapIconUrl(payload?.player?.map_icon?.id);
-    void loadChunithmRemoteImageDataUri(iconUrl).then((dataUri) => {
-      if (!cancelled) setIconDataUri(dataUri);
+    if (!payload) return;
+    if (styleAssetKeyRef.current === styleAssetKey) return;
+    void Promise.all([
+      hideCharacter || characterId === null
+        ? Promise.resolve(null)
+        : loadChunithmRemoteImageDataUri(buildChunithmCharacterUrl(characterId)),
+      hidePlate || plateId === null
+        ? Promise.resolve(null)
+        : loadChunithmRemoteImageDataUri(buildChunithmNamePlateUrl(plateId)),
+      hideTrophy || trophyId === null
+        ? Promise.resolve(null)
+        : loadChunithmRemoteImageDataUri(buildChunithmTrophyUrl(trophyId)),
+    ]).then(([nextCharacter, nextPlate, nextTrophy]) => {
+      if (cancelled) return;
+      styleAssetKeyRef.current = styleAssetKey;
+      setCharacterDataUri(nextCharacter);
+      setPlateDataUri(nextPlate);
+      setTrophyDataUri(nextTrophy);
     });
     return () => {
       cancelled = true;
     };
-  }, [payload?.player?.map_icon?.id]);
+  }, [
+    characterId,
+    hideCharacter,
+    hidePlate,
+    hideTrophy,
+    payload,
+    plateId,
+    styleAssetKey,
+    trophyId,
+  ]);
 
   const htmlPages = useMemo(() => {
     if (!payload || !coverUrls) return null;
@@ -226,9 +356,28 @@ export function ChunithmBestImageScreen() {
       page,
       coverUrls,
       jacketIds: jacketIdsByKey,
-      iconDataUri,
+      characterDataUri,
+      plateDataUri,
+      trophyDataUri,
+      trophyName,
+      hideCharacter,
+      hidePlate,
+      hideTrophy,
     }));
-  }, [coverUrls, iconDataUri, jacketIdsByKey, pages, payload, width]);
+  }, [
+    characterDataUri,
+    coverUrls,
+    hideCharacter,
+    hidePlate,
+    hideTrophy,
+    jacketIdsByKey,
+    pages,
+    payload,
+    plateDataUri,
+    trophyDataUri,
+    trophyName,
+    width,
+  ]);
 
   const inlineSources = useMemo(
     () => (htmlPages ? inlineBestImageWebViewSources(htmlPages) : null),
@@ -272,6 +421,51 @@ export function ChunithmBestImageScreen() {
         version: version === undefined ? current[pageId]?.version ?? null : version,
       },
     }));
+  };
+
+  const chooseStyle = (choice: ChunithmBestImageStyleChoice) => {
+    const kind = picker;
+    if (!kind) return;
+    if (choice.mode === 'random') {
+      randomizedRef.current.add(`${gameData.activeAccountId}:${kind}`);
+    }
+    setStylePrefs((current) => ({ ...current, [kind]: choice }));
+    setPicker(null);
+  };
+
+  const styleValue = (kind: ChunithmBestImageStyleKind): string => {
+    const choice = stylePrefs[kind];
+    if (choice.mode === 'current') return `玩家当前${STYLE_LABELS[kind]}`;
+    if (choice.mode === 'off') return '已关闭';
+    if (choice.mode === 'random') return `随机${choice.name ? ` · ${choice.name}` : ''}`;
+    return choice.name ?? '未设置';
+  };
+
+  const stylePreview = (kind: ChunithmBestImageStyleKind) => {
+    if (stylePrefs[kind].mode === 'off') {
+      return <Text style={[styles.noAsset, { color: theme.textMuted }]}>已关闭</Text>;
+    }
+    const dataUri = kind === 'character'
+      ? characterDataUri
+      : kind === 'plate'
+        ? plateDataUri
+        : trophyDataUri;
+    if (dataUri) {
+      return (
+        <Image
+          source={{ uri: dataUri }}
+          style={
+            kind === 'character'
+              ? styles.characterPreview
+              : kind === 'plate'
+                ? styles.platePreview
+                : styles.trophyPreview
+          }
+          resizeMode={kind === 'character' ? 'cover' : 'contain'}
+        />
+      );
+    }
+    return <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>;
   };
 
   const waitForExport = (index: number) => new Promise<number>((resolve, reject) => {
@@ -411,6 +605,28 @@ export function ChunithmBestImageScreen() {
               ))}
             </View>
           </View>
+          {CHUNITHM_BEST_IMAGE_STYLE_KINDS.map((kind) => (
+            <Pressable
+              key={kind}
+              accessibilityRole="button"
+              accessibilityLabel={`选择${STYLE_LABELS[kind]}`}
+              onPress={() => setPicker(kind)}
+              style={({ pressed }) => [
+                styles.styleRow,
+                { borderBottomColor: theme.border },
+                pressed && { backgroundColor: theme.surfaceMuted },
+              ]}
+            >
+              <View style={styles.stylePreview}>{stylePreview(kind)}</View>
+              <View style={styles.styleCopy}>
+                <Text style={[styles.styleName, { color: theme.text }]}>{STYLE_LABELS[kind]}</Text>
+                <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>
+                  {styleValue(kind)}
+                </Text>
+              </View>
+              <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
+            </Pressable>
+          ))}
         </View>
 
         <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>分辨率</Text>
@@ -566,6 +782,14 @@ export function ChunithmBestImageScreen() {
           {previewStatus}
         </Text>
       </ScrollView>
+      <ChunithmBestImageStylePicker
+        visible={picker !== null}
+        kind={picker}
+        items={picker ? collections?.[picker] ?? [] : []}
+        selection={picker ? stylePrefs[picker] : null}
+        onClose={() => setPicker(null)}
+        onSelect={chooseStyle}
+      />
       <Modal
         visible={exportIndex !== null}
         transparent={false}
@@ -653,8 +877,24 @@ const styles = StyleSheet.create({
   },
   overflowCopy: { flex: 1, minWidth: 0 },
   overflowChoices: { flexDirection: 'row', gap: 6 },
+  styleRow: {
+    minHeight: 66,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  stylePreview: { width: 132, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
+  characterPreview: { width: 46, height: 46, borderRadius: 10 },
+  platePreview: { width: 132, height: 46, borderRadius: 8 },
+  trophyPreview: { width: 132, height: 36, borderRadius: 8 },
+  styleCopy: { flex: 1, minWidth: 0 },
   styleName: { fontSize: 14, fontWeight: '800' },
   styleValue: { fontSize: 12, marginTop: 3 },
+  chevron: { fontSize: 26, fontWeight: '300' },
+  noAsset: { fontSize: 12 },
   widthOptions: { flexDirection: 'row', gap: 8 },
   widthOption: {
     flex: 1,
