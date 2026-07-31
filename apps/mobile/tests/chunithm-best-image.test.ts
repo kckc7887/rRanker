@@ -168,7 +168,12 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).not.toContain('class="chart-type"');
     expect(html).toContain('score-card-foot"><span class="score-badges"');
     expect(html).toContain('.score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-start');
-    expect(html).toContain('<div class="meta-row"><span>Lv.99 · 转生 1</span></div>');
+    expect(html).toContain('class="profile-banner"');
+    expect(html).toContain('class="player-name-row"');
+    expect(html).toContain('class="player-level">Lv.99</span>');
+    expect(html).toContain('class="rating-badge"');
+    expect(html).toContain('class="trophy-slot"');
+    expect(html).not.toContain('class="meta-row"');
     expect(html).not.toMatch(/meta-row"><span>[^<]*虹/);
   });
 });
@@ -178,5 +183,46 @@ describe('parseChunithmBestImageStylePreferences', () => {
     expect(parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 5 }).selectionCount).toBe(5);
     expect(parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 10 }).selectionCount).toBe(10);
     expect(parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 3 }).selectionCount).toBe(0);
+  });
+
+  it('migrates version 1 to version 2 defaults for character/plate/trophy', () => {
+    const parsed = parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 5 });
+    expect(parsed).toMatchObject({
+      version: 2,
+      selectionCount: 5,
+      character: { mode: 'current' },
+      plate: { mode: 'current' },
+      trophy: { mode: 'current' },
+    });
+  });
+
+  it('parses version 2 character/plate/trophy modes', () => {
+    expect(parseChunithmBestImageStylePreferences({
+      version: 2,
+      selectionCount: 10,
+      character: { mode: 'off' },
+      plate: { mode: 'item', id: 12, name: '测试名牌' },
+      trophy: { mode: 'random', id: 34, name: '测试称号' },
+    })).toEqual({
+      version: 2,
+      selectionCount: 10,
+      character: { mode: 'off' },
+      plate: { mode: 'item', id: 12, name: '测试名牌' },
+      trophy: { mode: 'random', id: 34, name: '测试称号' },
+    });
+  });
+
+  it('falls back invalid version 2 choices to current', () => {
+    expect(parseChunithmBestImageStylePreferences({
+      version: 2,
+      selectionCount: 0,
+      character: { mode: 'item', id: 'bad' },
+      plate: { mode: 'random' },
+      trophy: { mode: 'unknown' },
+    })).toMatchObject({
+      character: { mode: 'current' },
+      plate: { mode: 'current' },
+      trophy: { mode: 'current' },
+    });
   });
 });
