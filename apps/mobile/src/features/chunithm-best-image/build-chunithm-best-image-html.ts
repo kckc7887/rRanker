@@ -1,9 +1,6 @@
 import type { ChunithmLevelIndex } from '@/domain/chunithm';
 import type { ChunithmPlayer } from '@/domain/chunithm-personal';
-import {
-  resolveChunithmPossessionTheme,
-  resolveChunithmRatingTier,
-} from '@/domain/chunithm-rating-theme';
+import { resolveChunithmPossessionTheme } from '@/domain/chunithm-rating-theme';
 import {
   chunithmAchievementBadges,
   chunithmRankUsesGradient,
@@ -40,15 +37,6 @@ const DIFFICULTY_COLORS: Record<ChunithmLevelIndex, string> = {
   3: '#7526CF',
   4: '#17171A',
   5: '#7B61FF',
-};
-
-const DIFFICULTY_LABELS: Record<ChunithmLevelIndex, string> = {
-  0: 'BAS',
-  1: 'ADV',
-  2: 'EXP',
-  3: 'MAS',
-  4: 'ULT',
-  5: 'WE',
 };
 
 function escapeHtml(value: string): string {
@@ -123,7 +111,6 @@ function renderScoreCard(
       <div class="song-copy">
         <span class="song-id">ID${escapeHtml(record.songId)}</span>
         <strong class="song-title">${escapeHtml(record.title)}</strong>
-        <span class="chart-type" style="--diff-color:${difficultyColor}"><span>${escapeHtml(DIFFICULTY_LABELS[record.levelIndex])}</span></span>
       </div>
     </div>
     <div class="score-separator"></div>
@@ -159,9 +146,7 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
   const player = input.player;
   const name = player?.name?.trim() || '未读取玩家资料';
   const initial = Array.from(name)[0] ?? '?';
-  const ratingValue = player?.rating ?? 0;
   const possessionTheme = resolveChunithmPossessionTheme(player?.rating_possession);
-  const tierTheme = resolveChunithmRatingTier(ratingValue);
   const pageCount = Math.max(1, Math.floor(input.page.pageCount));
   const pageIndex = Math.min(pageCount - 1, Math.max(0, Math.floor(input.page.pageIndex)));
 
@@ -204,7 +189,6 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
 
   const levelLabel = player ? `Lv.${player.level}` : 'Lv.—';
   const rebornLabel = player && player.reborn_count > 0 ? ` · 转生 ${player.reborn_count}` : '';
-  const tierLabel = tierTheme.label;
   const pageMarkerLabel = `第 ${pageIndex + 1} / ${pageCount} 页`;
   const pageMarker = pageCount > 1
     ? `<div class="app-page-marker-row"><div class="page-marker">${pageMarkerLabel}</div></div>`
@@ -216,7 +200,6 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
   const scoreContent = scoreSections || '<div class="empty-scores">暂无可用于图片的成绩</div>';
 
   const rainbowLayeredBackground = layeredBadgeCssBackground('rainbow');
-  const goldLayeredBackground = layeredBadgeCssBackground('gold');
   const goldStatus = STATUS_BADGE_THEMES.gold;
   const neutralStatus = STATUS_BADGE_THEMES.neutral;
   const platinumBorder = '#7D8795';
@@ -243,7 +226,7 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     .player-name{width:max-content;max-width:100%;overflow:hidden;font:950 ${nameFontSize}px/1.02 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:-.035em;white-space:nowrap;transform-origin:left center}
     .identity-rating{display:flex;align-items:center;gap:${px(width * 10 / 1080)}px;margin-top:${px(width * 11 / 1080)}px;font:720 ${ratingLabelSize}px/1 system-ui,sans-serif;letter-spacing:.06em;white-space:nowrap}
     .identity-rating strong{font-size:${ratingValueSize}px;font-weight:800;font-variant-numeric:tabular-nums}
-    .meta-row{display:flex;width:100%;height:${metaRowHeight}px;align-items:center;justify-content:space-between;color:#4B5563;font:700 ${px(width * 0.013)}px/1 system-ui,sans-serif}
+    .meta-row{display:flex;width:100%;height:${metaRowHeight}px;align-items:center;justify-content:flex-start;color:#4B5563;font:700 ${px(width * 0.013)}px/1 system-ui,sans-serif}
     .page-marker{display:flex;height:${px(width * 0.025)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.01)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 0.009)}px/1 system-ui,sans-serif}
     .app-page-marker-row{display:flex;width:100%;height:${pageMarkerRowHeight}px;align-items:center;justify-content:flex-end}
     .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
@@ -260,9 +243,8 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     .song-jacket{position:absolute;inset:0;z-index:1;display:block;width:100%;height:100%;object-fit:cover}
     .jacket-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--card-muted);font:700 ${px(width * 0.022)}px/1 system-ui,sans-serif}
     .song-copy{position:relative;display:flex;min-width:0;height:100%;flex:1;flex-direction:column;gap:${px(width * 0.004)}px;overflow:hidden;padding:${px(width * 0.002)}px 0}
-    .song-id{overflow:hidden;padding-right:${px(width * 0.029)}px;color:var(--card-muted);font:700 ${px(width * 0.008)}px/1 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
+    .song-id{overflow:hidden;color:var(--card-muted);font:700 ${px(width * 0.008)}px/1 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
     .song-title{display:-webkit-box;overflow:hidden;color:var(--card-foreground);font:800 ${px(width * 0.011)}px/1.18 system-ui,sans-serif;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:3}
-    .chart-type{position:absolute;z-index:2;right:0;top:0;display:inline-flex;min-width:${px(width * 0.023)}px;height:${px(width * 0.014)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid var(--diff-color);border-radius:${px(width * 0.005)}px;background:var(--diff-color);color:#FFFFFF;font:900 ${px(width * 0.0065)}px/1 system-ui,sans-serif}
     .score-separator{height:1px;margin:${px(width * 0.006)}px 0;background:linear-gradient(90deg,transparent,var(--separator-color),transparent)}
     .achievement-row{display:flex;min-width:0;align-items:center;gap:${px(width * 0.004)}px}
     .achievement-with-rate{display:flex;min-width:0;align-items:center;gap:${px(width * 0.003)}px}
@@ -273,8 +255,8 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     .rank{margin-left:auto;flex:0 0 auto;color:var(--card-muted);font:800 ${px(width * 0.009)}px/1 system-ui,sans-serif}
     .rating-row{display:flex;min-width:0;align-items:center;margin-top:${px(width * 0.003)}px;color:var(--card-muted);font:700 ${px(width * 0.009)}px/1.15 system-ui,sans-serif}
     .song-rating{display:inline-flex;min-width:0;align-items:center;gap:${px(width * 0.003)}px;white-space:nowrap}.song-rating strong{color:var(--card-foreground);font-weight:900}.rating-arrow{color:var(--card-muted)}
-    .score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;padding-top:${px(width * 0.004)}px}
-    .score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-end;gap:${px(width * 0.002)}px;flex-wrap:wrap}
+    .score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-start;padding-top:${px(width * 0.004)}px}
+    .score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-start;gap:${px(width * 0.002)}px;flex-wrap:wrap}
     .score-badge{display:inline-flex;min-width:${px(width * 0.02)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid ${goldStatus.border};border-radius:999px;background:${goldStatus.background};color:${goldStatus.text};font:900 ${px(width * 0.0065)}px/1 system-ui,sans-serif;white-space:nowrap}
     .score-badge.tone-rainbow{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT}}
     .score-badge.tone-platinum{border-color:${platinumBorder};background:${platinumBackground};color:#394454}
@@ -296,7 +278,7 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
             <div class="identity-rating"><span>Rating</span><strong>${escapeHtml(input.ratingDisplay)}</strong></div>
           </div>
         </section>
-        <div class="meta-row"><span>${escapeHtml(levelLabel)}${escapeHtml(rebornLabel)}</span><span>${escapeHtml(tierLabel)} · ${escapeHtml(possessionTheme.label)}</span></div>
+        <div class="meta-row"><span>${escapeHtml(levelLabel)}${escapeHtml(rebornLabel)}</span></div>
         ${pageMarker}
       </div>
       <div class="scores-content" data-layout-content aria-label="成绩列表">${scoreContent}</div>
