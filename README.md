@@ -4,6 +4,10 @@
 
 # rRanker
 
+[![license](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
+[![platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-green?style=flat-square)]()
+[![tech](https://img.shields.io/badge/React%20Native-Expo%20SDK%2054%20%7C%20TypeScript-blue?style=flat-square)]()
+
 </div>
 rRanker 是一个聚合了多家音乐游戏数据的数据管理应用，提供基本的玩家数据查询与其他便利功能。目前已经支持了以下游戏：
 
