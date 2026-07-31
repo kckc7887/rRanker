@@ -7,6 +7,7 @@
 [![license](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-green?style=flat-square)]()
 [![release](https://img.shields.io/github/v/release/kckc7887/rRanker?style=flat-square)](https://github.com/kckc7887/rRanker/releases)
+[![last-commit](https://img.shields.io/github/last-commit/kckc7887/rRanker?style=flat-square)](https://github.com/kckc7887/rRanker/commits)
 [![tech](https://img.shields.io/badge/React%20Native-Expo%20SDK%2054%20%7C%20TypeScript-blue?style=flat-square)]()
 
 </div>
