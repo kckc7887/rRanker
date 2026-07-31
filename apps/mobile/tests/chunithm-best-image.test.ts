@@ -165,6 +165,11 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).toContain('1,009,000');
     expect(html).toContain('SSS+');
     expect(html).toContain('Song 1');
+    expect(html).not.toContain('class="chart-type"');
+    expect(html).toContain('score-card-foot"><span class="score-badges"');
+    expect(html).toContain('.score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-start');
+    expect(html).toContain('<div class="meta-row"><span>Lv.99 · 转生 1</span></div>');
+    expect(html).not.toMatch(/meta-row"><span>[^<]*虹/);
   });
 });
 
