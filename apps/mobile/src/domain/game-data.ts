@@ -68,6 +68,8 @@ export type GamePayload =
       player: ChunithmPlayer | null;
       scores: ChunithmScore[];
       bestSections: ChunithmBestListSection[];
+      /** Selection 10；仅供成绩图底部追加，最佳列表页不展示。 */
+      selections: ChunithmScore[];
       playerScore: PlayerScoreSummary;
       source: DataSource;
       hasSyncedData: boolean;

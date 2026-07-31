@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useNotification } from '@/components/AppNotification';
 import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
+import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
 import { useSession } from '@/state/session-store';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
@@ -179,7 +180,9 @@ function StylePreview({
 
 export default function BestImageScreen() {
   const activeGameId = useSession((state) => state.activeGameId);
-  return activeGameId === 'phigros' ? <PhigrosBestImageScreen /> : <MaimaiBestImageScreen />;
+  if (activeGameId === 'chunithm') return <ChunithmBestImageScreen />;
+  if (activeGameId === 'phigros') return <PhigrosBestImageScreen />;
+  return <MaimaiBestImageScreen />;
 }
 
 export function MaimaiBestImageScreen() {

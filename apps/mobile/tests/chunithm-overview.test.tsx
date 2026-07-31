@@ -47,6 +47,7 @@ const mockBundle = {
       { id: 'b30', title: 'Best 30', scores: [mockScore(1, 15), mockScore(2, 16)] },
       { id: 'new20', title: 'New 20', scores: [mockScore(3, 14)] },
     ],
+    selections: [],
     playerScore: { label: 'RATING', value: 17.25, display: '17.25' },
     source: {
       kind: 'lxns',
