@@ -28,13 +28,14 @@ describe('per-game toolbox registry', () => {
     expect(summarizeGameTools('phigros')).toBe('推分计算 · 随机歌曲 · 机厅查找 · 成绩图片');
   });
 
-  it('registers random songs and arcade finder for Chunithm', () => {
+  it('registers random songs, arcade finder and best-image for Chunithm', () => {
     const toolbox = getGameToolbox('chunithm');
     expect(toolbox.tools.map((tool) => tool.id)).toEqual([
       'random-charts',
       'arcade-finder',
+      'best-image',
     ]);
-    expect(summarizeGameTools('chunithm')).toBe('随机歌曲 · 机厅查找');
+    expect(summarizeGameTools('chunithm')).toBe('随机歌曲 · 机厅查找 · 成绩图片');
   });
 
   it('keeps profile capabilities consistent with registered tools', () => {

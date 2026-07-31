@@ -105,6 +105,7 @@ jest.mock('@/hooks/use-game-data', () => ({
           { id: 'b30', title: 'Best 30', scores: [mockRecords[0], mockRecords[1], mockRecords[2]] },
           { id: 'new20', title: 'New 20', scores: [mockRecords[2]] },
         ],
+        selections: [],
         playerScore: { label: 'RATING', value: 17.25, display: '17.25' },
         source: mockSource,
         hasSyncedData: true,
@@ -219,6 +220,7 @@ describe('Chunithm records and B50 screens', () => {
 
     const best = await render(<Best50Screen />);
     expect(best.getByTestId('chunithm-best-results-list')).toBeTruthy();
+    expect(best.getByLabelText('生成B50图片')).toBeTruthy();
     expect(best.queryByText('尚未绑定落雪账号')).toBeNull();
   });
 

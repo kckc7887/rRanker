@@ -115,7 +115,16 @@ function ChunithmBestScreen() {
           ...TAB_LIST_CACHE_PROPS,
           stickySectionHeadersEnabled: false,
           keyExtractor: (record, index) => `${record.songId}-${record.levelIndex}-${index}`,
-          ListHeaderComponent: <SourceStatus items={payload ? [
+          ListHeaderComponent: <View style={styles.header}>
+              <Pressable
+                accessibilityLabel="生成B50图片"
+                accessibilityRole="button"
+                onPress={() => router.push('/best-image' as Href)}
+                style={[styles.generateButton, { backgroundColor: theme.accent }]}
+              >
+                <Text style={styles.generateButtonText}>生成B50图片</Text>
+              </Pressable>
+              <SourceStatus items={payload ? [
               {
                 key: 'scores',
                 label: payload.source.label,
@@ -128,7 +137,8 @@ function ChunithmBestScreen() {
                 updatedAt: catalogQuery.data?.source.updatedAt,
                 state: catalogQuery.data?.source.isStale ? 'cache' : 'live',
               },
-            ] : []} />,
+            ] : []} />
+            </View>,
           renderSectionHeader: ({ section }) => (
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
