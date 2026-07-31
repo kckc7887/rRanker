@@ -34,7 +34,7 @@ import {
 import { queryClient } from '@/state/query-client';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 17;
+const GAME_DATA_QUERY_VERSION = 18;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -74,6 +74,7 @@ export function useGameData() {
                 { id: 'b30', title: 'Best 30', scores: snapshot.bests.bests },
                 { id: 'new20', title: 'New 20', scores: snapshot.bests.new_bests },
               ],
+              selections: snapshot.bests.selections,
               playerScore: {
                 label: 'RATING',
                 value: snapshot.player.rating,
@@ -106,6 +107,7 @@ export function useGameData() {
                 { id: 'b30', title: 'Best 30', scores: snapshot.bests.bests },
                 { id: 'new20', title: 'New 20', scores: snapshot.bests.new_bests },
               ],
+              selections: snapshot.bests.selections,
               playerScore: {
                 label: 'RATING',
                 value: snapshot.player?.rating ?? 0,

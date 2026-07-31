@@ -121,6 +121,13 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         detail: '按定位查看附近机厅，搜索店名与跳转导航',
         summaryLabel: '机厅查找',
       },
+      {
+        id: 'best-image',
+        href: '/best-image',
+        title: '生成成绩图片',
+        detail: '生成并导出 B50 成绩图片',
+        summaryLabel: '成绩图片',
+      },
     ],
     emptyDetail: '中二节奏工具正在准备中。',
   },
