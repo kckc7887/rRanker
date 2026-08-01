@@ -169,12 +169,66 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).toContain('score-card-foot"><span class="score-badges"');
     expect(html).toContain('.score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-start');
     expect(html).toContain('class="profile-banner"');
+    expect(html).toContain('grid-template-columns:316.5px 43.5px 1fr;grid-template-rows:21.75px 21.75px 43.5px');
+    expect(html).toContain('<div class="profile-spacer" aria-hidden="true"></div>');
     expect(html).toContain('class="player-name-row"');
     expect(html).toContain('class="player-level">Lv.99</span>');
+    expect(html).toMatch(/class="player-level">Lv\.99<\/span>\s*<span class="player-name"[^>]*>测试玩家<\/span>/);
     expect(html).toContain('class="rating-badge"');
+    expect(html).toContain('class="rating-divider"');
+    expect(html).toContain('<div class="rating-value-row"><span>RATING</span><strong>16.50</strong></div>');
     expect(html).toContain('class="trophy-slot"');
+    expect(html).toContain('.profile-banner{position:absolute;z-index:1;left:43px;top:43px;width:540px;height:87px;border-radius:0');
+    expect(html).toContain('.profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:0}');
+    expect(html).toContain('.profile-banner .avatar{grid-column:2;grid-row:3;width:43.5px;height:43.5px;overflow:hidden;border-radius:0');
+    expect(html).toContain('.rating-badge{grid-column:1;grid-row:3;display:flex;width:316.5px;height:43.5px;min-width:0;flex-direction:column;overflow:hidden;padding:2px 4px;border:1px solid transparent;border-radius:0');
+    expect(html).toContain('.trophy-slot{grid-column:1/3;grid-row:2;display:flex;width:360px;height:21.75px;align-items:center;justify-content:flex-start;overflow:hidden;padding:0 3px;border:1px solid rgba(96,87,72,.35);border-radius:0');
     expect(html).not.toContain('class="meta-row"');
     expect(html).not.toMatch(/meta-row"><span>[^<]*虹/);
+  });
+
+  it('keeps the fixed player grid when trophy and character are disabled', () => {
+    const html = buildChunithmBestImageHtml({
+      type: 'best50',
+      width: 1080,
+      player: null,
+      ratingDisplay: '0.00',
+      hideCharacter: true,
+      hideTrophy: true,
+      page: {
+        id: 'chunithm-page-0',
+        pageIndex: 0,
+        pageCount: 1,
+        sections: [],
+      },
+    });
+
+    expect(html).toContain('grid-template-columns:316.5px 43.5px 1fr;grid-template-rows:21.75px 21.75px 43.5px');
+    expect(html).not.toContain('class="trophy-slot"');
+    expect(html).not.toContain('class="avatar"');
+    expect(html).toContain('class="player-level">Lv.—</span>');
+    expect(html).toContain('class="player-name" id="player-name">未读取玩家资料</span>');
+    expect(html).toContain('<div class="rating-value-row"><span>RATING</span><strong>0.00</strong></div>');
+  });
+
+  it('uses text and initial fallbacks without changing the grid', () => {
+    const html = buildChunithmBestImageHtml({
+      type: 'best50',
+      width: 1080,
+      player: null,
+      ratingDisplay: '0.00',
+      page: {
+        id: 'chunithm-page-0',
+        pageIndex: 0,
+        pageCount: 1,
+        sections: [],
+      },
+    });
+
+    expect(html).toContain('<span class="trophy-fallback">称号未同步</span>');
+    expect(html).toContain('<div class="avatar-fallback">未</div>');
+    expect(html).toContain('const APP_NAME_MIN_SIZE = 9;');
+    expect(html).toContain("playerName.style.transform = 'scaleX('");
   });
 });
 
