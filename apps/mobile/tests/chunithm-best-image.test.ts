@@ -169,7 +169,7 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).toContain('score-card-foot"><span class="score-badges"');
     expect(html).toContain('.score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-start');
     expect(html).toContain('class="profile-banner"');
-    expect(html).toContain('grid-template-columns:316.5px 43.5px 1fr;grid-template-rows:21.75px 21.75px 43.5px');
+    expect(html).toContain('grid-template-columns:1fr 316.5px 43.5px;grid-template-rows:21.75px 21.75px 43.5px');
     expect(html).toContain('<div class="profile-spacer" aria-hidden="true"></div>');
     expect(html).toContain('class="player-name-row"');
     expect(html).toContain('class="player-level">Lv.99</span>');
@@ -180,9 +180,11 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).toContain('class="trophy-slot"');
     expect(html).toContain('.profile-banner{position:absolute;z-index:1;left:43px;top:43px;width:540px;height:87px;border-radius:0');
     expect(html).toContain('.profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:0}');
-    expect(html).toContain('.profile-banner .avatar{grid-column:2;grid-row:3;width:43.5px;height:43.5px;overflow:hidden;border-radius:0');
-    expect(html).toContain('.rating-badge{grid-column:1;grid-row:3;display:flex;width:316.5px;height:43.5px;min-width:0;flex-direction:column;overflow:hidden;padding:2px 4px;border:1px solid transparent;border-radius:0');
-    expect(html).toContain('.trophy-slot{grid-column:1/3;grid-row:2;display:flex;width:360px;height:21.75px;align-items:center;justify-content:flex-start;overflow:hidden;padding:0 3px;border:1px solid rgba(96,87,72,.35);border-radius:0');
+    expect(html).toContain('.profile-banner .nameplate-image{object-fit:fill}');
+    expect(html).toContain('.profile-spacer{grid-column:2/4;grid-row:1}');
+    expect(html).toContain('.profile-banner .avatar{grid-column:3;grid-row:3;width:43.5px;height:43.5px;overflow:hidden;border-radius:0');
+    expect(html).toContain('.rating-badge{grid-column:2;grid-row:3;display:flex;width:316.5px;height:43.5px;min-width:0;flex-direction:column;overflow:hidden;padding:2px 4px;border:1px solid transparent;border-radius:0');
+    expect(html).toContain('.trophy-slot{grid-column:2/4;grid-row:2;display:flex;width:360px;height:21.75px;align-items:center;justify-content:flex-start;overflow:hidden;padding:0 3px;border:1px solid rgba(96,87,72,.35);border-radius:0');
     expect(html).not.toContain('class="meta-row"');
     expect(html).not.toMatch(/meta-row"><span>[^<]*虹/);
   });
@@ -203,7 +205,7 @@ describe('buildChunithmBestImageHtml', () => {
       },
     });
 
-    expect(html).toContain('grid-template-columns:316.5px 43.5px 1fr;grid-template-rows:21.75px 21.75px 43.5px');
+    expect(html).toContain('grid-template-columns:1fr 316.5px 43.5px;grid-template-rows:21.75px 21.75px 43.5px');
     expect(html).not.toContain('class="trophy-slot"');
     expect(html).not.toContain('class="avatar"');
     expect(html).toContain('class="player-level">Lv.—</span>');
@@ -227,7 +229,7 @@ describe('buildChunithmBestImageHtml', () => {
 
     expect(html).toContain('<span class="trophy-fallback">称号未同步</span>');
     expect(html).toContain('<div class="avatar-fallback">未</div>');
-    expect(html).toContain('const APP_NAME_MIN_SIZE = 9;');
+    expect(html).toContain('const APP_NAME_MIN_SIZE = 8;');
     expect(html).toContain("playerName.style.transform = 'scaleX('");
   });
 });
