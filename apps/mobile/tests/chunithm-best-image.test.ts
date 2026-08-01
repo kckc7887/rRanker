@@ -182,7 +182,8 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).toContain('--tag-fill:linear-gradient(90deg,#FF9CA8 0%');
     expect(html).toContain('--rating-outline:-1px -1px 0 #FF2D95,0px -1px 0 #FF6B00');
     expect(html).toContain('text-shadow:var(--rating-outline)');
-    expect(html).toContain('.profile-card::before{position:absolute;z-index:0;inset:0;background:var(--tag-fill);content:"";opacity:.18}');
+    expect(html).toContain('.profile-card::before{position:absolute;z-index:0;inset:0;background:var(--tag-fill);content:"";opacity:.28}');
+    expect(html).not.toMatch(/\.player-name\{[^}]*text-shadow/);
     expect(html).toContain('border-radius:16px;background:transparent');
     expect(html).not.toContain('var(--tag-border) border-box');
     expect(html).not.toContain('backdrop-filter');

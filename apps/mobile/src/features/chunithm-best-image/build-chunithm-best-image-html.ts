@@ -243,7 +243,7 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     .background-image{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center;filter:blur(${px(12 * profileScale)}px);transform:scale(1.04)}
     .background-veil{position:absolute;inset:0;background:rgba(238,242,248,.52)}
     .profile-card{position:absolute;z-index:2;left:${pageInset}px;top:${pageInset}px;display:grid;width:${profileWidth}px;height:${profileHeight}px;min-width:0;grid-template-columns:${avatarSize}px 1px minmax(0,1fr);column-gap:${profileGap}px;align-items:center;isolation:isolate;overflow:hidden;padding:${profilePadding}px;border:1px solid var(--tag-outline);border-radius:${profileRadius}px;background:transparent;box-shadow:0 ${px(5 * profileScale)}px ${px(18 * profileScale)}px rgba(35,48,70,.18);color:var(--tag-text)}
-    .profile-card::before{position:absolute;z-index:0;inset:0;background:var(--tag-fill);content:"";opacity:.18}
+    .profile-card::before{position:absolute;z-index:0;inset:0;background:var(--tag-fill);content:"";opacity:.28}
     .profile-card>*{position:relative;z-index:1}
     .profile-card.no-avatar{grid-template-columns:minmax(0,1fr)}
     .avatar{display:flex;width:${avatarSize}px;height:${avatarSize}px;align-items:center;justify-content:center;overflow:visible}
@@ -252,7 +252,7 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     .profile-divider{width:1px;height:${avatarSize}px;background:var(--tag-text);opacity:.25}
     .profile-copy{display:flex;width:100%;min-width:0;height:100%;flex-direction:column;justify-content:center;overflow:hidden}
     .player-name-row{display:flex;width:100%;min-width:0;align-items:flex-end;overflow:hidden}
-    .player-name{display:block;width:max-content;min-width:0;flex:0 0 auto;overflow:visible;color:var(--tag-text);font:900 ${nameFontSize}px/1.08 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.055em;text-shadow:var(--rating-outline);white-space:nowrap;transform-origin:left center}
+    .player-name{display:block;width:max-content;min-width:0;flex:0 0 auto;overflow:visible;color:var(--tag-text);font:900 ${nameFontSize}px/1.08 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.055em;white-space:nowrap;transform-origin:left center}
     .rating-value-row{display:flex;width:100%;align-items:baseline;gap:${px(8 * profileScale)}px;margin-top:${px(12 * profileScale)}px;color:var(--tag-text);font:750 ${ratingLabelSize}px/1 system-ui,sans-serif;letter-spacing:.12em;white-space:nowrap}
     .rating-value-row span{opacity:.7}
     .rating-value-row strong{font-size:${ratingValueSize}px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.02em;text-shadow:var(--rating-outline)}
