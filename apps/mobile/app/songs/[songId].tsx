@@ -29,6 +29,10 @@ import { SongMetadataTable, type SongMetadataItem } from '@/components/game-cont
 import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
+import {
+  DxRatingChartTagSheet,
+  type DxRatingChartTagSheetData,
+} from '@/components/maimai/DxRatingChartTagSheet';
 import { PhigrosSongDetail } from '@/components/phigros/PhigrosSongDetail';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
@@ -38,6 +42,11 @@ import { TagEditor } from '@/components/TagEditor';
 import { useNotification } from '@/components/AppNotification';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
+import {
+  configurationTagsForChart,
+  type DxRatingChartTagsSnapshot,
+  type DxRatingConfigurationTag,
+} from '@/domain/dxrating-chart-tags';
 import type {
   BuddyChartNotes,
   Chart,
@@ -49,6 +58,7 @@ import type {
   GameVersion,
   ScoreRecord,
   Song,
+  SourceStatusItem,
 } from '@/domain/models';
 import { buildTagHistory } from '@/domain/user-library';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
@@ -58,6 +68,7 @@ import {
 } from '@/features/best-image/best-image-badge-theme';
 import { useCollections } from '@/hooks/use-collections';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
@@ -106,6 +117,7 @@ function MaimaiSongDetailScreen({
   themeBackground: string;
 }) {
   const catalog = useDetailedCatalog();
+  const dxratingTags = useDxRatingChartTags();
   const scores = useScoreSnapshot();
   const library = useUserLibrary();
   const song = useMemo(() => {
@@ -123,6 +135,16 @@ function MaimaiSongDetailScreen({
   const detailData = song && catalog.data
     ? { song, versions: catalog.data.versions, catalogSource: catalog.data.source }
     : undefined;
+  const dxratingSource: SourceStatusItem | undefined = dxratingTags.data
+    ? {
+        key: 'dxrating-tags',
+        label: dxratingTags.data.source.label,
+        updatedAt: dxratingTags.data.source.updatedAt,
+        state: dxratingTags.data.source.isStale ? 'cache' : 'live',
+      }
+    : dxratingTags.isError
+      ? { key: 'dxrating-tags', label: 'DXRating 配置标签不可用', state: 'unavailable' }
+      : undefined;
   return <>
     <StatusBar style="light" />
     <View style={[styles.page, { backgroundColor: themeBackground }]}>
@@ -133,6 +155,7 @@ function MaimaiSongDetailScreen({
         error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={detailData} renderData={(item) => <Detail song={item.song} records={scores.data?.records ?? []}
           versions={item.versions} catalogSource={item.catalogSource} scoreSource={scores.data?.source} library={library}
+          dxratingTags={dxratingTags.data} dxratingSource={dxratingSource}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
       <SongDetailChrome
         song={song} favorite={favorite}
@@ -187,12 +210,14 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
   </>;
 }
 
-function Detail({ song, versions, records, catalogSource, scoreSource, library, initialChartType, initialLevelIndex }: {
+function Detail({ song, versions, records, catalogSource, scoreSource, dxratingTags, dxratingSource, library, initialChartType, initialLevelIndex }: {
   song: Song;
   versions: GameVersion[];
   records: ScoreRecord[];
   catalogSource: import('@/domain/models').DataSource;
   scoreSource?: import('@/domain/models').DataSource;
+  dxratingTags?: DxRatingChartTagsSnapshot;
+  dxratingSource?: SourceStatusItem;
   library: LibraryHook;
   initialChartType?: ChartType;
   initialLevelIndex?: number;
@@ -200,6 +225,8 @@ function Detail({ song, versions, records, catalogSource, scoreSource, library, 
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
   const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
+  const [tagSheetData, setTagSheetData] = useState<DxRatingChartTagSheetData | null>(null);
+  useEffect(() => setTagSheetData(null), [song.id]);
   const songItem = library.data?.find((item) => item.key === library.songKey(song.id));
   const availableChartTypes = useMemo(() => new Set(song.charts.map((chart) => chart.type)), [song.charts]);
   const availableChartTypeList = useMemo(
@@ -272,7 +299,7 @@ function Detail({ song, versions, records, catalogSource, scoreSource, library, 
       : []),
   ];
 
-  return <ScrollView testID="song-detail-scroll" contentContainerStyle={styles.content}
+  return <><ScrollView testID="song-detail-scroll" contentContainerStyle={styles.content}
     keyboardShouldPersistTaps="handled">
     <View style={[styles.hero, { width, height: width }]}>
       <SongCover songId={song.id} size={width} borderRadius={0} />
@@ -302,7 +329,8 @@ function Detail({ song, versions, records, catalogSource, scoreSource, library, 
     {deferredReady ? <>
       <ChartCarousel key={`${song.id}:${selectedChartType}:${initialIndex}`} charts={sortedCharts} records={records} song={song}
         library={library} cardWidth={cardWidth} initialIndex={initialIndex} canSwitchChartType={canSwitchChartType}
-        nextChartType={nextChartType}
+        nextChartType={nextChartType} dxratingTags={dxratingTags}
+        onShowAllConfigurationTags={setTagSheetData}
         onVisibleIndexChange={(index) => setVisibleChartState({
           songId: song.id,
           chartType: selectedChartType,
@@ -314,6 +342,7 @@ function Detail({ song, versions, records, catalogSource, scoreSource, library, 
         <SourceStatus items={[
           { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
           { key: 'scores', label: scoreSource?.label ?? '成绩未加载', updatedAt: scoreSource?.updatedAt, state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live' },
+          ...(dxratingSource ? [dxratingSource] : []),
         ]} />
         <SongCollectionsCard songId={song.id} />
         <Card><Text style={[styles.section, { color: theme.text }]}>歌曲信息</Text><AliasLine aliases={song.aliases} />
@@ -325,7 +354,9 @@ function Detail({ song, versions, records, catalogSource, scoreSource, library, 
           onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
       </View>
     </> : <View testID="song-detail-deferred-placeholder" style={styles.deferredPlaceholder} />}
-  </ScrollView>;
+  </ScrollView>
+  <DxRatingChartTagSheet data={tagSheetData} onClose={() => setTagSheetData(null)} />
+  </>;
 }
 
 function SongCollectionsCard({ songId }: { songId: string }) {
@@ -409,7 +440,7 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
     contentContainerStyle={styles.singleLineContent} />;
 }
 
-function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, onVisibleIndexChange, onToggleChartType }: {
+function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, dxratingTags, onShowAllConfigurationTags, onVisibleIndexChange, onToggleChartType }: {
   charts: Chart[];
   records: ScoreRecord[];
   song: Song;
@@ -418,6 +449,8 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   initialIndex: number;
   canSwitchChartType: boolean;
   nextChartType?: ChartType;
+  dxratingTags?: DxRatingChartTagsSnapshot;
+  onShowAllConfigurationTags: (data: DxRatingChartTagSheetData) => void;
   onVisibleIndexChange: (index: number) => void;
   onToggleChartType: () => void;
 }) {
@@ -436,9 +469,11 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
           (String(record.songId) === song.id || normalizeSongId(record.songId) === song.id) &&
           record.type === chart.type && record.levelIndex === chart.levelIndex)
           .sort((left, right) => right.achievements - left.achievements)[0];
+        const configurationTags = configurationTagsForChart(dxratingTags, song, chart);
         return <ChartCard chart={chart} best={best} song={song}
           library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
-          nextChartType={nextChartType}
+          nextChartType={nextChartType} configurationTags={configurationTags}
+          onShowAllConfigurationTags={onShowAllConfigurationTags}
           onToggleChartType={onToggleChartType} />;
     }}
     rootStyle={styles.carouselRoot}
@@ -460,7 +495,7 @@ async function openBilibiliChartSearch(query: string): Promise<void> {
   }
 }
 
-function ChartCard({ chart, best, song, library, width, canSwitchChartType, nextChartType, onToggleChartType }: {
+function ChartCard({ chart, best, song, library, width, canSwitchChartType, nextChartType, configurationTags, onShowAllConfigurationTags, onToggleChartType }: {
   chart: Chart;
   best?: ScoreRecord;
   song: Song;
@@ -468,6 +503,8 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   width: number;
   canSwitchChartType: boolean;
   nextChartType?: ChartType;
+  configurationTags: DxRatingConfigurationTag[];
+  onShowAllConfigurationTags: (data: DxRatingChartTagSheetData) => void;
   onToggleChartType: () => void;
 }) {
   const theme = useAppTheme();
@@ -478,6 +515,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   const chartTypeKeyword = canSwitchChartType ? ` ${chart.type}` : '';
   const chartSearchQuery = `${song.title}${chartTypeKeyword} ${visual.label} 谱面确认`;
   const previewTitle = `${song.title}${chartTypeKeyword} ${visual.label}`;
+  const chartLabel = chart.type === 'UTAGE'
+    ? `U·TA·GE · ${chart.level}`
+    : `${chart.type} · ${visual.label} · ${chart.level}`;
 
   const openChartPreview = (buddySide?: 0 | 1) => {
     router.push({
@@ -507,6 +547,15 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       return;
     }
     openChartPreview();
+  };
+
+  const showConfigurationTagDescription = (tag: DxRatingConfigurationTag) => {
+    showActionNotification({
+      title: tag.name,
+      message: tag.description || 'DXRating 暂未提供说明',
+      variant: 'info',
+      actions: [{ label: '知道了', tone: 'cancel' }],
+    });
   };
 
   return <GameChartResultCard
@@ -552,6 +601,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     {chart.utage?.description
       ? <Text style={[styles.utageDescription, { color: theme.textSecondary }]}>{chart.utage.description}</Text>
       : null}
+    <ConfigurationTags tags={configurationTags}
+      onTagPress={showConfigurationTagDescription}
+      onShowAll={() => onShowAllConfigurationTags({ songTitle: song.title, chartLabel, tags: configurationTags })} />
     <ChartNotesTables chart={chart} />
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
@@ -576,6 +628,41 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
   </GameChartResultCard>;
+}
+
+function ConfigurationTags({ tags, onTagPress, onShowAll }: {
+  tags: DxRatingConfigurationTag[];
+  onTagPress: (tag: DxRatingConfigurationTag) => void;
+  onShowAll: () => void;
+}) {
+  const theme = useAppTheme();
+  if (tags.length === 0) return null;
+  const visible = tags.slice(0, 4);
+  const remaining = tags.length - visible.length;
+  return <View testID="dxrating-config-tags" style={styles.configurationBlock}>
+    <Text style={[styles.configurationLabel, { color: theme.textSecondary }]}>配置</Text>
+    <View style={styles.configurationTags}>
+      {visible.map((tag) => <DetailPressable key={tag.id}
+        accessibilityRole="button"
+        accessibilityLabel={`配置标签 ${tag.name}，点击查看说明`}
+        testID={`dxrating-config-tag-${tag.id}`}
+        onPress={() => onTagPress(tag)}
+        style={({ pressed }) => [styles.configurationTag, { backgroundColor: tag.color }, pressed && styles.switchPressed]}>
+        <Text style={styles.configurationTagText}>{tag.name}</Text>
+      </DetailPressable>)}
+      {remaining > 0 ? <DetailPressable
+        accessibilityRole="button"
+        accessibilityLabel={`查看全部${tags.length}个配置标签，另有${remaining}个`}
+        testID="dxrating-config-tags-more"
+        onPress={onShowAll}
+        style={({ pressed }) => [styles.configurationMore, {
+          backgroundColor: theme.surfaceMuted,
+          borderColor: theme.border,
+        }, pressed && styles.switchPressed]}>
+        <Text style={[styles.configurationMoreText, { color: theme.textSecondary }]}>+{remaining}</Text>
+      </DetailPressable> : null}
+    </View>
+  </View>;
 }
 
 function chartActionStyle(
@@ -733,6 +820,13 @@ const styles = StyleSheet.create({
   chartDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(51,65,85,0.18)', marginVertical: 16 },
   chartMeta: { color: '#4C586A', fontSize: 12, lineHeight: 18 },
   utageDescription: { fontSize: 12, lineHeight: 18, marginTop: 4 },
+  configurationBlock: { gap: 6, marginTop: 10 },
+  configurationLabel: { fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  configurationTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  configurationTag: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
+  configurationTagText: { color: '#0C4A6E', fontSize: 11, lineHeight: 15, fontWeight: '700' },
+  configurationMore: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
+  configurationMoreText: { fontSize: 11, lineHeight: 15, fontWeight: '700' },
   buddyNotes: { gap: 9 },
   notesTable: { marginTop: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(76,88,106,0.28)', borderRadius: 9, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.38)' },
   notesAction: { borderRadius: 9 }, notesActionPressed: { opacity: 0.62 }, notesHint: { color: '#697386', fontSize: 9, lineHeight: 13, textAlign: 'center', marginTop: 4 },

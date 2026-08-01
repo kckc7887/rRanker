@@ -53,6 +53,7 @@ export async function clearStorageByCategories(
       'chunithm-song-detail',
       'plates',
       'collections',
+      'dxrating-chart-tags',
     ]) {
       client.removeQueries({ queryKey: [key] });
     }

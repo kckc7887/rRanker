@@ -1,0 +1,132 @@
+import { configurationTagsForChart, type DxRatingChartTagsSnapshot } from '@/domain/dxrating-chart-tags';
+import type { Chart, Song } from '@/domain/models';
+import {
+  DxRatingChartTagsProvider,
+  mapDxRatingConfigurationTags,
+} from '@/providers/dxrating-chart-tags-provider';
+import { ProviderError } from '@/providers/errors';
+
+const responsePayload = {
+  tagGroups: [
+    { id: 1, localized_name: { en: 'Patterns', 'zh-Hans': '配置' }, color: '#7dd3fc' },
+    { id: 2, localized_name: { en: 'Difficulty', 'zh-Hans': '难度' }, color: '#a5b4fc' },
+  ],
+  tags: [
+    {
+      id: 3,
+      localized_name: { en: 'Spinning', 'zh-Hans': '转圈' },
+      localized_description: { en: 'Spin', 'zh-Hans': '完成转圈\n\n~~注意安全~~' },
+      group_id: 1,
+    },
+    {
+      id: 1,
+      localized_name: { en: 'Umiyuri' },
+      localized_description: { en: '[Offset](https://example.com)' },
+      group_id: 1,
+    },
+    {
+      id: 99,
+      localized_name: { 'zh-Hans': '高难' },
+      localized_description: { 'zh-Hans': '难度标签' },
+      group_id: 2,
+    },
+  ],
+  tagSongs: [
+    { song_id: '测试曲', sheet_type: 'dx', sheet_difficulty: 'master', tag_id: 3 },
+    { song_id: '测试曲', sheet_type: 'dx', sheet_difficulty: 'master', tag_id: 1 },
+    { song_id: '测试曲', sheet_type: 'dx', sheet_difficulty: 'master', tag_id: 3 },
+    { song_id: '测试曲', sheet_type: 'std', sheet_difficulty: 'master', tag_id: 1 },
+    { song_id: '测试曲', sheet_type: 'dx', sheet_difficulty: 'expert', tag_id: 1 },
+    { song_id: '测试曲', sheet_type: 'dx', sheet_difficulty: 'master', tag_id: 99 },
+  ],
+};
+
+function chart(overrides: Partial<Chart> = {}): Chart {
+  return {
+    songId: '1',
+    type: 'DX',
+    levelIndex: 3,
+    level: '13+',
+    difficulty: 'master',
+    difficultyConstant: 13.7,
+    ...overrides,
+  };
+}
+
+function song(title = '测试曲', charts = [chart()]): Song {
+  return { id: '1', title, version: '测试版本', charts };
+}
+
+describe('DXRating configuration tags', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('keeps only the Patterns group and localizes labels and descriptions', () => {
+    const snapshot = mapDxRatingConfigurationTags(responsePayload);
+
+    expect(snapshot.tags).toEqual([
+      { id: 3, name: '转圈', description: '完成转圈\n\n注意安全', color: '#7dd3fc' },
+      { id: 1, name: 'Umiyuri', description: 'Offset', color: '#7dd3fc' },
+    ]);
+    expect(snapshot.relations).toHaveLength(5);
+    expect(snapshot.source).toMatchObject({ kind: 'dxrating', label: 'DXRating 配置标签', isStale: false });
+  });
+
+  it('matches normal charts by exact title, type and difficulty and deduplicates in relation order', () => {
+    const snapshot = mapDxRatingConfigurationTags(responsePayload);
+
+    expect(configurationTagsForChart(snapshot, song(), chart()).map((tag) => tag.name))
+      .toEqual(['转圈', 'Umiyuri']);
+    expect(configurationTagsForChart(snapshot, song(), chart({ type: 'SD' })).map((tag) => tag.name))
+      .toEqual(['Umiyuri']);
+    expect(configurationTagsForChart(snapshot, song(), chart({ difficulty: 'expert', levelIndex: 2 })).map((tag) => tag.name))
+      .toEqual(['Umiyuri']);
+    expect(configurationTagsForChart(snapshot, song('测试曲 '), chart())).toEqual([]);
+  });
+
+  it('matches U·TA·GE by attribute and type, then uses only an unambiguous stripped-title fallback', () => {
+    const snapshot: DxRatingChartTagsSnapshot = {
+      tags: [
+        { id: 1, name: '错位', description: '说明1', color: '#7dd3fc' },
+        { id: 2, name: '扫键', description: '说明2', color: '#7dd3fc' },
+      ],
+      relations: [
+        { songTitle: '[玉]Garakuta Doll Play', sheetType: 'utage', sheetDifficulty: '【玉】', tagId: 1 },
+        { songTitle: '[某]Garakuta Doll Play', sheetType: 'utage', sheetDifficulty: '【某】', tagId: 2 },
+        { songTitle: '[宴]人マニア', sheetType: 'utage', sheetDifficulty: '【宴】', tagId: 1 },
+        { songTitle: '[協]Buddy Song', sheetType: 'utage2p', sheetDifficulty: '【協】', tagId: 2 },
+      ],
+      source: { kind: 'dxrating', label: 'DXRating', updatedAt: new Date(0).toISOString(), isStale: false },
+    };
+
+    const exact = chart({ type: 'UTAGE', difficulty: 'utage', levelIndex: 0, utage: { kanji: '某', isBuddy: false } });
+    expect(configurationTagsForChart(snapshot, song('Garakuta Doll Play', [exact]), exact).map((tag) => tag.name))
+      .toEqual(['扫键']);
+
+    const ambiguous = chart({ type: 'UTAGE', difficulty: 'utage', levelIndex: 0, utage: { isBuddy: false } });
+    expect(configurationTagsForChart(snapshot, song('Garakuta Doll Play', [ambiguous]), ambiguous)).toEqual([]);
+
+    const fallback = chart({ type: 'UTAGE', difficulty: 'utage', levelIndex: 0, utage: { kanji: 'X', isBuddy: false } });
+    expect(configurationTagsForChart(snapshot, song('人マニア', [fallback]), fallback).map((tag) => tag.name))
+      .toEqual(['错位']);
+
+    const buddy = chart({ type: 'UTAGE', difficulty: 'utage', levelIndex: 0, utage: { kanji: '協', isBuddy: true } });
+    expect(configurationTagsForChart(snapshot, song('Buddy Song', [buddy]), buddy).map((tag) => tag.name))
+      .toEqual(['扫键']);
+  });
+
+  it('rejects malformed responses and a missing Patterns group', () => {
+    expect(() => mapDxRatingConfigurationTags({ tags: [] })).toThrow(ProviderError);
+    expect(() => mapDxRatingConfigurationTags({ ...responsePayload, tagGroups: [] }))
+      .toThrow('DXRating 标签响应缺少配置分组');
+  });
+
+  it('maps upstream HTTP and invalid JSON failures without returning partial data', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(new Response('{', { status: 200 })));
+    const provider = new DxRatingChartTagsProvider();
+
+    await expect(provider.getConfigurationTags()).rejects.toMatchObject({ code: 'network' });
+    await expect(provider.getConfigurationTags()).rejects.toMatchObject({ code: 'upstream_schema' });
+  });
+});
