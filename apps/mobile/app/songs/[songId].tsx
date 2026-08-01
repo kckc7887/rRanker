@@ -553,6 +553,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     showActionNotification({
       title: tag.name,
       message: tag.description || 'DXRating 暂未提供说明',
+      ...(tag.descriptionSegments.some((segment) => segment.strikethrough)
+        ? { messageSegments: tag.descriptionSegments }
+        : {}),
       variant: 'info',
       actions: [{ label: '知道了', tone: 'cancel' }],
     });

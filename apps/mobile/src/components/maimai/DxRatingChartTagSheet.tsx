@@ -46,7 +46,13 @@ export function DxRatingChartTagSheet({ data, onClose }: {
             <Text style={styles.chipText}>{tag.name}</Text>
           </View>
           <Text style={[styles.description, { color: theme.textSecondary }]}>
-            {tag.description || 'DXRating 暂未提供说明'}
+            {tag.descriptionSegments.length
+              ? tag.descriptionSegments.map((segment, index) => <Text
+                  key={`${index}-${segment.text}`}
+                  style={segment.strikethrough ? styles.strikethrough : undefined}
+                  testID={segment.strikethrough ? `dxrating-tag-description-strikethrough-${tag.id}-${index}` : undefined}
+                >{segment.text}</Text>)
+              : 'DXRating 暂未提供说明'}
           </Text>
         </View>)}
       </ScrollView>
@@ -68,5 +74,6 @@ const styles = StyleSheet.create({
   chip: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   chipText: { color: '#0C4A6E', fontSize: 12, lineHeight: 16, fontWeight: '700' },
   description: { fontSize: 13, lineHeight: 19 },
+  strikethrough: { textDecorationLine: 'line-through' },
   pressed: { opacity: 0.65 },
 });

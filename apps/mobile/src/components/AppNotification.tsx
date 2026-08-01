@@ -34,6 +34,7 @@ export type NotificationAction = {
 export type NotificationInput = {
   title: string;
   message?: string;
+  messageSegments?: readonly { text: string; strikethrough?: boolean }[];
   variant?: NotificationVariant;
   duration?: number | null;
 };
@@ -313,7 +314,15 @@ function NotificationHost({
           </View>
           <View style={styles.content}>
             <Text style={[styles.title, { color: theme.text }]}>{notification.title}</Text>
-            {notification.message ? <Text style={[styles.message, { color: theme.textSecondary }]}>{notification.message}</Text> : null}
+            {notification.message ? <Text style={[styles.message, { color: theme.textSecondary }]}>
+              {notification.messageSegments?.length
+                ? notification.messageSegments.map((segment, index) => <Text
+                    key={`${index}-${segment.text}`}
+                    style={segment.strikethrough ? styles.strikethrough : undefined}
+                    testID={segment.strikethrough ? `app-notification-message-strikethrough-${index}` : undefined}
+                  >{segment.text}</Text>)
+                : notification.message}
+            </Text> : null}
             {actions?.length ? (
               <View style={styles.actions}>
                 {actions.map((action, index) => (
@@ -396,6 +405,7 @@ const styles = StyleSheet.create({
   content: { flex: 1, gap: 4 },
   title: { color: '#101828', fontSize: 16, fontWeight: '700', lineHeight: 22 },
   message: { color: '#475467', fontSize: 14, lineHeight: 20 },
+  strikethrough: { textDecorationLine: 'line-through' },
   close: { padding: 2 },
   actions: { marginTop: 10, gap: 8 },
   action: {

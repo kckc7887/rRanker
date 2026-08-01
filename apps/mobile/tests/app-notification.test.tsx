@@ -31,6 +31,16 @@ function Harness() {
       <Pressable onPress={() => showNotification({ title: '持续消息', duration: null })}>
         <Text>显示持续消息</Text>
       </Pressable>
+      <Pressable onPress={() => showNotification({
+        title: '富文本消息',
+        message: '普通内容删除线内容',
+        messageSegments: [
+          { text: '普通内容' },
+          { text: '删除线内容', strikethrough: true },
+        ],
+      })}>
+        <Text>显示删除线消息</Text>
+      </Pressable>
       <Pressable onPress={() => showActionNotification({
         title: '删除本地玩家',
         message: '删除后无法恢复。',
@@ -115,6 +125,14 @@ describe('全局顶部通知', () => {
     await fireEvent.press(screen.getByText('显示持续消息'));
     await act(async () => jest.advanceTimersByTime(10000));
     expect(screen.getByText('持续消息')).toBeTruthy();
+  });
+
+  it('消息片段可以保留删除线效果', async () => {
+    const screen = await renderNotifications();
+    await fireEvent.press(screen.getByText('显示删除线消息'));
+    expect(screen.getByText('普通内容')).toBeTruthy();
+    expect(StyleSheet.flatten(screen.getByTestId('app-notification-message-strikethrough-1').props.style))
+      .toMatchObject({ textDecorationLine: 'line-through' });
   });
 
   it('确认卡阻断背景、保持显示，并只执行一次危险操作', async () => {

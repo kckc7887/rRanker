@@ -72,10 +72,25 @@ describe('DXRating chart tags', () => {
     const snapshot = mapDxRatingChartTags(responsePayload);
 
     expect(snapshot.tags).toEqual([
-      { id: 3, name: '转圈', description: '完成转圈\n\n注意安全', color: '#7dd3fc', groupId: 1, groupName: '配置' },
-      { id: 1, name: 'Umiyuri', description: 'Offset', color: '#7dd3fc', groupId: 1, groupName: '配置' },
-      { id: 99, name: '高难', description: '难度标签', color: '#a5b4fc', groupId: 2, groupName: '难度' },
-      { id: 100, name: '易鸟加', description: '容易取得 SSS+', color: '#f0abfc', groupId: 3, groupName: '评价' },
+      {
+        id: 3, name: '转圈', description: '完成转圈\n\n注意安全', color: '#7dd3fc', groupId: 1, groupName: '配置',
+        descriptionSegments: [
+          { text: '完成转圈\n\n', strikethrough: false },
+          { text: '注意安全', strikethrough: true },
+        ],
+      },
+      {
+        id: 1, name: 'Umiyuri', description: 'Offset', color: '#7dd3fc', groupId: 1, groupName: '配置',
+        descriptionSegments: [{ text: 'Offset', strikethrough: false }],
+      },
+      {
+        id: 99, name: '高难', description: '难度标签', color: '#a5b4fc', groupId: 2, groupName: '难度',
+        descriptionSegments: [{ text: '难度标签', strikethrough: false }],
+      },
+      {
+        id: 100, name: '易鸟加', description: '容易取得 SSS+', color: '#f0abfc', groupId: 3, groupName: '评价',
+        descriptionSegments: [{ text: '容易取得 SSS+', strikethrough: false }],
+      },
     ]);
     expect(snapshot.relations).toHaveLength(7);
     expect(snapshot.source).toMatchObject({ kind: 'dxrating', label: 'DXRating 谱面标签', isStale: false });
@@ -96,8 +111,14 @@ describe('DXRating chart tags', () => {
   it('matches U·TA·GE by attribute and type, then uses only an unambiguous stripped-title fallback', () => {
     const snapshot: DxRatingChartTagsSnapshot = {
       tags: [
-        { id: 1, name: '错位', description: '说明1', color: '#7dd3fc', groupId: 1, groupName: '配置' },
-        { id: 2, name: '扫键', description: '说明2', color: '#7dd3fc', groupId: 1, groupName: '配置' },
+        {
+          id: 1, name: '错位', description: '说明1', descriptionSegments: [{ text: '说明1', strikethrough: false }],
+          color: '#7dd3fc', groupId: 1, groupName: '配置',
+        },
+        {
+          id: 2, name: '扫键', description: '说明2', descriptionSegments: [{ text: '说明2', strikethrough: false }],
+          color: '#7dd3fc', groupId: 1, groupName: '配置',
+        },
       ],
       relations: [
         { songTitle: '[玉]Garakuta Doll Play', sheetType: 'utage', sheetDifficulty: '【玉】', tagId: 1 },
