@@ -299,6 +299,9 @@ export function ChunithmBestImageScreen() {
     || ((stylePrefs.plate.mode === 'item' || stylePrefs.plate.mode === 'random') && plateId === null);
   const hideTrophy = stylePrefs.trophy.mode === 'off'
     || ((stylePrefs.trophy.mode === 'item' || stylePrefs.trophy.mode === 'random') && trophyId === null);
+  const trophyImageUrl = hideTrophy || trophyId === null
+    ? null
+    : buildChunithmTrophyUrl(trophyId);
   const trophyName = useMemo(() => {
     const choice = stylePrefs.trophy;
     if (choice.mode === 'off') return null;
@@ -324,7 +327,7 @@ export function ChunithmBestImageScreen() {
         : loadChunithmRemoteImageDataUri(buildChunithmNamePlateUrl(plateId)),
       hideTrophy || trophyId === null
         ? Promise.resolve(null)
-        : loadChunithmRemoteImageDataUri(buildChunithmTrophyUrl(trophyId)),
+        : loadChunithmRemoteImageDataUri(trophyImageUrl),
     ]).then(([nextCharacter, nextPlate, nextTrophy]) => {
       if (cancelled) return;
       styleAssetKeyRef.current = styleAssetKey;
@@ -344,6 +347,7 @@ export function ChunithmBestImageScreen() {
     plateId,
     styleAssetKey,
     trophyId,
+    trophyImageUrl,
   ]);
 
   const htmlPages = useMemo(() => {
@@ -359,6 +363,7 @@ export function ChunithmBestImageScreen() {
       characterDataUri,
       plateDataUri,
       trophyDataUri,
+      trophyImageUrl,
       trophyName,
       hideCharacter,
       hidePlate,
@@ -375,6 +380,7 @@ export function ChunithmBestImageScreen() {
     payload,
     plateDataUri,
     trophyDataUri,
+    trophyImageUrl,
     trophyName,
     width,
   ]);
