@@ -26,9 +26,21 @@ const mockReplace = jest.fn();
 const mockShowActionNotification = jest.fn();
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 let mockDetailedCatalogAvailable = true;
+const mockDxRatingTags = Array.from({ length: 14 }, (_, index) => ({
+  id: index + 1,
+  name: `配置${index + 1}`,
+  description: `配置说明${index + 1}`,
+  color: '#7dd3fc',
+}));
+let mockDxRatingTagCount = 0;
+let mockDxRatingTagSongTitle = '正常曲目 A';
+let mockDxRatingTagSheetType: 'dx' | 'std' | 'utage' | 'utage2p' = 'dx';
+let mockDxRatingTagDifficulty = 'master';
+let mockDxRatingTagState: 'live' | 'cache' | 'error' | 'loading' = 'live';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@/components/AppNotification', () => ({
+  NotificationOutlet: () => null,
   useNotification: () => ({
     showNotification: jest.fn(),
     showActionNotification: mockShowActionNotification,
@@ -148,6 +160,35 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   ];
   return { data: { records: [...fixtures.fixtureRecords, ...visualRecords], source: fixtures.fixtureSource }, isLoading: false, isError: false, error: null, refetch: jest.fn() };
 } }));
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
+  if (mockDxRatingTagState === 'error') {
+    return { data: undefined, isLoading: false, isError: true, error: new Error('offline') };
+  }
+  if (mockDxRatingTagState === 'loading') {
+    return { data: undefined, isLoading: true, isError: false, error: null };
+  }
+  const tags = mockDxRatingTags.slice(0, mockDxRatingTagCount);
+  return {
+    data: {
+      tags,
+      relations: tags.map((tag) => ({
+        songTitle: mockDxRatingTagSongTitle,
+        sheetType: mockDxRatingTagSheetType,
+        sheetDifficulty: mockDxRatingTagDifficulty,
+        tagId: tag.id,
+      })),
+      source: {
+        kind: mockDxRatingTagState === 'cache' ? 'cache' : 'dxrating',
+        label: mockDxRatingTagState === 'cache' ? 'DXRating 配置标签缓存' : 'DXRating 配置标签',
+        updatedAt: new Date(0).toISOString(),
+        isStale: mockDxRatingTagState === 'cache',
+      },
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+  };
+} }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: [], isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
   songKey: (songId: string | number) => `maimai:song:${songId}`,
@@ -164,6 +205,11 @@ describe('M2 song query screens', () => {
   beforeEach(() => {
     mockSongRouteParams = { songId: '1' };
     mockDetailedCatalogAvailable = true;
+    mockDxRatingTagCount = 0;
+    mockDxRatingTagSongTitle = '正常曲目 A';
+    mockDxRatingTagSheetType = 'dx';
+    mockDxRatingTagDifficulty = 'master';
+    mockDxRatingTagState = 'live';
     mockCanGoBack.mockReturnValue(true);
     useCatalogFilter.getState().reset();
     jest.clearAllMocks();
@@ -217,6 +263,72 @@ describe('M2 song query screens', () => {
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
     }
+  });
+
+  it.each([0, 1, 4])('renders %i DXRating configuration tags without an overflow control', async (count) => {
+    mockDxRatingTagCount = count;
+    const screen = await render(<SongDetailScreen />);
+
+    if (count === 0) {
+      expect(screen.queryByTestId('dxrating-config-tags')).toBeNull();
+      return;
+    }
+    expect(screen.getByTestId('dxrating-config-tags')).toBeTruthy();
+    for (let index = 1; index <= count; index += 1) {
+      expect(screen.getByLabelText(`配置标签 配置${index}，点击查看说明`)).toBeTruthy();
+    }
+    expect(screen.queryByTestId('dxrating-config-tags-more')).toBeNull();
+  });
+
+  it('keeps five tags compact, opens all descriptions in one sheet, and keeps individual explanations', async () => {
+    mockDxRatingTagCount = 5;
+    const screen = await render(<SongDetailScreen />);
+
+    for (let index = 1; index <= 4; index += 1) {
+      expect(screen.getByLabelText(`配置标签 配置${index}，点击查看说明`)).toBeTruthy();
+    }
+    expect(screen.queryByLabelText('配置标签 配置5，点击查看说明')).toBeNull();
+    expect(screen.getByLabelText('查看全部5个配置标签，另有1个')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('配置标签 配置1，点击查看说明'));
+    expect(mockShowActionNotification).toHaveBeenCalledWith({
+      title: '配置1',
+      message: '配置说明1',
+      variant: 'info',
+      actions: [{ label: '知道了', tone: 'cancel' }],
+    });
+
+    await fireEvent.press(screen.getByLabelText('查看全部5个配置标签，另有1个'));
+    expect(screen.getByTestId('dxrating-config-tag-sheet')).toBeTruthy();
+    expect(screen.getByText('正常曲目 A · DX · MASTER · 13+')).toBeTruthy();
+    for (let index = 1; index <= 5; index += 1) {
+      expect(screen.getByText(`配置说明${index}`)).toBeTruthy();
+    }
+    await fireEvent.press(screen.getByLabelText('关闭配置标签'));
+    expect(screen.queryByTestId('dxrating-config-tag-sheet')).toBeNull();
+  });
+
+  it('caps fourteen tags at four and changes them with the chart type', async () => {
+    mockDxRatingTagCount = 14;
+    const live = await render(<SongDetailScreen />);
+    expect(live.getByLabelText('查看全部14个配置标签，另有10个')).toBeTruthy();
+    expect(live.getByText(/DXRating 配置标签/)).toBeTruthy();
+
+    await fireEvent.press(live.getAllByLabelText('切换为SD谱面')[0]);
+    expect(live.queryByTestId('dxrating-config-tags')).toBeNull();
+  });
+
+  it('hides tags without blocking details when DXRating is unavailable', async () => {
+    mockDxRatingTagState = 'error';
+    const failed = await render(<SongDetailScreen />);
+    expect(failed.queryByTestId('dxrating-config-tags')).toBeNull();
+    expect(failed.getByText('DXRating 配置标签不可用')).toBeTruthy();
+  });
+
+  it('reports a cached DXRating source', async () => {
+    mockDxRatingTagState = 'cache';
+    const cached = await render(<SongDetailScreen />);
+    expect(cached.getByText(/DXRating 配置标签缓存/)).toBeTruthy();
   });
 
   it('searches aliases after debounce and supports empty filter state', async () => {
@@ -440,6 +552,10 @@ describe('M2 song query screens', () => {
 
   it('renders U·TA·GE without Rating calculation and shows separate 1P/2P notes', async () => {
     mockSongRouteParams = { songId: '100123', chartType: 'UTAGE', levelIndex: '0' };
+    mockDxRatingTagCount = 1;
+    mockDxRatingTagSongTitle = '[協]協 U·TA·GE';
+    mockDxRatingTagSheetType = 'utage2p';
+    mockDxRatingTagDifficulty = '【協】';
     const screen = await render(<SongDetailScreen />);
 
     expect(screen.getByText('U·TA·GE')).toBeTruthy();
@@ -462,8 +578,9 @@ describe('M2 song query screens', () => {
     expect(screen.getByText('101')).toBeTruthy();
     expect(screen.getByText('102')).toBeTruthy();
     expect(screen.queryByLabelText(/打开 Rating 计算器/)).toBeNull();
-    expect(screen.queryByText(/Rating/)).toBeNull();
+    expect(screen.queryByText(/^Rating/)).toBeNull();
     expect(screen.queryByText(/谱师/)).toBeNull();
+    expect(screen.getByLabelText('配置标签 配置1，点击查看说明')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('使用1P 谱面物量计算容错'));
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
