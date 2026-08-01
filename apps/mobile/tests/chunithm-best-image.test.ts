@@ -193,8 +193,7 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).toContain('score-card-foot"><span class="score-badges"');
     expect(html).toContain('.score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-start');
     expect(html).toContain('class="profile-banner"');
-    expect(html).toContain('height:187.5px;display:grid;grid-template-columns:1fr 266.25px 93.75px;grid-template-rows:46.875px 46.875px 93.75px');
-    expect(html).toContain('<div class="profile-spacer" aria-hidden="true"></div>');
+    expect(html).toContain('.profile-layout{position:absolute;left:0;top:0;width:100%;height:100%}');
     expect(html).toContain('class="player-name-row"');
     expect(html).toContain('class="player-level">Lv.99</span>');
     expect(html).toMatch(/class="player-level">Lv\.99<\/span>\s*<span class="player-name"[^>]*>测试玩家<\/span>/);
@@ -203,18 +202,20 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).toContain('<div class="rating-value-row"><span>RATING</span><strong>16.50</strong></div>');
     expect(html).toContain('class="trophy-slot"');
     expect(html).toContain('.profile-banner{position:absolute;z-index:1;left:43px;top:43px;width:540px;height:214px;border-radius:0');
-    expect(html).toContain('.profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:0}');
-    expect(html).toContain('.profile-banner .nameplate-image{object-fit:contain}');
-    expect(html).toContain('.profile-spacer{grid-column:2/4;grid-row:1}');
-    expect(html).toContain('.profile-banner .avatar{grid-column:3;grid-row:3;width:93.75px;height:93.75px;overflow:hidden;border-radius:0');
-    expect(html).toContain('.rating-badge{grid-column:2;grid-row:3;display:flex;width:266.25px;height:93.75px;min-width:0;flex-direction:column;overflow:hidden;padding:4px 7px;border:1px solid transparent;border-radius:0');
-    expect(html).toContain('.trophy-slot{grid-column:2/4;grid-row:2;display:flex;width:360px;height:46.875px;align-items:center;justify-content:flex-start;overflow:hidden;padding:0 7px;border:1px solid rgba(96,87,72,.35);border-radius:0');
+    expect(html).toContain('.profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;left:-0.938px;top:8.438px;display:block;width:540px;height:213.75px;border-radius:0}');
+    expect(html).toContain('.profile-banner .nameplate-image{object-fit:contain;object-position:center}');
+    expect(html).toContain('.profile-banner .avatar{position:absolute;left:434.063px;top:77.813px;width:80.625px;height:80.625px;overflow:visible;border-radius:0}');
+    expect(html).toContain('.profile-banner .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}');
+    expect(html).toContain('.rating-badge{position:absolute;left:175.313px;top:75.938px;display:flex;width:258.75px;height:83.438px;min-width:0;flex-direction:column;overflow:hidden;padding:4px 7px;border:1px solid transparent;border-radius:0');
+    expect(html).toContain('.trophy-slot{position:absolute;left:170.419px;top:37.294px;display:flex;width:346.875px;height:42.218px;align-items:center;justify-content:center;overflow:visible;border-radius:0}');
+    expect(html).toContain('.trophy-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}');
+    expect(html).not.toContain('class="profile-spacer"');
     expect(html).toContain('.scores-content{position:absolute;z-index:1;left:43px;right:43px;top:295px');
     expect(html).not.toContain('class="meta-row"');
     expect(html).not.toMatch(/meta-row"><span>[^<]*虹/);
   });
 
-  it('keeps the fixed player grid when trophy and character are disabled', () => {
+  it('keeps the fixed player positions when trophy and character are disabled', () => {
     const html = buildChunithmBestImageHtml({
       type: 'best50',
       width: 1080,
@@ -230,7 +231,7 @@ describe('buildChunithmBestImageHtml', () => {
       },
     });
 
-    expect(html).toContain('height:187.5px;display:grid;grid-template-columns:1fr 266.25px 93.75px;grid-template-rows:46.875px 46.875px 93.75px');
+    expect(html).toContain('.profile-layout{position:absolute;left:0;top:0;width:100%;height:100%}');
     expect(html).not.toContain('class="trophy-slot"');
     expect(html).not.toContain('class="avatar"');
     expect(html).toContain('class="player-level">Lv.—</span>');
