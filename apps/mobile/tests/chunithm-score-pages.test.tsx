@@ -13,6 +13,10 @@ import {
 import { CHUNITHM_RANKS_DESC } from '@/domain/chunithm-filters';
 import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
 
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
+  data: undefined, isLoading: false, isError: false, error: null,
+}) }));
+
 const mockRefetchGame = jest.fn(async () => undefined);
 const mockRefetchCatalog = jest.fn(async () => undefined);
 const mockPush = jest.fn();

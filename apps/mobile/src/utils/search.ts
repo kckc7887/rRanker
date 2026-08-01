@@ -1,4 +1,4 @@
-import type { ChartType, Difficulty, Song } from '@/domain/models';
+import type { Chart, ChartType, Difficulty, Song } from '@/domain/models';
 import { toHiragana, toRomaji } from 'wanakana';
 
 export interface SongSearchFilters {
@@ -13,6 +13,7 @@ export interface SongSearchFilters {
 
 export interface SearchDocument { text: string; compact: string }
 export interface SongSearchEntry extends SearchDocument { song: Song }
+export type SongChartPredicate = (song: Song, chart: Chart) => boolean;
 
 export const EMPTY_SONG_FILTERS: SongSearchFilters = {
   keyword: '', types: [], difficulties: [], songVersionIds: [], chartVersionIds: [],
@@ -148,7 +149,11 @@ function includesNumber(values: readonly number[], value?: number): boolean {
   return values.length === 0 || (value !== undefined && values.includes(value));
 }
 
-export function searchSongs(index: readonly SongSearchEntry[], filters: SongSearchFilters): Song[] {
+export function searchSongs(
+  index: readonly SongSearchEntry[],
+  filters: SongSearchFilters,
+  chartPredicate?: SongChartPredicate,
+): Song[] {
   const keyword = normalizeSearchText(filters.keyword);
   const min = filters.constantMin ?? Number.NEGATIVE_INFINITY;
   const max = filters.constantMax ?? Number.POSITIVE_INFINITY;
@@ -161,7 +166,8 @@ export function searchSongs(index: readonly SongSearchEntry[], filters: SongSear
       (filters.difficulties.length === 0 || filters.difficulties.includes(chart.difficulty)) &&
       !(chart.type === 'UTAGE' && hasConstantFilter) &&
       chart.difficultyConstant >= min && chart.difficultyConstant <= max &&
-      includesNumber(filters.chartVersionIds, chart.versionId));
+      includesNumber(filters.chartVersionIds, chart.versionId) &&
+      (!chartPredicate || chartPredicate(song, chart)));
     return chartMatch;
   }).map(({ song }) => song);
 }

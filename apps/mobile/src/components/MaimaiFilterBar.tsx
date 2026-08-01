@@ -1,8 +1,10 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { DxRatingTagFilterSheet } from '@/components/maimai/DxRatingTagFilterSheet';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
+import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import {
   MAIMAI_FC_ACHIEVEMENTS,
   MAIMAI_FS_ACHIEVEMENTS,
@@ -21,6 +23,8 @@ type OpenDropdown = 'version' | 'solo' | 'multi' | null;
 type VersionSheetValue = string | 'all';
 type SoloSheetValue = MaimaiFcAchievement | 'all';
 type MultiSheetValue = MaimaiFsAchievement | 'all';
+
+export type DxRatingTagFilterState = 'ready' | 'loading' | 'unavailable';
 
 export interface VersionFilterOption {
   value: string;
@@ -41,6 +45,9 @@ export interface MaimaiFilterBarProps {
   multiAchievement?: MaimaiFsAchievement | null;
   versionLocale: VersionNameLocale;
   versions: readonly VersionFilterOption[];
+  dxRatingTags?: readonly DxRatingChartTag[];
+  selectedDxRatingTagIds?: readonly number[];
+  dxRatingTagState?: DxRatingTagFilterState;
   onCollapsedChange: (collapsed: boolean) => void;
   onDifficultyChange: (difficulty: Difficulty | 'all') => void;
   onVersionChange: (version: string | 'all') => void;
@@ -52,24 +59,39 @@ export interface MaimaiFilterBarProps {
   onSoloAchievementChange?: (value: MaimaiFcAchievement | null) => void;
   onMultiAchievementChange?: (value: MaimaiFsAchievement | null) => void;
   onVersionLocaleChange: (locale: VersionNameLocale) => void;
+  onDxRatingTagIdsChange?: (tagIds: number[]) => void;
   onReset: () => void;
+}
+
+export function formatDxRatingTagFilterValue(
+  tags: readonly DxRatingChartTag[],
+  selectedTagIds: readonly number[],
+): string {
+  const selected = new Set(selectedTagIds);
+  const names = tags.filter((tag) => selected.has(tag.id)).map((tag) => tag.name);
+  if (names.length === 0) return '全部';
+  if (names.length <= 2) return names.join('、');
+  return `${names.slice(0, 2).join('、')}等${names.length}个`;
 }
 
 export function buildMaimaiFilterSummary({
   difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
-  soloAchievement, multiAchievement, versionLocale, versions,
+  soloAchievement, multiAchievement, versionLocale, versions, dxRatingTags = [], selectedDxRatingTagIds = [],
 }: Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'type' | 'constantMin' | 'constantMax'
-  | 'achievementMin' | 'achievementMax' | 'soloAchievement' | 'multiAchievement' | 'versionLocale' | 'versions'>): string {
+  | 'achievementMin' | 'achievementMax' | 'soloAchievement' | 'multiAchievement' | 'versionLocale' | 'versions'
+  | 'dxRatingTags' | 'selectedDxRatingTagIds'>): string {
   const selectedVersion = versions.find((option) => option.value === version);
   const selectedVersionLabel = selectedVersion
     ? localizedVersionName(selectedVersion.versionId, selectedVersion.name, versionLocale)
     : '全部';
   const soloLabel = soloAchievement ? `单人 ${maimaiFcAchievementLabel(soloAchievement)}` : null;
   const multiLabel = multiAchievement ? `多人 ${maimaiFsAchievementLabel(multiAchievement)}` : null;
+  const tagLabel = formatDxRatingTagFilterValue(dxRatingTags, selectedDxRatingTagIds);
   return [
     difficulty === 'all' ? null : DIFFICULTY_VISUAL[difficulty].label,
     selectedVersionLabel === '全部' ? null : selectedVersionLabel,
     type === 'all' ? null : type,
+    tagLabel === '全部' ? null : `标签 ${tagLabel}`,
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
     achievementMin || achievementMax ? `达成率 ${achievementMin || '不限'}~${achievementMax || '不限'}%` : null,
     soloLabel,
@@ -90,6 +112,9 @@ export function MaimaiFilterBar({
   multiAchievement = null,
   versionLocale,
   versions,
+  dxRatingTags = [],
+  selectedDxRatingTagIds = [],
+  dxRatingTagState = 'unavailable',
   onCollapsedChange,
   onDifficultyChange,
   onVersionChange,
@@ -101,10 +126,12 @@ export function MaimaiFilterBar({
   onSoloAchievementChange,
   onMultiAchievementChange,
   onVersionLocaleChange,
+  onDxRatingTagIdsChange,
   onReset,
 }: MaimaiFilterBarProps) {
   const theme = useAppTheme();
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
+  const [tagSheetVisible, setTagSheetVisible] = useState(false);
   const showAchievementRange = onAchievementMinChange !== undefined && onAchievementMaxChange !== undefined;
   const showAchievementPickers = onSoloAchievementChange !== undefined && onMultiAchievementChange !== undefined;
   const selectedVersion = versions.find((option) => option.value === version);
@@ -113,6 +140,11 @@ export function MaimaiFilterBar({
     : '全部';
   const soloLabel = maimaiFcAchievementLabel(soloAchievement);
   const multiLabel = maimaiFsAchievementLabel(multiAchievement);
+  const tagFilterValue = dxRatingTagState === 'loading'
+    ? '加载中'
+    : dxRatingTagState === 'unavailable'
+      ? '不可用'
+      : formatDxRatingTagFilterValue(dxRatingTags, selectedDxRatingTagIds);
 
   const setDropdownOpen = (id: OpenDropdown) => (open: boolean) => {
     setOpenDropdown(open ? id : null);
@@ -120,6 +152,7 @@ export function MaimaiFilterBar({
 
   const handleReset = () => {
     setOpenDropdown(null);
+    setTagSheetVisible(false);
     onReset();
   };
 
@@ -143,7 +176,7 @@ export function MaimaiFilterBar({
 
   const summary = buildMaimaiFilterSummary({
     difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
-    soloAchievement, multiAchievement, versionLocale, versions,
+    soloAchievement, multiAchievement, versionLocale, versions, dxRatingTags, selectedDxRatingTagIds,
   });
 
   if (collapsed) {
@@ -245,6 +278,26 @@ export function MaimaiFilterBar({
         </View>
       </View>
 
+      {onDxRatingTagIdsChange ? (
+        <View style={styles.filterRow}>
+          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>标签</Text>
+          <Pressable accessibilityRole="button"
+            accessibilityLabel={`谱面标签筛选，${dxRatingTagState === 'ready' ? `当前 ${tagFilterValue}` : tagFilterValue}`}
+            accessibilityState={{ disabled: dxRatingTagState !== 'ready', expanded: tagSheetVisible }}
+            disabled={dxRatingTagState !== 'ready'}
+            onPress={() => { setOpenDropdown(null); setTagSheetVisible(true); }}
+            style={({ pressed }) => [
+              styles.tagFilterTrigger,
+              { backgroundColor: theme.input, borderColor: theme.border },
+              dxRatingTagState !== 'ready' && styles.disabled,
+              pressed && styles.tagFilterTriggerPressed,
+            ]}>
+            <Text numberOfLines={1} style={[styles.tagFilterValue, { color: theme.text }]}>{tagFilterValue}</Text>
+            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.filterRow}>
         <Text style={[styles.filterLabel, showAchievementRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
         <View style={styles.rangeRow}>
@@ -302,6 +355,13 @@ export function MaimaiFilterBar({
           </View>
         </View>
       ) : null}
+      {onDxRatingTagIdsChange && tagSheetVisible ? <DxRatingTagFilterSheet
+        visible={tagSheetVisible}
+        tags={dxRatingTags}
+        selectedTagIds={selectedDxRatingTagIds}
+        onApply={onDxRatingTagIdsChange}
+        onClose={() => setTagSheetVisible(false)}
+      /> : null}
     </View>
   );
 }
@@ -374,6 +434,10 @@ const styles = StyleSheet.create({
   neutralChipText: { color: '#374151', fontSize: 12 },
   neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
   dropdownControls: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tagFilterTrigger: { flex: 1, minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tagFilterValue: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20 },
+  tagFilterTriggerPressed: { opacity: 0.7 },
+  disabled: { opacity: 0.5 },
   achievementDropdownRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   localeSwitch: { flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10 },
   localeButton: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },

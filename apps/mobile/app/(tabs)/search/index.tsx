@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useMemo } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
@@ -16,12 +16,14 @@ import { ChunithmSongRow } from '@/components/chunithm/ChunithmSongRow';
 import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import type { ChunithmSong } from '@/domain/chunithm';
 import { matchesChunithmChartFilter } from '@/domain/chunithm-filters';
+import { buildDxRatingChartTagIndex, dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
 import { parseConstantBound } from '@/domain/maimai-filters';
 import { phigrosLevelToDifficulty } from '@/domain/phigros-filters';
 import type { Chart, ChartType, Song } from '@/domain/models';
 import { localizedVersionName } from '@/domain/version-names';
 import { presentStandardSong } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
@@ -48,16 +50,32 @@ export default function SearchTabScreen() {
 export function SearchScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const query = useDetailedCatalog();
+  const dxRatingChartTags = useDxRatingChartTags();
   const tabBottomInset = useNativeTabBottomInset();
   const library = useUserLibrary();
   const theme = useAppTheme();
   const {
-    keyword, collapsed, type, difficulty, constantMin, constantMax, version, versionLocale,
+    keyword, collapsed, type, difficulty, constantMin, constantMax, version, versionLocale, selectedDxRatingTagIds,
     setKeyword, setCollapsed, setType, setDifficulty, setConstantMin, setConstantMax, setVersion, setVersionLocale,
-    clearFilters,
+    setSelectedDxRatingTagIds, clearFilters,
   } = useCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const index = useMemo(() => buildSongSearchIndex(query.data?.songs ?? []), [query.data?.songs]);
+  const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
+    dxRatingChartTags.data,
+    query.data?.songs ?? [],
+  ), [dxRatingChartTags.data, query.data?.songs]);
+
+  useEffect(() => {
+    if (activeGameId !== 'maimai' || selectedDxRatingTagIds.length === 0) return;
+    if (dxRatingChartTags.data) {
+      const validIds = new Set(dxRatingChartTags.data.tags.map((tag) => tag.id));
+      const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
+      if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
+    } else if (dxRatingChartTags.isError) {
+      setSelectedDxRatingTagIds([]);
+    }
+  }, [activeGameId, dxRatingChartTags.data, dxRatingChartTags.isError, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
   const versions = useMemo<VersionFilterOption[]>(() => (query.data?.versions ?? []).map((item) => ({
     value: String(item.id), name: item.title, versionId: item.id,
   })), [query.data?.versions]);
@@ -69,9 +87,22 @@ export function SearchScreen() {
     constantMin: parseConstantBound(constantMin),
     constantMax: parseConstantBound(constantMax),
     chartVersionIds: version === 'all' ? [] : [Number(version)],
-  }), [constantMax, constantMin, debouncedKeyword, difficulty, type, version]);
+    selectedDxRatingTagIds,
+  }), [constantMax, constantMin, debouncedKeyword, difficulty, selectedDxRatingTagIds, type, version]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
-  const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
+  const filtered = useMemo(() => searchSongs(
+    index,
+    deferredFilterSpec,
+    dxRatingChartTags.data && deferredFilterSpec.selectedDxRatingTagIds.length > 0
+      ? (song, chart) => dxRatingChartHasAllTags(
+          dxRatingTagIndex,
+          song.id,
+          chart.type,
+          chart.levelIndex,
+          deferredFilterSpec.selectedDxRatingTagIds,
+        )
+      : undefined,
+  ), [deferredFilterSpec, dxRatingChartTags.data, dxRatingTagIndex, index]);
   const isFiltering = filterSpec !== deferredFilterSpec;
   const versionLabelsById = useMemo(() => new Map(versions.flatMap((option) =>
     option.versionId === undefined
@@ -134,9 +165,13 @@ export function SearchScreen() {
       <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
         difficulty={difficulty} version={version} type={type}
         constantMin={constantMin} constantMax={constantMax} versionLocale={versionLocale} versions={versions}
+        dxRatingTags={dxRatingChartTags.data?.tags ?? []}
+        selectedDxRatingTagIds={selectedDxRatingTagIds}
+        dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-        onVersionLocaleChange={setVersionLocale} onReset={clearFilters} />
+        onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+        onReset={clearFilters} />
       <CatalogListPage<Song> isLoading={query.isLoading} isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}
         error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
@@ -153,7 +188,14 @@ export function SearchScreen() {
             label: query.data.source.label,
             updatedAt: query.data.source.updatedAt,
             state: query.data.source.isStale ? 'cache' : 'live',
-          }]} /> : null,
+          }, ...(dxRatingChartTags.data ? [{
+            key: 'dxrating-tags' as const,
+            label: dxRatingChartTags.data.source.label,
+            updatedAt: dxRatingChartTags.data.source.updatedAt,
+            state: dxRatingChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
+          }] : dxRatingChartTags.isError ? [{
+            key: 'dxrating-tags' as const, label: 'DXRating 标签不可用', state: 'unavailable' as const,
+          }] : [])]} /> : null,
           renderItem: renderCatalogItem,
         }}
       />

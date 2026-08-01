@@ -1,4 +1,9 @@
-import { dxRatingTagsForChart, type DxRatingChartTagsSnapshot } from '@/domain/dxrating-chart-tags';
+import {
+  buildDxRatingChartTagIndex,
+  dxRatingChartHasAllTags,
+  dxRatingTagsForChart,
+  type DxRatingChartTagsSnapshot,
+} from '@/domain/dxrating-chart-tags';
 import type { Chart, Song } from '@/domain/models';
 import {
   DxRatingChartTagsProvider,
@@ -108,6 +113,23 @@ describe('DXRating chart tags', () => {
     expect(dxRatingTagsForChart(snapshot, song('测试曲 '), chart())).toEqual([]);
   });
 
+  it('builds an exact chart index, normalizes maimai song ids, and requires every selected tag', () => {
+    const snapshot = mapDxRatingChartTags(responsePayload);
+    const indexedSong = song('测试曲', [
+      chart(),
+      chart({ type: 'SD' }),
+      chart({ difficulty: 'expert', levelIndex: 2 }),
+    ]);
+    const index = buildDxRatingChartTagIndex(snapshot, [indexedSong]);
+
+    expect(dxRatingChartHasAllTags(index, '10001', 'DX', 3, [3, 1, 99, 100])).toBe(true);
+    expect(dxRatingChartHasAllTags(index, '10001', 'DX', 3, [3, 404])).toBe(false);
+    expect(dxRatingChartHasAllTags(index, '1', 'SD', 3, [1])).toBe(true);
+    expect(dxRatingChartHasAllTags(index, '1', 'SD', 3, [3])).toBe(false);
+    expect(dxRatingChartHasAllTags(index, '1', 'DX', 2, [1])).toBe(true);
+    expect(dxRatingChartHasAllTags(index, '1', 'DX', 2, [])).toBe(true);
+  });
+
   it('matches U·TA·GE by attribute and type, then uses only an unambiguous stripped-title fallback', () => {
     const snapshot: DxRatingChartTagsSnapshot = {
       tags: [
@@ -143,6 +165,16 @@ describe('DXRating chart tags', () => {
     const buddy = chart({ type: 'UTAGE', difficulty: 'utage', levelIndex: 0, utage: { kanji: '協', isBuddy: true } });
     expect(dxRatingTagsForChart(snapshot, song('Buddy Song', [buddy]), buddy).map((tag) => tag.name))
       .toEqual(['扫键']);
+
+    const exactSong = { ...song('Garakuta Doll Play', [exact]), id: '100001' };
+    const ambiguousSong = { ...song('Garakuta Doll Play', [ambiguous]), id: '100002' };
+    const fallbackSong = { ...song('人マニア', [fallback]), id: '100003' };
+    const buddySong = { ...song('Buddy Song', [buddy]), id: '100004' };
+    const index = buildDxRatingChartTagIndex(snapshot, [exactSong, ambiguousSong, fallbackSong, buddySong]);
+    expect(dxRatingChartHasAllTags(index, exactSong.id, 'UTAGE', 0, [2])).toBe(true);
+    expect(dxRatingChartHasAllTags(index, ambiguousSong.id, 'UTAGE', 0, [1])).toBe(false);
+    expect(dxRatingChartHasAllTags(index, fallbackSong.id, 'UTAGE', 0, [1])).toBe(true);
+    expect(dxRatingChartHasAllTags(index, buddySong.id, 'UTAGE', 0, [2])).toBe(true);
   });
 
   it('rejects malformed responses and missing tag groups', () => {

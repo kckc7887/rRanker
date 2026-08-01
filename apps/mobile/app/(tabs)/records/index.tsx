@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo } from 'react';
+import { useDeferredValue, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -12,6 +12,7 @@ import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import { matchesAchievementRange, matchesConstantRange, matchesMultiAchievementFilter, matchesSoloAchievementFilter } from '@/domain/maimai-filters';
+import { buildDxRatingChartTagIndex, dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
 import { matchesChunithmConstantRange, matchesChunithmRankRange } from '@/domain/chunithm-filters';
 import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
 import { matchesPhigrosXingFilter, phigrosChartNoteKey } from '@/domain/phigros-xing';
@@ -30,6 +31,7 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
 import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
 import { useRecordsFilter } from '@/state/records-filter';
@@ -45,18 +47,34 @@ export function RecordsScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const catalog = useDetailedCatalog();
+  const dxRatingChartTags = useDxRatingChartTags();
   const theme = useAppTheme();
   const tabBottomInset = useNativeTabBottomInset();
   const {
     keyword, collapsed, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
-    soloAchievement, multiAchievement, versionLocale,
+    soloAchievement, multiAchievement, versionLocale, selectedDxRatingTagIds,
     setKeyword, setCollapsed,
     setDifficulty, setVersion, setType, setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
-    setSoloAchievement, setMultiAchievement, setVersionLocale, clearFilters,
+    setSoloAchievement, setMultiAchievement, setVersionLocale, setSelectedDxRatingTagIds, clearFilters,
   } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const searchBySongId = useMemo(() => new Map(buildSongSearchIndex(catalog.data?.songs ?? [])
     .map(({ song, text, compact }) => [song.id, { text, compact }] as const)), [catalog.data?.songs]);
+  const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
+    dxRatingChartTags.data,
+    catalog.data?.songs ?? [],
+  ), [catalog.data?.songs, dxRatingChartTags.data]);
+
+  useEffect(() => {
+    if (activeGameId !== 'maimai' || selectedDxRatingTagIds.length === 0) return;
+    if (dxRatingChartTags.data) {
+      const validIds = new Set(dxRatingChartTags.data.tags.map((tag) => tag.id));
+      const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
+      if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
+    } else if (dxRatingChartTags.isError) {
+      setSelectedDxRatingTagIds([]);
+    }
+  }, [activeGameId, dxRatingChartTags.data, dxRatingChartTags.isError, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
 
   const versions = useMemo<VersionFilterOption[]>(() => {
     if (!data) return [];
@@ -66,8 +84,8 @@ export function RecordsScreen() {
 
   const filterSpec = useMemo(() => ({
     keyword: debouncedKeyword, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
-    soloAchievement, multiAchievement,
-  }), [achievementMax, achievementMin, soloAchievement, multiAchievement, constantMax, constantMin, debouncedKeyword, difficulty, type, version]);
+    soloAchievement, multiAchievement, selectedDxRatingTagIds,
+  }), [achievementMax, achievementMin, soloAchievement, multiAchievement, constantMax, constantMin, debouncedKeyword, difficulty, selectedDxRatingTagIds, type, version]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<ScoreRecord[]>(() => {
     if (!data) return [];
@@ -95,11 +113,20 @@ export function RecordsScreen() {
     ));
     list = list.filter((record) => matchesSoloAchievementFilter(record, deferredFilterSpec.soloAchievement));
     list = list.filter((record) => matchesMultiAchievementFilter(record, deferredFilterSpec.multiAchievement));
+    if (dxRatingChartTags.data && deferredFilterSpec.selectedDxRatingTagIds.length > 0) {
+      list = list.filter((record) => dxRatingChartHasAllTags(
+        dxRatingTagIndex,
+        record.songId,
+        record.type,
+        record.levelIndex,
+        deferredFilterSpec.selectedDxRatingTagIds,
+      ));
+    }
     return list.sort((a, b) =>
       Number(a.type === 'UTAGE') - Number(b.type === 'UTAGE') ||
       b.rating - a.rating ||
       b.achievements - a.achievements);
-  }, [data, deferredFilterSpec, searchBySongId]);
+  }, [data, deferredFilterSpec, dxRatingChartTags.data, dxRatingTagIndex, searchBySongId]);
 
   const isEmpty = !!data && filtered.length === 0;
 
@@ -129,11 +156,15 @@ export function RecordsScreen() {
         achievementMin={achievementMin} achievementMax={achievementMax}
         soloAchievement={soloAchievement} multiAchievement={multiAchievement}
         versionLocale={versionLocale} versions={versions}
+        dxRatingTags={dxRatingChartTags.data?.tags ?? []}
+        selectedDxRatingTagIds={selectedDxRatingTagIds}
+        dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}
         onSoloAchievementChange={setSoloAchievement} onMultiAchievementChange={setMultiAchievement}
-        onVersionLocaleChange={setVersionLocale} onReset={clearFilters} />
+        onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+        onReset={clearFilters} />
       <RecordsListPage<ScoreRecord>
         isLoading={isLoading}
         isError={isError}
@@ -153,6 +184,14 @@ export function RecordsScreen() {
           ListHeaderComponent: data ? <View style={styles.header}><SourceStatus items={[
             { key: 'scores', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
             { key: 'catalog', label: data.catalogSource.label, updatedAt: data.catalogSource.updatedAt, state: data.catalogSource.isStale ? 'cache' : 'live' },
+            ...(dxRatingChartTags.data ? [{
+              key: 'dxrating-tags' as const,
+              label: dxRatingChartTags.data.source.label,
+              updatedAt: dxRatingChartTags.data.source.updatedAt,
+              state: dxRatingChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
+            }] : dxRatingChartTags.isError ? [{
+              key: 'dxrating-tags' as const, label: 'DXRating 标签不可用', state: 'unavailable' as const,
+            }] : []),
           ]} /><Text style={styles.note}>共 {filtered.length} 条成绩</Text></View> : null,
           renderItem: renderRecord,
         }}

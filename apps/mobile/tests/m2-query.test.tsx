@@ -40,6 +40,7 @@ let mockDxRatingTagSongTitle = '正常曲目 A';
 let mockDxRatingTagSheetType: 'dx' | 'std' | 'utage' | 'utage2p' = 'dx';
 let mockDxRatingTagDifficulty = 'master';
 let mockDxRatingTagState: 'live' | 'cache' | 'error' | 'loading' = 'live';
+let mockUserLibraryData: unknown[] = [];
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@/components/AppNotification', () => ({
@@ -174,12 +175,17 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
   return {
     data: {
       tags,
-      relations: tags.map((tag) => ({
+      relations: tags.flatMap((tag) => [{
         songTitle: mockDxRatingTagSongTitle,
         sheetType: mockDxRatingTagSheetType,
         sheetDifficulty: mockDxRatingTagDifficulty,
         tagId: tag.id,
-      })),
+      }, ...(tag.id === 1 ? [{
+        songTitle: '跨版本双谱面',
+        sheetType: 'dx' as const,
+        sheetDifficulty: 'master',
+        tagId: tag.id,
+      }] : [])]),
       source: {
         kind: mockDxRatingTagState === 'cache' ? 'cache' : 'dxrating',
         label: mockDxRatingTagState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
@@ -193,7 +199,7 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
   };
 } }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
-  data: [], isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
+  data: mockUserLibraryData, isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
   songKey: (songId: string | number) => `maimai:song:${songId}`,
   chartKey: (songId: string | number, type: string, levelIndex: number) => `maimai:chart:${songId}:${type}:${levelIndex}`,
   tagPresets: ['爆发', '交互', '星星', '鬼歌', '大歌'], setTagPresets: jest.fn(),
@@ -213,6 +219,7 @@ describe('M2 song query screens', () => {
     mockDxRatingTagSheetType = 'dx';
     mockDxRatingTagDifficulty = 'master';
     mockDxRatingTagState = 'live';
+    mockUserLibraryData = [];
     mockCanGoBack.mockReturnValue(true);
     useCatalogFilter.getState().reset();
     jest.clearAllMocks();
@@ -364,6 +371,14 @@ describe('M2 song query screens', () => {
     expect(cached.getByText(/DXRating 谱面标签缓存/)).toBeTruthy();
   });
 
+  it('reports a cached DXRating source without blocking the catalog', async () => {
+    mockDxRatingTagCount = 1;
+    mockDxRatingTagState = 'cache';
+    const screen = await render(<SearchScreen />);
+    expect(screen.getByText(/DXRating 谱面标签缓存/)).toBeTruthy();
+    expect(screen.getByTestId('catalog-results-list')).toBeTruthy();
+  });
+
   it('searches aliases after debounce and supports empty filter state', async () => {
     const screen = await render(<SearchScreen />);
     expect(screen.getByTestId('catalog-results-list').props).toEqual(expect.objectContaining({
@@ -461,6 +476,85 @@ describe('M2 song query screens', () => {
     await waitFor(() => expect(screen.getByText('筛选结果为空')).toBeTruthy());
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '唯一别名');
     await waitFor(() => expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0));
+  });
+
+  it('filters the catalog by grouped DXRating tags with AND and same-chart semantics', async () => {
+    mockDxRatingTagCount = 3;
+    mockUserLibraryData = [{
+      key: 'chart:maimai:7:DX:3', gameId: 'maimai', kind: 'chart', songId: '7', type: 'DX', levelIndex: 3,
+      practice: false, tags: ['标签2'], createdAt: new Date(0).toISOString(), updatedAt: new Date(0).toISOString(),
+    }];
+    const screen = await render(<SearchScreen />);
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+    expect(screen.getByText(/DXRating 谱面标签/)).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('谱面标签筛选，当前 全部'));
+    expect(screen.getAllByTestId(/dxrating-tag-filter-group-/).map((node) => node.props.testID))
+      .toEqual(['dxrating-tag-filter-group-1', 'dxrating-tag-filter-group-2', 'dxrating-tag-filter-group-3']);
+    expect(StyleSheet.flatten(screen.getByText('标签1').parent?.props.style))
+      .toMatchObject({ backgroundColor: '#7dd3fc' });
+    expect(StyleSheet.flatten(screen.getByText('标签2').parent?.props.style))
+      .toMatchObject({ backgroundColor: '#a5b4fc' });
+    expect(StyleSheet.flatten(screen.getByText('标签3').parent?.props.style))
+      .toMatchObject({ backgroundColor: '#f0abfc' });
+    await fireEvent.press(screen.getByLabelText('谱面标签 标签1，未选中'));
+    expect(screen.getByLabelText('谱面标签 标签1，已选中').props.accessibilityState).toEqual({ checked: true });
+    await fireEvent.press(screen.getByLabelText('完成谱面标签筛选'));
+    await waitFor(() => expect(screen.getByText('共 2 首')).toBeTruthy());
+
+    await fireEvent.press(screen.getByLabelText('谱面标签筛选，当前 标签1'));
+    await fireEvent.press(screen.getByLabelText('谱面标签 标签2，未选中'));
+    await fireEvent.press(screen.getByLabelText('谱面标签 标签3，未选中'));
+    await fireEvent.press(screen.getByLabelText('完成谱面标签筛选'));
+    await waitFor(() => expect(screen.getByText('共 1 首')).toBeTruthy());
+    expect(screen.queryByText('跨版本双谱面')).toBeNull();
+    expect(screen.getByLabelText('谱面标签筛选，当前 标签1、标签2等3个')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('筛选类型 SD'));
+    await waitFor(() => expect(screen.getByText('共 0 首')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('重置筛选'));
+    await waitFor(() => expect(screen.getByText('共 10 首')).toBeTruthy());
+    expect(screen.getByLabelText('谱面标签筛选，当前 全部')).toBeTruthy();
+  });
+
+  it('clears tag drafts without applying a selection', async () => {
+    mockDxRatingTagCount = 3;
+    const ready = await render(<SearchScreen />);
+    await fireEvent.press(ready.getByLabelText(/展开筛选/));
+    await fireEvent.press(ready.getByLabelText('谱面标签筛选，当前 全部'));
+    await fireEvent.press(ready.getByLabelText('谱面标签 标签1，未选中'));
+    await fireEvent.press(ready.getByLabelText('清空谱面标签筛选'));
+    expect(ready.getByLabelText('谱面标签 标签1，未选中')).toBeTruthy();
+    await fireEvent.press(ready.getByLabelText('完成谱面标签筛选'));
+    expect(ready.getByLabelText('谱面标签筛选，当前 全部')).toBeTruthy();
+  });
+
+  it('keeps the tag entry visible and disabled while loading', async () => {
+    mockDxRatingTagState = 'loading';
+    useCatalogFilter.getState().setSelectedDxRatingTagIds([1]);
+    const loading = await render(<SearchScreen />);
+    await fireEvent.press(loading.getByLabelText(/展开筛选/));
+    expect(loading.getByLabelText('谱面标签筛选，加载中').props.accessibilityState)
+      .toEqual(expect.objectContaining({ disabled: true }));
+    expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]);
+  });
+
+  it('keeps the tag entry disabled and reports an unavailable DXRating source', async () => {
+    mockDxRatingTagState = 'error';
+    useCatalogFilter.getState().setSelectedDxRatingTagIds([1]);
+    const unavailable = await render(<SearchScreen />);
+    await fireEvent.press(unavailable.getByLabelText(/展开筛选/));
+    expect(unavailable.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
+      .toEqual(expect.objectContaining({ disabled: true }));
+    expect(unavailable.getByText('DXRating 标签不可用')).toBeTruthy();
+    await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([]));
+  });
+
+  it('removes tag selections that disappeared from a newer DXRating snapshot', async () => {
+    mockDxRatingTagCount = 1;
+    useCatalogFilter.getState().setSelectedDxRatingTagIds([1, 999]);
+    await render(<SearchScreen />);
+    await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]));
   });
   it('renders song metadata, chart status and source status', async () => {
     const screen = await render(<SongDetailScreen />);

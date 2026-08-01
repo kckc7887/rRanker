@@ -6,12 +6,26 @@ import { RecordsScreen } from '../app/(tabs)/records';
 import { useRecordsFilter } from '@/state/records-filter';
 
 const mockPush = jest.fn();
+let mockRecordsDxRatingState: 'live' | 'cache' | 'error' | 'loading' = 'live';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
 } as unknown as ReturnType<typeof Animated.loop>);
 
 jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href) } }));
+jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    GestureHandlerRootView: RN.View,
+    Pressable: (props: React.ComponentProps<typeof RN.Pressable>) => React.createElement(RN.Pressable, props),
+    ScrollView: RN.ScrollView,
+  };
+});
+jest.mock('react-native-safe-area-context', () => ({
+  ...(jest.requireActual('react-native-safe-area-context') as object),
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
@@ -42,8 +56,57 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
 } }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
-  return { data: fixtures.fixtureCatalog, isLoading: false, isError: false, error: null };
+  const charts = [
+    { id: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2, difficulty: 'expert' as const, difficultyConstant: 12.4 },
+    { id: '352', title: 'B35高', type: 'SD' as const, levelIndex: 3, difficulty: 'master' as const, difficultyConstant: 13.7 },
+    { id: '151', title: 'B15低', type: 'SD' as const, levelIndex: 1, difficulty: 'advanced' as const, difficultyConstant: 10.2 },
+    { id: '152', title: 'B15高', type: 'DX' as const, levelIndex: 4, difficulty: 'remaster' as const, difficultyConstant: 14.8 },
+  ];
+  return { data: {
+    ...fixtures.fixtureCatalog,
+    songs: [...fixtures.fixtureCatalog.songs, ...charts.map((item) => ({
+      id: item.id,
+      title: item.title,
+      version: '舞萌DX 2026',
+      charts: [{
+        songId: item.id,
+        type: item.type,
+        levelIndex: item.levelIndex,
+        difficulty: item.difficulty,
+        difficultyConstant: item.difficultyConstant,
+        level: String(item.difficultyConstant),
+      }],
+    }))],
+  }, isLoading: false, isError: false, error: null };
 } }));
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
+  if (mockRecordsDxRatingState === 'loading') {
+    return { data: undefined, isLoading: true, isError: false, error: null };
+  }
+  if (mockRecordsDxRatingState === 'error') {
+    return { data: undefined, isLoading: false, isError: true, error: new Error('offline') };
+  }
+  return { data: {
+    tags: [
+      { id: 1, name: '错位', description: '', descriptionSegments: [], color: '#7dd3fc', groupId: 1, groupName: '配置' },
+      { id: 2, name: '高难', description: '', descriptionSegments: [], color: '#a5b4fc', groupId: 2, groupName: '难度' },
+    ],
+    relations: [
+      { songTitle: 'B35低', sheetType: 'dx', sheetDifficulty: 'expert', tagId: 1 },
+      { songTitle: 'B15高', sheetType: 'dx', sheetDifficulty: 'remaster', tagId: 1 },
+      { songTitle: 'B15高', sheetType: 'dx', sheetDifficulty: 'remaster', tagId: 2 },
+    ],
+    source: {
+      kind: mockRecordsDxRatingState === 'cache' ? 'cache' : 'dxrating',
+      label: mockRecordsDxRatingState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
+      updatedAt: new Date(0).toISOString(),
+      isStale: mockRecordsDxRatingState === 'cache',
+    },
+  },
+  isLoading: false,
+  isError: false,
+  error: null,
+}; } }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const profile = jest.requireActual<typeof import('../src/domain/game-profile')>('../src/domain/game-profile')
@@ -86,7 +149,11 @@ jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
 } }));
 
 describe('M4 score list cards', () => {
-  beforeEach(() => { jest.clearAllMocks(); useRecordsFilter.getState().reset(); });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRecordsDxRatingState = 'live';
+    useRecordsFilter.getState().reset();
+  });
 
   it('renders Best35 above Best15 and sorts each section by Rating', async () => {
     const screen = await render(<Best50Screen />);
@@ -207,6 +274,62 @@ describe('M4 score list cards', () => {
     expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
     await fireEvent.press(screen.getByLabelText('收起筛选'));
     expect(screen.getByLabelText(/展开筛选，当前.*多人 FS/)).toBeTruthy();
+  });
+
+  it('filters records by every selected DXRating tag on the exact score chart', async () => {
+    const screen = await render(<RecordsScreen />);
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+    await fireEvent.press(screen.getByLabelText('谱面标签筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('谱面标签 错位，未选中'));
+    await fireEvent.press(screen.getByLabelText('完成谱面标签筛选'));
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(screen.getByLabelText('查看谱面 B35低 DX expert')).toBeTruthy();
+    expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull();
+    expect(screen.queryByLabelText('查看谱面 B15低 SD advanced')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('谱面标签筛选，当前 错位'));
+    await fireEvent.press(screen.getByLabelText('谱面标签 高难，未选中'));
+    await fireEvent.press(screen.getByLabelText('完成谱面标签筛选'));
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('筛选类型 SD'));
+    expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('重置筛选'));
+    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(screen.getByLabelText('谱面标签筛选，当前 全部')).toBeTruthy();
+  });
+
+  it('reports a cached DXRating source without blocking records', async () => {
+    mockRecordsDxRatingState = 'cache';
+    const screen = await render(<RecordsScreen />);
+    expect(screen.getByText(/DXRating 谱面标签缓存/)).toBeTruthy();
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+  });
+
+  it('keeps DXRating selections and records visible while tags are loading', async () => {
+    mockRecordsDxRatingState = 'loading';
+    useRecordsFilter.getState().setSelectedDxRatingTagIds([1]);
+    const screen = await render(<RecordsScreen />);
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+    expect(screen.getByLabelText('谱面标签筛选，加载中').props.accessibilityState)
+      .toEqual(expect.objectContaining({ disabled: true }));
+    expect(useRecordsFilter.getState().selectedDxRatingTagIds).toEqual([1]);
+    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+  });
+
+  it('disables unavailable DXRating filtering and removes stale selections', async () => {
+    mockRecordsDxRatingState = 'error';
+    useRecordsFilter.getState().setSelectedDxRatingTagIds([1]);
+    const screen = await render(<RecordsScreen />);
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+    expect(screen.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
+      .toEqual(expect.objectContaining({ disabled: true }));
+    expect(screen.getByText('DXRating 标签不可用')).toBeTruthy();
+    await waitFor(() => expect(useRecordsFilter.getState().selectedDxRatingTagIds).toEqual([]));
+    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
   });
 
   it('resets records filters from the shared filter bar', async () => {

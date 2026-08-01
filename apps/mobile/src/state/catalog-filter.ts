@@ -11,6 +11,7 @@ interface CatalogFilterState {
   constantMax: string;
   version: string | 'all';
   versionLocale: VersionNameLocale;
+  selectedDxRatingTagIds: number[];
   setKeyword: (keyword: string) => void;
   setCollapsed: (collapsed: boolean) => void;
   setType: (type: ChartType | 'all') => void;
@@ -19,6 +20,7 @@ interface CatalogFilterState {
   setConstantMax: (constantMax: string) => void;
   setVersion: (version: string | 'all') => void;
   setVersionLocale: (versionLocale: VersionNameLocale) => void;
+  setSelectedDxRatingTagIds: (values: number[]) => void;
   clearFilters: () => void;
   reset: () => void;
 }
@@ -32,6 +34,7 @@ const DEFAULT_CATALOG_FILTERS = {
   constantMax: '',
   version: 'all' as const,
   versionLocale: 'china' as const,
+  selectedDxRatingTagIds: [] as number[],
 };
 
 export const useCatalogFilter = create<CatalogFilterState>((set) => ({
@@ -44,8 +47,10 @@ export const useCatalogFilter = create<CatalogFilterState>((set) => ({
   setConstantMax: (constantMax) => set({ constantMax }),
   setVersion: (version) => set({ version }),
   setVersionLocale: (versionLocale) => set({ versionLocale }),
+  setSelectedDxRatingTagIds: (selectedDxRatingTagIds) => set({ selectedDxRatingTagIds }),
   clearFilters: () => set({
     keyword: '', type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all',
+    selectedDxRatingTagIds: [],
   }),
   reset: () => set(DEFAULT_CATALOG_FILTERS),
 }));

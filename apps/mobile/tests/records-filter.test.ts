@@ -19,6 +19,7 @@ describe('useRecordsFilter store', () => {
     expect(state.achievementMax).toBe('');
     expect(state.soloAchievement).toBeNull();
     expect(state.multiAchievement).toBeNull();
+    expect(state.selectedDxRatingTagIds).toEqual([]);
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
   });
@@ -73,6 +74,7 @@ describe('useRecordsFilter store', () => {
 
   it('keeps the selected version-name locale in the store', () => {
     useRecordsFilter.getState().setVersionLocale('japan');
+    useRecordsFilter.getState().setSelectedDxRatingTagIds([1, 2]);
     expect(useRecordsFilter.getState().versionLocale).toBe('japan');
   });
 
@@ -105,6 +107,7 @@ describe('useRecordsFilter store', () => {
     expect(state.multiAchievement).toBeNull();
     expect(state.sortBy).toBe('rating');
     expect(state.versionLocale).toBe('china');
+    expect(state.selectedDxRatingTagIds).toEqual([]);
   });
 
   it('clears filters without collapsing or changing version locale', () => {
@@ -115,11 +118,13 @@ describe('useRecordsFilter store', () => {
     useRecordsFilter.getState().setMultiAchievement('fs');
     useRecordsFilter.getState().setVersionLocale('japan');
     useRecordsFilter.getState().setCollapsed(false);
+    useRecordsFilter.getState().setSelectedDxRatingTagIds([1, 2]);
     useRecordsFilter.getState().clearFilters();
     expect(useRecordsFilter.getState()).toMatchObject({
       keyword: '', difficulty: 'all', version: 'all', type: 'all',
       constantMin: '', constantMax: '', achievementMin: '', achievementMax: '',
       soloAchievement: null, multiAchievement: null,
+      selectedDxRatingTagIds: [],
       versionLocale: 'japan', collapsed: false,
     });
   });
