@@ -2,15 +2,17 @@ import { stripUtageTitlePrefix } from '@/domain/catalog';
 import type { Chart, DataSource, Song } from '@/domain/models';
 
 export const DXRATING_CHART_TAGS_RESOURCE_KEY = 'dxrating-chart-tags';
-export const DXRATING_CHART_TAGS_SCHEMA_VERSION = 1;
+export const DXRATING_CHART_TAGS_SCHEMA_VERSION = 2;
 
 export type DxRatingSheetType = 'std' | 'dx' | 'utage' | 'utage2p';
 
-export interface DxRatingConfigurationTag {
+export interface DxRatingChartTag {
   id: number;
   name: string;
   description: string;
   color: string;
+  groupId: number;
+  groupName: string;
 }
 
 export interface DxRatingChartTagRelation {
@@ -21,7 +23,7 @@ export interface DxRatingChartTagRelation {
 }
 
 export interface DxRatingChartTagsSnapshot {
-  tags: DxRatingConfigurationTag[];
+  tags: DxRatingChartTag[];
   relations: DxRatingChartTagRelation[];
   source: DataSource;
 }
@@ -35,10 +37,10 @@ function canonicalUtageTitle(title: string): string {
 function relationTags(
   snapshot: DxRatingChartTagsSnapshot,
   relations: readonly DxRatingChartTagRelation[],
-): DxRatingConfigurationTag[] {
+): DxRatingChartTag[] {
   const tagsById = new Map(snapshot.tags.map((tag) => [tag.id, tag]));
   const seen = new Set<number>();
-  const result: DxRatingConfigurationTag[] = [];
+  const result: DxRatingChartTag[] = [];
   for (const relation of relations) {
     if (seen.has(relation.tagId)) continue;
     const tag = tagsById.get(relation.tagId);
@@ -49,11 +51,11 @@ function relationTags(
   return result;
 }
 
-export function configurationTagsForChart(
+export function dxRatingTagsForChart(
   snapshot: DxRatingChartTagsSnapshot | undefined,
   song: Song,
   chart: Chart,
-): DxRatingConfigurationTag[] {
+): DxRatingChartTag[] {
   if (!snapshot) return [];
 
   if (chart.type !== 'UTAGE') {

@@ -19,7 +19,7 @@ export function useDxRatingChartTags() {
     queryFn: () => new ResourceService(repository).load(
       DXRATING_CHART_TAGS_RESOURCE_KEY,
       DXRATING_CHART_TAGS_SCHEMA_VERSION,
-      () => provider.getConfigurationTags(),
+      () => provider.getChartTags(),
     ),
     staleTime: 60 * 60 * 1000,
   });
