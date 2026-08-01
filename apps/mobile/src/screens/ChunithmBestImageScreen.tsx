@@ -42,17 +42,17 @@ import {
   type ChunithmBestImageSelectionCount,
 } from '@/features/chunithm-best-image/chunithm-best-image';
 import {
-  CHUNITHM_BEST_IMAGE_STYLE_KINDS,
   chunithmBestImagePreferencesStore,
   DEFAULT_CHUNITHM_BEST_IMAGE_STYLES,
   resolveChunithmBestImageStyleId,
   type ChunithmBestImageStyleChoice,
-  type ChunithmBestImageStyleKind,
 } from '@/features/chunithm-best-image/chunithm-best-image-preferences';
+import { ChunithmBestImageBackgroundPicker } from '@/features/chunithm-best-image/chunithm-best-image-background-picker';
 import { ChunithmBestImageStylePicker } from '@/features/chunithm-best-image/chunithm-best-image-style-picker';
 import type { ChunithmBestImageCollectionItem } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
-import { loadChunithmBestImageCollections } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
+import { loadChunithmBestImageCharacters } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
 import {
+  chunithmBestImageJacketUrl,
   loadChunithmBestImageJackets,
   loadChunithmRemoteImageDataUri,
   resolveChunithmBestImageJacketId,
@@ -61,29 +61,13 @@ import {
   buildChunithmScoreCards,
   compareChunithmScores,
 } from '@/domain/chunithm-score-presentation';
-import {
-  buildChunithmCharacterUrl,
-  buildChunithmNamePlateUrl,
-  buildChunithmTrophyUrl,
-} from '@/domain/chunithm-personal';
+import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
 
 const WIDTHS = [1080, 1440, 2160] as const;
 const SELECTION_COUNTS: readonly ChunithmBestImageSelectionCount[] = [0, 5, 10];
-const STYLE_LABELS: Record<ChunithmBestImageStyleKind, string> = {
-  character: '角色',
-  plate: '名牌板',
-  trophy: '称号',
-};
-
-function resolvedRandom<T>(items: readonly T[], seed: string): T | undefined {
-  if (!items.length) return undefined;
-  let hash = 0;
-  for (const character of seed) hash = ((hash * 31) + character.charCodeAt(0)) | 0;
-  return items[Math.abs(hash) % items.length];
-}
 
 type PreviewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'error' | 'crashed' | 'terminated';
 
@@ -140,12 +124,10 @@ export function ChunithmBestImageScreen() {
   const [width, setWidth] = useState<(typeof WIDTHS)[number]>(1080);
   const [stylePrefs, setStylePrefs] = useState(DEFAULT_CHUNITHM_BEST_IMAGE_STYLES);
   const [prefsReady, setPrefsReady] = useState(false);
-  const [collections, setCollections] = useState<Record<ChunithmBestImageStyleKind, ChunithmBestImageCollectionItem[]> | null>(null);
-  const [picker, setPicker] = useState<ChunithmBestImageStyleKind | null>(null);
+  const [characters, setCharacters] = useState<ChunithmBestImageCollectionItem[] | null>(null);
+  const [picker, setPicker] = useState<'character' | 'background' | null>(null);
   const [coverUrls, setCoverUrls] = useState<Record<string, string | null> | null>(null);
   const [characterDataUri, setCharacterDataUri] = useState<string | null>(null);
-  const [plateDataUri, setPlateDataUri] = useState<string | null>(null);
-  const [trophyDataUri, setTrophyDataUri] = useState<string | null>(null);
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
   const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
   const [androidSources, setAndroidSources] = useState<BestImageWebViewSource[] | null>(null);
@@ -176,12 +158,10 @@ export function ChunithmBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    void loadChunithmBestImageCollections().then((loaded) => {
-      if (!cancelled) setCollections(loaded);
+    void loadChunithmBestImageCharacters().then((loaded) => {
+      if (!cancelled) setCharacters(loaded);
     }).catch(() => {
-      if (!cancelled) {
-        setCollections({ character: [], plate: [], trophy: [] });
-      }
+      if (!cancelled) setCharacters([]);
     });
     return () => {
       cancelled = true;
@@ -189,36 +169,23 @@ export function ChunithmBestImageScreen() {
   }, []);
 
   useEffect(() => {
-    if (!prefsReady || !collections) return;
+    if (!prefsReady || !characters) return;
     const accountKey = gameData.activeAccountId;
-    const needsUpdate = CHUNITHM_BEST_IMAGE_STYLE_KINDS.some((kind) => {
-      const choice = stylePrefs[kind];
-      if (choice.mode !== 'random') return false;
-      if (typeof choice.id === 'number') return false;
-      return !randomizedRef.current.has(`${accountKey}:${kind}`);
-    });
+    const choice = stylePrefs.character;
+    const randomKey = `${accountKey}:character`;
+    const needsUpdate = choice.mode === 'random'
+      && typeof choice.id !== 'number'
+      && !randomizedRef.current.has(randomKey);
     if (!needsUpdate) return;
     setStylePrefs((current) => {
-      const next = { ...current };
-      let changed = false;
-      for (const kind of CHUNITHM_BEST_IMAGE_STYLE_KINDS) {
-        const choice = current[kind];
-        if (choice.mode !== 'random' || typeof choice.id === 'number') continue;
-        const randomKey = `${accountKey}:${kind}`;
-        if (randomizedRef.current.has(randomKey)) continue;
-        randomizedRef.current.add(randomKey);
-        const items = collections[kind];
-        const item = items.length
-          ? items[Math.floor(Math.random() * items.length)]!
-          : resolvedRandom(items, `${accountKey}:${kind}`);
-        if (item) {
-          next[kind] = { mode: 'random', id: item.id, name: item.name };
-          changed = true;
-        }
-      }
-      return changed ? next : current;
+      if (current.character.mode !== 'random' || typeof current.character.id === 'number') return current;
+      randomizedRef.current.add(randomKey);
+      const item = characters[Math.floor(Math.random() * characters.length)];
+      return item
+        ? { ...current, character: { mode: 'random', id: item.id, name: item.name } }
+        : current;
     });
-  }, [collections, gameData.activeAccountId, prefsReady, stylePrefs]);
+  }, [characters, gameData.activeAccountId, prefsReady, stylePrefs.character]);
 
   useEffect(() => {
     if (prefsReady) {
@@ -260,9 +227,19 @@ export function ChunithmBestImageScreen() {
     return map;
   }, [catalog, sections]);
 
+  const backgroundSong = useMemo(() => {
+    if (stylePrefs.background.mode !== 'song') return null;
+    const selectedSongId = stylePrefs.background.songId;
+    return catalog?.songs.find((song) => song.id === selectedSongId) ?? null;
+  }, [catalog?.songs, stylePrefs.background]);
+  const backgroundJacketId = backgroundSong ? String(backgroundSong.id) : null;
+
   const jacketIds = useMemo(
-    () => [...new Set(Object.values(jacketIdsByKey))],
-    [jacketIdsByKey],
+    () => [...new Set([
+      ...Object.values(jacketIdsByKey),
+      ...(backgroundJacketId ? [backgroundJacketId] : []),
+    ])],
+    [backgroundJacketId, jacketIdsByKey],
   );
   const jacketKey = jacketIds.join('|');
 
@@ -285,55 +262,21 @@ export function ChunithmBestImageScreen() {
     () => resolveChunithmBestImageStyleId(stylePrefs.character, payload?.player?.character?.id),
     [payload?.player?.character?.id, stylePrefs.character],
   );
-  const plateId = useMemo(
-    () => resolveChunithmBestImageStyleId(stylePrefs.plate, payload?.player?.name_plate?.id),
-    [payload?.player?.name_plate?.id, stylePrefs.plate],
-  );
-  const trophyId = useMemo(
-    () => resolveChunithmBestImageStyleId(stylePrefs.trophy, payload?.player?.trophy?.id),
-    [payload?.player?.trophy?.id, stylePrefs.trophy],
-  );
   const hideCharacter = stylePrefs.character.mode === 'off'
     || ((stylePrefs.character.mode === 'item' || stylePrefs.character.mode === 'random') && characterId === null);
-  const hidePlate = stylePrefs.plate.mode === 'off'
-    || ((stylePrefs.plate.mode === 'item' || stylePrefs.plate.mode === 'random') && plateId === null);
-  const hideTrophy = stylePrefs.trophy.mode === 'off'
-    || ((stylePrefs.trophy.mode === 'item' || stylePrefs.trophy.mode === 'random') && trophyId === null);
-  const trophyImageUrl = hideTrophy || trophyId === null
-    ? null
-    : buildChunithmTrophyUrl(trophyId);
-  const trophyName = useMemo(() => {
-    const choice = stylePrefs.trophy;
-    if (choice.mode === 'off') return null;
-    if ((choice.mode === 'item' || choice.mode === 'random') && choice.name) return choice.name;
-    return payload?.player?.trophy?.name ?? null;
-  }, [payload?.player?.trophy?.name, stylePrefs.trophy]);
-  const styleAssetKey = [
-    stylePrefs.character.mode, characterId ?? '',
-    stylePrefs.plate.mode, plateId ?? '',
-    stylePrefs.trophy.mode, trophyId ?? '',
-  ].join('|');
+  const styleAssetKey = [stylePrefs.character.mode, characterId ?? ''].join('|');
 
   useEffect(() => {
     let cancelled = false;
     if (!payload) return;
     if (styleAssetKeyRef.current === styleAssetKey) return;
-    void Promise.all([
-      hideCharacter || characterId === null
-        ? Promise.resolve(null)
-        : loadChunithmRemoteImageDataUri(buildChunithmCharacterUrl(characterId)),
-      hidePlate || plateId === null
-        ? Promise.resolve(null)
-        : loadChunithmRemoteImageDataUri(buildChunithmNamePlateUrl(plateId)),
-      hideTrophy || trophyId === null
-        ? Promise.resolve(null)
-        : loadChunithmRemoteImageDataUri(trophyImageUrl),
-    ]).then(([nextCharacter, nextPlate, nextTrophy]) => {
+    const pending = hideCharacter || characterId === null
+      ? Promise.resolve(null)
+      : loadChunithmRemoteImageDataUri(buildChunithmCharacterUrl(characterId));
+    void pending.then((nextCharacter) => {
       if (cancelled) return;
       styleAssetKeyRef.current = styleAssetKey;
       setCharacterDataUri(nextCharacter);
-      setPlateDataUri(nextPlate);
-      setTrophyDataUri(nextTrophy);
     });
     return () => {
       cancelled = true;
@@ -341,14 +284,13 @@ export function ChunithmBestImageScreen() {
   }, [
     characterId,
     hideCharacter,
-    hidePlate,
-    hideTrophy,
     payload,
-    plateId,
     styleAssetKey,
-    trophyId,
-    trophyImageUrl,
   ]);
+
+  const backgroundDataUri = backgroundJacketId
+    ? coverUrls?.[backgroundJacketId] ?? null
+    : null;
 
   const htmlPages = useMemo(() => {
     if (!payload || !coverUrls) return null;
@@ -361,27 +303,17 @@ export function ChunithmBestImageScreen() {
       coverUrls,
       jacketIds: jacketIdsByKey,
       characterDataUri,
-      plateDataUri,
-      trophyDataUri,
-      trophyImageUrl,
-      trophyName,
+      backgroundDataUri,
       hideCharacter,
-      hidePlate,
-      hideTrophy,
     }));
   }, [
+    backgroundDataUri,
     characterDataUri,
     coverUrls,
     hideCharacter,
-    hidePlate,
-    hideTrophy,
     jacketIdsByKey,
     pages,
     payload,
-    plateDataUri,
-    trophyDataUri,
-    trophyImageUrl,
-    trophyName,
     width,
   ]);
 
@@ -430,49 +362,44 @@ export function ChunithmBestImageScreen() {
   };
 
   const chooseStyle = (choice: ChunithmBestImageStyleChoice) => {
-    const kind = picker;
-    if (!kind) return;
     if (choice.mode === 'random') {
-      randomizedRef.current.add(`${gameData.activeAccountId}:${kind}`);
+      randomizedRef.current.add(`${gameData.activeAccountId}:character`);
     }
-    setStylePrefs((current) => ({ ...current, [kind]: choice }));
+    setStylePrefs((current) => ({ ...current, character: choice }));
     setPicker(null);
   };
 
-  const styleValue = (kind: ChunithmBestImageStyleKind): string => {
-    const choice = stylePrefs[kind];
-    if (choice.mode === 'current') return `玩家当前${STYLE_LABELS[kind]}`;
+  const characterStyleValue = (): string => {
+    const choice = stylePrefs.character;
+    if (choice.mode === 'current') return '玩家当前角色';
     if (choice.mode === 'off') return '已关闭';
     if (choice.mode === 'random') return `随机${choice.name ? ` · ${choice.name}` : ''}`;
     return choice.name ?? '未设置';
   };
 
-  const stylePreview = (kind: ChunithmBestImageStyleKind) => {
-    if (stylePrefs[kind].mode === 'off') {
+  const characterStylePreview = () => {
+    if (stylePrefs.character.mode === 'off') {
       return <Text style={[styles.noAsset, { color: theme.textMuted }]}>已关闭</Text>;
     }
-    const dataUri = kind === 'character'
-      ? characterDataUri
-      : kind === 'plate'
-        ? plateDataUri
-        : trophyDataUri;
-    if (dataUri) {
+    if (characterDataUri) {
       return (
         <Image
-          source={{ uri: dataUri }}
-          style={
-            kind === 'character'
-              ? styles.characterPreview
-              : kind === 'plate'
-                ? styles.platePreview
-                : styles.trophyPreview
-          }
-          resizeMode={kind === 'character' ? 'cover' : 'contain'}
+          source={{ uri: characterDataUri }}
+          style={styles.characterPreview}
+          resizeMode="contain"
         />
       );
     }
     return <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>;
   };
+
+  const backgroundStyleValue = backgroundSong
+    ? `${backgroundSong.title} · ID${backgroundSong.id}`
+    : stylePrefs.background.mode === 'song'
+      ? '歌曲已不可用 · 使用默认背景'
+      : '默认浅色渐变';
+  const backgroundPreviewUri = backgroundDataUri
+    ?? (backgroundSong ? chunithmBestImageJacketUrl(String(backgroundSong.id)) : null);
 
   const waitForExport = (index: number) => new Promise<number>((resolve, reject) => {
     if (exportTimer.current) clearTimeout(exportTimer.current);
@@ -611,28 +538,50 @@ export function ChunithmBestImageScreen() {
               ))}
             </View>
           </View>
-          {CHUNITHM_BEST_IMAGE_STYLE_KINDS.map((kind) => (
-            <Pressable
-              key={kind}
-              accessibilityRole="button"
-              accessibilityLabel={`选择${STYLE_LABELS[kind]}`}
-              onPress={() => setPicker(kind)}
-              style={({ pressed }) => [
-                styles.styleRow,
-                { borderBottomColor: theme.border },
-                pressed && { backgroundColor: theme.surfaceMuted },
-              ]}
-            >
-              <View style={styles.stylePreview}>{stylePreview(kind)}</View>
-              <View style={styles.styleCopy}>
-                <Text style={[styles.styleName, { color: theme.text }]}>{STYLE_LABELS[kind]}</Text>
-                <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>
-                  {styleValue(kind)}
-                </Text>
-              </View>
-              <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-            </Pressable>
-          ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="选择角色"
+            onPress={() => setPicker('character')}
+            style={({ pressed }) => [
+              styles.styleRow,
+              { borderBottomColor: theme.border },
+              pressed && { backgroundColor: theme.surfaceMuted },
+            ]}
+          >
+            <View style={styles.stylePreview}>{characterStylePreview()}</View>
+            <View style={styles.styleCopy}>
+              <Text style={[styles.styleName, { color: theme.text }]}>角色</Text>
+              <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>
+                {characterStyleValue()}
+              </Text>
+            </View>
+            <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="选择歌曲背景"
+            onPress={() => setPicker('background')}
+            style={({ pressed }) => [
+              styles.styleRow,
+              { borderBottomColor: theme.border },
+              pressed && { backgroundColor: theme.surfaceMuted },
+            ]}
+          >
+            <View style={styles.stylePreview}>
+              {backgroundPreviewUri ? (
+                <Image source={{ uri: backgroundPreviewUri }} style={styles.backgroundPreview} resizeMode="cover" />
+              ) : (
+                <View style={[styles.defaultBackgroundPreview, { backgroundColor: theme.surfaceMuted }]} />
+              )}
+            </View>
+            <View style={styles.styleCopy}>
+              <Text style={[styles.styleName, { color: theme.text }]}>背景</Text>
+              <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>
+                {backgroundStyleValue}
+              </Text>
+            </View>
+            <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
+          </Pressable>
         </View>
 
         <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>分辨率</Text>
@@ -789,12 +738,21 @@ export function ChunithmBestImageScreen() {
         </Text>
       </ScrollView>
       <ChunithmBestImageStylePicker
-        visible={picker !== null}
-        kind={picker}
-        items={picker ? collections?.[picker] ?? [] : []}
-        selection={picker ? stylePrefs[picker] : null}
+        visible={picker === 'character'}
+        items={characters ?? []}
+        selection={stylePrefs.character}
         onClose={() => setPicker(null)}
         onSelect={chooseStyle}
+      />
+      <ChunithmBestImageBackgroundPicker
+        visible={picker === 'background'}
+        songs={catalog?.songs ?? []}
+        selection={stylePrefs.background}
+        onClose={() => setPicker(null)}
+        onSelect={(choice) => {
+          setStylePrefs((current) => ({ ...current, background: choice }));
+          setPicker(null);
+        }}
       />
       <Modal
         visible={exportIndex !== null}
@@ -894,8 +852,8 @@ const styles = StyleSheet.create({
   },
   stylePreview: { width: 132, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
   characterPreview: { width: 46, height: 46, borderRadius: 10 },
-  platePreview: { width: 132, height: 46, borderRadius: 8 },
-  trophyPreview: { width: 132, height: 36, borderRadius: 8 },
+  backgroundPreview: { width: 82, height: 46, borderRadius: 8 },
+  defaultBackgroundPreview: { width: 82, height: 46, borderRadius: 8 },
   styleCopy: { flex: 1, minWidth: 0 },
   styleName: { fontSize: 14, fontWeight: '800' },
   styleValue: { fontSize: 12, marginTop: 3 },
