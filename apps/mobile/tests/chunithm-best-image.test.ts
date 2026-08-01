@@ -11,6 +11,7 @@ import {
 } from '@/features/chunithm-best-image/load-chunithm-best-image-jackets';
 import { parseChunithmBestImageStylePreferences } from '@/features/chunithm-best-image/chunithm-best-image-preferences';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
+import { buildChunithmTrophyUrl } from '@/domain/chunithm-personal';
 
 vi.mock('expo-image', () => ({
   Image: {
@@ -125,6 +126,29 @@ describe('chunithm best image jackets', () => {
 });
 
 describe('buildChunithmBestImageHtml', () => {
+  it('uses the trophy id image URL when a prepared data URI is unavailable', () => {
+    const trophyImageUrl = buildChunithmTrophyUrl(42);
+    const html = buildChunithmBestImageHtml({
+      type: 'best50',
+      width: 1080,
+      player: null,
+      ratingDisplay: '0.00',
+      trophyImageUrl,
+      trophyName: '称号回退',
+      page: {
+        id: 'chunithm-page-0',
+        pageIndex: 0,
+        pageCount: 1,
+        sections: [],
+      },
+    });
+
+    expect(trophyImageUrl).toBe('https://assets2.lxns.net/chunithm/trophy/42.png');
+    expect(html).toContain('class="trophy-image"');
+    expect(html).toContain('src="https://assets2.lxns.net/chunithm/trophy/42.png"');
+    expect(html).toContain('<span class="trophy-fallback" style="display:none">称号回退</span>');
+  });
+
   it('renders Best 30 / New 20 / Selection and score fields', () => {
     const html = buildChunithmBestImageHtml({
       type: 'best50',
