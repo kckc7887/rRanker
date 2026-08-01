@@ -10,40 +10,21 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  buildChunithmCharacterUrl,
-  buildChunithmNamePlateUrl,
-  buildChunithmTrophyUrl,
-} from '@/domain/chunithm-personal';
+import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
 import { useAppTheme } from '@/theme/app-theme';
 import type { ChunithmBestImageCollectionItem } from './load-chunithm-best-image-collections';
 import type {
   ChunithmBestImageStyleChoice,
-  ChunithmBestImageStyleKind,
 } from './chunithm-best-image-preferences';
-
-const LABELS: Record<ChunithmBestImageStyleKind, string> = {
-  character: '角色',
-  plate: '名牌板',
-  trophy: '称号',
-};
-
-function previewUrl(kind: ChunithmBestImageStyleKind, id: number): string | null {
-  if (kind === 'character') return buildChunithmCharacterUrl(id);
-  if (kind === 'plate') return buildChunithmNamePlateUrl(id);
-  return buildChunithmTrophyUrl(id);
-}
 
 export function ChunithmBestImageStylePicker({
   visible,
-  kind,
   items,
   selection,
   onClose,
   onSelect,
 }: {
   visible: boolean;
-  kind: ChunithmBestImageStyleKind | null;
   items: readonly ChunithmBestImageCollectionItem[];
   selection: ChunithmBestImageStyleChoice | null;
   onClose: () => void;
@@ -52,11 +33,11 @@ export function ChunithmBestImageStylePicker({
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
-  const label = kind ? LABELS[kind] : '';
+  const label = '角色';
 
   useEffect(() => {
     if (visible) setQuery('');
-  }, [kind, visible]);
+  }, [visible]);
 
   const filteredItems = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -74,7 +55,7 @@ export function ChunithmBestImageStylePicker({
 
   return (
     <Modal
-      visible={visible && kind !== null}
+      visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
@@ -131,7 +112,7 @@ export function ChunithmBestImageStylePicker({
           renderItem={({ item }) => {
             const selected = (selection?.mode === 'item' || selection?.mode === 'random')
               && selection.id === item.id;
-            const uri = previewUrl(item.kind, item.id);
+            const uri = buildChunithmCharacterUrl(item.id);
             return (
               <Pressable
                 accessibilityRole="button"
@@ -140,9 +121,9 @@ export function ChunithmBestImageStylePicker({
                 onPress={() => onSelect({ mode: 'item', id: item.id, name: item.name })}
                 style={[styles.item, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
               >
-                <View style={[styles.preview, item.kind === 'plate' && styles.platePreview, item.kind === 'trophy' && styles.trophyPreview]}>
+                <View style={styles.preview}>
                   {uri ? (
-                    <Image source={{ uri }} style={styles.previewImage} resizeMode={item.kind === 'character' ? 'cover' : 'contain'} />
+                    <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
                   ) : (
                     <Text style={[styles.noPreview, { color: theme.textMuted }]}>无预览</Text>
                   )}
@@ -174,8 +155,6 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 72, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderRadius: 14 },
   preview: { width: 54, height: 54, borderRadius: 10, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  platePreview: { width: 120, height: 40, borderRadius: 8 },
-  trophyPreview: { width: 120, height: 36, borderRadius: 8 },
   previewImage: { width: '100%', height: '100%' },
   noPreview: { fontSize: 11, fontWeight: '600' },
   copy: { flex: 1, minWidth: 0 },

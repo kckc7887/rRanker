@@ -5,13 +5,13 @@ import {
   paginateChunithmBestImageSections,
 } from '@/features/chunithm-best-image/chunithm-best-image';
 import { buildChunithmBestImageHtml } from '@/features/chunithm-best-image/build-chunithm-best-image-html';
+import { filterChunithmBestImageBackgroundSongs } from '@/features/chunithm-best-image/chunithm-best-image-background';
 import {
   chunithmBestImageJacketUrl,
   resolveChunithmBestImageJacketId,
 } from '@/features/chunithm-best-image/load-chunithm-best-image-jackets';
 import { parseChunithmBestImageStylePreferences } from '@/features/chunithm-best-image/chunithm-best-image-preferences';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import { buildChunithmTrophyUrl } from '@/domain/chunithm-personal';
 
 vi.mock('expo-image', () => ({
   Image: {
@@ -126,30 +126,7 @@ describe('chunithm best image jackets', () => {
 });
 
 describe('buildChunithmBestImageHtml', () => {
-  it('uses the trophy id image URL when a prepared data URI is unavailable', () => {
-    const trophyImageUrl = buildChunithmTrophyUrl(42);
-    const html = buildChunithmBestImageHtml({
-      type: 'best50',
-      width: 1080,
-      player: null,
-      ratingDisplay: '0.00',
-      trophyImageUrl,
-      trophyName: '称号回退',
-      page: {
-        id: 'chunithm-page-0',
-        pageIndex: 0,
-        pageCount: 1,
-        sections: [],
-      },
-    });
-
-    expect(trophyImageUrl).toBe('https://assets2.lxns.net/chunithm/trophy/42.png');
-    expect(html).toContain('class="trophy-image"');
-    expect(html).toContain('src="https://assets2.lxns.net/chunithm/trophy/42.png"');
-    expect(html).toContain('<span class="trophy-fallback" style="display:none">称号回退</span>');
-  });
-
-  it('renders Best 30 / New 20 / Selection and score fields', () => {
+  it('renders the compact possession card, song background, and score fields', () => {
     const html = buildChunithmBestImageHtml({
       type: 'best50',
       width: 1080,
@@ -180,6 +157,8 @@ describe('buildChunithmBestImageHtml', () => {
       },
       coverUrls: { '1': null, '2': null, '3': null },
       jacketIds: { '1-3': '1', '2-3': '2', '3-3': '3' },
+      characterDataUri: 'data:image/png;base64,character',
+      backgroundDataUri: 'data:image/png;base64,background',
     });
     expect(html).toContain('Best 30');
     expect(html).toContain('New 20');
@@ -192,37 +171,44 @@ describe('buildChunithmBestImageHtml', () => {
     expect(html).not.toContain('class="chart-type"');
     expect(html).toContain('score-card-foot"><span class="score-badges"');
     expect(html).toContain('.score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-start');
-    expect(html).toContain('class="profile-banner"');
-    expect(html).toContain('.profile-layout{position:absolute;left:0;top:0;width:100%;height:100%}');
+    expect(html).toContain('class="background-image"');
+    expect(html).toContain('src="data:image/png;base64,background"');
+    expect(html).toContain('filter:blur(12px);transform:scale(1.04)');
+    expect(html).toContain('.background-veil{position:absolute;inset:0;background:rgba(238,242,248,.52)}');
+    expect(html).toContain('class="profile-card"');
+    expect(html).toContain('.profile-card{position:absolute;z-index:2;left:43px;top:43px;display:grid;width:360px;height:112px');
+    expect(html).toContain('grid-template-columns:80px 1px minmax(0,1fr);column-gap:14px');
+    expect(html).toContain('padding:16px;border:1px solid var(--tag-outline);border-radius:16px');
+    expect(html).toContain('--tag-fill:linear-gradient(90deg,#FF9CA8 0%');
+    expect(html).toContain('--rating-outline:-1px -1px 0 #FF2D95,0px -1px 0 #FF6B00');
+    expect(html).toContain('text-shadow:var(--rating-outline)');
+    expect(html).toContain('.profile-card::before{position:absolute;z-index:0;inset:0;background:var(--tag-fill);content:"";opacity:.18}');
+    expect(html).toContain('border-radius:16px;background:transparent');
+    expect(html).not.toContain('var(--tag-border) border-box');
+    expect(html).not.toContain('backdrop-filter');
+    expect(html).toContain('class="avatar"');
+    expect(html).toContain('class="avatar-image"');
+    expect(html).toContain('src="data:image/png;base64,character"');
+    expect(html).toContain('.avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}');
+    expect(html).toContain('class="profile-divider"');
     expect(html).toContain('class="player-name-row"');
-    expect(html).toContain('class="player-level">Lv.99</span>');
-    expect(html).toMatch(/class="player-level">Lv\.99<\/span>\s*<span class="player-name"[^>]*>测试玩家<\/span>/);
-    expect(html).toContain('class="rating-badge"');
-    expect(html).toContain('class="rating-divider"');
+    expect(html).toContain('class="player-name" id="player-name">测试玩家</span>');
     expect(html).toContain('<div class="rating-value-row"><span>RATING</span><strong>16.50</strong></div>');
-    expect(html).toContain('class="trophy-slot"');
-    expect(html).toContain('.profile-banner{position:absolute;z-index:1;left:43px;top:43px;width:540px;height:214px;border-radius:0');
-    expect(html).toContain('.profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;left:-0.938px;top:8.438px;display:block;width:540px;height:213.75px;border-radius:0}');
-    expect(html).toContain('.profile-banner .nameplate-image{object-fit:contain;object-position:center}');
-    expect(html).toContain('.profile-banner .avatar{position:absolute;left:434.063px;top:77.813px;width:80.625px;height:80.625px;overflow:visible;border-radius:0}');
-    expect(html).toContain('.profile-banner .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}');
-    expect(html).toContain('.rating-badge{position:absolute;left:175.313px;top:75.938px;display:flex;width:258.75px;height:83.438px;min-width:0;flex-direction:column;overflow:hidden;padding:4px 7px;border:1px solid transparent;border-radius:0');
-    expect(html).toContain('.trophy-slot{position:absolute;left:170.419px;top:37.294px;display:flex;width:346.875px;height:42.218px;align-items:center;justify-content:center;overflow:visible;border-radius:0}');
-    expect(html).toContain('.trophy-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}');
-    expect(html).not.toContain('class="profile-spacer"');
-    expect(html).toContain('.scores-content{position:absolute;z-index:1;left:43px;right:43px;top:295px');
+    expect(html).toContain('.scores-content{position:absolute;z-index:1;left:43px;right:43px;top:193px');
+    expect(html).not.toContain('player-level');
+    expect(html).not.toContain('nameplate');
+    expect(html).not.toContain('trophy');
+    expect(html).not.toContain('rating-divider');
     expect(html).not.toContain('class="meta-row"');
-    expect(html).not.toMatch(/meta-row"><span>[^<]*虹/);
   });
 
-  it('keeps the fixed player positions when trophy and character are disabled', () => {
+  it('shrinks the card and removes the avatar column when character is disabled', () => {
     const html = buildChunithmBestImageHtml({
       type: 'best50',
       width: 1080,
       player: null,
       ratingDisplay: '0.00',
       hideCharacter: true,
-      hideTrophy: true,
       page: {
         id: 'chunithm-page-0',
         pageIndex: 0,
@@ -231,15 +217,16 @@ describe('buildChunithmBestImageHtml', () => {
       },
     });
 
-    expect(html).toContain('.profile-layout{position:absolute;left:0;top:0;width:100%;height:100%}');
-    expect(html).not.toContain('class="trophy-slot"');
+    expect(html).toContain('class="profile-card no-avatar"');
+    expect(html).toContain('width:252px;height:112px');
+    expect(html).toContain('.profile-card.no-avatar{grid-template-columns:minmax(0,1fr)}');
     expect(html).not.toContain('class="avatar"');
-    expect(html).toContain('class="player-level">Lv.—</span>');
+    expect(html).not.toContain('class="profile-divider"');
     expect(html).toContain('class="player-name" id="player-name">未读取玩家资料</span>');
     expect(html).toContain('<div class="rating-value-row"><span>RATING</span><strong>0.00</strong></div>');
   });
 
-  it('uses text and initial fallbacks without changing the grid', () => {
+  it('uses the default background and player initial fallbacks', () => {
     const html = buildChunithmBestImageHtml({
       type: 'best50',
       width: 1080,
@@ -253,9 +240,10 @@ describe('buildChunithmBestImageHtml', () => {
       },
     });
 
-    expect(html).toContain('<span class="trophy-fallback">称号未同步</span>');
+    expect(html).not.toContain('class="background-image"');
+    expect(html).toContain('linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%)');
     expect(html).toContain('<div class="avatar-fallback">未</div>');
-    expect(html).toContain('const APP_NAME_MIN_SIZE = 14;');
+    expect(html).toContain('const APP_NAME_MIN_SIZE = 17;');
     expect(html).toContain("playerName.style.transform = 'scaleX('");
   });
 });
@@ -267,18 +255,17 @@ describe('parseChunithmBestImageStylePreferences', () => {
     expect(parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 3 }).selectionCount).toBe(0);
   });
 
-  it('migrates version 1 to version 2 defaults for character/plate/trophy', () => {
+  it('migrates version 1 to version 3 defaults', () => {
     const parsed = parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 5 });
     expect(parsed).toMatchObject({
-      version: 2,
+      version: 3,
       selectionCount: 5,
       character: { mode: 'current' },
-      plate: { mode: 'current' },
-      trophy: { mode: 'current' },
+      background: { mode: 'default' },
     });
   });
 
-  it('parses version 2 character/plate/trophy modes', () => {
+  it('migrates version 2 while discarding plate and trophy choices', () => {
     expect(parseChunithmBestImageStylePreferences({
       version: 2,
       selectionCount: 10,
@@ -286,25 +273,69 @@ describe('parseChunithmBestImageStylePreferences', () => {
       plate: { mode: 'item', id: 12, name: '测试名牌' },
       trophy: { mode: 'random', id: 34, name: '测试称号' },
     })).toEqual({
-      version: 2,
+      version: 3,
       selectionCount: 10,
       character: { mode: 'off' },
-      plate: { mode: 'item', id: 12, name: '测试名牌' },
-      trophy: { mode: 'random', id: 34, name: '测试称号' },
+      background: { mode: 'default' },
     });
   });
 
-  it('falls back invalid version 2 choices to current', () => {
+  it('parses version 3 song backgrounds and falls back invalid values', () => {
     expect(parseChunithmBestImageStylePreferences({
-      version: 2,
+      version: 3,
+      selectionCount: 5,
+      character: { mode: 'item', id: 42, name: '角色' },
+      background: { mode: 'song', songId: 1234 },
+    })).toEqual({
+      version: 3,
+      selectionCount: 5,
+      character: { mode: 'item', id: 42, name: '角色' },
+      background: { mode: 'song', songId: 1234 },
+    });
+    expect(parseChunithmBestImageStylePreferences({
+      version: 3,
       selectionCount: 0,
       character: { mode: 'item', id: 'bad' },
-      plate: { mode: 'random' },
-      trophy: { mode: 'unknown' },
+      background: { mode: 'song', songId: -1 },
     })).toMatchObject({
       character: { mode: 'current' },
-      plate: { mode: 'current' },
-      trophy: { mode: 'current' },
+      background: { mode: 'default' },
     });
+  });
+});
+
+describe('filterChunithmBestImageBackgroundSongs', () => {
+  const songs = [
+    {
+      id: 101,
+      title: 'World Vanquisher',
+      artist: 'void',
+      genre: 'ORIGINAL',
+      bpm: 170,
+      versionId: 1,
+      versionTitle: 'CHUNITHM',
+      locked: false,
+      disabled: false,
+      difficulties: [],
+    },
+    {
+      id: 202,
+      title: '光線チューニング',
+      artist: 'ナユタン星人',
+      genre: 'POPS & ANIME',
+      bpm: 190,
+      versionId: 2,
+      versionTitle: 'STAR',
+      locked: false,
+      disabled: false,
+      difficulties: [],
+    },
+  ];
+
+  it('searches background songs by title, artist, and id', () => {
+    expect(filterChunithmBestImageBackgroundSongs(songs, 'world')).toEqual([songs[0]]);
+    expect(filterChunithmBestImageBackgroundSongs(songs, 'ナユタン')).toEqual([songs[1]]);
+    expect(filterChunithmBestImageBackgroundSongs(songs, '202')).toEqual([songs[1]]);
+    expect(filterChunithmBestImageBackgroundSongs(songs, '')).toBe(songs);
   });
 });
