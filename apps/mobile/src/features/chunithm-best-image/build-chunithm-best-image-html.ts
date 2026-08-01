@@ -1,6 +1,9 @@
 import type { ChunithmLevelIndex } from '@/domain/chunithm';
 import type { ChunithmPlayer } from '@/domain/chunithm-personal';
-import { resolveChunithmPossessionTheme } from '@/domain/chunithm-rating-theme';
+import {
+  resolveChunithmPossessionTheme,
+  resolveChunithmRatingTier,
+} from '@/domain/chunithm-rating-theme';
 import {
   chunithmAchievementBadges,
   chunithmRankUsesGradient,
@@ -28,13 +31,8 @@ export type ChunithmBestImageHtmlInput = {
   /** jacketId keyed by score card key */
   jacketIds?: Readonly<Record<string, string>>;
   characterDataUri?: string | null;
-  plateDataUri?: string | null;
-  trophyDataUri?: string | null;
-  trophyImageUrl?: string | null;
-  trophyName?: string | null;
+  backgroundDataUri?: string | null;
   hideCharacter?: boolean;
-  hidePlate?: boolean;
-  hideTrophy?: boolean;
 };
 
 const DIFFICULTY_COLORS: Record<ChunithmLevelIndex, string> = {
@@ -45,15 +43,6 @@ const DIFFICULTY_COLORS: Record<ChunithmLevelIndex, string> = {
   4: '#17171A',
   5: '#7B61FF',
 };
-
-const CHUNITHM_NAMEPLATE_SOURCE_WIDTH = 576;
-const CHUNITHM_NAMEPLATE_SOURCE_HEIGHT = 228;
-const CHUNITHM_PLAYER_LAYOUT = {
-  nameplate: { x: -1, y: 9, width: 576, height: 228 },
-  trophy: { x: 181.78, y: 39.78, width: 370, height: 370 * 74 / 608 },
-  rating: { x: 187, y: 81, width: 276, height: 89 },
-  character: { x: 463, y: 83, width: 86, height: 86 },
-} as const;
 
 function escapeHtml(value: string): string {
   return value
@@ -68,15 +57,31 @@ function px(value: number): number {
   return Math.max(1, Math.round(value));
 }
 
-function precisePx(value: number): string {
-  return `${Number(value.toFixed(3))}px`;
-}
-
 function cssLinearGradient(colors: readonly string[], locations: readonly number[]): string {
   const stops = colors.map((color, index) => (
     `${color} ${Math.round((locations[index] ?? index / Math.max(1, colors.length - 1)) * 100)}%`
   ));
   return `linear-gradient(90deg,${stops.join(',')})`;
+}
+
+function hexColorWithAlpha(color: string, alpha: number): string {
+  const normalized = color.trim();
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(normalized);
+  if (!match) return normalized;
+  const red = Number.parseInt(match[1]!, 16);
+  const green = Number.parseInt(match[2]!, 16);
+  const blue = Number.parseInt(match[3]!, 16);
+  return `rgba(${red},${green},${blue},${alpha})`;
+}
+
+function cssTextOutline(colors: readonly string[], stroke: number): string {
+  const directions = [
+    [-1, -1], [0, -1], [1, -1], [1, 0],
+    [1, 1], [0, 1], [-1, 1], [-1, 0],
+  ] as const;
+  return directions.map(([x, y], index) => (
+    `${x * stroke}px ${y * stroke}px 0 ${colors[index % colors.length]}`
+  )).join(',');
 }
 
 function badgeToneClass(tone: ChunithmAchievementTone): string {
@@ -167,55 +172,45 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
   const name = player?.name?.trim() || '未读取玩家资料';
   const initial = Array.from(name)[0] ?? '?';
   const possessionTheme = resolveChunithmPossessionTheme(player?.rating_possession);
+  const ratingTier = resolveChunithmRatingTier(player?.rating ?? 0);
   const pageCount = Math.max(1, Math.floor(input.page.pageCount));
   const pageIndex = Math.min(pageCount - 1, Math.max(0, Math.floor(input.page.pageIndex)));
   const hideCharacter = input.hideCharacter ?? false;
-  const hidePlate = input.hidePlate ?? false;
-  const hideTrophy = input.hideTrophy ?? false;
 
   const pageInset = px(width * 0.04);
-  const bannerWidth = px(width * 0.5);
-  const bannerHeight = px(
-    bannerWidth * CHUNITHM_NAMEPLATE_SOURCE_HEIGHT / CHUNITHM_NAMEPLATE_SOURCE_WIDTH,
-  );
-  const profileScale = bannerWidth / CHUNITHM_NAMEPLATE_SOURCE_WIDTH;
-  const profileUnit = 50 * profileScale;
-  const profilePosition = (value: number) => precisePx(value * profileScale);
-  const stroke = Math.max(1, px(bannerWidth / 720));
-  const ratingLabelSize = px(profileUnit * 0.19);
-  const ratingValueSize = px(profileUnit * 0.3);
-  const nameFontSize = px(profileUnit * 0.5);
-  const nameMinimumFontSize = px(profileUnit * 0.3);
-  const levelFontSize = px(profileUnit * 0.39);
+  const profileScale = width / 1080;
+  const profileWidth = px((hideCharacter ? 252 : 360) * profileScale);
+  const profileHeight = px(112 * profileScale);
+  const profilePadding = px(16 * profileScale);
+  const avatarSize = px(80 * profileScale);
+  const profileGap = px(14 * profileScale);
+  const profileRadius = px(16 * profileScale);
+  const nameFontSize = px(28 * profileScale);
+  const nameMinimumFontSize = px(17 * profileScale);
+  const ratingLabelSize = px(9 * profileScale);
+  const ratingValueSize = px(19 * profileScale);
   const scoresGap = px(width * 0.035);
-  const scoresTop = pageInset + bannerHeight + scoresGap;
+  const scoresTop = pageInset + profileHeight + scoresGap;
   const gridGap = px(width * 0.009);
   const scoreCardPadding = px(width * 0.0065);
   const jacketSize = px(width * 0.058);
 
   const fill = cssLinearGradient(possessionTheme.fillColors, possessionTheme.fillLocations);
-  const border = cssLinearGradient(possessionTheme.borderColors, possessionTheme.borderLocations);
+  const outline = hexColorWithAlpha(possessionTheme.borderColors[0], 0.68);
+  const ratingOutline = cssTextOutline(ratingTier.colors, Math.max(1, px(1.2 * profileScale)));
   const identityStyle = [
     `--tag-fill:${fill}`,
-    `--tag-border:${border}`,
-    `--tag-overlay:${possessionTheme.overlayColor}`,
+    `--tag-outline:${outline}`,
     `--tag-text:${possessionTheme.textColor}`,
+    `--rating-outline:${ratingOutline}`,
   ].join(';');
 
-  const nameplate = hidePlate
-    ? ''
-    : input.plateDataUri
-      ? `<img class="nameplate-image" alt="" src="${escapeHtml(input.plateDataUri)}">`
-      : '<div class="nameplate-fallback"></div>';
   const avatarMarkup = input.characterDataUri
     ? `<img class="avatar-image" alt="" src="${escapeHtml(input.characterDataUri)}">`
     : `<div class="avatar-fallback">${escapeHtml(initial)}</div>`;
-  const levelLabel = player ? `Lv.${player.level}` : 'Lv.—';
-  const trophyFallback = input.trophyName?.trim() || player?.trophy?.name?.trim() || '称号未同步';
-  const trophyImageSource = input.trophyDataUri || input.trophyImageUrl;
-  const trophyMarkup = trophyImageSource
-    ? `<img class="trophy-image" alt="" src="${escapeHtml(trophyImageSource)}" onerror="this.style.display='none';var f=this.nextElementSibling;if(f)f.style.display='flex'"><span class="trophy-fallback" style="display:none">${escapeHtml(trophyFallback)}</span>`
-    : `<span class="trophy-fallback">${escapeHtml(trophyFallback)}</span>`;
+  const backgroundImage = input.backgroundDataUri
+    ? `<img class="background-image" alt="" src="${escapeHtml(input.backgroundDataUri)}" onerror="this.style.display='none'">`
+    : '';
 
   const pageMarkerLabel = `第 ${pageIndex + 1} / ${pageCount} 页`;
   const pageMarker = pageCount > 1
@@ -244,26 +239,23 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
     .preview-stage{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;overflow:hidden;background:#DDE3EC}
     .canvas{position:absolute;left:0;top:0;width:${width}px;min-height:${minimumHeight}px;overflow:hidden;transform-origin:top left;background:#E7EDF5}
-    .canvas-background{position:absolute;inset:0;background:linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%)}
-    .profile-banner{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset}px;width:${bannerWidth}px;height:${bannerHeight}px;border-radius:0;filter:drop-shadow(0 ${px(bannerWidth * 0.008)}px ${px(bannerWidth * 0.018)}px rgba(35,53,82,.22))}
-    .profile-banner.no-plate{border:${stroke}px solid rgba(255,255,255,.78);background:rgba(240,244,250,.78)}
-    .profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;left:${profilePosition(CHUNITHM_PLAYER_LAYOUT.nameplate.x)};top:${profilePosition(CHUNITHM_PLAYER_LAYOUT.nameplate.y)};display:block;width:${profilePosition(CHUNITHM_PLAYER_LAYOUT.nameplate.width)};height:${profilePosition(CHUNITHM_PLAYER_LAYOUT.nameplate.height)};border-radius:0}
-    .profile-banner .nameplate-image{object-fit:contain;object-position:center}
-    .profile-banner .nameplate-fallback{border:${Math.max(1, px(bannerWidth * 0.002))}px solid rgba(255,255,255,.8);background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}
-    .profile-layout{position:absolute;left:0;top:0;width:100%;height:100%}
-    .profile-banner .avatar{position:absolute;left:${profilePosition(CHUNITHM_PLAYER_LAYOUT.character.x)};top:${profilePosition(CHUNITHM_PLAYER_LAYOUT.character.y)};width:${profilePosition(CHUNITHM_PLAYER_LAYOUT.character.width)};height:${profilePosition(CHUNITHM_PLAYER_LAYOUT.character.height)};overflow:visible;border-radius:0}
-    .profile-banner .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
-    .profile-banner .avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font:900 ${px(profileUnit * 0.68)}px/1 system-ui,sans-serif;color:#52647F;background:linear-gradient(145deg,#F8FBFF,#C7D5EA)}
-    .rating-badge{position:absolute;left:${profilePosition(CHUNITHM_PLAYER_LAYOUT.rating.x)};top:${profilePosition(CHUNITHM_PLAYER_LAYOUT.rating.y)};display:flex;width:${profilePosition(CHUNITHM_PLAYER_LAYOUT.rating.width)};height:${profilePosition(CHUNITHM_PLAYER_LAYOUT.rating.height)};min-width:0;flex-direction:column;overflow:hidden;padding:${px(profileUnit * 0.075)}px ${px(profileUnit * 0.15)}px;border:${Math.max(1, px(bannerWidth * 0.002))}px solid transparent;border-radius:0;background:linear-gradient(var(--tag-overlay),var(--tag-overlay)) padding-box,var(--tag-fill) padding-box,var(--tag-border) border-box;color:var(--tag-text);box-shadow:0 1px 0 rgba(255,255,255,.52) inset,0 ${px(bannerWidth * 0.004)}px ${px(bannerWidth * 0.012)}px rgba(42,55,82,.17)}
-    .player-name-row{display:flex;width:100%;min-width:0;min-height:0;flex:1 1 auto;align-items:center;gap:${px(profileUnit * 0.11)}px;overflow:hidden}
-    .player-name{display:block;width:max-content;min-width:0;flex:0 0 auto;overflow:visible;color:var(--tag-text);font:900 ${nameFontSize}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;transform-origin:left center}
-    .player-level{flex:0 0 auto;color:var(--tag-text);font:850 ${levelFontSize}px/1 system-ui,sans-serif;white-space:nowrap}
-    .rating-divider{width:100%;height:${Math.max(1, px(bannerWidth * 0.0012))}px;flex:0 0 auto;background:var(--tag-text);opacity:.42}
-    .rating-value-row{display:flex;width:100%;min-height:0;flex:0 0 34%;align-items:center;gap:${px(profileUnit * 0.09)}px;font:750 ${ratingLabelSize}px/1 system-ui,sans-serif;letter-spacing:.08em;white-space:nowrap}
-    .rating-value-row strong{font-size:${ratingValueSize}px;font-weight:850;font-variant-numeric:tabular-nums;letter-spacing:.02em}
-    .trophy-slot{position:absolute;left:${profilePosition(CHUNITHM_PLAYER_LAYOUT.trophy.x)};top:${profilePosition(CHUNITHM_PLAYER_LAYOUT.trophy.y)};display:flex;width:${profilePosition(CHUNITHM_PLAYER_LAYOUT.trophy.width)};height:${profilePosition(CHUNITHM_PLAYER_LAYOUT.trophy.height)};align-items:center;justify-content:center;overflow:visible;border-radius:0}
-    .trophy-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
-    .trophy-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;overflow:hidden;color:#394454;font:700 ${px(profileUnit * 0.34)}px/1.2 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
+    .canvas-background{position:absolute;inset:0;overflow:hidden;background:linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%)}
+    .background-image{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center;filter:blur(${px(12 * profileScale)}px);transform:scale(1.04)}
+    .background-veil{position:absolute;inset:0;background:rgba(238,242,248,.52)}
+    .profile-card{position:absolute;z-index:2;left:${pageInset}px;top:${pageInset}px;display:grid;width:${profileWidth}px;height:${profileHeight}px;min-width:0;grid-template-columns:${avatarSize}px 1px minmax(0,1fr);column-gap:${profileGap}px;align-items:center;isolation:isolate;overflow:hidden;padding:${profilePadding}px;border:1px solid var(--tag-outline);border-radius:${profileRadius}px;background:transparent;box-shadow:0 ${px(5 * profileScale)}px ${px(18 * profileScale)}px rgba(35,48,70,.18);color:var(--tag-text)}
+    .profile-card::before{position:absolute;z-index:0;inset:0;background:var(--tag-fill);content:"";opacity:.18}
+    .profile-card>*{position:relative;z-index:1}
+    .profile-card.no-avatar{grid-template-columns:minmax(0,1fr)}
+    .avatar{display:flex;width:${avatarSize}px;height:${avatarSize}px;align-items:center;justify-content:center;overflow:visible}
+    .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
+    .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;border-radius:${px(12 * profileScale)}px;background:rgba(255,255,255,.45);color:var(--tag-text);font:900 ${px(38 * profileScale)}px/1 system-ui,sans-serif}
+    .profile-divider{width:1px;height:${avatarSize}px;background:var(--tag-text);opacity:.25}
+    .profile-copy{display:flex;width:100%;min-width:0;height:100%;flex-direction:column;justify-content:center;overflow:hidden}
+    .player-name-row{display:flex;width:100%;min-width:0;align-items:flex-end;overflow:hidden}
+    .player-name{display:block;width:max-content;min-width:0;flex:0 0 auto;overflow:visible;color:var(--tag-text);font:900 ${nameFontSize}px/1.08 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.055em;text-shadow:var(--rating-outline);white-space:nowrap;transform-origin:left center}
+    .rating-value-row{display:flex;width:100%;align-items:baseline;gap:${px(8 * profileScale)}px;margin-top:${px(12 * profileScale)}px;color:var(--tag-text);font:750 ${ratingLabelSize}px/1 system-ui,sans-serif;letter-spacing:.12em;white-space:nowrap}
+    .rating-value-row span{opacity:.7}
+    .rating-value-row strong{font-size:${ratingValueSize}px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.02em;text-shadow:var(--rating-outline)}
     .page-marker{position:absolute;z-index:2;right:${pageInset}px;top:${pageInset}px;display:flex;height:${px(width * 0.025)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.01)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 0.009)}px/1 system-ui,sans-serif}
     .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
     .score-section+.score-section{margin-top:${px(width * 0.024)}px}
@@ -305,21 +297,13 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
 <body>
   <div class="preview-stage">
     <main class="canvas" data-image-type="${input.type}" aria-label="成绩图片预览">
-      <div class="canvas-background"></div>
+      <div class="canvas-background">${backgroundImage}<div class="background-veil"></div></div>
       ${pageMarker}
-      <section class="profile-banner${hidePlate ? ' no-plate' : ''}" data-layout-content aria-label="玩家资料">
-        ${nameplate}
-        <div class="profile-layout">
-          ${hideTrophy ? '' : `<div class="trophy-slot">${trophyMarkup}</div>`}
-          <div class="rating-badge" id="rating-box" style="${escapeHtml(identityStyle)}" aria-label="Rating ${escapeHtml(input.ratingDisplay)}，${escapeHtml(possessionTheme.label)}">
-            <div class="player-name-row" id="player-name-row">
-              <span class="player-level">${escapeHtml(levelLabel)}</span>
-              <span class="player-name" id="player-name">${escapeHtml(name)}</span>
-            </div>
-            <div class="rating-divider" aria-hidden="true"></div>
-            <div class="rating-value-row"><span>RATING</span><strong>${escapeHtml(input.ratingDisplay)}</strong></div>
-          </div>
-          ${hideCharacter ? '' : `<div class="avatar">${avatarMarkup}</div>`}
+      <section class="profile-card${hideCharacter ? ' no-avatar' : ''}" data-layout-content style="${escapeHtml(identityStyle)}" aria-label="Rating ${escapeHtml(input.ratingDisplay)}，${escapeHtml(possessionTheme.label)}">
+        ${hideCharacter ? '' : `<div class="avatar">${avatarMarkup}</div><div class="profile-divider" aria-hidden="true"></div>`}
+        <div class="profile-copy">
+          <div class="player-name-row" id="player-name-row"><span class="player-name" id="player-name">${escapeHtml(name)}</span></div>
+          <div class="rating-value-row"><span>RATING</span><strong>${escapeHtml(input.ratingDisplay)}</strong></div>
         </div>
       </section>
       <div class="scores-content" data-layout-content aria-label="成绩列表">${scoreContent}</div>
@@ -339,15 +323,12 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
       const fitPlayerName = () => {
         const row = document.getElementById('player-name-row');
         const playerName = document.getElementById('player-name');
-        const playerLevel = row ? row.querySelector('.player-level') : null;
         if (!row || !playerName) return;
         playerName.style.fontSize = APP_NAME_MAX_SIZE + 'px';
         playerName.style.transform = 'none';
         const rowStyle = window.getComputedStyle(row);
-        const levelWidth = playerLevel ? playerLevel.offsetWidth : 0;
-        const horizontalInset = parseFloat(rowStyle.paddingLeft || '0') + parseFloat(rowStyle.paddingRight || '0')
-          + parseFloat(rowStyle.gap || '0');
-        const availableWidth = Math.max(1, row.clientWidth - horizontalInset - levelWidth);
+        const horizontalInset = parseFloat(rowStyle.paddingLeft || '0') + parseFloat(rowStyle.paddingRight || '0');
+        const availableWidth = Math.max(1, row.clientWidth - horizontalInset);
         const naturalWidth = playerName.scrollWidth;
         if (naturalWidth <= availableWidth) return;
         const fittedSize = Math.max(APP_NAME_MIN_SIZE, Math.floor(APP_NAME_MAX_SIZE * availableWidth / naturalWidth));

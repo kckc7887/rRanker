@@ -1,7 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 import type { ChunithmBestImageSelectionCount } from './chunithm-best-image';
 
-export type ChunithmBestImageStyleKind = 'character' | 'plate' | 'trophy';
 export type ChunithmBestImageStyleMode = 'current' | 'item' | 'random' | 'off';
 export type ChunithmBestImageStyleChoice = {
   mode: ChunithmBestImageStyleMode;
@@ -9,23 +8,24 @@ export type ChunithmBestImageStyleChoice = {
   name?: string;
 };
 
+export type ChunithmBestImageBackgroundChoice =
+  | { mode: 'default' }
+  | { mode: 'song'; songId: number };
+
 export type ChunithmBestImageStylePreferences = {
-  version: 2;
+  version: 3;
   selectionCount: ChunithmBestImageSelectionCount;
   character: ChunithmBestImageStyleChoice;
-  plate: ChunithmBestImageStyleChoice;
-  trophy: ChunithmBestImageStyleChoice;
+  background: ChunithmBestImageBackgroundChoice;
 };
 
 const PREFIX = 'rranker.chunithm-best-image.styles.v1:';
-const KINDS: readonly ChunithmBestImageStyleKind[] = ['character', 'plate', 'trophy'];
 
 export const DEFAULT_CHUNITHM_BEST_IMAGE_STYLES: ChunithmBestImageStylePreferences = {
-  version: 2,
+  version: 3,
   selectionCount: 0,
   character: { mode: 'current' },
-  plate: { mode: 'current' },
-  trophy: { mode: 'current' },
+  background: { mode: 'default' },
 };
 
 function parseChoice(value: unknown): ChunithmBestImageStyleChoice {
@@ -47,6 +47,21 @@ function parseChoice(value: unknown): ChunithmBestImageStyleChoice {
   return { mode: 'current' };
 }
 
+function parseBackground(value: unknown): ChunithmBestImageBackgroundChoice {
+  if (!value || typeof value !== 'object') return { mode: 'default' };
+  const raw = value as { mode?: unknown; songId?: unknown };
+  if (raw.mode === 'default') return { mode: 'default' };
+  if (
+    raw.mode === 'song'
+    && typeof raw.songId === 'number'
+    && Number.isSafeInteger(raw.songId)
+    && raw.songId >= 0
+  ) {
+    return { mode: 'song', songId: raw.songId };
+  }
+  return { mode: 'default' };
+}
+
 export function parseChunithmBestImageStylePreferences(
   value: unknown,
 ): ChunithmBestImageStylePreferences {
@@ -55,8 +70,7 @@ export function parseChunithmBestImageStylePreferences(
     version?: unknown;
     selectionCount?: unknown;
     character?: unknown;
-    plate?: unknown;
-    trophy?: unknown;
+    background?: unknown;
   };
   const selectionCount = raw.selectionCount === 5 || raw.selectionCount === 10
     ? raw.selectionCount
@@ -67,13 +81,20 @@ export function parseChunithmBestImageStylePreferences(
       selectionCount,
     };
   }
-  if (raw.version !== 2) return { ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES };
+  if (raw.version === 2) {
+    return {
+      version: 3,
+      selectionCount,
+      character: parseChoice(raw.character),
+      background: { mode: 'default' },
+    };
+  }
+  if (raw.version !== 3) return { ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES };
   return {
-    version: 2,
+    version: 3,
     selectionCount,
     character: parseChoice(raw.character),
-    plate: parseChoice(raw.plate),
-    trophy: parseChoice(raw.trophy),
+    background: parseBackground(raw.background),
   };
 }
 
@@ -88,8 +109,6 @@ export function resolveChunithmBestImageStyleId(
   if (!Number.isSafeInteger(currentId) || (currentId ?? -1) < 0) return null;
   return currentId ?? null;
 }
-
-export const CHUNITHM_BEST_IMAGE_STYLE_KINDS = KINDS;
 
 export const chunithmBestImagePreferencesStore = {
   async load(accountId: string): Promise<ChunithmBestImageStylePreferences> {
