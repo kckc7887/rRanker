@@ -47,6 +47,7 @@ const DIFFICULTY_COLORS: Record<ChunithmLevelIndex, string> = {
 
 const CHUNITHM_NAMEPLATE_SOURCE_WIDTH = 576;
 const CHUNITHM_NAMEPLATE_SOURCE_HEIGHT = 228;
+const CHUNITHM_NAMEPLATE_CONTENT_HEIGHT = 200;
 
 function escapeHtml(value: string): string {
   return value
@@ -171,7 +172,10 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
   const bannerHeight = px(
     bannerWidth * CHUNITHM_NAMEPLATE_SOURCE_HEIGHT / CHUNITHM_NAMEPLATE_SOURCE_WIDTH,
   );
-  const profileUnit = bannerHeight / 4;
+  const profileLayoutHeight = bannerWidth
+    * CHUNITHM_NAMEPLATE_CONTENT_HEIGHT
+    / CHUNITHM_NAMEPLATE_SOURCE_WIDTH;
+  const profileUnit = profileLayoutHeight / 4;
   const profileContentWidth = bannerWidth * 2 / 3;
   const avatarSize = profileUnit * 2;
   const ratingBadgeWidth = profileContentWidth - avatarSize;
@@ -243,7 +247,7 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     .profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:0}
     .profile-banner .nameplate-image{object-fit:contain}
     .profile-banner .nameplate-fallback{border:${Math.max(1, px(bannerWidth * 0.002))}px solid rgba(255,255,255,.8);background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}
-    .profile-layout{position:absolute;inset:0;display:grid;grid-template-columns:1fr ${precisePx(ratingBadgeWidth)} ${precisePx(avatarSize)};grid-template-rows:${precisePx(profileUnit)} ${precisePx(profileUnit)} ${precisePx(profileUnit * 2)}}
+    .profile-layout{position:absolute;left:0;top:0;width:100%;height:${precisePx(profileLayoutHeight)};display:grid;grid-template-columns:1fr ${precisePx(ratingBadgeWidth)} ${precisePx(avatarSize)};grid-template-rows:${precisePx(profileUnit)} ${precisePx(profileUnit)} ${precisePx(profileUnit * 2)}}
     .profile-spacer{grid-column:2/4;grid-row:1}
     .profile-banner .avatar{grid-column:3;grid-row:3;width:${precisePx(avatarSize)};height:${precisePx(avatarSize)};overflow:hidden;border-radius:0;border:${Math.max(1, px(bannerWidth * 0.002))}px solid rgba(255,255,255,.9);background:#DDE5F0;box-shadow:0 ${px(bannerWidth * 0.004)}px ${px(bannerWidth * 0.01)}px rgba(27,41,68,.28)}
     .profile-banner .avatar-image{display:block;width:100%;height:100%;object-fit:cover}
