@@ -57,4 +57,26 @@ describe('标签预设编辑器', () => {
       expect.objectContaining({ minHeight: 48, borderRadius: 12 }),
     );
   });
+
+  it('uses external presets as fixed choices without changing the preset collection', async () => {
+    const onChange = jest.fn(async () => undefined);
+    const onPresetsChange = jest.fn(async () => undefined);
+    const screen = await render(<TagEditor tags={[]} presets={['错位', '高难']} historyTags={['旧标签']}
+      presetsEditable={false} onChange={onChange} onPresetsChange={onPresetsChange} />);
+
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    expect(screen.getByLabelText('选择标签 错位')).toBeTruthy();
+    expect(screen.getByLabelText('选择标签 高难')).toBeTruthy();
+    expect(screen.queryByLabelText('删除预设 错位')).toBeNull();
+    expect(screen.queryByLabelText('上移预设 高难')).toBeNull();
+    expect(screen.queryByLabelText('新预设标签')).toBeNull();
+    expect(screen.queryByLabelText('添加预设标签')).toBeNull();
+    expect(screen.queryByLabelText('复制到预设 旧标签')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('选择标签 高难'));
+    await fireEvent.press(screen.getByLabelText('选择标签 旧标签'));
+    await fireEvent.press(screen.getByLabelText('完成标签选择'));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(['高难', '旧标签']));
+    expect(onPresetsChange).not.toHaveBeenCalled();
+  });
 });

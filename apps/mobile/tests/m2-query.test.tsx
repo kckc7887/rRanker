@@ -196,7 +196,7 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: [], isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
   songKey: (songId: string | number) => `maimai:song:${songId}`,
   chartKey: (songId: string | number, type: string, levelIndex: number) => `maimai:chart:${songId}:${type}:${levelIndex}`,
-  tagPresets: [], setTagPresets: jest.fn(),
+  tagPresets: ['爆发', '交互', '星星', '鬼歌', '大歌'], setTagPresets: jest.fn(),
 }) }));
 jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
   data: { items: [], source: { kind: 'fixture', label: 'fixture', updatedAt: new Date(0).toISOString(), isStale: false } },
@@ -325,6 +325,20 @@ describe('M2 song query screens', () => {
       .toMatchObject({ textDecorationLine: 'line-through' });
     await fireEvent.press(screen.getByLabelText('关闭谱面标签'));
     expect(screen.queryByTestId('dxrating-config-tag-sheet')).toBeNull();
+  });
+
+  it('uses every DXRating tag as the fixed local-tag presets for the matching chart', async () => {
+    mockDxRatingTagCount = 5;
+    const screen = await render(<SongDetailScreen />);
+
+    const chartEditor = screen.getByTestId('maimai-chart-local-tags-DX-3');
+    await fireEvent.press(within(chartEditor).getByLabelText('打开标签预设'));
+    for (let index = 1; index <= 5; index += 1) {
+      expect(screen.getByLabelText(`选择标签 标签${index}`)).toBeTruthy();
+    }
+    expect(screen.queryByLabelText('选择标签 爆发')).toBeNull();
+    expect(screen.queryByLabelText('删除预设 标签1')).toBeNull();
+    expect(screen.queryByLabelText('新预设标签')).toBeNull();
   });
 
   it('caps fourteen tags at four and changes them with the chart type', async () => {
