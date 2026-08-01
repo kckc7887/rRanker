@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { TagEditor } from '@/components/TagEditor';
@@ -7,8 +7,15 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
-  return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };
+  return {
+    GestureHandlerRootView: RN.View,
+    Pressable: (props: React.ComponentProps<typeof RN.Pressable>) => React.createElement(
+      RN.Pressable,
+      { ...props, testID: props.testID ?? 'gesture-handler-pressable' },
+    ),
+  };
 });
 
 describe('标签预设编辑器', () => {
@@ -65,6 +72,8 @@ describe('标签预设编辑器', () => {
       presetsEditable={false} onChange={onChange} onPresetsChange={onPresetsChange} />);
 
     await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    expect(screen.getByLabelText('选择标签 错位').props.testID).toBe('gesture-handler-pressable');
+    expect(screen.getByLabelText('完成标签选择').props.testID).toBe('gesture-handler-pressable');
     expect(screen.getByLabelText('选择标签 错位')).toBeTruthy();
     expect(screen.getByLabelText('选择标签 高难')).toBeTruthy();
     expect(screen.queryByLabelText('删除预设 错位')).toBeNull();
@@ -78,5 +87,18 @@ describe('标签预设编辑器', () => {
     await fireEvent.press(screen.getByLabelText('完成标签选择'));
     await waitFor(() => expect(onChange).toHaveBeenCalledWith(['高难', '旧标签']));
     expect(onPresetsChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps the sheet open and shows the save error beside the choices', async () => {
+    const screen = await render(<TagEditor tags={[]} presets={['错位']} presetsEditable={false}
+      onChange={jest.fn(async () => { throw new Error('本地标签写入失败'); })} />);
+
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    await fireEvent.press(screen.getByLabelText('选择标签 错位'));
+    expect(screen.getByLabelText('选择标签 错位').props.accessibilityState).toEqual({ checked: true });
+    await fireEvent.press(screen.getByLabelText('完成标签选择'));
+
+    await waitFor(() => expect(within(screen.getByTestId('tag-preset-message')).getByText('本地标签写入失败')).toBeTruthy());
+    expect(screen.getByTestId('tag-preset-sheet')).toBeTruthy();
   });
 });

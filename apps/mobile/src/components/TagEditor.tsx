@@ -17,6 +17,10 @@ import { AppModal } from '@/components/AppModal';
 import { normalizeTagName, normalizeTags } from '@/domain/user-library';
 import { useAppTheme } from '@/theme/app-theme';
 
+type TagCommitResult = { ok: true } | { ok: false; error: string };
+
+const SheetPressable = Platform.OS === 'android' ? Pressable : GesturePressable;
+
 export function TagEditor({
   tags,
   presets = [],
@@ -43,14 +47,18 @@ export function TagEditor({
   const [error, setError] = useState('');
   const [pickerVisible, setPickerVisible] = useState(false);
 
-  const commit = async (values: string[]): Promise<boolean> => {
-    try { setError(''); await onChange(normalizeTags(values)); return true; }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '标签保存失败'); return false; }
+  const commit = async (values: string[]): Promise<TagCommitResult> => {
+    try { setError(''); await onChange(normalizeTags(values)); return { ok: true }; }
+    catch (reason) {
+      const message = reason instanceof Error ? reason.message : '标签保存失败';
+      setError(message);
+      return { ok: false, error: message };
+    }
   };
 
   const add = async () => {
     if (!input.trim()) { setError('请输入标签'); return; }
-    if (await commit([...tags, input])) setInput('');
+    if ((await commit([...tags, input])).ok) setInput('');
   };
 
   return <>
@@ -82,7 +90,9 @@ export function TagEditor({
     <TagPresetSheet visible={pickerVisible} tags={tags} presets={presets} historyTags={historyTags}
       presetsEditable={presetsEditable}
       onClose={() => setPickerVisible(false)} onSave={async (values) => {
-        if (await commit(values)) setPickerVisible(false);
+        const result = await commit(values);
+        if (result.ok) setPickerVisible(false);
+        return result;
       }} onPresetsChange={onPresetsChange} />
   </>;
 }
@@ -94,7 +104,7 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
   historyTags: string[];
   presetsEditable: boolean;
   onClose: () => void;
-  onSave: (values: string[]) => Promise<void>;
+  onSave: (values: string[]) => Promise<TagCommitResult>;
   onPresetsChange?: (values: string[]) => Promise<unknown>;
 }) {
   const theme = useAppTheme();
@@ -103,15 +113,19 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
   const [draftPresets, setDraftPresets] = useState<string[]>(presets);
   const [presetInput, setPresetInput] = useState('');
   const [message, setMessage] = useState('');
+  const [saving, setSaving] = useState(false);
   const presetZone = useRef<View>(null);
   const presetBounds = useRef<LayoutRectangle & { pageY: number }>({ x: 0, y: 0, width: 0, height: 0, pageY: 0 });
 
   const selectedKeys = useMemo(() => new Set(selected.map((value) => normalizeTagName(value).key)), [selected]);
-  const toggle = (tag: string) => setSelected((current) => {
-    const key = normalizeTagName(tag).key;
-    return current.some((item) => normalizeTagName(item).key === key)
-      ? current.filter((item) => normalizeTagName(item).key !== key) : normalizeTags([...current, tag]);
-  });
+  const toggle = (tag: string) => {
+    setMessage('');
+    setSelected((current) => {
+      const key = normalizeTagName(tag).key;
+      return current.some((item) => normalizeTagName(item).key === key)
+        ? current.filter((item) => normalizeTagName(item).key !== key) : normalizeTags([...current, tag]);
+    });
+  };
   const persistPresets = async (values: string[]) => {
     try {
       const normalized = normalizeTags(values);
@@ -132,18 +146,27 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
   const capturePresetBounds = () => presetZone.current?.measureInWindow((x, pageY, width, height) => {
     presetBounds.current = { x, y: 0, width, height, pageY };
   });
+  const saveSelection = async () => {
+    if (saving) return;
+    setSaving(true);
+    const result = await onSave(selected);
+    if (!result.ok) setMessage(result.error);
+    setSaving(false);
+  };
 
   return <AppModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}
-    onShow={() => { setSelected(tags); setDraftPresets(presets); setMessage(''); setTimeout(capturePresetBounds, 0); }}>
+    onShow={() => {
+      setSelected(tags); setDraftPresets(presets); setMessage(''); setSaving(false); setTimeout(capturePresetBounds, 0);
+    }}>
     <View testID="tag-preset-sheet" style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}>
       <View testID="tag-preset-sheet-grabber" style={[styles.sheetGrabber, { backgroundColor: theme.border }]} />
       <View style={styles.sheetHeader}>
         <Text style={[styles.sheetTitle, { color: theme.text }]}>标签预设</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="完成标签选择" hitSlop={12}
-          onPress={() => void onSave(selected)}
+        <SheetPressable accessibilityRole="button" accessibilityLabel="完成标签选择" hitSlop={12}
+          accessibilityState={{ disabled: saving }} disabled={saving} onPress={() => void saveSelection()}
           style={({ pressed }) => [styles.sheetDoneHit, pressed && styles.softPressed]}>
-          <Text style={[styles.sheetDone, { color: theme.accent }]}>完成</Text>
-        </Pressable>
+          <Text style={[styles.sheetDone, { color: theme.accent }]}>{saving ? '保存中…' : '完成'}</Text>
+        </SheetPressable>
       </View>
       <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
@@ -158,14 +181,14 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
             <SelectableTag tag={tag} selected={selectedKeys.has(normalizeTagName(tag).key)}
               layout="row" onPress={() => toggle(tag)} />
             {presetsEditable ? <>
-              <Pressable accessibilityRole="button" accessibilityLabel={`上移预设 ${tag}`} disabled={index === 0}
+              <SheetPressable accessibilityRole="button" accessibilityLabel={`上移预设 ${tag}`} disabled={index === 0}
                 onPress={() => {
                 const next = [...draftPresets]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; void persistPresets(next);
                 }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
                   index === 0 && styles.disabled, pressed && index > 0 && styles.softPressed]}>
                 <Text style={[styles.iconButtonText, { color: index === 0 ? theme.textMuted : theme.accent }]}>↑</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel={`下移预设 ${tag}`}
+              </SheetPressable>
+              <SheetPressable accessibilityRole="button" accessibilityLabel={`下移预设 ${tag}`}
                 disabled={index === draftPresets.length - 1} onPress={() => {
                 const next = [...draftPresets]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; void persistPresets(next);
                 }} style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
@@ -174,13 +197,13 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
                 <Text style={[styles.iconButtonText, {
                   color: index === draftPresets.length - 1 ? theme.textMuted : theme.accent,
                 }]}>↓</Text>
-              </Pressable>
-              <Pressable accessibilityRole="button" accessibilityLabel={`删除预设 ${tag}`}
+              </SheetPressable>
+              <SheetPressable accessibilityRole="button" accessibilityLabel={`删除预设 ${tag}`}
                 onPress={() => void persistPresets(draftPresets.filter((item) => item !== tag))}
                 style={({ pressed }) => [styles.iconButton, { backgroundColor: theme.surfaceMuted },
                   pressed && styles.softPressed]}>
                 <Text style={[styles.iconButtonText, { color: theme.danger }]}>×</Text>
-              </Pressable>
+              </SheetPressable>
             </> : null}
           </View>)}
           {!draftPresets.length ? <Text style={[styles.presetEmptyText, { color: theme.textMuted }]}>
@@ -191,11 +214,11 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
           <TextInput accessibilityLabel="新预设标签" placeholder="新增预设" placeholderTextColor={theme.textMuted}
             value={presetInput} onChangeText={setPresetInput} onSubmitEditing={() => void addPreset(presetInput)}
             style={[styles.input, styles.sheetInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          <Pressable accessibilityRole="button" accessibilityLabel="添加预设标签"
+          <SheetPressable accessibilityRole="button" accessibilityLabel="添加预设标签"
             onPress={() => void addPreset(presetInput)}
             style={({ pressed }) => [styles.sheetAdd, { backgroundColor: theme.accent }, pressed && styles.softPressed]}>
             <Text style={styles.sheetAddText}>添加</Text>
-          </Pressable>
+          </SheetPressable>
         </View> : null}
         <Text style={[styles.sectionLabel, styles.historyLabel, { color: theme.textMuted }]}>历史标签</Text>
         <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
@@ -214,7 +237,7 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
             <Text style={[styles.emptyCardText, { color: theme.textMuted }]}>暂无其他歌曲使用过的标签</Text>
           </View> : null}
         </View>
-        {message ? <View style={[styles.messageCard, { backgroundColor: theme.surface }]}>
+        {message ? <View testID="tag-preset-message" style={[styles.messageCard, { backgroundColor: theme.surface }]}>
           <Text style={[styles.messageText, { color: theme.danger }]}>{message}</Text>
         </View> : null}
       </ScrollView>
@@ -229,7 +252,7 @@ function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
   onPress: () => void;
 }) {
   const theme = useAppTheme();
-  return <Pressable accessibilityRole="checkbox" accessibilityLabel={`选择标签 ${tag}`} accessibilityState={{ checked: selected }}
+  return <SheetPressable accessibilityRole="checkbox" accessibilityLabel={`选择标签 ${tag}`} accessibilityState={{ checked: selected }}
     onPress={onPress} style={({ pressed }) => [
       layout === 'row' ? styles.rowSelection : styles.chipSelection,
       layout === 'chip' && {
@@ -244,7 +267,7 @@ function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
     </View>
     <Text style={[layout === 'row' ? styles.rowSelectionText : styles.chipSelectionText,
       { color: selected ? theme.accent : theme.textSecondary }]}>{tag}</Text>
-  </Pressable>;
+  </SheetPressable>;
 }
 
 function DraggableHistoryTag({ tag, selected, onPress, onDrop, onCopy }: {
@@ -265,10 +288,10 @@ function DraggableHistoryTag({ tag, selected, onPress, onDrop, onCopy }: {
     <Animated.View {...pan.panHandlers} style={{ transform: offset.getTranslateTransform(), zIndex: 10 }}>
       <SelectableTag tag={tag} selected={selected} onPress={onPress} />
     </Animated.View>
-    <Pressable accessibilityRole="button" accessibilityLabel={`复制到预设 ${tag}`} onPress={onCopy}
+    <SheetPressable accessibilityRole="button" accessibilityLabel={`复制到预设 ${tag}`} onPress={onCopy}
       style={({ pressed }) => [styles.copyButton, pressed && styles.softPressed]}>
       <Text style={[styles.copyText, { color: theme.accent }]}>复制到预设</Text>
-    </Pressable>
+    </SheetPressable>
   </View>;
 }
 
