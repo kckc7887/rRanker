@@ -64,6 +64,25 @@
 - 姓名框预览地址为 `https://assets2.lxns.net/maimai/plate/{plate_id}.png`（公共资源，与查分器账号无关；`plate_id` 来自 LXNS `/plate/list`）。水鱼无对应图床。
 - 舞萌玩家成绩也可经由下方「LXNS OAuth 个人 API」绑定；公共曲库职责不变。好友码成绩可经 `write_player` 上传到已授权的落雪账号。
 
+## DXRating 配置标签
+
+基础：`https://miruku.dxrating.net/api/v1/`
+
+| 端点 | 方法 | Auth | 说明 |
+|------|------|------|------|
+| `/tags` | GET | 无 | 标签、标签分组及谱面关联关系 |
+
+> last_verified: 2026-08-01 — 实时响应包含 `tags`、`tagGroups`、`tagSongs`；“配置 / Patterns”分组当前有 14 个标签和 4713 条谱面关系。谱面关系使用曲名、`std/dx/utage/utage2p` 类型、难度字符串和标签 ID，不提供 LXNS 数字歌曲 ID。旧资料中的 `https://dxrating.net/api/songs` 当前只接受 HTML 请求，不作为生产契约。
+
+当前职责边界：
+
+- 只读取“配置 / Patterns”分组，不把“难度”和“评价”分组混入歌曲详情配置标签。
+- SD/DX 使用曲名、谱面类型和难度精确匹配；不使用别名或模糊搜索，避免同名曲串标签。
+- U·TA·GE 优先使用属性前缀及 `utage/utage2p` 匹配；仅当去前缀后的同类型候选唯一时回退，歧义候选不展示。
+- DXRating 使用独立 Provider DTO、Zod Schema、资源键 `dxrating-chart-tags` 和 SQLite 快照，不修改 LXNS 曲库、成绩、个人曲库或备份 Schema。
+- 查询结果一小时内复用；在线请求失败时读取最近有效快照，无缓存时不阻塞歌曲详情。
+- 难度卡片最多内联展示前 4 个标签；更多标签通过“+N”页式弹层完整展示名称与说明。
+
 ## LXNS 中二节奏公共曲库
 
 基础：`https://maimai.lxns.net/api/v0/chunithm`
