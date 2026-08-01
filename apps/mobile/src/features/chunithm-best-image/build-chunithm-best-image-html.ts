@@ -30,6 +30,7 @@ export type ChunithmBestImageHtmlInput = {
   characterDataUri?: string | null;
   plateDataUri?: string | null;
   trophyDataUri?: string | null;
+  trophyImageUrl?: string | null;
   trophyName?: string | null;
   hideCharacter?: boolean;
   hidePlate?: boolean;
@@ -210,8 +211,9 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     : `<div class="avatar-fallback">${escapeHtml(initial)}</div>`;
   const levelLabel = player ? `Lv.${player.level}` : 'Lv.—';
   const trophyFallback = input.trophyName?.trim() || player?.trophy?.name?.trim() || '称号未同步';
-  const trophyMarkup = input.trophyDataUri
-    ? `<img class="trophy-image" alt="" src="${escapeHtml(input.trophyDataUri)}" onerror="this.style.display='none';var f=this.nextElementSibling;if(f)f.style.display='flex'"><span class="trophy-fallback" style="display:none">${escapeHtml(trophyFallback)}</span>`
+  const trophyImageSource = input.trophyDataUri || input.trophyImageUrl;
+  const trophyMarkup = trophyImageSource
+    ? `<img class="trophy-image" alt="" src="${escapeHtml(trophyImageSource)}" onerror="this.style.display='none';var f=this.nextElementSibling;if(f)f.style.display='flex'"><span class="trophy-fallback" style="display:none">${escapeHtml(trophyFallback)}</span>`
     : `<span class="trophy-fallback">${escapeHtml(trophyFallback)}</span>`;
 
   const pageMarkerLabel = `第 ${pageIndex + 1} / ${pageCount} 页`;
