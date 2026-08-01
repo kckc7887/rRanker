@@ -518,6 +518,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   const chartLabel = chart.type === 'UTAGE'
     ? `U·TA·GE · ${chart.level}`
     : `${chart.type} · ${visual.label} · ${chart.level}`;
+  const chartTagPresets = dxratingTags.map((tag) => tag.name);
 
   const openChartPreview = (buddySide?: 0 | 1) => {
     router.push({
@@ -626,9 +627,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
       <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>查看谱面确认</Text>
     </DetailPressable>
-    <TagEditor tags={chartItem?.tags ?? []} presets={library.tagPresets ?? []}
-      historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), library.tagPresets ?? [])}
-      disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
+    <TagEditor tags={chartItem?.tags ?? []} presets={chartTagPresets} presetsEditable={false}
+      historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), chartTagPresets)}
+      disabled={library.isUpdating} testID={`maimai-chart-local-tags-${chart.type}-${chart.levelIndex}`}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
   </GameChartResultCard>;
 }
