@@ -1,13 +1,13 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppModal } from '@/components/AppModal';
-import type { DxRatingConfigurationTag } from '@/domain/dxrating-chart-tags';
+import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import { useAppTheme } from '@/theme/app-theme';
 
 export interface DxRatingChartTagSheetData {
   songTitle: string;
   chartLabel: string;
-  tags: DxRatingConfigurationTag[];
+  tags: DxRatingChartTag[];
 }
 
 export function DxRatingChartTagSheet({ data, onClose }: {
@@ -29,12 +29,12 @@ export function DxRatingChartTagSheet({ data, onClose }: {
       <View style={[styles.grabber, { backgroundColor: theme.border }]} />
       <View style={styles.header}>
         <View style={styles.headerCopy}>
-          <Text style={[styles.title, { color: theme.text }]}>配置标签</Text>
+          <Text style={[styles.title, { color: theme.text }]}>谱面标签</Text>
           {data ? <Text style={[styles.subtitle, { color: theme.textMuted }]} numberOfLines={2}>
             {data.songTitle} · {data.chartLabel}
           </Text> : null}
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="关闭配置标签"
+        <Pressable accessibilityRole="button" accessibilityLabel="关闭谱面标签"
           hitSlop={10} onPress={onClose} style={({ pressed }) => [styles.doneHit, pressed && styles.pressed]}>
           <Text style={[styles.done, { color: theme.accent }]}>完成</Text>
         </Pressable>

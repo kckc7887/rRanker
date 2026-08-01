@@ -28,9 +28,11 @@ let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: stri
 let mockDetailedCatalogAvailable = true;
 const mockDxRatingTags = Array.from({ length: 14 }, (_, index) => ({
   id: index + 1,
-  name: `配置${index + 1}`,
-  description: `配置说明${index + 1}`,
-  color: '#7dd3fc',
+  name: `标签${index + 1}`,
+  description: `标签说明${index + 1}`,
+  color: ['#7dd3fc', '#a5b4fc', '#f0abfc'][index % 3],
+  groupId: (index % 3) + 1,
+  groupName: ['配置', '难度', '评价'][index % 3],
 }));
 let mockDxRatingTagCount = 0;
 let mockDxRatingTagSongTitle = '正常曲目 A';
@@ -179,7 +181,7 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
       })),
       source: {
         kind: mockDxRatingTagState === 'cache' ? 'cache' : 'dxrating',
-        label: mockDxRatingTagState === 'cache' ? 'DXRating 配置标签缓存' : 'DXRating 配置标签',
+        label: mockDxRatingTagState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
         updatedAt: new Date(0).toISOString(),
         isStale: mockDxRatingTagState === 'cache',
       },
@@ -275,9 +277,15 @@ describe('M2 song query screens', () => {
     }
     expect(screen.getByTestId('dxrating-config-tags')).toBeTruthy();
     for (let index = 1; index <= count; index += 1) {
-      expect(screen.getByLabelText(`配置标签 配置${index}，点击查看说明`)).toBeTruthy();
+      expect(screen.getByLabelText(`谱面标签 标签${index}，点击查看说明`)).toBeTruthy();
     }
     expect(screen.queryByTestId('dxrating-config-tags-more')).toBeNull();
+    expect(screen.queryByText('谱面标签')).toBeNull();
+    if (count === 4) {
+      expect(StyleSheet.flatten(screen.getByTestId('dxrating-config-tag-1').props.style).backgroundColor).toBe('#7dd3fc');
+      expect(StyleSheet.flatten(screen.getByTestId('dxrating-config-tag-2').props.style).backgroundColor).toBe('#a5b4fc');
+      expect(StyleSheet.flatten(screen.getByTestId('dxrating-config-tag-3').props.style).backgroundColor).toBe('#f0abfc');
+    }
   });
 
   it('keeps five tags compact, opens all descriptions in one sheet, and keeps individual explanations', async () => {
@@ -285,34 +293,34 @@ describe('M2 song query screens', () => {
     const screen = await render(<SongDetailScreen />);
 
     for (let index = 1; index <= 4; index += 1) {
-      expect(screen.getByLabelText(`配置标签 配置${index}，点击查看说明`)).toBeTruthy();
+      expect(screen.getByLabelText(`谱面标签 标签${index}，点击查看说明`)).toBeTruthy();
     }
-    expect(screen.queryByLabelText('配置标签 配置5，点击查看说明')).toBeNull();
-    expect(screen.getByLabelText('查看全部5个配置标签，另有1个')).toBeTruthy();
+    expect(screen.queryByLabelText('谱面标签 标签5，点击查看说明')).toBeNull();
+    expect(screen.getByLabelText('查看全部5个谱面标签，另有1个')).toBeTruthy();
 
-    await fireEvent.press(screen.getByLabelText('配置标签 配置1，点击查看说明'));
+    await fireEvent.press(screen.getByLabelText('谱面标签 标签1，点击查看说明'));
     expect(mockShowActionNotification).toHaveBeenCalledWith({
-      title: '配置1',
-      message: '配置说明1',
+      title: '标签1',
+      message: '标签说明1',
       variant: 'info',
       actions: [{ label: '知道了', tone: 'cancel' }],
     });
 
-    await fireEvent.press(screen.getByLabelText('查看全部5个配置标签，另有1个'));
+    await fireEvent.press(screen.getByLabelText('查看全部5个谱面标签，另有1个'));
     expect(screen.getByTestId('dxrating-config-tag-sheet')).toBeTruthy();
     expect(screen.getByText('正常曲目 A · DX · MASTER · 13+')).toBeTruthy();
     for (let index = 1; index <= 5; index += 1) {
-      expect(screen.getByText(`配置说明${index}`)).toBeTruthy();
+      expect(screen.getByText(`标签说明${index}`)).toBeTruthy();
     }
-    await fireEvent.press(screen.getByLabelText('关闭配置标签'));
+    await fireEvent.press(screen.getByLabelText('关闭谱面标签'));
     expect(screen.queryByTestId('dxrating-config-tag-sheet')).toBeNull();
   });
 
   it('caps fourteen tags at four and changes them with the chart type', async () => {
     mockDxRatingTagCount = 14;
     const live = await render(<SongDetailScreen />);
-    expect(live.getByLabelText('查看全部14个配置标签，另有10个')).toBeTruthy();
-    expect(live.getByText(/DXRating 配置标签/)).toBeTruthy();
+    expect(live.getByLabelText('查看全部14个谱面标签，另有10个')).toBeTruthy();
+    expect(live.getByText(/DXRating 谱面标签/)).toBeTruthy();
 
     await fireEvent.press(live.getAllByLabelText('切换为SD谱面')[0]);
     expect(live.queryByTestId('dxrating-config-tags')).toBeNull();
@@ -322,13 +330,13 @@ describe('M2 song query screens', () => {
     mockDxRatingTagState = 'error';
     const failed = await render(<SongDetailScreen />);
     expect(failed.queryByTestId('dxrating-config-tags')).toBeNull();
-    expect(failed.getByText('DXRating 配置标签不可用')).toBeTruthy();
+    expect(failed.getByText('DXRating 谱面标签不可用')).toBeTruthy();
   });
 
   it('reports a cached DXRating source', async () => {
     mockDxRatingTagState = 'cache';
     const cached = await render(<SongDetailScreen />);
-    expect(cached.getByText(/DXRating 配置标签缓存/)).toBeTruthy();
+    expect(cached.getByText(/DXRating 谱面标签缓存/)).toBeTruthy();
   });
 
   it('searches aliases after debounce and supports empty filter state', async () => {
@@ -580,7 +588,7 @@ describe('M2 song query screens', () => {
     expect(screen.queryByLabelText(/打开 Rating 计算器/)).toBeNull();
     expect(screen.queryByText(/^Rating/)).toBeNull();
     expect(screen.queryByText(/谱师/)).toBeNull();
-    expect(screen.getByLabelText('配置标签 配置1，点击查看说明')).toBeTruthy();
+    expect(screen.getByLabelText('谱面标签 标签1，点击查看说明')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('使用1P 谱面物量计算容错'));
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({

@@ -2,7 +2,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import type {
   DxRatingChartTagsSnapshot,
-  DxRatingConfigurationTag,
+  DxRatingChartTag,
   DxRatingSheetType,
 } from '@/domain/dxrating-chart-tags';
 import { ProviderError } from '@/providers/errors';
@@ -54,27 +54,32 @@ function providerErrorFromStatus(status: number): ProviderError {
   return new ProviderError('network', `DXRating 返回 HTTP ${status}`, status >= 500);
 }
 
-export function mapDxRatingConfigurationTags(input: unknown): DxRatingChartTagsSnapshot {
+export function mapDxRatingChartTags(input: unknown): DxRatingChartTagsSnapshot {
   const parsed = TagsResponseSchema.safeParse(input);
   if (!parsed.success) {
     throw new ProviderError('upstream_schema', 'DXRating 标签响应结构与已验证契约不一致', true);
   }
-  const configurationGroup = parsed.data.tagGroups.find((group) => (
-    group.localized_name['zh-Hans']?.trim() === '配置'
-    || group.localized_name.en?.trim() === 'Patterns'
-  ));
-  if (!configurationGroup) {
-    throw new ProviderError('upstream_schema', 'DXRating 标签响应缺少配置分组', true);
+  if (parsed.data.tagGroups.length === 0) {
+    throw new ProviderError('upstream_schema', 'DXRating 标签响应缺少标签分组', true);
   }
 
-  const rawTags = parsed.data.tags.filter((tag) => tag.group_id === configurationGroup.id);
-  const tagIds = new Set(rawTags.map((tag) => tag.id));
-  const tags: DxRatingConfigurationTag[] = rawTags.map((tag) => ({
-    id: tag.id,
-    name: localizedText(tag.localized_name),
-    description: plainDescription(tag.localized_description),
-    color: configurationGroup.color,
-  }));
+  const groupsById = new Map(parsed.data.tagGroups.map((group) => [group.id, group]));
+  const tagIds = new Set<number>();
+  const tags: DxRatingChartTag[] = [];
+  for (const tag of parsed.data.tags) {
+    if (tag.group_id === null || tagIds.has(tag.id)) continue;
+    const group = groupsById.get(tag.group_id);
+    if (!group) continue;
+    tagIds.add(tag.id);
+    tags.push({
+      id: tag.id,
+      name: localizedText(tag.localized_name),
+      description: plainDescription(tag.localized_description),
+      color: group.color,
+      groupId: group.id,
+      groupName: localizedText(group.localized_name),
+    });
+  }
   return {
     tags,
     relations: parsed.data.tagSongs
@@ -87,7 +92,7 @@ export function mapDxRatingConfigurationTags(input: unknown): DxRatingChartTagsS
       })),
     source: {
       kind: 'dxrating',
-      label: 'DXRating 配置标签',
+      label: 'DXRating 谱面标签',
       updatedAt: new Date().toISOString(),
       isStale: false,
     },
@@ -95,7 +100,7 @@ export function mapDxRatingConfigurationTags(input: unknown): DxRatingChartTagsS
 }
 
 export class DxRatingChartTagsProvider {
-  async getConfigurationTags(): Promise<DxRatingChartTagsSnapshot> {
+  async getChartTags(): Promise<DxRatingChartTagsSnapshot> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12_000);
     try {
@@ -104,16 +109,16 @@ export class DxRatingChartTagsProvider {
         signal: controller.signal,
       });
       if (!response.ok) throw providerErrorFromStatus(response.status);
-      return mapDxRatingConfigurationTags(await response.json());
+      return mapDxRatingChartTags(await response.json());
     } catch (error) {
       if (error instanceof ProviderError) throw error;
       if (error instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', 'DXRating 返回了无效 JSON', true, { cause: error });
       }
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', 'DXRating 配置标签读取超时', true, { cause: error });
+        throw new ProviderError('timeout', 'DXRating 谱面标签读取超时', true, { cause: error });
       }
-      throw new ProviderError('network', '无法连接 DXRating 配置标签服务', true, { cause: error });
+      throw new ProviderError('network', '无法连接 DXRating 谱面标签服务', true, { cause: error });
     } finally {
       clearTimeout(timeout);
     }
