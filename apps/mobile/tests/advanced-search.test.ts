@@ -42,6 +42,32 @@ describe('advanced song search', () => {
     expect(result).toHaveLength(0);
   });
 
+  it('evaluates an optional chart predicate on the same chart as every built-in chart filter', () => {
+    const splitMatch: Song = {
+      ...songs[0],
+      charts: [
+        { ...songs[0].charts[0], type: 'SD', difficulty: 'master', difficultyConstant: 13.7, versionId: 25000 },
+        { ...songs[0].charts[0], type: 'DX', difficulty: 'expert', difficultyConstant: 14.3, versionId: 25500 },
+      ],
+    };
+    const predicate = (_song: Song, chart: Song['charts'][number]) => chart.type === 'DX';
+
+    expect(searchSongs(buildSongSearchIndex([splitMatch]), {
+      ...EMPTY_SONG_FILTERS,
+      types: ['SD'],
+      difficulties: ['master'],
+      constantMin: 13.7,
+      chartVersionIds: [25000],
+    }, predicate)).toHaveLength(0);
+    expect(searchSongs(buildSongSearchIndex([splitMatch]), {
+      ...EMPTY_SONG_FILTERS,
+      types: ['DX'],
+      difficulties: ['expert'],
+      constantMin: 14,
+      chartVersionIds: [25500],
+    }, predicate).map((song) => song.id)).toEqual(['1806']);
+  });
+
   it('includes U·TA·GE by default and keeps it independent from DX and constant filters', () => {
     const index = buildSongSearchIndex(songs);
     expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, difficulties: ['utage'] })

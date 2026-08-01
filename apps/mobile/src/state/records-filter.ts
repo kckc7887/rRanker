@@ -15,6 +15,7 @@ interface RecordsFilterState {
   achievementMax: string;
   soloAchievement: MaimaiFcAchievement | null;
   multiAchievement: MaimaiFsAchievement | null;
+  selectedDxRatingTagIds: number[];
   sortBy: 'rating' | 'achievements' | 'title';
   versionLocale: VersionNameLocale;
   setKeyword: (value: string) => void;
@@ -28,6 +29,7 @@ interface RecordsFilterState {
   setAchievementMax: (value: string) => void;
   setSoloAchievement: (value: MaimaiFcAchievement | null) => void;
   setMultiAchievement: (value: MaimaiFsAchievement | null) => void;
+  setSelectedDxRatingTagIds: (values: number[]) => void;
   setSortBy: (s: 'rating' | 'achievements' | 'title') => void;
   setVersionLocale: (locale: VersionNameLocale) => void;
   clearFilters: () => void;
@@ -46,6 +48,7 @@ export const useRecordsFilter = create<RecordsFilterState>((set) => ({
   achievementMax: '',
   soloAchievement: null,
   multiAchievement: null,
+  selectedDxRatingTagIds: [],
   sortBy: 'rating',
   versionLocale: 'china',
   setKeyword: (keyword) => set({ keyword }),
@@ -59,16 +62,18 @@ export const useRecordsFilter = create<RecordsFilterState>((set) => ({
   setAchievementMax: (achievementMax) => set({ achievementMax }),
   setSoloAchievement: (soloAchievement) => set({ soloAchievement }),
   setMultiAchievement: (multiAchievement) => set({ multiAchievement }),
+  setSelectedDxRatingTagIds: (selectedDxRatingTagIds) => set({ selectedDxRatingTagIds }),
   setSortBy: (sortBy) => set({ sortBy }),
   setVersionLocale: (versionLocale) => set({ versionLocale }),
   clearFilters: () => set({
     keyword: '', difficulty: 'all', version: 'all', type: 'all',
     constantMin: '', constantMax: '', achievementMin: '', achievementMax: '',
-    soloAchievement: null, multiAchievement: null,
+    soloAchievement: null, multiAchievement: null, selectedDxRatingTagIds: [],
   }),
   reset: () => set({
     keyword: '', collapsed: true, difficulty: 'all', version: 'all', type: 'all',
     constantMin: '', constantMax: '', achievementMin: '', achievementMax: '',
-    soloAchievement: null, multiAchievement: null, sortBy: 'rating', versionLocale: 'china',
+    soloAchievement: null, multiAchievement: null, selectedDxRatingTagIds: [],
+    sortBy: 'rating', versionLocale: 'china',
   }),
 }));

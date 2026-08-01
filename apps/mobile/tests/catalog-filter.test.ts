@@ -12,6 +12,7 @@ describe('useCatalogFilter store', () => {
     state.setConstantMax('14.9');
     state.setVersion('25500');
     state.setVersionLocale('japan');
+    state.setSelectedDxRatingTagIds([1, 2]);
     state.setCollapsed(true);
 
     expect(useCatalogFilter.getState()).toEqual(expect.objectContaining({
@@ -22,6 +23,7 @@ describe('useCatalogFilter store', () => {
       constantMax: '14.9',
       version: '25500',
       versionLocale: 'japan',
+      selectedDxRatingTagIds: [1, 2],
       collapsed: true,
     }));
   });
@@ -32,7 +34,7 @@ describe('useCatalogFilter store', () => {
     useCatalogFilter.getState().setCollapsed(true);
     useCatalogFilter.getState().reset();
     expect(useCatalogFilter.getState()).toEqual(expect.objectContaining({
-      keyword: '', collapsed: true, type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all', versionLocale: 'china',
+      keyword: '', collapsed: true, type: 'all', difficulty: 'all', constantMin: '', constantMax: '', version: 'all', versionLocale: 'china', selectedDxRatingTagIds: [],
     }));
   });
 
@@ -45,10 +47,12 @@ describe('useCatalogFilter store', () => {
     state.setVersion('25500');
     state.setVersionLocale('japan');
     state.setCollapsed(false);
+    state.setSelectedDxRatingTagIds([1, 2]);
     state.clearFilters();
     expect(useCatalogFilter.getState()).toEqual(expect.objectContaining({
       keyword: '', difficulty: 'all', type: 'all', constantMin: '', constantMax: '', version: 'all',
       versionLocale: 'japan', collapsed: false,
+      selectedDxRatingTagIds: [],
     }));
   });
 });
