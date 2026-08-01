@@ -48,7 +48,12 @@ const DIFFICULTY_COLORS: Record<ChunithmLevelIndex, string> = {
 
 const CHUNITHM_NAMEPLATE_SOURCE_WIDTH = 576;
 const CHUNITHM_NAMEPLATE_SOURCE_HEIGHT = 228;
-const CHUNITHM_NAMEPLATE_CONTENT_HEIGHT = 200;
+const CHUNITHM_PLAYER_LAYOUT = {
+  nameplate: { x: -1, y: 9, width: 576, height: 228 },
+  trophy: { x: 181.78, y: 39.78, width: 370, height: 370 * 74 / 608 },
+  rating: { x: 187, y: 81, width: 276, height: 89 },
+  character: { x: 463, y: 83, width: 86, height: 86 },
+} as const;
 
 function escapeHtml(value: string): string {
   return value
@@ -173,13 +178,9 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
   const bannerHeight = px(
     bannerWidth * CHUNITHM_NAMEPLATE_SOURCE_HEIGHT / CHUNITHM_NAMEPLATE_SOURCE_WIDTH,
   );
-  const profileLayoutHeight = bannerWidth
-    * CHUNITHM_NAMEPLATE_CONTENT_HEIGHT
-    / CHUNITHM_NAMEPLATE_SOURCE_WIDTH;
-  const profileUnit = profileLayoutHeight / 4;
-  const profileContentWidth = bannerWidth * 2 / 3;
-  const avatarSize = profileUnit * 2;
-  const ratingBadgeWidth = profileContentWidth - avatarSize;
+  const profileScale = bannerWidth / CHUNITHM_NAMEPLATE_SOURCE_WIDTH;
+  const profileUnit = 50 * profileScale;
+  const profilePosition = (value: number) => precisePx(value * profileScale);
   const stroke = Math.max(1, px(bannerWidth / 720));
   const ratingLabelSize = px(profileUnit * 0.19);
   const ratingValueSize = px(profileUnit * 0.3);
@@ -246,24 +247,23 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     .canvas-background{position:absolute;inset:0;background:linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%)}
     .profile-banner{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset}px;width:${bannerWidth}px;height:${bannerHeight}px;border-radius:0;filter:drop-shadow(0 ${px(bannerWidth * 0.008)}px ${px(bannerWidth * 0.018)}px rgba(35,53,82,.22))}
     .profile-banner.no-plate{border:${stroke}px solid rgba(255,255,255,.78);background:rgba(240,244,250,.78)}
-    .profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:0}
-    .profile-banner .nameplate-image{object-fit:contain}
+    .profile-banner .nameplate-image,.profile-banner .nameplate-fallback{position:absolute;left:${profilePosition(CHUNITHM_PLAYER_LAYOUT.nameplate.x)};top:${profilePosition(CHUNITHM_PLAYER_LAYOUT.nameplate.y)};display:block;width:${profilePosition(CHUNITHM_PLAYER_LAYOUT.nameplate.width)};height:${profilePosition(CHUNITHM_PLAYER_LAYOUT.nameplate.height)};border-radius:0}
+    .profile-banner .nameplate-image{object-fit:contain;object-position:center}
     .profile-banner .nameplate-fallback{border:${Math.max(1, px(bannerWidth * 0.002))}px solid rgba(255,255,255,.8);background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}
-    .profile-layout{position:absolute;left:0;top:0;width:100%;height:${precisePx(profileLayoutHeight)};display:grid;grid-template-columns:1fr ${precisePx(ratingBadgeWidth)} ${precisePx(avatarSize)};grid-template-rows:${precisePx(profileUnit)} ${precisePx(profileUnit)} ${precisePx(profileUnit * 2)}}
-    .profile-spacer{grid-column:2/4;grid-row:1}
-    .profile-banner .avatar{grid-column:3;grid-row:3;width:${precisePx(avatarSize)};height:${precisePx(avatarSize)};overflow:hidden;border-radius:0;border:${Math.max(1, px(bannerWidth * 0.002))}px solid rgba(255,255,255,.9);background:#DDE5F0;box-shadow:0 ${px(bannerWidth * 0.004)}px ${px(bannerWidth * 0.01)}px rgba(27,41,68,.28)}
-    .profile-banner .avatar-image{display:block;width:100%;height:100%;object-fit:cover}
+    .profile-layout{position:absolute;left:0;top:0;width:100%;height:100%}
+    .profile-banner .avatar{position:absolute;left:${profilePosition(CHUNITHM_PLAYER_LAYOUT.character.x)};top:${profilePosition(CHUNITHM_PLAYER_LAYOUT.character.y)};width:${profilePosition(CHUNITHM_PLAYER_LAYOUT.character.width)};height:${profilePosition(CHUNITHM_PLAYER_LAYOUT.character.height)};overflow:visible;border-radius:0}
+    .profile-banner .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
     .profile-banner .avatar-fallback{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font:900 ${px(profileUnit * 0.68)}px/1 system-ui,sans-serif;color:#52647F;background:linear-gradient(145deg,#F8FBFF,#C7D5EA)}
-    .rating-badge{grid-column:2;grid-row:3;display:flex;width:${precisePx(ratingBadgeWidth)};height:${precisePx(avatarSize)};min-width:0;flex-direction:column;overflow:hidden;padding:${px(profileUnit * 0.075)}px ${px(profileUnit * 0.15)}px;border:${Math.max(1, px(bannerWidth * 0.002))}px solid transparent;border-radius:0;background:linear-gradient(var(--tag-overlay),var(--tag-overlay)) padding-box,var(--tag-fill) padding-box,var(--tag-border) border-box;color:var(--tag-text);box-shadow:0 1px 0 rgba(255,255,255,.52) inset,0 ${px(bannerWidth * 0.004)}px ${px(bannerWidth * 0.012)}px rgba(42,55,82,.17)}
+    .rating-badge{position:absolute;left:${profilePosition(CHUNITHM_PLAYER_LAYOUT.rating.x)};top:${profilePosition(CHUNITHM_PLAYER_LAYOUT.rating.y)};display:flex;width:${profilePosition(CHUNITHM_PLAYER_LAYOUT.rating.width)};height:${profilePosition(CHUNITHM_PLAYER_LAYOUT.rating.height)};min-width:0;flex-direction:column;overflow:hidden;padding:${px(profileUnit * 0.075)}px ${px(profileUnit * 0.15)}px;border:${Math.max(1, px(bannerWidth * 0.002))}px solid transparent;border-radius:0;background:linear-gradient(var(--tag-overlay),var(--tag-overlay)) padding-box,var(--tag-fill) padding-box,var(--tag-border) border-box;color:var(--tag-text);box-shadow:0 1px 0 rgba(255,255,255,.52) inset,0 ${px(bannerWidth * 0.004)}px ${px(bannerWidth * 0.012)}px rgba(42,55,82,.17)}
     .player-name-row{display:flex;width:100%;min-width:0;min-height:0;flex:1 1 auto;align-items:center;gap:${px(profileUnit * 0.11)}px;overflow:hidden}
     .player-name{display:block;width:max-content;min-width:0;flex:0 0 auto;overflow:visible;color:var(--tag-text);font:900 ${nameFontSize}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;transform-origin:left center}
     .player-level{flex:0 0 auto;color:var(--tag-text);font:850 ${levelFontSize}px/1 system-ui,sans-serif;white-space:nowrap}
     .rating-divider{width:100%;height:${Math.max(1, px(bannerWidth * 0.0012))}px;flex:0 0 auto;background:var(--tag-text);opacity:.42}
     .rating-value-row{display:flex;width:100%;min-height:0;flex:0 0 34%;align-items:center;gap:${px(profileUnit * 0.09)}px;font:750 ${ratingLabelSize}px/1 system-ui,sans-serif;letter-spacing:.08em;white-space:nowrap}
     .rating-value-row strong{font-size:${ratingValueSize}px;font-weight:850;font-variant-numeric:tabular-nums;letter-spacing:.02em}
-    .trophy-slot{grid-column:2/4;grid-row:2;display:flex;width:${precisePx(profileContentWidth)};height:${precisePx(profileUnit)};align-items:center;justify-content:flex-start;overflow:hidden;padding:0 ${px(profileUnit * 0.15)}px;border:${Math.max(1, px(bannerWidth * 0.0015))}px solid rgba(96,87,72,.35);border-radius:0;background:rgba(255,255,255,.82)}
-    .trophy-image{display:block;width:100%;height:100%;object-fit:contain;object-position:left center}
-    .trophy-fallback{display:flex;align-items:center;justify-content:center;overflow:hidden;color:#394454;font:700 ${px(profileUnit * 0.34)}px/1.2 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
+    .trophy-slot{position:absolute;left:${profilePosition(CHUNITHM_PLAYER_LAYOUT.trophy.x)};top:${profilePosition(CHUNITHM_PLAYER_LAYOUT.trophy.y)};display:flex;width:${profilePosition(CHUNITHM_PLAYER_LAYOUT.trophy.width)};height:${profilePosition(CHUNITHM_PLAYER_LAYOUT.trophy.height)};align-items:center;justify-content:center;overflow:visible;border-radius:0}
+    .trophy-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
+    .trophy-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;overflow:hidden;color:#394454;font:700 ${px(profileUnit * 0.34)}px/1.2 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
     .page-marker{position:absolute;z-index:2;right:${pageInset}px;top:${pageInset}px;display:flex;height:${px(width * 0.025)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.01)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 0.009)}px/1 system-ui,sans-serif}
     .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
     .score-section+.score-section{margin-top:${px(width * 0.024)}px}
@@ -310,7 +310,6 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
       <section class="profile-banner${hidePlate ? ' no-plate' : ''}" data-layout-content aria-label="玩家资料">
         ${nameplate}
         <div class="profile-layout">
-          <div class="profile-spacer" aria-hidden="true"></div>
           ${hideTrophy ? '' : `<div class="trophy-slot">${trophyMarkup}</div>`}
           <div class="rating-badge" id="rating-box" style="${escapeHtml(identityStyle)}" aria-label="Rating ${escapeHtml(input.ratingDisplay)}，${escapeHtml(possessionTheme.label)}">
             <div class="player-name-row" id="player-name-row">
