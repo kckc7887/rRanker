@@ -43,9 +43,9 @@ import { useNotification } from '@/components/AppNotification';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
 import {
-  configurationTagsForChart,
+  dxRatingTagsForChart,
   type DxRatingChartTagsSnapshot,
-  type DxRatingConfigurationTag,
+  type DxRatingChartTag,
 } from '@/domain/dxrating-chart-tags';
 import type {
   BuddyChartNotes,
@@ -143,7 +143,7 @@ function MaimaiSongDetailScreen({
         state: dxratingTags.data.source.isStale ? 'cache' : 'live',
       }
     : dxratingTags.isError
-      ? { key: 'dxrating-tags', label: 'DXRating 配置标签不可用', state: 'unavailable' }
+      ? { key: 'dxrating-tags', label: 'DXRating 谱面标签不可用', state: 'unavailable' }
       : undefined;
   return <>
     <StatusBar style="light" />
@@ -330,7 +330,7 @@ function Detail({ song, versions, records, catalogSource, scoreSource, dxratingT
       <ChartCarousel key={`${song.id}:${selectedChartType}:${initialIndex}`} charts={sortedCharts} records={records} song={song}
         library={library} cardWidth={cardWidth} initialIndex={initialIndex} canSwitchChartType={canSwitchChartType}
         nextChartType={nextChartType} dxratingTags={dxratingTags}
-        onShowAllConfigurationTags={setTagSheetData}
+        onShowAllDxRatingTags={setTagSheetData}
         onVisibleIndexChange={(index) => setVisibleChartState({
           songId: song.id,
           chartType: selectedChartType,
@@ -440,7 +440,7 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
     contentContainerStyle={styles.singleLineContent} />;
 }
 
-function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, dxratingTags, onShowAllConfigurationTags, onVisibleIndexChange, onToggleChartType }: {
+function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, dxratingTags, onShowAllDxRatingTags, onVisibleIndexChange, onToggleChartType }: {
   charts: Chart[];
   records: ScoreRecord[];
   song: Song;
@@ -450,7 +450,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   canSwitchChartType: boolean;
   nextChartType?: ChartType;
   dxratingTags?: DxRatingChartTagsSnapshot;
-  onShowAllConfigurationTags: (data: DxRatingChartTagSheetData) => void;
+  onShowAllDxRatingTags: (data: DxRatingChartTagSheetData) => void;
   onVisibleIndexChange: (index: number) => void;
   onToggleChartType: () => void;
 }) {
@@ -469,11 +469,11 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
           (String(record.songId) === song.id || normalizeSongId(record.songId) === song.id) &&
           record.type === chart.type && record.levelIndex === chart.levelIndex)
           .sort((left, right) => right.achievements - left.achievements)[0];
-        const configurationTags = configurationTagsForChart(dxratingTags, song, chart);
+        const chartTags = dxRatingTagsForChart(dxratingTags, song, chart);
         return <ChartCard chart={chart} best={best} song={song}
           library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
-          nextChartType={nextChartType} configurationTags={configurationTags}
-          onShowAllConfigurationTags={onShowAllConfigurationTags}
+          nextChartType={nextChartType} dxratingTags={chartTags}
+          onShowAllDxRatingTags={onShowAllDxRatingTags}
           onToggleChartType={onToggleChartType} />;
     }}
     rootStyle={styles.carouselRoot}
@@ -495,7 +495,7 @@ async function openBilibiliChartSearch(query: string): Promise<void> {
   }
 }
 
-function ChartCard({ chart, best, song, library, width, canSwitchChartType, nextChartType, configurationTags, onShowAllConfigurationTags, onToggleChartType }: {
+function ChartCard({ chart, best, song, library, width, canSwitchChartType, nextChartType, dxratingTags, onShowAllDxRatingTags, onToggleChartType }: {
   chart: Chart;
   best?: ScoreRecord;
   song: Song;
@@ -503,8 +503,8 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   width: number;
   canSwitchChartType: boolean;
   nextChartType?: ChartType;
-  configurationTags: DxRatingConfigurationTag[];
-  onShowAllConfigurationTags: (data: DxRatingChartTagSheetData) => void;
+  dxratingTags: DxRatingChartTag[];
+  onShowAllDxRatingTags: (data: DxRatingChartTagSheetData) => void;
   onToggleChartType: () => void;
 }) {
   const theme = useAppTheme();
@@ -549,7 +549,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     openChartPreview();
   };
 
-  const showConfigurationTagDescription = (tag: DxRatingConfigurationTag) => {
+  const showDxRatingTagDescription = (tag: DxRatingChartTag) => {
     showActionNotification({
       title: tag.name,
       message: tag.description || 'DXRating 暂未提供说明',
@@ -601,9 +601,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     {chart.utage?.description
       ? <Text style={[styles.utageDescription, { color: theme.textSecondary }]}>{chart.utage.description}</Text>
       : null}
-    <ConfigurationTags tags={configurationTags}
-      onTagPress={showConfigurationTagDescription}
-      onShowAll={() => onShowAllConfigurationTags({ songTitle: song.title, chartLabel, tags: configurationTags })} />
+    <DxRatingTags tags={dxratingTags}
+      onTagPress={showDxRatingTagDescription}
+      onShowAll={() => onShowAllDxRatingTags({ songTitle: song.title, chartLabel, tags: dxratingTags })} />
     <ChartNotesTables chart={chart} />
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
@@ -630,9 +630,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   </GameChartResultCard>;
 }
 
-function ConfigurationTags({ tags, onTagPress, onShowAll }: {
-  tags: DxRatingConfigurationTag[];
-  onTagPress: (tag: DxRatingConfigurationTag) => void;
+function DxRatingTags({ tags, onTagPress, onShowAll }: {
+  tags: DxRatingChartTag[];
+  onTagPress: (tag: DxRatingChartTag) => void;
   onShowAll: () => void;
 }) {
   const theme = useAppTheme();
@@ -640,11 +640,10 @@ function ConfigurationTags({ tags, onTagPress, onShowAll }: {
   const visible = tags.slice(0, 4);
   const remaining = tags.length - visible.length;
   return <View testID="dxrating-config-tags" style={styles.configurationBlock}>
-    <Text style={[styles.configurationLabel, { color: theme.textSecondary }]}>配置</Text>
     <View style={styles.configurationTags}>
       {visible.map((tag) => <DetailPressable key={tag.id}
         accessibilityRole="button"
-        accessibilityLabel={`配置标签 ${tag.name}，点击查看说明`}
+        accessibilityLabel={`谱面标签 ${tag.name}，点击查看说明`}
         testID={`dxrating-config-tag-${tag.id}`}
         onPress={() => onTagPress(tag)}
         style={({ pressed }) => [styles.configurationTag, { backgroundColor: tag.color }, pressed && styles.switchPressed]}>
@@ -652,7 +651,7 @@ function ConfigurationTags({ tags, onTagPress, onShowAll }: {
       </DetailPressable>)}
       {remaining > 0 ? <DetailPressable
         accessibilityRole="button"
-        accessibilityLabel={`查看全部${tags.length}个配置标签，另有${remaining}个`}
+        accessibilityLabel={`查看全部${tags.length}个谱面标签，另有${remaining}个`}
         testID="dxrating-config-tags-more"
         onPress={onShowAll}
         style={({ pressed }) => [styles.configurationMore, {
@@ -820,8 +819,7 @@ const styles = StyleSheet.create({
   chartDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(51,65,85,0.18)', marginVertical: 16 },
   chartMeta: { color: '#4C586A', fontSize: 12, lineHeight: 18 },
   utageDescription: { fontSize: 12, lineHeight: 18, marginTop: 4 },
-  configurationBlock: { gap: 6, marginTop: 10 },
-  configurationLabel: { fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  configurationBlock: { marginTop: 10 },
   configurationTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   configurationTag: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
   configurationTagText: { color: '#0C4A6E', fontSize: 11, lineHeight: 15, fontWeight: '700' },
