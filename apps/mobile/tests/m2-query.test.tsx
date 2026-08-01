@@ -30,6 +30,7 @@ const mockDxRatingTags = Array.from({ length: 14 }, (_, index) => ({
   id: index + 1,
   name: `标签${index + 1}`,
   description: `标签说明${index + 1}`,
+  descriptionSegments: [{ text: `标签说明${index + 1}`, strikethrough: index === 1 }],
   color: ['#7dd3fc', '#a5b4fc', '#f0abfc'][index % 3],
   groupId: (index % 3) + 1,
   groupName: ['配置', '难度', '评价'][index % 3],
@@ -305,6 +306,14 @@ describe('M2 song query screens', () => {
       variant: 'info',
       actions: [{ label: '知道了', tone: 'cancel' }],
     });
+    await fireEvent.press(screen.getByLabelText('谱面标签 标签2，点击查看说明'));
+    expect(mockShowActionNotification).toHaveBeenLastCalledWith({
+      title: '标签2',
+      message: '标签说明2',
+      messageSegments: [{ text: '标签说明2', strikethrough: true }],
+      variant: 'info',
+      actions: [{ label: '知道了', tone: 'cancel' }],
+    });
 
     await fireEvent.press(screen.getByLabelText('查看全部5个谱面标签，另有1个'));
     expect(screen.getByTestId('dxrating-config-tag-sheet')).toBeTruthy();
@@ -312,6 +321,8 @@ describe('M2 song query screens', () => {
     for (let index = 1; index <= 5; index += 1) {
       expect(screen.getByText(`标签说明${index}`)).toBeTruthy();
     }
+    expect(StyleSheet.flatten(screen.getByTestId('dxrating-tag-description-strikethrough-2-0').props.style))
+      .toMatchObject({ textDecorationLine: 'line-through' });
     await fireEvent.press(screen.getByLabelText('关闭谱面标签'));
     expect(screen.queryByTestId('dxrating-config-tag-sheet')).toBeNull();
   });

@@ -2,14 +2,20 @@ import { stripUtageTitlePrefix } from '@/domain/catalog';
 import type { Chart, DataSource, Song } from '@/domain/models';
 
 export const DXRATING_CHART_TAGS_RESOURCE_KEY = 'dxrating-chart-tags';
-export const DXRATING_CHART_TAGS_SCHEMA_VERSION = 2;
+export const DXRATING_CHART_TAGS_SCHEMA_VERSION = 3;
 
 export type DxRatingSheetType = 'std' | 'dx' | 'utage' | 'utage2p';
+
+export interface DxRatingDescriptionSegment {
+  text: string;
+  strikethrough: boolean;
+}
 
 export interface DxRatingChartTag {
   id: number;
   name: string;
   description: string;
+  descriptionSegments: DxRatingDescriptionSegment[];
   color: string;
   groupId: number;
   groupName: string;

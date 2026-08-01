@@ -41,11 +41,22 @@ function localizedText(value: Record<string, string>): string {
   return Object.values(value).map((text) => text.trim()).find(Boolean) ?? '';
 }
 
-function plainDescription(value: Record<string, string>): string {
-  return localizedText(value)
-    .replace(/~~/g, '')
+function richDescription(value: Record<string, string>) {
+  const markdown = localizedText(value)
     .replace(/\[([^\]]+)]\([^)]+\)/g, '$1')
     .trim();
+  const segments: { text: string; strikethrough: boolean }[] = [];
+  const pattern = /~~([\s\S]*?)~~/g;
+  let cursor = 0;
+  for (const match of markdown.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    if (index > cursor) segments.push({ text: markdown.slice(cursor, index), strikethrough: false });
+    if (match[1]) segments.push({ text: match[1], strikethrough: true });
+    cursor = index + match[0].length;
+  }
+  if (cursor < markdown.length) segments.push({ text: markdown.slice(cursor), strikethrough: false });
+  if (segments.length === 0 && markdown) segments.push({ text: markdown, strikethrough: false });
+  return { text: segments.map((segment) => segment.text).join(''), segments };
 }
 
 function providerErrorFromStatus(status: number): ProviderError {
@@ -70,11 +81,13 @@ export function mapDxRatingChartTags(input: unknown): DxRatingChartTagsSnapshot 
     if (tag.group_id === null || tagIds.has(tag.id)) continue;
     const group = groupsById.get(tag.group_id);
     if (!group) continue;
+    const description = richDescription(tag.localized_description);
     tagIds.add(tag.id);
     tags.push({
       id: tag.id,
       name: localizedText(tag.localized_name),
-      description: plainDescription(tag.localized_description),
+      description: description.text,
+      descriptionSegments: description.segments,
       color: group.color,
       groupId: group.id,
       groupName: localizedText(group.localized_name),
