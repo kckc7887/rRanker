@@ -11,6 +11,10 @@ import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDiff
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
 import { useChunithmCatalogFilter } from '@/state/chunithm-catalog-filter';
 
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
+  data: undefined, isLoading: false, isError: false, error: null,
+}) }));
+
 const source = {
   kind: 'lxns' as const,
   label: 'LXNS 中二节奏公共曲库',
