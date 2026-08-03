@@ -41,9 +41,9 @@ describe('resolveDxRatingTheme', () => {
 
   it('uses the exact supplied gradients for key tiers', () => {
     expect(resolveDxRatingTheme(14500)).toMatchObject({
-      fillColors: ['#F4F2E0', '#DBDCCD', '#C0C5BC'],
-      borderColors: ['#81867C', '#636962'],
-      textColor: '#474B46',
+      fillColors: ['#E9EDF4', '#CFD8E6', '#B0BED4'],
+      borderColors: ['#6B7B93', '#4F5E75'],
+      textColor: '#39434F',
     });
     expect(resolveDxRatingTheme(16000)).toMatchObject({
       fillColors: ['#FFFEFD', '#F8FBFF', '#EFFBFF', '#F6F1FF', '#FFF7FB'],
