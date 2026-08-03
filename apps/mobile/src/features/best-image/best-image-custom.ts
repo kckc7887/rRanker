@@ -3,8 +3,6 @@ import {
   matchesAchievementRange,
   matchesAchievementStatus,
   matchesConstantRange,
-  maimaiFcAchievementLabel,
-  maimaiFsAchievementLabel,
   type MaimaiFcAchievement,
   type MaimaiFsAchievement,
 } from '@/domain/maimai-filters';
@@ -31,11 +29,17 @@ export type CustomBestImageFilters = {
   dxRatingTagIndex: DxRatingChartTagIndex;
   /** 版本名 → 展示名（跟随筛选器的中/日切换）。 */
   versionLabels: Readonly<Record<string, string>>;
+  /** 版本以外生效筛选条件的展示标签（如难度/类型/定数/达成率/成就/寸/严格）。 */
+  conditionLabels: readonly string[];
+  /** 版本筛选生效时的展示标签；未缩窄版本时为空。 */
+  versionConditionLabel: string | null;
 };
 
 export type BestImageScoreSectionData = {
   id: string;
   title: string;
+  /** 多条件筛选时标题下方的小字筛选条件提示。 */
+  subtitle?: string;
   records: readonly ScoreRecord[];
   rankOffset?: number;
 };
@@ -64,17 +68,9 @@ export const DEFAULT_CUSTOM_BEST_IMAGE_FILTERS: CustomBestImageFilters = {
   selectedDxRatingTagIds: [],
   dxRatingTagIndex: new Map(),
   versionLabels: {},
+  conditionLabels: [],
+  versionConditionLabel: null,
 };
-
-export function bestImageAchievementTitleLabel(
-  soloAchievement: MaimaiFcAchievement | null,
-  multiAchievement: MaimaiFsAchievement | null,
-): string {
-  const solo = soloAchievement ? maimaiFcAchievementLabel(soloAchievement) : null;
-  const multi = multiAchievement ? maimaiFsAchievementLabel(multiAchievement) : null;
-  if (!solo && !multi) return 'Best';
-  return [solo, multi].filter(Boolean).join('');
-}
 
 export function parseBestImageQuantity(value: string): number | null {
   const normalized = value.normalize('NFKC').trim();
@@ -88,14 +84,14 @@ function limited(records: readonly ScoreRecord[], quantity: number): ScoreRecord
   return quantity === 0 ? ranked : ranked.slice(0, quantity);
 }
 
-function title(
-  prefix: string,
-  soloAchievement: MaimaiFcAchievement | null,
-  multiAchievement: MaimaiFsAchievement | null,
-  nearMiss: boolean,
+/** 单个条件时标题为「{条件}N」，多个条件时标题为「自定义N」并附小字提示。 */
+function buildSectionTitle(
+  conditions: readonly string[],
   count: number,
-): string {
-  return `${prefix}${nearMiss ? '寸' : ''}${bestImageAchievementTitleLabel(soloAchievement, multiAchievement)}${count}`;
+): { title: string; subtitle?: string } {
+  if (conditions.length === 0) return { title: `Best${count}` };
+  if (conditions.length === 1) return { title: `${conditions[0]}${count}` };
+  return { title: `自定义${count}`, subtitle: conditions.join(' · ') };
 }
 
 function matchesCustomAchievementFilters(
@@ -146,20 +142,15 @@ export function buildCustomBestImageSections(
   if (filters.splitVersions && filters.versions.length > 1) {
     return filters.versions.map((version) => {
       const output = limited(filtered.filter((record) => record.version === version), filters.quantity);
-      return {
-        id: `custom-${version}`,
-        title: title(labelFor(version), filters.soloAchievement, filters.multiAchievement, filters.nearMiss, output.length),
-        records: output,
-      };
+      const { title, subtitle } = buildSectionTitle([labelFor(version), ...filters.conditionLabels], output.length);
+      return { id: `custom-${version}`, title, subtitle, records: output };
     });
   }
-  const prefix = filters.versions.length === 1 ? labelFor(filters.versions[0]!) : '';
+  const conditions = [filters.versionConditionLabel, ...filters.conditionLabels]
+    .filter((label): label is string => label !== null);
   const output = limited(filtered, filters.quantity);
-  return [{
-    id: 'custom',
-    title: title(prefix, filters.soloAchievement, filters.multiAchievement, filters.nearMiss, output.length),
-    records: output,
-  }];
+  const { title, subtitle } = buildSectionTitle(conditions, output.length);
+  return [{ id: 'custom', title, subtitle, records: output }];
 }
 
 export function paginateBestImageSections(

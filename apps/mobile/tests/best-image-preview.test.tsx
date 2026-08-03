@@ -166,7 +166,7 @@ describe('best image preview', () => {
     await fireEvent.press(screen.getByLabelText('寸筛选'));
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
-      expect(html).toContain('<div class="section-divider"><span>寸Best0</span></div>');
+      expect(html).toContain('<div class="section-divider"><span>寸0</span></div>');
     });
   });
 
@@ -182,7 +182,7 @@ describe('best image preview', () => {
     await fireEvent.press(screen.getByLabelText('完成版本选择'));
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
-      expect(html).toContain('<div class="section-divider"><span>当前版本Best1</span></div>');
+      expect(html).toContain('<div class="section-divider"><span>当前版本1</span></div>');
     });
 
     await fireEvent.press(screen.getByLabelText('版本筛选，当前 当前版本'));
@@ -191,7 +191,7 @@ describe('best image preview', () => {
     await fireEvent.press(screen.getByLabelText('完成版本选择'));
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
-      expect(html).toContain('<div class="section-divider"><span>旧版本Best1</span></div>');
+      expect(html).toContain('<div class="section-divider"><span>旧版本1</span></div>');
     });
   });
 

@@ -314,6 +314,26 @@ describe('best image html', () => {
     expect(html).toContain('<div class="section-divider"><span>自定义成绩</span></div>');
   });
 
+  it('renders the filter condition subtitle under multi-condition custom titles', () => {
+    const html = buildBestImageHtml({
+      type: 'custom',
+      width: 1080,
+      rating: 0,
+      scoreSections: [{
+        id: 'custom',
+        title: '自定义2',
+        subtitle: 'MASTER · 寸',
+        records: [score],
+      }],
+      fontUrl: 'data:font/ttf;base64,Zm9udA==',
+      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
+      player: { displayName: '玩家' },
+    });
+    expect(html).toContain('<div class="section-divider"><span>自定义2</span></div>');
+    expect(html).toContain('<div class="section-subtitle">MASTER · 寸</div>');
+    expect(html).toContain('.section-subtitle{margin:-');
+  });
+
   it('orders evaluation, near miss, FC and FS badges using the app status colors', () => {
     const html = buildBestImageHtml({
       type: 'custom', width: 1080, rating: 0,
