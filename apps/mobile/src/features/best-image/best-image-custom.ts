@@ -139,18 +139,19 @@ export function buildCustomBestImageSections(
     return true;
   });
   const labelFor = (version: string) => filters.versionLabels[version] ?? version;
-  if (filters.splitVersions && filters.versions.length > 1) {
-    return filters.versions.map((version) => {
-      const output = limited(filtered.filter((record) => record.version === version), filters.quantity);
+  const pool = limited(filtered, filters.quantity);
+  if (filters.splitVersions && filters.versions.length > 1 && pool.length > 0) {
+    return filters.versions.flatMap((version) => {
+      const output = pool.filter((record) => record.version === version);
+      if (output.length === 0) return [];
       const { title, subtitle } = buildSectionTitle([labelFor(version), ...filters.conditionLabels], output.length);
-      return { id: `custom-${version}`, title, subtitle, records: output };
+      return [{ id: `custom-${version}`, title, subtitle, records: output }];
     });
   }
   const conditions = [filters.versionConditionLabel, ...filters.conditionLabels]
     .filter((label): label is string => label !== null);
-  const output = limited(filtered, filters.quantity);
-  const { title, subtitle } = buildSectionTitle(conditions, output.length);
-  return [{ id: 'custom', title, subtitle, records: output }];
+  const { title, subtitle } = buildSectionTitle(conditions, pool.length);
+  return [{ id: 'custom', title, subtitle, records: pool }];
 }
 
 export function paginateBestImageSections(

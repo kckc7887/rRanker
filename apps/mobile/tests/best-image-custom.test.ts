@@ -90,16 +90,43 @@ describe('custom best image', () => {
     expect(sections[0]?.records.map((item) => item.songId)).toEqual(['regular']);
   });
 
-  it('splits every selected version into its own section with quantity applied independently', () => {
+  it('splits the filtered and quantity-limited pool by version', () => {
     const records = [
       score({ songId: '1', rating: 300 }), score({ songId: '2', rating: 200 }),
       score({ songId: '3', version: '旧版本', rating: 250 }), score({ songId: '4', version: '旧版本', rating: 150 }),
     ];
-    const sections = buildCustomBestImageSections(records, filters({
+    const limitedPool = buildCustomBestImageSections(records, filters({
       versions: ['当前版本', '旧版本'], quantity: 1, splitVersions: true,
     }));
-    expect(sections.map((section) => section.title)).toEqual(['当前版本1', '旧版本1']);
-    expect(sections.map((section) => section.records[0]?.songId)).toEqual(['1', '3']);
+    expect(limitedPool.map((section) => section.title)).toEqual(['当前版本1']);
+    expect(limitedPool.map((section) => section.records[0]?.songId)).toEqual(['1']);
+
+    const fullPool = buildCustomBestImageSections(records, filters({
+      versions: ['当前版本', '旧版本'], quantity: 2, splitVersions: true,
+    }));
+    expect(fullPool.map((section) => section.title)).toEqual(['当前版本1', '旧版本1']);
+    expect(fullPool.map((section) => section.records[0]?.songId)).toEqual(['1', '3']);
+  });
+
+  it('applies other conditions to the pool before splitting by version', () => {
+    const records = [
+      score({ songId: 'master-1', rating: 300, difficulty: 'master' }),
+      score({ songId: 'master-2', rating: 280, difficulty: 'master' }),
+      score({ songId: 'expert-1', rating: 400, difficulty: 'expert' }),
+      score({ songId: 'expert-2', rating: 350, difficulty: 'expert' }),
+      score({ songId: 'past-expert-1', rating: 380, difficulty: 'expert', version: '旧版本' }),
+    ];
+    const sections = buildCustomBestImageSections(records, filters({
+      versions: ['当前版本', '旧版本'],
+      difficulty: 'expert',
+      conditionLabels: ['EXPERT'],
+      splitVersions: true,
+      quantity: 100,
+    }));
+    expect(sections.map((section) => section.title)).toEqual(['自定义2', '自定义1']);
+    expect(sections.map((section) => section.subtitle)).toEqual(['当前版本 · EXPERT', '旧版本 · EXPERT']);
+    expect(sections[0]?.records.map((item) => item.songId)).toEqual(['expert-1', 'expert-2']);
+    expect(sections[1]?.records.map((item) => item.songId)).toEqual(['past-expert-1']);
   });
 
   it('uses localized version labels in split and single-version titles', () => {
