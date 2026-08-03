@@ -107,9 +107,9 @@ const TIERS: readonly Tier[] = [
     min: 14500,
     theme: {
       id: 'platinum', label: '白金 · 14500–14999',
-      fillColors: ['#E9EDF4', '#CFD8E6', '#B0BED4'], fillLocations: THREE_STOPS,
-      borderColors: ['#6B7B93', '#4F5E75'], borderLocations: TWO_STOPS,
-      overlayColor: 'rgba(75,78,85,0.12)', textColor: '#39434F', starColor: '#6E7B90',
+      fillColors: ['#FFF9EC', '#F1DDB1', '#FFF8E9', '#F5E9CC'], fillLocations: [0, 0.45, 0.72, 1],
+      borderColors: ['#D9BC7F', '#B99A55'], borderLocations: TWO_STOPS,
+      overlayColor: 'rgba(75,78,85,0.10)', textColor: '#4A3B1E', starColor: '#9A7B35',
     },
   },
   {
