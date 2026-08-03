@@ -17,7 +17,6 @@ build/
 /TODO.md
 /todos/
 
-# 本地概念验证：代码与输出不进入正式产品仓库，仅保留经验总结
-/demo/*
-!/demo/README.md
+# 本地概念验证：整个目录不进入正式产品仓库
+/demo/
 refer/
