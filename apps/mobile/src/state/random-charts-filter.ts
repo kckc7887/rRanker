@@ -24,6 +24,7 @@ type RandomChartsFilterState = RandomChartsPreferences & {
   setAchievementMax: (value: string) => void;
   setSoloAchievement: (value: MaimaiFcAchievement | null) => void;
   setMultiAchievement: (value: MaimaiFsAchievement | null) => void;
+  setSelectedDxRatingTagIds: (values: number[]) => void;
   setVersionLocale: (value: VersionNameLocale) => void;
   clearFilters: () => void;
 };
@@ -42,6 +43,7 @@ function preferencesFromState(state: RandomChartsPreferences): RandomChartsPrefe
     achievementMax: state.achievementMax,
     soloAchievement: state.soloAchievement,
     multiAchievement: state.multiAchievement,
+    selectedDxRatingTagIds: state.selectedDxRatingTagIds,
     versionLocale: state.versionLocale,
   };
 }
@@ -79,6 +81,7 @@ export function createRandomChartsFilterStore(
         achievementMax: defaults.achievementMax,
         soloAchievement: defaults.soloAchievement,
         multiAchievement: defaults.multiAchievement,
+        selectedDxRatingTagIds: defaults.selectedDxRatingTagIds,
       };
     };
 
@@ -107,6 +110,7 @@ export function createRandomChartsFilterStore(
       setAchievementMax: (achievementMax) => update({ achievementMax }),
       setSoloAchievement: (soloAchievement) => update({ soloAchievement }),
       setMultiAchievement: (multiAchievement) => update({ multiAchievement }),
+      setSelectedDxRatingTagIds: (selectedDxRatingTagIds) => update({ selectedDxRatingTagIds }),
       setVersionLocale: (versionLocale) => update({ versionLocale }),
       clearFilters: () => update(clearPatch()),
     };
