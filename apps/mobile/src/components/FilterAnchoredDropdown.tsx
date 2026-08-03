@@ -22,6 +22,8 @@ type AnchorLayout = Pick<LayoutRectangle, 'x' | 'y' | 'width' | 'height'>;
 const DROPDOWN_GAP = 4;
 const DROPDOWN_MAX_HEIGHT = 220;
 const OPTION_HEIGHT = 40;
+/** 多选模式下头部/底部操作区预留高度（估算用）。 */
+const MULTI_CHROME_HEIGHT = 84;
 const FALLBACK_TRIGGER: AnchorLayout = { x: 16, y: 120, width: 200, height: 36 };
 const FALLBACK_ADORNMENT: AnchorLayout = {
   x: FALLBACK_TRIGGER.x + FALLBACK_TRIGGER.width + 8,
@@ -30,9 +32,9 @@ const FALLBACK_ADORNMENT: AnchorLayout = {
   height: 36,
 };
 
-function computeDropdownTop(anchor: AnchorLayout, optionCount: number): number {
+function computeDropdownTop(anchor: AnchorLayout, optionCount: number, extraHeight = 0): number {
   const windowHeight = Dimensions.get('window').height;
-  const estimatedHeight = Math.min(DROPDOWN_MAX_HEIGHT, optionCount * OPTION_HEIGHT + 2);
+  const estimatedHeight = Math.min(DROPDOWN_MAX_HEIGHT + extraHeight, optionCount * OPTION_HEIGHT + 2 + extraHeight);
   const spaceBelow = windowHeight - (anchor.y + anchor.height + DROPDOWN_GAP);
   if (spaceBelow >= estimatedHeight || anchor.y < spaceBelow) {
     return anchor.y + anchor.height + DROPDOWN_GAP;
@@ -51,6 +53,11 @@ export function FilterAnchoredDropdown<T extends string>({
   onSelect,
   optionAccessibilityPrefix,
   endAdornment,
+  multiple = false,
+  selectedValues,
+  onValuesChange,
+  dropdownHeader,
+  dropdownFooter,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -63,6 +70,14 @@ export function FilterAnchoredDropdown<T extends string>({
   optionAccessibilityPrefix: string;
   /** 紧邻触发器的附加控件；下拉展开时会叠在遮罩之上保持可点。 */
   endAdornment?: ReactNode;
+  /** 多选模式：选项点击切换选中而不关闭，需配合 selectedValues/onValuesChange 与完成按钮。 */
+  multiple?: boolean;
+  selectedValues?: readonly T[];
+  onValuesChange?: (values: T[]) => void;
+  /** 下拉顶部操作区（如全选快捷按钮）；仅在多选模式渲染。 */
+  dropdownHeader?: (close: () => void) => ReactNode;
+  /** 下拉底部操作区（如完成按钮）；仅在多选模式渲染。 */
+  dropdownFooter?: (close: () => void) => ReactNode;
 }) {
   const theme = useAppTheme();
   const triggerRef = useRef<View>(null);
@@ -72,8 +87,9 @@ export function FilterAnchoredDropdown<T extends string>({
 
   const dropdownTop = useMemo(() => {
     if (!anchor) return 0;
-    return computeDropdownTop(anchor, options.length);
-  }, [anchor, options.length]);
+    const chrome = multiple && (dropdownHeader || dropdownFooter) ? MULTI_CHROME_HEIGHT : 0;
+    return computeDropdownTop(anchor, options.length, chrome);
+  }, [anchor, dropdownFooter, dropdownHeader, multiple, options.length]);
 
   const openFromTrigger = () => {
     let measured = false;
@@ -162,20 +178,31 @@ export function FilterAnchoredDropdown<T extends string>({
               top: dropdownTop,
               left: anchor.x,
               width: anchor.width,
-              maxHeight: DROPDOWN_MAX_HEIGHT,
+              maxHeight: DROPDOWN_MAX_HEIGHT + (multiple && (dropdownHeader || dropdownFooter) ? MULTI_CHROME_HEIGHT : 0),
               backgroundColor: theme.surface,
               borderColor: theme.border,
               shadowColor: theme.text,
             }]}
           >
+            {multiple && dropdownHeader ? (
+              <View style={[styles.dropdownHeader, { borderBottomColor: theme.border }]}>{dropdownHeader(close)}</View>
+            ) : null}
             <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={styles.list}>
               {options.map((option) => {
-                const selected = option.value === selectedValue;
+                const selected = multiple
+                  ? (selectedValues?.includes(option.value) ?? false)
+                  : option.value === selectedValue;
                 return (
                   <Pressable key={option.value} accessibilityRole="button"
                     accessibilityLabel={`${optionAccessibilityPrefix} ${option.label}`}
                     accessibilityState={{ selected }}
                     onPress={() => {
+                      if (multiple && onValuesChange && selectedValues) {
+                        onValuesChange(selectedValues.includes(option.value)
+                          ? selectedValues.filter((value) => value !== option.value)
+                          : [...selectedValues, option.value]);
+                        return;
+                      }
                       onSelect(option.value);
                       close();
                     }}
@@ -183,11 +210,16 @@ export function FilterAnchoredDropdown<T extends string>({
                     <Text style={[styles.optionText, { color: selected ? theme.accent : theme.textSecondary }, selected && styles.optionTextSelected]}>
                       {option.label}
                     </Text>
-                    {selected ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+                    {multiple
+                      ? <Ionicons name={selected ? 'checkbox' : 'square-outline'} size={16} color={selected ? theme.accent : theme.textMuted} />
+                      : selected ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
                   </Pressable>
                 );
               })}
             </ScrollView>
+            {multiple && dropdownFooter ? (
+              <View style={[styles.dropdownFooter, { borderTopColor: theme.border }]}>{dropdownFooter(close)}</View>
+            ) : null}
           </View>
         ) : null}
       </Modal>
@@ -225,6 +257,20 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
   },
   list: { maxHeight: DROPDOWN_MAX_HEIGHT },
+  dropdownHeader: {
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  dropdownFooter: {
+    padding: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+  },
   option: {
     minHeight: OPTION_HEIGHT,
     paddingHorizontal: 12,

@@ -111,6 +111,12 @@ jest.mock('@/components/CollectionImage', () => {
   const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
   return { CollectionImage: (props: Record<string, unknown>) => React.createElement(ReactNative.View, props) };
 });
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({
+  useDxRatingChartTags: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
+}));
+jest.mock('@/hooks/use-detailed-catalog', () => ({
+  useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
+}));
 
 describe('best image preview', () => {
   beforeEach(() => mockShowNotification.mockClear());
@@ -162,6 +168,45 @@ describe('best image preview', () => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
       expect(html).toContain('<div class="section-divider"><span>寸Best0</span></div>');
     });
+  });
+
+  it('reuses the score filter with multi-version checkboxes and quick buttons', async () => {
+    const screen = await render(<BestImageScreen />);
+    await fireEvent.press(screen.getByLabelText('自定义'));
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('版本筛选，当前 全部')).toBeTruthy());
+
+    await fireEvent.press(screen.getByLabelText('版本筛选，当前 全部'));
+    await waitFor(() => expect(screen.getByLabelText('选择版本 旧版本')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('选择版本 旧版本'));
+    await fireEvent.press(screen.getByLabelText('完成版本选择'));
+    await waitFor(() => {
+      const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
+      expect(html).toContain('<div class="section-divider"><span>当前版本Best1</span></div>');
+    });
+
+    await fireEvent.press(screen.getByLabelText('版本筛选，当前 当前版本'));
+    await waitFor(() => expect(screen.getByLabelText('版本快捷 过往版本')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('版本快捷 过往版本'));
+    await fireEvent.press(screen.getByLabelText('完成版本选择'));
+    await waitFor(() => {
+      const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
+      expect(html).toContain('<div class="section-divider"><span>旧版本Best1</span></div>');
+    });
+  });
+
+  it('disables export when every version is deselected', async () => {
+    const screen = await render(<BestImageScreen />);
+    await fireEvent.press(screen.getByLabelText('自定义'));
+    await waitFor(() => expect(screen.getByLabelText('版本筛选，当前 全部')).toBeTruthy());
+
+    await fireEvent.press(screen.getByLabelText('版本筛选，当前 全部'));
+    await waitFor(() => expect(screen.getByLabelText('选择版本 旧版本')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('选择版本 旧版本'));
+    await fireEvent.press(screen.getByLabelText('选择版本 当前版本'));
+    await fireEvent.press(screen.getByLabelText('完成版本选择'));
+    await waitFor(() => expect(screen.getByLabelText('版本筛选，当前 未选择版本')).toBeTruthy());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
   });
 
   it('changes output resolution without changing the fitted preview window', async () => {
