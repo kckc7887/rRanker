@@ -22,7 +22,12 @@ import { useSession } from '@/state/session-store';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
 import { CollectionImage } from '@/components/CollectionImage';
-import type { Player } from '@/domain/models';
+import type { ChartType, Difficulty, Player } from '@/domain/models';
+import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
+import { buildDxRatingChartTagIndex } from '@/domain/dxrating-chart-tags';
+import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
+import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
 import {
   buildBestImageHtml,
   minimumBestImageHeight,
@@ -33,12 +38,7 @@ import {
   type BestImageScoreSection,
   type BestImageType,
 } from '@/features/best-image/build-best-image-html';
-import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import {
-  MAIMAI_FC_ACHIEVEMENTS,
-  MAIMAI_FS_ACHIEVEMENTS,
-  maimaiFcAchievementLabel,
-  maimaiFsAchievementLabel,
   type MaimaiFcAchievement,
   type MaimaiFsAchievement,
 } from '@/domain/maimai-filters';
@@ -47,9 +47,7 @@ import {
   DEFAULT_CUSTOM_BEST_IMAGE_FILTERS,
   maximumBestImageRowsForWidth,
   paginateBestImageSections,
-  parseBestImageMinimumAchievement,
   parseBestImageQuantity,
-  type BestImageVersionFilter,
 } from '@/features/best-image/best-image-custom';
 import {
   loadBestImageAssets,
@@ -89,9 +87,6 @@ const IMAGE_TYPES: { id: BestImageType; label: string }[] = [
   { id: 'custom', label: '自定义' },
 ];
 const OUTPUT_WIDTHS = [1080, 1440, 2160] as const;
-type CustomOpenDropdown = 'solo' | 'multi' | null;
-type SoloAchievementValue = MaimaiFcAchievement | 'all';
-type MultiAchievementValue = MaimaiFsAchievement | 'all';
 const STYLE_ITEMS: { kind: BestImageCollectionKind; label: string }[] = [
   { kind: 'icon', label: '头像' },
   { kind: 'plate', label: '姓名框' },
@@ -203,15 +198,21 @@ export function MaimaiBestImageScreen() {
   const [stylePreferencesReady, setStylePreferencesReady] = useState(false);
   const [quantityText, setQuantityText] = useState(String(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.quantity));
   const [quantity, setQuantity] = useState(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.quantity);
-  const [minimumAchievementText, setMinimumAchievementText] = useState(String(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.minimumAchievement));
-  const [minimumAchievement, setMinimumAchievement] = useState(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.minimumAchievement);
-  const [versions, setVersions] = useState<BestImageVersionFilter[]>([...DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.versions]);
+  const [versions, setVersions] = useState<string[]>([]);
   const [splitVersions, setSplitVersions] = useState(false);
+  const [difficulty, setDifficulty] = useState<Difficulty | 'all'>('all');
+  const [type, setType] = useState<ChartType | 'all'>('all');
+  const [constantMin, setConstantMin] = useState('');
+  const [constantMax, setConstantMax] = useState('');
+  const [achievementMin, setAchievementMin] = useState('');
+  const [achievementMax, setAchievementMax] = useState('');
   const [soloAchievement, setSoloAchievement] = useState<MaimaiFcAchievement | null>(null);
   const [multiAchievement, setMultiAchievement] = useState<MaimaiFsAchievement | null>(null);
-  const [openAchievementDropdown, setOpenAchievementDropdown] = useState<CustomOpenDropdown>(null);
   const [strictAchievement, setStrictAchievement] = useState(false);
   const [nearMiss, setNearMiss] = useState(false);
+  const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
+  const [selectedDxRatingTagIds, setSelectedDxRatingTagIds] = useState<number[]>([]);
+  const [filterCollapsed, setFilterCollapsed] = useState(false);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [exportPageIndex, setExportPageIndex] = useState<number | null>(null);
   const [exportHeight, setExportHeight] = useState(minimumBestImageHeight(1080));
@@ -311,38 +312,55 @@ export function MaimaiBestImageScreen() {
   }), [basePlayer, styleSelections]);
   const hiddenStyles = useMemo(() => STYLE_ITEMS.filter(({ kind }) => styleSelections[kind]?.mode === 'off').map(({ kind }) => kind), [styleSelections]);
   const quantityError = parseBestImageQuantity(quantityText) === null ? '数量必须是非负整数，0 表示不限制' : null;
-  const minimumAchievementError = parseBestImageMinimumAchievement(minimumAchievementText) === null ? '最小达成率必须在 0–101 之间' : null;
-  const customInputValid = !quantityError && !minimumAchievementError && versions.length > 0;
+  const customInputValid = !quantityError && versions.length > 0;
   const hasAchievementFilter = soloAchievement !== null || multiAchievement !== null;
 
-  const soloAchievementOptions = useMemo<FilterSelectOption<SoloAchievementValue>[]>(() => [
-    { value: 'all', label: '全部' },
-    ...MAIMAI_FC_ACHIEVEMENTS.map((item) => ({ value: item.value, label: item.label })),
-  ], []);
+  const dxRatingChartTags = useDxRatingChartTags();
+  const catalog = useDetailedCatalog();
+  const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
+    dxRatingChartTags.data,
+    catalog.data?.songs ?? [],
+  ), [catalog.data?.songs, dxRatingChartTags.data]);
 
-  const multiAchievementOptions = useMemo<FilterSelectOption<MultiAchievementValue>[]>(() => [
-    { value: 'all', label: '全部' },
-    ...MAIMAI_FS_ACHIEVEMENTS.map((item) => ({ value: item.value, label: item.label })),
-  ], []);
+  const versionOptions = useMemo<VersionFilterOption[]>(() => {
+    if (!maimai) return [];
+    return Array.from(new Set(maimai.records.map((record) => record.version))).sort()
+      .map((name) => ({ value: name, name }));
+  }, [maimai]);
+  const versionLabels = useMemo(() => Object.fromEntries(
+    versionOptions.map((option) => [option.value, localizedVersionName(option.versionId, option.name, versionLocale)]),
+  ), [versionLocale, versionOptions]);
 
-  const setAchievementDropdownOpen = (id: CustomOpenDropdown) => (open: boolean) => {
-    setOpenAchievementDropdown(open ? id : null);
-  };
+  const versionsInitializedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (versionOptions.length === 0) return;
+    if (versionsInitializedRef.current === activeAccountId) return;
+    versionsInitializedRef.current = activeAccountId;
+    setVersions(versionOptions.map((option) => option.value));
+    setSplitVersions(false);
+  }, [activeAccountId, versionOptions]);
 
   const customSections = useMemo(() => buildCustomBestImageSections(
     maimai?.records ?? [],
-    maimai?.currentVersionTitle ?? '',
     {
       quantity,
       versions,
       splitVersions,
-      minimumAchievement,
+      difficulty,
+      type,
+      constantMin,
+      constantMax,
+      achievementMin,
+      achievementMax,
       soloAchievement,
       multiAchievement,
       strictAchievement,
       nearMiss,
+      selectedDxRatingTagIds,
+      dxRatingTagIndex,
+      versionLabels,
     },
-  ), [maimai?.currentVersionTitle, maimai?.records, minimumAchievement, multiAchievement, nearMiss, quantity, soloAchievement, splitVersions, strictAchievement, versions]);
+  ), [achievementMax, achievementMin, constantMax, constantMin, difficulty, dxRatingTagIndex, maimai?.records, multiAchievement, nearMiss, quantity, selectedDxRatingTagIds, soloAchievement, splitVersions, strictAchievement, type, versionLabels, versions]);
   const scoreSections = useMemo<BestImageScoreSection[]>(() => imageType === 'best50'
     ? maimai?.bestSections ?? []
     : customSections, [customSections, imageType, maimai?.bestSections]);
@@ -467,13 +485,34 @@ export function MaimaiBestImageScreen() {
     setPageHeights({});
   };
 
-  const toggleVersion = (version: BestImageVersionFilter) => {
-    const next = versions.includes(version)
-      ? versions.filter((item) => item !== version)
-      : [...versions, version];
-    if (next.length === 0) return;
+  const handleSoloAchievementChange = (value: MaimaiFcAchievement | null) => {
+    setSoloAchievement(value);
+    if (value === null && multiAchievement === null) setStrictAchievement(false);
+  };
+
+  const handleMultiAchievementChange = (value: MaimaiFsAchievement | null) => {
+    setMultiAchievement(value);
+    if (value === null && soloAchievement === null) setStrictAchievement(false);
+  };
+
+  const handleVersionsChange = (next: string[]) => {
     setVersions(next);
     if (next.length < 2) setSplitVersions(false);
+  };
+
+  const resetCustomFilters = () => {
+    setDifficulty('all');
+    setType('all');
+    setConstantMin('');
+    setConstantMax('');
+    setAchievementMin('');
+    setAchievementMax('');
+    setSoloAchievement(null);
+    setMultiAchievement(null);
+    setStrictAchievement(false);
+    setNearMiss(false);
+    setSelectedDxRatingTagIds([]);
+    setVersions(versionOptions.map((option) => option.value));
   };
 
   const selectCollection = (choice: BestImageCollectionChoice) => {
@@ -600,6 +639,40 @@ export function MaimaiBestImageScreen() {
 
       {imageType === 'custom' ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
         <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
+        <MaimaiFilterBar
+          collapsed={filterCollapsed}
+          onCollapsedChange={setFilterCollapsed}
+          difficulty={difficulty}
+          version="all"
+          type={type}
+          constantMin={constantMin}
+          constantMax={constantMax}
+          achievementMin={achievementMin}
+          achievementMax={achievementMax}
+          soloAchievement={soloAchievement}
+          multiAchievement={multiAchievement}
+          versionLocale={versionLocale}
+          versions={versionOptions}
+          dxRatingTags={dxRatingChartTags.data?.tags ?? []}
+          selectedDxRatingTagIds={selectedDxRatingTagIds}
+          dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+          versionMulti
+          selectedVersions={versions}
+          currentVersionTitle={maimai?.currentVersionTitle}
+          onDifficultyChange={setDifficulty}
+          onVersionChange={() => undefined}
+          onTypeChange={setType}
+          onConstantMinChange={setConstantMin}
+          onConstantMaxChange={setConstantMax}
+          onAchievementMinChange={setAchievementMin}
+          onAchievementMaxChange={setAchievementMax}
+          onSoloAchievementChange={handleSoloAchievementChange}
+          onMultiAchievementChange={handleMultiAchievementChange}
+          onVersionLocaleChange={setVersionLocale}
+          onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+          onVersionsChange={handleVersionsChange}
+          onReset={resetCustomFilters}
+        />
         <View style={styles.fieldRow}>
           <View style={styles.textFieldWrap}>
             <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
@@ -610,54 +683,9 @@ export function MaimaiBestImageScreen() {
             }} placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, quantityError && styles.textInputError]} />
             {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
           </View>
-          <View style={styles.textFieldWrap}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>最小达成率</Text>
-            <TextInput accessibilityLabel="最小达成率" autoCorrect={false} value={minimumAchievementText} onChangeText={(value) => {
-              setMinimumAchievementText(value);
-              const parsed = parseBestImageMinimumAchievement(value);
-              if (parsed !== null) setMinimumAchievement(parsed);
-            }} placeholder="0–101" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, minimumAchievementError && styles.textInputError]} />
-            {minimumAchievementError ? <Text style={[styles.errorText, { color: theme.danger }]}>{minimumAchievementError}</Text> : null}
-          </View>
         </View>
-        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>版本</Text>
         <View style={styles.chipRow}>
-          <ChoiceChip label="当前版本" selected={versions.includes('current')} onPress={() => toggleVersion('current')} />
-          <ChoiceChip label="过往版本" selected={versions.includes('past')} onPress={() => toggleVersion('past')} />
           <ChoiceChip accessibilityLabel="区分版本" label="区分版本" disabled={versions.length < 2} selected={splitVersions} onPress={() => setSplitVersions((value) => !value)} />
-        </View>
-        <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>成就</Text>
-        <View style={styles.achievementDropdownRow}>
-          <FilterAnchoredDropdown
-            open={openAchievementDropdown === 'solo'}
-            onOpenChange={setAchievementDropdownOpen('solo')}
-            valueLabel={maimaiFcAchievementLabel(soloAchievement)}
-            caption="单人"
-            accessibilityLabel={`单人成就筛选，当前 ${maimaiFcAchievementLabel(soloAchievement)}`}
-            options={soloAchievementOptions}
-            selectedValue={soloAchievement ?? 'all'}
-            optionAccessibilityPrefix="选择单人成就"
-            onSelect={(value) => {
-              setSoloAchievement(value === 'all' ? null : value);
-              if (value === 'all' && multiAchievement === null) setStrictAchievement(false);
-            }}
-          />
-          <FilterAnchoredDropdown
-            open={openAchievementDropdown === 'multi'}
-            onOpenChange={setAchievementDropdownOpen('multi')}
-            valueLabel={maimaiFsAchievementLabel(multiAchievement)}
-            caption="多人"
-            accessibilityLabel={`多人成就筛选，当前 ${maimaiFsAchievementLabel(multiAchievement)}`}
-            options={multiAchievementOptions}
-            selectedValue={multiAchievement ?? 'all'}
-            optionAccessibilityPrefix="选择多人成就"
-            onSelect={(value) => {
-              setMultiAchievement(value === 'all' ? null : value);
-              if (value === 'all' && soloAchievement === null) setStrictAchievement(false);
-            }}
-          />
-        </View>
-        <View style={styles.chipRow}>
           <ChoiceChip accessibilityLabel="寸筛选" label="寸" selected={nearMiss} onPress={() => setNearMiss((value) => !value)} />
           <ChoiceChip accessibilityLabel="严格筛选" label="严格筛选" disabled={!hasAchievementFilter} selected={strictAchievement} onPress={() => setStrictAchievement((value) => !value)} />
         </View>
@@ -791,7 +819,6 @@ const styles = StyleSheet.create({
   textInputError: { borderColor: '#D92D20' },
   errorText: { marginTop: 4, fontSize: 10, lineHeight: 14 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  achievementDropdownRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   chip: { minWidth: 46, height: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderWidth: 1, borderRadius: 999 },
   chipDisabled: { opacity: 0.42 },
   chipText: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center', includeFontPadding: false },

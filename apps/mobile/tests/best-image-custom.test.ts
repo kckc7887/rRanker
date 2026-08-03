@@ -5,7 +5,6 @@ import {
   maximumBestImageRowsForWidth,
   DEFAULT_CUSTOM_BEST_IMAGE_FILTERS,
   paginateBestImageSections,
-  parseBestImageMinimumAchievement,
   parseBestImageQuantity,
   type CustomBestImageFilters,
 } from '@/features/best-image/best-image-custom';
@@ -20,19 +19,24 @@ function score(overrides: Partial<ScoreRecord> = {}): ScoreRecord {
 }
 
 function filters(overrides: Partial<CustomBestImageFilters> = {}): CustomBestImageFilters {
-  return { ...DEFAULT_CUSTOM_BEST_IMAGE_FILTERS, ...overrides };
+  return { ...DEFAULT_CUSTOM_BEST_IMAGE_FILTERS, versions: ['当前版本'], ...overrides };
 }
 
 describe('custom best image', () => {
-  it('combines both versions by default and uses the actual result count', () => {
+  it('combines selected versions and uses the actual result count', () => {
     const sections = buildCustomBestImageSections([
       score({ songId: '1', rating: 100 }),
       score({ songId: '2', version: '旧版本', rating: 300 }),
       score({ songId: '3', version: 'unknown', rating: 999 }),
-    ], '当前版本', filters({ quantity: 50 }));
+    ], filters({ versions: ['当前版本', '旧版本'], quantity: 50 }));
     expect(sections).toHaveLength(1);
     expect(sections[0]?.title).toBe('Best2');
     expect(sections[0]?.records.map((item) => item.songId)).toEqual(['2', '1']);
+  });
+
+  it('returns no sections when no versions are selected', () => {
+    const sections = buildCustomBestImageSections([score()], filters({ versions: [] }));
+    expect(sections).toHaveLength(0);
   });
 
   it('excludes U·TA·GE records from custom best images', () => {
@@ -46,19 +50,68 @@ describe('custom best image', () => {
         difficultyConstant: 0,
         rating: 0,
       }),
-    ], '当前版本', filters({ quantity: 50 }));
+    ], filters({ quantity: 50 }));
 
     expect(sections[0]?.records.map((item) => item.songId)).toEqual(['regular']);
   });
 
-  it('splits versions and applies the quantity independently', () => {
+  it('splits every selected version into its own section with quantity applied independently', () => {
     const records = [
       score({ songId: '1', rating: 300 }), score({ songId: '2', rating: 200 }),
       score({ songId: '3', version: '旧版本', rating: 250 }), score({ songId: '4', version: '旧版本', rating: 150 }),
     ];
-    const sections = buildCustomBestImageSections(records, '当前版本', filters({ quantity: 1, splitVersions: true }));
-    expect(sections.map((section) => section.title)).toEqual(['当前版本Best1', '过往版本Best1']);
+    const sections = buildCustomBestImageSections(records, filters({
+      versions: ['当前版本', '旧版本'], quantity: 1, splitVersions: true,
+    }));
+    expect(sections.map((section) => section.title)).toEqual(['当前版本Best1', '旧版本Best1']);
     expect(sections.map((section) => section.records[0]?.songId)).toEqual(['1', '3']);
+  });
+
+  it('uses localized version labels in split and single-version titles', () => {
+    const records = [
+      score({ songId: '1', rating: 300 }),
+      score({ songId: '2', version: '旧版本', rating: 250 }),
+    ];
+    const split = buildCustomBestImageSections(records, filters({
+      versions: ['当前版本', '旧版本'],
+      splitVersions: true,
+      versionLabels: { '当前版本': '舞萌DX 2026', '旧版本': '过往版本' },
+    }));
+    expect(split.map((section) => section.title)).toEqual(['舞萌DX 2026Best1', '过往版本Best1']);
+
+    const single = buildCustomBestImageSections(records, filters({
+      versions: ['当前版本'],
+      versionLabels: { '当前版本': '舞萌DX 2026' },
+    }));
+    expect(single[0]?.title).toBe('舞萌DX 2026Best1');
+  });
+
+  it('filters by difficulty and chart type', () => {
+    const records = [
+      score({ songId: 'master-dx', difficulty: 'master', type: 'DX' }),
+      score({ songId: 'master-sd', difficulty: 'master', type: 'SD' }),
+      score({ songId: 'expert-dx', difficulty: 'expert', type: 'DX' }),
+    ];
+    const difficultyOnly = buildCustomBestImageSections(records, filters({ difficulty: 'master' }));
+    expect(difficultyOnly[0]?.records.map((item) => item.songId)).toEqual(['master-dx', 'master-sd']);
+    const typeOnly = buildCustomBestImageSections(records, filters({ type: 'DX' }));
+    expect(typeOnly[0]?.records.map((item) => item.songId)).toEqual(['expert-dx', 'master-dx']);
+    const both = buildCustomBestImageSections(records, filters({ difficulty: 'master', type: 'SD' }));
+    expect(both[0]?.records.map((item) => item.songId)).toEqual(['master-sd']);
+  });
+
+  it('filters by constant and achievement ranges', () => {
+    const records = [
+      score({ songId: 'low', difficultyConstant: 12, achievements: 98 }),
+      score({ songId: 'match', difficultyConstant: 13.4, achievements: 100 }),
+      score({ songId: 'high', difficultyConstant: 14.5, achievements: 101 }),
+    ];
+    const constantOnly = buildCustomBestImageSections(records, filters({ constantMin: '13', constantMax: '14' }));
+    expect(constantOnly[0]?.records.map((item) => item.songId)).toEqual(['match']);
+    const achievementOnly = buildCustomBestImageSections(records, filters({ achievementMin: '99.5', achievementMax: '100.5' }));
+    expect(achievementOnly[0]?.records.map((item) => item.songId)).toEqual(['match']);
+    const achievementMinOnly = buildCustomBestImageSections(records, filters({ achievementMin: '100.6' }));
+    expect(achievementMinOnly[0]?.records.map((item) => item.songId)).toEqual(['high']);
   });
 
   it('uses achievement labels and supports minimum or strict matching', () => {
@@ -66,12 +119,12 @@ describe('custom best image', () => {
       score({ songId: 'fc', fc: 'fc' }), score({ songId: 'fcp', fc: 'fcp' }),
       score({ songId: 'ap', fc: 'ap' }), score({ songId: 'app', fc: 'app' }),
     ];
-    const atLeast = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], soloAchievement: 'fcp', quantity: 100,
+    const atLeast = buildCustomBestImageSections(records, filters({
+      soloAchievement: 'fcp', quantity: 100,
     }));
     expect(atLeast[0]?.title).toBe('当前版本FC+3');
-    const strict = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], soloAchievement: 'fcp', strictAchievement: true, quantity: 100,
+    const strict = buildCustomBestImageSections(records, filters({
+      soloAchievement: 'fcp', strictAchievement: true, quantity: 100,
     }));
     expect(strict[0]?.title).toBe('当前版本FC+1');
     expect(strict[0]?.records[0]?.songId).toBe('fcp');
@@ -84,14 +137,14 @@ describe('custom best image', () => {
       score({ songId: 'fsp', fs: 'fsp' }),
       score({ songId: 'none', fs: null }),
     ];
-    const atLeast = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], multiAchievement: 'fs', quantity: 100,
+    const atLeast = buildCustomBestImageSections(records, filters({
+      multiAchievement: 'fs', quantity: 100,
     }));
     expect(atLeast[0]?.title).toBe('当前版本FS2');
     expect(new Set(atLeast[0]?.records.map((item) => item.songId))).toEqual(new Set(['fs', 'fsp']));
 
-    const strict = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], multiAchievement: 'fs', strictAchievement: true, quantity: 100,
+    const strict = buildCustomBestImageSections(records, filters({
+      multiAchievement: 'fs', strictAchievement: true, quantity: 100,
     }));
     expect(strict[0]?.title).toBe('当前版本FS1');
     expect(strict[0]?.records.map((item) => item.songId)).toEqual(['fs']);
@@ -103,8 +156,8 @@ describe('custom best image', () => {
       score({ songId: 'fdx', fs: 'fdx', achievements: 100.5 }),
       score({ songId: 'fdxp', fs: 'fdxp', achievements: 101 }),
     ];
-    const sections = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], multiAchievement: 'fsd', minimumAchievement: 100.5,
+    const sections = buildCustomBestImageSections(records, filters({
+      multiAchievement: 'fsd', achievementMin: '100.5',
     }));
     expect(sections[0]?.title).toBe('当前版本FDX2');
     expect(sections[0]?.records.map((item) => item.songId)).toEqual(['fdxp', 'fdx']);
@@ -118,14 +171,14 @@ describe('custom best image', () => {
       score({ songId: 'start-1005', achievements: 100.49 }),
       score({ songId: 'end-1005', achievements: 100.4999 }),
       score({ songId: 'after-1005', achievements: 100.5 }),
-    ], '当前版本', filters({ versions: ['current'], nearMiss: true, quantity: 100 }));
+    ], filters({ nearMiss: true, quantity: 100 }));
     expect(sections[0]?.title).toBe('当前版本寸Best4');
     expect(sections[0]?.records.map((item) => item.songId)).toEqual([
       'end-1005', 'start-1005', 'end-100', 'start-100',
     ]);
   });
 
-  it('combines near miss with AP+, FDX+, strict matching and minimum achievement', () => {
+  it('combines near miss with AP+, FDX+, strict matching and achievement minimum', () => {
     const records = [
       score({ songId: 'match', achievements: 100.4999, fc: 'app', fs: 'fdxp' }),
       score({ songId: 'not-near', achievements: 100.5, fc: 'app', fs: 'fdxp' }),
@@ -133,35 +186,47 @@ describe('custom best image', () => {
       score({ songId: 'wrong-fs', achievements: 100.4999, fc: 'app', fs: 'fdx' }),
       score({ songId: 'too-low', achievements: 99.9999, fc: 'app', fs: 'fdxp' }),
     ];
-    const apPlus = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], nearMiss: true, soloAchievement: 'app',
-      strictAchievement: true, minimumAchievement: 100.49, quantity: 100,
+    const apPlus = buildCustomBestImageSections(records, filters({
+      nearMiss: true, soloAchievement: 'app',
+      strictAchievement: true, achievementMin: '100.49', quantity: 100,
     }));
     expect(apPlus[0]?.title).toBe('当前版本寸AP+2');
     expect(apPlus[0]?.records.map((item) => item.songId)).toEqual(['match', 'wrong-fs']);
 
-    const fdxPlus = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], nearMiss: true, multiAchievement: 'fsdp',
-      strictAchievement: true, minimumAchievement: 100.49, quantity: 100,
+    const fdxPlus = buildCustomBestImageSections(records, filters({
+      nearMiss: true, multiAchievement: 'fsdp',
+      strictAchievement: true, achievementMin: '100.49', quantity: 100,
     }));
     expect(fdxPlus[0]?.title).toBe('当前版本寸FDX+2');
     expect(fdxPlus[0]?.records.map((item) => item.songId)).toEqual(['match', 'wrong-fc']);
 
-    const both = buildCustomBestImageSections(records, '当前版本', filters({
-      versions: ['current'], nearMiss: true, soloAchievement: 'app', multiAchievement: 'fsdp',
-      strictAchievement: true, minimumAchievement: 100.49, quantity: 100,
+    const both = buildCustomBestImageSections(records, filters({
+      nearMiss: true, soloAchievement: 'app', multiAchievement: 'fsdp',
+      strictAchievement: true, achievementMin: '100.49', quantity: 100,
     }));
     expect(both[0]?.title).toBe('当前版本寸AP+FDX+1');
     expect(both[0]?.records.map((item) => item.songId)).toEqual(['match']);
   });
 
-  it('parses quantity and achievement boundaries', () => {
+  it('filters records by selected DX rating tags', () => {
+    const dxRatingTagIndex = new Map([['1:DX:3', new Set([7])]]);
+    const records = [
+      score({ songId: '1' }),
+      score({ songId: '2' }),
+    ];
+    const withTag = buildCustomBestImageSections(records, filters({
+      selectedDxRatingTagIds: [7], dxRatingTagIndex,
+    }));
+    expect(withTag[0]?.records.map((item) => item.songId)).toEqual(['1']);
+
+    const withoutTags = buildCustomBestImageSections(records, filters({ dxRatingTagIndex }));
+    expect(withoutTags[0]?.records.map((item) => item.songId)).toEqual(['1', '2']);
+  });
+
+  it('parses quantity boundaries', () => {
     expect(parseBestImageQuantity('０')).toBe(0);
     expect(parseBestImageQuantity('-1')).toBeNull();
     expect(parseBestImageQuantity('1.5')).toBeNull();
-    expect(parseBestImageMinimumAchievement('101')).toBe(101);
-    expect(parseBestImageMinimumAchievement('１００，５')).toBe(100.5);
-    expect(parseBestImageMinimumAchievement('101.1')).toBeNull();
   });
 
   it('paginates at 50 five-card rows with continuous rank offsets', () => {
