@@ -14,8 +14,8 @@ export type RandomChartsPreferences = MaimaiRandomChartFilters & {
   versionLocale: VersionNameLocale;
 };
 
-type StoredRandomChartsPreferencesV2 = {
-  schemaVersion: 2;
+type StoredRandomChartsPreferencesV3 = {
+  schemaVersion: 3;
 } & RandomChartsPreferences;
 
 type KeyValueStore = {
@@ -45,6 +45,7 @@ export function defaultRandomChartsPreferences(): RandomChartsPreferences {
     achievementMax: '',
     soloAchievement: null,
     multiAchievement: null,
+    selectedDxRatingTagIds: [],
     versionLocale: 'china',
   };
 }
@@ -52,6 +53,20 @@ export function defaultRandomChartsPreferences(): RandomChartsPreferences {
 function parseInput(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value.trim().slice(0, 16);
+}
+
+function parseTagIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<number>();
+  const result: number[] = [];
+  for (const item of value) {
+    if (typeof item !== 'number' || !Number.isFinite(item) || item < 0) continue;
+    const tagId = Math.trunc(item);
+    if (seen.has(tagId)) continue;
+    seen.add(tagId);
+    result.push(tagId);
+  }
+  return result;
 }
 
 function parseLegacyDifficulty(value: unknown): Difficulty | 'all' {
@@ -77,7 +92,7 @@ export function parseRandomChartsPreferences(value: unknown): RandomChartsPrefer
     output.constantMax = parseInput(raw.constantMax);
     return output;
   }
-  if (raw.schemaVersion !== 2) return defaultRandomChartsPreferences();
+  if (raw.schemaVersion !== 2 && raw.schemaVersion !== 3) return defaultRandomChartsPreferences();
 
   if (raw.difficulty === 'all'
     || (typeof raw.difficulty === 'string' && VALID_DIFFICULTIES.has(raw.difficulty as Difficulty))) {
@@ -102,19 +117,22 @@ export function parseRandomChartsPreferences(value: unknown): RandomChartsPrefer
     && VALID_MULTI.has(raw.multiAchievement as MaimaiFsAchievement)) {
     output.multiAchievement = raw.multiAchievement as MaimaiFsAchievement;
   }
+  if (raw.schemaVersion === 3) {
+    output.selectedDxRatingTagIds = parseTagIds(raw.selectedDxRatingTagIds);
+  }
   if (raw.versionLocale === 'china' || raw.versionLocale === 'japan') {
     output.versionLocale = raw.versionLocale;
   }
   return output;
 }
 
-function toStored(preferences: RandomChartsPreferences): StoredRandomChartsPreferencesV2 {
+function toStored(preferences: RandomChartsPreferences): StoredRandomChartsPreferencesV3 {
   const parsed = parseRandomChartsPreferences({
     ...preferences,
-    schemaVersion: 2,
+    schemaVersion: 3,
   });
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     ...parsed,
   };
 }

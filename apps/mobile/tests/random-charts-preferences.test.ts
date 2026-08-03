@@ -51,10 +51,37 @@ describe('maimai random charts preferences', () => {
       type: 'DX' as const,
       achievementMin: '99',
       soloAchievement: 'fc' as const,
+      selectedDxRatingTagIds: [1, 3],
       versionLocale: 'japan' as const,
     };
     await store.save(value);
     await expect(store.load()).resolves.toEqual(value);
+  });
+
+  it('parses v3 tag ids and drops invalid or duplicate entries', () => {
+    expect(parseRandomChartsPreferences({
+      schemaVersion: 3,
+      count: 3,
+      selectedDxRatingTagIds: [1, 2.5, -1, 2, 1, '3', null, Infinity],
+    })).toEqual({
+      ...defaultRandomChartsPreferences(),
+      count: 3,
+      selectedDxRatingTagIds: [1, 2],
+    });
+  });
+
+  it('migrates v2 payloads with an empty tag selection', () => {
+    expect(parseRandomChartsPreferences({
+      schemaVersion: 2,
+      count: 2,
+      difficulty: 'master',
+      type: 'UTAGE',
+    })).toEqual({
+      ...defaultRandomChartsPreferences(),
+      count: 2,
+      difficulty: 'master',
+      type: 'UTAGE',
+    });
   });
 
   it('hydrates Zustand state and persists subsequent edits', async () => {

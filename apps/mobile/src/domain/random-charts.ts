@@ -1,5 +1,10 @@
 import { chartVersionKey, normalizeSongId } from './catalog';
 import {
+  buildDxRatingChartTagIndex,
+  dxRatingChartHasAllTags,
+  type DxRatingChartTagsSnapshot,
+} from './dxrating-chart-tags';
+import {
   matchesAchievementRange,
   matchesConstantRange,
   matchesMultiAchievementFilter,
@@ -32,6 +37,7 @@ export type MaimaiRandomChartFilters = {
   achievementMax: string;
   soloAchievement: MaimaiFcAchievement | null;
   multiAchievement: MaimaiFsAchievement | null;
+  selectedDxRatingTagIds: number[];
 };
 
 export type PhigrosRandomChartFilters = {
@@ -122,6 +128,7 @@ export function filterMaimaiRandomCharts(
   catalog: CatalogSnapshot,
   records: readonly ScoreRecord[],
   filters: MaimaiRandomChartFilters,
+  tags?: DxRatingChartTagsSnapshot,
 ): RandomChartPick[] {
   const bestByChart = buildBestRecordMap(records);
   const versionTitleById = new Map(catalog.versions.map((version) => [version.id, version.title]));
@@ -130,6 +137,8 @@ export function filterMaimaiRandomCharts(
     filters.achievementMax,
   ) || filters.soloAchievement !== null || filters.multiAchievement !== null;
   const hasConstantFilter = !!(filters.constantMin || filters.constantMax);
+  const tagFilterActive = tags !== undefined && filters.selectedDxRatingTagIds.length > 0;
+  const tagIndex = tagFilterActive ? buildDxRatingChartTagIndex(tags, catalog.songs) : new Map();
   const picks: RandomChartPick[] = [];
 
   for (const song of catalog.songs) {
@@ -146,6 +155,13 @@ export function filterMaimaiRandomCharts(
         chart.difficultyConstant,
         filters.constantMin,
         filters.constantMax,
+      )) continue;
+      if (tagFilterActive && !dxRatingChartHasAllTags(
+        tagIndex,
+        chart.songId,
+        chart.type,
+        chart.levelIndex,
+        filters.selectedDxRatingTagIds,
       )) continue;
 
       const key = chartVersionKey(chart.songId, chart.type, chart.levelIndex);

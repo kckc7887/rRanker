@@ -12,6 +12,7 @@ import {
   type RandomChartPick,
 } from '@/domain/random-charts';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useRandomChartsFilter } from '@/state/random-charts-filter';
 
@@ -50,12 +51,15 @@ function toScoreCardData(
 export function MaimaiRandomChartsScreen() {
   const catalog = useDetailedCatalog();
   const scores = useScoreSnapshot();
+  const dxRatingChartTags = useDxRatingChartTags();
   const {
     count, collapsed, difficulty, version, type, constantMin, constantMax,
-    achievementMin, achievementMax, soloAchievement, multiAchievement, versionLocale,
+    achievementMin, achievementMax, soloAchievement, multiAchievement,
+    selectedDxRatingTagIds, versionLocale,
     hydrate, setCount, setCollapsed, setDifficulty, setVersion, setType,
     setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
-    setSoloAchievement, setMultiAchievement, setVersionLocale, clearFilters,
+    setSoloAchievement, setMultiAchievement, setSelectedDxRatingTagIds,
+    setVersionLocale, clearFilters,
   } = useRandomChartsFilter();
   const [results, setResults] = useState<RandomChartPick[] | null>(null);
   const [lastSeed, setLastSeed] = useState<string | null>(null);
@@ -63,6 +67,17 @@ export function MaimaiRandomChartsScreen() {
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
+
+  useEffect(() => {
+    if (selectedDxRatingTagIds.length === 0) return;
+    if (dxRatingChartTags.data) {
+      const validIds = new Set(dxRatingChartTags.data.tags.map((tag) => tag.id));
+      const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
+      if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
+    } else if (dxRatingChartTags.isError) {
+      setSelectedDxRatingTagIds([]);
+    }
+  }, [dxRatingChartTags.data, dxRatingChartTags.isError, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
 
   const records = useMemo(() => scores.data?.records ?? [], [scores.data?.records]);
   const bestByChart = useMemo(() => buildBestRecordMap(records), [records]);
@@ -83,6 +98,7 @@ export function MaimaiRandomChartsScreen() {
     achievementMax,
     soloAchievement,
     multiAchievement,
+    selectedDxRatingTagIds,
   }), [
     achievementMax,
     achievementMin,
@@ -90,15 +106,16 @@ export function MaimaiRandomChartsScreen() {
     constantMin,
     difficulty,
     multiAchievement,
+    selectedDxRatingTagIds,
     soloAchievement,
     type,
     version,
   ]);
   const pool = useMemo(
     () => catalog.data
-      ? filterMaimaiRandomCharts(catalog.data, records, filters)
+      ? filterMaimaiRandomCharts(catalog.data, records, filters, dxRatingChartTags.data)
       : [],
-    [catalog.data, filters, records],
+    [catalog.data, dxRatingChartTags.data, filters, records],
   );
 
   const draw = () => {
@@ -130,6 +147,8 @@ export function MaimaiRandomChartsScreen() {
               constantMax={constantMax}
               constantMin={constantMin}
               difficulty={difficulty}
+              dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+              dxRatingTags={dxRatingChartTags.data?.tags ?? []}
               multiAchievement={multiAchievement}
               onAchievementMaxChange={setAchievementMax}
               onAchievementMinChange={setAchievementMin}
@@ -137,12 +156,14 @@ export function MaimaiRandomChartsScreen() {
               onConstantMaxChange={setConstantMax}
               onConstantMinChange={setConstantMin}
               onDifficultyChange={setDifficulty}
+              onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
               onMultiAchievementChange={setMultiAchievement}
               onReset={clearFilters}
               onSoloAchievementChange={setSoloAchievement}
               onTypeChange={setType}
               onVersionChange={setVersion}
               onVersionLocaleChange={setVersionLocale}
+              selectedDxRatingTagIds={selectedDxRatingTagIds}
               soloAchievement={soloAchievement}
               type={type}
               version={version}

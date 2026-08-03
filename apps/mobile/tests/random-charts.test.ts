@@ -7,6 +7,7 @@ import {
   type MaimaiRandomChartFilters,
   type PhigrosRandomChartFilters,
 } from '@/domain/random-charts';
+import type { DxRatingChartTagsSnapshot } from '@/domain/dxrating-chart-tags';
 import { fixtureSource } from '@/fixtures/sanitized';
 
 const songs: Song[] = [
@@ -102,6 +103,30 @@ const maimaiFilters: MaimaiRandomChartFilters = {
   achievementMax: '',
   soloAchievement: null,
   multiAchievement: null,
+  selectedDxRatingTagIds: [],
+};
+
+const tagSnapshot: DxRatingChartTagsSnapshot = {
+  tags: [
+    {
+      id: 1, name: '高难', description: '高难', descriptionSegments: [{ text: '高难', strikethrough: false }],
+      color: '#a5b4fc', groupId: 1, groupName: '难度',
+    },
+    {
+      id: 2, name: '转圈', description: '转圈', descriptionSegments: [{ text: '转圈', strikethrough: false }],
+      color: '#7dd3fc', groupId: 1, groupName: '配置',
+    },
+    {
+      id: 3, name: '宴', description: '宴', descriptionSegments: [{ text: '宴', strikethrough: false }],
+      color: '#f0abfc', groupId: 2, groupName: '宴',
+    },
+  ],
+  relations: [
+    { songTitle: '曲目甲', sheetType: 'dx', sheetDifficulty: 'master', tagId: 1 },
+    { songTitle: '曲目乙', sheetType: 'std', sheetDifficulty: 'advanced', tagId: 2 },
+    { songTitle: 'U·TA·GE', sheetType: 'utage', sheetDifficulty: '宴', tagId: 3 },
+  ],
+  source: fixtureSource,
 };
 
 describe('filterMaimaiRandomCharts', () => {
@@ -158,6 +183,40 @@ describe('filterMaimaiRandomCharts', () => {
     });
     expect(solo.map(chartPickKey)).toEqual(['1:DX:3']);
     expect(multi.map(chartPickKey)).toEqual(['2:SD:1']);
+  });
+
+  it('matches DXRating tags with every selected tag and supports U·TA·GE fallback', () => {
+    const high = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      selectedDxRatingTagIds: [1],
+    }, tagSnapshot);
+    expect(high.map(chartPickKey)).toEqual(['1:DX:3']);
+
+    const spin = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      selectedDxRatingTagIds: [2],
+    }, tagSnapshot);
+    expect(spin.map(chartPickKey)).toEqual(['2:SD:1']);
+
+    const both = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      selectedDxRatingTagIds: [1, 2],
+    }, tagSnapshot);
+    expect(both).toEqual([]);
+
+    const utage = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      selectedDxRatingTagIds: [3],
+    }, tagSnapshot);
+    expect(utage.map(chartPickKey)).toEqual(['100123:UTAGE:0']);
+  });
+
+  it('skips the tag filter when tag data is unavailable, like the records page', () => {
+    const pool = filterMaimaiRandomCharts(catalog, records, {
+      ...maimaiFilters,
+      selectedDxRatingTagIds: [1, 2, 3],
+    });
+    expect(pool).toHaveLength(7);
   });
 });
 
