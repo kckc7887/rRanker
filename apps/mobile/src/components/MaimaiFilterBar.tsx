@@ -48,6 +48,10 @@ export interface MaimaiFilterBarProps {
   dxRatingTags?: readonly DxRatingChartTag[];
   selectedDxRatingTagIds?: readonly number[];
   dxRatingTagState?: DxRatingTagFilterState;
+  /** 版本改为多选复选框模式（成绩图片自定义使用）。 */
+  versionMulti?: boolean;
+  selectedVersions?: readonly string[];
+  currentVersionTitle?: string;
   onCollapsedChange: (collapsed: boolean) => void;
   onDifficultyChange: (difficulty: Difficulty | 'all') => void;
   onVersionChange: (version: string | 'all') => void;
@@ -60,6 +64,7 @@ export interface MaimaiFilterBarProps {
   onMultiAchievementChange?: (value: MaimaiFsAchievement | null) => void;
   onVersionLocaleChange: (locale: VersionNameLocale) => void;
   onDxRatingTagIdsChange?: (tagIds: number[]) => void;
+  onVersionsChange?: (versions: string[]) => void;
   onReset: () => void;
 }
 
@@ -77,19 +82,34 @@ export function formatDxRatingTagFilterValue(
 export function buildMaimaiFilterSummary({
   difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
   soloAchievement, multiAchievement, versionLocale, versions, dxRatingTags = [], selectedDxRatingTagIds = [],
+  versionMulti = false, selectedVersions = [],
 }: Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'type' | 'constantMin' | 'constantMax'
   | 'achievementMin' | 'achievementMax' | 'soloAchievement' | 'multiAchievement' | 'versionLocale' | 'versions'
-  | 'dxRatingTags' | 'selectedDxRatingTagIds'>): string {
+  | 'dxRatingTags' | 'selectedDxRatingTagIds'>
+  & { versionMulti?: boolean; selectedVersions?: readonly string[] }): string {
   const selectedVersion = versions.find((option) => option.value === version);
   const selectedVersionLabel = selectedVersion
     ? localizedVersionName(selectedVersion.versionId, selectedVersion.name, versionLocale)
     : '全部';
+  const versionLabel = versionMulti
+    ? selectedVersions.length === 0
+      ? '未选择版本'
+      : selectedVersions.length === versions.length
+        ? null
+        : selectedVersions.length === 1
+          ? `版本 ${localizedVersionName(
+              versions.find((option) => option.value === selectedVersions[0])?.versionId,
+              versions.find((option) => option.value === selectedVersions[0])?.name ?? selectedVersions[0],
+              versionLocale,
+            )}`
+          : `版本 ${selectedVersions.length} 个`
+    : selectedVersionLabel === '全部' ? null : selectedVersionLabel;
   const soloLabel = soloAchievement ? `单人 ${maimaiFcAchievementLabel(soloAchievement)}` : null;
   const multiLabel = multiAchievement ? `多人 ${maimaiFsAchievementLabel(multiAchievement)}` : null;
   const tagLabel = formatDxRatingTagFilterValue(dxRatingTags, selectedDxRatingTagIds);
   return [
     difficulty === 'all' ? null : DIFFICULTY_VISUAL[difficulty].label,
-    selectedVersionLabel === '全部' ? null : selectedVersionLabel,
+    versionLabel,
     type === 'all' ? null : type,
     tagLabel === '全部' ? null : `标签 ${tagLabel}`,
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
@@ -115,6 +135,9 @@ export function MaimaiFilterBar({
   dxRatingTags = [],
   selectedDxRatingTagIds = [],
   dxRatingTagState = 'unavailable',
+  versionMulti = false,
+  selectedVersions = [],
+  currentVersionTitle,
   onCollapsedChange,
   onDifficultyChange,
   onVersionChange,
@@ -127,6 +150,7 @@ export function MaimaiFilterBar({
   onMultiAchievementChange,
   onVersionLocaleChange,
   onDxRatingTagIdsChange,
+  onVersionsChange,
   onReset,
 }: MaimaiFilterBarProps) {
   const theme = useAppTheme();
@@ -138,6 +162,19 @@ export function MaimaiFilterBar({
   const selectedVersionLabel = selectedVersion
     ? localizedVersionName(selectedVersion.versionId, selectedVersion.name, versionLocale)
     : '全部';
+  const multiVersionLabel = versionMulti
+    ? selectedVersions.length === 0
+      ? '未选择版本'
+      : selectedVersions.length === versions.length
+        ? '全部'
+        : selectedVersions.length === 1
+          ? localizedVersionName(
+              versions.find((option) => option.value === selectedVersions[0])?.versionId,
+              versions.find((option) => option.value === selectedVersions[0])?.name ?? selectedVersions[0],
+              versionLocale,
+            )
+          : `${selectedVersions.length} 个版本`
+    : selectedVersionLabel;
   const soloLabel = maimaiFcAchievementLabel(soloAchievement);
   const multiLabel = maimaiFsAchievementLabel(multiAchievement);
   const tagFilterValue = dxRatingTagState === 'loading'
@@ -164,6 +201,14 @@ export function MaimaiFilterBar({
     })),
   ], [versionLocale, versions]);
 
+  const selectAllVersions = () => onVersionsChange?.(versions.map((option) => option.value));
+  const selectCurrentVersion = () => {
+    if (currentVersionTitle) onVersionsChange?.([currentVersionTitle]);
+  };
+  const selectPastVersions = () => onVersionsChange?.(versions
+    .filter((option) => option.value !== currentVersionTitle)
+    .map((option) => option.value));
+
   const soloOptions = useMemo<FilterSelectOption<SoloSheetValue>[]>(() => [
     { value: 'all', label: '全部' },
     ...MAIMAI_FC_ACHIEVEMENTS.map((item) => ({ value: item.value, label: item.label })),
@@ -174,9 +219,27 @@ export function MaimaiFilterBar({
     ...MAIMAI_FS_ACHIEVEMENTS.map((item) => ({ value: item.value, label: item.label })),
   ], []);
 
+  const localeSwitch = (
+    <View style={[styles.localeSwitch, { borderColor: theme.border }]}>
+      {(['china', 'japan'] as const).map((locale) => {
+        const active = versionLocale === locale;
+        const label = locale === 'china' ? '中' : '日';
+        return (
+          <Pressable key={locale} accessibilityRole="button"
+            accessibilityLabel={`版本名称切换为${locale === 'china' ? '中文' : '日文'}`}
+            accessibilityState={{ selected: active }} onPress={() => onVersionLocaleChange(locale)}
+            style={[styles.localeButton, { backgroundColor: theme.surface }, active && { backgroundColor: theme.accent }]}>
+            <Text style={[styles.localeText, active && styles.localeTextActive]}>{label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
   const summary = buildMaimaiFilterSummary({
     difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
     soloAchievement, multiAchievement, versionLocale, versions, dxRatingTags, selectedDxRatingTagIds,
+    versionMulti, selectedVersions,
   });
 
   if (collapsed) {
@@ -236,28 +299,31 @@ export function MaimaiFilterBar({
           <FilterAnchoredDropdown
             open={openDropdown === 'version'}
             onOpenChange={setDropdownOpen('version')}
-            valueLabel={selectedVersionLabel}
-            accessibilityLabel={`版本筛选，当前 ${selectedVersionLabel}`}
-            options={versionOptions}
+            valueLabel={versionMulti ? multiVersionLabel : selectedVersionLabel}
+            accessibilityLabel={`版本筛选，当前 ${versionMulti ? multiVersionLabel : selectedVersionLabel}`}
+            options={versionMulti
+              ? versionOptions.filter((option) => option.value !== 'all')
+              : versionOptions}
+            multiple={versionMulti}
+            selectedValues={versionMulti ? selectedVersions : undefined}
+            onValuesChange={versionMulti ? onVersionsChange : undefined}
             selectedValue={version}
-            optionAccessibilityPrefix="选择版本"
             onSelect={(value) => onVersionChange(value === 'all' ? 'all' : value)}
-            endAdornment={(
-              <View style={[styles.localeSwitch, { borderColor: theme.border }]}>
-                {(['china', 'japan'] as const).map((locale) => {
-                  const active = versionLocale === locale;
-                  const label = locale === 'china' ? '中' : '日';
-                  return (
-                    <Pressable key={locale} accessibilityRole="button"
-                      accessibilityLabel={`版本名称切换为${locale === 'china' ? '中文' : '日文'}`}
-                      accessibilityState={{ selected: active }} onPress={() => onVersionLocaleChange(locale)}
-                      style={[styles.localeButton, { backgroundColor: theme.surface }, active && { backgroundColor: theme.accent }]}>
-                      <Text style={[styles.localeText, active && styles.localeTextActive]}>{label}</Text>
-                    </Pressable>
-                  );
-                })}
+            optionAccessibilityPrefix="选择版本"
+            dropdownHeader={versionMulti ? (() => (
+              <View style={styles.versionQuickActions}>
+                <QuickChip label="全部" active={selectedVersions.length === versions.length} onPress={selectAllVersions} />
+                <QuickChip label="当前版本" active={selectedVersions.length === 1 && selectedVersions[0] === currentVersionTitle} onPress={selectCurrentVersion} />
+                <QuickChip label="过往版本" active={selectedVersions.length === versions.filter((option) => option.value !== currentVersionTitle).length} onPress={selectPastVersions} />
               </View>
-            )}
+            )) : undefined}
+            dropdownFooter={versionMulti ? ((close: () => void) => (
+              <Pressable accessibilityRole="button" accessibilityLabel="完成版本选择" onPress={close}
+                style={[styles.versionDoneButton, { backgroundColor: theme.accentSoft }]}>
+                <Text style={[styles.versionDoneText, { color: theme.accent }]}>完成</Text>
+              </Pressable>
+            )) : undefined}
+            endAdornment={localeSwitch}
           />
         </View>
       </View>
@@ -399,6 +465,16 @@ export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   );
 }
 
+function QuickChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  const theme = useAppTheme();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`版本快捷 ${label}`} accessibilityState={{ selected: active }} onPress={onPress}
+      style={[styles.quickChip, { backgroundColor: theme.surface, borderColor: theme.border }, active && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}>
+      <Text style={[styles.quickChipText, { color: theme.textSecondary }, active && { color: theme.accent }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export function FilterChipFrame({
   active,
   accessibilityLabel,
@@ -434,6 +510,11 @@ const styles = StyleSheet.create({
   neutralChipText: { color: '#374151', fontSize: 12 },
   neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
   dropdownControls: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  versionQuickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  quickChip: { minHeight: 28, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  quickChipText: { fontSize: 12, fontWeight: '700' },
+  versionDoneButton: { minHeight: 36, minWidth: 96, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  versionDoneText: { fontSize: 13, fontWeight: '800' },
   tagFilterTrigger: { flex: 1, minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   tagFilterValue: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20 },
   tagFilterTriggerPressed: { opacity: 0.7 },

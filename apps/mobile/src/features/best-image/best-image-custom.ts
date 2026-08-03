@@ -1,27 +1,36 @@
-import type { ScoreRecord } from '@/domain/models';
+import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
 import {
+  matchesAchievementRange,
   matchesAchievementStatus,
+  matchesConstantRange,
   maimaiFcAchievementLabel,
   maimaiFsAchievementLabel,
   type MaimaiFcAchievement,
   type MaimaiFsAchievement,
 } from '@/domain/maimai-filters';
-import { achievementTenThousandths, isNearMissAchievement } from '@/domain/score-presentation';
+import type { DxRatingChartTagIndex } from '@/domain/dxrating-chart-tags';
+import { dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
+import { isNearMissAchievement } from '@/domain/score-presentation';
 import { rankScoreRecords } from '@/domain/rating';
-
-export type BestImageVersionFilter = 'current' | 'past';
-export type BestImageFcAchievement = MaimaiFcAchievement;
-export type BestImageFsAchievement = MaimaiFsAchievement;
 
 export type CustomBestImageFilters = {
   quantity: number;
-  versions: readonly BestImageVersionFilter[];
+  versions: readonly string[];
   splitVersions: boolean;
-  minimumAchievement: number;
+  difficulty: Difficulty | 'all';
+  type: ChartType | 'all';
+  constantMin: string;
+  constantMax: string;
+  achievementMin: string;
+  achievementMax: string;
   soloAchievement: MaimaiFcAchievement | null;
   multiAchievement: MaimaiFsAchievement | null;
   strictAchievement: boolean;
   nearMiss: boolean;
+  selectedDxRatingTagIds: readonly number[];
+  dxRatingTagIndex: DxRatingChartTagIndex;
+  /** 版本名 → 展示名（跟随筛选器的中/日切换）。 */
+  versionLabels: Readonly<Record<string, string>>;
 };
 
 export type BestImageScoreSectionData = {
@@ -40,13 +49,21 @@ export type BestImagePage = {
 
 export const DEFAULT_CUSTOM_BEST_IMAGE_FILTERS: CustomBestImageFilters = {
   quantity: 50,
-  versions: ['current', 'past'],
+  versions: [],
   splitVersions: false,
-  minimumAchievement: 0,
+  difficulty: 'all',
+  type: 'all',
+  constantMin: '',
+  constantMax: '',
+  achievementMin: '',
+  achievementMax: '',
   soloAchievement: null,
   multiAchievement: null,
   strictAchievement: false,
   nearMiss: false,
+  selectedDxRatingTagIds: [],
+  dxRatingTagIndex: new Map(),
+  versionLabels: {},
 };
 
 export function bestImageAchievementTitleLabel(
@@ -64,13 +81,6 @@ export function parseBestImageQuantity(value: string): number | null {
   if (!/^\d+$/u.test(normalized)) return null;
   const parsed = Number(normalized);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
-}
-
-export function parseBestImageMinimumAchievement(value: string): number | null {
-  const normalized = value.normalize('NFKC').trim().replace(',', '.');
-  if (normalized.length === 0) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 101 ? parsed : null;
 }
 
 function limited(records: readonly ScoreRecord[], quantity: number): ScoreRecord[] {
@@ -105,38 +115,51 @@ function matchesCustomAchievementFilters(
 
 export function buildCustomBestImageSections(
   records: readonly ScoreRecord[],
-  currentVersionTitle: string,
   filters: CustomBestImageFilters,
 ): BestImageScoreSectionData[] {
+  if (filters.versions.length === 0) return [];
   const selected = new Set(filters.versions);
-  if (selected.size === 0) return [];
-  const minimum = achievementTenThousandths(filters.minimumAchievement);
   const filtered = records.filter((record) => {
     if (record.type === 'UTAGE') return false;
     if (record.version === 'unknown') return false;
-    const version = record.version === currentVersionTitle ? 'current' : 'past';
-    return selected.has(version)
-      && achievementTenThousandths(record.achievements) >= minimum
-      && (!filters.nearMiss || isNearMissAchievement(record.achievements))
-      && matchesCustomAchievementFilters(record, filters.soloAchievement, filters.multiAchievement, filters.strictAchievement);
+    if (!selected.has(record.version)) return false;
+    if (filters.difficulty !== 'all' && record.difficulty !== filters.difficulty) return false;
+    if (filters.type !== 'all' && record.type !== filters.type) return false;
+    if (!matchesConstantRange(record.difficultyConstant, filters.constantMin, filters.constantMax)) return false;
+    if (!matchesAchievementRange(record.achievements, filters.achievementMin, filters.achievementMax)) return false;
+    if (filters.nearMiss && !isNearMissAchievement(record.achievements)) return false;
+    if (!matchesCustomAchievementFilters(record, filters.soloAchievement, filters.multiAchievement, filters.strictAchievement)) {
+      return false;
+    }
+    if (filters.selectedDxRatingTagIds.length > 0 && !dxRatingChartHasAllTags(
+      filters.dxRatingTagIndex,
+      record.songId,
+      record.type,
+      record.levelIndex,
+      filters.selectedDxRatingTagIds,
+    )) {
+      return false;
+    }
+    return true;
   });
-  const split = selected.has('current') && selected.has('past') && filters.splitVersions;
-  const makeSection = (id: string, prefix: string, source: readonly ScoreRecord[]) => {
-    const output = limited(source, filters.quantity);
-    return {
-      id,
-      title: title(prefix, filters.soloAchievement, filters.multiAchievement, filters.nearMiss, output.length),
-      records: output,
-    };
-  };
-  if (split) {
-    return [
-      makeSection('custom-current', '当前版本', filtered.filter((record) => record.version === currentVersionTitle)),
-      makeSection('custom-past', '过往版本', filtered.filter((record) => record.version !== currentVersionTitle)),
-    ];
+  const labelFor = (version: string) => filters.versionLabels[version] ?? version;
+  if (filters.splitVersions && filters.versions.length > 1) {
+    return filters.versions.map((version) => {
+      const output = limited(filtered.filter((record) => record.version === version), filters.quantity);
+      return {
+        id: `custom-${version}`,
+        title: title(labelFor(version), filters.soloAchievement, filters.multiAchievement, filters.nearMiss, output.length),
+        records: output,
+      };
+    });
   }
-  const prefix = selected.size > 1 ? '' : selected.has('current') ? '当前版本' : '过往版本';
-  return [makeSection('custom', prefix, filtered)];
+  const prefix = filters.versions.length === 1 ? labelFor(filters.versions[0]!) : '';
+  const output = limited(filtered, filters.quantity);
+  return [{
+    id: 'custom',
+    title: title(prefix, filters.soloAchievement, filters.multiAchievement, filters.nearMiss, output.length),
+    records: output,
+  }];
 }
 
 export function paginateBestImageSections(
