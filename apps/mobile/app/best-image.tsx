@@ -23,11 +23,18 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
 import { CollectionImage } from '@/components/CollectionImage';
 import type { ChartType, Difficulty, Player } from '@/domain/models';
-import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
+import { MaimaiFilterBar, formatDxRatingTagFilterValue, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { buildDxRatingChartTagIndex } from '@/domain/dxrating-chart-tags';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
+import { DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
+import {
+  maimaiFcAchievementLabel,
+  maimaiFsAchievementLabel,
+  type MaimaiFcAchievement,
+  type MaimaiFsAchievement,
+} from '@/domain/maimai-filters';
 import {
   buildBestImageHtml,
   minimumBestImageHeight,
@@ -38,10 +45,6 @@ import {
   type BestImageScoreSection,
   type BestImageType,
 } from '@/features/best-image/build-best-image-html';
-import {
-  type MaimaiFcAchievement,
-  type MaimaiFsAchievement,
-} from '@/domain/maimai-filters';
 import {
   buildCustomBestImageSections,
   DEFAULT_CUSTOM_BEST_IMAGE_FILTERS,
@@ -212,7 +215,6 @@ export function MaimaiBestImageScreen() {
   const [nearMiss, setNearMiss] = useState(false);
   const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
   const [selectedDxRatingTagIds, setSelectedDxRatingTagIds] = useState<number[]>([]);
-  const [filterCollapsed, setFilterCollapsed] = useState(false);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [exportPageIndex, setExportPageIndex] = useState<number | null>(null);
   const [exportHeight, setExportHeight] = useState(minimumBestImageHeight(1080));
@@ -340,6 +342,28 @@ export function MaimaiBestImageScreen() {
     setSplitVersions(false);
   }, [activeAccountId, versionOptions]);
 
+  /** 单个非数量条件时标题为「{条件}N」；多个条件时标题为「自定义N」并附小字提示。 */
+  const versionConditionLabel = useMemo(() => {
+    if (versions.length === 0) return null;
+    if (versions.length === versionOptions.length) return null;
+    if (versions.length === 1) return versionLabels[versions[0]!] ?? versions[0];
+    return `${versions.length} 个版本`;
+  }, [versionLabels, versionOptions.length, versions]);
+
+  const conditionLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (difficulty !== 'all') labels.push(DIFFICULTY_VISUAL[difficulty].label);
+    if (type !== 'all') labels.push(type);
+    if (constantMin || constantMax) labels.push(`定数 ${constantMin || '不限'}~${constantMax || '不限'}`);
+    if (achievementMin || achievementMax) labels.push(`达成率 ${achievementMin || '不限'}~${achievementMax || '不限'}%`);
+    if (soloAchievement) labels.push(`单人 ${maimaiFcAchievementLabel(soloAchievement)}`);
+    if (multiAchievement) labels.push(`多人 ${maimaiFsAchievementLabel(multiAchievement)}`);
+    if (selectedDxRatingTagIds.length > 0) labels.push(`标签 ${formatDxRatingTagFilterValue(dxRatingChartTags.data?.tags ?? [], selectedDxRatingTagIds)}`);
+    if (nearMiss) labels.push('寸');
+    if (strictAchievement) labels.push('严格');
+    return labels;
+  }, [achievementMax, achievementMin, constantMax, constantMin, difficulty, dxRatingChartTags.data?.tags, multiAchievement, nearMiss, selectedDxRatingTagIds, soloAchievement, strictAchievement, type]);
+
   const customSections = useMemo(() => buildCustomBestImageSections(
     maimai?.records ?? [],
     {
@@ -359,8 +383,10 @@ export function MaimaiBestImageScreen() {
       selectedDxRatingTagIds,
       dxRatingTagIndex,
       versionLabels,
+      conditionLabels,
+      versionConditionLabel,
     },
-  ), [achievementMax, achievementMin, constantMax, constantMin, difficulty, dxRatingTagIndex, maimai?.records, multiAchievement, nearMiss, quantity, selectedDxRatingTagIds, soloAchievement, splitVersions, strictAchievement, type, versionLabels, versions]);
+  ), [achievementMax, achievementMin, conditionLabels, constantMax, constantMin, difficulty, dxRatingTagIndex, maimai?.records, multiAchievement, nearMiss, quantity, selectedDxRatingTagIds, soloAchievement, splitVersions, strictAchievement, type, versionConditionLabel, versionLabels, versions]);
   const scoreSections = useMemo<BestImageScoreSection[]>(() => imageType === 'best50'
     ? maimai?.bestSections ?? []
     : customSections, [customSections, imageType, maimai?.bestSections]);
@@ -640,8 +666,9 @@ export function MaimaiBestImageScreen() {
       {imageType === 'custom' ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
         <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
         <MaimaiFilterBar
-          collapsed={filterCollapsed}
-          onCollapsedChange={setFilterCollapsed}
+          collapsed={false}
+          collapsible={false}
+          onCollapsedChange={() => undefined}
           difficulty={difficulty}
           version="all"
           type={type}

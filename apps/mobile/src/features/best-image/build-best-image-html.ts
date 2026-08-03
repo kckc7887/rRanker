@@ -20,6 +20,8 @@ export type BestImageType = 'best50' | 'custom';
 export type BestImageScoreSection = {
   id: string;
   title: string;
+  /** 多条件筛选时标题下方的小字筛选条件提示。 */
+  subtitle?: string;
   records: readonly ScoreRecord[];
   rankOffset?: number;
 };
@@ -244,9 +246,12 @@ function renderScoreSection(
   coverUrls: Readonly<Record<string, string | null>> | undefined,
 ): string {
   const divider = `<div class="section-divider"><span>${escapeHtml(section.title)}</span></div>`;
+  const subtitle = section.subtitle
+    ? `<div class="section-subtitle">${escapeHtml(section.subtitle)}</div>`
+    : '';
   const cards = section.records.map((record, index) => renderScoreCard(record, (section.rankOffset ?? 0) + index + 1, coverUrls)).join('');
   const content = cards || '<div class="empty-section">暂无符合条件的成绩</div>';
-  return `<section class="score-section" aria-label="${escapeHtml(section.title)}">${divider}<div class="score-grid">${content}</div></section>`;
+  return `<section class="score-section" aria-label="${escapeHtml(section.title)}">${divider}${subtitle}<div class="score-grid">${content}</div></section>`;
 }
 
 function collectionAssetUrl(kind: 'icon' | 'plate' | 'frame', id: number | undefined): string | null {
@@ -470,6 +475,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .section-divider{display:flex;align-items:center;gap:${px(width * 0.012)}px;margin:0 0 ${px(width * 0.012)}px;color:rgba(22,29,43,.78);font:800 ${px(width * 0.016)}px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:${Math.max(1, px(width * 0.0008))}px;white-space:nowrap}
     .section-divider::before,.section-divider::after{content:"";height:${Math.max(1, px(width * 0.0012))}px;flex:1;background:linear-gradient(90deg,transparent,rgba(28,38,57,.55))}
     .section-divider::after{background:linear-gradient(90deg,rgba(28,38,57,.55),transparent)}
+    .section-subtitle{margin:-${px(width * 0.004)}px 0 ${px(width * 0.012)}px;text-align:center;color:rgba(22,29,43,.55);font:600 ${px(width * 0.0105)}px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:${Math.max(1, px(width * 0.0006))}px;white-space:nowrap}
     .score-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:${gridGap}px}
     .score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;flex-direction:column;overflow:hidden;padding:${scoreCardPadding}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 0.012)}px;background:var(--card-background);box-shadow:0 ${px(width * 0.004)}px ${px(width * 0.014)}px rgba(25,38,60,.22);color:var(--card-foreground)}
     .score-card.difficulty-remaster{--card-foreground:#5F2C78;--card-muted:#8B5AA2;--separator-color:rgba(166,93,185,.52);border-color:rgba(166,93,185,.42)}

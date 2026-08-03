@@ -34,6 +34,8 @@ export interface VersionFilterOption {
 
 export interface MaimaiFilterBarProps {
   collapsed: boolean;
+  /** 是否显示展开/收起按钮；成绩图片自定义等固定展开场景传 false，仅保留重置。 */
+  collapsible?: boolean;
   difficulty: Difficulty | 'all';
   version: string | 'all';
   type: ChartType | 'all';
@@ -121,6 +123,7 @@ export function buildMaimaiFilterSummary({
 
 export function MaimaiFilterBar({
   collapsed,
+  collapsible = true,
   difficulty,
   version,
   type,
@@ -242,7 +245,7 @@ export function MaimaiFilterBar({
     versionMulti, selectedVersions,
   });
 
-  if (collapsed) {
+  if (collapsible && collapsed) {
     return (
       <View style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
@@ -268,11 +271,11 @@ export function MaimaiFilterBar({
         <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
         <View style={styles.headerActions}>
           <ResetFilterButton onPress={handleReset} />
-          <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
+          {collapsible ? <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
             onPress={() => { setOpenDropdown(null); onCollapsedChange(true); }} hitSlop={8}
             style={styles.headerAction}>
             <CollapseToggleAction expanded label="收起" />
-          </Pressable>
+          </Pressable> : null}
         </View>
       </View>
 
