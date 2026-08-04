@@ -16,6 +16,7 @@ import {
 } from '../engine';
 import { PlaybackClock } from './playbackClock';
 import { chartPreviewCanvasSize } from './fullscreenLayout';
+import { toggleFullscreenLockUiState } from './fullscreenLock';
 import {
   beatsToMs,
   calculateMusicTime,
@@ -1096,9 +1097,12 @@ async function main(): Promise<void> {
   }
 
   function showFsOverlay() {
-    fsOverlay.classList.remove('hidden');
     window.clearTimeout(fsHideTimer);
-    if (fsLocked) return;
+    if (fsLocked) {
+      fsOverlay.classList.add('hidden');
+      return;
+    }
+    fsOverlay.classList.remove('hidden');
     fsHideTimer = window.setTimeout(() => {
       fsOverlay.classList.add('hidden');
     }, 5000);
@@ -1115,6 +1119,7 @@ async function main(): Promise<void> {
     isFullscreen = false;
     fsLocked = false;
     fsLock.classList.remove('locked');
+    fsLock.setAttribute('aria-label', '锁定');
     document.body.classList.remove('fullscreen');
     hideFsOverlay(true);
     postStatus('fullscreen', { active: false });
@@ -1183,9 +1188,12 @@ async function main(): Promise<void> {
 
   fsLock.addEventListener('click', (e) => {
     e.stopPropagation();
-    fsLocked = !fsLocked;
+    const nextState = toggleFullscreenLockUiState(fsLocked);
+    fsLocked = nextState.locked;
     fsLock.classList.toggle('locked', fsLocked);
-    showFsOverlay();
+    fsLock.setAttribute('aria-label', nextState.actionLabel);
+    if (nextState.overlayHidden) hideFsOverlay(true);
+    else showFsOverlay();
   });
 
   fsOverlay.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
