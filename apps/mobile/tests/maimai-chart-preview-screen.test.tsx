@@ -94,9 +94,9 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(latestScreenOptions).toMatchObject({
       headerShown: true,
       orientation: 'portrait_up',
-      statusBarHidden: false,
-      navigationBarHidden: false,
     });
+    expect(latestScreenOptions).not.toHaveProperty('statusBarHidden');
+    expect(latestScreenOptions).not.toHaveProperty('navigationBarHidden');
 
     fireEvent(webview, 'message', {
       nativeEvent: { data: '{"type":"fullscreen","active":true}' },
@@ -104,11 +104,11 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
 
     await waitFor(() => expect(latestScreenOptions).toMatchObject({
       headerShown: false,
-      orientation: 'landscape_left',
-      statusBarHidden: true,
-      navigationBarHidden: true,
+      orientation: 'landscape',
       autoHideHomeIndicator: true,
     }));
+    expect(latestScreenOptions).not.toHaveProperty('statusBarHidden');
+    expect(latestScreenOptions).not.toHaveProperty('navigationBarHidden');
 
     expect(hardwareBackHandler?.()).toBe(true);
     expect(mockInjectJavaScript).toHaveBeenCalledWith(
@@ -122,8 +122,6 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     await waitFor(() => expect(latestScreenOptions).toMatchObject({
       headerShown: true,
       orientation: 'portrait_up',
-      statusBarHidden: false,
-      navigationBarHidden: false,
       autoHideHomeIndicator: false,
     }));
   });

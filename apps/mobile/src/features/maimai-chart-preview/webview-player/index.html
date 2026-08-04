@@ -207,7 +207,7 @@
     #fs-lock {
       display: none;
       position: fixed;
-      right: 10px;
+      right: calc(10px + env(safe-area-inset-right));
       top: 50%;
       transform: translateY(-50%);
       z-index: 2001;
@@ -224,7 +224,7 @@
       justify-content: center;
       flex: 0 0 36px;
     }
-    body.fullscreen #fs-overlay:not(.hidden) + #fs-lock { display: flex; }
+    body.fullscreen #fs-lock { display: flex; }
     #fs-lock.locked { color: var(--accent); background: rgba(11,13,18,0.8); }
     #fs-lock svg { width: 18px; height: 18px; }
     #fs-timeline-host {

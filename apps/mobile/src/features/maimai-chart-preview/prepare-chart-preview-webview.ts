@@ -71,10 +71,11 @@ export async function prepareChartPreviewWebViewSource(
   const directory = chartPreviewStageDirectory();
   await stageAsset(PLAYER_MODULE, 'player.js', directory);
   await stageAsset(SENSOR_MODULE, 'sensor.webp', directory);
-  await stageAsset(ANSWER_MODULE, 'answer.wav', directory);
+  const answerFile = await stageAsset(ANSWER_MODULE, 'answer.wav', directory);
+  const answerSoundUrl = `data:audio/wav;base64,${await answerFile.base64()}`;
 
   const template = await readAssetText(HTML_MODULE);
-  const html = applyChartPreviewConfigToHtml(template, config);
+  const html = applyChartPreviewConfigToHtml(template, { ...config, answerSoundUrl });
   const htmlFile = new File(directory, 'index.html');
   htmlFile.create({ overwrite: true });
   htmlFile.write(html);
