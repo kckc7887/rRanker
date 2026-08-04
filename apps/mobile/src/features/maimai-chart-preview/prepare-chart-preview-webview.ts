@@ -5,6 +5,7 @@ import {
   applyChartPreviewConfigToHtml,
   type ChartPreviewInjectConfig,
 } from './chart-preview-inject';
+import { resolveChartPreviewAssetUri } from './chart-preview-asset-uri';
 
 export {
   applyChartPreviewConfigToHtml,
@@ -33,21 +34,31 @@ function chartPreviewStageDirectory(): Directory {
 }
 
 async function stageAsset(moduleId: number, fileName: string, directory: Directory): Promise<File> {
-  const asset = Asset.fromModule(moduleId);
-  await asset.downloadAsync();
-  if (!asset.localUri) throw new Error(`无法加载资源 ${fileName}`);
+  const sourceUri = await loadAssetFileUri(moduleId, fileName);
   const target = new File(directory, fileName);
-  const source = new File(asset.localUri);
+  const source = new File(sourceUri);
   if (target.exists) target.delete();
   source.copy(target);
   return target;
 }
 
-async function readAssetText(moduleId: number): Promise<string> {
+async function loadAssetFileUri(moduleId: number, fileName: string): Promise<string> {
   const asset = Asset.fromModule(moduleId);
   await asset.downloadAsync();
-  if (!asset.localUri) throw new Error('无法读取谱面预览 HTML');
-  return await new File(asset.localUri).text();
+  if (!asset.localUri) throw new Error(`无法加载资源 ${fileName}`);
+
+  const resolved = resolveChartPreviewAssetUri(asset.localUri, asset.type, Platform.OS);
+  if (!resolved.requiresDownload) return resolved.uri;
+
+  const embeddedAsset = Asset.fromURI(resolved.uri);
+  await embeddedAsset.downloadAsync();
+  if (!embeddedAsset.localUri) throw new Error(`无法加载资源 ${fileName}`);
+  return embeddedAsset.localUri;
+}
+
+async function readAssetText(moduleId: number): Promise<string> {
+  const sourceUri = await loadAssetFileUri(moduleId, 'index.html');
+  return await new File(sourceUri).text();
 }
 
 /**
