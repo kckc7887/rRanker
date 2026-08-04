@@ -20,6 +20,7 @@ export type ChartPreviewInjectConfig = {
   difficulty: number;
   title?: string;
   settings?: ChartPreviewSettings;
+  answerSoundUrl?: string;
 };
 
 export type ChartPreviewBridgeMessage = ChartPreviewSettings & {
@@ -45,6 +46,7 @@ export function buildChartPreviewConfigJson(config: ChartPreviewInjectConfig): s
     difficulty: config.difficulty,
     title: config.title ?? '',
     settings: config.settings ?? null,
+    answerSoundUrl: config.answerSoundUrl,
   });
 }
 
@@ -53,7 +55,7 @@ export function buildChartPreviewConfigScript(config: ChartPreviewInjectConfig):
 }
 
 export function buildChartPreviewInjectedJavaScript(config: ChartPreviewInjectConfig): string {
-  return `window.__CHART_PREVIEW__=${buildChartPreviewConfigJson(config)};true;`;
+  return `window.__CHART_PREVIEW__={...(window.__CHART_PREVIEW__||{}),...${buildChartPreviewConfigJson(config)}};true;`;
 }
 
 export function chartPreviewStopScript(): string {

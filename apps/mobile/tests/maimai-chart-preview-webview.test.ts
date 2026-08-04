@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   applyChartPreviewConfigToHtml,
   buildChartPreviewInjectedJavaScript,
@@ -7,6 +9,7 @@ import {
   parseChartPreviewBridgeMessage,
 } from '@/features/maimai-chart-preview/chart-preview-inject';
 import { chartPreviewCanvasSize } from '@/features/maimai-chart-preview/webview-player/fullscreenLayout';
+import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
 
 describe('chart preview webview helpers', () => {
   it('injects chart preview config before content loads', () => {
@@ -19,6 +22,18 @@ describe('chart preview webview helpers', () => {
     expect(script).toContain('"chartId":10834');
     expect(script).toContain('"difficulty":5');
     expect(script).toContain('true;');
+  });
+
+  it('injects the inlined answer sound and preserves it during fallback injection', () => {
+    const audioUrl = 'data:audio/wav;base64,UklGRg==';
+    const html = applyChartPreviewConfigToHtml('<!--CHART_PREVIEW_CONFIG-->', {
+      chartId: 834,
+      difficulty: 4,
+      answerSoundUrl: audioUrl,
+    });
+    expect(html).toContain(`"answerSoundUrl":"${audioUrl}"`);
+    expect(buildChartPreviewInjectedJavaScript({ chartId: 834, difficulty: 4 }))
+      .toContain('...(window.__CHART_PREVIEW__||{})');
   });
 
   it('writes config into html template marker for file:// loading', () => {
@@ -67,5 +82,30 @@ describe('chart preview webview helpers', () => {
       viewportWidth: 390,
       viewportHeight: 844,
     })).toBe(390);
+  });
+
+  it('allows both landscape directions and avoids the iOS native status-bar path', () => {
+    expect(chartPreviewNativeScreenOptions(true, 'ios')).toEqual({
+      title: '谱面确认',
+      headerShown: false,
+      orientation: 'landscape',
+      autoHideHomeIndicator: true,
+    });
+    expect(chartPreviewNativeScreenOptions(true, 'android')).toEqual({
+      title: '谱面确认',
+      headerShown: false,
+      orientation: 'landscape',
+      statusBarHidden: true,
+      navigationBarHidden: true,
+    });
+  });
+
+  it('keeps the fullscreen lock visible inside the iOS safe area', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    expect(html).toContain('right: calc(10px + env(safe-area-inset-right));');
+    expect(html).toContain('body.fullscreen #fs-lock { display: flex; }');
   });
 });

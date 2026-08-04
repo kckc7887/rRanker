@@ -19,6 +19,7 @@ import {
   type ChartPreviewWebViewSource,
 } from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
 import type { ChartPreviewSettings } from '@/features/maimai-chart-preview/chart-preview-inject';
+import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
 import { useAppTheme } from '@/theme/app-theme';
 
 function parseChartType(value: string | undefined): ChartType | null {
@@ -142,14 +143,7 @@ export default function MaimaiChartPreviewScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <Stack.Screen options={{
-        title: '谱面确认',
-        headerShown: !isFullscreen,
-        orientation: isFullscreen ? 'landscape_left' : 'portrait_up',
-        statusBarHidden: isFullscreen,
-        navigationBarHidden: isFullscreen,
-        autoHideHomeIndicator: isFullscreen,
-      }} />
+      <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS)} />
       {blockingError ? (
         <View style={styles.center} accessibilityLabel={`谱面确认错误：${blockingError}`}>
           <Text style={[styles.error, { color: theme.text }]}>{blockingError}</Text>

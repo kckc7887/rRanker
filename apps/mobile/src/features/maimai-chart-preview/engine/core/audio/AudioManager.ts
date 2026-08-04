@@ -48,6 +48,18 @@ export interface PreparedAudioEvent {
   hasTouchHoldEndSound: boolean;
 }
 
+export function decodeBase64AudioDataUrl(value: string): ArrayBuffer | null {
+  const match = /^data:audio\/[^;,]+;base64,([a-z\d+/=]+)$/i.exec(value);
+  if (!match) return null;
+
+  const binary = atob(match[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
+}
+
 export function prepareAudioEvents(notes: readonly Note[] | null): PreparedAudioEvent[] {
   if (!notes || notes.length === 0) return [];
 
@@ -138,8 +150,8 @@ export class AudioManager {
     if (this.initialized) return;
 
     try {
-      const response = await fetch(this.answerSoundPath);
-      const arrayBuffer = await response.arrayBuffer();
+      const embeddedAudio = decodeBase64AudioDataUrl(this.answerSoundPath);
+      const arrayBuffer = embeddedAudio ?? await (await fetch(this.answerSoundPath)).arrayBuffer();
       this.answerBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
 
       this.initialized = true;
