@@ -9,6 +9,7 @@ import {
   parseChartPreviewBridgeMessage,
 } from '@/features/maimai-chart-preview/chart-preview-inject';
 import { chartPreviewCanvasSize } from '@/features/maimai-chart-preview/webview-player/fullscreenLayout';
+import { toggleFullscreenLockUiState } from '@/features/maimai-chart-preview/webview-player/fullscreenLock';
 import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
 
 describe('chart preview webview helpers', () => {
@@ -107,5 +108,18 @@ describe('chart preview webview helpers', () => {
     );
     expect(html).toContain('right: calc(10px + env(safe-area-inset-right));');
     expect(html).toContain('body.fullscreen #fs-lock { display: flex; }');
+  });
+
+  it('hides controls while locked and restores them when unlocked', () => {
+    expect(toggleFullscreenLockUiState(false)).toEqual({
+      locked: true,
+      overlayHidden: true,
+      actionLabel: '解锁',
+    });
+    expect(toggleFullscreenLockUiState(true)).toEqual({
+      locked: false,
+      overlayHidden: false,
+      actionLabel: '锁定',
+    });
   });
 });
