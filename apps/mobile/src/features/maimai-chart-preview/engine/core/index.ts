@@ -7,6 +7,7 @@ export {
 } from "./parser/ChartParser";
 export {
   AudioManager,
+  decodeBase64AudioDataUrl,
   prepareAudioEvents,
   type AudioManagerConfig,
   type PreparedAudioEvent,

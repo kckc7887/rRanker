@@ -50,6 +50,7 @@ export interface ChartPreviewConfig {
   difficulty: ChartDifficulty;
   title?: string;
   settings?: ChartPreviewSettings | null;
+  answerSoundUrl?: string;
 }
 
 const CHART_BASE = 'https://assets2.lxns.net/maimai/chart';
@@ -438,7 +439,7 @@ async function main(): Promise<void> {
       answerManager = new AudioManager({
         audioContext,
         outputNode: answerGain,
-        answerSoundPath: './answer.wav',
+        answerSoundPath: config.answerSoundUrl ?? './answer.wav',
         initialVolume: soundVolume / 10,
         initialTimingOffset: ANSWER_SOUND_BASE_OFFSET_MS,
       });
