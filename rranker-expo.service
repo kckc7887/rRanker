@@ -1,0 +1,20 @@
+[Unit]
+Description=rRanker Expo Go dev server (Metro)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rranker
+Environment=REACT_NATIVE_PACKAGER_HOSTNAME=211.161.232.91
+Environment=EXPO_NO_TELEMETRY=1
+Environment=CI=0
+ExecStart=/usr/bin/npx expo start --host lan --port 8081
+Restart=always
+RestartSec=5
+User=root
+StandardOutput=append:/var/log/rranker-expo.log
+StandardError=append:/var/log/rranker-expo.log
+
+[Install]
+WantedBy=multi-user.target
