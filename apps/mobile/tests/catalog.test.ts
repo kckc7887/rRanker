@@ -21,10 +21,12 @@ describe('catalog identity mapping', () => {
     expect(isUtageSongId(111388)).toBe(true);
     expect(isUtageSongId(11806)).toBe(false);
     expect(originalSongIdForUtage(100123)).toBe('123');
-    expect(originalSongIdForUtage(110123)).toBe('10123');
+    expect(originalSongIdForUtage(110123)).toBe('123');
+    expect(originalSongIdForUtage(120227)).toBe('227');
     expect(originalSongIdForUtage(11806)).toBeUndefined();
     expect(maimaiJacketUrl('100123')).toBe('https://assets2.lxns.net/maimai/jacket/123.png');
-    expect(maimaiJacketUrl('110123')).toBe('https://assets2.lxns.net/maimai/jacket/10123.png');
+    expect(maimaiJacketUrl('110123')).toBe('https://assets2.lxns.net/maimai/jacket/123.png');
+    expect(maimaiJacketUrl('120227')).toBe('https://assets2.lxns.net/maimai/jacket/227.png');
   });
 
   it('uses the original song title and aliases for U·TA·GE presentation', () => {
