@@ -2,6 +2,7 @@ import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
 import { DXRATING_CHART_TAGS_RESOURCE_KEY } from '@/domain/dxrating-chart-tags';
 import {
+  CHUNITHM_ALIAS_RESOURCE_KEY,
   CHUNITHM_CATALOG_RESOURCE_KEY,
   CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX,
 } from '@/domain/chunithm';
@@ -29,6 +30,7 @@ export const MAIMAI_CATALOG_RESOURCE_KEYS = [
 ] as const;
 export const CHUNITHM_CATALOG_RESOURCE_KEYS = [
   CHUNITHM_CATALOG_RESOURCE_KEY,
+  CHUNITHM_ALIAS_RESOURCE_KEY,
 ] as const;
 
 export type StorageSegmentId = 'app' | 'shared' | GameId;
