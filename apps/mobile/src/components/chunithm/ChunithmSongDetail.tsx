@@ -320,6 +320,16 @@ function ChunithmDetailBody({
       />
 
       <View style={styles.details}>
+        <Card testID="chunithm-song-info-card">
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>歌曲信息</Text>
+          <ChunithmAliasLine aliases={song.aliases ?? []} />
+          <Text style={[styles.body, { color: theme.textSecondary }]}>
+            版权：{song.rights || '未提供'}
+          </Text>
+          <Text style={[styles.body, { color: theme.textSecondary }]}>
+            状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}
+          </Text>
+        </Card>
         <Card>
           <TagEditor
             disabled={library.isUpdating}
@@ -330,20 +340,48 @@ function ChunithmDetailBody({
             tags={songItem?.kind === 'song' ? songItem.tags : []}
           />
         </Card>
-        <Card style={styles.copyrightCard}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>歌曲与版权信息</Text>
-          <Text style={[styles.body, { color: theme.textSecondary }]}>
-            版权：{song.rights || '未提供'}
-          </Text>
-          <Text style={[styles.body, { color: theme.textSecondary }]}>
-            曲目数据与曲绘资源由 LXNS 公共服务提供。
-          </Text>
-          <Text style={[styles.footerNote, { color: theme.textMuted }]}>
-            游戏、歌曲及相关素材版权归 SEGA、曲目作者与各自权利人所有。
-          </Text>
-        </Card>
       </View>
     </ScrollView>
+  );
+}
+
+function ChunithmAliasLine({ aliases }: { aliases: readonly string[] }) {
+  const theme = useAppTheme();
+  const text = `别名：${aliases.join('、') || '无'}`;
+  const [expanded, setExpanded] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => { setExpanded(false); setOverflow(false); }, [text]);
+  return (
+    <View style={styles.aliasBlock}>
+      <Text
+        accessible={false}
+        style={[styles.body, styles.aliasMeasure, { color: theme.textSecondary }]}
+        testID="chunithm-alias-overflow-measure"
+        onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}
+      >
+        {text}
+      </Text>
+      <Text
+        numberOfLines={expanded ? undefined : 1}
+        style={[styles.body, { color: theme.textSecondary }]}
+        testID="chunithm-alias-text"
+      >
+        {text}
+      </Text>
+      {overflow ? (
+        <DetailPressable
+          accessibilityLabel={expanded ? '收起别名' : '展开别名'}
+          accessibilityRole="button"
+          hitSlop={6}
+          onPress={() => setExpanded((value) => !value)}
+          style={styles.aliasAction}
+        >
+          <Text style={[styles.aliasActionText, { color: theme.accent }]}>
+            {expanded ? '收起' : '展开'}
+          </Text>
+        </DetailPressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -919,10 +957,12 @@ const styles = StyleSheet.create({
   actionText: { fontWeight: '700' },
   noCharts: { padding: 24, alignItems: 'center' },
   details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
-  copyrightCard: { gap: 7 },
-  sectionTitle: { fontSize: 16, fontWeight: '800' },
+  sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 7 },
   body: { fontSize: 13, lineHeight: 19 },
-  footerNote: { fontSize: 11, lineHeight: 17 },
+  aliasBlock: { position: 'relative', alignItems: 'stretch' },
+  aliasMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
+  aliasAction: { alignSelf: 'flex-end', paddingHorizontal: 2, paddingVertical: 3 },
+  aliasActionText: { fontSize: 12, fontWeight: '700' },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.52 },
 });

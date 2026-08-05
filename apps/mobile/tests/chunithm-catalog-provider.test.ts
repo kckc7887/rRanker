@@ -4,6 +4,7 @@ import type {
 } from '@/domain/chunithm';
 import {
   ChunithmCatalogProvider,
+  mapChunithmAliases,
   mapChunithmCatalog,
   mapChunithmSongDetail,
 } from '@/providers/chunithm-catalog-provider';
@@ -157,6 +158,45 @@ describe('ChunithmCatalogProvider', () => {
       genres: responsePayload.genres,
       versions: [],
     })).toThrow(expect.objectContaining({ code: 'upstream_schema' }));
+  });
+
+  it('fetches and maps the chunithm alias list without auth', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({
+        aliases: [
+          { song_id: 3, aliases: ['bbkkbkk', 'bk'] },
+          { song_id: 7, aliases: ['初音未来的消失', '消失'] },
+        ],
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const aliases = await new ChunithmCatalogProvider().getAliases();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://maimai.lxns.net/api/v0/chunithm/alias/list',
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: { Accept: 'application/json' },
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Authorization');
+    expect(aliases.aliases).toEqual([
+      { songId: '3', aliases: ['bbkkbkk', 'bk'] },
+      { songId: '7', aliases: ['初音未来的消失', '消失'] },
+    ]);
+    expect(aliases.source).toMatchObject({ kind: 'lxns', label: 'LXNS 中二别名库' });
+  });
+
+  it('maps a bare alias array and rejects an invalid alias envelope', () => {
+    expect(mapChunithmAliases([
+      { song_id: 21, aliases: ['夜骑', 'night of knights'] },
+    ]).aliases).toEqual([
+      { songId: '21', aliases: ['夜骑', 'night of knights'] },
+    ]);
+    expect(() => mapChunithmAliases({ aliases: [{ song_id: 'x', aliases: [] }] }))
+      .toThrow(expect.objectContaining({ code: 'upstream_schema' }));
   });
 
   it('fetches and maps unauthenticated song detail notes including WORLD’S END', async () => {

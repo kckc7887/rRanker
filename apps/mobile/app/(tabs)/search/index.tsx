@@ -298,6 +298,14 @@ const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { song
 
 function songKey(song: Song): string { return song.id; }
 
+function chunithmMatchedAlias(song: ChunithmSong, keyword: string): string | undefined {
+  if (searchDocumentMatches(buildSearchDocument([song.title]), keyword)) return undefined;
+  for (const alias of song.aliases ?? []) {
+    if (searchDocumentMatches(buildSearchDocument([alias]), keyword)) return alias;
+  }
+  return undefined;
+}
+
 function ChunithmSearchScreen() {
   const query = useChunithmCatalog();
   const tabBottomInset = useNativeTabBottomInset();
@@ -314,6 +322,7 @@ function ChunithmSearchScreen() {
         String(song.id),
         song.title,
         ...(song.artist ? [song.artist] : []),
+        ...(song.aliases ?? []),
         ...song.difficulties.flatMap(
           (difficulty) => difficulty.noteDesigner ? [difficulty.noteDesigner] : [],
         ),
@@ -342,6 +351,15 @@ function ChunithmSearchScreen() {
       return difficulties.length ? [{ song, difficulties }] : [];
     });
   }, [deferredFilterSpec, query.data?.songs, searchDocuments]);
+  const matchedAliasBySongId = useMemo(() => {
+    if (!debouncedKeyword.trim()) return null;
+    const map = new Map<number, string>();
+    for (const { song } of filtered) {
+      const alias = chunithmMatchedAlias(song, debouncedKeyword);
+      if (alias) map.set(song.id, alias);
+    }
+    return map;
+  }, [debouncedKeyword, filtered]);
   const isFiltering = filterSpec !== deferredFilterSpec;
   const selectedVersionTitle = deferredFilterSpec.version === 'all'
     ? undefined
@@ -360,7 +378,7 @@ function ChunithmSearchScreen() {
           accessibilityLabel="中二节奏歌曲搜索"
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="曲名 / ID / 曲师 / 谱师"
+          placeholder="曲名 / ID / 别名 / 曲师 / 谱师"
           placeholderTextColor={theme.textMuted}
           value={keyword}
           onChangeText={setKeyword}
@@ -412,6 +430,7 @@ function ChunithmSearchScreen() {
             <ChunithmSongRow
               displayedDifficulties={item.difficulties}
               displayedVersionTitle={selectedVersionTitle}
+              matchedAlias={matchedAliasBySongId?.get(item.song.id)}
               song={item.song}
             />
           ),

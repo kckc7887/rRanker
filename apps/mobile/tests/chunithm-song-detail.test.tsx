@@ -31,6 +31,7 @@ const song = {
   bpm: 170,
   map: '未来都市',
   rights: 'TEST RIGHTS',
+  aliases: ['bbkkbkk', 'bk'],
   versionId: 23000,
   versionTitle: 'CHUNITHM VERSE',
   locked: false,
@@ -315,8 +316,32 @@ describe('Chunithm song detail', () => {
     await waitFor(() => expect(openUrl).toHaveBeenCalledWith(
       `bilibili://search?keyword=${encodeURIComponent('中二节奏 B.B.K.K.B.K.K. MASTER 谱面确认')}`,
     ));
+    expect(screen.getByText('歌曲信息')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-alias-text').props.children)
+      .toBe('别名：bbkkbkk、bk');
     expect(screen.getByText('版权：TEST RIGHTS')).toBeTruthy();
+    expect(screen.getByText('状态：可用')).toBeTruthy();
+    expect(screen.queryByText('曲目数据与曲绘资源由 LXNS 公共服务提供。')).toBeNull();
+    expect(screen.queryByText(/版权归 SEGA/)).toBeNull();
     expect(screen.queryByLabelText('数据来源状态')).toBeNull();
+
+    const tree = screen.toJSON();
+    const songInfoIndex = findTestIdIndex(tree, 'chunithm-song-info-card');
+    const localTagIndices = collectTextIndices(tree, (children) => {
+      const text = Array.isArray(children) ? children.join('') : children;
+      return text === '谱面标签：无';
+    });
+    expect(songInfoIndex).toBeGreaterThanOrEqual(0);
+    expect(localTagIndices.length).toBeGreaterThan(0);
+    expect(Math.max(...localTagIndices)).toBeGreaterThan(songInfoIndex);
+
+    await fireEvent(screen.getByTestId('chunithm-alias-overflow-measure'), 'textLayout', {
+      nativeEvent: { lines: [{}, {}] },
+    });
+    await fireEvent.press(screen.getByLabelText('展开别名'));
+    expect(screen.getByTestId('chunithm-alias-text').props.numberOfLines).toBeUndefined();
+    await fireEvent.press(screen.getByLabelText('收起别名'));
+    expect(screen.getByTestId('chunithm-alias-text').props.numberOfLines).toBe(1);
   });
 
   it("uses WORLD'S END attributes and never treats level_value as a constant", async () => {
@@ -379,3 +404,52 @@ describe('Chunithm song detail', () => {
     expect(mockDetailRefetch).toHaveBeenCalled();
   });
 });
+
+function findTestIdIndex(
+  node: unknown,
+  testID: string,
+): number {
+  let cursor = 0;
+  const walk = (current: unknown): number | null => {
+    if (Array.isArray(current)) {
+      for (const child of current) {
+        const found = walk(child);
+        if (found !== null) return found;
+      }
+      return null;
+    }
+    if (current && typeof current === 'object') {
+      const item = current as { props?: Record<string, unknown>; children?: unknown };
+      if (item.props?.testID === testID) return cursor;
+      cursor += 1;
+      if (item.children !== undefined) {
+        const found = walk(item.children);
+        if (found !== null) return found;
+      }
+    }
+    return null;
+  };
+  return walk(node) ?? -1;
+}
+
+function collectTextIndices(
+  node: unknown,
+  match: (children: unknown) => boolean,
+): number[] {
+  const result: number[] = [];
+  let cursor = 0;
+  const walk = (current: unknown): void => {
+    if (Array.isArray(current)) {
+      for (const child of current) walk(child);
+      return;
+    }
+    if (current && typeof current === 'object') {
+      const item = current as { props?: Record<string, unknown>; children?: unknown };
+      if (item.children !== undefined && match(item.children)) result.push(cursor);
+      cursor += 1;
+      if (item.children !== undefined) walk(item.children);
+    }
+  };
+  walk(node);
+  return result;
+}
