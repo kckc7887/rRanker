@@ -28,10 +28,8 @@ import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
 import {
-  CHUNITHM_CATALOG_QUERY_KEY,
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
-import { queryClient } from '@/state/query-client';
 
 const repository = new SqliteSnapshotRepository();
 const GAME_DATA_QUERY_VERSION = 18;
@@ -54,10 +52,7 @@ export function useGameData() {
     queryFn: async (): Promise<GameDataBundle> => {
       if (activeGameId === 'chunithm') {
         if (activeProviderId === 'chunithm-test') {
-          const catalog = await queryClient.fetchQuery({
-            queryKey: CHUNITHM_CATALOG_QUERY_KEY,
-            queryFn: loadChunithmCatalog,
-          });
+          const catalog = await loadChunithmCatalog();
           const snapshot = buildMaxedChunithmSnapshot(
             catalog,
             activeAccount?.displayName ?? '示例账号',

@@ -37,6 +37,7 @@ const mockCatalog: ChunithmCatalogSnapshot = {
       artist: 'nora2r',
       genre: '其他游戏',
       bpm: 170,
+      aliases: ['bbkkbkk', '超打击'],
       versionId: 23000,
       versionTitle: 'CHUNITHM VERSE',
       locked: false,
@@ -226,6 +227,17 @@ describe('Chunithm catalog screen', () => {
     await waitFor(() => expect(screen.getByText('共 1 首')).toBeTruthy());
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
     expect(screen.queryByText('Only My Railgun')).toBeNull();
+  });
+
+  it('matches keyword against aliases and shows the matched alias in the row', async () => {
+    const screen = await render(<SearchScreen />);
+
+    await fireEvent.changeText(screen.getByLabelText('中二节奏歌曲搜索'), '超打击');
+
+    await waitFor(() => expect(screen.getByText('共 1 首')).toBeTruthy());
+    expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
+    expect(screen.queryByText('Only My Railgun')).toBeNull();
+    expect(screen.getByText('别名：超打击')).toBeTruthy();
   });
 
   it('combines difficulty, chart version and constant on one chart and only shows matched badges', async () => {

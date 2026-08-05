@@ -1,6 +1,7 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import type {
+  ChunithmAliasSnapshot,
   ChunithmCatalogSnapshot,
   ChunithmDifficulty,
   ChunithmLevelIndex,
@@ -64,6 +65,16 @@ const CatalogResponseSchema = z.object({
   versions: z.array(VersionSchema).min(1),
 }).passthrough();
 
+const AliasEntrySchema = z.object({
+  song_id: z.number().int().nonnegative(),
+  aliases: z.array(z.string()),
+}).passthrough();
+
+const AliasResponseSchema = z.union([
+  z.array(AliasEntrySchema),
+  z.object({ aliases: z.array(AliasEntrySchema) }).passthrough(),
+]);
+
 type RawVersion = z.infer<typeof VersionSchema>;
 
 function source(): DataSource {
@@ -79,6 +90,15 @@ function detailSource(): DataSource {
   return {
     kind: 'lxns',
     label: 'LXNS 中二节奏单曲详情',
+    updatedAt: new Date().toISOString(),
+    isStale: false,
+  };
+}
+
+function aliasSource(): DataSource {
+  return {
+    kind: 'lxns',
+    label: 'LXNS 中二别名库',
     updatedAt: new Date().toISOString(),
     isStale: false,
   };
@@ -234,9 +254,32 @@ export function mapChunithmSongDetail(input: unknown): ChunithmSongDetailSnapsho
   return { song, source: detailSource() };
 }
 
+export function mapChunithmAliases(input: unknown): ChunithmAliasSnapshot {
+  const parsed = AliasResponseSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ProviderError(
+      'upstream_schema',
+      'LXNS 中二别名响应结构与已验证契约不一致',
+      true,
+    );
+  }
+  const entries = Array.isArray(parsed.data) ? parsed.data : parsed.data.aliases;
+  return {
+    aliases: entries.map((item) => ({
+      songId: String(item.song_id),
+      aliases: item.aliases,
+    })),
+    source: aliasSource(),
+  };
+}
+
 export class ChunithmCatalogProvider {
   async getCatalog(): Promise<ChunithmCatalogSnapshot> {
     return mapChunithmCatalog(await getJson('/song/list'));
+  }
+
+  async getAliases(): Promise<ChunithmAliasSnapshot> {
+    return mapChunithmAliases(await getJson('/alias/list'));
   }
 
   async getSongDetail(songId: string | number): Promise<ChunithmSongDetailSnapshot> {

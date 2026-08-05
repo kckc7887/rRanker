@@ -23,10 +23,12 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
   song,
   displayedDifficulties,
   displayedVersionTitle,
+  matchedAlias,
 }: {
   song: ChunithmSong;
   displayedDifficulties?: readonly ChunithmDifficulty[];
   displayedVersionTitle?: string;
+  matchedAlias?: string;
 }) {
   const [coverFailed, setCoverFailed] = useState(false);
   const presentation = presentChunithmSong(song);
@@ -45,6 +47,8 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
       titleWrapperStyle={styles.titleLine}
       titleStyle={styles.title}
       subtitleStyle={styles.meta}
+      matchNote={matchedAlias ? `别名：${matchedAlias}` : undefined}
+      matchNoteStyle={styles.meta}
       subtitleContent={<>{song.artist ?? '艺术家未知'} · {displayedVersionTitle ?? song.versionTitle}</>}
       cover={coverFailed ? (
         <View style={[styles.cover, styles.coverPlaceholder]}>
