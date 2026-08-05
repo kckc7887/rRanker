@@ -70,8 +70,7 @@ export function buildBest50(
 }
 
 export function mapCoverId(songId: number): number {
-  if (songId >= 110000) return songId - 110000;
-  if (songId >= 100000) return songId - 100000;
+  if (songId >= 100000) return songId % 10000;
   if (songId >= 10001 && songId <= 19999) return songId - 10000;
   return songId;
 }

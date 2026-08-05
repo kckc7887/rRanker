@@ -18,7 +18,7 @@ export function isUtageSongId(songId: string | number): boolean {
 export function originalSongIdForUtage(songId: string | number): string | undefined {
   const numericId = Number(songId);
   return Number.isSafeInteger(numericId) && numericId > 100000
-    ? String(numericId - 100000)
+    ? String(numericId % 10000)
     : undefined;
 }
 
