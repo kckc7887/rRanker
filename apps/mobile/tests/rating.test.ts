@@ -40,6 +40,7 @@ describe('rating and B50', () => {
   it('keeps historical cover id mapping behavior explicit', () => {
     expect(mapCoverId(110123)).toBe(123); expect(mapCoverId(100123)).toBe(123);
     expect(mapCoverId(10123)).toBe(123); expect(mapCoverId(123)).toBe(123);
+    expect(mapCoverId(120227)).toBe(227);
   });
   it('handles empty and 700-record inputs without changing B50 limits', () => {
     const empty = buildBest50(fixturePlayer, [], fixtureCatalog, fixtureSource);
