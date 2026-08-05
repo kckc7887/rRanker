@@ -68,7 +68,48 @@
       height: 0;
       flex-shrink: 0;
     }
+    #canvas-stage-2 {
+      display: none;
+      position: relative;
+      width: 0;
+      height: 0;
+      flex-shrink: 0;
+    }
+    body.dual #canvas-wrap {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    body.dual #canvas-stage-2 {
+      display: block;
+    }
+    .side-chip {
+      display: none;
+      position: absolute;
+      top: 6px;
+      left: 6px;
+      z-index: 5;
+      background: rgba(11, 13, 18, 0.72);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      pointer-events: none;
+    }
+    body.dual .side-chip {
+      display: block;
+    }
     #chart-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+    #chart-canvas-2 {
       width: 100%;
       height: 100%;
       display: block;
@@ -573,7 +614,12 @@
     </div>
     <div id="canvas-wrap">
       <div id="canvas-stage">
+        <span class="side-chip">1P</span>
         <canvas id="chart-canvas"></canvas>
+      </div>
+      <div id="canvas-stage-2">
+        <span class="side-chip">2P</span>
+        <canvas id="chart-canvas-2"></canvas>
       </div>
     </div>
     <div id="controls">

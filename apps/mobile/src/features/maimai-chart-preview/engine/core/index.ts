@@ -1,7 +1,10 @@
 export {
   parseSimaiChart,
   parseMa2Chart,
+  parseSimaiBuddyCharts,
+  parseSimaiSideChart,
   getAvailableDifficulties,
+  type BuddyCharts,
   type ChartFileType,
   default as ChartParser,
 } from "./parser/ChartParser";

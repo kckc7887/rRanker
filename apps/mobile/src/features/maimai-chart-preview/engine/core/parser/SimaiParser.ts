@@ -88,6 +88,84 @@ export function getAvailableDifficulties(simaiText: string): AvailableDifficulti
   return available;
 }
 
+/** Buddy 宴谱 1P 侧在 LXNS 谱面文件中的 inote 槽位（&inote_2）。 */
+const BUDDY_1P_INOTE = 2;
+/** Buddy 宴谱 2P 侧在 LXNS 谱面文件中的 inote 槽位（&inote_102）。 */
+const BUDDY_2P_INOTE = 102;
+
+export interface BuddyCharts {
+  side1: Chart;
+  side2: Chart;
+}
+
+/**
+ * 解析 Buddy 宴谱的 1P（&inote_2）与 2P（&inote_102）两侧谱面。
+ * 两侧走同一解析管线，lead-in/拍点偏移完全一致，可直接同帧渲染。
+ */
+export function parseSimaiBuddyCharts(simaiText: string): BuddyCharts {
+  if (!simaiText || typeof simaiText !== "string") {
+    throw new Error("Invalid input: expected a non-empty string");
+  }
+
+  const lines = splitLines(simaiText);
+
+  // Simai 格式必须包含 & 元数据标记
+  if (!lines.some((line) => line.startsWith("&"))) {
+    throw new Error("Invalid simai format: expected & metadata lines (e.g. &title=, &inote_4=)");
+  }
+
+  try {
+    const metadata = collectSimaiMetadata(lines);
+
+    const side1Body = metadata.inotes[BUDDY_1P_INOTE];
+    if (side1Body === undefined) {
+      throw new Error("Buddy 谱面缺少 1P 段（&inote_2）");
+    }
+
+    const side2Body = metadata.inotes[BUDDY_2P_INOTE];
+    if (side2Body === undefined) {
+      throw new Error("Buddy 谱面缺少 2P 段（&inote_102）");
+    }
+
+    return {
+      side1: buildChartFromInote(metadata, side1Body, BUDDY_1P_INOTE),
+      side2: buildChartFromInote(metadata, side2Body, BUDDY_2P_INOTE),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Parse error: ${message}`);
+  }
+}
+
+/**
+ * 解析 Buddy 宴谱的单侧谱面：side 0 → &inote_2（1P），side 1 → &inote_102（2P）。
+ * 2P 直接取 102 槽位，不再经 ChartDifficulty 3 映射，避免与普通难度回退混淆。
+ */
+export function parseSimaiSideChart(simaiText: string, side: 0 | 1): Chart {
+  if (!simaiText || typeof simaiText !== "string") {
+    throw new Error("Invalid input: expected a non-empty string");
+  }
+
+  const lines = splitLines(simaiText);
+
+  if (!lines.some((line) => line.startsWith("&"))) {
+    throw new Error("Invalid simai format: expected & metadata lines (e.g. &title=, &inote_4=)");
+  }
+
+  try {
+    const metadata = collectSimaiMetadata(lines);
+    const slot = side === 0 ? BUDDY_1P_INOTE : BUDDY_2P_INOTE;
+    const body = metadata.inotes[slot];
+    if (body === undefined) {
+      throw new Error(side === 0 ? "Buddy 谱面缺少 1P 段（&inote_2）" : "Buddy 谱面缺少 2P 段（&inote_102）");
+    }
+    return buildChartFromInote(metadata, body, slot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Parse error: ${message}`);
+  }
+}
+
 export function parseSimaiChart(simaiText: string, difficulty?: ChartDifficulty): Chart {
   if (!simaiText || typeof simaiText !== "string") {
     throw new Error("Invalid input: expected a non-empty string");
@@ -100,70 +178,8 @@ export function parseSimaiChart(simaiText: string, difficulty?: ChartDifficulty)
     throw new Error("Invalid simai format: expected & metadata lines (e.g. &title=, &inote_4=)");
   }
 
-  const metadata: ChartMetadata = {
-    bpm: Number.NaN,
-    title: "",
-    artist: "",
-    designer: "",
-    level: {},
-    designers: {},
-    availableDifficulties: {},
-    inotes: {},
-  };
-
-  // 第一遍：收集所有元数据和 inote 段
-  let currentInote: number | null = null;
-  let currentInoteContent: string[] = [];
-
   try {
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const trimmedLine = line.trim();
-
-      // 检查 &inote_X= 开始
-      const inoteMatch = trimmedLine.match(/^&inote_(\d)=(.*)$/i);
-      if (inoteMatch) {
-        // 保存上一个 inote 如果存在
-        if (currentInote !== null) {
-          metadata.inotes[currentInote] = currentInoteContent.join("\n");
-          metadata.availableDifficulties[currentInote as ChartDifficulty] = true;
-        }
-
-        currentInote = parseInt(inoteMatch[1]);
-        currentInoteContent = inoteMatch[2] ? [inoteMatch[2]] : [];
-        continue;
-      }
-
-      // 如果我们在 inote 段
-      if (currentInote !== null) {
-        // 检查这行是否开始一个新的元数据段
-        if (trimmedLine.startsWith("&") && !trimmedLine.startsWith("&inote")) {
-          // 保存当前 inote 并退出 inote 模式
-          metadata.inotes[currentInote] = currentInoteContent.join("\n");
-          metadata.availableDifficulties[currentInote as ChartDifficulty] = true;
-          currentInote = null;
-          currentInoteContent = [];
-
-          // 解析这行元数据
-          parseMetadataLine(trimmedLine, metadata);
-        } else if (!trimmedLine.startsWith("&")) {
-          // 添加到当前 inote 内容
-          currentInoteContent.push(line);
-        }
-        continue;
-      }
-
-      // 解析常规元数据行
-      if (trimmedLine.startsWith("&")) {
-        parseMetadataLine(trimmedLine, metadata);
-      }
-    }
-
-    // 保存最后一个 inote 如果存在
-    if (currentInote !== null) {
-      metadata.inotes[currentInote] = currentInoteContent.join("\n");
-      metadata.availableDifficulties[currentInote as ChartDifficulty] = true;
-    }
+    const metadata = collectSimaiMetadata(lines);
 
     // 确定要解析的难度
     let selectedDifficulty = difficulty;
@@ -197,121 +213,194 @@ export function parseSimaiChart(simaiText: string, difficulty?: ChartDifficulty)
       );
     }
 
-    // 获取选定难度的谱师
-    const designerKey = `des_${selectedDifficulty}` as keyof ChartDesigners;
-    const selectedDesigner = metadata.designers[designerKey] || metadata.designer;
-
-    // &bpm 元数据缺失时回退到谱面第一个内联 BPM 声明。
-    if (Number.isNaN(metadata.bpm)) {
-      const inlineBpm = chartBody.match(/\((\d+(?:\.\d+)?)\)/);
-      if (inlineBpm) metadata.bpm = parseFloat(inlineBpm[1]);
-    }
-
-    // 解析谱面内容中的 Note
-    const parseResult = parseNotes(chartBody, metadata.bpm);
-    const notes = parseResult.notes;
-    const bpmEvents = parseResult.bpmEvents;
-    const divisorEvents = parseResult.divisorEvents;
-    metadata.bpm = parseResult.firstBpm;
-
-    if (Number.isNaN(metadata.bpm)) {
-      throw new Error("Simai 文件缺少 BPM 声明（无 &bpm 元数据，谱面中也没有内联 BPM）");
-    }
-
-    // 根据 Note 节拍计算总小节数
-    let maxMeasure = 0;
-    let maxTiming = 0;
-
-    for (const note of notes) {
-      if (note.measure > maxMeasure) {
-        maxMeasure = note.measure;
-      }
-
-      let endTiming = note.timing;
-
-      // 考虑 Hold 持续时间
-      if ("isHoldStart" in note && note.isHoldStart && "duration" in note) {
-        endTiming = note.timing + note.duration;
-      }
-
-      // 用实际 ms 的 delay+duration（含 ## 显式延迟）换算成拍，覆盖滑条真实结束时间。
-      if (note.type === "slide") {
-        const slideNote = note as SlideNote;
-        const delays = slideNote.allDelayMs ?? [slideNote.delayMs ?? 0];
-        const durations = slideNote.allDurationMs ?? [slideNote.durationMs ?? 0];
-        let maxEndMs = 0;
-        for (let i = 0; i < Math.max(delays.length, durations.length); i++) {
-          maxEndMs = Math.max(maxEndMs, (delays[i] ?? 0) + (durations[i] ?? 0));
-        }
-        endTiming = note.timing + (maxEndMs * slideNote.bpm) / 60000;
-      }
-
-      // 考虑触摸 Hold 持续时间
-      if (note.type === "touch-hold-start") {
-        const touchHold = note as TouchHoldStartNote;
-        if (touchHold.duration !== undefined) {
-          endTiming = note.timing + touchHold.duration;
-        }
-      }
-
-      if (endTiming > maxTiming) {
-        maxTiming = endTiming;
-      }
-    }
-
-    // 确保我们有足够的小节容纳所有 Note
-    const measuresFromTiming = Math.ceil(maxTiming / 4);
-    maxMeasure = Math.max(maxMeasure, measuresFromTiming);
-
-    // 在开始时添加 1 小节偏移（用于前奏时间）
-    const leadInMs = (60000 * 4) / parseResult.firstBpm;
-
-    for (const note of notes) {
-      note.measure += 1;
-      note.timing += 4;
-      note.timingMs += leadInMs;
-
-      if ("holdStartTiming" in note && note.holdStartTiming !== undefined) {
-        (note as HoldEndNote | TouchHoldEndNote).holdStartTiming += 4;
-      }
-    }
-
-    for (const event of bpmEvents) {
-      event.timing += 4;
-    }
-    // 在开始时添加初始 BPM（用于前奏时间）
-    // 使用 firstBpm（谱面中第一个 BPM）作为前奏期间的 BPM，与 leadInMs 计算保持一致
-    bpmEvents.unshift({ timing: 0, bpm: parseResult.firstBpm });
-
-    // 调整拍子变化事件节拍
-    for (const event of divisorEvents) {
-      event.timing += 4;
-    }
-    // 在开始时添加默认拍子（用于前奏时间）
-    divisorEvents.unshift({ timing: 0, divisor: 4 });
-    // 排序以确保正确的顺序用于查找
-    divisorEvents.sort((a, b) => a.timing - b.timing);
-
-    return {
-      // 使用 firstBpm 作为基准 BPM，与前奏和 bpmEvents 保持一致
-      bpm: parseResult.firstBpm,
-      title: metadata.title,
-      artist: metadata.artist,
-      designer: selectedDesigner,
-      level: metadata.level,
-      designers: metadata.designers,
-      difficulty: selectedDifficulty,
-      availableDifficulties: metadata.availableDifficulties,
-      measures: maxMeasure + 2, // +2 for lead-in and tail（前奏和尾奏）
-      notes,
-      bpmEvents,
-      divisorEvents,
-      firstMs: metadata.firstSec !== undefined ? metadata.firstSec * 1000 : undefined,
-    };
+    return buildChartFromInote(metadata, chartBody, selectedDifficulty);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Parse error: ${message}`);
   }
+}
+
+/** 第一遍：收集所有元数据和 inote 段。 */
+function collectSimaiMetadata(lines: string[]): ChartMetadata {
+  const metadata: ChartMetadata = {
+    bpm: Number.NaN,
+    title: "",
+    artist: "",
+    designer: "",
+    level: {},
+    designers: {},
+    availableDifficulties: {},
+    inotes: {},
+  };
+
+  let currentInote: number | null = null;
+  let currentInoteContent: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmedLine = line.trim();
+
+    // 检查 &inote_X= 开始（X 可为多位，Buddy 2P 为 &inote_102）
+    const inoteMatch = trimmedLine.match(/^&inote_(\d+)=(.*)$/i);
+    if (inoteMatch) {
+      // 保存上一个 inote 如果存在
+      if (currentInote !== null) {
+        metadata.inotes[currentInote] = currentInoteContent.join("\n");
+        metadata.availableDifficulties[currentInote as ChartDifficulty] = true;
+      }
+
+      currentInote = parseInt(inoteMatch[1]);
+      currentInoteContent = inoteMatch[2] ? [inoteMatch[2]] : [];
+      continue;
+    }
+
+    // 如果我们在 inote 段
+    if (currentInote !== null) {
+      // 检查这行是否开始一个新的元数据段
+      if (trimmedLine.startsWith("&") && !trimmedLine.startsWith("&inote")) {
+        // 保存当前 inote 并退出 inote 模式
+        metadata.inotes[currentInote] = currentInoteContent.join("\n");
+        metadata.availableDifficulties[currentInote as ChartDifficulty] = true;
+        currentInote = null;
+        currentInoteContent = [];
+
+        // 解析这行元数据
+        parseMetadataLine(trimmedLine, metadata);
+      } else if (!trimmedLine.startsWith("&")) {
+        // 添加到当前 inote 内容
+        currentInoteContent.push(line);
+      }
+      continue;
+    }
+
+    // 解析常规元数据行
+    if (trimmedLine.startsWith("&")) {
+      parseMetadataLine(trimmedLine, metadata);
+    }
+  }
+
+  // 保存最后一个 inote 如果存在
+  if (currentInote !== null) {
+    metadata.inotes[currentInote] = currentInoteContent.join("\n");
+    metadata.availableDifficulties[currentInote as ChartDifficulty] = true;
+  }
+
+  return metadata;
+}
+
+/** 把指定 inote 段的正文解析为完整 Chart（含前奏偏移与拍点归一化）。 */
+function buildChartFromInote(metadata: ChartMetadata, chartBody: string, slot: number): Chart {
+  // 获取选定难度的谱师
+  const designerKey = `des_${slot}` as keyof ChartDesigners;
+  const selectedDesigner = metadata.designers[designerKey] || metadata.designer;
+
+  // &bpm 元数据缺失时回退到谱面第一个内联 BPM 声明。
+  let baseBpm = metadata.bpm;
+  if (Number.isNaN(baseBpm)) {
+    const inlineBpm = chartBody.match(/\((\d+(?:\.\d+)?)\)/);
+    if (inlineBpm) baseBpm = parseFloat(inlineBpm[1]);
+  }
+
+  // 解析谱面内容中的 Note
+  const parseResult = parseNotes(chartBody, baseBpm);
+  const notes = parseResult.notes;
+  const bpmEvents = parseResult.bpmEvents;
+  const divisorEvents = parseResult.divisorEvents;
+
+  if (Number.isNaN(parseResult.firstBpm)) {
+    throw new Error("Simai 文件缺少 BPM 声明（无 &bpm 元数据，谱面中也没有内联 BPM）");
+  }
+
+  // 根据 Note 节拍计算总小节数
+  let maxMeasure = 0;
+  let maxTiming = 0;
+
+  for (const note of notes) {
+    if (note.measure > maxMeasure) {
+      maxMeasure = note.measure;
+    }
+
+    let endTiming = note.timing;
+
+    // 考虑 Hold 持续时间
+    if ("isHoldStart" in note && note.isHoldStart && "duration" in note) {
+      endTiming = note.timing + note.duration;
+    }
+
+    // 用实际 ms 的 delay+duration（含 ## 显式延迟）换算成拍，覆盖滑条真实结束时间。
+    if (note.type === "slide") {
+      const slideNote = note as SlideNote;
+      const delays = slideNote.allDelayMs ?? [slideNote.delayMs ?? 0];
+      const durations = slideNote.allDurationMs ?? [slideNote.durationMs ?? 0];
+      let maxEndMs = 0;
+      for (let i = 0; i < Math.max(delays.length, durations.length); i++) {
+        maxEndMs = Math.max(maxEndMs, (delays[i] ?? 0) + (durations[i] ?? 0));
+      }
+      endTiming = note.timing + (maxEndMs * slideNote.bpm) / 60000;
+    }
+
+    // 考虑触摸 Hold 持续时间
+    if (note.type === "touch-hold-start") {
+      const touchHold = note as TouchHoldStartNote;
+      if (touchHold.duration !== undefined) {
+        endTiming = note.timing + touchHold.duration;
+      }
+    }
+
+    if (endTiming > maxTiming) {
+      maxTiming = endTiming;
+    }
+  }
+
+  // 确保我们有足够的小节容纳所有 Note
+  const measuresFromTiming = Math.ceil(maxTiming / 4);
+  maxMeasure = Math.max(maxMeasure, measuresFromTiming);
+
+  // 在开始时添加 1 小节偏移（用于前奏时间）
+  const leadInMs = (60000 * 4) / parseResult.firstBpm;
+
+  for (const note of notes) {
+    note.measure += 1;
+    note.timing += 4;
+    note.timingMs += leadInMs;
+
+    if ("holdStartTiming" in note && note.holdStartTiming !== undefined) {
+      (note as HoldEndNote | TouchHoldEndNote).holdStartTiming += 4;
+    }
+  }
+
+  for (const event of bpmEvents) {
+    event.timing += 4;
+  }
+  // 在开始时添加初始 BPM（用于前奏时间）
+  // 使用 firstBpm（谱面中第一个 BPM）作为前奏期间的 BPM，与 leadInMs 计算保持一致
+  bpmEvents.unshift({ timing: 0, bpm: parseResult.firstBpm });
+
+  // 调整拍子变化事件节拍
+  for (const event of divisorEvents) {
+    event.timing += 4;
+  }
+  // 在开始时添加默认拍子（用于前奏时间）
+  divisorEvents.unshift({ timing: 0, divisor: 4 });
+  // 排序以确保正确的顺序用于查找
+  divisorEvents.sort((a, b) => a.timing - b.timing);
+
+  return {
+    // 使用 firstBpm 作为基准 BPM，与前奏和 bpmEvents 保持一致
+    bpm: parseResult.firstBpm,
+    title: metadata.title,
+    artist: metadata.artist,
+    designer: selectedDesigner,
+    level: metadata.level,
+    designers: metadata.designers,
+    difficulty: slot as ChartDifficulty,
+    availableDifficulties: metadata.availableDifficulties,
+    measures: maxMeasure + 2, // +2 for lead-in and tail（前奏和尾奏）
+    notes,
+    bpmEvents,
+    divisorEvents,
+    firstMs: metadata.firstSec !== undefined ? metadata.firstSec * 1000 : undefined,
+  };
 }
 
 function parseMetadataLine(line: string, metadata: ChartMetadata): void {
@@ -332,22 +421,6 @@ function parseMetadataLine(line: string, metadata: ChartMetadata): void {
     case "des":
       metadata.designer = value;
       break;
-    case "des_1":
-    case "des_2":
-    case "des_3":
-    case "des_4":
-    case "des_5":
-    case "des_6":
-      metadata.designers[key as keyof ChartDesigners] = value;
-      break;
-    case "lv_1":
-    case "lv_2":
-    case "lv_3":
-    case "lv_4":
-    case "lv_5":
-    case "lv_6":
-      metadata.level[key as keyof ChartLevels] = value;
-      break;
     case "bpm": {
       const bpmVal = parseFloat(value);
       if (!isNaN(bpmVal)) {
@@ -362,6 +435,14 @@ function parseMetadataLine(line: string, metadata: ChartMetadata): void {
       }
       break;
     }
+    default:
+      // 难度槽位相关元数据（含 Buddy 2P 的 des_102 / lv_102）
+      if (key.startsWith("des_") && /^\d+$/.test(key.slice(4))) {
+        metadata.designers[key as keyof ChartDesigners] = value;
+      } else if (key.startsWith("lv_") && /^\d+$/.test(key.slice(3))) {
+        metadata.level[key as keyof ChartLevels] = value;
+      }
+      break;
   }
 }
 

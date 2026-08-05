@@ -18,7 +18,7 @@ import {
   prepareChartPreviewWebViewSource,
   type ChartPreviewWebViewSource,
 } from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
-import type { ChartPreviewSettings } from '@/features/maimai-chart-preview/chart-preview-inject';
+import type { ChartPreviewSettings, BuddyPreviewSide } from '@/features/maimai-chart-preview/chart-preview-inject';
 import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -65,18 +65,25 @@ export default function MaimaiChartPreviewScreen() {
     const songId = params.songId?.trim();
     const chartType = parseChartType(params.chartType);
     const levelIndex = params.levelIndex === undefined ? NaN : Number(params.levelIndex);
-    const buddySideRaw = params.buddySide === undefined ? null : Number(params.buddySide);
+    const buddySide: BuddyPreviewSide | undefined =
+      params.buddySide === '0' || params.buddySide === '1' || params.buddySide === 'dual'
+        ? params.buddySide
+        : undefined;
     if (!songId || !chartType) return { error: '缺少歌曲或谱面类型参数' as string };
     try {
       const chartId = maimaiChartPreviewChartId(songId, chartType);
-      const difficulty = buddySideRaw === 0 || buddySideRaw === 1
-        ? maimaiChartPreviewBuddyEngineDifficulty(buddySideRaw)
-        : maimaiChartPreviewEngineDifficulty(
-          Number.isInteger(levelIndex) && levelIndex >= 0 ? levelIndex : 3,
-        );
+      const difficulty =
+        buddySide === 'dual'
+          ? maimaiChartPreviewEngineDifficulty(3)
+          : buddySide === '0' || buddySide === '1'
+            ? maimaiChartPreviewBuddyEngineDifficulty(buddySide === '0' ? 0 : 1)
+            : maimaiChartPreviewEngineDifficulty(
+              Number.isInteger(levelIndex) && levelIndex >= 0 ? levelIndex : 3,
+            );
       return {
         chartId,
         difficulty,
+        buddySide,
         title: typeof params.title === 'string' ? params.title : undefined,
       };
     } catch (error) {
