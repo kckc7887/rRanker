@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   applyChartPreviewConfigToHtml,
+  buildChartPreviewConfigJson,
   buildChartPreviewInjectedJavaScript,
   chartPreviewExitFullscreenScript,
   chartPreviewStopScript,
@@ -35,6 +36,21 @@ describe('chart preview webview helpers', () => {
     expect(html).toContain(`"answerSoundUrl":"${audioUrl}"`);
     expect(buildChartPreviewInjectedJavaScript({ chartId: 834, difficulty: 4 }))
       .toContain('...(window.__CHART_PREVIEW__||{})');
+  });
+
+  it('serializes the buddy side for dual-screen previews', () => {
+    const script = buildChartPreviewInjectedJavaScript({
+      chartId: 111325,
+      difficulty: 4,
+      title: 'テスト',
+      buddySide: 'dual',
+    });
+    expect(script).toContain('"buddySide":"dual"');
+    expect(buildChartPreviewConfigJson({
+      chartId: 111325,
+      difficulty: 4,
+      buddySide: '1',
+    })).toContain('"buddySide":"1"');
   });
 
   it('writes config into html template marker for file:// loading', () => {
@@ -85,6 +101,23 @@ describe('chart preview webview helpers', () => {
     })).toBe(390);
   });
 
+  it('sizes dual canvases side by side within the available width', () => {
+    expect(chartPreviewCanvasSize({
+      isFullscreen: false,
+      containerWidth: 390,
+      viewportWidth: 390,
+      viewportHeight: 844,
+      chartCount: 2,
+    })).toBe(191);
+    expect(chartPreviewCanvasSize({
+      isFullscreen: true,
+      containerWidth: 844,
+      viewportWidth: 844,
+      viewportHeight: 390,
+      chartCount: 2,
+    })).toBe(390);
+  });
+
   it('allows both landscape directions and avoids the iOS native status-bar path', () => {
     expect(chartPreviewNativeScreenOptions(true, 'ios')).toEqual({
       title: '谱面确认',
@@ -108,6 +141,18 @@ describe('chart preview webview helpers', () => {
     );
     expect(html).toContain('right: calc(10px + env(safe-area-inset-right));');
     expect(html).toContain('body.fullscreen #fs-lock { display: flex; }');
+  });
+
+  it('stages a second canvas for dual buddy previews hidden in single mode', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    expect(html).toContain('id="chart-canvas-2"');
+    expect(html).toContain('id="canvas-stage-2"');
+    expect(html).toContain('body.dual #canvas-wrap');
+    expect(html).toContain('#canvas-stage-2 {\n      display: none;');
+    expect(html).toContain('class="side-chip">2P');
   });
 
   it('hides controls while locked and restores them when unlocked', () => {

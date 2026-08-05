@@ -15,12 +15,16 @@ export type ChartPreviewSettings = {
   showFireworks?: boolean;
 };
 
+/** Buddy 宴谱预览侧：'0'=1P，'1'=2P，'dual'=1P+2P 同屏。 */
+export type BuddyPreviewSide = '0' | '1' | 'dual';
+
 export type ChartPreviewInjectConfig = {
   chartId: number;
   difficulty: number;
   title?: string;
   settings?: ChartPreviewSettings;
   answerSoundUrl?: string;
+  buddySide?: BuddyPreviewSide;
 };
 
 export type ChartPreviewBridgeMessage = ChartPreviewSettings & {
@@ -47,6 +51,7 @@ export function buildChartPreviewConfigJson(config: ChartPreviewInjectConfig): s
     title: config.title ?? '',
     settings: config.settings ?? null,
     answerSoundUrl: config.answerSoundUrl,
+    buddySide: config.buddySide ?? null,
   });
 }
 
