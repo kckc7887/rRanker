@@ -264,8 +264,10 @@
       align-items: center;
       justify-content: center;
       flex: 0 0 36px;
+      transition: opacity 0.2s;
     }
     body.fullscreen #fs-lock { display: flex; }
+    #fs-lock.hidden { opacity: 0; pointer-events: none; }
     #fs-lock.locked { color: var(--accent); background: rgba(11,13,18,0.8); }
     #fs-lock svg { width: 18px; height: 18px; }
     #fs-timeline-host {
