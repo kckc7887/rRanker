@@ -13,7 +13,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Pressable as GesturePressable } from 'react-native-gesture-handler';
+import { Pressable as GesturePressable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
@@ -351,8 +351,8 @@ function ChunithmAliasLine({ aliases }: { aliases: readonly string[] }) {
   const [expanded, setExpanded] = useState(false);
   const [overflow, setOverflow] = useState(false);
   useEffect(() => { setExpanded(false); setOverflow(false); }, [text]);
-  return (
-    <View style={styles.aliasBlock}>
+  const content = (
+    <>
       <Text
         accessible={false}
         style={[styles.body, styles.aliasMeasure, { color: theme.textSecondary }]}
@@ -381,8 +381,11 @@ function ChunithmAliasLine({ aliases }: { aliases: readonly string[] }) {
           </Text>
         </DetailPressable>
       ) : null}
-    </View>
+    </>
   );
+  return Platform.OS === 'android'
+    ? <View style={styles.aliasBlock}>{content}</View>
+    : <GestureHandlerRootView style={styles.aliasBlock}>{content}</GestureHandlerRootView>;
 }
 
 function Hero({ song, width }: { song: ChunithmSong; width: number }) {
