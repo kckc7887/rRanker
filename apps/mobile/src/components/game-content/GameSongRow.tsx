@@ -28,6 +28,8 @@ type GameSongRowProps = {
   wholeRowPressable?: boolean;
   testID?: string;
   accessibilityLabel?: string | null;
+  matchNote?: ReactNode;
+  matchNoteStyle?: StyleProp<TextStyle>;
 };
 
 export function GameSongRow({
@@ -47,6 +49,8 @@ export function GameSongRow({
   wholeRowPressable = false,
   testID,
   accessibilityLabel = presentation.accessibilityLabel,
+  matchNote,
+  matchNoteStyle,
 }: GameSongRowProps) {
   const theme = useAppTheme();
   const openDetail = () => router.push(
@@ -62,6 +66,11 @@ export function GameSongRow({
       {cover}
       <View style={mainStyle}>
         {titleWrapperStyle ? <View style={titleWrapperStyle}>{title}</View> : title}
+        {matchNote != null && (
+          <Text numberOfLines={1} style={[matchNoteStyle ?? subtitleStyle, { color: theme.textMuted }]}>
+            {matchNote}
+          </Text>
+        )}
         <Text numberOfLines={1} style={[subtitleStyle, { color: theme.textMuted }]}>
           {subtitleContent ?? subtitle}
         </Text>

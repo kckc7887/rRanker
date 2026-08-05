@@ -135,6 +135,22 @@ export function searchDocumentMatches(document: SearchDocument, keyword: string)
   return variants.some((variant) => document.text.includes(variant) || document.compact.includes(variant));
 }
 
+/** 仅当关键词未命中标题但命中别名时返回第一个命中的别名。 */
+export function findMatchedAlias(song: Song, keyword: string): string | undefined {
+  const variants = keywordVariants(keyword);
+  if (variants.length === 0) return undefined;
+  const titleDocument = buildSearchDocument([song.title]);
+  const titleMatched = variants.some((variant) =>
+    titleDocument.text.includes(variant) || titleDocument.compact.includes(variant));
+  if (titleMatched) return undefined;
+  for (const alias of song.aliases ?? []) {
+    const document = buildSearchDocument([alias]);
+    if (variants.some((variant) =>
+      document.text.includes(variant) || document.compact.includes(variant))) return alias;
+  }
+  return undefined;
+}
+
 export function buildSongSearchIndex(songs: readonly Song[]): SongSearchEntry[] {
   return songs.map((song) => {
     const document = buildSearchDocument([
