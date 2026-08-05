@@ -520,7 +520,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     : `${chart.type} · ${visual.label} · ${chart.level}`;
   const chartTagPresets = dxratingTags.map((tag) => tag.name);
 
-  const openChartPreview = (buddySide?: 0 | 1) => {
+  const openChartPreview = (buddySide?: 0 | 1 | 'dual') => {
     router.push({
       pathname: '/songs/chart-preview',
       params: {
@@ -537,11 +537,12 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     if (chart.utage?.isBuddy) {
       showActionNotification({
         title: '选择预览谱面',
-        message: '该宴谱为 Buddy 双人谱，请选择要确认的一侧。',
+        message: '该宴谱为 Buddy 双人谱，可选择确认某一侧，或同屏查看两侧谱面。',
         variant: 'info',
         actions: [
           { label: '1P 谱面', onPress: () => openChartPreview(0) },
           { label: '2P 谱面', onPress: () => openChartPreview(1) },
+          { label: '1P+2P 同屏', onPress: () => openChartPreview('dual') },
           { label: '取消', tone: 'cancel' },
         ],
       });

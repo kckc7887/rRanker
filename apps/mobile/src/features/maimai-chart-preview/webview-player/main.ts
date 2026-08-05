@@ -9,13 +9,15 @@ import {
   getAudioContextOutputTime,
   getAvailableDifficulties,
   parseSimaiChart,
+  parseSimaiBuddyCharts,
+  parseSimaiSideChart,
   prepareAudioEvents,
   type Chart,
   type ChartDifficulty,
   type PreparedAudioEvent,
 } from '../engine';
 import { PlaybackClock } from './playbackClock';
-import { chartPreviewCanvasSize } from './fullscreenLayout';
+import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
 import { toggleFullscreenLockUiState } from './fullscreenLock';
 import {
   beatsToMs,
@@ -52,6 +54,8 @@ export interface ChartPreviewConfig {
   title?: string;
   settings?: ChartPreviewSettings | null;
   answerSoundUrl?: string;
+  /** Buddy 宴谱预览侧：'0'=1P，'1'=2P，'dual'=1P+2P 同屏。 */
+  buddySide?: '0' | '1' | 'dual';
 }
 
 const CHART_BASE = 'https://assets2.lxns.net/maimai/chart';
@@ -354,42 +358,67 @@ async function main(): Promise<void> {
     return;
   }
 
-  let chart: Chart;
+  let charts: Chart[];
   try {
-    const available = getAvailableDifficulties(simaiText);
-    let difficulty = config.difficulty;
-    if (!available[difficulty]) {
-      const keys = (Object.keys(available).map(Number) as ChartDifficulty[]).sort((a, b) => b - a);
-      if (!keys[0]) throw new Error('谱面中没有可用难度');
-      difficulty = keys[0];
+    if (config.buddySide === 'dual') {
+      const buddy = parseSimaiBuddyCharts(simaiText);
+      charts = [buddy.side1, buddy.side2];
+    } else if (config.buddySide === '0' || config.buddySide === '1') {
+      charts = [parseSimaiSideChart(simaiText, config.buddySide === '1' ? 1 : 0)];
+    } else {
+      const available = getAvailableDifficulties(simaiText);
+      let difficulty = config.difficulty;
+      if (!available[difficulty]) {
+        const keys = (Object.keys(available).map(Number) as ChartDifficulty[]).sort((a, b) => b - a);
+        if (!keys[0]) throw new Error('谱面中没有可用难度');
+        difficulty = keys[0];
+      }
+      charts = [parseSimaiChart(simaiText, difficulty)];
     }
-    chart = parseSimaiChart(simaiText, difficulty);
   } catch (error) {
     statusEl.textContent = error instanceof Error ? error.message : '谱面解析失败';
     postStatus('error', { message: String(error) });
     return;
   }
+  const chart = charts[0]!;
+  const allNotes = charts.flatMap((c) => c.notes ?? []);
 
-  const totalBeats = Math.max(chart.measures * 4, 4);
-  let totalDurationMs = beatsToMs(totalBeats, chart.bpmEvents, chart.bpm);
-  for (const note of chart.notes ?? []) {
-    if (note.timingMs > totalDurationMs) totalDurationMs = note.timingMs;
+  const totalBeats = Math.max(4, ...charts.map((c) => c.measures * 4));
+  let totalDurationMs = 0;
+  for (const c of charts) {
+    let duration = beatsToMs(c.measures * 4, c.bpmEvents, c.bpm);
+    for (const note of c.notes ?? []) {
+      if (note.timingMs > duration) duration = note.timingMs;
+    }
+    if (duration > totalDurationMs) totalDurationMs = duration;
   }
 
-  const renderer = new MainRenderer(canvas, { sensorImagePath: './sensor.webp' });
-  renderer.setJudgmentLineDesign((saved.judgmentLineDesign as string) || 'sensor');
-  renderer.setPlaybackSpeed(saved.playbackSpeed ?? 1);
-  renderer.setHiSpeed(saved.hiSpeed ?? HI_SPEED_DEFAULT);
-  renderer.setShowBpm(false);
-  renderer.setShowNoteTotal(false);
-  renderer.setShowBreakCount(false);
-  renderer.setMirrorMode((saved.mirrorMode as string) || 'none');
-  renderer.setPinkSlideStart(!!saved.pinkSlideStart);
-  renderer.setSlideRotation(saved.slideRotation ?? true);
-  renderer.setHighlightExNotes(saved.highlightExNotes ?? true);
-  renderer.setNormalColorBreakSlide(!!saved.normalColorBreakSlide);
-  renderer.setShowHitEffect(saved.showHitEffect ?? true);
-  renderer.setShowFireworks(saved.showFireworks ?? true);
+  const chartCount = charts.length as 1 | 2;
+  const canvases = [canvas];
+  const canvasStages = [canvasStage];
+  if (chartCount === 2) {
+    canvases.push($('chart-canvas-2') as HTMLCanvasElement);
+    canvasStages.push($('canvas-stage-2'));
+    canvasWrap.classList.add('dual');
+    document.body.classList.add('dual');
+  }
+  const renderers = canvases.map((c) => new MainRenderer(c, { sensorImagePath: './sensor.webp' }));
+  const applyRendererSettings = (r: MainRenderer) => {
+    r.setJudgmentLineDesign((saved.judgmentLineDesign as string) || 'sensor');
+    r.setPlaybackSpeed(saved.playbackSpeed ?? 1);
+    r.setHiSpeed(saved.hiSpeed ?? HI_SPEED_DEFAULT);
+    r.setShowBpm(false);
+    r.setShowNoteTotal(false);
+    r.setShowBreakCount(false);
+    r.setMirrorMode((saved.mirrorMode as string) || 'none');
+    r.setPinkSlideStart(!!saved.pinkSlideStart);
+    r.setSlideRotation(saved.slideRotation ?? true);
+    r.setHighlightExNotes(saved.highlightExNotes ?? true);
+    r.setNormalColorBreakSlide(!!saved.normalColorBreakSlide);
+    r.setShowHitEffect(saved.showHitEffect ?? true);
+    r.setShowFireworks(saved.showFireworks ?? true);
+  };
+  for (const r of renderers) applyRendererSettings(r);
 
   let audioContext: AudioContext | null = null;
   let musicGain: GainNode | null = null;
@@ -398,7 +427,7 @@ async function main(): Promise<void> {
   let sourceNode: AudioBufferSourceNode | null = null;
   let sourceGain: GainNode | null = null;
   let answerManager: AudioManager | null = null;
-  const answerEvents: PreparedAudioEvent[] = prepareAudioEvents(chart.notes ?? null);
+  const answerEvents: PreparedAudioEvent[] = prepareAudioEvents(allNotes);
   const playbackClock = new PlaybackClock();
   let isSourcePlaying = false;
   let isPlaying = false;
@@ -538,11 +567,18 @@ async function main(): Promise<void> {
     tap: '#FFD700', hold: '#FF8C00', slide: '#00CED1', touch: '#0080FF', break: '#ff69b4',
   };
 
-  const maxMeasure = Math.max(0, chart.measures - 1);
+  const maxMeasure = Math.max(0, ...charts.map((c) => c.measures - 1));
   const measurePercents: number[] = [];
   for (let m = 0; m <= maxMeasure; m++) {
     measurePercents.push(Math.min(100, (beatsToMs(m * 4, chart.bpmEvents, chart.bpm) / totalDurationMs) * 100));
   }
+
+  // 同屏时把所有 chart 渲染到各自画布；单谱面等价于原 renderer.renderFrame。
+  const renderFrameAll = () => {
+    for (let i = 0; i < charts.length; i++) {
+      renderers[i]!.renderFrame(charts[i]!, preciseBeats, 4);
+    }
+  };
 
   const buildTimeline = () => {
     timelineBars.replaceChildren();
@@ -552,7 +588,7 @@ async function main(): Promise<void> {
     const bucketCount = Math.min(200, w);
     const step = totalDurationMs / bucketCount;
     const buckets: Record<string, number>[] = Array.from({ length: bucketCount }, (_, i) => ({ startMs: i * step, tap: 0, hold: 0, slide: 0, touch: 0, break: 0, total: 0 }));
-    for (const note of chart.notes ?? []) {
+    for (const note of allNotes) {
       const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.timingMs / step)));
       const b = buckets[idx]!;
       switch (note.type) {
@@ -639,7 +675,7 @@ async function main(): Promise<void> {
     timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
     if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
     // 拖动时实时渲染画面与信息栏，恢复"拖动即看到对应帧"的能力
-    renderer.renderFrame(chart, preciseBeats, 4);
+    renderFrameAll();
     updateOverlayDom();
   };
 
@@ -690,24 +726,46 @@ async function main(): Promise<void> {
   };
 
   const updateOverlayDom = () => {
-    const ov = renderer.frameOverlay;
-    if (!ov) return;
-    infoBpm.textContent = `${Math.floor(ov.bpm)}`;
-    infoBeat.textContent = ov.beatText;
-    infoCombo.textContent = `${ov.completedNotes} / ${ov.totalNotes}`;
-    if (ov.totalBreaks > 0) {
+    let bpm = 0;
+    let beatText = '0:0.00';
+    let completedNotes = 0;
+    let totalNotes = 0;
+    let completedBreaks = 0;
+    let totalBreaks = 0;
+    let completedBreaksNoEx = 0;
+    let totalBreaksNoEx = 0;
+    let fps = 0;
+    let found = false;
+    for (const r of renderers) {
+      const ov = r.frameOverlay;
+      if (!ov) continue;
+      found = true;
+      if (ov.bpm > 0) bpm = ov.bpm;
+      beatText = ov.beatText;
+      completedNotes += ov.completedNotes;
+      totalNotes += ov.totalNotes;
+      completedBreaks += ov.completedBreaks;
+      totalBreaks += ov.totalBreaks;
+      completedBreaksNoEx += ov.completedBreaksNoEx;
+      totalBreaksNoEx += ov.totalBreaksNoEx;
+      if (ov.fps > fps) fps = ov.fps;
+    }
+    if (!found) return;
+    infoBpm.textContent = `${Math.floor(bpm)}`;
+    infoBeat.textContent = beatText;
+    infoCombo.textContent = `${completedNotes} / ${totalNotes}`;
+    if (totalBreaks > 0) {
       infoBreakWrap.style.display = '';
-      infoBreak.textContent = `${ov.completedBreaks} / ${ov.totalBreaks}`;
+      infoBreak.textContent = `${completedBreaks} / ${totalBreaks}`;
     } else {
       infoBreakWrap.style.display = 'none';
     }
-    if (ov.totalBreaksNoEx > 0) {
+    if (totalBreaksNoEx > 0) {
       infoBreakNoexWrap.style.display = '';
-      infoBreakNoex.textContent = `${ov.completedBreaksNoEx} / ${ov.totalBreaksNoEx}`;
+      infoBreakNoex.textContent = `${completedBreaksNoEx} / ${totalBreaksNoEx}`;
     } else {
       infoBreakNoexWrap.style.display = 'none';
     }
-    const fps = ov.fps;
     if (fps > 0) {
       infoFps.textContent = `FPS: ${fps}`;
       infoFps.className = fps >= 55 ? 'info-val info-fps-green' : fps >= 30 ? 'info-val info-fps-yellow' : 'info-val info-fps-red';
@@ -719,7 +777,7 @@ async function main(): Promise<void> {
 
   const renderAt = (beats: number) => {
     preciseBeats = clamp(beats, 0, totalBeats);
-    renderer.renderFrame(chart, preciseBeats, 4);
+    renderFrameAll();
     updateSeekUi();
     updateOverlayDom();
   };
@@ -731,7 +789,7 @@ async function main(): Promise<void> {
     hiSpeedList,
     hiSpeedVal,
     (hiSpeed) => {
-      renderer.setHiSpeed(hiSpeed);
+      for (const r of renderers) r.setHiSpeed(hiSpeed);
       saveSettings({ hiSpeed });
       renderAt(preciseBeats);
     },
@@ -749,7 +807,7 @@ async function main(): Promise<void> {
     speedVal,
     (speed) => {
       playbackSpeed = clamp(speed, 0.1, 5);
-      renderer.setPlaybackSpeed(playbackSpeed);
+      for (const r of renderers) r.setPlaybackSpeed(playbackSpeed);
       saveSettings({ playbackSpeed });
       if (sourceNode && isSourcePlaying && audioContext) {
         const startTime = audioContext.currentTime;
@@ -806,7 +864,7 @@ async function main(): Promise<void> {
     (idx) => {
       const mode = MIRROR_VALUES[idx] ?? 'none';
       saveSettings({ mirrorMode: mode });
-      renderer.setMirrorMode(mode);
+      for (const r of renderers) r.setMirrorMode(mode);
       renderAt(preciseBeats);
     },
     0, 3, 1, mirrorIdx, MIRROR_LABELS,
@@ -820,7 +878,7 @@ async function main(): Promise<void> {
     (idx) => {
       const design = STYLE_VALUES[idx] ?? 'sensor';
       saveSettings({ judgmentLineDesign: design });
-      renderer.setJudgmentLineDesign(design);
+      for (const r of renderers) r.setJudgmentLineDesign(design);
       renderAt(preciseBeats);
     },
     0, 3, 1, styleIdx, STYLE_LABELS,
@@ -837,12 +895,12 @@ async function main(): Promise<void> {
     });
   };
 
-  setupToggle(togglePink, !!saved.pinkSlideStart, (v) => { renderer.setPinkSlideStart(v); saveSettings({ pinkSlideStart: v }); });
-  setupToggle(toggleStarRot, saved.slideRotation ?? true, (v) => { renderer.setSlideRotation(v); saveSettings({ slideRotation: v }); });
-  setupToggle(toggleEx, saved.highlightExNotes ?? true, (v) => { renderer.setHighlightExNotes(v); saveSettings({ highlightExNotes: v }); });
-  setupToggle(toggleBreakSlide, !!saved.normalColorBreakSlide, (v) => { renderer.setNormalColorBreakSlide(v); saveSettings({ normalColorBreakSlide: v }); });
-  setupToggle(toggleHit, saved.showHitEffect ?? true, (v) => { renderer.setShowHitEffect(v); saveSettings({ showHitEffect: v }); });
-  setupToggle(toggleFirework, saved.showFireworks ?? true, (v) => { renderer.setShowFireworks(v); saveSettings({ showFireworks: v }); });
+  setupToggle(togglePink, !!saved.pinkSlideStart, (v) => { for (const r of renderers) r.setPinkSlideStart(v); saveSettings({ pinkSlideStart: v }); });
+  setupToggle(toggleStarRot, saved.slideRotation ?? true, (v) => { for (const r of renderers) r.setSlideRotation(v); saveSettings({ slideRotation: v }); });
+  setupToggle(toggleEx, saved.highlightExNotes ?? true, (v) => { for (const r of renderers) r.setHighlightExNotes(v); saveSettings({ highlightExNotes: v }); });
+  setupToggle(toggleBreakSlide, !!saved.normalColorBreakSlide, (v) => { for (const r of renderers) r.setNormalColorBreakSlide(v); saveSettings({ normalColorBreakSlide: v }); });
+  setupToggle(toggleHit, saved.showHitEffect ?? true, (v) => { for (const r of renderers) r.setShowHitEffect(v); saveSettings({ showHitEffect: v }); });
+  setupToggle(toggleFirework, saved.showFireworks ?? true, (v) => { for (const r of renderers) r.setShowFireworks(v); saveSettings({ showFireworks: v }); });
 
   const resize = () => {
     if (!isFullscreen) canvasWrap.style.width = '';
@@ -855,12 +913,17 @@ async function main(): Promise<void> {
       containerWidth: rect.width,
       viewportWidth,
       viewportHeight,
+      chartCount,
     });
-    canvasWrap.style.width = isFullscreen ? `${size}px` : '';
-    canvasStage.style.width = `${size}px`;
-    canvasStage.style.height = `${size}px`;
+    canvasWrap.style.width = isFullscreen
+      ? `${size * chartCount + CHART_PREVIEW_DUAL_GAP * (chartCount - 1)}px`
+      : '';
+    for (const stage of canvasStages) {
+      stage.style.width = `${size}px`;
+      stage.style.height = `${size}px`;
+    }
     canvasWrap.style.height = `${size}px`;
-    renderer.resize(false);
+    for (const r of renderers) r.resize(false);
     renderAt(preciseBeats);
   };
   window.addEventListener('resize', resize);
@@ -905,7 +968,7 @@ async function main(): Promise<void> {
 
     if (currentBeats >= totalBeats) {
       isPlaying = false;
-      renderer.setIsPlaying(false);
+      for (const r of renderers) r.setIsPlaying(false);
       stopSource(true);
       answerManager?.reset(undefined, true);
       syncPlayButtons();
@@ -916,7 +979,7 @@ async function main(): Promise<void> {
     preciseBeats = currentBeats;
     checkLoop();
     const currentMs = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
-    renderer.renderFrame(chart, preciseBeats, 4);
+    renderFrameAll();
     updateSeekUi();
     updateOverlayDom();
     scheduleAnswers(currentMs);
@@ -926,7 +989,7 @@ async function main(): Promise<void> {
   const startPlayback = async () => {
     await ensureAudio();
     isPlaying = true;
-    renderer.setIsPlaying(true);
+    for (const r of renderers) r.setIsPlaying(true);
     syncPlayButtons();
     lastRafTs = 0;
     const musicTime = calculateMusicTime(
@@ -949,7 +1012,7 @@ async function main(): Promise<void> {
 
   const pausePlayback = () => {
     isPlaying = false;
-    renderer.setIsPlaying(false);
+    for (const r of renderers) r.setIsPlaying(false);
     syncPlayButtons();
     if (isSourcePlaying) {
       playbackClock.setOffset(getMusicTime());
@@ -1028,7 +1091,7 @@ async function main(): Promise<void> {
     const bucketCount = Math.min(200, w);
     const step = totalDurationMs / bucketCount;
     const buckets: Record<string, number>[] = Array.from({ length: bucketCount }, (_, i) => ({ startMs: i * step, tap: 0, hold: 0, slide: 0, touch: 0, break: 0, total: 0 }));
-    for (const note of chart.notes ?? []) {
+    for (const note of allNotes) {
       const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.timingMs / step)));
       const b = buckets[idx]!;
       switch (note.type) {
