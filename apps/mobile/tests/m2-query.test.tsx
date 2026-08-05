@@ -420,8 +420,10 @@ describe('M2 song query screens', () => {
     await waitFor(() => expect(screen.getByText(
       '版本测试曲师 · SD 脱敏过往版本 · DX 舞萌DX 2026',
     )).toBeTruthy());
+    expect(screen.queryByText(/^别名：/)).toBeNull();
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '');
     await waitFor(() => expect(screen.getByText('共 10 首')).toBeTruthy());
+    expect(screen.queryByText(/^别名：/)).toBeNull();
     await fireEvent.press(screen.getByLabelText('筛选难度 BASIC'));
     expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 BASIC').props.style)).toEqual(expect.objectContaining({
       borderWidth: 2,
@@ -476,6 +478,7 @@ describe('M2 song query screens', () => {
     await waitFor(() => expect(screen.getByText('筛选结果为空')).toBeTruthy());
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '唯一别名');
     await waitFor(() => expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0));
+    expect(screen.getByText('别名：唯一别名')).toBeTruthy();
   });
 
   it('filters the catalog by grouped DXRating tags with AND and same-chart semantics', async () => {

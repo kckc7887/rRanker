@@ -1,5 +1,5 @@
 import type { Song } from '@/domain/models';
-import { buildSongSearchIndex, EMPTY_SONG_FILTERS, normalizeSearchText, searchSongs } from '@/utils/search';
+import { buildSongSearchIndex, EMPTY_SONG_FILTERS, findMatchedAlias, normalizeSearchText, searchSongs } from '@/utils/search';
 
 const songs: Song[] = [{
   id: '1806', title: 'Ｆｒａｑ', artist: 'Team Grimoire', version: '2026', versionId: 25500,
@@ -76,5 +76,28 @@ describe('advanced song search', () => {
       .map((song) => song.id)).toEqual(['1806']);
     expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, constantMax: 1 })
       .some((song) => song.id === '100123')).toBe(false);
+  });
+});
+
+describe('findMatchedAlias', () => {
+  const song: Song = {
+    id: '1806', title: 'Ｆｒａｑ', artist: 'Team Grimoire', version: '2026', versionId: 25500,
+    aliases: ['测试别名', 'フラック・ミュジーク'], charts: [],
+  };
+  it('returns the first alias that matched the keyword without matching the title', () => {
+    expect(findMatchedAlias(song, '测试别名')).toBe('测试别名');
+    expect(findMatchedAlias(song, 'フラック')).toBe('フラック・ミュジーク');
+  });
+  it('matches romaji variants and compact punctuation of the alias', () => {
+    expect(findMatchedAlias(song, 'hurakku')).toBe('フラック・ミュジーク');
+    expect(findMatchedAlias({ ...song, aliases: ['T・E・S・T'] }, 'TEST')).toBe('T・E・S・T');
+  });
+  it('returns undefined when the keyword matches the title as well', () => {
+    expect(findMatchedAlias(song, 'ｆｒａｑ')).toBeUndefined();
+  });
+  it('returns undefined for empty keyword, songs without aliases or no alias match', () => {
+    expect(findMatchedAlias(song, '  ')).toBeUndefined();
+    expect(findMatchedAlias({ ...song, aliases: [] }, '测试别名')).toBeUndefined();
+    expect(findMatchedAlias(song, '完全不存在的词')).toBeUndefined();
   });
 });
