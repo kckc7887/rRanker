@@ -298,7 +298,9 @@ function ChunithmDetailBody({
       <Hero song={song} width={width} />
       <SongMetadataTable
         accessibilityLabel="中二歌曲详情数据"
+        cellRootStyle={styles.metadataCellRoot}
         cellStyle={styles.metadataCell}
+        interaction="platform-detail"
         items={metadataItems}
         labelStyle={styles.metadataLabel}
         measureStyle={styles.metadataValueMeasure}
@@ -887,6 +889,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 12,
   },
+  metadataCellRoot: { minWidth: 0 },
   metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
   metadataLabel: { fontSize: 10, fontWeight: '800' },
   metadataValueBlock: { position: 'relative', minWidth: 0, alignSelf: 'stretch' },
