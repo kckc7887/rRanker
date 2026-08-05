@@ -440,6 +440,7 @@ async function main(): Promise<void> {
   let lastRafTs = 0;
   let isFullscreen = false;
   let fsLocked = false;
+  let fsControlsVisible = false;
   let fsHideTimer: number | undefined;
 
   const syncPlayButtons = () => {
@@ -1159,22 +1160,25 @@ async function main(): Promise<void> {
     fsTimelineBadge.textContent = String(measure);
   }
 
-  function showFsOverlay() {
+  function syncFsControlsVisibility() {
+    fsOverlay.classList.toggle('hidden', !fsControlsVisible || fsLocked);
+    fsLock.classList.toggle('hidden', !fsControlsVisible);
+  }
+
+  function showFsControls() {
     window.clearTimeout(fsHideTimer);
-    if (fsLocked) {
-      fsOverlay.classList.add('hidden');
-      return;
-    }
-    fsOverlay.classList.remove('hidden');
+    fsControlsVisible = true;
+    syncFsControlsVisibility();
     fsHideTimer = window.setTimeout(() => {
-      fsOverlay.classList.add('hidden');
+      fsControlsVisible = false;
+      syncFsControlsVisibility();
     }, 5000);
   }
 
-  function hideFsOverlay(force = false) {
-    if (fsLocked && !force) return;
-    fsOverlay.classList.add('hidden');
+  function hideFsControls() {
     window.clearTimeout(fsHideTimer);
+    fsControlsVisible = false;
+    syncFsControlsVisibility();
   }
 
   function exitFullscreen() {
@@ -1184,7 +1188,8 @@ async function main(): Promise<void> {
     fsLock.classList.remove('locked');
     fsLock.setAttribute('aria-label', '锁定');
     document.body.classList.remove('fullscreen');
-    hideFsOverlay(true);
+    fsControlsVisible = false;
+    syncFsControlsVisibility();
     postStatus('fullscreen', { active: false });
     requestAnimationFrame(() => { resize(); renderAt(preciseBeats); });
   }
@@ -1232,7 +1237,7 @@ async function main(): Promise<void> {
       void (isPlaying ? pausePlayback() : startPlayback());
     });
     syncLoopButtons();
-    showFsOverlay();
+    showFsControls();
     postStatus('fullscreen', { active: true });
   }
 
@@ -1244,9 +1249,8 @@ async function main(): Promise<void> {
   canvasWrap.addEventListener('click', (e) => {
     if (!isFullscreen) return;
     e.stopPropagation();
-    if (fsLocked) return;
-    if (fsOverlay.classList.contains('hidden')) showFsOverlay();
-    else hideFsOverlay();
+    if (fsControlsVisible) hideFsControls();
+    else showFsControls();
   });
 
   fsLock.addEventListener('click', (e) => {
@@ -1255,8 +1259,8 @@ async function main(): Promise<void> {
     fsLocked = nextState.locked;
     fsLock.classList.toggle('locked', fsLocked);
     fsLock.setAttribute('aria-label', nextState.actionLabel);
-    if (nextState.overlayHidden) hideFsOverlay(true);
-    else showFsOverlay();
+    if (nextState.overlayHidden) hideFsControls();
+    else showFsControls();
   });
 
   fsOverlay.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
@@ -1309,7 +1313,7 @@ async function main(): Promise<void> {
     const rect = fsTimelineHost.getBoundingClientRect();
     const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
     seekToPosition(pct);
-    showFsOverlay();
+    showFsControls();
   });
 
   const checkLoop = () => {

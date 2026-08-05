@@ -143,6 +143,15 @@ describe('chart preview webview helpers', () => {
     expect(html).toContain('body.fullscreen #fs-lock { display: flex; }');
   });
 
+  it('hides the fullscreen lock together with the overlay', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    expect(html).toContain('#fs-lock.hidden { opacity: 0; pointer-events: none; }');
+    expect(html).toContain('transition: opacity 0.2s;');
+  });
+
   it('stages a second canvas for dual buddy previews hidden in single mode', () => {
     const html = readFileSync(
       resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
