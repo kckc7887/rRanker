@@ -37,6 +37,7 @@ import {
   buildSearchDocument,
   buildSongSearchIndex,
   EMPTY_SONG_FILTERS,
+  findMatchedAlias,
   searchDocumentMatches,
   searchSongs,
 } from '@/utils/search';
@@ -117,6 +118,15 @@ export function SearchScreen() {
     () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
     [library.data],
   );
+  const matchedAliasById = useMemo(() => {
+    if (!debouncedKeyword.trim()) return null;
+    const map = new Map<string, string>();
+    for (const song of filtered) {
+      const alias = findMatchedAlias(song, debouncedKeyword);
+      if (alias) map.set(song.id, alias);
+    }
+    return map;
+  }, [debouncedKeyword, filtered]);
   const setSongFavorite = library.setSongFavorite;
   const toggleFavorite = useCallback((songId: string, favorite: boolean) => {
     void setSongFavorite(songId, favorite);
@@ -130,11 +140,13 @@ export function SearchScreen() {
       selectedChartVersionId={selectedChartVersionId}
       selectedVersionLabel={selectedVersionLabel}
       versionLabelsById={versionLabelsById}
+      matchedAlias={matchedAliasById?.get(item.id)}
     />
   ), [
     favoriteSongIds,
     library.isLoading,
     library.isUpdating,
+    matchedAliasById,
     selectedChartVersionId,
     selectedVersionLabel,
     toggleFavorite,
@@ -211,6 +223,7 @@ const CatalogSongRow = memo(function CatalogSongRow({
   selectedChartVersionId,
   selectedVersionLabel,
   versionLabelsById,
+  matchedAlias,
 }: {
   song: Song;
   favorite: boolean;
@@ -219,6 +232,7 @@ const CatalogSongRow = memo(function CatalogSongRow({
   selectedChartVersionId?: number;
   selectedVersionLabel?: string;
   versionLabelsById: ReadonlyMap<number, string>;
+  matchedAlias?: string;
 }) {
   const theme = useAppTheme();
   const presentation = presentStandardSong('maimai', song);
@@ -234,6 +248,8 @@ const CatalogSongRow = memo(function CatalogSongRow({
     mainStyle={styles.main}
     titleStyle={styles.title}
     subtitleStyle={styles.meta}
+    matchNote={matchedAlias ? `别名：${matchedAlias}` : undefined}
+    matchNoteStyle={styles.meta}
     subtitleContent={<>{song.artist ?? '曲师未知'} · {displayedVersion}</>}
     cover={<SongCover songId={song.id} />}
     badges={<SongChartBadges songId={song.id} charts={displayedCharts} />}
