@@ -82,9 +82,9 @@ export class PhigrosScoreProvider implements ScoreProvider {
 
   static async pollLogin(
     device: DeviceCodeResult,
-  ): Promise<ProviderSession | 'pending' | 'waiting'> {
+  ): Promise<ProviderSession | 'pending' | 'waiting' | 'slowdown'> {
     const result = await pollForToken(device.deviceCode, device.deviceId);
-    if (result === 'pending' || result === 'waiting') return result;
+    if (result === 'pending' || result === 'waiting' || result === 'slowdown') return result;
     const session = await exchangeSessionToken(result);
     return {
       mode: 'phi-session',
@@ -100,7 +100,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     while (Date.now() - start < device.expiresIn * 1000) {
       await new Promise((r) => setTimeout(r, device.interval * 1000));
       const result = await pollForToken(device.deviceCode, device.deviceId);
-      if (result === 'pending' || result === 'waiting') continue;
+      if (result === 'pending' || result === 'waiting' || result === 'slowdown') continue;
       const session = await exchangeSessionToken(result);
       return {
         mode: 'phi-session',

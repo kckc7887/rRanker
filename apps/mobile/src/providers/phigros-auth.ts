@@ -149,7 +149,7 @@ export async function requestDeviceCode(): Promise<DeviceCodeResult> {
 export async function pollForToken(
   deviceCode: string,
   deviceId: string,
-): Promise<TapTapToken | 'pending' | 'waiting'> {
+): Promise<TapTapToken | 'pending' | 'waiting' | 'slowdown'> {
   const raw = await postForm('https://accounts.tapapis.cn/oauth2/v1/token', {
     grant_type: 'device_token',
     client_id: TAPTAP_CLIENT_ID,
@@ -164,6 +164,7 @@ export async function pollForToken(
   const error = err.success ? err.data.data?.error ?? err.data.error_description : 'unknown';
   if (error === 'authorization_pending') return 'pending';
   if (error === 'authorization_waiting') return 'waiting';
+  if (error === 'slow_down') return 'slowdown';
   throw new Error(error ?? 'TapTap 登录失败');
 }
 
