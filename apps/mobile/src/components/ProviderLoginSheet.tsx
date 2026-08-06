@@ -74,6 +74,8 @@ export function ProviderLoginSheet({
   const [phiExpiresAt, setPhiExpiresAt] = useState(0);
   const [showReusableAccounts, setShowReusableAccounts] = useState(false);
   const phiTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const phiPollingRef = useRef(false);
+  const phiNextAllowedAtRef = useRef(0);
 
   const isLxns = provider?.id === 'lxns';
   const isPhigros = provider?.id === 'phi-taptap';
@@ -104,6 +106,8 @@ export function ProviderLoginSheet({
     setPhiExpiresAt(0);
     setShowReusableAccounts(false);
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
+    phiPollingRef.current = false;
+    phiNextAllowedAtRef.current = 0;
   };
 
   const close = () => {
@@ -282,11 +286,23 @@ export function ProviderLoginSheet({
 
   const pollPhigros = async () => {
     if (!phiDevice) return;
-    const remaining = Math.max(0, Math.floor((phiExpiresAt - Date.now()) / 1000));
+    if (phiPollingRef.current) return;
+    const now = Date.now();
+    if (now < phiNextAllowedAtRef.current) {
+      setMessage('TapTap 请求过于频繁，已自动放慢轮询…');
+      return;
+    }
+    const remaining = Math.max(0, Math.floor((phiExpiresAt - now) / 1000));
     setMessage(`等待授权中…（${remaining} 秒后过期）`);
+    phiPollingRef.current = true;
     try {
       const result = await PhigrosScoreProvider.pollLogin(phiDevice);
       if (result === 'pending' || result === 'waiting') return;
+      if (result === 'slowdown') {
+        phiNextAllowedAtRef.current = Date.now() + 5_000;
+        setMessage('TapTap 请求过于频繁，已自动放慢轮询…');
+        return;
+      }
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
       setMessage('正在保存并验证…');
       const newSession = result;
@@ -311,6 +327,8 @@ export function ProviderLoginSheet({
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
       const detail = error instanceof Error ? error.message : String(error);
       setMessage(`授权失败：${detail}`);
+    } finally {
+      phiPollingRef.current = false;
     }
   };
 
@@ -326,6 +344,8 @@ export function ProviderLoginSheet({
 
   const cancelPhigrosLogin = () => {
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
+    phiPollingRef.current = false;
+    phiNextAllowedAtRef.current = 0;
     setPhiDevice(null);
     setPhiExpiresAt(0);
     setMessage('');
