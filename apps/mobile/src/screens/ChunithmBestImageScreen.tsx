@@ -10,12 +10,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { captureRef } from 'react-native-view-shot';
 import { useNotification } from '@/components/AppNotification';
+import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import {
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
@@ -40,7 +42,14 @@ import {
   appendChunithmSelectionScores,
   paginateChunithmBestImageSections,
   type ChunithmBestImageSelectionCount,
+  type ChunithmBestImageType,
 } from '@/features/chunithm-best-image/chunithm-best-image';
+import {
+  buildCustomChunithmBestImageSections,
+  DEFAULT_CUSTOM_CHUNITHM_BEST_IMAGE_FILTERS,
+  parseBestImageQuantity,
+  type CustomChunithmBestImageFilters,
+} from '@/features/chunithm-best-image/chunithm-best-image-custom';
 import {
   chunithmBestImagePreferencesStore,
   DEFAULT_CHUNITHM_BEST_IMAGE_STYLES,
@@ -61,6 +70,7 @@ import {
   buildChunithmScoreCards,
   compareChunithmScores,
 } from '@/domain/chunithm-score-presentation';
+import { CHUNITHM_DIFFICULTY_LABELS } from '@/domain/chunithm';
 import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
@@ -68,6 +78,12 @@ import { useAppTheme } from '@/theme/app-theme';
 
 const WIDTHS = [1080, 1440, 2160] as const;
 const SELECTION_COUNTS: readonly ChunithmBestImageSelectionCount[] = [0, 5, 10];
+const IMAGE_TYPES: readonly { id: ChunithmBestImageType; label: string }[] = [
+  { id: 'best50', label: 'Best50' },
+  { id: 'custom', label: '自定义' },
+];
+/** 自定义模式每页最多 50 行，每行 5 张。 */
+const CUSTOM_MAX_ROWS_PER_PAGE = 50;
 
 type PreviewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'error' | 'crashed' | 'terminated';
 
@@ -122,6 +138,9 @@ export function ChunithmBestImageScreen() {
   const catalog = catalogQuery.data;
 
   const [width, setWidth] = useState<(typeof WIDTHS)[number]>(1080);
+  const [type, setType] = useState<ChunithmBestImageType>('best50');
+  const [quantityText, setQuantityText] = useState(String(DEFAULT_CUSTOM_CHUNITHM_BEST_IMAGE_FILTERS.quantity));
+  const [customFilters, setCustomFilters] = useState<CustomChunithmBestImageFilters>(DEFAULT_CUSTOM_CHUNITHM_BEST_IMAGE_FILTERS);
   const [stylePrefs, setStylePrefs] = useState(DEFAULT_CHUNITHM_BEST_IMAGE_STYLES);
   const [prefsReady, setPrefsReady] = useState(false);
   const [characters, setCharacters] = useState<ChunithmBestImageCollectionItem[] | null>(null);
@@ -193,6 +212,11 @@ export function ChunithmBestImageScreen() {
     }
   }, [gameData.activeAccountId, prefsReady, stylePrefs]);
 
+  const allCards = useMemo(
+    () => buildChunithmScoreCards(payload?.scores ?? [], catalog).sort(compareChunithmScores),
+    [catalog, payload?.scores],
+  );
+
   const baseSections = useMemo(() => {
     if (!payload) return [];
     return payload.bestSections.map((section) => ({
@@ -207,14 +231,57 @@ export function ChunithmBestImageScreen() {
     return buildChunithmScoreCards(payload.selections, catalog).sort(compareChunithmScores);
   }, [catalog, payload]);
 
-  const sections = useMemo(
-    () => appendChunithmSelectionScores(baseSections, selectionCards, stylePrefs.selectionCount),
-    [baseSections, selectionCards, stylePrefs.selectionCount],
-  );
+  const versionConditionLabel = useMemo(() => {
+    if (customFilters.version === 'all') return null;
+    return catalog?.versions.find((item) => String(item.id) === customFilters.version)?.title ?? null;
+  }, [catalog?.versions, customFilters.version]);
+
+  const conditionLabels = useMemo(() => {
+    const labels: string[] = [];
+    if (customFilters.difficulty !== 'all') {
+      labels.push(CHUNITHM_DIFFICULTY_LABELS[customFilters.difficulty]);
+    }
+    if (customFilters.constantMin || customFilters.constantMax) {
+      labels.push(`定数 ${customFilters.constantMin || '不限'}~${customFilters.constantMax || '不限'}`);
+    }
+    if (customFilters.rankMin || customFilters.rankMax) {
+      labels.push(`评价 ${customFilters.rankMin || '不限'}~${customFilters.rankMax || '不限'}`);
+    }
+    return labels;
+  }, [
+    customFilters.constantMax,
+    customFilters.constantMin,
+    customFilters.difficulty,
+    customFilters.rankMax,
+    customFilters.rankMin,
+  ]);
+
+  const sections = useMemo(() => {
+    if (type === 'custom') {
+      return buildCustomChunithmBestImageSections(allCards, {
+        ...customFilters,
+        versionConditionLabel,
+        conditionLabels,
+      });
+    }
+    return appendChunithmSelectionScores(baseSections, selectionCards, stylePrefs.selectionCount);
+  }, [
+    allCards,
+    baseSections,
+    conditionLabels,
+    customFilters,
+    selectionCards,
+    stylePrefs.selectionCount,
+    type,
+    versionConditionLabel,
+  ]);
 
   const pages = useMemo(
-    () => paginateChunithmBestImageSections(sections, 50 + stylePrefs.selectionCount),
-    [sections, stylePrefs.selectionCount],
+    () => paginateChunithmBestImageSections(
+      sections,
+      type === 'custom' ? CUSTOM_MAX_ROWS_PER_PAGE * 5 : 50 + stylePrefs.selectionCount,
+    ),
+    [sections, stylePrefs.selectionCount, type],
   );
 
   const jacketIdsByKey = useMemo(() => {
@@ -295,7 +362,7 @@ export function ChunithmBestImageScreen() {
   const htmlPages = useMemo(() => {
     if (!payload || !coverUrls) return null;
     return pages.map((page) => buildChunithmBestImageHtml({
-      type: 'best50',
+      type,
       width,
       player: payload.player,
       ratingDisplay: payload.playerScore.display,
@@ -314,6 +381,7 @@ export function ChunithmBestImageScreen() {
     jacketIdsByKey,
     pages,
     payload,
+    type,
     width,
   ]);
 
@@ -429,7 +497,7 @@ export function ChunithmBestImageScreen() {
   };
 
   const exportImages = async () => {
-    if (!payload || !webViewSources || !htmlPages || exportStatus) return;
+    if (!payload || !webViewSources || !htmlPages || !formValid || exportStatus) return;
     const captures: { uri: string; filename: string }[] = [];
     try {
       await requestBestImageExportPermission();
@@ -458,7 +526,7 @@ export function ChunithmBestImageScreen() {
           uri,
           filename: bestImageExportFilename(
             payload.player?.name ?? 'player',
-            'best50',
+            type,
             index,
             webViewSources.length,
           ),
@@ -490,6 +558,18 @@ export function ChunithmBestImageScreen() {
     }
   };
 
+  const quantityError = parseBestImageQuantity(quantityText) === null
+    ? '数量必须是非负整数，0 表示不限制'
+    : null;
+  const customInputValid = quantityError === null;
+  const formValid = type !== 'custom' || customInputValid;
+  const resetCustomFilters = () => {
+    setCustomFilters((current) => ({
+      ...DEFAULT_CUSTOM_CHUNITHM_BEST_IMAGE_FILTERS,
+      quantity: current.quantity,
+    }));
+  };
+
   if (!payload && !gameData.isLoading) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
@@ -510,19 +590,82 @@ export function ChunithmBestImageScreen() {
           accessibilityRole="tablist"
           style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}
         >
-          <View
-            accessibilityLabel="Best50"
-            accessibilityRole="tab"
-            accessibilityState={{ selected: true }}
-            style={[styles.segment, { backgroundColor: theme.surface }]}
-          >
-            <Text style={[styles.segmentText, { color: theme.accent }]}>Best50</Text>
-          </View>
+          {IMAGE_TYPES.map((item) => {
+            const selected = type === item.id;
+            return (
+              <Pressable
+                key={item.id}
+                accessibilityLabel={item.label}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+                onPress={() => setType(item.id)}
+                style={[styles.segment, selected && { backgroundColor: theme.surface }]}
+              >
+                <Text
+                  style={[
+                    styles.segmentText,
+                    { color: theme.textMuted },
+                    selected && { color: theme.accent },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
+
+        {type === 'custom' ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
+          <ChunithmFilterBar
+            collapsed={false}
+            constantMax={customFilters.constantMax}
+            constantMin={customFilters.constantMin}
+            difficulty={customFilters.difficulty}
+            onCollapsedChange={() => undefined}
+            onConstantMaxChange={(constantMax) => setCustomFilters((current) => ({ ...current, constantMax }))}
+            onConstantMinChange={(constantMin) => setCustomFilters((current) => ({ ...current, constantMin }))}
+            onDifficultyChange={(difficulty) => setCustomFilters((current) => ({ ...current, difficulty }))}
+            onRankMaxChange={(rankMax) => setCustomFilters((current) => ({ ...current, rankMax }))}
+            onRankMinChange={(rankMin) => setCustomFilters((current) => ({ ...current, rankMin }))}
+            onReset={resetCustomFilters}
+            onVersionChange={(version) => setCustomFilters((current) => ({ ...current, version }))}
+            rankMax={customFilters.rankMax}
+            rankMin={customFilters.rankMin}
+            version={customFilters.version}
+            versions={catalog?.versions ?? []}
+          />
+          <View style={styles.fieldRow}>
+            <View style={styles.textFieldWrap}>
+              <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
+              <TextInput
+                accessibilityLabel="自定义数量"
+                autoCorrect={false}
+                keyboardType="number-pad"
+                onChangeText={(value) => {
+                  setQuantityText(value);
+                  const parsed = parseBestImageQuantity(value);
+                  if (parsed !== null) {
+                    setCustomFilters((current) => ({ ...current, quantity: parsed }));
+                  }
+                }}
+                placeholder="0 为无限制"
+                placeholderTextColor={theme.textMuted}
+                style={[
+                  styles.textInput,
+                  { backgroundColor: theme.input, borderColor: theme.border, color: theme.text },
+                  quantityError && styles.textInputError,
+                ]}
+                value={quantityText}
+              />
+              {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
+            </View>
+          </View>
+        </View> : null}
 
         <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
         <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
-          <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
+          {type === 'best50' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
             <View style={styles.overflowCopy}>
               <Text style={[styles.styleName, { color: theme.text }]}>Selection</Text>
               <Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text>
@@ -537,7 +680,7 @@ export function ChunithmBestImageScreen() {
                 />
               ))}
             </View>
-          </View>
+          </View> : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="选择角色"
@@ -615,7 +758,7 @@ export function ChunithmBestImageScreen() {
           })}
         </View>
         <Text style={[styles.dimensionMeta, { color: theme.textMuted }]}>
-          {width} × {outputHeight} px · 每页最多 {50 + stylePrefs.selectionCount} 张 · 第 {pageIndex + 1}/{pages.length} 页
+          {width} × {outputHeight} px · 每页最多 {type === 'custom' ? `${CUSTOM_MAX_ROWS_PER_PAGE} 行` : `${50 + stylePrefs.selectionCount} 张`} · 第 {pageIndex + 1}/{pages.length} 页
         </Text>
 
         <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>预览</Text>
@@ -718,12 +861,12 @@ export function ChunithmBestImageScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="导出成绩图片"
-          disabled={!sources || !!exportStatus}
+          disabled={!sources || !!exportStatus || !formValid}
           onPress={() => void exportImages()}
           style={[
             styles.exportButton,
             { backgroundColor: theme.accent },
-            (!sources || !!exportStatus) && styles.exportButtonDisabled,
+            (!sources || !!exportStatus || !formValid) && styles.exportButtonDisabled,
           ]}
         >
           {exportStatus ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
@@ -813,6 +956,14 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   segmentText: { fontSize: 14, fontWeight: '700' },
+  customPanel: { marginTop: 16, padding: 14, gap: 10, borderRadius: 16 },
+  panelTitle: { fontSize: 15, fontWeight: '800' },
+  fieldRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  textFieldWrap: { flex: 1, minWidth: 0, gap: 6 },
+  fieldLabel: { fontSize: 12, fontWeight: '700' },
+  textInput: { minHeight: 40, paddingHorizontal: 11, borderWidth: 1, borderRadius: 10, fontSize: 14 },
+  textInputError: { borderColor: '#D92D20' },
+  errorText: { fontSize: 11, fontWeight: '600' },
   chip: {
     minWidth: 46,
     height: 32,
