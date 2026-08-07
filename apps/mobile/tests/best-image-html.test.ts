@@ -445,6 +445,10 @@ describe('best image html', () => {
     expect(game).toContain('data-rating-style="game"');
     expect(game).toContain('@font-face{font-family:MaiCN;src:url("maimai-noto.ttf") format("truetype");font-weight:100 900;font-display:block}');
     expect(game).toContain('font-family:MaiCN,"Noto Sans CJK SC",system-ui,sans-serif');
+    expect(game).toContain('.game-card img{position:absolute;display:block}');
+    expect(game).toContain('.game-id,.game-title,.game-achievement,.game-dxscore,.game-ds-rating{position:absolute}');
+    expect(game).toContain('.game-player-name{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1;transform:translateY(-50%)}');
+    expect(game).toContain('.game-trophy-text{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1;transform:translate(-50%,-50%)}');
     expect(game).toContain("const fitTitleSizes = () => {");
     expect(game).toContain("if (RATING_STYLE !== 'game') return;");
     expect(game).toContain("node.style.transform = 'scaleX('");

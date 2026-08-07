@@ -376,8 +376,8 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const isAppStyle = ratingStyle === 'app';
   /** 思源黑体与贴图素材仅用于 game 样式（app 样式零变化）。 */
   const useCnFont = !isAppStyle && !!input.cnFontUrl;
-  /** game 样式 1400 基准坐标缩放。 */
-  const u = (value: number) => px(value * width / 1400);
+  /** game 样式 1400 基准坐标缩放；0 保持 0（px 的最小值 1 会把起点偏移 1px）。 */
+  const u = (value: number) => value === 0 ? 0 : px(value * width / 1400);
   const appRatingTheme = resolveDxRatingTheme(rating);
   const digits = String(rating).padStart(5, '0').split('');
   const name = input.player.displayName.trim() || '未读取玩家资料';
@@ -540,11 +540,11 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     '.game-head img,.game-head div{position:absolute}',
     '.game-plate-fallback{border:' + u(2) + 'px solid rgba(255,255,255,.8);background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}',
     '.game-icon-fallback{display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:' + u(12) + 'px;background:linear-gradient(145deg,#F8FBFF,#C7D5EA);color:#52647F;font-weight:900;font-family:system-ui,sans-serif}',
-    '.game-player-name{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1}',
-    '.game-trophy-text{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1}',
+    '.game-player-name{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1;transform:translateY(-50%)}',
+    '.game-trophy-text{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1;transform:translate(-50%,-50%)}',
     '.game-card{position:absolute;z-index:1}',
-    '.game-card-bg{position:absolute;display:block}',
-    '.game-card img{display:block}',
+    '.game-card img{position:absolute;display:block}',
+    '.game-id,.game-title,.game-achievement,.game-dxscore,.game-ds-rating{position:absolute}',
     '.game-id{white-space:nowrap;color:#fff;font-weight:700;font-family:system-ui,sans-serif;line-height:1;text-align:center;transform:translate(-50%,-50%)}',
     '.game-title{position:absolute;white-space:nowrap;overflow:hidden;font-weight:700;font-family:system-ui,sans-serif;line-height:1.06}',
     '.game-achievement{white-space:nowrap;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translateY(-50%)}',
