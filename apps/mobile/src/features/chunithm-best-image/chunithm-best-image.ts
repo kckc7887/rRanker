@@ -1,11 +1,13 @@
 import type { ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
 
-export type ChunithmBestImageType = 'best50';
+export type ChunithmBestImageType = 'best50' | 'custom';
 export type ChunithmBestImageSelectionCount = 0 | 5 | 10;
 
 export type ChunithmBestImageSection = {
   id: string;
   title: string;
+  /** 多条件筛选时标题下方的小字筛选条件提示。 */
+  subtitle?: string;
   records: ChunithmScoreCardData[];
 };
 
