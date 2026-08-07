@@ -90,6 +90,18 @@ jest.mock('@/features/best-image/load-best-image-jackets', () => ({
     songIds.map((songId) => [songId, `data:image/png;base64,jacket-${songId}`]),
   ),
 }));
+jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
+  prepareBestImageWebViewSources: (htmlPages: string[]) => ({
+    sources: htmlPages.map((html) => ({ html, baseUrl: 'file:///fonts/' })),
+    dispose: jest.fn(),
+  }),
+}));
+jest.mock('@/features/best-image/maimai-font-cache', () => ({
+  prepareMaimaiFonts: jest.fn(async () => ({
+    directory: { uri: 'file:///fonts/' },
+    fullReady: Promise.resolve(),
+  })),
+}));
 jest.mock('@/features/best-image/use-best-image-collections', () => ({
   useBestImageCollections: () => ({
     data: {
@@ -119,7 +131,14 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({
 }));
 
 describe('best image preview', () => {
-  beforeEach(() => mockShowNotification.mockClear());
+  beforeEach(() => {
+    mockShowNotification.mockClear();
+    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    prepareMaimaiFonts.mockReset().mockImplementation(async () => ({
+      directory: { uri: 'file:///fonts/' },
+      fullReady: Promise.resolve(),
+    }));
+  });
 
   it('switches image type and renders the HTML preview', async () => {
     const screen = await render(<BestImageScreen />);
@@ -366,5 +385,36 @@ describe('best image preview', () => {
       message: '已保存 1 张成绩图片到相册',
       variant: 'success',
     }));
+  });
+
+  it('waits for the remote font before enabling export', async () => {
+    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    let finish!: () => void;
+    prepareMaimaiFonts.mockImplementationOnce(async () => ({
+      directory: { uri: 'file:///fonts/' },
+      fullReady: new Promise<void>((resolve) => { finish = resolve; }),
+    }));
+    const screen = await render(<BestImageScreen />);
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
+    expect(screen.getByText(/所需字体完成后可导出/u)).toBeTruthy();
+
+    await act(async () => finish());
+    await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
+    expect(screen.getByText('导出到相册')).toBeTruthy();
+  });
+
+  it('shows a retry action when the remote font fails to prepare', async () => {
+    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    prepareMaimaiFonts.mockImplementationOnce(async () => ({
+      directory: { uri: 'file:///fonts/' },
+      fullReady: Promise.reject(new Error('字体准备失败：字体校验失败')),
+    }));
+    const screen = await render(<BestImageScreen />);
+    await waitFor(() => expect(screen.getByText('字体准备失败：字体校验失败')).toBeTruthy());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
+    fireEvent.press(screen.getByLabelText('重试字体下载'));
+    await waitFor(() => expect(prepareMaimaiFonts).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
   });
 });
