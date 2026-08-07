@@ -18,6 +18,7 @@ const mockUiFs = vi.hoisted(() => ({
   remotes: new Map<string, Uint8Array | Error | (() => Promise<Uint8Array>)>(),
   downloadCalls: [] as string[],
   deletes: [] as string[],
+  createdDirectories: [] as string[],
 }));
 
 vi.mock('expo-file-system', () => {
@@ -28,7 +29,7 @@ vi.mock('expo-file-system', () => {
   class Directory {
     readonly uri: string;
     constructor(base: string | { uri: string }, ...parts: string[]) { this.uri = joinUri(base, parts); }
-    create() { /* in-memory directories always exist */ }
+    create() { mockUiFs.createdDirectories.push(this.uri); }
     delete() { mockUiFs.deletes.push(this.uri); for (const uri of [...mockUiFs.files.keys()]) {
       if (uri.startsWith(this.uri)) mockUiFs.files.delete(uri);
     } }
@@ -92,6 +93,7 @@ describe('maimai ui asset cache', () => {
     mockUiFs.remotes.clear();
     mockUiFs.downloadCalls.length = 0;
     mockUiFs.deletes.length = 0;
+    mockUiFs.createdDirectories.length = 0;
   });
 
   it('pins the uploaded ui archive and covers every game-style asset path', () => {
@@ -128,6 +130,9 @@ describe('maimai ui asset cache', () => {
       expect(hex(mockUiFs.files.get(uri)!)).toBe(entry.sha256);
     }
     expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/tmp/'))).toBe(false);
+
+    // zip 内条目带 maimai-ui/ 前缀：解压前必须创建目标子目录（iOS File.move 要求目标目录存在）
+    expect(mockUiFs.createdDirectories.some((uri) => uri.endsWith('/ui/maimai-ui'))).toBe(true);
 
     const downloads = mockUiFs.downloadCalls.length;
     const cached = await prepare();
