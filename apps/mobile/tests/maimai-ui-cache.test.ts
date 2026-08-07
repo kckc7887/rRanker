@@ -126,13 +126,13 @@ describe('maimai ui asset cache', () => {
     expect(progress.at(-1)!.phase).toBe('ready');
     expect(mockUiFs.downloadCalls).toEqual([zip.url]);
     for (const entry of entries) {
-      const uri = [...mockUiFs.files.keys()].find((key) => key.endsWith(`/ui/${entry.path}`))!;
+      const uri = [...mockUiFs.files.keys()].find((key) => key.endsWith(`/ui/${entry.path.replace(/^maimai-ui\//u, '')}`))!;
       expect(hex(mockUiFs.files.get(uri)!)).toBe(entry.sha256);
     }
     expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/tmp/'))).toBe(false);
 
     // zip 内条目带 maimai-ui/ 前缀：解压前必须创建目标子目录（iOS File.move 要求目标目录存在）
-    expect(mockUiFs.createdDirectories.some((uri) => uri.endsWith('/ui/maimai-ui'))).toBe(true);
+    expect(mockUiFs.createdDirectories.some((uri) => uri.endsWith('/ui'))).toBe(true);
 
     const downloads = mockUiFs.downloadCalls.length;
     const cached = await prepare();
@@ -178,7 +178,7 @@ describe('maimai ui asset cache', () => {
     const prepare = createMaimaiUiPreparer(zip, entries);
     const first = await prepare();
     await first.fullReady;
-    const cachedUri = [...mockUiFs.files.keys()].find((key) => key.endsWith('/ui/maimai-ui/SD.png'))!;
+    const cachedUri = [...mockUiFs.files.keys()].find((key) => key.endsWith('/ui/SD.png'))!;
     const corrupted = Uint8Array.from(mockUiFs.files.get(cachedUri)!);
     corrupted[0] = corrupted[0]! ^ 0xff;
     mockUiFs.files.set(cachedUri, corrupted);

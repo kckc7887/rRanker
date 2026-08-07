@@ -62,9 +62,12 @@ export function createMaimaiUiPreparer(
     return { directory, uiDirectory, temporaryDirectory };
   };
 
+  /** zip 内条目带 maimai-ui/ 前缀，落盘时剥掉，使 HTML 可直接用 ui/<文件名> 相对路径引用。 */
+  const finalPathOf = (path: string) => path.replace(/^maimai-ui\//u, '');
+
   async function isValidUi(uiDirectory: Directory): Promise<boolean> {
     for (const entry of entries) {
-      const file = new File(uiDirectory, entry.path);
+      const file = new File(uiDirectory, finalPathOf(entry.path));
       if (!file.exists || file.size !== entry.bytes) return false;
       if (await sha256(await file.bytes()) !== entry.sha256) return false;
     }
@@ -86,17 +89,18 @@ export function createMaimaiUiPreparer(
       if (bytes.byteLength !== entry.bytes || await sha256(bytes) !== entry.sha256) {
         throw new Error(`${entry.path} 校验失败`);
       }
-      const part = new File(temporaryDirectory, `entry-${entry.path.replace(/[\\/]/gu, '_')}.part`);
+      const finalPath = finalPathOf(entry.path);
+      const part = new File(temporaryDirectory, `entry-${finalPath.replace(/[\\/]/gu, '_')}.part`);
       if (part.exists) part.delete();
       part.create({ overwrite: true });
       part.write(bytes);
-      // zip 内条目带 maimai-ui/ 前缀：移动前确保目标子目录存在（iOS File.move 要求目标目录已存在）
-      const slash = entry.path.lastIndexOf('/');
+      // 条目可能仍有子目录：移动前确保目标子目录存在（iOS File.move 要求目标目录已存在）
+      const slash = finalPath.lastIndexOf('/');
       if (slash > 0) {
-        const parent = new Directory(uiDirectory, entry.path.slice(0, slash));
+        const parent = new Directory(uiDirectory, finalPath.slice(0, slash));
         parent.create({ intermediates: true, idempotent: true });
       }
-      const finalFile = new File(uiDirectory, entry.path);
+      const finalFile = new File(uiDirectory, finalPath);
       if (finalFile.exists) finalFile.delete();
       part.move(finalFile);
     }
