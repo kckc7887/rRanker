@@ -50,7 +50,6 @@ export function createMaimaiUiPreparer(
   zipInfo: { url: string; bytes: number; sha256: string } = MAIMAI_UI_ZIP,
   entries: readonly MaimaiUiManifestEntry[] = MAIMAI_UI_MANIFEST_ENTRIES,
 ) {
-  const entryByName = new Map(entries.map((entry) => [entry.path, entry]));
   let inFlight: Promise<void> | null = null;
 
   const directories = () => {
@@ -87,10 +86,16 @@ export function createMaimaiUiPreparer(
       if (bytes.byteLength !== entry.bytes || await sha256(bytes) !== entry.sha256) {
         throw new Error(`${entry.path} 校验失败`);
       }
-      const part = new File(temporaryDirectory, `entry-${entryByName.size}-${entry.path.replace(/[\\/]/gu, '_')}.part`);
+      const part = new File(temporaryDirectory, `entry-${entry.path.replace(/[\\/]/gu, '_')}.part`);
       if (part.exists) part.delete();
       part.create({ overwrite: true });
       part.write(bytes);
+      // zip 内条目带 maimai-ui/ 前缀：移动前确保目标子目录存在（iOS File.move 要求目标目录已存在）
+      const slash = entry.path.lastIndexOf('/');
+      if (slash > 0) {
+        const parent = new Directory(uiDirectory, entry.path.slice(0, slash));
+        parent.create({ intermediates: true, idempotent: true });
+      }
       const finalFile = new File(uiDirectory, entry.path);
       if (finalFile.exists) finalFile.delete();
       part.move(finalFile);
