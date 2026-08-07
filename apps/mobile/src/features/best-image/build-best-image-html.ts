@@ -31,7 +31,7 @@ export type BestImageHiddenStyle = 'icon' | 'plate' | 'trophy' | 'frame';
 export type BestImageHtmlInput = {
   type: BestImageType;
   width: number;
-  player: Pick<Player, 'displayName' | 'presentation'>;
+  player: Pick<Player, 'displayName' | 'presentation'> & { additionalRating?: number };
   rating: number;
   ratingStyle?: BestImageRatingStyle;
   scoreSections: readonly BestImageScoreSection[];
@@ -65,6 +65,23 @@ const FC_LABELS: Record<string, string> = { fc: 'FC', fcp: 'FC+', ap: 'AP', app:
 const FS_LABELS: Record<string, string> = {
   fs: 'FS', fsp: 'FS+', fsd: 'FDX', fsdp: 'FDX+', fdx: 'FDX', fdxp: 'FDX+',
 };
+
+// ---- game 样式（对齐 nonebot-plugin-maimaidx 原版贴图布局）----
+const GAME_DIFF_TEXT_COLOR = ['#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#8A00E2'];
+const GAME_ID_TEXT_COLOR = ['#81D955', '#F5BD15', '#FF818D', '#9F51DC', '#8A00E2'];
+const GAME_DIFF_BG = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+const GAME_RANK_MAP: Record<string, string> = {
+  d: 'D', c: 'C', b: 'B', bb: 'BB', bbb: 'BBB', a: 'A', aa: 'AA', aaa: 'AAA',
+  s: 'S', sp: 'Sp', ss: 'SS', ssp: 'SSp', sss: 'SSS', sssp: 'SSSp',
+};
+const GAME_COMBO_MAP: Record<string, string> = { fc: 'FC', fcp: 'FCp', ap: 'AP', app: 'APp' };
+const GAME_SYNC_MAP: Record<string, string> = {
+  fs: 'FS', fsp: 'FSp', fsd: 'FSD', fdx: 'FSD', fsdp: 'FSDp', fdxp: 'FSDp', sync: 'Sync',
+};
+const GAME_TROPHY_FILE: Record<string, string> = {
+  normal: 'Normal', bronze: 'Bronze', silver: 'Silver', gold: 'Gold', rainbow: 'Rainbow',
+};
+
 export function minimumBestImageHeight(width: number): number {
   return Math.ceil(width * 4 / 3);
 }
@@ -205,14 +222,14 @@ function renderStatusBadges(record: ScoreRecord): string {
     .join('');
 }
 
-function renderScoreCard(
+function renderAppScoreCard(
   record: ScoreRecord,
   rank: number,
   coverUrls: Readonly<Record<string, string | null>> | undefined,
 ): string {
   const hasPreparedJacket = coverUrls && Object.hasOwn(coverUrls, record.songId);
   const jacketUrl = hasPreparedJacket
-    ? coverUrls[record.songId]
+    ? coverUrls![record.songId]
     : `${LXNS_ASSET_ROOT}/jacket/${encodeURIComponent(record.songId)}.png`;
   const theoreticalDxScore = record.notes && typeof record.notes.total === 'number'
     ? record.notes.total * 3
@@ -227,7 +244,7 @@ function renderScoreCard(
     <div class="score-card-head">
       <div class="jacket-shell">
         <span class="jacket-fallback">♪</span>
-        ${jacketUrl ? `<img class="song-jacket" alt="" src="${escapeHtml(jacketUrl)}" onerror="this.style.display='none'">` : ''}
+        ${jacketUrl ? `<img class="song-jacket" alt="" src="${escapeHtml(jacketUrl ?? '')}" onerror="this.style.display='none'">` : ''}
       </div>
       <div class="song-copy">
         <span class="song-id">ID${escapeHtml(record.songId)}</span>
@@ -245,7 +262,7 @@ function renderScoreCard(
   </article>`;
 }
 
-function renderScoreSection(
+function renderAppScoreSection(
   section: BestImageScoreSection,
   coverUrls: Readonly<Record<string, string | null>> | undefined,
 ): string {
@@ -253,9 +270,84 @@ function renderScoreSection(
   const subtitle = section.subtitle
     ? `<div class="section-subtitle">${escapeHtml(section.subtitle)}</div>`
     : '';
-  const cards = section.records.map((record, index) => renderScoreCard(record, (section.rankOffset ?? 0) + index + 1, coverUrls)).join('');
+  const cards = section.records.map((record, index) => renderAppScoreCard(record, (section.rankOffset ?? 0) + index + 1, coverUrls)).join('');
   const content = cards || '<div class="empty-section">暂无符合条件的成绩</div>';
   return `<section class="score-section" aria-label="${escapeHtml(section.title)}">${divider}${subtitle}<div class="score-grid">${content}</div></section>`;
+}
+
+/** game 样式 DX 星档位：按 DXScore 达成比例 1-5 星（0 表示无物量数据不显示）。 */
+function gameDxStar(record: ScoreRecord): number {
+  const theoretical = record.notes && typeof record.notes.total === 'number' ? record.notes.total * 3 : null;
+  if (theoretical === null || theoretical <= 0 || record.dxScore === null || !Number.isFinite(record.dxScore)) return 0;
+  const ratio = record.dxScore / theoretical;
+  if (ratio >= 1) return 5;
+  if (ratio >= 0.9) return 4;
+  if (ratio >= 0.8) return 3;
+  if (ratio >= 0.7) return 2;
+  return 1;
+}
+
+function renderGameScoreCard(
+  record: ScoreRecord,
+  rank: number,
+  coverUrls: Readonly<Record<string, string | null>> | undefined,
+  u: (value: number) => number,
+  left = 0,
+  top = 0,
+): string {
+  const hasPreparedJacket = coverUrls && Object.hasOwn(coverUrls, record.songId);
+  const preparedJacket = hasPreparedJacket ? coverUrls![record.songId] : undefined;
+  const jacketUrl = preparedJacket === undefined
+    ? `${LXNS_ASSET_ROOT}/jacket/${encodeURIComponent(record.songId)}.png`
+    : preparedJacket;
+  const levelIndex = Math.max(0, Math.min(4, record.levelIndex));
+  const diffTextColor = GAME_DIFF_TEXT_COLOR[levelIndex]!;
+  const idTextColor = GAME_ID_TEXT_COLOR[levelIndex]!;
+  const rankFile = GAME_RANK_MAP[record.rate?.trim().toLowerCase() ?? ''] ?? '';
+  const fcFile = GAME_COMBO_MAP[record.fc?.trim().toLowerCase() ?? ''] ?? '';
+  const fsFile = GAME_SYNC_MAP[record.fs?.trim().toLowerCase() ?? ''] ?? '';
+  const star = gameDxStar(record);
+  const theoretical = record.notes && typeof record.notes.total === 'number' ? record.notes.total * 3 : null;
+  const actualDxScore = record.dxScore === null ? '—' : String(record.dxScore);
+  const maximumDxScore = theoretical === null ? '—' : String(theoretical);
+  const position = (left: number, top: number, width: number, height: number) =>
+    `left:${u(left)}px;top:${u(top)}px;width:${u(width)}px;height:${u(height)}px`;
+  const textPosition = (left: number, top: number, size: number) =>
+    `left:${u(left)}px;top:${u(top)}px;font-size:${u(size)}px`;
+  return `<article class="game-card" style="left:${u(left)}px;top:${u(top)}px;width:${u(264)}px;height:${u(109)}px" aria-label="第 ${rank} 名 ${escapeHtml(record.title)}">
+    <img class="game-card-bg" alt="" style="${position(0, 0, 264, 109)}" src="ui/b50_score_${GAME_DIFF_BG[levelIndex]}.png">
+    ${jacketUrl ? `<img class="game-cover" alt="" style="${position(12, 12, 75, 75)}" src="${escapeHtml(jacketUrl)}">` : ''}
+    <img class="game-type" alt="" style="${position(51, 91, 37, 14)}" src="ui/${record.type === 'DX' ? 'DX' : 'SD'}.png">
+    ${rankFile ? `<img class="game-rank" alt="" style="${position(92, 78, 63, 28)}" src="ui/Rank_${rankFile}.png">` : ''}
+    ${fcFile ? `<img class="game-fc" alt="" style="${position(154, 77, 34, 34)}" src="ui/Icon_${fcFile}.png">` : ''}
+    ${fsFile ? `<img class="game-fs" alt="" style="${position(185, 77, 34, 34)}" src="ui/Icon_${fsFile}.png">` : ''}
+    ${star > 0 ? `<img class="game-star" alt="" style="${position(217, 80, 47, 26)}" src="ui/Star_0${star}.png">` : ''}
+    <div class="game-id" style="${textPosition(26, 98, 13)};color:${idTextColor}">${escapeHtml(record.songId)}</div>
+    <div class="game-title" style="${textPosition(93, 6, 14)};max-width:${u(160)}px;color:${diffTextColor}">${escapeHtml(record.title)}</div>
+    <div class="game-achievement" style="${textPosition(93, 48, 26)};color:${diffTextColor}">${formatAchievement(record.achievements)}</div>
+    <div class="game-dxscore" style="${textPosition(219, 68, 15)};color:${diffTextColor}">${actualDxScore}/${maximumDxScore}</div>
+    <div class="game-ds-rating" style="${textPosition(93, 68, 15)};color:${diffTextColor}">${record.difficultyConstant.toFixed(1)} -> ${record.rating}</div>
+  </article>`;
+}
+
+function renderGameScoreSection(
+  section: BestImageScoreSection,
+  coverUrls: Readonly<Record<string, string | null>> | undefined,
+  u: (value: number) => number,
+): string {
+  const divider = `<div class="section-divider"><span>${escapeHtml(section.title)}</span></div>`;
+  const subtitle = section.subtitle
+    ? `<div class="section-subtitle">${escapeHtml(section.subtitle)}</div>`
+    : '';
+  const rows = Math.ceil(section.records.length / 5);
+  const gridHeight = rows > 0 ? u((rows - 1) * 114 + 109) : u(109);
+  const cards = section.records.map((record, index) => {
+    const col = index % 5;
+    const row = Math.floor(index / 5);
+    return renderGameScoreCard(record, (section.rankOffset ?? 0) + index + 1, coverUrls, u, 16 + col * 276, row * 114);
+  }).join('');
+  const emptyMarkup = cards ? '' : `<div class="game-empty" style="font-size:${u(13)}px">暂无符合条件的成绩</div>`;
+  return `<section class="game-section" aria-label="${escapeHtml(section.title)}">${divider}${subtitle}<div class="game-grid" style="height:${gridHeight}px">${cards}${emptyMarkup}</div></section>`;
 }
 
 function collectionAssetUrl(kind: 'icon' | 'plate' | 'frame', id: number | undefined): string | null {
@@ -282,8 +374,10 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const rating = Math.min(99999, Math.max(0, Math.floor(Number.isFinite(input.rating) ? input.rating : 0)));
   const ratingStyle = input.ratingStyle ?? 'game';
   const isAppStyle = ratingStyle === 'app';
-  /** 思源黑体仅用于 game 样式（app 样式零变化）。 */
+  /** 思源黑体与贴图素材仅用于 game 样式（app 样式零变化）。 */
   const useCnFont = !isAppStyle && !!input.cnFontUrl;
+  /** game 样式 1400 基准坐标缩放。 */
+  const u = (value: number) => px(value * width / 1400);
   const appRatingTheme = resolveDxRatingTheme(rating);
   const digits = String(rating).padStart(5, '0').split('');
   const name = input.player.displayName.trim() || '未读取玩家资料';
@@ -343,7 +437,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const scoreCardPadding = px(width * 0.0065);
   const jacketSize = px(width * 0.058);
   const scoreSections = input.scoreSections
-    .map((section) => renderScoreSection(section, input.coverUrls))
+    .map((section) => isAppStyle ? renderAppScoreSection(section, input.coverUrls) : renderGameScoreSection(section, input.coverUrls, u))
     .join('');
   const scoreContent = scoreSections || '<div class="empty-scores">暂无可用于图片的成绩</div>';
   const nameplate = hidePlate
@@ -359,20 +453,18 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const trophy = hideTrophy
     ? ''
     : `<div class="trophy ${trophyToneClass(presentation?.trophyColor)}">${escapeHtml(trophyName)}</div>`;
-  const ratingDigits = digits.map((digit) => `<span>${digit}</span>`).join('');
-  const ratingMarkup = `<div class="rating rating-game" aria-label="Rating ${rating}"><img class="rating-frame" alt="" src="${escapeHtml(input.ratingFrameUrl)}"><div class="rating-digits">${ratingDigits}</div></div>`;
-  const canvasBackground = frameUrl
-    ? `<div class="canvas-background" style="background-image:url(&quot;${escapeHtml(frameUrl)}&quot;)"></div>`
-    : '<div class="canvas-background canvas-background-fallback"></div>';
+  const canvasBackground = isAppStyle
+    ? (frameUrl
+      ? `<div class="canvas-background" style="background-image:url(&quot;${escapeHtml(frameUrl)}&quot;)"></div>`
+      : '<div class="canvas-background canvas-background-fallback"></div>')
+    : hiddenStyles.has('frame')
+      ? '<div class="canvas-background canvas-background-fallback"></div>'
+      : '<div class="canvas-background" style="background-image:url(&quot;ui/b50.png&quot;)"></div>';
   const rainbowLayeredBackground = layeredBadgeCssBackground('rainbow');
   const goldLayeredBackground = layeredBadgeCssBackground('gold');
   const pageMarkerLabel = `第 ${pageIndex + 1} / ${pageCount} 页`;
   const gamePageMarker = pageCount > 1 ? `<div class="page-marker page-marker-game">${pageMarkerLabel}</div>` : '';
   const appPageMarker = pageCount > 1 ? `<div class="app-page-marker-row"><div class="page-marker app-page-marker">${pageMarkerLabel}</div></div>` : '';
-  const gameFooter = isAppStyle || !useCnFont ? '' : `<div class="image-footer" aria-label="图片署名">
-        <div>Designed by Yuri-YuzuChaN &amp; BlueDeer233. Data from ${escapeHtml(input.dataSource?.trim() || '')}.</div>
-        <div>Generated by rRanker</div>
-      </div>`;
   const normalTrophy = TROPHY_BADGE_THEMES.normal;
   const bronzeTrophy = TROPHY_BADGE_THEMES.bronze;
   const silverTrophy = TROPHY_BADGE_THEMES.silver;
@@ -391,15 +483,31 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     `--tag-text:${appRatingTheme.textColor}`,
     `--tag-star:${appRatingTheme.starColor}`,
   ].join(';');
-  const gameProfileMarkup = `<section class="profile-banner-game${hidePlate ? ' no-plate' : ''}" data-layout-content aria-label="玩家资料">
-        ${nameplate}
-        ${hideIcon ? '' : `<div class="avatar">${avatar}</div>`}
-        <div class="identity">
-          ${ratingMarkup}
-          <div class="player-name">${escapeHtml(name)}</div>
-          ${trophy}
-        </div>
+
+  // ---- game 样式头部（对齐 demo/原版贴图布局；素材与 HTML 同目录的 ui/ 相对路径）----
+  const courseRank = Number.isFinite(input.player.additionalRating) ? Math.max(0, Math.floor(input.player.additionalRating ?? 0)) : 0;
+  const daniNum = Math.max(0, Math.min(23, courseRank <= 10 ? courseRank : courseRank + 1));
+  const daniFile = `DaniPlate_${String(daniNum).padStart(2, '0')}`;
+  const dxRatingFile = `DXRating_${String(ratingFrameIndex(rating) + 1).padStart(2, '0')}`;
+  const trophyFile = GAME_TROPHY_FILE[normalizeTrophyTone(presentation?.trophyColor)] ?? 'Normal';
+  const gameHeadMarkup = `<section class="game-head" data-layout-content aria-label="玩家资料" style="height:${u(190)}px">
+        <img class="game-logo" alt="" style="left:${u(14)}px;top:${u(60)}px;width:${u(249)}px;height:${u(120)}px" src="ui/logo.png">
+        ${hidePlate ? '' : plateUrl
+          ? `<img class="game-plate" alt="" style="left:${u(300)}px;top:${u(60)}px;width:${u(800)}px;height:${u(130)}px" src="${escapeHtml(plateUrl)}">`
+          : `<div class="game-plate-fallback" style="left:${u(300)}px;top:${u(60)}px;width:${u(800)}px;height:${u(130)}px"></div>`}
+        ${hideIcon ? '' : iconUrl
+          ? `<img class="game-icon" alt="" style="left:${u(305)}px;top:${u(65)}px;width:${u(120)}px;height:${u(120)}px" src="${escapeHtml(iconUrl)}">`
+          : `<div class="game-icon-fallback" style="left:${u(305)}px;top:${u(65)}px;width:${u(120)}px;height:${u(120)}px">${escapeHtml(initial)}</div>`}
+        <img class="game-dxrating" alt="" style="left:${u(435)}px;top:${u(72)}px;width:${u(186)}px;height:${u(35)}px" src="ui/${dxRatingFile}.png">
+        ${digits.map((digit, index) => `<img class="game-digit" alt="" style="left:${u(520 + 15 * index)}px;top:${u(80)}px;width:${u(17)}px;height:${u(20)}px" src="ui/Drating_${digit}.png">`).join('')}
+        <img class="game-name-bg" alt="" style="left:${u(435)}px;top:${u(115)}px;width:${u(272)}px;height:${u(42)}px" src="ui/Name.png">
+        <img class="game-dani" alt="" style="left:${u(625)}px;top:${u(120)}px;width:${u(80)}px;height:${u(32)}px" src="ui/${daniFile}.png">
+        ${hideTrophy ? '' : `<img class="game-shougou" alt="" style="left:${u(435)}px;top:${u(160)}px;width:${u(270)}px;height:${u(27)}px" src="ui/Shougou_${trophyFile}.png">`}
+        <div class="game-player-name" style="left:${u(445)}px;top:${u(135)}px;font-size:${u(20)}px">${escapeHtml(name)}</div>
+        ${hideTrophy ? '' : `<div class="game-trophy-text" style="left:${u(570)}px;top:${u(172)}px;font-size:${u(14)}px">${escapeHtml(trophyName)}</div>`}
       </section>`;
+  const gameProfileMarkup = gameHeadMarkup;
+
   const appProfileMarkup = `<div class="profile-app" data-layout-content aria-label="玩家资料">
         <section class="profile-banner-app${hidePlate ? ' no-plate' : ''}" id="profile-banner">
           ${nameplate}
@@ -420,6 +528,41 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         ${appPageMarker}
       </div>`;
 
+  const gameFooter = isAppStyle || !useCnFont ? '' : `<div class="image-footer" aria-label="图片署名">
+        <div>Designed by Yuri-YuzuChaN &amp; BlueDeer233. Data from ${escapeHtml(input.dataSource?.trim() || '')}.</div>
+        <div>Generated by rRanker</div>
+      </div>`;
+
+  // ---- game 样式 CSS（对齐 demo：原版贴图布局，1400 基准坐标由 inline style 缩放）----
+  const gameCss = isAppStyle ? [] : [
+    '/* ---- game 样式 ---- */',
+    '.game-head{position:relative;z-index:1;width:100%}',
+    '.game-head img,.game-head div{position:absolute}',
+    '.game-plate-fallback{border:' + u(2) + 'px solid rgba(255,255,255,.8);background:linear-gradient(100deg,#9EB5D8 0%,#E8EDF6 38%,#F5D9B4 70%,#D99591 100%)}',
+    '.game-icon-fallback{display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:' + u(12) + 'px;background:linear-gradient(145deg,#F8FBFF,#C7D5EA);color:#52647F;font-weight:900;font-family:system-ui,sans-serif}',
+    '.game-player-name{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1}',
+    '.game-trophy-text{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1}',
+    '.game-card{position:absolute;z-index:1}',
+    '.game-card-bg{position:absolute;display:block}',
+    '.game-card img{display:block}',
+    '.game-id{white-space:nowrap;color:#fff;font-weight:700;font-family:system-ui,sans-serif;line-height:1;text-align:center;transform:translate(-50%,-50%)}',
+    '.game-title{position:absolute;white-space:nowrap;overflow:hidden;font-weight:700;font-family:system-ui,sans-serif;line-height:1.06}',
+    '.game-achievement{white-space:nowrap;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translateY(-50%)}',
+    '.game-dxscore{white-space:nowrap;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translate(-50%,-50%)}',
+    '.game-ds-rating{white-space:nowrap;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translateY(-50%)}',
+    '.game-section+.game-section{margin-top:' + u(30) + 'px}',
+    '.game-grid{position:relative}',
+    '.game-empty{display:flex;min-height:' + u(80) + 'px;align-items:center;justify-content:center;color:#697586;font-weight:700;font-family:system-ui,sans-serif}',
+    '[data-rating-style="game"] .scores-content{position:relative;left:auto;right:auto;top:auto;padding:' + u(16) + 'px 0 0}',
+    '[data-rating-style="game"] .section-divider{margin:0 0 ' + u(12) + 'px}',
+    ...(useCnFont ? [
+      '[data-rating-style="game"] .game-id,[data-rating-style="game"] .game-title,[data-rating-style="game"] .game-achievement,[data-rating-style="game"] .game-dxscore,[data-rating-style="game"] .game-ds-rating,[data-rating-style="game"] .game-player-name,[data-rating-style="game"] .game-trophy-text,[data-rating-style="game"] .game-icon-fallback,[data-rating-style="game"] .game-empty,[data-rating-style="game"] .section-divider,[data-rating-style="game"] .section-subtitle,[data-rating-style="game"] .page-marker,[data-rating-style="game"] .image-footer{font-family:MaiCN,"Noto Sans CJK SC",system-ui,sans-serif}',
+      '[data-rating-style="game"] .game-title{display:block;white-space:nowrap;overflow:hidden}',
+      '[data-rating-style="game"] .image-footer{margin-top:' + u(44) + 'px;text-align:center;color:rgba(60,70,90,.85);font-weight:600;font-size:' + u(13) + 'px;line-height:1.5;font-family:MaiCN,"Noto Sans CJK SC",system-ui,sans-serif}',
+      '[data-rating-style="game"] .image-footer>div{white-space:nowrap}',
+    ] : []),
+  ];
+
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -436,6 +579,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .canvas-background{position:absolute;top:-${backgroundBlur * 2}px;right:-${backgroundBlur * 2}px;bottom:-${backgroundBlur * 2}px;left:-${backgroundBlur * 2}px;inset:-${backgroundBlur * 2}px;background-position:center;background-size:cover;filter:blur(${backgroundBlur}px);transform:scale(1.08)}
     .canvas-background-fallback{top:0;right:0;bottom:0;left:0;inset:0;background:linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%);filter:none;transform:none}
     .canvas-tone{position:absolute;top:0;right:0;bottom:0;left:0;inset:0;background:rgba(238,242,248,.18)}
+    ${gameCss.join('\n    ')}
     .profile-banner-game{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset}px;width:${bannerWidth}px;height:${bannerHeight}px;border-radius:${radius}px;filter:drop-shadow(0 ${px(bannerWidth * 0.008)}px ${px(bannerWidth * 0.018)}px rgba(35,53,82,.22))}
     .profile-banner-game.no-plate{border:1px solid rgba(255,255,255,.78);background:rgba(240,244,250,.78)}
     .profile-banner-game .nameplate-image,.profile-banner-game .nameplate-fallback{position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:${radius}px}
@@ -512,13 +656,6 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .score-badge{display:inline-flex;min-width:${px(width * 0.02)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid ${normalStatus.border};border-radius:999px;background:${normalStatus.background};color:${normalStatus.text};font:900 ${px(width * 0.0075)}px/1 system-ui,sans-serif;text-align:center;white-space:nowrap}.score-badge.rate.tone-rainbow{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT};text-shadow:none}.score-badge.rate.tone-gold{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${goldLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT}}.score-badge.tone-gold{border-color:${goldStatus.border};background:${goldStatus.background};color:${goldStatus.text}}.score-badge.tone-green{border-color:${greenStatus.border};background:${greenStatus.background};color:${greenStatus.text}}.score-badge.tone-blue{border-color:${blueStatus.border};background:${blueStatus.background};color:${blueStatus.text}}.score-badge.tone-neutral{border-color:${neutralStatus.border};background:${neutralStatus.background};color:${neutralStatus.text};text-shadow:0 1px 1px rgba(31,41,55,.48)}
     .empty-section{grid-column:1/-1;display:flex;min-height:${px(width * 0.08)}px;align-items:center;justify-content:center;color:#697586;font:700 ${px(width * 0.012)}px/1.4 system-ui,sans-serif}
     .empty-scores{display:flex;min-height:${px(width * 0.15)}px;align-items:center;justify-content:center;border:1px dashed rgba(91,105,126,.45);border-radius:${px(width * 0.012)}px;background:rgba(255,255,255,.64);color:#697586;font:700 ${px(width * 0.013)}px/1.4 system-ui,sans-serif}
-    ${useCnFont ? `
-    /* game 样式专属：思源黑体 + 歌名单行压扁 + 两行灰黑署名（app 样式不受影响） */
-    [data-rating-style="game"] .song-title,[data-rating-style="game"] .achievement,[data-rating-style="game"] .song-rating,[data-rating-style="game"] .dx-score-value,[data-rating-style="game"] .song-id,[data-rating-style="game"] .chart-type,[data-rating-style="game"] .score-badge,[data-rating-style="game"] .rank,[data-rating-style="game"] .rating-arrow,[data-rating-style="game"] .section-divider,[data-rating-style="game"] .section-subtitle,[data-rating-style="game"] .empty-section,[data-rating-style="game"] .empty-scores,[data-rating-style="game"] .player-name,[data-rating-style="game"] .trophy,[data-rating-style="game"] .page-marker,[data-rating-style="game"] .image-footer{font-family:MaiCN,"Noto Sans CJK SC",system-ui,sans-serif}
-    [data-rating-style="game"] .song-title{display:block;white-space:nowrap;-webkit-line-clamp:unset;-webkit-box-orient:unset;overflow-wrap:normal}
-    [data-rating-style="game"] .image-footer{margin-top:${px(width * 0.03)}px;text-align:center;color:rgba(60,70,90,.85);font-weight:600;font-size:${px(width * 0.012)}px;line-height:1.5}
-    [data-rating-style="game"] .image-footer>div{white-space:nowrap}
-` : ''}
   </style>
 </head>
 <body>
@@ -533,7 +670,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     (() => {
       const OUTPUT_WIDTH = ${width};
       const MINIMUM_HEIGHT = ${minimumHeight};
-      ${useCnFont ? `const RATING_STYLE = ${JSON.stringify(ratingStyle)};` : ''}
+      ${useCnFont ? 'const RATING_STYLE = ' + JSON.stringify(ratingStyle) + ';' : ''}
       const APP_PROFILE_SCALE = ${Number((width / 1080).toFixed(6))};
       const APP_NAME_MAX_SIZE = ${appNameFontSize};
       const APP_NAME_MIN_SIZE = ${appNameMinimumFontSize};
@@ -725,7 +862,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
       // 立即执行一次（fallback 先压扁），字体就绪后再按真实宽度校正。
       const fitTitleSizes = () => {
         if (RATING_STYLE !== 'game') return;
-        document.querySelectorAll('.song-title').forEach((node) => {
+        document.querySelectorAll('.game-title').forEach((node) => {
           if (node.scrollWidth <= node.clientWidth) return;
           node.style.transformOrigin = 'left center';
           node.style.transform = 'scaleX(' + (node.clientWidth / node.scrollWidth).toFixed(4) + ')';

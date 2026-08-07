@@ -98,7 +98,13 @@ jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
 }));
 jest.mock('@/features/best-image/maimai-font-cache', () => ({
   prepareMaimaiFonts: jest.fn(async () => ({
-    directory: { uri: 'file:///fonts/' },
+    directory: { uri: 'file:///assets/' },
+    fullReady: Promise.resolve(),
+  })),
+}));
+jest.mock('@/features/best-image/maimai-ui-cache', () => ({
+  prepareMaimaiUi: jest.fn(async () => ({
+    directory: { uri: 'file:///assets/' },
     fullReady: Promise.resolve(),
   })),
 }));
@@ -135,7 +141,12 @@ describe('best image preview', () => {
     mockShowNotification.mockClear();
     const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     prepareMaimaiFonts.mockReset().mockImplementation(async () => ({
-      directory: { uri: 'file:///fonts/' },
+      directory: { uri: 'file:///assets/' },
+      fullReady: Promise.resolve(),
+    }));
+    const { prepareMaimaiUi } = jest.requireMock('@/features/best-image/maimai-ui-cache') as { prepareMaimaiUi: jest.Mock };
+    prepareMaimaiUi.mockReset().mockImplementation(async () => ({
+      directory: { uri: 'file:///assets/' },
       fullReady: Promise.resolve(),
     }));
   });
@@ -169,7 +180,7 @@ describe('best image preview', () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
     expect(screen.getByLabelText('游戏样式').props.accessibilityState).toMatchObject({ selected: true });
-    expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('class="rating rating-game"');
+    expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('class="game-head"');
 
     await fireEvent.press(screen.getByLabelText('应用样式'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
@@ -296,14 +307,14 @@ describe('best image preview', () => {
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
       expect(html).toContain('示例称号');
-      expect(html).toContain('class="trophy gold"');
+      expect(html).toContain('src="ui/Shougou_Gold.png"');
     });
 
     fireEvent.press(screen.getByLabelText('选择背景'));
     await waitFor(() => expect(screen.getByLabelText('示例背景，#9004')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('示例背景，#9004'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('https://assets2.lxns.net/maimai/frame/9004.png'));
+      .toContain('background-image:url(&quot;ui/b50.png&quot;)'));
   });
 
   it('filters trophy levels and supports random or disabled styles', async () => {
@@ -323,11 +334,7 @@ describe('best image preview', () => {
     await fireEvent.press(screen.getByLabelText('选择背景'));
     await waitFor(() => expect(screen.getByLabelText('随机背景')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('随机背景'));
-    await waitFor(() => {
-      expect(screen.getByText('随机 · 示例背景')).toBeTruthy();
-      expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-        .toContain('https://assets2.lxns.net/maimai/frame/9004.png');
-    });
+    await waitFor(() => expect(screen.getByText('随机 · 示例背景')).toBeTruthy());
 
     await fireEvent.press(screen.getByLabelText('选择姓名框'));
     await waitFor(() => expect(screen.getByLabelText('关闭姓名框')).toBeTruthy());
@@ -335,7 +342,7 @@ describe('best image preview', () => {
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
       expect(screen.getAllByText('已关闭')).toHaveLength(2);
-      expect(html).toContain('class="profile-banner-game no-plate"');
+      expect(html).not.toContain('class="game-plate');
       expect(html).not.toContain('https://assets2.lxns.net/maimai/plate/300101.png');
     });
   });
@@ -387,27 +394,27 @@ describe('best image preview', () => {
     }));
   });
 
-  it('waits for the remote font before enabling export', async () => {
+  it('waits for the remote assets before enabling export', async () => {
     const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     let finish!: () => void;
     prepareMaimaiFonts.mockImplementationOnce(async () => ({
-      directory: { uri: 'file:///fonts/' },
+      directory: { uri: 'file:///assets/' },
       fullReady: new Promise<void>((resolve) => { finish = resolve; }),
     }));
     const screen = await render(<BestImageScreen />);
-    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
-    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
-    expect(screen.getByText(/所需字体完成后可导出/u)).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true }));
+    expect(screen.getByText(/所需素材准备完成后可导出/u)).toBeTruthy();
 
     await act(async () => finish());
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
     expect(screen.getByText('导出到相册')).toBeTruthy();
   });
 
-  it('shows a retry action when the remote font fails to prepare', async () => {
+  it('shows a retry action when the remote assets fail to prepare', async () => {
     const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     prepareMaimaiFonts.mockImplementationOnce(async () => ({
-      directory: { uri: 'file:///fonts/' },
+      directory: { uri: 'file:///assets/' },
       fullReady: Promise.reject(new Error('字体准备失败：字体校验失败')),
     }));
     const screen = await render(<BestImageScreen />);

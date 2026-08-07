@@ -68,7 +68,7 @@ export function createMaimaiFontPreparer(
   const inFlightFonts = new Map<string, Promise<File>>();
 
   const directories = () => {
-    const directory = new Directory(Paths.document, 'rranker', 'maimai-fonts', MAIMAI_FONT_CACHE_VERSION);
+    const directory = new Directory(Paths.document, 'rranker', 'maimai-assets', MAIMAI_FONT_CACHE_VERSION);
     const fontDirectory = new Directory(directory, 'font');
     const temporaryDirectory = new Directory(directory, 'tmp');
     directory.create({ intermediates: true, idempotent: true });
@@ -153,8 +153,8 @@ export function createMaimaiFontPreparer(
 
 export const prepareMaimaiFonts = createMaimaiFontPreparer();
 
-/** 清除成绩图字体本地下载缓存（Documents/rranker/maimai-fonts）。 */
+/** 清除成绩图字体本地下载缓存（Documents/rranker/maimai-assets）。 */
 export function clearMaimaiFontCache(): void {
-  const root = new Directory(Paths.document, 'rranker', 'maimai-fonts');
+  const root = new Directory(Paths.document, 'rranker', 'maimai-assets');
   if (root.exists) root.delete();
 }
