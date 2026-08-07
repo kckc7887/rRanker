@@ -80,10 +80,14 @@ import {
   shouldUseBestImageRenderInContext,
 } from '@/features/best-image/best-image-export';
 import {
-  inlineBestImageWebViewSources,
-  prepareAndroidBestImageWebViewSources,
+  prepareBestImageWebViewSources,
   type BestImageWebViewSource,
 } from '@/features/best-image/prepare-best-image-webview-sources';
+import {
+  prepareMaimaiFonts,
+  type MaimaiFontProgress,
+} from '@/features/best-image/maimai-font-cache';
+import type { Directory } from 'expo-file-system';
 
 const IMAGE_TYPES: { id: BestImageType; label: string }[] = [
   { id: 'best50', label: 'Best50' },
@@ -130,6 +134,13 @@ const WEBVIEW_STATUS_LABELS: Record<BestImageWebViewPhase, string> = {
   error: '加载失败',
   crashed: '渲染进程崩溃',
   terminated: '渲染进程已终止',
+};
+
+const FONT_PROGRESS_LABELS: Record<MaimaiFontProgress['phase'], string> = {
+  checking: '正在检查导出字体',
+  downloading: '正在下载导出字体',
+  ready: '导出字体准备完成',
+  error: '导出字体准备失败',
 };
 
 function ChoiceChip({ label, selected, disabled = false, onPress, accessibilityLabel }: {
@@ -220,8 +231,13 @@ export function MaimaiBestImageScreen() {
   const [exportHeight, setExportHeight] = useState(minimumBestImageHeight(1080));
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [webViewStates, setWebViewStates] = useState<Record<string, BestImageWebViewState>>({});
-  const [androidWebViewSources, setAndroidWebViewSources] = useState<BestImageWebViewSource[] | null>(null);
+  const [webViewSources, setWebViewSources] = useState<BestImageWebViewSource[] | null>(null);
   const [webViewSourceError, setWebViewSourceError] = useState<string | null>(null);
+  const [fontAttempt, setFontAttempt] = useState(0);
+  const [fontDirectory, setFontDirectory] = useState<Directory | null>(null);
+  const [fontsReady, setFontsReady] = useState(false);
+  const [fontProgress, setFontProgress] = useState<MaimaiFontProgress>({ phase: 'checking', completed: 0, total: 1, currentFont: null });
+  const [fontError, setFontError] = useState<string | null>(null);
   const exportCaptureRef = useRef<View>(null);
   const exportReadyResolver = useRef<((height: number) => void) | null>(null);
   const exportReadyRejecter = useRef<((error: Error) => void) | null>(null);
@@ -244,6 +260,28 @@ export function MaimaiBestImageScreen() {
     );
     return () => { cancelled = true; };
   }, [frameSource]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFontError(null);
+    setFontsReady(false);
+    setWebViewSources(null);
+    void (async () => {
+      const prepared = await prepareMaimaiFonts((progress) => {
+        if (!cancelled) setFontProgress(progress);
+      });
+      if (!cancelled) setFontDirectory(prepared.directory);
+      const result = await prepared.fullReady.then(
+        () => ({ ok: true as const }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+      if (!result.ok) throw result.error;
+      if (!cancelled) setFontsReady(true);
+    })().catch((error) => {
+      if (!cancelled) setFontError(error instanceof Error ? error.message : '无法加载导出字体');
+    });
+    return () => { cancelled = true; };
+  }, [fontAttempt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -432,26 +470,25 @@ export function MaimaiBestImageScreen() {
     pageIndex: page.pageIndex,
     pageCount: page.pageCount,
     ...embeddedAssets,
-  })) : null, [coverUrls, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle]);
+    cnFontUrl: 'maimai-noto.ttf',
+    dataSource: player?.source?.label ?? '',
+  })) : null, [coverUrls, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, player?.source?.label]);
   const htmlPagesRef = useRef(htmlPages);
   htmlPagesRef.current = htmlPages;
   const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages]);
-  const inlineWebViewSources = useMemo(() => htmlPages ? inlineBestImageWebViewSources(htmlPages) : null, [htmlPages]);
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    setAndroidWebViewSources(null);
+    setWebViewSources(null);
     setWebViewSourceError(null);
     const currentHtmlPages = htmlPagesRef.current;
-    if (!currentHtmlPages) return;
+    if (!currentHtmlPages || !fontDirectory) return;
     try {
-      const prepared = prepareAndroidBestImageWebViewSources(currentHtmlPages);
-      setAndroidWebViewSources(prepared.sources);
+      const prepared = prepareBestImageWebViewSources(currentHtmlPages, fontDirectory);
+      setWebViewSources(prepared.sources);
       return prepared.dispose;
     } catch {
       setWebViewSourceError('WebView 本地页面准备失败');
     }
-  }, [coverUrls, embeddedAssets, htmlGenerationKey]);
-  const webViewSources = Platform.OS === 'android' ? androidWebViewSources : inlineWebViewSources;
+  }, [coverUrls, embeddedAssets, fontDirectory, htmlGenerationKey]);
   const screenWidth = window.width > 0 ? window.width : 390;
   const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
   const previewHeight = previewWidth * 4 / 3;
@@ -586,7 +623,7 @@ export function MaimaiBestImageScreen() {
   };
 
   const exportImages = async () => {
-    if (!htmlPages || !webViewSources || !formValid || exportBusy) return;
+    if (!htmlPages || !webViewSources || !fontsReady || !formValid || exportBusy) return;
     const captures: { uri: string; filename: string }[] = [];
     try {
       await requestBestImageExportPermission();
@@ -761,7 +798,7 @@ export function MaimaiBestImageScreen() {
           onMomentumScrollEnd={(event) => setCurrentPageIndex(Math.round(event.nativeEvent.contentOffset.x / previewWidth))}
           pagingEnabled
           renderItem={({ item: source, index }) => <View style={{ width: previewWidth, height: previewHeight }}>
-            <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']}
+            <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={fontDirectory?.uri} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']}
               onError={() => updateWebViewState(pages[index]!.id, 'error')}
               onLoadEnd={() => setWebViewStates((current) => {
                 const pageId = pages[index]!.id;
@@ -789,16 +826,32 @@ export function MaimaiBestImageScreen() {
           style={styles.previewPager}
           windowSize={3}
         /> : <View style={styles.loadingPreview}>
-          {assetError || webViewSourceError ? <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{assetError ?? webViewSourceError}</Text> : <View style={styles.loadingContent}>
+          {assetError || webViewSourceError || fontError ? <View style={styles.loadingContent}>
+            <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{assetError ?? webViewSourceError ?? fontError}</Text>
+            {fontError ? <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
+              <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
+            </Pressable> : null}
+          </View> : <View style={styles.loadingContent}>
             <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
-            <Text style={[styles.loadingText, { color: theme.textMuted }]}>{coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
+            <Text style={[styles.loadingText, { color: theme.textMuted }]}>{!fontDirectory ? `${FONT_PROGRESS_LABELS[fontProgress.phase]}${fontProgress.currentFont ? ` ${fontProgress.currentFont}` : ''}…` : coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
           </View>}
         </View>}
       </View>
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === currentPageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
-      <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!webViewSources || !formValid || exportBusy} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!webViewSources || !formValid || exportBusy) && styles.exportButtonDisabled]}>
+      {webViewSources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: fontError ? theme.danger : theme.border }]}>
+        {fontError ? <>
+          <Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{fontError}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
+            <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
+          </Pressable>
+        </> : <>
+          <ActivityIndicator color={theme.accent} size="small" />
+          <Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{FONT_PROGRESS_LABELS[fontProgress.phase]}{fontProgress.currentFont ? ` ${fontProgress.currentFont}` : ''}；所需字体完成后可导出</Text>
+        </>}
+      </View> : null}
+      <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!webViewSources || !fontsReady || !formValid || exportBusy} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!webViewSources || !fontsReady || !formValid || exportBusy) && styles.exportButtonDisabled]}>
         {exportBusy ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
-        <Text style={styles.exportButtonText}>{exportStatus ?? '导出到相册'}</Text>
+        <Text style={styles.exportButtonText}>{exportStatus ?? (fontsReady ? '导出到相册' : '所需字体准备完成后可导出')}</Text>
       </Pressable>
       <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="best-image-webview-status">{webViewStatusText}</Text>
     </ScrollView>
@@ -812,6 +865,8 @@ export function MaimaiBestImageScreen() {
             key={`export-${exportPageIndex}-${outputWidth}`}
             accessibilityLabel={`导出渲染 第${exportPageIndex + 1}页`}
             allowFileAccess={Platform.OS === 'android'}
+            allowFileAccessFromFileURLs
+            allowingReadAccessToURL={fontDirectory?.uri}
             androidLayerType="software"
             bounces={false}
             javaScriptEnabled
@@ -870,6 +925,10 @@ const styles = StyleSheet.create({
   loadingContent: { alignItems: 'center', gap: 10 },
   loadingText: { fontSize: 12, fontWeight: '600' },
   assetError: { fontSize: 14, fontWeight: '700' },
+  retryButton: { minHeight: 34, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 999, borderWidth: 1 },
+  retryButtonText: { fontSize: 13, fontWeight: '700' },
+  fontStatus: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
+  fontStatusText: { fontSize: 12, fontWeight: '600' },
   pageDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   pageDot: { width: 6, height: 6, borderRadius: 3 },
   exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14 },
