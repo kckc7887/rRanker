@@ -65,7 +65,7 @@ describe('best image html', () => {
       player: { displayName: '玩家' },
     });
     expect(html).toContain('<div class="page-marker page-marker-game">第 2 / 3 页</div>');
-    expect(html).toContain('<span class="rank">#251</span>');
+    expect(html).toContain('aria-label="第 251 名 示例歌曲"');
     expect(html).toContain("type: 'best-image-ready'");
     expect(html).toContain("type: 'best-image-runtime'");
     expect(html).toContain('window.navigator.userAgent');
@@ -87,17 +87,24 @@ describe('best image html', () => {
     expect(ratingFrameIndex(16000)).toBe(10);
   });
 
-  it('keeps the existing game frame as the default rating style', () => {
+  it('renders the game head with the ui asset atlas as the default style', () => {
     const html = buildBestImageHtml({
       type: 'custom', width: 1080, rating: 500,
       scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
     });
-    expect(html).toContain('class="rating rating-game"');
-    expect(html).toContain('<span>0</span><span>0</span><span>5</span><span>0</span><span>0</span>');
-    expect(html).toContain('class="rating-frame"');
-    expect(html).toContain('class="profile-banner-game"');
+    expect(html).toContain('data-rating-style="game"');
+    expect(html).toContain('class="game-head"');
+    expect(html).toContain('src="ui/logo.png"');
+    expect(html).toContain('src="ui/DXRating_01.png"');
+    expect(html).toContain('src="ui/Drating_0.png"');
+    expect(html).toContain('src="ui/Drating_5.png"');
+    expect(html).toContain('src="ui/Name.png"');
+    expect(html).toContain('src="ui/DaniPlate_00.png"');
+    expect(html).toContain('class="game-player-name"');
+    expect(html).toContain('background-image:url(&quot;ui/b50.png&quot;)');
     expect(html).not.toContain('class="profile-app"');
+    expect(html).not.toContain('class="rating rating-game"');
   });
 
   it('renders the full-width app profile with adaptive identity, stars and fixed glass settings', () => {
@@ -199,7 +206,7 @@ describe('best image html', () => {
     dom.window.close();
   });
 
-  it('renders escaped player data and verified LXNS asset paths', () => {
+  it('renders escaped player data, the ui asset atlas and verified LXNS asset paths', () => {
     const html = buildBestImageHtml({
       type: 'best50', width: 1080, rating: 15001,
       scoreSections: [
@@ -221,83 +228,48 @@ describe('best image html', () => {
     });
     expect(html).toContain('width=1080');
     expect(html).toContain('min-height:1440px');
-    expect(html).toContain('width:540px;height:87px');
     expect(html).toContain('Math.min(viewportWidth / OUTPUT_WIDTH, viewportHeight / logicalHeight)');
     expect(html).toContain("type: 'best-image-height'");
     expect(html).toContain('&lt;测试玩家&gt;');
     expect(html).toContain('https://assets2.lxns.net/maimai/icon/200201.png');
     expect(html).toContain('https://assets2.lxns.net/maimai/plate/300101.png');
-    expect(html).toContain('https://assets2.lxns.net/maimai/frame/350101.png');
     expect(html).toContain('class="canvas-background"');
+    expect(html).toContain('background-image:url(&quot;ui/b50.png&quot;)');
     expect(html).toContain('background-size:cover;filter:blur(22px)');
     expect(html).toContain('data-layout-content');
     expect(html).toContain("filter((child) => child.hasAttribute('data-layout-content'))");
     expect(html).not.toContain('const children = Array.from(canvas.children)');
-    expect(html).toContain('class="nameplate-image"');
-    expect(html).toContain('object-fit:contain');
+    expect(html).toContain('src="ui/logo.png"');
+    expect(html).toContain('src="ui/DXRating_11.png"');
+    expect(html).toContain('src="ui/Drating_1.png"');
+    expect(html).toContain('src="ui/Drating_5.png"');
+    expect(html).toContain('src="ui/Shougou_Rainbow.png"');
     expect(html).toContain('data:font/ttf;base64,Zm9udA==');
-    expect(html).toContain('data:image/png;base64,aW1hZ2U=');
-    expect(html).toContain('.rating{position:relative}');
-    expect(html).toContain('.rating-game{width:113px;height:26px;flex:0 0 26px}');
-    expect(html).toContain('font-weight:900;line-height:1;color:#FFD83D');
-    expect(html).toContain('-webkit-text-stroke:1px #090909');
-    expect(html).toContain('.player-name{display:inline-flex;width:fit-content;max-width:100%');
-    expect(html).toContain('align-items:center;overflow:hidden;padding:0');
-    expect(html).toContain('.trophy{display:flex;width:fit-content;max-width:100%');
-    expect(html).toContain('border-radius:999px');
-    expect(html).toContain('font:400 9px/1 system-ui');
-    expect(html).not.toContain('class="profile-glass"');
-    expect(html).toContain('class="trophy rainbow"');
-    expect(html).toContain('.trophy.rainbow{border-color:transparent;background:linear-gradient(rgba(75,78,85,0.16),rgba(75,78,85,0.16)) padding-box');
-    expect(html).toContain('linear-gradient(90deg,#FF9CA8,#FFC07E,#EADB72,#88CF96,#79BFDB,#9199DC,#C28BD4) padding-box');
-    expect(html).toContain('linear-gradient(90deg,#8E2437,#984D19,#796515,#256B39,#205E7A,#384181,#692C7C) border-box;color:#303136');
-    expect(html).not.toContain('#ffc888');
-    expect(html).toContain('<span>1</span><span>5</span><span>0</span><span>0</span><span>1</span>');
-    expect(html).toContain('grid-template-columns:repeat(5,minmax(0,1fr))');
     expect(html).toContain('过往版本 Best35');
     expect(html).toContain('当前版本 Best15');
     expect(html).toContain('data:image/png;base64,Y2FjaGVkLWphY2tldA==');
     expect(html).toContain('https://assets2.lxns.net/maimai/jacket/11448.png');
-    expect(html).toContain('ID11447');
+    expect(html).toContain('class="game-id"');
+    expect(html).toContain('11447');
     expect(html).toContain('100.0000%');
-    expect(html).toContain('<span class="song-rating"><span>13.8</span><span class="rating-arrow">→</span><strong>298</strong></span>');
-    expect(html).toContain('class="chart-type type-dx"><span>DX</span></span>');
-    expect(html).toContain('class="chart-type type-sd"><span>SD</span></span>');
-    expect(html).toContain('.chart-type{position:absolute;z-index:2;right:0;top:0;');
-    expect(html).toContain('align-items:center;justify-content:center;overflow:hidden');
-    expect(html).toContain('font:900 7px/1 system-ui');
-    expect(html).toContain('.chart-type>span{display:flex;width:100%;height:100%;align-items:center;justify-content:center;line-height:1}');
-    expect(html).toContain('.chart-type.type-sd{border-color:#3286E6;background-color:#3286E6;color:#FFFFFF}');
-    expect(html).toContain('.chart-type.type-dx>span{color:#FF8A00;background:linear-gradient(90deg,#FF8A00,#FFD84A)');
-    expect(html).toContain('background:linear-gradient(90deg,#FF8A00,#FFD84A);background-clip:text');
-    expect(html).not.toContain('align-self:flex-end;align-items:center;justify-content:center;margin-top:auto');
-    expect(html).not.toContain('class="dx-score-label"');
-    expect(html).not.toContain('class="dx-score-row"');
-    expect(html).toContain('aria-label="DXScore 实际 1836，理论 2070"');
-    expect(html).toContain('<span class="dx-score-actual">1836</span><span class="dx-score-slash">/</span><span class="dx-score-maximum">2070</span>');
-    expect(html).toContain('score-badge rate tone-rainbow">SSS');
-    expect(html).toContain('<span class="achievement-with-rate"><strong class="achievement">100.0000%</strong><span class="score-badge rate tone-rainbow">SSS</span></span><span class="rank">#1</span>');
-    expect(html).toContain('.score-badge.rate.tone-rainbow{border:2px solid transparent;background:linear-gradient(rgba(75,78,85,0.16),rgba(75,78,85,0.16)) padding-box');
-    expect(html).toContain('score-badge fc tone-green">FC+');
-    expect(html).toContain('score-badge fs tone-gold">FDX');
-    expect(html).toContain('.score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;flex-direction:column;');
-    expect(html).not.toContain('display:flex;min-width:0;min-height:161px;flex-direction:column');
-    expect(html).toContain('.score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:0;padding-top:4px}');
-    expect(html).not.toContain('.score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-end;margin-top:auto');
-    expect(html).toContain('.rank{margin-left:auto;flex:0 0 auto');
-    expect(html).toContain('font:900 8px/1 system-ui');
-    expect(html).toContain('border-color:#78D29B;background:#78D29B;color:#174C2E');
-    expect(html).toContain('border-color:#78B4DC;background:#78B4DC;color:#173F5F');
-    expect(html).toContain('class="score-card difficulty-solid" style="--difficulty-color:#7137C8;--card-background:#7137C8"');
-    expect(html).toContain('.jacket-shell{position:relative;');
-    expect(html).toContain('solid #FFFFFF');
-    expect(html).toContain('.score-card-head{display:flex;min-width:0;height:63px;align-items:stretch');
-    expect(html).toContain('.song-copy{position:relative;display:flex;min-width:0;height:100%;min-height:0;');
-    expect(html).toContain('-webkit-box-orient:vertical;-webkit-line-clamp:3;white-space:normal');
+    expect(html).toContain('class="game-ds-rating"');
+    expect(html).toContain('13.8 -> 298');    expect(html).toContain('class="game-dxscore"');
+    expect(html).toContain('1836/2070');
+    expect(html).toContain('src="ui/DX.png"');
+    expect(html).toContain('src="ui/SD.png"');
+    expect(html).toContain('src="ui/Rank_SSS.png"');
+    expect(html).toContain('src="ui/Icon_FCp.png"');
+    expect(html).toContain('src="ui/Icon_FSD.png"');
+    expect(html).toContain('src="ui/Star_03.png"');
+    expect(html).toContain('src="ui/b50_score_master.png"');
+    expect(html).toContain('class="game-card"');
     expect(html).toContain('aria-label="第 1 名 示例歌曲"');
     expect(html).toContain('&lt;另一首歌&gt;');
     expect(html).not.toContain('<测试玩家>');
     expect(html).not.toContain('<另一首歌>');
+    expect(html).not.toContain('ID11447');
+    expect(html).not.toContain('class="rating rating-game"');
+    expect(html).not.toContain('class="profile-glass"');
   });
 
   it('renders custom scores with their generated BestN divider', () => {
@@ -310,8 +282,8 @@ describe('best image html', () => {
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('ID11447');
     expect(html).toContain('<div class="section-divider"><span>自定义成绩</span></div>');
+    expect(html).toContain('class="game-card"');
   });
 
   it('renders the filter condition subtitle under multi-condition custom titles', () => {
@@ -336,7 +308,7 @@ describe('best image html', () => {
 
   it('orders evaluation, near miss, FC and FS badges using the app status colors', () => {
     const html = buildBestImageHtml({
-      type: 'custom', width: 1080, rating: 0,
+      type: 'custom', width: 1080, rating: 0, ratingStyle: 'app',
       scoreSections: [{
         id: 'custom', title: '自定义成绩',
         records: [{ ...score, achievements: 99.9999, rate: 'ss', fc: 'ap', fs: 'fs' }],
@@ -371,15 +343,15 @@ describe('best image html', () => {
       fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('aria-label="DXScore 实际 —，理论 2070"');
-    expect(html).toContain('<span class="dx-score-actual">—</span><span class="dx-score-slash">/</span><span class="dx-score-maximum">2070</span>');
-    expect(html).toContain('aria-label="DXScore 实际 1836，理论 —"');
-    expect(html).toContain('<span class="dx-score-actual">1836</span><span class="dx-score-slash">/</span><span class="dx-score-maximum">—</span>');
+    expect(html).toContain('class="game-dxscore"');
+    expect(html).toContain('—/2070');
+    expect(html).toContain('1836/—');
+    expect(html).not.toContain('aria-label="DXScore');
   });
 
   it('keeps one-line and three-line song titles inside the fixed jacket-height header', () => {
     const html = buildBestImageHtml({
-      type: 'custom', width: 1080, rating: 0,
+      type: 'custom', width: 1080, rating: 0, ratingStyle: 'app',
       scoreSections: [{ id: 'custom', title: '自定义成绩', records: [
         score,
         { ...score, songId: '2', title: '这是一个需要完整使用三行空间但不能把下方分隔线挤出去的超长歌曲标题' },
@@ -394,7 +366,7 @@ describe('best image html', () => {
     expect(html).not.toContain('.chart-type{display:inline-flex;align-self:flex-end');
   });
 
-  it('uses a light purple card and purple jacket frame for Re:MASTER', () => {
+  it('uses the ui difficulty card background for Re:MASTER in the game style', () => {
     const html = buildBestImageHtml({
       type: 'custom', width: 1080, rating: 0,
       scoreSections: [{
@@ -404,9 +376,8 @@ describe('best image html', () => {
       fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('class="score-card difficulty-remaster" style="--difficulty-color:#A65DB9;--card-background:#F3E8FE"');
-    expect(html).toContain('.score-card.difficulty-remaster .jacket-shell{border-color:var(--difficulty-color)');
-    expect(html).toContain('--card-foreground:#5F2C78');
+    expect(html).toContain('src="ui/b50_score_remaster.png"');
+    expect(html).toContain('class="game-card"');
   });
 
   it('can disable player presentation parts without falling back to account assets', () => {
@@ -419,11 +390,14 @@ describe('best image html', () => {
         presentation: { iconId: 1, namePlateId: 2, frameId: 3, trophyName: '称号' },
       },
     });
-    expect(html).toContain('class="profile-banner-game no-plate"');
+    expect(html).toContain('class="game-head"');
+    expect(html).not.toContain('class="game-plate');
     expect(html).not.toContain('/icon/1.png');
     expect(html).not.toContain('/plate/2.png');
     expect(html).not.toContain('/frame/3.png');
+    expect(html).not.toContain('Shougou_');
     expect(html).not.toContain('>称号</div>');
+    expect(html).toContain('canvas-background-fallback');
   });
 
   it('collapses disabled app presentation parts and keeps page markers below the profile', () => {
@@ -457,7 +431,7 @@ describe('best image html', () => {
       player: { displayName: '玩家' },
     });
     expect(html).not.toContain('https://assets2.lxns.net/maimai/jacket/11447.png');
-    expect(html).toContain('<span class="jacket-fallback">♪</span>');
+    expect(html).not.toContain('class="game-cover"');
   });
 
   it('injects the Noto Sans font, single-line squeezed titles and the footer only for the game style', () => {
@@ -470,9 +444,7 @@ describe('best image html', () => {
     });
     expect(game).toContain('data-rating-style="game"');
     expect(game).toContain('@font-face{font-family:MaiCN;src:url("maimai-noto.ttf") format("truetype");font-weight:100 900;font-display:block}');
-    expect(game).toContain('[data-rating-style="game"] .song-title,[data-rating-style="game"] .achievement');
     expect(game).toContain('font-family:MaiCN,"Noto Sans CJK SC",system-ui,sans-serif');
-    expect(game).toContain('[data-rating-style="game"] .song-title{display:block;white-space:nowrap');
     expect(game).toContain("const fitTitleSizes = () => {");
     expect(game).toContain("if (RATING_STYLE !== 'game') return;");
     expect(game).toContain("node.style.transform = 'scaleX('");

@@ -180,6 +180,6 @@ describe('maimai remote font cache', () => {
 
   it('clears the local font cache directory', () => {
     clearMaimaiFontCache();
-    expect(mockFontFs.deletes.some((uri) => uri.endsWith('/rranker/maimai-fonts'))).toBe(true);
+    expect(mockFontFs.deletes.some((uri) => uri.endsWith('/rranker/maimai-assets'))).toBe(true);
   });
 });
