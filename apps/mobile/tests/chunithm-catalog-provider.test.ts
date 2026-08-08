@@ -332,10 +332,9 @@ describe('ChunithmCatalogProvider', () => {
       difficulties: [0, 1, 2, 3],
       rank: 's',
       songs: [
-        { id: 100, title: '曲A', completed: true, completedDifficulties: [0, 1] },
-        { id: 200, title: '曲B', completed: undefined },
+        { id: 100, title: '曲A' },
+        { id: 200, title: '曲B' },
       ],
-      completed: false,
     });
     expect(snapshot.source).toMatchObject({ kind: 'lxns', label: 'LXNS 中二收藏品列表' });
   });
@@ -357,7 +356,7 @@ describe('ChunithmCatalogProvider', () => {
           id: 2,
           name: '多条件称号',
           required: [
-            { difficulties: [3], songs: [{ id: 7, title: '曲C' }], completed: true },
+            { difficulties: [3], songs: [{ id: 7, title: '曲C' }] },
             { difficulties: [], songs: [] },
           ],
         },
@@ -368,7 +367,6 @@ describe('ChunithmCatalogProvider', () => {
       {
         difficulties: [3],
         songs: [{ id: 7, title: '曲C' }],
-        completed: true,
       },
       { difficulties: [], songs: [] },
     ]);

@@ -15,9 +15,14 @@ const source = {
   isStale: false,
 };
 
-let mockSessionMode: string | null = null;
 let mockCollectionsData: { items: unknown[]; source: typeof source } | undefined;
-let mockProgressData: unknown;
+let mockGameData: {
+  data?: { payload: { kind: 'chunithm'; scores: unknown[]; source: { label: string; updatedAt: string; isStale: boolean } } };
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  refetch: ReturnType<typeof jest.fn>;
+};
 
 jest.mock('@/hooks/use-chunithm-collections', () => ({
   useChunithmCollections: () => ({
@@ -27,25 +32,28 @@ jest.mock('@/hooks/use-chunithm-collections', () => ({
     error: null,
     refetch: jest.fn(),
   }),
-  useChunithmCollectionProgress: () => ({
-    data: mockProgressData,
-    isLoading: false,
-    isError: false,
-    error: null,
-  }),
 }));
 
-jest.mock('@/state/session-store', () => ({
-  useSession: (selector: (state: { session: { mode: string } | null }) => unknown) => selector({
-    session: mockSessionMode === 'lxns-oauth' ? { mode: 'lxns-oauth' } : null,
-  }),
+jest.mock('@/hooks/use-game-data', () => ({
+  useGameData: () => mockGameData,
 }));
 
 describe('chunithm tool screens', () => {
   beforeEach(() => {
-    mockSessionMode = null;
     mockCollectionsData = undefined;
-    mockProgressData = undefined;
+    mockGameData = {
+      data: {
+        payload: {
+          kind: 'chunithm',
+          scores: [],
+          source: { label: '落雪咖啡屋', updatedAt: '2026-08-08T00:00:00.000Z', isStale: false },
+        },
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: jest.fn(),
+    };
     jest.clearAllMocks();
   });
 
@@ -90,24 +98,11 @@ describe('chunithm tool screens', () => {
     expect(getByText('请选择')).toBeTruthy();
   });
 
-  it('shows the login hint without a bound Lxns account', async () => {
-    mockCollectionsData = { items: [], source };
-    const { getByText } = await render(<ChunithmCollectionsToolScreen />);
-    expect(getByText(/未绑定落雪账号/)).toBeTruthy();
-  });
-
-  it('shows the connected hint with a bound Lxns account', async () => {
-    mockCollectionsData = { items: [], source };
-    mockSessionMode = 'lxns-oauth';
-    const { getByText } = await render(<ChunithmCollectionsToolScreen />);
-    expect(getByText(/已连接落雪账号/)).toBeTruthy();
-  });
-
   it('opens the picker and searches collection items by name', async () => {
     mockCollectionsData = {
       items: [
-        { id: 0, name: 'NEW COMER' },
-        { id: 866, name: 'LUNA ROUND' },
+        { id: 0, name: 'NEW COMER', required: [{ difficulties: [0], songs: [{ id: 1, title: '曲1' }] }] },
+        { id: 866, name: 'LUNA ROUND', required: [{ difficulties: [3], songs: [{ id: 100, title: '曲A' }] }] },
       ],
       source,
     };
@@ -121,41 +116,90 @@ describe('chunithm tool screens', () => {
     expect(getByTestId('chunithm-collection-picker-list')).toBeTruthy();
   });
 
-  it('renders selected collection progress detail', async () => {
+  it('filters out collections without computable conditions', async () => {
+    mockCollectionsData = {
+      items: [
+        { id: 0, name: 'NEW COMER', color: 'normal' },
+        {
+          id: 866,
+          name: 'LUNA ROUND',
+          required: [{ difficulties: [3], rank: 's', songs: [{ id: 100, title: '曲A' }] }],
+        },
+      ],
+      source,
+    };
+    const { getByText, queryByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('选择收藏品'));
+    expect(queryByText('NEW COMER')).toBeNull();
+    expect(getByText('LUNA ROUND')).toBeTruthy();
+  });
+
+  it('renders selected collection progress from the local score snapshot', async () => {
     mockCollectionsData = {
       items: [
         {
           id: 866,
           name: 'LUNA ROUND',
-          required: [{
-            difficulties: [3],
-            rank: 's',
-            songs: [{ id: 100, title: '曲A', completed: true }],
-            completed: false,
-          }],
+          required: [{ difficulties: [3], rank: 's', songs: [{ id: 100, title: '曲A' }] }],
         },
       ],
       source,
     };
-    mockProgressData = {
-      collection: {
-        id: 866,
-        name: 'LUNA ROUND',
-        required: [{
-          difficulties: [3],
-          rank: 's',
-          songs: [{ id: 100, title: '曲A', completed: true }],
-          completed: true,
-        }],
+    mockGameData = {
+      data: {
+        payload: {
+          kind: 'chunithm',
+          scores: [
+            { id: 100, level_index: 3, score: 1_009_000, rank: 'sssp', clear: 'clear' },
+          ],
+          source: { label: '落雪咖啡屋', updatedAt: '2026-08-08T00:00:00.000Z', isStale: false },
+        },
       },
-      source,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: jest.fn(),
     };
     const { getByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
     await fireEvent.press(getByLabelText('选择收藏品'));
     await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
     expect(getByText('100.0%')).toBeTruthy();
-    expect(getByText('条件组 1/1')).toBeTruthy();
-    expect(getByText('已完成')).toBeTruthy();
-    expect(getByText('曲A')).toBeTruthy();
+    expect(getByText('1 / 1')).toBeTruthy();
+    expect(getByText('全部完成')).toBeTruthy();
+  });
+
+  it('lists missing songs when the snapshot does not meet the requirements', async () => {
+    mockCollectionsData = {
+      items: [
+        {
+          id: 866,
+          name: 'LUNA ROUND',
+          required: [{ difficulties: [3], rank: 'sss', songs: [{ id: 100, title: '曲A' }] }],
+        },
+      ],
+      source,
+    };
+    mockGameData = {
+      data: {
+        payload: {
+          kind: 'chunithm',
+          scores: [
+            { id: 100, level_index: 3, score: 990_000, rank: 's', clear: 'clear' },
+          ],
+          source: { label: '落雪咖啡屋', updatedAt: '2026-08-08T00:00:00.000Z', isStale: false },
+        },
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: jest.fn(),
+    };
+    const { getByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('选择收藏品'));
+    await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
+    expect(getByText('0.0%')).toBeTruthy();
+    expect(getByText(/缺失曲目/)).toBeTruthy();
+    expect(getByText('#100')).toBeTruthy();
+    expect(getByText('MASTER')).toBeTruthy();
   });
 });

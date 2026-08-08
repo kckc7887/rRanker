@@ -5,20 +5,16 @@ import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import {
+  calculateChunithmCollectionProgress,
   CHUNITHM_COLLECTION_KIND_LABELS,
   CHUNITHM_COLLECTION_KINDS,
   isChunithmCollectionComputable,
-  summarizeChunithmCollectionProgress,
   type ChunithmCollection,
   type ChunithmCollectionKind,
-  type ChunithmCollectionRequired,
-  type ChunithmCollectionRequiredSong,
 } from '@/domain/chunithm-collections';
-import { useChunithmCollectionProgress, useChunithmCollections } from '@/hooks/use-chunithm-collections';
-import { useSession } from '@/state/session-store';
+import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
+import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
-
-const DIFFICULTY_LABELS = ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'ULTIMA', "WORLD'S END"] as const;
 
 function Chevron({ expanded }: { expanded: boolean }) {
   const theme = useAppTheme();
@@ -29,24 +25,10 @@ function progressPercent(completed: number, total: number): number {
   return total ? Math.min(100, (completed / total) * 100) : 0;
 }
 
-type CollectionSongRow = {
-  key: string;
-  song: ChunithmCollectionRequiredSong;
-  group: ChunithmCollectionRequired;
-  groupIndex: number;
-};
-
-function collectionSongRows(collection: ChunithmCollection): CollectionSongRow[] {
-  return (collection.required ?? []).flatMap((group, groupIndex) => (
-    group.songs.map((song) => ({ key: `${groupIndex}:${song.id}`, song, group, groupIndex }))
-  ));
-}
-
-function CollectionProgressCard({ collection }: { collection: ChunithmCollection }) {
+function CollectionProgressCard({ collection, scores }: { collection: ChunithmCollection; scores: unknown[] }) {
   const theme = useAppTheme();
-  const summary = summarizeChunithmCollectionProgress(collection.required);
-  const percent = progressPercent(summary.completedSongs, summary.songRequirements);
-  const computable = isChunithmCollectionComputable(collection);
+  const progress = calculateChunithmCollectionProgress(collection, scores as Parameters<typeof calculateChunithmCollectionProgress>[1]);
+  const percent = progressPercent(progress.completed, progress.total);
 
   return (
     <Card style={styles.progressCard}>
@@ -60,13 +42,9 @@ function CollectionProgressCard({ collection }: { collection: ChunithmCollection
         <View style={[styles.barFill, { width: `${percent}%`, backgroundColor: theme.accent }]} />
       </View>
       <View style={styles.progressMetaRow}>
-        <Text style={[styles.progressMeta, { color: theme.textSecondary }]}>
-          {computable
-            ? `条件组 ${summary.completedGroups}/${summary.groups}`
-            : '无可计算条件'}
-        </Text>
+        <Text style={[styles.progressMeta, { color: theme.textSecondary }]}>本地成绩计算</Text>
         <Text style={[styles.progressCount, { color: theme.textSecondary }]}>
-          {summary.completedSongs} / {summary.songRequirements}
+          {progress.completed} / {progress.total}
         </Text>
       </View>
       {collection.description ? (
@@ -81,39 +59,39 @@ function CollectionProgressCard({ collection }: { collection: ChunithmCollection
   );
 }
 
+const DIFFICULTY_LABELS = ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'ULTIMA', "WORLD'S END"] as const;
+
 export default function ChunithmCollectionsToolScreen() {
   const theme = useAppTheme();
-  const session = useSession((state) => state.session);
   const [kind, setKind] = useState<ChunithmCollectionKind>('trophy');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
   const { data, isLoading, isError, error, refetch } = useChunithmCollections(kind);
+  const gameData = useGameData();
+  const scores = useMemo(
+    () => (gameData.data?.payload.kind === 'chunithm' ? gameData.data.payload.scores : []),
+    [gameData.data],
+  );
 
   const items = useMemo(() => {
     if (!data) return [];
+    const computable = data.items.filter(isChunithmCollectionComputable);
     const q = query.trim().toLowerCase();
-    if (!q) return data.items;
-    return data.items.filter((item) => (
+    if (!q) return computable;
+    return computable.filter((item) => (
       item.name.toLowerCase().includes(q)
       || (item.description ?? '').toLowerCase().includes(q)
     ));
   }, [data, query]);
 
   const selected = data?.items.find((item) => item.id === selectedId) ?? null;
-  const progressQuery = useChunithmCollectionProgress(kind, selectedId);
-  const progressCollection = progressQuery.data?.collection.required
-    ? progressQuery.data.collection
-    : selected;
-  const rows = useMemo(
-    () => (selected ? collectionSongRows(selected) : []),
-    [selected],
+  const selectedComputable = selected ? isChunithmCollectionComputable(selected) : false;
+  const progress = useMemo(
+    () => (selected && selectedComputable ? calculateChunithmCollectionProgress(selected, scores) : null),
+    [selected, selectedComputable, scores],
   );
-  const liveRows = useMemo(
-    () => (progressCollection ? collectionSongRows(progressCollection) : []),
-    [progressCollection],
-  );
-  const needsLogin = session?.mode !== 'lxns-oauth';
+  const missingRows = progress?.missingSongs ?? [];
 
   const pickItem = (item: ChunithmCollection) => {
     setSelectedId(item.id);
@@ -147,6 +125,18 @@ export default function ChunithmCollectionsToolScreen() {
                   label: snapshot.source.label,
                   updatedAt: snapshot.source.updatedAt,
                   state: snapshot.source.isStale ? 'cache' : 'live',
+                },
+                {
+                  key: 'scores',
+                  label: gameData.data?.payload.kind === 'chunithm'
+                    ? gameData.data.payload.source.label
+                    : '成绩不可用',
+                  updatedAt: gameData.data?.payload.kind === 'chunithm'
+                    ? gameData.data.payload.source.updatedAt
+                    : undefined,
+                  state: gameData.data?.payload.kind === 'chunithm'
+                    ? (gameData.data.payload.source.isStale ? 'cache' : 'live')
+                    : 'unavailable',
                 },
               ]} />
 
@@ -209,6 +199,11 @@ export default function ChunithmCollectionsToolScreen() {
                       style={styles.pickerList}
                       testID="chunithm-collection-picker-list"
                       keyboardShouldPersistTaps="handled"
+                      ListEmptyComponent={(
+                        <Text style={[styles.pickerEmpty, { color: theme.textMuted }]}>
+                          {query.trim() ? '没有匹配的收藏品' : '该类暂无有条件的收藏品'}
+                        </Text>
+                      )}
                       renderItem={({ item }) => (
                         <Pressable
                           accessibilityRole="button"
@@ -225,9 +220,6 @@ export default function ChunithmCollectionsToolScreen() {
                           <Text style={[styles.pickerItemName, { color: theme.text }]} numberOfLines={1}>
                             {item.name || `#${item.id}`}
                           </Text>
-                          {isChunithmCollectionComputable(item) ? (
-                            <Text style={[styles.computable, { color: theme.accent }]}>有条件</Text>
-                          ) : null}
                         </Pressable>
                       )}
                     />
@@ -235,35 +227,27 @@ export default function ChunithmCollectionsToolScreen() {
                 ) : null}
               </Card>
 
-              {selected ? <CollectionProgressCard collection={progressCollection ?? selected} /> : null}
-
-              <Text style={[styles.hint, { color: theme.textMuted }]}>
-                {needsLogin
-                  ? '未绑定落雪账号：可浏览列表，绑定后选择收藏品查看逐件达成进度。'
-                  : progressQuery.isLoading
-                    ? '正在读取达成进度…'
-                    : progressQuery.isError
-                      ? '无法读取进度，请稍后重试。'
-                      : '已连接落雪账号：选择收藏品可查看达成条件与完成状态。'}
-              </Text>
+              {selected ? (
+                <CollectionProgressCard collection={selected} scores={scores} />
+              ) : null}
 
               {selected ? (
                 <Text style={[styles.heading, { color: theme.text }]}>
-                  曲目要求
-                  {liveRows.length ? ` · ${liveRows.length}` : ''}
+                  缺失曲目
+                  {progress?.missingSongs.length ? ` · ${progress.missingSongs.length}` : ''}
                 </Text>
               ) : null}
             </View>
 
             <FlatList
-              data={liveRows}
-              keyExtractor={(item) => item.key}
+              data={missingRows}
+              keyExtractor={(item) => item.songId}
               contentContainerStyle={styles.listContent}
               ListEmptyComponent={
                 selected ? (
                   <Card style={styles.emptyCard}>
                     <Text style={[styles.done, { color: theme.success }]}>
-                      {rows.length === 0 ? '该收藏品没有曲目要求' : '全部完成'}
+                      {progress?.total ? '全部完成' : '该收藏品没有曲目要求'}
                     </Text>
                   </Card>
                 ) : null
@@ -271,30 +255,21 @@ export default function ChunithmCollectionsToolScreen() {
               renderItem={({ item }) => (
                 <View style={[styles.song, { backgroundColor: theme.surface }]}>
                   <View style={styles.songCopy}>
+                    <Text style={[styles.songId, { color: theme.textMuted }]}>#{item.songId}</Text>
                     <Text style={[styles.songTitle, { color: theme.text }]} numberOfLines={1}>
-                      {item.song.title || `#${item.song.id}`}
+                      歌曲 {item.songId}
                     </Text>
                     <View style={styles.songMetaRow}>
-                      <Text style={[styles.songMeta, { color: theme.textMuted }]}>条件组 {item.groupIndex + 1}</Text>
-                      {item.group.difficulties.length > 0 ? (
-                        <Text style={[styles.songMeta, { color: theme.textMuted }]}>
-                          难度 {item.group.difficulties.map((d) => DIFFICULTY_LABELS[d] ?? d).join('/')}
+                      {item.missingDifficulties.map((difficulty) => (
+                        <Text
+                          key={difficulty}
+                          style={[styles.songMeta, { color: theme.textMuted }]}
+                        >
+                          {difficulty < 0 ? '任意难度' : (DIFFICULTY_LABELS[difficulty] ?? `难度${difficulty}`)}
                         </Text>
-                      ) : null}
-                      {item.group.rank ? (
-                        <Text style={[styles.songMeta, { color: theme.textMuted }]}>评级 {item.group.rank.toUpperCase()}</Text>
-                      ) : null}
-                      {item.group.fullCombo ? (
-                        <Text style={[styles.songMeta, { color: theme.textMuted }]}>全连 {item.group.fullCombo.toUpperCase()}</Text>
-                      ) : null}
-                      {item.group.fullChain ? (
-                        <Text style={[styles.songMeta, { color: theme.textMuted }]}>全链 {item.group.fullChain.toUpperCase()}</Text>
-                      ) : null}
+                      ))}
                     </View>
                   </View>
-                  <Text style={[styles.songState, { color: item.song.completed ? theme.accent : theme.textMuted }]}>
-                    {item.song.completed ? '已完成' : '未完成'}
-                  </Text>
                 </View>
               )}
             />
@@ -355,14 +330,10 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
     paddingHorizontal: 12,
     paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
     marginBottom: 6,
   },
-  pickerItemName: { color: '#111827', fontSize: 14, fontWeight: '600', flexShrink: 1 },
-  computable: { color: '#246BFD', fontSize: 11, fontWeight: '700', flexShrink: 0 },
+  pickerItemName: { color: '#111827', fontSize: 14, fontWeight: '600' },
+  pickerEmpty: { color: '#6B7280', fontSize: 12, textAlign: 'center', paddingVertical: 12 },
   progressCard: { gap: 8 },
   progressHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 },
   progressTitle: { color: '#111827', fontSize: 18, fontWeight: '800', flex: 1 },
@@ -388,7 +359,6 @@ const styles = StyleSheet.create({
   progressCount: { color: '#4B5563', fontSize: 12, fontWeight: '600' },
   description: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
   badge: { color: '#4B5563', fontSize: 11, fontWeight: '700' },
-  hint: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
   heading: { color: '#111827', fontSize: 17, fontWeight: '700', marginTop: 4 },
   listContent: { paddingHorizontal: 16, paddingBottom: 28, gap: 10 },
   emptyCard: { alignItems: 'center', paddingVertical: 18 },
@@ -398,15 +368,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
   },
-  songCopy: { flex: 1, gap: 4, minWidth: 0 },
+  songCopy: { gap: 4 },
+  songId: { color: '#9CA3AF', fontSize: 11, fontWeight: '600' },
   songTitle: { color: '#111827', fontSize: 15, fontWeight: '600' },
   songMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   songMeta: { color: '#6B7280', fontSize: 11 },
-  songState: { color: '#4B5563', fontSize: 12, fontWeight: '700' },
   pressed: { opacity: 0.86 },
 });
