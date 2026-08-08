@@ -324,8 +324,6 @@ function mapCollectionRequiredSong(
   return {
     id: song.id,
     title: song.title,
-    completed: song.completed,
-    completedDifficulties: song.completed_difficulties,
   };
 }
 
@@ -339,7 +337,6 @@ function mapCollectionRequired(
     fullChain: required.full_chain as ChunithmCollectionRequired['fullChain'],
     clear: required.clear,
     songs: required.songs.map(mapCollectionRequiredSong),
-    completed: required.completed,
   };
 }
 
