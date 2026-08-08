@@ -233,4 +233,74 @@ describe('ChunithmScoreProvider', () => {
     expect(result.source).toMatchObject({ isStale: true, label: '落雪咖啡屋（缓存）' });
     expect(result.player?.name).toBe('中二玩家');
   });
+
+  it('reads a single collection progress entry with its requirements', async () => {
+    const progress = {
+      id: 866,
+      name: 'LUNA ROUND',
+      color: 'rainbow',
+      required: [
+        {
+          difficulties: [0, 1, 2, 3],
+          rank: 's',
+          songs: [
+            { id: 100, title: '曲A', completed: true, completed_difficulties: [0, 1, 2, 3] },
+            { id: 200, title: '曲B', completed: false },
+          ],
+          completed: false,
+        },
+        {
+          difficulties: [4],
+          full_combo: 'alljustice',
+          songs: [{ id: 300, title: '曲C', completed: true }],
+          completed: true,
+        },
+      ],
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(init?.headers).toMatchObject({
+        Accept: 'application/json',
+        Authorization: 'Bearer access-token',
+      });
+      return response(progress);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const snapshot = await new ChunithmScoreProvider(session).getCollectionProgress('trophy', 866);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://maimai.lxns.net/api/v0/user/chunithm/player/trophy/866',
+    );
+    expect(snapshot.collection).toMatchObject({
+      id: 866,
+      name: 'LUNA ROUND',
+      color: 'rainbow',
+      required: [
+        {
+          difficulties: [0, 1, 2, 3],
+          rank: 's',
+          songs: [
+            { id: 100, title: '曲A', completed: true, completedDifficulties: [0, 1, 2, 3] },
+            { id: 200, title: '曲B', completed: false },
+          ],
+          completed: false,
+        },
+        {
+          difficulties: [4],
+          fullCombo: 'alljustice',
+          songs: [{ id: 300, title: '曲C', completed: true }],
+          completed: true,
+        },
+      ],
+    });
+    expect(snapshot.source).toMatchObject({ kind: 'lxns', label: '落雪咖啡屋' });
+  });
+
+  it('reports a missing collection progress entry as not found', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response(null)));
+    await expect(
+      new ChunithmScoreProvider(session).getCollectionProgress('icon', 404),
+    ).rejects.toMatchObject({ code: 'no_data' });
+  });
 });

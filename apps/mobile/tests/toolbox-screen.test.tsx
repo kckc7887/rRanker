@@ -63,9 +63,11 @@ describe('game-aware toolbox screen', () => {
     expect(screen.queryByText('DX Rating 计算器')).toBeNull();
   });
 
-  it('renders the Chunithm random song, arcade and best-image tools', async () => {
+  it('renders the Chunithm rating, collections, random song, arcade and best-image tools', async () => {
     mockActiveGameId = 'chunithm';
     const screen = await render(<ToolsScreen />);
+    expect(screen.getByText('Rating / OVER POWER 计算器')).toBeTruthy();
+    expect(screen.getByText('收藏品进度')).toBeTruthy();
     expect(screen.getByText('随机歌曲')).toBeTruthy();
     expect(screen.getByText('机厅查找')).toBeTruthy();
     expect(screen.getByText('生成成绩图片')).toBeTruthy();

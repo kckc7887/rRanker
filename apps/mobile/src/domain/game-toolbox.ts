@@ -108,6 +108,20 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
   chunithm: {
     tools: [
       {
+        id: 'chunithm-rating',
+        href: '/tools/chunithm-rating',
+        title: 'Rating / OVER POWER 计算器',
+        detail: '按定数与分数计算单谱面 Rating 与 OVER POWER，并反推最低分数',
+        summaryLabel: 'Rating 计算器',
+      },
+      {
+        id: 'chunithm-collections',
+        href: '/tools/chunithm-collections',
+        title: '收藏品进度',
+        detail: '浏览称号、角色、名牌版与地图头像，核对达成条件与完成状态',
+        summaryLabel: '收藏品进度',
+      },
+      {
         id: 'random-charts',
         href: '/tools/random-charts',
         title: '随机歌曲',

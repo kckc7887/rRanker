@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from 'expo/fetch';
+import { z } from 'zod';
 import {
   ChunithmBestsSchema,
   ChunithmPlayerSchema,
@@ -9,6 +10,13 @@ import {
   type ChunithmPlayer,
   type ChunithmScore,
 } from '@/domain/chunithm-personal';
+import type {
+  ChunithmCollection,
+  ChunithmCollectionKind,
+  ChunithmCollectionProgressSnapshot,
+  ChunithmCollectionRequired,
+  ChunithmCollectionRequiredSong,
+} from '@/domain/chunithm-collections';
 import { LxnsEnvelopeSchema } from '@/domain/schemas';
 import type { ProviderSession } from './contracts';
 import { ProviderError, providerErrorFromStatus } from './errors';
@@ -21,6 +29,32 @@ import {
 import type { LxnsTokenRotationHandler } from './lxns-score-provider';
 
 type OptionalResponse = { found: boolean; data?: unknown };
+
+const CollectionRequiredSongSchema = z.object({
+  id: z.number().int().nonnegative(),
+  title: z.string().default(''),
+  completed: z.boolean().optional(),
+  completed_difficulties: z.array(z.number().int().nonnegative()).optional(),
+}).passthrough();
+
+const CollectionRequiredSchema = z.object({
+  difficulties: z.array(z.number().int().nonnegative()).default([]),
+  rank: z.string().optional(),
+  full_combo: z.string().optional(),
+  full_chain: z.string().optional(),
+  clear: z.string().optional(),
+  songs: z.array(CollectionRequiredSongSchema).default([]),
+  completed: z.boolean().optional(),
+}).passthrough();
+
+const CollectionProgressSchema = z.object({
+  id: z.number().int().nonnegative(),
+  name: z.string().default(''),
+  description: z.string().optional(),
+  color: z.string().optional(),
+  level: z.number().int().nonnegative().optional(),
+  required: z.array(CollectionRequiredSchema).optional(),
+}).passthrough();
 
 function lxnsErrorFromStatus(status: number): ProviderError {
   const base = providerErrorFromStatus(status);
@@ -170,6 +204,61 @@ export class ChunithmScoreProvider {
       player,
       scores,
       bests,
+      source: this.source(),
+    };
+  }
+
+  private mapCollectionProgress(data: unknown): ChunithmCollection {
+    const parsed = CollectionProgressSchema.safeParse(data);
+    if (!parsed.success) {
+      throw new ProviderError(
+        'upstream_schema',
+        '落雪中二收藏品进度响应结构与已验证契约不一致',
+        true,
+      );
+    }
+    const mapRequired = (required: z.infer<typeof CollectionRequiredSchema>): ChunithmCollectionRequired => ({
+      difficulties: required.difficulties,
+      rank: required.rank as ChunithmCollectionRequired['rank'],
+      fullCombo: required.full_combo as ChunithmCollectionRequired['fullCombo'],
+      fullChain: required.full_chain as ChunithmCollectionRequired['fullChain'],
+      clear: required.clear,
+      songs: required.songs.map((song): ChunithmCollectionRequiredSong => ({
+        id: song.id,
+        title: song.title,
+        completed: song.completed,
+        completedDifficulties: song.completed_difficulties,
+      })),
+      completed: required.completed,
+    });
+    return {
+      id: parsed.data.id,
+      name: parsed.data.name,
+      description: parsed.data.description,
+      color: parsed.data.color,
+      level: parsed.data.level,
+      required: parsed.data.required?.map(mapRequired),
+    };
+  }
+
+  /**
+   * 获取玩家单件收藏品进度（含 required 条件与 completed 状态）。
+   * 中二公共列表不携带条件，进度只能通过此个人端点逐件获取。
+   */
+  async getCollectionProgress(
+    kind: ChunithmCollectionKind,
+    id: number,
+  ): Promise<ChunithmCollectionProgressSnapshot> {
+    const result = await this.request(`/user/chunithm/player/${kind}/${id}`, true);
+    if (!result.found) {
+      throw new ProviderError(
+        'no_data',
+        `落雪中二 ${kind} #${id} 进度不存在`,
+        false,
+      );
+    }
+    return {
+      collection: this.mapCollectionProgress(result.data),
       source: this.source(),
     };
   }

@@ -8,6 +8,13 @@ import type {
   ChunithmSong,
   ChunithmSongDetailSnapshot,
 } from '@/domain/chunithm';
+import type {
+  ChunithmCollection,
+  ChunithmCollectionKind,
+  ChunithmCollectionListSnapshot,
+  ChunithmCollectionRequired,
+  ChunithmCollectionRequiredSong,
+} from '@/domain/chunithm-collections';
 import type { DataSource } from '@/domain/models';
 import { ProviderError, providerErrorFromStatus } from './errors';
 
@@ -73,6 +80,44 @@ const AliasEntrySchema = z.object({
 const AliasResponseSchema = z.union([
   z.array(AliasEntrySchema),
   z.object({ aliases: z.array(AliasEntrySchema) }).passthrough(),
+]);
+
+const CollectionRequiredSongSchema = z.object({
+  id: z.number().int().nonnegative(),
+  title: z.string().default(''),
+  completed: z.boolean().optional(),
+  completed_difficulties: z.array(z.number().int().nonnegative()).optional(),
+}).passthrough();
+
+const CollectionRequiredSchema = z.object({
+  difficulties: z.array(z.number().int().nonnegative()).default([]),
+  rank: z.string().optional(),
+  full_combo: z.string().optional(),
+  full_chain: z.string().optional(),
+  clear: z.string().optional(),
+  songs: z.array(CollectionRequiredSongSchema).default([]),
+  completed: z.boolean().optional(),
+}).passthrough();
+
+const CollectionSchema = z.object({
+  id: z.number().int().nonnegative(),
+  name: z.string().default(''),
+  description: z.string().optional(),
+  color: z.string().optional(),
+  level: z.number().int().nonnegative().optional(),
+  required: z.array(CollectionRequiredSchema).optional(),
+}).passthrough();
+
+const CollectionEnvelopeSchema = z.object({
+  trophies: z.array(CollectionSchema).optional(),
+  characters: z.array(CollectionSchema).optional(),
+  plates: z.array(CollectionSchema).optional(),
+  icons: z.array(CollectionSchema).optional(),
+}).passthrough();
+
+const CollectionListResponseSchema = z.union([
+  z.array(CollectionSchema),
+  CollectionEnvelopeSchema,
 ]);
 
 type RawVersion = z.infer<typeof VersionSchema>;
@@ -273,6 +318,86 @@ export function mapChunithmAliases(input: unknown): ChunithmAliasSnapshot {
   };
 }
 
+function mapCollectionRequiredSong(
+  song: z.infer<typeof CollectionRequiredSongSchema>,
+): ChunithmCollectionRequiredSong {
+  return {
+    id: song.id,
+    title: song.title,
+    completed: song.completed,
+    completedDifficulties: song.completed_difficulties,
+  };
+}
+
+function mapCollectionRequired(
+  required: z.infer<typeof CollectionRequiredSchema>,
+): ChunithmCollectionRequired {
+  return {
+    difficulties: required.difficulties,
+    rank: required.rank as ChunithmCollectionRequired['rank'],
+    fullCombo: required.full_combo as ChunithmCollectionRequired['fullCombo'],
+    fullChain: required.full_chain as ChunithmCollectionRequired['fullChain'],
+    clear: required.clear,
+    songs: required.songs.map(mapCollectionRequiredSong),
+    completed: required.completed,
+  };
+}
+
+function mapCollection(collection: z.infer<typeof CollectionSchema>): ChunithmCollection {
+  return {
+    id: collection.id,
+    name: collection.name,
+    description: collection.description,
+    color: collection.color,
+    level: collection.level,
+    required: collection.required?.map(mapCollectionRequired),
+  };
+}
+
+function collectionEntries(
+  kind: ChunithmCollectionKind,
+  payload: z.infer<typeof CollectionListResponseSchema>,
+): z.infer<typeof CollectionSchema>[] {
+  if (Array.isArray(payload)) return payload;
+  switch (kind) {
+    case 'trophy': return payload.trophies ?? [];
+    case 'character': return payload.characters ?? [];
+    case 'plate': return payload.plates ?? [];
+    case 'icon': return payload.icons ?? [];
+  }
+}
+
+function collectionSource(): DataSource {
+  return {
+    kind: 'lxns',
+    label: 'LXNS 中二收藏品列表',
+    updatedAt: new Date().toISOString(),
+    isStale: false,
+  };
+}
+
+/**
+ * 中二收藏品四类列表。注意：中二公共 API 的列表响应不携带达成条件（required），
+ * 条件与完成状态需通过个人 API（/user/chunithm/player/{type}/{id}）逐件获取。
+ */
+export function mapChunithmCollections(
+  kind: ChunithmCollectionKind,
+  input: unknown,
+): ChunithmCollectionListSnapshot {
+  const parsed = CollectionListResponseSchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ProviderError(
+      'upstream_schema',
+      `LXNS 中二 ${kind} 收藏品响应结构与已验证契约不一致`,
+      true,
+    );
+  }
+  return {
+    items: collectionEntries(kind, parsed.data).map(mapCollection),
+    source: collectionSource(),
+  };
+}
+
 export class ChunithmCatalogProvider {
   async getCatalog(): Promise<ChunithmCatalogSnapshot> {
     return mapChunithmCatalog(await getJson('/song/list'));
@@ -284,5 +409,9 @@ export class ChunithmCatalogProvider {
 
   async getSongDetail(songId: string | number): Promise<ChunithmSongDetailSnapshot> {
     return mapChunithmSongDetail(await getJson(`/song/${encodeURIComponent(String(songId))}`));
+  }
+
+  async getCollections(kind: ChunithmCollectionKind): Promise<ChunithmCollectionListSnapshot> {
+    return mapChunithmCollections(kind, await getJson(`/${kind}/list`));
   }
 }
