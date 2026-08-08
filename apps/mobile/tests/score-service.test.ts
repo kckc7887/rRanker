@@ -3,7 +3,7 @@ import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/saniti
 import { FixtureCatalogProvider, FixtureProvider } from '@/providers/fixture-provider';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
-import { buildScoreSnapshot, ScoreService } from '@/services/score-service';
+import { buildScoreSnapshot, awaitScoreFresh, ScoreService } from '@/services/score-service';
 
 class MemoryRepository implements SnapshotRepository, CatalogRepository {
   value: ScoreSnapshot | null = null;
@@ -222,6 +222,47 @@ describe('ScoreService', () => {
     const result = await service.loadCacheFirst(() => { throw new Error('不应命中后台刷新'); });
     expect(result.source.kind).not.toBe('cache');
     expect(repository.byAccount.has('acct-no-cache')).toBe(true);
+  });
+
+  it('awaits the in-flight network load until it settles', async () => {
+    const repository = new MemoryRepository();
+    await new ScoreService(
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-wait', repository, repository,
+    ).load();
+    let release: ((snapshot: ScoreSnapshot) => void) | null = null;
+    const gate = new Promise<ScoreSnapshot>((resolve) => { release = resolve; });
+    const slowProvider = {
+      getPlayer: async () => { await gate; return structuredClone(fixturePlayer); },
+      getRecords: async () => { await gate; return structuredClone(fixtureRecords); },
+    };
+    const service = new ScoreService(slowProvider, new FixtureCatalogProvider(), 'acct-wait', repository, repository);
+    const load = service.load();
+    let settled = false;
+    const waited = awaitScoreFresh('acct-wait').then(() => { settled = true; });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(settled).toBe(false);
+
+    release!(buildScoreSnapshot(fixturePlayer, fixtureRecords, fixtureCatalog));
+    await waited;
+    expect(settled).toBe(true);
+    await load;
+  });
+
+  it('resolves awaitScoreFresh without rethrowing when the load rejects', async () => {
+    const repository = new MemoryRepository();
+    const fail = async (): Promise<never> => { throw new Error('network'); };
+    const service = new ScoreService(
+      { getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-wait-fail', repository, repository,
+    );
+    const load = service.load().catch(() => undefined);
+
+    await expect(awaitScoreFresh('acct-wait-fail')).resolves.toBeUndefined();
+    await load;
+  });
+
+  it('resolves awaitScoreFresh immediately when no load is in flight', async () => {
+    await expect(awaitScoreFresh('acct-idle')).resolves.toBeUndefined();
   });
 
   it('does not rewrite the query when the background refresh fails', async () => {

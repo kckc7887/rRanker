@@ -52,6 +52,9 @@ import {
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { queryClient } from '@/state/query-client';
+import { readSettledGameDataBundle } from '@/services/game-data-query';
+import { awaitChunithmFresh } from '@/services/chunithm-personal-service';
+import { awaitScoreFresh } from '@/services/score-service';
 import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
@@ -149,8 +152,16 @@ export function OverviewScreen() {
       // 先把相关页面标为过期但不并发请求，再只刷新当前总览一次。
       await invalidateAccountDataQueries(queryClient, 'none');
       const refreshed = await refetch();
+      // 缓存优先下 refetch 会立即返回打标缓存；等同一账号后台网络读取落定后，以最终缓存判定。
+      if (activeGameId === 'maimai') await awaitScoreFresh(activeAccountId);
+      else if (activeGameId === 'chunithm') await awaitChunithmFresh(activeAccountId);
+      const payload = readSettledGameDataBundle(
+        activeAccountId,
+        activeGameId,
+        account?.providerId ?? null,
+        activeSession?.mode ?? null,
+      )?.payload ?? refreshed.data?.payload;
       if (activeGameId === 'maimai' && account?.providerId === 'lxns') {
-        const payload = refreshed.data?.payload;
         const isFreshMaimaiData = payload?.kind === 'maimai' && !payload.source.isStale;
         if (!isFreshMaimaiData) {
           showNotification({
@@ -163,7 +174,6 @@ export function OverviewScreen() {
           return false;
         }
       } else if (activeGameId === 'chunithm') {
-        const payload = refreshed.data?.payload;
         const isFreshChunithmData = payload?.kind === 'chunithm'
           && payload.hasSyncedData
           && !payload.source.isStale;

@@ -8,9 +8,11 @@ import type { ProviderId } from '@/domain/game-bind-options';
 let mockProviderId: ProviderId = 'local';
 let mockPinnedToolIds: string[] = [];
 let mockPinnedPlateIds: number[] = [];
+let mockSettledBundle: unknown = undefined;
 const mockHydratePins = jest.fn(async () => undefined);
 const mockRouterPush = jest.fn();
 const mockShowNotification = jest.fn();
+const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
 const mockLocal = createLocalMaimaiAccount('本地玩家', 0);
 const mockExtraLocal = createLocalMaimaiAccount('本地二号', 0, 'maimai:local:second');
 const mockWater = createMaimaiBoundAccount({
@@ -147,7 +149,7 @@ jest.mock('@/hooks/use-game-data', () => ({
     isLoading: false,
     isError: false,
     error: null,
-    refetch: jest.fn(),
+    refetch: mockRefetch,
     profile: { ratingLabel: 'DX RATING', ratingDigits: 5 },
   }),
 }));
@@ -216,7 +218,11 @@ jest.mock('@/state/game-picker-ui', () => ({
   }),
 }));
 jest.mock('@/state/query-client', () => ({
-  queryClient: { cancelQueries: jest.fn(), invalidateQueries: jest.fn() },
+  queryClient: {
+    cancelQueries: jest.fn(),
+    invalidateQueries: jest.fn(),
+    getQueryData: jest.fn(() => mockSettledBundle),
+  },
 }));
 jest.mock('@/storage/secure-session-store', () => ({
   SecureSessionStore: jest.fn(() => ({ setActiveAccountId: jest.fn() })),
@@ -227,8 +233,10 @@ describe('总览上传和同步操作', () => {
     mockTemporarySelectedAccountIds = undefined;
     mockPinnedToolIds = [];
     mockPinnedPlateIds = [];
+    mockSettledBundle = undefined;
     mockShowNotification.mockClear();
     mockRouterPush.mockClear();
+    mockRefetch.mockResolvedValue({ data: undefined });
   });
 
   it('本地查分器页只显示使用好友码的同步按钮', async () => {
@@ -316,6 +324,64 @@ describe('总览上传和同步操作', () => {
       title: '同步失败',
       message: '舞萌曲库尚未就绪，请稍后重试',
       variant: 'error',
+    }));
+  });
+
+  it('落雪同步时 refetch 返回打标缓存但最终缓存已新鲜，不误报仅读取到缓存', async () => {
+    mockProviderId = 'lxns';
+    mockRefetch.mockResolvedValue({
+      data: {
+        gameId: 'maimai',
+        providerId: 'lxns',
+        profile: { ratingDigits: 5 },
+        payload: {
+          kind: 'maimai',
+          player: { displayName: '落雪玩家' },
+          records: [],
+          bestSections: [],
+          playerScore: { label: 'DX RATING', value: 15000, display: '15000' },
+          currentVersionTitle: '当前版本',
+          source: { kind: 'lxns', label: '落雪咖啡屋', updatedAt: '2026-07-17T00:00:00.000Z', isStale: true },
+          catalogSource: { kind: 'lxns', label: '曲库', updatedAt: '2026-07-17T00:00:00.000Z', isStale: false },
+        },
+      },
+    });
+    mockSettledBundle = {
+      gameId: 'maimai',
+      providerId: 'lxns',
+      payload: {
+        kind: 'maimai',
+        source: { kind: 'lxns', label: '落雪咖啡屋', updatedAt: '2026-07-17T00:00:00.000Z', isStale: false },
+        catalogSource: { kind: 'lxns', label: '曲库', updatedAt: '2026-07-17T00:00:00.000Z', isStale: false },
+      },
+    };
+    const screen = await render(<OverviewScreen />);
+
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
+    await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
+    expect(mockShowNotification).not.toHaveBeenCalled();
+  });
+
+  it('落雪同步时后台读取也失败，提示本次仅读取到缓存', async () => {
+    mockProviderId = 'lxns';
+    const staleBundle = {
+      gameId: 'maimai',
+      providerId: 'lxns',
+      payload: {
+        kind: 'maimai',
+        source: { kind: 'cache', label: '最近有效成绩快照', updatedAt: '2026-07-17T00:00:00.000Z', isStale: true },
+        catalogSource: { kind: 'lxns', label: '曲库', updatedAt: '2026-07-17T00:00:00.000Z', isStale: false },
+      },
+    };
+    mockRefetch.mockResolvedValue({ data: staleBundle });
+    mockSettledBundle = staleBundle;
+    const screen = await render(<OverviewScreen />);
+
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '尚未读取到新数据',
+      message: '本次仅读取到缓存，请关闭代理并检查网络后重试。',
+      variant: 'warning',
     }));
   });
 });

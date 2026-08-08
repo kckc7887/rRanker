@@ -27,6 +27,7 @@ import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
 import { PhigrosSaveCache, stalePhigrosPayload, type PhigrosGameDataPayload } from '@/services/phigros-save-cache';
 import { cacheFirstLoad, isCacheFallback } from '@/services/cache-first';
+import { gameDataQueryKey } from '@/services/game-data-query';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
@@ -43,7 +44,6 @@ import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
 
 const repository = new SqliteSnapshotRepository();
-const GAME_DATA_QUERY_VERSION = 18;
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -58,7 +58,12 @@ export function useGameData() {
   const catalogProvider = useSession((s) => s.catalogProvider);
   const profile = getGameProfile(activeGameId);
 
-  const queryKey = ['game-data', GAME_DATA_QUERY_VERSION, activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'none'];
+  const queryKey = gameDataQueryKey(
+    activeAccountId,
+    activeGameId,
+    activeProviderId,
+    session?.mode ?? null,
+  );
 
   const query = useQuery({
     queryKey,

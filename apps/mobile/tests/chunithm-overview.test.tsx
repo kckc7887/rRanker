@@ -7,6 +7,7 @@ const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
 const mockShowNotification = jest.fn();
 let mockMaintenance = false;
 let mockProviderId: 'lxns' | 'chunithm-test' = 'lxns';
+let mockSettledBundle: unknown = undefined;
 const mockAccount = createChunithmBoundAccount({
   displayName: '中二玩家',
   rating: 17.25,
@@ -169,7 +170,11 @@ jest.mock('@/state/game-picker-ui', () => ({
   }),
 }));
 jest.mock('@/state/query-client', () => ({
-  queryClient: { cancelQueries: jest.fn(async () => undefined), invalidateQueries: jest.fn() },
+  queryClient: {
+    cancelQueries: jest.fn(async () => undefined),
+    invalidateQueries: jest.fn(),
+    getQueryData: jest.fn(() => mockSettledBundle),
+  },
 }));
 jest.mock('@/services/invalidate-account-data', () => ({
   invalidateAccountDataQueries: jest.fn(async () => undefined),
@@ -187,6 +192,7 @@ describe('Chunithm overview', () => {
     jest.clearAllMocks();
     mockMaintenance = false;
     mockProviderId = 'lxns';
+    mockSettledBundle = undefined;
     mockRefetch.mockResolvedValue({ data: mockBundle });
   });
 
@@ -235,5 +241,44 @@ describe('Chunithm overview', () => {
 
     expect(screen.getByLabelText('上传数据，打开同步引导')).toBeTruthy();
     expect(screen.getByLabelText('同步数据，当前 示例查分器')).toBeTruthy();
+  });
+
+  it('does not warn when the cache-first refetch resolves stale but the background refresh already settled fresh', async () => {
+    // 缓存优先：refetch 立即返回打标缓存；后台网络读取落定后最终缓存已回写为新鲜数据。
+    mockRefetch.mockResolvedValue({
+      data: {
+        ...mockBundle,
+        payload: {
+          ...mockBundle.payload,
+          source: { ...mockBundle.payload.source, isStale: true },
+        },
+      },
+    });
+    mockSettledBundle = mockBundle;
+    const screen = await render(<OverviewScreen />);
+
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
+    await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
+    expect(mockShowNotification).not.toHaveBeenCalled();
+  });
+
+  it('warns about cache-only results when the background refresh also failed', async () => {
+    const staleBundle = {
+      ...mockBundle,
+      payload: {
+        ...mockBundle.payload,
+        source: { ...mockBundle.payload.source, isStale: true },
+      },
+    };
+    mockRefetch.mockResolvedValue({ data: staleBundle });
+    mockSettledBundle = staleBundle;
+    const screen = await render(<OverviewScreen />);
+
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '尚未读取到新数据',
+      message: '本次仅读取到缓存，请关闭代理并检查网络后重试。',
+      variant: 'warning',
+    }));
   });
 });
