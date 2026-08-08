@@ -50,8 +50,9 @@ describe('buildPhigrosBestImageAppHtml', () => {
     expect(html).toContain('data-rating-style="app"');
     expect(html).toContain('class="app-header"');
     expect(html).not.toContain('class="profile-banner"');
-    expect(html).toContain('class="header-left"');
-    expect(html).toContain('class="identity-row"');
+    expect(html).toContain('class="header-right"');
+    expect(html).not.toContain('class="header-left"');
+    expect(html).not.toContain('class="identity-row"');
     expect(html).toContain('src="data:image/png;base64,avatar"');
     expect(html).toContain('<div class="name-card-bg" aria-hidden="true"><img class="name-card-image" alt="" src="data:image/png;base64,background"><div class="name-card-veil"></div></div>');
     expect(html).toContain('.name-card-veil{position:absolute;inset:0;background:rgba(255,255,255,.68)');
@@ -68,10 +69,9 @@ describe('buildPhigrosBestImageAppHtml', () => {
     expect(html).toContain('.stats-card{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.82);border-radius:18px;background:rgba(255,255,255,.55)');
     expect(html).toContain('grid-template-columns:80px repeat(4,minmax(0,1fr))');
     expect(html).toContain('font:800 30px/1 system-ui,sans-serif');
-    expect(html).toContain('.stats-head{color:#6B7280;font:800 61px/1 system-ui,sans-serif');
-    expect(html).toContain('const fitStatsHead = () => {');
-    expect(html).toContain("span.style.transform = 'scaleX(' + scale.toFixed(4) + ')'");
-    expect(html).toContain('<div class="stats-line stats-head"><span>进度</span><span>EZ</span><span>HD</span><span>IN</span><span>AT</span></div>');
+    expect(html).toContain('.stats-head{color:#6B7280;letter-spacing:.08em}');
+    expect(html).not.toContain('fitStatsHead');
+    expect(html).toContain('<div class="stats-line stats-head"><span></span><span>EZ</span><span>HD</span><span>IN</span><span>AT</span></div>');
     expect(html).toContain('<span>C</span><span>0</span><span>31</span><span>221</span><span>39</span>');
     expect(html).toContain('<span>Phi</span><span>0</span><span>4</span><span>16</span><span>2</span>');
     expect(html).not.toContain('2026/07/23');

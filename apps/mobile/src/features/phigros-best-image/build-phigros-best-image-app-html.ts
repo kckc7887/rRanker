@@ -148,7 +148,7 @@ function stats(input: PhigrosBestImageHtmlInput): string {
     ['FC', order.map(({ index }) => input.progress.fullCombo[index] ?? 0)],
     ['Phi', order.map(({ index }) => input.progress.phi[index] ?? 0)],
   ];
-  const head = `<div class="stats-line stats-head"><span>进度</span>${order.map(({ label }) => `<span>${label}</span>`).join('')}</div>`;
+  const head = `<div class="stats-line stats-head"><span></span>${order.map(({ label }) => `<span>${label}</span>`).join('')}</div>`;
   const body = rows.map(([label, values]) => (
     `<div class="stats-line"><span>${label}</span>${values.map((value) => `<span>${escapePhigrosBestImageHtml(value)}</span>`).join('')}</div>`
   )).join('');
@@ -210,12 +210,11 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     .background-image{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center;filter:blur(${px(width * 12 / 1080)}px);transform:scale(1.04)}
     .background-veil{position:absolute;inset:0;background:rgba(238,242,248,.52)}
     .app-header{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset}px;display:flex;width:${headerWidth}px;height:${headerHeight}px;align-items:stretch;gap:${headerGap}px}
-    .header-left{display:flex;min-width:0;flex:1.2;flex-direction:column;gap:${headerGap}px}
-    .identity-row{display:flex;height:${avatarSize}px;align-items:center;gap:${headerGap}px}
-    .avatar-shell{width:${avatarSize}px;height:${avatarSize}px;flex:0 0 ${avatarSize}px;overflow:hidden;border:${Math.max(2, px(width * 3 / 1080))}px solid rgba(255,255,255,.92);border-radius:${px(width * 18 / 1080)}px;background:#DDE5F0;box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 22 / 1080)}px rgba(31,44,75,.28)}
+    .header-right{display:flex;min-width:0;flex:1.1;flex-direction:column;gap:${headerGap}px}
+    .avatar-shell{width:${avatarSize}px;height:100%;flex:0 0 ${avatarSize}px;overflow:hidden;border:${Math.max(2, px(width * 3 / 1080))}px solid rgba(255,255,255,.92);border-radius:${px(width * 18 / 1080)}px;background:#DDE5F0;box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 22 / 1080)}px rgba(31,44,75,.28)}
     .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
     .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;color:#52647F;font:950 ${px(width * 48 / 1080)}px/1 system-ui,sans-serif;background:linear-gradient(145deg,#F8FBFF,#C7D5EA)}
-    .name-card{position:relative;display:flex;min-width:0;height:${avatarSize}px;flex:1;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(width * 24 / 1080)}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 18 / 1080)}px;background:rgba(255,255,255,.82);box-shadow:0 ${px(width * 6 / 1080)}px ${px(width * 16 / 1080)}px rgba(35,48,70,.12);isolation:isolate}
+    .name-card{position:relative;display:flex;min-width:0;height:${avatarSize}px;flex:0 0 ${avatarSize}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(width * 24 / 1080)}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 18 / 1080)}px;background:rgba(255,255,255,.82);box-shadow:0 ${px(width * 6 / 1080)}px ${px(width * 16 / 1080)}px rgba(35,48,70,.12);isolation:isolate}
     .name-card-bg{position:absolute;z-index:0;inset:0}
     .name-card-image{display:block;width:100%;height:100%;object-fit:cover;filter:blur(${px(width * 6 / 1080)}px);transform:scale(1.05)}
     .name-card-veil{position:absolute;inset:0;background:rgba(255,255,255,.68);-webkit-backdrop-filter:blur(${px(width * 8 / 1080)}px);backdrop-filter:blur(${px(width * 8 / 1080)}px)}
@@ -233,7 +232,7 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     .stats-line{display:grid;flex:1;grid-template-columns:${px(width * 80 / 1080)}px repeat(4,minmax(0,1fr));align-items:center;color:#374151;font:800 ${px(width * 30 / 1080)}px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums}
     .stats-line span{display:flex;align-items:center;justify-content:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .stats-line+.stats-line{border-top:1px solid rgba(148,163,184,.35)}
-    .stats-head{color:#6B7280;font:800 ${px(width * 61 / 1080)}px/1 system-ui,sans-serif;letter-spacing:.08em;transform-origin:center center}
+    .stats-head{color:#6B7280;letter-spacing:.08em}
     .app-page-marker-row{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset + headerHeight}px;display:flex;width:${headerWidth}px;height:${markerRowHeight}px;align-items:center;justify-content:flex-end}
     .page-marker{display:flex;height:${px(width * 28 / 1080)}px;align-items:center;justify-content:center;padding:0 ${px(width * 12 / 1080)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 13 / 1080)}px/1 system-ui,sans-serif}
     .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
@@ -275,13 +274,11 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     <main class="canvas" data-image-type="${input.type}" data-rating-style="app" aria-label="成绩图片预览">
       <div class="canvas-background">${backgroundMarkup}<div class="background-veil"></div></div>
       <header class="app-header" data-layout-content aria-label="玩家资料">
-        <div class="header-left">
-          <div class="identity-row">
-            <div class="avatar-shell">${avatarMarkup}</div>
-            <div class="name-card">
-              ${backgroundUrl ? `<div class="name-card-bg" aria-hidden="true"><img class="name-card-image" alt="" src="${escapePhigrosBestImageHtml(backgroundUrl)}"><div class="name-card-veil"></div></div>` : ''}
-              <span class="name-card-text">${escapePhigrosBestImageHtml(name)}</span>
-            </div>
+        <div class="avatar-shell">${avatarMarkup}</div>
+        <div class="header-right">
+          <div class="name-card">
+            ${backgroundUrl ? `<div class="name-card-bg" aria-hidden="true"><img class="name-card-image" alt="" src="${escapePhigrosBestImageHtml(backgroundUrl)}"><div class="name-card-veil"></div></div>` : ''}
+            <span class="name-card-text">${escapePhigrosBestImageHtml(name)}</span>
           </div>
           <div class="rating-card" style="--rating-border:${escapePhigrosBestImageHtml(challengeBorder)};--rating-fill:${escapePhigrosBestImageHtml(challengeFill)};--rating-text:${challengeTheme.textColor}">
             <div class="rating-card-inner">
@@ -312,16 +309,6 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
       let pending = false;
       let readySent = false;
 
-      const fitStatsHead = () => {
-        document.querySelectorAll('.stats-head span').forEach((span) => {
-          span.style.transform = 'none';
-          if (span.scrollWidth <= span.clientWidth) return;
-          const scale = Math.max(0.05, span.clientWidth / span.scrollWidth);
-          span.style.transformOrigin = 'center center';
-          span.style.transform = 'scaleX(' + scale.toFixed(4) + ')';
-        });
-      };
-
       const postToNative = (message) => {
         const bridge = window.ReactNativeWebView;
         if (!bridge || typeof bridge.postMessage !== 'function') return false;
@@ -341,7 +328,6 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
 
       const measureAndFit = () => {
         pending = false;
-        fitStatsHead();
         const layoutChildren = Array.from(canvas.children).filter((child) => child.hasAttribute('data-layout-content'));
         const contentHeight = layoutChildren.reduce((maximum, child) => Math.max(maximum, child.offsetTop + child.scrollHeight), 0);
         const logicalHeight = Math.max(MINIMUM_HEIGHT, Math.ceil(contentHeight));
