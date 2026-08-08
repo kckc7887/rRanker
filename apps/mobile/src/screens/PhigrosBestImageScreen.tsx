@@ -29,6 +29,7 @@ import {
   prepareBestImageWebViewSources, type BestImageWebViewSource,
 } from '@/features/best-image/prepare-best-image-webview-sources';
 import { buildPhigrosBestImageHtml } from '@/features/phigros-best-image/build-phigros-best-image-html';
+import { buildPhigrosBestImageAppHtml } from '@/features/phigros-best-image/build-phigros-best-image-app-html';
 import { collectPhigrosBestImageVisibleStrings } from '@/features/phigros-best-image/collect-phigros-best-image-visible-strings';
 import {
   loadPhigrosAccAverages, type PhigrosAccAverage,
@@ -74,7 +75,7 @@ import { useAppTheme } from '@/theme/app-theme';
 const WIDTHS = [1080, 1440, 2160] as const;
 const OVERFLOW_COUNTS: readonly PhigrosBestImageOverflowCount[] = [0, 3, 6, 9];
 const DEFAULT_STYLES: PhigrosBestImageStylePreferences = {
-  version: 1, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
+  version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
 };
 
 type PreviewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'error' | 'crashed' | 'terminated';
@@ -348,14 +349,19 @@ export function PhigrosBestImageScreen() {
     styleAssetKey, stylePrefs.avatar.mode, stylePrefs.background.mode,
   ]);
 
-  const htmlPages = useMemo(() => payload && illustrations && accAverages && templateAssets ? pages.map((page) => buildPhigrosBestImageHtml({
-    type, width, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
-    dataAmount: payload.dataAmount,
-    challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
-    syncedAt: formatSyncTime(payload.saveUpdatedAt),
-    progress: payload.progress, titles, illustrations, accAverages, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
-    templateAssets,
-  })) : null, [accAverages, avatarData, backgroundData, illustrations, pages, payload, templateAssets, titles, type, width]);
+  const htmlPages = useMemo(() => payload && illustrations && accAverages && templateAssets ? pages.map((page) => {
+    const input = {
+      type, width, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
+      dataAmount: payload.dataAmount,
+      challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
+      syncedAt: formatSyncTime(payload.saveUpdatedAt),
+      progress: payload.progress, titles, illustrations, accAverages, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
+      templateAssets,
+    };
+    return stylePrefs.ratingStyle === 'app'
+      ? buildPhigrosBestImageAppHtml(input)
+      : buildPhigrosBestImageHtml(input);
+  }) : null, [accAverages, avatarData, backgroundData, illustrations, pages, payload, stylePrefs.ratingStyle, templateAssets, titles, type, width]);
 
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
@@ -545,6 +551,16 @@ export function PhigrosBestImageScreen() {
 
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
       <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
+        <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
+          <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
+            {([{ id: 'game', label: '游戏风格' }, { id: 'app', label: '应用风格' }] as const).map(({ id, label }) => {
+              const selected = stylePrefs.ratingStyle === id;
+              return <Pressable key={id} accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setStylePrefs((current) => ({ ...current, ratingStyle: id }))} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+                <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{label}</Text>
+              </Pressable>;
+            })}
+          </View>
+        </View>
         {type === 'best30' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
           <View style={styles.overflowCopy}><Text style={[styles.styleName, { color: theme.text }]}>OVER FLOW</Text><Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text></View>
           <View style={styles.overflowChoices}>{OVERFLOW_COUNTS.map((count) => <ChoiceChip key={count} label={`${count} 个`} selected={stylePrefs.overflowCount === count} onPress={() => setStylePrefs((current) => ({ ...current, overflowCount: count }))} />)}</View>
@@ -610,6 +626,7 @@ const styles = StyleSheet.create({
   filterChipText: { fontSize: 12, fontWeight: '800' },
   rankChipWrap: { borderWidth: 2, borderColor: 'transparent', borderRadius: 10, padding: 2 },
   styleList: { overflow: 'hidden', borderRadius: 16 },
+  ratingStyleRow: { paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   overflowStyleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
   overflowCopy: { flex: 1, minWidth: 0 },
   overflowChoices: { flexDirection: 'row', gap: 6 },
