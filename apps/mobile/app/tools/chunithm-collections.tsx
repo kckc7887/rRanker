@@ -107,6 +107,7 @@ function CollectionProgressCard({
   scores: Parameters<typeof calculateChunithmCollectionProgress>[1];
 }) {
   const theme = useAppTheme();
+  const computable = isChunithmCollectionComputable(collection);
   const progress = calculateChunithmCollectionProgress(collection, scores);
   const percent = progressPercent(progress.completed, progress.total);
   const difficultyRows = Object.entries(progress.byDifficulty)
@@ -145,6 +146,11 @@ function CollectionProgressCard({
           </View>
         );
       })}
+      {!computable ? (
+        <Text style={[styles.note, { color: theme.textMuted }]}>
+          该收藏品没有可计算的达成条件，仅展示名称与描述。
+        </Text>
+      ) : null}
       {collection.description ? (
         <Text style={[styles.description, { color: theme.textMuted }]} numberOfLines={2}>
           {collection.description}
@@ -176,9 +182,11 @@ export default function ChunithmCollectionsToolScreen() {
   const items = useMemo(() => {
     if (!data) return [];
     const computable = data.items.filter(isChunithmCollectionComputable);
+    // 名牌版/地图头像等整类无 required 条件：回退为展示全部，否则列表会为空。
+    const visible = computable.length > 0 ? computable : data.items;
     const q = query.trim().toLowerCase();
-    if (!q) return computable;
-    return computable.filter((item) => (
+    if (!q) return visible;
+    return visible.filter((item) => (
       item.name.toLowerCase().includes(q)
       || (item.description ?? '').toLowerCase().includes(q)
     ));
@@ -303,7 +311,7 @@ export default function ChunithmCollectionsToolScreen() {
                       keyboardShouldPersistTaps="handled"
                       ListEmptyComponent={(
                         <Text style={[styles.pickerEmpty, { color: theme.textMuted }]}>
-                          {query.trim() ? '没有匹配的收藏品' : '该类暂无有条件的收藏品'}
+                          {query.trim() ? '没有匹配的收藏品' : '该类暂无收藏品'}
                         </Text>
                       )}
                       renderItem={({ item }) => (
@@ -333,7 +341,7 @@ export default function ChunithmCollectionsToolScreen() {
                 <CollectionProgressCard kind={kind} collection={selected} scores={scores} />
               ) : null}
 
-              {selected ? (
+              {selected && selectedComputable ? (
                 <Text style={[styles.heading, { color: theme.text }]}>
                   缺失曲目
                   {progress?.missingSongs.length ? ` · ${progress.missingSongs.length}` : ''}
@@ -346,7 +354,7 @@ export default function ChunithmCollectionsToolScreen() {
               keyExtractor={(item) => item.songId}
               contentContainerStyle={styles.listContent}
               ListEmptyComponent={
-                selected ? (
+                selected && selectedComputable ? (
                   <Card style={styles.emptyCard}>
                     <Text style={[styles.done, { color: theme.success }]}>
                       {progress?.total ? '全部完成' : '该收藏品没有曲目要求'}
@@ -489,6 +497,7 @@ const styles = StyleSheet.create({
   diffRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   anyDiff: { color: '#6B7280', fontSize: 12, fontWeight: '700' },
   meta: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
+  note: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
   description: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
   trophyFrame: { alignSelf: 'flex-start', maxWidth: '100%' },
   trophySolid: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, height: 26, alignItems: 'center', justifyContent: 'center' },

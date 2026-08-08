@@ -261,4 +261,35 @@ describe('chunithm tool screens', () => {
     expect(getAllByText('LUNA ROUND').length).toBeGreaterThan(0);
     expect(getByText('0.0%')).toBeTruthy();
   });
+
+  it('shows all plates when the kind has no computable conditions', async () => {
+    mockCollectionsData = {
+      items: [
+        { id: 1, name: 'ノーマル' },
+        { id: 2, name: 'クラシック' },
+      ],
+      source,
+    };
+    const { getByText, queryByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('收藏品类型 名牌版'));
+    await fireEvent.press(getByLabelText('选择收藏品'));
+    expect(getByText('ノーマル')).toBeTruthy();
+    expect(getByText('クラシック')).toBeTruthy();
+    expect(queryByText('该类暂无有条件的收藏品')).toBeNull();
+  });
+
+  it('shows an explanation when the selected collection has no requirements', async () => {
+    mockCollectionsData = {
+      items: [
+        { id: 19, name: 'マップアイコン' },
+      ],
+      source,
+    };
+    const { getByText, queryByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('收藏品类型 地图头像'));
+    await fireEvent.press(getByLabelText('选择收藏品'));
+    await fireEvent.press(getByLabelText('选择 マップアイコン'));
+    expect(getByText('该收藏品没有可计算的达成条件，仅展示名称与描述。')).toBeTruthy();
+    expect(queryByText(/缺失曲目/)).toBeNull();
+  });
 });
