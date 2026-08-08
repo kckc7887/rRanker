@@ -453,13 +453,9 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const trophy = hideTrophy
     ? ''
     : `<div class="trophy ${trophyToneClass(presentation?.trophyColor)}">${escapeHtml(trophyName)}</div>`;
-  const canvasBackground = isAppStyle
-    ? (frameUrl
-      ? `<div class="canvas-background" style="background-image:url(&quot;${escapeHtml(frameUrl)}&quot;)"></div>`
-      : '<div class="canvas-background canvas-background-fallback"></div>')
-    : hiddenStyles.has('frame')
-      ? '<div class="canvas-background canvas-background-fallback"></div>'
-      : '<div class="canvas-background" style="background-image:url(&quot;ui/b50.png&quot;)"></div>';
+  const canvasBackground = frameUrl
+    ? `<div class="canvas-background" style="background-image:url(&quot;${escapeHtml(frameUrl)}&quot;)"></div>`
+    : '<div class="canvas-background canvas-background-fallback"></div>';
   const rainbowLayeredBackground = layeredBadgeCssBackground('rainbow');
   const goldLayeredBackground = layeredBadgeCssBackground('gold');
   const pageMarkerLabel = `第 ${pageIndex + 1} / ${pageCount} 页`;
@@ -484,27 +480,26 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     `--tag-star:${appRatingTheme.starColor}`,
   ].join(';');
 
-  // ---- game 样式头部（对齐 demo/原版贴图布局；素材与 HTML 同目录的 ui/ 相对路径）----
+  // ---- game 样式头部（玩家信息整体置于左上角；素材与 HTML 同目录的 ui/ 相对路径）----
   const courseRank = Number.isFinite(input.player.additionalRating) ? Math.max(0, Math.floor(input.player.additionalRating ?? 0)) : 0;
   const daniNum = Math.max(0, Math.min(23, courseRank <= 10 ? courseRank : courseRank + 1));
   const daniFile = `DaniPlate_${String(daniNum).padStart(2, '0')}`;
   const dxRatingFile = `DXRating_${String(ratingFrameIndex(rating) + 1).padStart(2, '0')}`;
   const trophyFile = GAME_TROPHY_FILE[normalizeTrophyTone(presentation?.trophyColor)] ?? 'Normal';
   const gameHeadMarkup = `<section class="game-head" data-layout-content aria-label="玩家资料" style="height:${u(190)}px">
-        <img class="game-logo" alt="" style="left:${u(14)}px;top:${u(60)}px;width:${u(249)}px;height:${u(120)}px" src="ui/logo.png">
         ${hidePlate ? '' : plateUrl
-          ? `<img class="game-plate" alt="" style="left:${u(300)}px;top:${u(60)}px;width:${u(800)}px;height:${u(130)}px" src="${escapeHtml(plateUrl)}">`
-          : `<div class="game-plate-fallback" style="left:${u(300)}px;top:${u(60)}px;width:${u(800)}px;height:${u(130)}px"></div>`}
+          ? `<img class="game-plate" alt="" style="left:${u(14)}px;top:${u(60)}px;width:${u(800)}px;height:${u(130)}px" src="${escapeHtml(plateUrl)}">`
+          : `<div class="game-plate-fallback" style="left:${u(14)}px;top:${u(60)}px;width:${u(800)}px;height:${u(130)}px"></div>`}
         ${hideIcon ? '' : iconUrl
-          ? `<img class="game-icon" alt="" style="left:${u(305)}px;top:${u(65)}px;width:${u(120)}px;height:${u(120)}px" src="${escapeHtml(iconUrl)}">`
-          : `<div class="game-icon-fallback" style="left:${u(305)}px;top:${u(65)}px;width:${u(120)}px;height:${u(120)}px">${escapeHtml(initial)}</div>`}
-        <img class="game-dxrating" alt="" style="left:${u(435)}px;top:${u(72)}px;width:${u(186)}px;height:${u(35)}px" src="ui/${dxRatingFile}.png">
-        ${digits.map((digit, index) => `<img class="game-digit" alt="" style="left:${u(520 + 15 * index)}px;top:${u(80)}px;width:${u(17)}px;height:${u(20)}px" src="ui/Drating_${digit}.png">`).join('')}
-        <img class="game-name-bg" alt="" style="left:${u(435)}px;top:${u(115)}px;width:${u(272)}px;height:${u(42)}px" src="ui/Name.png">
-        <img class="game-dani" alt="" style="left:${u(625)}px;top:${u(120)}px;width:${u(80)}px;height:${u(32)}px" src="ui/${daniFile}.png">
-        ${hideTrophy ? '' : `<img class="game-shougou" alt="" style="left:${u(435)}px;top:${u(160)}px;width:${u(270)}px;height:${u(27)}px" src="ui/Shougou_${trophyFile}.png">`}
-        <div class="game-player-name" style="left:${u(445)}px;top:${u(135)}px;font-size:${u(20)}px">${escapeHtml(name)}</div>
-        ${hideTrophy ? '' : `<div class="game-trophy-text" style="left:${u(570)}px;top:${u(172)}px;font-size:${u(14)}px">${escapeHtml(trophyName)}</div>`}
+          ? `<img class="game-icon" alt="" style="left:${u(19)}px;top:${u(65)}px;width:${u(120)}px;height:${u(120)}px" src="${escapeHtml(iconUrl)}">`
+          : `<div class="game-icon-fallback" style="left:${u(19)}px;top:${u(65)}px;width:${u(120)}px;height:${u(120)}px">${escapeHtml(initial)}</div>`}
+        <img class="game-dxrating" alt="" style="left:${u(149)}px;top:${u(72)}px;width:${u(186)}px;height:${u(35)}px" src="ui/${dxRatingFile}.png">
+        ${digits.map((digit, index) => `<img class="game-digit" alt="" style="left:${u(234 + 15 * index)}px;top:${u(80)}px;width:${u(17)}px;height:${u(20)}px" src="ui/Drating_${digit}.png">`).join('')}
+        <img class="game-name-bg" alt="" style="left:${u(149)}px;top:${u(115)}px;width:${u(272)}px;height:${u(42)}px" src="ui/Name.png">
+        <img class="game-dani" alt="" style="left:${u(339)}px;top:${u(120)}px;width:${u(80)}px;height:${u(32)}px" src="ui/${daniFile}.png">
+        ${hideTrophy ? '' : `<img class="game-shougou" alt="" style="left:${u(149)}px;top:${u(160)}px;width:${u(270)}px;height:${u(27)}px" src="ui/Shougou_${trophyFile}.png">`}
+        <div class="game-player-name" style="left:${u(159)}px;top:${u(135)}px;font-size:${u(20)}px">${escapeHtml(name)}</div>
+        ${hideTrophy ? '' : `<div class="game-trophy-text" style="left:${u(284)}px;top:${u(172)}px;font-size:${u(14)}px">${escapeHtml(trophyName)}</div>`}
       </section>`;
   const gameProfileMarkup = gameHeadMarkup;
 

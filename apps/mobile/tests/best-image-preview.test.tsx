@@ -314,7 +314,7 @@ describe('best image preview', () => {
     await waitFor(() => expect(screen.getByLabelText('示例背景，#9004')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('示例背景，#9004'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('background-image:url(&quot;ui/b50.png&quot;)'));
+      .toContain('https://assets2.lxns.net/maimai/frame/9004.png'));
   });
 
   it('filters trophy levels and supports random or disabled styles', async () => {

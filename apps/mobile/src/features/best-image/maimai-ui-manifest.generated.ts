@@ -9,12 +9,11 @@ export type MaimaiUiManifestEntry = {
 
 export const MAIMAI_UI_ZIP = {
   url: "https://rranker-maimai-data.cn-nb1.rains3.com/maimai-ui/maimai-ui.zip",
-  bytes: 3633254,
-  sha256: "10806cfc97b8059bd44e50e3f300128b7c1df016917d0625cd6e58a1e7e66313",
+  bytes: 2252894,
+  sha256: "6149a3dfbe4e4ad0757d75300e40896dc406516c3fbe3b3f0590cac8c3466c29",
 } as const;
 
 export const MAIMAI_UI_MANIFEST_ENTRIES: readonly MaimaiUiManifestEntry[] = [
-  { path: "maimai-ui/b50.png", bytes: 1313875, sha256: "5ca1fa3b327f88fc06189a2722144e45d5d65bebcf5692024309694b98332cf4" },
   { path: "maimai-ui/b50_score_advanced.png", bytes: 4091, sha256: "647aa82d3cbfea6f4db588ace15846d8e18817515e5afc0d622f07f84a78af74" },
   { path: "maimai-ui/b50_score_basic.png", bytes: 4101, sha256: "9db7e9e4513e4e61550831a85f38f2d6cf3d337e3cab30bfbab45df3c99421e2" },
   { path: "maimai-ui/b50_score_expert.png", bytes: 4071, sha256: "70a3dcc2a07ef11c7fb6dcfcc4f7eaf5ed404c7b7365f1ed06e05bcc4c588ca5" },
@@ -75,7 +74,6 @@ export const MAIMAI_UI_MANIFEST_ENTRIES: readonly MaimaiUiManifestEntry[] = [
   { path: "maimai-ui/Icon_FSDp.png", bytes: 9607, sha256: "c8e32432af314464ba68f3553f3d4f05014df35a88aa346e751e1821a1e252e0" },
   { path: "maimai-ui/Icon_FSp.png", bytes: 8991, sha256: "ea0c013b35bfb010ab0e3a21b2add45d64ccfb848cb2959c43ce42231a498ee8" },
   { path: "maimai-ui/Icon_Sync.png", bytes: 8018, sha256: "44e0bae1299c9d32361c20fc82b24ff2a66f89d3ffeade0326c7b3cddc75edf2" },
-  { path: "maimai-ui/logo.png", bytes: 72280, sha256: "fd6466d76da06db17d6fd084822d069ecec818b1073e428f9e31f826bde4b970" },
   { path: "maimai-ui/Name.png", bytes: 825, sha256: "1f2e51e857ee3e3a1482c6c25cd23f5666ad00a41edcaa2695fa3a244fa9816d" },
   { path: "maimai-ui/Rank_A.png", bytes: 11639, sha256: "c059678ff402a300e4d7663ba35f0d9ed786e09358ca6fe0da53c7aae28c5eb5" },
   { path: "maimai-ui/Rank_AA.png", bytes: 17455, sha256: "e09345b0e0a69d0af9e986b748f23cd981518ed78ccb03afc12e7b5965d09093" },

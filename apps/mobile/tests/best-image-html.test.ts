@@ -91,18 +91,25 @@ describe('best image html', () => {
     const html = buildBestImageHtml({
       type: 'custom', width: 1080, rating: 500,
       scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
-      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=', player: { displayName: '玩家' },
+      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
+      player: { displayName: '玩家', presentation: { iconId: 1, namePlateId: 2 } },
     });
     expect(html).toContain('data-rating-style="game"');
     expect(html).toContain('class="game-head"');
-    expect(html).toContain('src="ui/logo.png"');
+    expect(html).not.toContain('game-logo');
     expect(html).toContain('src="ui/DXRating_01.png"');
     expect(html).toContain('src="ui/Drating_0.png"');
     expect(html).toContain('src="ui/Drating_5.png"');
     expect(html).toContain('src="ui/Name.png"');
     expect(html).toContain('src="ui/DaniPlate_00.png"');
     expect(html).toContain('class="game-player-name"');
-    expect(html).toContain('background-image:url(&quot;ui/b50.png&quot;)');
+    // 玩家信息整体置于左上角（原 logo 位置起）
+    expect(html).toContain('class="game-plate" alt="" style="left:11px;top:46px');
+    expect(html).toContain('class="game-icon" alt="" style="left:15px;top:50px');
+    expect(html).toContain('class="game-dxrating" alt="" style="left:115px;top:56px');
+    // 无 frame 收藏品时背景回退渐变
+    expect(html).toContain('canvas-background-fallback');
+    expect(html).not.toContain('ui/b50.png');
     expect(html).not.toContain('class="profile-app"');
     expect(html).not.toContain('class="rating rating-game"');
   });
@@ -234,13 +241,12 @@ describe('best image html', () => {
     expect(html).toContain('https://assets2.lxns.net/maimai/icon/200201.png');
     expect(html).toContain('https://assets2.lxns.net/maimai/plate/300101.png');
     expect(html).toContain('class="canvas-background"');
-    expect(html).toContain('background-image:url(&quot;ui/b50.png&quot;)');
+    expect(html).toContain('https://assets2.lxns.net/maimai/frame/350101.png');
     expect(html).toContain('background-size:cover;filter:blur(22px)');
     expect(html).toContain('data-layout-content');
     expect(html).toContain("filter((child) => child.hasAttribute('data-layout-content'))");
     expect(html).not.toContain('const children = Array.from(canvas.children)');
-    expect(html).toContain('src="ui/logo.png"');
-    expect(html).toContain('src="ui/DXRating_11.png"');
+        expect(html).toContain('src="ui/DXRating_11.png"');
     expect(html).toContain('src="ui/Drating_1.png"');
     expect(html).toContain('src="ui/Drating_5.png"');
     expect(html).toContain('src="ui/Shougou_Rainbow.png"');

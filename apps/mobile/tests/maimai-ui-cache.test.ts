@@ -98,12 +98,12 @@ describe('maimai ui asset cache', () => {
 
   it('pins the uploaded ui archive and covers every game-style asset path', () => {
     expect(MAIMAI_UI_ZIP.url).toBe('https://rranker-maimai-data.cn-nb1.rains3.com/maimai-ui/maimai-ui.zip');
-    expect(MAIMAI_UI_ZIP.bytes).toBe(3_633_254);
-    expect(MAIMAI_UI_ZIP.sha256).toBe('10806cfc97b8059bd44e50e3f300128b7c1df016917d0625cd6e58a1e7e66313');
-    expect(MAIMAI_UI_MANIFEST_ENTRIES).toHaveLength(88);
+    expect(MAIMAI_UI_ZIP.bytes).toBe(2_252_894);
+    expect(MAIMAI_UI_ZIP.sha256).toBe('6149a3dfbe4e4ad0757d75300e40896dc406516c3fbe3b3f0590cac8c3466c29');
+    expect(MAIMAI_UI_MANIFEST_ENTRIES).toHaveLength(86);
     const paths = new Set(MAIMAI_UI_MANIFEST_ENTRIES.map((entry) => entry.path));
     for (const required of [
-      'maimai-ui/b50.png', 'maimai-ui/logo.png', 'maimai-ui/Name.png',
+      'maimai-ui/Name.png',
       'maimai-ui/DaniPlate_23.png', 'maimai-ui/DXRating_11.png', 'maimai-ui/Drating_5.png',
       'maimai-ui/Shougou_Rainbow.png', 'maimai-ui/b50_score_master.png',
       'maimai-ui/SD.png', 'maimai-ui/DX.png', 'maimai-ui/Rank_SSSp.png',
