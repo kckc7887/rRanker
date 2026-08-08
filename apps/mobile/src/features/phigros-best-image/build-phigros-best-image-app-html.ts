@@ -172,7 +172,8 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
   const headerWidth = width - pageInset * 2;
   const headerHeight = px(width * 244 / 1080);
   const headerGap = px(width * 14 / 1080);
-  const avatarSize = px(width * 112 / 1080);
+  const avatarSize = px(width * 244 / 1080);
+  const nameCardHeight = px(width * 112 / 1080);
   const markerRowHeight = pageCount > 1 ? px(width * 44 / 1080) : 0;
   const scoresGap = px(width * 16 / 1080);
   const scoresTop = pageInset + headerHeight + markerRowHeight + scoresGap;
@@ -211,10 +212,10 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     .background-veil{position:absolute;inset:0;background:rgba(238,242,248,.52)}
     .app-header{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset}px;display:flex;width:${headerWidth}px;height:${headerHeight}px;align-items:stretch;gap:${headerGap}px}
     .header-right{display:flex;min-width:0;flex:1.1;flex-direction:column;gap:${headerGap}px}
-    .avatar-shell{width:${avatarSize}px;height:100%;flex:0 0 ${avatarSize}px;overflow:hidden;border:${Math.max(2, px(width * 3 / 1080))}px solid rgba(255,255,255,.92);border-radius:${px(width * 18 / 1080)}px;background:#DDE5F0;box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 22 / 1080)}px rgba(31,44,75,.28)}
+    .avatar-shell{width:${avatarSize}px;height:100%;flex:0 0 ${avatarSize}px;overflow:hidden;border:${Math.max(2, px(width * 3 / 1080))}px solid rgba(255,255,255,.92);border-radius:${px(width * 20 / 1080)}px;background:#DDE5F0;box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 22 / 1080)}px rgba(31,44,75,.28)}
     .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
-    .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;color:#52647F;font:950 ${px(width * 48 / 1080)}px/1 system-ui,sans-serif;background:linear-gradient(145deg,#F8FBFF,#C7D5EA)}
-    .name-card{position:relative;display:flex;min-width:0;height:${avatarSize}px;flex:0 0 ${avatarSize}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(width * 24 / 1080)}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 18 / 1080)}px;background:rgba(255,255,255,.82);box-shadow:0 ${px(width * 6 / 1080)}px ${px(width * 16 / 1080)}px rgba(35,48,70,.12);isolation:isolate}
+    .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;color:#52647F;font:950 ${px(width * 104 / 1080)}px/1 system-ui,sans-serif;background:linear-gradient(145deg,#F8FBFF,#C7D5EA)}
+    .name-card{position:relative;display:flex;min-width:0;height:${nameCardHeight}px;flex:0 0 ${nameCardHeight}px;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(width * 24 / 1080)}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 18 / 1080)}px;background:rgba(255,255,255,.82);box-shadow:0 ${px(width * 6 / 1080)}px ${px(width * 16 / 1080)}px rgba(35,48,70,.12);isolation:isolate}
     .name-card-bg{position:absolute;z-index:0;inset:0}
     .name-card-image{display:block;width:100%;height:100%;object-fit:cover;filter:blur(${px(width * 6 / 1080)}px);transform:scale(1.05)}
     .name-card-veil{position:absolute;inset:0;background:rgba(255,255,255,.68);-webkit-backdrop-filter:blur(${px(width * 8 / 1080)}px);backdrop-filter:blur(${px(width * 8 / 1080)}px)}

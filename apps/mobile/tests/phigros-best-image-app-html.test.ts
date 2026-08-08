@@ -53,6 +53,7 @@ describe('buildPhigrosBestImageAppHtml', () => {
     expect(html).toContain('class="header-right"');
     expect(html).not.toContain('class="header-left"');
     expect(html).not.toContain('class="identity-row"');
+    expect(html).toContain('.avatar-shell{width:244px;height:100%;flex:0 0 244px');
     expect(html).toContain('src="data:image/png;base64,avatar"');
     expect(html).toContain('<div class="name-card-bg" aria-hidden="true"><img class="name-card-image" alt="" src="data:image/png;base64,background"><div class="name-card-veil"></div></div>');
     expect(html).toContain('.name-card-veil{position:absolute;inset:0;background:rgba(255,255,255,.68)');
