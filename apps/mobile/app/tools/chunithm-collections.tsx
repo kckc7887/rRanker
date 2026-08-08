@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { router, Stack, type Href } from 'expo-router';
 import { Card } from '@/components/Card';
+import { ChunithmDifficultyBadge } from '@/components/chunithm/ChunithmDifficultyBadge';
+import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
+import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import {
@@ -12,8 +15,13 @@ import {
   type ChunithmCollection,
   type ChunithmCollectionKind,
 } from '@/domain/chunithm-collections';
+import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
 import { useGameData } from '@/hooks/use-game-data';
+import {
+  normalizeTrophyTone,
+  TROPHY_BADGE_THEMES,
+} from '@/features/best-image/best-image-badge-theme';
 import { useAppTheme } from '@/theme/app-theme';
 
 function Chevron({ expanded }: { expanded: boolean }) {
@@ -25,41 +33,126 @@ function progressPercent(completed: number, total: number): number {
   return total ? Math.min(100, (completed / total) * 100) : 0;
 }
 
-function CollectionProgressCard({ collection, scores }: { collection: ChunithmCollection; scores: unknown[] }) {
+/** 称号颜色徽章（normal/铜/银/金 → 实体徽章；彩虹 → 渐变徽章；image → 图片预览）。 */
+function TrophyBadge({ collection }: { collection: ChunithmCollection }) {
+  const tone = normalizeTrophyTone(collection.color);
+  if (collection.color === 'image') {
+    return <ChunithmCollectionImage kind="trophy-image" collectionId={collection.id} height={34} />;
+  }
+  if (tone === 'rainbow') {
+    return (
+      <LayeredGradientBadge
+        label={collection.name || `#${collection.id}`}
+        numberOfLines={1}
+        style={styles.trophyFrame}
+        textStyle={styles.trophyText}
+        tone="rainbow"
+      />
+    );
+  }
+  const theme = TROPHY_BADGE_THEMES[tone];
+  return (
+    <View style={[styles.trophyFrame, styles.trophySolid, { borderColor: theme.border, backgroundColor: theme.background }]}>
+      <Text numberOfLines={1} style={[styles.trophyText, { color: theme.text }]}>
+        {collection.name || `#${collection.id}`}
+      </Text>
+    </View>
+  );
+}
+
+/** 收藏品预览：称号用徽章/图片，角色/名牌/头像用 CDN 图片。 */
+function CollectionPreview({ kind, collection }: { kind: ChunithmCollectionKind; collection: ChunithmCollection }) {
+  if (kind === 'trophy') {
+    return <TrophyBadge collection={collection} />;
+  }
+  return (
+    <ChunithmCollectionImage
+      kind={kind}
+      collectionId={collection.id}
+      height={40}
+      borderRadius={10}
+    />
+  );
+}
+
+function RequirementHint({ collection }: { collection: ChunithmCollection }) {
   const theme = useAppTheme();
-  const progress = calculateChunithmCollectionProgress(collection, scores as Parameters<typeof calculateChunithmCollectionProgress>[1]);
+  const hints: string[] = [];
+  for (const group of collection.required ?? []) {
+    if (group.rank) hints.push(`评级 ${group.rank.toUpperCase()}`);
+    if (group.fullCombo) hints.push(`全连 ${group.fullCombo.toUpperCase()}`);
+    if (group.fullChain) hints.push(`全链 ${group.fullChain.toUpperCase()}`);
+  }
+  if (hints.length === 0) return null;
+  return (
+    <View style={styles.requirementHint}>
+      <Text style={[styles.requirementText, { color: theme.textMuted }]}>达成</Text>
+      {[...new Set(hints)].map((hint) => (
+        <View key={hint} style={[styles.requirementChip, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+          <Text style={[styles.requirementChipText, { color: theme.textSecondary }]}>{hint}</Text>
+        </View>
+      ))}
+      <Text style={[styles.requirementText, { color: theme.textMuted }]}>及以上</Text>
+    </View>
+  );
+}
+
+function CollectionProgressCard({
+  kind,
+  collection,
+  scores,
+}: {
+  kind: ChunithmCollectionKind;
+  collection: ChunithmCollection;
+  scores: Parameters<typeof calculateChunithmCollectionProgress>[1];
+}) {
+  const theme = useAppTheme();
+  const progress = calculateChunithmCollectionProgress(collection, scores);
   const percent = progressPercent(progress.completed, progress.total);
+  const difficultyRows = Object.entries(progress.byDifficulty)
+    .sort(([left], [right]) => Number(left) - Number(right));
 
   return (
     <Card style={styles.progressCard}>
       <View style={styles.progressHeader}>
-        <Text style={[styles.progressTitle, { color: theme.text }]}>
-          {collection.name || `#${collection.id}`}
-        </Text>
+        <View style={styles.progressTitleBlock}>
+          <CollectionPreview kind={kind} collection={collection} />
+          <Text style={[styles.progressTitle, { color: theme.text }]}>
+            {collection.name || `#${collection.id}`}
+          </Text>
+        </View>
         <Text style={[styles.progressPct, { color: theme.accent }]}>{percent.toFixed(1)}%</Text>
       </View>
       <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
         <View style={[styles.barFill, { width: `${percent}%`, backgroundColor: theme.accent }]} />
       </View>
       <View style={styles.progressMetaRow}>
-        <Text style={[styles.progressMeta, { color: theme.textSecondary }]}>本地成绩计算</Text>
+        <RequirementHint collection={collection} />
         <Text style={[styles.progressCount, { color: theme.textSecondary }]}>
           {progress.completed} / {progress.total}
         </Text>
       </View>
+      {difficultyRows.map(([difficulty, item]) => {
+        const levelIndex = Number(difficulty);
+        return (
+          <View key={difficulty} style={styles.diffRow}>
+            {levelIndex < 0 ? (
+              <Text style={[styles.anyDiff, { color: theme.textMuted }]}>任意难度</Text>
+            ) : (
+              <ChunithmDifficultyBadge display="label" levelIndex={levelIndex as never} />
+            )}
+            <Text style={[styles.meta, { color: theme.textMuted }]}>{item.completed}/{item.total}</Text>
+          </View>
+        );
+      })}
       {collection.description ? (
         <Text style={[styles.description, { color: theme.textMuted }]} numberOfLines={2}>
           {collection.description}
         </Text>
       ) : null}
-      {collection.color ? (
-        <Text style={[styles.badge, { color: theme.textSecondary }]}>颜色 {collection.color}</Text>
-      ) : null}
     </Card>
   );
 }
-
-const DIFFICULTY_LABELS = ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'ULTIMA', "WORLD'S END"] as const;
 
 export default function ChunithmCollectionsToolScreen() {
   const theme = useAppTheme();
@@ -69,10 +162,16 @@ export default function ChunithmCollectionsToolScreen() {
   const [query, setQuery] = useState('');
   const { data, isLoading, isError, error, refetch } = useChunithmCollections(kind);
   const gameData = useGameData();
+  const catalog = useChunithmCatalog();
   const scores = useMemo(
     () => (gameData.data?.payload.kind === 'chunithm' ? gameData.data.payload.scores : []),
     [gameData.data],
   );
+  const titleById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const song of catalog.data?.songs ?? []) map.set(String(song.id), song.title);
+    return map;
+  }, [catalog.data?.songs]);
 
   const items = useMemo(() => {
     if (!data) return [];
@@ -179,6 +278,9 @@ export default function ChunithmCollectionsToolScreen() {
                       {selected?.name ?? '请选择'}
                     </Text>
                   </View>
+                  {selected && kind !== 'trophy' ? (
+                    <ChunithmCollectionImage kind={kind} collectionId={selected.id} height={36} borderRadius={6} />
+                  ) : null}
                   <Chevron expanded={pickerOpen} />
                 </Pressable>
 
@@ -228,7 +330,7 @@ export default function ChunithmCollectionsToolScreen() {
               </Card>
 
               {selected ? (
-                <CollectionProgressCard collection={selected} scores={scores} />
+                <CollectionProgressCard kind={kind} collection={selected} scores={scores} />
               ) : null}
 
               {selected ? (
@@ -252,26 +354,38 @@ export default function ChunithmCollectionsToolScreen() {
                   </Card>
                 ) : null
               }
-              renderItem={({ item }) => (
-                <View style={[styles.song, { backgroundColor: theme.surface }]}>
-                  <View style={styles.songCopy}>
-                    <Text style={[styles.songId, { color: theme.textMuted }]}>#{item.songId}</Text>
-                    <Text style={[styles.songTitle, { color: theme.text }]} numberOfLines={1}>
-                      歌曲 {item.songId}
-                    </Text>
-                    <View style={styles.songMetaRow}>
-                      {item.missingDifficulties.map((difficulty) => (
-                        <Text
-                          key={difficulty}
-                          style={[styles.songMeta, { color: theme.textMuted }]}
-                        >
-                          {difficulty < 0 ? '任意难度' : (DIFFICULTY_LABELS[difficulty] ?? `难度${difficulty}`)}
-                        </Text>
-                      ))}
+              renderItem={({ item }) => {
+                const title = titleById.get(item.songId);
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`查看歌曲 ${title ?? item.songId}`}
+                    onPress={() => router.push(`/songs/${encodeURIComponent(item.songId)}` as Href)}
+                    style={({ pressed }) => [styles.song, { backgroundColor: theme.surface }, pressed && styles.pressed]}
+                  >
+                    <View style={styles.songCopy}>
+                      <Text style={[styles.songId, { color: theme.textMuted }]}>#{item.songId}</Text>
+                      <Text style={[styles.songTitle, { color: theme.text }]} numberOfLines={1}>
+                        {title ?? `歌曲 ${item.songId}`}
+                      </Text>
+                      <View style={styles.songDiffs}>
+                        {item.missingDifficulties.map((levelIndex) => (
+                          levelIndex < 0 ? (
+                            <Text key="any" style={[styles.anyDiffMini, { color: theme.textMuted }]}>任意难度</Text>
+                          ) : (
+                            <ChunithmDifficultyBadge
+                              key={levelIndex}
+                              display="label"
+                              levelIndex={levelIndex as never}
+                            />
+                          )
+                        ))}
+                      </View>
                     </View>
-                  </View>
-                </View>
-              )}
+                    <Text style={[styles.link, { color: theme.accent }]}>详情</Text>
+                  </Pressable>
+                );
+              }}
             />
           </View>
         )}
@@ -335,8 +449,9 @@ const styles = StyleSheet.create({
   pickerItemName: { color: '#111827', fontSize: 14, fontWeight: '600' },
   pickerEmpty: { color: '#6B7280', fontSize: 12, textAlign: 'center', paddingVertical: 12 },
   progressCard: { gap: 8 },
-  progressHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 },
-  progressTitle: { color: '#111827', fontSize: 18, fontWeight: '800', flex: 1 },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  progressTitleBlock: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
+  progressTitle: { color: '#111827', fontSize: 17, fontWeight: '800', flexShrink: 1 },
   progressPct: { color: '#246BFD', fontSize: 22, fontWeight: '800' },
   barTrack: {
     height: 8,
@@ -355,10 +470,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  progressMeta: { color: '#4B5563', fontSize: 12, fontWeight: '600' },
-  progressCount: { color: '#4B5563', fontSize: 12, fontWeight: '600' },
+  requirementHint: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 4,
+  },
+  requirementText: { color: '#6B7280', fontSize: 11, lineHeight: 16 },
+  requirementChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  requirementChipText: { color: '#4B5563', fontSize: 10, fontWeight: '700' },
+  progressCount: { color: '#4B5563', fontSize: 12, fontWeight: '600', flexShrink: 0 },
+  diffRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  anyDiff: { color: '#6B7280', fontSize: 12, fontWeight: '700' },
+  meta: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
   description: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
-  badge: { color: '#4B5563', fontSize: 11, fontWeight: '700' },
+  trophyFrame: { alignSelf: 'flex-start', maxWidth: '100%' },
+  trophySolid: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, height: 26, alignItems: 'center', justifyContent: 'center' },
+  trophyText: { fontSize: 11, lineHeight: 15, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
   heading: { color: '#111827', fontSize: 17, fontWeight: '700', marginTop: 4 },
   listContent: { paddingHorizontal: 16, paddingBottom: 28, gap: 10 },
   emptyCard: { alignItems: 'center', paddingVertical: 18 },
@@ -368,11 +502,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  songCopy: { gap: 4 },
+  songCopy: { flex: 1, gap: 4, minWidth: 0 },
   songId: { color: '#9CA3AF', fontSize: 11, fontWeight: '600' },
   songTitle: { color: '#111827', fontSize: 15, fontWeight: '600' },
-  songMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  songMeta: { color: '#6B7280', fontSize: 11 },
+  songDiffs: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
+  anyDiffMini: { color: '#6B7280', fontSize: 10, fontWeight: '700' },
+  link: { color: '#246BFD', fontWeight: '700', fontSize: 13 },
   pressed: { opacity: 0.86 },
 });
