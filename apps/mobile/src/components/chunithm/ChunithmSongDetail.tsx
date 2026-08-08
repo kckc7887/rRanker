@@ -2,6 +2,7 @@ import { type ComponentProps, useEffect, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   Linking,
@@ -594,18 +595,56 @@ function DifficultyCard({
         ) : null}
       </View>
       <View style={styles.statRow}>
-        <View style={styles.statCell}>
+        <DetailPressable
+          accessibilityRole="link"
+          accessibilityLabel={
+            worldsEnd
+              ? `WORLD'S END 不参与 Rating 计算`
+              : `使用定数 ${difficulty.levelValue.toFixed(1)} 打开 Rating 计算器`
+          }
+          disabled={worldsEnd}
+          onPress={() => router.push({
+            pathname: '/tools/chunithm-rating',
+            params: {
+              constant: difficulty.levelValue.toFixed(1),
+              ...(score ? { score: String(score.score) } : {}),
+            },
+          } as Href)}
+          style={({ pressed }) => [styles.statCell, styles.statCellPressable, pressed && styles.statCellPressed]}
+        >
           <Text style={[styles.statLabel, { color: secondaryText }]}>Rating</Text>
           <Text style={[styles.statValue, { color: primaryText }]}>
             {formatChunithmRating(score?.rating)}
           </Text>
-        </View>
-        <View style={styles.statCell}>
+          {worldsEnd ? null : (
+            <Text style={[styles.statHint, { color: tertiaryText }]}>点击带入定数</Text>
+          )}
+        </DetailPressable>
+        <DetailPressable
+          accessibilityRole="link"
+          accessibilityLabel={
+            worldsEnd
+              ? `WORLD'S END 不参与 OVER POWER 计算`
+              : `使用定数 ${difficulty.levelValue.toFixed(1)} 打开 OVER POWER 计算器`
+          }
+          disabled={worldsEnd}
+          onPress={() => router.push({
+            pathname: '/tools/chunithm-rating',
+            params: {
+              constant: difficulty.levelValue.toFixed(1),
+              ...(score ? { score: String(score.score) } : {}),
+            },
+          } as Href)}
+          style={({ pressed }) => [styles.statCell, styles.statCellPressable, pressed && styles.statCellPressed]}
+        >
           <Text style={[styles.statLabel, { color: secondaryText }]}>OVER POWER</Text>
           <Text style={[styles.statValue, { color: primaryText }]}>
             {formatOptionalValue(score?.over_power)}
           </Text>
-        </View>
+          {worldsEnd ? null : (
+            <Text style={[styles.statHint, { color: tertiaryText }]}>点击带入定数</Text>
+          )}
+        </DetailPressable>
       </View>
       <View style={[styles.divider, { backgroundColor: dividerColor }]} />
       <Text style={[styles.charter, { color: tertiaryText }]}>
@@ -932,6 +971,9 @@ const styles = StyleSheet.create({
   badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 29, marginTop: 7 },
   statRow: { flexDirection: 'row', marginTop: 16, gap: 24 },
   statCell: { gap: 2 },
+  statCellPressable: { paddingVertical: 2, paddingRight: 4 },
+  statCellPressed: { opacity: 0.6 },
+  statHint: { fontSize: 10, fontWeight: '600' },
   statLabel: { fontSize: 12, fontWeight: '700' },
   statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
