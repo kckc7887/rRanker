@@ -50,6 +50,40 @@ describe('pinned tool preferences', () => {
     })).toEqual({
       pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], test: [] },
       pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
+      pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
+    });
+  });
+
+  it('keeps valid chunithm collection pins by kind and removes duplicates', () => {
+    expect(parseHomePinPreferences({
+      version: 1,
+      pinnedToolIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
+      pinnedCollectionIdsByGame: {
+        chunithm: [
+          { kind: 'trophy', id: 866 },
+          { kind: 'trophy', id: 866 },
+          { kind: 'character', id: 16620 },
+          { kind: 'plate', id: 1 },
+          { kind: 'icon', id: 19 },
+          { kind: 'trophy', id: 0 },
+          { kind: 'unknown', id: 5 },
+          { kind: 'trophy', id: -1 },
+        ],
+        maimai: [{ kind: 'trophy', id: 866 }],
+        phigros: [],
+        test: [],
+      },
+    }).pinnedCollectionIdsByGame).toEqual({
+      maimai: [],
+      chunithm: [
+        { kind: 'trophy', id: 866 },
+        { kind: 'character', id: 16620 },
+        { kind: 'plate', id: 1 },
+        { kind: 'icon', id: 19 },
+        { kind: 'trophy', id: 0 },
+      ],
+      phigros: [],
+      test: [],
     });
   });
 
@@ -69,6 +103,12 @@ describe('pinned tool preferences', () => {
         phigros: [],
         test: [],
       },
+      pinnedCollectionIdsByGame: {
+        maimai: [],
+        chunithm: [],
+        phigros: [],
+        test: [],
+      },
     });
     await expect(store.load()).resolves.toEqual({
       pinnedToolIdsByGame: {
@@ -79,6 +119,12 @@ describe('pinned tool preferences', () => {
       },
       pinnedPlateIdsByGame: {
         maimai: [6101, 6102],
+        chunithm: [],
+        phigros: [],
+        test: [],
+      },
+      pinnedCollectionIdsByGame: {
+        maimai: [],
         chunithm: [],
         phigros: [],
         test: [],

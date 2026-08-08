@@ -1,17 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router, Stack, type Href } from 'expo-router';
+import { router, Stack, type Href, useLocalSearchParams } from 'expo-router';
 import { Card } from '@/components/Card';
 import { ChunithmDifficultyBadge } from '@/components/chunithm/ChunithmDifficultyBadge';
 import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
+import { useNotification } from '@/components/AppNotification';
 import {
   calculateChunithmCollectionProgress,
   CHUNITHM_COLLECTION_KIND_LABELS,
   CHUNITHM_PROGRESS_TRACKED_KINDS,
   isChunithmCollectionComputable,
+  isChunithmCollectionKind,
   type ChunithmCollection,
   type ChunithmCollectionKind,
 } from '@/domain/chunithm-collections';
@@ -22,6 +24,8 @@ import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
+import { useSession } from '@/state/session-store';
+import { useToolboxPins } from '@/state/toolbox-pins';
 import { useAppTheme } from '@/theme/app-theme';
 
 function Chevron({ expanded }: { expanded: boolean }) {
@@ -101,10 +105,16 @@ function CollectionProgressCard({
   kind,
   collection,
   scores,
+  pinned,
+  pinPending,
+  onTogglePin,
 }: {
   kind: ChunithmCollectionKind;
   collection: ChunithmCollection;
   scores: Parameters<typeof calculateChunithmCollectionProgress>[1];
+  pinned: boolean;
+  pinPending: boolean;
+  onTogglePin: () => void;
 }) {
   const theme = useAppTheme();
   const computable = isChunithmCollectionComputable(collection);
@@ -156,16 +166,49 @@ function CollectionProgressCard({
           {collection.description}
         </Text>
       ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${pinned ? '从主页移除' : '添加到主页'} ${collection.name || `#${collection.id}`}`}
+        disabled={pinPending}
+        onPress={onTogglePin}
+        style={({ pressed }) => [
+          styles.homeButton,
+          { borderColor: theme.border },
+          pinned && { borderColor: theme.accent, backgroundColor: theme.accentSoft },
+          pressed && styles.pressed,
+          pinPending && styles.homeButtonDisabled,
+        ]}
+      >
+        <Text style={[
+          styles.homeButtonText,
+          { color: theme.textSecondary },
+          pinned && { color: theme.accent },
+        ]}>
+          {pinned ? '已添加到主页' : '添加到主页'}
+        </Text>
+      </Pressable>
     </Card>
   );
 }
 
 export default function ChunithmCollectionsToolScreen() {
   const theme = useAppTheme();
-  const [kind, setKind] = useState<ChunithmCollectionKind>('trophy');
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const { showNotification } = useNotification();
+  const { kind: kindParam, id: idParam } = useLocalSearchParams<{ kind?: string; id?: string }>();
+  const routeKind = kindParam && isChunithmCollectionKind(kindParam)
+    && CHUNITHM_PROGRESS_TRACKED_KINDS.includes(kindParam as ChunithmCollectionKind)
+    ? (kindParam as ChunithmCollectionKind)
+    : null;
+  const routeId = idParam && /^\d+$/.test(idParam) ? Number(idParam) : null;
+  const [kind, setKind] = useState<ChunithmCollectionKind>(routeKind ?? 'trophy');
+  const [selectedId, setSelectedId] = useState<number | null>(routeId);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [pinPending, setPinPending] = useState(false);
+  const activeGameId = useSession((state) => state.activeGameId);
+  const pinnedIds = useToolboxPins((state) => state.pinnedCollectionIdsByGame[activeGameId]);
+  const hydratePins = useToolboxPins((state) => state.hydrate);
+  const togglePinnedCollection = useToolboxPins((state) => state.togglePinnedCollection);
   const { data, isLoading, isError, error, refetch } = useChunithmCollections(kind);
   const gameData = useGameData();
   const catalog = useChunithmCatalog();
@@ -178,6 +221,15 @@ export default function ChunithmCollectionsToolScreen() {
     for (const song of catalog.data?.songs ?? []) map.set(String(song.id), song.title);
     return map;
   }, [catalog.data?.songs]);
+
+  useEffect(() => {
+    void hydratePins();
+  }, [hydratePins]);
+
+  useEffect(() => {
+    if (routeKind) setKind(routeKind);
+    if (routeId) setSelectedId(routeId);
+  }, [routeKind, routeId]);
 
   const items = useMemo(() => {
     if (!data) return [];
@@ -209,6 +261,22 @@ export default function ChunithmCollectionsToolScreen() {
     setSelectedId(null);
     setPickerOpen(false);
     setQuery('');
+  };
+
+  const toggleHomePin = async () => {
+    if (!selected) return;
+    setPinPending(true);
+    try {
+      await togglePinnedCollection(activeGameId, kind, selected.id);
+    } catch {
+      showNotification({
+        title: '保存失败',
+        message: '无法保存收藏品主页状态，请稍后重试。',
+        variant: 'error',
+      });
+    } finally {
+      setPinPending(false);
+    }
   };
 
   return (
@@ -336,7 +404,14 @@ export default function ChunithmCollectionsToolScreen() {
               </Card>
 
               {selected ? (
-                <CollectionProgressCard kind={kind} collection={selected} scores={scores} />
+                <CollectionProgressCard
+                  kind={kind}
+                  collection={selected}
+                  scores={scores}
+                  pinned={pinnedIds.some((item) => item.kind === kind && item.id === selected.id)}
+                  pinPending={pinPending}
+                  onTogglePin={() => void toggleHomePin()}
+                />
               ) : null}
 
               {selected && selectedComputable ? (
@@ -500,6 +575,16 @@ const styles = StyleSheet.create({
   trophyFrame: { alignSelf: 'flex-start', maxWidth: '100%' },
   trophySolid: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, height: 26, alignItems: 'center', justifyContent: 'center' },
   trophyText: { fontSize: 11, lineHeight: 15, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
+  homeButton: {
+    marginTop: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#C7D2E2',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  homeButtonDisabled: { opacity: 0.55 },
+  homeButtonText: { fontSize: 14, fontWeight: '700' },
   heading: { color: '#111827', fontSize: 17, fontWeight: '700', marginTop: 4 },
   listContent: { paddingHorizontal: 16, paddingBottom: 28, gap: 10 },
   emptyCard: { alignItems: 'center', paddingVertical: 18 },

@@ -6,6 +6,7 @@ import ChunithmCollectionsToolScreen from '../app/tools/chunithm-collections';
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: { push: jest.fn(), dismissTo: jest.fn() },
+  useLocalSearchParams: () => ({}),
 }));
 
 const source = {
@@ -23,6 +24,28 @@ let mockGameData: {
   error: unknown;
   refetch: ReturnType<typeof jest.fn>;
 };
+let mockPinnedCollections: { kind: string; id: number }[] = [];
+const mockTogglePinnedCollection = jest.fn(async () => undefined);
+
+jest.mock('@/state/session-store', () => ({
+  useSession: (selector: (state: { activeGameId: string }) => unknown) => selector({ activeGameId: 'chunithm' }),
+}));
+
+jest.mock('@/state/toolbox-pins', () => ({
+  useToolboxPins: (selector: (state: {
+    pinnedCollectionIdsByGame: Record<string, { kind: string; id: number }[]>;
+    hydrate: () => Promise<void>;
+    togglePinnedCollection: typeof mockTogglePinnedCollection;
+  }) => unknown) => selector({
+    pinnedCollectionIdsByGame: { maimai: [], chunithm: mockPinnedCollections, phigros: [], test: [] },
+    hydrate: jest.fn(async () => undefined),
+    togglePinnedCollection: mockTogglePinnedCollection,
+  }),
+}));
+
+jest.mock('@/components/AppNotification', () => ({
+  useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
+}));
 
 jest.mock('@/hooks/use-chunithm-collections', () => ({
   useChunithmCollections: () => ({
@@ -79,6 +102,7 @@ jest.mock('expo-linear-gradient', () => {
 describe('chunithm tool screens', () => {
   beforeEach(() => {
     mockCollectionsData = undefined;
+    mockPinnedCollections = [];
     mockGameData = {
       data: {
         payload: {
@@ -269,5 +293,43 @@ describe('chunithm tool screens', () => {
     expect(queryByText('地图头像')).toBeNull();
     expect(queryByLabelText('收藏品类型 名牌版')).toBeNull();
     expect(queryByLabelText('收藏品类型 地图头像')).toBeNull();
+  });
+
+  it('pins and unpins the selected collection to the home page', async () => {
+    mockCollectionsData = {
+      items: [
+        {
+          id: 866,
+          name: 'LUNA ROUND',
+          required: [{ difficulties: [3], songs: [{ id: 100, title: '曲A' }] }],
+        },
+      ],
+      source,
+    };
+    const { getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('选择收藏品'));
+    await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
+    expect(getByLabelText('添加到主页 LUNA ROUND')).toBeTruthy();
+
+    await fireEvent.press(getByLabelText('添加到主页 LUNA ROUND'));
+    expect(mockTogglePinnedCollection).toHaveBeenCalledWith('chunithm', 'trophy', 866);
+  });
+
+  it('shows the pinned state for a collection already on the home page', async () => {
+    mockCollectionsData = {
+      items: [
+        {
+          id: 866,
+          name: 'LUNA ROUND',
+          required: [{ difficulties: [3], songs: [{ id: 100, title: '曲A' }] }],
+        },
+      ],
+      source,
+    };
+    mockPinnedCollections = [{ kind: 'trophy', id: 866 }];
+    const { getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('选择收藏品'));
+    await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
+    expect(getByLabelText('从主页移除 LUNA ROUND')).toBeTruthy();
   });
 });

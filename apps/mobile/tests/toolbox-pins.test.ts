@@ -52,4 +52,35 @@ describe('toolbox pin state', () => {
     await expect(store.getState().togglePinnedTool('maimai', 'versions')).rejects.toThrow('database unavailable');
     expect(store.getState().pinnedToolIdsByGame.maimai).toEqual([]);
   });
+
+  it('pins and unpins a chunithm collection by kind and id', async () => {
+    const preferences = new MemoryPreferences();
+    const store = createToolboxPinsStore(preferences);
+    await store.getState().togglePinnedCollection('chunithm', 'trophy', 866);
+    await store.getState().togglePinnedCollection('chunithm', 'character', 16620);
+    expect(store.getState().pinnedCollectionIdsByGame.chunithm).toEqual([
+      { kind: 'trophy', id: 866 },
+      { kind: 'character', id: 16620 },
+    ]);
+    expect(preferences.value.pinnedCollectionIdsByGame.chunithm).toEqual([
+      { kind: 'trophy', id: 866 },
+      { kind: 'character', id: 16620 },
+    ]);
+
+    await store.getState().togglePinnedCollection('chunithm', 'trophy', 866);
+    expect(store.getState().pinnedCollectionIdsByGame.chunithm).toEqual([
+      { kind: 'character', id: 16620 },
+    ]);
+    expect(preferences.value.pinnedCollectionIdsByGame.chunithm).toEqual([
+      { kind: 'character', id: 16620 },
+    ]);
+  });
+
+  it('rejects collection pins for games without the collections tool', async () => {
+    const preferences = new MemoryPreferences();
+    const store = createToolboxPinsStore(preferences);
+    await store.getState().togglePinnedCollection('maimai', 'trophy', 866);
+    expect(store.getState().pinnedCollectionIdsByGame.maimai).toEqual([]);
+    expect(preferences.value.pinnedCollectionIdsByGame.maimai).toEqual([]);
+  });
 });
