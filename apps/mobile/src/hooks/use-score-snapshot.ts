@@ -30,11 +30,12 @@ export function useScoreSnapshot() {
         persistScores ? repository : undefined,
         persistCatalog ? repository : undefined,
       );
-      // 远程账号缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
-      if (persistScores && activeProviderId !== 'local') {
+      // 缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
+      // local/maimai-test 账号同样启用：首屏不再等待曲库网络拉取。
+      if (persistScores) {
         return service.loadCacheFirst((fresh) => {
           queryClient.setQueryData(queryKey, fresh);
-        });
+        }, activeProviderId !== 'local');
       }
       return service.load();
     },

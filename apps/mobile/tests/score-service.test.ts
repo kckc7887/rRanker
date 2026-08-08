@@ -201,6 +201,19 @@ describe('ScoreService', () => {
     expect(fresh.source.kind).not.toBe('cache');
   });
 
+  it('keeps the cached snapshot unmarked for local-source accounts', async () => {
+    const repository = new MemoryRepository();
+    const service = new ScoreService(
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-plain', repository, repository,
+    );
+    await service.load();
+
+    const result = await service.loadCacheFirst(() => undefined, false);
+
+    expect(result.source.kind).not.toBe('cache');
+    expect(result.source.isStale).toBe(false);
+  });
+
   it('falls back to a network load when no snapshot is cached', async () => {
     const repository = new MemoryRepository();
     const service = new ScoreService(
