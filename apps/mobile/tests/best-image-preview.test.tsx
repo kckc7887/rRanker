@@ -179,13 +179,13 @@ describe('best image preview', () => {
   it('switches the player profile between the game and unified app styles', async () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
-    expect(screen.getByLabelText('游戏样式').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByLabelText('游戏风格').props.accessibilityState).toMatchObject({ selected: true });
     expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('class="game-head"');
 
-    await fireEvent.press(screen.getByLabelText('应用样式'));
+    await fireEvent.press(screen.getByLabelText('应用风格'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
       .toContain('class="profile-app"'));
-    expect(screen.getByLabelText('应用样式').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByLabelText('应用风格').props.accessibilityState).toMatchObject({ selected: true });
     expect(screen.queryByLabelText('胶囊')).toBeNull();
     expect(screen.queryByLabelText('圆角矩形')).toBeNull();
   });

@@ -97,6 +97,10 @@ const IMAGE_TYPES: { id: BestImageType; label: string }[] = [
   { id: 'best50', label: 'Best50' },
   { id: 'custom', label: '自定义' },
 ];
+const RATING_STYLES: { id: BestImageRatingStyle; label: string }[] = [
+  { id: 'game', label: '游戏风格' },
+  { id: 'app', label: '应用风格' },
+];
 const OUTPUT_WIDTHS = [1080, 1440, 2160] as const;
 const STYLE_ITEMS: { kind: BestImageCollectionKind; label: string }[] = [
   { kind: 'icon', label: '头像' },
@@ -767,9 +771,13 @@ export function MaimaiBestImageScreen() {
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
       <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
         <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
-          <View style={styles.chipRow}>
-            <ChoiceChip label="游戏样式" selected={ratingStyle === 'game'} onPress={() => setRatingStyle('game')} />
-            <ChoiceChip label="应用样式" selected={ratingStyle === 'app'} onPress={() => setRatingStyle('app')} />
+          <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
+            {RATING_STYLES.map(({ id, label }) => {
+              const selected = ratingStyle === id;
+              return <Pressable key={id} accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setRatingStyle(id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+                <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{label}</Text>
+              </Pressable>;
+            })}
           </View>
         </View>
         {STYLE_ITEMS.map(({ kind, label }) => {
