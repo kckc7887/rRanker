@@ -15,6 +15,7 @@ describe('usePhigrosRecordsFilter store', () => {
       accuracyMin: '',
       accuracyMax: '',
       rank: null,
+      chapter: 'all',
     });
   });
 
@@ -23,11 +24,13 @@ describe('usePhigrosRecordsFilter store', () => {
     usePhigrosRecordsFilter.getState().setConstantMin('14');
     usePhigrosRecordsFilter.getState().setAccuracyMin('99');
     usePhigrosRecordsFilter.getState().setRank('phi');
+    usePhigrosRecordsFilter.getState().setChapter('4');
     expect(usePhigrosRecordsFilter.getState()).toMatchObject({
       level: 3,
       constantMin: '14',
       accuracyMin: '99',
       rank: 'phi',
+      chapter: '4',
     });
   });
 
@@ -36,12 +39,14 @@ describe('usePhigrosRecordsFilter store', () => {
     usePhigrosRecordsFilter.getState().setKeyword('Glaciaxion');
     usePhigrosRecordsFilter.getState().setLevel(2);
     usePhigrosRecordsFilter.getState().setRank('fc');
+    usePhigrosRecordsFilter.getState().setChapter('6');
     usePhigrosRecordsFilter.getState().clearFilters();
     expect(usePhigrosRecordsFilter.getState()).toMatchObject({
       keyword: '',
       collapsed: false,
       level: 'all',
       rank: null,
+      chapter: 'all',
     });
   });
 });

@@ -378,8 +378,8 @@ function PhigrosRecordsScreen() {
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const {
-    keyword, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing,
-    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setAccuracyMin, setAccuracyMax, setRank, setXing,
+    keyword, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
+    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setAccuracyMin, setAccuracyMax, setRank, setXing, setChapter,
     clearFilters,
   } = usePhigrosRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
@@ -391,6 +391,13 @@ function PhigrosRecordsScreen() {
   );
 
   const catalogSongs = catalogQuery.data?.snapshot.songs ?? [];
+  const chapterIdBySong = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const song of catalogSongs) {
+      if (song.versionId !== undefined) map.set(song.id, song.versionId);
+    }
+    return map;
+  }, [catalogSongs]);
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const song of catalogSongs) {
@@ -411,8 +418,8 @@ function PhigrosRecordsScreen() {
   ), [records, titleMap]);
 
   const filterSpec = useMemo(() => ({
-    keyword: debouncedKeyword, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing,
-  }), [accuracyMax, accuracyMin, constantMax, constantMin, debouncedKeyword, level, rank, xing]);
+    keyword: debouncedKeyword, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
+  }), [accuracyMax, accuracyMin, chapter, constantMax, constantMin, debouncedKeyword, level, rank, xing]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<{ record: ScoreRecord; title: string }[]>(() => {
     if (!records.length) return [];
@@ -425,6 +432,10 @@ function PhigrosRecordsScreen() {
         const doc = searchDocs.get(recordKey(item.record));
         return doc ? searchDocumentMatches(doc, deferredFilterSpec.keyword) : false;
       });
+    }
+    if (deferredFilterSpec.chapter !== 'all') {
+      const chapterId = Number(deferredFilterSpec.chapter);
+      list = list.filter((item) => chapterIdBySong.get(item.record.songId) === chapterId);
     }
     if (deferredFilterSpec.level !== 'all') {
       list = list.filter((item) => matchesPhigrosLevel(item.record.levelIndex, deferredFilterSpec.level));
@@ -440,7 +451,7 @@ function PhigrosRecordsScreen() {
       item.record, deferredFilterSpec.xing, noteTotalByKey,
     ));
     return list;
-  }, [deferredFilterSpec, noteTotalByKey, records, searchDocs]);
+  }, [chapterIdBySong, deferredFilterSpec, noteTotalByKey, records, searchDocs]);
 
   const isGameLoading = gameData.isLoading || catalogQuery.isLoading;
   const isGameError = gameData.isError || catalogQuery.isError;
@@ -471,6 +482,7 @@ function PhigrosRecordsScreen() {
     || accuracyMax
     || rank
     || xing
+    || chapter !== 'all'
   );
 
   if (!hasSession && !isGameLoading) {
@@ -496,6 +508,7 @@ function PhigrosRecordsScreen() {
         collapsed={collapsed} onCollapsedChange={setCollapsed}
         level={level} constantMin={constantMin} constantMax={constantMax}
         accuracyMin={accuracyMin} accuracyMax={accuracyMax} rank={rank} xing={xing}
+        chapter={chapter} versions={catalogQuery.data?.snapshot.versions ?? []} onChapterChange={setChapter}
         onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onAccuracyMinChange={setAccuracyMin} onAccuracyMaxChange={setAccuracyMax}
         onRankChange={setRank} onXingChange={setXing}

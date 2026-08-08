@@ -13,6 +13,7 @@ interface PhigrosRecordsFilterState {
   accuracyMax: string;
   rank: PhigrosRankFilter | null;
   xing: PhigrosXingKind | null;
+  chapter: string | 'all';
   setKeyword: (value: string) => void;
   setCollapsed: (value: boolean) => void;
   setLevel: (level: PhigrosLevel | 'all') => void;
@@ -22,6 +23,7 @@ interface PhigrosRecordsFilterState {
   setAccuracyMax: (value: string) => void;
   setRank: (value: PhigrosRankFilter | null) => void;
   setXing: (value: PhigrosXingKind | null) => void;
+  setChapter: (value: string | 'all') => void;
   clearFilters: () => void;
   reset: () => void;
 }
@@ -36,6 +38,7 @@ const DEFAULT_STATE = {
   accuracyMax: '',
   rank: null as PhigrosRankFilter | null,
   xing: null as PhigrosXingKind | null,
+  chapter: 'all' as const,
 };
 
 export const usePhigrosRecordsFilter = create<PhigrosRecordsFilterState>((set) => ({
@@ -49,6 +52,7 @@ export const usePhigrosRecordsFilter = create<PhigrosRecordsFilterState>((set) =
   setAccuracyMax: (accuracyMax) => set({ accuracyMax }),
   setRank: (rank) => set({ rank }),
   setXing: (xing) => set({ xing }),
+  setChapter: (chapter) => set({ chapter }),
   clearFilters: () => set({
     keyword: '',
     level: 'all',
@@ -58,6 +62,7 @@ export const usePhigrosRecordsFilter = create<PhigrosRecordsFilterState>((set) =
     accuracyMax: '',
     rank: null,
     xing: null,
+    chapter: 'all',
   }),
   reset: () => set(DEFAULT_STATE),
 }));
