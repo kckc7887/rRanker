@@ -5,6 +5,7 @@ import { getGameProfile } from '@/domain/game-profile';
 import type { Player, ScoreSnapshot } from '@/domain/models';
 import {
   accountDataQueryKeys,
+  accountScopedDataQueryKeys,
   clearAccountDataQueries,
   invalidateAccountDataQueries,
   patchMaimaiPlayerDisplayName,
@@ -61,7 +62,7 @@ function makeBundle(accountId: string, displayName: string): GameDataBundle {
 }
 
 describe('invalidateAccountDataQueries', () => {
-  it('invalidates all account-scoped data queries', async () => {
+  it('invalidates all account data and global resource queries', async () => {
     const client = new QueryClient();
     const spy = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
 
@@ -74,15 +75,20 @@ describe('invalidateAccountDataQueries', () => {
 });
 
 describe('clearAccountDataQueries', () => {
-  it('removes all account-scoped data queries', () => {
+  it('removes only account-scoped data queries, keeping global resources', () => {
     const client = new QueryClient();
     const spy = vi.spyOn(client, 'removeQueries');
 
     clearAccountDataQueries(client);
 
     expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
-      accountDataQueryKeys().map((key) => [...key]),
+      accountScopedDataQueryKeys().map((key) => [...key]),
     );
+  });
+
+  it('keeps account-independent resources like the chunithm catalog out of the clear list', () => {
+    expect(accountScopedDataQueryKeys()).not.toContainEqual(['chunithm-catalog']);
+    expect(accountDataQueryKeys()).toContainEqual(['chunithm-catalog']);
   });
 });
 
