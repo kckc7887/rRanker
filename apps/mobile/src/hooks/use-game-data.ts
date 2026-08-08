@@ -13,6 +13,7 @@ import { ScoreService, staleCachedSnapshot } from '@/services/score-service';
 import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
 import { queryClient } from '@/state/query-client';
 import type { ScoreSnapshot } from '@/domain/models';
+import type { ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
 import {
   applyLxnsTokenRotation,
   UNBOUND_ACCOUNT_ID,
@@ -24,6 +25,7 @@ import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
+import { PhigrosSaveCache, stalePhigrosPayload } from '@/services/phigros-save-cache';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
@@ -89,12 +91,12 @@ export function useGameData() {
             session,
             (next) => applyLxnsTokenRotation(activeAccountId, next),
           );
-          const snapshot = await new ChunithmPersonalService(
+          const service = new ChunithmPersonalService(
             provider,
             repository,
             activeAccountId,
-          ).load();
-          return {
+          );
+          const toBundle = (snapshot: ChunithmPersonalSnapshot): GameDataBundle => ({
             gameId: 'chunithm',
             providerId: 'lxns',
             profile: getGameProfile('chunithm'),
@@ -115,7 +117,12 @@ export function useGameData() {
               source: snapshot.source,
               hasSyncedData: snapshot.player !== null,
             },
-          };
+          });
+          // 缓存优先：先渲染本地快照，后台刷新成功后静默回写。
+          const snapshot = await service.loadCacheFirst((fresh) => {
+            queryClient.setQueryData(queryKey, toBundle(fresh));
+          });
+          return toBundle(snapshot);
         }
         return {
           gameId: 'chunithm',
@@ -134,65 +141,88 @@ export function useGameData() {
       }
       if (activeGameId === 'phigros') {
         if (scoreProvider instanceof PhigrosScoreProvider) {
-          scoreProvider.invalidateCache();
-          // 复用会话里的曲库 provider，避免每次同步成绩都新建实例并重拉 OSS、误刷新资源时间。
           const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
             ? catalogProvider
             : new PhigrosCatalogProvider();
-          const [player, records, bestSections, gameVersion, summary, userProfile, gameProgress] = await Promise.all([
-            scoreProvider.getPlayer(),
-            scoreProvider.getRecords(),
-            scoreProvider.getBestSections(),
-            phiCatalog.getGameVersion(),
-            scoreProvider.getSummary(),
-            scoreProvider.getUserProfile(),
-            scoreProvider.getGameProgress(),
-          ]);
+          const loadFresh = async (): Promise<GameDataBundle> => {
+            scoreProvider.invalidateCache();
+            // 复用会话里的曲库 provider，避免每次同步成绩都新建实例并重拉 OSS、误刷新资源时间。
+            const [player, records, bestSections, gameVersion, summary, userProfile, gameProgress] = await Promise.all([
+              scoreProvider.getPlayer(),
+              scoreProvider.getRecords(),
+              scoreProvider.getBestSections(),
+              phiCatalog.getGameVersion(),
+              scoreProvider.getSummary(),
+              scoreProvider.getUserProfile(),
+              scoreProvider.getGameProgress(),
+            ]);
 
-          const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
-          const source = {
-            kind: 'generated' as const,
-            label: 'TapTap云存档',
-            updatedAt: saveUpdatedAt,
-            isStale: false,
-          };
-          const catalogSource = {
-            kind: 'generated' as const,
-            label: `Phigros${gameVersion}`,
-            updatedAt: phiCatalog.getResourceUpdatedAt() ?? saveUpdatedAt,
-            isStale: false,
-          };
-          const rks = player.rating;
-          const avatarUrl = await resolvePhigrosAvatarUrl(gameVersion, summary.avatar);
-          return {
-            gameId: 'phigros' as const,
-            providerId: 'phi-taptap' as const,
-            profile: getGameProfile('phigros'),
-            payload: {
-              kind: 'phigros' as const,
-              player,
-              records,
-              bestSections,
-              playerScore: {
-                label: 'Raking Score',
-                value: rks,
-                display: rks.toFixed(4),
+            const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
+            const source = {
+              kind: 'generated' as const,
+              label: 'TapTap云存档',
+              updatedAt: saveUpdatedAt,
+              isStale: false,
+            };
+            const catalogSource = {
+              kind: 'generated' as const,
+              label: `Phigros${gameVersion}`,
+              updatedAt: phiCatalog.getResourceUpdatedAt() ?? saveUpdatedAt,
+              isStale: false,
+            };
+            const rks = player.rating;
+            const avatarUrl = await resolvePhigrosAvatarUrl(gameVersion, summary.avatar);
+            return {
+              gameId: 'phigros' as const,
+              providerId: 'phi-taptap' as const,
+              profile: getGameProfile('phigros'),
+              payload: {
+                kind: 'phigros' as const,
+                player,
+                records,
+                bestSections,
+                playerScore: {
+                  label: 'Raking Score',
+                  value: rks,
+                  display: rks.toFixed(4),
+                },
+                challengeModeRank: summary.challengeModeRank,
+                source,
+                saveUpdatedAt,
+                catalogSource,
+                avatarUrl,
+                avatarKey: userProfile?.avatar || summary.avatar || null,
+                backgroundSongId: userProfile?.backgroundSongId || null,
+                dataAmount: formatPhigrosDataMoney(gameProgress?.money ?? []),
+                progress: {
+                  cleared: summary.cleared,
+                  fullCombo: summary.fullCombo,
+                  phi: summary.phi,
+                },
               },
-              challengeModeRank: summary.challengeModeRank,
-              source,
-              saveUpdatedAt,
-              catalogSource,
-              avatarUrl,
-              avatarKey: userProfile?.avatar || summary.avatar || null,
-              backgroundSongId: userProfile?.backgroundSongId || null,
-              dataAmount: formatPhigrosDataMoney(gameProgress?.money ?? []),
-              progress: {
-                cleared: summary.cleared,
-                fullCombo: summary.fullCombo,
-                phi: summary.phi,
-              },
-            },
+            };
           };
+          const cache = new PhigrosSaveCache(repository);
+          // 缓存优先：先渲染上次成功同步的存档，后台刷新成功后持久化并静默回写。
+          const cached = await cache.load(activeAccountId);
+          if (cached) {
+            void loadFresh().then((fresh) => {
+              if (fresh.payload.kind !== 'phigros') return;
+              void cache.save(activeAccountId, fresh.payload).catch(() => undefined);
+              queryClient.setQueryData(queryKey, fresh);
+            }).catch(() => undefined);
+            return {
+              gameId: 'phigros' as const,
+              providerId: 'phi-taptap' as const,
+              profile: getGameProfile('phigros'),
+              payload: stalePhigrosPayload(cached),
+            };
+          }
+          const fresh = await loadFresh();
+          if (fresh.payload.kind === 'phigros') {
+            void cache.save(activeAccountId, fresh.payload).catch(() => undefined);
+          }
+          return fresh;
         }
 
         return {

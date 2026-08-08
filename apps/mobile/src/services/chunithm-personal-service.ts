@@ -48,4 +48,32 @@ export class ChunithmPersonalService {
       };
     }
   }
+
+  /**
+   * 缓存优先：先返回本地快照渲染首屏，同时后台发网络刷新；
+   * 刷新成功（非缓存兜底）后通过 onFresh 回写（供 hook 静默替换查询缓存）。
+   * 无本地快照时直接走网络加载（含失败兜底）。
+   */
+  async loadCacheFirst(onFresh: (fresh: ChunithmPersonalSnapshot) => void): Promise<ChunithmPersonalSnapshot> {
+    const key = chunithmPersonalResourceKey(this.accountId);
+    const cached = await this.repository.getResource<ChunithmPersonalSnapshot>(
+      key,
+      CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+    );
+    if (cached) {
+      void this.load().then((fresh) => {
+        // 网络失败返回的兜底缓存数据不回写，保持首屏缓存不变。
+        if (!fresh.source.isStale) onFresh(fresh);
+      }).catch(() => undefined);
+      return {
+        ...cached,
+        source: {
+          ...cached.source,
+          label: '落雪咖啡屋（缓存）',
+          isStale: true,
+        },
+      };
+    }
+    return this.load();
+  }
 }
