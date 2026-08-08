@@ -6,6 +6,7 @@ import {
   ChunithmCatalogProvider,
   mapChunithmAliases,
   mapChunithmCatalog,
+  mapChunithmCollections,
   mapChunithmSongDetail,
 } from '@/providers/chunithm-catalog-provider';
 import { ResourceService } from '@/services/resource-service';
@@ -287,5 +288,89 @@ describe('ChunithmCatalogProvider', () => {
     expect(getResource).toHaveBeenCalledTimes(1);
     expect(result.source).toMatchObject({ kind: 'cache', isStale: true });
     expect(result.songs).toHaveLength(2);
+  });
+
+  it('fetches and maps the chunithm trophy list without auth', async () => {
+    const payload = {
+      trophies: [
+        { id: 0, name: 'NEW COMER', color: 'normal', description: '初始称号' },
+        {
+          id: 866,
+          name: 'LUNA ROUND',
+          color: 'rainbow',
+          description: '达成条件描述',
+          required: [
+            {
+              difficulties: [0, 1, 2, 3],
+              rank: 's',
+              songs: [
+                { id: 100, title: '曲A', completed: true, completed_difficulties: [0, 1] },
+                { id: 200, title: '曲B' },
+              ],
+              completed: false,
+            },
+          ],
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify(payload),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const snapshot = await new ChunithmCatalogProvider().getCollections('trophy');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://maimai.lxns.net/api/v0/chunithm/trophy/list',
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Authorization');
+    expect(snapshot.items).toHaveLength(2);
+    expect(snapshot.items[0]).toMatchObject({ id: 0, name: 'NEW COMER', color: 'normal' });
+    expect(snapshot.items[1]?.required?.[0]).toMatchObject({
+      difficulties: [0, 1, 2, 3],
+      rank: 's',
+      songs: [
+        { id: 100, title: '曲A', completed: true, completedDifficulties: [0, 1] },
+        { id: 200, title: '曲B', completed: undefined },
+      ],
+      completed: false,
+    });
+    expect(snapshot.source).toMatchObject({ kind: 'lxns', label: 'LXNS 中二收藏品列表' });
+  });
+
+  it('maps chunithm collection envelopes per kind and rejects invalid envelopes', () => {
+    const plates = mapChunithmCollections('plate', { plates: [{ id: 1, name: '名牌' }] });
+    expect(plates.items).toEqual([{ id: 1, name: '名牌' }]);
+    const icons = mapChunithmCollections('icon', [{ id: 19, name: '头像' }]);
+    expect(icons.items).toEqual([{ id: 19, name: '头像' }]);
+    expect(() => mapChunithmCollections('character', { characters: [{ id: 'x' }] }))
+      .toThrow(expect.objectContaining({ code: 'upstream_schema' }));
+  });
+
+  it('keeps collection descriptions and optional required groups', () => {
+    const snapshot = mapChunithmCollections('trophy', {
+      trophies: [
+        { id: 1, name: '无要求称号' },
+        {
+          id: 2,
+          name: '多条件称号',
+          required: [
+            { difficulties: [3], songs: [{ id: 7, title: '曲C' }], completed: true },
+            { difficulties: [], songs: [] },
+          ],
+        },
+      ],
+    });
+    expect(snapshot.items[0]).toEqual({ id: 1, name: '无要求称号' });
+    expect(snapshot.items[1]?.required).toEqual([
+      {
+        difficulties: [3],
+        songs: [{ id: 7, title: '曲C' }],
+        completed: true,
+      },
+      { difficulties: [], songs: [] },
+    ]);
   });
 });
