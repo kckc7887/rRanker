@@ -48,6 +48,8 @@ export type PhigrosRandomChartFilters = {
   accuracyMax: string;
   rank: PhigrosRankFilter | null;
   xing: PhigrosXingKind | null;
+  /** 章节筛选：值来自 catalog.versions 的 id 字符串；'all' 不过滤 */
+  chapter: string | 'all';
 };
 
 export type RandomChartPick = {
@@ -204,6 +206,7 @@ export function filterPhigrosRandomCharts(
   const picks: RandomChartPick[] = [];
 
   for (const song of catalog.songs) {
+    if (filters.chapter !== 'all' && song.versionId !== Number(filters.chapter)) continue;
     const songId = normalizeSongId(song.id);
     for (const chart of song.charts) {
       if (!matchesPhigrosLevel(chart.levelIndex, filters.level)) continue;

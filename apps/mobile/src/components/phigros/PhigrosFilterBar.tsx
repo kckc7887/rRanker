@@ -1,6 +1,7 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
 import {
@@ -11,6 +12,7 @@ import {
   type PhigrosRankFilter,
 } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
+import type { GameVersion } from '@/domain/models';
 import { phigrosLevelColors } from '@/domain/phigros-level-theme';
 import { phigrosXingLabel, type PhigrosXingKind } from '@/domain/phigros-xing';
 import { useAppTheme } from '@/theme/app-theme';
@@ -19,6 +21,9 @@ const PHIGROS_XING_FILTERS: readonly { value: PhigrosXingKind; label: string }[]
   { value: 'good', label: 'Good' },
   { value: 'miss', label: 'Miss' },
 ];
+
+type ChapterDropdownValue = string | 'all';
+type OpenDropdown = 'chapter' | null;
 
 export interface PhigrosFilterBarProps {
   collapsed: boolean;
@@ -29,6 +34,8 @@ export interface PhigrosFilterBarProps {
   accuracyMax?: string;
   rank?: PhigrosRankFilter | null;
   xing?: PhigrosXingKind | null;
+  chapter?: string | 'all';
+  versions?: readonly GameVersion[];
   onCollapsedChange: (collapsed: boolean) => void;
   onLevelChange: (level: PhigrosLevel | 'all') => void;
   onConstantMinChange: (value: string) => void;
@@ -37,6 +44,7 @@ export interface PhigrosFilterBarProps {
   onAccuracyMaxChange?: (value: string) => void;
   onRankChange?: (value: PhigrosRankFilter | null) => void;
   onXingChange?: (value: PhigrosXingKind | null) => void;
+  onChapterChange?: (value: string | 'all') => void;
   onReset: () => void;
 }
 
@@ -48,13 +56,17 @@ export function buildPhigrosFilterSummary({
   accuracyMax,
   rank,
   xing,
-}: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank' | 'xing'>): string {
+  chapter,
+  versions,
+}: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank' | 'xing' | 'chapter' | 'versions'>): string {
+  const selectedChapter = versions?.find((item) => String(item.id) === chapter);
   return [
     level === 'all' ? null : phigrosLevelLabel(level),
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
     accuracyMin || accuracyMax ? `Acc ${accuracyMin || '不限'}~${accuracyMax || '不限'}%` : null,
     rank ? phigrosRankFilterLabel(rank) : null,
     xing ? phigrosXingLabel(xing) : null,
+    chapter === 'all' || !selectedChapter ? null : `章节 ${selectedChapter.title}`,
   ].filter(Boolean).join(' · ') || '全部';
 }
 
@@ -67,6 +79,8 @@ export function PhigrosFilterBar({
   accuracyMax = '',
   rank = null,
   xing = null,
+  chapter = 'all',
+  versions,
   onCollapsedChange,
   onLevelChange,
   onConstantMinChange,
@@ -75,19 +89,31 @@ export function PhigrosFilterBar({
   onAccuracyMaxChange,
   onRankChange,
   onXingChange,
+  onChapterChange,
   onReset,
 }: PhigrosFilterBarProps) {
   const theme = useAppTheme();
+  const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
   const showAccuracyRange = onAccuracyMinChange !== undefined && onAccuracyMaxChange !== undefined;
   const showRankPicker = onRankChange !== undefined;
   const showXingPicker = onXingChange !== undefined;
+  const showChapterPicker = onChapterChange !== undefined && versions !== undefined && versions.length > 0;
+  const selectedChapterLabel = versions?.find((item) => String(item.id) === chapter)?.title ?? '全部';
+  const setDropdownOpen = (id: OpenDropdown) => (open: boolean) => {
+    setOpenDropdown(open ? id : null);
+  };
+  const chapterOptions = useMemo<FilterSelectOption<ChapterDropdownValue>[]>(() => [
+    { value: 'all', label: '全部' },
+    ...(versions ?? []).map((item) => ({ value: String(item.id), label: item.title })),
+  ], [versions]);
 
   const handleReset = () => {
+    setOpenDropdown(null);
     onReset();
   };
 
   const summary = buildPhigrosFilterSummary({
-    level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing,
+    level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter, versions,
   });
 
   if (collapsed) {
@@ -117,7 +143,10 @@ export function PhigrosFilterBar({
         <View style={styles.headerActions}>
           <ResetFilterButton onPress={handleReset} />
           <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
-            onPress={() => onCollapsedChange(true)} hitSlop={8}
+            onPress={() => {
+              setOpenDropdown(null);
+              onCollapsedChange(true);
+            }} hitSlop={8}
             style={styles.headerAction}>
             <CollapseToggleAction expanded label="收起" />
           </Pressable>
@@ -143,6 +172,22 @@ export function PhigrosFilterBar({
           ))}
         </ScrollView>
       </View>
+
+      {showChapterPicker ? (
+        <View style={styles.filterRow}>
+          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>章节</Text>
+          <FilterAnchoredDropdown
+            accessibilityLabel={`章节筛选，当前 ${selectedChapterLabel}`}
+            onOpenChange={setDropdownOpen('chapter')}
+            onSelect={onChapterChange}
+            open={openDropdown === 'chapter'}
+            optionAccessibilityPrefix="选择章节"
+            options={chapterOptions}
+            selectedValue={chapter}
+            valueLabel={selectedChapterLabel}
+          />
+        </View>
+      ) : null}
 
       <View style={styles.filterRow}>
         <Text style={[styles.filterLabel, showAccuracyRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>

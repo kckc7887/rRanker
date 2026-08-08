@@ -22,6 +22,7 @@ type PhigrosRandomChartsFilterState = PhigrosRandomChartsPreferences & {
   setAccuracyMax: (value: string) => void;
   setRank: (value: PhigrosRankFilter | null) => void;
   setXing: (value: PhigrosXingKind | null) => void;
+  setChapter: (value: string | 'all') => void;
   clearFilters: () => void;
 };
 
@@ -39,6 +40,7 @@ function preferencesFromState(
     accuracyMax: state.accuracyMax,
     rank: state.rank,
     xing: state.xing,
+    chapter: state.chapter,
   };
 }
 
@@ -73,6 +75,7 @@ export function createPhigrosRandomChartsFilterStore(
         accuracyMax: defaults.accuracyMax,
         rank: defaults.rank,
         xing: defaults.xing,
+        chapter: defaults.chapter,
       };
     };
 
@@ -99,6 +102,7 @@ export function createPhigrosRandomChartsFilterStore(
       setAccuracyMax: (accuracyMax) => update({ accuracyMax }),
       setRank: (rank) => update({ rank }),
       setXing: (xing) => update({ xing }),
+      setChapter: (chapter) => update({ chapter }),
       clearFilters: () => update(clearPatch()),
     };
   });

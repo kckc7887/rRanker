@@ -446,8 +446,8 @@ function PhigrosSearchScreen() {
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const {
-    keyword, collapsed, level, constantMin, constantMax,
-    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, clearFilters,
+    keyword, collapsed, level, constantMin, constantMax, chapter,
+    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setChapter, clearFilters,
   } = usePhigrosCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const index = useMemo(() => buildSongSearchIndex(query.data?.snapshot.songs ?? []), [query.data?.snapshot.songs]);
@@ -457,7 +457,8 @@ function PhigrosSearchScreen() {
     difficulties: level === 'all' ? [] : [phigrosLevelToDifficulty(level)],
     constantMin: parseConstantBound(constantMin),
     constantMax: parseConstantBound(constantMax),
-  }), [constantMax, constantMin, debouncedKeyword, level]);
+    chartVersionIds: chapter === 'all' ? [] : [Number(chapter)],
+  }), [chapter, constantMax, constantMin, debouncedKeyword, level]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
   const isFiltering = filterSpec !== deferredFilterSpec;
@@ -465,7 +466,8 @@ function PhigrosSearchScreen() {
     () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
     [library.data],
   );
-  const hasActiveFilters = !!(keyword.trim() || level !== 'all' || constantMin || constantMax);
+  const hasActiveFilters = !!(keyword.trim() || level !== 'all' || constantMin || constantMax || chapter !== 'all');
+  const versions = query.data?.snapshot.versions ?? [];
 
   const provider = query.data?.provider ?? null;
   const blurUrls = useMemo(() => {
@@ -512,6 +514,7 @@ function PhigrosSearchScreen() {
         collapsed={collapsed} onCollapsedChange={setCollapsed}
         level={level} constantMin={constantMin} constantMax={constantMax}
         onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
+        chapter={chapter} versions={versions} onChapterChange={setChapter}
         onReset={clearFilters}
       />
       <CatalogListPage<Song>

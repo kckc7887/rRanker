@@ -26,9 +26,9 @@ export function PhigrosRandomChartsScreen() {
   const catalogQuery = usePhigrosCatalog();
   const gameData = useGameData();
   const {
-    count, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing,
+    count, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
     hydrate, setCount, setCollapsed, setLevel, setConstantMin, setConstantMax,
-    setAccuracyMin, setAccuracyMax, setRank, setXing, clearFilters,
+    setAccuracyMin, setAccuracyMax, setRank, setXing, setChapter, clearFilters,
   } = usePhigrosRandomChartsFilter();
   const [results, setResults] = useState<RandomChartPick[] | null>(null);
   const [lastSeed, setLastSeed] = useState<string | null>(null);
@@ -53,7 +53,8 @@ export function PhigrosRandomChartsScreen() {
     accuracyMax,
     rank,
     xing,
-  }), [accuracyMax, accuracyMin, constantMax, constantMin, level, rank, xing]);
+    chapter,
+  }), [accuracyMax, accuracyMin, chapter, constantMax, constantMin, level, rank, xing]);
   const pool = useMemo(
     () => catalog
       ? filterPhigrosRandomCharts(catalog, records, filters, noteTotalByKey)
@@ -90,12 +91,14 @@ export function PhigrosRandomChartsScreen() {
             <PhigrosFilterBar
               accuracyMax={accuracyMax}
               accuracyMin={accuracyMin}
+              chapter={chapter}
               collapsed={collapsed}
               constantMax={constantMax}
               constantMin={constantMin}
               level={level}
               onAccuracyMaxChange={setAccuracyMax}
               onAccuracyMinChange={setAccuracyMin}
+              onChapterChange={setChapter}
               onCollapsedChange={setCollapsed}
               onConstantMaxChange={setConstantMax}
               onConstantMinChange={setConstantMin}
@@ -104,6 +107,7 @@ export function PhigrosRandomChartsScreen() {
               onReset={clearFilters}
               onXingChange={setXing}
               rank={rank}
+              versions={data.versions}
               xing={xing}
             />
           )}

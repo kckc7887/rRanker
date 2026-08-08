@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import { buildPhigrosAvatarUrl, PHIGROS_OSS_BASE } from '@/domain/account-avatar';
 import type { DataSource, Song, Chart, ChartType, CatalogSnapshot, PhigrosChartNotes } from '@/domain/models';
-import { loadNoteCountsTable } from '@/domain/phigros';
+import { loadChaptersTable, loadNoteCountsTable, type PhigrosChaptersTable } from '@/domain/phigros';
 import type { CatalogProvider } from './contracts';
 import { ProviderError } from './errors';
 
 const OSS_BASE = PHIGROS_OSS_BASE;
+
+/** 章节映射表（手动维护，独立于游戏版本发布） */
+const CHAPTERS_PATH = `${OSS_BASE}/phigros/chapters.csv`;
 
 const CurrentSchema = z.object({
   schemaVersion: z.number(),
@@ -166,6 +169,16 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     this.catalogPromise = null;
   }
 
+  /** 拉取章节映射表；失败（未发布/网络）时返回 null，调用方回退现状 */
+  private async loadChapters(): Promise<PhigrosChaptersTable | null> {
+    try {
+      const raw = await this.fetchText(CHAPTERS_PATH);
+      return loadChaptersTable(raw);
+    } catch {
+      return null;
+    }
+  }
+
   async getGameVersion(): Promise<string> {
     if (this.gameVersion) return this.gameVersion;
     const current = await this.fetchJson(`${OSS_BASE}/phigros/current.json`, CurrentSchema);
@@ -185,15 +198,26 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   private async doGetCatalog(): Promise<CatalogSnapshot> {
     const current = await this.fetchJson(`${OSS_BASE}/phigros/current.json`, CurrentSchema);
     this.gameVersion = current.gameVersion;
-    const [catalog, noteCounts] = await Promise.all([
+    const [catalog, noteCounts, chapters] = await Promise.all([
       this.fetchJson(`${OSS_BASE}/${current.catalog}`, CatalogSchema),
       this.loadNoteCounts(current.noteCounts, current.gameVersion),
+      this.loadChapters(),
     ]);
     this.markResourceFetched();
     const version = this.gameVersion;
 
+    const chapterIdBySong = new Map<string, number>();
+    if (chapters) {
+      chapters.definitions.forEach((definition, index) => {
+        chapterIdBySong.set(definition.key, index);
+      });
+    }
+
     const songs: Song[] = catalog.songs.map((raw) => {
       const songNotes = noteCounts[raw.id];
+      const chapterId = chapters
+        ? chapterIdBySong.get(chapters.songChapter[raw.id] ?? '')
+        : undefined;
       const charts: Chart[] = raw.difficulties.map((dc, i) => ({
         songId: raw.id,
         type: CHART_TYPE,
@@ -203,6 +227,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
         difficultyConstant: dc,
         charter: raw.charters[i],
         notes: songNotes?.[i],
+        ...(chapterId === undefined ? {} : { versionId: chapterId }),
       }));
 
       return {
@@ -210,19 +235,33 @@ export class PhigrosCatalogProvider implements CatalogProvider {
         title: raw.title,
         artist: raw.composer,
         illustrator: raw.illustrator,
-        version,
+        version: chapters
+          ? (chapterId === undefined ? '' : chapters.definitions[chapterId]!.title)
+          : version,
+        ...(chapterId === undefined ? {} : { versionId: chapterId }),
         charts,
       };
     });
 
     const chartVersionIndex: Record<string, number> = {};
-    for (const song of songs) {
-      chartVersionIndex[song.id] = 0;
+    if (chapters) {
+      for (const song of songs) {
+        const chapterId = song.versionId;
+        if (chapterId !== undefined) chartVersionIndex[song.id] = chapterId;
+      }
+    } else {
+      for (const song of songs) {
+        chartVersionIndex[song.id] = 0;
+      }
     }
 
+    const versions = chapters
+      ? chapters.definitions.map((definition, index) => ({ id: index, title: definition.title }))
+      : [{ id: 0, title: version }];
+
     return {
-      currentVersion: { id: 0, title: version },
-      versions: [{ id: 0, title: version }],
+      currentVersion: versions[0]!,
+      versions,
       songs,
       chartVersionIndex,
       source: this.source(),
