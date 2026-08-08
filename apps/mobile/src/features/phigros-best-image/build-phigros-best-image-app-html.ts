@@ -216,7 +216,7 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     .rating-card{flex:1.2;min-width:0;border-radius:${px(width * 18 / 1080)}px;padding:${px(width * 3 / 1080)}px;background:var(--rating-border);box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 26 / 1080)}px rgba(46,63,96,.22)}
     .rating-card-inner{position:relative;display:flex;width:100%;height:100%;align-items:center;gap:${px(width * 12 / 1080)}px;overflow:hidden;padding:${px(width * 14 / 1080)}px ${px(width * 18 / 1080)}px;border-radius:${px(width * 15 / 1080)}px;background:var(--rating-fill);color:var(--rating-text)}
     .rating-copy{display:flex;min-width:0;flex:1;flex-direction:column;justify-content:center;gap:${px(width * 6 / 1080)}px}
-    .rating-label{font:800 ${px(width * 14 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.08em;opacity:.85}
+    .rating-label{font:800 ${px(width * 14 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.08em;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .rating-value{font:900 ${px(width * 40 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.02em;white-space:nowrap}
     .rating-meta{font:700 ${px(width * 15 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.78}
     .rating-badge{display:flex;flex:0 0 auto;flex-direction:column;align-items:center;gap:${px(width * 6 / 1080)}px}
@@ -272,9 +272,9 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
         <div class="rating-card" style="--rating-border:${escapePhigrosBestImageHtml(challengeBorder)};--rating-fill:${escapePhigrosBestImageHtml(challengeFill)};--rating-text:${challengeTheme.textColor}">
           <div class="rating-card-inner">
             <div class="rating-copy">
-              <div class="rating-label">RKS</div>
+              <div class="rating-label">${escapePhigrosBestImageHtml(name)}</div>
               <div class="rating-value">${escapePhigrosBestImageHtml(input.rks)}</div>
-              <div class="rating-meta">${escapePhigrosBestImageHtml(input.dataAmount)}</div>
+              <div class="rating-meta">RKS · ${escapePhigrosBestImageHtml(input.dataAmount)}</div>
             </div>
             <div class="rating-badge">
               <div class="badge-title">课题模式</div>
