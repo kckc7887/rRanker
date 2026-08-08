@@ -53,9 +53,9 @@ describe('buildPhigrosBestImageAppHtml', () => {
     expect(html).toContain('class="avatar-shell"');
     expect(html).toContain('src="data:image/png;base64,avatar"');
     expect(html).toContain('class="rating-card"');
-    expect(html).toContain('<div class="rating-label">RKS</div>');
+    expect(html).toContain('<div class="rating-label">尘言</div>');
     expect(html).toContain('<div class="rating-value">16.1053</div>');
-    expect(html).toContain('<div class="rating-meta">386MiB 289KiB</div>');
+    expect(html).toContain('<div class="rating-meta">RKS · 386MiB 289KiB</div>');
     expect(html).toContain('<div class="badge-title">课题模式</div>');
     expect(html).toContain('<div class="badge-value">42</div>');
     expect(html).toContain('--rating-border:linear-gradient(90deg,#8E6A1C 0%,#6F4D12 100%)');
@@ -137,6 +137,7 @@ describe('buildPhigrosBestImageAppHtml', () => {
       });
       expect(html).toContain(`width=${width}, initial-scale=1`);
       expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+      expect(html).toContain('&lt;玩家&gt;');
       expect(html).toContain('15.4321');
       expect(html).not.toContain('createdbox');
       expect(html).not.toContain('phi-plugin');
