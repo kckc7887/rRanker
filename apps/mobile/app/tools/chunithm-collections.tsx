@@ -10,7 +10,7 @@ import { SourceStatus } from '@/components/SourceStatus';
 import {
   calculateChunithmCollectionProgress,
   CHUNITHM_COLLECTION_KIND_LABELS,
-  CHUNITHM_COLLECTION_KINDS,
+  CHUNITHM_PROGRESS_TRACKED_KINDS,
   isChunithmCollectionComputable,
   type ChunithmCollection,
   type ChunithmCollectionKind,
@@ -182,11 +182,9 @@ export default function ChunithmCollectionsToolScreen() {
   const items = useMemo(() => {
     if (!data) return [];
     const computable = data.items.filter(isChunithmCollectionComputable);
-    // 名牌版/地图头像等整类无 required 条件：回退为展示全部，否则列表会为空。
-    const visible = computable.length > 0 ? computable : data.items;
     const q = query.trim().toLowerCase();
-    if (!q) return visible;
-    return visible.filter((item) => (
+    if (!q) return computable;
+    return computable.filter((item) => (
       item.name.toLowerCase().includes(q)
       || (item.description ?? '').toLowerCase().includes(q)
     ));
@@ -248,7 +246,7 @@ export default function ChunithmCollectionsToolScreen() {
               ]} />
 
               <View style={styles.kindBar}>
-                {CHUNITHM_COLLECTION_KINDS.map((candidate) => (
+                {CHUNITHM_PROGRESS_TRACKED_KINDS.map((candidate) => (
                   <Pressable
                     key={candidate}
                     accessibilityRole="button"

@@ -11,6 +11,15 @@ export const CHUNITHM_COLLECTION_KINDS: readonly ChunithmCollectionKind[] = [
   'icon',
 ];
 
+/**
+ * 收藏品进度工具展示的类型。名牌版（plate）与地图头像（icon）在 lxns
+ * 公共 API 中整类没有 required 达成条件，无法计算进度，不放入工具。
+ */
+export const CHUNITHM_PROGRESS_TRACKED_KINDS: readonly ChunithmCollectionKind[] = [
+  'trophy',
+  'character',
+];
+
 export const CHUNITHM_COLLECTION_KIND_LABELS: Record<ChunithmCollectionKind, string> = {
   trophy: '称号',
   character: '角色',
