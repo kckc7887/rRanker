@@ -38,6 +38,44 @@ jest.mock('@/hooks/use-game-data', () => ({
   useGameData: () => mockGameData,
 }));
 
+jest.mock('@/hooks/use-chunithm-catalog', () => ({
+  useChunithmCatalog: () => ({
+    data: {
+      songs: [
+        { id: 100, title: '曲A' },
+        { id: 200, title: '曲B' },
+        { id: 300, title: '曲C' },
+      ],
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  }),
+}));
+
+jest.mock('expo-image', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    Image: ({ accessibilityLabel, style, source: imageSource, ...props }: { accessibilityLabel?: string; style?: object; source?: unknown }) => (
+      <RN.Image
+        {...props}
+        accessibilityLabel={accessibilityLabel ?? '图片'}
+        source={{ uri: String(imageSource) }}
+        style={style}
+      />
+    ),
+  };
+});
+
+jest.mock('expo-linear-gradient', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    LinearGradient: ({ children, style }: { children?: React.ReactNode; style?: object }) =>
+      <RN.View style={style}>{children}</RN.View>,
+  };
+});
+
 describe('chunithm tool screens', () => {
   beforeEach(() => {
     mockCollectionsData = undefined;
@@ -194,12 +232,33 @@ describe('chunithm tool screens', () => {
       error: null,
       refetch: jest.fn(),
     };
-    const { getByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    const { getByText, getAllByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
     await fireEvent.press(getByLabelText('选择收藏品'));
     await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
     expect(getByText('0.0%')).toBeTruthy();
     expect(getByText(/缺失曲目/)).toBeTruthy();
     expect(getByText('#100')).toBeTruthy();
-    expect(getByText('MASTER')).toBeTruthy();
+    expect(getByText('曲A')).toBeTruthy();
+    expect(getAllByText('MASTER').length).toBeGreaterThan(0);
+  });
+
+  it('renders the trophy color as a badge instead of a raw enum', async () => {
+    mockCollectionsData = {
+      items: [
+        {
+          id: 866,
+          name: 'LUNA ROUND',
+          color: 'rainbow',
+          required: [{ difficulties: [3], songs: [{ id: 100, title: '曲A' }] }],
+        },
+      ],
+      source,
+    };
+    const { getByText, getAllByText, queryByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('选择收藏品'));
+    await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
+    expect(queryByText(/颜色/)).toBeNull();
+    expect(getAllByText('LUNA ROUND').length).toBeGreaterThan(0);
+    expect(getByText('0.0%')).toBeTruthy();
   });
 });
