@@ -80,6 +80,15 @@ export function staleCachedSnapshot(snapshot: ScoreSnapshot): ScoreSnapshot {
  */
 const inflightScoreLoads = new Map<string, Promise<ScoreSnapshot>>();
 
+/**
+ * 用户主动同步判定用：等待该账号最近一次网络成绩读取（缓存优先后台刷新）落定，吞掉失败兜底。
+ * 无进行中的读取（已落定或未开始）时立即返回；落定后调用方可读取最终缓存判定真实结果。
+ */
+export function awaitScoreFresh(accountId: string): Promise<void> {
+  const inflight = inflightScoreLoads.get(accountId);
+  return inflight ? inflight.then(() => undefined, () => undefined) : Promise.resolve();
+}
+
 export class ScoreService {
   constructor(
     private readonly scoreProvider: AnyScoreProvider,
