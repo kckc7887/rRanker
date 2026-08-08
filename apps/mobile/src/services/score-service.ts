@@ -67,6 +67,22 @@ function withoutInvalidUtageRecords(snapshot: ScoreSnapshot): ScoreSnapshot {
   };
 }
 
+/** 缓存优先渲染时的来源标记：label 原样保留，仅标记为缓存且过期（后台刷新中）。 */
+export function staleCachedSnapshot(snapshot: ScoreSnapshot): ScoreSnapshot {
+  if (snapshot.source.kind === 'cache') return snapshot;
+  return {
+    ...snapshot,
+    source: { ...snapshot.source, kind: 'cache', isStale: true },
+  };
+}
+
+/**
+ * 同一账号并发 load 共享一次网络请求：
+ * 总览（useGameData）与成绩/最佳页（useScoreSnapshot）会同时触发同一份成绩加载，
+ * 去重后只向 provider 拉取一次，两侧分别回写各自查询缓存。
+ */
+const inflightScoreLoads = new Map<string, Promise<ScoreSnapshot>>();
+
 export class ScoreService {
   constructor(
     private readonly scoreProvider: AnyScoreProvider,
@@ -99,6 +115,42 @@ export class ScoreService {
   }
 
   async load(): Promise<ScoreSnapshot> {
+    const inflight = inflightScoreLoads.get(this.accountId);
+    if (inflight) return inflight;
+    const fresh = this.loadFresh();
+    inflightScoreLoads.set(this.accountId, fresh);
+    void fresh.then(() => {
+      if (inflightScoreLoads.get(this.accountId) === fresh) {
+        inflightScoreLoads.delete(this.accountId);
+      }
+    }, () => {
+      if (inflightScoreLoads.get(this.accountId) === fresh) {
+        inflightScoreLoads.delete(this.accountId);
+      }
+    });
+    return fresh;
+  }
+
+  /**
+   * 缓存优先：先返回本地快照渲染首屏，同时后台发网络刷新；
+   * 刷新成功后通过 onFresh 回写（供 hook 替换查询缓存，UI 静默更新）。
+   * 无本地快照时直接走网络加载（含失败兜底）。
+   */
+  async loadCacheFirst(onFresh: (fresh: ScoreSnapshot) => void): Promise<ScoreSnapshot> {
+    if (this.snapshotRepository) {
+      const cached = await this.snapshotRepository.getLatest(this.accountId);
+      if (cached) {
+        void this.load().then((fresh) => {
+          // 网络失败返回的兜底缓存数据不回写，保持首屏缓存不变。
+          if (fresh.source.kind !== 'cache') onFresh(fresh);
+        }).catch(() => undefined);
+        return staleCachedSnapshot(cached);
+      }
+    }
+    return this.load();
+  }
+
+  private async loadFresh(): Promise<ScoreSnapshot> {
     const stopLoad = startTimer('score.load');
     try {
       let player: Player;

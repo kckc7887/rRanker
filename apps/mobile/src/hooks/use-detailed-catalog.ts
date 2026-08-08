@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import type { CatalogSnapshot } from '@/domain/models';
-import { ResourceService } from '@/services/resource-service';
+import { ResourceService, staleCachedResource } from '@/services/resource-service';
 import { useSession } from '@/state/session-store';
+import { queryClient } from '@/state/query-client';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { aliasesForCatalogSong } from '@/domain/catalog';
 
@@ -14,27 +15,42 @@ export function useDetailedCatalog() {
   const activeGameId = useSession((state) => state.activeGameId);
   const provider = useSession((state) => state.catalogProvider);
   const enabled = activeGameId === 'maimai';
+  const queryKey = ['detailed-catalog', activeAccountId, activeGameId, session?.mode ?? 'fixture'];
   return useQuery({
     enabled,
-    queryKey: ['detailed-catalog', activeAccountId, activeGameId, session?.mode ?? 'fixture'],
+    queryKey,
     queryFn: async (): Promise<CatalogSnapshot> => {
       const service = new ResourceService(repository);
-      const catalog = await service.load('detailed-catalog', 2, () => provider.getDetailedCatalog());
-      const aliasResult = await Promise.allSettled([
-        service.load('aliases', 1, () => provider.getAliases()),
-      ]);
-      const aliasSnapshot = aliasResult[0].status === 'fulfilled' ? aliasResult[0].value : undefined;
-      const aliases = new Map(aliasSnapshot?.aliases.map((item) => [item.songId, item.aliases]) ?? []);
-      return {
-        ...catalog,
-        songs: catalog.songs.map((song) => ({
-          ...song,
-          aliases: aliasesForCatalogSong(song.id, aliases),
-        })),
-        source: catalog.source.isStale || aliasSnapshot?.source.isStale
-          ? { ...catalog.source, kind: 'cache', isStale: true, label: `${catalog.source.label}（含缓存资源）` }
-          : !aliasSnapshot ? { ...catalog.source, label: `${catalog.source.label}（别名暂不可用）` } : catalog.source,
+      const loadFresh = async (): Promise<CatalogSnapshot> => {
+        const catalog = await service.load('detailed-catalog', 2, () => provider.getDetailedCatalog());
+        const aliasResult = await Promise.allSettled([
+          service.load('aliases', 1, () => provider.getAliases()),
+        ]);
+        const aliasSnapshot = aliasResult[0].status === 'fulfilled' ? aliasResult[0].value : undefined;
+        const aliases = new Map(aliasSnapshot?.aliases.map((item) => [item.songId, item.aliases]) ?? []);
+        return {
+          ...catalog,
+          songs: catalog.songs.map((song) => ({
+            ...song,
+            aliases: aliasesForCatalogSong(song.id, aliases),
+          })),
+          source: catalog.source.isStale || aliasSnapshot?.source.isStale
+            ? { ...catalog.source, kind: 'cache', isStale: true, label: `${catalog.source.label}（含缓存资源）` }
+            : !aliasSnapshot ? { ...catalog.source, label: `${catalog.source.label}（别名暂不可用）` } : catalog.source,
+        };
       };
+      // 已登录时缓存优先：先渲染 SQLite 曲库快照，后台刷新成功后静默回写。
+      if (session) {
+        const cached = await service.getCached<CatalogSnapshot>('detailed-catalog', 2);
+        if (cached) {
+          void loadFresh().then((fresh) => {
+            // 网络失败返回的兜底缓存数据不回写，保持首屏缓存不变。
+            if (fresh.source.kind !== 'cache') queryClient.setQueryData(queryKey, fresh);
+          }).catch(() => undefined);
+          return staleCachedResource(cached);
+        }
+      }
+      return loadFresh();
     },
   });
 }

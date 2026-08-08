@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from '@/state/session-store';
+import { queryClient } from '@/state/query-client';
 import { ScoreService } from '@/services/score-service';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
@@ -17,16 +18,26 @@ export function useScoreSnapshot() {
   const enabled = activeGameId === 'maimai';
   const persistScores = enabled && shouldPersistScoreSnapshot(activeProviderId);
   const persistCatalog = enabled && shouldPersistMaimaiCatalog(activeProviderId);
+  const queryKey = ['score-snapshot', activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'fixture'];
   const query = useQuery({
     enabled,
-    queryKey: ['score-snapshot', activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'fixture'],
-    queryFn: () => new ScoreService(
-      scoreProvider,
-      catalogProvider,
-      activeAccountId,
-      persistScores ? repository : undefined,
-      persistCatalog ? repository : undefined,
-    ).load(),
+    queryKey,
+    queryFn: () => {
+      const service = new ScoreService(
+        scoreProvider,
+        catalogProvider,
+        activeAccountId,
+        persistScores ? repository : undefined,
+        persistCatalog ? repository : undefined,
+      );
+      // 远程账号缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
+      if (persistScores && activeProviderId !== 'local') {
+        return service.loadCacheFirst((fresh) => {
+          queryClient.setQueryData(queryKey, fresh);
+        });
+      }
+      return service.load();
+    },
   });
   return {
     ...query,
