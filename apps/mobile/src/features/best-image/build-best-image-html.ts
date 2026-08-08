@@ -325,7 +325,7 @@ function renderGameScoreCard(
     <div class="game-id" style="${textPosition(26, 98, 13)};color:${idTextColor}">${escapeHtml(record.songId)}</div>
     <div class="game-title" style="${textPosition(93, 6, 14)};max-width:${u(160)}px;color:${diffTextColor}">${escapeHtml(record.title)}</div>
     <div class="game-achievement" style="${textPosition(93, 48, 26)};color:${diffTextColor}">${formatAchievement(record.achievements)}</div>
-    <div class="game-dxscore" style="${textPosition(219, 68, 15)};color:${diffTextColor}">${actualDxScore}/${maximumDxScore}</div>
+    <div class="game-dxscore" style="${textPosition(219, 68, 15)};max-width:${u(90)}px;color:${diffTextColor}">${actualDxScore}/${maximumDxScore}</div>
     <div class="game-ds-rating" style="${textPosition(93, 68, 15)};color:${diffTextColor}">${record.difficultyConstant.toFixed(1)} -> ${record.rating}</div>
   </article>`;
 }
@@ -543,8 +543,8 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     '.game-id{white-space:nowrap;color:#fff;font-weight:700;font-family:system-ui,sans-serif;line-height:1;text-align:center;transform:translate(-50%,-50%)}',
     '.game-title{position:absolute;white-space:nowrap;overflow:hidden;font-weight:700;font-family:system-ui,sans-serif;line-height:1.06}',
     '.game-achievement{white-space:nowrap;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translateY(-50%)}',
-    '.game-dxscore{white-space:nowrap;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translate(-50%,-50%)}',
-    '.game-ds-rating{white-space:nowrap;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translateY(-50%)}',
+    '.game-dxscore{white-space:nowrap;overflow:hidden;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translate(-50%,-50%)}',
+    '.game-ds-rating{white-space:nowrap;overflow:hidden;font-weight:700;font-family:system-ui,sans-serif;line-height:1;font-variant-numeric:tabular-nums;transform:translateY(-50%)}',
     '.game-section+.game-section{margin-top:' + u(30) + 'px}',
     '.game-grid{position:relative}',
     '.game-empty{display:flex;min-height:' + u(80) + 'px;align-items:center;justify-content:center;color:#697586;font-weight:700;font-family:system-ui,sans-serif}',
@@ -853,14 +853,26 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         ? document.fonts.ready.catch(() => undefined)
         : Promise.resolve();
       ${useCnFont ? `
-      // game 样式：歌名超宽时降字重（400）并横向压宽度（scaleX）到一行容纳。
+      // game 样式：歌名 / 定数->Rating / DXScore 超宽时降字重（400）并横向压宽度（scaleX）到可用宽度。
+      // 定数->Rating 的可用宽度按 DXScore 左缘动态分配，避免两者重叠。
       // 立即执行一次（fallback 先压扁），字体就绪后再按真实宽度校正。
       const fitTitleSizes = () => {
         if (RATING_STYLE !== 'game') return;
-        document.querySelectorAll('.game-title').forEach((node) => {
+        document.querySelectorAll('.game-title, .game-dxscore, .game-ds-rating').forEach((node) => {
+          if (node.classList.contains('game-ds-rating')) {
+            const card = node.closest('.game-card');
+            const dx = card && card.querySelector('.game-dxscore');
+            const limit = dx ? Math.max(40, dx.offsetLeft - node.offsetLeft - 4) : node.clientWidth;
+            node.style.maxWidth = limit + 'px';
+          }
           if (node.scrollWidth <= node.clientWidth) return;
           node.style.transformOrigin = 'left center';
-          node.style.transform = 'scaleX(' + (node.clientWidth / node.scrollWidth).toFixed(4) + ')';
+          const squeeze = 'scaleX(' + (node.clientWidth / node.scrollWidth).toFixed(4) + ')';
+          node.style.transform = node.classList.contains('game-dxscore')
+            ? 'translate(-50%,-50%) ' + squeeze
+            : node.classList.contains('game-ds-rating')
+              ? 'translateY(-50%) ' + squeeze
+              : squeeze;
           node.style.fontWeight = '400';
         });
       };
