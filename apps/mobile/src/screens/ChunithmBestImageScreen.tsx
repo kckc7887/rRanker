@@ -372,6 +372,7 @@ export function ChunithmBestImageScreen() {
       characterDataUri,
       backgroundDataUri,
       hideCharacter,
+      dataSource: payload.source.label,
     }));
   }, [
     backgroundDataUri,
