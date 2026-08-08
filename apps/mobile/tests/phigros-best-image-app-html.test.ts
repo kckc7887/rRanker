@@ -53,7 +53,9 @@ describe('buildPhigrosBestImageAppHtml', () => {
     expect(html).toContain('class="header-left"');
     expect(html).toContain('class="identity-row"');
     expect(html).toContain('src="data:image/png;base64,avatar"');
-    expect(html).toContain('<div class="name-card">尘言</div>');
+    expect(html).toContain('<div class="name-card-bg" aria-hidden="true"><img class="name-card-image" alt="" src="data:image/png;base64,background"><div class="name-card-veil"></div></div>');
+    expect(html).toContain('.name-card-veil{position:absolute;inset:0;background:rgba(255,255,255,.68)');
+    expect(html).toContain('<span class="name-card-text">尘言</span>');
     expect(html).toContain('class="rating-card"');
     expect(html).toContain('<div class="rating-label">RKS</div>');
     expect(html).toContain('<div class="rating-value">16.1053</div>');
@@ -63,6 +65,9 @@ describe('buildPhigrosBestImageAppHtml', () => {
     expect(html).toContain('--rating-border:linear-gradient(90deg,#8E6A1C 0%,#6F4D12 100%)');
     expect(html).toContain('--rating-fill:linear-gradient(90deg,#FBE7A1 0%,#F0C761 52%,#DEAA3B 100%)');
     expect(html).toContain('class="stats-card"');
+    expect(html).toContain('.stats-card{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.82);border-radius:18px;background:rgba(255,255,255,.55)');
+    expect(html).toContain('grid-template-columns:80px repeat(4,minmax(0,1fr))');
+    expect(html).toContain('font:800 30px/1 system-ui,sans-serif');
     expect(html).toContain('<div class="stats-line stats-head"><span>进度</span><span>EZ</span><span>HD</span><span>IN</span><span>AT</span></div>');
     expect(html).toContain('<span>C</span><span>0</span><span>31</span><span>221</span><span>39</span>');
     expect(html).toContain('<span>Phi</span><span>0</span><span>4</span><span>16</span><span>2</span>');
@@ -125,6 +130,7 @@ describe('buildPhigrosBestImageAppHtml', () => {
     expect(html).toContain('<div class="avatar-fallback">尘</div>');
     expect(html).not.toContain('class="background-image"');
     expect(html).toContain('linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%)');
+    expect(html).not.toContain('class="name-card-bg"');
     expect(html).toContain('<span class="jacket-fallback">♪</span>');
     expect(html).not.toContain('class="card-art"');
     expect(html).not.toContain('src="data:image/png;base64,cover"');

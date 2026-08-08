@@ -215,7 +215,11 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     .avatar-shell{width:${avatarSize}px;height:${avatarSize}px;flex:0 0 ${avatarSize}px;overflow:hidden;border:${Math.max(2, px(width * 3 / 1080))}px solid rgba(255,255,255,.92);border-radius:${px(width * 18 / 1080)}px;background:#DDE5F0;box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 22 / 1080)}px rgba(31,44,75,.28)}
     .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
     .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;color:#52647F;font:950 ${px(width * 48 / 1080)}px/1 system-ui,sans-serif;background:linear-gradient(145deg,#F8FBFF,#C7D5EA)}
-    .name-card{display:flex;min-width:0;height:${avatarSize}px;flex:1;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(width * 24 / 1080)}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 18 / 1080)}px;background:rgba(255,255,255,.82);box-shadow:0 ${px(width * 6 / 1080)}px ${px(width * 16 / 1080)}px rgba(35,48,70,.12);color:#1F2937;font:900 ${px(width * 52 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;text-overflow:ellipsis;white-space:nowrap}
+    .name-card{position:relative;display:flex;min-width:0;height:${avatarSize}px;flex:1;align-items:center;justify-content:center;overflow:hidden;padding:0 ${px(width * 24 / 1080)}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 18 / 1080)}px;background:rgba(255,255,255,.82);box-shadow:0 ${px(width * 6 / 1080)}px ${px(width * 16 / 1080)}px rgba(35,48,70,.12);isolation:isolate}
+    .name-card-bg{position:absolute;z-index:0;inset:0}
+    .name-card-image{display:block;width:100%;height:100%;object-fit:cover;filter:blur(${px(width * 6 / 1080)}px);transform:scale(1.05)}
+    .name-card-veil{position:absolute;inset:0;background:rgba(255,255,255,.68);-webkit-backdrop-filter:blur(${px(width * 8 / 1080)}px);backdrop-filter:blur(${px(width * 8 / 1080)}px)}
+    .name-card-text{position:relative;z-index:1;min-width:0;overflow:hidden;color:#1F2937;font:900 ${px(width * 52 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;text-overflow:ellipsis;white-space:nowrap}
     .rating-card{flex:1;min-width:0;border-radius:${px(width * 18 / 1080)}px;padding:${px(width * 3 / 1080)}px;background:var(--rating-border);box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 26 / 1080)}px rgba(46,63,96,.22)}
     .rating-card-inner{position:relative;display:flex;width:100%;height:100%;align-items:center;gap:${px(width * 12 / 1080)}px;overflow:hidden;padding:${px(width * 14 / 1080)}px ${px(width * 18 / 1080)}px;border-radius:${px(width * 15 / 1080)}px;background:var(--rating-fill);color:var(--rating-text)}
     .rating-copy{display:flex;min-width:0;flex:1;flex-direction:column;justify-content:center;gap:${px(width * 6 / 1080)}px}
@@ -225,11 +229,11 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     .rating-badge{display:flex;flex:0 0 auto;flex-direction:column;align-items:center;gap:${px(width * 6 / 1080)}px}
     .badge-title{font:700 ${px(width * 12 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.06em;opacity:.85}
     .badge-value{min-width:${px(width * 88 / 1080)}px;display:flex;align-items:center;justify-content:center;padding:${px(width * 8 / 1080)}px ${px(width * 12 / 1080)}px;border-radius:${px(width * 14 / 1080)}px;background:rgba(255,255,255,.22);font:900 ${px(width * 26 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.02em}
-    .stats-card{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 18 / 1080)}px;background:rgba(255,255,255,.78);box-shadow:0 ${px(width * 6 / 1080)}px ${px(width * 18 / 1080)}px rgba(35,48,70,.12);backdrop-filter:blur(${px(width * 12 / 1080)}px)}
-    .stats-line{display:grid;flex:1;grid-template-columns:${px(width * 52 / 1080)}px repeat(4,minmax(0,1fr));align-items:center;color:#374151;font:800 ${px(width * 15 / 1080)}px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums}
+    .stats-card{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 18 / 1080)}px;background:rgba(255,255,255,.55);box-shadow:0 ${px(width * 6 / 1080)}px ${px(width * 18 / 1080)}px rgba(35,48,70,.12);-webkit-backdrop-filter:blur(${px(width * 16 / 1080)}px);backdrop-filter:blur(${px(width * 16 / 1080)}px)}
+    .stats-line{display:grid;flex:1;grid-template-columns:${px(width * 80 / 1080)}px repeat(4,minmax(0,1fr));align-items:center;color:#374151;font:800 ${px(width * 30 / 1080)}px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums}
     .stats-line span{display:flex;align-items:center;justify-content:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .stats-line+.stats-line{border-top:1px solid rgba(148,163,184,.35)}
-    .stats-head{color:#6B7280;font:800 ${px(width * 13 / 1080)}px/1 system-ui,sans-serif;letter-spacing:.08em}
+    .stats-head{color:#6B7280;font:800 ${px(width * 16 / 1080)}px/1 system-ui,sans-serif;letter-spacing:.08em}
     .app-page-marker-row{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset + headerHeight}px;display:flex;width:${headerWidth}px;height:${markerRowHeight}px;align-items:center;justify-content:flex-end}
     .page-marker{display:flex;height:${px(width * 28 / 1080)}px;align-items:center;justify-content:center;padding:0 ${px(width * 12 / 1080)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 13 / 1080)}px/1 system-ui,sans-serif}
     .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
@@ -274,7 +278,10 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
         <div class="header-left">
           <div class="identity-row">
             <div class="avatar-shell">${avatarMarkup}</div>
-            <div class="name-card">${escapePhigrosBestImageHtml(name)}</div>
+            <div class="name-card">
+              ${backgroundUrl ? `<div class="name-card-bg" aria-hidden="true"><img class="name-card-image" alt="" src="${escapePhigrosBestImageHtml(backgroundUrl)}"><div class="name-card-veil"></div></div>` : ''}
+              <span class="name-card-text">${escapePhigrosBestImageHtml(name)}</span>
+            </div>
           </div>
           <div class="rating-card" style="--rating-border:${escapePhigrosBestImageHtml(challengeBorder)};--rating-fill:${escapePhigrosBestImageHtml(challengeFill)};--rating-text:${challengeTheme.textColor}">
             <div class="rating-card-inner">
