@@ -50,12 +50,14 @@ describe('buildPhigrosBestImageAppHtml', () => {
     expect(html).toContain('data-rating-style="app"');
     expect(html).toContain('class="app-header"');
     expect(html).not.toContain('class="profile-banner"');
-    expect(html).toContain('class="avatar-shell"');
+    expect(html).toContain('class="header-left"');
+    expect(html).toContain('class="identity-row"');
     expect(html).toContain('src="data:image/png;base64,avatar"');
+    expect(html).toContain('<div class="name-card">尘言</div>');
     expect(html).toContain('class="rating-card"');
-    expect(html).toContain('<div class="rating-label">尘言</div>');
+    expect(html).toContain('<div class="rating-label">RKS</div>');
     expect(html).toContain('<div class="rating-value">16.1053</div>');
-    expect(html).toContain('<div class="rating-meta">RKS · 386MiB 289KiB</div>');
+    expect(html).toContain('<div class="rating-meta">386MiB 289KiB</div>');
     expect(html).toContain('<div class="badge-title">课题模式</div>');
     expect(html).toContain('<div class="badge-value">42</div>');
     expect(html).toContain('--rating-border:linear-gradient(90deg,#8E6A1C 0%,#6F4D12 100%)');
