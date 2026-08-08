@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { Card } from '@/components/Card';
 import { FormField } from '@/components/FormField';
 import {
@@ -28,8 +28,16 @@ function parseNumericInput(value: string): number {
 
 export default function ChunithmRatingToolScreen() {
   const theme = useAppTheme();
-  const [constant, setConstant] = useState('14.0');
-  const [score, setScore] = useState('1009000');
+  const { constant: routeConstant, score: routeScore } = useLocalSearchParams<{
+    constant?: string;
+    score?: string;
+  }>();
+  const [constant, setConstant] = useState(
+    () => routeConstant && Number.isFinite(parseNumericInput(routeConstant)) ? routeConstant : '14.0',
+  );
+  const [score, setScore] = useState(
+    () => routeScore && Number.isFinite(parseNumericInput(routeScore)) ? routeScore : '1009000',
+  );
   const [targetRating, setTargetRating] = useState('15.00');
   const [targetOverPower, setTargetOverPower] = useState('85');
   const [clear, setClear] = useState<ChunithmClearTier>('ajc');

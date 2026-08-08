@@ -9,6 +9,7 @@ import type {
 
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
+const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockSetSongFavorite = jest.fn(async () => undefined);
 const mockSetChartPractice = jest.fn(async () => undefined);
@@ -122,7 +123,8 @@ let mockDarkTheme = false;
 
 jest.mock('expo-router', () => ({
   router: {
-    replace: mockReplace,
+    replace: (href: unknown) => mockReplace(href),
+    push: (href: unknown) => mockPush(href),
   },
   useNavigation: () => ({
     canGoBack: mockCanGoBack,
@@ -402,6 +404,56 @@ describe('Chunithm song detail', () => {
     expect(master.getByText('物量暂不可用')).toBeTruthy();
     await fireEvent.press(master.getByText('重试读取单曲详情'));
     expect(mockDetailRefetch).toHaveBeenCalled();
+  });
+
+  it('opens the rating calculator from the Rating cell with the chart constant and score', async () => {
+    const screen = await render(<ChunithmSongDetail songId="3" />);
+    const master = within(screen.getByTestId('chunithm-detail-difficulty-3'));
+
+    await fireEvent.press(master.getByLabelText('使用定数 12.5 打开 Rating 计算器'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/tools/chunithm-rating',
+      params: {
+        constant: '12.5',
+        score: '1009000',
+      },
+    });
+  });
+
+  it('opens the OVER POWER calculator from the OVER POWER cell with the chart constant and score', async () => {
+    const screen = await render(<ChunithmSongDetail songId="3" />);
+    const master = within(screen.getByTestId('chunithm-detail-difficulty-3'));
+
+    await fireEvent.press(master.getByLabelText('使用定数 12.5 打开 OVER POWER 计算器'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/tools/chunithm-rating',
+      params: {
+        constant: '12.5',
+        score: '1009000',
+      },
+    });
+  });
+
+  it('disables the calculator link for WORLD’S END difficulties', async () => {
+    mockCatalogState = {
+      ...mockCatalog,
+      songs: [{
+        ...song,
+        difficulties: [{
+          ...song.difficulties[0]!,
+          difficulty: 5,
+          level: '狂',
+          levelValue: 0,
+          originId: 1234,
+          kanji: '避',
+          star: 4,
+        }],
+      }],
+    };
+    const screen = await render(<ChunithmSongDetail songId="3" />);
+    const card = within(screen.getByTestId('chunithm-detail-difficulty-5'));
+    expect(card.getByLabelText("WORLD'S END 不参与 Rating 计算")).toBeTruthy();
+    expect(card.getByLabelText("WORLD'S END 不参与 OVER POWER 计算")).toBeTruthy();
   });
 });
 

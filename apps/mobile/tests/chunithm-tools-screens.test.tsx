@@ -3,10 +3,11 @@ import { jest } from '@jest/globals';
 import ChunithmRatingToolScreen from '../app/tools/chunithm-rating';
 import ChunithmCollectionsToolScreen from '../app/tools/chunithm-collections';
 
+let mockRouteParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   router: { push: jest.fn(), dismissTo: jest.fn() },
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockRouteParams,
 }));
 
 const source = {
@@ -103,6 +104,7 @@ describe('chunithm tool screens', () => {
   beforeEach(() => {
     mockCollectionsData = undefined;
     mockPinnedCollections = [];
+    mockRouteParams = {};
     mockGameData = {
       data: {
         payload: {
@@ -141,6 +143,15 @@ describe('chunithm tool screens', () => {
     const { getByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
     await fireEvent.changeText(getByLabelText('定数'), '99');
     expect(getByText('定数必须大于 0 且不超过 16。')).toBeTruthy();
+  });
+
+  it('prefills the constant and score from route params', async () => {
+    mockRouteParams = { constant: '12.5', score: '1009000' };
+    const { getByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
+    expect(getByLabelText('定数').props.value).toBe('12.5');
+    expect(getByLabelText('分数').props.value).toBe('1009000');
+    // 12.5 + 2.15 = 14.65，1009000 → Rating 14.65
+    expect(getByText(/Rating：14\.65/)).toBeTruthy();
   });
 
   it('renders collection kind tabs and the picker trigger', async () => {
