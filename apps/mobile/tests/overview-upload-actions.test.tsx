@@ -97,6 +97,10 @@ jest.mock('@/components/maimai/MaimaiSyncGuideSheet', () => {
 jest.mock('@/components/chunithm/ChunithmSyncGuideSheet', () => ({
   ChunithmSyncGuideSheet: () => null,
 }));
+jest.mock('@/domain/maimai-maintenance', () => ({
+  MAIMAI_MAINTENANCE_MESSAGE: '舞萌维护窗口说明',
+  isMaimaiMaintenanceWindow: () => false,
+}));
 jest.mock('@/components/SourceStatus', () => ({ SourceStatus: () => null }));
 jest.mock('@/components/DxRatingCard', () => ({ DxRatingCard: () => null }));
 jest.mock('@/components/QueryStateView', () => ({
