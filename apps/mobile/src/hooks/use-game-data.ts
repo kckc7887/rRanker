@@ -25,11 +25,12 @@ import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
-import { PhigrosSaveCache, stalePhigrosPayload } from '@/services/phigros-save-cache';
+import { PhigrosSaveCache, stalePhigrosPayload, type PhigrosGameDataPayload } from '@/services/phigros-save-cache';
+import { cacheFirstLoad, isCacheFallback } from '@/services/cache-first';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
-import { ResourceService, staleCachedResource } from '@/services/resource-service';
+import { ResourceService } from '@/services/resource-service';
 import {
   CHUNITHM_CATALOG_RESOURCE_KEY,
   type ChunithmCatalogSnapshot,
@@ -93,18 +94,17 @@ export function useGameData() {
             };
           };
           // 曲库缓存优先：中二曲库是全局公开资源，示例账号首屏不再等待网络拉取。
-          const service = new ResourceService(repository);
-          const cached = await service.getCached<ChunithmCatalogSnapshot>(
-            CHUNITHM_CATALOG_RESOURCE_KEY,
-            CHUNITHM_CATALOG_SCHEMA_VERSION,
-          );
-          if (cached) {
-            void loadChunithmCatalog().then((fresh) => {
+          return cacheFirstLoad({
+            loadCached: () => new ResourceService(repository)
+              .getCached<ChunithmCatalogSnapshot>(
+                CHUNITHM_CATALOG_RESOURCE_KEY,
+                CHUNITHM_CATALOG_SCHEMA_VERSION,
+              ),
+            loadFresh: () => loadChunithmCatalog(),
+            onFresh: (fresh) => {
               queryClient.setQueryData(queryKey, toBundle(fresh));
-            }).catch(() => undefined);
-            return toBundle(staleCachedResource(cached));
-          }
-          return toBundle(await loadChunithmCatalog());
+            },
+          }).then(toBundle);
         }
         if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {
           const provider = new ChunithmScoreProvider(
@@ -164,7 +164,7 @@ export function useGameData() {
           const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
             ? catalogProvider
             : new PhigrosCatalogProvider();
-          const loadFresh = async (): Promise<GameDataBundle> => {
+          const loadFresh = async (): Promise<PhigrosGameDataPayload> => {
             scoreProvider.invalidateCache();
             // 复用会话里的曲库 provider，避免每次同步成绩都新建实例并重拉 OSS、误刷新资源时间。
             const [player, records, bestSections, gameVersion, summary, userProfile, gameProgress] = await Promise.all([
@@ -193,56 +193,52 @@ export function useGameData() {
             const rks = player.rating;
             const avatarUrl = await resolvePhigrosAvatarUrl(gameVersion, summary.avatar);
             return {
-              gameId: 'phigros' as const,
-              providerId: 'phi-taptap' as const,
-              profile: getGameProfile('phigros'),
-              payload: {
-                kind: 'phigros' as const,
-                player,
-                records,
-                bestSections,
-                playerScore: {
-                  label: 'Raking Score',
-                  value: rks,
-                  display: rks.toFixed(4),
-                },
-                challengeModeRank: summary.challengeModeRank,
-                source,
-                saveUpdatedAt,
-                catalogSource,
-                avatarUrl,
-                avatarKey: userProfile?.avatar || summary.avatar || null,
-                backgroundSongId: userProfile?.backgroundSongId || null,
-                dataAmount: formatPhigrosDataMoney(gameProgress?.money ?? []),
-                progress: {
-                  cleared: summary.cleared,
-                  fullCombo: summary.fullCombo,
-                  phi: summary.phi,
-                },
+              kind: 'phigros' as const,
+              player,
+              records,
+              bestSections,
+              playerScore: {
+                label: 'Raking Score',
+                value: rks,
+                display: rks.toFixed(4),
+              },
+              challengeModeRank: summary.challengeModeRank,
+              source,
+              saveUpdatedAt,
+              catalogSource,
+              avatarUrl,
+              avatarKey: userProfile?.avatar || summary.avatar || null,
+              backgroundSongId: userProfile?.backgroundSongId || null,
+              dataAmount: formatPhigrosDataMoney(gameProgress?.money ?? []),
+              progress: {
+                cleared: summary.cleared,
+                fullCombo: summary.fullCombo,
+                phi: summary.phi,
               },
             };
           };
+          const toBundle = (payload: PhigrosGameDataPayload): GameDataBundle => ({
+            gameId: 'phigros' as const,
+            providerId: 'phi-taptap' as const,
+            profile: getGameProfile('phigros'),
+            payload,
+          });
           const cache = new PhigrosSaveCache(repository);
           // 缓存优先：先渲染上次成功同步的存档，后台刷新成功后持久化并静默回写。
-          const cached = await cache.load(activeAccountId);
-          if (cached) {
-            void loadFresh().then((fresh) => {
-              if (fresh.payload.kind !== 'phigros') return;
-              void cache.save(activeAccountId, fresh.payload).catch(() => undefined);
-              queryClient.setQueryData(queryKey, fresh);
-            }).catch(() => undefined);
-            return {
-              gameId: 'phigros' as const,
-              providerId: 'phi-taptap' as const,
-              profile: getGameProfile('phigros'),
-              payload: stalePhigrosPayload(cached),
-            };
+          const payload = await cacheFirstLoad({
+            loadCached: () => cache.load(activeAccountId),
+            loadFresh,
+            onFresh: (fresh) => {
+              void cache.save(activeAccountId, fresh).catch(() => undefined);
+              queryClient.setQueryData(queryKey, toBundle(fresh));
+            },
+            markStale: stalePhigrosPayload,
+          });
+          // 打标缓存（来自命中）不落库；网络新数据（非兜底）首次同步后持久化。
+          if (!isCacheFallback(payload)) {
+            void cache.save(activeAccountId, payload).catch(() => undefined);
           }
-          const fresh = await loadFresh();
-          if (fresh.payload.kind === 'phigros') {
-            void cache.save(activeAccountId, fresh.payload).catch(() => undefined);
-          }
-          return fresh;
+          return toBundle(payload);
         }
 
         return {

@@ -1,15 +1,12 @@
 import type { DataSource } from '@/domain/models';
 import type { ResourceRepository } from '@/repositories/resource-repository';
+import { staleCached } from '@/services/cache-first';
 
 interface Sourced { source: DataSource }
 
 /** 缓存优先渲染时的来源标记：label 原样保留，仅标记为缓存且过期（后台刷新中）。 */
 export function staleCachedResource<T extends Sourced>(value: T): T {
-  if (value.source.kind === 'cache') return value;
-  return {
-    ...value,
-    source: { ...value.source, kind: 'cache', isStale: true },
-  };
+  return staleCached(value);
 }
 
 export class ResourceService {

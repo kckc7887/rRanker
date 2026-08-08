@@ -10,6 +10,7 @@ import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { ProviderError } from '@/providers/errors';
 import { startTimer, timed } from '@/utils/startup-timing';
+import { cacheFirstLoad, staleCached } from '@/services/cache-first';
 
 export function buildScoreSnapshot(
   player: Player,
@@ -69,11 +70,7 @@ function withoutInvalidUtageRecords(snapshot: ScoreSnapshot): ScoreSnapshot {
 
 /** 缓存优先渲染时的来源标记：label 原样保留，仅标记为缓存且过期（后台刷新中）。 */
 export function staleCachedSnapshot(snapshot: ScoreSnapshot): ScoreSnapshot {
-  if (snapshot.source.kind === 'cache') return snapshot;
-  return {
-    ...snapshot,
-    source: { ...snapshot.source, kind: 'cache', isStale: true },
-  };
+  return staleCached(snapshot);
 }
 
 /**
@@ -138,17 +135,13 @@ export class ScoreService {
    * markStale=false 时返回原始快照（不标记过期），用于数据本身来自本地快照的账号（local）。
    */
   async loadCacheFirst(onFresh: (fresh: ScoreSnapshot) => void, markStale = true): Promise<ScoreSnapshot> {
-    if (this.snapshotRepository) {
-      const cached = await this.snapshotRepository.getLatest(this.accountId);
-      if (cached) {
-        void this.load().then((fresh) => {
-          // 网络失败返回的兜底缓存数据不回写，保持首屏缓存不变。
-          if (fresh.source.kind !== 'cache') onFresh(fresh);
-        }).catch(() => undefined);
-        return markStale ? staleCachedSnapshot(cached) : cached;
-      }
-    }
-    return this.load();
+    if (!this.snapshotRepository) return this.load();
+    return cacheFirstLoad({
+      loadCached: () => this.snapshotRepository!.getLatest(this.accountId),
+      loadFresh: () => this.load(),
+      onFresh,
+      markStale: markStale ? staleCachedSnapshot : (snapshot) => snapshot,
+    });
   }
 
   private async loadFresh(): Promise<ScoreSnapshot> {

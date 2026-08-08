@@ -1,4 +1,5 @@
 import type { GamePayload } from '@/domain/game-data';
+import { staleCached } from '@/services/cache-first';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
@@ -9,12 +10,12 @@ function phigrosSaveResourceKey(accountId: string): string {
   return `phigros-save:${accountId}`;
 }
 
-/** 缓存优先渲染时的来源标记：label 原样保留，仅标记为缓存且过期（后台刷新中）。 */
+/** 缓存优先渲染时的来源标记：source 与 catalogSource 均打标，label 原样保留。 */
 export function stalePhigrosPayload(payload: PhigrosGameDataPayload): PhigrosGameDataPayload {
   return {
     ...payload,
-    source: { ...payload.source, kind: 'cache', isStale: true },
-    catalogSource: { ...payload.catalogSource, kind: 'cache', isStale: true },
+    source: staleCached(payload.source),
+    catalogSource: staleCached(payload.catalogSource),
   };
 }
 

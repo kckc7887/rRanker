@@ -9,6 +9,7 @@ import {
 import { ProviderError } from '@/providers/errors';
 import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { cacheFirstLoad, staleCached } from '@/services/cache-first';
 
 export class ChunithmPersonalService {
   constructor(
@@ -56,24 +57,14 @@ export class ChunithmPersonalService {
    */
   async loadCacheFirst(onFresh: (fresh: ChunithmPersonalSnapshot) => void): Promise<ChunithmPersonalSnapshot> {
     const key = chunithmPersonalResourceKey(this.accountId);
-    const cached = await this.repository.getResource<ChunithmPersonalSnapshot>(
-      key,
-      CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
-    );
-    if (cached) {
-      void this.load().then((fresh) => {
-        // 网络失败返回的兜底缓存数据不回写，保持首屏缓存不变。
-        if (!fresh.source.isStale) onFresh(fresh);
-      }).catch(() => undefined);
-      return {
-        ...cached,
-        source: {
-          ...cached.source,
-          label: '落雪咖啡屋（缓存）',
-          isStale: true,
-        },
-      };
-    }
-    return this.load();
+    return cacheFirstLoad({
+      loadCached: () => this.repository.getResource<ChunithmPersonalSnapshot>(
+        key,
+        CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+      ),
+      loadFresh: () => this.load(),
+      onFresh,
+      markStale: (snapshot) => staleCached(snapshot, { label: '落雪咖啡屋（缓存）' }),
+    });
   }
 }
