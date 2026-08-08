@@ -49,20 +49,36 @@ describe('chunithm rating formula', () => {
     expect(calculateChunithmChartRating(13.7, 1_002_501)).toBeCloseTo(14.95, 2);
   });
 
-  it('computes over power with clear bonuses', () => {
-    // 975000+ 档：rating 向下取整到 0.001，再叠加 CLEAR 加成后 ×5
+  it('computes over power with official lamp bonuses', () => {
+    // 官方灯奖励：AJC 1.25 / AJ 1.0 / FC 0.5 / 无 0
+    const ajc = calculateChunithmOverPower(13.7, 1_009_000, 'ajc');
     const aj = calculateChunithmOverPower(13.7, 1_009_000, 'aj');
     const fc = calculateChunithmOverPower(13.7, 1_009_000, 'fc');
     const none = calculateChunithmOverPower(13.7, 1_009_000, 'none');
-    expect(aj - none).toBeCloseTo(1.0, 2); // 0.2 × 5
-    expect(fc - none).toBeCloseTo(0.5, 2); // 0.1 × 5
+    expect(ajc - aj).toBeCloseTo(0.25, 2);
+    expect(aj - none).toBeCloseTo(1.0, 2);
+    expect(fc - none).toBeCloseTo(0.5, 2);
+  });
+
+  it('computes over power with the official 1007500+ bonus', () => {
+    // 1007500 以上：5×(定数+2) + (分数-1007500)×0.0015 + 灯奖励
+    // 定数 13.7：5×15.7 = 78.5，1009000 加 1500×0.0015 = 2.25 → 80.75
+    expect(calculateChunithmOverPower(13.7, 1_009_000, 'none')).toBeCloseTo(80.75, 2);
+    // 975000~1007500：5×Rating + 灯奖励；975000 的 Rating = 定数
+    expect(calculateChunithmOverPower(13.7, 975_000, 'none')).toBeCloseTo(68.5, 2);
+  });
+
+  it('returns zero over power below 975000', () => {
+    expect(calculateChunithmOverPower(13.7, 960_000, 'ajc')).toBe(0);
+    expect(calculateChunithmOverPower(13.7, 900_000, 'aj')).toBe(0);
+    expect(calculateChunithmOverPower(13.7, 500_000, 'fc')).toBe(0);
   });
 
   it('caps over power at the AJC maximum for 1010000', () => {
-    expect(calculateChunithmOverPower(13.7, 1_010_000, 'none'))
+    // 官方公式：AJC 满分 1010000 时自然等于 5×(定数+3)
+    expect(calculateChunithmOverPower(13.7, 1_010_000, 'ajc'))
       .toBeCloseTo(maxChunithmOverPower(13.7), 2);
-    expect(calculateChunithmOverPower(13.7, 1_010_000, 'aj'))
-      .toBeCloseTo(maxChunithmOverPower(13.7), 2);
+    expect(maxChunithmOverPower(13.7)).toBeCloseTo(83.5, 2);
   });
 
   it('returns zero for invalid inputs', () => {
@@ -92,10 +108,12 @@ describe('chunithm rating formula', () => {
     expect(score).not.toBeNull();
     expect(calculateChunithmOverPower(13.7, score!, 'aj')).toBeGreaterThanOrEqual(80);
     expect(calculateChunithmOverPower(13.7, 0, 'aj')).toBe(0);
-  });
-
-  it('returns null when the target over power is unreachable', () => {
+    // 目标超过单谱面理论最高时不可达
     expect(minimumScoreForChunithmOverPower(13.7, 9999, 'aj')).toBeNull();
+    // 低于 975000 无 OP，目标大于 0 时最低分数必在 975000 及以上
+    const lowTarget = minimumScoreForChunithmOverPower(13.7, 1, 'none');
+    expect(lowTarget).not.toBeNull();
+    expect(lowTarget!).toBeGreaterThanOrEqual(975_000);
   });
 
   it('builds a descending score tier table', () => {
