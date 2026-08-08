@@ -45,6 +45,7 @@ export function defaultPhigrosRandomChartsPreferences(): PhigrosRandomChartsPref
     accuracyMax: '',
     rank: null,
     xing: null,
+    chapter: 'all',
   };
 }
 
@@ -93,6 +94,9 @@ export function parsePhigrosRandomChartsPreferences(
   }
   if (typeof raw.xing === 'string' && VALID_XING.has(raw.xing as PhigrosXingKind)) {
     output.xing = raw.xing as PhigrosXingKind;
+  }
+  if (typeof raw.chapter === 'string' && (raw.chapter === 'all' || /^\d+$/.test(raw.chapter))) {
+    output.chapter = raw.chapter;
   }
   return output;
 }

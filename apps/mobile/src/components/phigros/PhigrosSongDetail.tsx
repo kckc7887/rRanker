@@ -245,7 +245,7 @@ function Detail({
       : blurUrl;
   const metadataItems: SongMetadataItem[] = [
     { key: 'illustrator', label: '曲绘师', value: song.illustrator ?? '未知', flex: 1 },
-    { key: 'version', label: '版本', value: song.version || '未知', flex: 1 },
+    ...(song.version ? [{ key: 'chapter', label: '章节', value: song.version, flex: 1 }] : []),
   ];
 
   return (

@@ -652,6 +652,60 @@ export function loadNoteCountsTable(raw: string): Record<string, PhigrosChartNot
   return table;
 }
 
+export interface PhigrosChapterDefinition {
+  key: string;
+  title: string;
+}
+
+export interface PhigrosChaptersTable {
+  definitions: PhigrosChapterDefinition[];
+  songChapter: Record<string, string>;
+}
+
+/**
+ * 解析 OSS `chapters.csv`（两段式：章节定义 + 歌曲映射）。
+ * 定义段：`章节变量,章节显示名`；映射段：`songId,章节变量`；
+ * 以注释行 `# 歌曲章节映射：songId,章节变量` 为分段标记。
+ * 容忍：BOM、CRLF、空行、注释行；映射引用未定义变量的行丢弃。
+ * 无有效定义（或格式不完整）时返回 null，调用方回退现状。
+ */
+export function loadChaptersTable(raw: string): PhigrosChaptersTable | null {
+  const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/);
+  const definitions: PhigrosChapterDefinition[] = [];
+  const definitionKeys = new Set<string>();
+  const songChapter: Record<string, string> = {};
+  let inMapping = false;
+  let sawMappingMarker = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      if (trimmed.startsWith('#') && trimmed.includes('songId')) {
+        inMapping = true;
+        sawMappingMarker = true;
+      }
+      continue;
+    }
+    const cols = line.split(',');
+    const first = cols[0]?.trim() ?? '';
+    if (!first) continue;
+
+    if (!inMapping) {
+      if (definitionKeys.has(first)) continue;
+      definitionKeys.add(first);
+      definitions.push({ key: first, title: cols.slice(1).join(',').trim() });
+      continue;
+    }
+
+    const key = cols.slice(1).join(',').trim();
+    if (!key || !definitionKeys.has(key)) continue;
+    songChapter[normalizePhigrosSongId(first)] = key;
+  }
+
+  if (definitions.length === 0 || !sawMappingMarker) return null;
+  return { definitions, songChapter };
+}
+
 /** 合并定数表：优先保留先出现的版本，后续仅补缺曲目 */
 export function mergeDifficultyTables(
   primary: PhigrosDifficultyTable,

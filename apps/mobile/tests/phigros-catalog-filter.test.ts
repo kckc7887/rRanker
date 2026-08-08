@@ -10,6 +10,7 @@ describe('usePhigrosCatalogFilter store', () => {
       level: 'all',
       constantMin: '',
       constantMax: '',
+      chapter: 'all',
     }));
   });
 
@@ -18,6 +19,7 @@ describe('usePhigrosCatalogFilter store', () => {
     usePhigrosCatalogFilter.getState().setKeyword('test');
     usePhigrosCatalogFilter.getState().setLevel(1);
     usePhigrosCatalogFilter.getState().setConstantMin('12');
+    usePhigrosCatalogFilter.getState().setChapter('4');
     usePhigrosCatalogFilter.getState().clearFilters();
     expect(usePhigrosCatalogFilter.getState()).toEqual(expect.objectContaining({
       keyword: '',
@@ -25,17 +27,20 @@ describe('usePhigrosCatalogFilter store', () => {
       level: 'all',
       constantMin: '',
       constantMax: '',
+      chapter: 'all',
     }));
   });
 
   it('reset restores defaults', () => {
     usePhigrosCatalogFilter.getState().setCollapsed(false);
     usePhigrosCatalogFilter.getState().setLevel(0);
+    usePhigrosCatalogFilter.getState().setChapter('2');
     usePhigrosCatalogFilter.getState().reset();
     expect(usePhigrosCatalogFilter.getState()).toEqual(expect.objectContaining({
       keyword: '',
       collapsed: true,
       level: 'all',
+      chapter: 'all',
     }));
   });
 });

@@ -76,6 +76,7 @@ jest.mock('expo-router', () => ({
 jest.mock('@/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: string }) => unknown) => selector({ activeGameId: 'phigros' }),
 }));
+let mockCatalogSongVersion = '3.8.0';
 jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({
     data: {
@@ -85,7 +86,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
           title: '测试曲',
           artist: '测试曲师',
           illustrator: '测试曲绘师',
-          version: '3.8.0',
+          version: mockCatalogSongVersion,
           charts: [
             {
               songId: 'Song.A', type: 'SD', levelIndex: 0, level: 'EZ', difficulty: 'basic',
@@ -210,6 +211,7 @@ describe('Phigros song detail', () => {
 
   beforeEach(() => {
     mockSongRouteParams = { songId: 'Song.A' };
+    mockCatalogSongVersion = '3.8.0';
     libraryMock.__libraryMockState.data = [];
     mockCanGoBack.mockReturnValue(true);
     jest.clearAllMocks();
@@ -225,15 +227,15 @@ describe('Phigros song detail', () => {
     await fireEvent(screen.getByTestId('phigros-metadata-measure-曲绘师'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
-    await fireEvent(screen.getByTestId('phigros-metadata-measure-版本'), 'textLayout', {
+    await fireEvent(screen.getByTestId('phigros-metadata-measure-章节'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
     await fireEvent.press(screen.getByLabelText('展开曲绘师'));
     expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBeUndefined();
-    expect(screen.getByTestId('phigros-metadata-value-版本').props.numberOfLines).toBeUndefined();
+    expect(screen.getByTestId('phigros-metadata-value-章节').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起曲绘师'));
     expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBe(2);
-    expect(screen.getByTestId('phigros-metadata-value-版本').props.numberOfLines).toBe(2);
+    expect(screen.getByTestId('phigros-metadata-value-章节').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('HD 难度卡片')).toBeTruthy();
@@ -257,6 +259,18 @@ describe('Phigros song detail', () => {
     expect(screen.getByText('14')).toBeTruthy();
     // AT constant 15.9 → floor 15
     expect(screen.getByText('15')).toBeTruthy();
+  });
+
+  it('shows the chapter metadata row and hides it when the chapter is missing', async () => {
+    const withChapter = await render(<SongDetailScreen />);
+    await waitFor(() => expect(withChapter.getByTestId('phigros-metadata-value-章节')).toBeTruthy());
+    expect(withChapter.getByText('章节')).toBeTruthy();
+
+    mockCatalogSongVersion = '';
+    const withoutChapter = await render(<SongDetailScreen />);
+    await waitFor(() => expect(withoutChapter.getByLabelText('IN 难度卡片')).toBeTruthy());
+    expect(withoutChapter.queryByTestId('phigros-metadata-value-章节')).toBeNull();
+    expect(withoutChapter.queryByText('章节')).toBeNull();
   });
 
   it('shows note counts table on charts with notes and fallback when missing', async () => {

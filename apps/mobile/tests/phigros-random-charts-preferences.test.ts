@@ -53,9 +53,28 @@ describe('phigros random charts preferences', () => {
       accuracyMin: '99',
       rank: 'v' as const,
       xing: 'good' as const,
+      chapter: '4' as const,
     };
     await store.save(value);
     await expect(store.load()).resolves.toEqual(value);
+  });
+
+  it('parses chapter only when all or numeric, otherwise falls back to all', () => {
+    expect(parsePhigrosRandomChartsPreferences({
+      version: 2,
+      chapter: '7',
+    }).chapter).toBe('7');
+    expect(parsePhigrosRandomChartsPreferences({
+      version: 2,
+      chapter: 'abc',
+    }).chapter).toBe('all');
+    expect(parsePhigrosRandomChartsPreferences({
+      version: 2,
+    }).chapter).toBe('all');
+    expect(parsePhigrosRandomChartsPreferences({
+      version: 2,
+      chapter: 'all',
+    }).chapter).toBe('all');
   });
 
   it('hydrates Zustand state and persists subsequent edits', async () => {

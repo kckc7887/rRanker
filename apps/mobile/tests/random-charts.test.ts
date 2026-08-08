@@ -277,6 +277,7 @@ describe('filterPhigrosRandomCharts', () => {
     accuracyMax: '',
     rank: null,
     xing: null,
+    chapter: 'all',
   };
 
   it('keeps unplayed catalog charts under basic filters', () => {
@@ -288,6 +289,23 @@ describe('filterPhigrosRandomCharts', () => {
     );
     expect(pool).toHaveLength(1);
     expect(pool[0]?.played).toBe(false);
+  });
+
+  it('filters charts by chapter version id', () => {
+    const catalog: CatalogSnapshot = {
+      ...phigrosCatalog,
+      songs: [
+        { ...phigrosCatalog.songs[0]!, id: 'c1', versionId: 0, charts: [phigrosCatalog.songs[0]!.charts[0]!] },
+        { ...phigrosCatalog.songs[0]!, id: 'c2', versionId: 1, charts: [phigrosCatalog.songs[0]!.charts[0]!] },
+        { ...phigrosCatalog.songs[0]!, id: 'no-chapter', versionId: undefined, charts: [phigrosCatalog.songs[0]!.charts[0]!] },
+      ],
+    };
+    const chapter0 = filterPhigrosRandomCharts(catalog, [], { ...filters, chapter: '0' }, {});
+    const missing = filterPhigrosRandomCharts(catalog, [], { ...filters, chapter: '9' }, {});
+    const all = filterPhigrosRandomCharts(catalog, [], filters, {});
+    expect(chapter0.map((pick) => pick.songId)).toEqual(['c1']);
+    expect(missing).toHaveLength(0);
+    expect(all).toHaveLength(3);
   });
 
   it('requires a score for Acc, rank and XING filters', () => {
