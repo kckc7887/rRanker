@@ -73,7 +73,7 @@ describe('chunithm tool screens', () => {
     expect(getByText('定数必须大于 0 且不超过 16。')).toBeTruthy();
   });
 
-  it('renders collection kind tabs and the list', async () => {
+  it('renders collection kind tabs and the picker trigger', async () => {
     mockCollectionsData = {
       items: [
         { id: 0, name: 'NEW COMER', color: 'normal' },
@@ -86,8 +86,8 @@ describe('chunithm tool screens', () => {
     expect(getByText('角色')).toBeTruthy();
     expect(getByText('名牌版')).toBeTruthy();
     expect(getByText('地图头像')).toBeTruthy();
-    expect(getByText('NEW COMER')).toBeTruthy();
-    expect(getByText('LUNA ROUND')).toBeTruthy();
+    expect(getByText('当前收藏品')).toBeTruthy();
+    expect(getByText('请选择')).toBeTruthy();
   });
 
   it('shows the login hint without a bound Lxns account', async () => {
@@ -103,7 +103,7 @@ describe('chunithm tool screens', () => {
     expect(getByText(/已连接落雪账号/)).toBeTruthy();
   });
 
-  it('searches collection items by name', async () => {
+  it('opens the picker and searches collection items by name', async () => {
     mockCollectionsData = {
       items: [
         { id: 0, name: 'NEW COMER' },
@@ -111,10 +111,14 @@ describe('chunithm tool screens', () => {
       ],
       source,
     };
-    const { getByText, queryByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    const { getByText, queryByText, getByLabelText, getByTestId } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('选择收藏品'));
+    expect(getByText('NEW COMER')).toBeTruthy();
+    expect(getByText('LUNA ROUND')).toBeTruthy();
     await fireEvent.changeText(getByLabelText('搜索收藏品名称或描述'), 'LUNA');
     expect(queryByText('NEW COMER')).toBeNull();
     expect(getByText('LUNA ROUND')).toBeTruthy();
+    expect(getByTestId('chunithm-collection-picker-list')).toBeTruthy();
   });
 
   it('renders selected collection progress detail', async () => {
@@ -147,8 +151,10 @@ describe('chunithm tool screens', () => {
       source,
     };
     const { getByText, getByLabelText } = await render(<ChunithmCollectionsToolScreen />);
+    await fireEvent.press(getByLabelText('选择收藏品'));
     await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
-    expect(getByText('达成 1/1 组 · 曲目 1/1')).toBeTruthy();
+    expect(getByText('100.0%')).toBeTruthy();
+    expect(getByText('条件组 1/1')).toBeTruthy();
     expect(getByText('已完成')).toBeTruthy();
     expect(getByText('曲A')).toBeTruthy();
   });
