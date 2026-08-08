@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import type { GameId } from '@/domain/game-bind-options';
+import type { ChunithmCollectionKind } from '@/domain/chunithm-collections';
 import { getGameToolbox } from '@/domain/game-toolbox';
 import {
   emptyHomePinPreferences,
   pinnedToolPreferencesStore,
   type HomePinPreferences,
+  type PinnedChunithmCollection,
+  type PinnedCollectionIdsByGame,
   type PinnedPlateIdsByGame,
   type PinnedToolIdsByGame,
 } from '@/features/toolbox/pinned-tool-preferences';
@@ -13,9 +16,11 @@ type ToolboxPinsState = {
   hydrated: boolean;
   pinnedToolIdsByGame: PinnedToolIdsByGame;
   pinnedPlateIdsByGame: PinnedPlateIdsByGame;
+  pinnedCollectionIdsByGame: PinnedCollectionIdsByGame;
   hydrate: () => Promise<void>;
   togglePinnedTool: (gameId: GameId, toolId: string) => Promise<void>;
   togglePinnedPlate: (gameId: GameId, plateId: number) => Promise<void>;
+  togglePinnedCollection: (gameId: GameId, kind: ChunithmCollectionKind, id: number) => Promise<void>;
 };
 
 type PinnedToolPreferencesAccess = Pick<typeof pinnedToolPreferencesStore, 'load' | 'save'>;
@@ -33,6 +38,7 @@ export function createToolboxPinsStore(preferences: PinnedToolPreferencesAccess 
         const previous: HomePinPreferences = {
           pinnedToolIdsByGame: state.pinnedToolIdsByGame,
           pinnedPlateIdsByGame: state.pinnedPlateIdsByGame,
+          pinnedCollectionIdsByGame: state.pinnedCollectionIdsByGame,
         };
         const next = update(previous);
         if (!next) return;
@@ -81,6 +87,19 @@ export function createToolboxPinsStore(preferences: PinnedToolPreferencesAccess 
         return {
           ...previous,
           pinnedPlateIdsByGame: { ...previous.pinnedPlateIdsByGame, [gameId]: nextIds },
+        };
+      }),
+      togglePinnedCollection: (gameId, kind, id) => saveMutation((previous) => {
+        if (!Number.isSafeInteger(id) || id < 0
+          || !getGameToolbox(gameId).tools.some((tool) => tool.id === 'chunithm-collections')) return null;
+        const current = previous.pinnedCollectionIdsByGame[gameId];
+        const exists = current.some((item) => item.kind === kind && item.id === id);
+        const next: PinnedChunithmCollection[] = exists
+          ? current.filter((item) => !(item.kind === kind && item.id === id))
+          : [...current, { kind, id }];
+        return {
+          ...previous,
+          pinnedCollectionIdsByGame: { ...previous.pinnedCollectionIdsByGame, [gameId]: next },
         };
       }),
     };

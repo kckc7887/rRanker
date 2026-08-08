@@ -155,11 +155,37 @@ jest.mock('@/state/session-store', () => ({
     updateBoundAccountScore: jest.fn(),
   }),
 }));
+let mockPinnedCollections: { kind: string; id: number }[] = [];
 jest.mock('@/state/toolbox-pins', () => ({
   useToolboxPins: (selector: (state: unknown) => unknown) => selector({
     pinnedToolIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
     pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
+    pinnedCollectionIdsByGame: { maimai: [], chunithm: mockPinnedCollections, phigros: [], test: [] },
     hydrate: jest.fn(async () => undefined),
+  }),
+}));
+jest.mock('@/hooks/use-chunithm-collections', () => ({
+  useChunithmCollections: () => ({
+    data: {
+      items: [
+        {
+          id: 866,
+          name: 'LUNA ROUND',
+          color: 'rainbow',
+          required: [{ difficulties: [3], songs: [{ id: 100, title: '曲A' }] }],
+        },
+      ],
+      source: {
+        kind: 'lxns',
+        label: 'LXNS 中二收藏品列表',
+        updatedAt: '2026-07-28T00:00:00.000Z',
+        isStale: false,
+      },
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
   }),
 }));
 jest.mock('@/state/game-picker-ui', () => ({
@@ -193,6 +219,7 @@ describe('Chunithm overview', () => {
     mockMaintenance = false;
     mockProviderId = 'lxns';
     mockSettledBundle = undefined;
+    mockPinnedCollections = [];
     mockRefetch.mockResolvedValue({ data: mockBundle });
   });
 
@@ -280,5 +307,14 @@ describe('Chunithm overview', () => {
       message: '本次仅读取到缓存，请关闭代理并检查网络后重试。',
       variant: 'warning',
     }));
+  });
+
+  it('renders a pinned chunithm collection card on the home page', async () => {
+    mockPinnedCollections = [{ kind: 'trophy', id: 866 }];
+    const screen = await render(<OverviewScreen />);
+
+    expect(screen.getByText('收藏品进度')).toBeTruthy();
+    expect(screen.getAllByText('LUNA ROUND').length).toBeGreaterThan(0);
+    expect(screen.getByText('0 / 1 完成')).toBeTruthy();
   });
 });

@@ -203,10 +203,12 @@ jest.mock('@/state/toolbox-pins', () => ({
   useToolboxPins: (selector: (state: {
     pinnedToolIdsByGame: { maimai: string[]; chunithm: string[]; phigros: string[]; test: string[] };
     pinnedPlateIdsByGame: { maimai: number[]; chunithm: number[]; phigros: number[]; test: number[] };
+    pinnedCollectionIdsByGame: { maimai: unknown[]; chunithm: unknown[]; phigros: unknown[]; test: unknown[] };
     hydrate: typeof mockHydratePins;
   }) => unknown) => selector({
     pinnedToolIdsByGame: { maimai: mockPinnedToolIds, chunithm: [], phigros: [], test: [] },
     pinnedPlateIdsByGame: { maimai: mockPinnedPlateIds, chunithm: [], phigros: [], test: [] },
+    pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
     hydrate: mockHydratePins,
   }),
 }));
