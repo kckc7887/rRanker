@@ -325,7 +325,7 @@ function renderGameScoreCard(
     <div class="game-id" style="${textPosition(26, 98, 13)};color:${idTextColor}">${escapeHtml(record.songId)}</div>
     <div class="game-title" style="${textPosition(93, 6, 14)};max-width:${u(160)}px;color:${diffTextColor}">${escapeHtml(record.title)}</div>
     <div class="game-achievement" style="${textPosition(93, 48, 26)};color:${diffTextColor}">${formatAchievement(record.achievements)}</div>
-    <div class="game-dxscore" style="${textPosition(219, 68, 15)};max-width:${u(90)}px;color:${diffTextColor}">${actualDxScore}/${maximumDxScore}</div>
+    <div class="game-dxscore" style="${textPosition(219, 68, 15)};color:${diffTextColor}">${actualDxScore}/${maximumDxScore}</div>
     <div class="game-ds-rating" style="${textPosition(93, 68, 15)};color:${diffTextColor}">${record.difficultyConstant.toFixed(1)} -> ${record.rating}</div>
   </article>`;
 }
@@ -853,27 +853,47 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         ? document.fonts.ready.catch(() => undefined)
         : Promise.resolve();
       ${useCnFont ? `
-      // game 样式：歌名 / 定数->Rating / DXScore 超宽时降字重（400）并横向压宽度（scaleX）到可用宽度。
-      // 定数->Rating 的可用宽度按 DXScore 左缘动态分配，避免两者重叠。
-      // 立即执行一次（fallback 先压扁），字体就绪后再按真实宽度校正。
+      // game 样式：定数->Rating 与 DXScore 两行按同一比例压扁（视觉统一、分担压缩幅度），
+      // 比例由「总自然宽 vs 可用空间」决定：ds 右缘不越 dx 视觉左缘、dx 右缘不越卡右缘。
+      // 歌名独立按自身可用宽度压扁；立即执行一次（fallback 先压扁），字体就绪后再校正。
       const fitTitleSizes = () => {
         if (RATING_STYLE !== 'game') return;
-        document.querySelectorAll('.game-title, .game-dxscore, .game-ds-rating').forEach((node) => {
-          if (node.classList.contains('game-ds-rating')) {
-            const card = node.closest('.game-card');
-            const dx = card && card.querySelector('.game-dxscore');
-            const limit = dx ? Math.max(40, dx.offsetLeft - node.offsetLeft - 4) : node.clientWidth;
-            node.style.maxWidth = limit + 'px';
+        document.querySelectorAll('.game-card').forEach((card) => {
+          const ds = card.querySelector('.game-ds-rating');
+          const dx = card.querySelector('.game-dxscore');
+          if (ds && dx) {
+            // 布局坐标（offset 相对卡片，不受画布缩放影响）：ds 左缘、dx 视觉中心（mm 锚点=布局 left）、卡右缘
+            const dsLeft = ds.offsetLeft;
+            const dxCenter = dx.offsetLeft;
+            const cardRight = card.offsetWidth;
+            const dsW = ds.scrollWidth;
+            const dxW = dx.scrollWidth;
+            const gap = 4;
+            const scale = Math.max(0.1, Math.min(
+              1,
+              (dxCenter - dsLeft - gap) / (dsW + dxW / 2),
+              (2 * (cardRight - dxCenter)) / dxW,
+            ));
+            if (scale >= 1) {
+              ds.style.maxWidth = Math.max(40, dxCenter - dsLeft - gap) + 'px';
+              return;
+            }
+            ds.style.maxWidth = '';
+            const squeeze = 'scaleX(' + scale.toFixed(4) + ')';
+            ds.style.transformOrigin = 'left center';
+            ds.style.transform = 'translateY(-50%) ' + squeeze;
+            ds.style.fontWeight = '400';
+            dx.style.transformOrigin = 'center center';
+            dx.style.transform = 'translate(-50%,-50%) ' + squeeze;
+            dx.style.fontWeight = '400';
+            return;
           }
-          if (node.scrollWidth <= node.clientWidth) return;
-          node.style.transformOrigin = 'left center';
-          const squeeze = 'scaleX(' + (node.clientWidth / node.scrollWidth).toFixed(4) + ')';
-          node.style.transform = node.classList.contains('game-dxscore')
-            ? 'translate(-50%,-50%) ' + squeeze
-            : node.classList.contains('game-ds-rating')
-              ? 'translateY(-50%) ' + squeeze
-              : squeeze;
-          node.style.fontWeight = '400';
+          const title = card.querySelector('.game-title');
+          if (title && title.scrollWidth > title.clientWidth) {
+            title.style.transformOrigin = 'left center';
+            title.style.transform = 'scaleX(' + (title.clientWidth / title.scrollWidth).toFixed(4) + ')';
+            title.style.fontWeight = '400';
+          }
         });
       };
       fitTitleSizes();
