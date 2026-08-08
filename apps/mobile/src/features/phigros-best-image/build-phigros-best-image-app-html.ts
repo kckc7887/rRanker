@@ -17,14 +17,16 @@ import {
 } from './build-phigros-best-image-html';
 import type { PhigrosBestImagePage } from './phigros-best-image';
 
-const LEVELS = ['EZ', 'HD', 'IN', 'AT'] as const;
-
-const LEVEL_COLORS: Record<number, { bg: string; fg: string }> = {
-  0: { bg: '#E6F5ED', fg: '#3E9D6B' },
-  1: { bg: '#E8F0FE', fg: '#3B82F6' },
-  2: { bg: '#FDE8EC', fg: '#D84B68' },
-  3: { bg: '#F3F4F6', fg: '#374151' },
+const LEVEL_CARD_COLORS: Record<number, string> = {
+  0: '#3E9D6B',
+  1: '#3B82F6',
+  2: '#D84B68',
+  3: '#374151',
 };
+
+function levelCardColor(levelIndex: number): string {
+  return LEVEL_CARD_COLORS[levelIndex] ?? LEVEL_CARD_COLORS[3]!;
+}
 
 function px(value: number): number {
   return Math.max(1, Math.round(value));
@@ -59,20 +61,20 @@ function scoreCard(
   allowPerfectFallback: boolean,
   levelIndex: number,
 ): string {
-  const level = LEVELS[levelIndex] ?? record.level;
   const score = Math.round(record.dxScore ?? 0);
   const title = input.titles[record.songId] ?? record.title ?? record.songId;
   const illustration = input.illustrations[record.songId];
   const rate = ratingName(score, record.fc);
   const rateColors = rateStyle(rate);
-  const levelColors = LEVEL_COLORS[levelIndex] ?? LEVEL_COLORS[3]!;
+  const cardColor = levelCardColor(levelIndex);
   const push = isPhi || record.achievements >= 100 ? { label: '无法推分', type: null } : suggestion(
     record.difficultyConstant,
     referenceRks,
     Number(input.rks),
     allowPerfectFallback,
   );
-  return `<article class="score-card" style="--card-bg:${levelColors.bg};--card-fg:#1F2937;--level-fg:${levelColors.fg}" aria-label="第 ${escapePhigrosBestImageHtml(rank)} 名 ${escapePhigrosBestImageHtml(title)}">
+  return `<article class="score-card" style="--card-bg:${cardColor};--card-fg:#FFFFFF" aria-label="第 ${escapePhigrosBestImageHtml(rank)} 名 ${escapePhigrosBestImageHtml(title)}">
+    ${illustration ? `<div class="card-art" aria-hidden="true"><img class="card-art-image" alt="" src="${escapePhigrosBestImageHtml(illustration)}"><div class="card-art-veil"></div></div>` : ''}
     <div class="score-card-head">
       <div class="jacket-shell">
         <span class="jacket-fallback">♪</span>
@@ -81,7 +83,6 @@ function scoreCard(
       <div class="song-copy">
         <span class="song-rank">${escapePhigrosBestImageHtml(rank)}</span>
         <strong class="song-title">${escapePhigrosBestImageHtml(title)}</strong>
-        <span class="level-badge">${escapePhigrosBestImageHtml(level)}</span>
       </div>
     </div>
     <div class="score-separator"></div>
@@ -235,25 +236,27 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     .section-divider::after{background:linear-gradient(90deg,rgba(28,38,57,.55),transparent)}
     .section-divider-note{margin-left:${px(width * 6 / 1080)}px;font-size:${px(width * 14 / 1080)}px;font-weight:600;letter-spacing:0;opacity:.72}
     .score-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:${gridGap}px}
-    .score-card{display:flex;min-width:0;flex-direction:column;overflow:hidden;padding:${scoreCardPadding}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 14 / 1080)}px;background:var(--card-bg);box-shadow:0 ${px(width * 5 / 1080)}px ${px(width * 15 / 1080)}px rgba(25,38,60,.2);color:var(--card-fg)}
-    .score-card-head{display:flex;min-width:0;height:${jacketSize}px;align-items:stretch;gap:${px(width * 10 / 1080)}px}
-    .jacket-shell{position:relative;width:${jacketSize}px;height:${jacketSize}px;flex:0 0 ${jacketSize}px;overflow:hidden;border:${Math.max(2, px(width * 3 / 1080))}px solid #FFFFFF;border-radius:${px(width * 10 / 1080)}px;background:rgba(148,163,184,.18)}
+    .score-card{position:relative;display:flex;min-width:0;flex-direction:column;overflow:hidden;padding:${scoreCardPadding}px;border:1px solid rgba(255,255,255,.35);border-radius:${px(width * 14 / 1080)}px;background:var(--card-bg);box-shadow:0 ${px(width * 5 / 1080)}px ${px(width * 15 / 1080)}px rgba(25,38,60,.28);color:var(--card-fg);isolation:isolate}
+    .card-art{position:absolute;z-index:0;inset:0}
+    .card-art-image{display:block;width:100%;height:100%;object-fit:cover;filter:blur(${px(width * 5 / 1080)}px);transform:scale(1.05)}
+    .card-art-veil{position:absolute;inset:0;background:var(--card-bg);opacity:.8;-webkit-backdrop-filter:blur(${px(width * 6 / 1080)}px);backdrop-filter:blur(${px(width * 6 / 1080)}px)}
+    .score-card-head{position:relative;z-index:1;display:flex;min-width:0;height:${jacketSize}px;align-items:stretch;gap:${px(width * 10 / 1080)}px}
+    .jacket-shell{position:relative;width:${jacketSize}px;height:${jacketSize}px;flex:0 0 ${jacketSize}px;overflow:hidden;border:${Math.max(2, px(width * 3 / 1080))}px solid rgba(255,255,255,.85);border-radius:${px(width * 10 / 1080)}px;background:rgba(0,0,0,.18)}
     .song-jacket{position:absolute;inset:0;z-index:1;display:block;width:100%;height:100%;object-fit:cover}
-    .jacket-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9CA3AF;font:700 ${px(width * 30 / 1080)}px/1 system-ui,sans-serif}
+    .jacket-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.62);font:700 ${px(width * 30 / 1080)}px/1 system-ui,sans-serif}
     .song-copy{position:relative;display:flex;min-width:0;height:100%;min-height:0;flex:1;flex-direction:column;justify-content:center;gap:${px(width * 6 / 1080)}px;overflow:hidden;padding:${px(width * 2 / 1080)}px 0}
-    .song-rank{overflow:hidden;color:rgba(31,41,55,.55);font:800 ${px(width * 14 / 1080)}px/1 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
-    .song-title{display:-webkit-box;overflow:hidden;color:#1F2937;font:800 ${px(width * 18 / 1080)}px/1.18 system-ui,-apple-system,"Segoe UI",sans-serif;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal}
-    .level-badge{display:inline-flex;width:max-content;max-width:100%;align-items:center;justify-content:center;overflow:hidden;padding:${px(width * 2 / 1080)}px ${px(width * 10 / 1080)}px;border-radius:999px;background:var(--level-fg);color:#FFFFFF;font:900 ${px(width * 13 / 1080)}px/1 system-ui,sans-serif;white-space:nowrap}
-    .score-separator{height:1px;margin:${px(width * 7 / 1080)}px 0;background:linear-gradient(90deg,transparent,rgba(107,114,128,.5),transparent)}
-    .achievement-row{display:flex;min-width:0;align-items:center;gap:${px(width * 6 / 1080)}px}
+    .song-rank{overflow:hidden;color:rgba(255,255,255,.6);font:800 ${px(width * 14 / 1080)}px/1 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
+    .song-title{display:-webkit-box;overflow:hidden;color:#FFFFFF;font:800 ${px(width * 18 / 1080)}px/1.18 system-ui,-apple-system,"Segoe UI",sans-serif;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal}
+    .score-separator{position:relative;z-index:1;height:1px;margin:${px(width * 7 / 1080)}px 0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent)}
+    .achievement-row{position:relative;z-index:1;display:flex;min-width:0;align-items:center;gap:${px(width * 6 / 1080)}px}
     .achievement-with-rate{display:flex;min-width:0;align-items:center;gap:${px(width * 6 / 1080)}px}
-    .achievement{min-width:0;overflow:hidden;color:#111827;font:900 ${px(width * 19 / 1080)}px/1.06 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap}
+    .achievement{min-width:0;overflow:hidden;color:#FFFFFF;font:900 ${px(width * 19 / 1080)}px/1.06 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap}
     .rate-badge{display:inline-flex;min-width:${px(width * 24 / 1080)}px;height:${px(width * 18 / 1080)}px;flex:0 0 auto;align-items:center;justify-content:center;padding:0 ${px(width * 6 / 1080)}px;border-radius:${px(width * 6 / 1080)}px;background:var(--rate-bg);color:var(--rate-fg);font:900 ${px(width * 12 / 1080)}px/1 system-ui,sans-serif;white-space:nowrap}
-    .acc-value{margin-left:auto;flex:0 0 auto;color:rgba(31,41,55,.62);font:800 ${px(width * 14 / 1080)}px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
-    .rating-row{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:${px(width * 6 / 1080)}px;margin-top:${px(width * 8 / 1080)}px;color:rgba(31,41,55,.78);font:700 ${px(width * 14 / 1080)}px/1.15 system-ui,sans-serif;white-space:nowrap}
+    .acc-value{margin-left:auto;flex:0 0 auto;color:rgba(255,255,255,.78);font:800 ${px(width * 14 / 1080)}px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;white-space:nowrap}
+    .rating-row{position:relative;z-index:1;display:flex;min-width:0;align-items:center;justify-content:space-between;gap:${px(width * 6 / 1080)}px;margin-top:${px(width * 8 / 1080)}px;color:rgba(255,255,255,.88);font:700 ${px(width * 14 / 1080)}px/1.15 system-ui,sans-serif;white-space:nowrap}
     .song-rating{min-width:0;overflow:hidden;font-weight:900;font-variant-numeric:tabular-nums;text-overflow:ellipsis}
-    .suggest{flex:0 0 auto;color:#0EA5E9;font-weight:800;font-variant-numeric:tabular-nums}
-    .suggest-empty{color:rgba(31,41,55,.45)}
+    .suggest{flex:0 0 auto;color:#A5E3FF;font-weight:800;font-variant-numeric:tabular-nums}
+    .suggest-empty{color:rgba(255,255,255,.55)}
     .empty-section{grid-column:1/-1;display:flex;min-height:${px(width * 80 / 1080)}px;align-items:center;justify-content:center;color:#697586;font:700 ${px(width * 14 / 1080)}px/1.4 system-ui,sans-serif}
     .empty-scores{display:flex;min-height:${px(width * 150 / 1080)}px;align-items:center;justify-content:center;border:1px dashed rgba(91,105,126,.45);border-radius:${px(width * 14 / 1080)}px;background:rgba(255,255,255,.64);color:#697586;font:700 ${px(width * 14 / 1080)}px/1.4 system-ui,sans-serif}
     .image-footer{margin-top:${px(width * 44 / 1080)}px;text-align:center;color:rgba(60,70,90,.85);font-weight:600;font-size:${px(width * 14 / 1080)}px;line-height:1.5;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
