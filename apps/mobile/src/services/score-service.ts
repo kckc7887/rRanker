@@ -135,8 +135,9 @@ export class ScoreService {
    * 缓存优先：先返回本地快照渲染首屏，同时后台发网络刷新；
    * 刷新成功后通过 onFresh 回写（供 hook 替换查询缓存，UI 静默更新）。
    * 无本地快照时直接走网络加载（含失败兜底）。
+   * markStale=false 时返回原始快照（不标记过期），用于数据本身来自本地快照的账号（local）。
    */
-  async loadCacheFirst(onFresh: (fresh: ScoreSnapshot) => void): Promise<ScoreSnapshot> {
+  async loadCacheFirst(onFresh: (fresh: ScoreSnapshot) => void, markStale = true): Promise<ScoreSnapshot> {
     if (this.snapshotRepository) {
       const cached = await this.snapshotRepository.getLatest(this.accountId);
       if (cached) {
@@ -144,7 +145,7 @@ export class ScoreService {
           // 网络失败返回的兜底缓存数据不回写，保持首屏缓存不变。
           if (fresh.source.kind !== 'cache') onFresh(fresh);
         }).catch(() => undefined);
-        return staleCachedSnapshot(cached);
+        return markStale ? staleCachedSnapshot(cached) : cached;
       }
     }
     return this.load();

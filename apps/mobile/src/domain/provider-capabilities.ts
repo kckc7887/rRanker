@@ -10,7 +10,6 @@ export function canReadChunithmScores(
 
 export function shouldPersistScoreSnapshot(providerId: ProviderId | null): boolean {
   return providerId !== null
-    && providerId !== 'maimai-test'
     && providerId !== 'chunithm-test'
     && providerId !== 'phi-taptap';
 }

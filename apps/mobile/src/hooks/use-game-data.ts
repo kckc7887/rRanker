@@ -29,11 +29,17 @@ import { PhigrosSaveCache, stalePhigrosPayload } from '@/services/phigros-save-c
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
-import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
-import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
+import { ResourceService, staleCachedResource } from '@/services/resource-service';
 import {
+  CHUNITHM_CATALOG_RESOURCE_KEY,
+  type ChunithmCatalogSnapshot,
+} from '@/domain/chunithm';
+import {
+  CHUNITHM_CATALOG_SCHEMA_VERSION,
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
+import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
+import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
 
 const repository = new SqliteSnapshotRepository();
 const GAME_DATA_QUERY_VERSION = 18;
@@ -58,33 +64,47 @@ export function useGameData() {
     queryFn: async (): Promise<GameDataBundle> => {
       if (activeGameId === 'chunithm') {
         if (activeProviderId === 'chunithm-test') {
-          const catalog = await loadChunithmCatalog();
-          const snapshot = buildMaxedChunithmSnapshot(
-            catalog,
-            activeAccount?.displayName ?? '示例账号',
-          );
-          return {
-            gameId: 'chunithm',
-            providerId: 'chunithm-test',
-            profile: getGameProfile('chunithm'),
-            payload: {
-              kind: 'chunithm',
-              player: snapshot.player,
-              scores: snapshot.scores,
-              bestSections: [
-                { id: 'b30', title: 'Best 30', scores: snapshot.bests.bests },
-                { id: 'new20', title: 'New 20', scores: snapshot.bests.new_bests },
-              ],
-              selections: snapshot.bests.selections,
-              playerScore: {
-                label: 'RATING',
-                value: snapshot.player.rating,
-                display: snapshot.player.rating.toFixed(2),
+          const toBundle = (catalog: ChunithmCatalogSnapshot): GameDataBundle => {
+            const snapshot = buildMaxedChunithmSnapshot(
+              catalog,
+              activeAccount?.displayName ?? '示例账号',
+            );
+            return {
+              gameId: 'chunithm',
+              providerId: 'chunithm-test',
+              profile: getGameProfile('chunithm'),
+              payload: {
+                kind: 'chunithm',
+                player: snapshot.player,
+                scores: snapshot.scores,
+                bestSections: [
+                  { id: 'b30', title: 'Best 30', scores: snapshot.bests.bests },
+                  { id: 'new20', title: 'New 20', scores: snapshot.bests.new_bests },
+                ],
+                selections: snapshot.bests.selections,
+                playerScore: {
+                  label: 'RATING',
+                  value: snapshot.player.rating,
+                  display: snapshot.player.rating.toFixed(2),
+                },
+                source: snapshot.source,
+                hasSyncedData: true,
               },
-              source: snapshot.source,
-              hasSyncedData: true,
-            },
+            };
           };
+          // 曲库缓存优先：中二曲库是全局公开资源，示例账号首屏不再等待网络拉取。
+          const service = new ResourceService(repository);
+          const cached = await service.getCached<ChunithmCatalogSnapshot>(
+            CHUNITHM_CATALOG_RESOURCE_KEY,
+            CHUNITHM_CATALOG_SCHEMA_VERSION,
+          );
+          if (cached) {
+            void loadChunithmCatalog().then((fresh) => {
+              queryClient.setQueryData(queryKey, toBundle(fresh));
+            }).catch(() => undefined);
+            return toBundle(staleCachedResource(cached));
+          }
+          return toBundle(await loadChunithmCatalog());
         }
         if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {
           const provider = new ChunithmScoreProvider(
@@ -270,15 +290,17 @@ export function useGameData() {
         profile: getGameProfile('maimai'),
         payload: maimaiPayloadFromSnapshot(snapshot, getGameProfile('maimai')),
       });
-      // 远程账号缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
+      // 缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
       // 与 useScoreSnapshot 并发时由 ScoreService 的 in-flight 去重共享一次网络请求。
-      if (persistScores && activeProviderId !== 'local') {
+      // local/maimai-test 账号同样启用：首屏不再等待曲库网络拉取。
+      if (persistScores) {
         const cached = await repository.getLatest(activeAccountId);
         if (cached) {
           void service.load().then((fresh) => {
             if (fresh.source.kind !== 'cache') queryClient.setQueryData(queryKey, toBundle(fresh));
           }).catch(() => undefined);
-          return toBundle(staleCachedSnapshot(cached));
+          // 本地账号数据本身来自本地快照，不打过期标。
+          return toBundle(activeProviderId === 'local' ? cached : staleCachedSnapshot(cached));
         }
       }
       const snapshot = await service.load();
