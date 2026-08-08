@@ -158,6 +158,79 @@ describe('ScoreService', () => {
     expect(getDetailedCatalog).toHaveBeenCalledTimes(1);
   });
 
+  it('deduplicates concurrent loads for the same account', async () => {
+    const score = new FixtureProvider();
+    const catalog = new FixtureCatalogProvider();
+    const getPlayer = vi.spyOn(score, 'getPlayer');
+    const getRecords = vi.spyOn(score, 'getRecords');
+    const getDetailedCatalog = vi.spyOn(catalog, 'getDetailedCatalog');
+    const service = new ScoreService(score, catalog, 'acct-dedupe');
+    const [a, b] = await Promise.all([service.load(), service.load()]);
+    expect(a).toEqual(b);
+    expect(getPlayer).toHaveBeenCalledTimes(1);
+    expect(getRecords).toHaveBeenCalledTimes(1);
+    expect(getDetailedCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicates concurrent loads across service instances', async () => {
+    const score = new FixtureProvider();
+    const catalog = new FixtureCatalogProvider();
+    const getPlayer = vi.spyOn(score, 'getPlayer');
+    const serviceA = new ScoreService(score, catalog, 'acct-dedupe-shared');
+    const serviceB = new ScoreService(score, catalog, 'acct-dedupe-shared');
+    const [a, b] = await Promise.all([serviceA.load(), serviceB.load()]);
+    expect(a).toEqual(b);
+    expect(getPlayer).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves the cached snapshot first and refreshes in background', async () => {
+    const repository = new MemoryRepository();
+    const service = new ScoreService(
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-first', repository, repository,
+    );
+    await service.load();
+    let notifyFresh: ((fresh: ScoreSnapshot) => void) | null = null;
+    const freshNotified = new Promise<ScoreSnapshot>((resolve) => { notifyFresh = resolve; });
+
+    const result = await service.loadCacheFirst((fresh) => notifyFresh?.(fresh));
+
+    expect(result.source.kind).toBe('cache');
+    expect(result.source.isStale).toBe(true);
+    expect(result.source.label).not.toContain('最近有效');
+    const fresh = await freshNotified;
+    expect(fresh.source.kind).not.toBe('cache');
+  });
+
+  it('falls back to a network load when no snapshot is cached', async () => {
+    const repository = new MemoryRepository();
+    const service = new ScoreService(
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-no-cache', repository, repository,
+    );
+    const result = await service.loadCacheFirst(() => { throw new Error('不应命中后台刷新'); });
+    expect(result.source.kind).not.toBe('cache');
+    expect(repository.byAccount.has('acct-no-cache')).toBe(true);
+  });
+
+  it('does not rewrite the query when the background refresh fails', async () => {
+    const repository = new MemoryRepository();
+    const service = new ScoreService(
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-fail-refresh', repository, repository,
+    );
+    await service.load();
+    const fail = async (): Promise<never> => { throw new Error('network'); };
+    let onFreshCalled = false;
+    const result = await new ScoreService(
+      { getPlayer: fail, getRecords: fail },
+      new FixtureCatalogProvider(),
+      'acct-fail-refresh',
+      repository,
+      repository,
+    ).loadCacheFirst(() => { onFreshCalled = true; });
+    expect(result.source.kind).toBe('cache');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onFreshCalled).toBe(false);
+  });
+
   it('combines provider actual DXScore with theoretical score notes from the detailed API', async () => {
     const record = { ...fixtureRecords[0]!, dxScore: 1836 };
     const catalog = structuredClone(fixtureCatalog);

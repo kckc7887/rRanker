@@ -9,8 +9,10 @@ import {
 import { buildLxnsIconUrl } from '@/domain/account-avatar';
 import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
 import { getGameProfile } from '@/domain/game-profile';
-import { ScoreService } from '@/services/score-service';
+import { ScoreService, staleCachedSnapshot } from '@/services/score-service';
 import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
+import { queryClient } from '@/state/query-client';
+import type { ScoreSnapshot } from '@/domain/models';
 import {
   applyLxnsTokenRotation,
   UNBOUND_ACCOUNT_ID,
@@ -47,8 +49,10 @@ export function useGameData() {
   const catalogProvider = useSession((s) => s.catalogProvider);
   const profile = getGameProfile(activeGameId);
 
+  const queryKey = ['game-data', GAME_DATA_QUERY_VERSION, activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'none'];
+
   const query = useQuery({
-    queryKey: ['game-data', GAME_DATA_QUERY_VERSION, activeAccountId, activeGameId, activeProviderId, session?.mode ?? 'none'],
+    queryKey,
     queryFn: async (): Promise<GameDataBundle> => {
       if (activeGameId === 'chunithm') {
         if (activeProviderId === 'chunithm-test') {
@@ -223,20 +227,32 @@ export function useGameData() {
 
       const persistScores = shouldPersistScoreSnapshot(activeProviderId);
       const persistCatalog = shouldPersistMaimaiCatalog(activeProviderId);
-      const snapshot = await new ScoreService(
+      const service = new ScoreService(
         scoreProvider,
         catalogProvider,
         activeAccountId,
         persistScores ? repository : undefined,
         persistCatalog ? repository : undefined,
-      ).load();
-
-      return {
+      );
+      const toBundle = (snapshot: ScoreSnapshot): GameDataBundle => ({
         gameId: 'maimai',
         providerId: activeProviderId,
         profile: getGameProfile('maimai'),
         payload: maimaiPayloadFromSnapshot(snapshot, getGameProfile('maimai')),
-      };
+      });
+      // 远程账号缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
+      // 与 useScoreSnapshot 并发时由 ScoreService 的 in-flight 去重共享一次网络请求。
+      if (persistScores && activeProviderId !== 'local') {
+        const cached = await repository.getLatest(activeAccountId);
+        if (cached) {
+          void service.load().then((fresh) => {
+            if (fresh.source.kind !== 'cache') queryClient.setQueryData(queryKey, toBundle(fresh));
+          }).catch(() => undefined);
+          return toBundle(staleCachedSnapshot(cached));
+        }
+      }
+      const snapshot = await service.load();
+      return toBundle(snapshot);
     },
   });
 
