@@ -364,6 +364,18 @@ function trophyToneClass(color: string | null | undefined): string {
   return normalizeTrophyTone(color);
 }
 
+/** 估算文本显示宽度：全角字符按 1em、半角按 0.55em，用于判断称号文字是否溢出称号底板。 */
+function estimateTextWidth(text: string, fontSize: number): number {
+  let fullWidthCount = 0;
+  let halfWidthCount = 0;
+  for (const char of Array.from(text)) {
+    const code = char.codePointAt(0)!;
+    if ((code >= 0x3000 && code <= 0xFF60) || code >= 0xFFE0) fullWidthCount += 1;
+    else halfWidthCount += 1;
+  }
+  return (fullWidthCount + halfWidthCount * 0.55) * fontSize;
+}
+
 function px(value: number): number {
   return Math.max(1, Math.round(value));
 }
@@ -390,6 +402,15 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const iconUrl = hideIcon ? null : collectionAssetUrl('icon', presentation?.iconId);
   const frameUrl = hiddenStyles.has('frame') ? null : collectionAssetUrl('frame', presentation?.frameId);
   const trophyName = presentation?.trophyName?.trim() || '称号未同步';
+  const trophyTextFontSizeBase = u(14);
+  const trophyTextAvailableWidth = u(270 - 24);
+  const trophyTextMinFontSize = u(9);
+  const trophyEstimatedWidth = estimateTextWidth(trophyName, trophyTextFontSizeBase);
+  const trophyTextCompressed = !hideTrophy && trophyEstimatedWidth > trophyTextAvailableWidth;
+  /** 过长时按比例缩小字号，把称号完整压进称号底板；实在放不下时由 max-width+省略号兜底。 */
+  const trophyTextFontSize = trophyTextCompressed
+    ? Math.max(trophyTextMinFontSize, Math.floor(trophyTextFontSizeBase * trophyTextAvailableWidth / trophyEstimatedWidth))
+    : trophyTextFontSizeBase;
   const initial = Array.from(name)[0] ?? '?';
   const pageCount = Math.max(1, Math.floor(input.pageCount ?? 1));
   const pageIndex = Math.min(pageCount - 1, Math.max(0, Math.floor(input.pageIndex ?? 0)));
@@ -499,7 +520,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         <img class="game-dani" alt="" style="left:${u(339)}px;top:${u(120)}px;width:${u(80)}px;height:${u(32)}px" src="ui/${daniFile}.png">
         ${hideTrophy ? '' : `<img class="game-shougou" alt="" style="left:${u(149)}px;top:${u(160)}px;width:${u(270)}px;height:${u(27)}px" src="ui/Shougou_${trophyFile}.png">`}
         <div class="game-player-name" style="left:${u(159)}px;top:${u(135)}px;font-size:${u(20)}px">${escapeHtml(name)}</div>
-        ${hideTrophy ? '' : `<div class="game-trophy-text" style="left:${u(284)}px;top:${u(172)}px;font-size:${u(14)}px">${escapeHtml(trophyName)}</div>`}
+        ${hideTrophy ? '' : `<div class="game-trophy-text${trophyTextCompressed ? ' game-trophy-text-compressed' : ''}" style="left:${u(284)}px;top:${u(172)}px;font-size:${trophyTextFontSize}px">${escapeHtml(trophyName)}</div>`}
       </section>`;
   const gameProfileMarkup = gameHeadMarkup;
 
@@ -537,6 +558,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     '.game-icon-fallback{display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:' + u(12) + 'px;background:linear-gradient(145deg,#F8FBFF,#C7D5EA);color:#52647F;font-weight:900;font-family:system-ui,sans-serif}',
     '.game-player-name{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1;transform:translateY(-50%)}',
     '.game-trophy-text{white-space:nowrap;color:#000;font-weight:700;font-family:system-ui,sans-serif;line-height:1;transform:translate(-50%,-50%)}',
+    '.game-trophy-text-compressed{max-width:' + trophyTextAvailableWidth + 'px;overflow:hidden;text-overflow:ellipsis;font-weight:400}',
     '.game-card{position:absolute;z-index:1}',
     '.game-card img{position:absolute;display:block}',
     '.game-id,.game-title,.game-achievement,.game-dxscore,.game-ds-rating{position:absolute}',
