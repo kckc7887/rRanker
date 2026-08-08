@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { CatalogSnapshot } from '@/domain/models';
-import { ResourceService, staleCachedResource } from '@/services/resource-service';
+import { ResourceService } from '@/services/resource-service';
+import { cacheFirstLoad } from '@/services/cache-first';
 import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
@@ -10,12 +11,11 @@ const repository = new SqliteSnapshotRepository();
 
 /** 舞萌曲库。无 hasCatalog 能力的游戏不会触发请求，避免复用舞萌缓存。 */
 export function useDetailedCatalog() {
-  const session = useSession((state) => state.session);
   const activeAccountId = useSession((state) => state.activeAccountId);
   const activeGameId = useSession((state) => state.activeGameId);
   const provider = useSession((state) => state.catalogProvider);
   const enabled = activeGameId === 'maimai';
-  const queryKey = ['detailed-catalog', activeAccountId, activeGameId, session?.mode ?? 'fixture'];
+  const queryKey = ['detailed-catalog', activeAccountId, activeGameId];
   return useQuery({
     enabled,
     queryKey,
@@ -39,18 +39,15 @@ export function useDetailedCatalog() {
             : !aliasSnapshot ? { ...catalog.source, label: `${catalog.source.label}（别名暂不可用）` } : catalog.source,
         };
       };
-      // 已登录时缓存优先：先渲染 SQLite 曲库快照，后台刷新成功后静默回写。
-      if (session) {
-        const cached = await service.getCached<CatalogSnapshot>('detailed-catalog', 2);
-        if (cached) {
-          void loadFresh().then((fresh) => {
-            // 网络失败返回的兜底缓存数据不回写，保持首屏缓存不变。
-            if (fresh.source.kind !== 'cache') queryClient.setQueryData(queryKey, fresh);
-          }).catch(() => undefined);
-          return staleCachedResource(cached);
-        }
-      }
-      return loadFresh();
+      // 曲库是账号无关的全局公开资源（示例账号 session 为空也命中缓存）：
+      // 缓存优先，先渲染本地曲库快照，后台刷新成功后静默回写。
+      return cacheFirstLoad({
+        loadCached: () => service.getCached<CatalogSnapshot>('detailed-catalog', 2),
+        loadFresh,
+        onFresh: (fresh) => {
+          queryClient.setQueryData(queryKey, fresh);
+        },
+      });
     },
   });
 }
