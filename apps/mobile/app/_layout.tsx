@@ -38,6 +38,8 @@ import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
+import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
+import { startTimer } from '@/utils/startup-timing';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -59,10 +61,9 @@ async function loadLocalBoundAccounts() {
       stored = [profile];
     }
   }
-  return Promise.all(stored.map(async (profile) => {
-    const snapshot = await snapshots.getLatest(profile.id);
-    return createLocalMaimaiAccount(profile.displayName, snapshot?.best50.rating ?? 0, profile.id);
-  }));
+  // 首帧只建账号档案（rating 先为 0）；真实 Rating 由 hydrateLocalAccountRatings
+  // 在首帧后懒读快照补齐，避免启动时逐账号解析整份成绩快照阻塞首帧。
+  return stored.map((profile) => createLocalMaimaiAccount(profile.displayName, 0, profile.id));
 }
 
 async function loadDemoBoundAccounts() {
@@ -114,9 +115,11 @@ export default function RootLayout() {
 
   useEffect(() => {
     let cancelled = false;
+    const stop = startTimer('root.iconFonts');
     void ensureUiIconFontsLoaded()
       .catch(() => undefined)
       .finally(() => {
+        stop();
         if (!cancelled) setIconFontsReady(true);
       });
     return () => { cancelled = true; };
@@ -124,8 +127,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (restoreStatus === 'restoring') {
+      const stop = startTimer('root.restoreTotal');
       void restoreSession(() => sessions.loadVault(), loadOptionalBoundAccounts)
-        .then(() => hydrateBoundAccountAvatars().catch(() => undefined));
+        .then(() => {
+          stop();
+          void hydrateBoundAccountAvatars().catch(() => undefined);
+          void hydrateLocalAccountRatings().catch(() => undefined);
+        });
     }
   }, [restoreStatus]);
 
@@ -134,7 +142,10 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, []);
 
-  useEffect(() => { void hydrateTheme(); }, [hydrateTheme]);
+  useEffect(() => {
+    const stop = startTimer('root.themeHydrate');
+    void hydrateTheme().finally(stop);
+  }, [hydrateTheme]);
   useEffect(() => { Appearance.setColorScheme(appearance === 'system' ? null : appearance); }, [appearance]);
 
   if (restoreStatus === 'restoring' || !themeHydrated || !iconFontsReady) {

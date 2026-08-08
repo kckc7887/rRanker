@@ -9,6 +9,7 @@ import {
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { ProviderError } from '@/providers/errors';
+import { startTimer, timed } from '@/utils/startup-timing';
 
 export function buildScoreSnapshot(
   player: Player,
@@ -78,7 +79,9 @@ export class ScoreService {
   private async loadCatalog(): Promise<CatalogSnapshot> {
     try {
       const catalog = await this.catalogProvider.getDetailedCatalog();
+      const stopSave = startTimer('score.saveCatalog');
       await this.catalogRepository?.saveCatalog(catalog);
+      stopSave();
       return catalog;
     } catch (error) {
       const cached = await this.catalogRepository?.getLatestCatalog();
@@ -96,27 +99,36 @@ export class ScoreService {
   }
 
   async load(): Promise<ScoreSnapshot> {
+    const stopLoad = startTimer('score.load');
     try {
       let player: Player;
       let rawRecords: ScoreRecord[];
       let catalog: CatalogSnapshot;
       if (isCatalogDrivenScoreProvider(this.scoreProvider)) {
+        const scoreProvider = this.scoreProvider;
         [player, catalog] = await Promise.all([
-          this.scoreProvider.getPlayer(),
-          this.loadCatalog(),
+          timed('score.getPlayer', () => scoreProvider.getPlayer()),
+          timed('score.loadCatalog', () => this.loadCatalog()),
         ]);
-        rawRecords = await this.scoreProvider.getRecordsFromCatalog(catalog);
+        rawRecords = await timed('score.getRecords', () => scoreProvider.getRecordsFromCatalog(catalog));
       } else {
+        const scoreProvider = this.scoreProvider;
         [player, rawRecords, catalog] = await Promise.all([
-          this.scoreProvider.getPlayer(),
-          this.scoreProvider.getRecords(),
-          this.loadCatalog(),
+          timed('score.getPlayer', () => scoreProvider.getPlayer()),
+          timed('score.getRecords', () => scoreProvider.getRecords()),
+          timed('score.loadCatalog', () => this.loadCatalog()),
         ]);
       }
+      const stopBuild = startTimer('score.buildSnapshot');
       const snapshot = buildScoreSnapshot(player, rawRecords, catalog);
+      stopBuild();
+      const stopSave = startTimer('score.saveSnapshot');
       await this.snapshotRepository?.save(this.accountId, snapshot);
+      stopSave();
+      stopLoad();
       return snapshot;
     } catch (error) {
+      stopLoad();
       const cached = await this.snapshotRepository?.getLatest(this.accountId);
       if (cached) {
         const sanitized = withoutInvalidUtageRecords(cached);

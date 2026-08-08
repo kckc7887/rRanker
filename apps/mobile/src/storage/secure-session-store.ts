@@ -11,6 +11,7 @@ import { isMaimaiDemoAccountId } from '@/storage/demo-account-store';
 import { isChunithmDemoAccountId } from '@/storage/chunithm-demo-account-store';
 import type { ProviderSession } from '@/providers/contracts';
 import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
+import { startTimer } from '@/utils/startup-timing';
 
 const LEGACY_SESSION_KEY = 'rranker.diving-fish.session.v1';
 const V2_VAULT_KEY = 'rranker.provider.sessions.v2';
@@ -354,7 +355,9 @@ export class SecureSessionStore {
   private async loadIndexedVault(index: SessionIndex): Promise<SessionVault> {
     const credentials: StoredProviderCredential[] = [];
     for (const item of index.credentials) {
+      const stop = startTimer(`secure.read.${item.id}`);
       const session = parseStoredSession(await this.secrets.read(item.secretRef));
+      stop();
       if (!session) continue;
       credentials.push({
         id: item.id,
@@ -389,7 +392,9 @@ export class SecureSessionStore {
   }
 
   async loadVault(): Promise<SessionVault> {
+    const stopIndex = startTimer('vault.index.read');
     const indexRaw = await this.storage.getItem(INDEX_KEY);
+    stopIndex();
     if (indexRaw) {
       const index = parseSessionIndex(indexRaw);
       if (index) return this.loadIndexedVault(index);

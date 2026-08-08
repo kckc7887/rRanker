@@ -18,6 +18,7 @@ import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import type { SessionVault, StoredProviderAccount } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { startTimer } from '@/utils/startup-timing';
 
 const localRepository = new SqliteSnapshotRepository();
 
@@ -577,10 +578,14 @@ export async function restoreSession(
   loadOptionalAccounts?: () => Promise<BoundAccount[]>,
 ): Promise<void> {
   try {
+    const stopLoad = startTimer('restore.loadVault');
     const input = await load();
+    stopLoad();
+    const stopOptional = startTimer('restore.loadOptionalAccounts');
     const optionalAccounts = loadOptionalAccounts
       ? await loadOptionalAccounts().catch(() => [])
       : [];
+    stopOptional();
     useSession.getState().finishRestore(input, optionalAccounts);
   } catch {
     useSession.getState().failRestore('无法读取本机登录状态，当前未加载任何账号');
