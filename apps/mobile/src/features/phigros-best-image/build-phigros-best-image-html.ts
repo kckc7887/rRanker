@@ -193,6 +193,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111}body{d
 .section-divider::after{background:linear-gradient(90deg,rgba(255,255,255,.55),transparent)}
 .section-divider span{flex:0 0 auto}
 .section-divider-note{margin-left:6px;font-size:14px;font-weight:600;letter-spacing:0;opacity:.72}
+.phi-plugin{flex-direction:column;align-items:center}
 .phi-plugin p{font-size:30px;line-height:1.45}
 </style></head><body><main id="canvas" class="elem-hydro default-mode"><div class="background"><img src="${escapePhigrosBestImageHtml(backgroundUrl)}" alt="曲绘-模糊"></div>
 <div class="title" data-layout-content><div class="playerInfo"><div class="blackBlock clip-box"></div><div class="avatar clip-box"><img src="${escapePhigrosBestImageHtml(avatarUrl)}" alt="avatar"></div><div class="playerId"><p name="pvis">${escapePhigrosBestImageHtml(input.playerName)}</p></div><div class="rks clip-box"><p>${escapePhigrosBestImageHtml(input.rks)}</p></div><div class="clgBox"><div class="Challenge"><img src="${escapePhigrosBestImageHtml(challengeUrl)}" alt="Challenge"><p>${escapePhigrosBestImageHtml(input.challenge)}</p></div></div><div class="date"><p>${escapePhigrosBestImageHtml(input.syncedAt)}</p></div><div class="dataBox clip-box"><img src="${escapePhigrosBestImageHtml(input.templateAssets.dataIconUrl)}" alt="data"><p>${escapePhigrosBestImageHtml(input.dataAmount)}</p></div></div><div class="recordInfo clip-box"><div class="whiteLine clip-box"></div><div class="sheet">${stats(input)}</div></div></div>
