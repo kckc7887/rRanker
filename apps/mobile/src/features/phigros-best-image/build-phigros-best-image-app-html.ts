@@ -233,7 +233,7 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
     .stats-line{display:grid;flex:1;grid-template-columns:${px(width * 80 / 1080)}px repeat(4,minmax(0,1fr));align-items:center;color:#374151;font:800 ${px(width * 30 / 1080)}px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums}
     .stats-line span{display:flex;align-items:center;justify-content:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .stats-line+.stats-line{border-top:1px solid rgba(148,163,184,.35)}
-    .stats-head{color:#6B7280;font:800 ${px(width * 16 / 1080)}px/1 system-ui,sans-serif;letter-spacing:.08em}
+    .stats-head{color:#6B7280;font:800 ${px(width * 61 / 1080)}px/1 system-ui,sans-serif;letter-spacing:.08em;transform-origin:center center}
     .app-page-marker-row{position:absolute;z-index:1;left:${pageInset}px;top:${pageInset + headerHeight}px;display:flex;width:${headerWidth}px;height:${markerRowHeight}px;align-items:center;justify-content:flex-end}
     .page-marker{display:flex;height:${px(width * 28 / 1080)}px;align-items:center;justify-content:center;padding:0 ${px(width * 12 / 1080)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 13 / 1080)}px/1 system-ui,sans-serif}
     .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
@@ -312,6 +312,16 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
       let pending = false;
       let readySent = false;
 
+      const fitStatsHead = () => {
+        document.querySelectorAll('.stats-head span').forEach((span) => {
+          span.style.transform = 'none';
+          if (span.scrollWidth <= span.clientWidth) return;
+          const scale = Math.max(0.05, span.clientWidth / span.scrollWidth);
+          span.style.transformOrigin = 'center center';
+          span.style.transform = 'scaleX(' + scale.toFixed(4) + ')';
+        });
+      };
+
       const postToNative = (message) => {
         const bridge = window.ReactNativeWebView;
         if (!bridge || typeof bridge.postMessage !== 'function') return false;
@@ -331,6 +341,7 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosBestImageHtmlInput): 
 
       const measureAndFit = () => {
         pending = false;
+        fitStatsHead();
         const layoutChildren = Array.from(canvas.children).filter((child) => child.hasAttribute('data-layout-content'));
         const contentHeight = layoutChildren.reduce((maximum, child) => Math.max(maximum, child.offsetTop + child.scrollHeight), 0);
         const logicalHeight = Math.max(MINIMUM_HEIGHT, Math.ceil(contentHeight));
