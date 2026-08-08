@@ -15,7 +15,8 @@ import {
 import { useAppTheme } from '@/theme/app-theme';
 
 const CLEAR_TIERS: readonly { id: ChunithmClearTier; label: string; hint: string }[] = [
-  { id: 'aj', label: 'AJ', hint: 'ALL JUSTICE（含 AJC）' },
+  { id: 'ajc', label: 'AJC', hint: 'ALL JUSTICE CRITICAL（1,010,000 分）' },
+  { id: 'aj', label: 'AJ', hint: 'ALL JUSTICE' },
   { id: 'fc', label: 'FC', hint: 'FULL COMBO' },
   { id: 'none', label: '无', hint: '无连击奖励' },
 ];
@@ -31,7 +32,7 @@ export default function ChunithmRatingToolScreen() {
   const [score, setScore] = useState('1009000');
   const [targetRating, setTargetRating] = useState('15.00');
   const [targetOverPower, setTargetOverPower] = useState('85');
-  const [clear, setClear] = useState<ChunithmClearTier>('aj');
+  const [clear, setClear] = useState<ChunithmClearTier>('ajc');
 
   const ds = parseNumericInput(constant);
   const scoreValue = parseNumericInput(score);

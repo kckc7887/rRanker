@@ -1,26 +1,29 @@
 /**
- * 中二节奏评分公式（来源：refer/chuni-tools 的 calcRawRating/calcOp，已与
- * maxed-chunithm-test-provider 的锚点 levelValue+2.15 / (levelValue+3)*5 相互验证）。
- * 内部统一放大 10000 倍避免小数运算误差（同 chuni-tools 的 opScale）。
+ * 中二节奏评分公式（来源：官方公式，2025 版 OVER POWER 体系）。
+ * - 单曲 Rating 分段线性；OP 在 975000 以下无定义（为 0）。
+ * - 单曲 OP = 5×Rating + 灯奖励（975000~1007500）；1007500 以上改用
+ *   5×(定数+2) + (分数-1007500)×0.0015 + 灯奖励，AJC 满分自然等于 5×(定数+3)。
  */
 
-const OP_SCALE = 10_000;
-
 /** 分数段 → 定数加成（base，×10000）与斜率（每 1 分加成）。 */
+const OP_SCALE = 10_000;
 const RATING_POINTS: readonly { score: number; base: number; ratio: number }[] = [
   { score: 1_009_000, base: 21_500 /* 2.15 */, ratio: 0 },
   { score: 1_007_500, base: 20_000 /* 2.0 */, ratio: 1 },
   { score: 1_005_000, base: 15_000 /* 1.5 */, ratio: 2 },
   { score: 1_000_000, base: 10_000 /* 1.0 */, ratio: 1 },
+  { score: 990_000, base: 6_000 /* 0.6 */, ratio: 0.4 },
   { score: 975_000, base: 0, ratio: 0.4 },
   { score: 900_000, base: -50_000 /* -5.0 */, ratio: 2 / 3 },
 ];
 
-export type ChunithmClearTier = 'aj' | 'fc' | 'none';
+export type ChunithmClearTier = 'ajc' | 'aj' | 'fc' | 'none';
 
+/** OP 灯奖励（直接实际值）：AJC 1.25 / AJ 1.0 / FC 0.5 / 无 0。 */
 const CLEAR_BONUSES: Record<ChunithmClearTier, number> = {
-  aj: 2_000 /* 0.2 */,
-  fc: 1_000 /* 0.1 */,
+  ajc: 1.25,
+  aj: 1.0,
+  fc: 0.5,
   none: 0,
 };
 
@@ -67,8 +70,11 @@ export function maxChunithmChartRating(levelValue: number): number {
 }
 
 /**
- * 单谱面 OVER POWER。CLEAR 加成：AJ（ALL JUSTICE 系）0.2，FC 0.1，其余无。
- * 1,010,000 分（AJC）时直接取理论最高 (定数+3)*5。
+ * 单谱面 OVER POWER（官方公式）。
+ * - 975000 以下无定义，返回 0。
+ * - 975000~1007500：5×Rating + 灯奖励。
+ * - 1007500 以上：5×(定数+2) + (分数-1007500)×0.0015 + 灯奖励；
+ *   AJC 满分（1010000）自然等于理论最高 5×(定数+3)。
  */
 export function calculateChunithmOverPower(
   levelValue: number,
@@ -76,16 +82,13 @@ export function calculateChunithmOverPower(
   clear: ChunithmClearTier,
 ): number {
   if (!Number.isFinite(levelValue) || !Number.isFinite(score) || score <= 0) return 0;
-  if (score >= 1_010_000) return maxChunithmOverPower(levelValue);
-  const fixed = fixedConstant(levelValue);
-  const bonus = CLEAR_BONUSES[clear];
-  let rating = score < 1_007_500
-    ? rawRating(levelValue, score)
-    : fixed + 20_000 + 3 * (score - 1_007_500);
-  rating = score >= 975_000
-    ? Math.floor(rating / 10) * 10
-    : Math.floor(rating / 100) * 100;
-  return Math.max(0, ((rating + bonus) * 5) / OP_SCALE);
+  const level = normalizedLevelValue(levelValue);
+  const lampBonus = CLEAR_BONUSES[clear];
+  if (score < 975_000) return 0;
+  if (score <= 1_007_500) {
+    return 5 * calculateChunithmChartRating(level, score) + lampBonus;
+  }
+  return 5 * (level + 2) + (score - 1_007_500) * 0.0015 + lampBonus;
 }
 
 /**
