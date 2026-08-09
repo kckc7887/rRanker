@@ -18,6 +18,15 @@ export interface PhigrosStrengthPool {
   maxRks: number | null;
 }
 
+export interface PhigrosStrengthChartSample {
+  songId: string;
+  title: string;
+  levelIndex: number;
+  difficultyConstant: number;
+  achievements: number;
+  rks: number;
+}
+
 export interface PhigrosTagRksStat {
   tagId: number;
   name: string;
@@ -26,6 +35,7 @@ export interface PhigrosTagRksStat {
   deltaFromPoolAverage: number | null;
   sampleCount: number;
   isSmallSample: boolean;
+  charts: readonly PhigrosStrengthChartSample[];
 }
 
 export interface PhigrosStrengthAnalysis {
@@ -42,6 +52,7 @@ export interface PhigrosStrengthAnalysis {
 type MutableTagAggregate = {
   sum: number;
   count: number;
+  charts: PhigrosStrengthChartSample[];
 };
 
 export function resolvePhigrosStrengthThreshold(playerRks: number): number {
@@ -66,6 +77,12 @@ function statFromAggregate(
       : null,
     sampleCount,
     isSmallSample: sampleCount > 0 && sampleCount < 3,
+    charts: [...(aggregate?.charts ?? [])].sort((left, right) => (
+      right.rks - left.rks
+      || right.achievements - left.achievements
+      || left.songId.localeCompare(right.songId)
+      || left.levelIndex - right.levelIndex
+    )),
   };
 }
 
@@ -84,14 +101,17 @@ function weakestSort(left: PhigrosTagRksStat, right: PhigrosTagRksStat): number 
 }
 
 function resolveRadarDomain(
-  playerRks: number,
+  mainTags: readonly PhigrosTagRksStat[],
   threshold: number,
 ): { min: number; max: number } {
   const min = Math.max(0, threshold);
-  const safePlayerRks = Number.isFinite(playerRks) ? playerRks : min;
+  const highestTagRks = mainTags.reduce<number | null>((highest, tag) => {
+    if (tag.averageRks == null) return highest;
+    return highest == null ? tag.averageRks : Math.max(highest, tag.averageRks);
+  }, null);
   return {
     min,
-    max: Math.max(safePlayerRks + 0.2, min + 0.4),
+    max: Math.max((highestTagRks ?? min) + 0.1, min + 0.1),
   };
 }
 
@@ -122,9 +142,17 @@ export function analyzePhigrosStrength(
     const effectiveTags = [...primaryTags, ...secondaryTags];
     if (effectiveTags.length > 0) taggedCount += 1;
     for (const tag of effectiveTags) {
-      const aggregate = aggregateByTagId.get(tag.id) ?? { sum: 0, count: 0 };
+      const aggregate = aggregateByTagId.get(tag.id) ?? { sum: 0, count: 0, charts: [] };
       aggregate.sum += record.rating;
       aggregate.count += 1;
+      aggregate.charts.push({
+        songId: record.songId,
+        title: record.title,
+        levelIndex: record.levelIndex,
+        difficultyConstant: record.difficultyConstant,
+        achievements: record.achievements,
+        rks: record.rating,
+      });
       aggregateByTagId.set(tag.id, aggregate);
     }
   }
@@ -155,6 +183,6 @@ export function analyzePhigrosStrength(
     strongestMainTag: [...populatedMainTags].sort(strongestSort)[0] ?? null,
     weakestMainTag: [...populatedMainTags].sort(weakestSort)[0] ?? null,
     hasExpectedPrimaryAxes: primaryCatalog.length === 5,
-    radarDomain: resolveRadarDomain(playerRks, threshold),
+    radarDomain: resolveRadarDomain(mainTags, threshold),
   };
 }
