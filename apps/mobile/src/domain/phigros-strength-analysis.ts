@@ -83,6 +83,27 @@ function weakestSort(left: PhigrosTagRksStat, right: PhigrosTagRksStat): number 
     || left.tagId - right.tagId;
 }
 
+function resolveRadarDomain(
+  mainTags: readonly PhigrosTagRksStat[],
+  threshold: number,
+): { min: number; max: number } {
+  const values = mainTags
+    .map((tag) => tag.averageRks)
+    .filter((value): value is number => value != null);
+  if (values.length === 0) {
+    const min = Math.max(0, threshold);
+    return { min, max: min + 0.1 };
+  }
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  const paddedRange = Math.max(dataMax - dataMin, 0.1);
+  const padding = paddedRange * 0.15;
+  return {
+    min: Math.max(0, dataMin - padding),
+    max: dataMax + padding,
+  };
+}
+
 export function analyzePhigrosStrength(
   playerRks: number,
   records: readonly ScoreRecord[],
@@ -128,7 +149,6 @@ export function analyzePhigrosStrength(
     .map((tag) => statFromAggregate(tag, aggregateByTagId.get(tag.id), poolAverage))
     .sort(strongestSort);
   const populatedMainTags = mainTags.filter((tag) => tag.averageRks != null);
-  const visualMin = Math.max(0, threshold);
 
   return {
     playerRks,
@@ -144,9 +164,6 @@ export function analyzePhigrosStrength(
     strongestMainTag: [...populatedMainTags].sort(strongestSort)[0] ?? null,
     weakestMainTag: [...populatedMainTags].sort(weakestSort)[0] ?? null,
     hasExpectedPrimaryAxes: primaryCatalog.length === 5,
-    radarDomain: {
-      min: visualMin,
-      max: Math.max(poolMax ?? visualMin, visualMin + 0.1),
-    },
+    radarDomain: resolveRadarDomain(mainTags, threshold),
   };
 }

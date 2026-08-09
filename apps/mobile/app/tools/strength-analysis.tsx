@@ -48,6 +48,23 @@ function MainSummary({
   );
 }
 
+function MainTagStat({ tag }: { tag: PhigrosTagRksStat }) {
+  const theme = useAppTheme();
+  return (
+    <View style={[styles.mainTagStat, { backgroundColor: theme.surfaceMuted }]}>
+      <View style={styles.mainTagStatHeading}>
+        <Text style={[styles.mainTagStatName, { color: theme.text }]}>{tag.name}</Text>
+        <Text style={[styles.mainTagStatRks, { color: tag.averageRks == null ? theme.textMuted : theme.accent }]}>
+          {tag.averageRks?.toFixed(4) ?? '—'}
+        </Text>
+      </View>
+      <Text style={[styles.mainTagStatMeta, { color: tag.isSmallSample ? theme.warning : theme.textMuted }]}>
+        {tag.sampleCount > 0 ? `${tag.sampleCount} 张谱面${tag.isSmallSample ? ' · 样本较少' : ''}` : '暂无样本'}
+      </Text>
+    </View>
+  );
+}
+
 function SecondaryTagRow({ tag }: { tag: PhigrosTagRksStat }) {
   const theme = useAppTheme();
   const delta = tag.deltaFromPoolAverage ?? 0;
@@ -206,13 +223,16 @@ export default function PhigrosStrengthAnalysisScreen() {
           <Card style={styles.radarCard}>
             <View style={styles.sectionHeading}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>五维主标签</Text>
-              <Text style={[styles.scaleText, { color: theme.textMuted }]}>中心 {analysis.radarDomain.min.toFixed(1)} · 外圈 {analysis.radarDomain.max.toFixed(4)}</Text>
+              <Text style={[styles.scaleText, { color: theme.textMuted }]}>范围 {analysis.radarDomain.min.toFixed(4)}–{analysis.radarDomain.max.toFixed(4)}</Text>
             </View>
             <PhigrosStrengthRadar
               tags={analysis.mainTags}
               min={analysis.radarDomain.min}
               max={analysis.radarDomain.max}
             />
+            <View style={styles.mainTagGrid}>
+              {analysis.mainTags.map((tag) => <MainTagStat key={tag.tagId} tag={tag} />)}
+            </View>
             <View style={styles.summaryRow}>
               <MainSummary label="相对最强" tag={analysis.strongestMainTag} tone="strong" />
               <MainSummary label="相对最弱" tag={analysis.weakestMainTag} tone="weak" />
@@ -272,6 +292,12 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800' },
   sectionHint: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   scaleText: { fontSize: 10, lineHeight: 14, fontVariant: ['tabular-nums'] },
+  mainTagGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 8 },
+  mainTagStat: { width: '48.5%', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
+  mainTagStatHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  mainTagStatName: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  mainTagStatRks: { fontSize: 13, lineHeight: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  mainTagStatMeta: { fontSize: 10, lineHeight: 14 },
   summaryRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 8 },
   summaryBox: { flex: 1, minHeight: 78, borderWidth: 1, borderRadius: 12, padding: 10, gap: 3 },
   summaryLabel: { fontSize: 10, lineHeight: 14, fontWeight: '800' },
