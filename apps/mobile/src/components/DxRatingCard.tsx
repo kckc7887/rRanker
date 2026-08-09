@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -97,6 +98,19 @@ function RatingValue({
     colors: readonly [string, ...string[]];
   };
 }) {
+  const [maskSettled, setMaskSettled] = useState(false);
+  useEffect(() => {
+    // Android MaskedView 首帧快照可能早于遮罩文字绘制而为空；
+    // 双 rAF 越过首帧后翻转状态，触发一次原生遮罩重绘，与切换账号后重新快照的路径一致。
+    let second: number | null = null;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setMaskSettled(true));
+    });
+    return () => {
+      cancelAnimationFrame(first);
+      if (second != null) cancelAnimationFrame(second);
+    };
+  }, []);
   const colors = valueTheme?.colors;
   if (!colors) {
     return (
@@ -118,7 +132,7 @@ function RatingValue({
           pointerEvents="none"
           style={StyleSheet.absoluteFill}
           testID="dx-rating-card-value-gradient"
-          maskElement={<RatingOutlineMask display={display} />}
+          maskElement={<RatingOutlineMask display={display} settled={maskSettled} />}
         >
           <LinearGradient
             colors={colors as readonly [string, string, ...string[]]}
@@ -168,9 +182,12 @@ const RATING_OUTLINE_OFFSETS = [
   { x: 1, y: 1 },
 ] as const;
 
-function RatingOutlineMask({ display }: { display: string }) {
+function RatingOutlineMask({ display, settled }: { display: string; settled: boolean }) {
   return (
-    <View style={styles.outlineMask}>
+    <View
+      testID="dx-rating-card-outline-mask"
+      style={[styles.outlineMask, { opacity: settled ? 1 : 0.999 }]}
+    >
       {RATING_OUTLINE_OFFSETS.map(({ x, y }) => (
         <Text
           key={`${x}:${y}`}

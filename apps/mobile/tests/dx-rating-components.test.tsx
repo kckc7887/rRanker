@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { jest } from '@jest/globals';
+import { act, render } from '@testing-library/react-native';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { DxRatingTag } from '@/components/DxRatingTag';
 import { resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
@@ -91,5 +92,33 @@ describe('DX Rating components', () => {
       .toMatchObject({ color: possessionTheme.textColor });
     expect(screen.getByTestId('dx-rating-card-value-outline-solid').props.children)
       .toHaveLength(8);
+  });
+
+  it('re-snapshots the rainbow outline mask after the first frame', async () => {
+    jest.useFakeTimers();
+    try {
+      const screen = await render(
+        <DxRatingCard
+          borderless
+          label="RATING"
+          display="17.25"
+          meta="Best30 17.20 · New20 17.30"
+          rating={17.25}
+          themeOverride={resolveChunithmPossessionTheme('rainbow')}
+          valueTheme={resolveChunithmRatingTier(17.25)}
+        />,
+      );
+      expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-outline-mask').props.style))
+        .toMatchObject({ opacity: 0.999 });
+
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+
+      expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-outline-mask').props.style))
+        .toMatchObject({ opacity: 1 });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
