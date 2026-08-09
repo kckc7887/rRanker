@@ -335,7 +335,7 @@ describe('filterPhigrosRandomCharts', () => {
 
   it('requires every selected Kyou tag on the same chart', () => {
     const primary = { id: 152, name: '读谱', type: 'primary' as const, parentIds: [], description: '', votes: 8 };
-    const secondary = { id: 156, name: '差速', type: 'secondary' as const, parentIds: [152], description: '', votes: 3 };
+    const secondary = { id: 156, name: '差速', type: 'secondary' as const, parentIds: [152], description: '', votes: 4 };
     const tagIndex = new Map([
       ['song:SD:2', [primary, secondary]],
       ['song:SD:3', [primary]],

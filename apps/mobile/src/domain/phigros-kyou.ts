@@ -247,6 +247,11 @@ export interface PhigrosKyouPrimaryTagResolution {
   totalVotes: number;
 }
 
+interface PhigrosKyouPresentedTagResolution {
+  primary: PhigrosKyouPrimaryTagResolution;
+  secondary: readonly PhigrosKyouResolvedTag[];
+}
+
 /**
  * 统一主标签归属口径：普通谱面归入最高票主标签；票数接近时归入前两项。
  * 展示层可把后者合成为“综合”，分析层则保留两个真实主标签作为五维样本。
@@ -275,14 +280,22 @@ export function resolvePhigrosKyouPrimaryTags(
   };
 }
 
+function resolvePhigrosKyouPresentedTags(
+  tags: readonly PhigrosKyouResolvedTag[],
+): PhigrosKyouPresentedTagResolution {
+  return {
+    primary: resolvePhigrosKyouPrimaryTags(tags),
+    secondary: tags
+      .filter((tag) => tag.type === 'secondary' && tag.votes > 3)
+      .sort((left, right) => right.votes - left.votes || left.id - right.id)
+      .slice(0, 5),
+  };
+}
+
 export function presentPhigrosKyouChartTags(
   tags: readonly PhigrosKyouResolvedTag[],
 ): readonly PhigrosKyouResolvedTag[] {
-  const secondary = tags
-    .filter((tag) => tag.type === 'secondary' && tag.votes > 3)
-    .sort((left, right) => right.votes - left.votes || left.id - right.id)
-    .slice(0, 5);
-  const resolution = resolvePhigrosKyouPrimaryTags(tags);
+  const { primary: resolution, secondary } = resolvePhigrosKyouPresentedTags(tags);
   const [highest, secondHighest] = resolution.tags;
   if (!highest) return secondary;
 
@@ -320,6 +333,7 @@ export function phigrosKyouChartHasAllTags(
   if (selectedTagIds.length === 0) return true;
   const tags = phigrosKyouTagsForChart(index, songId, levelIndex);
   if (tags.length === 0) return false;
-  const ids = new Set(tags.map((tag) => tag.id));
+  const { primary, secondary } = resolvePhigrosKyouPresentedTags(tags);
+  const ids = new Set([...primary.tags, ...secondary].map((tag) => tag.id));
   return selectedTagIds.every((tagId) => ids.has(tagId));
 }
