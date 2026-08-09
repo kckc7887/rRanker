@@ -131,7 +131,7 @@ describe('Phigros Kyou mapping', () => {
     )).toBe(true);
   });
 
-  it('drops zero votes, sorts by group and votes, and applies AND on one chart', () => {
+  it('matches filters against the same primary and secondary vote rules as chart cards', () => {
     const appCatalog = catalog([{
       id: 'song', title: 'Song', version: 'Pack', charts: [chart('song', 2, 14.0), chart('song', 3, 15.0)],
     }]);
@@ -141,20 +141,26 @@ describe('Phigros Kyou mapping', () => {
       charts,
       tags: [
         { id: 152, name: '读谱', type: 'primary', parentIds: [], description: '主标签' },
+        { id: 153, name: '耐力', type: 'primary', parentIds: [], description: '非最高票主标签' },
         { id: 156, name: '差速', type: 'secondary', parentIds: [152], description: '细分标签' },
         { id: 157, name: '脑裂', type: 'secondary', parentIds: [152], description: '零票标签' },
+        { id: 158, name: '低票细分', type: 'secondary', parentIds: [152], description: '三票标签' },
       ],
       votes: [
         { chartId: charts[0]!.chartId, songId: 'ks', songName: 'Song', difficulty: 'in', tagType: 'secondary', tagId: 156, tag: '差速', votes: 8, parentIds: [152], source: 'Kyou' },
         { chartId: charts[0]!.chartId, songId: 'ks', songName: 'Song', difficulty: 'in', tagType: 'primary', tagId: 152, tag: '读谱', votes: 2, parentIds: [], source: 'Kyou' },
+        { chartId: charts[0]!.chartId, songId: 'ks', songName: 'Song', difficulty: 'in', tagType: 'primary', tagId: 153, tag: '耐力', votes: 1, parentIds: [], source: 'Kyou' },
         { chartId: charts[0]!.chartId, songId: 'ks', songName: 'Song', difficulty: 'in', tagType: 'secondary', tagId: 157, tag: '脑裂', votes: 0, parentIds: [152], source: 'Kyou' },
+        { chartId: charts[0]!.chartId, songId: 'ks', songName: 'Song', difficulty: 'in', tagType: 'secondary', tagId: 158, tag: '低票细分', votes: 3, parentIds: [152], source: 'Kyou' },
       ],
       source,
     };
     const index = buildPhigrosKyouChartTagIndex(tagSnapshot, appCatalog);
     expect(phigrosKyouTagsForChart(index, 'song', 2).map((tag) => [tag.id, tag.votes]))
-      .toEqual([[152, 2], [156, 8]]);
+      .toEqual([[152, 2], [153, 1], [156, 8], [158, 3]]);
     expect(phigrosKyouChartHasAllTags(index, 'song', 2, [152, 156])).toBe(true);
+    expect(phigrosKyouChartHasAllTags(index, 'song', 2, [153])).toBe(false);
+    expect(phigrosKyouChartHasAllTags(index, 'song', 2, [158])).toBe(false);
     expect(phigrosKyouChartHasAllTags(index, 'song', 2, [152, 157])).toBe(false);
     expect(phigrosKyouChartHasAllTags(index, 'song', 3, [])).toBe(true);
     expect(phigrosKyouChartHasAllTags(index, 'song', 3, [152])).toBe(false);
