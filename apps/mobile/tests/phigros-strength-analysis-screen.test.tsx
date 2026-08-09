@@ -114,7 +114,7 @@ describe('Phigros strength analysis screen', () => {
 
   it('renders the pool, five-axis summary, detailed tags and accessibility description', async () => {
     const screen = await render(<PhigrosStrengthAnalysisScreen />);
-    expect(screen.getByText('定数 ≥ 15.9 · A 及以上')).toBeTruthy();
+    expect(screen.getByText('RKS ≥ 15.9 · A 及以上')).toBeTruthy();
     expect(screen.getByText('16.1691')).toBeTruthy();
     expect(screen.getByText('五维主标签')).toBeTruthy();
     expect(screen.getByLabelText(/五维实力雷达/)).toBeTruthy();
