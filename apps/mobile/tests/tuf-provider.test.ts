@@ -27,10 +27,25 @@ describe('TufProvider', () => {
   it('preserves sorting and pagination query semantics', async () => {
     const fetcher = vi.fn().mockResolvedValue(response({ ...passPage, total: 31, offset: 30 }));
     await new TufProvider(fetcher as typeof fetch, 'https://tuf.test').getPasses(25, {
-      offset: 30, limit: 30, sortBy: 'xacc', order: 'ASC', bestPerLevel: false,
+      offset: 30, limit: 30, sortBy: 'xacc', order: 'ASC', bestPerLevel: false, query: '  technical  ',
     });
     const url = new URL(fetcher.mock.calls[0][0]);
-    expect(Object.fromEntries(url.searchParams)).toEqual({ offset: '30', limit: '30', sortBy: 'xacc', order: 'ASC', bestPerLevel: 'false' });
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      offset: '30', limit: '30', sortBy: 'xacc', order: 'ASC', bestPerLevel: 'false', query: 'technical',
+    });
+  });
+
+  it('preserves level sorting and difficulty filter semantics', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(levelPage));
+    await new TufProvider(fetcher as typeof fetch, 'https://tuf.test').searchLevels({
+      query: '  stamina  ', offset: 30, limit: 30, sort: 'DIFF', order: 'ASC',
+      pguRange: 'G1,G20', specialDifficulties: ['Unranked', 'Marathon'],
+    });
+    const url = new URL(fetcher.mock.calls[0][0]);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      offset: '30', limit: '30', query: 'stamina', sort: 'DIFF_ASC',
+      pguRange: 'G1,G20', specialDifficulties: 'Unranked,Marathon',
+    });
   });
 
   it.each([401, 403])('reports public API policy changes for HTTP %s without retry', async (status) => {

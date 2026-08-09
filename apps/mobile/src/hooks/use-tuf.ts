@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { TUF_PAGE_SIZE, type TufPassQuery } from '@/domain/tuf';
+import { TUF_PAGE_SIZE, type TufLevelQuery, type TufPassQuery } from '@/domain/tuf';
 import { tufProvider } from '@/providers/tuf-provider';
 
 const TUF_QUERY_OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
@@ -38,15 +38,26 @@ export function useTufPasses(playerId: number | null, options: Omit<TufPassQuery
   });
 }
 
-export function useTufLevelSearch(query: string) {
+export function useTufLevelSearch(
+  query: string,
+  options: Omit<TufLevelQuery, 'query' | 'offset' | 'limit'> = {},
+) {
   const normalized = query.trim();
   return useInfiniteQuery({
-    queryKey: ['tuf', 'levels', normalized],
+    queryKey: ['tuf', 'levels', normalized, options],
     queryFn: ({ pageParam }) => tufProvider.searchLevels({
-      query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
+      ...options, query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
     }),
     initialPageParam: 0,
     getNextPageParam: (last) => last.hasMore ? last.offset + last.limit : undefined,
+    ...TUF_QUERY_OPTIONS,
+  });
+}
+
+export function useTufDifficulties() {
+  return useQuery({
+    queryKey: ['tuf', 'difficulties'],
+    queryFn: () => tufProvider.getDifficulties(),
     ...TUF_QUERY_OPTIONS,
   });
 }

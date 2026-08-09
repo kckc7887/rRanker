@@ -77,11 +77,15 @@ export class TufProvider {
       offset: String(query.offset), limit: String(query.limit), sortBy: query.sortBy,
       order: query.order, bestPerLevel: String(query.bestPerLevel),
     });
+    if (query.query?.trim()) params.set('query', query.query.trim());
     return this.request(`/v3/players/${playerId}/passes?${params}`, TufPassPageSchema);
   }
   searchLevels(query: TufLevelQuery) {
     const params = new URLSearchParams({ offset: String(query.offset), limit: String(query.limit) });
     if (query.query?.trim()) params.set('query', query.query.trim());
+    if (query.sort && query.order) params.set('sort', `${query.sort}_${query.order}`);
+    if (query.pguRange) params.set('pguRange', query.pguRange);
+    if (query.specialDifficulties?.length) params.set('specialDifficulties', query.specialDifficulties.join(','));
     return this.request(`/v2/database/levels?${params}`, TufLevelPageSchema);
   }
   getLevel(levelId: number) { return this.request(`/v2/database/levels/${levelId}`, TufLevelDetailResponseSchema); }
