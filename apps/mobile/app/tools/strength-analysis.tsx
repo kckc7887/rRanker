@@ -18,6 +18,8 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useAppTheme } from '@/theme/app-theme';
 
+const POOL_DESCRIPTION = '阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0。候选池包含定数达到阈值的全部谱面，稀缺系数只由候选数量决定；基础分析池仅包含 RKS 达标且评级 A 以上的成绩。标签基础样本为 1–2 张时，从候选池内已有成绩但未入分析池的同标签谱面按 RKS 向下补入最多 5 张，参与标签平均、覆盖率和歌曲列表。再对未达到同类满分基准的结果应用校准并封顶。';
+
 function Metric({ label, value }: { label: string; value: string }) {
   const theme = useAppTheme();
   return (
@@ -244,6 +246,7 @@ function TagSongsSheet({
 export default function PhigrosStrengthAnalysisScreen() {
   const theme = useAppTheme();
   const [selectedTag, setSelectedTag] = useState<PhigrosTagRksStat | null>(null);
+  const [isPoolDescriptionExpanded, setIsPoolDescriptionExpanded] = useState(false);
   const gameQuery = useGameData();
   const catalogQuery = usePhigrosCatalog();
   const tagsQuery = usePhigrosKyouChartTags();
@@ -371,7 +374,25 @@ export default function PhigrosStrengthAnalysisScreen() {
           <Metric label="标签覆盖" value={coverage} />
           <Metric label="池内最高" value={analysis.pool.maxRks?.toFixed(4) ?? '—'} />
         </View>
-        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0。候选池包含定数达到阈值的全部谱面，稀缺系数只由候选数量决定；基础分析池仅包含 RKS 达标且评级 A 以上的成绩。标签基础样本为 1–2 张时，从候选池内已有成绩但未入分析池的同标签谱面按 RKS 向下补入最多 5 张，参与标签平均、覆盖率和歌曲列表。再对未达到同类满分基准的结果应用校准并封顶。</Text>
+        <View style={styles.formulaRow}>
+          <Text
+            ellipsizeMode="tail"
+            numberOfLines={isPoolDescriptionExpanded ? undefined : 1}
+            style={[styles.formula, { color: theme.textMuted }]}
+          >
+            {POOL_DESCRIPTION}
+          </Text>
+          <Pressable
+            accessibilityLabel={isPoolDescriptionExpanded ? '收起分析池说明' : '展开分析池说明'}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isPoolDescriptionExpanded }}
+            hitSlop={8}
+            onPress={() => setIsPoolDescriptionExpanded((expanded) => !expanded)}
+            style={({ pressed }) => [styles.formulaToggle, pressed && styles.pressed]}
+          >
+            <Text style={[styles.formulaToggleText, { color: theme.accent }]}>{isPoolDescriptionExpanded ? '收起' : '展开'}</Text>
+          </Pressable>
+        </View>
       </Card>
 
       {analysis.pool.totalCount === 0 ? (
@@ -382,8 +403,8 @@ export default function PhigrosStrengthAnalysisScreen() {
       ) : (
         <>
           <Card style={styles.radarCard}>
-            <View style={styles.sectionHeading}>
-              <Text numberOfLines={1} style={[styles.sectionTitle, { color: theme.text }]}>{analysis.mainTagProfileLabel}</Text>
+            <View style={styles.radarHeading}>
+              <Text numberOfLines={1} style={[styles.radarAnalysisTitle, { color: theme.text }]}>分析：{analysis.mainTagProfileLabel}</Text>
               <Text style={[styles.scaleText, { color: theme.textMuted }]}>范围 {analysis.radarDomain.min.toFixed(4)}–{analysis.radarDomain.max.toFixed(4)}</Text>
             </View>
             <PhigrosStrengthRadar
@@ -461,8 +482,13 @@ const styles = StyleSheet.create({
   metric: { width: '48.5%', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, gap: 3 },
   metricLabel: { fontSize: 11, lineHeight: 15, fontWeight: '600' },
   metricValue: { fontSize: 16, lineHeight: 21, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  formula: { fontSize: 12, lineHeight: 18 },
+  formulaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  formula: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 18 },
+  formulaToggle: { minWidth: 36, minHeight: 18, alignItems: 'flex-end', justifyContent: 'center' },
+  formulaToggleText: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
   radarCard: { paddingHorizontal: 8, paddingBottom: 14, gap: 4, overflow: 'hidden' },
+  radarHeading: { alignItems: 'center', gap: 1 },
+  radarAnalysisTitle: { alignSelf: 'stretch', fontSize: 17, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   sectionTitle: { flexShrink: 1, fontSize: 17, lineHeight: 23, fontWeight: '800' },
   sectionHint: { fontSize: 12, lineHeight: 17, marginTop: 2 },
