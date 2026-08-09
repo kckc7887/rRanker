@@ -44,7 +44,7 @@ export function PhigrosStrengthRadar({
     return polarPoint(index, tags.length, CHART_RADIUS * ratio);
   });
   const accessibilityLabel = `五维实力雷达，刻度 ${min.toFixed(1)} 到 ${max.toFixed(4)}。${tags
-    .map((tag) => `${tag.name} ${tag.averageRks == null ? '无数据' : `修正后 ${tag.averageRks.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，总系数 ${tag.coefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面，候选平均定数 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '无数据'}`}`)
+    .map((tag) => `${tag.name} ${tag.averageRks == null ? '无数据' : `修正后 ${tag.averageRks.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，总系数 ${tag.coefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面，覆盖率 ${(tag.sampleCoverage * 100).toFixed(0)}%，候选平均定数 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '无数据'}`}`)
     .join('；')}`;
 
   return (
