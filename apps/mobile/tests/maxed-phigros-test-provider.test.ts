@@ -23,7 +23,7 @@ function song(id: number, base: number, disabled = false): Song {
       levelIndex,
       level: ['EZ', 'HD', 'IN', 'AT'][levelIndex]!,
       difficulty: ['basic', 'advanced', 'expert', 'master'][levelIndex]! as 'basic' | 'advanced' | 'expert' | 'master',
-      difficultyConstant: base + levelIndex,
+      difficultyConstant: base + levelIndex + 0.9,
       notes: { tap: 10, hold: 20, drag: 30, flick: 40, total: 100 },
     })),
   };
@@ -68,7 +68,12 @@ describe('Phigros 全满示例账号', () => {
       displayName: '示例账号',
       rating: expectedRks,
     });
-    expect(snapshot.challengeModeRank).toBe(599);
+    const expectedChallengeScore = phi3.reduce(
+      (sum, record) => sum + Math.floor(record.difficultyConstant),
+      0,
+    );
+    expect(expectedChallengeScore).toBe(52);
+    expect(snapshot.challengeModeRank).toBe(500 + expectedChallengeScore);
     expect(snapshot.progress).toEqual({
       cleared: [8, 8, 8, 8],
       fullCombo: [8, 8, 8, 8],
