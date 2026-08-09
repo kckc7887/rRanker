@@ -58,6 +58,13 @@ describe('示例账号图标', () => {
       .find((provider) => provider.id === 'chunithm-test')?.icon;
     expect(chunithmIcon).toBe(maimaiIcon);
   });
+
+  it('冰与火之舞与 TUF 社区使用各自的正式图标', () => {
+    const adofai = findGame('adofai');
+    const tufIcon = adofai?.providers.find((provider) => provider.id === 'tuf')?.icon;
+    expect(adofai?.icon).not.toBe(findGame('test')?.icon);
+    expect(tufIcon).not.toBe(adofai?.icon);
+  });
 });
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);

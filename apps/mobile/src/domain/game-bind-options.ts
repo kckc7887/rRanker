@@ -40,7 +40,8 @@ const phigrosIcon = require('../../assets/images/phigros.png') as ImageSourcePro
 const taptapIcon = require('../../assets/images/taptap.png') as ImageSourcePropType;
 const chunithmIcon = require('../../assets/images/chunithm.png') as ImageSourcePropType;
 const testGameIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
-const adofaiIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
+const adofaiIcon = require('../../assets/images/adofai.png') as ImageSourcePropType;
+const tufIcon = require('../../assets/images/tuf.png') as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
   {
@@ -120,7 +121,7 @@ export const GAME_OPTIONS: GameOption[] = [
       bindingKind: 'public-player',
       title: 'TUF 社区',
       detail: '搜索公开玩家 · 无需登录',
-      icon: adofaiIcon,
+      icon: tufIcon,
       available: true,
     }],
   },
