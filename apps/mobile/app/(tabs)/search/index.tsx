@@ -44,6 +44,7 @@ import {
   searchSongs,
 } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
+import { TufSearchScreen } from '@/screens/TufScreens';
 
 const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
 export default function SearchTabScreen() {
@@ -161,6 +162,10 @@ export function SearchScreen() {
 
   if (activeGameId === 'chunithm') {
     return <ChunithmSearchScreen />;
+  }
+
+  if (activeGameId === 'adofai') {
+    return <TufSearchScreen />;
   }
 
   if (activeGameId !== 'maimai') {

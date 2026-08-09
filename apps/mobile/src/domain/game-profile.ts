@@ -78,6 +78,14 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ],
     capabilities: { ...commonNav, hasTools: getGameToolbox('phigros').tools.length > 0 },
   },
+  adofai: {
+    id: 'adofai',
+    title: '冰与火之舞',
+    ratingLabel: 'RANKED SCORE',
+    ratingDigits: 0,
+    bestSections: [{ id: 'top20', title: 'Top 20 Impact', size: 20 }],
+    capabilities: { ...commonNav, hasTools: false },
+  },
 };
 
 export function getGameProfile(id: GameId): GameProfile {

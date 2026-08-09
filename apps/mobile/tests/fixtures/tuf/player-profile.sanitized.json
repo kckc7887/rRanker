@@ -1,0 +1,16 @@
+{
+  "id": 25,
+  "name": "公开玩家",
+  "avatarUrl": "https://cdn.example.invalid/avatar.png",
+  "discordId": "100000000000000000",
+  "rankedScore": 1824.52,
+  "generalScore": 1960.25,
+  "ppScore": 321.1,
+  "averageXacc": 99.87,
+  "globalRank": 12,
+  "totalPasses": 345,
+  "universalPassCount": 120,
+  "worldFirstCount": 4,
+  "topDiff": "G12",
+  "topScores": [{ "id": 9001, "impact": 88.5 }]
+}

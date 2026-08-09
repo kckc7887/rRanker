@@ -1,0 +1,22 @@
+{
+  "total": 1,
+  "page": 0,
+  "offset": 0,
+  "limit": 30,
+  "hasMore": false,
+  "results": [{
+    "id": 11372,
+    "songId": 401,
+    "song": "脱敏测试关卡",
+    "artist": "公开艺术家",
+    "diffId": 8,
+    "baseScore": 12.34,
+    "bpm": null,
+    "tilecount": null,
+    "autoTileCount": null,
+    "difficulty": { "id": 8, "name": "Legacy 12", "type": "LEGACY", "sortOrder": 99, "baseScore": null },
+    "levelCredits": [],
+    "tags": [],
+    "curations": []
+  }]
+}

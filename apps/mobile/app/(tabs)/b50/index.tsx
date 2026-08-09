@@ -25,6 +25,7 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { TufBestScreen } from '@/screens/TufScreens';
 
 type BestSection = BestListSection & { data: ScoreRecord[] };
 
@@ -52,6 +53,9 @@ export function Best50Screen() {
   }
   if (activeGameId === 'phigros') {
     return <PhigrosBestScreen />;
+  }
+  if (activeGameId === 'adofai') {
+    return <TufBestScreen />;
   }
   return <MaimaiBest50Screen />;
 }

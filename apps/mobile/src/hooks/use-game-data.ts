@@ -40,6 +40,8 @@ import {
   CHUNITHM_CATALOG_SCHEMA_VERSION,
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
+import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
+import { tufProvider } from '@/providers/tuf-provider';
 import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
 import {
@@ -71,7 +73,29 @@ export function useGameData() {
 
   const query = useQuery({
     queryKey,
+    ...(activeGameId === 'adofai' ? { staleTime: 60_000, gcTime: 10 * 60_000 } : {}),
     queryFn: async (): Promise<GameDataBundle> => {
+      if (activeGameId === 'adofai') {
+        const playerId = tufPlayerIdFromAccountId(activeAccountId);
+        if (activeProviderId !== 'tuf' || playerId === null) {
+          return {
+            gameId: 'adofai', providerId: null, profile: getGameProfile('adofai'),
+            payload: emptyGamePayload('adofai', '未绑定 TUF 玩家'),
+          };
+        }
+        const player = await tufProvider.getPlayerProfile(playerId);
+        return {
+          gameId: 'adofai', providerId: 'tuf', profile: getGameProfile('adofai'),
+          payload: {
+            kind: 'adofai', player,
+            playerScore: {
+              label: 'RANKED SCORE', value: player.rankedScore,
+              display: Number.isFinite(player.rankedScore) ? player.rankedScore.toFixed(2) : '—',
+            },
+            source: { kind: 'tuf', label: 'TUF 社区公开数据', updatedAt: new Date().toISOString(), isStale: false },
+          },
+        };
+      }
       if (activeGameId === 'chunithm') {
         if (activeProviderId === 'chunithm-test') {
           const toBundle = (catalog: ChunithmCatalogSnapshot): GameDataBundle => {
@@ -405,6 +429,14 @@ export function useGameData() {
         void persistBoundAccountAvatar(activeAccountId, avatarUrl);
       }
     }
+    if (d.payload.kind === 'adofai') {
+      updateBoundAccountScore(
+        activeAccountId,
+        d.payload.playerScore.display,
+        d.payload.player.name,
+        d.payload.player.avatarUrl ?? d.payload.player.avatar ?? undefined,
+      );
+    }
   }, [activeAccountId, query.data, updateBoundAccountScore]);
 
   return {
@@ -416,6 +448,8 @@ export function useGameData() {
     isDataStale: !!query.data && (
       query.data.payload.kind === 'chunithm'
         ? query.data.payload.source.isStale
+        : query.data.payload.kind === 'adofai'
+          ? query.data.payload.source.isStale
         : (query.data.payload.kind === 'maimai' || query.data.payload.kind === 'phigros')
           && (query.data.payload.source.isStale || query.data.payload.catalogSource.isStale)
     ),

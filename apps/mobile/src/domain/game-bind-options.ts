@@ -8,9 +8,11 @@ export type ProviderId =
   | 'chunithm-test'
   | 'phigros-test'
   | 'phi-taptap'
-  | 'chunithm-temp';
+  | 'chunithm-temp'
+  | 'tuf';
 export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
-export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'test';
+export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'adofai' | 'test';
+export type ProviderBindingKind = 'credentials' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
 
 export type ProviderOption = {
   id: ProviderId;
@@ -18,6 +20,7 @@ export type ProviderOption = {
   detail: string;
   icon: ImageSourcePropType;
   available: boolean;
+  bindingKind: ProviderBindingKind;
 };
 
 export type GameOption = {
@@ -37,6 +40,7 @@ const phigrosIcon = require('../../assets/images/phigros.png') as ImageSourcePro
 const taptapIcon = require('../../assets/images/taptap.png') as ImageSourcePropType;
 const chunithmIcon = require('../../assets/images/chunithm.png') as ImageSourcePropType;
 const testGameIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
+const adofaiIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
   {
@@ -48,6 +52,7 @@ export const GAME_OPTIONS: GameOption[] = [
     providers: [
       {
         id: 'diving-fish',
+        bindingKind: 'credentials',
         title: '水鱼查分器',
         detail: '账密登录（可上传）',
         icon: divingFishIcon,
@@ -55,6 +60,7 @@ export const GAME_OPTIONS: GameOption[] = [
       },
       {
         id: 'lxns',
+        bindingKind: 'oauth-code',
         title: '落雪查分器',
         detail: 'OAuth 授权（粘贴授权码）',
         icon: lxnsIcon,
@@ -62,6 +68,7 @@ export const GAME_OPTIONS: GameOption[] = [
       },
       {
         id: 'local',
+        bindingKind: 'local',
         title: '本地查分器',
         detail: '可添加多个玩家 · 成绩仅保存在本机',
         icon: maimaiIcon,
@@ -69,6 +76,7 @@ export const GAME_OPTIONS: GameOption[] = [
       },
       {
         id: 'maimai-test',
+        bindingKind: 'fixture',
         title: '示例查分器',
         detail: '全曲全谱面满成绩 · 可删除后重新添加',
         icon: exampleAccountIcon,
@@ -85,6 +93,7 @@ export const GAME_OPTIONS: GameOption[] = [
     providers: [
       {
         id: 'lxns',
+        bindingKind: 'oauth-code',
         title: '落雪查分器',
         detail: 'OAuth 授权（粘贴授权码）',
         icon: lxnsIcon,
@@ -92,12 +101,28 @@ export const GAME_OPTIONS: GameOption[] = [
       },
       {
         id: 'chunithm-test',
+        bindingKind: 'fixture',
         title: '示例查分器',
         detail: '全曲全谱面满成绩 · 可删除后重新添加',
         icon: exampleAccountIcon,
         available: true,
       },
     ],
+  },
+  {
+    id: 'adofai',
+    title: '冰与火之舞',
+    icon: adofaiIcon,
+    available: true,
+    pendingDetail: '',
+    providers: [{
+      id: 'tuf',
+      bindingKind: 'public-player',
+      title: 'TUF 社区',
+      detail: '搜索公开玩家 · 无需登录',
+      icon: adofaiIcon,
+      available: true,
+    }],
   },
   {
     id: 'test',
@@ -116,6 +141,7 @@ export const GAME_OPTIONS: GameOption[] = [
     providers: [
       {
         id: 'phi-taptap',
+        bindingKind: 'device-code',
         title: 'TapTap 云存档',
         detail: '跳转 TapTap 授权登录',
         icon: taptapIcon,
@@ -123,6 +149,7 @@ export const GAME_OPTIONS: GameOption[] = [
       },
       {
         id: 'phigros-test',
+        bindingKind: 'fixture',
         title: '示例查分器',
         detail: '全曲全谱面满成绩 · 可删除后重新添加',
         icon: exampleAccountIcon,

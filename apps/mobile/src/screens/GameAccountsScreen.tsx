@@ -12,6 +12,7 @@ import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GamePickerSheet } from '@/components/GamePickerSheet';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
+import { TufPlayerPickerSheet } from '@/components/TufPlayerPickerSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import {
@@ -20,6 +21,8 @@ import {
   createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
   createMaxedPhigrosTestAccount,
+  createTufBoundAccount,
+  tufPlayerIdFromAccountId,
   LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
@@ -45,6 +48,7 @@ import { patchMaimaiPlayerDisplayName } from '@/services/invalidate-account-data
 import { switchBoundAccount } from '@/services/switch-bound-account';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
+import { TufAccountStore } from '@/storage/tuf-account-store';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -53,6 +57,7 @@ const demoAccounts = new DemoAccountStore();
 const chunithmDemoAccount = new ChunithmDemoAccountStore();
 const phigrosDemoAccount = new PhigrosDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
+const tufAccounts = new TufAccountStore();
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
@@ -76,6 +81,7 @@ export function GameAccountsScreen() {
   const [loginGameId, setLoginGameId] = useState<GameId | null>(null);
   const [reopenPickerAfterLogin, setReopenPickerAfterLogin] = useState(false);
   const [renameAccount, setRenameAccount] = useState<BoundAccount | null>(null);
+  const [tufPickerVisible, setTufPickerVisible] = useState(false);
 
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
 
@@ -221,6 +227,37 @@ export function GameAccountsScreen() {
     } finally {
       setBusy(false);
     }
+    queryClient.removeQueries({ queryKey: ['tuf'] });
+  };
+
+  const bindTufPlayer = async (player: import('@/domain/tuf').TufPlayer) => {
+    const existing = boundAccounts.find((account) => account.id === `adofai:tuf:${player.id}`);
+    if (existing) {
+      selectBoundAccount(existing.id);
+      await sessions.setActiveAccountId(existing.id);
+      setMessage(`TUF 玩家「${existing.displayName}」已绑定，已切换到该玩家`);
+      setTufPickerVisible(false);
+      return;
+    }
+    const account = createTufBoundAccount({
+      playerId: player.id, displayName: player.name, avatarUrl: player.avatarUrl ?? player.avatar,
+    });
+    await tufAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: account.avatarUrl });
+    upsertBoundAccount(account);
+    selectBoundAccount(account.id);
+    await sessions.setActiveAccountId(account.id);
+    setMessage(`已绑定 TUF 玩家「${player.name}」`);
+    setTufPickerVisible(false);
+    setPickerVisible(false);
+  };
+
+  const removeTufAccount = async (account: BoundAccount) => {
+    const playerId = tufPlayerIdFromAccountId(account.id);
+    if (playerId !== null) await tufAccounts.remove(playerId);
+    removeBoundAccount(account.id);
+    await persistActiveAccountId();
+    queryClient.removeQueries({ queryKey: ['tuf'] });
+    setMessage(`已解除 TUF 玩家「${account.displayName}」的绑定`);
   };
 
   const addPhigrosDemoAccount = async () => {
@@ -399,6 +436,11 @@ export function GameAccountsScreen() {
       void addPhigrosDemoAccount();
       return;
     }
+    if (provider.bindingKind === 'public-player') {
+      setPickerVisible(false);
+      setTufPickerVisible(true);
+      return;
+    }
     setExpandedPickerGameId(gameId);
     setLoginGameId(gameId);
     setLoginProviderId(provider.id);
@@ -442,6 +484,7 @@ export function GameAccountsScreen() {
       || account.providerId === 'phigros-test';
     const isChunithmTemp = account.providerId === 'chunithm-temp';
     const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
+    const isTuf = account.providerId === 'tuf';
     return (
       <>
         {!isActive ? (
@@ -470,6 +513,11 @@ export function GameAccountsScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel={`删除临时账号 ${account.displayName}`}
             disabled={busy} onPress={() => promptRemoveChunithmTemp(account)}>
             <Text style={styles.unbind}>删除临时账号</Text>
+          </Pressable>
+        ) : isTuf ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
+            disabled={busy} onPress={() => void removeTufAccount(account)}>
+            <Text style={styles.unbind}>解除绑定</Text>
           </Pressable>
         ) : isRemote ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
@@ -513,6 +561,7 @@ export function GameAccountsScreen() {
       <ProviderLoginSheet visible={loginVisible} provider={loginProvider}
         gameId={loginGame?.id ?? 'maimai'} gameTitle={loginGame?.title ?? ''}
         onClose={() => closeLogin({ reopenPicker: true })} onSuccess={finishLogin} />
+      {tufPickerVisible ? <TufPlayerPickerSheet visible onClose={() => setTufPickerVisible(false)} onSelect={bindTufPlayer} /> : null}
 
       <RenameLocalAccountSheet visible={renameAccount !== null} initialName={renameAccount?.displayName ?? ''}
         onClose={() => setRenameAccount(null)} onSave={(displayName) => {

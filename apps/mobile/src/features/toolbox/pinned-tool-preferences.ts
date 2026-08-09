@@ -31,19 +31,19 @@ type StoredPinnedToolsV1 = {
 };
 
 const STORE_KEY = 'rranker.toolbox.pinned-tools.v1';
-const GAME_IDS: readonly GameId[] = ['maimai', 'chunithm', 'phigros', 'test'];
+const GAME_IDS: readonly GameId[] = ['maimai', 'chunithm', 'phigros', 'adofai', 'test'];
 const COLLECTION_KINDS: readonly ChunithmCollectionKind[] = ['trophy', 'character', 'plate', 'icon'];
 
 export function emptyPinnedToolIdsByGame(): PinnedToolIdsByGame {
-  return { maimai: [], chunithm: [], phigros: [], test: [] };
+  return { maimai: [], chunithm: [], phigros: [], adofai: [], test: [] };
 }
 
 export function emptyPinnedPlateIdsByGame(): PinnedPlateIdsByGame {
-  return { maimai: [], chunithm: [], phigros: [], test: [] };
+  return { maimai: [], chunithm: [], phigros: [], adofai: [], test: [] };
 }
 
 export function emptyPinnedCollectionIdsByGame(): PinnedCollectionIdsByGame {
-  return { maimai: [], chunithm: [], phigros: [], test: [] };
+  return { maimai: [], chunithm: [], phigros: [], adofai: [], test: [] };
 }
 
 export function emptyHomePinPreferences(): HomePinPreferences {

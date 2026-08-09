@@ -1,0 +1,38 @@
+{
+  "total": 1,
+  "limit": 30,
+  "offset": 0,
+  "passes": [{
+    "id": 9001,
+    "levelId": 11372,
+    "scoreV2": 101.25,
+    "accuracy": 100,
+    "speed": 1.5,
+    "vidUploadTime": "2026-01-02T03:04:05.000Z",
+    "videoLink": "https://video.example.invalid/watch/9001",
+    "isHidden": false,
+    "isWorldsFirst": true,
+    "isWorldsFirstPP": false,
+    "isDuplicate": false,
+    "impact": 88.5,
+    "judgements": { "earlyDouble": 0, "earlySingle": 0, "perfect": 421, "lateSingle": 0 },
+    "level": {
+      "id": 11372,
+      "songId": 401,
+      "song": "脱敏测试关卡",
+      "artist": "公开艺术家",
+      "diffId": 8,
+      "baseScore": 12.34,
+      "bpm": 180,
+      "tilecount": 421,
+      "levelLengthInMs": 92300,
+      "isHidden": false,
+      "isDeleted": false,
+      "difficulty": { "id": 8, "name": "G12", "type": "SPECIAL", "sortOrder": 12, "baseScore": 12.34 },
+      "levelCredits": [{ "role": "Charter", "creator": { "id": 7, "name": "公开谱师" } }],
+      "tags": [{ "id": 1, "name": "技术" }],
+      "curations": [],
+      "stats": { "passes": 100 }
+    }
+  }]
+}
