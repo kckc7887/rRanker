@@ -142,6 +142,12 @@ describe('本地查分器', () => {
 });
 
 describe('舞萌示例查分器', () => {
+  it('使用最高段位裏皆伝', async () => {
+    await expect(new MaxedMaimaiTestProvider().getPlayer()).resolves.toMatchObject({
+      extension: { kind: 'maimai', courseRank: 23 },
+    });
+  });
+
   it('覆盖所有未禁用谱面并生成 AP+、FDX+ 与满 DXScore', () => {
     const records = buildMaxedMaimaiRecords(catalog);
     expect(records).toHaveLength(2);
