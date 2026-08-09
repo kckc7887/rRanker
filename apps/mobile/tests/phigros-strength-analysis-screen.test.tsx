@@ -118,12 +118,16 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.getByText('16.1691')).toBeTruthy();
     expect(screen.getByText('五维主标签')).toBeTruthy();
     expect(screen.getByLabelText(/五维实力雷达/)).toBeTruthy();
+    expect(screen.getByText('原始 16.0000 × 1.0000')).toBeTruthy();
+    expect(screen.getByText('原始 16.1000 × 1.0100')).toBeTruthy();
+    expect(screen.getByText(/稀缺系数（1.0000–1.0200）/)).toBeTruthy();
     expect(screen.getByText('差速')).toBeTruthy();
     expect(screen.getByText('样本较少')).toBeTruthy();
 
     await fireEvent.press(screen.getAllByLabelText('查看读谱标签歌曲列表')[0]!);
     expect(screen.getByTestId('phigros-strength-tag-songs-sheet')).toBeTruthy();
     expect(screen.getByText('读谱标签歌曲')).toBeTruthy();
+    expect(screen.getByText('2 张入池 · 2 张候选 · ×1.0000')).toBeTruthy();
     expect(screen.getAllByText('Song').length).toBeGreaterThan(0);
     expect(screen.getByText('RKS 15.9000')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('关闭标签歌曲列表'));

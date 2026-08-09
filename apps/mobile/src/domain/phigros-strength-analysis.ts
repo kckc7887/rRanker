@@ -1,4 +1,4 @@
-import type { ScoreRecord } from '@/domain/models';
+import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
 import {
   phigrosKyouTagsForChart,
   resolvePhigrosKyouPrimaryTags,
@@ -10,6 +10,7 @@ import {
 const INCLUDED_RATES = new Set(['a', 's', 'v', 'phi']);
 const FLOATING_FLOOR_EPSILON = 1e-9;
 export const PHIGROS_STRENGTH_THRESHOLD_CAP = 16;
+export const PHIGROS_STRENGTH_MAX_AVAILABILITY_BONUS = 0.02;
 
 export interface PhigrosStrengthPool {
   threshold: number;
@@ -32,7 +33,10 @@ export interface PhigrosTagRksStat {
   tagId: number;
   name: string;
   type: PhigrosKyouTagType;
+  rawAverageRks: number | null;
   averageRks: number | null;
+  coefficient: number;
+  eligibleChartCount: number;
   deltaFromPoolAverage: number | null;
   sampleCount: number;
   isSmallSample: boolean;
@@ -56,24 +60,54 @@ type MutableTagAggregate = {
   charts: PhigrosStrengthChartSample[];
 };
 
+function effectiveStrengthTags(
+  chartTags: ReturnType<typeof phigrosKyouTagsForChart>,
+): readonly PhigrosKyouTag[] {
+  const primaryTags = resolvePhigrosKyouPrimaryTags(chartTags).tags;
+  const secondaryTags = chartTags.filter((tag) => tag.type === 'secondary' && tag.votes > 3);
+  return [...primaryTags, ...secondaryTags];
+}
+
 export function resolvePhigrosStrengthThreshold(playerRks: number): number {
   const safeRks = Number.isFinite(playerRks) ? playerRks : 0;
   const floored = Math.floor((safeRks - 0.2 + FLOATING_FLOOR_EPSILON) * 10) / 10;
   return Math.min(floored, PHIGROS_STRENGTH_THRESHOLD_CAP);
 }
 
+export function resolvePhigrosStrengthAvailabilityCoefficient(
+  eligibleChartCount: number,
+  maxEligibleChartCount: number,
+): number {
+  if (maxEligibleChartCount <= 0) return 1;
+  const normalizedCount = Math.min(
+    maxEligibleChartCount,
+    Math.max(0, eligibleChartCount),
+  ) / maxEligibleChartCount;
+  return 1 + PHIGROS_STRENGTH_MAX_AVAILABILITY_BONUS * (1 - normalizedCount);
+}
+
 function statFromAggregate(
   tag: PhigrosKyouTag,
   aggregate: MutableTagAggregate | undefined,
   poolAverage: number | null,
+  eligibleChartCount: number,
+  maxEligibleChartCount: number,
 ): PhigrosTagRksStat {
   const sampleCount = aggregate?.count ?? 0;
-  const averageRks = sampleCount > 0 ? aggregate!.sum / sampleCount : null;
+  const rawAverageRks = sampleCount > 0 ? aggregate!.sum / sampleCount : null;
+  const coefficient = resolvePhigrosStrengthAvailabilityCoefficient(
+    eligibleChartCount,
+    maxEligibleChartCount,
+  );
+  const averageRks = rawAverageRks == null ? null : rawAverageRks * coefficient;
   return {
     tagId: tag.id,
     name: tag.name,
     type: tag.type,
+    rawAverageRks,
     averageRks,
+    coefficient,
+    eligibleChartCount,
     deltaFromPoolAverage: averageRks != null && poolAverage != null
       ? averageRks - poolAverage
       : null,
@@ -122,6 +156,7 @@ export function analyzePhigrosStrength(
   records: readonly ScoreRecord[],
   tagIndex: PhigrosKyouChartTagIndex,
   tagCatalog: readonly PhigrosKyouTag[],
+  catalog: CatalogSnapshot,
 ): PhigrosStrengthAnalysis {
   const threshold = resolvePhigrosStrengthThreshold(playerRks);
   const poolRecords = records.filter((record) => (
@@ -135,13 +170,25 @@ export function analyzePhigrosStrength(
     ? Math.max(...poolRecords.map((record) => record.rating))
     : null;
   const aggregateByTagId = new Map<number, MutableTagAggregate>();
+  const eligibleChartCountByTagId = new Map<number, number>();
   let taggedCount = 0;
+
+  for (const song of catalog.songs) {
+    for (const chart of song.charts) {
+      if (!Number.isFinite(chart.difficultyConstant) || chart.difficultyConstant < threshold) continue;
+      const chartTags = phigrosKyouTagsForChart(tagIndex, song.id, chart.levelIndex);
+      for (const tag of effectiveStrengthTags(chartTags)) {
+        eligibleChartCountByTagId.set(
+          tag.id,
+          (eligibleChartCountByTagId.get(tag.id) ?? 0) + 1,
+        );
+      }
+    }
+  }
 
   for (const record of poolRecords) {
     const chartTags = phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex);
-    const primaryTags = resolvePhigrosKyouPrimaryTags(chartTags).tags;
-    const secondaryTags = chartTags.filter((tag) => tag.type === 'secondary' && tag.votes > 3);
-    const effectiveTags = [...primaryTags, ...secondaryTags];
+    const effectiveTags = effectiveStrengthTags(chartTags);
     if (effectiveTags.length > 0) taggedCount += 1;
     for (const tag of effectiveTags) {
       const aggregate = aggregateByTagId.get(tag.id) ?? { sum: 0, count: 0, charts: [] };
@@ -162,12 +209,33 @@ export function analyzePhigrosStrength(
   const primaryCatalog = tagCatalog
     .filter((tag) => tag.type === 'primary')
     .sort((left, right) => left.id - right.id);
+  const secondaryCatalog = tagCatalog.filter((tag) => tag.type === 'secondary');
+  const maxPrimaryEligibleChartCount = Math.max(
+    0,
+    ...primaryCatalog.map((tag) => eligibleChartCountByTagId.get(tag.id) ?? 0),
+  );
+  const maxSecondaryEligibleChartCount = Math.max(
+    0,
+    ...secondaryCatalog.map((tag) => eligibleChartCountByTagId.get(tag.id) ?? 0),
+  );
   const mainTags = primaryCatalog.map((tag) => (
-    statFromAggregate(tag, aggregateByTagId.get(tag.id), poolAverage)
+    statFromAggregate(
+      tag,
+      aggregateByTagId.get(tag.id),
+      poolAverage,
+      eligibleChartCountByTagId.get(tag.id) ?? 0,
+      maxPrimaryEligibleChartCount,
+    )
   ));
-  const secondaryTags = tagCatalog
-    .filter((tag) => tag.type === 'secondary' && aggregateByTagId.has(tag.id))
-    .map((tag) => statFromAggregate(tag, aggregateByTagId.get(tag.id), poolAverage))
+  const secondaryTags = secondaryCatalog
+    .filter((tag) => aggregateByTagId.has(tag.id))
+    .map((tag) => statFromAggregate(
+      tag,
+      aggregateByTagId.get(tag.id),
+      poolAverage,
+      eligibleChartCountByTagId.get(tag.id) ?? 0,
+      maxSecondaryEligibleChartCount,
+    ))
     .sort(strongestSort);
   const populatedMainTags = mainTags.filter((tag) => tag.averageRks != null);
 

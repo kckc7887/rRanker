@@ -53,7 +53,7 @@ function MainSummary({
       <Text style={[styles.summaryValue, { color: theme.textSecondary }]}>
         {tag?.averageRks == null
           ? '暂无样本'
-          : `${tag.averageRks.toFixed(4)} · ${tag.sampleCount} 张谱面${tag.isSmallSample ? ' · 样本较少' : ''}`}
+          : `${tag.averageRks.toFixed(4)} · ×${tag.coefficient.toFixed(4)} · ${tag.sampleCount} 张${tag.isSmallSample ? ' · 样本较少' : ''}`}
       </Text>
     </Pressable>
   );
@@ -81,8 +81,11 @@ function MainTagStat({
         </Text>
       </View>
       <Text style={[styles.mainTagStatMeta, { color: tag.isSmallSample ? theme.warning : theme.textMuted }]}>
-        {tag.sampleCount > 0 ? `${tag.sampleCount} 张谱面${tag.isSmallSample ? ' · 样本较少' : ''}` : '暂无样本'}
+        {tag.sampleCount > 0 ? `入池 ${tag.sampleCount} · 候选 ${tag.eligibleChartCount}${tag.isSmallSample ? ' · 样本较少' : ''}` : `暂无样本 · 候选 ${tag.eligibleChartCount}`}
       </Text>
+      {tag.rawAverageRks != null ? (
+        <Text style={[styles.mainTagStatFormula, { color: theme.textMuted }]}>原始 {tag.rawAverageRks.toFixed(4)} × {tag.coefficient.toFixed(4)}</Text>
+      ) : null}
     </Pressable>
   );
 }
@@ -100,7 +103,7 @@ function SecondaryTagRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`查看${tag.name}标签歌曲列表，标签 RKS ${tag.averageRks!.toFixed(4)}，${tag.sampleCount}张谱面${tag.isSmallSample ? '，样本较少' : ''}`}
+      accessibilityLabel={`查看${tag.name}标签歌曲列表，修正后标签 RKS ${tag.averageRks!.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，系数 ${tag.coefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面${tag.isSmallSample ? '，样本较少' : ''}`}
       onPress={() => onPress(tag)}
       style={({ pressed }) => [styles.tagRow, { borderColor: theme.border, backgroundColor: theme.surface }, pressed && styles.pressed]}
     >
@@ -111,7 +114,8 @@ function SecondaryTagRow({
             <Text style={[styles.smallSample, { color: theme.warning, borderColor: theme.warning }]}>样本较少</Text>
           ) : null}
         </View>
-        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>{tag.sampleCount} 张谱面</Text>
+        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>入池 {tag.sampleCount} · 候选 {tag.eligibleChartCount}</Text>
+        <Text style={[styles.tagFormula, { color: theme.textMuted }]}>原始 {tag.rawAverageRks!.toFixed(4)} × {tag.coefficient.toFixed(4)}</Text>
       </View>
       <View style={styles.tagNumbers}>
         <Text style={[styles.tagRks, { color: theme.text }]}>{tag.averageRks!.toFixed(4)}</Text>
@@ -168,7 +172,9 @@ function TagSongsSheet({
           <View style={styles.sheetHeaderSpacer} />
           <View style={styles.sheetTitleBlock}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>{tag?.name ?? ''}标签歌曲</Text>
-            <Text style={[styles.sheetCount, { color: theme.textMuted }]}>{tag?.sampleCount ?? 0} 张谱面 · RKS 从高到低</Text>
+            <Text style={[styles.sheetCount, { color: theme.textMuted }]}>
+              {tag ? `${tag.sampleCount} 张入池 · ${tag.eligibleChartCount} 张候选 · ×${tag.coefficient.toFixed(4)}` : ''}
+            </Text>
           </View>
           <Pressable
             accessibilityRole="button"
@@ -212,14 +218,15 @@ export default function PhigrosStrengthAnalysisScreen() {
     catalogQuery.data?.snapshot,
   ), [catalogQuery.data?.snapshot, tagsQuery.data]);
   const analysis = useMemo(() => {
-    if (!phigrosPayload || !tagsQuery.data) return null;
+    if (!phigrosPayload || !tagsQuery.data || !catalogQuery.data?.snapshot) return null;
     return analyzePhigrosStrength(
       phigrosPayload.playerScore.value,
       phigrosPayload.records,
       tagIndex,
       tagsQuery.data.tags,
+      catalogQuery.data.snapshot,
     );
-  }, [phigrosPayload, tagIndex, tagsQuery.data]);
+  }, [catalogQuery.data?.snapshot, phigrosPayload, tagIndex, tagsQuery.data]);
   const titleMap = useMemo(() => new Map(
     (catalogQuery.data?.snapshot.songs ?? []).map((song) => [song.id, song.title]),
   ), [catalogQuery.data?.snapshot.songs]);
@@ -321,7 +328,7 @@ export default function PhigrosStrengthAnalysisScreen() {
           <Metric label="标签覆盖" value={coverage} />
           <Metric label="池内最高" value={analysis.pool.maxRks?.toFixed(4) ?? '—'} />
         </View>
-        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；每张达标谱面独立计数。</Text>
+        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；标签 RKS = 入池成绩均值 × 稀缺系数（1.0000–1.0200），候选数统计所有定数达标谱面，不要求游玩或评级。</Text>
       </Card>
 
       {analysis.pool.totalCount === 0 ? (
@@ -357,7 +364,7 @@ export default function PhigrosStrengthAnalysisScreen() {
             <View style={styles.sectionHeading}>
               <View>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>细分标签</Text>
-                <Text style={[styles.sectionHint, { color: theme.textMuted }]}>按标签 RKS 从高到低 · 右侧为相对池平均</Text>
+                <Text style={[styles.sectionHint, { color: theme.textMuted }]}>按修正后标签 RKS 从高到低 · 右侧为相对池平均</Text>
               </View>
               <Text style={[styles.sectionCount, { color: theme.accent }]}>{analysis.secondaryTags.length}</Text>
             </View>
@@ -414,6 +421,7 @@ const styles = StyleSheet.create({
   mainTagStatName: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
   mainTagStatRks: { fontSize: 13, lineHeight: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   mainTagStatMeta: { fontSize: 10, lineHeight: 14 },
+  mainTagStatFormula: { fontSize: 9, lineHeight: 13, fontVariant: ['tabular-nums'] },
   summaryRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 8 },
   summaryBox: { flex: 1, minHeight: 78, borderWidth: 1, borderRadius: 12, padding: 10, gap: 3 },
   summaryLabel: { fontSize: 10, lineHeight: 14, fontWeight: '800' },
@@ -427,6 +435,7 @@ const styles = StyleSheet.create({
   tagName: { fontSize: 15, lineHeight: 20, fontWeight: '700' },
   smallSample: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, fontSize: 9, lineHeight: 13, fontWeight: '800' },
   tagMeta: { fontSize: 11, lineHeight: 15 },
+  tagFormula: { fontSize: 10, lineHeight: 14, fontVariant: ['tabular-nums'] },
   tagNumbers: { alignItems: 'flex-end', gap: 2 },
   tagRks: { fontSize: 16, lineHeight: 21, fontWeight: '800', fontVariant: ['tabular-nums'] },
   tagDelta: { fontSize: 11, lineHeight: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
