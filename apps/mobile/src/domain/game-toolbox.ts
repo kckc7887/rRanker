@@ -49,6 +49,13 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         summaryLabel: '版本对照',
       },
       {
+        id: 'kaleidx-scope',
+        href: '/tools/kaleidx-scope',
+        title: 'KALEIDX◈SCOPE',
+        detail: '查询国服六色门解锁条件、钥匙曲池与门内挑战内容',
+        summaryLabel: '万花筒',
+      },
+      {
         id: 'random-charts',
         href: '/tools/random-charts',
         title: '随机歌曲',

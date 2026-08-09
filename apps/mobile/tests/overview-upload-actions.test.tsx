@@ -303,7 +303,7 @@ describe('总览上传和同步操作', () => {
   it('工具箱入口描述超过一行时单行省略', async () => {
     mockProviderId = 'local';
     const screen = await render(<OverviewScreen />);
-    const summary = screen.getByText('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 随机歌曲 · 机厅查找 · 成绩图片');
+    const summary = screen.getByText('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 万花筒 · 随机歌曲 · 机厅查找 · 成绩图片');
     expect(summary.props.numberOfLines).toBe(1);
     expect(summary.props.ellipsizeMode).toBe('tail');
   });

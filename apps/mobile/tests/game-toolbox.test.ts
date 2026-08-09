@@ -10,11 +10,12 @@ describe('per-game toolbox registry', () => {
       'tolerance',
       'plates',
       'versions',
+      'kaleidx-scope',
       'random-charts',
       'arcade-finder',
       'best-image',
     ]);
-    expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 随机歌曲 · 机厅查找 · 成绩图片');
+    expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 万花筒 · 随机歌曲 · 机厅查找 · 成绩图片');
   });
 
   it('gives Phigros push-rks and strength-analysis toolbox entries', () => {
