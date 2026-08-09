@@ -9,6 +9,7 @@ import {
 
 const INCLUDED_RATES = new Set(['a', 's', 'v', 'phi']);
 const FLOATING_FLOOR_EPSILON = 1e-9;
+export const PHIGROS_STRENGTH_THRESHOLD_CAP = 16;
 
 export interface PhigrosStrengthPool {
   threshold: number;
@@ -57,7 +58,8 @@ type MutableTagAggregate = {
 
 export function resolvePhigrosStrengthThreshold(playerRks: number): number {
   const safeRks = Number.isFinite(playerRks) ? playerRks : 0;
-  return Math.floor((safeRks - 0.2 + FLOATING_FLOOR_EPSILON) * 10) / 10;
+  const floored = Math.floor((safeRks - 0.2 + FLOATING_FLOOR_EPSILON) * 10) / 10;
+  return Math.min(floored, PHIGROS_STRENGTH_THRESHOLD_CAP);
 }
 
 function statFromAggregate(

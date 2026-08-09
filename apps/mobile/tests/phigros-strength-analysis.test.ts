@@ -49,7 +49,9 @@ function resolved(tag: PhigrosKyouTag, votes: number): PhigrosKyouResolvedTag {
 describe('Phigros strength analysis', () => {
   it('floors player RKS minus 0.2 to one decimal without boundary drift', () => {
     expect(resolvePhigrosStrengthThreshold(16.1691)).toBe(15.9);
-    expect(resolvePhigrosStrengthThreshold(16.3)).toBe(16.1);
+    expect(resolvePhigrosStrengthThreshold(15.3)).toBe(15.1);
+    expect(resolvePhigrosStrengthThreshold(16.3)).toBe(16);
+    expect(resolvePhigrosStrengthThreshold(17)).toBe(16);
     expect(resolvePhigrosStrengthThreshold(0)).toBe(-0.2);
   });
 
