@@ -100,6 +100,13 @@ describe('TUF screens', () => {
     expect(screen.getByText('99.80%')).toBeTruthy();
   });
 
+  it('renders the unbound empty state without reading playerScore from a null payload', async () => {
+    mockProfile = undefined;
+    const screen = await render(<TufOverviewScreen />);
+    expect(screen.getByText('请在游戏管理中绑定 TUF 玩家')).toBeTruthy();
+    expect(screen.queryByText('TUF · RANKED SCORE')).toBeNull();
+  });
+
   it('handles sparse detail fields and exposes HTTPS links only', async () => {
     mockLevelDetail = { ...level, dlLink: 'http://unsafe.example/file', videoLink: 'https://video.example/watch' };
     const screen = await render(<TufLevelDetailScreen levelId="11372" />);
