@@ -12,9 +12,12 @@ const FLOATING_FLOOR_EPSILON = 1e-9;
 const STRENGTH_EQUALITY_EPSILON = 1e-9;
 export const PHIGROS_STRENGTH_THRESHOLD_CAP = 16;
 export const PHIGROS_STRENGTH_MAX_AVAILABILITY_BONUS = 0.02;
+export const PHIGROS_STRENGTH_MAX_ANALYSIS_SUPPLEMENTS_PER_TAG = 5;
 
 export interface PhigrosStrengthPool {
   threshold: number;
+  baseCount: number;
+  supplementedCount: number;
   totalCount: number;
   taggedCount: number;
   averageRks: number | null;
@@ -28,6 +31,7 @@ export interface PhigrosStrengthChartSample {
   difficultyConstant: number;
   achievements: number;
   rks: number;
+  isSupplemental: boolean;
 }
 
 export interface PhigrosTagRksStat {
@@ -40,6 +44,7 @@ export interface PhigrosTagRksStat {
   difficultyCoefficient: number;
   coefficient: number;
   eligibleChartCount: number;
+  supplementedSampleCount: number;
   eligibleAverageDifficulty: number | null;
   sampleCoverage: number;
   deltaFromPoolAverage: number | null;
@@ -138,10 +143,12 @@ function statFromAggregate(
   poolAverage: number | null,
   eligibleChartCount: number,
   maxEligibleChartCount: number,
+  supplementedSampleCount: number,
   eligibleAverageDifficulty: number | null,
   maxEligibleAverageDifficulty: number,
 ): PhigrosTagRksStat {
   const sampleCount = aggregate?.count ?? 0;
+  const isSmallSample = sampleCount > 0 && sampleCount < 3;
   const rawAverageRks = sampleCount > 0 ? aggregate!.sum / sampleCount : null;
   const countCoefficient = resolvePhigrosStrengthAvailabilityCoefficient(
     eligibleChartCount,
@@ -180,13 +187,14 @@ function statFromAggregate(
     difficultyCoefficient,
     coefficient,
     eligibleChartCount,
+    supplementedSampleCount,
     eligibleAverageDifficulty,
     sampleCoverage,
     deltaFromPoolAverage: averageRks != null && poolAverage != null
       ? averageRks - poolAverage
       : null,
     sampleCount,
-    isSmallSample: sampleCount > 0 && sampleCount < 3,
+    isSmallSample,
     charts: [...(aggregate?.charts ?? [])].sort((left, right) => (
       right.rks - left.rks
       || right.achievements - left.achievements
@@ -233,23 +241,21 @@ export function analyzePhigrosStrength(
   catalog: CatalogSnapshot,
 ): PhigrosStrengthAnalysis {
   const threshold = resolvePhigrosStrengthThreshold(playerRks);
-  const poolRecords = records.filter((record) => (
+  const basePoolRecords = records.filter((record) => (
     Number.isFinite(record.rating)
     && record.rating >= threshold
     && INCLUDED_RATES.has(record.rate.toLowerCase())
   ));
-  const poolSum = poolRecords.reduce((sum, record) => sum + record.rating, 0);
-  const poolAverage = poolRecords.length > 0 ? poolSum / poolRecords.length : null;
-  const poolMax = poolRecords.length > 0
-    ? Math.max(...poolRecords.map((record) => record.rating))
-    : null;
   const aggregateByTagId = new Map<number, MutableTagAggregate>();
   const eligibilityByTagId = new Map<number, MutableEligibilityAggregate>();
-  let taggedCount = 0;
+  const supplementedSampleCountByTagId = new Map<number, number>();
+  const chartKey = (songId: string, levelIndex: number) => `${songId}\u0000${levelIndex}`;
+  const candidateChartKeys = new Set<string>();
 
   for (const song of catalog.songs) {
     for (const chart of song.charts) {
       if (!Number.isFinite(chart.difficultyConstant) || chart.difficultyConstant < threshold) continue;
+      candidateChartKeys.add(chartKey(song.id, chart.levelIndex));
       const chartTags = phigrosKyouTagsForChart(tagIndex, song.id, chart.levelIndex);
       for (const tag of effectiveStrengthTags(chartTags)) {
         const eligibility = eligibilityByTagId.get(tag.id) ?? { count: 0, difficultySum: 0 };
@@ -260,31 +266,123 @@ export function analyzePhigrosStrength(
     }
   }
 
-  for (const record of poolRecords) {
+  const addRecordToTag = (
+    record: ScoreRecord,
+    tag: PhigrosKyouTag,
+    isSupplemental: boolean,
+  ) => {
+    const aggregate = aggregateByTagId.get(tag.id) ?? { sum: 0, count: 0, charts: [] };
+    aggregate.sum += record.rating;
+    aggregate.count += 1;
+    aggregate.charts.push({
+      songId: record.songId,
+      title: record.title,
+      levelIndex: record.levelIndex,
+      difficultyConstant: record.difficultyConstant,
+      achievements: record.achievements,
+      rks: record.rating,
+      isSupplemental,
+    });
+    aggregateByTagId.set(tag.id, aggregate);
+  };
+
+  const aggregateRecords = (poolRecords: readonly ScoreRecord[], supplementalKeys: ReadonlySet<string>) => {
+    aggregateByTagId.clear();
+    supplementedSampleCountByTagId.clear();
+    for (const record of poolRecords) {
+      const key = chartKey(record.songId, record.levelIndex);
+      const isSupplemental = supplementalKeys.has(key);
+      const effectiveTags = effectiveStrengthTags(
+        phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex),
+      );
+      for (const tag of effectiveTags) {
+        addRecordToTag(record, tag, isSupplemental);
+        if (isSupplemental) {
+          supplementedSampleCountByTagId.set(
+            tag.id,
+            (supplementedSampleCountByTagId.get(tag.id) ?? 0) + 1,
+          );
+        }
+      }
+    }
+  };
+
+  aggregateRecords(basePoolRecords, new Set());
+  const smallSampleTagIds = new Set(
+    [...aggregateByTagId.entries()]
+      .filter(([, aggregate]) => aggregate.count > 0 && aggregate.count < 3)
+      .map(([tagId]) => tagId),
+  );
+  const basePoolRecordKeys = new Set(
+    basePoolRecords.map((record) => chartKey(record.songId, record.levelIndex)),
+  );
+  const selectedSupplementKeysByTagId = new Map<number, Set<string>>();
+  const selectedSupplementTagIdsByKey = new Map<string, Set<number>>();
+  const supplementalPoolRecords = new Map<string, ScoreRecord>();
+  const supplementalCandidates = records
+    .filter((record) => {
+      const key = chartKey(record.songId, record.levelIndex);
+      return Number.isFinite(record.rating)
+        && candidateChartKeys.has(key)
+        && !basePoolRecordKeys.has(key);
+    })
+    .sort((left, right) => (
+      right.rating - left.rating
+      || right.achievements - left.achievements
+      || left.songId.localeCompare(right.songId)
+      || left.levelIndex - right.levelIndex
+    ));
+
+  for (const record of supplementalCandidates) {
+    const key = chartKey(record.songId, record.levelIndex);
     const chartTags = phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex);
     const effectiveTags = effectiveStrengthTags(chartTags);
-    if (effectiveTags.length > 0) taggedCount += 1;
     for (const tag of effectiveTags) {
-      const aggregate = aggregateByTagId.get(tag.id) ?? { sum: 0, count: 0, charts: [] };
-      aggregate.sum += record.rating;
-      aggregate.count += 1;
-      aggregate.charts.push({
-        songId: record.songId,
-        title: record.title,
-        levelIndex: record.levelIndex,
-        difficultyConstant: record.difficultyConstant,
-        achievements: record.achievements,
-        rks: record.rating,
-      });
-      aggregateByTagId.set(tag.id, aggregate);
+      if (!smallSampleTagIds.has(tag.id)) continue;
+      const selectedKeys = selectedSupplementKeysByTagId.get(tag.id) ?? new Set<string>();
+      if (selectedKeys.size >= PHIGROS_STRENGTH_MAX_ANALYSIS_SUPPLEMENTS_PER_TAG) continue;
+      if (selectedKeys.has(key)) continue;
+      selectedKeys.add(key);
+      selectedSupplementKeysByTagId.set(tag.id, selectedKeys);
+      const selectedTagIds = selectedSupplementTagIdsByKey.get(key) ?? new Set<number>();
+      selectedTagIds.add(tag.id);
+      selectedSupplementTagIdsByKey.set(key, selectedTagIds);
+      supplementalPoolRecords.set(key, record);
     }
   }
+
+  const poolRecords = [...basePoolRecords, ...supplementalPoolRecords.values()];
+  for (const [key, record] of supplementalPoolRecords) {
+    const selectedTagIds = selectedSupplementTagIdsByKey.get(key) ?? new Set<number>();
+    const effectiveTags = effectiveStrengthTags(
+      phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex),
+    );
+    for (const tag of effectiveTags) {
+      if (!selectedTagIds.has(tag.id)) continue;
+      addRecordToTag(record, tag, true);
+      supplementedSampleCountByTagId.set(
+        tag.id,
+        (supplementedSampleCountByTagId.get(tag.id) ?? 0) + 1,
+      );
+    }
+  }
+  const poolSum = poolRecords.reduce((sum, record) => sum + record.rating, 0);
+  const poolAverage = poolRecords.length > 0 ? poolSum / poolRecords.length : null;
+  const poolMax = poolRecords.length > 0
+    ? Math.max(...poolRecords.map((record) => record.rating))
+    : null;
+  const taggedCount = poolRecords.reduce((count, record) => (
+    effectiveStrengthTags(
+      phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex),
+    ).length > 0 ? count + 1 : count
+  ), 0);
 
   const primaryCatalog = tagCatalog
     .filter((tag) => tag.type === 'primary')
     .sort((left, right) => left.id - right.id);
   const secondaryCatalog = tagCatalog.filter((tag) => tag.type === 'secondary');
   const eligibleCount = (tagId: number) => eligibilityByTagId.get(tagId)?.count ?? 0;
+  const supplementedSampleCount = (tagId: number) => supplementedSampleCountByTagId.get(tagId) ?? 0;
   const eligibleAverageDifficulty = (tagId: number) => {
     const eligibility = eligibilityByTagId.get(tagId);
     return eligibility && eligibility.count > 0
@@ -314,6 +412,7 @@ export function analyzePhigrosStrength(
       poolAverage,
       eligibleCount(tag.id),
       maxPrimaryEligibleChartCount,
+      supplementedSampleCount(tag.id),
       eligibleAverageDifficulty(tag.id),
       maxPrimaryEligibleAverageDifficulty,
     )
@@ -326,6 +425,7 @@ export function analyzePhigrosStrength(
       poolAverage,
       eligibleCount(tag.id),
       maxSecondaryEligibleChartCount,
+      supplementedSampleCount(tag.id),
       eligibleAverageDifficulty(tag.id),
       maxSecondaryEligibleAverageDifficulty,
     ))
@@ -341,6 +441,8 @@ export function analyzePhigrosStrength(
     playerRks,
     pool: {
       threshold,
+      baseCount: basePoolRecords.length,
+      supplementedCount: supplementalPoolRecords.size,
       totalCount: poolRecords.length,
       taggedCount,
       averageRks: poolAverage,

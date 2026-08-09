@@ -180,7 +180,7 @@ describe('Phigros strength analysis', () => {
     });
   });
 
-  it('counts unplayed and failed-grade candidates without inflating full scores', () => {
+  it('keeps unplayed candidates and supplements a scored failed grade', () => {
     const index: PhigrosKyouChartTagIndex = new Map([
       [chartVersionKey('rare-played', 'SD', 2), [
         resolved(primaryTags[0]!, 20),
@@ -203,7 +203,11 @@ describe('Phigros strength analysis', () => {
       ['common-unplayed-2', 2, 16],
     ]));
 
-    expect(analysis.pool.totalCount).toBe(2);
+    expect(analysis.pool).toMatchObject({
+      baseCount: 2,
+      supplementedCount: 1,
+      totalCount: 3,
+    });
     expect(analysis.mainTags[0]).toMatchObject({
       rawAverageRks: 16,
       averageRks: 16,
@@ -217,7 +221,8 @@ describe('Phigros strength analysis', () => {
       averageRks: 16,
       coefficient: 1,
       eligibleChartCount: 4,
-      sampleCount: 1,
+      sampleCount: 2,
+      supplementedSampleCount: 1,
     });
     expect(analysis.mainTags[0]!.averageRks).toBeCloseTo(analysis.mainTags[1]!.averageRks!, 8);
     expect(analysis.secondaryTags[0]).toMatchObject({
@@ -225,6 +230,76 @@ describe('Phigros strength analysis', () => {
       coefficient: 1,
       eligibleChartCount: 1,
       sampleCount: 1,
+    });
+  });
+
+  it('adds up to five scored candidate charts to a small analysis sample without changing scarcity inputs', () => {
+    const index = new Map<string, PhigrosKyouResolvedTag[]>();
+    const catalogCharts: [songId: string, levelIndex: number, constant: number][] = [];
+    index.set(chartVersionKey('rare-played', 'SD', 2), [resolved(primaryTags[0]!, 20)]);
+    catalogCharts.push(['rare-played', 2, 16]);
+    for (let chartIndex = 0; chartIndex < 7; chartIndex += 1) {
+      const songId = `rare-candidate-${chartIndex}`;
+      index.set(chartVersionKey(songId, 'SD', 2), [resolved(primaryTags[0]!, 20)]);
+      catalogCharts.push([songId, 2, 16]);
+    }
+    index.set(chartVersionKey('rare-unplayed', 'SD', 2), [resolved(primaryTags[0]!, 20)]);
+    catalogCharts.push(['rare-unplayed', 2, 16]);
+    index.set(chartVersionKey('rare-outside-candidate', 'SD', 2), [resolved(primaryTags[0]!, 20)]);
+    catalogCharts.push(['rare-outside-candidate', 2, 15.9]);
+    for (let chartIndex = 0; chartIndex < 10; chartIndex += 1) {
+      const songId = `common-${chartIndex}`;
+      index.set(chartVersionKey(songId, 'SD', 2), [resolved(primaryTags[1]!, 20)]);
+      catalogCharts.push([songId, 2, 16]);
+    }
+    for (let chartIndex = 0; chartIndex < 3; chartIndex += 1) {
+      const songId = `enough-${chartIndex}`;
+      index.set(chartVersionKey(songId, 'SD', 2), [resolved(primaryTags[2]!, 20)]);
+      catalogCharts.push([songId, 2, 16]);
+    }
+    for (let chartIndex = 0; chartIndex < 6; chartIndex += 1) {
+      const songId = `enough-candidate-${chartIndex}`;
+      index.set(chartVersionKey(songId, 'SD', 2), [resolved(primaryTags[2]!, 20)]);
+      catalogCharts.push([songId, 2, 16]);
+    }
+
+    const analysis = analyzePhigrosStrength(17, [
+      score('rare-played', 2, 16, 'a'),
+      ...Array.from({ length: 7 }, (_, chartIndex) => (
+        score(`rare-candidate-${chartIndex}`, 2, 15.99 - chartIndex * 0.01, chartIndex === 0 ? 'b' : 'a')
+      )),
+      score('rare-outside-candidate', 2, 15.999, 'phi'),
+      score('enough-0', 2, 16, 'a'),
+      score('enough-1', 2, 16, 'a'),
+      score('enough-2', 2, 16, 'a'),
+      ...Array.from({ length: 6 }, (_, chartIndex) => (
+        score(`enough-candidate-${chartIndex}`, 2, 15.9 - chartIndex * 0.01, 'a')
+      )),
+    ], index, primaryTags, catalog(catalogCharts));
+
+    expect(analysis.pool).toMatchObject({
+      threshold: 16,
+      baseCount: 4,
+      supplementedCount: 5,
+      totalCount: 9,
+    });
+    expect(analysis.mainTags[0]).toMatchObject({
+      sampleCount: 6,
+      eligibleChartCount: 9,
+      supplementedSampleCount: 5,
+      isSmallSample: false,
+    });
+    expect(analysis.mainTags[0]!.rawAverageRks).toBeCloseTo(
+      (16 + 15.99 + 15.98 + 15.97 + 15.96 + 15.95) / 6,
+      10,
+    );
+    expect(analysis.mainTags[0]!.countCoefficient).toBeCloseTo(1.002, 10);
+    expect(analysis.mainTags[0]!.charts.filter((chart) => chart.isSupplemental)).toHaveLength(5);
+    expect(analysis.mainTags[0]!.charts.map((chart) => chart.songId)).not.toContain('rare-outside-candidate');
+    expect(analysis.mainTags[2]).toMatchObject({
+      sampleCount: 3,
+      eligibleChartCount: 9,
+      supplementedSampleCount: 0,
     });
   });
 

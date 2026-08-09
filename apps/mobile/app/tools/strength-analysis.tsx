@@ -53,7 +53,7 @@ function MainSummary({
       <Text style={[styles.summaryValue, { color: theme.textSecondary }]}>
         {tag?.averageRks == null
           ? '暂无样本'
-          : `${tag.averageRks.toFixed(4)} · ×${tag.coefficient.toFixed(4)} · ${tag.sampleCount} 张${tag.isSmallSample ? ' · 样本较少' : ''}`}
+          : `${tag.averageRks.toFixed(4)} · ×${tag.coefficient.toFixed(4)} · ${tag.sampleCount} 张${tag.supplementedSampleCount > 0 ? ` · 下取 ${tag.supplementedSampleCount}` : ''}${tag.isSmallSample ? ' · 样本较少' : ''}`}
       </Text>
     </Pressable>
   );
@@ -96,7 +96,7 @@ function MainTagStat({
         </Text>
       </View>
       <Text style={[styles.mainTagStatMeta, { color: tag.isSmallSample ? theme.warning : theme.textMuted }]}>
-        {tag.sampleCount > 0 ? `入池 ${tag.sampleCount}/${tag.eligibleChartCount} · 覆盖 ${(tag.sampleCoverage * 100).toFixed(0)}%${tag.isSmallSample ? ' · 样本较少' : ''}` : '暂无样本'}
+        {tag.sampleCount > 0 ? `入池 ${tag.sampleCount} · 候选 ${tag.eligibleChartCount} · 覆盖 ${(tag.sampleCoverage * 100).toFixed(0)}%${tag.supplementedSampleCount > 0 ? ` · 下取 ${tag.supplementedSampleCount}` : ''}${tag.isSmallSample ? ' · 样本较少' : ''}` : '暂无样本'}
       </Text>
       <Text style={[styles.mainTagStatMeta, { color: theme.textMuted }]}>候选均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
       {tag.rawAverageRks != null ? (
@@ -119,7 +119,7 @@ function SecondaryTagRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`查看${tag.name}标签歌曲列表，修正后标签 RKS ${tag.averageRks!.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，总系数 ${tag.coefficient.toFixed(4)}，数量系数 ${tag.countCoefficient.toFixed(4)}，按覆盖率生效的难度系数 ${tag.difficultyCoefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面，覆盖率 ${(tag.sampleCoverage * 100).toFixed(0)}%，候选平均定数 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '无数据'}${tag.isSmallSample ? '，样本较少' : ''}`}
+      accessibilityLabel={`查看${tag.name}标签歌曲列表，修正后标签 RKS ${tag.averageRks!.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，总系数 ${tag.coefficient.toFixed(4)}，数量系数 ${tag.countCoefficient.toFixed(4)}，按覆盖率生效的难度系数 ${tag.difficultyCoefficient.toFixed(4)}，${tag.sampleCount}张入池谱面${tag.supplementedSampleCount > 0 ? `，其中${tag.supplementedSampleCount}张为向下补入` : ''}，${tag.eligibleChartCount}张候选谱面，覆盖率 ${(tag.sampleCoverage * 100).toFixed(0)}%，候选平均定数 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '无数据'}${tag.isSmallSample ? '，样本较少' : ''}`}
       onPress={() => onPress(tag)}
       style={({ pressed }) => [styles.tagRow, { borderColor: theme.border, backgroundColor: theme.surface }, pressed && styles.pressed]}
     >
@@ -130,7 +130,7 @@ function SecondaryTagRow({
             <Text style={[styles.smallSample, { color: theme.warning, borderColor: theme.warning }]}>样本较少</Text>
           ) : null}
         </View>
-        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>入池 {tag.sampleCount}/{tag.eligibleChartCount} · 覆盖 {(tag.sampleCoverage * 100).toFixed(0)}% · 均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
+        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>入池 {tag.sampleCount} · 候选 {tag.eligibleChartCount} · 覆盖 {(tag.sampleCoverage * 100).toFixed(0)}%{tag.supplementedSampleCount > 0 ? ` · 下取 ${tag.supplementedSampleCount}` : ''} · 均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
         <Text style={[styles.tagFormula, { color: theme.textMuted }]}>原始 {tag.rawAverageRks!.toFixed(4)} × {tag.coefficient.toFixed(4)}</Text>
       </View>
       <View style={styles.tagNumbers}>
@@ -155,7 +155,7 @@ function TagChartRow({
     <View style={[styles.chartRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <View style={styles.chartCopy}>
         <Text numberOfLines={2} style={[styles.chartTitle, { color: theme.text }]}>{title}</Text>
-        <Text style={[styles.chartMeta, { color: theme.textMuted }]}>Acc {chart.achievements.toFixed(2)}%</Text>
+        <Text style={[styles.chartMeta, { color: chart.isSupplemental ? theme.warning : theme.textMuted }]}>Acc {chart.achievements.toFixed(2)}%{chart.isSupplemental ? ' · 向下补入' : ''}</Text>
       </View>
       <View style={styles.chartNumbers}>
         <PhigrosDifficultyBadge levelIndex={chart.levelIndex} constant={chart.difficultyConstant} />
@@ -189,7 +189,7 @@ function TagSongsSheet({
           <View style={styles.sheetTitleBlock}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>{tag?.name ?? ''}标签歌曲</Text>
             <Text style={[styles.sheetCount, { color: theme.textMuted }]}>
-              {tag ? `${tag.sampleCount} 张入池 · ${tag.eligibleChartCount} 张候选` : ''}
+              {tag ? `${tag.sampleCount} 张入池 · ${tag.eligibleChartCount} 张候选${tag.supplementedSampleCount > 0 ? ` · 下取 ${tag.supplementedSampleCount} 张` : ''}` : ''}
             </Text>
             <Text style={[styles.sheetCount, { color: theme.textMuted }]}>{tag ? `覆盖 ${(tag.sampleCoverage * 100).toFixed(0)}% · 均定 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'} · ×${tag.coefficient.toFixed(4)}` : ''}</Text>
           </View>
@@ -331,7 +331,7 @@ export default function PhigrosStrengthAnalysisScreen() {
       <Card style={styles.poolCard}>
         <View style={styles.poolHeading}>
           <View style={styles.poolTitleBlock}>
-            <Text style={[styles.eyebrow, { color: theme.accent }]}>RKS ≥ {analysis.pool.threshold.toFixed(1)} · A 及以上</Text>
+            <Text style={[styles.eyebrow, { color: theme.accent }]}>基础池 RKS ≥ {analysis.pool.threshold.toFixed(1)} · A 及以上</Text>
             <Text style={[styles.poolTitle, { color: theme.text }]}>本次分析池</Text>
           </View>
           <View style={styles.playerRksBlock}>
@@ -340,12 +340,12 @@ export default function PhigrosStrengthAnalysisScreen() {
           </View>
         </View>
         <View style={styles.metricsGrid}>
-          <Metric label="入池谱面" value={String(analysis.pool.totalCount)} />
+          <Metric label="入池谱面" value={analysis.pool.supplementedCount > 0 ? `${analysis.pool.totalCount}（+${analysis.pool.supplementedCount}）` : String(analysis.pool.totalCount)} />
           <Metric label="池平均 RKS" value={analysis.pool.averageRks?.toFixed(4) ?? '—'} />
           <Metric label="标签覆盖" value={coverage} />
           <Metric label="池内最高" value={analysis.pool.maxRks?.toFixed(4) ?? '—'} />
         </View>
-        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；平均定数校准按“入池数 ÷ 候选数”的覆盖率渐进生效，再对未达到同类满分基准的结果应用最高 1.0200 的数量补偿，且不越过满分基准。全满覆盖率为 100%，五维仍保持等值。</Text>
+        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0。候选池包含定数达到阈值的全部谱面，稀缺系数只由候选数量决定；基础分析池仅包含 RKS 达标且评级 A 以上的成绩。标签基础样本为 1–2 张时，从候选池内已有成绩但未入分析池的同标签谱面按 RKS 向下补入最多 5 张，参与标签平均、覆盖率和歌曲列表。再对未达到同类满分基准的结果应用校准并封顶。</Text>
       </Card>
 
       {analysis.pool.totalCount === 0 ? (
