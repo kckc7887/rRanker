@@ -140,35 +140,39 @@ export function TufSearchScreen() {
 export function TufOverviewScreen() {
   const theme = useAppTheme();
   const query = useGameData();
-  const payload = query.data?.payload.kind === 'adofai' ? query.data.payload : null;
-  return <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty={!payload}
-    error={query.error} onRetry={() => void query.refetch()} emptyText="请在游戏管理中绑定 TUF 玩家"
-    data={payload ?? undefined} renderData={(readyPayload) => {
-      const player = readyPayload.player;
-      const metrics = [
-        ['世界排名', player.globalRank ?? player.rank ? `#${player.globalRank ?? player.rank}` : '—'],
-        ['General Score', player.generalScore.toFixed(2)], ['PP Score', player.ppScore.toFixed(2)],
-        ['平均 XACC', player.averageXacc == null ? '—' : formatTufAccuracy(player.averageXacc)],
-        ['过关数', String(player.totalPasses)], ['Universal Pass', String(player.universalPassCount)],
-        ['最高难度', player.topDiff == null ? '—' : typeof player.topDiff === 'object' ? player.topDiff.name : String(player.topDiff)],
-        ['世界首杀', String(player.worldFirstCount)],
-      ];
-      return <ScrollView contentInsetAdjustmentBehavior="automatic"
-        style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.overview}>
-        <View style={styles.signature}><View style={styles.iceRail} /><View style={styles.fireRail} /></View>
-        <View style={[styles.hero, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.heroLabel, { color: theme.textMuted }]}>TUF · RANKED SCORE</Text>
-          <Text style={[styles.heroScore, { color: theme.text }]}>{readyPayload.playerScore.display}</Text>
-          <Text style={[styles.heroName, { color: theme.text }]}>{player.name}</Text>
-          <Text style={[styles.heroMeta, { color: theme.textMuted }]}>PID {player.id} · 公开社区资料</Text>
-        </View>
-        <View style={styles.metricGrid}>{metrics.map(([label, value]) => <View key={label}
-          style={[styles.metricCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <Text style={[styles.metricLabel, { color: theme.textMuted }]}>{label}</Text>
-          <Text style={[styles.metricValue, { color: theme.text }]}>{value}</Text>
-        </View>)}</View>
-      </ScrollView>;
-    }} />;
+  const queryPayload = query.data?.payload;
+  const payload = queryPayload?.kind === 'adofai' ? queryPayload : null;
+
+  if (!payload) {
+    return <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty
+      error={query.error} onRetry={() => void query.refetch()} emptyText="请在游戏管理中绑定 TUF 玩家"
+      data={undefined} renderData={() => <></>} />;
+  }
+
+  const player = payload.player;
+  const metrics = [
+    ['世界排名', player.globalRank ?? player.rank ? `#${player.globalRank ?? player.rank}` : '—'],
+    ['General Score', player.generalScore.toFixed(2)], ['PP Score', player.ppScore.toFixed(2)],
+    ['平均 XACC', player.averageXacc == null ? '—' : formatTufAccuracy(player.averageXacc)],
+    ['过关数', String(player.totalPasses)], ['Universal Pass', String(player.universalPassCount)],
+    ['最高难度', player.topDiff == null ? '—' : typeof player.topDiff === 'object' ? player.topDiff.name : String(player.topDiff)],
+    ['世界首杀', String(player.worldFirstCount)],
+  ];
+  return <ScrollView contentInsetAdjustmentBehavior="automatic"
+    style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.overview}>
+    <View style={styles.signature}><View style={styles.iceRail} /><View style={styles.fireRail} /></View>
+    <View style={[styles.hero, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Text style={[styles.heroLabel, { color: theme.textMuted }]}>TUF · RANKED SCORE</Text>
+      <Text style={[styles.heroScore, { color: theme.text }]}>{payload.playerScore.display}</Text>
+      <Text style={[styles.heroName, { color: theme.text }]}>{player.name}</Text>
+      <Text style={[styles.heroMeta, { color: theme.textMuted }]}>PID {player.id} · 公开社区资料</Text>
+    </View>
+    <View style={styles.metricGrid}>{metrics.map(([label, value]) => <View key={label}
+      style={[styles.metricCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Text style={[styles.metricLabel, { color: theme.textMuted }]}>{label}</Text>
+      <Text style={[styles.metricValue, { color: theme.text }]}>{value}</Text>
+    </View>)}</View>
+  </ScrollView>;
 }
 
 function safeHttps(url: string | null | undefined): string | null {
