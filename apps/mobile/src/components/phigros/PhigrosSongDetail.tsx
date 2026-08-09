@@ -32,7 +32,7 @@ import type { Chart, PhigrosChartNotes, ScoreRecord, Song } from '@/domain/model
 import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import {
   buildPhigrosKyouChartTagIndex,
-  phigrosKyouTagsForChart,
+  phigrosKyouPresentedTagsForChart,
   type PhigrosKyouChartTagIndex,
   type PhigrosKyouResolvedTag,
 } from '@/domain/phigros-kyou';
@@ -404,7 +404,7 @@ function ChartCarousel({
   notesPending: boolean;
   kyouTagIndex: PhigrosKyouChartTagIndex;
 }) {
-  const [expandedTags, setExpandedTags] = useState<ReturnType<typeof phigrosKyouTagsForChart>>([]);
+  const [expandedTags, setExpandedTags] = useState<ReturnType<typeof phigrosKyouPresentedTagsForChart>>([]);
   return (
     <>
       <SharedChartCarousel
@@ -432,7 +432,7 @@ function ChartCarousel({
               library={library}
               width={cardWidth}
               notesPending={notesPending}
-              kyouTags={phigrosKyouTagsForChart(kyouTagIndex, song.id, chart.levelIndex)}
+              kyouTags={phigrosKyouPresentedTagsForChart(kyouTagIndex, song.id, chart.levelIndex)}
               onShowAllKyouTags={setExpandedTags}
             />
           );
@@ -466,7 +466,7 @@ function ChartCard({
   library: LibraryHook;
   width: number;
   notesPending: boolean;
-  kyouTags: ReturnType<typeof phigrosKyouTagsForChart>;
+  kyouTags: ReturnType<typeof phigrosKyouPresentedTagsForChart>;
   onShowAllKyouTags: (tags: readonly PhigrosKyouResolvedTag[]) => void;
 }) {
   const theme = useAppTheme();
