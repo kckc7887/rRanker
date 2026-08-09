@@ -1,22 +1,28 @@
 import { useState } from 'react';
 import {
-  ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+import { DxRatingCard } from '@/components/DxRatingCard';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { TufScoreCard } from '@/components/adofai/TufScoreCard';
 import { TufSongRow } from '@/components/adofai/TufSongRow';
+import {
+  TufCatalogFilterBar, TufRecordsFilterBar, type TufDifficultyBand,
+} from '@/components/adofai/TufFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
+import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
-import type { TufPass, TufPassSort, TufSortOrder } from '@/domain/tuf';
+import type { TufLevelSort, TufPass, TufPassSort, TufSortOrder } from '@/domain/tuf';
+import type { DxRatingTheme } from '@/domain/dx-rating-theme';
 import { formatTufAccuracy, presentTufChart } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { useTufLevel, useTufLevelSearch, useTufPasses, useTufProfile } from '@/hooks/use-tuf';
+import { useTufDifficulties, useTufLevel, useTufLevelSearch, useTufPasses, useTufProfile } from '@/hooks/use-tuf';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -27,6 +33,29 @@ function useActiveTufPlayerId() {
 
 function LoadingFooter({ loading }: { loading: boolean }) {
   return loading ? <ActivityIndicator style={styles.footer} /> : null;
+}
+
+function uniqueById<T extends { id: number }>(items: T[]): T[] {
+  return [...new Map(items.map((item) => [item.id, item])).values()];
+}
+
+function SearchHeader({
+  accessibilityLabel, placeholder, value, onChangeText, loaded, total,
+}: {
+  accessibilityLabel: string;
+  placeholder: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  loaded: number;
+  total?: number;
+}) {
+  const theme = useAppTheme();
+  return <View style={[styles.searchWrap, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+    <TextInput accessibilityLabel={accessibilityLabel} placeholder={placeholder} placeholderTextColor={theme.textMuted}
+      value={value} onChangeText={onChangeText}
+      style={[styles.searchInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]} />
+    <Text style={[styles.resultCount, { color: theme.textMuted }]}>已加载 {loaded}{total == null ? '' : ` / ${total}`} 条</Text>
+  </View>;
 }
 
 type TufBestSection = { id: string; title: string; data: TufPass[] };
@@ -69,11 +98,6 @@ export function TufBestScreen() {
   </View>;
 }
 
-const SORTS: { id: TufPassSort; label: string }[] = [
-  { id: 'score', label: 'Score' }, { id: 'speed', label: '速度' }, { id: 'date', label: '日期' },
-  { id: 'xacc', label: 'XACC' }, { id: 'difficulty', label: '难度' }, { id: 'impact', label: 'Impact' },
-];
-
 export function TufRecordsScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
@@ -81,23 +105,21 @@ export function TufRecordsScreen() {
   const [sortBy, setSortBy] = useState<TufPassSort>('date');
   const [order, setOrder] = useState<TufSortOrder>('DESC');
   const [bestPerLevel, setBestPerLevel] = useState(false);
-  const query = useTufPasses(playerId, { sortBy, order, bestPerLevel });
-  const records = query.data?.pages.flatMap((page) => page.passes) ?? [];
-  const controls = <View style={[styles.controls, { borderBottomColor: theme.border }]}>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-      {SORTS.map((sort) => <Pressable key={sort.id} onPress={() => setSortBy(sort.id)}
-        style={[styles.chip, { borderColor: theme.border }, sortBy === sort.id && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-        <Text style={[styles.chipText, { color: sortBy === sort.id ? '#FFF' : theme.text }]}>{sort.label}</Text>
-      </Pressable>)}
-    </ScrollView>
-    <View style={styles.controlRow}>
-      <Pressable accessibilityRole="button" onPress={() => setOrder((value) => value === 'DESC' ? 'ASC' : 'DESC')}>
-        <Text style={[styles.order, { color: theme.accent }]}>{order === 'DESC' ? '降序 ↓' : '升序 ↑'}</Text>
-      </Pressable>
-      <View style={styles.switchRow}><Text style={[styles.switchLabel, { color: theme.text }]}>每关最佳</Text>
-        <Switch value={bestPerLevel} onValueChange={setBestPerLevel} /></View>
-    </View>
-  </View>;
+  const [keyword, setKeyword] = useState('');
+  const [filterExpanded, setFilterExpanded] = useState(true);
+  const debounced = useDebouncedValue(keyword, 350);
+  const query = useTufPasses(playerId, { sortBy, order, bestPerLevel, query: debounced.trim() || undefined });
+  const records = uniqueById(query.data?.pages.flatMap((page) => page.passes) ?? []);
+  const total = query.data?.pages[0]?.total;
+  const controls = <>
+    <SearchHeader accessibilityLabel="筛选 TUF 成绩" placeholder="搜索关卡、歌曲或作者" value={keyword}
+      onChangeText={setKeyword} loaded={records.length} total={total} />
+    <TufRecordsFilterBar expanded={filterExpanded} sortBy={sortBy} order={order} bestPerLevel={bestPerLevel}
+      onExpandedChange={setFilterExpanded} onSortByChange={setSortBy} onOrderChange={setOrder}
+      onBestPerLevelChange={setBestPerLevel} onReset={() => {
+        setSortBy('date'); setOrder('DESC'); setBestPerLevel(false);
+      }} />
+  </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <RecordsListPage<TufPass> beforeList={controls} isLoading={query.isLoading} isError={query.isError}
       isEmpty={!query.isLoading && records.length === 0} error={query.error}
@@ -117,12 +139,34 @@ export function TufSearchScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const [keyword, setKeyword] = useState('');
+  const [filterExpanded, setFilterExpanded] = useState(true);
+  const [sortBy, setSortBy] = useState<TufLevelSort>('RECENT');
+  const [order, setOrder] = useState<TufSortOrder>('DESC');
+  const [difficultyBand, setDifficultyBand] = useState<TufDifficultyBand>('all');
+  const [includeSpecial, setIncludeSpecial] = useState(true);
   const debounced = useDebouncedValue(keyword, 350);
-  const query = useTufLevelSearch(debounced);
-  const levels = query.data?.pages.flatMap((page) => page.results) ?? [];
-  const search = <View style={styles.searchWrap}><TextInput accessibilityLabel="搜索 TUF 关卡"
-    placeholder="搜索关卡、歌曲或作者" placeholderTextColor={theme.textMuted} value={keyword} onChangeText={setKeyword}
-    style={[styles.searchInput, { backgroundColor: theme.surface, color: theme.text, borderColor: theme.border }]} /></View>;
+  const difficulties = useTufDifficulties();
+  const specialDifficulties = difficulties.data?.filter((item) => item.type !== 'PGU').map((item) => item.name) ?? [];
+  const pguRange = difficultyBand === 'all'
+    ? (includeSpecial ? undefined : 'P1,U20')
+    : `${difficultyBand}1,${difficultyBand}20`;
+  const query = useTufLevelSearch(debounced, {
+    sort: sortBy, order, pguRange,
+    specialDifficulties: includeSpecial && difficultyBand !== 'all' && specialDifficulties.length
+      ? specialDifficulties
+      : undefined,
+  });
+  const levels = uniqueById(query.data?.pages.flatMap((page) => page.results) ?? []);
+  const total = query.data?.pages[0]?.total;
+  const search = <>
+    <SearchHeader accessibilityLabel="搜索 TUF 关卡" placeholder="搜索关卡、歌曲或作者" value={keyword}
+      onChangeText={setKeyword} loaded={levels.length} total={total} />
+    <TufCatalogFilterBar expanded={filterExpanded} sortBy={sortBy} order={order} difficultyBand={difficultyBand}
+      includeSpecial={includeSpecial} specialAvailable={specialDifficulties.length > 0}
+      onExpandedChange={setFilterExpanded} onSortByChange={setSortBy} onOrderChange={setOrder}
+      onDifficultyBandChange={setDifficultyBand} onIncludeSpecialChange={setIncludeSpecial}
+      onReset={() => { setSortBy('RECENT'); setOrder('DESC'); setDifficultyBand('all'); setIncludeSpecial(true); }} />
+  </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <CatalogListPage beforeList={search} isLoading={query.isLoading} isError={query.isError}
       isEmpty={!query.isLoading && levels.length === 0} error={query.error} onRetry={() => void query.refetch()}
@@ -150,30 +194,41 @@ export function TufOverviewScreen() {
   }
 
   const player = payload.player;
+  const rank = player.globalRank ?? player.rank;
   const metrics = [
-    ['世界排名', player.globalRank ?? player.rank ? `#${player.globalRank ?? player.rank}` : '—'],
     ['General Score', player.generalScore.toFixed(2)], ['PP Score', player.ppScore.toFixed(2)],
     ['平均 XACC', player.averageXacc == null ? '—' : formatTufAccuracy(player.averageXacc)],
-    ['过关数', String(player.totalPasses)], ['Universal Pass', String(player.universalPassCount)],
+    ['Universal Pass', String(player.universalPassCount)],
     ['最高难度', player.topDiff == null ? '—' : typeof player.topDiff === 'object' ? player.topDiff.name : String(player.topDiff)],
     ['世界首杀', String(player.worldFirstCount)],
   ];
   return <ScrollView contentInsetAdjustmentBehavior="automatic"
-    style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.overview}>
-    <View style={styles.signature}><View style={styles.iceRail} /><View style={styles.fireRail} /></View>
-    <View style={[styles.hero, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <Text style={[styles.heroLabel, { color: theme.textMuted }]}>TUF · RANKED SCORE</Text>
-      <Text style={[styles.heroScore, { color: theme.text }]}>{payload.playerScore.display}</Text>
-      <Text style={[styles.heroName, { color: theme.text }]}>{player.name}</Text>
-      <Text style={[styles.heroMeta, { color: theme.textMuted }]}>PID {player.id} · 公开社区资料</Text>
+    testID="tuf-overview-scroll" style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.overview}>
+    <Text style={[styles.eyebrow, { color: theme.textMuted }]}>冰与火之舞 · 玩家概览</Text>
+    <Text style={[styles.playerName, { color: theme.text }]}>{player.name}</Text>
+    <SourceStatus items={[{
+      key: 'scores', label: payload.source.label, updatedAt: payload.source.updatedAt,
+      state: payload.source.isStale ? 'cache' : 'live',
+    }]} />
+    <DxRatingCard label={payload.playerScore.label} display={payload.playerScore.display} rating={payload.playerScore.value}
+      meta={`世界排名 ${rank ? `#${rank}` : '—'} · ${player.totalPasses} 条公开成绩`}
+      themeOverride={TUF_RATING_THEME} sideBadge={{ title: 'TUF PLAYER', value: String(player.id) }} />
+    <View style={[styles.overviewCard, { backgroundColor: theme.surface }]}>
+      <Text style={[styles.overviewCardTitle, { color: theme.text }]}>公开资料</Text>
+      <View style={styles.metricGrid}>{metrics.map(([label, value]) => <View key={label} style={styles.metricCell}>
+        <Text style={[styles.metricLabel, { color: theme.textMuted }]}>{label}</Text>
+        <Text style={[styles.metricValue, { color: theme.text }]}>{value}</Text>
+      </View>)}</View>
     </View>
-    <View style={styles.metricGrid}>{metrics.map(([label, value]) => <View key={label}
-      style={[styles.metricCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <Text style={[styles.metricLabel, { color: theme.textMuted }]}>{label}</Text>
-      <Text style={[styles.metricValue, { color: theme.text }]}>{value}</Text>
-    </View>)}</View>
   </ScrollView>;
 }
+
+const TUF_RATING_THEME: DxRatingTheme = {
+  id: 'tuf', label: 'TUF',
+  fillColors: ['#45C9F4', '#6977B8', '#F15B55'], fillLocations: [0, 0.5, 1],
+  borderColors: ['#209FCB', '#8A5A91', '#C53E3B'], borderLocations: [0, 0.5, 1],
+  overlayColor: 'rgba(10, 22, 38, 0.18)', textColor: '#FFFFFF', starColor: '#FFFFFF', starCount: 0,
+};
 
 function safeHttps(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -234,17 +289,14 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 }, list: { flex: 1 }, listContent: { padding: 16, gap: 10 }, footer: { marginVertical: 18 },
+  page: { flex: 1 }, list: { flex: 1 }, listContent: { padding: 12, gap: 9 }, footer: { marginVertical: 18 },
   sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 }, notice: { padding: 12, fontSize: 12 },
-  controls: { paddingTop: 10, paddingHorizontal: 14, paddingBottom: 10, gap: 9, borderBottomWidth: StyleSheet.hairlineWidth },
-  chips: { gap: 7 }, chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 }, chipText: { fontSize: 12, fontWeight: '700' },
-  controlRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, order: { fontWeight: '700' }, switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, switchLabel: { fontSize: 13 },
-  searchWrap: { padding: 14 }, searchInput: { height: 46, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14 },
-  overview: { padding: 16, gap: 14 }, signature: { height: 4, borderRadius: 2, overflow: 'hidden', flexDirection: 'row' }, iceRail: { flex: 1, backgroundColor: '#44C7F4' }, fireRail: { flex: 1, backgroundColor: '#F15B55' },
-  hero: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 18, padding: 22, alignItems: 'center' }, heroLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  heroScore: { fontSize: 42, fontWeight: '900', fontVariant: ['tabular-nums'], marginTop: 5 }, heroName: { fontSize: 20, fontWeight: '800', marginTop: 9 }, heroMeta: { fontSize: 12, marginTop: 3 },
-  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metricCard: { width: '48%', flexGrow: 1, borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 14, gap: 5 },
+  searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  searchInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 }, resultCount: { fontSize: 11 },
+  overview: { padding: 20, gap: 16, flexGrow: 1 }, eyebrow: { fontSize: 13 }, playerName: { fontSize: 28, fontWeight: '700' },
+  overviewCard: { borderRadius: 16, padding: 18, gap: 14 }, overviewCardTitle: { fontSize: 18, fontWeight: '700' },
+  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 18 }, metricCell: { width: '50%', gap: 4, paddingRight: 10 },
   metricLabel: { fontSize: 11 }, metricValue: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   detail: { padding: 16, gap: 12, paddingBottom: 40 }, detailTitle: { fontSize: 25, fontWeight: '900' }, detailArtist: { fontSize: 14 },
   metadata: { borderRadius: 15, overflow: 'hidden', flexDirection: 'row', flexWrap: 'wrap' }, metadataCell: { minWidth: '48%', padding: 13 },

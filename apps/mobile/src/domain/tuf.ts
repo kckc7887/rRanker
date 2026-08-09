@@ -115,8 +115,24 @@ export type TufLevelPage = z.infer<typeof TufLevelPageSchema>;
 export type TufLevelDetailResponse = z.infer<typeof TufLevelDetailResponseSchema>;
 export type TufPassSort = 'score' | 'speed' | 'date' | 'xacc' | 'difficulty' | 'impact';
 export type TufSortOrder = 'ASC' | 'DESC';
-export type TufPassQuery = { offset: number; limit: number; sortBy: TufPassSort; order: TufSortOrder; bestPerLevel: boolean };
-export type TufLevelQuery = { query?: string; offset: number; limit: number };
+export type TufLevelSort = 'RECENT' | 'DIFF' | 'CLEARS' | 'TOTAL_CLEARS' | 'LIKES' | 'BASESCORE' | 'BPM' | 'TILES' | 'TIME';
+export type TufPassQuery = {
+  offset: number;
+  limit: number;
+  sortBy: TufPassSort;
+  order: TufSortOrder;
+  bestPerLevel: boolean;
+  query?: string;
+};
+export type TufLevelQuery = {
+  query?: string;
+  offset: number;
+  limit: number;
+  sort?: TufLevelSort;
+  order?: TufSortOrder;
+  pguRange?: string;
+  specialDifficulties?: readonly string[];
+};
 export const TUF_PAGE_SIZE = 30;
 
 export type TufSongExtension = { level: TufLevel; upstreamSongId: number | null };
