@@ -476,7 +476,6 @@ export default function PhigrosStrengthAnalysisScreen() {
                     : '五维持平时不强行指定薄弱项'}
                 </Text>
               </View>
-              <Text style={[styles.sectionCount, { color: theme.accent }]}>{analysis.recommendations.length}</Text>
             </View>
             {analysis.recommendations.length > 0 ? analysis.recommendations.map((recommendation) => (
               <RecommendationRow
@@ -502,7 +501,6 @@ export default function PhigrosStrengthAnalysisScreen() {
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>细分标签</Text>
                 <Text style={[styles.sectionHint, { color: theme.textMuted }]}>按修正后标签 RKS 从高到低 · 右侧为相对池平均</Text>
               </View>
-              <Text style={[styles.sectionCount, { color: theme.accent }]}>{analysis.secondaryTags.length}</Text>
             </View>
             {analysis.secondaryTags.length > 0 ? analysis.secondaryTags.map((tag) => (
               <SecondaryTagRow key={tag.tagId} tag={tag} onPress={setSelectedTag} />
@@ -586,7 +584,6 @@ const styles = StyleSheet.create({
   recommendationTarget: { fontSize: 13, lineHeight: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   recommendationGain: { fontSize: 10, lineHeight: 14, fontVariant: ['tabular-nums'] },
   secondarySection: { gap: 8 },
-  sectionCount: { fontSize: 18, lineHeight: 23, fontWeight: '800', fontVariant: ['tabular-nums'] },
   tagRow: { minHeight: 66, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   tagCopy: { flex: 1, minWidth: 0, gap: 3 },
   tagTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 },
