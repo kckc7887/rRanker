@@ -75,18 +75,19 @@ import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
-import { TufOverviewScreen } from '@/screens/TufScreens';
+import {
+  formatTufOverviewRatingMeta, TUF_RATING_THEME, TufOverviewDetails,
+} from '@/components/adofai/TufOverviewDetails';
 
 export default function OverviewTabScreen() {
   return <CachedTabScreen><OverviewScreen /></CachedTabScreen>;
 }
 
 export function OverviewScreen() {
-  const activeGameId = useSession((state) => state.activeGameId);
-  return activeGameId === 'adofai' ? <TufOverviewScreen /> : <ClassicOverviewScreen />;
+  return <PublicOverviewScreen />;
 }
 
-function ClassicOverviewScreen() {
+function PublicOverviewScreen() {
   const { showNotification } = useNotification();
   const theme = useAppTheme();
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
@@ -113,6 +114,7 @@ function ClassicOverviewScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const refreshingRef = useRef(false);
+  const renderableData = data?.payload && typeof data.payload === 'object' ? data : undefined;
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
   const syncBusy = syncing;
@@ -400,10 +402,11 @@ function ClassicOverviewScreen() {
       <QueryStateView<GameDataBundle>
         isLoading={isLoading}
         isError={isError}
-        isEmpty={false}
+        isEmpty={Boolean(data && !renderableData)}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
-        data={data}
+        emptyText={activeGameId === 'adofai' ? '请在游戏管理中绑定 TUF 玩家' : '暂无数据'}
+        data={renderableData}
         renderData={(bundle) => (
           <ScrollView
             contentInsetAdjustmentBehavior="automatic"
@@ -428,7 +431,12 @@ function ClassicOverviewScreen() {
               <Text style={styles.switchHint}>·点击切换·</Text>
             </Pressable>
 
-            {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
+            {bundle.payload.kind === 'adofai' ? (
+              <SourceStatus items={[{
+                key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt,
+                state: bundle.payload.source.isStale ? 'cache' : 'live',
+              }]} />
+            ) : bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
               <SourceStatus items={[
                 { key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt, state: bundle.payload.source.isStale ? 'cache' : 'live' },
                 { key: 'catalog', label: bundle.payload.catalogSource.label, updatedAt: bundle.payload.catalogSource.updatedAt, state: bundle.payload.catalogSource.isStale ? 'cache' : 'live' },
@@ -469,7 +477,8 @@ function ClassicOverviewScreen() {
 
             {bundle.payload.kind === 'maimai'
               || bundle.payload.kind === 'phigros'
-              || bundle.payload.kind === 'chunithm' ? (
+              || bundle.payload.kind === 'chunithm'
+              || bundle.payload.kind === 'adofai' ? (
               <DxRatingCard
                 borderless={bundle.payload.kind === 'chunithm'}
                 label={bundle.payload.playerScore.label}
@@ -477,20 +486,26 @@ function ClassicOverviewScreen() {
                 rating={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData
                   ? null
                   : bundle.payload.playerScore.value}
-                meta={bundle.payload.kind === 'chunithm'
-                  ? formatChunithmBestMeta(bundle.payload.bestSections)
-                  : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
-                themeOverride={bundle.payload.kind === 'phigros'
-                  ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
+                meta={bundle.payload.kind === 'adofai'
+                  ? formatTufOverviewRatingMeta(bundle.payload.player)
                   : bundle.payload.kind === 'chunithm'
-                    ? resolveChunithmPossessionTheme(bundle.payload.player?.rating_possession)
-                    : undefined}
+                    ? formatChunithmBestMeta(bundle.payload.bestSections)
+                    : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
+                themeOverride={bundle.payload.kind === 'adofai'
+                  ? TUF_RATING_THEME
+                  : bundle.payload.kind === 'phigros'
+                    ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
+                    : bundle.payload.kind === 'chunithm'
+                      ? resolveChunithmPossessionTheme(bundle.payload.player?.rating_possession)
+                      : undefined}
                 valueTheme={bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
                   ? resolveChunithmRatingTier(bundle.payload.playerScore.value)
                   : undefined}
-                sideBadge={bundle.payload.kind === 'phigros'
-                  ? { title: '课题模式', value: formatPhigrosChallengeBadge(bundle.payload.challengeModeRank) }
-                  : maimaiCourseRankBadge(bundle)}
+                sideBadge={bundle.payload.kind === 'adofai'
+                  ? { title: 'TUF PLAYER', value: String(bundle.payload.player.id) }
+                  : bundle.payload.kind === 'phigros'
+                    ? { title: '课题模式', value: formatPhigrosChallengeBadge(bundle.payload.challengeModeRank) }
+                    : maimaiCourseRankBadge(bundle)}
               />
             ) : (
               <DxRatingCard
@@ -500,6 +515,8 @@ function ClassicOverviewScreen() {
                 meta={bundle.gameId === 'chunithm' ? '临时账号不含成绩' : '当前游戏暂未提供评分'}
               />
             )}
+
+            {bundle.payload.kind === 'adofai' ? <TufOverviewDetails player={bundle.payload.player} /> : null}
 
             {bundle.payload.kind === 'maimai' && bundle.providerId === 'local' ? (
               <Pressable
@@ -636,7 +653,13 @@ function ClassicOverviewScreen() {
 
             <View style={[styles.card, { backgroundColor: theme.surface }]}>
               <Text style={[styles.cardTitle, { color: theme.text }]}>数据状态</Text>
-              {bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
+              {bundle.payload.kind === 'adofai' ? (
+                <>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>读取方式：TUF 公开接口按需读取</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
+                </>
+              ) : bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
                 <>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>曲库：{bundle.payload.catalogSource.label}</Text>
@@ -940,6 +963,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'maimai-test') return '示例查分器';
   if (providerId === 'chunithm-test') return '示例查分器';
   if (providerId === 'chunithm-temp') return '无成绩临时账号';
+  if (providerId === 'tuf') return 'TUF 社区';
   return '本地';
 }
 

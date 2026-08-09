@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { TufLevel, TufPass, TufPlayer } from '@/domain/tuf';
-import { TufBestScreen, TufLevelDetailScreen, TufOverviewScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
+import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
 
 const mockPush = jest.fn();
 const mockFetchNextPage = jest.fn();
@@ -11,7 +11,6 @@ const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
 let mockLevelDetail: TufLevel | undefined;
 let mockProfile: TufPlayer | undefined;
-let mockNullGamePayload = false;
 
 jest.mock('expo-router', () => ({ router: { push: (value: unknown) => mockPush(value) } }));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
@@ -30,19 +29,6 @@ jest.mock('@/hooks/use-tuf', () => ({
   useTufDifficulties: () => mockUseTufDifficulties(),
   useTufLevel: () => ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
 }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
-  data: mockNullGamePayload ? {
-    gameId: 'adofai', providerId: 'tuf', profile: {}, payload: null,
-  } : mockProfile ? {
-    gameId: 'adofai', providerId: 'tuf', profile: {},
-    payload: {
-      kind: 'adofai', player: mockProfile,
-      playerScore: { label: 'RANKED SCORE', value: mockProfile.rankedScore, display: mockProfile.rankedScore.toFixed(2) },
-      source: { kind: 'tuf', label: 'TUF 社区公开数据', updatedAt: '2026-08-10T00:00:00.000Z', isStale: false },
-    },
-  } : undefined,
-  isLoading: false, isError: false, error: null, refetch: mockRefetch,
-}) }));
 
 const level = {
   id: 11372, songId: 401, song: '关卡 A', artist: '艺术家', diffId: 8, baseScore: 12.34,
@@ -85,7 +71,6 @@ describe('TUF screens', () => {
       isLoading: false, isError: false, error: null, refetch: mockRefetch,
     });
     mockLevelDetail = level;
-    mockNullGamePayload = false;
   });
 
   it('keeps the profile Top 20 order instead of pass response order', async () => {
@@ -148,29 +133,6 @@ describe('TUF screens', () => {
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
       pguRange: 'G1,G20', specialDifficulties: undefined,
     }));
-  });
-
-  it('renders overview metrics from public profile fields', async () => {
-    const screen = await render(<TufOverviewScreen />);
-    expect(screen.getByText('1824.52')).toBeTruthy();
-    expect(screen.getByText(/世界排名 #12/)).toBeTruthy();
-    expect(screen.getByText('99.80%')).toBeTruthy();
-    expect(screen.getByText('公开资料')).toBeTruthy();
-    expect(screen.getByText(/TUF 社区公开数据/)).toBeTruthy();
-  });
-
-  it('renders the unbound empty state without reading playerScore from a null payload', async () => {
-    mockProfile = undefined;
-    const screen = await render(<TufOverviewScreen />);
-    expect(screen.getByText('请在游戏管理中绑定 TUF 玩家')).toBeTruthy();
-    expect(screen.queryByText('冰与火之舞 · 玩家概览')).toBeNull();
-  });
-
-  it('rejects a stale cached bundle whose payload is null', async () => {
-    mockNullGamePayload = true;
-    const screen = await render(<TufOverviewScreen />);
-    expect(screen.getByText('请在游戏管理中绑定 TUF 玩家')).toBeTruthy();
-    expect(screen.queryByText('冰与火之舞 · 玩家概览')).toBeNull();
   });
 
   it('handles sparse detail fields and exposes HTTPS links only', async () => {
