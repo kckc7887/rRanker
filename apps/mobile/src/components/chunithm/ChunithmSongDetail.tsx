@@ -973,7 +973,7 @@ const styles = StyleSheet.create({
   statCell: { gap: 2 },
   statCellPressable: { paddingVertical: 2, paddingRight: 4 },
   statCellPressed: { opacity: 0.6 },
-  statHint: { fontSize: 10, fontWeight: '600' },
+  statHint: { fontSize: 9, fontWeight: '400' },
   statLabel: { fontSize: 12, fontWeight: '700' },
   statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
