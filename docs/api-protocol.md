@@ -89,6 +89,32 @@
 - 筛选选择仅存在于页面筛选状态，不写入 SQLite、个人曲库或备份；本地标签、全局标签预设和个人曲库标签均不参与 DXRating 筛选。
 - 标签快照更新时剔除已失效的标签 ID；加载期间保留选择且不阻塞列表，无缓存且最终不可用时清空选择，并在来源状态中标记不可用。
 
+## Kyou Phigros 别名与谱面标签
+
+基础：`https://rranker-phigros-data.cn-nb1.rains3.com/kyou/latest/`
+
+| 资源 | 方法 | Auth | 说明 |
+|------|------|------|------|
+| `manifest.json` | GET | 无 | 抓取完成时间与歌曲、别名、谱面、投票行数 |
+| `songs.json` | GET | 无 | Kyou 歌曲 ID、曲名与曲包 |
+| `aliases.json` | GET | 无 | 歌曲别名关系 |
+| `charts.json` | GET | 无 | 谱面 ID、难度、定数与主要标签元数据 |
+| `tag_catalog.json` | GET | 无 | 主要难点/细分配置标签名称、父级与说明 |
+| `tag_votes.json` | GET | 无 | 谱面—标签投票关系与票数 |
+
+> last_verified: 2026-08-09 — `manifest.json` 为 313 首歌曲、264 条别名、982 张谱面、6846 条投票关系；标签目录含 5 个主要难点和 38 个细分配置。Kyou 比当前正式曲库多 `Special_13 / Oblivion: PHIN` 一条无谱面愚人节记录，应用明确跳过。
+
+当前职责边界：
+
+- Provider 只读取上述 JSON；不读取重复 CSV 或聚合体积更大的 `data.json`。歌曲别名与谱面标签分别使用资源键 `phigros-kyou-aliases`、`phigros-kyou-chart-tags` 保存 SQLite 快照。
+- 每次读取校验 manifest 可用行数、唯一歌曲/谱面/标签 ID、歌曲—谱面—标签—父级引用和难度枚举；在线或结构失败时回退最近有效快照。查询结果一小时内复用，来源时间取 `finished_unix`。
+- Kyou ID 不写入公共曲库。曲名先做 NFKC、大小写、空格与标点规范化；同名曲按章节/曲包和完整定数组合消歧；`The Mountain Eater from MUSYNC` 固定映射到 `The Mountain Eater`。无法唯一证明的关系只跳过。
+- 别名按歌曲去重后合并进现有 `Song.aliases`，允许同一别名属于多首歌曲；用于歌曲详情、Phigros 曲库搜索和成绩搜索，但不写入个人曲库或备份。
+- 标签只展示/筛选 `votes > 0` 的关系；`main_label_question` 仅保真，不作为排除条件。卡片按主要难点优先、组内票数降序展示前 4 个，其余通过“+N”查看；标签使用应用中性/强调色，不推断 Kyou 未提供的颜色。
+- 曲库、成绩和随机歌曲各自保存 `selectedKyouTagIds`；多选为 AND，同一谱面必须拥有全部所选标签。无选择时不排除无标签谱面，有选择时无标签谱面不命中。
+- 标签不可用时入口禁用并清除失效选择，其他筛选和页面继续工作；随机歌曲偏好格式为 v3，读取 v2 时保留原条件并补空标签数组。
+- Kyou 快照计入 Phigros 存储分类和清理；不修改用户标签、个人曲库、备份格式、最佳图片筛选或 Phigros 原始 Provider DTO。
+
 ## LXNS 中二节奏公共曲库
 
 基础：`https://maimai.lxns.net/api/v0/chunithm`

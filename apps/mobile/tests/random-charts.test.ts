@@ -278,6 +278,7 @@ describe('filterPhigrosRandomCharts', () => {
     rank: null,
     xing: null,
     chapter: 'all',
+    selectedKyouTagIds: [],
   };
 
   it('keeps unplayed catalog charts under basic filters', () => {
@@ -330,5 +331,35 @@ describe('filterPhigrosRandomCharts', () => {
     expect(accuracy.map(chartPickKey)).toEqual(['song:SD:2']);
     expect(rank.map(chartPickKey)).toEqual(['song:SD:2']);
     expect(xing.map(chartPickKey)).toEqual(['song:SD:2']);
+  });
+
+  it('requires every selected Kyou tag on the same chart', () => {
+    const primary = { id: 152, name: '读谱', type: 'primary' as const, parentIds: [], description: '', votes: 8 };
+    const secondary = { id: 156, name: '差速', type: 'secondary' as const, parentIds: [152], description: '', votes: 3 };
+    const tagIndex = new Map([
+      ['song:SD:2', [primary, secondary]],
+      ['song:SD:3', [primary]],
+    ]);
+    const both = filterPhigrosRandomCharts(
+      phigrosCatalog,
+      phigrosRecords,
+      { ...filters, selectedKyouTagIds: [152, 156] },
+      {},
+      tagIndex,
+    );
+    expect(both.map(chartPickKey)).toEqual(['song:SD:2']);
+    expect(filterPhigrosRandomCharts(
+      phigrosCatalog,
+      phigrosRecords,
+      { ...filters, selectedKyouTagIds: [152] },
+      {},
+      tagIndex,
+    ).map(chartPickKey)).toEqual(['song:SD:2', 'song:SD:3']);
+    expect(filterPhigrosRandomCharts(
+      phigrosCatalog,
+      phigrosRecords,
+      { ...filters, selectedKyouTagIds: [152] },
+      {},
+    )).toEqual([]);
   });
 });

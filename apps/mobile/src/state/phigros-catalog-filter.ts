@@ -8,12 +8,14 @@ interface PhigrosCatalogFilterState {
   constantMin: string;
   constantMax: string;
   chapter: string | 'all';
+  selectedKyouTagIds: number[];
   setKeyword: (keyword: string) => void;
   setCollapsed: (collapsed: boolean) => void;
   setLevel: (level: PhigrosLevel | 'all') => void;
   setConstantMin: (constantMin: string) => void;
   setConstantMax: (constantMax: string) => void;
   setChapter: (chapter: string | 'all') => void;
+  setSelectedKyouTagIds: (tagIds: number[]) => void;
   clearFilters: () => void;
   reset: () => void;
 }
@@ -25,6 +27,7 @@ const DEFAULT_STATE = {
   constantMin: '',
   constantMax: '',
   chapter: 'all' as const,
+  selectedKyouTagIds: [] as number[],
 };
 
 export const usePhigrosCatalogFilter = create<PhigrosCatalogFilterState>((set) => ({
@@ -35,12 +38,14 @@ export const usePhigrosCatalogFilter = create<PhigrosCatalogFilterState>((set) =
   setConstantMin: (constantMin) => set({ constantMin }),
   setConstantMax: (constantMax) => set({ constantMax }),
   setChapter: (chapter) => set({ chapter }),
+  setSelectedKyouTagIds: (selectedKyouTagIds) => set({ selectedKyouTagIds }),
   clearFilters: () => set({
     keyword: '',
     level: 'all',
     constantMin: '',
     constantMax: '',
     chapter: 'all',
+    selectedKyouTagIds: [],
   }),
   reset: () => set(DEFAULT_STATE),
 }));

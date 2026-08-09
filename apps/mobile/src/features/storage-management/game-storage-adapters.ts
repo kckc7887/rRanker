@@ -2,6 +2,10 @@ import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
 import { DXRATING_CHART_TAGS_RESOURCE_KEY } from '@/domain/dxrating-chart-tags';
 import {
+  isPhigrosKyouResourceKey,
+  PHIGROS_KYOU_RESOURCE_KEYS,
+} from '@/domain/phigros-kyou';
+import {
   CHUNITHM_ALIAS_RESOURCE_KEY,
   CHUNITHM_CATALOG_RESOURCE_KEY,
   CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX,
@@ -32,6 +36,9 @@ export const CHUNITHM_CATALOG_RESOURCE_KEYS = [
   CHUNITHM_CATALOG_RESOURCE_KEY,
   CHUNITHM_ALIAS_RESOURCE_KEY,
 ] as const;
+export const PHIGROS_RESOURCE_KEYS = [
+  ...PHIGROS_KYOU_RESOURCE_KEYS,
+] as const;
 
 export type StorageSegmentId = 'app' | 'shared' | GameId;
 
@@ -59,6 +66,9 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   }
   if (gameId === 'chunithm'
     && (CHUNITHM_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
+    return true;
+  }
+  if (gameId === 'phigros' && isPhigrosKyouResourceKey(key)) {
     return true;
   }
   if (gameId === 'chunithm' && key.startsWith(CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX)) {

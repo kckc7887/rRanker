@@ -13,8 +13,8 @@ export type PhigrosRandomChartsPreferences = PhigrosRandomChartFilters & {
   count: PhigrosRandomChartsCount;
 };
 
-type StoredPhigrosRandomChartsPreferencesV2 = {
-  version: 2;
+type StoredPhigrosRandomChartsPreferencesV3 = {
+  version: 3;
 } & PhigrosRandomChartsPreferences;
 
 type KeyValueStore = {
@@ -46,6 +46,7 @@ export function defaultPhigrosRandomChartsPreferences(): PhigrosRandomChartsPref
     rank: null,
     xing: null,
     chapter: 'all',
+    selectedKyouTagIds: [],
   };
 }
 
@@ -61,6 +62,13 @@ function parseLegacyLevel(value: unknown): PhigrosLevel | 'all' {
     return level === undefined ? [] : [level];
   });
   return valid.length === 1 ? valid[0]! : 'all';
+}
+
+function parseTagIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is number => (
+    typeof item === 'number' && Number.isInteger(item) && item > 0
+  )))];
 }
 
 export function parsePhigrosRandomChartsPreferences(
@@ -79,7 +87,7 @@ export function parsePhigrosRandomChartsPreferences(
     output.constantMax = parseInput(raw.constantMax);
     return output;
   }
-  if (raw.version !== 2) return defaultPhigrosRandomChartsPreferences();
+  if (raw.version !== 2 && raw.version !== 3) return defaultPhigrosRandomChartsPreferences();
 
   if (raw.level === 'all'
     || (typeof raw.level === 'number' && VALID_LEVELS.has(raw.level as PhigrosLevel))) {
@@ -98,6 +106,7 @@ export function parsePhigrosRandomChartsPreferences(
   if (typeof raw.chapter === 'string' && (raw.chapter === 'all' || /^\d+$/.test(raw.chapter))) {
     output.chapter = raw.chapter;
   }
+  if (raw.version === 3) output.selectedKyouTagIds = parseTagIds(raw.selectedKyouTagIds);
   return output;
 }
 
@@ -117,9 +126,9 @@ export class PhigrosRandomChartsPreferencesStore {
   }
 
   async save(preferences: PhigrosRandomChartsPreferences): Promise<void> {
-    const value: StoredPhigrosRandomChartsPreferencesV2 = {
-      version: 2,
-      ...parsePhigrosRandomChartsPreferences({ version: 2, ...preferences }),
+    const value: StoredPhigrosRandomChartsPreferencesV3 = {
+      version: 3,
+      ...parsePhigrosRandomChartsPreferences({ version: 3, ...preferences }),
     };
     await this.storage.setItem(STORE_KEY, JSON.stringify(value));
   }

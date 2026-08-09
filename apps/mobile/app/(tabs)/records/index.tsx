@@ -15,6 +15,7 @@ import { matchesAchievementRange, matchesConstantRange, matchesMultiAchievementF
 import { buildDxRatingChartTagIndex, dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
 import { matchesChunithmConstantRange, matchesChunithmRankRange } from '@/domain/chunithm-filters';
 import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
+import { buildPhigrosKyouChartTagIndex, phigrosKyouChartHasAllTags } from '@/domain/phigros-kyou';
 import { matchesPhigrosXingFilter, phigrosChartNoteKey } from '@/domain/phigros-xing';
 import {
   buildChunithmScoreCards,
@@ -28,6 +29,7 @@ import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -375,11 +377,14 @@ function PhigrosRecordsScreen() {
   const session = useSession((s) => s.session);
   const gameData = useGameData();
   const catalogQuery = usePhigrosCatalog();
+  const kyouChartTags = usePhigrosKyouChartTags();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const {
     keyword, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
-    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setAccuracyMin, setAccuracyMax, setRank, setXing, setChapter,
+    selectedKyouTagIds,
+    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setAccuracyMin, setAccuracyMax,
+    setRank, setXing, setChapter, setSelectedKyouTagIds,
     clearFilters,
   } = usePhigrosRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
@@ -390,7 +395,24 @@ function PhigrosRecordsScreen() {
     [phigrosPayload?.records],
   );
 
-  const catalogSongs = catalogQuery.data?.snapshot.songs ?? [];
+  const catalogSongs = useMemo(
+    () => catalogQuery.data?.snapshot.songs ?? [],
+    [catalogQuery.data?.snapshot.songs],
+  );
+  const kyouTagIndex = useMemo(() => buildPhigrosKyouChartTagIndex(
+    kyouChartTags.data,
+    catalogQuery.data?.snapshot,
+  ), [catalogQuery.data?.snapshot, kyouChartTags.data]);
+  useEffect(() => {
+    if (selectedKyouTagIds.length === 0) return;
+    if (kyouChartTags.data) {
+      const validIds = new Set(kyouChartTags.data.tags.map((tag) => tag.id));
+      const next = selectedKyouTagIds.filter((tagId) => validIds.has(tagId));
+      if (next.length !== selectedKyouTagIds.length) setSelectedKyouTagIds(next);
+    } else if (kyouChartTags.isError) {
+      setSelectedKyouTagIds([]);
+    }
+  }, [kyouChartTags.data, kyouChartTags.isError, selectedKyouTagIds, setSelectedKyouTagIds]);
   const chapterIdBySong = useMemo(() => {
     const map = new Map<string, number>();
     for (const song of catalogSongs) {
@@ -413,13 +435,19 @@ function PhigrosRecordsScreen() {
   const searchDocs = useMemo(() => new Map(
     records.map((r) => {
       const title = titleMap.get(r.songId) ?? r.songId;
-      return [recordKey(r), { ...buildSearchDocument([r.songId, title]), title }] as const;
+      const song = catalogSongs.find((item) => item.id === r.songId);
+      return [recordKey(r), {
+        ...buildSearchDocument([r.songId, title, ...(song?.aliases ?? [])]),
+        title,
+      }] as const;
     }),
-  ), [records, titleMap]);
+  ), [catalogSongs, records, titleMap]);
 
   const filterSpec = useMemo(() => ({
     keyword: debouncedKeyword, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
-  }), [accuracyMax, accuracyMin, chapter, constantMax, constantMin, debouncedKeyword, level, rank, xing]);
+    selectedKyouTagIds,
+  }), [accuracyMax, accuracyMin, chapter, constantMax, constantMin, debouncedKeyword, level, rank,
+    selectedKyouTagIds, xing]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
   const filtered = useMemo<{ record: ScoreRecord; title: string }[]>(() => {
     if (!records.length) return [];
@@ -450,14 +478,22 @@ function PhigrosRecordsScreen() {
     list = list.filter((item) => matchesPhigrosXingFilter(
       item.record, deferredFilterSpec.xing, noteTotalByKey,
     ));
+    if (kyouChartTags.data && deferredFilterSpec.selectedKyouTagIds.length > 0) {
+      list = list.filter((item) => phigrosKyouChartHasAllTags(
+        kyouTagIndex,
+        item.record.songId,
+        item.record.levelIndex,
+        deferredFilterSpec.selectedKyouTagIds,
+      ));
+    }
     return list;
-  }, [chapterIdBySong, deferredFilterSpec, noteTotalByKey, records, searchDocs]);
+  }, [chapterIdBySong, deferredFilterSpec, kyouChartTags.data, kyouTagIndex, noteTotalByKey, records, searchDocs]);
 
   const isGameLoading = gameData.isLoading || catalogQuery.isLoading;
   const isGameError = gameData.isError || catalogQuery.isError;
   const error = gameData.error ?? catalogQuery.error;
   const refetchAll = () => {
-    void Promise.all([gameData.refetch(), catalogQuery.refetch()]);
+    void Promise.all([gameData.refetch(), catalogQuery.refetch(), kyouChartTags.refetch()]);
   };
   const source: DataSource = phigrosPayload?.source ?? {
     kind: 'generated',
@@ -483,6 +519,7 @@ function PhigrosRecordsScreen() {
     || rank
     || xing
     || chapter !== 'all'
+    || selectedKyouTagIds.length > 0
   );
 
   if (!hasSession && !isGameLoading) {
@@ -500,7 +537,7 @@ function PhigrosRecordsScreen() {
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput accessibilityLabel="成绩搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
+          placeholder="曲名 / 别名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
           value={keyword} onChangeText={setKeyword}
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
       </View>
@@ -509,6 +546,10 @@ function PhigrosRecordsScreen() {
         level={level} constantMin={constantMin} constantMax={constantMax}
         accuracyMin={accuracyMin} accuracyMax={accuracyMax} rank={rank} xing={xing}
         chapter={chapter} versions={catalogQuery.data?.snapshot.versions ?? []} onChapterChange={setChapter}
+        kyouTags={kyouChartTags.data?.tags ?? []}
+        selectedKyouTagIds={selectedKyouTagIds}
+        kyouTagState={kyouChartTags.data ? 'ready' : kyouChartTags.isLoading ? 'loading' : 'unavailable'}
+        onKyouTagIdsChange={setSelectedKyouTagIds}
         onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onAccuracyMinChange={setAccuracyMin} onAccuracyMaxChange={setAccuracyMax}
         onRankChange={setRank} onXingChange={setXing}
@@ -534,6 +575,16 @@ function PhigrosRecordsScreen() {
             <SourceStatus items={[
               { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
               { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
+              ...(kyouChartTags.data ? [{
+                key: 'phigros-kyou-tags' as const,
+                label: kyouChartTags.data.source.label,
+                updatedAt: kyouChartTags.data.source.updatedAt,
+                state: kyouChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
+              }] : kyouChartTags.isError ? [{
+                key: 'phigros-kyou-tags' as const,
+                label: 'Kyou 谱面标签不可用',
+                state: 'unavailable' as const,
+              }] : []),
             ]} />
             <Text style={styles.note}>共 {filtered.length} 条成绩</Text>
           </View>,

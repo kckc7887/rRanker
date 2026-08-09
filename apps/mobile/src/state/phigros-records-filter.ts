@@ -14,6 +14,7 @@ interface PhigrosRecordsFilterState {
   rank: PhigrosRankFilter | null;
   xing: PhigrosXingKind | null;
   chapter: string | 'all';
+  selectedKyouTagIds: number[];
   setKeyword: (value: string) => void;
   setCollapsed: (value: boolean) => void;
   setLevel: (level: PhigrosLevel | 'all') => void;
@@ -24,6 +25,7 @@ interface PhigrosRecordsFilterState {
   setRank: (value: PhigrosRankFilter | null) => void;
   setXing: (value: PhigrosXingKind | null) => void;
   setChapter: (value: string | 'all') => void;
+  setSelectedKyouTagIds: (value: number[]) => void;
   clearFilters: () => void;
   reset: () => void;
 }
@@ -39,6 +41,7 @@ const DEFAULT_STATE = {
   rank: null as PhigrosRankFilter | null,
   xing: null as PhigrosXingKind | null,
   chapter: 'all' as const,
+  selectedKyouTagIds: [] as number[],
 };
 
 export const usePhigrosRecordsFilter = create<PhigrosRecordsFilterState>((set) => ({
@@ -53,6 +56,7 @@ export const usePhigrosRecordsFilter = create<PhigrosRecordsFilterState>((set) =
   setRank: (rank) => set({ rank }),
   setXing: (xing) => set({ xing }),
   setChapter: (chapter) => set({ chapter }),
+  setSelectedKyouTagIds: (selectedKyouTagIds) => set({ selectedKyouTagIds }),
   clearFilters: () => set({
     keyword: '',
     level: 'all',
@@ -63,6 +67,7 @@ export const usePhigrosRecordsFilter = create<PhigrosRecordsFilterState>((set) =
     rank: null,
     xing: null,
     chapter: 'all',
+    selectedKyouTagIds: [],
   }),
   reset: () => set(DEFAULT_STATE),
 }));

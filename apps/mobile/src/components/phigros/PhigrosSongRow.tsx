@@ -14,12 +14,14 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
   favorite = false,
   favoritePending = false,
   onFavoriteChange,
+  matchedAlias,
 }: {
   song: Song;
   blurUrl: string | null;
   favorite?: boolean;
   favoritePending?: boolean;
   onFavoriteChange?: (songId: string, favorite: boolean) => void;
+  matchedAlias?: string;
 }) {
   const theme = useAppTheme();
   const [coverFailed, setCoverFailed] = useState(false);
@@ -33,6 +35,8 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
       mainStyle={styles.meta}
       titleStyle={styles.title}
       subtitleStyle={styles.composer}
+      matchNote={matchedAlias ? `别名：${matchedAlias}` : undefined}
+      matchNoteStyle={styles.composer}
       cover={(
         <View style={styles.coverWrap}>
           {coverFailed || !blurUrl ? (

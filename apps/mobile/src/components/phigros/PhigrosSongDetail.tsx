@@ -22,6 +22,7 @@ import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { TagEditor } from '@/components/TagEditor';
+import { PhigrosKyouChartTags } from './PhigrosKyouChartTags';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosXingBadge } from './PhigrosXingBadge';
@@ -29,11 +30,17 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
 import type { Chart, PhigrosChartNotes, ScoreRecord, Song } from '@/domain/models';
 import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
+import {
+  buildPhigrosKyouChartTagIndex,
+  phigrosKyouTagsForChart,
+  type PhigrosKyouChartTagIndex,
+} from '@/domain/phigros-kyou';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { resolvePhigrosXingKind } from '@/domain/phigros-xing';
 import { buildTagHistory } from '@/domain/user-library';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -56,6 +63,7 @@ export function PhigrosSongDetail({
 }) {
   const theme = useAppTheme();
   const catalog = usePhigrosCatalog();
+  const kyouChartTags = usePhigrosKyouChartTags();
   const gameData = useGameData();
   const library = useUserLibrary();
   const song = useMemo(() => {
@@ -77,6 +85,10 @@ export function PhigrosSongDetail({
   }, [gameData.data?.payload]);
 
   const provider = catalog.data?.provider ?? null;
+  const kyouTagIndex = useMemo(() => buildPhigrosKyouChartTagIndex(
+    kyouChartTags.data,
+    catalog.data?.snapshot,
+  ), [catalog.data?.snapshot, kyouChartTags.data]);
   const illustrationUrl = songId && provider ? provider.getIllustrationUrl(songId) : null;
   const blurUrl = songId && provider ? provider.getIllustrationBlurUrl(songId) : null;
   const lowresUrl = songId && provider ? provider.getIllustrationLowresUrl(songId) : null;
@@ -102,6 +114,9 @@ export function PhigrosSongDetail({
             records={records}
             catalogSource={catalogSource}
             scoreSource={scoreSource}
+            kyouTagSource={kyouChartTags.data?.source}
+            kyouTagsUnavailable={kyouChartTags.isError}
+            kyouTagIndex={kyouTagIndex}
             illustrationUrl={illustrationUrl}
             blurUrl={blurUrl}
             lowresUrl={lowresUrl}
@@ -179,6 +194,9 @@ function Detail({
   records,
   catalogSource,
   scoreSource,
+  kyouTagSource,
+  kyouTagsUnavailable,
+  kyouTagIndex,
   illustrationUrl,
   blurUrl,
   lowresUrl,
@@ -191,6 +209,9 @@ function Detail({
   records: ScoreRecord[];
   catalogSource?: import('@/domain/models').DataSource;
   scoreSource?: import('@/domain/models').DataSource;
+  kyouTagSource?: import('@/domain/models').DataSource;
+  kyouTagsUnavailable: boolean;
+  kyouTagIndex: PhigrosKyouChartTagIndex;
   illustrationUrl: string | null;
   blurUrl: string | null;
   lowresUrl: string | null;
@@ -317,6 +338,7 @@ function Detail({
           cardWidth={cardWidth}
           initialIndex={initialIndex}
           notesPending={notesPending}
+          kyouTagIndex={kyouTagIndex}
         />
         <View style={styles.details}>
           <SourceStatus items={[
@@ -332,7 +354,20 @@ function Detail({
               updatedAt: scoreSource?.updatedAt,
               state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live',
             },
+            ...(kyouTagSource ? [{
+              key: 'phigros-kyou-tags' as const,
+              label: kyouTagSource.label,
+              updatedAt: kyouTagSource.updatedAt,
+              state: kyouTagSource.isStale ? 'cache' as const : 'live' as const,
+            }] : kyouTagsUnavailable ? [{
+              key: 'phigros-kyou-tags' as const,
+              label: 'Kyou 谱面标签不可用',
+              state: 'unavailable' as const,
+            }] : []),
           ]} />
+          <Card>
+            <PhigrosSongInformation aliases={song.aliases ?? []} />
+          </Card>
           <Card>
             <TagEditor
               tags={songItem?.kind === 'song' ? songItem.tags : []}
@@ -357,6 +392,7 @@ function ChartCarousel({
   cardWidth,
   initialIndex,
   notesPending,
+  kyouTagIndex,
 }: {
   charts: Chart[];
   records: ScoreRecord[];
@@ -365,6 +401,7 @@ function ChartCarousel({
   cardWidth: number;
   initialIndex: number;
   notesPending: boolean;
+  kyouTagIndex: PhigrosKyouChartTagIndex;
 }) {
   return (
     <SharedChartCarousel
@@ -392,6 +429,7 @@ function ChartCarousel({
               library={library}
               width={cardWidth}
               notesPending={notesPending}
+              kyouTags={phigrosKyouTagsForChart(kyouTagIndex, song.id, chart.levelIndex)}
             />
           );
       }}
@@ -409,6 +447,7 @@ function ChartCard({
   library,
   width,
   notesPending,
+  kyouTags,
 }: {
   chart: Chart;
   best?: ScoreRecord;
@@ -416,6 +455,7 @@ function ChartCard({
   library: LibraryHook;
   width: number;
   notesPending: boolean;
+  kyouTags: ReturnType<typeof phigrosKyouTagsForChart>;
 }) {
   const theme = useAppTheme();
   const colors = phigrosLevelColors(chart.levelIndex);
@@ -509,6 +549,7 @@ function ChartCard({
       <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         谱师：{chart.charter || '未提供'}
       </Text>
+      <PhigrosKyouChartTags tags={kyouTags} />
       <NotesTable notes={asPhigrosNotes(chart.notes)} pending={notesPending} />
       <Pressable
         accessibilityRole="button"
@@ -542,6 +583,35 @@ function ChartCard({
         }, tags)}
       />
     </GameChartResultCard>
+  );
+}
+
+function PhigrosSongInformation({ aliases }: { aliases: readonly string[] }) {
+  const theme = useAppTheme();
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => setExpanded(false), [aliases]);
+  const aliasText = aliases.length ? aliases.join('、') : '无';
+  return (
+    <View style={styles.songInformation}>
+      <Text style={[styles.informationTitle, { color: theme.text }]}>歌曲信息</Text>
+      <View style={styles.informationRow}>
+        <Text style={[styles.informationLabel, { color: theme.textMuted }]}>别名</Text>
+        <Pressable
+          accessibilityRole={aliases.length ? 'button' : undefined}
+          accessibilityLabel={aliases.length ? `${expanded ? '收起' : '展开'}歌曲别名` : undefined}
+          disabled={aliases.length === 0}
+          onPress={() => setExpanded((value) => !value)}
+          style={styles.aliasValueRow}
+        >
+          <Text numberOfLines={expanded ? undefined : 2} style={[styles.informationValue, { color: theme.text }]}>
+            {aliasText}
+          </Text>
+          {aliases.length ? (
+            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={theme.textMuted} />
+          ) : null}
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -706,5 +776,11 @@ const styles = StyleSheet.create({
   },
   actionText: { fontWeight: '700' },
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
+  songInformation: { gap: 12 },
+  informationTitle: { fontSize: 15, lineHeight: 20, fontWeight: '800' },
+  informationRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  informationLabel: { width: 42, fontSize: 12, lineHeight: 18, fontWeight: '700' },
+  aliasValueRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  informationValue: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 19 },
   meta: { color: '#6B7280', fontSize: 12 },
 });

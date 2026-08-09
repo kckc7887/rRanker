@@ -16,6 +16,7 @@ describe('usePhigrosRecordsFilter store', () => {
       accuracyMax: '',
       rank: null,
       chapter: 'all',
+      selectedKyouTagIds: [],
     });
   });
 
@@ -25,12 +26,14 @@ describe('usePhigrosRecordsFilter store', () => {
     usePhigrosRecordsFilter.getState().setAccuracyMin('99');
     usePhigrosRecordsFilter.getState().setRank('phi');
     usePhigrosRecordsFilter.getState().setChapter('4');
+    usePhigrosRecordsFilter.getState().setSelectedKyouTagIds([152, 156]);
     expect(usePhigrosRecordsFilter.getState()).toMatchObject({
       level: 3,
       constantMin: '14',
       accuracyMin: '99',
       rank: 'phi',
       chapter: '4',
+      selectedKyouTagIds: [152, 156],
     });
   });
 
@@ -40,6 +43,7 @@ describe('usePhigrosRecordsFilter store', () => {
     usePhigrosRecordsFilter.getState().setLevel(2);
     usePhigrosRecordsFilter.getState().setRank('fc');
     usePhigrosRecordsFilter.getState().setChapter('6');
+    usePhigrosRecordsFilter.getState().setSelectedKyouTagIds([152]);
     usePhigrosRecordsFilter.getState().clearFilters();
     expect(usePhigrosRecordsFilter.getState()).toMatchObject({
       keyword: '',
@@ -47,6 +51,7 @@ describe('usePhigrosRecordsFilter store', () => {
       level: 'all',
       rank: null,
       chapter: 'all',
+      selectedKyouTagIds: [],
     });
   });
 });

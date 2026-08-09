@@ -21,6 +21,10 @@ import {
 } from './phigros-filters';
 import type { PhigrosLevel } from './phigros';
 import {
+  phigrosKyouChartHasAllTags,
+  type PhigrosKyouChartTagIndex,
+} from './phigros-kyou';
+import {
   matchesPhigrosXingFilter,
   type PhigrosXingKind,
 } from './phigros-xing';
@@ -50,6 +54,7 @@ export type PhigrosRandomChartFilters = {
   xing: PhigrosXingKind | null;
   /** 章节筛选：值来自 catalog.versions 的 id 字符串；'all' 不过滤 */
   chapter: string | 'all';
+  selectedKyouTagIds: number[];
 };
 
 export type RandomChartPick = {
@@ -197,8 +202,10 @@ export function filterPhigrosRandomCharts(
   records: readonly ScoreRecord[],
   filters: PhigrosRandomChartFilters,
   noteTotalByKey: Readonly<Record<string, number>>,
+  kyouTagIndex?: PhigrosKyouChartTagIndex,
 ): RandomChartPick[] {
   const bestByChart = buildBestRecordMap(records);
+  const selectedKyouTagIds = filters.selectedKyouTagIds ?? [];
   const scoreFilterActive = hasValidAchievementRange(
     filters.accuracyMin,
     filters.accuracyMax,
@@ -215,6 +222,12 @@ export function filterPhigrosRandomCharts(
         filters.constantMin,
         filters.constantMax,
       )) continue;
+      if (selectedKyouTagIds.length > 0 && (!kyouTagIndex || !phigrosKyouChartHasAllTags(
+        kyouTagIndex,
+        chart.songId,
+        chart.levelIndex,
+        selectedKyouTagIds,
+      ))) continue;
 
       const key = chartVersionKey(chart.songId, chart.type, chart.levelIndex);
       const record = bestByChart.get(key);
