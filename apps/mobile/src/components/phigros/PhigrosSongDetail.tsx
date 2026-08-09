@@ -22,7 +22,7 @@ import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { TagEditor } from '@/components/TagEditor';
-import { PhigrosKyouChartTags } from './PhigrosKyouChartTags';
+import { PhigrosKyouChartTags, PhigrosKyouChartTagsSheet } from './PhigrosKyouChartTags';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosXingBadge } from './PhigrosXingBadge';
@@ -34,6 +34,7 @@ import {
   buildPhigrosKyouChartTagIndex,
   phigrosKyouTagsForChart,
   type PhigrosKyouChartTagIndex,
+  type PhigrosKyouResolvedTag,
 } from '@/domain/phigros-kyou';
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { resolvePhigrosXingKind } from '@/domain/phigros-xing';
@@ -403,21 +404,23 @@ function ChartCarousel({
   notesPending: boolean;
   kyouTagIndex: PhigrosKyouChartTagIndex;
 }) {
+  const [expandedTags, setExpandedTags] = useState<ReturnType<typeof phigrosKyouTagsForChart>>([]);
   return (
-    <SharedChartCarousel
-      accessibilityLabel="难度卡片"
-      cardWidth={cardWidth}
-      contentContainerStyle={styles.carousel}
-      empty={(
-        <View style={styles.noCharts}>
-          <Text style={styles.meta}>暂无可用难度</Text>
-        </View>
-      )}
-      gap={CARD_GAP}
-      initialIndex={initialIndex}
-      items={charts}
-      keyExtractor={(chart) => `${chart.songId}:${chart.levelIndex}`}
-      renderItem={(chart) => {
+    <>
+      <SharedChartCarousel
+        accessibilityLabel="难度卡片"
+        cardWidth={cardWidth}
+        contentContainerStyle={styles.carousel}
+        empty={(
+          <View style={styles.noCharts}>
+            <Text style={styles.meta}>暂无可用难度</Text>
+          </View>
+        )}
+        gap={CARD_GAP}
+        initialIndex={initialIndex}
+        items={charts}
+        keyExtractor={(chart) => `${chart.songId}:${chart.levelIndex}`}
+        renderItem={(chart) => {
           const best = records
             .filter((record) => record.songId === song.id && record.levelIndex === chart.levelIndex)
             .sort((left, right) => (right.dxScore ?? 0) - (left.dxScore ?? 0))[0];
@@ -430,13 +433,20 @@ function ChartCarousel({
               width={cardWidth}
               notesPending={notesPending}
               kyouTags={phigrosKyouTagsForChart(kyouTagIndex, song.id, chart.levelIndex)}
+              onShowAllKyouTags={setExpandedTags}
             />
           );
-      }}
-      rootStyle={styles.carouselRoot}
-      scrollStyle={styles.carouselScroll}
-      testID="phigros-chart-carousel"
-    />
+        }}
+        rootStyle={styles.carouselRoot}
+        scrollStyle={styles.carouselScroll}
+        testID="phigros-chart-carousel"
+      />
+      <PhigrosKyouChartTagsSheet
+        visible={expandedTags.length > 0}
+        tags={expandedTags}
+        onClose={() => setExpandedTags([])}
+      />
+    </>
   );
 }
 
@@ -448,6 +458,7 @@ function ChartCard({
   width,
   notesPending,
   kyouTags,
+  onShowAllKyouTags,
 }: {
   chart: Chart;
   best?: ScoreRecord;
@@ -456,6 +467,7 @@ function ChartCard({
   width: number;
   notesPending: boolean;
   kyouTags: ReturnType<typeof phigrosKyouTagsForChart>;
+  onShowAllKyouTags: (tags: readonly PhigrosKyouResolvedTag[]) => void;
 }) {
   const theme = useAppTheme();
   const colors = phigrosLevelColors(chart.levelIndex);
@@ -549,7 +561,7 @@ function ChartCard({
       <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         谱师：{chart.charter || '未提供'}
       </Text>
-      <PhigrosKyouChartTags tags={kyouTags} />
+      <PhigrosKyouChartTags tags={kyouTags} onShowAll={onShowAllKyouTags} />
       <NotesTable notes={asPhigrosNotes(chart.notes)} pending={notesPending} />
       <Pressable
         accessibilityRole="button"

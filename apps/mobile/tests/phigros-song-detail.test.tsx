@@ -143,11 +143,17 @@ jest.mock('@/hooks/use-phigros-kyou', () => ({
       }],
       tags: [
         { id: 152, name: '读谱', type: 'primary', parentIds: [], description: '读谱相关难点' },
+        { id: 154, name: '耐力', type: 'primary', parentIds: [], description: '耐力相关难点' },
         { id: 156, name: '差速', type: 'secondary', parentIds: [152], description: '速度不同' },
+        { id: 157, name: '脑裂', type: 'secondary', parentIds: [152], description: '多线配置' },
+        { id: 158, name: '扫线', type: 'secondary', parentIds: [152], description: '扫线配置' },
       ],
       votes: [
         { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 152, tag: '读谱', votes: 8, parentIds: [], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 154, tag: '耐力', votes: 5, parentIds: [], source: 'Kyou' },
         { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 156, tag: '差速', votes: 3, parentIds: [152], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 157, tag: '脑裂', votes: 2, parentIds: [152], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 158, tag: '扫线', votes: 1, parentIds: [152], source: 'Kyou' },
       ],
       source: { kind: 'kyou', label: 'Kyou Phigros 谱面标签', updatedAt: '2026-08-09T00:00:00.000Z', isStale: false },
     },
@@ -295,6 +301,15 @@ describe('Phigros song detail', () => {
     expect(screen.getByText('测试别名一、测试别名二').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('谱面标签 读谱，8 票，点击查看说明')).toBeTruthy();
     expect(screen.getByLabelText('谱面标签 差速，3 票，点击查看说明')).toBeTruthy();
+    expect(screen.getAllByText('主').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('细').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('phigros-kyou-chart-tags-sheet')).toBeNull();
+    await fireEvent.press(screen.getByTestId('phigros-kyou-chart-tags-more'));
+    expect(screen.getByTestId('phigros-kyou-chart-tags-sheet').props.visible).toBe(true);
+    expect(screen.getByText('主要难点')).toBeTruthy();
+    expect(screen.getByText('细分配置')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('关闭谱面标签'));
+    expect(screen.queryByTestId('phigros-kyou-chart-tags-sheet')).toBeNull();
   });
 
   it('shows 无 when the song has no aliases', async () => {

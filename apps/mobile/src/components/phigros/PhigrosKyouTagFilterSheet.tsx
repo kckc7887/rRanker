@@ -73,7 +73,15 @@ export function PhigrosKyouTagFilterSheet({
       </View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {grouped.map((group) => <View key={group.type} testID={`phigros-kyou-tag-filter-group-${group.type}`} style={styles.group}>
-          <Text style={[styles.groupName, { color: theme.textMuted }]}>{group.label}</Text>
+          <View style={[styles.groupHeader, {
+            backgroundColor: group.type === 'primary' ? theme.accentSoft : theme.surfaceMuted,
+            borderColor: group.type === 'primary' ? theme.accent : theme.border,
+          }]}>
+            <Text style={[styles.groupTypeMark, { color: group.type === 'primary' ? theme.accent : theme.textMuted }]}>
+              {group.type === 'primary' ? '主' : '细'}
+            </Text>
+            <Text style={[styles.groupName, { color: group.type === 'primary' ? theme.accent : theme.textSecondary }]}>{group.label}</Text>
+          </View>
           <View style={styles.tagWrap}>
             {group.tags.map((tag) => {
               const selected = draftTagIds.has(tag.id);
@@ -84,8 +92,14 @@ export function PhigrosKyouTagFilterSheet({
                 style={({ pressed }) => [styles.tagFrame, {
                   borderColor: selected ? theme.accent : 'transparent',
                 }, pressed && styles.pressed]}>
-                <View style={[styles.tag, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-                  <Text style={[styles.tagText, { color: selected ? theme.accent : theme.textSecondary }]}>{tag.name}</Text>
+                <View style={[styles.tag, {
+                  backgroundColor: tag.type === 'primary' ? theme.accentSoft : theme.surfaceMuted,
+                  borderColor: tag.type === 'primary' ? theme.accent : theme.border,
+                }]}>
+                  <Text style={[styles.tagTypeMark, { color: tag.type === 'primary' ? theme.accent : theme.textMuted }]}>
+                    {tag.type === 'primary' ? '主' : '细'}
+                  </Text>
+                  <Text style={[styles.tagText, { color: selected || tag.type === 'primary' ? theme.accent : theme.textSecondary }]}>{tag.name}</Text>
                 </View>
               </SheetPressable>;
             })}
@@ -105,10 +119,13 @@ const styles = StyleSheet.create({
   headerAction: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
   content: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, gap: 22 },
   group: { gap: 10 },
+  groupHeader: { alignSelf: 'flex-start', minHeight: 28, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  groupTypeMark: { fontSize: 10, lineHeight: 14, fontWeight: '900' },
   groupName: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
   tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   tagFrame: { borderWidth: 2, borderRadius: 999, padding: 2 },
-  tag: { minHeight: 30, borderWidth: 1, borderRadius: 999, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center' },
+  tag: { minHeight: 30, borderWidth: 1, borderRadius: 999, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  tagTypeMark: { fontSize: 9, lineHeight: 13, fontWeight: '900' },
   tagText: { fontSize: 12, lineHeight: 16, fontWeight: '700' },
   pressed: { opacity: 0.65 },
 });
