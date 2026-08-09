@@ -75,12 +75,18 @@ import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
+import { TufOverviewScreen } from '@/screens/TufScreens';
 
 export default function OverviewTabScreen() {
   return <CachedTabScreen><OverviewScreen /></CachedTabScreen>;
 }
 
 export function OverviewScreen() {
+  const activeGameId = useSession((state) => state.activeGameId);
+  return activeGameId === 'adofai' ? <TufOverviewScreen /> : <ClassicOverviewScreen />;
+}
+
+function ClassicOverviewScreen() {
   const { showNotification } = useNotification();
   const theme = useAppTheme();
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
@@ -889,6 +895,7 @@ function displayName(bundle: GameDataBundle): string {
   if (bundle.payload.kind === 'chunithm') {
     return bundle.payload.player?.name ?? '落雪账号（待同步）';
   }
+  if (bundle.payload.kind === 'adofai') return bundle.payload.player.name;
   return bundle.payload.displayName;
 }
 

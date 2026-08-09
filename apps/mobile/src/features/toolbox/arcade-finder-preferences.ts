@@ -35,6 +35,7 @@ export function defaultArcadeFinderPreferences(gameId: GameId = 'maimai'): Arcad
     maimai: [MAIMAI_DX_TITLE_ID],
     chunithm: [CHUNITHM_TITLE_ID],
     phigros: [],
+    adofai: [],
     test: [],
   };
   return {

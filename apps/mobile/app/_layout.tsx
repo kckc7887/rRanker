@@ -26,6 +26,7 @@ import {
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
   createMaxedPhigrosTestAccount,
+  createTufBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
@@ -45,6 +46,7 @@ import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-f
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
 import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
 import { startTimer } from '@/utils/startup-timing';
+import { TufAccountStore } from '@/storage/tuf-account-store';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -52,6 +54,7 @@ const demoAccounts = new DemoAccountStore();
 const chunithmDemoAccount = new ChunithmDemoAccountStore();
 const phigrosDemoAccount = new PhigrosDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
+const tufAccounts = new TufAccountStore();
 const snapshots = new SqliteSnapshotRepository();
 
 async function loadLocalBoundAccounts() {
@@ -102,12 +105,13 @@ async function loadPhigrosDemoBoundAccount() {
 }
 
 async function loadOptionalBoundAccounts() {
-  const [locals, demos, chunithmDemo, phigrosDemo, hasChunithmTemp] = await Promise.all([
+  const [locals, demos, chunithmDemo, phigrosDemo, hasChunithmTemp, storedTufAccounts] = await Promise.all([
     loadLocalBoundAccounts(),
     loadDemoBoundAccounts(),
     loadChunithmDemoBoundAccount(),
     loadPhigrosDemoBoundAccount(),
     chunithmTempAccount.load(),
+    tufAccounts.load(),
   ]);
   return [
     ...locals,
@@ -115,6 +119,7 @@ async function loadOptionalBoundAccounts() {
     ...(chunithmDemo ? [chunithmDemo] : []),
     ...(phigrosDemo ? [phigrosDemo] : []),
     ...(hasChunithmTemp ? [createChunithmTempAccount()] : []),
+    ...storedTufAccounts.map((account) => createTufBoundAccount(account)),
   ];
 }
 

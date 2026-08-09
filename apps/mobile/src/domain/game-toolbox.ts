@@ -163,6 +163,10 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     tools: [],
     emptyDetail: '测试游戏暂无可用工具。',
   },
+  adofai: {
+    tools: [],
+    emptyDetail: '冰与火之舞首版暂无可用工具。',
+  },
 };
 
 export function getGameToolbox(gameId: GameId): GameToolbox {

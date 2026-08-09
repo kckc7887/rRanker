@@ -73,6 +73,7 @@ import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { TufLevelDetailScreen } from '@/screens/TufScreens';
 
 const CARD_GAP = 12;
 const DIFFICULTY_ORDER: Record<Difficulty, number> = {
@@ -95,6 +96,9 @@ export default function SongDetailScreen() {
   }
   if (activeGameId === 'chunithm') {
     return <ChunithmSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
+  }
+  if (activeGameId === 'adofai') {
+    return <TufLevelDetailScreen levelId={songId} />;
   }
 
   return <MaimaiSongDetailScreen

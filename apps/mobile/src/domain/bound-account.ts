@@ -56,7 +56,34 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'phigros-test': '示例查分器',
   'phi-taptap': 'TapTap 云存档',
   'chunithm-temp': '无成绩临时账号',
+  tuf: 'TUF 社区',
 };
+
+export function createTufBoundAccount(input: {
+  playerId: number;
+  displayName: string;
+  avatarUrl?: string | null;
+  rankedScore?: number | null;
+}): BoundAccount {
+  const profile = getGameProfile('adofai');
+  return {
+    id: `adofai:tuf:${input.playerId}`,
+    gameId: 'adofai',
+    providerId: 'tuf',
+    displayName: input.displayName,
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: input.rankedScore == null || !Number.isFinite(input.rankedScore) ? '—' : input.rankedScore.toFixed(2),
+    providerTitle: PROVIDER_TITLES.tuf,
+    avatarUrl: input.avatarUrl,
+  };
+}
+
+export function tufPlayerIdFromAccountId(accountId: string): number | null {
+  const match = /^adofai:tuf:(\d+)$/.exec(accountId);
+  if (!match) return null;
+  const playerId = Number(match[1]);
+  return Number.isSafeInteger(playerId) && playerId > 0 ? playerId : null;
+}
 
 export function createTestBoundAccount(): BoundAccount {
   return {
@@ -214,6 +241,6 @@ export function createPhigrosBoundAccount(input: {
 }
 
 export function groupBoundAccountGameIds(accounts: BoundAccount[]): GameId[] {
-  const order: GameId[] = ['maimai', 'chunithm', 'phigros', 'test'];
+  const order: GameId[] = ['maimai', 'chunithm', 'phigros', 'adofai', 'test'];
   return order.filter((gameId) => accounts.some((account) => account.gameId === gameId));
 }
