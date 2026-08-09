@@ -94,7 +94,7 @@ describe('DX Rating components', () => {
       .toHaveLength(8);
   });
 
-  it('re-snapshots the rainbow outline mask after the first frame', async () => {
+  it('warm-mounts the rainbow outline invisibly and remounts it visible after the first frame', async () => {
     jest.useFakeTimers();
     try {
       const screen = await render(
@@ -108,6 +108,8 @@ describe('DX Rating components', () => {
           valueTheme={resolveChunithmRatingTier(17.25)}
         />,
       );
+      expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value-gradient').props.style))
+        .toMatchObject({ opacity: 0 });
       expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-outline-mask').props.style))
         .toMatchObject({ opacity: 0.999 });
 
@@ -115,6 +117,8 @@ describe('DX Rating components', () => {
         jest.advanceTimersByTime(100);
       });
 
+      expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value-gradient').props.style))
+        .not.toMatchObject({ opacity: 0 });
       expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-outline-mask').props.style))
         .toMatchObject({ opacity: 1 });
     } finally {

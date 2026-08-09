@@ -127,10 +127,13 @@ function RatingValue({
     <View style={styles.outlinedValueWrap}>
       {colors.length >= 2 ? (
         <MaskedView
+          // 进程首次挂载的遮罩快照可能为空且不会再重拍（切换账号会重建卡片生效）；
+          // 首帧用隐形预热挂载吃掉该坑位，双 rAF 后换 key 重建为正式挂载，与切号路径一致。
+          key={maskSettled ? 'gradient-live' : 'gradient-warm'}
           // Android 硬件模式可能缓存首次文字布局前的空遮罩，software 模式可随布局完成立即更新。
           androidRenderingMode="software"
           pointerEvents="none"
-          style={StyleSheet.absoluteFill}
+          style={[StyleSheet.absoluteFill, maskSettled ? undefined : styles.outlineWarm]}
           testID="dx-rating-card-value-gradient"
           maskElement={<RatingOutlineMask display={display} settled={maskSettled} />}
         >
@@ -216,6 +219,7 @@ const styles = StyleSheet.create({
   rating: { fontSize: 42, fontWeight: '800', letterSpacing: 2 },
   outlinedValueWrap: { height: 51, alignSelf: 'stretch' },
   outlinedValueFill: { zIndex: 1 },
+  outlineWarm: { opacity: 0 },
   outlineMask: { flex: 1 },
   outlineText: { ...StyleSheet.absoluteFillObject },
   outlineMaskText: { color: '#000000' },
