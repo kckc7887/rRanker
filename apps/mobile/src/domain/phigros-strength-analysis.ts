@@ -9,6 +9,7 @@ import {
 
 const INCLUDED_RATES = new Set(['a', 's', 'v', 'phi']);
 const FLOATING_FLOOR_EPSILON = 1e-9;
+const STRENGTH_EQUALITY_EPSILON = 1e-9;
 export const PHIGROS_STRENGTH_THRESHOLD_CAP = 16;
 export const PHIGROS_STRENGTH_MAX_AVAILABILITY_BONUS = 0.02;
 
@@ -35,8 +36,11 @@ export interface PhigrosTagRksStat {
   type: PhigrosKyouTagType;
   rawAverageRks: number | null;
   averageRks: number | null;
+  countCoefficient: number;
+  difficultyCoefficient: number;
   coefficient: number;
   eligibleChartCount: number;
+  eligibleAverageDifficulty: number | null;
   deltaFromPoolAverage: number | null;
   sampleCount: number;
   isSmallSample: boolean;
@@ -50,6 +54,7 @@ export interface PhigrosStrengthAnalysis {
   secondaryTags: readonly PhigrosTagRksStat[];
   strongestMainTag: PhigrosTagRksStat | null;
   weakestMainTag: PhigrosTagRksStat | null;
+  areMainTagsTied: boolean;
   hasExpectedPrimaryAxes: boolean;
   radarDomain: { min: number; max: number };
 }
@@ -58,6 +63,11 @@ type MutableTagAggregate = {
   sum: number;
   count: number;
   charts: PhigrosStrengthChartSample[];
+};
+
+type MutableEligibilityAggregate = {
+  count: number;
+  difficultySum: number;
 };
 
 function effectiveStrengthTags(
@@ -86,28 +96,72 @@ export function resolvePhigrosStrengthAvailabilityCoefficient(
   return 1 + PHIGROS_STRENGTH_MAX_AVAILABILITY_BONUS * (1 - normalizedCount);
 }
 
+export function resolvePhigrosStrengthDifficultyCoefficient(
+  eligibleAverageDifficulty: number | null,
+  maxEligibleAverageDifficulty: number,
+): number {
+  if (eligibleAverageDifficulty == null
+    || eligibleAverageDifficulty <= 0
+    || maxEligibleAverageDifficulty <= 0) return 1;
+  return Math.max(1, maxEligibleAverageDifficulty / eligibleAverageDifficulty);
+}
+
+export function resolvePhigrosStrengthAdjustedRks(
+  rawAverageRks: number,
+  countCoefficient: number,
+  difficultyCoefficient: number,
+  perfectBenchmark: number,
+): number {
+  const difficultyAdjustedRks = rawAverageRks * difficultyCoefficient;
+  if (perfectBenchmark <= 0) return difficultyAdjustedRks;
+  if (Math.abs(difficultyAdjustedRks - perfectBenchmark) <= STRENGTH_EQUALITY_EPSILON) {
+    return perfectBenchmark;
+  }
+  if (difficultyAdjustedRks >= perfectBenchmark) return difficultyAdjustedRks;
+  return Math.min(perfectBenchmark, difficultyAdjustedRks * countCoefficient);
+}
+
 function statFromAggregate(
   tag: PhigrosKyouTag,
   aggregate: MutableTagAggregate | undefined,
   poolAverage: number | null,
   eligibleChartCount: number,
   maxEligibleChartCount: number,
+  eligibleAverageDifficulty: number | null,
+  maxEligibleAverageDifficulty: number,
 ): PhigrosTagRksStat {
   const sampleCount = aggregate?.count ?? 0;
   const rawAverageRks = sampleCount > 0 ? aggregate!.sum / sampleCount : null;
-  const coefficient = resolvePhigrosStrengthAvailabilityCoefficient(
+  const countCoefficient = resolvePhigrosStrengthAvailabilityCoefficient(
     eligibleChartCount,
     maxEligibleChartCount,
   );
-  const averageRks = rawAverageRks == null ? null : rawAverageRks * coefficient;
+  const difficultyCoefficient = resolvePhigrosStrengthDifficultyCoefficient(
+    eligibleAverageDifficulty,
+    maxEligibleAverageDifficulty,
+  );
+  const averageRks = rawAverageRks == null
+    ? null
+    : resolvePhigrosStrengthAdjustedRks(
+      rawAverageRks,
+      countCoefficient,
+      difficultyCoefficient,
+      maxEligibleAverageDifficulty,
+    );
+  const coefficient = rawAverageRks != null && rawAverageRks > 0 && averageRks != null
+    ? averageRks / rawAverageRks
+    : countCoefficient * difficultyCoefficient;
   return {
     tagId: tag.id,
     name: tag.name,
     type: tag.type,
     rawAverageRks,
     averageRks,
+    countCoefficient,
+    difficultyCoefficient,
     coefficient,
     eligibleChartCount,
+    eligibleAverageDifficulty,
     deltaFromPoolAverage: averageRks != null && poolAverage != null
       ? averageRks - poolAverage
       : null,
@@ -170,7 +224,7 @@ export function analyzePhigrosStrength(
     ? Math.max(...poolRecords.map((record) => record.rating))
     : null;
   const aggregateByTagId = new Map<number, MutableTagAggregate>();
-  const eligibleChartCountByTagId = new Map<number, number>();
+  const eligibilityByTagId = new Map<number, MutableEligibilityAggregate>();
   let taggedCount = 0;
 
   for (const song of catalog.songs) {
@@ -178,10 +232,10 @@ export function analyzePhigrosStrength(
       if (!Number.isFinite(chart.difficultyConstant) || chart.difficultyConstant < threshold) continue;
       const chartTags = phigrosKyouTagsForChart(tagIndex, song.id, chart.levelIndex);
       for (const tag of effectiveStrengthTags(chartTags)) {
-        eligibleChartCountByTagId.set(
-          tag.id,
-          (eligibleChartCountByTagId.get(tag.id) ?? 0) + 1,
-        );
+        const eligibility = eligibilityByTagId.get(tag.id) ?? { count: 0, difficultySum: 0 };
+        eligibility.count += 1;
+        eligibility.difficultySum += chart.difficultyConstant;
+        eligibilityByTagId.set(tag.id, eligibility);
       }
     }
   }
@@ -210,21 +264,38 @@ export function analyzePhigrosStrength(
     .filter((tag) => tag.type === 'primary')
     .sort((left, right) => left.id - right.id);
   const secondaryCatalog = tagCatalog.filter((tag) => tag.type === 'secondary');
+  const eligibleCount = (tagId: number) => eligibilityByTagId.get(tagId)?.count ?? 0;
+  const eligibleAverageDifficulty = (tagId: number) => {
+    const eligibility = eligibilityByTagId.get(tagId);
+    return eligibility && eligibility.count > 0
+      ? eligibility.difficultySum / eligibility.count
+      : null;
+  };
   const maxPrimaryEligibleChartCount = Math.max(
     0,
-    ...primaryCatalog.map((tag) => eligibleChartCountByTagId.get(tag.id) ?? 0),
+    ...primaryCatalog.map((tag) => eligibleCount(tag.id)),
   );
   const maxSecondaryEligibleChartCount = Math.max(
     0,
-    ...secondaryCatalog.map((tag) => eligibleChartCountByTagId.get(tag.id) ?? 0),
+    ...secondaryCatalog.map((tag) => eligibleCount(tag.id)),
+  );
+  const maxPrimaryEligibleAverageDifficulty = Math.max(
+    0,
+    ...primaryCatalog.map((tag) => eligibleAverageDifficulty(tag.id) ?? 0),
+  );
+  const maxSecondaryEligibleAverageDifficulty = Math.max(
+    0,
+    ...secondaryCatalog.map((tag) => eligibleAverageDifficulty(tag.id) ?? 0),
   );
   const mainTags = primaryCatalog.map((tag) => (
     statFromAggregate(
       tag,
       aggregateByTagId.get(tag.id),
       poolAverage,
-      eligibleChartCountByTagId.get(tag.id) ?? 0,
+      eligibleCount(tag.id),
       maxPrimaryEligibleChartCount,
+      eligibleAverageDifficulty(tag.id),
+      maxPrimaryEligibleAverageDifficulty,
     )
   ));
   const secondaryTags = secondaryCatalog
@@ -233,11 +304,18 @@ export function analyzePhigrosStrength(
       tag,
       aggregateByTagId.get(tag.id),
       poolAverage,
-      eligibleChartCountByTagId.get(tag.id) ?? 0,
+      eligibleCount(tag.id),
       maxSecondaryEligibleChartCount,
+      eligibleAverageDifficulty(tag.id),
+      maxSecondaryEligibleAverageDifficulty,
     ))
     .sort(strongestSort);
   const populatedMainTags = mainTags.filter((tag) => tag.averageRks != null);
+  const areMainTagsTied = populatedMainTags.length === primaryCatalog.length
+    && populatedMainTags.length > 1
+    && populatedMainTags.every((tag) => (
+      Math.abs(tag.averageRks! - populatedMainTags[0]!.averageRks!) <= STRENGTH_EQUALITY_EPSILON
+    ));
 
   return {
     playerRks,
@@ -250,8 +328,9 @@ export function analyzePhigrosStrength(
     },
     mainTags,
     secondaryTags,
-    strongestMainTag: [...populatedMainTags].sort(strongestSort)[0] ?? null,
-    weakestMainTag: [...populatedMainTags].sort(weakestSort)[0] ?? null,
+    strongestMainTag: areMainTagsTied ? null : [...populatedMainTags].sort(strongestSort)[0] ?? null,
+    weakestMainTag: areMainTagsTied ? null : [...populatedMainTags].sort(weakestSort)[0] ?? null,
+    areMainTagsTied,
     hasExpectedPrimaryAxes: primaryCatalog.length === 5,
     radarDomain: resolveRadarDomain(mainTags, threshold),
   };

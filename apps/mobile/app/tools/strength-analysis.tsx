@@ -59,6 +59,21 @@ function MainSummary({
   );
 }
 
+function MainTieSummary({ rks }: { rks: number }) {
+  const theme = useAppTheme();
+  return (
+    <View
+      accessible
+      accessibilityLabel={`五维主标签持平，修正后标签 RKS 均为 ${rks.toFixed(4)}`}
+      style={[styles.tieSummary, { backgroundColor: theme.surfaceMuted }]}
+    >
+      <Text style={[styles.tieSummaryLabel, { color: theme.accent }]}>五维持平</Text>
+      <Text style={[styles.tieSummaryValue, { color: theme.text }]}>{rks.toFixed(4)}</Text>
+      <Text style={[styles.tieSummaryDetail, { color: theme.textMuted }]}>全部主标签达到同一修正基准，不判定相对最强或最弱。</Text>
+    </View>
+  );
+}
+
 function MainTagStat({
   tag,
   onPress,
@@ -81,8 +96,9 @@ function MainTagStat({
         </Text>
       </View>
       <Text style={[styles.mainTagStatMeta, { color: tag.isSmallSample ? theme.warning : theme.textMuted }]}>
-        {tag.sampleCount > 0 ? `入池 ${tag.sampleCount} · 候选 ${tag.eligibleChartCount}${tag.isSmallSample ? ' · 样本较少' : ''}` : `暂无样本 · 候选 ${tag.eligibleChartCount}`}
+        {tag.sampleCount > 0 ? `入池 ${tag.sampleCount}${tag.isSmallSample ? ' · 样本较少' : ''}` : '暂无样本'}
       </Text>
+      <Text style={[styles.mainTagStatMeta, { color: theme.textMuted }]}>候选 {tag.eligibleChartCount} · 均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
       {tag.rawAverageRks != null ? (
         <Text style={[styles.mainTagStatFormula, { color: theme.textMuted }]}>原始 {tag.rawAverageRks.toFixed(4)} × {tag.coefficient.toFixed(4)}</Text>
       ) : null}
@@ -103,7 +119,7 @@ function SecondaryTagRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`查看${tag.name}标签歌曲列表，修正后标签 RKS ${tag.averageRks!.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，系数 ${tag.coefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面${tag.isSmallSample ? '，样本较少' : ''}`}
+      accessibilityLabel={`查看${tag.name}标签歌曲列表，修正后标签 RKS ${tag.averageRks!.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，总系数 ${tag.coefficient.toFixed(4)}，数量系数 ${tag.countCoefficient.toFixed(4)}，难度系数 ${tag.difficultyCoefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面，候选平均定数 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '无数据'}${tag.isSmallSample ? '，样本较少' : ''}`}
       onPress={() => onPress(tag)}
       style={({ pressed }) => [styles.tagRow, { borderColor: theme.border, backgroundColor: theme.surface }, pressed && styles.pressed]}
     >
@@ -114,7 +130,7 @@ function SecondaryTagRow({
             <Text style={[styles.smallSample, { color: theme.warning, borderColor: theme.warning }]}>样本较少</Text>
           ) : null}
         </View>
-        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>入池 {tag.sampleCount} · 候选 {tag.eligibleChartCount}</Text>
+        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>入池 {tag.sampleCount} · 候选 {tag.eligibleChartCount} · 均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
         <Text style={[styles.tagFormula, { color: theme.textMuted }]}>原始 {tag.rawAverageRks!.toFixed(4)} × {tag.coefficient.toFixed(4)}</Text>
       </View>
       <View style={styles.tagNumbers}>
@@ -173,8 +189,9 @@ function TagSongsSheet({
           <View style={styles.sheetTitleBlock}>
             <Text style={[styles.sheetTitle, { color: theme.text }]}>{tag?.name ?? ''}标签歌曲</Text>
             <Text style={[styles.sheetCount, { color: theme.textMuted }]}>
-              {tag ? `${tag.sampleCount} 张入池 · ${tag.eligibleChartCount} 张候选 · ×${tag.coefficient.toFixed(4)}` : ''}
+              {tag ? `${tag.sampleCount} 张入池 · ${tag.eligibleChartCount} 张候选` : ''}
             </Text>
+            <Text style={[styles.sheetCount, { color: theme.textMuted }]}>{tag ? `均定 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'} · ×${tag.coefficient.toFixed(4)}` : ''}</Text>
           </View>
           <Pressable
             accessibilityRole="button"
@@ -328,7 +345,7 @@ export default function PhigrosStrengthAnalysisScreen() {
           <Metric label="标签覆盖" value={coverage} />
           <Metric label="池内最高" value={analysis.pool.maxRks?.toFixed(4) ?? '—'} />
         </View>
-        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；标签 RKS = 入池成绩均值 × 稀缺系数（1.0000–1.0200），候选数统计所有定数达标谱面，不要求游玩或评级。</Text>
+        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；标签先按候选平均定数校准，再对未达到同类满分基准的部分应用最高 1.0200 的数量补偿，补偿后不越过满分基准。候选统计不要求游玩或评级。</Text>
       </Card>
 
       {analysis.pool.totalCount === 0 ? (
@@ -354,10 +371,14 @@ export default function PhigrosStrengthAnalysisScreen() {
                 <MainTagStat key={tag.tagId} tag={tag} onPress={setSelectedTag} />
               ))}
             </View>
-            <View style={styles.summaryRow}>
-              <MainSummary label="相对最强" tag={analysis.strongestMainTag} tone="strong" onPress={setSelectedTag} />
-              <MainSummary label="相对最弱" tag={analysis.weakestMainTag} tone="weak" onPress={setSelectedTag} />
-            </View>
+            {analysis.areMainTagsTied ? (
+              <MainTieSummary rks={analysis.mainTags[0]!.averageRks!} />
+            ) : (
+              <View style={styles.summaryRow}>
+                <MainSummary label="相对最强" tag={analysis.strongestMainTag} tone="strong" onPress={setSelectedTag} />
+                <MainSummary label="相对最弱" tag={analysis.weakestMainTag} tone="weak" onPress={setSelectedTag} />
+              </View>
+            )}
           </Card>
 
           <View style={styles.secondarySection}>
@@ -427,6 +448,10 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 10, lineHeight: 14, fontWeight: '800' },
   summaryName: { fontSize: 16, lineHeight: 21, fontWeight: '800' },
   summaryValue: { fontSize: 11, lineHeight: 16, fontVariant: ['tabular-nums'] },
+  tieSummary: { marginHorizontal: 8, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, gap: 2 },
+  tieSummaryLabel: { fontSize: 11, lineHeight: 15, fontWeight: '800' },
+  tieSummaryValue: { fontSize: 18, lineHeight: 23, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  tieSummaryDetail: { fontSize: 10, lineHeight: 15 },
   secondarySection: { gap: 8 },
   sectionCount: { fontSize: 18, lineHeight: 23, fontWeight: '800', fontVariant: ['tabular-nums'] },
   tagRow: { minHeight: 66, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
