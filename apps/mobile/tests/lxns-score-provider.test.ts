@@ -9,6 +9,7 @@ describe('LXNS player presentation', () => {
       code: 200,
       data: {
         name: '脱敏玩家', rating: 15001, friend_code: 123456789,
+        course_rank: 23, class_rank: 25,
         icon: { id: 200201, name: '头像' },
         name_plate: { id: 300101, name: '姓名框' },
         frame: { id: 350101, name: '背景' },
@@ -26,6 +27,7 @@ describe('LXNS player presentation', () => {
     await expect(provider.getPlayer()).resolves.toMatchObject({
       displayName: '脱敏玩家',
       rating: 15001,
+      extension: { kind: 'maimai', courseRank: 23 },
       presentation: {
         iconId: 200201,
         namePlateId: 300101,

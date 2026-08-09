@@ -601,27 +601,42 @@ function ChartCard({
 function PhigrosSongInformation({ aliases }: { aliases: readonly string[] }) {
   const theme = useAppTheme();
   const [expanded, setExpanded] = useState(false);
-  useEffect(() => setExpanded(false), [aliases]);
-  const aliasText = aliases.length ? aliases.join('、') : '无';
+  const [overflow, setOverflow] = useState(false);
+  const aliasText = `别名：${aliases.join('、') || '无'}`;
+  useEffect(() => {
+    setExpanded(false);
+    setOverflow(false);
+  }, [aliasText]);
   return (
     <View style={styles.songInformation}>
       <Text style={[styles.informationTitle, { color: theme.text }]}>歌曲信息</Text>
-      <View style={styles.informationRow}>
-        <Text style={[styles.informationLabel, { color: theme.textMuted }]}>别名</Text>
-        <Pressable
-          accessibilityRole={aliases.length ? 'button' : undefined}
-          accessibilityLabel={aliases.length ? `${expanded ? '收起' : '展开'}歌曲别名` : undefined}
-          disabled={aliases.length === 0}
-          onPress={() => setExpanded((value) => !value)}
-          style={styles.aliasValueRow}
+      <View style={styles.aliasBlock}>
+        <Text
+          accessible={false}
+          onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}
+          style={[styles.informationValue, styles.aliasMeasure, { color: theme.text }]}
+          testID="phigros-alias-overflow-measure"
         >
-          <Text numberOfLines={expanded ? undefined : 2} style={[styles.informationValue, { color: theme.text }]}>
-            {aliasText}
-          </Text>
-          {aliases.length ? (
-            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={theme.textMuted} />
-          ) : null}
-        </Pressable>
+          {aliasText}
+        </Text>
+        <Text
+          numberOfLines={expanded ? undefined : 1}
+          style={[styles.informationValue, { color: theme.text }]}
+          testID="phigros-alias-text"
+        >
+          {aliasText}
+        </Text>
+        {overflow ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={expanded ? '收起别名' : '展开别名'}
+            hitSlop={6}
+            onPress={() => setExpanded((value) => !value)}
+            style={styles.aliasAction}
+          >
+            <Text style={[styles.aliasActionText, { color: theme.accent }]}>{expanded ? '收起' : '展开'}</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -790,9 +805,10 @@ const styles = StyleSheet.create({
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
   songInformation: { gap: 12 },
   informationTitle: { fontSize: 15, lineHeight: 20, fontWeight: '800' },
-  informationRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  informationLabel: { width: 42, fontSize: 12, lineHeight: 18, fontWeight: '700' },
-  aliasValueRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   informationValue: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 19 },
+  aliasBlock: { position: 'relative', alignItems: 'stretch' },
+  aliasMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
+  aliasAction: { alignSelf: 'flex-end', paddingHorizontal: 2, paddingVertical: 3 },
+  aliasActionText: { fontSize: 12, fontWeight: '700' },
   meta: { color: '#6B7280', fontSize: 12 },
 });

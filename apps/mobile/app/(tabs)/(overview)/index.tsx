@@ -29,6 +29,7 @@ import {
 import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
+import { resolveMaimaiCourseRank } from '@/domain/maimai-course-rank';
 import { formatPhigrosChallengeBadge, resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 import { selectGameTools, summarizeGameTools } from '@/domain/game-toolbox';
 import { calculatePlateProgress } from '@/domain/plates';
@@ -483,7 +484,7 @@ export function OverviewScreen() {
                   : undefined}
                 sideBadge={bundle.payload.kind === 'phigros'
                   ? { title: '课题模式', value: formatPhigrosChallengeBadge(bundle.payload.challengeModeRank) }
-                  : undefined}
+                  : maimaiCourseRankBadge(bundle)}
               />
             ) : (
               <DxRatingCard
@@ -889,6 +890,12 @@ function displayName(bundle: GameDataBundle): string {
     return bundle.payload.player?.name ?? '落雪账号（待同步）';
   }
   return bundle.payload.displayName;
+}
+
+function maimaiCourseRankBadge(bundle: GameDataBundle): { title: string; value: string } | undefined {
+  if (bundle.payload.kind !== 'maimai') return undefined;
+  const courseRank = resolveMaimaiCourseRank(bundle.payload.player);
+  return courseRank ? { title: '段位认定', value: courseRank.label } : undefined;
 }
 
 function formatBestSectionMeta(sections: BestListSection[], gameId: GameDataBundle['gameId']): string {

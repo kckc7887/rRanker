@@ -20,7 +20,13 @@ export interface Player {
   id: string;
   displayName: string;
   rating: number;
+  /** 水鱼原始兼容字段；新消费端应优先读取 extension.courseRank。 */
   additionalRating?: number;
+  extension?: {
+    kind: 'maimai';
+    /** 已归一化为舞萌/LXNS 段位素材编号。 */
+    courseRank?: number;
+  };
   presentation?: {
     iconId?: number;
     namePlateId?: number;

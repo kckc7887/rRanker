@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { fetch as expoFetch } from 'expo/fetch';
 import type { DataSource, Player } from '@/domain/models';
+import { normalizeDivingFishCourseRank } from '@/domain/maimai-course-rank';
 import { DivingFishRecordsResponseSchema, mapDivingFishRecord } from '@/domain/schemas';
 import type { ProviderSession, ScoreProvider } from './contracts';
 import { ProviderError, providerErrorFromStatus } from './errors';
@@ -77,6 +78,10 @@ export class DivingFishProvider implements ScoreProvider {
         displayName: records.nickname ?? records.username ?? '水鱼玩家',
         rating: records.rating ?? 0,
         additionalRating: records.additional_rating,
+        extension: {
+          kind: 'maimai',
+          courseRank: normalizeDivingFishCourseRank(records.additional_rating),
+        },
         presentation: records.plate ? { trophyName: records.plate } : undefined,
         source,
       };
@@ -88,6 +93,10 @@ export class DivingFishProvider implements ScoreProvider {
       displayName: profile.nickname ?? profile.username ?? '水鱼玩家',
       rating: profile.rating ?? 0,
       additionalRating: profile.additional_rating,
+      extension: {
+        kind: 'maimai',
+        courseRank: normalizeDivingFishCourseRank(profile.additional_rating),
+      },
       presentation: profile.plate ? { trophyName: profile.plate } : undefined,
       source,
     };

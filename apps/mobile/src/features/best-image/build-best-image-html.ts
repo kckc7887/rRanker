@@ -1,5 +1,6 @@
 import type { Player, ScoreRecord } from '@/domain/models';
 import { resolveDxRatingTheme } from '@/domain/dx-rating-theme';
+import { resolveMaimaiCourseRank } from '@/domain/maimai-course-rank';
 import type { BestImageRatingStyle } from './best-image-style-preferences';
 import {
   formatAchievement,
@@ -31,7 +32,7 @@ export type BestImageHiddenStyle = 'icon' | 'plate' | 'trophy' | 'frame';
 export type BestImageHtmlInput = {
   type: BestImageType;
   width: number;
-  player: Pick<Player, 'displayName' | 'presentation'> & { additionalRating?: number };
+  player: Pick<Player, 'displayName' | 'presentation' | 'extension' | 'additionalRating'>;
   rating: number;
   ratingStyle?: BestImageRatingStyle;
   scoreSections: readonly BestImageScoreSection[];
@@ -438,8 +439,12 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const appIdentityGap = px(width * 22 / 1080);
   const appIdentityHeight = px(width * 124 / 1080);
   const appIdentityMinWidth = px(width * 280 / 1080);
+  const courseRank = resolveMaimaiCourseRank(input.player);
+  const appCourseRankWidth = courseRank ? px(width * 150 / 1080) : 0;
+  const appCourseRankGap = courseRank ? appIdentityGap : 0;
   const appIdentityMaxWidth = appProfileWidth - appBannerPaddingX * 2
-    - (hideIcon ? 0 : appAvatarSize + appIdentityGap);
+    - (hideIcon ? 0 : appAvatarSize + appIdentityGap)
+    - appCourseRankWidth - appCourseRankGap;
   const appIdentityRadius = px(width * 22 / 1080);
   const appGlassBleed = px(width * 26 / 1080);
   const appNameFontSize = px(width * 42 / 1080);
@@ -502,8 +507,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   ].join(';');
 
   // ---- game 样式头部（玩家信息整体置于左上角；素材与 HTML 同目录的 ui/ 相对路径）----
-  const courseRank = Number.isFinite(input.player.additionalRating) ? Math.max(0, Math.floor(input.player.additionalRating ?? 0)) : 0;
-  const daniNum = Math.max(0, Math.min(23, courseRank <= 10 ? courseRank : courseRank + 1));
+  const daniNum = courseRank?.assetIndex ?? 0;
   const daniFile = `DaniPlate_${String(daniNum).padStart(2, '0')}`;
   const dxRatingFile = `DXRating_${String(ratingFrameIndex(rating) + 1).padStart(2, '0')}`;
   const trophyFile = GAME_TROPHY_FILE[normalizeTrophyTone(presentation?.trophyColor)] ?? 'Normal';
@@ -539,6 +543,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
             <div class="identity-rating"><span>Rating</span><strong>${rating}</strong></div>
             <svg class="rating-star-track" id="rating-star-track" aria-hidden="true"><g id="rating-stars"></g></svg>
           </div>
+          ${courseRank ? `<div class="app-course-rank" aria-label="段位认定 ${escapeHtml(courseRank.label)}"><span>段位认定</span><strong>${escapeHtml(courseRank.label)}</strong></div>` : ''}
         </section>
         ${hideTrophy ? '' : `<div class="trophy-row">${trophy}</div>`}
         ${appPageMarker}
@@ -642,6 +647,9 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .app-player-name{width:max-content;max-width:100%;overflow:visible;color:var(--tag-text);font:950 ${appNameFontSize}px/1.02 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:-.035em;transform-origin:left center;white-space:nowrap}
     .identity-rating{display:flex;align-items:center;gap:${px(width * 10 / 1080)}px;margin-top:${px(width * 11 / 1080)}px;color:var(--tag-text);font:720 ${appRatingLabelSize}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.06em;white-space:nowrap}
     .identity-rating strong{font-size:${appRatingValueSize}px;font-weight:800;letter-spacing:${px(width * 2 / 1080)}px;line-height:1}
+    .app-course-rank{position:relative;z-index:1;display:flex;width:${appCourseRankWidth}px;height:${px(width * 82 / 1080)}px;flex:0 0 ${appCourseRankWidth}px;flex-direction:column;align-items:center;justify-content:center;gap:${px(width * 8 / 1080)}px;border:${Math.max(1, px(width * 2 / 1080))}px solid rgba(255,255,255,.78);border-radius:${px(width * 18 / 1080)}px;background:rgba(28,36,54,.68);box-shadow:0 ${px(width * 8 / 1080)}px ${px(width * 22 / 1080)}px rgba(31,44,75,.2),inset 0 1px rgba(255,255,255,.25);color:#FFFFFF;text-shadow:0 1px 2px rgba(0,0,0,.28);white-space:nowrap}
+    .app-course-rank span{font:750 ${px(width * 13 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.08em;opacity:.78}
+    .app-course-rank strong{font:900 ${px(width * 23 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.02em}
     .rating-star-track{position:absolute;z-index:2;left:0;top:0;display:block;overflow:visible;pointer-events:none}
     .rating-star-track polygon{fill:var(--tag-star);filter:drop-shadow(0 1px 0 rgba(255,255,255,.42))}
     .trophy-row{display:flex;width:100%;height:${appTrophyRowHeight}px;align-items:center;justify-content:center}
