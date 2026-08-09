@@ -25,6 +25,7 @@ export const TEST_ACCOUNT_ID = 'test:empty';
 export const LOCAL_MAIMAI_ACCOUNT_ID = 'maimai:local';
 export const MAIMAI_TEST_ACCOUNT_ID = 'maimai:test';
 export const CHUNITHM_TEST_ACCOUNT_ID = 'chunithm:test';
+export const PHIGROS_TEST_ACCOUNT_ID = 'phigros:test';
 export const CHUNITHM_TEMP_ACCOUNT_ID = 'chunithm:temp';
 
 export function isLocalMaimaiAccountId(accountId: string): boolean {
@@ -52,6 +53,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   local: '本地查分器',
   'maimai-test': '示例查分器',
   'chunithm-test': '示例查分器',
+  'phigros-test': '示例查分器',
   'phi-taptap': 'TapTap 云存档',
   'chunithm-temp': '无成绩临时账号',
 };
@@ -130,6 +132,23 @@ export function createMaxedChunithmTestAccount(
     scoreDisplay: Number.isFinite(rating) ? rating.toFixed(2) : '—',
     providerTitle: PROVIDER_TITLES['chunithm-test'],
     ratingPossession: 'rainbow',
+  };
+}
+
+export function createMaxedPhigrosTestAccount(
+  rating = 0,
+  displayName = '示例账号',
+): BoundAccount {
+  const profile = getGameProfile('phigros');
+  return {
+    id: PHIGROS_TEST_ACCOUNT_ID,
+    gameId: 'phigros',
+    providerId: 'phigros-test',
+    displayName,
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: Number.isFinite(rating) ? rating.toFixed(4) : '—',
+    providerTitle: PROVIDER_TITLES['phigros-test'],
+    challengeModeRank: 599,
   };
 }
 

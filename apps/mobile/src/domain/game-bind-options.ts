@@ -6,6 +6,7 @@ export type ProviderId =
   | 'local'
   | 'maimai-test'
   | 'chunithm-test'
+  | 'phigros-test'
   | 'phi-taptap'
   | 'chunithm-temp';
 export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
@@ -118,6 +119,13 @@ export const GAME_OPTIONS: GameOption[] = [
         title: 'TapTap 云存档',
         detail: '跳转 TapTap 授权登录',
         icon: taptapIcon,
+        available: true,
+      },
+      {
+        id: 'phigros-test',
+        title: '示例查分器',
+        detail: '全曲全谱面满成绩 · 可删除后重新添加',
+        icon: exampleAccountIcon,
         available: true,
       },
     ],

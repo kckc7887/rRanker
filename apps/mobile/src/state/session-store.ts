@@ -14,6 +14,7 @@ import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
+import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import type { SessionVault, StoredProviderAccount } from '@/storage/secure-session-store';
@@ -111,6 +112,12 @@ function phigrosProviders(
   scoreProvider: AnyScoreProvider;
   catalogProvider: DetailedCatalogProvider;
 } {
+  if (account.providerId === 'phigros-test') {
+    return {
+      scoreProvider: new MaxedPhigrosTestProvider(account.displayName),
+      catalogProvider: new PhigrosCatalogProvider() as unknown as DetailedCatalogProvider,
+    };
+  }
   const session = sessionsByAccountId[account.id] ?? null;
   if (session?.mode === 'phi-session') {
     return {
@@ -520,6 +527,7 @@ export const useSession = create<SessionState>((set, get) => ({
       (account) => account.providerId === 'local'
         || account.providerId === 'maimai-test'
         || account.providerId === 'chunithm-test'
+        || account.providerId === 'phigros-test'
         || account.providerId === 'chunithm-temp',
     );
     set(activateAccount(kept, {}, {}, kept[0]?.id ?? null));

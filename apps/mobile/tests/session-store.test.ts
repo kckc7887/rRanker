@@ -1,10 +1,12 @@
 import {
   CHUNITHM_TEST_ACCOUNT_ID,
   CHUNITHM_TEMP_ACCOUNT_ID,
+  PHIGROS_TEST_ACCOUNT_ID,
   createMaxedChunithmTestAccount,
   createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
+  createMaxedPhigrosTestAccount,
   createTestBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
   MAIMAI_TEST_ACCOUNT_ID,
@@ -17,6 +19,8 @@ import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
+import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provider';
+import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import {
   applyLxnsTokenRotation,
   restoreSession,
@@ -206,6 +210,18 @@ describe('useSession store', () => {
     expect(state.session).toBeNull();
   });
 
+  it('switches to the generated maxed Phigros demo account', () => {
+    useSession.getState().upsertBoundAccount(createMaxedPhigrosTestAccount());
+    useSession.getState().selectBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
+    const state = useSession.getState();
+    expect(state.activeAccountId).toBe(PHIGROS_TEST_ACCOUNT_ID);
+    expect(state.activeGameId).toBe('phigros');
+    expect(state.activeProviderId).toBe('phigros-test');
+    expect(state.scoreProvider).toBeInstanceOf(MaxedPhigrosTestProvider);
+    expect(state.catalogProvider).toBeInstanceOf(PhigrosCatalogProvider);
+    expect(state.session).toBeNull();
+  });
+
   it('keeps multiple local players and rebuilds the active provider after renaming', async () => {
     const extra = createLocalMaimaiAccount('第二位玩家', 12345, 'maimai:local:second');
     useSession.getState().upsertBoundAccount(extra);
@@ -237,6 +253,7 @@ describe('useSession store', () => {
   it('clears remote binds and keeps remaining local/demo accounts', () => {
     useSession.getState().upsertBoundAccount(createChunithmTempAccount());
     useSession.getState().upsertBoundAccount(createMaxedChunithmTestAccount());
+    useSession.getState().upsertBoundAccount(createMaxedPhigrosTestAccount());
     useSession.getState().setSession(jwtSession, { displayName: '尘言', rating: 1 });
     useSession.getState().clearSession();
     const state = useSession.getState();
@@ -246,6 +263,7 @@ describe('useSession store', () => {
     expect(state.boundAccounts.some((account) => account.id === MAIMAI_TEST_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.id === CHUNITHM_TEMP_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.id === CHUNITHM_TEST_ACCOUNT_ID)).toBe(true);
+    expect(state.boundAccounts.some((account) => account.id === PHIGROS_TEST_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.providerId === 'diving-fish')).toBe(false);
   });
 

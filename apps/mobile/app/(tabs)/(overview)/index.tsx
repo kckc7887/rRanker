@@ -921,6 +921,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'lxns') return '落雪咖啡屋';
   if (providerId === 'diving-fish') return '水鱼查分器';
   if (providerId === 'phi-taptap') return 'TapTap 云存档';
+  if (providerId === 'phigros-test') return '示例查分器';
   if (providerId === 'local') return '本地查分器';
   if (providerId === 'maimai-test') return '示例查分器';
   if (providerId === 'chunithm-test') return '示例查分器';
