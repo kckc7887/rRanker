@@ -10,6 +10,7 @@ const mockUseTufPasses = jest.fn();
 const mockUseTufLevelSearch = jest.fn();
 let mockLevelDetail: TufLevel | undefined;
 let mockProfile: TufPlayer | undefined;
+let mockNullGamePayload = false;
 
 jest.mock('expo-router', () => ({ router: { push: (value: unknown) => mockPush(value) } }));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
@@ -27,7 +28,9 @@ jest.mock('@/hooks/use-tuf', () => ({
   useTufLevel: () => ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
 }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
-  data: mockProfile ? {
+  data: mockNullGamePayload ? {
+    gameId: 'adofai', providerId: 'tuf', profile: {}, payload: null,
+  } : mockProfile ? {
     gameId: 'adofai', providerId: 'tuf', profile: {},
     payload: { kind: 'adofai', player: mockProfile, playerScore: { label: 'RANKED SCORE', value: mockProfile.rankedScore, display: mockProfile.rankedScore.toFixed(2) }, source: {} },
   } : undefined,
@@ -67,6 +70,7 @@ describe('TUF screens', () => {
     mockUseTufPasses.mockReturnValue(infinite([pass(1, '第一条'), pass(2, '第二条')], 'passes'));
     mockUseTufLevelSearch.mockReturnValue(infinite([level], 'results'));
     mockLevelDetail = level;
+    mockNullGamePayload = false;
   });
 
   it('keeps the profile Top 20 order instead of pass response order', async () => {
@@ -102,6 +106,13 @@ describe('TUF screens', () => {
 
   it('renders the unbound empty state without reading playerScore from a null payload', async () => {
     mockProfile = undefined;
+    const screen = await render(<TufOverviewScreen />);
+    expect(screen.getByText('请在游戏管理中绑定 TUF 玩家')).toBeTruthy();
+    expect(screen.queryByText('TUF · RANKED SCORE')).toBeNull();
+  });
+
+  it('rejects a stale cached bundle whose payload is null', async () => {
+    mockNullGamePayload = true;
     const screen = await render(<TufOverviewScreen />);
     expect(screen.getByText('请在游戏管理中绑定 TUF 玩家')).toBeTruthy();
     expect(screen.queryByText('TUF · RANKED SCORE')).toBeNull();

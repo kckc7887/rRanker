@@ -373,7 +373,7 @@ export function useGameData() {
   });
 
   useEffect(() => {
-    if (!query.data || !activeAccountId) return;
+    if (!query.data?.payload || !activeAccountId) return;
     const d = query.data;
     if (d.payload.kind === 'maimai') {
       const avatarUrl = d.providerId === 'lxns'
@@ -445,7 +445,7 @@ export function useGameData() {
     activeGameId,
     activeProviderId,
     activeAccountId,
-    isDataStale: !!query.data && (
+    isDataStale: !!query.data?.payload && (
       query.data.payload.kind === 'chunithm'
         ? query.data.payload.source.isStale
         : query.data.payload.kind === 'adofai'
