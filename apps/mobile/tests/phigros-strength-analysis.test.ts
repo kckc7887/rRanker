@@ -9,6 +9,7 @@ import {
   analyzePhigrosStrength,
   resolvePhigrosStrengthAdjustedRks,
   resolvePhigrosStrengthAvailabilityCoefficient,
+  resolvePhigrosStrengthCoveredDifficultyCoefficient,
   resolvePhigrosStrengthDifficultyCoefficient,
   resolvePhigrosStrengthThreshold,
 } from '@/domain/phigros-strength-analysis';
@@ -93,6 +94,12 @@ describe('Phigros strength analysis', () => {
     expect(resolvePhigrosStrengthDifficultyCoefficient(16.9, 16.9)).toBe(1);
     expect(resolvePhigrosStrengthDifficultyCoefficient(16.3, 16.9)).toBeCloseTo(16.9 / 16.3, 10);
     expect(resolvePhigrosStrengthDifficultyCoefficient(null, 16.9)).toBe(1);
+    expect(resolvePhigrosStrengthCoveredDifficultyCoefficient(1.0448, 2, 9)).toBeCloseTo(
+      1 + 0.0448 * 2 / 9,
+      10,
+    );
+    expect(resolvePhigrosStrengthCoveredDifficultyCoefficient(1.0448, 9, 9)).toBeCloseTo(1.0448, 10);
+    expect(resolvePhigrosStrengthCoveredDifficultyCoefficient(1.0448, 0, 0)).toBe(1);
     expect(resolvePhigrosStrengthAdjustedRks(15.5, 1.015, 1, 16)).toBeCloseTo(15.7325, 10);
     expect(resolvePhigrosStrengthAdjustedRks(16, 1.015, 1, 16)).toBe(16);
     expect(resolvePhigrosStrengthAdjustedRks(16.1, 1.015, 1, 16)).toBe(16.1);
@@ -258,6 +265,34 @@ describe('Phigros strength analysis', () => {
     expect(analysis.mainTags[1]!.averageRks).toBeCloseTo(16.9, 8);
   });
 
+  it('applies difficulty calibration gradually by sample coverage', () => {
+    const index = new Map<string, PhigrosKyouResolvedTag[]>();
+    const catalogCharts: [songId: string, levelIndex: number, constant: number][] = [];
+    for (let chartIndex = 0; chartIndex < 4; chartIndex += 1) {
+      const lowerSongId = `coverage-lower-${chartIndex}`;
+      const higherSongId = `coverage-higher-${chartIndex}`;
+      index.set(chartVersionKey(lowerSongId, 'SD', 2), [resolved(primaryTags[0]!, 20)]);
+      index.set(chartVersionKey(higherSongId, 'SD', 2), [resolved(primaryTags[1]!, 20)]);
+      catalogCharts.push([lowerSongId, 2, 16], [higherSongId, 2, 17]);
+    }
+    const analysis = analyzePhigrosStrength(16.1, [
+      score('coverage-lower-0', 2, 15.9, 'a'),
+      score('coverage-higher-0', 2, 15.9, 'a'),
+    ], index, primaryTags, catalog(catalogCharts));
+
+    expect(analysis.mainTags[0]).toMatchObject({
+      sampleCount: 1,
+      eligibleChartCount: 4,
+      sampleCoverage: 0.25,
+    });
+    expect(analysis.mainTags[0]!.difficultyCoefficient).toBeCloseTo(1.015625, 8);
+    expect(analysis.mainTags[0]!.averageRks).toBeCloseTo(15.9 * 1.015625, 8);
+    expect(analysis.mainTags[1]).toMatchObject({
+      difficultyCoefficient: 1,
+      sampleCoverage: 0.25,
+    });
+  });
+
   it('keeps all five full-score axes equal despite different counts and difficulties', () => {
     const index = new Map<string, PhigrosKyouResolvedTag[]>();
     const records: ScoreRecord[] = [];
@@ -283,6 +318,7 @@ describe('Phigros strength analysis', () => {
 
     expect(analysis.mainTags.map((tag) => tag.eligibleChartCount)).toEqual([1, 2, 3, 4, 5]);
     analysis.mainTags.forEach((tag) => expect(tag.averageRks).toBeCloseTo(16.4, 8));
+    analysis.mainTags.forEach((tag) => expect(tag.sampleCoverage).toBe(1));
     expect(analysis.areMainTagsTied).toBe(true);
     expect(analysis.strongestMainTag).toBeNull();
     expect(analysis.weakestMainTag).toBeNull();

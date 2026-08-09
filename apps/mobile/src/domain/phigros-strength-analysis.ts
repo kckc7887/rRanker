@@ -41,6 +41,7 @@ export interface PhigrosTagRksStat {
   coefficient: number;
   eligibleChartCount: number;
   eligibleAverageDifficulty: number | null;
+  sampleCoverage: number;
   deltaFromPoolAverage: number | null;
   sampleCount: number;
   isSmallSample: boolean;
@@ -106,6 +107,16 @@ export function resolvePhigrosStrengthDifficultyCoefficient(
   return Math.max(1, maxEligibleAverageDifficulty / eligibleAverageDifficulty);
 }
 
+export function resolvePhigrosStrengthCoveredDifficultyCoefficient(
+  fullDifficultyCoefficient: number,
+  sampleCount: number,
+  eligibleChartCount: number,
+): number {
+  if (eligibleChartCount <= 0) return 1;
+  const sampleCoverage = Math.min(1, Math.max(0, sampleCount / eligibleChartCount));
+  return 1 + (Math.max(1, fullDifficultyCoefficient) - 1) * sampleCoverage;
+}
+
 export function resolvePhigrosStrengthAdjustedRks(
   rawAverageRks: number,
   countCoefficient: number,
@@ -136,9 +147,17 @@ function statFromAggregate(
     eligibleChartCount,
     maxEligibleChartCount,
   );
-  const difficultyCoefficient = resolvePhigrosStrengthDifficultyCoefficient(
+  const fullDifficultyCoefficient = resolvePhigrosStrengthDifficultyCoefficient(
     eligibleAverageDifficulty,
     maxEligibleAverageDifficulty,
+  );
+  const sampleCoverage = eligibleChartCount > 0
+    ? Math.min(1, sampleCount / eligibleChartCount)
+    : 0;
+  const difficultyCoefficient = resolvePhigrosStrengthCoveredDifficultyCoefficient(
+    fullDifficultyCoefficient,
+    sampleCount,
+    eligibleChartCount,
   );
   const averageRks = rawAverageRks == null
     ? null
@@ -162,6 +181,7 @@ function statFromAggregate(
     coefficient,
     eligibleChartCount,
     eligibleAverageDifficulty,
+    sampleCoverage,
     deltaFromPoolAverage: averageRks != null && poolAverage != null
       ? averageRks - poolAverage
       : null,

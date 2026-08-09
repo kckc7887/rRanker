@@ -96,9 +96,9 @@ function MainTagStat({
         </Text>
       </View>
       <Text style={[styles.mainTagStatMeta, { color: tag.isSmallSample ? theme.warning : theme.textMuted }]}>
-        {tag.sampleCount > 0 ? `入池 ${tag.sampleCount}${tag.isSmallSample ? ' · 样本较少' : ''}` : '暂无样本'}
+        {tag.sampleCount > 0 ? `入池 ${tag.sampleCount}/${tag.eligibleChartCount} · 覆盖 ${(tag.sampleCoverage * 100).toFixed(0)}%${tag.isSmallSample ? ' · 样本较少' : ''}` : '暂无样本'}
       </Text>
-      <Text style={[styles.mainTagStatMeta, { color: theme.textMuted }]}>候选 {tag.eligibleChartCount} · 均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
+      <Text style={[styles.mainTagStatMeta, { color: theme.textMuted }]}>候选均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
       {tag.rawAverageRks != null ? (
         <Text style={[styles.mainTagStatFormula, { color: theme.textMuted }]}>原始 {tag.rawAverageRks.toFixed(4)} × {tag.coefficient.toFixed(4)}</Text>
       ) : null}
@@ -119,7 +119,7 @@ function SecondaryTagRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`查看${tag.name}标签歌曲列表，修正后标签 RKS ${tag.averageRks!.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，总系数 ${tag.coefficient.toFixed(4)}，数量系数 ${tag.countCoefficient.toFixed(4)}，难度系数 ${tag.difficultyCoefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面，候选平均定数 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '无数据'}${tag.isSmallSample ? '，样本较少' : ''}`}
+      accessibilityLabel={`查看${tag.name}标签歌曲列表，修正后标签 RKS ${tag.averageRks!.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，总系数 ${tag.coefficient.toFixed(4)}，数量系数 ${tag.countCoefficient.toFixed(4)}，按覆盖率生效的难度系数 ${tag.difficultyCoefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面，覆盖率 ${(tag.sampleCoverage * 100).toFixed(0)}%，候选平均定数 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '无数据'}${tag.isSmallSample ? '，样本较少' : ''}`}
       onPress={() => onPress(tag)}
       style={({ pressed }) => [styles.tagRow, { borderColor: theme.border, backgroundColor: theme.surface }, pressed && styles.pressed]}
     >
@@ -130,7 +130,7 @@ function SecondaryTagRow({
             <Text style={[styles.smallSample, { color: theme.warning, borderColor: theme.warning }]}>样本较少</Text>
           ) : null}
         </View>
-        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>入池 {tag.sampleCount} · 候选 {tag.eligibleChartCount} · 均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
+        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>入池 {tag.sampleCount}/{tag.eligibleChartCount} · 覆盖 {(tag.sampleCoverage * 100).toFixed(0)}% · 均定 {tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'}</Text>
         <Text style={[styles.tagFormula, { color: theme.textMuted }]}>原始 {tag.rawAverageRks!.toFixed(4)} × {tag.coefficient.toFixed(4)}</Text>
       </View>
       <View style={styles.tagNumbers}>
@@ -191,7 +191,7 @@ function TagSongsSheet({
             <Text style={[styles.sheetCount, { color: theme.textMuted }]}>
               {tag ? `${tag.sampleCount} 张入池 · ${tag.eligibleChartCount} 张候选` : ''}
             </Text>
-            <Text style={[styles.sheetCount, { color: theme.textMuted }]}>{tag ? `均定 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'} · ×${tag.coefficient.toFixed(4)}` : ''}</Text>
+            <Text style={[styles.sheetCount, { color: theme.textMuted }]}>{tag ? `覆盖 ${(tag.sampleCoverage * 100).toFixed(0)}% · 均定 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '—'} · ×${tag.coefficient.toFixed(4)}` : ''}</Text>
           </View>
           <Pressable
             accessibilityRole="button"
@@ -345,7 +345,7 @@ export default function PhigrosStrengthAnalysisScreen() {
           <Metric label="标签覆盖" value={coverage} />
           <Metric label="池内最高" value={analysis.pool.maxRks?.toFixed(4) ?? '—'} />
         </View>
-        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；标签先按候选平均定数校准，再对未达到同类满分基准的部分应用最高 1.0200 的数量补偿，补偿后不越过满分基准。候选统计不要求游玩或评级。</Text>
+        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；平均定数校准按“入池数 ÷ 候选数”的覆盖率渐进生效，再对未达到同类满分基准的结果应用最高 1.0200 的数量补偿，且不越过满分基准。全满覆盖率为 100%，五维仍保持等值。</Text>
       </Card>
 
       {analysis.pool.totalCount === 0 ? (

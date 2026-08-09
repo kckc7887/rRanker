@@ -121,7 +121,7 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.getByText('原始 16.0000 × 1.0062')).toBeTruthy();
     expect(screen.getByText('原始 16.1000 × 1.0062')).toBeTruthy();
     expect(screen.getByText(/未达到同类满分基准/)).toBeTruthy();
-    expect(screen.getByText('候选 2 · 均定 16.1000')).toBeTruthy();
+    expect(screen.getByText('候选均定 16.1000')).toBeTruthy();
     expect(screen.getByText('差速')).toBeTruthy();
     expect(screen.getByText('样本较少')).toBeTruthy();
 
@@ -129,7 +129,7 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.getByTestId('phigros-strength-tag-songs-sheet')).toBeTruthy();
     expect(screen.getByText('读谱标签歌曲')).toBeTruthy();
     expect(screen.getByText('2 张入池 · 2 张候选')).toBeTruthy();
-    expect(screen.getByText('均定 16.1000 · ×1.0062')).toBeTruthy();
+    expect(screen.getByText('覆盖 100% · 均定 16.1000 · ×1.0062')).toBeTruthy();
     expect(screen.getAllByText('Song').length).toBeGreaterThan(0);
     expect(screen.getByText('RKS 15.9000')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('关闭标签歌曲列表'));
