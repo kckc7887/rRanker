@@ -10,6 +10,7 @@ import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { chartVersionKey } from '@/domain/catalog';
 import type { CatalogSnapshot } from '@/domain/models';
+import { buildPhigrosKyouChartTagIndex } from '@/domain/phigros-kyou';
 import {
   buildBestRecordMap,
   filterPhigrosRandomCharts,
@@ -20,15 +21,18 @@ import { phigrosChartNoteKey } from '@/domain/phigros-xing';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { usePhigrosRandomChartsFilter } from '@/state/phigros-random-charts-filter';
 
 export function PhigrosRandomChartsScreen() {
   const catalogQuery = usePhigrosCatalog();
+  const kyouChartTags = usePhigrosKyouChartTags();
   const gameData = useGameData();
   const {
     count, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
+    selectedKyouTagIds,
     hydrate, setCount, setCollapsed, setLevel, setConstantMin, setConstantMax,
-    setAccuracyMin, setAccuracyMax, setRank, setXing, setChapter, clearFilters,
+    setAccuracyMin, setAccuracyMax, setRank, setXing, setChapter, setSelectedKyouTagIds, clearFilters,
   } = usePhigrosRandomChartsFilter();
   const [results, setResults] = useState<RandomChartPick[] | null>(null);
   const [lastSeed, setLastSeed] = useState<string | null>(null);
@@ -38,6 +42,20 @@ export function PhigrosRandomChartsScreen() {
   }, [hydrate]);
 
   const catalog = catalogQuery.data?.snapshot;
+  const kyouTagIndex = useMemo(
+    () => buildPhigrosKyouChartTagIndex(kyouChartTags.data, catalog),
+    [catalog, kyouChartTags.data],
+  );
+  useEffect(() => {
+    if (selectedKyouTagIds.length === 0) return;
+    if (kyouChartTags.data) {
+      const validIds = new Set(kyouChartTags.data.tags.map((tag) => tag.id));
+      const next = selectedKyouTagIds.filter((tagId) => validIds.has(tagId));
+      if (next.length !== selectedKyouTagIds.length) setSelectedKyouTagIds(next);
+    } else if (kyouChartTags.isError) {
+      setSelectedKyouTagIds([]);
+    }
+  }, [kyouChartTags.data, kyouChartTags.isError, selectedKyouTagIds, setSelectedKyouTagIds]);
   const payload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
   const records = useMemo(() => payload?.records ?? [], [payload?.records]);
   const bestByChart = useMemo(() => buildBestRecordMap(records), [records]);
@@ -54,12 +72,14 @@ export function PhigrosRandomChartsScreen() {
     rank,
     xing,
     chapter,
-  }), [accuracyMax, accuracyMin, chapter, constantMax, constantMin, level, rank, xing]);
+    selectedKyouTagIds: kyouChartTags.data ? selectedKyouTagIds : [],
+  }), [accuracyMax, accuracyMin, chapter, constantMax, constantMin, kyouChartTags.data, level, rank,
+    selectedKyouTagIds, xing]);
   const pool = useMemo(
     () => catalog
-      ? filterPhigrosRandomCharts(catalog, records, filters, noteTotalByKey)
+      ? filterPhigrosRandomCharts(catalog, records, filters, noteTotalByKey, kyouTagIndex)
       : [],
-    [catalog, filters, noteTotalByKey, records],
+    [catalog, filters, kyouTagIndex, noteTotalByKey, records],
   );
 
   const draw = () => {
@@ -82,6 +102,7 @@ export function PhigrosRandomChartsScreen() {
       onRetry={() => {
         void catalogQuery.refetch();
         void gameData.refetch();
+        void kyouChartTags.refetch();
       }}
       renderData={(data) => (
         <RandomChartsPage
@@ -103,6 +124,10 @@ export function PhigrosRandomChartsScreen() {
               onConstantMaxChange={setConstantMax}
               onConstantMinChange={setConstantMin}
               onLevelChange={setLevel}
+              kyouTags={kyouChartTags.data?.tags ?? []}
+              selectedKyouTagIds={selectedKyouTagIds}
+              kyouTagState={kyouChartTags.data ? 'ready' : kyouChartTags.isLoading ? 'loading' : 'unavailable'}
+              onKyouTagIdsChange={setSelectedKyouTagIds}
               onRankChange={setRank}
               onReset={clearFilters}
               onXingChange={setXing}
@@ -157,6 +182,16 @@ export function PhigrosRandomChartsScreen() {
               updatedAt: payload?.source.updatedAt,
               state: !payload ? 'unavailable' : payload.source.isStale ? 'cache' : 'live',
             },
+            ...(kyouChartTags.data ? [{
+              key: 'phigros-kyou-tags' as const,
+              label: kyouChartTags.data.source.label,
+              updatedAt: kyouChartTags.data.source.updatedAt,
+              state: kyouChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
+            }] : kyouChartTags.isError ? [{
+              key: 'phigros-kyou-tags' as const,
+              label: 'Kyou 谱面标签不可用',
+              state: 'unavailable' as const,
+            }] : []),
           ]}
         />
       )}

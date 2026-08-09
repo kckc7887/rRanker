@@ -54,9 +54,35 @@ describe('phigros random charts preferences', () => {
       rank: 'v' as const,
       xing: 'good' as const,
       chapter: '4' as const,
+      selectedKyouTagIds: [152, 156],
     };
     await store.save(value);
     await expect(store.load()).resolves.toEqual(value);
+  });
+
+  it('migrates v2 to v3 with an empty tag selection and persists v3', async () => {
+    const migrated = parsePhigrosRandomChartsPreferences({
+      version: 2,
+      count: 3,
+      level: 2,
+      constantMin: '12',
+      chapter: '4',
+      selectedKyouTagIds: [152],
+    });
+    expect(migrated).toMatchObject({
+      count: 3,
+      level: 2,
+      constantMin: '12',
+      chapter: '4',
+      selectedKyouTagIds: [],
+    });
+
+    const storage = new MemoryStore();
+    const store = new PhigrosRandomChartsPreferencesStore(storage);
+    await store.save({ ...migrated, selectedKyouTagIds: [152, 156, 152] });
+    const raw = JSON.parse([...storage.values.values()][0]!);
+    expect(raw.version).toBe(3);
+    await expect(store.load()).resolves.toMatchObject({ selectedKyouTagIds: [152, 156] });
   });
 
   it('parses chapter only when all or numeric, otherwise falls back to all', () => {

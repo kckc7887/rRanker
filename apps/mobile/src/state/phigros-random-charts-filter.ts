@@ -23,6 +23,7 @@ type PhigrosRandomChartsFilterState = PhigrosRandomChartsPreferences & {
   setRank: (value: PhigrosRankFilter | null) => void;
   setXing: (value: PhigrosXingKind | null) => void;
   setChapter: (value: string | 'all') => void;
+  setSelectedKyouTagIds: (value: number[]) => void;
   clearFilters: () => void;
 };
 
@@ -41,6 +42,7 @@ function preferencesFromState(
     rank: state.rank,
     xing: state.xing,
     chapter: state.chapter,
+    selectedKyouTagIds: state.selectedKyouTagIds,
   };
 }
 
@@ -76,6 +78,7 @@ export function createPhigrosRandomChartsFilterStore(
         rank: defaults.rank,
         xing: defaults.xing,
         chapter: defaults.chapter,
+        selectedKyouTagIds: defaults.selectedKyouTagIds,
       };
     };
 
@@ -103,6 +106,7 @@ export function createPhigrosRandomChartsFilterStore(
       setRank: (rank) => update({ rank }),
       setXing: (xing) => update({ xing }),
       setChapter: (chapter) => update({ chapter }),
+      setSelectedKyouTagIds: (selectedKyouTagIds) => update({ selectedKyouTagIds }),
       clearFilters: () => update(clearPatch()),
     };
   });

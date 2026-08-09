@@ -11,6 +11,7 @@ describe('usePhigrosCatalogFilter store', () => {
       constantMin: '',
       constantMax: '',
       chapter: 'all',
+      selectedKyouTagIds: [],
     }));
   });
 
@@ -20,6 +21,7 @@ describe('usePhigrosCatalogFilter store', () => {
     usePhigrosCatalogFilter.getState().setLevel(1);
     usePhigrosCatalogFilter.getState().setConstantMin('12');
     usePhigrosCatalogFilter.getState().setChapter('4');
+    usePhigrosCatalogFilter.getState().setSelectedKyouTagIds([152]);
     usePhigrosCatalogFilter.getState().clearFilters();
     expect(usePhigrosCatalogFilter.getState()).toEqual(expect.objectContaining({
       keyword: '',
@@ -28,6 +30,7 @@ describe('usePhigrosCatalogFilter store', () => {
       constantMin: '',
       constantMax: '',
       chapter: 'all',
+      selectedKyouTagIds: [],
     }));
   });
 

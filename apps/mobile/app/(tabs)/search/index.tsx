@@ -19,6 +19,7 @@ import { matchesChunithmChartFilter } from '@/domain/chunithm-filters';
 import { buildDxRatingChartTagIndex, dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
 import { parseConstantBound } from '@/domain/maimai-filters';
 import { phigrosLevelToDifficulty } from '@/domain/phigros-filters';
+import { buildPhigrosKyouChartTagIndex, phigrosKyouChartHasAllTags } from '@/domain/phigros-kyou';
 import type { Chart, ChartType, Song } from '@/domain/models';
 import { localizedVersionName } from '@/domain/version-names';
 import { presentStandardSong } from '@/features/game-content/adapters';
@@ -27,6 +28,7 @@ import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
@@ -442,15 +444,31 @@ function ChunithmSearchScreen() {
 
 function PhigrosSearchScreen() {
   const query = usePhigrosCatalog();
+  const kyouChartTags = usePhigrosKyouChartTags();
   const library = useUserLibrary();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const {
-    keyword, collapsed, level, constantMin, constantMax, chapter,
-    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setChapter, clearFilters,
+    keyword, collapsed, level, constantMin, constantMax, chapter, selectedKyouTagIds,
+    setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setChapter,
+    setSelectedKyouTagIds, clearFilters,
   } = usePhigrosCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const index = useMemo(() => buildSongSearchIndex(query.data?.snapshot.songs ?? []), [query.data?.snapshot.songs]);
+  const kyouTagIndex = useMemo(() => buildPhigrosKyouChartTagIndex(
+    kyouChartTags.data,
+    query.data?.snapshot,
+  ), [kyouChartTags.data, query.data?.snapshot]);
+  useEffect(() => {
+    if (selectedKyouTagIds.length === 0) return;
+    if (kyouChartTags.data) {
+      const validIds = new Set(kyouChartTags.data.tags.map((tag) => tag.id));
+      const next = selectedKyouTagIds.filter((tagId) => validIds.has(tagId));
+      if (next.length !== selectedKyouTagIds.length) setSelectedKyouTagIds(next);
+    } else if (kyouChartTags.isError) {
+      setSelectedKyouTagIds([]);
+    }
+  }, [kyouChartTags.data, kyouChartTags.isError, selectedKyouTagIds, setSelectedKyouTagIds]);
   const filterSpec = useMemo(() => ({
     ...EMPTY_SONG_FILTERS,
     keyword: debouncedKeyword,
@@ -458,15 +476,35 @@ function PhigrosSearchScreen() {
     constantMin: parseConstantBound(constantMin),
     constantMax: parseConstantBound(constantMax),
     chartVersionIds: chapter === 'all' ? [] : [Number(chapter)],
-  }), [chapter, constantMax, constantMin, debouncedKeyword, level]);
+    selectedKyouTagIds,
+  }), [chapter, constantMax, constantMin, debouncedKeyword, level, selectedKyouTagIds]);
   const deferredFilterSpec = useDeferredValue(filterSpec);
-  const filtered = useMemo(() => searchSongs(index, deferredFilterSpec), [deferredFilterSpec, index]);
+  const filtered = useMemo(() => searchSongs(
+    index,
+    deferredFilterSpec,
+    kyouChartTags.data && deferredFilterSpec.selectedKyouTagIds.length > 0
+      ? (song, chart) => phigrosKyouChartHasAllTags(
+          kyouTagIndex,
+          song.id,
+          chart.levelIndex,
+          deferredFilterSpec.selectedKyouTagIds,
+        )
+      : undefined,
+  ), [deferredFilterSpec, index, kyouChartTags.data, kyouTagIndex]);
   const isFiltering = filterSpec !== deferredFilterSpec;
   const favoriteSongIds = useMemo(
     () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
     [library.data],
   );
-  const hasActiveFilters = !!(keyword.trim() || level !== 'all' || constantMin || constantMax || chapter !== 'all');
+  const matchedAliasById = useMemo(() => {
+    if (!debouncedKeyword.trim()) return null;
+    return new Map(filtered.flatMap((song) => {
+      const alias = findMatchedAlias(song, debouncedKeyword);
+      return alias ? [[song.id, alias] as const] : [];
+    }));
+  }, [debouncedKeyword, filtered]);
+  const hasActiveFilters = !!(keyword.trim() || level !== 'all' || constantMin || constantMax
+    || chapter !== 'all' || selectedKyouTagIds.length);
   const versions = query.data?.snapshot.versions ?? [];
 
   const provider = query.data?.provider ?? null;
@@ -492,12 +530,14 @@ function PhigrosSearchScreen() {
       favorite={favoriteSongIds.has(item.id)}
       favoritePending={library.isLoading || library.isUpdating}
       onFavoriteChange={toggleFavorite}
+      matchedAlias={matchedAliasById?.get(item.id)}
     />
   ), [
     blurUrls,
     favoriteSongIds,
     library.isLoading,
     library.isUpdating,
+    matchedAliasById,
     toggleFavorite,
   ]);
 
@@ -505,7 +545,7 @@ function PhigrosSearchScreen() {
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput accessibilityLabel="歌曲搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
+          placeholder="曲名 / 别名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
           value={keyword} onChangeText={setKeyword}
           style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
@@ -515,6 +555,10 @@ function PhigrosSearchScreen() {
         level={level} constantMin={constantMin} constantMax={constantMax}
         onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         chapter={chapter} versions={versions} onChapterChange={setChapter}
+        kyouTags={kyouChartTags.data?.tags ?? []}
+        selectedKyouTagIds={selectedKyouTagIds}
+        kyouTagState={kyouChartTags.data ? 'ready' : kyouChartTags.isLoading ? 'loading' : 'unavailable'}
+        onKyouTagIdsChange={setSelectedKyouTagIds}
         onReset={clearFilters}
       />
       <CatalogListPage<Song>
@@ -534,7 +578,16 @@ function PhigrosSearchScreen() {
             label: source.label,
             updatedAt: source.updatedAt,
             state: source.isStale ? 'cache' : 'live',
-          }]} /> : null,
+          }, ...(kyouChartTags.data ? [{
+            key: 'phigros-kyou-tags' as const,
+            label: kyouChartTags.data.source.label,
+            updatedAt: kyouChartTags.data.source.updatedAt,
+            state: kyouChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
+          }] : kyouChartTags.isError ? [{
+            key: 'phigros-kyou-tags' as const,
+            label: 'Kyou 谱面标签不可用',
+            state: 'unavailable' as const,
+          }] : [])]} /> : null,
           renderItem: renderPhigrosItem,
         }}
       />

@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { Ionicons } from '@expo/vector-icons';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
+import { PhigrosKyouTagFilterSheet } from '@/components/phigros/PhigrosKyouTagFilterSheet';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
 import {
   PHIGROS_LEVELS,
@@ -12,6 +13,7 @@ import {
   type PhigrosRankFilter,
 } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
+import type { PhigrosKyouTag } from '@/domain/phigros-kyou';
 import type { GameVersion } from '@/domain/models';
 import { phigrosLevelColors } from '@/domain/phigros-level-theme';
 import { phigrosXingLabel, type PhigrosXingKind } from '@/domain/phigros-xing';
@@ -24,6 +26,7 @@ const PHIGROS_XING_FILTERS: readonly { value: PhigrosXingKind; label: string }[]
 
 type ChapterDropdownValue = string | 'all';
 type OpenDropdown = 'chapter' | null;
+export type PhigrosKyouTagFilterState = 'ready' | 'loading' | 'unavailable';
 
 export interface PhigrosFilterBarProps {
   collapsed: boolean;
@@ -36,6 +39,9 @@ export interface PhigrosFilterBarProps {
   xing?: PhigrosXingKind | null;
   chapter?: string | 'all';
   versions?: readonly GameVersion[];
+  kyouTags?: readonly PhigrosKyouTag[];
+  selectedKyouTagIds?: readonly number[];
+  kyouTagState?: PhigrosKyouTagFilterState;
   onCollapsedChange: (collapsed: boolean) => void;
   onLevelChange: (level: PhigrosLevel | 'all') => void;
   onConstantMinChange: (value: string) => void;
@@ -45,6 +51,7 @@ export interface PhigrosFilterBarProps {
   onRankChange?: (value: PhigrosRankFilter | null) => void;
   onXingChange?: (value: PhigrosXingKind | null) => void;
   onChapterChange?: (value: string | 'all') => void;
+  onKyouTagIdsChange?: (tagIds: number[]) => void;
   onReset: () => void;
 }
 
@@ -58,7 +65,9 @@ export function buildPhigrosFilterSummary({
   xing,
   chapter,
   versions,
-}: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank' | 'xing' | 'chapter' | 'versions'>): string {
+  kyouTags,
+  selectedKyouTagIds,
+}: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank' | 'xing' | 'chapter' | 'versions' | 'kyouTags' | 'selectedKyouTagIds'>): string {
   const selectedChapter = versions?.find((item) => String(item.id) === chapter);
   return [
     level === 'all' ? null : phigrosLevelLabel(level),
@@ -67,7 +76,18 @@ export function buildPhigrosFilterSummary({
     rank ? phigrosRankFilterLabel(rank) : null,
     xing ? phigrosXingLabel(xing) : null,
     chapter === 'all' || !selectedChapter ? null : `章节 ${selectedChapter.title}`,
+    selectedKyouTagIds?.length ? `标签 ${formatPhigrosKyouTagFilterValue(kyouTags ?? [], selectedKyouTagIds)}` : null,
   ].filter(Boolean).join(' · ') || '全部';
+}
+
+export function formatPhigrosKyouTagFilterValue(
+  tags: readonly PhigrosKyouTag[],
+  selectedTagIds: readonly number[],
+): string {
+  const names = tags.filter((tag) => selectedTagIds.includes(tag.id)).map((tag) => tag.name);
+  if (names.length === 0) return '全部';
+  if (names.length <= 2) return names.join('、');
+  return `${names.length} 项`;
 }
 
 export function PhigrosFilterBar({
@@ -81,6 +101,9 @@ export function PhigrosFilterBar({
   xing = null,
   chapter = 'all',
   versions,
+  kyouTags = [],
+  selectedKyouTagIds = [],
+  kyouTagState = 'unavailable',
   onCollapsedChange,
   onLevelChange,
   onConstantMinChange,
@@ -90,14 +113,17 @@ export function PhigrosFilterBar({
   onRankChange,
   onXingChange,
   onChapterChange,
+  onKyouTagIdsChange,
   onReset,
 }: PhigrosFilterBarProps) {
   const theme = useAppTheme();
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
+  const [tagSheetVisible, setTagSheetVisible] = useState(false);
   const showAccuracyRange = onAccuracyMinChange !== undefined && onAccuracyMaxChange !== undefined;
   const showRankPicker = onRankChange !== undefined;
   const showXingPicker = onXingChange !== undefined;
   const showChapterPicker = onChapterChange !== undefined && versions !== undefined && versions.length > 0;
+  const showKyouTagPicker = onKyouTagIdsChange !== undefined;
   const selectedChapterLabel = versions?.find((item) => String(item.id) === chapter)?.title ?? '全部';
   const setDropdownOpen = (id: OpenDropdown) => (open: boolean) => {
     setOpenDropdown(open ? id : null);
@@ -114,6 +140,7 @@ export function PhigrosFilterBar({
 
   const summary = buildPhigrosFilterSummary({
     level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter, versions,
+    kyouTags, selectedKyouTagIds,
   });
 
   if (collapsed) {
@@ -189,6 +216,27 @@ export function PhigrosFilterBar({
         </View>
       ) : null}
 
+      {showKyouTagPicker ? (
+        <View style={styles.filterRow}>
+          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>标签</Text>
+          <Pressable accessibilityRole="button"
+            accessibilityLabel={`谱面标签筛选，${kyouTagState === 'ready'
+              ? `当前 ${formatPhigrosKyouTagFilterValue(kyouTags, selectedKyouTagIds)}`
+              : kyouTagState === 'loading' ? '加载中' : '暂不可用'}`}
+            accessibilityState={{ disabled: kyouTagState !== 'ready', expanded: tagSheetVisible }}
+            disabled={kyouTagState !== 'ready'} onPress={() => setTagSheetVisible(true)}
+            style={[styles.tagPicker, { backgroundColor: theme.input, borderColor: theme.border },
+              kyouTagState !== 'ready' && styles.disabled]}>
+            <Text numberOfLines={1} style={[styles.tagPickerText, { color: theme.text }]}>
+              {kyouTagState === 'loading' ? '加载中'
+                : kyouTagState === 'unavailable' ? '暂不可用'
+                  : formatPhigrosKyouTagFilterValue(kyouTags, selectedKyouTagIds)}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={styles.filterRow}>
         <Text style={[styles.filterLabel, showAccuracyRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
         <View style={styles.rangeRow}>
@@ -260,6 +308,8 @@ export function PhigrosFilterBar({
           </View>
         </View>
       ) : null}
+      {showKyouTagPicker ? <PhigrosKyouTagFilterSheet visible={tagSheetVisible} tags={kyouTags}
+        selectedTagIds={selectedKyouTagIds} onApply={onKyouTagIdsChange} onClose={() => setTagSheetVisible(false)} /> : null}
     </View>
   );
 }
@@ -405,6 +455,9 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   rangeSeparator: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
+  tagPicker: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tagPickerText: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  disabled: { opacity: 0.5 },
   collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
   collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
   collapsedLabel: { fontSize: 12, fontWeight: '700' },

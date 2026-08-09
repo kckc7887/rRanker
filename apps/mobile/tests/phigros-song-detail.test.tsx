@@ -24,6 +24,7 @@ function buildSampleSong(): Song {
     artist: '测试曲师',
     illustrator: '测试曲绘师',
     version: '3.8.0',
+    aliases: ['测试别名一', '测试别名二'],
     charts: [
       {
         songId: 'Song.A', type: 'SD', levelIndex: 0, level: 'EZ', difficulty: 'basic',
@@ -76,7 +77,13 @@ jest.mock('expo-router', () => ({
 jest.mock('@/state/session-store', () => ({
   useSession: (selector: (state: { activeGameId: string }) => unknown) => selector({ activeGameId: 'phigros' }),
 }));
+jest.mock('@/components/AppNotification', () => ({
+  NotificationOutlet: () => null,
+  useNotification: () => ({ showActionNotification: jest.fn(), showNotification: jest.fn() }),
+  useNotificationModalRequestClose: () => () => false,
+}));
 let mockCatalogSongVersion = '3.8.0';
+let mockAliases = ['测试别名一', '测试别名二'];
 jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({
     data: {
@@ -87,6 +94,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
           artist: '测试曲师',
           illustrator: '测试曲绘师',
           version: mockCatalogSongVersion,
+          aliases: mockAliases,
           charts: [
             {
               songId: 'Song.A', type: 'SD', levelIndex: 0, level: 'EZ', difficulty: 'basic',
@@ -121,6 +129,30 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
     isError: false,
     isFetching: false,
     error: null,
+    refetch: jest.fn(),
+  }),
+}));
+jest.mock('@/hooks/use-phigros-kyou', () => ({
+  usePhigrosKyouChartTags: () => ({
+    data: {
+      songs: [{ songId: 'kyou-song', name: '测试曲', pack: '3.8.0' }],
+      charts: [{
+        chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in',
+        constant: 14.8, mainLabel: '读谱', mainLabelQuestion: false,
+        mainTopVotes: 8, mainSecondVotes: 0, tagSource: 'Kyou',
+      }],
+      tags: [
+        { id: 152, name: '读谱', type: 'primary', parentIds: [], description: '读谱相关难点' },
+        { id: 156, name: '差速', type: 'secondary', parentIds: [152], description: '速度不同' },
+      ],
+      votes: [
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 152, tag: '读谱', votes: 8, parentIds: [], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 156, tag: '差速', votes: 3, parentIds: [152], source: 'Kyou' },
+      ],
+      source: { kind: 'kyou', label: 'Kyou Phigros 谱面标签', updatedAt: '2026-08-09T00:00:00.000Z', isStale: false },
+    },
+    isLoading: false,
+    isError: false,
     refetch: jest.fn(),
   }),
 }));
@@ -212,6 +244,7 @@ describe('Phigros song detail', () => {
   beforeEach(() => {
     mockSongRouteParams = { songId: 'Song.A' };
     mockCatalogSongVersion = '3.8.0';
+    mockAliases = ['测试别名一', '测试别名二'];
     libraryMock.__libraryMockState.data = [];
     mockCanGoBack.mockReturnValue(true);
     jest.clearAllMocks();
@@ -249,6 +282,26 @@ describe('Phigros song detail', () => {
 
     const carousel = screen.getByTestId('phigros-chart-carousel');
     expect(carousel.props.contentOffset.x).toBeGreaterThan(0);
+  });
+
+  it('shows expandable aliases and Kyou chart tags with vote counts', async () => {
+    const screen = await render(<SongDetailScreen />);
+    await waitFor(() => expect(screen.getByText('歌曲信息')).toBeTruthy());
+    const aliases = screen.getByText('测试别名一、测试别名二');
+    expect(aliases.props.numberOfLines).toBe(2);
+    await fireEvent.press(screen.getByLabelText('展开歌曲别名'));
+    expect(screen.getByText('测试别名一、测试别名二').props.numberOfLines).toBeUndefined();
+    await fireEvent.press(screen.getByLabelText('收起歌曲别名'));
+    expect(screen.getByText('测试别名一、测试别名二').props.numberOfLines).toBe(2);
+    expect(screen.getByLabelText('谱面标签 读谱，8 票，点击查看说明')).toBeTruthy();
+    expect(screen.getByLabelText('谱面标签 差速，3 票，点击查看说明')).toBeTruthy();
+  });
+
+  it('shows 无 when the song has no aliases', async () => {
+    mockAliases = [];
+    const screen = await render(<SongDetailScreen />);
+    await waitFor(() => expect(screen.getByText('歌曲信息')).toBeTruthy());
+    expect(screen.getByText('无')).toBeTruthy();
   });
 
   it('shows floored level and Score label on chart cards', async () => {
