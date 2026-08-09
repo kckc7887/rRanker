@@ -331,7 +331,7 @@ export default function PhigrosStrengthAnalysisScreen() {
       <Card style={styles.poolCard}>
         <View style={styles.poolHeading}>
           <View style={styles.poolTitleBlock}>
-            <Text style={[styles.eyebrow, { color: theme.accent }]}>RKS ≥ {analysis.pool.threshold.toFixed(1)} · A 及以上</Text>
+            <Text style={[styles.eyebrow, { color: theme.accent }]}>定数 ≥ {analysis.pool.threshold.toFixed(1)} · A 及以上</Text>
             <Text style={[styles.poolTitle, { color: theme.text }]}>本次分析池</Text>
           </View>
           <View style={styles.playerRksBlock}>
@@ -345,13 +345,13 @@ export default function PhigrosStrengthAnalysisScreen() {
           <Metric label="标签覆盖" value={coverage} />
           <Metric label="池内最高" value={analysis.pool.maxRks?.toFixed(4) ?? '—'} />
         </View>
-        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；平均定数校准按“入池数 ÷ 候选数”的覆盖率渐进生效，再对未达到同类满分基准的结果应用最高 1.0200 的数量补偿，且不越过满分基准。全满覆盖率为 100%，五维仍保持等值。</Text>
+        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0；入池按谱面定数匹配并保留 A 及以上成绩。平均定数校准按“入池数 ÷ 候选数”的覆盖率渐进生效，再对未达到同类满分基准的结果应用最高 1.0200 的数量补偿，且不越过满分基准。</Text>
       </Card>
 
       {analysis.pool.totalCount === 0 ? (
         <Card>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无达标谱面</Text>
-          <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>当前没有同时满足 RKS 阈值与 A 以上评级的成绩。</Text>
+          <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>当前没有同时满足谱面定数阈值与 A 以上评级的成绩。</Text>
         </Card>
       ) : (
         <>
