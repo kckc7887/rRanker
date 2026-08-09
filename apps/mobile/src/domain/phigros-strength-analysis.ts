@@ -1,4 +1,5 @@
 import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
+import { calculateRks } from '@/domain/phigros';
 import {
   phigrosKyouTagsForChart,
   resolvePhigrosKyouPrimaryTags,
@@ -13,6 +14,8 @@ const STRENGTH_EQUALITY_EPSILON = 1e-9;
 export const PHIGROS_STRENGTH_THRESHOLD_CAP = 16;
 export const PHIGROS_STRENGTH_MAX_AVAILABILITY_BONUS = 0.02;
 export const PHIGROS_STRENGTH_MAX_ANALYSIS_SUPPLEMENTS_PER_TAG = 5;
+export const PHIGROS_STRENGTH_RECOMMENDATION_COUNT = 3;
+export const PHIGROS_STRENGTH_RECOMMENDATION_MIN_GAIN = 0.0001;
 
 export interface PhigrosStrengthPool {
   threshold: number;
@@ -53,6 +56,21 @@ export interface PhigrosTagRksStat {
   charts: readonly PhigrosStrengthChartSample[];
 }
 
+export interface PhigrosStrengthRecommendation {
+  tagId: number;
+  tagName: string;
+  songId: string;
+  title: string;
+  levelIndex: number;
+  difficultyConstant: number;
+  currentAcc: number | null;
+  currentRks: number | null;
+  targetAcc: number;
+  targetRks: number;
+  projectedTagRks: number;
+  projectedGain: number;
+}
+
 export interface PhigrosStrengthAnalysis {
   playerRks: number;
   pool: PhigrosStrengthPool;
@@ -61,6 +79,7 @@ export interface PhigrosStrengthAnalysis {
   secondaryTags: readonly PhigrosTagRksStat[];
   strongestMainTag: PhigrosTagRksStat | null;
   weakestMainTag: PhigrosTagRksStat | null;
+  recommendations: readonly PhigrosStrengthRecommendation[];
   areMainTagsTied: boolean;
   hasExpectedPrimaryAxes: boolean;
   radarDomain: { min: number; max: number };
@@ -76,6 +95,10 @@ type MutableEligibilityAggregate = {
   count: number;
   difficultySum: number;
 };
+
+function strengthChartKey(songId: string, levelIndex: number): string {
+  return `${songId}\u0000${levelIndex}`;
+}
 
 function effectiveStrengthTags(
   chartTags: ReturnType<typeof phigrosKyouTagsForChart>,
@@ -249,6 +272,150 @@ export function resolvePhigrosStrengthProfileLabel(
   return `${first.name}倾向型`;
 }
 
+function minimumAccForProjectedGain(
+  difficultyConstant: number,
+  currentAcc: number | null,
+  projectTagRks: (chartRks: number, targetAcc: number) => number,
+  currentTagRks: number,
+): { targetAcc: number; targetRks: number; projectedTagRks: number } | null {
+  const minimumAccUnits = currentAcc == null
+    ? 7_000
+    : Math.max(7_000, Math.floor((currentAcc + FLOATING_FLOOR_EPSILON) * 100) + 1);
+  if (minimumAccUnits > 10_000) return null;
+  const targetTagRks = currentTagRks + PHIGROS_STRENGTH_RECOMMENDATION_MIN_GAIN;
+  const projectsEnoughGain = (accUnits: number) => {
+    const targetAcc = accUnits / 100;
+    return projectTagRks(calculateRks(difficultyConstant, targetAcc), targetAcc)
+      + STRENGTH_EQUALITY_EPSILON >= targetTagRks;
+  };
+  if (!projectsEnoughGain(10_000)) return null;
+
+  let low = minimumAccUnits;
+  let high = 10_000;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (projectsEnoughGain(middle)) high = middle;
+    else low = middle + 1;
+  }
+  const targetAcc = low / 100;
+  const targetRks = calculateRks(difficultyConstant, targetAcc);
+  return { targetAcc, targetRks, projectedTagRks: projectTagRks(targetRks, targetAcc) };
+}
+
+function resolvePhigrosStrengthRecommendations(
+  weakestTag: PhigrosTagRksStat | null,
+  playerRks: number,
+  records: readonly ScoreRecord[],
+  tagIndex: PhigrosKyouChartTagIndex,
+  tagCatalog: readonly PhigrosKyouTag[],
+  catalog: CatalogSnapshot,
+  threshold: number,
+): readonly PhigrosStrengthRecommendation[] {
+  if (!weakestTag || weakestTag.averageRks == null || weakestTag.rawAverageRks == null) return [];
+  const recordsByChart = new Map<string, ScoreRecord>();
+  for (const record of records) {
+    const key = strengthChartKey(record.songId, record.levelIndex);
+    const current = recordsByChart.get(key);
+    if (!current || record.rating > current.rating
+      || (record.rating === current.rating && record.achievements > current.achievements)) {
+      recordsByChart.set(key, record);
+    }
+  }
+  const candidates = catalog.songs.flatMap((song) => song.charts
+    .filter((chart) => (
+      Number.isFinite(chart.difficultyConstant)
+      && chart.difficultyConstant >= threshold
+      && effectiveStrengthTags(
+        phigrosKyouTagsForChart(tagIndex, song.id, chart.levelIndex),
+      ).some((tag) => tag.id === weakestTag.tagId)
+    ))
+    .map((chart) => ({ song, chart })))
+    .sort((left, right) => (
+      left.chart.difficultyConstant - right.chart.difficultyConstant
+      || left.song.id.localeCompare(right.song.id)
+      || left.chart.levelIndex - right.chart.levelIndex
+    ));
+
+  const recommendations: PhigrosStrengthRecommendation[] = [];
+  let candidateIndex = 0;
+  while (candidateIndex < candidates.length) {
+    const groupDifficulty = candidates[candidateIndex]!.chart.difficultyConstant;
+    const sameDifficultyCandidates = [];
+    while (candidateIndex < candidates.length
+      && candidates[candidateIndex]!.chart.difficultyConstant === groupDifficulty) {
+      sameDifficultyCandidates.push(candidates[candidateIndex]!);
+      candidateIndex += 1;
+    }
+    for (const { song, chart } of sameDifficultyCandidates) {
+      const key = strengthChartKey(song.id, chart.levelIndex);
+      const currentRecord = recordsByChart.get(key);
+      const projectTagRks = (chartRks: number, targetAcc: number) => {
+        const hypotheticalRecord: ScoreRecord = currentRecord
+          ? { ...currentRecord, achievements: targetAcc, rating: chartRks, rate: targetAcc >= 100 ? 'phi' : 'a' }
+          : {
+            songId: song.id,
+            title: song.title,
+            type: chart.type,
+            levelIndex: chart.levelIndex,
+            level: chart.level,
+            difficulty: chart.difficulty,
+            difficultyConstant: chart.difficultyConstant,
+            achievements: targetAcc,
+            dxScore: null,
+            rating: chartRks,
+            fc: null,
+            fs: null,
+            rate: targetAcc >= 100 ? 'phi' : 'a',
+            version: song.version,
+          };
+        const hypotheticalRecords = records
+          .filter((record) => strengthChartKey(record.songId, record.levelIndex) !== key)
+          .concat(hypotheticalRecord);
+        return analyzePhigrosStrengthInternal(
+          playerRks,
+          hypotheticalRecords,
+          tagIndex,
+          tagCatalog,
+          catalog,
+          false,
+        ).mainTags.find((tag) => tag.tagId === weakestTag.tagId)?.averageRks
+          ?? Number.NEGATIVE_INFINITY;
+      };
+      const target = minimumAccForProjectedGain(
+        chart.difficultyConstant,
+        currentRecord?.achievements ?? null,
+        projectTagRks,
+        weakestTag.averageRks,
+      );
+      if (!target) continue;
+      recommendations.push({
+        tagId: weakestTag.tagId,
+        tagName: weakestTag.name,
+        songId: song.id,
+        title: song.title,
+        levelIndex: chart.levelIndex,
+        difficultyConstant: chart.difficultyConstant,
+        currentAcc: currentRecord?.achievements ?? null,
+        currentRks: currentRecord?.rating ?? null,
+        targetAcc: target.targetAcc,
+        targetRks: target.targetRks,
+        projectedTagRks: target.projectedTagRks,
+        projectedGain: target.projectedTagRks - weakestTag.averageRks,
+      });
+    }
+    if (recommendations.length >= PHIGROS_STRENGTH_RECOMMENDATION_COUNT) break;
+  }
+
+  return recommendations
+    .sort((left, right) => (
+      left.difficultyConstant - right.difficultyConstant
+      || left.targetAcc - right.targetAcc
+      || left.songId.localeCompare(right.songId)
+      || left.levelIndex - right.levelIndex
+    ))
+    .slice(0, PHIGROS_STRENGTH_RECOMMENDATION_COUNT);
+}
+
 function resolveRadarDomain(
   mainTags: readonly PhigrosTagRksStat[],
   threshold: number,
@@ -264,12 +431,13 @@ function resolveRadarDomain(
   };
 }
 
-export function analyzePhigrosStrength(
+function analyzePhigrosStrengthInternal(
   playerRks: number,
   records: readonly ScoreRecord[],
   tagIndex: PhigrosKyouChartTagIndex,
   tagCatalog: readonly PhigrosKyouTag[],
   catalog: CatalogSnapshot,
+  includeRecommendations: boolean,
 ): PhigrosStrengthAnalysis {
   const threshold = resolvePhigrosStrengthThreshold(playerRks);
   const basePoolRecords = records.filter((record) => (
@@ -280,13 +448,12 @@ export function analyzePhigrosStrength(
   const aggregateByTagId = new Map<number, MutableTagAggregate>();
   const eligibilityByTagId = new Map<number, MutableEligibilityAggregate>();
   const supplementedSampleCountByTagId = new Map<number, number>();
-  const chartKey = (songId: string, levelIndex: number) => `${songId}\u0000${levelIndex}`;
   const candidateChartKeys = new Set<string>();
 
   for (const song of catalog.songs) {
     for (const chart of song.charts) {
       if (!Number.isFinite(chart.difficultyConstant) || chart.difficultyConstant < threshold) continue;
-      candidateChartKeys.add(chartKey(song.id, chart.levelIndex));
+      candidateChartKeys.add(strengthChartKey(song.id, chart.levelIndex));
       const chartTags = phigrosKyouTagsForChart(tagIndex, song.id, chart.levelIndex);
       for (const tag of effectiveStrengthTags(chartTags)) {
         const eligibility = eligibilityByTagId.get(tag.id) ?? { count: 0, difficultySum: 0 };
@@ -321,7 +488,7 @@ export function analyzePhigrosStrength(
     aggregateByTagId.clear();
     supplementedSampleCountByTagId.clear();
     for (const record of poolRecords) {
-      const key = chartKey(record.songId, record.levelIndex);
+      const key = strengthChartKey(record.songId, record.levelIndex);
       const isSupplemental = supplementalKeys.has(key);
       const effectiveTags = effectiveStrengthTags(
         phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex),
@@ -345,14 +512,14 @@ export function analyzePhigrosStrength(
       .map(([tagId]) => tagId),
   );
   const basePoolRecordKeys = new Set(
-    basePoolRecords.map((record) => chartKey(record.songId, record.levelIndex)),
+    basePoolRecords.map((record) => strengthChartKey(record.songId, record.levelIndex)),
   );
   const selectedSupplementKeysByTagId = new Map<number, Set<string>>();
   const selectedSupplementTagIdsByKey = new Map<string, Set<number>>();
   const supplementalPoolRecords = new Map<string, ScoreRecord>();
   const supplementalCandidates = records
     .filter((record) => {
-      const key = chartKey(record.songId, record.levelIndex);
+      const key = strengthChartKey(record.songId, record.levelIndex);
       return Number.isFinite(record.rating)
         && candidateChartKeys.has(key)
         && !basePoolRecordKeys.has(key);
@@ -365,7 +532,7 @@ export function analyzePhigrosStrength(
     ));
 
   for (const record of supplementalCandidates) {
-    const key = chartKey(record.songId, record.levelIndex);
+    const key = strengthChartKey(record.songId, record.levelIndex);
     const chartTags = phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex);
     const effectiveTags = effectiveStrengthTags(chartTags);
     for (const tag of effectiveTags) {
@@ -467,6 +634,23 @@ export function analyzePhigrosStrength(
     && populatedMainTags.every((tag) => (
       Math.abs(tag.averageRks! - populatedMainTags[0]!.averageRks!) <= STRENGTH_EQUALITY_EPSILON
     ));
+  const strongestMainTag = areMainTagsTied
+    ? null
+    : [...populatedMainTags].sort(strongestSort)[0] ?? null;
+  const weakestMainTag = areMainTagsTied
+    ? null
+    : [...populatedMainTags].sort(weakestSort)[0] ?? null;
+  const recommendations = includeRecommendations
+    ? resolvePhigrosStrengthRecommendations(
+      weakestMainTag,
+      playerRks,
+      records,
+      tagIndex,
+      tagCatalog,
+      catalog,
+      threshold,
+    )
+    : [];
 
   return {
     playerRks,
@@ -482,10 +666,28 @@ export function analyzePhigrosStrength(
     mainTags,
     mainTagProfileLabel: resolvePhigrosStrengthProfileLabel(mainTags),
     secondaryTags,
-    strongestMainTag: areMainTagsTied ? null : [...populatedMainTags].sort(strongestSort)[0] ?? null,
-    weakestMainTag: areMainTagsTied ? null : [...populatedMainTags].sort(weakestSort)[0] ?? null,
+    strongestMainTag,
+    weakestMainTag,
+    recommendations,
     areMainTagsTied,
     hasExpectedPrimaryAxes: primaryCatalog.length === 5,
     radarDomain: resolveRadarDomain(mainTags, threshold),
   };
+}
+
+export function analyzePhigrosStrength(
+  playerRks: number,
+  records: readonly ScoreRecord[],
+  tagIndex: PhigrosKyouChartTagIndex,
+  tagCatalog: readonly PhigrosKyouTag[],
+  catalog: CatalogSnapshot,
+): PhigrosStrengthAnalysis {
+  return analyzePhigrosStrengthInternal(
+    playerRks,
+    records,
+    tagIndex,
+    tagCatalog,
+    catalog,
+    true,
+  );
 }
