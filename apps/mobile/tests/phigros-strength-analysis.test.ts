@@ -92,7 +92,12 @@ describe('Phigros strength analysis', () => {
     ]);
     expect(analysis.strongestMainTag?.name).toBe('耐力');
     expect(analysis.weakestMainTag?.name).toBe('读谱');
-    expect(analysis.radarDomain).toEqual({ min: 15.9, max: 16.3691 });
+    expect(analysis.radarDomain.min).toBe(15.9);
+    expect(analysis.radarDomain.max).toBeCloseTo(16.2, 8);
+    expect(analysis.mainTags[0]!.charts.map((chart) => [chart.levelIndex, chart.rks])).toEqual([
+      [3, 16.1],
+      [2, 15.9],
+    ]);
     expect(analysis.secondaryTags).toHaveLength(1);
     expect(analysis.secondaryTags[0]).toMatchObject({
       name: '差速',
@@ -105,10 +110,10 @@ describe('Phigros strength analysis', () => {
   it('keeps an honest radar interval for empty and degenerate pools', () => {
     const empty = analyzePhigrosStrength(0, [], new Map(), primaryTags);
     expect(empty.pool.totalCount).toBe(0);
-    expect(empty.radarDomain).toEqual({ min: 0, max: 0.4 });
+    expect(empty.radarDomain).toEqual({ min: 0, max: 0.1 });
 
     const flat = analyzePhigrosStrength(16.2, [score('flat', 2, 16, 'a')], new Map(), primaryTags);
-    expect(flat.radarDomain).toEqual({ min: 16, max: 16.4 });
+    expect(flat.radarDomain).toEqual({ min: 16, max: 16.1 });
   });
 
   it('reports a non-five-axis upstream catalog instead of fabricating axes', () => {

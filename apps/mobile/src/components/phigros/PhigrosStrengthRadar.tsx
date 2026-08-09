@@ -29,10 +29,12 @@ export function PhigrosStrengthRadar({
   tags,
   min,
   max,
+  onTagPress,
 }: {
   tags: readonly PhigrosTagRksStat[];
   min: number;
   max: number;
+  onTagPress?: (tag: PhigrosTagRksStat) => void;
 }) {
   const theme = useAppTheme();
   const span = Math.max(max - min, 0.1);
@@ -111,6 +113,7 @@ export function PhigrosStrengthRadar({
               fontSize={14}
               fontWeight="700"
               textAnchor={anchor}
+              onPress={onTagPress ? () => onTagPress(tag) : undefined}
             >
               {tag.name}
             </SvgText>

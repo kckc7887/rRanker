@@ -1,12 +1,15 @@
-import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
+import { AppModal } from '@/components/AppModal';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
+import { PhigrosDifficultyBadge } from '@/components/phigros/PhigrosDifficultyBadge';
 import { PhigrosStrengthRadar } from '@/components/phigros/PhigrosStrengthRadar';
 import { buildPhigrosKyouChartTagIndex } from '@/domain/phigros-kyou';
 import {
   analyzePhigrosStrength,
+  type PhigrosStrengthChartSample,
   type PhigrosTagRksStat,
 } from '@/domain/phigros-strength-analysis';
 import { useGameData } from '@/hooks/use-game-data';
@@ -28,15 +31,23 @@ function MainSummary({
   label,
   tag,
   tone,
+  onPress,
 }: {
   label: string;
   tag: PhigrosTagRksStat | null;
   tone: 'strong' | 'weak';
+  onPress: (tag: PhigrosTagRksStat) => void;
 }) {
   const theme = useAppTheme();
   const color = tone === 'strong' ? theme.accent : theme.warning;
   return (
-    <View style={[styles.summaryBox, { borderColor: color, backgroundColor: theme.surface }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={tag ? `查看${tag.name}标签歌曲列表` : `${label}暂无样本`}
+      disabled={!tag}
+      onPress={() => { if (tag) onPress(tag); }}
+      style={({ pressed }) => [styles.summaryBox, { borderColor: color, backgroundColor: theme.surface }, pressed && styles.pressed]}
+    >
       <Text style={[styles.summaryLabel, { color }]}>{label}</Text>
       <Text style={[styles.summaryName, { color: theme.text }]}>{tag?.name ?? '—'}</Text>
       <Text style={[styles.summaryValue, { color: theme.textSecondary }]}>
@@ -44,14 +55,25 @@ function MainSummary({
           ? '暂无样本'
           : `${tag.averageRks.toFixed(4)} · ${tag.sampleCount} 张谱面${tag.isSmallSample ? ' · 样本较少' : ''}`}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
-function MainTagStat({ tag }: { tag: PhigrosTagRksStat }) {
+function MainTagStat({
+  tag,
+  onPress,
+}: {
+  tag: PhigrosTagRksStat;
+  onPress: (tag: PhigrosTagRksStat) => void;
+}) {
   const theme = useAppTheme();
   return (
-    <View style={[styles.mainTagStat, { backgroundColor: theme.surfaceMuted }]}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`查看${tag.name}标签歌曲列表`}
+      onPress={() => onPress(tag)}
+      style={({ pressed }) => [styles.mainTagStat, { backgroundColor: theme.surfaceMuted }, pressed && styles.pressed]}
+    >
       <View style={styles.mainTagStatHeading}>
         <Text style={[styles.mainTagStatName, { color: theme.text }]}>{tag.name}</Text>
         <Text style={[styles.mainTagStatRks, { color: tag.averageRks == null ? theme.textMuted : theme.accent }]}>
@@ -61,18 +83,26 @@ function MainTagStat({ tag }: { tag: PhigrosTagRksStat }) {
       <Text style={[styles.mainTagStatMeta, { color: tag.isSmallSample ? theme.warning : theme.textMuted }]}>
         {tag.sampleCount > 0 ? `${tag.sampleCount} 张谱面${tag.isSmallSample ? ' · 样本较少' : ''}` : '暂无样本'}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
-function SecondaryTagRow({ tag }: { tag: PhigrosTagRksStat }) {
+function SecondaryTagRow({
+  tag,
+  onPress,
+}: {
+  tag: PhigrosTagRksStat;
+  onPress: (tag: PhigrosTagRksStat) => void;
+}) {
   const theme = useAppTheme();
   const delta = tag.deltaFromPoolAverage ?? 0;
   const deltaColor = delta >= 0 ? theme.accent : theme.warning;
   return (
-    <View
-      accessibilityLabel={`${tag.name}，标签 RKS ${tag.averageRks!.toFixed(4)}，${tag.sampleCount}张谱面${tag.isSmallSample ? '，样本较少' : ''}`}
-      style={[styles.tagRow, { borderColor: theme.border, backgroundColor: theme.surface }]}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`查看${tag.name}标签歌曲列表，标签 RKS ${tag.averageRks!.toFixed(4)}，${tag.sampleCount}张谱面${tag.isSmallSample ? '，样本较少' : ''}`}
+      onPress={() => onPress(tag)}
+      style={({ pressed }) => [styles.tagRow, { borderColor: theme.border, backgroundColor: theme.surface }, pressed && styles.pressed]}
     >
       <View style={styles.tagCopy}>
         <View style={styles.tagTitleRow}>
@@ -89,12 +119,89 @@ function SecondaryTagRow({ tag }: { tag: PhigrosTagRksStat }) {
           {delta >= 0 ? '+' : ''}{delta.toFixed(4)}
         </Text>
       </View>
+    </Pressable>
+  );
+}
+
+function TagChartRow({
+  chart,
+  title,
+}: {
+  chart: PhigrosStrengthChartSample;
+  title: string;
+}) {
+  const theme = useAppTheme();
+  return (
+    <View style={[styles.chartRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.chartCopy}>
+        <Text numberOfLines={2} style={[styles.chartTitle, { color: theme.text }]}>{title}</Text>
+        <Text style={[styles.chartMeta, { color: theme.textMuted }]}>Acc {chart.achievements.toFixed(2)}%</Text>
+      </View>
+      <View style={styles.chartNumbers}>
+        <PhigrosDifficultyBadge levelIndex={chart.levelIndex} constant={chart.difficultyConstant} />
+        <Text style={[styles.chartRks, { color: theme.accent }]}>RKS {chart.rks.toFixed(4)}</Text>
+      </View>
     </View>
+  );
+}
+
+function TagSongsSheet({
+  tag,
+  titleMap,
+  onClose,
+}: {
+  tag: PhigrosTagRksStat | null;
+  titleMap: ReadonlyMap<string, string>;
+  onClose: () => void;
+}) {
+  const theme = useAppTheme();
+  return (
+    <AppModal
+      animationType="slide"
+      presentationStyle="pageSheet"
+      visible={tag != null}
+      onRequestClose={onClose}
+    >
+      <View testID="phigros-strength-tag-songs-sheet" style={[styles.sheet, { backgroundColor: theme.background }]}>
+        <View style={[styles.sheetGrabber, { backgroundColor: theme.border }]} />
+        <View style={styles.sheetHeader}>
+          <View style={styles.sheetHeaderSpacer} />
+          <View style={styles.sheetTitleBlock}>
+            <Text style={[styles.sheetTitle, { color: theme.text }]}>{tag?.name ?? ''}标签歌曲</Text>
+            <Text style={[styles.sheetCount, { color: theme.textMuted }]}>{tag?.sampleCount ?? 0} 张谱面 · RKS 从高到低</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="关闭标签歌曲列表"
+            onPress={onClose}
+            style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}
+          >
+            <Text style={[styles.sheetCloseText, { color: theme.accent }]}>完成</Text>
+          </Pressable>
+        </View>
+        <FlatList
+          data={tag?.charts ?? []}
+          keyExtractor={(chart) => `${chart.songId}-${chart.levelIndex}`}
+          contentContainerStyle={styles.sheetContent}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <TagChartRow chart={item} title={titleMap.get(item.songId) ?? item.title ?? item.songId} />
+          )}
+          ListEmptyComponent={(
+            <View style={styles.sheetEmpty}>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无达标谱面</Text>
+              <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>当前分析池中没有归入此标签的成绩。</Text>
+            </View>
+          )}
+        />
+      </View>
+    </AppModal>
   );
 }
 
 export default function PhigrosStrengthAnalysisScreen() {
   const theme = useAppTheme();
+  const [selectedTag, setSelectedTag] = useState<PhigrosTagRksStat | null>(null);
   const gameQuery = useGameData();
   const catalogQuery = usePhigrosCatalog();
   const tagsQuery = usePhigrosKyouChartTags();
@@ -113,6 +220,9 @@ export default function PhigrosStrengthAnalysisScreen() {
       tagsQuery.data.tags,
     );
   }, [phigrosPayload, tagIndex, tagsQuery.data]);
+  const titleMap = useMemo(() => new Map(
+    (catalogQuery.data?.snapshot.songs ?? []).map((song) => [song.id, song.title]),
+  ), [catalogQuery.data?.snapshot.songs]);
 
   const retry = () => {
     void Promise.all([
@@ -181,6 +291,7 @@ export default function PhigrosStrengthAnalysisScreen() {
     : '0/0';
 
   return (
+    <>
     <ScrollView
       style={[styles.page, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.content}
@@ -229,13 +340,16 @@ export default function PhigrosStrengthAnalysisScreen() {
               tags={analysis.mainTags}
               min={analysis.radarDomain.min}
               max={analysis.radarDomain.max}
+              onTagPress={setSelectedTag}
             />
             <View style={styles.mainTagGrid}>
-              {analysis.mainTags.map((tag) => <MainTagStat key={tag.tagId} tag={tag} />)}
+              {analysis.mainTags.map((tag) => (
+                <MainTagStat key={tag.tagId} tag={tag} onPress={setSelectedTag} />
+              ))}
             </View>
             <View style={styles.summaryRow}>
-              <MainSummary label="相对最强" tag={analysis.strongestMainTag} tone="strong" />
-              <MainSummary label="相对最弱" tag={analysis.weakestMainTag} tone="weak" />
+              <MainSummary label="相对最强" tag={analysis.strongestMainTag} tone="strong" onPress={setSelectedTag} />
+              <MainSummary label="相对最弱" tag={analysis.weakestMainTag} tone="weak" onPress={setSelectedTag} />
             </View>
           </Card>
 
@@ -248,7 +362,7 @@ export default function PhigrosStrengthAnalysisScreen() {
               <Text style={[styles.sectionCount, { color: theme.accent }]}>{analysis.secondaryTags.length}</Text>
             </View>
             {analysis.secondaryTags.length > 0 ? analysis.secondaryTags.map((tag) => (
-              <SecondaryTagRow key={tag.tagId} tag={tag} />
+              <SecondaryTagRow key={tag.tagId} tag={tag} onPress={setSelectedTag} />
             )) : (
               <Card>
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无细分标签样本</Text>
@@ -259,6 +373,8 @@ export default function PhigrosStrengthAnalysisScreen() {
         </>
       )}
     </ScrollView>
+    <TagSongsSheet tag={selectedTag} titleMap={titleMap} onClose={() => setSelectedTag(null)} />
+    </>
   );
 }
 
@@ -316,4 +432,21 @@ const styles = StyleSheet.create({
   tagDelta: { fontSize: 11, lineHeight: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
   emptyTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
   emptyDetail: { fontSize: 13, lineHeight: 19, marginTop: 4 },
+  sheet: { flex: 1 },
+  sheetGrabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 8, marginBottom: 4 },
+  sheetHeader: { minHeight: 62, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
+  sheetHeaderSpacer: { width: 56 },
+  sheetTitleBlock: { flex: 1, alignItems: 'center', gap: 1 },
+  sheetTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800' },
+  sheetCount: { fontSize: 10, lineHeight: 14 },
+  sheetClose: { width: 56, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  sheetCloseText: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
+  sheetContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 28, gap: 8 },
+  chartRow: { minHeight: 74, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  chartCopy: { flex: 1, minWidth: 0, gap: 4 },
+  chartTitle: { fontSize: 14, lineHeight: 19, fontWeight: '700' },
+  chartMeta: { fontSize: 11, lineHeight: 15, fontVariant: ['tabular-nums'] },
+  chartNumbers: { alignItems: 'flex-end', gap: 5 },
+  chartRks: { fontSize: 12, lineHeight: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  sheetEmpty: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
 });

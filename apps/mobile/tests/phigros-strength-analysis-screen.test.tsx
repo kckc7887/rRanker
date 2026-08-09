@@ -1,5 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import type { ReactNode } from 'react';
 import PhigrosStrengthAnalysisScreen from '../app/tools/strength-analysis';
 
 const mockGameRefetch = jest.fn(async () => undefined);
@@ -11,6 +12,14 @@ let mockCatalogQuery: Record<string, unknown>;
 let mockTagsQuery: Record<string, unknown>;
 
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null } }));
+jest.mock('@/components/AppModal', () => {
+  const { View } = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    AppModal: ({ visible, children }: { visible?: boolean; children: ReactNode }) => (
+      visible ? <View>{children}</View> : null
+    ),
+  };
+});
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => mockGameQuery }));
 jest.mock('@/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
 jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => mockTagsQuery }));
@@ -111,6 +120,14 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.getByLabelText(/五维实力雷达/)).toBeTruthy();
     expect(screen.getByText('差速')).toBeTruthy();
     expect(screen.getByText('样本较少')).toBeTruthy();
+
+    await fireEvent.press(screen.getAllByLabelText('查看读谱标签歌曲列表')[0]!);
+    expect(screen.getByTestId('phigros-strength-tag-songs-sheet')).toBeTruthy();
+    expect(screen.getByText('读谱标签歌曲')).toBeTruthy();
+    expect(screen.getAllByText('Song').length).toBeGreaterThan(0);
+    expect(screen.getByText('RKS 15.9000')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('关闭标签歌曲列表'));
+    expect(screen.queryByTestId('phigros-strength-tag-songs-sheet')).toBeNull();
   });
 
   it('marks stale cache-backed analysis', async () => {
