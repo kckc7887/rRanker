@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable as NativePressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppModal } from '@/components/AppModal';
 import { useNotification } from '@/components/AppNotification';
@@ -32,9 +33,9 @@ export function PhigrosKyouChartTags({
   return <>
     <View testID="phigros-kyou-chart-tags" style={styles.block}>
       <View style={styles.wrap}>
-        {visible.map((tag) => <Pressable key={tag.id} accessibilityRole="button"
+        {visible.map((tag) => <GesturePressable key={tag.id} accessibilityRole="button"
           accessibilityLabel={`谱面标签 ${tag.name}，${tag.votes} 票，点击查看说明`}
-          testID={`phigros-kyou-chart-tag-${tag.id}`} onPress={() => showTag(tag)}
+          hitSlop={8} testID={`phigros-kyou-chart-tag-${tag.id}`} onPress={() => showTag(tag)}
           style={({ pressed }) => [styles.tag, {
             backgroundColor: tag.type === 'primary' ? theme.accentSoft : theme.surfaceMuted,
             borderColor: tag.type === 'primary' ? theme.accent : theme.border,
@@ -44,13 +45,13 @@ export function PhigrosKyouChartTags({
           </Text>
           <Text style={[styles.tagText, { color: tag.type === 'primary' ? theme.accent : theme.textSecondary }]}>{tag.name}</Text>
           <Text style={[styles.voteText, { color: tag.type === 'primary' ? theme.accent : theme.textMuted }]}>{tag.votes}</Text>
-        </Pressable>)}
-        {remaining > 0 ? <Pressable accessibilityRole="button"
+        </GesturePressable>)}
+        {remaining > 0 ? <GesturePressable accessibilityRole="button"
           accessibilityLabel={`查看全部${tags.length}个谱面标签，另有${remaining}个`}
-          testID="phigros-kyou-chart-tags-more" onPress={() => onShowAll(tags)}
+          hitSlop={8} testID="phigros-kyou-chart-tags-more" onPress={() => onShowAll(tags)}
           style={({ pressed }) => [styles.more, { backgroundColor: theme.accentSoft, borderColor: theme.accent }, pressed && styles.pressed]}>
           <Text style={[styles.moreText, { color: theme.accent }]}>+{remaining}</Text>
-        </Pressable> : null}
+        </GesturePressable> : null}
       </View>
     </View>
   </>;
@@ -82,10 +83,10 @@ export function PhigrosKyouChartTagsSheet({
         <View style={styles.header}>
           <View style={styles.headerSpacer} />
           <Text style={[styles.title, { color: theme.text }]}>谱面标签</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭谱面标签"
+          <NativePressable accessibilityRole="button" accessibilityLabel="关闭谱面标签"
             onPress={onClose} style={({ pressed }) => [styles.close, pressed && styles.pressed]}>
             <Text style={[styles.closeText, { color: theme.accent }]}>完成</Text>
-          </Pressable>
+          </NativePressable>
         </View>
         <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
           {GROUPS.map((group) => {
@@ -101,7 +102,7 @@ export function PhigrosKyouChartTagsSheet({
                 </Text>
                 <Text style={[styles.groupTitle, { color: group.type === 'primary' ? theme.accent : theme.textSecondary }]}>{group.label}</Text>
               </View>
-              {items.map((tag) => <Pressable key={tag.id} accessibilityRole="button"
+              {items.map((tag) => <NativePressable key={tag.id} accessibilityRole="button"
                 accessibilityLabel={`${tag.name}，${tag.votes} 票，点击查看说明`} onPress={() => showTag(tag)}
                 style={({ pressed }) => [styles.row, {
                   backgroundColor: tag.type === 'primary' ? theme.accentSoft : theme.surface,
@@ -112,7 +113,7 @@ export function PhigrosKyouChartTagsSheet({
                   <Text style={[styles.rowDescription, { color: theme.textMuted }]}>{tag.description || '暂无说明'}</Text>
                 </View>
                 <Text style={[styles.rowVotes, { color: theme.accent }]}>{tag.votes} 票</Text>
-              </Pressable>)}
+              </NativePressable>)}
             </View>;
           })}
         </ScrollView>
@@ -124,11 +125,11 @@ export function PhigrosKyouChartTagsSheet({
 const styles = StyleSheet.create({
   block: { marginTop: 10 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  tag: { minHeight: 30, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  tag: { minHeight: 36, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
   typeMark: { fontSize: 9, lineHeight: 13, fontWeight: '900' },
   tagText: { fontSize: 12, lineHeight: 16, fontWeight: '700' },
   voteText: { fontSize: 10, lineHeight: 14, fontWeight: '700' },
-  more: { minHeight: 30, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  more: { minWidth: 44, minHeight: 36, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   moreText: { fontSize: 12, fontWeight: '800' },
   pressed: { opacity: 0.65 },
   sheet: { flex: 1 },

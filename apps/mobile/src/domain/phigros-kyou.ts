@@ -238,6 +238,52 @@ export function phigrosKyouTagsForChart(
   return index.get(chartVersionKey(songId, 'SD', levelIndex)) ?? [];
 }
 
+export const PHIGROS_KYOU_COMPOSITE_TAG_ID = -1;
+
+export function presentPhigrosKyouChartTags(
+  tags: readonly PhigrosKyouResolvedTag[],
+): readonly PhigrosKyouResolvedTag[] {
+  const primary = tags
+    .filter((tag) => tag.type === 'primary')
+    .sort((left, right) => right.votes - left.votes || left.id - right.id)
+    .slice(0, 5);
+  const secondary = tags
+    .filter((tag) => tag.type === 'secondary' && tag.votes > 3)
+    .sort((left, right) => right.votes - left.votes || left.id - right.id)
+    .slice(0, 5);
+  const [highest, secondHighest] = primary;
+  if (!highest) return secondary;
+
+  const total = primary.reduce((sum, tag) => sum + tag.votes, 0);
+  const uncertain = highest.votes < 20;
+  const isComposite = !!secondHighest
+    && total > 0
+    && (highest.votes - secondHighest.votes) / total <= 0.1;
+  const uncertaintyDescription = uncertain ? '\n最高票不足 20，结果可信度较低。' : '';
+  const presentedPrimary: PhigrosKyouResolvedTag = isComposite ? {
+    id: PHIGROS_KYOU_COMPOSITE_TAG_ID,
+    name: `综合${uncertain ? '?' : ''}`,
+    type: 'primary',
+    parentIds: [],
+    description: `主要属性票数接近：${highest.name} ${highest.votes} 票，${secondHighest.name} ${secondHighest.votes} 票。${uncertaintyDescription}`,
+    votes: highest.votes + secondHighest.votes,
+  } : {
+    ...highest,
+    name: `${highest.name}${uncertain ? '?' : ''}`,
+    description: `${highest.description}${uncertaintyDescription}`.trim(),
+  };
+
+  return [presentedPrimary, ...secondary];
+}
+
+export function phigrosKyouPresentedTagsForChart(
+  index: PhigrosKyouChartTagIndex,
+  songId: string,
+  levelIndex: number,
+): readonly PhigrosKyouResolvedTag[] {
+  return presentPhigrosKyouChartTags(phigrosKyouTagsForChart(index, songId, levelIndex));
+}
+
 export function phigrosKyouChartHasAllTags(
   index: PhigrosKyouChartTagIndex,
   songId: string,

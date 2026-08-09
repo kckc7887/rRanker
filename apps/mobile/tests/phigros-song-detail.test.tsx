@@ -143,17 +143,29 @@ jest.mock('@/hooks/use-phigros-kyou', () => ({
       }],
       tags: [
         { id: 152, name: '读谱', type: 'primary', parentIds: [], description: '读谱相关难点' },
+        { id: 153, name: '协调', type: 'primary', parentIds: [], description: '协调相关难点' },
         { id: 154, name: '耐力', type: 'primary', parentIds: [], description: '耐力相关难点' },
+        { id: 155, name: '手速', type: 'primary', parentIds: [], description: '手速相关难点' },
+        { id: 159, name: '多指', type: 'primary', parentIds: [], description: '多指相关难点' },
         { id: 156, name: '差速', type: 'secondary', parentIds: [152], description: '速度不同' },
         { id: 157, name: '脑裂', type: 'secondary', parentIds: [152], description: '多线配置' },
         { id: 158, name: '扫线', type: 'secondary', parentIds: [152], description: '扫线配置' },
+        { id: 160, name: '交互', type: 'secondary', parentIds: [153], description: '交互配置' },
+        { id: 161, name: '纵连', type: 'secondary', parentIds: [154], description: '纵连配置' },
+        { id: 162, name: '被截断项', type: 'secondary', parentIds: [155], description: '不会进入前五' },
       ],
       votes: [
-        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 152, tag: '读谱', votes: 8, parentIds: [], source: 'Kyou' },
-        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 154, tag: '耐力', votes: 5, parentIds: [], source: 'Kyou' },
-        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 156, tag: '差速', votes: 3, parentIds: [152], source: 'Kyou' },
-        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 157, tag: '脑裂', votes: 2, parentIds: [152], source: 'Kyou' },
-        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 158, tag: '扫线', votes: 1, parentIds: [152], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 152, tag: '读谱', votes: 30, parentIds: [], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 154, tag: '耐力', votes: 20, parentIds: [], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 153, tag: '协调', votes: 20, parentIds: [], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 155, tag: '手速', votes: 15, parentIds: [], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'primary', tagId: 159, tag: '多指', votes: 15, parentIds: [], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 156, tag: '差速', votes: 10, parentIds: [152], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 157, tag: '脑裂', votes: 9, parentIds: [152], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 158, tag: '扫线', votes: 8, parentIds: [152], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 160, tag: '交互', votes: 7, parentIds: [153], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 161, tag: '纵连', votes: 6, parentIds: [154], source: 'Kyou' },
+        { chartId: 'kyou-song_in', songId: 'kyou-song', songName: '测试曲', difficulty: 'in', tagType: 'secondary', tagId: 162, tag: '被截断项', votes: 5, parentIds: [155], source: 'Kyou' },
       ],
       source: { kind: 'kyou', label: 'Kyou Phigros 谱面标签', updatedAt: '2026-08-09T00:00:00.000Z', isStale: false },
     },
@@ -299,8 +311,8 @@ describe('Phigros song detail', () => {
     expect(screen.getByText('测试别名一、测试别名二').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起歌曲别名'));
     expect(screen.getByText('测试别名一、测试别名二').props.numberOfLines).toBe(2);
-    expect(screen.getByLabelText('谱面标签 读谱，8 票，点击查看说明')).toBeTruthy();
-    expect(screen.getByLabelText('谱面标签 差速，3 票，点击查看说明')).toBeTruthy();
+    expect(screen.getByLabelText('谱面标签 综合，50 票，点击查看说明')).toBeTruthy();
+    expect(screen.getByLabelText('谱面标签 差速，10 票，点击查看说明')).toBeTruthy();
     expect(screen.getAllByText('主').length).toBeGreaterThan(0);
     expect(screen.getAllByText('细').length).toBeGreaterThan(0);
     expect(screen.queryByTestId('phigros-kyou-chart-tags-sheet')).toBeNull();
@@ -308,6 +320,7 @@ describe('Phigros song detail', () => {
     expect(screen.getByTestId('phigros-kyou-chart-tags-sheet').props.visible).toBe(true);
     expect(screen.getByText('主要难点')).toBeTruthy();
     expect(screen.getByText('细分配置')).toBeTruthy();
+    expect(screen.queryByText('被截断项')).toBeNull();
     await fireEvent.press(screen.getByLabelText('关闭谱面标签'));
     expect(screen.queryByTestId('phigros-kyou-chart-tags-sheet')).toBeNull();
   });

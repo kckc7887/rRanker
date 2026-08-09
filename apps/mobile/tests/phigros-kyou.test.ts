@@ -6,6 +6,7 @@ import {
   mapPhigrosKyouAliases,
   phigrosKyouChartHasAllTags,
   phigrosKyouTagsForChart,
+  presentPhigrosKyouChartTags,
   type PhigrosKyouChart,
   type PhigrosKyouChartTagsSnapshot,
 } from '@/domain/phigros-kyou';
@@ -157,6 +158,53 @@ describe('Phigros Kyou mapping', () => {
     expect(phigrosKyouChartHasAllTags(index, 'song', 2, [152, 157])).toBe(false);
     expect(phigrosKyouChartHasAllTags(index, 'song', 3, [])).toBe(true);
     expect(phigrosKyouChartHasAllTags(index, 'song', 3, [152])).toBe(false);
+  });
+
+  it('derives one primary presentation and keeps only the top five secondary tags above three votes', () => {
+    const tag = (
+      id: number,
+      name: string,
+      type: 'primary' | 'secondary',
+      votes: number,
+    ) => ({ id, name, type, votes, parentIds: [], description: `${name}说明` });
+
+    const composite = presentPhigrosKyouChartTags([
+      tag(1, '读谱', 'primary', 30),
+      tag(2, '耐力', 'primary', 20),
+      tag(3, '协调', 'primary', 20),
+      tag(4, '手速', 'primary', 15),
+      tag(5, '多指', 'primary', 15),
+      tag(11, '细分一', 'secondary', 10),
+      tag(12, '细分二', 'secondary', 9),
+      tag(13, '细分三', 'secondary', 8),
+      tag(14, '细分四', 'secondary', 7),
+      tag(15, '细分五', 'secondary', 6),
+      tag(16, '细分六', 'secondary', 5),
+      tag(17, '恰好三票', 'secondary', 3),
+    ]);
+    expect(composite.map(({ name, votes }) => [name, votes])).toEqual([
+      ['综合', 50],
+      ['细分一', 10],
+      ['细分二', 9],
+      ['细分三', 8],
+      ['细分四', 7],
+      ['细分五', 6],
+    ]);
+
+    expect(presentPhigrosKyouChartTags([
+      tag(1, '读谱', 'primary', 19),
+      tag(2, '耐力', 'primary', 10),
+      tag(3, '协调', 'primary', 5),
+      tag(4, '手速', 'primary', 3),
+      tag(5, '多指', 'primary', 3),
+    ])[0]).toMatchObject({ name: '读谱?', votes: 19 });
+
+    expect(presentPhigrosKyouChartTags([
+      tag(1, '读谱', 'primary', 19),
+      tag(2, '耐力', 'primary', 17),
+      tag(3, '协调', 'primary', 8),
+      tag(4, '手速', 'primary', 6),
+    ])[0]).toMatchObject({ name: '综合?', votes: 36 });
   });
 
   it('maps a complete 982-chart catalog while ignoring the chartless April Fool entry', () => {
