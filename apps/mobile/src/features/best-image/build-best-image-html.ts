@@ -440,11 +440,8 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const appIdentityHeight = px(width * 124 / 1080);
   const appIdentityMinWidth = px(width * 280 / 1080);
   const courseRank = resolveMaimaiCourseRank(input.player);
-  const appCourseRankWidth = courseRank ? px(width * 150 / 1080) : 0;
-  const appCourseRankGap = courseRank ? appIdentityGap : 0;
   const appIdentityMaxWidth = appProfileWidth - appBannerPaddingX * 2
-    - (hideIcon ? 0 : appAvatarSize + appIdentityGap)
-    - appCourseRankWidth - appCourseRankGap;
+    - (hideIcon ? 0 : appAvatarSize + appIdentityGap);
   const appIdentityRadius = px(width * 22 / 1080);
   const appGlassBleed = px(width * 26 / 1080);
   const appNameFontSize = px(width * 42 / 1080);
@@ -539,11 +536,13 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
           </div>
           ${hideIcon ? '' : `<div class="avatar">${avatar}</div>`}
           <div class="identity-card theme-${appRatingTheme.id}" id="rating-box" data-star-count="${appRatingTheme.starCount}" style="${escapeHtml(appIdentityStyle)}" aria-label="玩家 ${escapeHtml(name)}，${escapeHtml(appRatingTheme.label)}，Rating ${rating}">
-            <div class="app-player-name" id="player-name">${escapeHtml(name)}</div>
+            <div class="app-player-row" id="player-row">
+              <div class="app-player-name" id="player-name">${escapeHtml(name)}</div>
+              ${courseRank ? `<div class="app-course-rank" id="course-rank" aria-label="段位认定 ${escapeHtml(courseRank.label)}"><span>段位认定</span><strong>${escapeHtml(courseRank.label)}</strong></div>` : ''}
+            </div>
             <div class="identity-rating"><span>Rating</span><strong>${rating}</strong></div>
             <svg class="rating-star-track" id="rating-star-track" aria-hidden="true"><g id="rating-stars"></g></svg>
           </div>
-          ${courseRank ? `<div class="app-course-rank" aria-label="段位认定 ${escapeHtml(courseRank.label)}"><span>段位认定</span><strong>${escapeHtml(courseRank.label)}</strong></div>` : ''}
         </section>
         ${hideTrophy ? '' : `<div class="trophy-row">${trophy}</div>`}
         ${appPageMarker}
@@ -644,12 +643,13 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
     .profile-banner-app .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;overflow:hidden;border:${Math.max(2, px(width * 4 / 1080))}px solid rgba(255,255,255,.92);border-radius:${px(width * 20 / 1080)}px;background:linear-gradient(145deg,#F8FBFF,#C7D5EA);box-shadow:0 ${px(width * 10 / 1080)}px ${px(width * 24 / 1080)}px rgba(31,44,75,.3),inset 0 1px rgba(255,255,255,.9);color:#52647F;font:950 ${px(width * 56 / 1080)}px/1 system-ui,sans-serif}
     .identity-card{position:relative;z-index:1;display:flex;width:max-content;min-width:${appIdentityMinWidth}px;max-width:${appIdentityMaxWidth}px;height:${appIdentityHeight}px;flex:0 0 auto;flex-direction:column;justify-content:center;align-items:flex-start;overflow:visible;padding:${px(width * 14 / 1080)}px ${px(width * 36 / 1080)}px ${px(width * 13 / 1080)}px ${px(width * 24 / 1080)}px;border:${Math.max(2, px(width * 3 / 1080))}px solid transparent;border-radius:${appIdentityRadius}px;background:linear-gradient(var(--tag-overlay),var(--tag-overlay)) padding-box,var(--tag-fill) padding-box,var(--tag-border) border-box;box-shadow:0 1px 0 rgba(255,255,255,.52) inset,0 -1px 0 rgba(35,38,45,.1) inset,0 ${px(width * 10 / 1080)}px ${px(width * 28 / 1080)}px rgba(42,55,82,.17);color:var(--tag-text);user-select:none}
     .identity-card.theme-extreme{box-shadow:0 1px 0 rgba(255,255,255,.75) inset,0 -1px 0 rgba(35,38,45,.08) inset,0 0 0 1px rgba(255,255,255,.34) inset,0 ${px(width * 10 / 1080)}px ${px(width * 28 / 1080)}px rgba(42,55,82,.17)}
-    .app-player-name{width:max-content;max-width:100%;overflow:visible;color:var(--tag-text);font:950 ${appNameFontSize}px/1.02 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:-.035em;transform-origin:left center;white-space:nowrap}
+    .app-player-row{display:flex;width:max-content;max-width:100%;align-items:center;gap:${px(width * 12 / 1080)}px}
+    .app-player-name{width:max-content;max-width:100%;min-width:0;flex:0 1 auto;overflow:visible;color:var(--tag-text);font:950 ${appNameFontSize}px/1.02 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:-.035em;transform-origin:left center;white-space:nowrap}
     .identity-rating{display:flex;align-items:center;gap:${px(width * 10 / 1080)}px;margin-top:${px(width * 11 / 1080)}px;color:var(--tag-text);font:720 ${appRatingLabelSize}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.06em;white-space:nowrap}
     .identity-rating strong{font-size:${appRatingValueSize}px;font-weight:800;letter-spacing:${px(width * 2 / 1080)}px;line-height:1}
-    .app-course-rank{position:relative;z-index:1;display:flex;width:${appCourseRankWidth}px;height:${px(width * 82 / 1080)}px;flex:0 0 ${appCourseRankWidth}px;flex-direction:column;align-items:center;justify-content:center;gap:${px(width * 8 / 1080)}px;border:${Math.max(1, px(width * 2 / 1080))}px solid rgba(255,255,255,.78);border-radius:${px(width * 18 / 1080)}px;background:rgba(28,36,54,.68);box-shadow:0 ${px(width * 8 / 1080)}px ${px(width * 22 / 1080)}px rgba(31,44,75,.2),inset 0 1px rgba(255,255,255,.25);color:#FFFFFF;text-shadow:0 1px 2px rgba(0,0,0,.28);white-space:nowrap}
-    .app-course-rank span{font:750 ${px(width * 13 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.08em;opacity:.78}
-    .app-course-rank strong{font:900 ${px(width * 23 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.02em}
+    .app-course-rank{display:inline-flex;height:${px(width * 28 / 1080)}px;flex:0 0 auto;align-items:center;justify-content:center;gap:${px(width * 7 / 1080)}px;padding:0 ${px(width * 10 / 1080)}px;border:${Math.max(1, px(width / 1080))}px solid rgba(255,255,255,.46);border-radius:999px;background:rgba(255,255,255,.22);color:var(--tag-text);white-space:nowrap}
+    .app-course-rank span{font:750 ${px(width * 10 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.04em;opacity:.76}
+    .app-course-rank strong{font:900 ${px(width * 14 / 1080)}px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.01em}
     .rating-star-track{position:absolute;z-index:2;left:0;top:0;display:block;overflow:visible;pointer-events:none}
     .rating-star-track polygon{fill:var(--tag-star);filter:drop-shadow(0 1px 0 rgba(255,255,255,.42))}
     .trophy-row{display:flex;width:100%;height:${appTrophyRowHeight}px;align-items:center;justify-content:center}
@@ -721,16 +721,23 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
         if (!identity || !playerName) return;
         playerName.style.fontSize = APP_NAME_MAX_SIZE + 'px';
         playerName.style.transform = 'none';
+        playerName.style.width = 'max-content';
         const style = window.getComputedStyle(identity);
         const horizontalInset = parseFloat(style.paddingLeft || '0') + parseFloat(style.paddingRight || '0')
           + parseFloat(style.borderLeftWidth || '0') + parseFloat(style.borderRightWidth || '0');
-        const availableWidth = Math.max(1, identity.clientWidth - horizontalInset);
+        const playerRow = document.getElementById('player-row');
+        const courseRankTag = document.getElementById('course-rank');
+        const rowStyle = playerRow ? window.getComputedStyle(playerRow) : null;
+        const rowGap = courseRankTag && rowStyle ? parseFloat(rowStyle.columnGap || rowStyle.gap || '0') : 0;
+        const courseRankWidth = courseRankTag ? courseRankTag.offsetWidth + rowGap : 0;
+        const availableWidth = Math.max(1, identity.clientWidth - horizontalInset - courseRankWidth);
         const naturalWidth = playerName.scrollWidth;
         if (naturalWidth <= availableWidth) return;
         const fittedSize = Math.max(APP_NAME_MIN_SIZE, Math.floor(APP_NAME_MAX_SIZE * availableWidth / naturalWidth));
         playerName.style.fontSize = fittedSize + 'px';
         const fittedWidth = playerName.scrollWidth;
         if (fittedWidth > availableWidth) {
+          playerName.style.width = availableWidth + 'px';
           playerName.style.transform = 'scaleX(' + (availableWidth / fittedWidth).toFixed(4) + ')';
         }
       };
