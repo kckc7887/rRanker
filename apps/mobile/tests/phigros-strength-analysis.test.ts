@@ -92,6 +92,9 @@ describe('Phigros strength analysis', () => {
     ]);
     expect(analysis.strongestMainTag?.name).toBe('耐力');
     expect(analysis.weakestMainTag?.name).toBe('读谱');
+    expect(analysis.radarDomain.min).toBeLessThan(16);
+    expect(analysis.radarDomain.max).toBeGreaterThan(16.1);
+    expect(analysis.radarDomain.max).toBeLessThan(analysis.pool.maxRks!);
     expect(analysis.secondaryTags).toHaveLength(1);
     expect(analysis.secondaryTags[0]).toMatchObject({
       name: '差速',

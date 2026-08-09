@@ -1,12 +1,12 @@
 import { StyleSheet, View } from 'react-native';
-import Svg, { Circle, Line, Polygon, Text as SvgText, TSpan } from 'react-native-svg';
+import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 import type { PhigrosTagRksStat } from '@/domain/phigros-strength-analysis';
 import { useAppTheme } from '@/theme/app-theme';
 
 const SIZE = 320;
 const CENTER = SIZE / 2;
-const CHART_RADIUS = 102;
-const LABEL_RADIUS = 137;
+const CHART_RADIUS = 118;
+const LABEL_RADIUS = 140;
 const RING_RATIOS = [0.25, 0.5, 0.75, 1] as const;
 
 function polarPoint(index: number, count: number, radius: number) {
@@ -23,11 +23,6 @@ function pointsString(points: readonly { x: number; y: number }[]): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function formatAxisValue(tag: PhigrosTagRksStat): string {
-  if (tag.averageRks == null) return '—';
-  return `${tag.averageRks.toFixed(4)} · ${tag.sampleCount}谱面${tag.isSmallSample ? ' · 样本较少' : ''}`;
 }
 
 export function PhigrosStrengthRadar({
@@ -111,22 +106,13 @@ export function PhigrosStrengthRadar({
             <SvgText
               key={tag.tagId}
               x={point.x}
-              y={point.y - 7}
+              y={point.y + 5}
               fill={theme.text}
-              fontSize={13}
+              fontSize={14}
               fontWeight="700"
               textAnchor={anchor}
             >
               {tag.name}
-              <TSpan
-                x={point.x}
-                dy={17}
-                fill={tag.averageRks == null ? theme.textMuted : theme.accent}
-                fontSize={10}
-                fontWeight="600"
-              >
-                {formatAxisValue(tag)}
-              </TSpan>
             </SvgText>
           );
         })}
