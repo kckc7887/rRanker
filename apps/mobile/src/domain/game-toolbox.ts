@@ -82,6 +82,13 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         summaryLabel: '推分计算',
       },
       {
+        id: 'strength-analysis',
+        href: '/tools/strength-analysis',
+        title: '实力分析',
+        detail: '用五维主标签雷达与细分标签 RKS 定位强弱项',
+        summaryLabel: '实力分析',
+      },
+      {
         id: 'random-charts',
         href: '/tools/random-charts',
         title: '随机歌曲',
