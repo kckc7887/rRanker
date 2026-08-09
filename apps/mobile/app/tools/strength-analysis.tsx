@@ -1,0 +1,293 @@
+import { useMemo } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Stack } from 'expo-router';
+import { Card } from '@/components/Card';
+import { EmptyDataView } from '@/components/EmptyDataView';
+import { PhigrosStrengthRadar } from '@/components/phigros/PhigrosStrengthRadar';
+import { buildPhigrosKyouChartTagIndex } from '@/domain/phigros-kyou';
+import {
+  analyzePhigrosStrength,
+  type PhigrosTagRksStat,
+} from '@/domain/phigros-strength-analysis';
+import { useGameData } from '@/hooks/use-game-data';
+import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
+import { useAppTheme } from '@/theme/app-theme';
+
+function Metric({ label, value }: { label: string; value: string }) {
+  const theme = useAppTheme();
+  return (
+    <View style={[styles.metric, { backgroundColor: theme.surfaceMuted }]}>
+      <Text style={[styles.metricLabel, { color: theme.textMuted }]}>{label}</Text>
+      <Text style={[styles.metricValue, { color: theme.text }]}>{value}</Text>
+    </View>
+  );
+}
+
+function MainSummary({
+  label,
+  tag,
+  tone,
+}: {
+  label: string;
+  tag: PhigrosTagRksStat | null;
+  tone: 'strong' | 'weak';
+}) {
+  const theme = useAppTheme();
+  const color = tone === 'strong' ? theme.accent : theme.warning;
+  return (
+    <View style={[styles.summaryBox, { borderColor: color, backgroundColor: theme.surface }]}>
+      <Text style={[styles.summaryLabel, { color }]}>{label}</Text>
+      <Text style={[styles.summaryName, { color: theme.text }]}>{tag?.name ?? '—'}</Text>
+      <Text style={[styles.summaryValue, { color: theme.textSecondary }]}>
+        {tag?.averageRks == null
+          ? '暂无样本'
+          : `${tag.averageRks.toFixed(4)} · ${tag.sampleCount} 张谱面${tag.isSmallSample ? ' · 样本较少' : ''}`}
+      </Text>
+    </View>
+  );
+}
+
+function SecondaryTagRow({ tag }: { tag: PhigrosTagRksStat }) {
+  const theme = useAppTheme();
+  const delta = tag.deltaFromPoolAverage ?? 0;
+  const deltaColor = delta >= 0 ? theme.accent : theme.warning;
+  return (
+    <View
+      accessibilityLabel={`${tag.name}，标签 RKS ${tag.averageRks!.toFixed(4)}，${tag.sampleCount}张谱面${tag.isSmallSample ? '，样本较少' : ''}`}
+      style={[styles.tagRow, { borderColor: theme.border, backgroundColor: theme.surface }]}
+    >
+      <View style={styles.tagCopy}>
+        <View style={styles.tagTitleRow}>
+          <Text style={[styles.tagName, { color: theme.text }]}>{tag.name}</Text>
+          {tag.isSmallSample ? (
+            <Text style={[styles.smallSample, { color: theme.warning, borderColor: theme.warning }]}>样本较少</Text>
+          ) : null}
+        </View>
+        <Text style={[styles.tagMeta, { color: theme.textMuted }]}>{tag.sampleCount} 张谱面</Text>
+      </View>
+      <View style={styles.tagNumbers}>
+        <Text style={[styles.tagRks, { color: theme.text }]}>{tag.averageRks!.toFixed(4)}</Text>
+        <Text style={[styles.tagDelta, { color: deltaColor }]}>
+          {delta >= 0 ? '+' : ''}{delta.toFixed(4)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+export default function PhigrosStrengthAnalysisScreen() {
+  const theme = useAppTheme();
+  const gameQuery = useGameData();
+  const catalogQuery = usePhigrosCatalog();
+  const tagsQuery = usePhigrosKyouChartTags();
+  const payload = gameQuery.data?.payload;
+  const phigrosPayload = payload?.kind === 'phigros' ? payload : null;
+  const tagIndex = useMemo(() => buildPhigrosKyouChartTagIndex(
+    tagsQuery.data,
+    catalogQuery.data?.snapshot,
+  ), [catalogQuery.data?.snapshot, tagsQuery.data]);
+  const analysis = useMemo(() => {
+    if (!phigrosPayload || !tagsQuery.data) return null;
+    return analyzePhigrosStrength(
+      phigrosPayload.playerScore.value,
+      phigrosPayload.records,
+      tagIndex,
+      tagsQuery.data.tags,
+    );
+  }, [phigrosPayload, tagIndex, tagsQuery.data]);
+
+  const retry = () => {
+    void Promise.all([
+      gameQuery.refetch(),
+      catalogQuery.refetch(),
+      tagsQuery.refetch(),
+    ]);
+  };
+  const isLoading = gameQuery.isLoading || catalogQuery.isLoading || tagsQuery.isLoading;
+  const hasError = gameQuery.isError || catalogQuery.isError || tagsQuery.isError;
+
+  if (isLoading && !analysis) {
+    return (
+      <View style={[styles.page, styles.centered, { backgroundColor: theme.background }]}>
+        <Stack.Screen options={{ title: '实力分析' }} />
+        <ActivityIndicator color={theme.accent} />
+        <Text style={[styles.loadingText, { color: theme.textMuted }]}>正在整理成绩与谱面标签…</Text>
+      </View>
+    );
+  }
+
+  if (!phigrosPayload) {
+    return (
+      <View style={[styles.page, { backgroundColor: theme.background }]}>
+        <Stack.Screen options={{ title: '实力分析' }} />
+        <EmptyDataView
+          title="尚未绑定 TapTap"
+          detail="请在游戏管理中绑定 Phigros 的 TapTap 云存档后再查看实力分析。"
+        />
+      </View>
+    );
+  }
+
+  if ((hasError && !analysis) || !analysis) {
+    return (
+      <View style={[styles.page, styles.centered, { backgroundColor: theme.background }]}>
+        <Stack.Screen options={{ title: '实力分析' }} />
+        <Text style={[styles.errorTitle, { color: theme.text }]}>暂时无法生成分析</Text>
+        <Text style={[styles.errorDetail, { color: theme.textMuted }]}>成绩、曲库或 Kyou 谱面标签未能完整加载。</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="重试实力分析"
+          onPress={retry}
+          style={({ pressed }) => [styles.retryButton, { backgroundColor: theme.accent }, pressed && styles.pressed]}
+        >
+          <Text style={styles.retryText}>重试</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!analysis.hasExpectedPrimaryAxes) {
+    return (
+      <View style={[styles.page, { backgroundColor: theme.background }]}>
+        <Stack.Screen options={{ title: '实力分析' }} />
+        <EmptyDataView title="标签结构暂不可用" detail="Kyou 主标签不是预期的五项，已停止生成雷达以避免错误结论。" />
+      </View>
+    );
+  }
+
+  const isStale = gameQuery.isDataStale
+    || catalogQuery.data?.snapshot.source.isStale
+    || tagsQuery.data?.source.isStale;
+  const coverage = analysis.pool.totalCount > 0
+    ? `${analysis.pool.taggedCount}/${analysis.pool.totalCount}`
+    : '0/0';
+
+  return (
+    <ScrollView
+      style={[styles.page, { backgroundColor: theme.background }]}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <Stack.Screen options={{ title: '实力分析' }} />
+      {isStale ? (
+        <View style={[styles.staleBanner, { backgroundColor: theme.surfaceMuted, borderColor: theme.warning }]}>
+          <Text style={[styles.staleText, { color: theme.textSecondary }]}>当前使用缓存数据，联网同步后结果会自动更新。</Text>
+        </View>
+      ) : null}
+
+      <Card style={styles.poolCard}>
+        <View style={styles.poolHeading}>
+          <View style={styles.poolTitleBlock}>
+            <Text style={[styles.eyebrow, { color: theme.accent }]}>RKS ≥ {analysis.pool.threshold.toFixed(1)} · A 及以上</Text>
+            <Text style={[styles.poolTitle, { color: theme.text }]}>本次分析池</Text>
+          </View>
+          <View style={styles.playerRksBlock}>
+            <Text style={[styles.playerRksLabel, { color: theme.textMuted }]}>玩家 RKS</Text>
+            <Text style={[styles.playerRks, { color: theme.accent }]}>{analysis.playerRks.toFixed(4)}</Text>
+          </View>
+        </View>
+        <View style={styles.metricsGrid}>
+          <Metric label="入池谱面" value={String(analysis.pool.totalCount)} />
+          <Metric label="池平均 RKS" value={analysis.pool.averageRks?.toFixed(4) ?? '—'} />
+          <Metric label="标签覆盖" value={coverage} />
+          <Metric label="池内最高" value={analysis.pool.maxRks?.toFixed(4) ?? '—'} />
+        </View>
+        <Text style={[styles.formula, { color: theme.textMuted }]}>阈值取玩家 RKS 减 0.2 后向下保留一位小数；每张达标谱面独立计数。</Text>
+      </Card>
+
+      {analysis.pool.totalCount === 0 ? (
+        <Card>
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无达标谱面</Text>
+          <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>当前没有同时满足 RKS 阈值与 A 以上评级的成绩。</Text>
+        </Card>
+      ) : (
+        <>
+          <Card style={styles.radarCard}>
+            <View style={styles.sectionHeading}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>五维主标签</Text>
+              <Text style={[styles.scaleText, { color: theme.textMuted }]}>中心 {analysis.radarDomain.min.toFixed(1)} · 外圈 {analysis.radarDomain.max.toFixed(4)}</Text>
+            </View>
+            <PhigrosStrengthRadar
+              tags={analysis.mainTags}
+              min={analysis.radarDomain.min}
+              max={analysis.radarDomain.max}
+            />
+            <View style={styles.summaryRow}>
+              <MainSummary label="相对最强" tag={analysis.strongestMainTag} tone="strong" />
+              <MainSummary label="相对最弱" tag={analysis.weakestMainTag} tone="weak" />
+            </View>
+          </Card>
+
+          <View style={styles.secondarySection}>
+            <View style={styles.sectionHeading}>
+              <View>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>细分标签</Text>
+                <Text style={[styles.sectionHint, { color: theme.textMuted }]}>按标签 RKS 从高到低 · 右侧为相对池平均</Text>
+              </View>
+              <Text style={[styles.sectionCount, { color: theme.accent }]}>{analysis.secondaryTags.length}</Text>
+            </View>
+            {analysis.secondaryTags.length > 0 ? analysis.secondaryTags.map((tag) => (
+              <SecondaryTagRow key={tag.tagId} tag={tag} />
+            )) : (
+              <Card>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无细分标签样本</Text>
+                <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>入池谱面没有票数大于 3 的细分标签。</Text>
+              </Card>
+            )}
+          </View>
+        </>
+      )}
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1 },
+  content: { padding: 16, paddingBottom: 32, gap: 14 },
+  centered: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
+  loadingText: { fontSize: 14 },
+  errorTitle: { fontSize: 18, lineHeight: 24, fontWeight: '700' },
+  errorDetail: { fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  retryButton: { minWidth: 104, minHeight: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  retryText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  pressed: { opacity: 0.7 },
+  staleBanner: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
+  staleText: { fontSize: 12, lineHeight: 17 },
+  poolCard: { gap: 14 },
+  poolHeading: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  poolTitleBlock: { flex: 1, gap: 3 },
+  eyebrow: { fontSize: 12, lineHeight: 16, fontWeight: '800', letterSpacing: 0.35 },
+  poolTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800' },
+  playerRksBlock: { alignItems: 'flex-end', gap: 1 },
+  playerRksLabel: { fontSize: 10, lineHeight: 14, fontWeight: '600' },
+  playerRks: { fontSize: 24, lineHeight: 29, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  metricsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  metric: { width: '48.5%', borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, gap: 3 },
+  metricLabel: { fontSize: 11, lineHeight: 15, fontWeight: '600' },
+  metricValue: { fontSize: 16, lineHeight: 21, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  formula: { fontSize: 12, lineHeight: 18 },
+  radarCard: { paddingHorizontal: 8, paddingBottom: 14, gap: 4, overflow: 'hidden' },
+  sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  sectionTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800' },
+  sectionHint: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  scaleText: { fontSize: 10, lineHeight: 14, fontVariant: ['tabular-nums'] },
+  summaryRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 8 },
+  summaryBox: { flex: 1, minHeight: 78, borderWidth: 1, borderRadius: 12, padding: 10, gap: 3 },
+  summaryLabel: { fontSize: 10, lineHeight: 14, fontWeight: '800' },
+  summaryName: { fontSize: 16, lineHeight: 21, fontWeight: '800' },
+  summaryValue: { fontSize: 11, lineHeight: 16, fontVariant: ['tabular-nums'] },
+  secondarySection: { gap: 8 },
+  sectionCount: { fontSize: 18, lineHeight: 23, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  tagRow: { minHeight: 66, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  tagCopy: { flex: 1, minWidth: 0, gap: 3 },
+  tagTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 },
+  tagName: { fontSize: 15, lineHeight: 20, fontWeight: '700' },
+  smallSample: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1, fontSize: 9, lineHeight: 13, fontWeight: '800' },
+  tagMeta: { fontSize: 11, lineHeight: 15 },
+  tagNumbers: { alignItems: 'flex-end', gap: 2 },
+  tagRks: { fontSize: 16, lineHeight: 21, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  tagDelta: { fontSize: 11, lineHeight: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  emptyTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
+  emptyDetail: { fontSize: 13, lineHeight: 19, marginTop: 4 },
+});

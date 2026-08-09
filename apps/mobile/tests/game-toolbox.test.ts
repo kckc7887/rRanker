@@ -17,15 +17,16 @@ describe('per-game toolbox registry', () => {
     expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 随机歌曲 · 机厅查找 · 成绩图片');
   });
 
-  it('gives Phigros a push-rks toolbox entry', () => {
+  it('gives Phigros push-rks and strength-analysis toolbox entries', () => {
     const toolbox = getGameToolbox('phigros');
     expect(toolbox.tools.map((tool) => tool.id)).toEqual([
       'push-rks',
+      'strength-analysis',
       'random-charts',
       'arcade-finder',
       'best-image',
     ]);
-    expect(summarizeGameTools('phigros')).toBe('推分计算 · 随机歌曲 · 机厅查找 · 成绩图片');
+    expect(summarizeGameTools('phigros')).toBe('推分计算 · 实力分析 · 随机歌曲 · 机厅查找 · 成绩图片');
   });
 
   it('registers rating, collections, random songs, arcade finder and best-image for Chunithm', () => {

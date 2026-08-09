@@ -240,36 +240,63 @@ export function phigrosKyouTagsForChart(
 
 export const PHIGROS_KYOU_COMPOSITE_TAG_ID = -1;
 
-export function presentPhigrosKyouChartTags(
+export interface PhigrosKyouPrimaryTagResolution {
+  tags: readonly PhigrosKyouResolvedTag[];
+  isComposite: boolean;
+  uncertain: boolean;
+  totalVotes: number;
+}
+
+/**
+ * 统一主标签归属口径：普通谱面归入最高票主标签；票数接近时归入前两项。
+ * 展示层可把后者合成为“综合”，分析层则保留两个真实主标签作为五维样本。
+ */
+export function resolvePhigrosKyouPrimaryTags(
   tags: readonly PhigrosKyouResolvedTag[],
-): readonly PhigrosKyouResolvedTag[] {
+): PhigrosKyouPrimaryTagResolution {
   const primary = tags
     .filter((tag) => tag.type === 'primary')
     .sort((left, right) => right.votes - left.votes || left.id - right.id)
     .slice(0, 5);
+  const [highest, secondHighest] = primary;
+  if (!highest) {
+    return { tags: [], isComposite: false, uncertain: false, totalVotes: 0 };
+  }
+
+  const totalVotes = primary.reduce((sum, tag) => sum + tag.votes, 0);
+  const isComposite = !!secondHighest
+    && totalVotes > 0
+    && (highest.votes - secondHighest.votes) / totalVotes <= 0.1;
+  return {
+    tags: isComposite ? [highest, secondHighest!] : [highest],
+    isComposite,
+    uncertain: highest.votes < 20,
+    totalVotes,
+  };
+}
+
+export function presentPhigrosKyouChartTags(
+  tags: readonly PhigrosKyouResolvedTag[],
+): readonly PhigrosKyouResolvedTag[] {
   const secondary = tags
     .filter((tag) => tag.type === 'secondary' && tag.votes > 3)
     .sort((left, right) => right.votes - left.votes || left.id - right.id)
     .slice(0, 5);
-  const [highest, secondHighest] = primary;
+  const resolution = resolvePhigrosKyouPrimaryTags(tags);
+  const [highest, secondHighest] = resolution.tags;
   if (!highest) return secondary;
 
-  const total = primary.reduce((sum, tag) => sum + tag.votes, 0);
-  const uncertain = highest.votes < 20;
-  const isComposite = !!secondHighest
-    && total > 0
-    && (highest.votes - secondHighest.votes) / total <= 0.1;
-  const uncertaintyDescription = uncertain ? '\n最高票不足 20，结果可信度较低。' : '';
-  const presentedPrimary: PhigrosKyouResolvedTag = isComposite ? {
+  const uncertaintyDescription = resolution.uncertain ? '\n最高票不足 20，结果可信度较低。' : '';
+  const presentedPrimary: PhigrosKyouResolvedTag = resolution.isComposite ? {
     id: PHIGROS_KYOU_COMPOSITE_TAG_ID,
-    name: `综合${uncertain ? '?' : ''}`,
+    name: `综合${resolution.uncertain ? '?' : ''}`,
     type: 'primary',
     parentIds: [],
     description: `主要属性票数接近：${highest.name} ${highest.votes} 票，${secondHighest.name} ${secondHighest.votes} 票。${uncertaintyDescription}`,
     votes: highest.votes + secondHighest.votes,
   } : {
     ...highest,
-    name: `${highest.name}${uncertain ? '?' : ''}`,
+    name: `${highest.name}${resolution.uncertain ? '?' : ''}`,
     description: `${highest.description}${uncertaintyDescription}`.trim(),
   };
 
