@@ -4,6 +4,7 @@ import { router, Stack } from 'expo-router';
 import { useNotification } from '@/components/AppNotification';
 import { Card } from '@/components/Card';
 import { SongCover } from '@/components/SongCover';
+import { normalizeSongId } from '@/domain/catalog';
 import {
   KALEIDX_GATES,
   KALEIDX_SCOPE_SOURCES,
@@ -20,7 +21,17 @@ import { selectKaleidxGateProgress, useKaleidxScopeProgress } from '@/state/kale
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
-type SongAvailability = 'available' | 'loading' | 'missing';
+type SongResolution = {
+  availability: 'available' | 'loading' | 'missing';
+  catalogSongId?: string;
+};
+
+function gatePalette(gate: KaleidxGate, dark: boolean) {
+  return {
+    accent: dark ? gate.darkColor ?? gate.color : gate.color,
+    onAccent: dark ? gate.darkOnColor ?? gate.onColor : gate.onColor,
+  };
+}
 
 export default function KaleidxScopeToolScreen() {
   const theme = useAppTheme();
@@ -36,19 +47,32 @@ export default function KaleidxScopeToolScreen() {
   const [selectedGateId, setSelectedGateId] = useState<KaleidxGateId>('blue');
   const [runMode, setRunMode] = useState<KaleidxRunMode>('solo');
   const [expandedPools, setExpandedPools] = useState<Set<string>>(new Set());
+  const [keyProgressExpanded, setKeyProgressExpanded] = useState(false);
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [pending, setPending] = useState(false);
   const gate = KALEIDX_GATES.find((item) => item.id === selectedGateId)!;
+  const { accent: gateAccent, onAccent: gateOnAccent } = gatePalette(gate, theme.dark);
   const gateProgress = selectKaleidxGateProgress({ byAccount: progress }, activeAccountId, selectedGateId);
-  const catalogSongIds = useMemo(
-    () => new Set(catalog.data?.songs.map((song) => song.id) ?? []),
-    [catalog.data?.songs],
-  );
+  const catalogSongIds = useMemo(() => {
+    const exact = new Map<string, string>();
+    const normalized = new Map<string, string>();
+    for (const song of catalog.data?.songs ?? []) {
+      exact.set(song.id, song.id);
+      const normalizedId = normalizeSongId(song.id);
+      if (!normalized.has(normalizedId)) normalized.set(normalizedId, song.id);
+    }
+    return { exact, normalized };
+  }, [catalog.data?.songs]);
 
   useEffect(() => { void hydrate(); }, [hydrate]);
 
-  const songAvailability = (songId: string): SongAvailability => {
-    if (!catalog.data) return catalog.isLoading ? 'loading' : 'missing';
-    return catalogSongIds.has(songId) ? 'available' : 'missing';
+  const resolveSong = (songId: string): SongResolution => {
+    if (!catalog.data) return { availability: catalog.isLoading ? 'loading' : 'missing' };
+    const catalogSongId = catalogSongIds.exact.get(songId)
+      ?? catalogSongIds.normalized.get(normalizeSongId(songId));
+    return catalogSongId
+      ? { availability: 'available', catalogSongId }
+      : { availability: 'missing' };
   };
 
   const mutate = async (operation: () => Promise<void>) => {
@@ -93,6 +117,7 @@ export default function KaleidxScopeToolScreen() {
         {KALEIDX_GATES.map((item) => {
           const selected = item.id === selectedGateId;
           const itemProgress = progress[activeAccountId]?.[item.id] ?? emptyKaleidxGateProgress();
+          const { accent, onAccent } = gatePalette(item, theme.dark);
           return (
             <Pressable
               key={item.id}
@@ -102,11 +127,11 @@ export default function KaleidxScopeToolScreen() {
               onPress={() => setSelectedGateId(item.id)}
               style={[
                 styles.gateTab,
-                { borderColor: selected ? item.color : theme.border, backgroundColor: selected ? item.color : theme.surface },
+                { borderColor: selected ? accent : theme.border, backgroundColor: selected ? accent : theme.surface },
               ]}
             >
-              <Text style={[styles.gateTabText, { color: selected ? item.onColor : theme.textSecondary }]}>{item.shortLabel}门</Text>
-              {itemProgress.gateCleared ? <Text style={{ color: selected ? item.onColor : item.color }}>✓</Text> : null}
+              <Text style={[styles.gateTabText, { color: selected ? onAccent : theme.textSecondary }]}>{item.shortLabel}门</Text>
+              {itemProgress.gateCleared ? <Text style={{ color: selected ? onAccent : accent }}>✓</Text> : null}
             </Pressable>
           );
         })}
@@ -114,28 +139,36 @@ export default function KaleidxScopeToolScreen() {
 
       <GateOverview gate={gate} progressCount={selectedSongIds.length} targetCount={targetCount} />
 
-      <Card style={{ ...styles.sectionCard, borderLeftColor: gate.color }}>
+      <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-unlock-${gate.id}`}>
         <SectionTitle title="解锁步骤" />
         {gate.requirements.map((requirement, index) => (
           <View key={requirement} style={styles.requirementRow}>
-            <View style={[styles.stepBadge, { backgroundColor: gate.color }]}><Text style={[styles.stepText, { color: gate.onColor }]}>{index + 1}</Text></View>
+            <View style={[styles.stepBadge, { backgroundColor: gateAccent }]}><Text style={[styles.stepText, { color: gateOnAccent }]}>{index + 1}</Text></View>
             <Text style={[styles.requirementText, { color: theme.textSecondary }]}>{requirement}</Text>
           </View>
         ))}
+        {gate.perfectChallenge ? <View style={[styles.embeddedSection, { borderTopColor: theme.border }]}>
+          <Text style={[styles.poolLabel, { color: theme.text }]}>区域完美挑战</Text>
+          <InfoSongRow song={gate.perfectChallenge} role="完美挑战" resolution={resolveSong(gate.perfectChallenge.id)} accent={gateAccent} />
+        </View> : null}
       </Card>
 
-      <Card style={{ ...styles.sectionCard, borderLeftColor: gate.color }} testID={`kaleidx-progress-${gate.id}`}>
-        <View style={styles.sectionHeader}>
-          <SectionTitle title="个人进度" />
-          <Text style={[styles.progressCount, { color: gate.color }]}>{selectedSongIds.length}/{targetCount}</Text>
-        </View>
-        <Text style={[styles.sectionNote, { color: theme.textMuted }]}>{gate.trackerNote}</Text>
+      <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-progress-${gate.id}`}>
+        <CollapsibleSectionHeader
+          title="钥匙进度"
+          meta={`${selectedSongIds.length}/${targetCount}`}
+          expanded={keyProgressExpanded}
+          accent={gateAccent}
+          onToggle={() => setKeyProgressExpanded((value) => !value)}
+        />
+        {keyProgressExpanded ? <>
+          <Text style={[styles.sectionNote, { color: theme.textMuted }]}>{gate.trackerNote}</Text>
         {gate.trackerKind === 'run' ? (
           <View style={styles.runControls}>
             {(['solo', 'multi'] as const).map((mode) => {
               const active = runMode === mode;
-              return <Pressable key={mode} accessibilityRole="button" accessibilityLabel={`${mode === 'solo' ? '单人 3 首' : '多人 4 首'}计划`} onPress={() => setRunMode(mode)} style={[styles.modeButton, { borderColor: active ? gate.color : theme.border, backgroundColor: active ? `${gate.color}22` : theme.surfaceMuted }]}>
-                <Text style={[styles.modeButtonText, { color: active ? gate.color : theme.textSecondary }]}>{mode === 'solo' ? '单人 3 首' : '多人 4 首'}</Text>
+              return <Pressable key={mode} accessibilityRole="button" accessibilityLabel={`${mode === 'solo' ? '单人 3 首' : '多人 4 首'}计划`} onPress={() => setRunMode(mode)} style={[styles.modeButton, { borderColor: active ? gateAccent : theme.border, backgroundColor: active ? `${gateAccent}22` : theme.surfaceMuted }]}>
+                <Text style={[styles.modeButtonText, { color: active ? gateAccent : theme.textSecondary }]}>{mode === 'solo' ? '单人 3 首' : '多人 4 首'}</Text>
               </Pressable>;
             })}
             <Pressable disabled={pending || selectedSongIds.length === 0} accessibilityRole="button" accessibilityLabel={`清空${runMode === 'solo' ? '单人' : '多人'}本局计划`} onPress={() => void mutate(() => clearRun(activeAccountId, gate.id, runMode))} style={[styles.clearButton, { borderColor: theme.border }, (pending || selectedSongIds.length === 0) && styles.disabled]}>
@@ -150,35 +183,39 @@ export default function KaleidxScopeToolScreen() {
               song={song}
               checked={selectedSongIds.includes(song.id)}
               disabled={pending}
-              availability={songAvailability(song.id)}
+              resolution={resolveSong(song.id)}
               gate={gate}
               onToggle={() => void mutate(() => toggleSong(activeAccountId, gate.id, song.id, gate.trackerKind === 'run' ? runMode : undefined))}
             />
           ))}
         </View>
         <View style={[styles.statusDivider, { borderTopColor: theme.border }]}>
-          <StatusToggle label="钥匙已取得" value={gateProgress.keyObtained} color={gate.color} disabled={pending} onPress={() => void mutate(() => setKeyObtained(activeAccountId, gate.id, !gateProgress.keyObtained))} />
-          <StatusToggle label="门曲已通关" value={gateProgress.gateCleared} color={gate.color} disabled={pending} onPress={() => void mutate(() => setGateCleared(activeAccountId, gate.id, !gateProgress.gateCleared))} />
+          <StatusToggle label="钥匙已取得" value={gateProgress.keyObtained} color={gateAccent} disabled={pending} onPress={() => void mutate(() => setKeyObtained(activeAccountId, gate.id, !gateProgress.keyObtained))} />
+          <StatusToggle label="门曲已通关" value={gateProgress.gateCleared} color={gateAccent} disabled={pending} onPress={() => void mutate(() => setGateCleared(activeAccountId, gate.id, !gateProgress.gateCleared))} />
         </View>
-      </Card>
-
-      <Card style={{ ...styles.sectionCard, borderLeftColor: gate.color }}>
-        <SectionTitle title="门内挑战" />
-        <Text style={[styles.sectionNote, { color: theme.textMuted }]}>同一次挑战固定难度；TRACK 1、2 从对应池随机，TRACK 3 为门曲。</Text>
-        <ChallengePool label="TRACK 1 随机池" songs={gate.track1} expanded={expandedPools.has(`${gate.id}:1`)} onToggle={() => togglePool(setExpandedPools, `${gate.id}:1`)} availability={songAvailability} />
-        <ChallengePool label="TRACK 2 随机池" songs={gate.track2} expanded={expandedPools.has(`${gate.id}:2`)} onToggle={() => togglePool(setExpandedPools, `${gate.id}:2`)} availability={songAvailability} />
-        <Text style={[styles.poolLabel, { color: theme.text }]}>TRACK 3 · 固定门曲</Text>
-        <InfoSongRow song={gate.track3} role="门曲" availability={songAvailability(gate.track3.id)} accent={gate.color} />
-        {gate.perfectChallenge ? <>
-          <Text style={[styles.poolLabel, { color: theme.text }]}>区域完美挑战</Text>
-          <InfoSongRow song={gate.perfectChallenge} role="完美挑战" availability={songAvailability(gate.perfectChallenge.id)} accent={gate.color} />
         </> : null}
       </Card>
 
-      <Card style={{ ...styles.sectionCard, borderLeftColor: gate.color }}>
-        <SectionTitle title="难度与 LIFE" />
-        <ScheduleBlock schedule={gate.gateSchedule} accent={gate.color} />
-        {gate.perfectSchedule ? <ScheduleBlock schedule={gate.perfectSchedule} accent={gate.color} /> : null}
+      <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-challenge-${gate.id}`}>
+        <SectionTitle title="门内挑战" />
+        <Text style={[styles.sectionNote, { color: theme.textMuted }]}>同一次挑战固定难度；TRACK 1、2 从对应池随机，TRACK 3 为门曲。</Text>
+        <ChallengePool label="TRACK 1 随机池" songs={gate.track1} expanded={expandedPools.has(`${gate.id}:1`)} onToggle={() => togglePool(setExpandedPools, `${gate.id}:1`)} resolveSong={resolveSong} />
+        <ChallengePool label="TRACK 2 随机池" songs={gate.track2} expanded={expandedPools.has(`${gate.id}:2`)} onToggle={() => togglePool(setExpandedPools, `${gate.id}:2`)} resolveSong={resolveSong} />
+        <Text style={[styles.poolLabel, { color: theme.text }]}>TRACK 3 · 固定门曲</Text>
+        <InfoSongRow song={gate.track3} role="门曲" resolution={resolveSong(gate.track3.id)} accent={gateAccent} />
+      </Card>
+
+      <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-schedule-${gate.id}`}>
+        <CollapsibleSectionHeader
+          title="难度与 LIFE"
+          expanded={scheduleExpanded}
+          accent={gateAccent}
+          onToggle={() => setScheduleExpanded((value) => !value)}
+        />
+        {scheduleExpanded ? <>
+          <ScheduleBlock schedule={gate.gateSchedule} accent={gateAccent} />
+          {gate.perfectSchedule ? <ScheduleBlock schedule={gate.perfectSchedule} accent={gateAccent} /> : null}
+        </> : null}
       </Card>
 
       <Card style={styles.sourcesCard}>
@@ -197,18 +234,19 @@ export default function KaleidxScopeToolScreen() {
 function GateOverview({ gate, progressCount, targetCount }: { gate: KaleidxGate; progressCount: number; targetCount: number }) {
   const theme = useAppTheme();
   const current = resolveKaleidxSchedulePhase(gate.gateSchedule);
-  return <Card style={{ ...styles.overview, borderColor: gate.color }} testID={`kaleidx-gate-${gate.id}`}>
+  const { accent, onAccent } = gatePalette(gate, theme.dark);
+  return <Card style={{ ...styles.overview, borderColor: accent }} testID={`kaleidx-gate-${gate.id}`}>
     <View style={styles.overviewHeader}>
-      <View style={[styles.gateMark, { backgroundColor: gate.color }]}><Text style={[styles.gateMarkText, { color: gate.onColor }]}>{gate.order}</Text></View>
+      <View style={[styles.gateMark, { backgroundColor: accent }]}><Text style={[styles.gateMarkText, { color: onAccent }]}>{gate.order}</Text></View>
       <View style={styles.overviewCopy}>
         <Text style={[styles.overviewTitle, { color: theme.text }]}>{gate.label}</Text>
         <Text style={[styles.overviewArea, { color: theme.textSecondary }]}>{gate.area}</Text>
       </View>
-      <Text style={[styles.overviewProgress, { color: gate.color }]}>{progressCount}/{targetCount}</Text>
+      <Text style={[styles.overviewProgress, { color: accent }]}>{progressCount}/{targetCount}</Text>
     </View>
     <View style={styles.metaRow}>
       <Text style={[styles.metaChip, { color: theme.textSecondary, backgroundColor: theme.surfaceMuted }]}>开放 {formatDate(gate.openedAt)}</Text>
-      <Text style={[styles.metaChip, { color: current ? gate.color : theme.textMuted, backgroundColor: theme.surfaceMuted }]}>{current ? `${current.difficulty} · LIFE ${current.life}` : '尚未开放'}</Text>
+      <Text style={[styles.metaChip, { color: current ? accent : theme.textMuted, backgroundColor: theme.surfaceMuted }]}>{current ? `${current.difficulty} · LIFE ${current.life}` : '尚未开放'}</Text>
     </View>
   </Card>;
 }
@@ -218,40 +256,66 @@ function SectionTitle({ title }: { title: string }) {
   return <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>;
 }
 
-function TrackerSongRow({ song, checked, disabled, availability, gate, onToggle }: {
-  song: KaleidxSong; checked: boolean; disabled: boolean; availability: SongAvailability; gate: KaleidxGate; onToggle: () => void;
+function CollapsibleSectionHeader({ title, meta, expanded, accent, onToggle }: {
+  title: string;
+  meta?: string;
+  expanded: boolean;
+  accent: string;
+  onToggle: () => void;
 }) {
   const theme = useAppTheme();
+  const action = expanded ? '收起' : '展开';
+  return <Pressable
+    accessibilityRole="button"
+    accessibilityLabel={`${action} ${title}`}
+    accessibilityState={{ expanded }}
+    onPress={onToggle}
+    style={({ pressed }) => [styles.collapsibleHeader, pressed && styles.collapsibleHeaderPressed]}
+  >
+    <Text style={[styles.sectionTitle, { color: theme.text }]}>{title}</Text>
+    <View style={styles.collapsibleSummary}>
+      {meta ? <Text style={[styles.progressCount, { color: accent }]}>{meta}</Text> : null}
+      <Text style={[styles.collapseAction, { color: accent }]}>{action} {expanded ? '⌃' : '⌄'}</Text>
+    </View>
+  </Pressable>;
+}
+
+function TrackerSongRow({ song, checked, disabled, resolution, gate, onToggle }: {
+  song: KaleidxSong; checked: boolean; disabled: boolean; resolution: SongResolution; gate: KaleidxGate; onToggle: () => void;
+}) {
+  const theme = useAppTheme();
+  const { accent, onAccent } = gatePalette(gate, theme.dark);
   return <View style={[styles.songRow, { borderBottomColor: theme.border }]}>
-    <Pressable accessibilityRole="checkbox" accessibilityLabel={`${checked ? '取消完成' : '标记完成'} ${song.title}`} accessibilityState={{ checked, disabled }} disabled={disabled} onPress={onToggle} style={[styles.checkbox, { borderColor: checked ? gate.color : theme.border, backgroundColor: checked ? gate.color : theme.surface }, disabled && styles.disabled]}>
-      <Text style={[styles.checkmark, { color: checked ? gate.onColor : 'transparent' }]}>✓</Text>
+    <Pressable accessibilityRole="checkbox" accessibilityLabel={`${checked ? '取消完成' : '标记完成'} ${song.title}`} accessibilityState={{ checked, disabled }} disabled={disabled} onPress={onToggle} style={[styles.checkbox, { borderColor: checked ? accent : theme.border, backgroundColor: checked ? accent : theme.surface }, disabled && styles.disabled]}>
+      <Text style={[styles.checkmark, { color: checked ? onAccent : 'transparent' }]}>✓</Text>
     </Pressable>
-    <SongInfo song={song} availability={availability} />
+    <SongInfo song={song} resolution={resolution} />
   </View>;
 }
 
-function SongInfo({ song, availability, role }: { song: KaleidxSong; availability: SongAvailability; role?: string }) {
+function SongInfo({ song, resolution, role }: { song: KaleidxSong; resolution: SongResolution; role?: string }) {
   const theme = useAppTheme();
+  const jacketSongId = resolution.catalogSongId ?? normalizeSongId(song.id);
   const content = <>
-    <SongCover songId={song.id} size={46} borderRadius={8} />
+    <SongCover songId={jacketSongId} size={46} borderRadius={8} />
     <View style={styles.songCopy}>
       <Text numberOfLines={2} style={[styles.songTitle, { color: theme.text }]}>{song.title}</Text>
-      <Text style={[styles.songMeta, { color: theme.textMuted }]}>#{song.id}{role ? ` · ${role}` : ''}{availability === 'missing' ? ' · 曲库尚未同步' : availability === 'loading' ? ' · 曲库加载中' : ''}</Text>
+      <Text style={[styles.songMeta, { color: theme.textMuted }]}>#{song.id}{role ? ` · ${role}` : ''}{resolution.availability === 'missing' ? ' · 曲库尚未同步' : resolution.availability === 'loading' ? ' · 曲库加载中' : ''}</Text>
     </View>
-    {availability === 'available' ? <Text style={[styles.songArrow, { color: theme.accent }]}>›</Text> : null}
+    {resolution.availability === 'available' ? <Text style={[styles.songArrow, { color: theme.accent }]}>›</Text> : null}
   </>;
-  return availability === 'available'
-    ? <Pressable accessibilityRole="link" accessibilityLabel={`查看歌曲 ${song.title}`} onPress={() => router.push({ pathname: '/songs/[songId]', params: { songId: song.id } })} style={styles.songInfo}>{content}</Pressable>
+  return resolution.availability === 'available' && resolution.catalogSongId
+    ? <Pressable accessibilityRole="link" accessibilityLabel={`查看歌曲 ${song.title}`} onPress={() => router.push({ pathname: '/songs/[songId]', params: { songId: resolution.catalogSongId! } })} style={styles.songInfo}>{content}</Pressable>
     : <View style={styles.songInfo}>{content}</View>;
 }
 
-function InfoSongRow({ song, role, availability, accent }: { song: KaleidxSong; role: string; availability: SongAvailability; accent: string }) {
+function InfoSongRow({ song, role, resolution, accent }: { song: KaleidxSong; role: string; resolution: SongResolution; accent: string }) {
   const theme = useAppTheme();
-  return <View style={[styles.infoSongRow, { backgroundColor: theme.surfaceMuted, borderColor: `${accent}66` }]}><SongInfo song={song} role={role} availability={availability} /></View>;
+  return <View style={[styles.infoSongRow, { backgroundColor: theme.surfaceMuted, borderColor: `${accent}66` }]}><SongInfo song={song} role={role} resolution={resolution} /></View>;
 }
 
-function ChallengePool({ label, songs: poolSongs, expanded, onToggle, availability }: {
-  label: string; songs: readonly KaleidxSong[]; expanded: boolean; onToggle: () => void; availability: (songId: string) => SongAvailability;
+function ChallengePool({ label, songs: poolSongs, expanded, onToggle, resolveSong }: {
+  label: string; songs: readonly KaleidxSong[]; expanded: boolean; onToggle: () => void; resolveSong: (songId: string) => SongResolution;
 }) {
   const theme = useAppTheme();
   return <View style={[styles.pool, { borderColor: theme.border }]}>
@@ -259,7 +323,7 @@ function ChallengePool({ label, songs: poolSongs, expanded, onToggle, availabili
       <Text style={[styles.poolLabel, { color: theme.text }]}>{label}</Text>
       <Text style={[styles.poolCount, { color: theme.textMuted }]}>{poolSongs.length} 首 · {expanded ? '收起' : '展开'}</Text>
     </Pressable>
-    {expanded ? <View style={styles.poolSongs}>{poolSongs.map((song) => <View key={song.id} style={[styles.poolSong, { borderTopColor: theme.border }]}><SongInfo song={song} availability={availability(song.id)} /></View>)}</View> : null}
+    {expanded ? <View style={styles.poolSongs}>{poolSongs.map((song) => <View key={song.id} style={[styles.poolSong, { borderTopColor: theme.border }]}><SongInfo song={song} resolution={resolveSong(song.id)} /></View>)}</View> : null}
   </View>;
 }
 
@@ -325,11 +389,16 @@ const styles = StyleSheet.create({
   sectionCard: { borderLeftWidth: 4, padding: 16, gap: 12 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   sectionTitle: { fontSize: 17, fontWeight: '800' },
+  collapsibleHeader: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  collapsibleHeaderPressed: { opacity: 0.62 },
+  collapsibleSummary: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  collapseAction: { fontSize: 11, fontWeight: '800' },
   sectionNote: { fontSize: 12, lineHeight: 18 },
   requirementRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   stepBadge: { width: 22, height: 22, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
   stepText: { fontSize: 11, fontWeight: '900' },
   requirementText: { flex: 1, fontSize: 13, lineHeight: 20 },
+  embeddedSection: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12, gap: 9 },
   progressCount: { fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] },
   runControls: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   modeButton: { minHeight: 38, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },

@@ -35,6 +35,8 @@ export type KaleidxGate = {
   shortLabel: string;
   color: string;
   onColor: string;
+  darkColor?: string;
+  darkOnColor?: string;
   area: string;
   openedAt: string;
   trackerKind: KaleidxTrackerKind;
@@ -147,7 +149,7 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
   },
   {
     id: 'white', order: 2, label: '白色之门', shortLabel: '白', color: '#E8EDF4', onColor: '#1F2937',
-    area: '天界区域 8（1100 km）', openedAt: '2026-02-10T07:00:00+08:00', trackerKind: 'run',
+    area: '天界区域 8', openedAt: '2026-02-10T07:00:00+08:00', trackerKind: 'run',
     requirements: ['先将背景设置为「Latent Kingdom」', '一局通常模式内只游玩作曲家含「奏音」或「大国奏音」的不重复曲目', '单人连续 3 首或多人连续 4 首，难度不限', '通常模式 SKIP 计入；宴谱与段位模式不计入'],
     trackerNote: '单人与多人计划分别保存；切换人数不会覆盖另一套计划。', keySongs: whiteKey,
     track1: songs([
@@ -175,7 +177,7 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
   },
   {
     id: 'purple', order: 3, label: '紫色之门', shortLabel: '紫', color: '#8A55C6', onColor: '#FFFFFF',
-    area: 'BLACK ROSE 区域 10（800 km）', openedAt: '2026-03-25T10:00:00+08:00', trackerKind: 'run',
+    area: 'BLACK ROSE 区域 10', openedAt: '2026-03-25T10:00:00+08:00', trackerKind: 'run',
     requirements: ['将旅行伙伴队长设置为 BLACK ROSE 区域的「アウル」或任意变种', '单人连续游玩 3 首或双人连续游玩 4 首不重复的言ノ葉Project 曲目', '难度不限；宴谱与段位模式不计入'],
     trackerNote: '单人与多人计划分别保存；请在同一局内按计划完成。', keySongs: purpleKey,
     track1: purpleKey.slice(0, 11), track2: purpleKey.slice(11),
@@ -186,8 +188,9 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
     ]) },
   },
   {
-    id: 'black', order: 4, label: '黑色之门', shortLabel: '黑', color: '#242832', onColor: '#FFFFFF',
-    area: '大都会区域 9（1400 km）', openedAt: '2026-04-28T10:00:00+08:00', trackerKind: 'all',
+    id: 'black', order: 4, label: '黑色之门', shortLabel: '黑', color: '#475569', onColor: '#FFFFFF',
+    darkColor: '#CBD5E1', darkOnColor: '#182130',
+    area: '大都会区域 9', openedAt: '2026-04-28T10:00:00+08:00', trackerKind: 'all',
     requirements: ['先完成大都会区域 9，使黑色之门出现', '在门更新后至少游玩一次全部 11 首 KOP6 及以前的钥匙曲目', '难度不限；宴谱不计入'],
     trackerNote: '11 首全部勾选后，仅代表手动记录已满足钥匙曲条件。', keySongs: blackKey,
     track1: songs([
@@ -250,7 +253,7 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
   },
   {
     id: 'red', order: 6, label: '红色之门', shortLabel: '红', color: '#D94A4A', onColor: '#FFFFFF',
-    area: '龙之区域 4（1200 km）', openedAt: '2026-08-05T10:00:00+08:00', trackerKind: 'all',
+    area: '龙之区域 4', openedAt: '2026-08-05T10:00:00+08:00', trackerKind: 'all',
     requirements: ['完成龙之区域 4，使红色之门出现', '在门更新后至少游玩一次全部 10 首钥匙曲目', '难度不限，可以 SKIP；宴谱与段位模式不计入'],
     trackerNote: '10 首全部勾选后，仅代表手动记录已满足钥匙曲条件。', keySongs: redKey,
     track1: songs([

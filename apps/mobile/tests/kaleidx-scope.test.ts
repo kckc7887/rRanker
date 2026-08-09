@@ -28,6 +28,10 @@ describe('KALEIDX◈SCOPE static data', () => {
   it('defines the six CN gates in release order with validated pools and schedules', () => {
     expect(KALEIDX_GATES.map((gate) => gate.id)).toEqual(['blue', 'white', 'purple', 'black', 'yellow', 'red']);
     expect(KALEIDX_GATES.map((gate) => gate.keySongs.length)).toEqual([29, 6, 28, 11, 12, 10]);
+    expect(KALEIDX_GATES.map((gate) => gate.area)).toEqual([
+      '青春区域', '天界区域 8', 'BLACK ROSE 区域 10', '大都会区域 9', '七彩区域', '龙之区域 4',
+    ]);
+    expect(KALEIDX_GATES.every((gate) => !/[（）]|\bkm\b/i.test(gate.area))).toBe(true);
     expect(KALEIDX_GATES.map((gate) => gate.track3.title)).toEqual([
       '果ての空、僕らが見た光。',
       '氷滅の135小節',
@@ -36,6 +40,12 @@ describe('KALEIDX◈SCOPE static data', () => {
       'Åntinomiε',
       'FLΛME/FRΦST',
     ]);
+    expect(KALEIDX_GATES_BY_ID.black).toMatchObject({
+      color: '#475569',
+      onColor: '#FFFFFF',
+      darkColor: '#CBD5E1',
+      darkOnColor: '#182130',
+    });
     expect(validateKaleidxScopeData()).toEqual([]);
   });
 
