@@ -35,7 +35,7 @@ export function formatMaimaiCourseRank(id: number | null | undefined): MaimaiCou
     return { id: normalized, label: `真${ordinal}段`, assetIndex: normalized };
   }
   if (normalized === 22) return { id: normalized, label: '真皆传', assetIndex: normalized };
-  if (normalized === 23) return { id: normalized, label: '里皆传', assetIndex: normalized };
+  if (normalized === 23) return { id: normalized, label: '裏皆伝', assetIndex: normalized };
   return { id: normalized, label: `段位 ${normalized}`, assetIndex: normalized };
 }
 

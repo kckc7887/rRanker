@@ -131,8 +131,8 @@ describe('best image html', () => {
     expect(app).toContain('data-star-count="1"');
     expect(app).toContain('<div class="app-player-name" id="player-name">完整玩家姓名</div>');
     expect(app).toContain('<div class="identity-rating"><span>Rating</span><strong>14500</strong></div>');
-    expect(app).toContain('class="app-course-rank" aria-label="段位认定 里皆传"');
-    expect(app).toContain('<span>段位认定</span><strong>里皆传</strong>');
+    expect(app).toContain('class="app-course-rank" aria-label="段位认定 裏皆伝"');
+    expect(app).toContain('<span>段位认定</span><strong>裏皆伝</strong>');
     expect(app).toContain('#FFF9EC 0%,#F1DDB1 45%,#FFF8E9 72%,#F5E9CC 100%');
     expect(app).not.toContain('class="rating-frame"');
     expect(app).toContain('.profile-app{position:absolute;z-index:1;left:43px;top:43px;width:994px;');
