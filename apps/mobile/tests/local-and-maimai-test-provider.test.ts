@@ -142,7 +142,7 @@ describe('本地查分器', () => {
 });
 
 describe('舞萌示例查分器', () => {
-  it('使用最高段位裏皆伝', async () => {
+  it('使用最高段位里皆传', async () => {
     await expect(new MaxedMaimaiTestProvider().getPlayer()).resolves.toMatchObject({
       extension: { kind: 'maimai', courseRank: 23 },
     });
