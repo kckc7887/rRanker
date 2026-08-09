@@ -383,7 +383,7 @@ export default function PhigrosStrengthAnalysisScreen() {
         <>
           <Card style={styles.radarCard}>
             <View style={styles.sectionHeading}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>五维主标签</Text>
+              <Text numberOfLines={1} style={[styles.sectionTitle, { color: theme.text }]}>{analysis.mainTagProfileLabel}</Text>
               <Text style={[styles.scaleText, { color: theme.textMuted }]}>范围 {analysis.radarDomain.min.toFixed(4)}–{analysis.radarDomain.max.toFixed(4)}</Text>
             </View>
             <PhigrosStrengthRadar
@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
   formula: { fontSize: 12, lineHeight: 18 },
   radarCard: { paddingHorizontal: 8, paddingBottom: 14, gap: 4, overflow: 'hidden' },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  sectionTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800' },
+  sectionTitle: { flexShrink: 1, fontSize: 17, lineHeight: 23, fontWeight: '800' },
   sectionHint: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   scaleText: { fontSize: 10, lineHeight: 14, fontVariant: ['tabular-nums'] },
   mainTagGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 8 },

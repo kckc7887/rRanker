@@ -11,6 +11,7 @@ import {
   resolvePhigrosStrengthAvailabilityCoefficient,
   resolvePhigrosStrengthCoveredDifficultyCoefficient,
   resolvePhigrosStrengthDifficultyCoefficient,
+  resolvePhigrosStrengthProfileLabel,
   resolvePhigrosStrengthThreshold,
 } from '@/domain/phigros-strength-analysis';
 import { chartVersionKey } from '@/domain/catalog';
@@ -103,6 +104,22 @@ describe('Phigros strength analysis', () => {
     expect(resolvePhigrosStrengthAdjustedRks(15.5, 1.015, 1, 16)).toBeCloseTo(15.7325, 10);
     expect(resolvePhigrosStrengthAdjustedRks(16, 1.015, 1, 16)).toBe(16);
     expect(resolvePhigrosStrengthAdjustedRks(16.1, 1.015, 1, 16)).toBe(16.1);
+  });
+
+  it('describes main-tag coverage shares as balanced, dual-core, specialized or leaning', () => {
+    const profile = (coverages: readonly number[]) => resolvePhigrosStrengthProfileLabel(
+      primaryTags.map((tag, index) => ({
+        tagId: tag.id,
+        name: tag.name,
+        sampleCoverage: coverages[index] ?? 0,
+      })),
+    );
+
+    expect(profile([1, 1, 1, 1, 1])).toBe('五维均衡型');
+    expect(profile([1, 1, 0, 0, 0])).toBe('读谱·耐力双核型');
+    expect(profile([1, 0.2, 0.1, 0.05, 0.05])).toBe('读谱特化型');
+    expect(profile([0.8, 0.7, 0.6, 0.5, 0.4])).toBe('读谱倾向型');
+    expect(profile([0, 0, 0, 0, 0])).toBe('主标签暂无评价');
   });
 
   it('builds a per-chart pool and averages effective primary and secondary tags', () => {
