@@ -7,6 +7,7 @@ import {
   createMaimaiBoundAccount,
   createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
+  createMaxedPhigrosTestAccount,
   createTestBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
@@ -19,6 +20,8 @@ const mockRemoveDemoAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockRemoveChunithmTempAccount = jest.fn(async () => undefined);
 const mockSaveChunithmDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveChunithmDemoAccount = jest.fn(async () => undefined);
+const mockSavePhigrosDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
+const mockRemovePhigrosDemoAccount = jest.fn(async () => undefined);
 const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockSetActiveAccountId = jest.fn(async (_accountId?: string | null) => undefined);
 const mockClearSnapshots = jest.fn(async () => undefined);
@@ -121,6 +124,12 @@ jest.mock('@/storage/chunithm-demo-account-store', () => ({
     remove: () => mockRemoveChunithmDemoAccount(),
   })),
   isChunithmDemoAccountId: (accountId: string) => accountId === 'chunithm:test',
+}));
+jest.mock('@/storage/phigros-demo-account-store', () => ({
+  PhigrosDemoAccountStore: jest.fn(() => ({
+    save: (profile: { id: string; displayName: string }) => mockSavePhigrosDemoAccount(profile),
+    remove: () => mockRemovePhigrosDemoAccount(),
+  })),
 }));
 jest.mock('@/services/switch-bound-account', () => ({
   switchBoundAccount: (accountId: string, options?: unknown) => (
@@ -260,6 +269,22 @@ describe('M3A game account management', () => {
 
     const expected = createMaxedChunithmTestAccount();
     await waitFor(() => expect(mockSaveChunithmDemoAccount).toHaveBeenCalledWith({
+      id: expected.id,
+      displayName: expected.displayName,
+    }));
+    expect(mockUpsertBoundAccount).toHaveBeenCalledWith(expected);
+    await waitFor(() => expect(mockSelectBoundAccount).toHaveBeenCalledWith(expected.id));
+  });
+
+  it('adds the generated maxed Phigros demo account', async () => {
+    mockExpandedGameId = 'phigros';
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    const exampleProviders = screen.getAllByLabelText('示例查分器');
+    await fireEvent.press(exampleProviders.at(-1)!);
+
+    const expected = createMaxedPhigrosTestAccount();
+    await waitFor(() => expect(mockSavePhigrosDemoAccount).toHaveBeenCalledWith({
       id: expected.id,
       displayName: expected.displayName,
     }));

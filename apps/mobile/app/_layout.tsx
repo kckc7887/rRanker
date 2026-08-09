@@ -25,6 +25,7 @@ import {
   createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
+  createMaxedPhigrosTestAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
@@ -32,6 +33,10 @@ import {
   ChunithmDemoAccountStore,
   DEFAULT_CHUNITHM_DEMO_PLAYER_NAME,
 } from '@/storage/chunithm-demo-account-store';
+import {
+  DEFAULT_PHIGROS_DEMO_PLAYER_NAME,
+  PhigrosDemoAccountStore,
+} from '@/storage/phigros-demo-account-store';
 import { NotificationProvider } from '@/components/AppNotification';
 import { songDetailScreenOptions } from '@/components/game-content/SongDetailScreenOptions';
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
@@ -45,6 +50,7 @@ const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
 const demoAccounts = new DemoAccountStore();
 const chunithmDemoAccount = new ChunithmDemoAccountStore();
+const phigrosDemoAccount = new PhigrosDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 const snapshots = new SqliteSnapshotRepository();
 
@@ -85,17 +91,29 @@ async function loadChunithmDemoBoundAccount() {
     : null;
 }
 
+async function loadPhigrosDemoBoundAccount() {
+  const stored = await phigrosDemoAccount.load();
+  return stored
+    ? createMaxedPhigrosTestAccount(
+        0,
+        stored.displayName || DEFAULT_PHIGROS_DEMO_PLAYER_NAME,
+      )
+    : null;
+}
+
 async function loadOptionalBoundAccounts() {
-  const [locals, demos, chunithmDemo, hasChunithmTemp] = await Promise.all([
+  const [locals, demos, chunithmDemo, phigrosDemo, hasChunithmTemp] = await Promise.all([
     loadLocalBoundAccounts(),
     loadDemoBoundAccounts(),
     loadChunithmDemoBoundAccount(),
+    loadPhigrosDemoBoundAccount(),
     chunithmTempAccount.load(),
   ]);
   return [
     ...locals,
     ...demos,
     ...(chunithmDemo ? [chunithmDemo] : []),
+    ...(phigrosDemo ? [phigrosDemo] : []),
     ...(hasChunithmTemp ? [createChunithmTempAccount()] : []),
   ];
 }

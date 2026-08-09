@@ -42,6 +42,10 @@ import {
 } from '@/services/chunithm-catalog-loader';
 import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
+import {
+  buildMaxedPhigrosSnapshot,
+  MaxedPhigrosTestProvider,
+} from '@/providers/maxed-phigros-test-provider';
 
 const repository = new SqliteSnapshotRepository();
 
@@ -165,6 +169,41 @@ export function useGameData() {
         };
       }
       if (activeGameId === 'phigros') {
+        if (scoreProvider instanceof MaxedPhigrosTestProvider) {
+          const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
+            ? catalogProvider
+            : new PhigrosCatalogProvider();
+          const catalog = await phiCatalog.getCatalog();
+          const snapshot = buildMaxedPhigrosSnapshot(
+            catalog,
+            activeAccount?.displayName ?? '示例账号',
+          );
+          return {
+            gameId: 'phigros' as const,
+            providerId: 'phigros-test' as const,
+            profile: getGameProfile('phigros'),
+            payload: {
+              kind: 'phigros' as const,
+              player: snapshot.player,
+              records: snapshot.records,
+              bestSections: snapshot.bestSections,
+              playerScore: {
+                label: 'Raking Score',
+                value: snapshot.player.rating,
+                display: snapshot.player.rating.toFixed(4),
+              },
+              challengeModeRank: snapshot.challengeModeRank,
+              source: snapshot.source,
+              saveUpdatedAt: snapshot.source.updatedAt,
+              catalogSource: catalog.source,
+              avatarUrl: null,
+              avatarKey: null,
+              backgroundSongId: null,
+              dataAmount: '0KiB',
+              progress: snapshot.progress,
+            },
+          };
+        }
         if (scoreProvider instanceof PhigrosScoreProvider) {
           const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
             ? catalogProvider
@@ -334,11 +373,13 @@ export function useGameData() {
         d.payload.avatarUrl ?? undefined,
         d.payload.challengeModeRank,
       );
-      void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
-        displayName: d.payload.player.displayName,
-        scoreDisplay: d.payload.playerScore.display,
-        challengeModeRank: d.payload.challengeModeRank,
-      }).catch(() => undefined);
+      if (d.providerId === 'phi-taptap') {
+        void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
+          displayName: d.payload.player.displayName,
+          scoreDisplay: d.payload.playerScore.display,
+          challengeModeRank: d.payload.challengeModeRank,
+        }).catch(() => undefined);
+      }
       if (d.payload.avatarUrl) {
         void persistBoundAccountAvatar(activeAccountId, d.payload.avatarUrl);
       }
