@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import KaleidxScopeToolScreen from '../app/tools/kaleidx-scope';
 
@@ -26,7 +26,7 @@ jest.mock('@/state/session-store', () => ({
 }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({
-    data: { songs: [{ id: '11740' }, { id: '11814' }] },
+    data: { songs: [{ id: '1740' }, { id: '1814' }] },
     isLoading: false,
     isError: false,
   }),
@@ -56,6 +56,19 @@ describe('KALEIDX◈SCOPE tool screen', () => {
     }
     expect(screen.getByText('完成青春区域收录的全部 29 首钥匙曲目')).toBeTruthy();
     expect(screen.getByText('果ての空、僕らが見た光。')).toBeTruthy();
+    expect(screen.getByText('钥匙进度')).toBeTruthy();
+    expect(screen.queryByText('29 首全部勾选后，仅代表手动记录已满足钥匙曲条件。')).toBeNull();
+    expect(within(screen.getByTestId('kaleidx-unlock-blue')).getByText('区域完美挑战')).toBeTruthy();
+    expect(within(screen.getByTestId('kaleidx-challenge-blue')).queryByText('区域完美挑战')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('展开 钥匙进度'));
+    expect(screen.getByText('29 首全部勾选后，仅代表手动记录已满足钥匙曲条件。')).toBeTruthy();
+
+    expect(screen.queryByLabelText('蓝门 2026.02.12起 BASIC LIFE 999，当前阶段')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('展开 难度与 LIFE'));
+    expect(screen.getByLabelText('蓝门 2026.02.12起 BASIC LIFE 999，当前阶段')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('收起 难度与 LIFE'));
+    expect(screen.queryByLabelText('蓝门 2026.02.12起 BASIC LIFE 999，当前阶段')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('白色之门'));
     expect(screen.getByText('先将背景设置为「Latent Kingdom」')).toBeTruthy();
@@ -72,6 +85,7 @@ describe('KALEIDX◈SCOPE tool screen', () => {
 
   it('records progress, status, and routes only catalog-known songs', async () => {
     const screen = await render(<KaleidxScopeToolScreen />);
+    await fireEvent.press(screen.getByLabelText('展开 钥匙进度'));
     await fireEvent.press(screen.getByLabelText('标记完成 STEREOSCAPE'));
     expect(mockToggleSong).toHaveBeenCalledWith('maimai:local:test', 'blue', '11009', undefined);
 
@@ -81,7 +95,8 @@ describe('KALEIDX◈SCOPE tool screen', () => {
     expect(mockSetGateCleared).toHaveBeenCalledWith('maimai:local:test', 'blue', true);
 
     await fireEvent.press(screen.getByLabelText('查看歌曲 果ての空、僕らが見た光。'));
-    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '11740' } });
+    expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '1740' } });
+    expect(screen.queryByText('#11740 · 门曲 · 曲库尚未同步')).toBeNull();
     expect(screen.queryByLabelText('查看歌曲 STEREOSCAPE')).toBeNull();
     expect(screen.getAllByText(/曲库尚未同步/).length).toBeGreaterThan(0);
   });
