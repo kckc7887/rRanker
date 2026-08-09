@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
-import { DxRatingCard } from '@/components/DxRatingCard';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
@@ -13,14 +12,11 @@ import {
   TufCatalogFilterBar, TufRecordsFilterBar, type TufDifficultyBand,
 } from '@/components/adofai/TufFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
 import type { TufLevelSort, TufPass, TufPassSort, TufSortOrder } from '@/domain/tuf';
-import type { DxRatingTheme } from '@/domain/dx-rating-theme';
-import { formatTufAccuracy, presentTufChart } from '@/features/game-content/adapters';
+import { presentTufChart } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useTufDifficulties, useTufLevel, useTufLevelSearch, useTufPasses, useTufProfile } from '@/hooks/use-tuf';
 import { useSession } from '@/state/session-store';
@@ -181,55 +177,6 @@ export function TufSearchScreen() {
   </View>;
 }
 
-export function TufOverviewScreen() {
-  const theme = useAppTheme();
-  const query = useGameData();
-  const queryPayload = query.data?.payload;
-  const payload = queryPayload?.kind === 'adofai' ? queryPayload : null;
-
-  if (!payload) {
-    return <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty
-      error={query.error} onRetry={() => void query.refetch()} emptyText="请在游戏管理中绑定 TUF 玩家"
-      data={undefined} renderData={() => <></>} />;
-  }
-
-  const player = payload.player;
-  const rank = player.globalRank ?? player.rank;
-  const metrics = [
-    ['General Score', player.generalScore.toFixed(2)], ['PP Score', player.ppScore.toFixed(2)],
-    ['平均 XACC', player.averageXacc == null ? '—' : formatTufAccuracy(player.averageXacc)],
-    ['Universal Pass', String(player.universalPassCount)],
-    ['最高难度', player.topDiff == null ? '—' : typeof player.topDiff === 'object' ? player.topDiff.name : String(player.topDiff)],
-    ['世界首杀', String(player.worldFirstCount)],
-  ];
-  return <ScrollView contentInsetAdjustmentBehavior="automatic"
-    testID="tuf-overview-scroll" style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.overview}>
-    <Text style={[styles.eyebrow, { color: theme.textMuted }]}>冰与火之舞 · 玩家概览</Text>
-    <Text style={[styles.playerName, { color: theme.text }]}>{player.name}</Text>
-    <SourceStatus items={[{
-      key: 'scores', label: payload.source.label, updatedAt: payload.source.updatedAt,
-      state: payload.source.isStale ? 'cache' : 'live',
-    }]} />
-    <DxRatingCard label={payload.playerScore.label} display={payload.playerScore.display} rating={payload.playerScore.value}
-      meta={`世界排名 ${rank ? `#${rank}` : '—'} · ${player.totalPasses} 条公开成绩`}
-      themeOverride={TUF_RATING_THEME} sideBadge={{ title: 'TUF PLAYER', value: String(player.id) }} />
-    <View style={[styles.overviewCard, { backgroundColor: theme.surface }]}>
-      <Text style={[styles.overviewCardTitle, { color: theme.text }]}>公开资料</Text>
-      <View style={styles.metricGrid}>{metrics.map(([label, value]) => <View key={label} style={styles.metricCell}>
-        <Text style={[styles.metricLabel, { color: theme.textMuted }]}>{label}</Text>
-        <Text style={[styles.metricValue, { color: theme.text }]}>{value}</Text>
-      </View>)}</View>
-    </View>
-  </ScrollView>;
-}
-
-const TUF_RATING_THEME: DxRatingTheme = {
-  id: 'tuf', label: 'TUF',
-  fillColors: ['#45C9F4', '#6977B8', '#F15B55'], fillLocations: [0, 0.5, 1],
-  borderColors: ['#209FCB', '#8A5A91', '#C53E3B'], borderLocations: [0, 0.5, 1],
-  overlayColor: 'rgba(10, 22, 38, 0.18)', textColor: '#FFFFFF', starColor: '#FFFFFF', starCount: 0,
-};
-
 function safeHttps(url: string | null | undefined): string | null {
   if (!url) return null;
   try { const parsed = new URL(url); return parsed.protocol === 'https:' ? parsed.toString() : null; } catch { return null; }
@@ -294,10 +241,6 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 }, notice: { padding: 12, fontSize: 12 },
   searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   searchInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 }, resultCount: { fontSize: 11 },
-  overview: { padding: 20, gap: 16, flexGrow: 1 }, eyebrow: { fontSize: 13 }, playerName: { fontSize: 28, fontWeight: '700' },
-  overviewCard: { borderRadius: 16, padding: 18, gap: 14 }, overviewCardTitle: { fontSize: 18, fontWeight: '700' },
-  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 18 }, metricCell: { width: '50%', gap: 4, paddingRight: 10 },
-  metricLabel: { fontSize: 11 }, metricValue: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   detail: { padding: 16, gap: 12, paddingBottom: 40 }, detailTitle: { fontSize: 25, fontWeight: '900' }, detailArtist: { fontSize: 14 },
   metadata: { borderRadius: 15, overflow: 'hidden', flexDirection: 'row', flexWrap: 'wrap' }, metadataCell: { minWidth: '48%', padding: 13 },
   metadataLabel: { fontSize: 10 }, metadataValue: { fontSize: 13, fontWeight: '700' }, metadataBlock: {}, metadataMeasure: { position: 'absolute', opacity: 0 },
