@@ -148,7 +148,7 @@ export function createMaxedPhigrosTestAccount(
     scoreLabel: profile.ratingLabel,
     scoreDisplay: Number.isFinite(rating) ? rating.toFixed(4) : '—',
     providerTitle: PROVIDER_TITLES['phigros-test'],
-    challengeModeRank: 599,
+    challengeModeRank: null,
   };
 }
 

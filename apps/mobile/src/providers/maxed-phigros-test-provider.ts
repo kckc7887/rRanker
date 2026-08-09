@@ -59,6 +59,10 @@ export function buildMaxedPhigrosSnapshot(
   const records = buildMaxedPhigrosRecords(catalog);
   const best27 = records.slice(0, 27);
   const phi3 = records.slice(0, 3);
+  const challengeModeScore = phi3.reduce(
+    (sum, record) => sum + Math.floor(record.difficultyConstant),
+    0,
+  );
   const rating = roundRks((
     best27.reduce((sum, record) => sum + record.rating, 0)
     + phi3.reduce((sum, record) => sum + record.difficultyConstant, 0)
@@ -79,7 +83,7 @@ export function buildMaxedPhigrosSnapshot(
       { id: 'phi3', title: 'Phi3', records: phi3 },
       { id: 'b27', title: 'Best27', records: best27 },
     ],
-    challengeModeRank: 599,
+    challengeModeRank: 500 + challengeModeScore,
     progress: {
       cleared: [...counts],
       fullCombo: [...counts],
