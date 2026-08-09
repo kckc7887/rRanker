@@ -27,13 +27,7 @@ const secondaryTags: PhigrosKyouTag[] = [
   { id: 11, name: '脑裂', type: 'secondary', parentIds: [1], description: '' },
 ];
 
-function score(
-  songId: string,
-  levelIndex: number,
-  rating: number,
-  rate: string,
-  difficultyConstant = 16,
-): ScoreRecord {
+function score(songId: string, levelIndex: number, rating: number, rate: string): ScoreRecord {
   return {
     songId,
     title: songId,
@@ -41,7 +35,7 @@ function score(
     levelIndex,
     level: ['EZ', 'HD', 'IN', 'AT'][levelIndex]!,
     difficulty: 'master',
-    difficultyConstant,
+    difficultyConstant: 16,
     achievements: 98,
     dxScore: 980000,
     rating,
@@ -126,11 +120,11 @@ describe('Phigros strength analysis', () => {
       ]],
     ]);
     const analysis = analyzePhigrosStrength(16.1691, [
-      score('same-song', 2, 15.9, 'a', 15.9),
-      score('same-song', 3, 16.1, 's', 16.2),
-      score('excluded-b', 2, 16.4, 'b', 16.4),
-      score('untagged', 2, 16.2, 'v', 16.2),
-      score('below-threshold', 2, 15.8999, 'phi', 15.8999),
+      score('same-song', 2, 15.9, 'a'),
+      score('same-song', 3, 16.1, 's'),
+      score('excluded-b', 2, 16.4, 'b'),
+      score('untagged', 2, 16.2, 'v'),
+      score('below-threshold', 2, 15.8999, 'phi'),
     ], index, [...primaryTags, ...secondaryTags], catalog([
       ['same-song', 2, 16],
       ['same-song', 3, 16.2],
@@ -183,25 +177,6 @@ describe('Phigros strength analysis', () => {
       eligibleAverageDifficulty: 16,
       sampleCount: 1,
       isSmallSample: true,
-    });
-  });
-
-  it('matches pool records by chart constant instead of record RKS', () => {
-    const analysis = analyzePhigrosStrength(16.2, [
-      score('constant-equal', 2, 15.5, 'a', 16),
-      score('rks-high-constant-low', 2, 16.5, 'phi', 15.9),
-      score('constant-high-rate-low', 2, 16.5, 'b', 16.5),
-    ], new Map(), primaryTags, catalog([
-      ['constant-equal', 2, 16],
-      ['rks-high-constant-low', 2, 15.9],
-      ['constant-high-rate-low', 2, 16.5],
-    ]));
-
-    expect(analysis.pool).toMatchObject({
-      threshold: 16,
-      totalCount: 1,
-      averageRks: 15.5,
-      maxRks: 15.5,
     });
   });
 

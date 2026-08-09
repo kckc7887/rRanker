@@ -235,8 +235,7 @@ export function analyzePhigrosStrength(
   const threshold = resolvePhigrosStrengthThreshold(playerRks);
   const poolRecords = records.filter((record) => (
     Number.isFinite(record.rating)
-    && Number.isFinite(record.difficultyConstant)
-    && record.difficultyConstant >= threshold
+    && record.rating >= threshold
     && INCLUDED_RATES.has(record.rate.toLowerCase())
   ));
   const poolSum = poolRecords.reduce((sum, record) => sum + record.rating, 0);
