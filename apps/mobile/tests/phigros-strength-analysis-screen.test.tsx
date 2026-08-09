@@ -6,12 +6,16 @@ import PhigrosStrengthAnalysisScreen from '../app/tools/strength-analysis';
 const mockGameRefetch = jest.fn(async () => undefined);
 const mockCatalogRefetch = jest.fn(async () => undefined);
 const mockTagsRefetch = jest.fn(async () => undefined);
+const mockPush = jest.fn();
 
 let mockGameQuery: Record<string, unknown>;
 let mockCatalogQuery: Record<string, unknown>;
 let mockTagsQuery: Record<string, unknown>;
 
-jest.mock('expo-router', () => ({ Stack: { Screen: () => null } }));
+jest.mock('expo-router', () => ({
+  router: { push: (...args: unknown[]) => mockPush(...args) },
+  Stack: { Screen: () => null },
+}));
 jest.mock('@/components/AppModal', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return {
@@ -132,6 +136,14 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.getByText('覆盖 100% · 均定 16.1000 · ×1.0062')).toBeTruthy();
     expect(screen.getAllByText('Song').length).toBeGreaterThan(0);
     expect(screen.getByText('RKS 15.9000')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('查看歌曲 Song 的AT难度卡片'));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/songs/[songId]',
+      params: { songId: 'song', levelIndex: '3' },
+    });
+    expect(screen.queryByTestId('phigros-strength-tag-songs-sheet')).toBeNull();
+
+    await fireEvent.press(screen.getAllByLabelText('查看读谱标签歌曲列表')[0]!);
     await fireEvent.press(screen.getByLabelText('关闭标签歌曲列表'));
     expect(screen.queryByTestId('phigros-strength-tag-songs-sheet')).toBeNull();
   });

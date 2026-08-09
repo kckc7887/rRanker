@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { router, Stack, type Href } from 'expo-router';
 import { AppModal } from '@/components/AppModal';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { PhigrosDifficultyBadge } from '@/components/phigros/PhigrosDifficultyBadge';
 import { PhigrosStrengthRadar } from '@/components/phigros/PhigrosStrengthRadar';
 import { buildPhigrosKyouChartTagIndex } from '@/domain/phigros-kyou';
+import { phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import {
   analyzePhigrosStrength,
   type PhigrosStrengthChartSample,
@@ -146,13 +147,25 @@ function SecondaryTagRow({
 function TagChartRow({
   chart,
   title,
+  onPress,
 }: {
   chart: PhigrosStrengthChartSample;
   title: string;
+  onPress: () => void;
 }) {
   const theme = useAppTheme();
+  const levelLabel = phigrosLevelLabel(chart.levelIndex);
   return (
-    <View style={[styles.chartRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <Pressable
+      accessibilityLabel={`查看歌曲 ${title} 的${levelLabel}难度卡片`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.chartRow,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        pressed && styles.pressed,
+      ]}
+    >
       <View style={styles.chartCopy}>
         <Text numberOfLines={2} style={[styles.chartTitle, { color: theme.text }]}>{title}</Text>
         <Text style={[styles.chartMeta, { color: chart.isSupplemental ? theme.warning : theme.textMuted }]}>Acc {chart.achievements.toFixed(2)}%{chart.isSupplemental ? ' · 向下补入' : ''}</Text>
@@ -161,7 +174,7 @@ function TagChartRow({
         <PhigrosDifficultyBadge levelIndex={chart.levelIndex} constant={chart.difficultyConstant} />
         <Text style={[styles.chartRks, { color: theme.accent }]}>RKS {chart.rks.toFixed(4)}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -169,10 +182,12 @@ function TagSongsSheet({
   tag,
   titleMap,
   onClose,
+  onOpenChart,
 }: {
   tag: PhigrosTagRksStat | null;
   titleMap: ReadonlyMap<string, string>;
   onClose: () => void;
+  onOpenChart: (chart: PhigrosStrengthChartSample) => void;
 }) {
   const theme = useAppTheme();
   return (
@@ -208,7 +223,11 @@ function TagSongsSheet({
           contentContainerStyle={styles.sheetContent}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
-            <TagChartRow chart={item} title={titleMap.get(item.songId) ?? item.title ?? item.songId} />
+            <TagChartRow
+              chart={item}
+              title={titleMap.get(item.songId) ?? item.title ?? item.songId}
+              onPress={() => onOpenChart(item)}
+            />
           )}
           ListEmptyComponent={(
             <View style={styles.sheetEmpty}>
@@ -230,6 +249,13 @@ export default function PhigrosStrengthAnalysisScreen() {
   const tagsQuery = usePhigrosKyouChartTags();
   const payload = gameQuery.data?.payload;
   const phigrosPayload = payload?.kind === 'phigros' ? payload : null;
+  const openChartDetail = (chart: PhigrosStrengthChartSample) => {
+    setSelectedTag(null);
+    router.push({
+      pathname: '/songs/[songId]',
+      params: { songId: chart.songId, levelIndex: String(chart.levelIndex) },
+    } as Href);
+  };
   const tagIndex = useMemo(() => buildPhigrosKyouChartTagIndex(
     tagsQuery.data,
     catalogQuery.data?.snapshot,
@@ -401,7 +427,12 @@ export default function PhigrosStrengthAnalysisScreen() {
         </>
       )}
     </ScrollView>
-    <TagSongsSheet tag={selectedTag} titleMap={titleMap} onClose={() => setSelectedTag(null)} />
+    <TagSongsSheet
+      tag={selectedTag}
+      titleMap={titleMap}
+      onClose={() => setSelectedTag(null)}
+      onOpenChart={openChartDetail}
+    />
     </>
   );
 }
