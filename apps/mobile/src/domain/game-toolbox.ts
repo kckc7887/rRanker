@@ -38,7 +38,7 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         id: 'plates',
         href: '/tools/plates',
         title: '牌子进度',
-        detail: '用本地水鱼最佳成绩核对姓名框要求',
+        detail: '用最佳成绩核对版本姓名框要求',
         summaryLabel: '牌子进度',
       },
       {

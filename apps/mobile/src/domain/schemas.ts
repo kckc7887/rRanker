@@ -82,6 +82,8 @@ export const LxnsPlayerSchema = z.object({
   name: z.string(),
   rating: z.number().int().nonnegative(),
   friend_code: z.union([z.number(), z.string()]),
+  course_rank: z.number().int().nonnegative().optional(),
+  class_rank: z.number().int().nonnegative().optional(),
   trophy: LxnsPlayerCollectionSchema.nullable().optional(),
   icon: LxnsPlayerCollectionSchema.nullable().optional(),
   name_plate: LxnsPlayerCollectionSchema.nullable().optional(),

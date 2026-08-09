@@ -108,7 +108,7 @@ const STYLE_ITEMS: { kind: BestImageCollectionKind; label: string }[] = [
   { kind: 'trophy', label: '称号' },
   { kind: 'frame', label: '背景' },
 ];
-const FALLBACK_PLAYER: Pick<Player, 'displayName' | 'presentation'> = {
+const FALLBACK_PLAYER: Pick<Player, 'displayName' | 'presentation' | 'extension' | 'additionalRating'> = {
   displayName: '未读取玩家资料',
   presentation: undefined,
 };
@@ -349,6 +349,8 @@ export function MaimaiBestImageScreen() {
 
   const previewPlayer = useMemo(() => ({
     displayName: basePlayer.displayName,
+    additionalRating: basePlayer.additionalRating,
+    extension: basePlayer.extension,
     presentation: {
       ...basePlayer.presentation,
       iconId: styleSelections.icon?.mode === 'item' || styleSelections.icon?.mode === 'random' ? styleSelections.icon.item.id : basePlayer.presentation?.iconId,

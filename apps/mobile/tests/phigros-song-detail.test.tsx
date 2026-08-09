@@ -209,7 +209,7 @@ const mockSetTagPresets = jest.fn();
 jest.mock('@/hooks/use-user-library', () => {
   const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
   const state: {
-    data: Array<{
+    data: {
       key: string;
       gameId: 'phigros';
       kind: 'song' | 'chart';
@@ -219,7 +219,7 @@ jest.mock('@/hooks/use-user-library', () => {
       type?: 'SD';
       levelIndex?: number;
       tags: string[];
-    }>;
+    }[];
   } = { data: [] };
   return {
     __libraryMockState: state,
@@ -305,12 +305,17 @@ describe('Phigros song detail', () => {
   it('shows expandable aliases and Kyou chart tags with vote counts', async () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByText('歌曲信息')).toBeTruthy());
-    const aliases = screen.getByText('测试别名一、测试别名二');
-    expect(aliases.props.numberOfLines).toBe(2);
-    await fireEvent.press(screen.getByLabelText('展开歌曲别名'));
-    expect(screen.getByText('测试别名一、测试别名二').props.numberOfLines).toBeUndefined();
-    await fireEvent.press(screen.getByLabelText('收起歌曲别名'));
-    expect(screen.getByText('测试别名一、测试别名二').props.numberOfLines).toBe(2);
+    const aliases = screen.getByTestId('phigros-alias-text');
+    expect(aliases.props.children).toBe('别名：测试别名一、测试别名二');
+    expect(aliases.props.numberOfLines).toBe(1);
+    expect(screen.queryByLabelText('展开别名')).toBeNull();
+    await fireEvent(screen.getByTestId('phigros-alias-overflow-measure'), 'textLayout', {
+      nativeEvent: { lines: [{}, {}] },
+    });
+    await fireEvent.press(screen.getByLabelText('展开别名'));
+    expect(screen.getByTestId('phigros-alias-text').props.numberOfLines).toBeUndefined();
+    await fireEvent.press(screen.getByLabelText('收起别名'));
+    expect(screen.getByTestId('phigros-alias-text').props.numberOfLines).toBe(1);
     expect(screen.getByLabelText('谱面标签 综合，50 票，点击查看说明')).toBeTruthy();
     expect(screen.getByLabelText('谱面标签 差速，10 票，点击查看说明')).toBeTruthy();
     expect(screen.getAllByText('主').length).toBeGreaterThan(0);
@@ -329,7 +334,8 @@ describe('Phigros song detail', () => {
     mockAliases = [];
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByText('歌曲信息')).toBeTruthy());
-    expect(screen.getByText('无')).toBeTruthy();
+    expect(screen.getByTestId('phigros-alias-text').props.children).toBe('别名：无');
+    expect(screen.queryByLabelText('展开别名')).toBeNull();
   });
 
   it('shows floored level and Score label on chart cards', async () => {

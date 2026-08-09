@@ -155,7 +155,7 @@
 | `/api/v0/user/chunithm/player/bests` | GET | `Authorization: Bearer` | 当前用户中二 Rating 构成：`bests / selections / new_bests` |
 | `/api/v0/chunithm/wechat/auth` | GET | 微信内打开 | 中二离线同步授权入口；应用仅复制链接，不在应用内直接打开 |
 
-> player last_verified: 2026-07-15 — 官方 `Player` 契约包含 `name`、`rating`、`friend_code`，以及可空的 `icon.id`、`name_plate.id`、`trophy.{id,name,color}`；头像与姓名框分别使用公共资源 `/icon/{id}.png`、`/plate/{id}.png`。水鱼玩家契约没有头像/姓名框资源 ID，预览不得伪造。
+> player last_verified: 2026-08-10 — 官方 `Player` 契约包含 `name`、`rating`、`friend_code`、段位 `course_rank`、阶级 `class_rank`，以及可空的 `icon.id`、`name_plate.id`、`trophy.{id,name,color}`；头像与姓名框分别使用公共资源 `/icon/{id}.png`、`/plate/{id}.png`。应用当前读取 `course_rank` 作为段位认定；水鱼对应字段为 `additional_rating`，其中真段位及以上编号比 LXNS/游戏素材编号少 1，须在 Provider 边界归一化。水鱼玩家契约没有头像/姓名框资源 ID，预览不得伪造。
 
 OAuth 约束（官方文档）：
 

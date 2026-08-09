@@ -1,5 +1,6 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import type { DataSource, Player, ScoreRecord } from '@/domain/models';
+import { normalizeLxnsCourseRank } from '@/domain/maimai-course-rank';
 import {
   LxnsEnvelopeSchema,
   LxnsPlayerSchema,
@@ -124,6 +125,10 @@ export class LxnsScoreProvider implements ScoreProvider {
       id: String(player.data.friend_code),
       displayName: player.data.name,
       rating: player.data.rating,
+      extension: {
+        kind: 'maimai',
+        courseRank: normalizeLxnsCourseRank(player.data.course_rank),
+      },
       presentation: {
         iconId: player.data.icon?.id,
         namePlateId: player.data.name_plate?.id,
@@ -146,6 +151,10 @@ export class LxnsScoreProvider implements ScoreProvider {
       id: String(player.data.friend_code),
       displayName: player.data.name,
       rating: player.data.rating,
+      extension: {
+        kind: 'maimai',
+        courseRank: normalizeLxnsCourseRank(player.data.course_rank),
+      },
       presentation: {
         iconId: player.data.icon?.id,
         namePlateId: player.data.name_plate?.id,

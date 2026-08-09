@@ -119,7 +119,11 @@ describe('best image html', () => {
       type: 'custom', width: 1080, rating: 14500, ratingStyle: 'app',
       scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
-      player: { displayName: '完整玩家姓名', presentation: { iconId: 10, namePlateId: 11, trophyName: '称号', trophyColor: 'Gold' } },
+      player: {
+        displayName: '完整玩家姓名',
+        extension: { kind: 'maimai', courseRank: 23 },
+        presentation: { iconId: 10, namePlateId: 11, trophyName: '称号', trophyColor: 'Gold' },
+      },
     });
     expect(app).toContain('class="profile-app"');
     expect(app).toContain('class="profile-banner-app" id="profile-banner"');
@@ -127,6 +131,8 @@ describe('best image html', () => {
     expect(app).toContain('data-star-count="1"');
     expect(app).toContain('<div class="app-player-name" id="player-name">完整玩家姓名</div>');
     expect(app).toContain('<div class="identity-rating"><span>Rating</span><strong>14500</strong></div>');
+    expect(app).toContain('class="app-course-rank" aria-label="段位认定 里皆传"');
+    expect(app).toContain('<span>段位认定</span><strong>里皆传</strong>');
     expect(app).toContain('#FFF9EC 0%,#F1DDB1 45%,#FFF8E9 72%,#F5E9CC 100%');
     expect(app).not.toContain('class="rating-frame"');
     expect(app).toContain('.profile-app{position:absolute;z-index:1;left:43px;top:43px;width:994px;');
@@ -164,6 +170,17 @@ describe('best image html', () => {
     expect(extreme).toContain('#67D9FF 0%,#7FA9FF 24%,#B995FF 52%,#EC8DCF 78%,#FFB0BF 100%');
     expect(extreme).toContain('class="identity-card theme-extreme"');
     expect(extreme).toContain('data-star-count="1"');
+  });
+
+  it('uses normalized course-rank assets in the existing game-style slot', () => {
+    const html = buildBestImageHtml({
+      type: 'custom', width: 1080, rating: 15000,
+      scoreSections: [], fontUrl: 'data:font/ttf;base64,Zm9udA==',
+      ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
+      player: { displayName: '玩家', extension: { kind: 'maimai', courseRank: 23 } },
+    });
+    expect(html).toContain('src="ui/DaniPlate_23.png"');
+    expect(html).not.toContain('class="app-course-rank"');
   });
 
   it('measures the adaptive app profile before export readiness', async () => {
