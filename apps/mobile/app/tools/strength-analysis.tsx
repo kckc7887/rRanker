@@ -11,6 +11,7 @@ import { phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import {
   analyzePhigrosStrength,
   type PhigrosStrengthChartSample,
+  type PhigrosStrengthRecommendation,
   type PhigrosTagRksStat,
 } from '@/domain/phigros-strength-analysis';
 import { useGameData } from '@/hooks/use-game-data';
@@ -180,6 +181,40 @@ function TagChartRow({
   );
 }
 
+function RecommendationRow({
+  recommendation,
+  onPress,
+}: {
+  recommendation: PhigrosStrengthRecommendation;
+  onPress: () => void;
+}) {
+  const theme = useAppTheme();
+  const levelLabel = phigrosLevelLabel(recommendation.levelIndex);
+  const currentAcc = recommendation.currentAcc == null
+    ? '未游玩'
+    : `当前 Acc ${recommendation.currentAcc.toFixed(2)}%`;
+  return (
+    <Pressable
+      accessibilityLabel={`查看推荐谱面 ${recommendation.title} 的${levelLabel}难度卡片，目标 Acc ${recommendation.targetAcc.toFixed(2)}%`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.recommendationRow,
+        { backgroundColor: theme.surface, borderColor: theme.border },
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.recommendationCopy}>
+        <Text numberOfLines={2} style={[styles.recommendationTitle, { color: theme.text }]}>{recommendation.title}</Text>
+        <Text style={[styles.recommendationMeta, { color: theme.textMuted }]}>{currentAcc}</Text>
+        <Text style={[styles.recommendationTarget, { color: theme.accent }]}>目标 Acc ≥ {recommendation.targetAcc.toFixed(2)}%</Text>
+        <Text style={[styles.recommendationGain, { color: theme.textSecondary }]}>达成后预计 {recommendation.tagName} RKS +{recommendation.projectedGain.toFixed(4)}</Text>
+      </View>
+      <PhigrosDifficultyBadge levelIndex={recommendation.levelIndex} constant={recommendation.difficultyConstant} />
+    </Pressable>
+  );
+}
+
 function TagSongsSheet({
   tag,
   titleMap,
@@ -252,12 +287,15 @@ export default function PhigrosStrengthAnalysisScreen() {
   const tagsQuery = usePhigrosKyouChartTags();
   const payload = gameQuery.data?.payload;
   const phigrosPayload = payload?.kind === 'phigros' ? payload : null;
-  const openChartDetail = (chart: PhigrosStrengthChartSample) => {
-    setSelectedTag(null);
+  const openSongChart = (songId: string, levelIndex: number) => {
     router.push({
       pathname: '/songs/[songId]',
-      params: { songId: chart.songId, levelIndex: String(chart.levelIndex) },
+      params: { songId, levelIndex: String(levelIndex) },
     } as Href);
+  };
+  const openChartDetail = (chart: PhigrosStrengthChartSample) => {
+    setSelectedTag(null);
+    openSongChart(chart.songId, chart.levelIndex);
   };
   const tagIndex = useMemo(() => buildPhigrosKyouChartTagIndex(
     tagsQuery.data,
@@ -428,6 +466,36 @@ export default function PhigrosStrengthAnalysisScreen() {
             )}
           </Card>
 
+          <View style={styles.recommendationSection}>
+            <View style={styles.sectionHeading}>
+              <View style={styles.recommendationHeadingCopy}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>薄弱项练习</Text>
+                <Text style={[styles.sectionHint, { color: theme.textMuted }]}>
+                  {analysis.weakestMainTag
+                    ? `针对 ${analysis.weakestMainTag.name} · 由低定数起，目标按单张独立估算`
+                    : '五维持平时不强行指定薄弱项'}
+                </Text>
+              </View>
+              <Text style={[styles.sectionCount, { color: theme.accent }]}>{analysis.recommendations.length}</Text>
+            </View>
+            {analysis.recommendations.length > 0 ? analysis.recommendations.map((recommendation) => (
+              <RecommendationRow
+                key={`${recommendation.songId}-${recommendation.levelIndex}`}
+                recommendation={recommendation}
+                onPress={() => openSongChart(recommendation.songId, recommendation.levelIndex)}
+              />
+            )) : (
+              <Card>
+                <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无可提升推荐</Text>
+                <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>
+                  {analysis.weakestMainTag
+                    ? '当前薄弱项候选谱面即使达到满分，也无法继续提高该标签评分。'
+                    : '当前五维没有明确的相对薄弱项。'}
+                </Text>
+              </Card>
+            )}
+          </View>
+
           <View style={styles.secondarySection}>
             <View style={styles.sectionHeading}>
               <View>
@@ -509,6 +577,14 @@ const styles = StyleSheet.create({
   tieSummaryLabel: { fontSize: 11, lineHeight: 15, fontWeight: '800' },
   tieSummaryValue: { fontSize: 18, lineHeight: 23, fontWeight: '800', fontVariant: ['tabular-nums'] },
   tieSummaryDetail: { fontSize: 10, lineHeight: 15 },
+  recommendationSection: { gap: 8 },
+  recommendationHeadingCopy: { flex: 1, minWidth: 0 },
+  recommendationRow: { minHeight: 86, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  recommendationCopy: { flex: 1, minWidth: 0, gap: 2 },
+  recommendationTitle: { fontSize: 15, lineHeight: 20, fontWeight: '700' },
+  recommendationMeta: { fontSize: 10, lineHeight: 14, fontVariant: ['tabular-nums'] },
+  recommendationTarget: { fontSize: 13, lineHeight: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  recommendationGain: { fontSize: 10, lineHeight: 14, fontVariant: ['tabular-nums'] },
   secondarySection: { gap: 8 },
   sectionCount: { fontSize: 18, lineHeight: 23, fontWeight: '800', fontVariant: ['tabular-nums'] },
   tagRow: { minHeight: 66, borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },

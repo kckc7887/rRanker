@@ -14,6 +14,7 @@ import {
   resolvePhigrosStrengthProfileLabel,
   resolvePhigrosStrengthThreshold,
 } from '@/domain/phigros-strength-analysis';
+import { calculateRks } from '@/domain/phigros';
 import { chartVersionKey } from '@/domain/catalog';
 
 const primaryTags: PhigrosKyouTag[] = [
@@ -414,7 +415,49 @@ describe('Phigros strength analysis', () => {
     expect(analysis.areMainTagsTied).toBe(true);
     expect(analysis.strongestMainTag).toBeNull();
     expect(analysis.weakestMainTag).toBeNull();
+    expect(analysis.recommendations).toEqual([]);
     expect(analysis.radarDomain.max).toBeCloseTo(16.5, 8);
+  });
+
+  it('recommends the three lowest-constant charts that can measurably improve the weakest tag', () => {
+    const index = new Map<string, PhigrosKyouResolvedTag[]>();
+    const catalogCharts: [songId: string, levelIndex: number, constant: number][] = [
+      ['already-maxed', 2, 15.9],
+      ['lowest', 2, 16],
+      ['second', 2, 16.1],
+      ['third', 2, 16.2],
+      ['fourth', 2, 16.3],
+    ];
+    catalogCharts.forEach(([songId, levelIndex]) => {
+      index.set(chartVersionKey(songId, 'SD', levelIndex), [resolved(primaryTags[0]!, 20)]);
+    });
+    const maxedRecord = {
+      ...score('already-maxed', 2, 15.9, 'phi'),
+      difficultyConstant: 15.9,
+      achievements: 100,
+    };
+
+    const analysis = analyzePhigrosStrength(
+      16.1,
+      [maxedRecord],
+      index,
+      primaryTags,
+      catalog(catalogCharts),
+    );
+
+    expect(analysis.weakestMainTag?.name).toBe('读谱');
+    expect(analysis.recommendations.map((item) => item.songId)).toEqual([
+      'lowest',
+      'second',
+      'third',
+    ]);
+    analysis.recommendations.forEach((item) => {
+      expect(item.targetAcc * 100).toBe(Math.round(item.targetAcc * 100));
+      expect(item.targetAcc).toBeLessThanOrEqual(100);
+      expect(item.targetRks).toBeCloseTo(calculateRks(item.difficultyConstant, item.targetAcc), 10);
+      expect(item.projectedGain).toBeGreaterThanOrEqual(0.0001 - 1e-9);
+      expect(item.currentAcc).toBeNull();
+    });
   });
 
   it('keeps an honest radar interval for empty and degenerate pools', () => {

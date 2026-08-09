@@ -134,6 +134,14 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.getByLabelText('展开分析池说明')).toBeTruthy();
     expect(screen.getByText(/未达到同类满分基准/).props.numberOfLines).toBe(1);
     expect(screen.getByText('候选均定 16.1000')).toBeTruthy();
+    expect(screen.getByText('薄弱项练习')).toBeTruthy();
+    expect(screen.getByText('针对 读谱 · 由低定数起，目标按单张独立估算')).toBeTruthy();
+    expect(screen.getAllByText(/目标 Acc ≥ \d+\.\d{2}%/).length).toBeGreaterThan(0);
+    await fireEvent.press(screen.getByLabelText(/查看推荐谱面 Song 的IN难度卡片/));
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/songs/[songId]',
+      params: { songId: 'song', levelIndex: '2' },
+    });
     expect(screen.getByText('差速')).toBeTruthy();
     expect(screen.getByText('样本较少')).toBeTruthy();
 
