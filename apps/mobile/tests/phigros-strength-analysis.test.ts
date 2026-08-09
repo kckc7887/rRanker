@@ -7,7 +7,9 @@ import type {
 } from '@/domain/phigros-kyou';
 import {
   analyzePhigrosStrength,
+  resolvePhigrosStrengthAdjustedRks,
   resolvePhigrosStrengthAvailabilityCoefficient,
+  resolvePhigrosStrengthDifficultyCoefficient,
   resolvePhigrosStrengthThreshold,
 } from '@/domain/phigros-strength-analysis';
 import { chartVersionKey } from '@/domain/catalog';
@@ -88,6 +90,12 @@ describe('Phigros strength analysis', () => {
     expect(resolvePhigrosStrengthAvailabilityCoefficient(5, 10)).toBeCloseTo(1.01, 10);
     expect(resolvePhigrosStrengthAvailabilityCoefficient(0, 10)).toBeCloseTo(1.02, 10);
     expect(resolvePhigrosStrengthAvailabilityCoefficient(0, 0)).toBe(1);
+    expect(resolvePhigrosStrengthDifficultyCoefficient(16.9, 16.9)).toBe(1);
+    expect(resolvePhigrosStrengthDifficultyCoefficient(16.3, 16.9)).toBeCloseTo(16.9 / 16.3, 10);
+    expect(resolvePhigrosStrengthDifficultyCoefficient(null, 16.9)).toBe(1);
+    expect(resolvePhigrosStrengthAdjustedRks(15.5, 1.015, 1, 16)).toBeCloseTo(15.7325, 10);
+    expect(resolvePhigrosStrengthAdjustedRks(16, 1.015, 1, 16)).toBe(16);
+    expect(resolvePhigrosStrengthAdjustedRks(16.1, 1.015, 1, 16)).toBe(16.1);
   });
 
   it('builds a per-chart pool and averages effective primary and secondary tags', () => {
@@ -126,22 +134,26 @@ describe('Phigros strength analysis', () => {
     expect(analysis.mainTags.map((tag) => [
       tag.name,
       tag.rawAverageRks,
-      tag.coefficient,
+      tag.countCoefficient,
       tag.eligibleChartCount,
+      tag.eligibleAverageDifficulty,
       tag.sampleCount,
     ])).toEqual([
-      ['读谱', 16, 1, 2, 2],
-      ['耐力', 16.1, 1.01, 1, 1],
-      ['协调', null, 1.02, 0, 0],
-      ['手速', null, 1.02, 0, 0],
-      ['多指', null, 1.02, 0, 0],
+      ['读谱', 16, 1, 2, 16.1, 2],
+      ['耐力', 16.1, 1.01, 1, 16.2, 1],
+      ['协调', null, 1.02, 0, null, 0],
+      ['手速', null, 1.02, 0, null, 0],
+      ['多指', null, 1.02, 0, null, 0],
     ]);
-    expect(analysis.mainTags[0]!.averageRks).toBeCloseTo(16, 8);
-    expect(analysis.mainTags[1]!.averageRks).toBeCloseTo(16.261, 8);
+    expect(analysis.mainTags[0]!.difficultyCoefficient).toBeCloseTo(16.2 / 16.1, 8);
+    expect(analysis.mainTags[0]!.coefficient).toBeCloseTo(16.2 / 16.1, 8);
+    expect(analysis.mainTags[0]!.averageRks).toBeCloseTo(16 * 16.2 / 16.1, 8);
+    expect(analysis.mainTags[1]!.coefficient).toBeCloseTo(16.2 / 16.1, 8);
+    expect(analysis.mainTags[1]!.averageRks).toBeCloseTo(16.2, 8);
     expect(analysis.strongestMainTag?.name).toBe('耐力');
     expect(analysis.weakestMainTag?.name).toBe('读谱');
     expect(analysis.radarDomain.min).toBe(15.9);
-    expect(analysis.radarDomain.max).toBeCloseTo(16.361, 8);
+    expect(analysis.radarDomain.max).toBeCloseTo(16.3, 8);
     expect(analysis.mainTags[0]!.charts.map((chart) => [chart.levelIndex, chart.rks])).toEqual([
       [3, 16.1],
       [2, 15.9],
@@ -152,13 +164,16 @@ describe('Phigros strength analysis', () => {
       rawAverageRks: 15.9,
       averageRks: 15.9,
       coefficient: 1,
+      countCoefficient: 1,
+      difficultyCoefficient: 1,
       eligibleChartCount: 1,
+      eligibleAverageDifficulty: 16,
       sampleCount: 1,
       isSmallSample: true,
     });
   });
 
-  it('counts unplayed and failed-grade charts as candidates and boosts rarer tags', () => {
+  it('counts unplayed and failed-grade candidates without inflating full scores', () => {
     const index: PhigrosKyouChartTagIndex = new Map([
       [chartVersionKey('rare-played', 'SD', 2), [
         resolved(primaryTags[0]!, 20),
@@ -184,7 +199,9 @@ describe('Phigros strength analysis', () => {
     expect(analysis.pool.totalCount).toBe(2);
     expect(analysis.mainTags[0]).toMatchObject({
       rawAverageRks: 16,
-      coefficient: 1.015,
+      averageRks: 16,
+      coefficient: 1,
+      countCoefficient: 1.015,
       eligibleChartCount: 1,
       sampleCount: 1,
     });
@@ -195,15 +212,81 @@ describe('Phigros strength analysis', () => {
       eligibleChartCount: 4,
       sampleCount: 1,
     });
-    expect(analysis.mainTags[0]!.averageRks).toBeCloseTo(16.24, 8);
+    expect(analysis.mainTags[0]!.averageRks).toBeCloseTo(analysis.mainTags[1]!.averageRks!, 8);
     expect(analysis.secondaryTags[0]).toMatchObject({
       name: '差速',
       coefficient: 1,
       eligibleChartCount: 1,
       sampleCount: 1,
     });
-    expect(analysis.strongestMainTag?.name).toBe('读谱');
-    expect(analysis.weakestMainTag?.name).toBe('耐力');
+  });
+
+  it('normalizes equal-count full scores by eligible average difficulty', () => {
+    const index: PhigrosKyouChartTagIndex = new Map([
+      [chartVersionKey('lower-1', 'SD', 2), [resolved(primaryTags[0]!, 20)]],
+      [chartVersionKey('lower-2', 'SD', 2), [resolved(primaryTags[0]!, 20)]],
+      [chartVersionKey('higher-1', 'SD', 2), [resolved(primaryTags[1]!, 20)]],
+      [chartVersionKey('higher-2', 'SD', 2), [resolved(primaryTags[1]!, 20)]],
+    ]);
+    const analysis = analyzePhigrosStrength(17, [
+      score('lower-1', 2, 16.2, 'phi'),
+      score('lower-2', 2, 16.4, 'phi'),
+      score('higher-1', 2, 16.8, 'phi'),
+      score('higher-2', 2, 17, 'phi'),
+    ], index, primaryTags, catalog([
+      ['lower-1', 2, 16.2],
+      ['lower-2', 2, 16.4],
+      ['higher-1', 2, 16.8],
+      ['higher-2', 2, 17],
+    ]));
+
+    expect(analysis.mainTags[0]).toMatchObject({
+      countCoefficient: 1,
+      eligibleChartCount: 2,
+    });
+    expect(analysis.mainTags[0]!.rawAverageRks).toBeCloseTo(16.3, 8);
+    expect(analysis.mainTags[0]!.eligibleAverageDifficulty).toBeCloseTo(16.3, 8);
+    expect(analysis.mainTags[0]!.difficultyCoefficient).toBeCloseTo(16.9 / 16.3, 8);
+    expect(analysis.mainTags[1]).toMatchObject({
+      countCoefficient: 1,
+      difficultyCoefficient: 1,
+      eligibleChartCount: 2,
+    });
+    expect(analysis.mainTags[1]!.rawAverageRks).toBeCloseTo(16.9, 8);
+    expect(analysis.mainTags[1]!.eligibleAverageDifficulty).toBeCloseTo(16.9, 8);
+    expect(analysis.mainTags[0]!.averageRks).toBeCloseTo(16.9, 8);
+    expect(analysis.mainTags[1]!.averageRks).toBeCloseTo(16.9, 8);
+  });
+
+  it('keeps all five full-score axes equal despite different counts and difficulties', () => {
+    const index = new Map<string, PhigrosKyouResolvedTag[]>();
+    const records: ScoreRecord[] = [];
+    const catalogCharts: [songId: string, levelIndex: number, constant: number][] = [];
+
+    primaryTags.forEach((tag, tagIndex) => {
+      const difficultyConstant = 16 + tagIndex * 0.1;
+      for (let chartIndex = 0; chartIndex <= tagIndex; chartIndex += 1) {
+        const songId = `full-${tag.id}-${chartIndex}`;
+        index.set(chartVersionKey(songId, 'SD', 2), [resolved(tag, 20)]);
+        records.push(score(songId, 2, difficultyConstant, 'phi'));
+        catalogCharts.push([songId, 2, difficultyConstant]);
+      }
+    });
+
+    const analysis = analyzePhigrosStrength(
+      17,
+      records,
+      index,
+      primaryTags,
+      catalog(catalogCharts),
+    );
+
+    expect(analysis.mainTags.map((tag) => tag.eligibleChartCount)).toEqual([1, 2, 3, 4, 5]);
+    analysis.mainTags.forEach((tag) => expect(tag.averageRks).toBeCloseTo(16.4, 8));
+    expect(analysis.areMainTagsTied).toBe(true);
+    expect(analysis.strongestMainTag).toBeNull();
+    expect(analysis.weakestMainTag).toBeNull();
+    expect(analysis.radarDomain.max).toBeCloseTo(16.5, 8);
   });
 
   it('keeps an honest radar interval for empty and degenerate pools', () => {
