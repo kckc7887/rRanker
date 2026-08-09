@@ -57,6 +57,7 @@ export interface PhigrosStrengthAnalysis {
   playerRks: number;
   pool: PhigrosStrengthPool;
   mainTags: readonly PhigrosTagRksStat[];
+  mainTagProfileLabel: string;
   secondaryTags: readonly PhigrosTagRksStat[];
   strongestMainTag: PhigrosTagRksStat | null;
   weakestMainTag: PhigrosTagRksStat | null;
@@ -216,6 +217,36 @@ function weakestSort(left: PhigrosTagRksStat, right: PhigrosTagRksStat): number 
     - (right.averageRks ?? Number.POSITIVE_INFINITY)
     || right.sampleCount - left.sampleCount
     || left.tagId - right.tagId;
+}
+
+export function resolvePhigrosStrengthProfileLabel(
+  tags: readonly Pick<PhigrosTagRksStat, 'tagId' | 'name' | 'sampleCoverage'>[],
+): string {
+  const coverages = tags.map((tag) => ({
+    ...tag,
+    coverage: Number.isFinite(tag.sampleCoverage) ? Math.max(0, tag.sampleCoverage) : 0,
+  }));
+  const coverageTotal = coverages.reduce((sum, tag) => sum + tag.coverage, 0);
+  if (coverageTotal <= 0) return '主标签暂无评价';
+  const ranked = coverages
+    .map((tag) => ({ ...tag, share: tag.coverage / coverageTotal }))
+    .sort((left, right) => right.share - left.share || left.tagId - right.tagId);
+  const highestShare = ranked[0]!.share;
+  const lowestShare = ranked.at(-1)!.share;
+  if (tags.length === 5
+    && ranked.every((tag) => tag.coverage > 0)
+    && highestShare - lowestShare <= 0.08) {
+    return '五维均衡型';
+  }
+  const first = ranked[0]!;
+  const second = ranked[1];
+  if (second && first.share + second.share >= 0.6 && second.share >= 0.24) {
+    return `${first.name}·${second.name}双核型`;
+  }
+  if (first.share >= 0.4 || first.share - (second?.share ?? 0) >= 0.15) {
+    return `${first.name}特化型`;
+  }
+  return `${first.name}倾向型`;
 }
 
 function resolveRadarDomain(
@@ -449,6 +480,7 @@ export function analyzePhigrosStrength(
       maxRks: poolMax,
     },
     mainTags,
+    mainTagProfileLabel: resolvePhigrosStrengthProfileLabel(mainTags),
     secondaryTags,
     strongestMainTag: areMainTagsTied ? null : [...populatedMainTags].sort(strongestSort)[0] ?? null,
     weakestMainTag: areMainTagsTied ? null : [...populatedMainTags].sort(weakestSort)[0] ?? null,

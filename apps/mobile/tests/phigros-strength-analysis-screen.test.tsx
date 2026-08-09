@@ -120,7 +120,8 @@ describe('Phigros strength analysis screen', () => {
     const screen = await render(<PhigrosStrengthAnalysisScreen />);
     expect(screen.getByText('基础池 RKS ≥ 15.9 · A 及以上')).toBeTruthy();
     expect(screen.getByText('16.1691')).toBeTruthy();
-    expect(screen.getByText('五维主标签')).toBeTruthy();
+    expect(screen.getByText('读谱·耐力双核型')).toBeTruthy();
+    expect(screen.queryByText('五维主标签')).toBeNull();
     expect(screen.getByLabelText(/五维实力雷达/)).toBeTruthy();
     expect(screen.getByText('原始 16.0000 × 1.0062')).toBeTruthy();
     expect(screen.getByText('原始 16.1000 × 1.0062')).toBeTruthy();
