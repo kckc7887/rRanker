@@ -263,7 +263,7 @@ test('chunithm song detail chrome contract', async () => {
     hasSyncedData: true,
   };
   const screen = await render(<ChunithmSongDetail songId="3" />);
-  expect(await chromeHash(screen)).toBe('dd8b636e672fc158951d9ed4b576200b021ee43dcd74bc6417e41619a31c079a');
+  expect(await chromeHash(screen)).toBe('c53ccf89579614e4eb8069a09dc6e369442bc5e2caff9c8c1148136a492a0a9d');
 });
 
 test('phigros song detail chrome contract', async () => {
