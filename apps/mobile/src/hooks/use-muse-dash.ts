@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import type { DataSource } from '@/domain/models';
 import type {
   MuseDashAlbumsResponse,
@@ -114,6 +115,48 @@ export function useMuseDashPlayDetail(
     });
     return snapshot;
   }, enabled);
+}
+
+/** 批量单曲明细 miss 表（成就筛选用）：key = `${uid}:${difficulty}` → miss。
+ * 与 useMuseDashPlayDetail 共用同一 queryKey 且 queryFn 返回结构一致（完整快照），
+ * 同 Key 查询无论由哪个 observer 执行，缓存 data 均为 `{ data, source }`，读取处解包 `data.data.play?.miss`。 */
+export function useMuseDashPlayDetails(
+  items: readonly { uid: string; difficulty: number; platform: string }[],
+  userId: string | null,
+  enabled: boolean,
+): ReadonlyMap<string, number | undefined> {
+  const queryDefs = useMemo(() => items.map((item) => ({
+    queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
+    queryFn: async (): Promise<MuseDashSnapshot<MuseDashPlayDetail>> => {
+      const queryKey = ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const;
+      const snapshot = await cacheFirstLoad({
+        loadCached: () => cache.loadPlayDetail(userId!, item.uid, item.difficulty, item.platform),
+        loadFresh: async () => {
+          const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!);
+          const fresh = makeMuseDashSnapshot(detail);
+          void cache.savePlayDetail(userId!, item.uid, item.difficulty, item.platform, fresh).catch(() => undefined);
+          return fresh;
+        },
+        onFresh: (fresh) => {
+          queryClient.setQueryData(queryKey, fresh);
+        },
+      });
+      return snapshot;
+    },
+    enabled: enabled && userId !== null,
+    ...MUSE_DASH_QUERY_OPTIONS,
+  })), [items, userId, enabled]);
+  const queries = useQueries({ queries: queryDefs });
+  return useMemo(() => {
+    const map = new Map<string, number | undefined>();
+    const count = Math.min(items.length, queries.length);
+    for (let index = 0; index < count; index += 1) {
+      const item = items[index];
+      const query = queries[index];
+      if (item && query) map.set(`${item.uid}:${item.difficulty}`, query.data?.data?.play?.miss);
+    }
+    return map;
+  }, [items, queries]);
 }
 
 export function useMuseDashAlbums() {
