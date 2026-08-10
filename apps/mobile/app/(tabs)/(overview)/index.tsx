@@ -76,7 +76,7 @@ import { useToolboxPins } from '@/state/toolbox-pins';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
 import {
-  formatTufOverviewRatingMeta, TUF_RATING_THEME, TufOverviewDetails,
+  formatTufOverviewRatingMeta, formatTufRankBadge, TUF_RATING_THEME, TufOverviewDetails,
 } from '@/components/adofai/TufOverviewDetails';
 
 export default function OverviewTabScreen() {
@@ -502,7 +502,7 @@ function PublicOverviewScreen() {
                   ? resolveChunithmRatingTier(bundle.payload.playerScore.value)
                   : undefined}
                 sideBadge={bundle.payload.kind === 'adofai'
-                  ? { title: 'TUF PLAYER', value: String(bundle.payload.player.id) }
+                  ? { title: '世界排名', value: formatTufRankBadge(bundle.payload.player) }
                   : bundle.payload.kind === 'phigros'
                     ? { title: '课题模式', value: formatPhigrosChallengeBadge(bundle.payload.challengeModeRank) }
                     : maimaiCourseRankBadge(bundle)}
