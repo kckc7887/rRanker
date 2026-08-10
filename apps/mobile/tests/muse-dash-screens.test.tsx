@@ -137,15 +137,37 @@ const player: MuseDashPlayer = {
   user: { user_id: '6ea4f986ffd211e8aa980242ac110011', nickname: 'SiMOOOOOON' },
 };
 
+function collectLeafTexts(node: unknown): string[] {
+  const result: string[] = [];
+  const walk = (value: unknown): void => {
+    if (typeof value === 'string') {
+      result.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(walk);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      const element = value as { props?: { children?: unknown } };
+      if (typeof element.props?.children === 'string') {
+        result.push(element.props.children);
+        return;
+      }
+      if (element.props?.children) walk(element.props.children);
+    }
+  };
+  walk(node);
+  return result;
+}
+
 describe('Muse Dash screens', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPlayer = player;
     mockAlbums = albums;
     mockCe = ce;
-  });
-
-  it('orders the Best list by community rating (sum) descending with ACC-led cards', async () => {
+  });  it('orders the Best list by community rating (sum) descending with ACC-led cards', async () => {
     const screen = await render(<MuseDashBestScreen />);
     expect(screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel)[0])
       .toContain('Another Track');
@@ -155,6 +177,23 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByText('HIDDEN (11.50)').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Rating').length).toBeGreaterThan(0);
     expect(screen.getAllByTestId('musedash-card-tags-0-47-3').length).toBe(1);
+  });
+
+  it('lays out card tags in the required order: difficulty, grade, achievement, rank, character/elfin, platform', async () => {
+    mockPlayer = {
+      ...player,
+      plays: player.plays.map((play) =>
+        play.uid === '0-47' && play.difficulty === 3 ? { ...play, i: 9 } : play),
+    };
+    const screen = await render(<MuseDashBestScreen />);
+    const tags = screen.getByTestId('musedash-card-tags-0-47-3');
+    const texts = tags.children.map((child) => collectLeafTexts(child));
+    expect(texts[0].join(' ')).toContain('HIDDEN');
+    expect(texts[1].join(' ')).toBe('S');
+    expect(texts[2].join(' ')).toBe('#9');
+    expect(texts[3].join(' ')).toBe('凛·治愈者');
+    expect(texts[4].join(' ')).toBe('未命名');
+    expect(texts[5].join(' ')).toBe('PC 端');
   });
 
   it('filters records by platform and re-sorts by ACC locally', async () => {
