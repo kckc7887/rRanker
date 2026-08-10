@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { QueryStateView } from '@/components/QueryStateView';
+import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { MuseDashScoreCard } from '@/components/musedash/MuseDashScoreCard';
 import { MuseDashSongRow } from '@/components/musedash/MuseDashSongRow';
 import {
@@ -235,6 +238,8 @@ export function MuseDashCatalogScreen() {
 
 export function MuseDashSongDetailScreen({ songId }: { songId: string }) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const navigateBack = useSongDetailBackNavigation();
   const albums = useMuseDashAlbums();
   const diffdiff = useMuseDashDiffdiff();
   const ce = useMuseDashCe();
@@ -268,7 +273,16 @@ export function MuseDashSongDetailScreen({ songId }: { songId: string }) {
   ] : [];
   const loading = albums.isLoading || player.isLoading;
   const error = albums.error ?? player.error;
-  return <QueryStateView isLoading={loading} isError={!!error} isEmpty={!joined}
+  return <>
+    <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
+      onPress={navigateBack}
+      style={({ pressed }) => [
+        styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, left: 8 },
+        Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
+      ]}>
+      <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
+    </Pressable>
+    <QueryStateView isLoading={loading} isError={!!error} isEmpty={!joined}
     error={error} onRetry={() => { void albums.refetch(); void player.refetch(); }}
     emptyText="未找到该喵斯快跑歌曲" data={joined}
     renderData={() => <ScrollView contentInsetAdjustmentBehavior="automatic" style={[styles.page, { backgroundColor: theme.background }]}
@@ -311,11 +325,15 @@ export function MuseDashSongDetailScreen({ songId }: { songId: string }) {
       {scoreByDifficulty.size === 0 && player.data ? (
         <Text style={[styles.notice, { color: theme.textMuted }]}>当前绑定玩家尚未游玩此曲。</Text>
       ) : null}
-    </ScrollView>} />;
+    </ScrollView>} />
+  </>;
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1 }, list: { flex: 1 }, listContent: { padding: 12, gap: 9 },
+  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
+  headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 },
   searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
