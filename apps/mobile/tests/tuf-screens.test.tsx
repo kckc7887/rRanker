@@ -4,6 +4,9 @@ import type { TufLevel, TufPass, TufPlayer } from '@/domain/tuf';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
 
 const mockPush = jest.fn();
+const mockBack = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
+const mockReplace = jest.fn();
 const mockFetchNextPage = jest.fn();
 const mockRefetch = jest.fn();
 const mockUseTufPasses = jest.fn();
@@ -12,7 +15,13 @@ const mockUseTufDifficulties = jest.fn();
 let mockLevelDetail: TufLevel | undefined;
 let mockProfile: TufPlayer | undefined;
 
-jest.mock('expo-router', () => ({ router: { push: (value: unknown) => mockPush(value) } }));
+jest.mock('expo-router', () => ({
+  router: {
+    push: (value: unknown) => mockPush(value),
+    replace: (value: unknown) => mockReplace(value),
+  },
+  useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
+}));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -172,5 +181,16 @@ describe('TUF screens', () => {
     expect(screen.getByText('TUF 关卡页')).toBeTruthy();
     expect(screen.getByText('视频')).toBeTruthy();
     expect(screen.queryByText('谱面下载')).toBeNull();
+  });
+
+  it('shows a back button that navigates back when possible', async () => {
+    mockLevelDetail = level;
+    const screen = await render(<TufLevelDetailScreen levelId="11372" />);
+    await fireEvent.press(screen.getByLabelText('返回'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
+    mockCanGoBack.mockReturnValueOnce(false);
+    const screen2 = await render(<TufLevelDetailScreen levelId="11372" />);
+    await fireEvent.press(screen2.getByLabelText('返回'));
+    expect(mockReplace).toHaveBeenCalledWith('/(tabs)/search');
   });
 });

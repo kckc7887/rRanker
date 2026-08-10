@@ -16,6 +16,7 @@ import {
   TufCatalogFilterBar, TufRecordsFilterBar, type TufDifficultyBand,
 } from '@/components/adofai/TufFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
+import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
 import type { TufLevelSort, TufPass, TufPassSort, TufSortOrder } from '@/domain/tuf';
@@ -225,7 +226,16 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
     ['谱面下载', safeHttps(level.dlLink ?? level.downloadLink)], ['创意工坊', safeHttps(level.workshopLink)],
     ['视频', safeHttps(level.videoLink)],
   ].filter((item): item is [string, string] => typeof item[1] === 'string') : [];
+  const navigateBack = useSongDetailBackNavigation();
   return <>
+    <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
+      onPress={navigateBack}
+      style={({ pressed }) => [
+        styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, left: 8 },
+        Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
+      ]}>
+      <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
+    </Pressable>
     {onToggleFavorite ? <Pressable accessibilityRole="button"
       accessibilityLabel={favorite ? `取消收藏 ${level!.song}` : `收藏 ${level!.song}`}
       disabled={favoriteDisabled} hitSlop={12}
