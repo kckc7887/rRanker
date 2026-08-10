@@ -61,6 +61,7 @@ jest.mock('@/hooks/use-muse-dash', () => {
     useMuseDashCe: () => query(mockCe),
     useMuseDashDiffdiff: () => query(mockDiffdiff),
     useMuseDashPlayDetail: () => query(undefined),
+    useMuseDashMissMap: () => new Map(),
   };
 });
 jest.mock('@/hooks/use-user-library', () => {
@@ -199,19 +200,43 @@ describe('Muse Dash screens', () => {
     expect(row2).toBe('凛·治愈者 未命名 PC 端');
   });
 
-  it('filters records by platform and re-sorts by ACC locally', async () => {
+  it('filters records by difficulty, DLC and constant range with fixed Rating order', async () => {
     const screen = await render(<MuseDashRecordsScreen />);
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
-    await fireEvent.press(screen.getByLabelText('平台筛选，当前 全部'));
-    await fireEvent.press(screen.getByLabelText('选择平台 PC 端'));
+    await fireEvent.press(screen.getByLabelText('难度筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('选择难度 HIDDEN'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
-    await fireEvent.press(screen.getByLabelText('平台筛选，当前 PC 端'));
-    await fireEvent.press(screen.getByLabelText('选择平台 全部'));
-    await fireEvent.press(screen.getByLabelText('排序筛选，当前 Rating'));
-    await fireEvent.press(screen.getByLabelText('选择排序 ACC'));
+    await fireEvent.press(screen.getByLabelText('难度筛选，当前 HIDDEN'));
+    await fireEvent.press(screen.getByLabelText('选择难度 全部'));
+    await fireEvent.press(screen.getByLabelText('DLC筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('选择DLC Second Album'));
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
+    await fireEvent.press(screen.getByLabelText('DLC筛选，当前 Second Album'));
+    await fireEvent.press(screen.getByLabelText('选择DLC 全部'));
+    await fireEvent.changeText(screen.getByLabelText('最低定数'), '9');
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
+    expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
+    expect(screen.queryAllByTestId('musedash-score-0-47-1')).toHaveLength(0);
     const labels = screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel);
-    expect(labels[0]).toContain('ACC 97.31%');
+    expect(labels[0]).toContain('ACC 95.48%');
+  });
+
+  it('filters records by ACC range and keeps Rating order', async () => {
+    const screen = await render(<MuseDashRecordsScreen />);
+    await fireEvent.changeText(screen.getByLabelText('最低达成率'), '97');
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
+    expect(screen.getAllByTestId('musedash-score-0-47-1').length).toBe(1);
+  });
+
+  it('filters records by FC/AP achievement using requested miss counts', async () => {
+    const screen = await render(<MuseDashRecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('成就筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('选择成就 FC'));
+    expect(screen.queryAllByTestId(/^musedash-score-/)).toHaveLength(0);
+    await fireEvent.press(screen.getByLabelText('成就筛选，当前 FC'));
+    await fireEvent.press(screen.getByLabelText('选择成就 全部'));
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
   });
 
   it('searches records by song title and uid', async () => {
@@ -222,7 +247,7 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
   });
 
-  it('filters the catalog by difficulty slot and searches songs', async () => {
+  it('filters the catalog by difficulty, DLC and constant range and searches songs', async () => {
     const screen = await render(<MuseDashCatalogScreen />);
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(3);
     expect(screen.getAllByText('11.50').length).toBeGreaterThan(0);
@@ -231,6 +256,14 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
     await fireEvent.press(screen.getByLabelText('难度筛选，当前 HIDDEN'));
     await fireEvent.press(screen.getByLabelText('选择难度 全部'));
+    await fireEvent.press(screen.getByLabelText('DLC筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('选择DLC Second Album'));
+    expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
+    await fireEvent.press(screen.getByLabelText('DLC筛选，当前 Second Album'));
+    await fireEvent.press(screen.getByLabelText('选择DLC 全部'));
+    await fireEvent.changeText(screen.getByLabelText('最低定数'), '12');
+    expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
+    await fireEvent.changeText(screen.getByLabelText('最低定数'), '');
     await fireEvent.changeText(screen.getByLabelText('搜索喵斯快跑歌曲'), 'Another');
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
   });
