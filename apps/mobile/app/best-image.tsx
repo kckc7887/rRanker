@@ -46,6 +46,14 @@ import {
   type BestImageType,
 } from '@/features/best-image/build-best-image-html';
 import {
+  BEST_IMAGE_WEBVIEW_PHASE_LABELS,
+  markBestImageWebViewLoaded,
+  updateBestImageWebViewRenderingState,
+  updateBestImageWebViewState,
+  useBestImageWebViewTimeout,
+  type BestImageWebViewState,
+} from '@/features/best-image/best-image-webview-state';
+import {
   buildCustomBestImageSections,
   DEFAULT_CUSTOM_BEST_IMAGE_FILTERS,
   maximumBestImageRowsForWidth,
@@ -126,23 +134,6 @@ const RATING_FRAME_SOURCES: number[] = [
   require('../assets/rating/rating_base_10.png'),
   require('../assets/rating/rating_base_11.png'),
 ];
-
-type BestImageWebViewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'timeout' | 'error' | 'crashed' | 'terminated';
-type BestImageWebViewState = {
-  phase: BestImageWebViewPhase;
-  version: string | null;
-};
-
-const WEBVIEW_STATUS_LABELS: Record<BestImageWebViewPhase, string> = {
-  loading: '正在加载',
-  loaded: '页面已载入，等待渲染',
-  rendering: '正在渲染',
-  ready: '渲染就绪',
-  timeout: '响应超时',
-  error: '加载失败',
-  crashed: '渲染进程崩溃',
-  terminated: '渲染进程已终止',
-};
 
 const FONT_PROGRESS_LABELS: Record<MaimaiFontProgress['phase'], string> = {
   checking: '正在检查导出字体',
@@ -508,7 +499,7 @@ export function MaimaiBestImageScreen() {
   const webViewStatusText = webViewSourceError
     ? 'WebView 版本未知 · 本地页面准备失败'
     : webViewSources
-    ? `WebView ${currentWebViewState?.version ?? '版本未知'} · ${WEBVIEW_STATUS_LABELS[currentWebViewState?.phase ?? 'loading']}`
+    ? `WebView ${currentWebViewState?.version ?? '版本未知'} · ${BEST_IMAGE_WEBVIEW_PHASE_LABELS[currentWebViewState?.phase ?? 'loading']}`
     : 'WebView 版本未知 · 等待预览素材';
   const assetStatusText = fontProgress.phase === 'checking' || fontProgress.phase === 'downloading'
     ? `${FONT_PROGRESS_LABELS[fontProgress.phase]}${fontProgress.currentFont ? ` ${fontProgress.currentFont}` : ''}`
@@ -518,45 +509,12 @@ export function MaimaiBestImageScreen() {
   const exportBusy = exportPageIndex !== null || exportStatus !== null;
   const formValid = imageType !== 'custom' || customInputValid;
 
-  useEffect(() => {
-    if (!webViewSources || currentWebViewState?.phase === 'ready' || currentWebViewState?.phase === 'error'
-      || currentWebViewState?.phase === 'crashed' || currentWebViewState?.phase === 'terminated'
-      || currentWebViewState?.phase === 'timeout') return;
-    const pageId = currentPage.id;
-    const timeout = setTimeout(() => {
-      setWebViewStates((current) => {
-        const state = current[pageId];
-        if (state?.phase === 'ready' || state?.phase === 'error' || state?.phase === 'crashed'
-          || state?.phase === 'terminated' || state?.phase === 'timeout') return current;
-        return { ...current, [pageId]: { phase: 'timeout', version: state?.version ?? null } };
-      });
-    }, 12_000);
-    return () => clearTimeout(timeout);
-  }, [currentPage.id, currentWebViewState?.phase, webViewSources]);
-
-  const updateWebViewState = (pageId: string, phase: BestImageWebViewPhase, version?: string | null) => {
-    setWebViewStates((current) => ({
-      ...current,
-      [pageId]: {
-        phase,
-        version: version === undefined ? current[pageId]?.version ?? null : version,
-      },
-    }));
-  };
-
-  const updateWebViewRenderingState = (pageId: string, version?: string | null) => {
-    setWebViewStates((current) => {
-      const state = current[pageId];
-      const terminal = state?.phase === 'ready' || state?.phase === 'error' || state?.phase === 'crashed' || state?.phase === 'terminated';
-      return {
-        ...current,
-        [pageId]: {
-          phase: terminal ? state.phase : 'rendering',
-          version: version === undefined ? state?.version ?? null : version,
-        },
-      };
-    });
-  };
+  useBestImageWebViewTimeout(
+    !!webViewSources,
+    currentPage.id,
+    currentWebViewState?.phase,
+    setWebViewStates,
+  );
 
   const chooseWidth = (nextWidth: number) => {
     setOutputWidth(nextWidth);
@@ -818,26 +776,22 @@ export function MaimaiBestImageScreen() {
           pagingEnabled
           renderItem={({ item: source, index }) => <View style={{ width: previewWidth, height: previewHeight }}>
             <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={assetsDirectory?.uri} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']}
-              onError={() => updateWebViewState(pages[index]!.id, 'error')}
-              onLoadEnd={() => setWebViewStates((current) => {
-                const pageId = pages[index]!.id;
-                const state = current[pageId];
-                return state && state.phase !== 'loading' ? current : { ...current, [pageId]: { phase: 'loaded', version: state?.version ?? null } };
-              })}
-              onLoadStart={() => updateWebViewState(pages[index]!.id, 'loading')}
+              onError={() => updateBestImageWebViewState(setWebViewStates, pages[index]!.id, 'error')}
+              onLoadEnd={() => markBestImageWebViewLoaded(setWebViewStates, pages[index]!.id)}
+              onLoadStart={() => updateBestImageWebViewState(setWebViewStates, pages[index]!.id, 'loading')}
               onMessage={(event) => {
                 const pageId = pages[index]!.id;
                 const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, outputWidth);
-                if (runtime) updateWebViewRenderingState(pageId, runtime.version);
+                if (runtime) updateBestImageWebViewRenderingState(setWebViewStates, pageId, runtime.version);
                 const measuredHeight = parseBestImageHeightMessage(event.nativeEvent.data, outputWidth);
                 if (measuredHeight !== null) {
                   setPageHeights((current) => ({ ...current, [pageId]: measuredHeight }));
-                  updateWebViewRenderingState(pageId);
+                  updateBestImageWebViewRenderingState(setWebViewStates, pageId);
                 }
                 const readyHeight = parseBestImageReadyMessage(event.nativeEvent.data, outputWidth);
-                if (readyHeight !== null) updateWebViewState(pageId, 'ready');
+                if (readyHeight !== null) updateBestImageWebViewState(setWebViewStates, pageId, 'ready');
               }}
-              onRenderProcessGone={(event) => updateWebViewState(pages[index]!.id, event.nativeEvent.didCrash ? 'crashed' : 'terminated')}
+              onRenderProcessGone={(event) => updateBestImageWebViewState(setWebViewStates, pages[index]!.id, event.nativeEvent.didCrash ? 'crashed' : 'terminated')}
               scrollEnabled={false} source={source} style={styles.webview} testID={`best-image-html-preview-${index}`} />
           </View>}
           showsHorizontalScrollIndicator={false}

@@ -24,6 +24,12 @@ import {
   parseBestImageRuntimeMessage,
 } from '@/features/best-image/build-best-image-html';
 import {
+  BEST_IMAGE_WEBVIEW_PHASE_LABELS,
+  markBestImageWebViewLoaded,
+  updateBestImageWebViewState,
+  type BestImageWebViewState,
+} from '@/features/best-image/best-image-webview-state';
+import {
   bestImageCaptureDimensions,
   bestImageExportFilename,
   deleteBestImageCapture,
@@ -85,18 +91,6 @@ const IMAGE_TYPES: readonly { id: ChunithmBestImageType; label: string }[] = [
 /** 自定义模式每页最多 50 行，每行 5 张。 */
 const CUSTOM_MAX_ROWS_PER_PAGE = 50;
 
-type PreviewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'error' | 'crashed' | 'terminated';
-
-const PREVIEW_PHASE_LABEL: Record<PreviewPhase, string> = {
-  loading: '正在加载',
-  loaded: '页面已载入，等待渲染',
-  rendering: '正在渲染',
-  ready: '渲染就绪',
-  error: '加载失败',
-  crashed: '渲染进程崩溃',
-  terminated: '渲染进程已终止',
-};
-
 function ChoiceChip({
   label,
   selected,
@@ -152,7 +146,7 @@ export function ChunithmBestImageScreen() {
   const [androidSources, setAndroidSources] = useState<BestImageWebViewSource[] | null>(null);
   const [pageHeights, setPageHeights] = useState<Record<string, number>>({});
   const [pageIndex, setPageIndex] = useState(0);
-  const [previewStates, setPreviewStates] = useState<Record<string, { phase: PreviewPhase; version: string | null }>>({});
+  const [previewStates, setPreviewStates] = useState<Record<string, BestImageWebViewState>>({});
   const [exportIndex, setExportIndex] = useState<number | null>(null);
   const [exportHeight, setExportHeight] = useState(810);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
@@ -416,19 +410,9 @@ export function ChunithmBestImageScreen() {
   const previewHeight = previewWidth * 4 / 3;
   const currentPreviewState = previewStates[currentPage.id];
   const previewStatus = currentPreviewState
-    ? `${PREVIEW_PHASE_LABEL[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
+    ? `${BEST_IMAGE_WEBVIEW_PHASE_LABELS[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
     : 'WebView 版本未知 · 等待预览素材';
   const webViewSources = Platform.OS === 'android' ? androidSources : inlineSources;
-
-  const updatePreviewState = (pageId: string, phase: PreviewPhase, version?: string | null) => {
-    setPreviewStates((current) => ({
-      ...current,
-      [pageId]: {
-        phase,
-        version: version === undefined ? current[pageId]?.version ?? null : version,
-      },
-    }));
-  };
 
   const chooseStyle = (choice: ChunithmBestImageStyleChoice) => {
     if (choice.mode === 'random') {
@@ -805,27 +789,24 @@ export function ChunithmBestImageScreen() {
                       scrollEnabled={false}
                       source={item}
                       style={styles.webview}
-                      onError={() => updatePreviewState(pageId, 'error')}
-                      onLoadStart={() => updatePreviewState(pageId, 'loading')}
-                      onLoadEnd={() => setPreviewStates((current) => (
-                        current[pageId] && current[pageId]!.phase !== 'loading'
-                          ? current
-                          : { ...current, [pageId]: { phase: 'loaded', version: current[pageId]?.version ?? null } }
-                      ))}
-                      onRenderProcessGone={(event) => updatePreviewState(
+                      onError={() => updateBestImageWebViewState(setPreviewStates, pageId, 'error')}
+                      onLoadStart={() => updateBestImageWebViewState(setPreviewStates, pageId, 'loading')}
+                      onLoadEnd={() => markBestImageWebViewLoaded(setPreviewStates, pageId)}
+                      onRenderProcessGone={(event) => updateBestImageWebViewState(
+                        setPreviewStates,
                         pageId,
                         event.nativeEvent.didCrash ? 'crashed' : 'terminated',
                       )}
                       onMessage={(event) => {
                         const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, width);
-                        if (runtime) updatePreviewState(pageId, 'rendering', runtime.version);
+                        if (runtime) updateBestImageWebViewState(setPreviewStates, pageId, 'rendering', runtime.version);
                         const height = parseBestImageHeightMessage(event.nativeEvent.data, width, 1);
                         if (height != null) {
                           setPageHeights((current) => ({ ...current, [pageId]: height }));
-                          updatePreviewState(pageId, 'rendering');
+                          updateBestImageWebViewState(setPreviewStates, pageId, 'rendering');
                         }
                         const ready = parseBestImageReadyMessage(event.nativeEvent.data, width, 1);
-                        if (ready != null) updatePreviewState(pageId, 'ready');
+                        if (ready != null) updateBestImageWebViewState(setPreviewStates, pageId, 'ready');
                       }}
                     />
                   </View>

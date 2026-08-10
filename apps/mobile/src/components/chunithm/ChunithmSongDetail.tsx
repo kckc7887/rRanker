@@ -1,5 +1,4 @@
 import { type ComponentProps, useEffect, useMemo, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
@@ -22,7 +21,7 @@ import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
+import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
 import {
@@ -206,51 +205,30 @@ function DetailChrome({
   onToggleFavorite?: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const navigateBack = useSongDetailBackNavigation();
   return (
-    <>
-      <Pressable
-        accessibilityLabel="返回"
-        accessibilityRole="button"
-        hitSlop={12}
-        onPress={navigateBack}
-        style={({ pressed }) => [
-          styles.headerButton,
-          { top: insets.top, left: 8 },
-          Platform.OS !== 'ios' && styles.headerButtonBg,
-          pressed && styles.pressed,
-        ]}
-      >
-        <Ionicons
-          color="#FFFFFF"
-          name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-          size={28}
-        />
-      </Pressable>
-      {song && onToggleFavorite ? (
-        <Pressable
-          accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
-          accessibilityRole="button"
-          disabled={favoriteDisabled}
-          hitSlop={12}
-          onPress={onToggleFavorite}
-          style={({ pressed }) => [
-            styles.headerButton,
-            { top: insets.top, right: 8 },
-            Platform.OS !== 'ios' && styles.headerButtonBg,
-            favorite && styles.headerFavorite,
-            pressed && styles.pressed,
-            favoriteDisabled && styles.disabled,
-          ]}
-        >
-          <Ionicons
-            color={favorite ? '#A78BFA' : '#FFFFFF'}
-            name={favorite ? 'heart' : 'heart-outline'}
-            size={22}
-          />
-        </Pressable>
-      ) : null}
-    </>
+    <SharedSongDetailChrome
+      topInset={insets.top}
+      backStyle={(pressed) => [
+        styles.headerButton,
+        { top: insets.top, left: 8 },
+        Platform.OS !== 'ios' && styles.headerButtonBg,
+        pressed && styles.pressed,
+      ]}
+      favorite={song && onToggleFavorite ? {
+        label: favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`,
+        active: favorite,
+        disabled: favoriteDisabled,
+        onPress: onToggleFavorite,
+      } : undefined}
+      favoriteStyle={(pressed) => [
+        styles.headerButton,
+        { top: insets.top, right: 8 },
+        Platform.OS !== 'ios' && styles.headerButtonBg,
+        favorite && styles.headerFavorite,
+        pressed && styles.pressed,
+        favoriteDisabled && styles.disabled,
+      ]}
+    />
   );
 }
 
@@ -906,7 +884,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerButtonBg: { backgroundColor: 'rgba(0,0,0,0.34)' },
+  headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   headerFavorite: { backgroundColor: 'rgba(91,33,182,0.68)' },
   hero: { position: 'relative', overflow: 'hidden' },
   heroPlaceholder: {
