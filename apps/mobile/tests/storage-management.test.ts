@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   parseStorageClearPreferences,
   type StorageClearCategoryId,
@@ -9,6 +9,55 @@ import {
   isAppOwnedCacheEntry,
   isExpoSystemCacheEntry,
 } from '@/features/storage-management/expo-system-cache';
+import {
+  getGameStorageAdapter,
+  sharedCacheNote,
+} from '@/features/storage-management/game-storage-adapters';
+import {
+  listClearableCategoryIds,
+} from '@/features/storage-management/storage-usage';
+
+vi.mock('expo-sqlite', () => ({
+  openDatabaseAsync: vi.fn(async () => ({
+    execAsync: vi.fn(async () => undefined),
+    getFirstAsync: vi.fn(async () => null),
+    getAllAsync: vi.fn(async () => []),
+    runAsync: vi.fn(async () => undefined),
+  })),
+}));
+
+vi.mock('@/domain/game-bind-options', () => {
+  const titles: Record<string, string> = {
+    maimai: '舞萌 DX',
+    chunithm: '中二节奏',
+    phigros: 'Phigros',
+    adofai: '冰与火之舞',
+    test: '测试游戏',
+  };
+  return {
+    findGame: (id: string) => ({ id, title: titles[id] ?? '未知游戏' }),
+  };
+});
+
+vi.mock('@/features/storage-management/fs-storage', () => ({
+  measureDirectoryBytes: () => 0,
+  clearAppOwnedCacheContents: () => undefined,
+  APP_CACHE_ROOT: () => null,
+  PHIGROS_FONT_ROOT: () => null,
+}));
+
+vi.mock('@/features/storage-management/ui-icon-fonts', () => ({
+  reloadUiIconFonts: async () => undefined,
+}));
+
+vi.mock('@/features/phigros-best-image/load-phigros-image-assets', () => ({
+  clearPhigrosIllustrationStage: () => undefined,
+  phigrosIllustrationStageDirectory: () => null,
+}));
+
+vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
+  clearPhigrosFontCache: () => undefined,
+}));
 
 describe('storage-clear-prefs', () => {
   const allowed: StorageClearCategoryId[] = ['maimai', 'chunithm', 'phigros', 'shared'];
@@ -68,5 +117,23 @@ describe('app-owned cache entries', () => {
     expect(isAppOwnedCacheEntry('rRanker-backup-x.json')).toBe(true);
     expect(isAppOwnedCacheEntry('ExponentAsset-123.ttf')).toBe(false);
     expect(isAppOwnedCacheEntry('Image')).toBe(false);
+  });
+});
+
+describe('adofai storage segment', () => {
+  it('is registered in the clearable category list', () => {
+    expect(listClearableCategoryIds()).toContain('adofai');
+  });
+
+  it('exposes a measure/clear adapter', () => {
+    const adapter = getGameStorageAdapter('adofai');
+    expect(adapter).toBeDefined();
+    expect(adapter?.title).toBe('冰与火之舞');
+  });
+});
+
+describe('shared cache note wording', () => {
+  it('uses the unified include/exclude wording', () => {
+    expect(sharedCacheNote()).toBe('临时文件与图片缓存；不含系统图标字体');
   });
 });

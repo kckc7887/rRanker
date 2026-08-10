@@ -12,7 +12,7 @@ import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService, staleCachedSnapshot } from '@/services/score-service';
 import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
 import { queryClient } from '@/state/query-client';
-import type { ScoreSnapshot } from '@/domain/models';
+import type { ScoreSnapshot, DataSource } from '@/domain/models';
 import type { ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
 import {
   applyLxnsTokenRotation,
@@ -41,7 +41,12 @@ import {
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
-import { tufProvider } from '@/providers/tuf-provider';
+import {
+  loadTufPlayerFresh,
+  makeTufSnapshot,
+  TufCache,
+} from '@/services/tuf-cache';
+import type { TufPlayer } from '@/domain/tuf';
 import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
 import {
@@ -50,6 +55,7 @@ import {
 } from '@/providers/maxed-phigros-test-provider';
 
 const repository = new SqliteSnapshotRepository();
+const tufCache = new TufCache();
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -83,8 +89,7 @@ export function useGameData() {
             payload: emptyGamePayload('adofai', '未绑定 TUF 玩家'),
           };
         }
-        const player = await tufProvider.getPlayerProfile(playerId);
-        return {
+        const toBundle = (player: TufPlayer, source: DataSource): GameDataBundle => ({
           gameId: 'adofai', providerId: 'tuf', profile: getGameProfile('adofai'),
           payload: {
             kind: 'adofai', player,
@@ -92,9 +97,23 @@ export function useGameData() {
               label: 'RANKED SCORE', value: player.rankedScore,
               display: Number.isFinite(player.rankedScore) ? player.rankedScore.toFixed(2) : '—',
             },
-            source: { kind: 'tuf', label: 'TUF 社区公开数据', updatedAt: new Date().toISOString(), isStale: false },
+            source,
           },
-        };
+        });
+        // 缓存优先：先渲染本地玩家资料快照（打「数据可能过期」标），后台刷新成功后静默回写。
+        const snapshot = await cacheFirstLoad({
+          loadCached: () => tufCache.loadPlayer(playerId),
+          loadFresh: async () => {
+            const player = await loadTufPlayerFresh(playerId);
+            const fresh = makeTufSnapshot(player);
+            void tufCache.savePlayer(playerId, fresh).catch(() => undefined);
+            return fresh;
+          },
+          onFresh: (fresh) => {
+            queryClient.setQueryData(queryKey, toBundle(fresh.data, fresh.source));
+          },
+        });
+        return toBundle(snapshot.data, snapshot.source);
       }
       if (activeGameId === 'chunithm') {
         if (activeProviderId === 'chunithm-test') {

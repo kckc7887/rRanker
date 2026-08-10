@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { DataSource } from '@/domain/models';
 
 const nullableNumber = z.number().finite().nullable().optional();
 const nullableString = z.string().nullable().optional();
@@ -142,3 +143,41 @@ export type TufScoreExtension = {
   judgements: TufJudgements | null; isWorldsFirst: boolean | null;
   isWorldsFirstPP: boolean | null; isDuplicate: boolean; impact: number | null;
 };
+
+/**
+ * TUF 缓存快照：resource_snapshots 表内独立命名空间 `tuf:`，
+ * 每个游戏保留自己的缓存结构与 schema 版本，不复用其他游戏快照。
+ * source 供 cacheFirstLoad 打「数据可能过期」标并保留 label 与拉取时间。
+ */
+export type TufPlayerSnapshot = { data: TufPlayer; source: DataSource };
+export type TufPassPageSnapshot = { data: TufPassPage; source: DataSource };
+export type TufLevelPageSnapshot = { data: TufLevelPage; source: DataSource };
+export type TufLevelDetailSnapshot = { data: TufLevelDetailResponse; source: DataSource };
+export type TufDifficultiesSnapshot = { data: TufDifficulty[]; source: DataSource };
+
+export const TUF_PLAYER_SCHEMA_VERSION = 1;
+export const TUF_PASS_PAGE_SCHEMA_VERSION = 1;
+export const TUF_LEVEL_PAGE_SCHEMA_VERSION = 1;
+export const TUF_LEVEL_SCHEMA_VERSION = 1;
+export const TUF_DIFFICULTIES_SCHEMA_VERSION = 1;
+
+export function tufPlayerCacheKey(playerId: number): string {
+  return `tuf:player:${playerId}`;
+}
+export function tufPassPageCacheKey(
+  playerId: number,
+  options: Omit<TufPassQuery, 'offset' | 'limit'>,
+  offset: number,
+): string {
+  return `tuf:passes:${playerId}:${options.sortBy}:${options.order}:${options.bestPerLevel ? 1 : 0}:${encodeURIComponent(options.query ?? '')}:${offset}`;
+}
+export function tufLevelPageCacheKey(
+  options: Omit<TufLevelQuery, 'offset' | 'limit'>,
+  offset: number,
+): string {
+  return `tuf:levels:${encodeURIComponent(options.query ?? '')}:${options.sort ?? ''}:${options.order ?? ''}:${encodeURIComponent(options.pguRange ?? '')}:${encodeURIComponent((options.specialDifficulties ?? []).join(','))}:${offset}`;
+}
+export function tufLevelCacheKey(levelId: number): string {
+  return `tuf:level:${levelId}`;
+}
+export const TUF_DIFFICULTIES_CACHE_KEY = 'tuf:difficulties';

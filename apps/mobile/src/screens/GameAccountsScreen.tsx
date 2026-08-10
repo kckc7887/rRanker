@@ -49,6 +49,7 @@ import { switchBoundAccount } from '@/services/switch-bound-account';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufAccountStore } from '@/storage/tuf-account-store';
+import { TufCache } from '@/services/tuf-cache';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -58,6 +59,7 @@ const chunithmDemoAccount = new ChunithmDemoAccountStore();
 const phigrosDemoAccount = new PhigrosDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 const tufAccounts = new TufAccountStore();
+const tufCache = new TufCache();
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
@@ -253,7 +255,10 @@ export function GameAccountsScreen() {
 
   const removeTufAccount = async (account: BoundAccount) => {
     const playerId = tufPlayerIdFromAccountId(account.id);
-    if (playerId !== null) await tufAccounts.remove(playerId);
+    if (playerId !== null) {
+      await tufAccounts.remove(playerId);
+      await tufCache.clearPlayer(playerId);
+    }
     removeBoundAccount(account.id);
     await persistActiveAccountId();
     queryClient.removeQueries({ queryKey: ['tuf'] });
