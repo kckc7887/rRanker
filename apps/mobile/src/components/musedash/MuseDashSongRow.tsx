@@ -43,8 +43,7 @@ export const MuseDashSongRow = memo(function MuseDashSongRow({
         <View style={[styles.cover, styles.coverPlaceholder]}>
           <Text style={styles.coverNote}>♪</Text>
         </View>
-      )}
-      badges={(
+      )}      badges={(
         <View style={styles.difficulties}>
           {slots.map(({ difficultyIndex, level }) => (
             <MuseDashDifficultyBadge
@@ -71,7 +70,7 @@ const styles = StyleSheet.create({
   cover: {
     width: 62,
     height: 62,
-    borderRadius: 9,
+    borderRadius: 31,
     backgroundColor: '#E5E7EB',
   },
   coverPlaceholder: {
