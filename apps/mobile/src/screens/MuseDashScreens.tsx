@@ -426,7 +426,7 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
     renderData={() => <ScrollView keyboardShouldPersistTaps="handled" style={[styles.page, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.detail}>
       <View style={[styles.hero, { width, height: width }]}>
-        <MuseDashHeroCover song={joined!.song} />
+        <MuseDashHeroCover song={joined!.song} width={width} />
         <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.48)']}
           locations={[0, 1]} style={StyleSheet.absoluteFill} />
         <View style={styles.heroCopy}>
@@ -467,16 +467,25 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   </>;
 }
 
-function MuseDashHeroCover({ song }: { song: MuseDashSong }) {
+function MuseDashHeroCover({ song, width }: { song: MuseDashSong; width: number }) {
   const [failed, setFailed] = useState(false);
   const url = museDashCoverUrl(song.cover);
   if (!url || failed) {
-    return <View style={[styles.heroPlaceholder, { backgroundColor: '#D9DEE7' }]}>
+    return <View style={[styles.heroPlaceholder, { backgroundColor: '#D1D5DB' }]}>
       <Text style={styles.heroPlaceholderNote}>♪</Text>
     </View>;
   }
-  return <Image accessibilityLabel="歌曲封面" source={url} style={StyleSheet.absoluteFillObject}
-    contentFit="cover" transition={120} onError={() => setFailed(true)} />;
+  return (
+    <>
+      <Image source={url} style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.45 }] }]}
+        contentFit="cover" blurRadius={40} transition={120}
+        onError={() => setFailed(true)} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: width / 2, overflow: 'hidden' }]}>
+        <Image accessibilityLabel="歌曲封面" source={url} style={StyleSheet.absoluteFill}
+          contentFit="cover" transition={120} />
+      </View>
+    </>
+  );
 }
 
 const styles = StyleSheet.create({

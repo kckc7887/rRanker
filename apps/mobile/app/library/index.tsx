@@ -228,7 +228,8 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
   if (isMuseDashSong(song)) {
     const url = museDashCoverUrl(song.cover);
     return url
-      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={url} style={styles.cover} transition={120} />
+      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={url}
+        style={[styles.cover, styles.museDashCover]} transition={120} />
       : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   if (blurUrl) {
@@ -260,6 +261,7 @@ const styles = StyleSheet.create({
   chipText: { color: '#374151', fontSize: 11 }, chipTextActive: { color: '#FFF' }, list: { padding: 12, paddingTop: 2, gap: 9, flexGrow: 1 },
   row: { backgroundColor: '#FFF', borderRadius: 12, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 11 }, main: { flex: 1, gap: 3 },
   cover: { width: 58, height: 58, borderRadius: 9 },
+  museDashCover: { borderRadius: 29 },
   coverPlaceholder: { width: 58, height: 58, borderRadius: 9, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
   coverNote: { color: '#6B7280', fontSize: 24 },
   title: { color: '#111827', fontWeight: '700' }, meta: { color: '#4B5563', fontSize: 11 }, tagsText: { color: '#246BFD', fontSize: 11 },
