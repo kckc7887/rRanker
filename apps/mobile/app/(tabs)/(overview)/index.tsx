@@ -78,6 +78,9 @@ import { useAppTheme } from '@/theme/app-theme';
 import {
   formatTufOverviewRatingMeta, formatTufRankBadge, TUF_RATING_THEME, TufOverviewDetails,
 } from '@/components/adofai/TufOverviewDetails';
+import {
+  formatMuseDashOverviewRatingMeta, MUSE_DASH_RATING_THEME, MuseDashOverviewDetails,
+} from '@/components/musedash/MuseDashOverviewDetails';
 
 export default function OverviewTabScreen() {
   return <CachedTabScreen><OverviewScreen /></CachedTabScreen>;
@@ -405,7 +408,11 @@ function PublicOverviewScreen() {
         isEmpty={Boolean(data && !renderableData)}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
-        emptyText={activeGameId === 'adofai' ? '请在游戏管理中绑定 TUF 玩家' : '暂无数据'}
+        emptyText={activeGameId === 'adofai'
+          ? '请在游戏管理中绑定 TUF 玩家'
+          : activeGameId === 'musedash'
+            ? '请在游戏管理中绑定喵斯快跑玩家'
+            : '暂无数据'}
         data={renderableData}
         renderData={(bundle) => (
           <ScrollView
@@ -431,7 +438,7 @@ function PublicOverviewScreen() {
               <Text style={styles.switchHint}>·点击切换·</Text>
             </Pressable>
 
-            {bundle.payload.kind === 'adofai' ? (
+            {bundle.payload.kind === 'adofai' || bundle.payload.kind === 'musedash' ? (
               <SourceStatus items={[{
                 key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt,
                 state: bundle.payload.source.isStale ? 'cache' : 'live',
@@ -478,7 +485,8 @@ function PublicOverviewScreen() {
             {bundle.payload.kind === 'maimai'
               || bundle.payload.kind === 'phigros'
               || bundle.payload.kind === 'chunithm'
-              || bundle.payload.kind === 'adofai' ? (
+              || bundle.payload.kind === 'adofai'
+              || bundle.payload.kind === 'musedash' ? (
               <DxRatingCard
                 borderless={bundle.payload.kind === 'chunithm'}
                 label={bundle.payload.playerScore.label}
@@ -488,16 +496,20 @@ function PublicOverviewScreen() {
                   : bundle.payload.playerScore.value}
                 meta={bundle.payload.kind === 'adofai'
                   ? formatTufOverviewRatingMeta(bundle.payload.player)
-                  : bundle.payload.kind === 'chunithm'
-                    ? formatChunithmBestMeta(bundle.payload.bestSections)
-                    : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
+                  : bundle.payload.kind === 'musedash'
+                    ? formatMuseDashOverviewRatingMeta(bundle.payload.player)
+                    : bundle.payload.kind === 'chunithm'
+                      ? formatChunithmBestMeta(bundle.payload.bestSections)
+                      : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
                 themeOverride={bundle.payload.kind === 'adofai'
                   ? TUF_RATING_THEME
-                  : bundle.payload.kind === 'phigros'
-                    ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
-                    : bundle.payload.kind === 'chunithm'
-                      ? resolveChunithmPossessionTheme(bundle.payload.player?.rating_possession)
-                      : undefined}
+                  : bundle.payload.kind === 'musedash'
+                    ? MUSE_DASH_RATING_THEME
+                    : bundle.payload.kind === 'phigros'
+                      ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
+                      : bundle.payload.kind === 'chunithm'
+                        ? resolveChunithmPossessionTheme(bundle.payload.player?.rating_possession)
+                        : undefined}
                 valueTheme={bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
                   ? resolveChunithmRatingTier(bundle.payload.playerScore.value)
                   : undefined}
@@ -517,6 +529,7 @@ function PublicOverviewScreen() {
             )}
 
             {bundle.payload.kind === 'adofai' ? <TufOverviewDetails player={bundle.payload.player} /> : null}
+            {bundle.payload.kind === 'musedash' ? <MuseDashOverviewDetails player={bundle.payload.player} /> : null}
 
             {bundle.payload.kind === 'maimai' && bundle.providerId === 'local' ? (
               <Pressable
@@ -662,6 +675,12 @@ function PublicOverviewScreen() {
                 <>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>读取方式：TUF 公开接口按需读取</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
+                </>
+              ) : bundle.payload.kind === 'musedash' ? (
+                <>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
+                  <Text style={[styles.body, { color: theme.textSecondary }]}>读取方式：喵斯快跑社区公开接口按需读取</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
               ) : bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
@@ -924,6 +943,7 @@ function displayName(bundle: GameDataBundle): string {
     return bundle.payload.player?.name ?? '落雪账号（待同步）';
   }
   if (bundle.payload.kind === 'adofai') return bundle.payload.player.name;
+  if (bundle.payload.kind === 'musedash') return bundle.payload.player.user.nickname;
   return bundle.payload.displayName;
 }
 
@@ -969,6 +989,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'chunithm-test') return '示例查分器';
   if (providerId === 'chunithm-temp') return '无成绩临时账号';
   if (providerId === 'tuf') return 'TUF 社区';
+  if (providerId === 'musedash-moe') return '喵斯快跑社区';
   return '本地';
 }
 

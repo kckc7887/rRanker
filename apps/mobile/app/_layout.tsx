@@ -27,6 +27,7 @@ import {
   createMaxedMaimaiTestAccount,
   createMaxedPhigrosTestAccount,
   createTufBoundAccount,
+  createMuseDashBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
@@ -47,6 +48,7 @@ import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-ava
 import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
 import { startTimer } from '@/utils/startup-timing';
 import { TufAccountStore } from '@/storage/tuf-account-store';
+import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -55,6 +57,7 @@ const chunithmDemoAccount = new ChunithmDemoAccountStore();
 const phigrosDemoAccount = new PhigrosDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 const tufAccounts = new TufAccountStore();
+const museDashAccounts = new MuseDashAccountStore();
 const snapshots = new SqliteSnapshotRepository();
 
 async function loadLocalBoundAccounts() {
@@ -105,13 +108,14 @@ async function loadPhigrosDemoBoundAccount() {
 }
 
 async function loadOptionalBoundAccounts() {
-  const [locals, demos, chunithmDemo, phigrosDemo, hasChunithmTemp, storedTufAccounts] = await Promise.all([
+  const [locals, demos, chunithmDemo, phigrosDemo, hasChunithmTemp, storedTufAccounts, storedMuseDashAccounts] = await Promise.all([
     loadLocalBoundAccounts(),
     loadDemoBoundAccounts(),
     loadChunithmDemoBoundAccount(),
     loadPhigrosDemoBoundAccount(),
     chunithmTempAccount.load(),
     tufAccounts.load(),
+    museDashAccounts.load(),
   ]);
   return [
     ...locals,
@@ -120,6 +124,7 @@ async function loadOptionalBoundAccounts() {
     ...(phigrosDemo ? [phigrosDemo] : []),
     ...(hasChunithmTemp ? [createChunithmTempAccount()] : []),
     ...storedTufAccounts.map((account) => createTufBoundAccount(account)),
+    ...storedMuseDashAccounts.map((account) => createMuseDashBoundAccount(account)),
   ];
 }
 

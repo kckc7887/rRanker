@@ -32,6 +32,7 @@ vi.mock('@/domain/game-bind-options', () => {
     chunithm: '中二节奏',
     phigros: 'Phigros',
     adofai: '冰与火之舞',
+    musedash: '喵斯快跑',
     test: '测试游戏',
   };
   return {
@@ -129,6 +130,18 @@ describe('adofai storage segment', () => {
     const adapter = getGameStorageAdapter('adofai');
     expect(adapter).toBeDefined();
     expect(adapter?.title).toBe('冰与火之舞');
+  });
+});
+
+describe('musedash storage segment', () => {
+  it('is registered in the clearable category list', () => {
+    expect(listClearableCategoryIds()).toContain('musedash');
+  });
+
+  it('exposes a measure/clear adapter', () => {
+    const adapter = getGameStorageAdapter('musedash');
+    expect(adapter).toBeDefined();
+    expect(adapter?.title).toBe('喵斯快跑');
   });
 });
 

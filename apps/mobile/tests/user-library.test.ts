@@ -29,6 +29,13 @@ describe('user library domain', () => {
     expect(inferGameIdFromKey('song:adofai:11372')).toBe('adofai');
   });
 
+  it('keeps musedash uid song ids intact instead of applying maimai id truncation', () => {
+    expect(songLibraryKey('musedash', '0-47')).toBe('song:musedash:0-47');
+    expect(songLibraryKey('musedash', 0)).toBe('song:musedash:0');
+    expect(normalizeLibraryItem({ ...song, gameId: 'musedash', songId: '0-47' }).key).toBe('song:musedash:0-47');
+    expect(inferGameIdFromKey('song:musedash:0-47')).toBe('musedash');
+  });
+
   it('round-trips adofai song items through backups', () => {
     const adofaiSong: SongLibraryItem = {
       ...song, gameId: 'adofai', songId: '11372', key: songLibraryKey('adofai', 11372),

@@ -37,6 +37,16 @@ import type {
   TufScoreExtension,
   TufSongExtension,
 } from '@/domain/tuf';
+import {
+  MUSE_DASH_DIFFICULTY_LABELS,
+  museDashSongAuthor,
+  museDashSongTitle,
+  type MuseDashChartExtension,
+  type MuseDashRawScore,
+  type MuseDashScoreExtension,
+  type MuseDashSong,
+  type MuseDashSongExtension,
+} from '@/domain/muse-dash';
 
 type StandardGameId = 'maimai' | 'phigros';
 
@@ -607,5 +617,189 @@ export function presentTufChart(level: TufLevel, pass?: TufPass): ChartCardPrese
     achievementRows: score?.achievementRows ?? [],
     charter: level.levelCredits.map((credit) => `${credit.creator.name} (${credit.role})`).join('、') || '未知',
     notes: tufChart(level).notes,
+  };
+}
+
+/** Muse Dash 谱面原始输入：歌曲 + 难度档位；constant 为 /diffdiff 社区定数，无定数时为 undefined。 */
+export type MuseDashRawChart = {
+  song: MuseDashSong;
+  albumTitle: string;
+  difficultyIndex: number;
+  constant?: number;
+};
+
+export type MuseDashRawSong = { song: MuseDashSong; albumTitle: string };
+
+/** 谱师列表：过滤上游 null 条目后连接。 */
+function museDashCharter(levelDesigner: readonly (string | null)[]): string {
+  return levelDesigner.filter((name): name is string => !!name).join('、');
+}
+
+function museDashChart(raw: MuseDashRawChart): GameChart<'musedash', MuseDashChartExtension> {
+  const officialLevel = raw.song.difficulty[raw.difficultyIndex] ?? '0';
+  return {
+    gameId: 'musedash',
+    songId: raw.song.uid,
+    chartId: `${raw.song.uid}:${raw.difficultyIndex}`,
+    order: raw.difficultyIndex,
+    label: MUSE_DASH_DIFFICULTY_LABELS[raw.difficultyIndex],
+    level: officialLevel === '0' ? '—' : officialLevel,
+    constant: raw.constant,
+    charter: museDashCharter(raw.song.levelDesigner) || undefined,
+    notes: [],
+    extension: {
+      song: raw.song,
+      albumTitle: raw.albumTitle,
+      difficultyIndex: raw.difficultyIndex,
+      officialLevel,
+      constant: raw.constant,
+    },
+  };
+}
+
+export const museDashContentAdapter: GameContentAdapter<
+  'musedash',
+  MuseDashRawSong,
+  MuseDashRawChart,
+  MuseDashRawScore,
+  MuseDashSongExtension,
+  MuseDashChartExtension,
+  MuseDashScoreExtension
+> = {
+  gameId: 'musedash',
+  normalizeSong: (raw) => ({
+    gameId: 'musedash',
+    songId: raw.song.uid,
+    title: museDashSongTitle(raw.song),
+    artist: museDashSongAuthor(raw.song),
+    metadata: {
+      album: raw.albumTitle,
+      bpm: raw.song.bpm ? Number(raw.song.bpm) : undefined,
+      cover: raw.song.cover,
+      levelDesigner: museDashCharter(raw.song.levelDesigner),
+    },
+    charts: raw.song.difficulty.flatMap((level, difficultyIndex) =>
+      level === '0' ? [] : [museDashChart({ song: raw.song, albumTitle: raw.albumTitle, difficultyIndex })]),
+    extension: { song: raw.song, albumTitle: raw.albumTitle, bpm: raw.song.bpm, cover: raw.song.cover },
+  }),
+  normalizeChart: museDashChart,
+  normalizeScore: (raw) => {
+    const play = raw.play;
+    const currentRank = play.i ?? play.history?.lastRank ?? 0;
+    const lastRank = play.history?.lastRank ?? play.i ?? 0;
+    return {
+      gameId: 'musedash',
+      songId: play.uid,
+      chartId: `${play.uid}:${play.difficulty}`,
+      order: play.difficulty,
+      key: `${play.uid}:${play.difficulty}`,
+      title: raw.song ? museDashSongTitle(raw.song) : play.uid,
+      rating: play.sum,
+      extension: {
+        play,
+        acc: play.acc,
+        currentRank,
+        lastRank,
+        sum: play.sum ?? 0,
+        platform: play.platform ?? 'mobile',
+        characterName: raw.characterName,
+        elfinName: raw.elfinName,
+      },
+    };
+  },
+};
+
+export function formatMuseDashAcc(value: number): string {
+  return `${value.toFixed(2)}%`;
+}
+
+export function formatMuseDashScore(value: number): string {
+  return Math.max(0, Math.trunc(value)).toLocaleString('en-US');
+}
+
+export function presentMuseDashScore(raw: MuseDashRawScore, position?: number): ScoreCardPresentation<'musedash'> {
+  const play = raw.play;
+  const title = raw.song ? museDashSongTitle(raw.song) : play.uid;
+  const currentRank = play.i ?? play.history?.lastRank ?? 0;
+  const lastRank = play.history?.lastRank ?? play.i ?? 0;
+  const platform = play.platform ?? 'mobile';
+  return {
+    key: `${play.uid}:${play.difficulty}`,
+    gameId: 'musedash',
+    route: { songId: play.uid, levelIndex: play.difficulty },
+    position,
+    title,
+    accessibilityLabel: `查看谱面 ${title}，分数 ${formatMuseDashScore(play.score)}，ACC ${formatMuseDashAcc(play.acc)}，排名 ${currentRank}`,
+    primaryMetric: { key: 'score', label: 'Score', text: formatMuseDashScore(play.score), tone: 'musedash-score' },
+    secondaryMetrics: [
+      { key: 'acc', label: 'ACC', text: formatMuseDashAcc(play.acc) },
+      { key: 'rating', label: 'Rating', text: play.sum == null ? '—' : String(play.sum), tone: 'accent' },
+      { key: 'rank', label: '排名', text: `#${currentRank}` },
+    ],
+    difficulty: {
+      key: 'difficulty',
+      label: MUSE_DASH_DIFFICULTY_LABELS[play.difficulty],
+      value: raw.song?.difficulty[play.difficulty] || '—',
+      tone: String(play.difficulty),
+    },
+    achievementRows: [
+      [
+        ...(raw.characterName ? [{ key: 'character', label: raw.characterName, tone: 'character' }] : []),
+        ...(raw.elfinName ? [{ key: 'elfin', label: raw.elfinName, tone: 'elfin' }] : []),
+      ],
+      [
+        { key: 'platform', label: platform === 'pc' ? 'PC 端' : '移动端', tone: 'platform' },
+        ...(lastRank > 0 && lastRank !== currentRank ? [{ key: 'last-rank', label: `历史 #${lastRank}`, tone: 'muted' }] : []),
+      ],
+    ],
+  };
+}
+
+export function presentMuseDashSong(
+  raw: MuseDashRawSong,
+  constants?: readonly (number | undefined)[],
+): SongRowPresentation<'musedash'> {
+  const chartBadges = raw.song.difficulty.flatMap((level, difficultyIndex) => {
+    if (level === '0') return [];
+    const constant = constants?.[difficultyIndex];
+    return [{
+      key: `${raw.song.uid}:${difficultyIndex}`,
+      label: MUSE_DASH_DIFFICULTY_LABELS[difficultyIndex],
+      value: constant == null ? level : constant.toFixed(2),
+      tone: String(difficultyIndex),
+    }];
+  });
+  return {
+    key: raw.song.uid,
+    gameId: 'musedash',
+    route: { songId: raw.song.uid },
+    title: museDashSongTitle(raw.song),
+    subtitle: `${museDashSongAuthor(raw.song)} · ${raw.albumTitle}`,
+    accessibilityLabel: `打开歌曲 ${museDashSongTitle(raw.song)}`,
+    chartBadges,
+  };
+}
+
+export function presentMuseDashChart(
+  raw: MuseDashRawChart,
+  score?: MuseDashRawScore,
+): ChartCardPresentation<'musedash'> {
+  const presented = score ? presentMuseDashScore(score) : undefined;
+  return {
+    key: `${raw.song.uid}:${raw.difficultyIndex}`,
+    gameId: 'musedash',
+    route: { songId: raw.song.uid, levelIndex: raw.difficultyIndex },
+    difficulty: {
+      key: 'difficulty',
+      label: MUSE_DASH_DIFFICULTY_LABELS[raw.difficultyIndex],
+      value: raw.song.difficulty[raw.difficultyIndex] || '—',
+      tone: String(raw.difficultyIndex),
+    },
+    primaryMetric: presented?.primaryMetric ?? { key: 'score', label: 'Score', text: '—' },
+    secondaryMetrics: presented?.secondaryMetrics ?? [],
+    grade: presented?.grade,
+    achievementRows: presented?.achievementRows ?? [],
+    charter: museDashCharter(raw.song.levelDesigner) || '未知',
+    notes: [],
   };
 }

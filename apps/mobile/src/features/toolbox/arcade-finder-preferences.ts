@@ -36,6 +36,7 @@ export function defaultArcadeFinderPreferences(gameId: GameId = 'maimai'): Arcad
     chunithm: [CHUNITHM_TITLE_ID],
     phigros: [],
     adofai: [],
+    musedash: [],
     test: [],
   };
   return {

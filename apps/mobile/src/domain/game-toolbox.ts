@@ -167,6 +167,10 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     tools: [],
     emptyDetail: '冰与火之舞首版暂无可用工具。',
   },
+  musedash: {
+    tools: [],
+    emptyDetail: '喵斯快跑首版暂无可用工具。',
+  },
 };
 
 export function getGameToolbox(gameId: GameId): GameToolbox {

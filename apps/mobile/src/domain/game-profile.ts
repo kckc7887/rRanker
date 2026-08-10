@@ -86,6 +86,14 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     bestSections: [{ id: 'top20', title: 'Top 20 Impact', size: 20 }],
     capabilities: { ...commonNav, hasTools: false },
   },
+  musedash: {
+    id: 'musedash',
+    title: '喵斯快跑',
+    ratingLabel: 'Rating',
+    ratingDigits: 0,
+    bestSections: [{ id: 'best30', title: 'Best 30', size: 30 }],
+    capabilities: { ...commonNav, hasTools: false },
+  },
 };
 
 export function getGameProfile(id: GameId): GameProfile {

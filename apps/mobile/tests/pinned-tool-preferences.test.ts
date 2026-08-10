@@ -22,7 +22,7 @@ describe('pinned tool preferences', () => {
         phigros: ['rating'],
         test: [],
       },
-    })).toEqual({ maimai: ['rating'], chunithm: [], phigros: [], adofai: [], test: [] });
+    })).toEqual({ maimai: ['rating'], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] });
   });
 
   it('keeps valid plate ids only for games with a plate tool', () => {
@@ -39,7 +39,7 @@ describe('pinned tool preferences', () => {
       maimai: [6101],
       chunithm: [],
       phigros: [],
-      adofai: [],
+      adofai: [], musedash: [],
       test: [],
     });
   });
@@ -49,9 +49,9 @@ describe('pinned tool preferences', () => {
       version: 1,
       pinnedToolIdsByGame: { maimai: ['rating'], phigros: [], test: [] },
     })).toEqual({
-      pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], adofai: [], test: [] },
-      pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], adofai: [], test: [] },
-      pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], adofai: [], test: [] },
+      pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] },
+      pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] },
+      pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] },
     });
   });
 
@@ -72,7 +72,7 @@ describe('pinned tool preferences', () => {
         ],
         maimai: [{ kind: 'trophy', id: 866 }],
         phigros: [],
-        adofai: [],
+        adofai: [], musedash: [],
         test: [],
       },
     }).pinnedCollectionIdsByGame).toEqual({
@@ -85,7 +85,7 @@ describe('pinned tool preferences', () => {
         { kind: 'trophy', id: 0 },
       ],
       phigros: [],
-      adofai: [],
+      adofai: [], musedash: [],
       test: [],
     });
   });
@@ -98,21 +98,21 @@ describe('pinned tool preferences', () => {
         maimai: ['rating', 'versions'],
         chunithm: [],
         phigros: [],
-        adofai: [],
+        adofai: [], musedash: [],
         test: [],
       },
       pinnedPlateIdsByGame: {
         maimai: [6101, 6102],
         chunithm: [],
         phigros: [],
-        adofai: [],
+        adofai: [], musedash: [],
         test: [],
       },
       pinnedCollectionIdsByGame: {
         maimai: [],
         chunithm: [],
         phigros: [],
-        adofai: [],
+        adofai: [], musedash: [],
         test: [],
       },
     });
@@ -121,21 +121,21 @@ describe('pinned tool preferences', () => {
         maimai: ['rating', 'versions'],
         chunithm: [],
         phigros: [],
-        adofai: [],
+        adofai: [], musedash: [],
         test: [],
       },
       pinnedPlateIdsByGame: {
         maimai: [6101, 6102],
         chunithm: [],
         phigros: [],
-        adofai: [],
+        adofai: [], musedash: [],
         test: [],
       },
       pinnedCollectionIdsByGame: {
         maimai: [],
         chunithm: [],
         phigros: [],
-        adofai: [],
+        adofai: [], musedash: [],
         test: [],
       },
     });

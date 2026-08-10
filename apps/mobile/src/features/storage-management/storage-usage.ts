@@ -32,6 +32,7 @@ const SEGMENT_COLORS: Record<string, string> = {
   chunithm: '#27A7E7',
   phigros: '#8B5CF6',
   adofai: '#F15B55',
+  musedash: '#EC4899',
   shared: '#0EA5E9',
   test: '#64748B',
 };
@@ -80,7 +81,9 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
             ? { note: '存档、曲库与图片缓存' }
             : adapter.gameId === 'adofai'
               ? { note: '玩家资料、成绩与曲库缓存' }
-              : {}),
+              : adapter.gameId === 'musedash'
+                ? { note: '曲库、定数表、名称表与玩家成绩缓存' }
+                : {}),
     })),
     {
       id: 'shared',

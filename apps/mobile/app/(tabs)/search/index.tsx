@@ -45,6 +45,7 @@ import {
 } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufSearchScreen } from '@/screens/TufScreens';
+import { MuseDashCatalogScreen } from '@/screens/MuseDashScreens';
 
 const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
 export default function SearchTabScreen() {
@@ -166,6 +167,10 @@ export function SearchScreen() {
 
   if (activeGameId === 'adofai') {
     return <TufSearchScreen />;
+  }
+
+  if (activeGameId === 'musedash') {
+    return <MuseDashCatalogScreen />;
   }
 
   if (activeGameId !== 'maimai') {

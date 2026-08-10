@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GamePickerSheet } from '@/components/GamePickerSheet';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import { TufPlayerPickerSheet } from '@/components/TufPlayerPickerSheet';
+import { MuseDashPlayerPickerSheet } from '@/components/MuseDashPlayerPickerSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import {
@@ -21,7 +22,9 @@ import {
   createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
   createMaxedPhigrosTestAccount,
+  createMuseDashBoundAccount,
   createTufBoundAccount,
+  museDashUserIdFromAccountId,
   tufPlayerIdFromAccountId,
   LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
@@ -50,6 +53,8 @@ import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufAccountStore } from '@/storage/tuf-account-store';
 import { TufCache } from '@/services/tuf-cache';
+import { MuseDashAccountStore } from '@/storage/musedash-account-store';
+import { MuseDashCache } from '@/services/muse-dash-cache';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -60,6 +65,8 @@ const phigrosDemoAccount = new PhigrosDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 const tufAccounts = new TufAccountStore();
 const tufCache = new TufCache();
+const museDashAccounts = new MuseDashAccountStore();
+const museDashCache = new MuseDashCache();
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
@@ -84,6 +91,7 @@ export function GameAccountsScreen() {
   const [reopenPickerAfterLogin, setReopenPickerAfterLogin] = useState(false);
   const [renameAccount, setRenameAccount] = useState<BoundAccount | null>(null);
   const [tufPickerVisible, setTufPickerVisible] = useState(false);
+  const [museDashPickerVisible, setMuseDashPickerVisible] = useState(false);
 
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
 
@@ -265,6 +273,37 @@ export function GameAccountsScreen() {
     setMessage(`已解除 TUF 玩家「${account.displayName}」的绑定`);
   };
 
+  const bindMuseDashPlayer = async (player: import('@/components/MuseDashPlayerPickerSheet').MuseDashSearchResult) => {
+    const existing = boundAccounts.find((account) => account.id === `musedash:musedash-moe:${player.userId}`);
+    if (existing) {
+      selectBoundAccount(existing.id);
+      await sessions.setActiveAccountId(existing.id);
+      setMessage(`喵斯快跑玩家「${existing.displayName}」已绑定，已切换到该玩家`);
+      setMuseDashPickerVisible(false);
+      return;
+    }
+    const account = createMuseDashBoundAccount({ userId: player.userId, displayName: player.nickname });
+    await museDashAccounts.upsert({ userId: player.userId, displayName: player.nickname });
+    upsertBoundAccount(account);
+    selectBoundAccount(account.id);
+    await sessions.setActiveAccountId(account.id);
+    setMessage(`已绑定喵斯快跑玩家「${player.nickname}」`);
+    setMuseDashPickerVisible(false);
+    setPickerVisible(false);
+  };
+
+  const removeMuseDashAccount = async (account: BoundAccount) => {
+    const userId = museDashUserIdFromAccountId(account.id);
+    if (userId !== null) {
+      await museDashAccounts.remove(userId);
+      await museDashCache.clearPlayer(userId);
+    }
+    removeBoundAccount(account.id);
+    await persistActiveAccountId();
+    queryClient.removeQueries({ queryKey: ['musedash'] });
+    setMessage(`已解除喵斯快跑玩家「${account.displayName}」的绑定`);
+  };
+
   const addPhigrosDemoAccount = async () => {
     setBusy(true);
     try {
@@ -443,7 +482,8 @@ export function GameAccountsScreen() {
     }
     if (provider.bindingKind === 'public-player') {
       setPickerVisible(false);
-      setTufPickerVisible(true);
+      if (provider.id === 'musedash-moe') setMuseDashPickerVisible(true);
+      else setTufPickerVisible(true);
       return;
     }
     setExpandedPickerGameId(gameId);
@@ -490,6 +530,7 @@ export function GameAccountsScreen() {
     const isChunithmTemp = account.providerId === 'chunithm-temp';
     const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
     const isTuf = account.providerId === 'tuf';
+    const isMuseDash = account.providerId === 'musedash-moe';
     return (
       <>
         {!isActive ? (
@@ -522,6 +563,11 @@ export function GameAccountsScreen() {
         ) : isTuf ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
             disabled={busy} onPress={() => void removeTufAccount(account)}>
+            <Text style={styles.unbind}>解除绑定</Text>
+          </Pressable>
+        ) : isMuseDash ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
+            disabled={busy} onPress={() => void removeMuseDashAccount(account)}>
             <Text style={styles.unbind}>解除绑定</Text>
           </Pressable>
         ) : isRemote ? (
@@ -567,6 +613,7 @@ export function GameAccountsScreen() {
         gameId={loginGame?.id ?? 'maimai'} gameTitle={loginGame?.title ?? ''}
         onClose={() => closeLogin({ reopenPicker: true })} onSuccess={finishLogin} />
       {tufPickerVisible ? <TufPlayerPickerSheet visible onClose={() => setTufPickerVisible(false)} onSelect={bindTufPlayer} /> : null}
+      {museDashPickerVisible ? <MuseDashPlayerPickerSheet visible onClose={() => setMuseDashPickerVisible(false)} onSelect={bindMuseDashPlayer} /> : null}
 
       <RenameLocalAccountSheet visible={renameAccount !== null} initialName={renameAccount?.displayName ?? ''}
         onClose={() => setRenameAccount(null)} onSave={(displayName) => {

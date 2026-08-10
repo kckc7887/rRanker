@@ -7,7 +7,7 @@ export type Difficulty =
   | 'remaster'
   | 'utage'
   | 'unknown';
-export type DataSourceKind = 'fixture' | 'diving-fish' | 'lxns' | 'dxrating' | 'kyou' | 'tuf' | 'local' | 'generated' | 'cache';
+export type DataSourceKind = 'fixture' | 'diving-fish' | 'lxns' | 'dxrating' | 'kyou' | 'tuf' | 'musedash' | 'local' | 'generated' | 'cache';
 
 export interface DataSource {
   kind: DataSourceKind;

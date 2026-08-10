@@ -41,6 +41,7 @@ import { useSession } from '@/state/session-store';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufRecordsScreen } from '@/screens/TufScreens';
+import { MuseDashRecordsScreen } from '@/screens/MuseDashScreens';
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
@@ -143,6 +144,10 @@ export function RecordsScreen() {
 
   if (activeGameId === 'adofai') {
     return <TufRecordsScreen />;
+  }
+
+  if (activeGameId === 'musedash') {
+    return <MuseDashRecordsScreen />;
   }
 
   if (activeGameId !== 'maimai') {
