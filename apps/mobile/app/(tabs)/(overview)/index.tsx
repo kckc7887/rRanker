@@ -76,10 +76,10 @@ import { useToolboxPins } from '@/state/toolbox-pins';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
 import {
-  formatTufOverviewRatingMeta, formatTufRankBadge, TUF_RATING_THEME, TufOverviewDetails,
+  formatTufOverviewRatingMeta, formatTufRankBadge, TUF_RATING_THEME,
 } from '@/components/adofai/TufOverviewDetails';
 import {
-  formatMuseDashOverviewRatingMeta, MUSE_DASH_RATING_THEME, MuseDashOverviewDetails,
+  formatMuseDashOverviewRatingMeta, MUSE_DASH_RATING_THEME,
 } from '@/components/musedash/MuseDashOverviewDetails';
 
 export default function OverviewTabScreen() {
@@ -528,9 +528,6 @@ function PublicOverviewScreen() {
               />
             )}
 
-            {bundle.payload.kind === 'adofai' ? <TufOverviewDetails player={bundle.payload.player} /> : null}
-            {bundle.payload.kind === 'musedash' ? <MuseDashOverviewDetails player={bundle.payload.player} /> : null}
-
             {bundle.payload.kind === 'maimai' && bundle.providerId === 'local' ? (
               <Pressable
                 accessibilityRole="button"
@@ -658,6 +655,7 @@ function PublicOverviewScreen() {
                     || bundle.payload.kind === 'phigros'
                     || bundle.payload.kind === 'chunithm'
                     || bundle.payload.kind === 'adofai'
+                    || bundle.payload.kind === 'musedash'
                     ? (library.isError
                         ? '个人数据暂不可用'
                         : bundle.payload.kind === 'adofai'
@@ -674,13 +672,11 @@ function PublicOverviewScreen() {
               {bundle.payload.kind === 'adofai' ? (
                 <>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>读取方式：TUF 公开接口按需读取</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
               ) : bundle.payload.kind === 'musedash' ? (
                 <>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>读取方式：喵斯快跑社区公开接口按需读取</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
               ) : bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (

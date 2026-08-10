@@ -18,12 +18,23 @@ const mockDiffdiff = [
   ['0-47', 3, '11', 640.1, 11.5],
   ['0-47', 4, '12', 739.7, 12.5],
 ] as [string, number, string, number, number][];
+const mockSetChartPractice = jest.fn();
+const mockSetTags = jest.fn();
 
 jest.mock('expo-router', () => ({
   router: { push: () => undefined },
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('expo-image', () => ({ Image: () => null }));
+jest.mock('react-native-gesture-handler', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    GestureHandlerRootView: RN.View,
+    Pressable: RN.Pressable,
+    ScrollView: RN.ScrollView,
+  };
+});
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
@@ -31,17 +42,57 @@ jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInse
 jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', border: '#DDD', text: '#111',
-  textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF',
+  textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF', dark: false,
 }) }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
   activeAccountId: 'musedash:musedash-moe:6ea4f986ffd211e8aa980242ac110011',
   activeGameId: 'musedash',
 }) }));
-jest.mock('@/hooks/use-muse-dash', () => ({
-  useMuseDashPlayer: () => ({ data: mockPlayer, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
-  useMuseDashAlbums: () => ({ data: mockAlbums, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
-  useMuseDashCe: () => ({ data: mockCe, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
-  useMuseDashDiffdiff: () => ({ data: mockDiffdiff, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
+jest.mock('@/hooks/use-muse-dash', () => {
+  const query = (data: unknown) => ({
+    data, source: { kind: 'musedash', label: 'MuseDash.moe', updatedAt: '2026-08-10T00:00:00.000Z', isStale: false },
+    isLoading: false, isError: false, error: null, isFetching: false, refetch: mockRefetch,
+  });
+  return {
+    useMuseDashPlayer: () => query(mockPlayer),
+    useMuseDashAlbums: () => query(mockAlbums),
+    useMuseDashCe: () => query(mockCe),
+    useMuseDashDiffdiff: () => query(mockDiffdiff),
+    useMuseDashPlayDetail: () => query(undefined),
+  };
+});
+jest.mock('@/hooks/use-user-library', () => {
+  const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
+  const state: { data: unknown[] } = { data: [] };
+  return {
+    __libraryMockState: state,
+    useUserLibrary: () => ({
+      data: state.data,
+      isLoading: false,
+      isUpdating: false,
+      setSongFavorite: jest.fn(),
+      setChartPractice: (...args: unknown[]) => mockSetChartPractice(...args),
+      setTags: (...args: unknown[]) => mockSetTags(...args),
+      setTagPresets: jest.fn(),
+      tagPresets: ['爆发', '交互'],
+      songKey: (songId: string | number) => songLibraryKey('musedash', songId),
+      chartKey: (songId: string | number, type: 'SD' | 'DX', levelIndex: number) => chartLibraryKey('musedash', songId, type, levelIndex),
+    }),
+  };
+});
+jest.mock('@/components/TagEditor', () => ({
+  TagEditor: ({ onChange }: { onChange?: (tags: string[]) => void }) => {
+    const React = jest.requireActual<typeof import('react')>('react');
+    const RN = jest.requireActual<typeof import('react-native')>('react-native');
+    return React.createElement(RN.Pressable, {
+      accessibilityRole: 'button',
+      accessibilityLabel: '编辑标签',
+      onPress: () => onChange?.(['测试标签']),
+    });
+  },
+}));
+jest.mock('@/components/CachedTabScreen', () => ({
+  useCachedTabActive: () => true,
 }));
 
 const albums: MuseDashAlbumsResponse = {
@@ -94,12 +145,16 @@ describe('Muse Dash screens', () => {
     mockCe = ce;
   });
 
-  it('orders the Best list by community rating (sum) descending', async () => {
+  it('orders the Best list by community rating (sum) descending with ACC-led cards', async () => {
     const screen = await render(<MuseDashBestScreen />);
     expect(screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel)[0])
       .toContain('Another Track');
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
     expect(screen.getAllByTestId('musedash-score-1-1-2').length).toBe(1);
+    expect(screen.getAllByText('95.48%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('HIDDEN (11.50)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Rating').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('musedash-card-tags-0-47-3').length).toBe(1);
   });
 
   it('filters records by platform and re-sorts by ACC locally', async () => {
@@ -125,20 +180,41 @@ describe('Muse Dash screens', () => {
   it('filters the catalog by difficulty slot and searches songs', async () => {
     const screen = await render(<MuseDashCatalogScreen />);
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(3);
-    await fireEvent.press(screen.getByLabelText('难度 隐藏'));
+    expect(screen.getAllByText('11.50').length).toBeGreaterThan(0);
+    await fireEvent.press(screen.getByLabelText('难度 HIDDEN'));
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
     await fireEvent.press(screen.getByLabelText('难度 全部'));
     await fireEvent.changeText(screen.getByLabelText('搜索喵斯快跑歌曲'), 'Another');
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
   });
 
-  it('renders detail chart cards with player scores and unplayed notice', async () => {
+  it('renders detail hero, metadata, difficulty carousel with practice and tags', async () => {
     const screen = await render(<MuseDashSongDetailScreen songId="0-47" />);
     expect(screen.getByTestId('musedash-chart-0')).toBeTruthy();
     expect(screen.getByTestId('musedash-chart-4')).toBeTruthy();
-    expect(screen.getAllByText('290,510').length).toBeGreaterThan(0);
-    const unplayed = await render(<MuseDashSongDetailScreen songId="0-48" />);
-    expect(unplayed.getByText('当前绑定玩家尚未游玩此曲。')).toBeTruthy();
+    expect(screen.getByTestId('musedash-song-title-scroll').props.horizontal).toBe(true);
+    expect(screen.getByText('DLC 来源')).toBeTruthy();
+    expect(screen.getByTestId('musedash-song-metadata-value-DLC 来源').props.children).toBe('Default Music');
+    expect(screen.getByText('BPM')).toBeTruthy();
+    expect(screen.getByText('MuseDash.moe', { exact: false })).toBeTruthy();
+    expect(screen.getAllByText('95.48%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('HIDDEN').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('谱师：Mapper A').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('加入练习清单').length).toBe(5);
+    await fireEvent.press(screen.getAllByLabelText('加入练习清单')[3]);
+    expect(mockSetChartPractice).toHaveBeenCalledWith('0-47', 'SD', 3, true);
+    await fireEvent.press(screen.getAllByLabelText('编辑标签')[3]);
+    expect(mockSetTags).toHaveBeenCalledWith(
+      { kind: 'chart', songId: '0-47', type: 'SD', levelIndex: 3 },
+      ['测试标签'],
+    );
+  });
+
+  it('renders an unplayed difficulty card with a dash ACC', async () => {
+    const screen = await render(<MuseDashSongDetailScreen songId="0-48" />);
+    expect(screen.getByTestId('musedash-chart-0')).toBeTruthy();
+    expect(screen.queryByTestId('musedash-chart-4')).toBeNull();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it('shows a back button that navigates back when possible', async () => {

@@ -1,0 +1,33 @@
+{
+  "play": {
+    "object_id": "5d05b96f42cda6442b248774",
+    "created_at": "2019-06-16T03:37:19.616Z",
+    "updated_at": "2019-09-06T10:50:11.023Z",
+    "user_id": "6ea4f986ffd211e8aa980242ac110011",
+    "bms_id": 853251,
+    "character_uid": "3",
+    "elfin_uid": "6",
+    "hp": 200,
+    "music_uid": "",
+    "music_difficulty": 0,
+    "acc": 95.47999572753906,
+    "miss": 0,
+    "judge": "ss",
+    "combo": 471,
+    "score": 290510,
+    "visible": true,
+    "bms_version": "",
+    "music_map_start_delay": 0,
+    "is_check": false,
+    "lb_version": "",
+    "game_version": ""
+  },
+  "user": {
+    "object_id": "5c13fda544d904005f7c64d4",
+    "created_at": "2018-12-14T18:59:49.941Z",
+    "updated_at": "2021-10-02T06:22:18.013Z",
+    "nickname": "SiMOOOOOON",
+    "user_id": "6ea4f986ffd211e8aa980242ac110011"
+  },
+  "now": 1786311369798
+}

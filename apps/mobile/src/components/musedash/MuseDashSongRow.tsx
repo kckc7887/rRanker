@@ -1,37 +1,87 @@
-import { Ionicons } from '@expo/vector-icons';
+import { memo, useState } from 'react';
+import { Image } from 'expo-image';
 import { StyleSheet, Text, View } from 'react-native';
+import { MuseDashDifficultyBadge } from './MuseDashDifficultyBadge';
 import { GameSongRow } from '@/components/game-content/GameSongRow';
-import type { MuseDashSong } from '@/domain/muse-dash';
+import { museDashCoverUrl, type MuseDashSong } from '@/domain/muse-dash';
 import { presentMuseDashSong } from '@/features/game-content/adapters';
-import { useAppTheme } from '@/theme/app-theme';
 
-export function MuseDashSongRow({
-  song, albumTitle, constants,
+export const MuseDashSongRow = memo(function MuseDashSongRow({
+  song,
+  albumTitle,
+  constants,
 }: {
   song: MuseDashSong;
   albumTitle: string;
   constants?: readonly (number | undefined)[];
 }) {
-  const theme = useAppTheme();
-  const p = presentMuseDashSong({ song, albumTitle }, constants);
-  return <GameSongRow presentation={p} wholeRowPressable rowStyle={[styles.row, { borderColor: theme.border }]}
-    mainStyle={styles.main} titleStyle={styles.title} subtitleStyle={styles.subtitle} pressedStyle={styles.pressed}
-    cover={<View style={[styles.cover, { backgroundColor: theme.accent }]}>
-      <Ionicons name="musical-notes" size={20} color="#FFFFFF" />
-    </View>}
-    badges={<View style={styles.badges}>{p.chartBadges.map((badge) => (
-      <View key={badge.key} style={[styles.badge, { borderColor: theme.border }]}>
-        <Text style={[styles.badgeText, { color: theme.text }]}>{badge.label}</Text>
-        <Text style={[styles.badgeValue, { color: theme.textMuted }]}>{badge.value}</Text>
-      </View>
-    ))}</View>} />;
-}
+  const [coverFailed, setCoverFailed] = useState(false);
+  const presentation = presentMuseDashSong({ song, albumTitle }, constants);
+  const coverUrl = museDashCoverUrl(song.cover);
+  const slots = song.difficulty.flatMap((level, difficultyIndex) =>
+    level === '0' ? [] : [{ difficultyIndex, level }]);
+  return (
+    <GameSongRow
+      presentation={presentation}
+      rowStyle={styles.row}
+      pressedStyle={styles.pressed}
+      wholeRowPressable
+      mainStyle={styles.main}
+      titleStyle={styles.title}
+      subtitleStyle={styles.meta}
+      cover={coverUrl && !coverFailed ? (
+        <Image
+          accessibilityLabel={`歌曲封面 ${song.name}`}
+          cachePolicy="disk"
+          contentFit="cover"
+          onError={() => setCoverFailed(true)}
+          source={coverUrl}
+          style={styles.cover}
+          transition={120}
+        />
+      ) : (
+        <View style={[styles.cover, styles.coverPlaceholder]}>
+          <Text style={styles.coverNote}>♪</Text>
+        </View>
+      )}
+      badges={(
+        <View style={styles.difficulties}>
+          {slots.map(({ difficultyIndex, level }) => (
+            <MuseDashDifficultyBadge
+              constant={constants?.[difficultyIndex]}
+              key={`${song.uid}-${difficultyIndex}`}
+              level={level}
+              levelIndex={difficultyIndex}
+            />
+          ))}
+        </View>
+      )}
+    />
+  );
+});
 
 const styles = StyleSheet.create({
-  row: { minHeight: 88, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  main: { flex: 1, gap: 5 }, title: { fontSize: 16, fontWeight: '800' }, subtitle: { fontSize: 12 }, pressed: { opacity: 0.82 },
-  cover: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 2 },
-  badge: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3, flexDirection: 'row', alignItems: 'baseline', gap: 3 },
-  badgeText: { fontSize: 10, fontWeight: '800' }, badgeValue: { fontSize: 10, fontVariant: ['tabular-nums'] },
+  row: {
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+  cover: {
+    width: 62,
+    height: 62,
+    borderRadius: 9,
+    backgroundColor: '#E5E7EB',
+  },
+  coverPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coverNote: { color: '#6B7280', fontSize: 24 },
+  main: { flex: 1, gap: 4 },
+  title: { flexShrink: 1, fontWeight: '700' },
+  meta: { fontSize: 11 },
+  pressed: { opacity: 0.72 },
+  difficulties: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
 });

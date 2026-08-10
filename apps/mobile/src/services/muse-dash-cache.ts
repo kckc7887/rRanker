@@ -5,6 +5,8 @@ import type {
   MuseDashCeResponse,
   MuseDashCeSnapshot,
   MuseDashDiffdiffSnapshot,
+  MuseDashPlayDetail,
+  MuseDashPlayDetailSnapshot,
   MuseDashPlayer,
   MuseDashPlayerSnapshot,
 } from '@/domain/muse-dash';
@@ -15,7 +17,9 @@ import {
   MUSE_DASH_CE_SCHEMA_VERSION,
   MUSE_DASH_DIFFDIFF_CACHE_KEY,
   MUSE_DASH_DIFFDIFF_SCHEMA_VERSION,
+  MUSE_DASH_PLAY_DETAIL_SCHEMA_VERSION,
   MUSE_DASH_PLAYER_SCHEMA_VERSION,
+  museDashPlayDetailCacheKey,
   museDashPlayerCacheKey,
 } from '@/domain/muse-dash';
 import { museDashProvider } from '@/providers/muse-dash-provider';
@@ -25,7 +29,7 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 export function makeMuseDashSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
   return {
     data,
-    source: { kind: 'musedash', label: '喵斯快跑社区公开数据', updatedAt, isStale: false },
+    source: { kind: 'musedash', label: 'MuseDash.moe', updatedAt, isStale: false },
   };
 }
 
@@ -48,6 +52,15 @@ export function loadMuseDashPlayerFresh(userId: string): Promise<MuseDashPlayer>
   return dedupe(`player:${userId}`, () => museDashProvider.getPlayer(userId));
 }
 
+export function loadMuseDashPlayDetailFresh(
+  uid: string, difficulty: number, platform: string, userId: string,
+): Promise<MuseDashPlayDetail> {
+  return dedupe(
+    `detail:${userId}:${uid}:${difficulty}:${platform}`,
+    () => museDashProvider.getPlayDetail(uid, difficulty, platform, userId),
+  );
+}
+
 export function loadMuseDashAlbumsFresh(): Promise<MuseDashAlbumsResponse> {
   return dedupe('albums', () => museDashProvider.getAlbums());
 }
@@ -62,7 +75,7 @@ export function loadMuseDashDiffdiffFresh(): Promise<MuseDashDiffdiffSnapshot['d
 
 /**
  * Muse Dash 公开数据的本地持久化快照（缓存优先渲染）。
- * 曲库、定数表与名称表是账号无关的全局资源；玩家资料与成绩按 userId 归属。
+ * 曲库、定数表与名称表是账号无关的全局资源；玩家资料与成绩明细按 userId 归属。
  */
 export class MuseDashCache {
   constructor(private readonly repository = new SqliteSnapshotRepository()) {}
@@ -72,6 +85,18 @@ export class MuseDashCache {
   }
   async savePlayer(userId: string, snapshot: MuseDashPlayerSnapshot): Promise<void> {
     await this.repository.saveResource(museDashPlayerCacheKey(userId), MUSE_DASH_PLAYER_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot);
+  }
+
+  async loadPlayDetail(userId: string, uid: string, difficulty: number, platform: string): Promise<MuseDashPlayDetailSnapshot | null> {
+    return this.repository.getResource<MuseDashPlayDetailSnapshot>(
+      museDashPlayDetailCacheKey(userId, uid, difficulty, platform), MUSE_DASH_PLAY_DETAIL_SCHEMA_VERSION,
+    );
+  }
+  async savePlayDetail(userId: string, uid: string, difficulty: number, platform: string, snapshot: MuseDashPlayDetailSnapshot): Promise<void> {
+    await this.repository.saveResource(
+      museDashPlayDetailCacheKey(userId, uid, difficulty, platform),
+      MUSE_DASH_PLAY_DETAIL_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot,
+    );
   }
 
   async loadAlbums(): Promise<MuseDashAlbumsSnapshot | null> {
@@ -95,9 +120,13 @@ export class MuseDashCache {
     await this.repository.saveResource(MUSE_DASH_DIFFDIFF_CACHE_KEY, MUSE_DASH_DIFFDIFF_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot);
   }
 
-  /** 解绑玩家时清理其资料与成绩缓存；曲库、定数表、名称表等全局公开资源保留。 */
+  /** 解绑玩家时清理其资料、成绩明细缓存；曲库、定数表、名称表等全局公开资源保留。 */
   async clearPlayer(userId: string): Promise<void> {
     await this.repository.deleteResource(museDashPlayerCacheKey(userId));
+    const prefix = `musedash:detail:${userId}:`;
+    for (const { key } of await this.repository.listResourceSizes()) {
+      if (key.startsWith(prefix)) await this.repository.deleteResource(key);
+    }
   }
 }
 

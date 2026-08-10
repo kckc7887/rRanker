@@ -3,6 +3,7 @@ import {
   MuseDashAlbumsResponseSchema,
   MuseDashCeResponseSchema,
   MuseDashDiffdiffResponseSchema,
+  MuseDashPlayDetailSchema,
   MuseDashPlayerSchema,
   MuseDashSearchResponseSchema,
 } from '@/domain/muse-dash';
@@ -74,6 +75,13 @@ export class MuseDashProvider {
   }
   /** /player/:id 玩家资料与全部成绩。 */
   getPlayer(userId: string) { return this.request(`/player/${encodeURIComponent(userId)}`, MuseDashPlayerSchema); }
+  /** /rank/:uid/:difficulty/:platform/:id 单曲原始成绩明细（含 miss/judge/combo，成就判定用）。 */
+  getPlayDetail(uid: string, difficulty: number, platform: string, userId: string) {
+    return this.request(
+      `/rank/${encodeURIComponent(uid)}/${difficulty}/${encodeURIComponent(platform)}/${encodeURIComponent(userId)}`,
+      MuseDashPlayDetailSchema,
+    );
+  }
   /** /albums 全量曲库（专辑 → 歌曲）。 */
   getAlbums() { return this.request('/albums', MuseDashAlbumsResponseSchema); }
   /** /ce 角色与精灵名称表。 */

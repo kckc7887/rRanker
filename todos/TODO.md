@@ -98,7 +98,13 @@
   - 用户价值：喵斯玩家无需任何凭据即可在应用内查看公开 Rating、成绩与全曲库；曲库/定数/角色名称缓存优先，断网可看缓存并提示过期。
   - 实现思路：保留独立 `musedash:` 命名空间 DTO/Zod/缓存快照；实现 `GameContentAdapter<'musedash'>` 与共享展示模型；5 个查询 hook 复用 `cacheFirstLoad`（player 按 userId、albums/ce/diffdiff 全局缓存）；页面全部复用 `BestListPage`/`RecordsListPage`/`CatalogListPage`/`GameScoreCard`/`GameSongRow`/`GameChartResultCard`；Best 30 按社区单曲 Rating（sum）降序；成绩展示分数/ACC/Rating/排名与角色、精灵（名称来自 `/ce` 缓存）。
   - 依赖/风险：依赖 musedash.moe 公开接口可用性（无正式限流文档，沿用请求去重与搜索防抖）；上游 `levelDesigner` 含 null 已由 Schema+适配器过滤；`sum` 语义（单曲 Rating）基于数据正相关性确认。
-  - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-10 完成，见 `changelog/2026-08-10_喵斯快跑接入musedash社区.md`；同日绑定弹层支持直接输入 32 位 user_id 直查，见 `changelog/2026-08-10_喵斯快跑玩家搜索支持直接输入user_id.md`）。后续计划：个人曲库（收藏/标签，二期）、世界排行（`/rank/:uid/:difficulty/:platform`）、封面图加载。
+  - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-10 完成，见 `changelog/2026-08-10_喵斯快跑接入musedash社区.md`；同日绑定弹层支持直接输入 32 位 user_id 直查，见 `changelog/2026-08-10_喵斯快跑玩家搜索支持直接输入user_id.md`；2026-08-11 板块重置完成，见完成项 17）。
+- ✅ 17. 喵斯快跑板块重置（参照舞萌/中二/Phigros，不参照 adofai）
+  - 目标：喵斯成绩卡、曲库卡与歌曲详情按舞萌/中二/Phigros 口径重做；成就（AP/FC）按 `/rank/:uid/:difficulty/:platform/:id` 请求到的 miss 数判定；难度 0-4 更名 EASY/HARD/MASTER/HIDDEN/EX 并配绿蓝粉黑白；总览移除「公开资料」卡与数据状态「读取方式」文案（adofai 同步）；数据来源统一显示 MuseDash.moe；开放喵斯个人曲库（练习清单与谱面标签）。
+  - 用户价值：成绩卡以 ACC 为第一视觉（100金/95银/90红/80蓝/70绿/60灰/更低紫），评价 S/A/B/C/D 与成就 AP 金/FC 粉、排名 #N 分级配色一目了然；详情页封面+信息栏+难度轮播卡片默认进入 MASTER，可直接加入练习清单并打本地标签；列表卡片按需懒加载 miss 判定成就。
+  - 实现思路：新增 `MuseDashPlayDetail` DTO/Provider 端点/按玩家+歌曲+难度+平台 SQLite 快照/`useMuseDashPlayDetail` 卡片懒加载（缓存优先+请求去重）；`presentMuseDashScore/Song/Chart` 改为 ACC 主指标、难度(定数)、评价、成就、#N 排名、角色/精灵/平台标签，曲库标签仅色+定数（非数字等级前缀如 "L 7.56"）；详情页复用共享 `ChartCarousel`/`GameChartResultCard`/`TagEditor`，默认档 MASTER、无 MASTER 取 MASTER 及以下最高档；`libraryRef` 映射到现有 ChartType=SD + levelIndex，总览「我的曲库」与曲库页按 adofai 先例开放；封面使用 `https://musedash.moe/covers/{name}.webp`（已验证存在）。
+  - 依赖/风险：成就依赖 `/rank` 明细接口可用性与 miss 字段；列表页每条成绩一个请求（Best 30 最多 30 个），靠缓存+去重收敛；不修改其他游戏数据、存储 Schema、备份格式与版本号。
+  - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-11 完成，见 `changelog/2026-08-11_喵斯板块重置.md`）。后续计划：世界排行（`/rank/:uid/:difficulty/:platform` 榜单浏览）。
 
 ## 暂缓
 

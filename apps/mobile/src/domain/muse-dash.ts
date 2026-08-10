@@ -20,7 +20,7 @@ export const MuseDashSongSchema = z.object({
   bpm: z.string().optional(),
   /** 上游个别条目含 null 谱师，保留原样由适配器过滤。 */
   levelDesigner: z.array(z.string().nullable()).optional().default([]),
-  /** 5 档难度，索引 0-4；字符串 "0" 表示该档不存在。 */
+  /** 5 档难度，索引 0-4；字符串 "0" 表示该档不存在，部分特殊档位为非数字（如 "L"/"?"）。 */
   difficulty: z.array(z.string()).length(5).default(['0', '0', '0', '0', '0']),
   ChineseS: MuseDashLocalizedSchema.optional(),
   ChineseT: MuseDashLocalizedSchema.optional(),
@@ -82,6 +82,24 @@ export const MuseDashPlayerSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
+/** /rank/:uid/:difficulty/:platform/:id 单曲原始成绩明细（成就判定需要 miss 数）。 */
+export const MuseDashPlayDetailSchema = z.object({
+  play: z.object({
+    acc: z.number().optional(),
+    miss: z.number().optional(),
+    judge: z.string().optional(),
+    combo: z.number().optional(),
+    score: z.number().optional(),
+    character_uid: z.string().optional(),
+    elfin_uid: z.string().optional(),
+    platform: z.string().optional(),
+  }).passthrough(),
+  user: z.object({
+    nickname: z.string().optional(),
+  }).passthrough().optional(),
+  now: z.number().optional(),
+}).passthrough();
+
 /** /search/:string 返回 [[昵称, user_id], ...]。 */
 export const MuseDashSearchResponseSchema = z.array(z.tuple([z.string(), z.string()]));
 
@@ -92,6 +110,7 @@ export type MuseDashDiffdiffEntry = z.infer<typeof MuseDashDiffdiffEntrySchema>;
 export type MuseDashCeResponse = z.infer<typeof MuseDashCeResponseSchema>;
 export type MuseDashPlay = z.infer<typeof MuseDashPlaySchema>;
 export type MuseDashPlayer = z.infer<typeof MuseDashPlayerSchema>;
+export type MuseDashPlayDetail = z.infer<typeof MuseDashPlayDetailSchema>;
 
 /** 适配器扩展：保留上游原始字段，供展示层与详情页按需读取。 */
 export type MuseDashSongExtension = {
@@ -121,13 +140,15 @@ export type MuseDashScoreExtension = {
   elfinName: string | null;
 };
 
-/** normalizeScore 的原始输入：成绩 + 曲库 join 结果 + 角色/精灵名称（可能缺失）。 */
+/** normalizeScore 的原始输入：成绩 + 曲库 join 结果 + 角色/精灵名称（可能缺失）+ 社区定数。 */
 export type MuseDashRawScore = {
   play: MuseDashPlay;
   song: MuseDashSong | null;
   albumTitle: string;
   characterName: string | null;
   elfinName: string | null;
+  /** 社区定数（/diffdiff relative），无定数时为 undefined。 */
+  constant?: number;
 };
 
 /** Muse Dash 缓存快照：独立命名空间 `musedash:`，不复用其他游戏快照。 */
@@ -135,11 +156,13 @@ export type MuseDashAlbumsSnapshot = { data: MuseDashAlbumsResponse; source: Dat
 export type MuseDashCeSnapshot = { data: MuseDashCeResponse; source: DataSource };
 export type MuseDashDiffdiffSnapshot = { data: MuseDashDiffdiffEntry[]; source: DataSource };
 export type MuseDashPlayerSnapshot = { data: MuseDashPlayer; source: DataSource };
+export type MuseDashPlayDetailSnapshot = { data: MuseDashPlayDetail; source: DataSource };
 
 export const MUSE_DASH_ALBUMS_SCHEMA_VERSION = 1;
 export const MUSE_DASH_CE_SCHEMA_VERSION = 1;
 export const MUSE_DASH_DIFFDIFF_SCHEMA_VERSION = 1;
 export const MUSE_DASH_PLAYER_SCHEMA_VERSION = 1;
+export const MUSE_DASH_PLAY_DETAIL_SCHEMA_VERSION = 1;
 
 export const MUSE_DASH_ALBUMS_CACHE_KEY = 'musedash:albums';
 export const MUSE_DASH_CE_CACHE_KEY = 'musedash:ce';
@@ -147,6 +170,15 @@ export const MUSE_DASH_DIFFDIFF_CACHE_KEY = 'musedash:diffdiff';
 
 export function museDashPlayerCacheKey(userId: string): string {
   return `musedash:player:${userId}`;
+}
+
+export function museDashPlayDetailCacheKey(
+  userId: string,
+  uid: string,
+  difficulty: number,
+  platform: string,
+): string {
+  return `musedash:detail:${userId}:${uid}:${difficulty}:${platform}`;
 }
 
 /** ChineseS 优先的歌曲名；缺失时回退原始字段。 */
@@ -184,8 +216,51 @@ export function museDashElfinName(ce: MuseDashCeResponse, elfinUid: string | und
   return name ? name : null;
 }
 
-/** 难度档位中文标签（Muse Dash 5 档：简单/普通/困难/大师/隐藏）。 */
-export const MUSE_DASH_DIFFICULTY_LABELS = ['简单', '普通', '困难', '大师', '隐藏'] as const;
+/** 难度档位标签（Muse Dash 5 档：EASY/HARD/MASTER/HIDDEN/EX）。 */
+export const MUSE_DASH_DIFFICULTY_LABELS = ['EASY', 'HARD', 'MASTER', 'HIDDEN', 'EX'] as const;
+
+/** 成就：请求到的 miss 数为 0 时，ACC 100 为 AP、其余为 FC；有 miss 或无数据时为无。 */
+export type MuseDashAchievement = 'AP' | 'FC';
+
+export function resolveMuseDashAchievement(acc: number, miss: number | undefined): MuseDashAchievement | null {
+  if (miss === undefined || miss > 0) return null;
+  return acc >= 100 ? 'AP' : 'FC';
+}
+
+/** ACC 色阶：100 金、95 银、90 红、80 蓝、70 绿、60 灰、更低紫。 */
+export function museDashAccTone(acc: number): string {
+  if (acc >= 100) return 'acc-gold';
+  if (acc >= 95) return 'acc-silver';
+  if (acc >= 90) return 'acc-red';
+  if (acc >= 80) return 'acc-blue';
+  if (acc >= 70) return 'acc-green';
+  if (acc >= 60) return 'acc-gray';
+  return 'acc-purple';
+}
+
+/** 评价：90 以上 S、80 以上 A、70 B、60 C、更低 D；S 按 ACC 分金银红，其余沿用同档色。 */
+export function museDashGrade(acc: number): 'S' | 'A' | 'B' | 'C' | 'D' {
+  if (acc >= 90) return 'S';
+  if (acc >= 80) return 'A';
+  if (acc >= 70) return 'B';
+  if (acc >= 60) return 'C';
+  return 'D';
+}
+
+/** 排名标签：#1 彩、<10 金、<50 蓝、<100 绿；排名缺失或 >=100 时无。 */
+export function museDashRankBadge(rank: number): { label: string; tone: string } | null {
+  if (!Number.isInteger(rank) || rank <= 0) return null;
+  if (rank === 1) return { label: '#1', tone: 'rank-rainbow' };
+  if (rank < 10) return { label: `#${rank}`, tone: 'rank-gold' };
+  if (rank < 50) return { label: `#${rank}`, tone: 'rank-blue' };
+  if (rank < 100) return { label: `#${rank}`, tone: 'rank-green' };
+  return null;
+}
+
+/** 封面图 URL（musedash.moe 静态资源），无封面时返回 null。 */
+export function museDashCoverUrl(cover: string | undefined): string | null {
+  return cover ? `https://musedash.moe/covers/${encodeURIComponent(cover)}.webp` : null;
+}
 
 /** 把 albums 响应展开为带专辑信息的歌曲列表，保持上游顺序。 */
 export function museDashSongsFromAlbums(albums: MuseDashAlbumsResponse): { song: MuseDashSong; albumTitle: string; albumTag?: string }[] {
@@ -203,7 +278,7 @@ export function museDashSongsByUid(
   albums: MuseDashAlbumsResponse,
 ): Map<string, { song: MuseDashSong; albumTitle: string }> {
   const map = new Map<string, { song: MuseDashSong; albumTitle: string }>();
-  for (const [albumKey, album] of Object.entries(albums)) {
+  for (const album of Object.values(albums)) {
     for (const song of Object.values(album.music)) {
       map.set(song.uid, { song, albumTitle: album.title });
     }
