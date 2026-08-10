@@ -22,6 +22,7 @@ const mockDiffdiff = [
 ] as [string, number, string, number, number][];
 const mockSetChartPractice = jest.fn();
 const mockSetTags = jest.fn();
+let mockMissMap: ReadonlyMap<string, number | undefined> = new Map();
 
 jest.mock('expo-router', () => ({
   router: { push: () => undefined },
@@ -61,7 +62,7 @@ jest.mock('@/hooks/use-muse-dash', () => {
     useMuseDashCe: () => query(mockCe),
     useMuseDashDiffdiff: () => query(mockDiffdiff),
     useMuseDashPlayDetail: () => query(undefined),
-    useMuseDashMissMap: () => new Map(),
+    useMuseDashMissMap: () => mockMissMap,
   };
 });
 jest.mock('@/hooks/use-user-library', () => {
@@ -230,11 +231,22 @@ describe('Muse Dash screens', () => {
   });
 
   it('filters records by FC/AP achievement using requested miss counts', async () => {
+    mockPlayer = {
+      ...player,
+      plays: player.plays.map((play) =>
+        play.uid === '0-47' && play.difficulty === 3 ? { ...play, acc: 100 } : play),
+    };
+    mockMissMap = new Map([['0-47:3', 0], ['0-47:1', 2], ['1-1:2', 0]]);
     const screen = await render(<MuseDashRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('成就筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('选择成就 FC'));
-    expect(screen.queryAllByTestId(/^musedash-score-/)).toHaveLength(0);
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
+    expect(screen.queryAllByTestId('musedash-score-0-47-1')).toHaveLength(0);
     await fireEvent.press(screen.getByLabelText('成就筛选，当前 FC'));
+    await fireEvent.press(screen.getByLabelText('选择成就 AP'));
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
+    expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
+    await fireEvent.press(screen.getByLabelText('成就筛选，当前 AP'));
     await fireEvent.press(screen.getByLabelText('选择成就 全部'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
   });

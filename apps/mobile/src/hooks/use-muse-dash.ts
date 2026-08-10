@@ -123,34 +123,35 @@ export function useMuseDashMissMap(
   userId: string | null,
   enabled: boolean,
 ): ReadonlyMap<string, number | undefined> {
-  const queries = useQueries({
-    queries: items.map((item) => ({
-      queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
-      queryFn: async (): Promise<MuseDashPlayDetail> => {
-        const queryKey = ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const;
-        const snapshot = await cacheFirstLoad({
-          loadCached: () => cache.loadPlayDetail(userId!, item.uid, item.difficulty, item.platform),
-          loadFresh: async () => {
-            const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!);
-            const fresh = makeMuseDashSnapshot(detail);
-            void cache.savePlayDetail(userId!, item.uid, item.difficulty, item.platform, fresh).catch(() => undefined);
-            return fresh;
-          },
-          onFresh: (fresh) => {
-            queryClient.setQueryData(queryKey, fresh);
-          },
-        });
-        return snapshot.data;
-      },
-      enabled: enabled && userId !== null,
-      ...MUSE_DASH_QUERY_OPTIONS,
-    })),
-  });
+  const queryDefs = useMemo(() => items.map((item) => ({
+    queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
+    queryFn: async (): Promise<MuseDashPlayDetail> => {
+      const queryKey = ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const;
+      const snapshot = await cacheFirstLoad({
+        loadCached: () => cache.loadPlayDetail(userId!, item.uid, item.difficulty, item.platform),
+        loadFresh: async () => {
+          const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!);
+          const fresh = makeMuseDashSnapshot(detail);
+          void cache.savePlayDetail(userId!, item.uid, item.difficulty, item.platform, fresh).catch(() => undefined);
+          return fresh;
+        },
+        onFresh: (fresh) => {
+          queryClient.setQueryData(queryKey, fresh);
+        },
+      });
+      return snapshot.data;
+    },
+    enabled: enabled && userId !== null,
+    ...MUSE_DASH_QUERY_OPTIONS,
+  })), [items, userId, enabled]);
+  const queries = useQueries({ queries: queryDefs });
   return useMemo(() => {
     const map = new Map<string, number | undefined>();
-    for (let index = 0; index < queries.length; index += 1) {
+    const count = Math.min(items.length, queries.length);
+    for (let index = 0; index < count; index += 1) {
       const item = items[index];
-      if (item) map.set(`${item.uid}:${item.difficulty}`, queries[index].data?.play.miss);
+      const query = queries[index];
+      if (item && query) map.set(`${item.uid}:${item.difficulty}`, query.data?.play.miss);
     }
     return map;
   }, [items, queries]);
