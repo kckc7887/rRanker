@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { chartVersionKey, normalizeSongId } from './catalog';
+import { normalizeSongId } from './catalog';
 import type { GameId } from './game-bind-options';
 import type { ChartType } from './models';
 
@@ -10,8 +10,16 @@ export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
 export const MAX_BACKUP_ITEMS = 5000;
 
-const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'chunithm', 'phigros', 'test']);
-const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'test']);
+const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'chunithm', 'phigros', 'adofai', 'test']);
+const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'adofai', 'test']);
+
+/**
+ * 曲库歌曲 id 规范化：adofai 关卡 id 是完整数字（如 11372），
+ * 不适用 maimai 的 U·TA·GE 截断语义，原样保留；其余游戏沿用 normalizeSongId。
+ */
+export function normalizeLibrarySongId(gameId: GameId, songId: string | number): string {
+  return gameId === 'adofai' ? String(songId) : normalizeSongId(songId);
+}
 
 export interface SongLibraryTarget {
   kind: 'song';
@@ -140,11 +148,11 @@ export function inferGameIdFromKey(key: string): GameId {
 }
 
 export function songLibraryKey(gameId: GameId, songId: string | number): string {
-  return `song:${gameId}:${normalizeSongId(songId)}`;
+  return `song:${gameId}:${normalizeLibrarySongId(gameId, songId)}`;
 }
 
 export function chartLibraryKey(gameId: GameId, songId: string | number, type: ChartType, levelIndex: number): string {
-  return `chart:${gameId}:${chartVersionKey(songId, type, levelIndex)}`;
+  return `chart:${gameId}:${normalizeLibrarySongId(gameId, songId)}:${type}:${levelIndex}`;
 }
 
 export function libraryTargetKey(target: LibraryTarget): string {
@@ -194,7 +202,7 @@ export function buildTagHistory(
 
 export function normalizeLibraryItem(item: UserLibraryItem): UserLibraryItem {
   const gameId = item.gameId ?? inferGameIdFromKey(item.key);
-  const songId = normalizeSongId(item.songId);
+  const songId = normalizeLibrarySongId(gameId, item.songId);
   const tags = normalizeTags(item.tags);
   if (item.kind === 'song') {
     return { ...item, gameId, key: songLibraryKey(gameId, songId), songId, tags };

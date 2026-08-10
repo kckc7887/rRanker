@@ -9,30 +9,85 @@ import {
   type ChunithmSong,
 } from '@/domain/chunithm';
 import type { Song } from '@/domain/models';
+import type { TufLevel } from '@/domain/tuf';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { useTufLevelSearch } from '@/hooks/use-tuf';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
 type Mode = 'all' | 'favorite' | 'practice';
-type LibrarySong = Song | ChunithmSong;
+type LibrarySong = Song | ChunithmSong | TufLevel;
 
 function isChunithmSong(song: LibrarySong): song is ChunithmSong {
   return 'difficulties' in song;
 }
 
+function isTufLevel(song: LibrarySong): song is TufLevel {
+  return 'levelCredits' in song;
+}
+
 export default function UserLibraryScreen() {
-  const library = useUserLibrary();
   const activeGameId = useSession((state) => state.activeGameId);
+  if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
+  return <SharedLibraryScreen />;
+}
+
+function LibraryList({
+  items,
+  songsById,
+  blurUrls,
+}: {
+  items: UserLibraryItem[];
+  songsById: ReadonlyMap<string, LibrarySong>;
+  blurUrls?: ReadonlyMap<string, string>;
+}) {
   const theme = useAppTheme();
+  const library = useUserLibrary();
+  const [mode, setMode] = useState<Mode>('all');
+  const [tag, setTag] = useState<string>();
+  const filtered = useMemo(() => items.filter((item) => {
+    if (mode === 'favorite' && (item.kind !== 'song' || !item.favorite)) return false;
+    if (mode === 'practice' && (item.kind !== 'chart' || !item.practice)) return false;
+    return !tag || item.tags.includes(tag);
+  }), [items, mode, tag]);
+  const tags = useMemo(() => [...new Set(items.flatMap((item) => item.tags))].sort(), [items]);
+
+  return <View style={[styles.page, { backgroundColor: theme.background }]}>
+    <View style={styles.filters}>
+      <View style={styles.chips}>
+        <Chip label="全部" active={mode === 'all'} onPress={() => setMode('all')} />
+        <Chip label="收藏" active={mode === 'favorite'} onPress={() => setMode('favorite')} />
+        <Chip label="练习" active={mode === 'practice'} onPress={() => setMode('practice')} />
+      </View>
+      {tags.length ? <View style={styles.chips}>
+        <Chip label="全部标签" active={!tag} onPress={() => setTag(undefined)} />
+        {tags.map((item) => <Chip key={item} label={item} active={tag === item} onPress={() => setTag(tag === item ? undefined : item)} />)}
+      </View> : null}
+    </View>
+    {library.isLoading ? <ActivityIndicator style={styles.center} color={theme.accent} /> : library.isError ?
+      <View style={styles.center}><Text style={[styles.error, { color: theme.danger }]}>个人数据加载失败</Text><Pressable onPress={() => void library.refetch()}><Text style={[styles.link, { color: theme.accent }]}>重试</Text></Pressable></View> :
+      <FlatList data={filtered} keyExtractor={(item) => item.key} contentContainerStyle={styles.list}
+        ListEmptyComponent={<Text style={[styles.empty, { color: theme.textMuted }]}>{library.data?.length ? '当前筛选没有项目' : '还没有收藏、练习谱面或本地标签'}</Text>}
+        renderItem={({ item }) => (
+          <LibraryRow
+            item={item}
+            song={songsById.get(item.songId)}
+            blurUrl={blurUrls?.get(item.songId) ?? null}
+          />
+        )} />}
+  </View>;
+}
+
+function SharedLibraryScreen() {
+  const activeGameId = useSession((state) => state.activeGameId);
   const maimaiCatalog = useDetailedCatalog();
   const chunithmCatalog = useChunithmCatalog();
   const phigrosCatalog = usePhigrosCatalog();
-  const [mode, setMode] = useState<Mode>('all');
-  const [tag, setTag] = useState<string>();
+  const items = useUserLibrary().data ?? [];
   const songsById = useMemo(() => {
     const map = new Map<string, LibrarySong>();
     if (activeGameId === 'chunithm') {
@@ -60,37 +115,20 @@ export default function UserLibraryScreen() {
     }
     return map;
   }, [phigrosCatalog.data]);
-  const items = useMemo(() => (library.data ?? []).filter((item) => {
-    if (mode === 'favorite' && (item.kind !== 'song' || !item.favorite)) return false;
-    if (mode === 'practice' && (item.kind !== 'chart' || !item.practice)) return false;
-    return !tag || item.tags.includes(tag);
-  }), [library.data, mode, tag]);
-  const tags = useMemo(() => [...new Set((library.data ?? []).flatMap((item) => item.tags))].sort(), [library.data]);
+  return <LibraryList items={items} songsById={songsById} blurUrls={phigrosBlurUrls} />;
+}
 
-  return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <View style={styles.filters}>
-      <View style={styles.chips}>
-        <Chip label="全部" active={mode === 'all'} onPress={() => setMode('all')} />
-        <Chip label="收藏" active={mode === 'favorite'} onPress={() => setMode('favorite')} />
-        <Chip label="练习" active={mode === 'practice'} onPress={() => setMode('practice')} />
-      </View>
-      {tags.length ? <View style={styles.chips}>
-        <Chip label="全部标签" active={!tag} onPress={() => setTag(undefined)} />
-        {tags.map((item) => <Chip key={item} label={item} active={tag === item} onPress={() => setTag(tag === item ? undefined : item)} />)}
-      </View> : null}
-    </View>
-    {library.isLoading ? <ActivityIndicator style={styles.center} color={theme.accent} /> : library.isError ?
-      <View style={styles.center}><Text style={[styles.error, { color: theme.danger }]}>个人数据加载失败</Text><Pressable onPress={() => void library.refetch()}><Text style={[styles.link, { color: theme.accent }]}>重试</Text></Pressable></View> :
-      <FlatList data={items} keyExtractor={(item) => item.key} contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={[styles.empty, { color: theme.textMuted }]}>{library.data?.length ? '当前筛选没有项目' : '还没有收藏、练习谱面或本地标签'}</Text>}
-        renderItem={({ item }) => (
-          <LibraryRow
-            item={item}
-            song={songsById.get(item.songId)}
-            blurUrl={phigrosBlurUrls.get(item.songId) ?? null}
-          />
-        )} />}
-  </View>;
+function AdofaiLibraryScreen() {
+  const items = useUserLibrary().data ?? [];
+  const tufLevelSearch = useTufLevelSearch('', { sort: 'RECENT' });
+  const songsById = useMemo(() => {
+    const map = new Map<string, LibrarySong>();
+    for (const level of tufLevelSearch.data?.pages.flatMap((page) => page.results) ?? []) {
+      map.set(String(level.id), level);
+    }
+    return map;
+  }, [tufLevelSearch.data?.pages]);
+  return <LibraryList items={items} songsById={songsById} />;
 }
 
 function LibraryRow({
@@ -104,13 +142,17 @@ function LibraryRow({
 }) {
   const theme = useAppTheme();
   const chunithmSong = song && isChunithmSong(song) ? song : undefined;
-  const standardSong = song && !isChunithmSong(song) ? song : undefined;
+  const standardSong = song && !isChunithmSong(song) && !isTufLevel(song) ? song : undefined;
+  const tufLevel = song && isTufLevel(song) ? song : undefined;
   const chart = item.kind === 'chart'
     ? standardSong?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex)
     : undefined;
   const chunithmDifficulty = item.kind === 'chart'
     ? chunithmSong?.difficulties.find((value) => value.difficulty === item.levelIndex)
     : undefined;
+  const songTitle = tufLevel?.song
+    ?? (song && !isTufLevel(song) ? song.title : undefined)
+    ?? `歌曲 ID ${item.songId}`;
   const chartLabel = item.kind === 'chart'
     ? chunithmDifficulty
       ? CHUNITHM_DIFFICULTY_LABELS[chunithmDifficulty.difficulty]
@@ -134,7 +176,7 @@ function LibraryRow({
   } as Href)} style={[styles.row, { backgroundColor: theme.surface }]}>
     <LibrarySongCover song={song} blurUrl={blurUrl} />
     <View style={styles.main}>
-      <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>{song?.title ?? `歌曲 ID ${item.songId}`}</Text>
+      <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>{songTitle}</Text>
       <Text style={[styles.meta, { color: theme.textSecondary }]}>{item.kind === 'song' ? (item.favorite ? '已收藏歌曲' : '歌曲标签') :
         `${item.practice ? '练习谱面' : '谱面标签'} · ${chartLabel}`}</Text>
       {!song ? <Text style={styles.warning}>曲库暂不可用，个人数据已保留</Text> : null}
@@ -144,7 +186,7 @@ function LibraryRow({
 }
 
 function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: string | null }) {
-  if (!song) {
+  if (!song || isTufLevel(song)) {
     return <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   if (blurUrl) {
