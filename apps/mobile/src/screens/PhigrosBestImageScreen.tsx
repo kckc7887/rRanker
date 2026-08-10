@@ -50,8 +50,7 @@ import {
 } from '@/features/phigros-best-image/load-phigros-image-assets';
 import { partitionPhigrosIllustrationCache } from '@/features/phigros-best-image/phigros-illustration-cache';
 import {
-  findPhigrosReferenceAvatarKey, getPhigrosReferenceAvatarKeys, getPhigrosReferenceAvatarSource,
-  loadPhigrosReferenceAvatarUrl, loadPhigrosReferenceTemplateAssets,
+  loadPhigrosReferenceTemplateAssets,
   type PhigrosReferenceTemplateAssets,
 } from '@/features/phigros-best-image/load-phigros-reference-template-assets';
 import {
@@ -154,7 +153,7 @@ export function PhigrosBestImageScreen() {
   const [accuracyMaxText, setAccuracyMaxText] = useState('');
   const [customFilters, setCustomFilters] = useState<CustomPhigrosBestImageFilters>(DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS);
   const [stylePrefs, setStylePrefs] = useState(DEFAULT_STYLES); const [prefsReady, setPrefsReady] = useState(false);
-  const [avatarItems, setAvatarItems] = useState<string[]>(() => [...getPhigrosReferenceAvatarKeys()]); const [picker, setPicker] = useState<PhigrosBestImagePickerKind | null>(null);
+  const [avatarItems, setAvatarItems] = useState<string[]>([]); const [picker, setPicker] = useState<PhigrosBestImagePickerKind | null>(null);
   const [illustrations, setIllustrations] = useState<Record<string, string | null> | null>(null);
   const [accAverages, setAccAverages] = useState<Record<string, PhigrosAccAverage> | null>(null);
   const [avatarData, setAvatarData] = useState<string | null>(null); const [backgroundData, setBackgroundData] = useState<string | null>(null);
@@ -184,11 +183,10 @@ export function PhigrosBestImageScreen() {
   }, [gameData.activeAccountId]);
   useEffect(() => { if (prefsReady) void phigrosBestImagePreferencesStore.save(gameData.activeAccountId, stylePrefs); }, [gameData.activeAccountId, prefsReady, stylePrefs]);
   useEffect(() => {
-    const bundled = [...getPhigrosReferenceAvatarKeys()];
-    if (!provider) { setAvatarItems(bundled); return; }
+    if (!provider) { setAvatarItems([]); return; }
     void provider.getGameVersion().then(loadPhigrosAvatarCatalog).then((remote) => {
-      setAvatarItems([...new Set([...bundled, ...remote])]);
-    }).catch(() => setAvatarItems(bundled));
+      setAvatarItems(remote);
+    }).catch(() => setAvatarItems([]));
   }, [provider]);
   const noteTotalByKey = useMemo(() => buildPhigrosNoteTotalByKey(songs), [songs]);
   const sections = useMemo(() => {
@@ -243,7 +241,10 @@ export function PhigrosBestImageScreen() {
         () => ({ ok: true as const }),
         (error: unknown) => ({ ok: false as const, error }),
       );
-      const assets = await loadPhigrosReferenceTemplateAssets(phigrosReadableRootDirectory().uri);
+      const assets = await loadPhigrosReferenceTemplateAssets(
+        phigrosReadableRootDirectory().uri,
+        provider?.getAvatarUrl('Introduction') ?? '',
+      );
       const trimmedAssets = {
         ...assets,
         css: trimPhigrosBestImageCss(assets.css, neededFontEntriesRef.current),
@@ -263,7 +264,7 @@ export function PhigrosBestImageScreen() {
       if (!cancelled) setTemplateAssetError(error instanceof Error ? error.message : '无法加载 Phigros 参考模板素材');
     });
     return () => { cancelled = true; };
-  }, [fontAttempt, neededFontKey]);
+  }, [fontAttempt, neededFontKey, provider]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
   const selectedSongKey = selectedSongIds.join('|');
   const averageRecords = useMemo(() => type === 'best30'
@@ -329,8 +330,7 @@ export function PhigrosBestImageScreen() {
     if (styleAssetKeyRef.current === styleAssetKey) return;
     void Promise.all([
       stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await (findPhigrosReferenceAvatarKey(avatarKey) ? loadPhigrosReferenceAvatarUrl(avatarKey) : Promise.resolve(null))
-        ?? await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl)
+        await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl)
         ?? await loadRemoteImageDataUri(payload?.avatarUrl)
       ))(),
       stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
@@ -384,10 +384,8 @@ export function PhigrosBestImageScreen() {
     ? `${PREVIEW_PHASE_LABEL[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
     : 'WebView 版本未知 · 等待预览素材';
   const avatarPickerItems = useMemo<PhigrosBestImagePickerItem[]>(() => avatarItems.flatMap((key) => {
-    const bundledSource = getPhigrosReferenceAvatarSource(key);
     const remoteUrl = provider?.getAvatarUrl(key);
-    const source = bundledSource ?? (remoteUrl ? { uri: remoteUrl } : null);
-    return source ? [{ key, label: key, meta: '头像', source }] : [];
+    return remoteUrl ? [{ key, label: key, meta: '头像', source: { uri: remoteUrl } }] : [];
   }), [avatarItems, provider]);
   const backgroundPickerItems = useMemo<PhigrosBestImagePickerItem[]>(() => provider ? songs.flatMap((song) => {
     const uri = provider.getIllustrationUrl(song.id);
