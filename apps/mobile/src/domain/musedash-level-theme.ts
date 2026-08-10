@@ -10,7 +10,7 @@ export const MUSE_DASH_LEVEL_THEMES: readonly MuseDashLevelTheme[] = [
   { background: '#3B82F6', border: '#3B82F6', text: '#FFFFFF', tint: '#E8F0FE', darkAction: '#3B82F6' },
   { background: '#EC4899', border: '#EC4899', text: '#FFFFFF', tint: '#FDE9F1', darkAction: '#EC4899' },
   { background: '#111827', border: '#111827', text: '#FFFFFF', tint: '#F3F4F6', darkAction: '#111827' },
-  { background: '#FFFFFF', border: '#D1D5DB', text: '#111827', tint: '#F3F4F6', darkAction: '#111827' },
+  { background: '#FFFFFF', border: '#E5E7EB', text: '#111827', tint: '#F3F4F6', darkAction: '#111827' },
 ];
 
 export function museDashLevelTheme(levelIndex: number): MuseDashLevelTheme {
