@@ -133,6 +133,9 @@ describe('TUF public overview', () => {
     expect(screen.getByText('公开资料')).toBeTruthy();
     expect(screen.getByText('99.80%')).toBeTruthy();
     expect(screen.getByText('TUF 社区公开数据')).toBeTruthy();
+    expect(screen.getByText('我的曲库')).toBeTruthy();
+    expect(screen.getByText('收藏 0 首')).toBeTruthy();
+    expect(screen.queryByText('当前游戏暂未开放个人曲库')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('当前玩家 公开玩家，点击切换账号'));
     expect(screen.getByText('账号切换已打开')).toBeTruthy();

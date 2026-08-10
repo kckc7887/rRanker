@@ -644,7 +644,12 @@ function PublicOverviewScreen() {
                   {bundle.payload.kind === 'maimai'
                     || bundle.payload.kind === 'phigros'
                     || bundle.payload.kind === 'chunithm'
-                    ? (library.isError ? '个人数据暂不可用' : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
+                    || bundle.payload.kind === 'adofai'
+                    ? (library.isError
+                        ? '个人数据暂不可用'
+                        : bundle.payload.kind === 'adofai'
+                          ? `收藏 ${favorites} 首`
+                          : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
                     : '当前游戏暂未开放个人曲库'}
                 </Text>
                 <Text style={[styles.toolLink, { color: theme.accent }]}>打开收藏与练习清单 →</Text>
