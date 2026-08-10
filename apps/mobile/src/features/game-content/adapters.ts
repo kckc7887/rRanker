@@ -823,7 +823,7 @@ export function presentMuseDashChart(
     secondaryMetrics: presented?.secondaryMetrics ?? [],
     grade: presented?.grade,
     achievementRows: presented?.achievementRows ?? [],
-    charter: museDashCharter(raw.song.levelDesigner) || '未知',
+    charter: museDashCharter(raw.song.levelDesigner) || '未提供',
     notes: [],
   };
 }

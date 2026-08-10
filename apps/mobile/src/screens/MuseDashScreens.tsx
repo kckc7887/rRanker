@@ -16,7 +16,7 @@ import { useSongDetailBackNavigation } from '@/components/game-content/SongDetai
 import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
-import { MuseDashAchievementBadge, MuseDashGradeBadge } from '@/components/musedash/MuseDashBadges';
+import { MuseDashAchievementBadge, MuseDashGradeBadge, MuseDashNeutralBadge } from '@/components/musedash/MuseDashBadges';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
 import { MuseDashScoreCard } from '@/components/musedash/MuseDashScoreCard';
 import { MuseDashSongRow } from '@/components/musedash/MuseDashSongRow';
@@ -286,6 +286,8 @@ function MuseDashChartCard({
   const visual = museDashLevelTheme(slot.difficultyIndex);
   const chartItem = library.data?.find((item) => item.key === library.chartKey(songId, MUSE_DASH_CHART_TYPE, slot.difficultyIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
+  const actionColor = theme.dark ? visual.darkAction : visual.background;
+  const actionFilled = theme.dark || practice;
   return (
     <GameChartResultCard
       style={[styles.chartCard, { width, backgroundColor: theme.dark ? theme.surface : visual.tint, borderColor: visual.border }]}
@@ -295,9 +297,7 @@ function MuseDashChartCard({
       <View style={styles.chartHeader}>
         <MuseDashDifficultyBadge display="label" level={slot.level} levelIndex={slot.difficultyIndex} />
         <View style={styles.levelBlock}>
-          <Text style={[styles.level, { color: theme.dark ? theme.text : visual.text === '#FFFFFF' ? visual.background : visual.text }]}>
-            {slot.level}
-          </Text>
+          <Text style={[styles.level, { color: theme.text }]}>{slot.level}</Text>
           <Text style={[styles.constant, { color: theme.textMuted }]}>{chart.difficulty.value ?? '—'}</Text>
         </View>
       </View>
@@ -310,7 +310,7 @@ function MuseDashChartCard({
             {chart.achievementRows.flat().map((badge) => (
               badge.key === 'achievement'
                 ? <MuseDashAchievementBadge key={badge.key} label={badge.label} tone={badge.tone} />
-                : <Text key={badge.key} style={[styles.neutralText, { color: theme.textMuted }]}>{badge.label}</Text>
+                : <MuseDashNeutralBadge key={badge.key} label={badge.label} />
             ))}
           </View>
         ) : null}
@@ -338,11 +338,13 @@ function MuseDashChartCard({
         onPress={() => void library.setChartPractice(songId, MUSE_DASH_CHART_TYPE, slot.difficultyIndex, !practice)}
         style={({ pressed }) => [
           styles.action,
-          practice ? { backgroundColor: visual.background, borderColor: visual.background } : { borderColor: visual.border },
+          actionFilled
+            ? { backgroundColor: actionColor, borderColor: actionColor }
+            : { backgroundColor: 'transparent', borderColor: actionColor },
           pressed && { opacity: 0.8 },
         ]}
       >
-        <Text style={[styles.actionText, { color: practice ? '#FFFFFF' : theme.text }]}>
+        <Text style={[styles.actionText, { color: actionFilled ? '#FFFFFF' : actionColor }]}>
           {practice ? '已加入练习清单' : '加入练习清单'}
         </Text>
       </Pressable>
@@ -423,8 +425,8 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
       contentContainerStyle={styles.detail}>
       <View style={[styles.hero, { width, height: width }]}>
         <MuseDashHeroCover song={joined!.song} />
-        <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
-          locations={[0, 1]} style={styles.heroShade} />
+        <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.48)']}
+          locations={[0, 1]} style={StyleSheet.absoluteFill} />
         <View style={styles.heroCopy}>
           <Text numberOfLines={1} style={styles.songId}>#{joined!.song.uid}</Text>
           <AutoScrollText testID="musedash-song-title-scroll" text={museDashSongTitle(joined!.song)}
@@ -432,9 +434,11 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
           <Text numberOfLines={1} style={styles.artist}>{museDashSongAuthor(joined!.song)}</Text>
         </View>
       </View>
-      <SongMetadataTable accessibilityLabel="喵斯快跑歌曲信息" items={metadata} testIDPrefix="musedash-song-metadata"
-        style={styles.metadata} cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel}
-        valueStyle={styles.metadataValue} valueBlockStyle={styles.metadataBlock} measureStyle={styles.metadataMeasure} />
+      <SongMetadataTable accessibilityLabel="喵斯快跑歌曲信息" cellRootStyle={styles.metadataCellRoot}
+        cellStyle={styles.metadataCell} interaction="platform-detail" items={metadata}
+        labelStyle={styles.metadataLabel} measureStyle={styles.metadataMeasure} style={styles.metadata}
+        testIDPrefix="musedash-song-metadata" valueBlockStyle={styles.metadataValueBlock}
+        valueStyle={styles.metadataValue} />
       <SharedChartCarousel
         accessibilityLabel="难度卡片"
         cardWidth={cardWidth}
@@ -482,46 +486,64 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 },
   searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   searchInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 }, resultCount: { fontSize: 11 },
-  detail: { paddingBottom: 40 },
-  hero: { position: 'relative', backgroundColor: '#D9DEE7', overflow: 'hidden' },
+  detail: { paddingBottom: 32 },
+  hero: { position: 'relative', backgroundColor: '#D1D5DB', overflow: 'hidden' },
   heroPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  heroPlaceholderNote: { color: '#6B7280', fontSize: 64 },
-  heroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
-  heroCopy: { position: 'absolute', left: 18, right: 18, bottom: 20, gap: 2 },
+  heroPlaceholderNote: { color: '#6B7280', fontSize: 60 },
+  heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
   singleLine: { flexGrow: 0 },
   singleLineContent: { paddingRight: 18 },
-  songId: { color: 'rgba(255,255,255,0.78)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
+  songId: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   title: {
-    color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6,
+    color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900',
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8,
   },
-  artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
-  metadata: { borderRadius: 15, overflow: 'hidden', flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: 16, marginTop: 12 },
-  metadataCell: { minWidth: '48%', padding: 13 },
-  metadataLabel: { fontSize: 10 }, metadataValue: { fontSize: 13, fontWeight: '700' },
-  metadataBlock: {}, metadataMeasure: { position: 'absolute', opacity: 0 },
+  artist: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  metadata: {
+    flexDirection: 'row',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  metadataCellRoot: { minWidth: 0 },
+  metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
+  metadataLabel: { fontSize: 10, fontWeight: '800' },
+  metadataValueBlock: { position: 'relative', minWidth: 0, alignSelf: 'stretch' },
+  metadataMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
+  metadataValue: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center' },
   carouselRoot: { flexGrow: 0 },
-  carouselScroll: { flexGrow: 0 },
-  carousel: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12, gap: CARD_GAP },
-  noCharts: { padding: 20 },
-  chartCard: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 9 },
-  chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  levelBlock: { alignItems: 'flex-end', gap: 1 },
-  level: { fontSize: 24, lineHeight: 27, fontWeight: '900' },
+  carouselScroll: { flexGrow: 0, marginTop: 14 },
+  carousel: { paddingHorizontal: 20, gap: CARD_GAP, paddingBottom: 4 },
+  noCharts: { padding: 24, alignItems: 'center' },
+  chartCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18,
+    shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4,
+  },
+  chartHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  levelBlock: { alignItems: 'flex-end', paddingTop: 10 },
+  level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
   constant: { fontSize: 11, fontWeight: '600' },
-  resultBlock: { gap: 4 },
-  resultLabel: { fontSize: 12, fontWeight: '700' },
-  chartAcc: { fontSize: 30, lineHeight: 36 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
-  neutralText: { fontSize: 10, fontWeight: '700' },
-  statRow: { flexDirection: 'row', gap: 24 },
+  resultBlock: { alignItems: 'flex-start', gap: 2, marginTop: 22 },
+  resultLabel: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
+  chartAcc: { fontSize: 34, lineHeight: 42, letterSpacing: -0.5 },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 29, marginTop: 7 },
+  statRow: { flexDirection: 'row', marginTop: 16, gap: 24 },
   statCell: { gap: 2 },
-  statLabel: { fontSize: 11, fontWeight: '700' },
-  statValue: { fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: 4 },
-  charter: { fontSize: 12, lineHeight: 18 },
-  action: { marginTop: 2, borderWidth: 1, borderRadius: 11, padding: 10, alignItems: 'center' },
+  statLabel: { fontSize: 12, fontWeight: '700' },
+  statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
+  charter: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
+  action: {
+    marginTop: 13,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderRadius: 11,
+    padding: 10,
+    alignItems: 'center',
+  },
   actionText: { fontWeight: '700' },
-  details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
+  details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
   meta: { color: '#6B7280', fontSize: 12 },
 });

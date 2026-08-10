@@ -36,3 +36,10 @@ export function MuseDashRankBadge({ label, tone, testID }: { label: string; tone
     <Text style={BADGE_STYLES.text}>{label}</Text>
   </View>;
 }
+
+/** 信息胶囊（角色/精灵/平台等）：中性灰底白字。 */
+export function MuseDashNeutralBadge({ label, testID }: { label: string; testID?: string }) {
+  return <View style={[BADGE_STYLES.badge, { backgroundColor: '#9CA3AF' }]} testID={testID}>
+    <Text style={BADGE_STYLES.text}>{label}</Text>
+  </View>;
+}
