@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import CryptoJS from 'crypto-js';
+import { ProviderError } from './errors';
 
 const TAPTAP_CLIENT_ID = 'rAK3FfdieFob2Nn8Am';
 const TAPTAP_SCOPE = 'public_profile';
@@ -120,6 +121,10 @@ async function postForm(url: string, body: Record<string, string>): Promise<unkn
       body: form.toString(),
       signal: controller.signal,
     });
+    if (!res.ok) {
+      const retryable = res.status === 429 || res.status >= 500;
+      throw new ProviderError('network', `TapTap 请求失败（HTTP ${res.status}）`, retryable);
+    }
     return await res.json();
   } finally {
     clearTimeout(timeout);
