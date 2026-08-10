@@ -1,5 +1,4 @@
-import { useMemo } from 'react';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { DataSource } from '@/domain/models';
 import type {
   MuseDashAlbumsResponse,
@@ -115,46 +114,6 @@ export function useMuseDashPlayDetail(
     });
     return snapshot;
   }, enabled);
-}
-
-/** 批量单曲明细 miss 表（成就筛选用）：key = `${uid}:${difficulty}` → miss；未加载的条目为 undefined。 */
-export function useMuseDashMissMap(
-  items: readonly { uid: string; difficulty: number; platform: string }[],
-  userId: string | null,
-  enabled: boolean,
-): ReadonlyMap<string, number | undefined> {
-  const queryDefs = useMemo(() => items.map((item) => ({
-    queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
-    queryFn: async (): Promise<MuseDashPlayDetail> => {
-      const queryKey = ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const;
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => cache.loadPlayDetail(userId!, item.uid, item.difficulty, item.platform),
-        loadFresh: async () => {
-          const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!);
-          const fresh = makeMuseDashSnapshot(detail);
-          void cache.savePlayDetail(userId!, item.uid, item.difficulty, item.platform, fresh).catch(() => undefined);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          queryClient.setQueryData(queryKey, fresh);
-        },
-      });
-      return snapshot.data;
-    },
-    enabled: enabled && userId !== null,
-    ...MUSE_DASH_QUERY_OPTIONS,
-  })), [items, userId, enabled]);
-  const queries = useQueries({ queries: queryDefs });
-  return useMemo(() => {
-    const map = new Map<string, number | undefined>();
-    const count = Math.min(items.length, queries.length);
-    for (let index = 0; index < count; index += 1) {
-      const item = items[index];
-      const query = queries[index];
-      if (item && query) map.set(`${item.uid}:${item.difficulty}`, query.data?.play.miss);
-    }
-    return map;
-  }, [items, queries]);
 }
 
 export function useMuseDashAlbums() {

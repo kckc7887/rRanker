@@ -15,6 +15,7 @@ import {
   museDashElfinName,
   museDashGrade,
   museDashRankBadge,
+  matchesMuseDashAchievementFilter,
   museDashSongAuthor,
   museDashSongTitle,
   museDashSongsByUid,
@@ -231,6 +232,15 @@ describe('Muse Dash content adapter', () => {
     expect(resolveMuseDashAchievement(99.99, 0)).toBe('FC');
     expect(resolveMuseDashAchievement(100, 1)).toBeNull();
     expect(resolveMuseDashAchievement(100, undefined)).toBeNull();
+    expect(matchesMuseDashAchievementFilter(94.17, 0, 'all')).toBe(true);
+    expect(matchesMuseDashAchievementFilter(94.17, 2, 'all')).toBe(true);
+    expect(matchesMuseDashAchievementFilter(94.17, 0, 'fc')).toBe(true);
+    expect(matchesMuseDashAchievementFilter(100, 0, 'fc')).toBe(true);
+    expect(matchesMuseDashAchievementFilter(94.17, 2, 'fc')).toBe(false);
+    expect(matchesMuseDashAchievementFilter(94.17, undefined, 'fc')).toBe(false);
+    expect(matchesMuseDashAchievementFilter(100, 0, 'ap')).toBe(true);
+    expect(matchesMuseDashAchievementFilter(99.99, 0, 'ap')).toBe(false);
+    expect(matchesMuseDashAchievementFilter(100, 1, 'ap')).toBe(false);
     expect(museDashCoverUrl('magical_wonderland_cover'))
       .toBe('https://musedash.moe/covers/magical_wonderland_cover.webp');
     expect(museDashCoverUrl(undefined)).toBeNull();
