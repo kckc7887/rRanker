@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import {
+  ActivityIndicator,
+  AppState,
   Image,
   Linking,
   Modal,
@@ -9,7 +11,6 @@ import {
   Text,
   TextInput,
   View,
-  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -38,6 +39,18 @@ import { useAppTheme } from '@/theme/app-theme';
 const auth = new DivingFishAuthProvider();
 const sessions = new SecureSessionStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
+
+/** 后台挂起/断连等瞬时网络错误：不应终止授权流程，保留轮询等待下一次请求 */
+function isTransientNetworkError(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  if (error instanceof ProviderError) {
+    return error.code === 'network' || error.retryable;
+  }
+  if (error instanceof Error) {
+    return error.name === 'AbortError' || /network request failed/i.test(error.message);
+  }
+  return false;
+}
 
 export function ProviderLoginSheet({
   visible,
@@ -324,6 +337,11 @@ export function ProviderLoginSheet({
       reset();
       onSuccess();
     } catch (error) {
+      const expired = Date.now() >= phiExpiresAt;
+      if (!expired && isTransientNetworkError(error)) {
+        setMessage('网络波动，自动重试中…');
+        return;
+      }
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
       const detail = error instanceof Error ? error.message : String(error);
       setMessage(`授权失败：${detail}`);
@@ -335,8 +353,22 @@ export function ProviderLoginSheet({
   useEffect(() => {
     if (!phiDevice) return;
     const interval = phiDevice.interval * 1000;
-    phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
+    const startTimer = () => {
+      if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
+      phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
+    };
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        startTimer();
+        void pollPhigros();
+      } else if (phiTimer.current) {
+        clearInterval(phiTimer.current);
+        phiTimer.current = null;
+      }
+    });
+    startTimer();
     return () => {
+      subscription.remove();
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,4 +1,5 @@
 import { pollForToken } from '@/providers/phigros-auth';
+import { ProviderError } from '@/providers/errors';
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -53,5 +54,44 @@ describe('pollForToken', () => {
     })));
 
     await expect(pollForToken('code', 'dev')).rejects.toThrow('access_denied');
+  });
+
+  it('throws a retryable network error on 5xx without parsing HTML body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response('<html>502 Bad Gateway</html>', { status: 502 }),
+    ));
+
+    await expect(pollForToken('code', 'dev')).rejects.toMatchObject({
+      name: 'ProviderError',
+      code: 'network',
+      retryable: true,
+    });
+  });
+
+  it('throws a retryable network error on 429', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
+      success: false,
+      data: { error: 'slow_down' },
+    }, 429)));
+
+    await expect(pollForToken('code', 'dev')).rejects.toMatchObject({
+      name: 'ProviderError',
+      code: 'network',
+      retryable: true,
+    });
+  });
+
+  it('throws a non-retryable network error on other 4xx', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
+      success: false,
+      data: { error: 'invalid_grant' },
+    }, 400)));
+
+    await expect(pollForToken('code', 'dev')).rejects.toMatchObject({
+      name: 'ProviderError',
+      code: 'network',
+      retryable: false,
+    });
+    await expect(pollForToken('code', 'dev')).rejects.toBeInstanceOf(ProviderError);
   });
 });
