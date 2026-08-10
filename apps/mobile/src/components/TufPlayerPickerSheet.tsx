@@ -19,7 +19,7 @@ export function TufPlayerPickerSheet({
   const [busyId, setBusyId] = useState<number | null>(null);
   const debounced = useDebouncedValue(query, 350).trim();
   const pid = useMemo(() => {
-    const match = /^pid:(\d+)$/i.exec(debounced);
+    const match = /^(?:pid:)?(\d+)$/i.exec(debounced);
     return match ? Number(match[1]) : null;
   }, [debounced]);
   const search = useTufPlayerSearch(pid === null ? debounced : '');
@@ -45,7 +45,7 @@ export function TufPlayerPickerSheet({
           accessibilityLabel="搜索 TUF 玩家"
           autoCapitalize="none"
           autoCorrect={false}
-          placeholder="昵称、pid:123、Discord ID 或用户名"
+          placeholder="昵称、PID 数字、Discord ID 或用户名"
           placeholderTextColor={theme.textMuted}
           value={query}
           onChangeText={setQuery}
