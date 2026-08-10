@@ -227,6 +227,17 @@ export function resolveMuseDashAchievement(acc: number, miss: number | undefined
   return acc >= 100 ? 'AP' : 'FC';
 }
 
+/** 成就筛选（仿 maimai-filters 纯函数模式）：全部恒真；FC 需 miss 为 0（含 AP）；AP 需 miss 为 0 且 ACC 100。 */
+export function matchesMuseDashAchievementFilter(
+  acc: number,
+  miss: number | undefined,
+  filter: 'all' | 'fc' | 'ap',
+): boolean {
+  if (filter === 'all') return true;
+  if (miss !== 0) return false;
+  return filter === 'ap' ? acc >= 100 : true;
+}
+
 /** ACC 色阶：100 金、95 银、90 红、80 蓝、70 绿、60 灰、更低紫。 */
 export function museDashAccTone(acc: number): string {
   if (acc >= 100) return 'acc-gold';
