@@ -98,7 +98,7 @@
   - 用户价值：喵斯玩家无需任何凭据即可在应用内查看公开 Rating、成绩与全曲库；曲库/定数/角色名称缓存优先，断网可看缓存并提示过期。
   - 实现思路：保留独立 `musedash:` 命名空间 DTO/Zod/缓存快照；实现 `GameContentAdapter<'musedash'>` 与共享展示模型；5 个查询 hook 复用 `cacheFirstLoad`（player 按 userId、albums/ce/diffdiff 全局缓存）；页面全部复用 `BestListPage`/`RecordsListPage`/`CatalogListPage`/`GameScoreCard`/`GameSongRow`/`GameChartResultCard`；Best 30 按社区单曲 Rating（sum）降序；成绩展示分数/ACC/Rating/排名与角色、精灵（名称来自 `/ce` 缓存）。
   - 依赖/风险：依赖 musedash.moe 公开接口可用性（无正式限流文档，沿用请求去重与搜索防抖）；上游 `levelDesigner` 含 null 已由 Schema+适配器过滤；`sum` 语义（单曲 Rating）基于数据正相关性确认。
-  - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-10 完成，见 `changelog/2026-08-10_喵斯快跑接入musedash社区.md`）。后续计划：个人曲库（收藏/标签，二期）、世界排行（`/rank/:uid/:difficulty/:platform`）、封面图加载。
+  - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-10 完成，见 `changelog/2026-08-10_喵斯快跑接入musedash社区.md`；同日绑定弹层支持直接输入 32 位 user_id 直查，见 `changelog/2026-08-10_喵斯快跑玩家搜索支持直接输入user_id.md`）。后续计划：个人曲库（收藏/标签，二期）、世界排行（`/rank/:uid/:difficulty/:platform`）、封面图加载。
 
 ## 暂缓
 
