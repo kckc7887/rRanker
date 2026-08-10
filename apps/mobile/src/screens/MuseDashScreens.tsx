@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
@@ -410,10 +411,11 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   const error = albums.error ?? player.error;
   const cardWidth = Math.max(280, width - 40);
   return <>
+    <StatusBar style="light" />
     <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
       onPress={navigateBack}
       style={({ pressed }) => [
-        styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, left: 8 },
+        styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 },
         Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
       ]}>
       <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
@@ -421,7 +423,7 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
     <QueryStateView isLoading={loading} isError={!!error} isEmpty={!joined}
     error={error} onRetry={() => { void albums.refetch(); void player.refetch(); }}
     emptyText="未找到该喵斯快跑歌曲" data={joined}
-    renderData={() => <ScrollView contentInsetAdjustmentBehavior="automatic" style={[styles.page, { backgroundColor: theme.background }]}
+    renderData={() => <ScrollView keyboardShouldPersistTaps="handled" style={[styles.page, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.detail}>
       <View style={[styles.hero, { width, height: width }]}>
         <MuseDashHeroCover song={joined!.song} />
