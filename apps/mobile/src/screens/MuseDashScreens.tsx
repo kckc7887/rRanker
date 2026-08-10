@@ -466,6 +466,12 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   const loading = albums.isLoading || player.isLoading;
   const error = albums.error ?? player.error;
   const cardWidth = Math.max(280, width - 40);
+  const songItem = joined ? library.data?.find((item) => item.key === library.songKey(songId)) : undefined;
+  const favorite = songItem?.kind === 'song' && songItem.favorite;
+  const favoriteDisabled = library.isLoading || library.isUpdating;
+  const onToggleFavorite = joined
+    ? () => void library.setSongFavorite(songId, !favorite)
+    : undefined;
   return <>
     <StatusBar style="light" />
     <SongDetailChrome
@@ -473,6 +479,19 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
       backStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 },
         Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
+      ]}
+      favorite={joined && onToggleFavorite ? {
+        label: favorite ? `取消收藏 ${museDashSongTitle(joined.song)}` : `收藏 ${museDashSongTitle(joined.song)}`,
+        active: favorite,
+        disabled: favoriteDisabled,
+        onPress: onToggleFavorite,
+      } : undefined}
+      favoriteStyle={(pressed) => [
+        styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
+        favorite && styles.headerFavoriteActive,
+        Platform.OS !== 'ios' && styles.headerButtonBg,
+        Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
+        pressed && { opacity: 0.7 },
       ]}
     />
     <QueryStateView isLoading={loading} isError={!!error} isEmpty={!joined}
@@ -557,6 +576,8 @@ const styles = StyleSheet.create({
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
   headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  headerFavoriteActive: {},
+  headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 },
   searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },

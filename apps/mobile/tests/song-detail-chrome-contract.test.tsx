@@ -322,5 +322,5 @@ test('musedash song detail chrome contract', async () => {
     user: { user_id: '6ea4f986ffd211e8aa980242ac110011', nickname: 'SiMOOOOOON' },
   };
   const screen = await render(<MuseDashSongDetailScreen songId="0-47" />);
-  expect(await chromeHash(screen)).toBe('07feb390e619afaca3cb577f5be017b166a677f562d87d847cf9160013e5c653');
+  expect(await chromeHash(screen)).toBe('58a06119d0a89fa83bb7ae70797a98da55fcac4264c028d38fceec6529aa1ae1');
 });
