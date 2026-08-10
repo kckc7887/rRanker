@@ -7,6 +7,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
+import {
+  Defs,
+  Image as SvgImage,
+  Mask,
+  RadialGradient,
+  Rect,
+  Stop,
+  Svg,
+} from 'react-native-svg';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
@@ -480,10 +489,19 @@ function MuseDashHeroCover({ song, width }: { song: MuseDashSong; width: number 
       <Image source={url} style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.45 }] }]}
         contentFit="cover" blurRadius={40} transition={120}
         onError={() => setFailed(true)} />
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: width / 2, overflow: 'hidden' }]}>
-        <Image accessibilityLabel="歌曲封面" source={url} style={StyleSheet.absoluteFill}
-          contentFit="cover" transition={120} />
-      </View>
+      <Svg width={width} height={width} style={styles.heroSvg}>
+        <Defs>
+          <RadialGradient id="musedash-cover-feather" cx="50%" cy="50%" r="50%">
+            <Stop offset="85%" stopColor="#FFFFFF" stopOpacity={1} />
+            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+          </RadialGradient>
+          <Mask id="musedash-cover-mask" maskUnits="userSpaceOnUse" x={0} y={0} width={width} height={width}>
+            <Rect x={0} y={0} width={width} height={width} fill="url(#musedash-cover-feather)" />
+          </Mask>
+        </Defs>
+        <SvgImage x={0} y={0} width={width} height={width} href={url}
+          preserveAspectRatio="xMidYMid slice" mask="url(#musedash-cover-mask)" />
+      </Svg>
     </>
   );
 }
@@ -499,6 +517,7 @@ const styles = StyleSheet.create({
   searchInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 }, resultCount: { fontSize: 11 },
   detail: { paddingBottom: 32 },
   hero: { position: 'relative', backgroundColor: '#D1D5DB', overflow: 'hidden' },
+  heroSvg: { position: 'absolute', top: 0, left: 0 },
   heroPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   heroPlaceholderNote: { color: '#6B7280', fontSize: 60 },
   heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
