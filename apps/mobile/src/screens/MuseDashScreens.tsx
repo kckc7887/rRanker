@@ -399,13 +399,13 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   }, [player.data, albums.data, ce.data, diffdiff.data, songId]);
   const chartSlots = useMemo(() => joined
     ? joined.song.difficulty.flatMap((level, difficultyIndex) =>
-      level === '0' ? [] : [{ difficultyIndex, level }])
+      level === '0' ? [] : [{ difficultyIndex, level }]).reverse()
     : [], [joined]);
   const defaultIndex = useMemo(() => {
     if (!chartSlots.length) return 0;
     const masterIndex = chartSlots.findIndex((slot) => slot.difficultyIndex === MASTER_LEVEL_INDEX);
     if (masterIndex >= 0) return masterIndex;
-    const fallback = [...chartSlots].reverse().find((slot) => slot.difficultyIndex <= MASTER_LEVEL_INDEX);
+    const fallback = chartSlots.find((slot) => slot.difficultyIndex <= MASTER_LEVEL_INDEX);
     return fallback ? chartSlots.indexOf(fallback) : 0;
   }, [chartSlots]);
   const requestedIndex = levelIndex === undefined
