@@ -248,9 +248,12 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByText('HIDDEN').length).toBeGreaterThan(0);
     expect(screen.getAllByText('谱师：Mapper A').length).toBeGreaterThan(0);
     expect(screen.getAllByText('加入练习清单').length).toBe(5);
-    await fireEvent.press(screen.getAllByLabelText('加入练习清单')[3]);
+    expect(screen.getAllByLabelText(/.+难度卡片$/).map((node) => node.props.accessibilityLabel)).toEqual([
+      'EX 难度卡片', 'HIDDEN 难度卡片', 'MASTER 难度卡片', 'HARD 难度卡片', 'EASY 难度卡片',
+    ]);
+    await fireEvent.press(screen.getAllByLabelText('加入练习清单')[1]);
     expect(mockSetChartPractice).toHaveBeenCalledWith('0-47', 'SD', 3, true);
-    await fireEvent.press(screen.getAllByLabelText('编辑标签')[3]);
+    await fireEvent.press(screen.getAllByLabelText('编辑标签')[1]);
     expect(mockSetTags).toHaveBeenCalledWith(
       { kind: 'chart', songId: '0-47', type: 'SD', levelIndex: 3 },
       ['测试标签'],
