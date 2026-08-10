@@ -31,6 +31,7 @@ const SEGMENT_COLORS: Record<string, string> = {
   maimai: '#F43F5E',
   chunithm: '#27A7E7',
   phigros: '#8B5CF6',
+  adofai: '#F15B55',
   shared: '#0EA5E9',
   test: '#64748B',
 };
@@ -61,7 +62,7 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
       bytes: appBytes,
       clearable: false,
       clearCategoryId: null,
-      note: '曲库收藏、本地账号成绩等；不含安装包',
+      note: '用户收藏、本地账号成绩与头像等；不含安装包与游戏缓存',
       color: SEGMENT_COLORS.app,
     },
     ...GAME_STORAGE_ADAPTERS.map((adapter, index) => ({
@@ -72,10 +73,14 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
       clearCategoryId: adapter.gameId as GameId,
       color: SEGMENT_COLORS[adapter.gameId] ?? '#6366F1',
       ...(adapter.gameId === 'maimai'
-        ? { note: '游戏资源，不含本地账号成绩' }
-        : adapter.gameId === 'phigros'
-          ? { note: '游戏资源' }
-          : {}),
+        ? { note: '成绩与曲库缓存；不含本地账号成绩' }
+        : adapter.gameId === 'chunithm'
+          ? { note: '成绩与曲库缓存' }
+          : adapter.gameId === 'phigros'
+            ? { note: '存档、曲库与图片缓存' }
+            : adapter.gameId === 'adofai'
+              ? { note: '玩家资料、成绩与曲库缓存' }
+              : {}),
     })),
     {
       id: 'shared',

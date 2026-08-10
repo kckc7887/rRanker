@@ -74,6 +74,10 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   if (gameId === 'chunithm' && key.startsWith(CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX)) {
     return true;
   }
+  // TUF 玩家资料、成绩分页、曲库分页、关卡详情与难度列表缓存
+  if (gameId === 'adofai' && key.startsWith('tuf:')) {
+    return true;
+  }
   const accountId = accountIdFromResourceKey(key);
   if (accountId) return accountIdBelongsToGame(accountId, gameId);
   return false;
@@ -198,11 +202,19 @@ const chunithmAdapter: GameStorageAdapter = {
   clear: (snapshots) => clearGameSqlite(snapshots, 'chunithm', false),
 };
 
+const adofaiAdapter: GameStorageAdapter = {
+  gameId: 'adofai',
+  title: findGame('adofai')?.title ?? '冰与火之舞',
+  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'adofai', false),
+  clear: (snapshots) => clearGameSqlite(snapshots, 'adofai', false),
+};
+
 /** 新游戏接入：在此注册 measure/clear 即可出现在环形图与勾选列表。 */
 export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   maimaiAdapter,
   chunithmAdapter,
   phigrosAdapter,
+  adofaiAdapter,
 ];
 
 export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | undefined {
@@ -235,5 +247,5 @@ export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }
 }
 
 export function sharedCacheNote(): string {
-  return '含临时文件与图片缓存（体积未计入）；不含系统图标字体';
+  return '临时文件与图片缓存；不含系统图标字体';
 }
