@@ -141,6 +141,44 @@ export function GameAccountsScreen() {
     ],
   });
 
+  const promptRemoveTuf = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
+    title: '解除最后一个账号',
+    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认解绑并保留个人数据', tone: 'destructive', onPress: () => void removeTufAccount(account, false) },
+      { label: '解绑并清除个人数据', tone: 'destructive', onPress: () => void removeTufAccount(account, true) },
+    ],
+  } : {
+    title: '解除绑定',
+    message: `将清除「${account.displayName}」的本机凭据和成绩缓存。`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认解绑', tone: 'destructive', onPress: () => void removeTufAccount(account, false) },
+    ],
+  });
+
+  const promptRemoveMuseDash = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
+    title: '解除最后一个账号',
+    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认解绑并保留个人数据', tone: 'destructive', onPress: () => void removeMuseDashAccount(account, false) },
+      { label: '解绑并清除个人数据', tone: 'destructive', onPress: () => void removeMuseDashAccount(account, true) },
+    ],
+  } : {
+    title: '解除绑定',
+    message: `将清除「${account.displayName}」的本机凭据和成绩缓存。`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认解绑', tone: 'destructive', onPress: () => void removeMuseDashAccount(account, false) },
+    ],
+  });
+
   const addLocalAccount = async () => {
     setBusy(true);
     try {
@@ -261,16 +299,27 @@ export function GameAccountsScreen() {
     setPickerVisible(false);
   };
 
-  const removeTufAccount = async (account: BoundAccount) => {
+  const removeTufAccount = async (account: BoundAccount, includePersonalData: boolean) => {
+    setBusy(true);
+    const failures: string[] = [];
+    const attempt = async (label: string, action: () => Promise<unknown>) => {
+      try { await action(); } catch { failures.push(label); }
+    };
     const playerId = tufPlayerIdFromAccountId(account.id);
     if (playerId !== null) {
-      await tufAccounts.remove(playerId);
-      await tufCache.clearPlayer(playerId);
+      await attempt('账号', () => tufAccounts.remove(playerId));
+      await attempt('缓存', () => tufCache.clearPlayer(playerId));
     }
+    if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
     removeBoundAccount(account.id);
-    await persistActiveAccountId();
+    await attempt('当前账号', persistActiveAccountId);
     queryClient.removeQueries({ queryKey: ['tuf'] });
-    setMessage(`已解除 TUF 玩家「${account.displayName}」的绑定`);
+    setMessage(failures.length > 0
+      ? `部分清除失败（${failures.join('、')}），其余项目已清除，请重试`
+      : includePersonalData
+        ? `已解除 TUF 玩家「${account.displayName}」的绑定并清除个人数据`
+        : `已解除 TUF 玩家「${account.displayName}」的绑定；个人数据已保留`);
+    setBusy(false);
   };
 
   const bindMuseDashPlayer = async (player: import('@/components/MuseDashPlayerPickerSheet').MuseDashSearchResult) => {
@@ -292,16 +341,27 @@ export function GameAccountsScreen() {
     setPickerVisible(false);
   };
 
-  const removeMuseDashAccount = async (account: BoundAccount) => {
+  const removeMuseDashAccount = async (account: BoundAccount, includePersonalData: boolean) => {
+    setBusy(true);
+    const failures: string[] = [];
+    const attempt = async (label: string, action: () => Promise<unknown>) => {
+      try { await action(); } catch { failures.push(label); }
+    };
     const userId = museDashUserIdFromAccountId(account.id);
     if (userId !== null) {
-      await museDashAccounts.remove(userId);
-      await museDashCache.clearPlayer(userId);
+      await attempt('账号', () => museDashAccounts.remove(userId));
+      await attempt('缓存', () => museDashCache.clearPlayer(userId));
     }
+    if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
     removeBoundAccount(account.id);
-    await persistActiveAccountId();
+    await attempt('当前账号', persistActiveAccountId);
     queryClient.removeQueries({ queryKey: ['musedash'] });
-    setMessage(`已解除喵斯快跑玩家「${account.displayName}」的绑定`);
+    setMessage(failures.length > 0
+      ? `部分清除失败（${failures.join('、')}），其余项目已清除，请重试`
+      : includePersonalData
+        ? `已解除喵斯快跑玩家「${account.displayName}」的绑定并清除个人数据`
+        : `已解除喵斯快跑玩家「${account.displayName}」的绑定；个人数据已保留`);
+    setBusy(false);
   };
 
   const addPhigrosDemoAccount = async () => {
@@ -562,12 +622,12 @@ export function GameAccountsScreen() {
           </Pressable>
         ) : isTuf ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
-            disabled={busy} onPress={() => void removeTufAccount(account)}>
+            disabled={busy} onPress={() => promptRemoveTuf(account)}>
             <Text style={styles.unbind}>解除绑定</Text>
           </Pressable>
         ) : isMuseDash ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
-            disabled={busy} onPress={() => void removeMuseDashAccount(account)}>
+            disabled={busy} onPress={() => promptRemoveMuseDash(account)}>
             <Text style={styles.unbind}>解除绑定</Text>
           </Pressable>
         ) : isRemote ? (

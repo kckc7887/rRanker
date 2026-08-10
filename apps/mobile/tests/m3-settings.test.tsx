@@ -8,7 +8,9 @@ import {
   createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
   createMaxedPhigrosTestAccount,
+  createMuseDashBoundAccount,
   createTestBoundAccount,
+  createTufBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
 import { findGame, type GameId } from '@/domain/game-bind-options';
@@ -33,6 +35,10 @@ const mockRenameLocalAccount = jest.fn();
 const mockUpsertLocalAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveLocalAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockRemoveQueries = jest.fn();
+const mockRemoveTufAccount = jest.fn(async (_playerId?: number) => undefined);
+const mockClearTufCache = jest.fn(async (_playerId?: number) => undefined);
+const mockRemoveMuseDashAccount = jest.fn(async (_userId?: string) => undefined);
+const mockClearMuseDashCache = jest.fn(async (_userId?: string) => undefined);
 const mockSwitchBoundAccount = jest.fn(
   (accountId: string, _options?: unknown) => mockSelectBoundAccount(accountId),
 );
@@ -47,6 +53,8 @@ const mockAccount = createMaimaiBoundAccount({
 const mockLocalAccount = createLocalMaimaiAccount('本地玩家', 0);
 const mockTestAccount = createMaxedMaimaiTestAccount();
 const mockEmptyGameAccount = createTestBoundAccount();
+const mockTufAccount = createTufBoundAccount({ playerId: 4242, displayName: 'TUF 玩家' });
+const mockMuseDashAccount = createMuseDashBoundAccount({ userId: 'u-muse-1', displayName: '喵斯玩家' });
 let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount];
 let mockExpandedGameId: GameId = 'maimai';
 
@@ -143,6 +151,26 @@ jest.mock('@/storage/phigros-demo-account-store', () => ({
   PhigrosDemoAccountStore: jest.fn(() => ({
     save: (profile: { id: string; displayName: string }) => mockSavePhigrosDemoAccount(profile),
     remove: () => mockRemovePhigrosDemoAccount(),
+  })),
+}));
+jest.mock('@/storage/tuf-account-store', () => ({
+  TufAccountStore: jest.fn(() => ({
+    remove: (playerId: number) => mockRemoveTufAccount(playerId),
+  })),
+}));
+jest.mock('@/services/tuf-cache', () => ({
+  TufCache: jest.fn(() => ({
+    clearPlayer: (playerId: number) => mockClearTufCache(playerId),
+  })),
+}));
+jest.mock('@/storage/musedash-account-store', () => ({
+  MuseDashAccountStore: jest.fn(() => ({
+    remove: (userId: string) => mockRemoveMuseDashAccount(userId),
+  })),
+}));
+jest.mock('@/services/muse-dash-cache', () => ({
+  MuseDashCache: jest.fn(() => ({
+    clearPlayer: (userId: string) => mockClearMuseDashCache(userId),
   })),
 }));
 jest.mock('@/services/switch-bound-account', () => ({
@@ -360,6 +388,52 @@ describe('M3A game account management', () => {
     await fireEvent.press(screen.getByText('解绑并清除个人数据'));
     await waitFor(() => expect(mockClearUserData).toHaveBeenCalledTimes(1));
     expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
+  });
+
+  it('offers game-scoped personal data cleanup for the final TUF account', async () => {
+    mockBoundAccounts = [mockTufAccount];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('解除绑定 TUF 玩家'));
+    expect(screen.getByText('确认解绑并保留个人数据')).toBeTruthy();
+    await fireEvent.press(screen.getByText('解绑并清除个人数据'));
+    await waitFor(() => expect(mockClearUserData).toHaveBeenCalledTimes(1));
+    expect(mockRemoveTufAccount).toHaveBeenCalledWith(4242);
+    expect(mockClearTufCache).toHaveBeenCalledWith(4242);
+    expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockTufAccount.id);
+  });
+
+  it('does not ask to clear personal data when another TUF account remains', async () => {
+    mockBoundAccounts = [mockTufAccount, createTufBoundAccount({ playerId: 4243, displayName: 'TUF 玩家二号' })];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('解除绑定 TUF 玩家'));
+    expect(screen.queryByText('解绑并清除个人数据')).toBeNull();
+    await fireEvent.press(screen.getByText('确认解绑'));
+    await waitFor(() => expect(mockRemoveTufAccount).toHaveBeenCalledWith(4242));
+    expect(mockClearUserData).not.toHaveBeenCalled();
+    expect(mockRemoveTufAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers game-scoped personal data cleanup for the final Muse Dash account', async () => {
+    mockBoundAccounts = [mockMuseDashAccount];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('解除绑定 喵斯玩家'));
+    expect(screen.getByText('确认解绑并保留个人数据')).toBeTruthy();
+    await fireEvent.press(screen.getByText('解绑并清除个人数据'));
+    await waitFor(() => expect(mockClearUserData).toHaveBeenCalledTimes(1));
+    expect(mockRemoveMuseDashAccount).toHaveBeenCalledWith('u-muse-1');
+    expect(mockClearMuseDashCache).toHaveBeenCalledWith('u-muse-1');
+    expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockMuseDashAccount.id);
+  });
+
+  it('does not ask to clear personal data when another Muse Dash account remains', async () => {
+    mockBoundAccounts = [mockMuseDashAccount, createMuseDashBoundAccount({ userId: 'u-muse-2', displayName: '喵斯玩家二号' })];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('解除绑定 喵斯玩家'));
+    expect(screen.queryByText('解绑并清除个人数据')).toBeNull();
+    await fireEvent.press(screen.getByText('确认解绑'));
+    await waitFor(() => expect(mockRemoveMuseDashAccount).toHaveBeenCalledWith('u-muse-1'));
+    expect(mockClearUserData).not.toHaveBeenCalled();
+    expect(mockRemoveMuseDashAccount).toHaveBeenCalledTimes(1);
   });
 
   it('continues clearing, logs out and reports the failed part when one store fails', async () => {
