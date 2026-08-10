@@ -1,11 +1,15 @@
 import { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
+import { Card } from '@/components/Card';
+import { TagEditor } from '@/components/TagEditor';
 import { TufScoreCard } from '@/components/adofai/TufScoreCard';
 import { TufSongRow } from '@/components/adofai/TufSongRow';
 import {
@@ -15,10 +19,12 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
 import type { TufLevelSort, TufPass, TufPassSort, TufSortOrder } from '@/domain/tuf';
+import { buildTagHistory } from '@/domain/user-library';
 import { presentTufChart } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useTufDifficulties, useTufLevel, useTufLevelSearch, useTufPasses, useTufProfile } from '@/hooks/use-tuf';
+import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -184,10 +190,19 @@ function safeHttps(url: string | null | undefined): string | null {
 
 export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const numericId = /^\d+$/.test(levelId) ? Number(levelId) : null;
   const query = useTufLevel(numericId);
   const level = query.data?.level;
   const chart = level ? presentTufChart(level) : null;
+  const library = useUserLibrary();
+  const songItem = level ? library.data?.find((item) => item.key === library.songKey(level.id)) : undefined;
+  const favorite = songItem?.kind === 'song' && songItem.favorite;
+  const favoriteDisabled = library.isLoading || library.isUpdating;
+  const onToggleFavorite = level
+    ? () => void library.setSongFavorite(String(level.id), !favorite)
+    : undefined;
+  const localTags = level ? (songItem?.kind === 'song' ? songItem.tags : []) : [];
   const tags = level?.tags.map((tag) => typeof tag === 'string' ? tag : tag.name).join('、') || '—';
   const credits = level?.levelCredits.map((credit) => `${credit.creator.name}（${credit.role}）`).join('、') || '—';
   const metadata: SongMetadataItem[] = level ? [
@@ -210,29 +225,51 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
     ['谱面下载', safeHttps(level.dlLink ?? level.downloadLink)], ['创意工坊', safeHttps(level.workshopLink)],
     ['视频', safeHttps(level.videoLink)],
   ].filter((item): item is [string, string] => typeof item[1] === 'string') : [];
-  return <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty={!level}
-    error={query.error} onRetry={() => void query.refetch()} emptyText="未找到该 TUF 关卡" data={level}
-    renderData={() => <ScrollView contentInsetAdjustmentBehavior="automatic" style={[styles.page, { backgroundColor: theme.background }]}
-      contentContainerStyle={styles.detail}>
-      <Text style={[styles.detailTitle, { color: theme.text }]}>{level!.song}</Text>
-      <Text style={[styles.detailArtist, { color: theme.textMuted }]}>{level!.artist || '艺术家未知'}</Text>
-      <SongMetadataTable accessibilityLabel="TUF 关卡信息" items={metadata} testIDPrefix="tuf-level-metadata"
-        style={styles.metadata} cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel}
-        valueStyle={styles.metadataValue} valueBlockStyle={styles.metadataBlock} measureStyle={styles.metadataMeasure} />
-      <GameChartResultCard style={[styles.chartCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
-        testID="tuf-level-chart" accessibilityLabel={`难度 ${chart!.difficulty.label}`}>
-        <Text style={[styles.chartDifficulty, { color: theme.accent }]}>{chart!.difficulty.label} {chart!.difficulty.value ?? ''}</Text>
-        <Text style={[styles.chartCharter, { color: theme.textMuted }]}>谱师 / VFX：{chart!.charter}</Text>
-        {chart!.notes.map((group) => <GameNoteTable key={group.key} mode="cells" group={group}
-          containerStyle={styles.noteTable} itemStyle={[styles.noteItem, { borderColor: theme.border }]}
-          labelStyle={[styles.noteLabel, { color: theme.textMuted }]} valueStyle={[styles.noteValue, { color: theme.text }]} />)}
-      </GameChartResultCard>
-      <View style={styles.links}>{links.map(([label, url]) => <Pressable key={label} accessibilityRole="link"
-        onPress={() => void Linking.openURL(url)} style={[styles.link, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-        <Text style={[styles.linkText, { color: theme.accent }]}>{label}</Text>
-      </Pressable>)}</View>
-      {level!.description ? <Text style={[styles.description, { color: theme.textMuted }]}>{level!.description}</Text> : null}
-    </ScrollView>} />;
+  return <>
+    {onToggleFavorite ? <Pressable accessibilityRole="button"
+      accessibilityLabel={favorite ? `取消收藏 ${level!.song}` : `收藏 ${level!.song}`}
+      disabled={favoriteDisabled} hitSlop={12}
+      onPress={onToggleFavorite}
+      style={({ pressed }) => [
+        styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, right: 8 },
+        favorite && styles.headerFavoriteActive,
+        Platform.OS !== 'ios' && styles.headerButtonBg,
+        Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
+        pressed && { opacity: 0.7 },
+      ]}>
+      <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
+    </Pressable> : null}
+    <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty={!level}
+      error={query.error} onRetry={() => void query.refetch()} emptyText="未找到该 TUF 关卡" data={level}
+      renderData={() => <ScrollView contentInsetAdjustmentBehavior="automatic" style={[styles.page, { backgroundColor: theme.background }]}
+        contentContainerStyle={styles.detail}>
+        <Text style={[styles.detailTitle, { color: theme.text }]}>{level!.song}</Text>
+        <Text style={[styles.detailArtist, { color: theme.textMuted }]}>{level!.artist || '艺术家未知'}</Text>
+        <SongMetadataTable accessibilityLabel="TUF 关卡信息" items={metadata} testIDPrefix="tuf-level-metadata"
+          style={styles.metadata} cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel}
+          valueStyle={styles.metadataValue} valueBlockStyle={styles.metadataBlock} measureStyle={styles.metadataMeasure} />
+        <GameChartResultCard style={[styles.chartCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+          testID="tuf-level-chart" accessibilityLabel={`难度 ${chart!.difficulty.label}`}>
+          <Text style={[styles.chartDifficulty, { color: theme.accent }]}>{chart!.difficulty.label} {chart!.difficulty.value ?? ''}</Text>
+          <Text style={[styles.chartCharter, { color: theme.textMuted }]}>谱师 / VFX：{chart!.charter}</Text>
+          {chart!.notes.map((group) => <GameNoteTable key={group.key} mode="cells" group={group}
+            containerStyle={styles.noteTable} itemStyle={[styles.noteItem, { borderColor: theme.border }]}
+            labelStyle={[styles.noteLabel, { color: theme.textMuted }]} valueStyle={[styles.noteValue, { color: theme.text }]} />)}
+        </GameChartResultCard>
+        <View style={styles.links}>{links.map(([label, url]) => <Pressable key={label} accessibilityRole="link"
+          onPress={() => void Linking.openURL(url)} style={[styles.link, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+          <Text style={[styles.linkText, { color: theme.accent }]}>{label}</Text>
+        </Pressable>)}</View>
+        <Card>
+          <TagEditor testID="tuf-level-local-tags" tags={localTags}
+            presets={library.tagPresets ?? []}
+            historyTags={buildTagHistory(library.data ?? [], library.songKey(level!.id), library.tagPresets ?? [])}
+            disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
+            onChange={(tags) => library.setTags({ kind: 'song', songId: String(level!.id) }, tags)} />
+        </Card>
+        {level!.description ? <Text style={[styles.description, { color: theme.textMuted }]}>{level!.description}</Text> : null}
+      </ScrollView>} />
+  </>;
 }
 
 const styles = StyleSheet.create({
@@ -242,6 +279,11 @@ const styles = StyleSheet.create({
   searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   searchInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 }, resultCount: { fontSize: 11 },
   detail: { padding: 16, gap: 12, paddingBottom: 40 }, detailTitle: { fontSize: 25, fontWeight: '900' }, detailArtist: { fontSize: 14 },
+  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
+  headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
+  headerFavoriteActive: {},
+  headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   metadata: { borderRadius: 15, overflow: 'hidden', flexDirection: 'row', flexWrap: 'wrap' }, metadataCell: { minWidth: '48%', padding: 13 },
   metadataLabel: { fontSize: 10 }, metadataValue: { fontSize: 13, fontWeight: '700' }, metadataBlock: {}, metadataMeasure: { position: 'absolute', opacity: 0 },
   chartCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, padding: 15, gap: 9 }, chartDifficulty: { fontSize: 17, fontWeight: '900' }, chartCharter: { fontSize: 12 },

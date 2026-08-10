@@ -86,6 +86,13 @@
   - 依赖/风险：变更完成项 12「不得将 API 数据写入 SQLite」的旧决策；缓存快照结构升级需递增对应 schema 版本；不修改其他游戏数据、存储 key、页面与备份格式。
   - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-10 完成，见 `changelog/2026-08-10_TUF缓存优先与存储管理口径统一.md`）。
 
+- ✅ 15. 冰与火之舞开放个人曲库（仅收藏歌曲与歌曲标签）
+  - 目标：adofai 板块启用个人曲库，但只允许收藏歌曲与给歌曲打本地标签；因 TUF 无单曲分难度，不提供谱面练习清单与谱面级标签，且全部复用公共曲库模型、存储、Hook、备份与标签组件。
+  - 用户价值：TUF 玩家可以在本地标记喜欢的关卡并打标签归类，曲库页按游戏隔离展示；备份/恢复、解绑清空与标签预设与其它游戏行为一致。
+  - 实现思路：`user-library.ts` 的 `KNOWN_GAME_IDS` 与备份 `GameIdSchema` 纳入 `adofai`；新增按 gameId 分派的 `normalizeLibrarySongId`（adofai 保留完整关卡 id，不受 maimai 数字截断语义影响，既有游戏 key 零变化）；`TufLevelDetailScreen` 接入 `useUserLibrary` 提供顶部悬浮收藏按钮与共享 `TagEditor`；曲库 tab 按游戏分派 `AdofaiLibraryScreen`/`SharedLibraryScreen`，adofai 用 TUF RECENT 关卡分页作为标题目录，无曲绘用占位。
+  - 依赖/风险：仅新增 adofai 分支，不改 SQLite schema、备份版本、版本号与任何既有游戏数据；共享曲库页保持公共筛选逻辑，「练习」筛选在 adofai 下自然为空。
+  - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-10 完成，见 `changelog/2026-08-10_adofai开放个人曲库.md`）。
+
 ## 暂缓
 
 - ⏸️ 4. Phigros 同步等待后台刷新落定

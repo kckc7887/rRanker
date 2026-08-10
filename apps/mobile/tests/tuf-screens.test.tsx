@@ -13,6 +13,36 @@ let mockLevelDetail: TufLevel | undefined;
 let mockProfile: TufPlayer | undefined;
 
 jest.mock('expo-router', () => ({ router: { push: (value: unknown) => mockPush(value) } }));
+jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
+jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    GestureHandlerRootView: RN.View,
+    Pressable: (props: React.ComponentProps<typeof RN.Pressable>) => React.createElement(
+      RN.Pressable,
+      { ...props, testID: props.testID ?? 'gesture-handler-pressable' },
+    ),
+  };
+});
+jest.mock('@/hooks/use-user-library', () => ({
+  useUserLibrary: () => ({
+    data: [],
+    isLoading: false,
+    isError: false,
+    isUpdating: false,
+    songKey: (songId: string | number) => `song:adofai:${songId}`,
+    setSongFavorite: jest.fn(async () => []),
+    setChartPractice: jest.fn(async () => []),
+    setTags: jest.fn(async () => []),
+    setTagPresets: jest.fn(async () => []),
+    tagPresets: [],
+    refetch: jest.fn(),
+  }),
+}));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({

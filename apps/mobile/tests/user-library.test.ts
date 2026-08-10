@@ -1,6 +1,6 @@
 import {
-  backupPreview, buildTagHistory, chartLibraryKey, createUserDataBackup, mergeLibraryItems, normalizeTagName,
-  normalizeTags, parseUserDataBackup, songLibraryKey,
+  backupPreview, buildTagHistory, chartLibraryKey, createUserDataBackup, inferGameIdFromKey, mergeLibraryItems,
+  normalizeLibraryItem, normalizeTagName, normalizeTags, parseUserDataBackup, songLibraryKey,
 } from '@/domain/user-library';
 import type { ChartLibraryItem, SongLibraryItem } from '@/domain/user-library';
 
@@ -19,6 +19,25 @@ describe('user library domain', () => {
     expect(chartLibraryKey('maimai', '10001', 'DX', 3)).toBe('chart:maimai:1:DX:3');
     expect(songLibraryKey('phigros', 'Song.A')).toBe('song:phigros:Song.A');
     expect(chartLibraryKey('phigros', 'Song.A', 'SD', 2)).toBe('chart:phigros:Song.A:SD:2');
+  });
+
+  it('keeps adofai level ids intact instead of applying maimai id truncation', () => {
+    expect(songLibraryKey('adofai', 11372)).toBe('song:adofai:11372');
+    expect(songLibraryKey('adofai', '11372')).toBe('song:adofai:11372');
+    expect(chartLibraryKey('adofai', 11372, 'SD', 0)).toBe('chart:adofai:11372:SD:0');
+    expect(normalizeLibraryItem({ ...song, gameId: 'adofai', songId: '11372' }).key).toBe('song:adofai:11372');
+    expect(inferGameIdFromKey('song:adofai:11372')).toBe('adofai');
+  });
+
+  it('round-trips adofai song items through backups', () => {
+    const adofaiSong: SongLibraryItem = {
+      ...song, gameId: 'adofai', songId: '11372', key: songLibraryKey('adofai', 11372),
+    };
+    const backup = createUserDataBackup([adofaiSong], updatedAt);
+    const parsed = parseUserDataBackup(backup);
+    expect(parsed.items).toEqual([
+      expect.objectContaining({ key: 'song:adofai:11372', gameId: 'adofai', songId: '11372' }),
+    ]);
   });
 
   it('normalizes tags with NFKC, whitespace and case-insensitive deduplication', () => {
