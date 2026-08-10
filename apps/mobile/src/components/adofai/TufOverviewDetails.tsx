@@ -16,6 +16,11 @@ export function formatTufOverviewRatingMeta(player: TufPlayer): string {
   return `世界排名 ${rank ? `#${rank}` : '—'} · ${player.totalPasses} 条公开成绩`;
 }
 
+export function formatTufRankBadge(player: TufPlayer): string {
+  const rank = player.globalRank ?? player.rank;
+  return rank ? `#${rank}` : '—';
+}
+
 export function TufOverviewDetails({ player }: { player: TufPlayer }) {
   const theme = useAppTheme();
   const metrics = [

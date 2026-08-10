@@ -128,6 +128,8 @@ describe('TUF public overview', () => {
     expect(screen.getByText('冰与火之舞 · 玩家概览')).toBeTruthy();
     expect(screen.getByText(/RANKED SCORE 1824.52/)).toBeTruthy();
     expect(screen.getByText(/世界排名 #12/)).toBeTruthy();
+    expect(screen.getByText(/世界排名 #12$/)).toBeTruthy();
+    expect(screen.queryByText(/TUF PLAYER/)).toBeNull();
     expect(screen.getByText('公开资料')).toBeTruthy();
     expect(screen.getByText('99.80%')).toBeTruthy();
     expect(screen.getByText('TUF 社区公开数据')).toBeTruthy();
