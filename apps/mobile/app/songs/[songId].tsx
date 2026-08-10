@@ -26,7 +26,7 @@ import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
+import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
 import {
@@ -192,30 +192,28 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
   song?: Song; favorite: boolean; favoriteDisabled: boolean; onToggleFavorite?: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const navigateBack = useSongDetailBackNavigation();
-  return <>
-    <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
-      onPress={navigateBack}
-      style={({ pressed }) => [
+  return (
+    <SharedSongDetailChrome
+      topInset={insets.top}
+      backStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 },
         Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
-      ]}>
-      <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
-    </Pressable>
-    {song && onToggleFavorite ? <Pressable accessibilityRole="button"
-      accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
-      disabled={favoriteDisabled} hitSlop={12}
-      onPress={onToggleFavorite}
-      style={({ pressed }) => [
+      ]}
+      favorite={song && onToggleFavorite ? {
+        label: favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`,
+        active: favorite,
+        disabled: favoriteDisabled,
+        onPress: onToggleFavorite,
+      } : undefined}
+      favoriteStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
         favorite && styles.headerFavoriteActive,
         Platform.OS !== 'ios' && styles.headerButtonBg,
         Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
         pressed && { opacity: 0.7 },
-      ]}>
-      <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
-    </Pressable> : null}
-  </>;
+      ]}
+    />
+  );
 }
 
 function Detail({ song, versions, records, catalogSource, scoreSource, dxratingTags, dxratingSource, library, initialChartType, initialLevelIndex }: {

@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
@@ -21,8 +20,8 @@ import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
+import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { QueryStateView } from '@/components/QueryStateView';
-import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
@@ -424,7 +423,6 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const navigateBack = useSongDetailBackNavigation();
   const albums = useMuseDashAlbums();
   const diffdiff = useMuseDashDiffdiff();
   const ce = useMuseDashCe();
@@ -470,14 +468,13 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   const cardWidth = Math.max(280, width - 40);
   return <>
     <StatusBar style="light" />
-    <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
-      onPress={navigateBack}
-      style={({ pressed }) => [
+    <SongDetailChrome
+      topInset={insets.top}
+      backStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 },
         Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
-      ]}>
-      <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
-    </Pressable>
+      ]}
+    />
     <QueryStateView isLoading={loading} isError={!!error} isEmpty={!joined}
     error={error} onRetry={() => { void albums.refetch(); void player.refetch(); }}
     emptyText="未找到该喵斯快跑歌曲" data={joined}

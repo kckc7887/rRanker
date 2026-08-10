@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
@@ -8,6 +7,7 @@ import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/gam
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
+import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { Card } from '@/components/Card';
 import { TagEditor } from '@/components/TagEditor';
 import { TufScoreCard } from '@/components/adofai/TufScoreCard';
@@ -16,7 +16,6 @@ import {
   TufCatalogFilterBar, TufRecordsFilterBar, type TufDifficultyBand,
 } from '@/components/adofai/TufFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
-import { useSongDetailBackNavigation } from '@/components/game-content/SongDetailNavigation';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
 import type { TufLevelSort, TufPass, TufPassSort, TufSortOrder } from '@/domain/tuf';
@@ -226,29 +225,27 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
     ['谱面下载', safeHttps(level.dlLink ?? level.downloadLink)], ['创意工坊', safeHttps(level.workshopLink)],
     ['视频', safeHttps(level.videoLink)],
   ].filter((item): item is [string, string] => typeof item[1] === 'string') : [];
-  const navigateBack = useSongDetailBackNavigation();
   return <>
-    <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12}
-      onPress={navigateBack}
-      style={({ pressed }) => [
+    <SongDetailChrome
+      topInset={insets.top + 8}
+      backStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, left: 8 },
         Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
-      ]}>
-      <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
-    </Pressable>
-    {onToggleFavorite ? <Pressable accessibilityRole="button"
-      accessibilityLabel={favorite ? `取消收藏 ${level!.song}` : `收藏 ${level!.song}`}
-      disabled={favoriteDisabled} hitSlop={12}
-      onPress={onToggleFavorite}
-      style={({ pressed }) => [
+      ]}
+      favorite={onToggleFavorite && level ? {
+        label: favorite ? `取消收藏 ${level.song}` : `收藏 ${level.song}`,
+        active: favorite,
+        disabled: favoriteDisabled,
+        onPress: onToggleFavorite,
+      } : undefined}
+      favoriteStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, right: 8 },
         favorite && styles.headerFavoriteActive,
         Platform.OS !== 'ios' && styles.headerButtonBg,
         Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
         pressed && { opacity: 0.7 },
-      ]}>
-      <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
-    </Pressable> : null}
+      ]}
+    />
     <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty={!level}
       error={query.error} onRetry={() => void query.refetch()} emptyText="未找到该 TUF 关卡" data={level}
       renderData={() => <ScrollView contentInsetAdjustmentBehavior="automatic" style={[styles.page, { backgroundColor: theme.background }]}

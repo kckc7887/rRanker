@@ -21,6 +21,12 @@ import {
   parseBestImageHeightMessage, parseBestImageReadyMessage, parseBestImageRuntimeMessage,
 } from '@/features/best-image/build-best-image-html';
 import {
+  BEST_IMAGE_WEBVIEW_PHASE_LABELS,
+  markBestImageWebViewLoaded,
+  updateBestImageWebViewState,
+  type BestImageWebViewState,
+} from '@/features/best-image/best-image-webview-state';
+import {
   bestImageCaptureDimensions, bestImageExportFilename, deleteBestImageCapture,
   isDrawViewHierarchyError, requestBestImageExportPermission, saveBestImageCapture,
   shouldUseBestImageRenderInContext,
@@ -75,13 +81,6 @@ const WIDTHS = [1080, 1440, 2160] as const;
 const OVERFLOW_COUNTS: readonly PhigrosBestImageOverflowCount[] = [0, 3, 6, 9];
 const DEFAULT_STYLES: PhigrosBestImageStylePreferences = {
   version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
-};
-
-type PreviewPhase = 'loading' | 'loaded' | 'rendering' | 'ready' | 'error' | 'crashed' | 'terminated';
-
-const PREVIEW_PHASE_LABEL: Record<PreviewPhase, string> = {
-  loading: '正在加载', loaded: '页面已载入，等待渲染', rendering: '正在渲染', ready: '渲染就绪',
-  error: '加载失败', crashed: '渲染进程崩溃', terminated: '渲染进程已终止',
 };
 
 function ChoiceChip({ label, selected, onPress, accessibilityLabel }: { label: string; selected: boolean; onPress: () => void; accessibilityLabel?: string }) {
@@ -168,7 +167,7 @@ export function PhigrosBestImageScreen() {
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
   const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
   const [pageHeights, setPageHeights] = useState<Record<string, number>>({}); const [pageIndex, setPageIndex] = useState(0);
-  const [previewStates, setPreviewStates] = useState<Record<string, { phase: PreviewPhase; version: string | null }>>({});
+  const [previewStates, setPreviewStates] = useState<Record<string, BestImageWebViewState>>({});
   const [exportIndex, setExportIndex] = useState<number | null>(null); const [exportHeight, setExportHeight] = useState(810);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const exportCaptureRef = useRef<View>(null); const exportResolve = useRef<((height: number) => void) | null>(null);
@@ -381,7 +380,7 @@ export function PhigrosBestImageScreen() {
   const previewHeight = previewWidth * 4 / 3;
   const currentPreviewState = previewStates[currentPage.id];
   const previewStatus = currentPreviewState
-    ? `${PREVIEW_PHASE_LABEL[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
+    ? `${BEST_IMAGE_WEBVIEW_PHASE_LABELS[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
     : 'WebView 版本未知 · 等待预览素材';
   const avatarPickerItems = useMemo<PhigrosBestImagePickerItem[]>(() => avatarItems.flatMap((key) => {
     const remoteUrl = provider?.getAvatarUrl(key);
@@ -403,9 +402,6 @@ export function PhigrosBestImageScreen() {
     if (choice.mode === 'off') return '已关闭';
     if (choice.mode === 'random') return `随机${choice.key ? ` · ${kind === 'background' ? titles[choice.key] ?? choice.key : choice.key}` : ''}`;
     return kind === 'background' ? titles[choice.key ?? ''] ?? choice.key ?? '未设置' : choice.key ?? '未设置';
-  };
-  const updatePreviewState = (pageId: string, phase: PreviewPhase, version?: string | null) => {
-    setPreviewStates((current) => ({ ...current, [pageId]: { phase, version: version === undefined ? current[pageId]?.version ?? null : version } }));
   };
   const waitForExport = (index: number) => new Promise<number>((resolve, reject) => {
     if (exportTimer.current) clearTimeout(exportTimer.current);
@@ -581,10 +577,10 @@ export function PhigrosBestImageScreen() {
       <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
         {sources ? <FlatList data={sources} horizontal initialNumToRender={2} keyExtractor={(_, index) => pages[index]!.id} maxToRenderPerBatch={3} pagingEnabled removeClippedSubviews={false} showsHorizontalScrollIndicator={false} windowSize={3} style={styles.previewPager} onMomentumScrollEnd={(event) => setPageIndex(Math.round(event.nativeEvent.contentOffset.x / previewWidth))} renderItem={({ item, index }) => {
           const pageId = pages[index]!.id;
-          return <View style={{ width: previewWidth, height: previewHeight }}><WebView testID={`phigros-best-image-html-preview-${index}`} accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={templateAssets?.allowingReadAccessToUrl} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} onError={() => updatePreviewState(pageId, 'error')} onLoadStart={() => updatePreviewState(pageId, 'loading')} onLoadEnd={() => setPreviewStates((current) => current[pageId] && current[pageId]!.phase !== 'loading' ? current : { ...current, [pageId]: { phase: 'loaded', version: current[pageId]?.version ?? null } })} onRenderProcessGone={(event) => updatePreviewState(pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated')} onMessage={(event) => {
-            const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, width); if (runtime) updatePreviewState(pageId, 'rendering', runtime.version);
-            const height = parseBestImageHeightMessage(event.nativeEvent.data, width, 1); if (height != null) { setPageHeights((current) => ({ ...current, [pageId]: height })); updatePreviewState(pageId, 'rendering'); }
-            const ready = parseBestImageReadyMessage(event.nativeEvent.data, width, 1); if (ready != null) updatePreviewState(pageId, 'ready');
+          return <View style={{ width: previewWidth, height: previewHeight }}><WebView testID={`phigros-best-image-html-preview-${index}`} accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={templateAssets?.allowingReadAccessToUrl} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} onError={() => updateBestImageWebViewState(setPreviewStates, pageId, 'error')} onLoadStart={() => updateBestImageWebViewState(setPreviewStates, pageId, 'loading')} onLoadEnd={() => markBestImageWebViewLoaded(setPreviewStates, pageId)} onRenderProcessGone={(event) => updateBestImageWebViewState(setPreviewStates, pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated')} onMessage={(event) => {
+            const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, width); if (runtime) updateBestImageWebViewState(setPreviewStates, pageId, 'rendering', runtime.version);
+            const height = parseBestImageHeightMessage(event.nativeEvent.data, width, 1); if (height != null) { setPageHeights((current) => ({ ...current, [pageId]: height })); updateBestImageWebViewState(setPreviewStates, pageId, 'rendering'); }
+            const ready = parseBestImageReadyMessage(event.nativeEvent.data, width, 1); if (ready != null) updateBestImageWebViewState(setPreviewStates, pageId, 'ready');
           }} /></View>;
         }} /> : <View style={styles.loadingPreview}>{templateAssetError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View>}</View>}
       </View>
