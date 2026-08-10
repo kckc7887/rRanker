@@ -1,5 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { StyleSheet, View } from 'react-native';
+import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
 import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashPlayer } from '@/domain/muse-dash';
 import {
   MuseDashBestScreen,
@@ -260,6 +262,20 @@ describe('Muse Dash screens', () => {
     expect(screen.getByTestId('musedash-chart-0')).toBeTruthy();
     expect(screen.queryByTestId('musedash-chart-4')).toBeNull();
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  it('colors ACC by band: metal gradients at/above 90 and white below', async () => {
+    const screen = await render(<View>
+      <MuseDashAccValue acc={88} />
+      <MuseDashAccValue acc={90} />
+      <MuseDashAccValue acc={95} />
+      <MuseDashAccValue acc={100} />
+    </View>);
+    const white = screen.getByLabelText('88.00%');
+    expect(StyleSheet.flatten(white.props.style)).toMatchObject({ color: '#FFFFFF', fontSize: 28 });
+    expect(screen.getByTestId('musedash-acc-gradient-red').props.accessibilityLabel).toBe('90.00%');
+    expect(screen.getByTestId('musedash-acc-gradient-silver').props.accessibilityLabel).toBe('95.00%');
+    expect(screen.getByTestId('musedash-acc-gradient-gold').props.accessibilityLabel).toBe('100.00%');
   });
 
   it('shows a back button that navigates back when possible', async () => {
