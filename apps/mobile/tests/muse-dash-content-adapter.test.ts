@@ -79,6 +79,25 @@ describe('Muse Dash content adapter', () => {
     expect(chart.extension).toMatchObject({ difficultyIndex: 3, officialLevel: '11', constant: 11.5 });
   });
 
+  it('resolves the charter per difficulty slot like the official site', () => {
+    const easy = museDashContentAdapter.normalizeChart({
+      song: fullSong.song, albumTitle: fullSong.albumTitle, difficultyIndex: 0,
+    });
+    expect(easy.charter).toBe('Mapper A');
+    const hard = museDashContentAdapter.normalizeChart({
+      song: fullSong.song, albumTitle: fullSong.albumTitle, difficultyIndex: 1,
+    });
+    expect(hard.charter).toBe('Mapper B');
+    const missing = museDashContentAdapter.normalizeChart({
+      song: fullSong.song, albumTitle: fullSong.albumTitle, difficultyIndex: 4,
+    });
+    expect(missing.charter).toBe('Mapper A、Mapper B');
+    const single = museDashContentAdapter.normalizeChart({
+      song: songsByUid.get('0-48')!.song, albumTitle: 'Default Music', difficultyIndex: 1,
+    });
+    expect(single.charter).toBe('Howard_Y');
+  });
+
   it('maps scores with join result, character/elfin names and SD library reference', () => {
     const raw: MuseDashRawScore = {
       play: parsedPlayer.plays[0],

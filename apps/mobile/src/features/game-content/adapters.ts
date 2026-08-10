@@ -634,9 +634,21 @@ export type MuseDashRawChart = {
 
 export type MuseDashRawSong = { song: MuseDashSong; albumTitle: string };
 
-/** 谱师列表：过滤上游 null 条目后连接。 */
-function museDashCharter(levelDesigner: readonly (string | null)[]): string {
-  return levelDesigner.filter((name): name is string => !!name).join('、');
+/**
+ * 谱师解析（对齐官方前端 music.vue 语义）：
+ * 传入难度档位时优先取该档谱师；该档缺失时单谱师回退歌曲级，多谱师列出全部非空；
+ * 不传档位时（歌曲级信息）列出全部非空谱师。
+ */
+function museDashCharter(levelDesigner: readonly (string | null)[], difficultyIndex?: number): string {
+  const nonNull = (name: string | null): name is string => !!name && name.trim() !== '';
+  if (difficultyIndex !== undefined) {
+    const perLevel = levelDesigner[difficultyIndex];
+    if (perLevel && perLevel.trim()) return perLevel.trim();
+    const unique = [...new Set(levelDesigner.filter(nonNull))];
+    if (unique.length === 1) return unique[0];
+    return levelDesigner.filter(nonNull).join('、');
+  }
+  return levelDesigner.filter(nonNull).join('、');
 }
 
 function museDashChart(raw: MuseDashRawChart): GameChart<'musedash', MuseDashChartExtension> {
@@ -649,7 +661,7 @@ function museDashChart(raw: MuseDashRawChart): GameChart<'musedash', MuseDashCha
     label: MUSE_DASH_DIFFICULTY_LABELS[raw.difficultyIndex],
     level: officialLevel === '0' ? '—' : officialLevel,
     constant: raw.constant,
-    charter: museDashCharter(raw.song.levelDesigner) || undefined,
+    charter: museDashCharter(raw.song.levelDesigner, raw.difficultyIndex) || undefined,
     notes: [],
     libraryRef: { type: 'SD', levelIndex: raw.difficultyIndex },
     extension: {
@@ -823,7 +835,7 @@ export function presentMuseDashChart(
     secondaryMetrics: presented?.secondaryMetrics ?? [],
     grade: presented?.grade,
     achievementRows: presented?.achievementRows ?? [],
-    charter: museDashCharter(raw.song.levelDesigner) || '未提供',
+    charter: museDashCharter(raw.song.levelDesigner, raw.difficultyIndex) || '未提供',
     notes: [],
   };
 }
