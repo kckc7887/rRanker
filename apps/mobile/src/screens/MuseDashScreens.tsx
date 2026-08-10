@@ -287,7 +287,7 @@ function MuseDashChartCard({
   const visual = museDashLevelTheme(slot.difficultyIndex);
   const chartItem = library.data?.find((item) => item.key === library.chartKey(songId, MUSE_DASH_CHART_TYPE, slot.difficultyIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
-  const actionColor = theme.dark ? visual.darkAction : visual.background;
+  const actionColor = theme.dark ? visual.darkAction : visual.lightAction;
   const actionFilled = theme.dark || practice;
   return (
     <GameChartResultCard
