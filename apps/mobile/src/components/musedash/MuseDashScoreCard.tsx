@@ -42,25 +42,29 @@ export const MuseDashScoreCard = memo(function MuseDashScoreCard({
       titleStyle={styles.title}
     >
       <MuseDashAccValue acc={score.play.acc} />
-      <View style={styles.tagRow} testID={`musedash-card-tags-${score.play.uid}-${score.play.difficulty}`}>
-        <MuseDashDifficultyBadge
-          constant={score.constant}
-          display="label-and-value"
-          level={score.song?.difficulty[score.play.difficulty]}
-          levelIndex={score.play.difficulty}
-        />
-        {presentation.grade ? <MuseDashGradeBadge label={presentation.grade.label} tone={presentation.grade.tone} /> : null}
-        {presentation.achievementRows.flat().filter((badge) => badge.key === 'achievement').map((badge) => (
-          <MuseDashAchievementBadge key={badge.key} label={badge.label} tone={badge.tone} />
-        ))}
-        {rankBadge ? (rankBadge.tone === 'rank-rainbow'
-          ? <LayeredGradientBadge key="rank" label={rankBadge.label} numberOfLines={1} tone="rainbow"
-            style={styles.rainbowBadge} textStyle={styles.rainbowBadgeText} />
-          : <MuseDashRankBadge key="rank" label={rankBadge.label} tone={rankBadge.tone} />) : null}
-        {presentation.achievementRows.flat().filter((badge) => badge.key !== 'achievement').map((badge) => (
-          <MuseDashNeutralBadge key={badge.key} label={badge.label} />
-        ))}
-        <MuseDashNeutralBadge label={platform === 'pc' ? 'PC 端' : '移动端'} />
+      <View style={styles.tagRows} testID={`musedash-card-tags-${score.play.uid}-${score.play.difficulty}`}>
+        <View style={styles.tagRow}>
+          <MuseDashDifficultyBadge
+            constant={score.constant}
+            display="label-and-value"
+            level={score.song?.difficulty[score.play.difficulty]}
+            levelIndex={score.play.difficulty}
+          />
+          {presentation.grade ? <MuseDashGradeBadge label={presentation.grade.label} tone={presentation.grade.tone} /> : null}
+          {presentation.achievementRows.flat().filter((badge) => badge.key === 'achievement').map((badge) => (
+            <MuseDashAchievementBadge key={badge.key} label={badge.label} tone={badge.tone} />
+          ))}
+          {rankBadge ? (rankBadge.tone === 'rank-rainbow'
+            ? <LayeredGradientBadge key="rank" label={rankBadge.label} numberOfLines={1} tone="rainbow"
+              style={styles.rainbowBadge} textStyle={styles.rainbowBadgeText} />
+            : <MuseDashRankBadge key="rank" label={rankBadge.label} tone={rankBadge.tone} />) : null}
+        </View>
+        <View style={styles.tagRow}>
+          {presentation.achievementRows.flat().filter((badge) => badge.key !== 'achievement').map((badge) => (
+            <MuseDashNeutralBadge key={badge.key} label={badge.label} />
+          ))}
+          <MuseDashNeutralBadge label={platform === 'pc' ? 'PC 端' : '移动端'} />
+        </View>
       </View>
     </GameScoreCard>
   );
@@ -71,7 +75,8 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
   main: { flex: 1, minWidth: 0, gap: 3 },
   title: { fontSize: 15, fontWeight: '700' },
-  tagRow: { minHeight: 24, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 4 },
+  tagRows: { gap: 5, marginTop: 4 },
+  tagRow: { minHeight: 24, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
   rainbowBadge: { height: 28 },
   rainbowBadgeText: { fontSize: 10, fontWeight: '900' },
   ratingBlock: { minWidth: 58, alignItems: 'flex-end', gap: 2 },

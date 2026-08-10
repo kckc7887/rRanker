@@ -149,12 +149,13 @@ function collectLeafTexts(node: unknown): string[] {
       return;
     }
     if (value && typeof value === 'object') {
-      const element = value as { props?: { children?: unknown } };
-      if (typeof element.props?.children === 'string') {
-        result.push(element.props.children);
+      const element = value as { props?: { children?: unknown }; children?: unknown };
+      const children = element.children ?? element.props?.children;
+      if (typeof children === 'string') {
+        result.push(children);
         return;
       }
-      if (element.props?.children) walk(element.props.children);
+      if (children) walk(children);
     }
   };
   walk(node);
@@ -179,7 +180,7 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByTestId('musedash-card-tags-0-47-3').length).toBe(1);
   });
 
-  it('lays out card tags in the required order: difficulty, grade, achievement, rank, character/elfin, platform', async () => {
+  it('lays out card tags in two rows: difficulty/grade/achievement/rank then character/elfin/platform', async () => {
     mockPlayer = {
       ...player,
       plays: player.plays.map((play) =>
@@ -187,13 +188,13 @@ describe('Muse Dash screens', () => {
     };
     const screen = await render(<MuseDashBestScreen />);
     const tags = screen.getByTestId('musedash-card-tags-0-47-3');
-    const texts = tags.children.map((child) => collectLeafTexts(child));
-    expect(texts[0].join(' ')).toContain('HIDDEN');
-    expect(texts[1].join(' ')).toBe('S');
-    expect(texts[2].join(' ')).toBe('#9');
-    expect(texts[3].join(' ')).toBe('凛·治愈者');
-    expect(texts[4].join(' ')).toBe('未命名');
-    expect(texts[5].join(' ')).toBe('PC 端');
+    expect(tags.children).toHaveLength(2);
+    const row1 = collectLeafTexts(tags.children[0]).join(' ');
+    const row2 = collectLeafTexts(tags.children[1]).join(' ');
+    expect(row1).toContain('HIDDEN');
+    expect(row1.indexOf('S')).toBeGreaterThan(row1.indexOf('HIDDEN'));
+    expect(row1.indexOf('#9')).toBeGreaterThan(row1.indexOf('S'));
+    expect(row2).toBe('凛·治愈者 未命名 PC 端');
   });
 
   it('filters records by platform and re-sorts by ACC locally', async () => {
