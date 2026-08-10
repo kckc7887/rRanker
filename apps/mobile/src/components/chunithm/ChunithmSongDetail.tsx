@@ -210,6 +210,7 @@ function DetailChrome({
       topInset={insets.top}
       backStyle={(pressed) => [
         styles.headerButton,
+        styles.headerFloatingButton,
         { top: insets.top, left: 8 },
         Platform.OS !== 'ios' && styles.headerButtonBg,
         pressed && styles.pressed,
@@ -222,9 +223,11 @@ function DetailChrome({
       } : undefined}
       favoriteStyle={(pressed) => [
         styles.headerButton,
+        styles.headerFloatingButton,
         { top: insets.top, right: 8 },
+        favorite && styles.headerFavoriteActive,
         Platform.OS !== 'ios' && styles.headerButtonBg,
-        favorite && styles.headerFavorite,
+        Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
         pressed && styles.pressed,
         favoriteDisabled && styles.disabled,
       ]}
@@ -875,17 +878,11 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingBottom: 32 },
-  headerButton: {
-    position: 'absolute',
-    zIndex: 20,
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
   headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
-  headerFavorite: { backgroundColor: 'rgba(91,33,182,0.68)' },
+  headerFavoriteActive: {},
+  headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   hero: { position: 'relative', overflow: 'hidden' },
   heroPlaceholder: {
     ...StyleSheet.absoluteFillObject,
