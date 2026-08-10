@@ -2,6 +2,9 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet, View } from 'react-native';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
+import { buildMuseDashFilterSummary } from '@/components/musedash/MuseDashFilterBar';
+import { useMuseDashCatalogFilter } from '@/state/musedash-catalog-filter';
+import { useMuseDashRecordsFilter } from '@/state/musedash-records-filter';
 import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashPlayer } from '@/domain/muse-dash';
 import {
   MuseDashBestScreen,
@@ -185,6 +188,8 @@ describe('Muse Dash screens', () => {
     mockAlbums = albums;
     mockCe = ce;
     mockMissMap = new Map();
+    useMuseDashRecordsFilter.getState().reset();
+    useMuseDashCatalogFilter.getState().reset();
   });  it('orders the Best list by community rating (sum) descending with ACC-led cards', async () => {
     const screen = await render(<MuseDashBestScreen />);
     expect(screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel)[0])
@@ -214,15 +219,14 @@ describe('Muse Dash screens', () => {
     expect(row2).toBe('凛·治愈者 未命名 PC 端');
   });
 
-  it('filters records by difficulty, DLC and constant range with fixed Rating order', async () => {
+  it('filters records by difficulty chips, DLC and constant range with fixed Rating order', async () => {
     const screen = await render(<MuseDashRecordsScreen />);
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
-    await fireEvent.press(screen.getByLabelText('难度筛选，当前 全部'));
-    await fireEvent.press(screen.getByLabelText('选择难度 HIDDEN'));
+    await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选难度 HIDDEN'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
-    await fireEvent.press(screen.getByLabelText('难度筛选，当前 HIDDEN'));
-    await fireEvent.press(screen.getByLabelText('选择难度 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选难度 全部'));
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('选择DLC Second Album'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
@@ -238,12 +242,13 @@ describe('Muse Dash screens', () => {
 
   it('filters records by ACC range and keeps Rating order', async () => {
     const screen = await render(<MuseDashRecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     await fireEvent.changeText(screen.getByLabelText('最低达成率'), '97');
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     expect(screen.getAllByTestId('musedash-score-0-47-1').length).toBe(1);
   });
 
-  it('filters records by FC/AP achievement using requested miss counts', async () => {
+  it('filters records by FC/AP achievement chips using requested miss counts', async () => {
     mockPlayer = {
       ...player,
       plays: player.plays.map((play) =>
@@ -251,16 +256,14 @@ describe('Muse Dash screens', () => {
     };
     mockMissMap = new Map([['0-47:3', 0], ['0-47:1', 2], ['1-1:2', 0]]);
     const screen = await render(<MuseDashRecordsScreen />);
-    await fireEvent.press(screen.getByLabelText('成就筛选，当前 全部'));
-    await fireEvent.press(screen.getByLabelText('选择成就 FC'));
+    await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
     expect(screen.queryAllByTestId('musedash-score-0-47-1')).toHaveLength(0);
-    await fireEvent.press(screen.getByLabelText('成就筛选，当前 FC'));
-    await fireEvent.press(screen.getByLabelText('选择成就 AP'));
+    await fireEvent.press(screen.getByLabelText('筛选成就 AP'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
-    await fireEvent.press(screen.getByLabelText('成就筛选，当前 AP'));
-    await fireEvent.press(screen.getByLabelText('选择成就 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选成就 全部'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
   });
 
@@ -272,15 +275,14 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
   });
 
-  it('filters the catalog by difficulty, DLC and constant range and searches songs', async () => {
+  it('filters the catalog by difficulty chips, DLC and constant range and searches songs', async () => {
     const screen = await render(<MuseDashCatalogScreen />);
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(3);
     expect(screen.getAllByText('11.50').length).toBeGreaterThan(0);
-    await fireEvent.press(screen.getByLabelText('难度筛选，当前 全部'));
-    await fireEvent.press(screen.getByLabelText('选择难度 HIDDEN'));
+    await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选难度 HIDDEN'));
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
-    await fireEvent.press(screen.getByLabelText('难度筛选，当前 HIDDEN'));
-    await fireEvent.press(screen.getByLabelText('选择难度 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选难度 全部'));
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('选择DLC Second Album'));
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
@@ -337,6 +339,18 @@ describe('Muse Dash screens', () => {
     expect(screen.getByTestId('musedash-acc-gradient-red').props.accessibilityLabel).toBe('90.00%');
     expect(screen.getByTestId('musedash-acc-gradient-silver').props.accessibilityLabel).toBe('95.00%');
     expect(screen.getByTestId('musedash-acc-gradient-gold').props.accessibilityLabel).toBe('100.00%');
+  });
+
+  it('builds collapsed summaries like other boards: only non-default filters, 全部 when none', () => {
+    expect(buildMuseDashFilterSummary({ difficultySlot: 'all', dlc: 'all', constantMin: '', constantMax: '' })).toBe('全部');
+    expect(buildMuseDashFilterSummary({ difficultySlot: 3, dlc: 'all', constantMin: '', constantMax: '' })).toBe('HIDDEN');
+    expect(buildMuseDashFilterSummary({ difficultySlot: 'all', dlc: 'Second Album', constantMin: '', constantMax: '' })).toBe('Second Album');
+    expect(buildMuseDashFilterSummary({ difficultySlot: 'all', dlc: 'all', constantMin: '9', constantMax: '' })).toBe('定数 9~不限');
+    expect(buildMuseDashFilterSummary({ difficultySlot: 'all', dlc: 'all', constantMin: '', constantMax: '12' })).toBe('定数 不限~12');
+    expect(buildMuseDashFilterSummary({ difficultySlot: 'all', dlc: 'all', constantMin: '', constantMax: '', accMin: '97', accMax: '' })).toBe('达成率 97~不限%');
+    expect(buildMuseDashFilterSummary({
+      difficultySlot: 1, dlc: 'Pack', constantMin: '5', constantMax: '10', accMin: '90', accMax: '100', achievement: 'fc',
+    })).toBe('HARD · Pack · 定数 5~10 · 达成率 90~100% · FC');
   });
 
   it('shows a back button that navigates back when possible', async () => {

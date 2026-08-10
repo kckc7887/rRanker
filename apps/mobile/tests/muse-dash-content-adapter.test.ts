@@ -15,7 +15,12 @@ import {
   museDashElfinName,
   museDashGrade,
   museDashRankBadge,
+  matchesMuseDashAccRange,
   matchesMuseDashAchievementFilter,
+  matchesMuseDashConstantRange,
+  matchesMuseDashDifficultySlotFilter,
+  matchesMuseDashDlcFilter,
+  museDashAchievementFilterLabel,
   museDashSongAuthor,
   museDashSongTitle,
   museDashSongsByUid,
@@ -241,6 +246,22 @@ describe('Muse Dash content adapter', () => {
     expect(matchesMuseDashAchievementFilter(100, 0, 'ap')).toBe(true);
     expect(matchesMuseDashAchievementFilter(99.99, 0, 'ap')).toBe(false);
     expect(matchesMuseDashAchievementFilter(100, 1, 'ap')).toBe(false);
+    expect(matchesMuseDashConstantRange(8.2, '', '')).toBe(true);
+    expect(matchesMuseDashConstantRange(8.2, '9', '')).toBe(false);
+    expect(matchesMuseDashConstantRange(8.2, '', '8')).toBe(false);
+    expect(matchesMuseDashConstantRange(11.5, '9', '12')).toBe(true);
+    expect(matchesMuseDashAccRange(97.31, '90', '')).toBe(true);
+    expect(matchesMuseDashAccRange(94.17, '95', '')).toBe(false);
+    expect(matchesMuseDashAccRange(94.17, '94', '94.5')).toBe(true);
+    expect(matchesMuseDashDifficultySlotFilter([true, false, true], 0, 'all')).toBe(true);
+    expect(matchesMuseDashDifficultySlotFilter([true, false, true], 2, 2)).toBe(true);
+    expect(matchesMuseDashDifficultySlotFilter([true, false, true], 1, 1)).toBe(false);
+    expect(matchesMuseDashDlcFilter('Default Music', 'all')).toBe(true);
+    expect(matchesMuseDashDlcFilter('Default Music', 'Second Album')).toBe(false);
+    expect(matchesMuseDashDlcFilter('Second Album', 'Second Album')).toBe(true);
+    expect(museDashAchievementFilterLabel('all')).toBe('全部');
+    expect(museDashAchievementFilterLabel('fc')).toBe('FC');
+    expect(museDashAchievementFilterLabel('ap')).toBe('AP');
     expect(museDashCoverUrl('magical_wonderland_cover'))
       .toBe('https://musedash.moe/covers/magical_wonderland_cover.webp');
     expect(museDashCoverUrl(undefined)).toBeNull();

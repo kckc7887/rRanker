@@ -32,12 +32,15 @@ import { MuseDashScoreCard } from '@/components/musedash/MuseDashScoreCard';
 import { MuseDashSongRow } from '@/components/musedash/MuseDashSongRow';
 import {
   MuseDashCatalogFilterBar, MuseDashRecordsFilterBar,
-  type MuseDashAchievementFilter, type MuseDashDifficultySlot, type MuseDashDlcFilter,
 } from '@/components/musedash/MuseDashFilterBar';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { museDashUserIdFromAccountId } from '@/domain/bound-account';
 import {
+  matchesMuseDashAccRange,
   matchesMuseDashAchievementFilter,
+  matchesMuseDashConstantRange,
+  matchesMuseDashDifficultySlotFilter,
+  matchesMuseDashDlcFilter,
   museDashCharacterName,
   museDashCoverUrl,
   museDashDiffdiffMap,
@@ -67,6 +70,8 @@ import {
 } from '@/hooks/use-muse-dash';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { queryClient } from '@/state/query-client';
+import { useMuseDashCatalogFilter } from '@/state/musedash-catalog-filter';
+import { useMuseDashRecordsFilter } from '@/state/musedash-records-filter';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -176,15 +181,11 @@ export function MuseDashRecordsScreen() {
   const albums = useMuseDashAlbums();
   const ce = useMuseDashCe();
   const diffdiff = useMuseDashDiffdiff();
-  const [difficultySlot, setDifficultySlot] = useState<MuseDashDifficultySlot>('all');
-  const [dlc, setDlc] = useState<MuseDashDlcFilter>('all');
-  const [constantMin, setConstantMin] = useState('');
-  const [constantMax, setConstantMax] = useState('');
-  const [accMin, setAccMin] = useState('');
-  const [accMax, setAccMax] = useState('');
-  const [achievement, setAchievement] = useState<MuseDashAchievementFilter>('all');
-  const [keyword, setKeyword] = useState('');
-  const [filterExpanded, setFilterExpanded] = useState(true);
+  const {
+    keyword, collapsed, difficultySlot, dlc, constantMin, constantMax, accMin, accMax, achievement,
+    setKeyword, setCollapsed, setDifficultySlot, setDlc,
+    setConstantMin, setConstantMax, setAccMin, setAccMax, setAchievement, clearFilters,
+  } = useMuseDashRecordsFilter();
   const rawScores = useMemo(
     () => player.data ? buildRawScores(player.data, albums.data, ce.data, diffdiff.data) : [],
     [player.data, albums.data, ce.data, diffdiff.data],
@@ -194,24 +195,22 @@ export function MuseDashRecordsScreen() {
     : [], [albums.data]);
   const baseFiltered = useMemo(() => {
     const normalized = keyword.trim().toLowerCase();
-    const minConstant = constantMin === '' ? undefined : Number(constantMin);
-    const maxConstant = constantMax === '' ? undefined : Number(constantMax);
-    const minAcc = accMin === '' ? undefined : Number(accMin);
-    const maxAcc = accMax === '' ? undefined : Number(accMax);
     return rawScores.filter((item) => {
-      if (difficultySlot !== 'all' && item.play.difficulty !== difficultySlot) return false;
-      if (dlc !== 'all' && item.albumTitle !== dlc) return false;
-      if (minConstant !== undefined && (item.constant === undefined || item.constant < minConstant)) return false;
-      if (maxConstant !== undefined && (item.constant === undefined || item.constant > maxConstant)) return false;
-      if (minAcc !== undefined && item.play.acc < minAcc) return false;
-      if (maxAcc !== undefined && item.play.acc > maxAcc) return false;
+      if (!matchesMuseDashDifficultySlotFilter([], item.play.difficulty, difficultySlot)) return false;
+      if (!matchesMuseDashDlcFilter(item.albumTitle, dlc)) return false;
+      if (item.constant === undefined) {
+        if (constantMin !== '' || constantMax !== '') return false;
+      } else if (!matchesMuseDashConstantRange(item.constant, constantMin, constantMax)) {
+        return false;
+      }
+      if (!matchesMuseDashAccRange(item.play.acc, accMin, accMax)) return false;
       if (!normalized) return true;
       const title = item.song ? museDashSongTitle(item.song) : item.play.uid;
       return title.toLowerCase().includes(normalized)
         || (item.song ? museDashSongAuthor(item.song).toLowerCase().includes(normalized) : false)
         || item.play.uid.includes(normalized);
     });
-  }, [rawScores, difficultySlot, dlc, constantMin, constantMax, accMin, accMax, keyword]);
+  }, [rawScores, keyword, difficultySlot, dlc, constantMin, constantMax, accMin, accMax]);
   const [detailVersion, setDetailVersion] = useState(0);
   useEffect(() => {
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
@@ -240,16 +239,13 @@ export function MuseDashRecordsScreen() {
   const controls = <>
     <SearchHeader accessibilityLabel="筛选喵斯快跑成绩" placeholder="搜索歌曲、作者或 uid" value={keyword}
       onChangeText={setKeyword} loaded={records.length} />
-    <MuseDashRecordsFilterBar expanded={filterExpanded} difficultySlot={difficultySlot} dlc={dlc}
+    <MuseDashRecordsFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
       constantMin={constantMin} constantMax={constantMax} accMin={accMin} accMax={accMax}
       achievement={achievement} dlcOptions={dlcOptions}
-      onExpandedChange={setFilterExpanded} onDifficultySlotChange={setDifficultySlot}
+      onCollapsedChange={setCollapsed} onDifficultySlotChange={setDifficultySlot}
       onDlcChange={setDlc} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
       onAccMinChange={setAccMin} onAccMaxChange={setAccMax} onAchievementChange={setAchievement}
-      onReset={() => {
-        setDifficultySlot('all'); setDlc('all'); setConstantMin(''); setConstantMax('');
-        setAccMin(''); setAccMax(''); setAchievement('all');
-      }} />
+      onReset={clearFilters} />
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <RecordsListPage beforeList={controls} isLoading={loading} isError={!!error}
@@ -269,12 +265,11 @@ export function MuseDashCatalogScreen() {
   const inset = useNativeTabBottomInset();
   const albums = useMuseDashAlbums();
   const diffdiff = useMuseDashDiffdiff();
-  const [keyword, setKeyword] = useState('');
-  const [filterExpanded, setFilterExpanded] = useState(true);
-  const [difficultySlot, setDifficultySlot] = useState<MuseDashDifficultySlot>('all');
-  const [dlc, setDlc] = useState<MuseDashDlcFilter>('all');
-  const [constantMin, setConstantMin] = useState('');
-  const [constantMax, setConstantMax] = useState('');
+  const {
+    keyword, collapsed, difficultySlot, dlc, constantMin, constantMax,
+    setKeyword, setCollapsed, setDifficultySlot, setDlc,
+    setConstantMin, setConstantMax, clearFilters,
+  } = useMuseDashCatalogFilter();
   const constants = useMemo(() => diffdiff.data ? museDashDiffdiffMap(diffdiff.data) : null, [diffdiff.data]);
   const dlcOptions = useMemo(() => albums.data
     ? [...new Set(museDashSongsFromAlbums(albums.data).map((item) => item.albumTitle))]
@@ -282,20 +277,17 @@ export function MuseDashCatalogScreen() {
   const songs = useMemo(() => {
     const all = albums.data ? museDashSongsFromAlbums(albums.data) : [];
     const normalized = keyword.trim().toLowerCase();
-    const minConstant = constantMin === '' ? undefined : Number(constantMin);
-    const maxConstant = constantMax === '' ? undefined : Number(constantMax);
     return all.filter(({ song, albumTitle }) => {
-      if (difficultySlot !== 'all' && song.difficulty[difficultySlot] === '0') return false;
-      if (dlc !== 'all' && albumTitle !== dlc) return false;
+      const availableSlots = song.difficulty.map((level) => level !== '0');
+      if (!matchesMuseDashDifficultySlotFilter(availableSlots, difficultySlot === 'all' ? 0 : difficultySlot, difficultySlot)) return false;
+      if (!matchesMuseDashDlcFilter(albumTitle, dlc)) return false;
       if (normalized && !museDashSongTitle(song).toLowerCase().includes(normalized)
         && !museDashSongAuthor(song).toLowerCase().includes(normalized)) return false;
-      if (minConstant !== undefined || maxConstant !== undefined) {
+      if (constantMin !== '' || constantMax !== '') {
         const inRange = constants
           ? song.difficulty.some((_, index) => {
             const constant = constants.get(`${song.uid}:${index}`)?.[4];
-            return constant !== undefined
-              && (minConstant === undefined || constant >= minConstant)
-              && (maxConstant === undefined || constant <= maxConstant);
+            return constant !== undefined && matchesMuseDashConstantRange(constant, constantMin, constantMax);
           })
           : false;
         if (!inRange) return false;
@@ -315,11 +307,11 @@ export function MuseDashCatalogScreen() {
   const search = <>
     <SearchHeader accessibilityLabel="搜索喵斯快跑歌曲" placeholder="搜索歌曲或作者" value={keyword}
       onChangeText={setKeyword} loaded={songs.length} />
-    <MuseDashCatalogFilterBar expanded={filterExpanded} difficultySlot={difficultySlot} dlc={dlc}
+    <MuseDashCatalogFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
       constantMin={constantMin} constantMax={constantMax} dlcOptions={dlcOptions}
-      onExpandedChange={setFilterExpanded} onDifficultySlotChange={setDifficultySlot}
+      onCollapsedChange={setCollapsed} onDifficultySlotChange={setDifficultySlot}
       onDlcChange={setDlc} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-      onReset={() => { setDifficultySlot('all'); setDlc('all'); setConstantMin(''); setConstantMax(''); }} />
+      onReset={clearFilters} />
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <CatalogListPage beforeList={search} isLoading={albums.isLoading} isError={albums.isError}

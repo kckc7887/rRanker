@@ -227,6 +227,17 @@ export function resolveMuseDashAchievement(acc: number, miss: number | undefined
   return acc >= 100 ? 'AP' : 'FC';
 }
 
+/** 成就筛选选项与文案（仿 maimai-filters 的 MAIMAI_FC_ACHIEVEMENTS 模式）。 */
+export const MUSE_DASH_ACHIEVEMENT_FILTERS: readonly { value: 'all' | 'fc' | 'ap'; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'fc', label: 'FC' },
+  { value: 'ap', label: 'AP' },
+];
+
+export function museDashAchievementFilterLabel(filter: 'all' | 'fc' | 'ap'): string {
+  return MUSE_DASH_ACHIEVEMENT_FILTERS.find((item) => item.value === filter)?.label ?? '全部';
+}
+
 /** 成就筛选（仿 maimai-filters 纯函数模式）：全部恒真；FC 需 miss 为 0（含 AP）；AP 需 miss 为 0 且 ACC 100。 */
 export function matchesMuseDashAchievementFilter(
   acc: number,
@@ -236,6 +247,54 @@ export function matchesMuseDashAchievementFilter(
   if (filter === 'all') return true;
   if (miss !== 0) return false;
   return filter === 'ap' ? acc >= 100 : true;
+}
+
+/** 定数下限/上限输入解析（仿 parseConstantBound）；非法或空输入返回 undefined。 */
+export function parseMuseDashConstantBound(input: string): number | undefined {
+  const text = input.trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/** 定数区间匹配：constant 落在 [min, max] 内（输入为空端不限制）。 */
+export function matchesMuseDashConstantRange(constant: number, minInput: string, maxInput: string): boolean {
+  const min = parseMuseDashConstantBound(minInput);
+  const max = parseMuseDashConstantBound(maxInput);
+  if (min !== undefined && constant < min) return false;
+  if (max !== undefined && constant > max) return false;
+  return true;
+}
+
+/** ACC 下限/上限输入解析（仿 parseAchievementBound，喵斯 ACC 上限 100）。 */
+export function parseMuseDashAccBound(input: string): number | undefined {
+  const text = input.trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? value : undefined;
+}
+
+/** ACC 区间匹配：acc 落在 [min, max] 内（输入为空端不限制）。 */
+export function matchesMuseDashAccRange(acc: number, minInput: string, maxInput: string): boolean {
+  const min = parseMuseDashAccBound(minInput);
+  const max = parseMuseDashAccBound(maxInput);
+  if (min !== undefined && acc < min) return false;
+  if (max !== undefined && acc > max) return false;
+  return true;
+}
+
+/** 难度档筛选：曲库歌曲（存在该档）或成绩（难度等于该档）。 */
+export function matchesMuseDashDifficultySlotFilter(
+  availableSlots: readonly boolean[],
+  difficulty: number,
+  slot: 'all' | 0 | 1 | 2 | 3 | 4,
+): boolean {
+  return slot === 'all' || (slot === difficulty && (availableSlots[difficulty] ?? true));
+}
+
+/** DLC（专辑）筛选：专辑标题等于所选或未选。 */
+export function matchesMuseDashDlcFilter(albumTitle: string, filter: 'all' | string): boolean {
+  return filter === 'all' || albumTitle === filter;
 }
 
 /** ACC 色阶：100 金、95 银、90 红、80 蓝、70 绿、60 灰、更低紫。 */
