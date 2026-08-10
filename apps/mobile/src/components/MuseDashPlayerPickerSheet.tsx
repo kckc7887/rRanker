@@ -1,12 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useMuseDashSearch } from '@/hooks/use-muse-dash';
+import { useMuseDashPlayer, useMuseDashSearch } from '@/hooks/use-muse-dash';
 import { useAppTheme } from '@/theme/app-theme';
 
 export type MuseDashSearchResult = { nickname: string; userId: string };
+
+/** musedash.moe 的 user_id 是 32 位小写 hex（可带连字符）。 */
+function normalizeUserId(value: string): string | null {
+  const normalized = value.replace(/-/g, '');
+  return /^[0-9a-f]{32}$/i.test(normalized) ? normalized : null;
+}
 
 export function MuseDashPlayerPickerSheet({
   visible, onClose, onSelect,
@@ -19,12 +25,16 @@ export function MuseDashPlayerPickerSheet({
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const debounced = useDebouncedValue(query, 350).trim();
-  const search = useMuseDashSearch(debounced);
-  const players: MuseDashSearchResult[] = debounced
-    ? (search.data ?? []).map(([nickname, userId]) => ({ nickname, userId }))
-    : [];
-  const loading = search.isFetching;
-  const error = search.error;
+  const userId = useMemo(() => normalizeUserId(debounced), [debounced]);
+  const search = useMuseDashSearch(userId === null ? debounced : '');
+  const direct = useMuseDashPlayer(userId);
+  const players: MuseDashSearchResult[] = userId === null
+    ? (search.data ?? []).map(([nickname, uid]) => ({ nickname, userId: uid }))
+    : direct.data
+      ? [{ nickname: direct.data.user.nickname, userId: direct.data.user.user_id }]
+      : [];
+  const loading = userId === null ? search.isFetching : direct.isFetching;
+  const error = userId === null ? search.error : direct.error;
 
   useEffect(() => { if (!visible) { setQuery(''); setBusyId(null); } }, [visible]);
 
@@ -34,7 +44,7 @@ export function MuseDashPlayerPickerSheet({
         <View style={styles.signature} />
         <View style={styles.header}>
           <View><Text style={[styles.title, { color: theme.text }]}>绑定喵斯快跑玩家</Text>
-            <Text style={[styles.detail, { color: theme.textMuted }]}>仅搜索公开资料，不需要账号或 Token</Text></View>
+            <Text style={[styles.detail, { color: theme.textMuted }]}>仅搜索公开资料，不需要账号或 Token；支持直接输入 32 位 user_id</Text></View>
           <Pressable accessibilityRole="button" accessibilityLabel="关闭玩家搜索" onPress={onClose}>
             <Text style={[styles.close, { color: theme.accent }]}>完成</Text>
           </Pressable>
