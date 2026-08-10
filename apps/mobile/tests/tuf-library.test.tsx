@@ -17,6 +17,10 @@ const level = {
 } as TufLevel;
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('expo-router', () => ({
+  router: { replace: jest.fn() },
+  useNavigation: () => ({ canGoBack: () => true, goBack: jest.fn() }),
+}));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));
