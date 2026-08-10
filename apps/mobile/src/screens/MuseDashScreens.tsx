@@ -210,13 +210,10 @@ export function MuseDashRecordsScreen() {
         || item.play.uid.includes(normalized);
     });
   }, [rawScores, difficultySlot, dlc, constantMin, constantMax, accMin, accMax, keyword]);
-  const missMap = useMuseDashMissMap(
-    baseFiltered.map((item) => ({
-      uid: item.play.uid, difficulty: item.play.difficulty, platform: item.play.platform ?? 'mobile',
-    })),
-    userId,
-    achievement !== 'all',
-  );
+  const missItems = useMemo(() => baseFiltered.map((item) => ({
+    uid: item.play.uid, difficulty: item.play.difficulty, platform: item.play.platform ?? 'mobile',
+  })), [baseFiltered]);
+  const missMap = useMuseDashMissMap(missItems, userId, achievement !== 'all');
   const records = useMemo(() => {
     const filtered = achievement === 'all'
       ? baseFiltered
