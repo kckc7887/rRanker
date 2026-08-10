@@ -99,12 +99,12 @@
   - 实现思路：保留独立 `musedash:` 命名空间 DTO/Zod/缓存快照；实现 `GameContentAdapter<'musedash'>` 与共享展示模型；5 个查询 hook 复用 `cacheFirstLoad`（player 按 userId、albums/ce/diffdiff 全局缓存）；页面全部复用 `BestListPage`/`RecordsListPage`/`CatalogListPage`/`GameScoreCard`/`GameSongRow`/`GameChartResultCard`；Best 30 按社区单曲 Rating（sum）降序；成绩展示分数/ACC/Rating/排名与角色、精灵（名称来自 `/ce` 缓存）。
   - 依赖/风险：依赖 musedash.moe 公开接口可用性（无正式限流文档，沿用请求去重与搜索防抖）；上游 `levelDesigner` 含 null 已由 Schema+适配器过滤；`sum` 语义（单曲 Rating）基于数据正相关性确认。
   - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-10 完成，见 `changelog/2026-08-10_喵斯快跑接入musedash社区.md`；同日绑定弹层支持直接输入 32 位 user_id 直查，见 `changelog/2026-08-10_喵斯快跑玩家搜索支持直接输入user_id.md`；2026-08-11 板块重置完成，见完成项 17）。
-- ✅ 17. 喵斯快跑板块重置（参照舞萌/中二/Phigros，不参照 adofai）
-  - 目标：喵斯成绩卡、曲库卡与歌曲详情按舞萌/中二/Phigros 口径重做；成就（AP/FC）按 `/rank/:uid/:difficulty/:platform/:id` 请求到的 miss 数判定；难度 0-4 更名 EASY/HARD/MASTER/HIDDEN/EX 并配绿蓝粉黑白；总览移除「公开资料」卡与数据状态「读取方式」文案（adofai 同步）；数据来源统一显示 MuseDash.moe；开放喵斯个人曲库（练习清单与谱面标签）。
-  - 用户价值：成绩卡以 ACC 为第一视觉（100金/95银/90红/80蓝/70绿/60灰/更低紫），评价 S/A/B/C/D 与成就 AP 金/FC 粉、排名 #N 分级配色一目了然；详情页封面+信息栏+难度轮播卡片默认进入 MASTER，可直接加入练习清单并打本地标签；列表卡片按需懒加载 miss 判定成就。
-  - 实现思路：新增 `MuseDashPlayDetail` DTO/Provider 端点/按玩家+歌曲+难度+平台 SQLite 快照/`useMuseDashPlayDetail` 卡片懒加载（缓存优先+请求去重）；`presentMuseDashScore/Song/Chart` 改为 ACC 主指标、难度(定数)、评价、成就、#N 排名、角色/精灵/平台标签，曲库标签仅色+定数（非数字等级前缀如 "L 7.56"）；详情页复用共享 `ChartCarousel`/`GameChartResultCard`/`TagEditor`，默认档 MASTER、无 MASTER 取 MASTER 及以下最高档；`libraryRef` 映射到现有 ChartType=SD + levelIndex，总览「我的曲库」与曲库页按 adofai 先例开放；封面使用 `https://musedash.moe/covers/{name}.webp`（已验证存在）。
-  - 依赖/风险：成就依赖 `/rank` 明细接口可用性与 miss 字段；列表页每条成绩一个请求（Best 30 最多 30 个），靠缓存+去重收敛；不修改其他游戏数据、存储 Schema、备份格式与版本号。
-  - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-11 完成，见 `changelog/2026-08-11_喵斯板块重置.md`）。后续计划：世界排行（`/rank/:uid/:difficulty/:platform` 榜单浏览）。
+- ✅ 17. 喵斯快跑板块全删重做（参照舞萌/中二/Phigros，不参照 adofai）
+  - 目标：此前按 adofai（TUF）口径实现的喵斯板块整体删除重建——成绩卡、曲库卡与歌曲详情严格按舞萌/中二/Phigros 的公共组件与胶囊徽章体系重做；成就（AP/FC）按 `/rank/:uid/:difficulty/:platform/:id` 请求到的 miss 数判定；难度 0-4 更名 EASY/HARD/MASTER/HIDDEN/EX 并配绿蓝粉黑白；总览无「公开资料」卡、数据状态无「读取方式」（adofai 同步保留）；数据来源统一显示 MuseDash.moe；开放喵斯个人曲库（练习清单与谱面标签）。
+  - 用户价值：成绩卡以 ACC 大字（24/900）为第一视觉并按色阶着色（100金/95银/90红/80蓝/70绿/60灰/更低紫），标签行全实心胶囊（height 24/borderRadius 999/fontSize 9-10/900，难度 `MASTER (8.20)` 带空格，评价 S/A/B/C/D、成就 AP 金/FC 粉、排名 #1 彩/<10 金/<50 蓝/<100 绿、角色/精灵/平台中性灰）；曲库卡封面 62×62 + 曲师 · DLC 来源 + 仅定数胶囊（非数字等级前缀 "L 7.56"）；详情页 = phigros 同款封面 hero + BPM/DLC 信息栏 + 中二 DifficultyCard 结构难度卡（默认 MASTER、无 MASTER 取 MASTER 及以下最高档）+ 练习清单 + 本地标签 + 下方数据来源。
+  - 实现思路：删除全部旧实现（11 个源文件/4 组件/弹层/图标/8 测试/fixtures/注册链引用，共享文件回滚到接入前基线并以 `c785460`/`e6b5be4` 验收版本恢复注册链，保留 adofai 合规改动）后重建：`MuseDashPlayDetail` DTO/端点/按玩家+歌曲+难度+平台 SQLite 快照/`useMuseDashPlayDetail` 卡片懒加载；领域纯函数（成就/ACC 色阶/评价/排名/封面 URL）；`domain/musedash-level-theme.ts`（{background,border,text,tint}，仿中二 DIFFICULTY_THEME）与 `musedash-tone-theme.ts`（仿 phigros-rate-theme）；徽章组件仿 `ChunithmDifficultyBadge`（display constant/label/label-and-value）与 `ChunithmScoreCard`（RankBadge/AchievementBadge）；成绩卡/曲库卡/详情卡样式逐项对齐参考文件（borderRadius 14/padding 14/标题 15·700/右侧 Rating 19·900 accent）；`presentMuseDashScore` 的 achievementRows 只承载成就+角色+精灵，平台与排名徽章组件层渲染（仿 PhigrosXingBadge）；`libraryRef` 映射 ChartType=SD + levelIndex；封面 `https://musedash.moe/covers/{name}.webp`（已验证存在）。
+  - 依赖/风险：成就依赖 `/rank` 明细接口可用性与 miss 字段；列表页每条成绩一个请求（Best 30 最多 30 个），靠缓存+去重收敛；不修改其他游戏数据、存储 Schema、备份格式与版本号；用户已绑定账号（KV v1）与快照数据兼容保留。
+  - 当前优先级：高；暂缓原因：无，用户已明确要求实现；状态：✅（2026-08-11 完成，见 `changelog/2026-08-11_喵斯板块全删重做.md`；此前错误实现记录保留于 `changelog/2026-08-11_喵斯板块重置.md`）。后续计划：世界排行（`/rank/:uid/:difficulty/:platform` 榜单浏览）。
 
 ## 暂缓
 
