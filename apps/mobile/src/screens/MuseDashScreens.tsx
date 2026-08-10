@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -52,7 +52,6 @@ import {
   type MuseDashAlbumsResponse,
   type MuseDashCeResponse,
   type MuseDashDiffdiffEntry,
-  type MuseDashPlayDetailSnapshot,
   type MuseDashPlayer,
   type MuseDashRawScore,
   type MuseDashSong,
@@ -66,10 +65,10 @@ import {
   useMuseDashCe,
   useMuseDashDiffdiff,
   useMuseDashPlayDetail,
+  useMuseDashPlayDetails,
   useMuseDashPlayer,
 } from '@/hooks/use-muse-dash';
 import { useUserLibrary } from '@/hooks/use-user-library';
-import { queryClient } from '@/state/query-client';
 import { useMuseDashCatalogFilter } from '@/state/musedash-catalog-filter';
 import { useMuseDashRecordsFilter } from '@/state/musedash-records-filter';
 import { useSession } from '@/state/session-store';
@@ -211,29 +210,21 @@ export function MuseDashRecordsScreen() {
         || item.play.uid.includes(normalized);
     });
   }, [rawScores, keyword, difficultySlot, dlc, constantMin, constantMax, accMin, accMax]);
-  const [detailVersion, setDetailVersion] = useState(0);
-  useEffect(() => {
-    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-      const key = event.query.queryKey;
-      if (Array.isArray(key) && key[0] === 'musedash' && key[1] === 'play-detail') {
-        setDetailVersion((version) => version + 1);
-      }
-    });
-    return unsubscribe;
-  }, []);
+  const missItems = useMemo(() => baseFiltered.map((item) => ({
+    uid: item.play.uid, difficulty: item.play.difficulty, platform: item.play.platform ?? 'mobile',
+  })), [baseFiltered]);
+  const missMap = useMuseDashPlayDetails(missItems, userId, achievement !== 'all');
   const records = useMemo(() => {
     const filtered = achievement === 'all'
       ? baseFiltered
-      : baseFiltered.filter((item) => {
-        const snapshot = queryClient.getQueryData(['musedash', 'play-detail', userId,
-          item.play.uid, item.play.difficulty, item.play.platform ?? 'mobile']);
-        const miss = (snapshot as MuseDashPlayDetailSnapshot | undefined)?.data?.play?.miss;
-        return matchesMuseDashAchievementFilter(item.play.acc, miss, achievement);
-      });
+      : baseFiltered.filter((item) =>
+        matchesMuseDashAchievementFilter(
+          item.play.acc,
+          missMap.get(`${item.play.uid}:${item.play.difficulty}`),
+          achievement,
+        ));
     return sortRawScores(filtered);
-    // detailVersion 订阅 play-detail 缓存更新，卡片懒加载 miss 后筛选结果自动刷新
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseFiltered, achievement, detailVersion, userId]);
+  }, [baseFiltered, achievement, missMap]);
   const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
   const error = player.error ?? albums.error ?? ce.error ?? diffdiff.error;
   const controls = <>

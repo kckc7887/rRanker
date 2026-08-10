@@ -27,13 +27,6 @@ const mockSetChartPractice = jest.fn();
 const mockSetTags = jest.fn();
 let mockMissMap: ReadonlyMap<string, number | undefined> = new Map();
 
-function mockGetQueryData(key: unknown): { data: { play: { miss: number } }; source: object } | undefined {
-  const parts = key as readonly unknown[];
-  if (!Array.isArray(parts) || parts[0] !== 'musedash' || parts[1] !== 'play-detail') return undefined;
-  const miss = mockMissMap.get(`${String(parts[3])}:${String(parts[4])}`);
-  return miss === undefined ? undefined : { data: { play: { miss } }, source: {} };
-}
-
 jest.mock('expo-router', () => ({
   router: { push: () => undefined },
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
@@ -72,14 +65,9 @@ jest.mock('@/hooks/use-muse-dash', () => {
     useMuseDashCe: () => query(mockCe),
     useMuseDashDiffdiff: () => query(mockDiffdiff),
     useMuseDashPlayDetail: () => query(undefined),
+    useMuseDashPlayDetails: () => mockMissMap,
   };
 });
-jest.mock('@/state/query-client', () => ({
-  queryClient: {
-    getQueryData: (key: unknown) => mockGetQueryData(key),
-    getQueryCache: () => ({ subscribe: () => () => undefined }),
-  },
-}));
 jest.mock('@/hooks/use-user-library', () => {
   const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
   const state: { data: unknown[] } = { data: [] };
