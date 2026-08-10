@@ -9,6 +9,8 @@ import {
 } from '@/screens/MuseDashScreens';
 
 const mockRefetch = jest.fn();
+const mockBack = jest.fn();
+const mockCanGoBack = jest.fn(() => true);
 let mockPlayer: MuseDashPlayer | undefined;
 let mockAlbums: MuseDashAlbumsResponse | undefined;
 let mockCe: MuseDashCeResponse | undefined;
@@ -17,7 +19,10 @@ const mockDiffdiff = [
   ['0-47', 4, '12', 739.7, 12.5],
 ] as [string, number, string, number, number][];
 
-jest.mock('expo-router', () => ({ router: { push: () => undefined } }));
+jest.mock('expo-router', () => ({
+  router: { push: () => undefined },
+  useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
+}));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -134,5 +139,11 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByText('290,510').length).toBeGreaterThan(0);
     const unplayed = await render(<MuseDashSongDetailScreen songId="0-48" />);
     expect(unplayed.getByText('当前绑定玩家尚未游玩此曲。')).toBeTruthy();
+  });
+
+  it('shows a back button that navigates back when possible', async () => {
+    const screen = await render(<MuseDashSongDetailScreen songId="0-47" />);
+    await fireEvent.press(screen.getByLabelText('返回'));
+    expect(mockBack).toHaveBeenCalledTimes(1);
   });
 });
