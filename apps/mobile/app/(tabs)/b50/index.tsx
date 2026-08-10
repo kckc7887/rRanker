@@ -26,6 +26,7 @@ import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufBestScreen } from '@/screens/TufScreens';
+import { MuseDashBestScreen } from '@/screens/MuseDashScreens';
 
 type BestSection = BestListSection & { data: ScoreRecord[] };
 
@@ -56,6 +57,9 @@ export function Best50Screen() {
   }
   if (activeGameId === 'adofai') {
     return <TufBestScreen />;
+  }
+  if (activeGameId === 'musedash') {
+    return <MuseDashBestScreen />;
   }
   return <MaimaiBest50Screen />;
 }

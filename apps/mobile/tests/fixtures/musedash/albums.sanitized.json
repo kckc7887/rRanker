@@ -1,0 +1,45 @@
+{
+  "ALBUM1": {
+    "title": "Default Music",
+    "json": "ALBUM1",
+    "tag": "Default",
+    "music": {
+      "0-48": {
+        "uid": "0-48",
+        "name": "Magical Wonderland (More colorful mix)",
+        "author": "3R2",
+        "cover": "magical_wonderland_cover",
+        "bpm": "160",
+        "levelDesigner": ["Howard_Y"],
+        "difficulty": ["1", "3", "0", "0", "0"],
+        "ChineseS": { "name": "Magical Wonderland (More colorful mix)", "author": "3R2" }
+      },
+      "0-47": {
+        "uid": "0-47",
+        "name": "Sample Song",
+        "author": "Sample Author",
+        "cover": "sample_cover",
+        "bpm": "128",
+        "levelDesigner": ["Mapper A", "Mapper B"],
+        "difficulty": ["2", "5", "8", "11", "12"],
+        "ChineseS": { "name": "示例歌曲", "author": "示例作者" }
+      }
+    }
+  },
+  "ALBUM2": {
+    "title": "Second Album",
+    "json": "ALBUM2",
+    "tag": "Pack",
+    "music": {
+      "1-1": {
+        "uid": "1-1",
+        "name": "Another Track",
+        "author": "Another Author",
+        "cover": "another_cover",
+        "bpm": "140",
+        "levelDesigner": ["Mapper C"],
+        "difficulty": ["1", "0", "0", "0", "0"]
+      }
+    }
+  }
+}

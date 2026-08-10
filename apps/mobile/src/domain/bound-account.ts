@@ -57,6 +57,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'phi-taptap': 'TapTap 云存档',
   'chunithm-temp': '无成绩临时账号',
   tuf: 'TUF 社区',
+  'musedash-moe': '喵斯快跑社区',
 };
 
 export function createTufBoundAccount(input: {
@@ -83,6 +84,28 @@ export function tufPlayerIdFromAccountId(accountId: string): number | null {
   if (!match) return null;
   const playerId = Number(match[1]);
   return Number.isSafeInteger(playerId) && playerId > 0 ? playerId : null;
+}
+
+export function createMuseDashBoundAccount(input: {
+  userId: string;
+  displayName: string;
+  rl?: number | null;
+}): BoundAccount {
+  const profile = getGameProfile('musedash');
+  return {
+    id: `musedash:musedash-moe:${input.userId}`,
+    gameId: 'musedash',
+    providerId: 'musedash-moe',
+    displayName: input.displayName,
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: input.rl == null || !Number.isFinite(input.rl) ? '—' : input.rl.toFixed(2),
+    providerTitle: PROVIDER_TITLES['musedash-moe'],
+  };
+}
+
+export function museDashUserIdFromAccountId(accountId: string): string | null {
+  const match = /^musedash:musedash-moe:(.+)$/.exec(accountId);
+  return match ? match[1] : null;
 }
 
 export function createTestBoundAccount(): BoundAccount {
@@ -241,6 +264,6 @@ export function createPhigrosBoundAccount(input: {
 }
 
 export function groupBoundAccountGameIds(accounts: BoundAccount[]): GameId[] {
-  const order: GameId[] = ['maimai', 'chunithm', 'phigros', 'adofai', 'test'];
+  const order: GameId[] = ['maimai', 'chunithm', 'phigros', 'adofai', 'musedash', 'test'];
   return order.filter((gameId) => accounts.some((account) => account.gameId === gameId));
 }

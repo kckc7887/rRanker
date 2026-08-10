@@ -78,6 +78,10 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   if (gameId === 'adofai' && key.startsWith('tuf:')) {
     return true;
   }
+  // Muse Dash 曲库、定数表、名称表与玩家成绩缓存
+  if (gameId === 'musedash' && key.startsWith('musedash:')) {
+    return true;
+  }
   const accountId = accountIdFromResourceKey(key);
   if (accountId) return accountIdBelongsToGame(accountId, gameId);
   return false;
@@ -209,12 +213,20 @@ const adofaiAdapter: GameStorageAdapter = {
   clear: (snapshots) => clearGameSqlite(snapshots, 'adofai', false),
 };
 
+const musedashAdapter: GameStorageAdapter = {
+  gameId: 'musedash',
+  title: findGame('musedash')?.title ?? '喵斯快跑',
+  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'musedash', false),
+  clear: (snapshots) => clearGameSqlite(snapshots, 'musedash', false),
+};
+
 /** 新游戏接入：在此注册 measure/clear 即可出现在环形图与勾选列表。 */
 export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   maimaiAdapter,
   chunithmAdapter,
   phigrosAdapter,
   adofaiAdapter,
+  musedashAdapter,
 ];
 
 export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | undefined {

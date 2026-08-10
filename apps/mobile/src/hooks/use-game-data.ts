@@ -40,13 +40,19 @@ import {
   CHUNITHM_CATALOG_SCHEMA_VERSION,
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
-import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
+import { tufPlayerIdFromAccountId, museDashUserIdFromAccountId } from '@/domain/bound-account';
 import {
   loadTufPlayerFresh,
   makeTufSnapshot,
   TufCache,
 } from '@/services/tuf-cache';
+import {
+  loadMuseDashPlayerFresh,
+  makeMuseDashSnapshot,
+  MuseDashCache,
+} from '@/services/muse-dash-cache';
 import type { TufPlayer } from '@/domain/tuf';
+import type { MuseDashPlayer } from '@/domain/muse-dash';
 import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
 import {
@@ -56,6 +62,7 @@ import {
 
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
+const museDashCache = new MuseDashCache();
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -79,7 +86,9 @@ export function useGameData() {
 
   const query = useQuery({
     queryKey,
-    ...(activeGameId === 'adofai' ? { staleTime: 60_000, gcTime: 10 * 60_000 } : {}),
+    ...(activeGameId === 'adofai' || activeGameId === 'musedash'
+      ? { staleTime: 60_000, gcTime: 10 * 60_000 }
+      : {}),
     queryFn: async (): Promise<GameDataBundle> => {
       if (activeGameId === 'adofai') {
         const playerId = tufPlayerIdFromAccountId(activeAccountId);
@@ -107,6 +116,40 @@ export function useGameData() {
             const player = await loadTufPlayerFresh(playerId);
             const fresh = makeTufSnapshot(player);
             void tufCache.savePlayer(playerId, fresh).catch(() => undefined);
+            return fresh;
+          },
+          onFresh: (fresh) => {
+            queryClient.setQueryData(queryKey, toBundle(fresh.data, fresh.source));
+          },
+        });
+        return toBundle(snapshot.data, snapshot.source);
+      }
+      if (activeGameId === 'musedash') {
+        const userId = museDashUserIdFromAccountId(activeAccountId);
+        if (activeProviderId !== 'musedash-moe' || userId === null) {
+          return {
+            gameId: 'musedash', providerId: null, profile: getGameProfile('musedash'),
+            payload: emptyGamePayload('musedash', '未绑定喵斯快跑玩家'),
+          };
+        }
+        const toBundle = (player: MuseDashPlayer, source: DataSource): GameDataBundle => ({
+          gameId: 'musedash', providerId: 'musedash-moe', profile: getGameProfile('musedash'),
+          payload: {
+            kind: 'musedash', player,
+            playerScore: {
+              label: 'Rating', value: player.rl ?? 0,
+              display: player.rl == null || !Number.isFinite(player.rl) ? '—' : player.rl.toFixed(2),
+            },
+            source,
+          },
+        });
+        // 缓存优先：先渲染本地玩家资料快照（打「数据可能过期」标），后台刷新成功后静默回写。
+        const snapshot = await cacheFirstLoad({
+          loadCached: () => museDashCache.loadPlayer(userId),
+          loadFresh: async () => {
+            const player = await loadMuseDashPlayerFresh(userId);
+            const fresh = makeMuseDashSnapshot(player);
+            void museDashCache.savePlayer(userId, fresh).catch(() => undefined);
             return fresh;
           },
           onFresh: (fresh) => {
@@ -456,6 +499,13 @@ export function useGameData() {
         d.payload.player.avatarUrl ?? d.payload.player.avatar ?? undefined,
       );
     }
+    if (d.payload.kind === 'musedash') {
+      updateBoundAccountScore(
+        activeAccountId,
+        d.payload.playerScore.display,
+        d.payload.player.user.nickname,
+      );
+    }
   }, [activeAccountId, query.data, updateBoundAccountScore]);
 
   return {
@@ -469,6 +519,8 @@ export function useGameData() {
         ? query.data.payload.source.isStale
         : query.data.payload.kind === 'adofai'
           ? query.data.payload.source.isStale
+          : query.data.payload.kind === 'musedash'
+            ? query.data.payload.source.isStale
         : (query.data.payload.kind === 'maimai' || query.data.payload.kind === 'phigros')
           && (query.data.payload.source.isStale || query.data.payload.catalogSource.isStale)
     ),

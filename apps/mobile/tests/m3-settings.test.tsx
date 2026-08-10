@@ -65,6 +65,13 @@ describe('示例账号图标', () => {
     expect(adofai?.icon).not.toBe(findGame('test')?.icon);
     expect(tufIcon).not.toBe(adofai?.icon);
   });
+
+  it('喵斯快跑与喵斯快跑社区使用各自的正式图标', () => {
+    const musedash = findGame('musedash');
+    const musedashMoeIcon = musedash?.providers.find((provider) => provider.id === 'musedash-moe')?.icon;
+    expect(musedash?.icon).not.toBe(findGame('test')?.icon);
+    expect(musedashMoeIcon).not.toBe(musedash?.icon);
+  });
 });
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);

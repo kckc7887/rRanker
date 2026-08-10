@@ -1,0 +1,18 @@
+{
+  "lastUpdate": 1786311369798,
+  "rl": 3.4518686005869577,
+  "diffHistoryNumber": 11,
+  "plays": [
+    { "score": 302027, "acc": 94.16999816894531, "i": 1950, "platform": "mobile", "history": { "lastRank": 1949 }, "difficulty": 2, "uid": "1-1", "sum": 3950, "character_uid": "11", "elfin_uid": "7" },
+    { "score": 194166, "acc": 97.30999755859375, "i": 664, "platform": "mobile", "history": { "lastRank": 664 }, "difficulty": 1, "uid": "0-47", "sum": 1865, "character_uid": "7", "elfin_uid": "6" },
+    { "score": 290510, "acc": 95.47999572753906, "i": 1846, "platform": "pc", "history": { "lastRank": 1845 }, "difficulty": 3, "uid": "0-47", "sum": 3846, "character_uid": "3", "elfin_uid": "6" }
+  ],
+  "user": {
+    "object_id": "5c13fda544d904005f7c64d4",
+    "created_at": "2018-12-14T18:59:49.941Z",
+    "updated_at": "2021-10-02T06:22:18.013Z",
+    "user_id": "6ea4f986ffd211e8aa980242ac110011",
+    "nickname": "SiMOOOOOON"
+  },
+  "key": "0.8472233524150031"
+}

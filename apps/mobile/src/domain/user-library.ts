@@ -10,15 +10,16 @@ export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
 export const MAX_BACKUP_ITEMS = 5000;
 
-const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'chunithm', 'phigros', 'adofai', 'test']);
-const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'adofai', 'test']);
+const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'chunithm', 'phigros', 'adofai', 'musedash', 'test']);
+const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'adofai', 'musedash', 'test']);
 
 /**
  * 曲库歌曲 id 规范化：adofai 关卡 id 是完整数字（如 11372），
- * 不适用 maimai 的 U·TA·GE 截断语义，原样保留；其余游戏沿用 normalizeSongId。
+ * musedash 歌曲 uid 是「专辑-歌曲」格式（如 "0-48"），
+ * 都不适用 maimai 的 U·TA·GE 截断语义，原样保留；其余游戏沿用 normalizeSongId。
  */
 export function normalizeLibrarySongId(gameId: GameId, songId: string | number): string {
-  return gameId === 'adofai' ? String(songId) : normalizeSongId(songId);
+  return gameId === 'adofai' || gameId === 'musedash' ? String(songId) : normalizeSongId(songId);
 }
 
 export interface SongLibraryTarget {

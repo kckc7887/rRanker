@@ -33,6 +33,7 @@ jest.mock('@/state/toolbox-pins', () => ({
       chunithm: [],
       phigros: [],
       adofai: [],
+      musedash: [],
       test: [],
     },
     hydrate: mockHydratePins,

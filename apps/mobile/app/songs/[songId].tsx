@@ -74,6 +74,7 @@ import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufLevelDetailScreen } from '@/screens/TufScreens';
+import { MuseDashSongDetailScreen } from '@/screens/MuseDashScreens';
 
 const CARD_GAP = 12;
 const DIFFICULTY_ORDER: Record<Difficulty, number> = {
@@ -99,6 +100,9 @@ export default function SongDetailScreen() {
   }
   if (activeGameId === 'adofai') {
     return <TufLevelDetailScreen levelId={songId} />;
+  }
+  if (activeGameId === 'musedash') {
+    return <MuseDashSongDetailScreen songId={songId} />;
   }
 
   return <MaimaiSongDetailScreen

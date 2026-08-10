@@ -9,9 +9,10 @@ export type ProviderId =
   | 'phigros-test'
   | 'phi-taptap'
   | 'chunithm-temp'
-  | 'tuf';
+  | 'tuf'
+  | 'musedash-moe';
 export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
-export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'adofai' | 'test';
+export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'adofai' | 'musedash' | 'test';
 export type ProviderBindingKind = 'credentials' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
 
 export type ProviderOption = {
@@ -42,6 +43,8 @@ const chunithmIcon = require('../../assets/images/chunithm.png') as ImageSourceP
 const testGameIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
 const adofaiIcon = require('../../assets/images/adofai.png') as ImageSourcePropType;
 const tufIcon = require('../../assets/images/tuf.png') as ImageSourcePropType;
+const museDashIcon = require('../../assets/images/musedash.png') as ImageSourcePropType;
+const museDashMoeIcon = require('../../assets/images/musedash-moe.png') as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
   {
@@ -122,6 +125,21 @@ export const GAME_OPTIONS: GameOption[] = [
       title: 'TUF 社区',
       detail: '搜索公开玩家 · 无需登录',
       icon: tufIcon,
+      available: true,
+    }],
+  },
+  {
+    id: 'musedash',
+    title: '喵斯快跑',
+    icon: museDashIcon,
+    available: true,
+    pendingDetail: '',
+    providers: [{
+      id: 'musedash-moe',
+      bindingKind: 'public-player',
+      title: '喵斯快跑社区',
+      detail: '搜索公开玩家 · 无需登录',
+      icon: museDashMoeIcon,
       available: true,
     }],
   },
