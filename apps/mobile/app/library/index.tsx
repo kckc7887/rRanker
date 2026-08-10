@@ -9,10 +9,17 @@ import {
   type ChunithmSong,
 } from '@/domain/chunithm';
 import type { Song } from '@/domain/models';
+import {
+  MUSE_DASH_DIFFICULTY_LABELS,
+  museDashCoverUrl,
+  museDashSongAuthor,
+  museDashSongTitle,
+} from '@/domain/muse-dash';
 import type { TufLevel } from '@/domain/tuf';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
+import { useMuseDashAlbums } from '@/hooks/use-muse-dash';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useTufLevelSearch } from '@/hooks/use-tuf';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -20,7 +27,8 @@ import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
 type Mode = 'all' | 'favorite' | 'practice';
-type LibrarySong = Song | ChunithmSong | TufLevel;
+type MuseDashLibrarySong = { id: string; title: string; artist?: string; cover?: string };
+type LibrarySong = Song | ChunithmSong | TufLevel | MuseDashLibrarySong;
 
 function isChunithmSong(song: LibrarySong): song is ChunithmSong {
   return 'difficulties' in song;
@@ -30,9 +38,14 @@ function isTufLevel(song: LibrarySong): song is TufLevel {
   return 'levelCredits' in song;
 }
 
+function isMuseDashSong(song: LibrarySong): song is MuseDashLibrarySong {
+  return 'cover' in song;
+}
+
 export default function UserLibraryScreen() {
   const activeGameId = useSession((state) => state.activeGameId);
   if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
+  if (activeGameId === 'musedash') return <MuseDashLibraryScreen />;
   return <SharedLibraryScreen />;
 }
 
@@ -131,6 +144,26 @@ function AdofaiLibraryScreen() {
   return <LibraryList items={items} songsById={songsById} />;
 }
 
+function MuseDashLibraryScreen() {
+  const items = useUserLibrary().data ?? [];
+  const museDashAlbums = useMuseDashAlbums();
+  const songsById = useMemo(() => {
+    const map = new Map<string, LibrarySong>();
+    for (const entry of Object.values(museDashAlbums.data ?? {})) {
+      for (const song of Object.values(entry.music)) {
+        map.set(song.uid, {
+          id: song.uid,
+          title: museDashSongTitle(song),
+          artist: museDashSongAuthor(song),
+          cover: song.cover,
+        });
+      }
+    }
+    return map;
+  }, [museDashAlbums.data]);
+  return <LibraryList items={items} songsById={songsById} />;
+}
+
 function LibraryRow({
   item,
   song,
@@ -142,8 +175,9 @@ function LibraryRow({
 }) {
   const theme = useAppTheme();
   const chunithmSong = song && isChunithmSong(song) ? song : undefined;
-  const standardSong = song && !isChunithmSong(song) && !isTufLevel(song) ? song : undefined;
+  const standardSong = song && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) ? song : undefined;
   const tufLevel = song && isTufLevel(song) ? song : undefined;
+  const museDashSong = song && isMuseDashSong(song) ? song : undefined;
   const chart = item.kind === 'chart'
     ? standardSong?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex)
     : undefined;
@@ -160,9 +194,11 @@ function LibraryRow({
       ? (['EZ', 'HD', 'IN', 'AT'].includes(chart.level)
         ? chart.level
         : `${item.type} ${chart.difficulty.toUpperCase()}`)
-      : chunithmSong
-        ? `难度 ${item.levelIndex}`
-        : `${item.type} 难度 ${item.levelIndex}`
+      : museDashSong
+        ? MUSE_DASH_DIFFICULTY_LABELS[item.levelIndex]
+        : chunithmSong
+          ? `难度 ${item.levelIndex}`
+          : `${item.type} 难度 ${item.levelIndex}`
     : '';
   return <Pressable accessibilityRole="button" onPress={() => router.push({
     pathname: '/songs/[songId]',
@@ -188,6 +224,12 @@ function LibraryRow({
 function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: string | null }) {
   if (!song || isTufLevel(song)) {
     return <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
+  }
+  if (isMuseDashSong(song)) {
+    const url = museDashCoverUrl(song.cover);
+    return url
+      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={url} style={styles.cover} transition={120} />
+      : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   if (blurUrl) {
     return <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={blurUrl} style={styles.cover} transition={120} />;

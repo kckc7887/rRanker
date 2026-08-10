@@ -76,7 +76,7 @@ describe('muse dash cache snapshots', () => {
       data: player,
       source: {
         kind: 'musedash',
-        label: '喵斯快跑社区公开数据',
+        label: 'MuseDash.moe',
         updatedAt: '2026-08-10T00:00:00.000Z',
         isStale: false,
       },
@@ -86,6 +86,16 @@ describe('muse dash cache snapshots', () => {
   it('round-trips player snapshots and invalidates on schema version mismatch', async () => {
     await cache.savePlayer('6ea4f986ffd211e8aa980242ac110011', makeMuseDashSnapshot(player));
     expect((await cache.loadPlayer('6ea4f986ffd211e8aa980242ac110011'))?.data).toEqual(player);
+  });
+
+  it('round-trips play detail snapshots and clears them with the player on unbind', async () => {
+    const detail = { play: { miss: 0, judge: 'ss' }, user: { nickname: '公开玩家' } };
+    await cache.savePlayDetail('a', '13-5', 2, 'mobile', makeMuseDashSnapshot(detail));
+    expect((await cache.loadPlayDetail('a', '13-5', 2, 'mobile'))?.data).toEqual(detail);
+    await cache.savePlayer('a', makeMuseDashSnapshot(player));
+    await cache.clearPlayer('a');
+    expect(await cache.loadPlayer('a')).toBeNull();
+    expect(await cache.loadPlayDetail('a', '13-5', 2, 'mobile')).toBeNull();
   });
 
   it('keeps global resources but clears player-owned caches on unbind', async () => {

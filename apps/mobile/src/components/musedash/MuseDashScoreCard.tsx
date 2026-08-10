@@ -1,45 +1,96 @@
+import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { GameScoreCard } from '@/components/game-content/GameScoreCard';
-import type { MuseDashRawScore } from '@/domain/muse-dash';
-import { presentMuseDashScore } from '@/features/game-content/adapters';
+import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
+import { MuseDashAccValue } from './MuseDashAccValue';
+import { MuseDashAchievementBadge, MuseDashGradeBadge, MuseDashRankBadge } from './MuseDashBadges';
+import { MuseDashDifficultyBadge } from './MuseDashDifficultyBadge';
+import { museDashUserIdFromAccountId } from '@/domain/bound-account';
+import { museDashRankBadge, type MuseDashRawScore } from '@/domain/muse-dash';
+import { useMuseDashPlayDetail } from '@/hooks/use-muse-dash';
+import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { presentMuseDashScore } from '@/features/game-content/adapters';
 
-export function MuseDashScoreCard({ score, position }: { score: MuseDashRawScore; position?: number }) {
+/** 角色/精灵/平台信息徽章：中性灰胶囊。 */
+function NeutralBadge({ label, testID }: { label: string; testID?: string }) {
+  return <View style={styles.neutralBadge} testID={testID}>
+    <Text style={styles.neutralBadgeText}>{label}</Text>
+  </View>;
+}
+
+export const MuseDashScoreCard = memo(function MuseDashScoreCard({
+  score,
+  position,
+}: {
+  score: MuseDashRawScore;
+  position?: number;
+}) {
   const theme = useAppTheme();
-  const p = presentMuseDashScore(score, position);
-  return <GameScoreCard presentation={p} cardStyle={[styles.card, { borderColor: theme.border }]}
-    mainStyle={styles.main} titleStyle={styles.title} pressedStyle={styles.pressed} testID={`musedash-score-${score.play.uid}-${score.play.difficulty}`}
-    side={<View style={styles.side}>
-      <Text style={[styles.difficulty, { color: theme.accent }]}>{p.difficulty.label}</Text>
-      <Text style={[styles.constant, { color: theme.textMuted }]}>{p.difficulty.value ?? '—'}</Text>
-    </View>}>
-    <View style={styles.metrics}>
-      <Text style={[styles.score, { color: theme.text }]}>{p.primaryMetric.text}</Text>
-      <Text style={[styles.metric, { color: theme.textMuted }]}>
-        ACC {formatAcc(score.play.acc)} · Rating {score.play.sum == null ? '—' : String(score.play.sum)} · 排名 #{currentRank(score)}
-      </Text>
-    </View>
-    <View style={styles.badges}>{p.achievementRows.flat().map((badge) => (
-      <View key={badge.key} style={[styles.badge, { borderColor: theme.border }]}>
-        <Text style={[styles.badgeText, { color: theme.textMuted }]}>{badge.label}</Text>
+  const accountId = useSession((state) => state.activeAccountId);
+  const userId = museDashUserIdFromAccountId(accountId);
+  const platform = score.play.platform ?? 'mobile';
+  const detail = useMuseDashPlayDetail(score.play.uid, score.play.difficulty, platform, userId);
+  const presentation = presentMuseDashScore(score, { detail: detail.data, position });
+  const currentRank = score.play.i ?? score.play.history?.lastRank ?? 0;
+  const rankBadge = museDashRankBadge(currentRank);
+  const ratingText = presentation.secondaryMetrics.find((metric) => metric.key === 'rating')?.text ?? '—';
+  return (
+    <GameScoreCard
+      cardStyle={styles.card}
+      mainStyle={styles.main}
+      presentation={presentation}
+      pressedStyle={styles.pressed}
+      side={<View style={styles.ratingBlock}>
+        <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
+        <Text style={[styles.rating, { color: theme.accent }]}>{ratingText}</Text>
+      </View>}
+      testID={`musedash-score-${score.play.uid}-${score.play.difficulty}`}
+      titleStyle={styles.title}
+    >
+      <MuseDashAccValue acc={score.play.acc} />
+      <View style={styles.tagRow} testID={`musedash-card-tags-${score.play.uid}-${score.play.difficulty}`}>
+        <MuseDashDifficultyBadge
+          constant={score.constant}
+          display="label-and-value"
+          level={score.song?.difficulty[score.play.difficulty]}
+          levelIndex={score.play.difficulty}
+        />
+        {presentation.grade ? <MuseDashGradeBadge label={presentation.grade.label} tone={presentation.grade.tone} /> : null}
+        {presentation.achievementRows.flat().map((badge) => (
+          badge.key === 'achievement'
+            ? <MuseDashAchievementBadge key={badge.key} label={badge.label} tone={badge.tone} />
+            : <NeutralBadge key={badge.key} label={badge.label} />
+        ))}
+        {rankBadge ? (rankBadge.tone === 'rank-rainbow'
+          ? <LayeredGradientBadge key="rank" label={rankBadge.label} numberOfLines={1} tone="rainbow"
+            style={styles.rainbowBadge} textStyle={styles.rainbowBadgeText} />
+          : <MuseDashRankBadge key="rank" label={rankBadge.label} tone={rankBadge.tone} />) : null}
+        <NeutralBadge label={platform === 'pc' ? 'PC 端' : '移动端'} />
       </View>
-    ))}</View>
-  </GameScoreCard>;
-}
-
-function formatAcc(value: number): string {
-  return `${value.toFixed(2)}%`;
-}
-
-function currentRank(score: MuseDashRawScore): number {
-  return score.play.i ?? score.play.history?.lastRank ?? 0;
-}
+    </GameScoreCard>
+  );
+});
 
 const styles = StyleSheet.create({
-  card: { minHeight: 112, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, padding: 14, flexDirection: 'row', gap: 10 },
-  main: { flex: 1, gap: 7 }, title: { fontSize: 16, fontWeight: '800' }, pressed: { opacity: 0.82 },
-  metrics: { gap: 2 }, score: { fontSize: 19, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  metric: { fontSize: 12 },
-  side: { alignItems: 'flex-end', gap: 2 }, difficulty: { fontSize: 12, fontWeight: '800' }, constant: { fontSize: 12 },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 }, badge: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 }, badgeText: { fontSize: 9, fontWeight: '700' },
+  card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  pressed: { opacity: 0.72 },
+  main: { flex: 1, minWidth: 0, gap: 3 },
+  title: { fontSize: 15, fontWeight: '700' },
+  tagRow: { minHeight: 24, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 4 },
+  neutralBadge: {
+    minWidth: 32,
+    height: 24,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    backgroundColor: '#9CA3AF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  neutralBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  rainbowBadge: { height: 28 },
+  rainbowBadgeText: { fontSize: 10, fontWeight: '900' },
+  ratingBlock: { minWidth: 58, alignItems: 'flex-end', gap: 2 },
+  ratingLabel: { fontSize: 10, fontWeight: '700' },
+  rating: { fontSize: 19, fontWeight: '900' },
 });

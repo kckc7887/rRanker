@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { MUSE_DASH_DIFFICULTY_LABELS } from '@/domain/muse-dash';
 import { useAppTheme } from '@/theme/app-theme';
 
 export type MuseDashRecordSort = 'rating' | 'score' | 'acc';
@@ -11,8 +12,8 @@ const RECORD_SORTS: readonly { id: MuseDashRecordSort; label: string }[] = [
 ];
 
 const DIFFICULTY_SLOTS: readonly { id: MuseDashDifficultySlot; label: string }[] = [
-  { id: 'all', label: '全部' }, { id: 0, label: '简单' }, { id: 1, label: '普通' },
-  { id: 2, label: '困难' }, { id: 3, label: '大师' }, { id: 4, label: '隐藏' },
+  { id: 'all', label: '全部' }, { id: 0, label: MUSE_DASH_DIFFICULTY_LABELS[0] }, { id: 1, label: MUSE_DASH_DIFFICULTY_LABELS[1] },
+  { id: 2, label: MUSE_DASH_DIFFICULTY_LABELS[2] }, { id: 3, label: MUSE_DASH_DIFFICULTY_LABELS[3] }, { id: 4, label: MUSE_DASH_DIFFICULTY_LABELS[4] },
 ];
 
 function Chip({

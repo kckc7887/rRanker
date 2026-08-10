@@ -39,9 +39,13 @@ import type {
 } from '@/domain/tuf';
 import {
   MUSE_DASH_DIFFICULTY_LABELS,
+  museDashAccTone,
+  museDashGrade,
   museDashSongAuthor,
   museDashSongTitle,
+  resolveMuseDashAchievement,
   type MuseDashChartExtension,
+  type MuseDashPlayDetail,
   type MuseDashRawScore,
   type MuseDashScoreExtension,
   type MuseDashSong,
@@ -647,6 +651,7 @@ function museDashChart(raw: MuseDashRawChart): GameChart<'musedash', MuseDashCha
     constant: raw.constant,
     charter: museDashCharter(raw.song.levelDesigner) || undefined,
     notes: [],
+    libraryRef: { type: 'SD', levelIndex: raw.difficultyIndex },
     extension: {
       song: raw.song,
       albumTitle: raw.albumTitle,
@@ -695,6 +700,7 @@ export const museDashContentAdapter: GameContentAdapter<
       key: `${play.uid}:${play.difficulty}`,
       title: raw.song ? museDashSongTitle(raw.song) : play.uid,
       rating: play.sum,
+      libraryRef: { type: 'SD', levelIndex: play.difficulty },
       extension: {
         play,
         acc: play.acc,
@@ -717,41 +723,52 @@ export function formatMuseDashScore(value: number): string {
   return Math.max(0, Math.trunc(value)).toLocaleString('en-US');
 }
 
-export function presentMuseDashScore(raw: MuseDashRawScore, position?: number): ScoreCardPresentation<'musedash'> {
+/** 官方等级字符串是否为数字（"?"/"¿"/"E"/"H"/"L"/"N" 等特殊档位不是数字）。 */
+export function isNumericMuseDashLevel(level: string): boolean {
+  return /^\d+(\.\d+)?$/.test(level.trim());
+}
+
+/**
+ * 展示模型：
+ * - primaryMetric = ACC（色阶 tone）
+ * - difficulty.value 为定数（组件层拼 "MASTER (8.2)" 带空格）
+ * - achievementRows 只承载成就（AP/FC）与角色、精灵；平台与排名徽章由组件层渲染（仿 PhigrosXingBadge）。
+ */
+export function presentMuseDashScore(
+  raw: MuseDashRawScore,
+  options?: { detail?: MuseDashPlayDetail; position?: number },
+): ScoreCardPresentation<'musedash'> {
   const play = raw.play;
   const title = raw.song ? museDashSongTitle(raw.song) : play.uid;
   const currentRank = play.i ?? play.history?.lastRank ?? 0;
-  const lastRank = play.history?.lastRank ?? play.i ?? 0;
-  const platform = play.platform ?? 'mobile';
+  const achievement = resolveMuseDashAchievement(play.acc, options?.detail?.play.miss);
+  const grade = museDashGrade(play.acc);
+  const officialLevel = raw.song?.difficulty[play.difficulty];
   return {
     key: `${play.uid}:${play.difficulty}`,
     gameId: 'musedash',
     route: { songId: play.uid, levelIndex: play.difficulty },
-    position,
+    position: options?.position,
     title,
-    accessibilityLabel: `查看谱面 ${title}，分数 ${formatMuseDashScore(play.score)}，ACC ${formatMuseDashAcc(play.acc)}，排名 ${currentRank}`,
-    primaryMetric: { key: 'score', label: 'Score', text: formatMuseDashScore(play.score), tone: 'musedash-score' },
+    accessibilityLabel: `查看谱面 ${title}，ACC ${formatMuseDashAcc(play.acc)}，评价 ${grade}，排名 ${currentRank}`,
+    primaryMetric: { key: 'acc', label: 'ACC', text: formatMuseDashAcc(play.acc), tone: museDashAccTone(play.acc) },
     secondaryMetrics: [
-      { key: 'acc', label: 'ACC', text: formatMuseDashAcc(play.acc) },
       { key: 'rating', label: 'Rating', text: play.sum == null ? '—' : String(play.sum), tone: 'accent' },
-      { key: 'rank', label: '排名', text: `#${currentRank}` },
+      ...(currentRank > 0 ? [{ key: 'rank', label: '排名', text: `#${currentRank}` }] : []),
     ],
     difficulty: {
       key: 'difficulty',
       label: MUSE_DASH_DIFFICULTY_LABELS[play.difficulty],
-      value: raw.song?.difficulty[play.difficulty] || '—',
+      value: raw.constant?.toFixed(2)
+        ?? (officialLevel && officialLevel !== '0' ? officialLevel : undefined),
       tone: String(play.difficulty),
     },
-    achievementRows: [
-      [
-        ...(raw.characterName ? [{ key: 'character', label: raw.characterName, tone: 'character' }] : []),
-        ...(raw.elfinName ? [{ key: 'elfin', label: raw.elfinName, tone: 'elfin' }] : []),
-      ],
-      [
-        { key: 'platform', label: platform === 'pc' ? 'PC 端' : '移动端', tone: 'platform' },
-        ...(lastRank > 0 && lastRank !== currentRank ? [{ key: 'last-rank', label: `历史 #${lastRank}`, tone: 'muted' }] : []),
-      ],
-    ],
+    grade: { key: 'grade', label: grade, tone: museDashAccTone(play.acc) },
+    achievementRows: [[
+      ...(achievement ? [{ key: 'achievement', label: achievement, tone: achievement === 'AP' ? 'achievement-ap' : 'achievement-fc' }] : []),
+      ...(raw.characterName ? [{ key: 'character', label: raw.characterName, tone: 'character' }] : []),
+      ...(raw.elfinName ? [{ key: 'elfin', label: raw.elfinName, tone: 'elfin' }] : []),
+    ]],
   };
 }
 
@@ -762,10 +779,13 @@ export function presentMuseDashSong(
   const chartBadges = raw.song.difficulty.flatMap((level, difficultyIndex) => {
     if (level === '0') return [];
     const constant = constants?.[difficultyIndex];
+    const value = constant != null
+      ? (isNumericMuseDashLevel(level) ? constant.toFixed(2) : `${level} ${constant.toFixed(2)}`)
+      : level;
     return [{
       key: `${raw.song.uid}:${difficultyIndex}`,
       label: MUSE_DASH_DIFFICULTY_LABELS[difficultyIndex],
-      value: constant == null ? level : constant.toFixed(2),
+      value,
       tone: String(difficultyIndex),
     }];
   });
@@ -783,8 +803,10 @@ export function presentMuseDashSong(
 export function presentMuseDashChart(
   raw: MuseDashRawChart,
   score?: MuseDashRawScore,
+  detail?: MuseDashPlayDetail,
 ): ChartCardPresentation<'musedash'> {
-  const presented = score ? presentMuseDashScore(score) : undefined;
+  const presented = score ? presentMuseDashScore(score, { detail }) : undefined;
+  const officialLevel = raw.song.difficulty[raw.difficultyIndex] ?? '0';
   return {
     key: `${raw.song.uid}:${raw.difficultyIndex}`,
     gameId: 'musedash',
@@ -792,10 +814,12 @@ export function presentMuseDashChart(
     difficulty: {
       key: 'difficulty',
       label: MUSE_DASH_DIFFICULTY_LABELS[raw.difficultyIndex],
-      value: raw.song.difficulty[raw.difficultyIndex] || '—',
+      value: raw.constant != null
+        ? raw.constant.toFixed(2)
+        : officialLevel === '0' ? undefined : officialLevel,
       tone: String(raw.difficultyIndex),
     },
-    primaryMetric: presented?.primaryMetric ?? { key: 'score', label: 'Score', text: '—' },
+    primaryMetric: presented?.primaryMetric ?? { key: 'acc', label: 'ACC', text: '—' },
     secondaryMetrics: presented?.secondaryMetrics ?? [],
     grade: presented?.grade,
     achievementRows: presented?.achievementRows ?? [],
@@ -803,3 +827,4 @@ export function presentMuseDashChart(
     notes: [],
   };
 }
+

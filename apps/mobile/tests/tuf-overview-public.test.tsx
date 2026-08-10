@@ -130,8 +130,7 @@ describe('TUF public overview', () => {
     expect(screen.getByText(/世界排名 #12/)).toBeTruthy();
     expect(screen.getByText(/世界排名 #12$/)).toBeTruthy();
     expect(screen.queryByText(/TUF PLAYER/)).toBeNull();
-    expect(screen.getByText('公开资料')).toBeTruthy();
-    expect(screen.getByText('99.80%')).toBeTruthy();
+    expect(screen.queryByText('公开资料')).toBeNull();
     expect(screen.getByText('TUF 社区公开数据')).toBeTruthy();
     expect(screen.getByText('我的曲库')).toBeTruthy();
     expect(screen.getByText('收藏 0 首')).toBeTruthy();
@@ -144,7 +143,7 @@ describe('TUF public overview', () => {
 
     await fireEvent.press(screen.getByLabelText('同步数据，当前 TUF 社区'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('读取方式：TUF 公开接口按需读取')).toBeTruthy();
+    expect(screen.queryByText(/读取方式/)).toBeNull();
   });
 
   it('rejects a stale null payload before the public shell reads player fields', async () => {

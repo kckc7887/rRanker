@@ -30,7 +30,7 @@ const mockBundle = {
   payload: {
     kind: 'musedash', player: mockPlayer,
     playerScore: { label: 'Rating', value: 3.4518686005869577, display: '3.45' },
-    source: { kind: 'musedash', label: '喵斯快跑社区公开数据', updatedAt: '2026-08-10T00:00:00.000Z', isStale: false },
+    source: { kind: 'musedash', label: 'MuseDash.moe', updatedAt: '2026-08-10T00:00:00.000Z', isStale: false },
   },
 } as const;
 
@@ -134,10 +134,10 @@ describe('Muse Dash public overview', () => {
     expect(screen.getByText('喵斯快跑 · 玩家概览')).toBeTruthy();
     expect(screen.getByText(/Rating 3.45/)).toBeTruthy();
     expect(screen.getByText(/谱面 1 首/)).toBeTruthy();
-    expect(screen.getByText('公开资料')).toBeTruthy();
-    expect(screen.getByText('喵斯快跑社区公开数据')).toBeTruthy();
+    expect(screen.queryByText('公开资料')).toBeNull();
+    expect(screen.getByText('MuseDash.moe')).toBeTruthy();
     expect(screen.getByText('我的曲库')).toBeTruthy();
-    expect(screen.getByText('当前游戏暂未开放个人曲库')).toBeTruthy();
+    expect(screen.getByText('收藏 0 首 · 练习 0 张')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('当前玩家 SiMOOOOOON，点击切换账号'));
     expect(screen.getByText('账号切换已打开')).toBeTruthy();
@@ -146,7 +146,8 @@ describe('Muse Dash public overview', () => {
 
     await fireEvent.press(screen.getByLabelText('同步数据，当前 喵斯快跑社区'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('读取方式：喵斯快跑社区公开接口按需读取')).toBeTruthy();
+    expect(screen.getByText('来源：MuseDash.moe')).toBeTruthy();
+    expect(screen.queryByText(/读取方式/)).toBeNull();
   });
 
   it('rejects a stale null payload before the public shell reads player fields', async () => {
