@@ -200,11 +200,14 @@ describe('Muse Dash screens', () => {
   it('filters records by platform and re-sorts by ACC locally', async () => {
     const screen = await render(<MuseDashRecordsScreen />);
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
-    await fireEvent.press(screen.getByLabelText('平台 PC 端'));
+    await fireEvent.press(screen.getByLabelText('平台筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('选择平台 PC 端'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
-    await fireEvent.press(screen.getByLabelText('平台 全部'));
-    await fireEvent.press(screen.getByLabelText('排序 ACC'));
+    await fireEvent.press(screen.getByLabelText('平台筛选，当前 PC 端'));
+    await fireEvent.press(screen.getByLabelText('选择平台 全部'));
+    await fireEvent.press(screen.getByLabelText('排序筛选，当前 Rating'));
+    await fireEvent.press(screen.getByLabelText('选择排序 ACC'));
     const labels = screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel);
     expect(labels[0]).toContain('ACC 97.31%');
   });
@@ -221,9 +224,11 @@ describe('Muse Dash screens', () => {
     const screen = await render(<MuseDashCatalogScreen />);
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(3);
     expect(screen.getAllByText('11.50').length).toBeGreaterThan(0);
-    await fireEvent.press(screen.getByLabelText('难度 HIDDEN'));
+    await fireEvent.press(screen.getByLabelText('难度筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('选择难度 HIDDEN'));
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
-    await fireEvent.press(screen.getByLabelText('难度 全部'));
+    await fireEvent.press(screen.getByLabelText('难度筛选，当前 HIDDEN'));
+    await fireEvent.press(screen.getByLabelText('选择难度 全部'));
     await fireEvent.changeText(screen.getByLabelText('搜索喵斯快跑歌曲'), 'Another');
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
   });
