@@ -107,8 +107,8 @@ export const PHIGROS_REFERENCE_AVATAR_SOURCES: Readonly<Record<string, number>> 
   "Sultan Rage": require("../../../assets/phigros-b30-reference/avatar/Sultan Rage.png") as number,
   "Winter ↑cube↓": require("../../../assets/phigros-b30-reference/avatar/Winter ↑cube↓.png") as number,
   "Xenolith": require("../../../assets/phigros-b30-reference/avatar/Xenolith.png") as number,
-  "もぺもぺ1": require("../../../assets/phigros-b30-reference/avatar/もぺもぺ1.png") as number,
-  "もぺもぺ2": require("../../../assets/phigros-b30-reference/avatar/もぺもぺ2.png") as number,
+  "もぺもぺ1": require("../../../assets/phigros-b30-reference/avatar/MopeMope1.png") as number,
+  "もぺもぺ2": require("../../../assets/phigros-b30-reference/avatar/MopeMope2.png") as number,
 };
 
 export const PHIGROS_REFERENCE_AVATAR_KEYS = Object.freeze(Object.keys(PHIGROS_REFERENCE_AVATAR_SOURCES));
