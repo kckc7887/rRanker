@@ -57,10 +57,6 @@ jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
   preparePhigrosFonts: jest.fn(),
 }));
 jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
-  getPhigrosReferenceAvatarKeys: () => ['Introduction', 'avatar.test'],
-  getPhigrosReferenceAvatarSource: () => 1,
-  findPhigrosReferenceAvatarKey: (key: string) => key,
-  loadPhigrosReferenceAvatarUrl: jest.fn(async () => 'data:image/png;base64,avatar'),
   loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
     css: '@font-face{font-family:"PHI";src:url("./font/phi.ttf")} .song{width:360px}.Rating img{width:100%}',
     dataIconUrl: 'data:image/png;base64,data', fallbackBackgroundUrl: 'data:image/png;base64,background', fallbackAvatarUrl: 'data:image/png;base64,avatar',
@@ -199,7 +195,7 @@ describe('Phigros 生成图片页', () => {
     const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
     expect(preview.props.source.html).toContain('class="playerInfo"');
     expect(preview.props.source.html).toContain('class="song phi_song"');
-    expect(preview.props.source.html).toContain('data:image/png;base64,avatar');
+    expect(preview.props.source.html).toContain('data:image/png;base64,style');
     expect(preview.props.source.html).toContain('data:image/png;base64,FC');
     expect(preview.props.source.html).toContain('./font/phi.ttf');
     expect(preview.props.source.html).not.toContain('file:///reference/avatar.png');
