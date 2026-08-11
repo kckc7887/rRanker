@@ -1,7 +1,9 @@
 import {
   normalizeChunithmPossession,
   resolveChunithmPossessionTheme,
+  resolveChunithmRatingCardTheme,
   resolveChunithmRatingTier,
+  resolveChunithmRatingTierBorder,
 } from '@/domain/chunithm-rating-theme';
 import { resolveDxRatingTheme } from '@/domain/dx-rating-theme';
 
@@ -74,5 +76,33 @@ describe('中二节奏 Rating 霓虹电路主题', () => {
       fillLocations: white.fillLocations,
       textColor: white.textColor,
     });
+  });
+
+  it.each([
+    [14.5, ['#FFD84D', '#FFD84D'], [0, 1]],
+    [16, ['#FF2D95', '#FF6B00', '#FFF200', '#00F5A0', '#00C2FF', '#7A5CFF'], [0, 0.2, 0.4, 0.6, 0.8, 1]],
+  ] as const)('档位 %s 描边规范化为 %j', (rating, borderColors, borderLocations) => {
+    const border = resolveChunithmRatingTierBorder(rating);
+    expect(border.borderColors).toEqual(borderColors);
+    expect(border.borderLocations).toEqual(borderLocations);
+  });
+
+  it('卡片主题保留领域背景并以档位色描边', () => {
+    const theme = resolveChunithmRatingCardTheme(14.5, 'gold');
+    const possession = resolveChunithmPossessionTheme('gold');
+    expect(theme).toMatchObject({
+      id: possession.id,
+      fillColors: possession.fillColors,
+      fillLocations: possession.fillLocations,
+      overlayColor: possession.overlayColor,
+      textColor: possession.textColor,
+    });
+    expect(theme.borderColors).toEqual(['#FFD84D', '#FFD84D']);
+    expect(theme.borderLocations).toEqual([0, 1]);
+  });
+
+  it('无成绩时卡片主题原样回退领域主题', () => {
+    const possession = resolveChunithmPossessionTheme('silver');
+    expect(resolveChunithmRatingCardTheme(null, 'silver')).toEqual(possession);
   });
 });

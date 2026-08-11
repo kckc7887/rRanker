@@ -6,7 +6,7 @@ import {
   createChunithmBoundAccount,
   createPhigrosBoundAccount,
 } from '@/domain/bound-account';
-import { resolveChunithmPossessionTheme } from '@/domain/chunithm-rating-theme';
+import { resolveChunithmPossessionTheme, resolveChunithmRatingTierBorder } from '@/domain/chunithm-rating-theme';
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -54,5 +54,7 @@ describe('BoundAccountGroupedList Chunithm metadata', () => {
     expect(screen.getByLabelText('Rating 14.50，背景 金领域')).toBeTruthy();
     expect(screen.getByTestId('chunithm-rating-tag').props.colors)
       .toEqual(theme.fillColors.map((color) => processColor(color)));
+    expect(screen.getByTestId('chunithm-rating-tag-border').props.colors)
+      .toEqual(resolveChunithmRatingTierBorder(14.5).borderColors.map((color) => processColor(color)));
   });
 });
