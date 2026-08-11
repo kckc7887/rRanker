@@ -73,7 +73,7 @@ export function MuseDashPlayerPickerSheet({
           </View>
 
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.body, { color: theme.textSecondary }]}>仅搜索公开资料，不需要账号或 Token；支持直接输入 32 位 user_id</Text>
+            <Text style={[styles.body, { color: theme.textSecondary }]}>支持直接输入 32 位 user_id</Text>
             <TextInput
               accessibilityLabel="搜索喵斯快跑玩家"
               autoCapitalize="none"
