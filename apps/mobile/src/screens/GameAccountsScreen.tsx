@@ -21,11 +21,13 @@ import {
   createLocalMaimaiAccount,
   createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
+  createMaxedMuseDashTestAccount,
   createMaxedPhigrosTestAccount,
   createMuseDashBoundAccount,
   createTufBoundAccount,
   museDashUserIdFromAccountId,
   tufPlayerIdFromAccountId,
+  MUSEDASH_TEST_USER_ID,
   LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
@@ -47,6 +49,7 @@ import { DemoAccountStore } from '@/storage/demo-account-store';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
 import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store';
 import { PhigrosDemoAccountStore } from '@/storage/phigros-demo-account-store';
+import { MuseDashDemoAccountStore } from '@/storage/musedash-demo-account-store';
 import { patchMaimaiPlayerDisplayName } from '@/services/invalidate-account-data';
 import { switchBoundAccount } from '@/services/switch-bound-account';
 import { useNotification } from '@/components/AppNotification';
@@ -62,6 +65,7 @@ const localAccounts = new LocalAccountStore();
 const demoAccounts = new DemoAccountStore();
 const chunithmDemoAccount = new ChunithmDemoAccountStore();
 const phigrosDemoAccount = new PhigrosDemoAccountStore();
+const museDashDemoAccount = new MuseDashDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 const tufAccounts = new TufAccountStore();
 const tufCache = new TufCache();
@@ -396,6 +400,38 @@ export function GameAccountsScreen() {
     }
   };
 
+  const addMuseDashDemoAccount = async () => {
+    setBusy(true);
+    try {
+      const existing = boundAccounts.find((account) => account.providerId === 'musedash-test');
+      if (existing) {
+        setPickerVisible(false);
+        InteractionManager.runAfterInteractions(() => {
+          onSelectAccount(existing);
+          setMessage(`示例账号「${existing.displayName}」已在列表中，已切换到该账号`);
+        });
+        return;
+      }
+      const account = createMaxedMuseDashTestAccount();
+      await museDashDemoAccount.save({ id: account.id, displayName: account.displayName });
+      upsertBoundAccount(account);
+      setPickerVisible(false);
+      InteractionManager.runAfterInteractions(() => {
+        selectBoundAccount(account.id);
+        void sessions.setActiveAccountId(account.id);
+        setMessage(`已添加喵斯快跑示例账号「${account.displayName}」`);
+      });
+    } catch (error) {
+      showNotification({
+        title: '添加失败',
+        message: error instanceof Error ? error.message : '无法添加喵斯快跑示例账号，请重试。',
+        variant: 'error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const saveLocalAccountName = async (account: BoundAccount, displayName: string) => {
     await localAccounts.upsert({ id: account.id, displayName });
     renameLocalAccount(account.id, displayName);
@@ -435,6 +471,10 @@ export function GameAccountsScreen() {
     try {
       if (account.providerId === 'chunithm-test') await chunithmDemoAccount.remove();
       else if (account.providerId === 'phigros-test') await phigrosDemoAccount.remove();
+      else if (account.providerId === 'musedash-test') {
+        await museDashDemoAccount.remove();
+        await museDashCache.clearPlayer(MUSEDASH_TEST_USER_ID);
+      }
       else await demoAccounts.remove(account.id);
     } catch {
       failures.push('账号');
@@ -445,6 +485,9 @@ export function GameAccountsScreen() {
     removeBoundAccount(account.id);
     try { await persistActiveAccountId(); } catch { failures.push('当前账号'); }
     clearRemoteCaches();
+    if (account.providerId === 'musedash-test') {
+      queryClient.removeQueries({ queryKey: ['musedash'] });
+    }
     setMessage(failures.length > 0
       ? `示例账号已从列表移除，但${failures.join('、')}清理失败`
       : `已删除示例账号「${account.displayName}」`);
@@ -538,6 +581,10 @@ export function GameAccountsScreen() {
     }
     if (provider.id === 'phigros-test') {
       void addPhigrosDemoAccount();
+      return;
+    }
+    if (provider.id === 'musedash-test') {
+      void addMuseDashDemoAccount();
       return;
     }
     if (provider.bindingKind === 'public-player') {

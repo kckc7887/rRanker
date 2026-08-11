@@ -24,6 +24,7 @@ import {
   createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
+  createMaxedMuseDashTestAccount,
   createMaxedPhigrosTestAccount,
   createTufBoundAccount,
   createMuseDashBoundAccount,
@@ -38,6 +39,10 @@ import {
   DEFAULT_PHIGROS_DEMO_PLAYER_NAME,
   PhigrosDemoAccountStore,
 } from '@/storage/phigros-demo-account-store';
+import {
+  DEFAULT_MUSEDASH_DEMO_PLAYER_NAME,
+  MuseDashDemoAccountStore,
+} from '@/storage/musedash-demo-account-store';
 import { NotificationProvider } from '@/components/AppNotification';
 import { songDetailScreenOptions } from '@/components/game-content/SongDetailScreenOptions';
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
@@ -55,6 +60,7 @@ const localAccounts = new LocalAccountStore();
 const demoAccounts = new DemoAccountStore();
 const chunithmDemoAccount = new ChunithmDemoAccountStore();
 const phigrosDemoAccount = new PhigrosDemoAccountStore();
+const museDashDemoAccount = new MuseDashDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 const tufAccounts = new TufAccountStore();
 const museDashAccounts = new MuseDashAccountStore();
@@ -107,12 +113,23 @@ async function loadPhigrosDemoBoundAccount() {
     : null;
 }
 
+async function loadMuseDashDemoBoundAccount() {
+  const stored = await museDashDemoAccount.load();
+  return stored
+    ? createMaxedMuseDashTestAccount(
+        0,
+        stored.displayName || DEFAULT_MUSEDASH_DEMO_PLAYER_NAME,
+      )
+    : null;
+}
+
 async function loadOptionalBoundAccounts() {
-  const [locals, demos, chunithmDemo, phigrosDemo, hasChunithmTemp, storedTufAccounts, storedMuseDashAccounts] = await Promise.all([
+  const [locals, demos, chunithmDemo, phigrosDemo, museDashDemo, hasChunithmTemp, storedTufAccounts, storedMuseDashAccounts] = await Promise.all([
     loadLocalBoundAccounts(),
     loadDemoBoundAccounts(),
     loadChunithmDemoBoundAccount(),
     loadPhigrosDemoBoundAccount(),
+    loadMuseDashDemoBoundAccount(),
     chunithmTempAccount.load(),
     tufAccounts.load(),
     museDashAccounts.load(),
@@ -122,6 +139,7 @@ async function loadOptionalBoundAccounts() {
     ...demos,
     ...(chunithmDemo ? [chunithmDemo] : []),
     ...(phigrosDemo ? [phigrosDemo] : []),
+    ...(museDashDemo ? [museDashDemo] : []),
     ...(hasChunithmTemp ? [createChunithmTempAccount()] : []),
     ...storedTufAccounts.map((account) => createTufBoundAccount(account)),
     ...storedMuseDashAccounts.map((account) => createMuseDashBoundAccount(account)),

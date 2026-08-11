@@ -7,6 +7,7 @@ import {
   createMaimaiBoundAccount,
   createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
+  createMaxedMuseDashTestAccount,
   createMaxedPhigrosTestAccount,
   createMuseDashBoundAccount,
   createTufBoundAccount,
@@ -23,6 +24,8 @@ const mockSaveChunithmDemoAccount = jest.fn(async (_profile?: unknown) => undefi
 const mockRemoveChunithmDemoAccount = jest.fn(async () => undefined);
 const mockSavePhigrosDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemovePhigrosDemoAccount = jest.fn(async () => undefined);
+const mockSaveMuseDashDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
+const mockRemoveMuseDashDemoAccount = jest.fn(async () => undefined);
 const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
 const mockSetActiveAccountId = jest.fn(async (_accountId?: string | null) => undefined);
 const mockClearSnapshots = jest.fn(async () => undefined);
@@ -57,12 +60,18 @@ let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount];
 let mockExpandedGameId: GameId = 'maimai';
 
 describe('示例账号图标', () => {
-  it('中二示例账号与舞萌示例账号复用同一图标', () => {
+  it('中二/Phigros/喵斯示例账号与舞萌示例账号复用同一图标', () => {
     const maimaiIcon = findGame('maimai')?.providers
       .find((provider) => provider.id === 'maimai-test')?.icon;
     const chunithmIcon = findGame('chunithm')?.providers
       .find((provider) => provider.id === 'chunithm-test')?.icon;
+    const phigrosIcon = findGame('phigros')?.providers
+      .find((provider) => provider.id === 'phigros-test')?.icon;
+    const musedashIcon = findGame('musedash')?.providers
+      .find((provider) => provider.id === 'musedash-test')?.icon;
     expect(chunithmIcon).toBe(maimaiIcon);
+    expect(phigrosIcon).toBe(maimaiIcon);
+    expect(musedashIcon).toBe(maimaiIcon);
   });
 
   it('冰与火之舞与 TUF 社区使用各自的正式图标', () => {
@@ -148,6 +157,14 @@ jest.mock('@/storage/phigros-demo-account-store', () => ({
     save: (profile: { id: string; displayName: string }) => mockSavePhigrosDemoAccount(profile),
     remove: () => mockRemovePhigrosDemoAccount(),
   })),
+}));
+jest.mock('@/storage/musedash-demo-account-store', () => ({
+  MuseDashDemoAccountStore: jest.fn(() => ({
+    save: (profile: { id: string; displayName: string }) => mockSaveMuseDashDemoAccount(profile),
+    remove: () => mockRemoveMuseDashDemoAccount(),
+  })),
+  DEFAULT_MUSEDASH_DEMO_PLAYER_NAME: '示例账号',
+  isMuseDashDemoAccountId: (accountId: string) => accountId === 'musedash:musedash-moe:rranker-demo-maxed',
 }));
 jest.mock('@/storage/tuf-account-store', () => ({
   TufAccountStore: jest.fn(() => ({
@@ -328,6 +345,22 @@ describe('M3A game account management', () => {
 
     const expected = createMaxedPhigrosTestAccount();
     await waitFor(() => expect(mockSavePhigrosDemoAccount).toHaveBeenCalledWith({
+      id: expected.id,
+      displayName: expected.displayName,
+    }));
+    expect(mockUpsertBoundAccount).toHaveBeenCalledWith(expected);
+    await waitFor(() => expect(mockSelectBoundAccount).toHaveBeenCalledWith(expected.id));
+  });
+
+  it('adds the generated maxed Muse Dash demo account', async () => {
+    mockExpandedGameId = 'musedash';
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    const exampleProviders = screen.getAllByLabelText('示例查分器');
+    await fireEvent.press(exampleProviders.at(-1)!);
+
+    const expected = createMaxedMuseDashTestAccount();
+    await waitFor(() => expect(mockSaveMuseDashDemoAccount).toHaveBeenCalledWith({
       id: expected.id,
       displayName: expected.displayName,
     }));
