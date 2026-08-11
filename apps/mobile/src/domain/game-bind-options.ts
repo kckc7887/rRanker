@@ -136,7 +136,7 @@ export const GAME_OPTIONS: GameOption[] = [
     providers: [{
       id: 'musedash-moe',
       bindingKind: 'public-player',
-      title: '喵斯快跑社区',
+      title: 'MuseDash.moe',
       detail: '搜索公开玩家 · 无需登录',
       icon: museDashMoeIcon,
       available: true,

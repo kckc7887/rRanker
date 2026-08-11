@@ -57,7 +57,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'phi-taptap': 'TapTap 云存档',
   'chunithm-temp': '无成绩临时账号',
   tuf: 'TUF 社区',
-  'musedash-moe': '喵斯快跑社区',
+  'musedash-moe': 'MuseDash.moe',
 };
 
 export function createTufBoundAccount(input: {

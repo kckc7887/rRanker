@@ -11,7 +11,7 @@ import { requestJson } from './http-json';
 import { ProviderError } from './errors';
 
 const MUSE_DASH_API_BASE = 'https://api.musedash.moe';
-const MUSE_DASH_LABEL = '喵斯快跑社区';
+const MUSE_DASH_LABEL = 'MuseDash.moe';
 type FetchLike = typeof fetch;
 
 function statusError(status: number): ProviderError {
