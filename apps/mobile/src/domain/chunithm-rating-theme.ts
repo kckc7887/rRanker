@@ -68,6 +68,38 @@ export function resolveChunithmRatingTier(rating: number): ChunithmRatingTierThe
   return matched.theme;
 }
 
+/** 把档位色规范化为渐变边框：单色档复制为双色，虹档保留完整六色均分。 */
+export function resolveChunithmRatingTierBorder(rating: number): {
+  borderColors: readonly [string, string, ...string[]];
+  borderLocations: readonly [number, number, ...number[]];
+} {
+  const colors = resolveChunithmRatingTier(rating).colors;
+  if (colors.length === 1) {
+    const color = colors[0]!;
+    return { borderColors: [color, color], borderLocations: [0, 1] };
+  }
+  const stops = colors.map((_, index) => index / (colors.length - 1));
+  return {
+    borderColors: colors as readonly [string, string, ...string[]],
+    borderLocations: stops as unknown as readonly [number, number, ...number[]],
+  };
+}
+
+/** 卡片主题：领域色作背景、档位色作描边；无成绩时原样回退领域主题。 */
+export function resolveChunithmRatingCardTheme(
+  rating: number | null,
+  ratingPossession: string | null | undefined,
+): DxRatingTheme {
+  const possession = resolveChunithmPossessionTheme(ratingPossession);
+  if (rating == null) return possession;
+  const border = resolveChunithmRatingTierBorder(rating);
+  return {
+    ...possession,
+    borderColors: border.borderColors,
+    borderLocations: border.borderLocations,
+  };
+}
+
 export function normalizeChunithmPossession(value: string | null | undefined): ChunithmPossessionId {
   const normalized = value?.trim().toLowerCase();
   return normalized === 'silver'

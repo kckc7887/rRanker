@@ -1,8 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { resolveChunithmPossessionTheme } from '@/domain/chunithm-rating-theme';
+import {
+  resolveChunithmPossessionTheme,
+  resolveChunithmRatingTierBorder,
+} from '@/domain/chunithm-rating-theme';
 
-/** 账号列表用的中二 Rating 数字标签，背景由 Rating 领域决定。 */
+/** 账号列表用的中二 Rating 数字标签，背景由 Rating 领域决定、边框由 Rating 档位决定。 */
 export function ChunithmRatingTag({
   display,
   ratingPossession,
@@ -21,30 +24,46 @@ export function ChunithmRatingTag({
 
   const value = rating.toFixed(2);
   const theme = resolveChunithmPossessionTheme(ratingPossession);
+  const tierBorder = resolveChunithmRatingTierBorder(rating);
   return (
     <LinearGradient
       accessibilityLabel={`Rating ${value}，背景 ${theme.label}`}
-      colors={[...theme.fillColors]}
+      colors={[...tierBorder.borderColors]}
       end={{ x: 1, y: 0.5 }}
-      locations={[...theme.fillLocations]}
+      locations={[...tierBorder.borderLocations]}
       start={{ x: 0, y: 0.5 }}
-      style={styles.tag}
-      testID="chunithm-rating-tag"
+      style={styles.border}
+      testID="chunithm-rating-tag-border"
     >
-      <View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { backgroundColor: theme.overlayColor }]}
-      />
-      <Text style={[styles.value, { color: theme.textColor }]}>{value}</Text>
+      <LinearGradient
+        colors={[...theme.fillColors]}
+        end={{ x: 1, y: 0.5 }}
+        locations={[...theme.fillLocations]}
+        start={{ x: 0, y: 0.5 }}
+        style={styles.tag}
+        testID="chunithm-rating-tag"
+      >
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: theme.overlayColor }]}
+        />
+        <Text style={[styles.value, { color: theme.textColor }]}>{value}</Text>
+      </LinearGradient>
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  tag: {
+  border: {
     alignSelf: 'flex-start',
-    minWidth: 70,
+    minWidth: 74,
     marginTop: 2,
+    borderRadius: 10,
+    padding: 2,
+    alignItems: 'center',
+  },
+  tag: {
+    minWidth: 70,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
@@ -57,6 +76,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     fontVariant: ['tabular-nums'],
   },
-  empty: { backgroundColor: '#E5E7EB' },
+  empty: {
+    alignSelf: 'flex-start',
+    minWidth: 70,
+    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB',
+    alignItems: 'center',
+  },
   emptyValue: { color: '#6B7280' },
 });

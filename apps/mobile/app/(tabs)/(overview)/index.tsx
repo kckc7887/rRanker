@@ -24,7 +24,7 @@ import {
   isChunithmMaintenanceWindow,
 } from '@/domain/chunithm-maintenance';
 import {
-  resolveChunithmPossessionTheme,
+  resolveChunithmRatingCardTheme,
   resolveChunithmRatingTier,
 } from '@/domain/chunithm-rating-theme';
 import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
@@ -494,7 +494,7 @@ function PublicOverviewScreen() {
               || bundle.payload.kind === 'adofai'
               || bundle.payload.kind === 'musedash' ? (
               <DxRatingCard
-                borderless={bundle.payload.kind === 'chunithm'}
+                borderless={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData}
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
                 rating={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData
@@ -513,9 +513,12 @@ function PublicOverviewScreen() {
                     ? MUSE_DASH_RATING_THEME
                     : bundle.payload.kind === 'phigros'
                       ? resolvePhigrosChallengeTheme(bundle.payload.challengeModeRank)
-                      : bundle.payload.kind === 'chunithm'
-                        ? resolveChunithmPossessionTheme(bundle.payload.player?.rating_possession)
-                        : undefined}
+                    : bundle.payload.kind === 'chunithm'
+                      ? resolveChunithmRatingCardTheme(
+                        bundle.payload.hasSyncedData ? bundle.payload.playerScore.value : null,
+                        bundle.payload.player?.rating_possession,
+                      )
+                      : undefined}
                 valueTheme={bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
                   ? resolveChunithmRatingTier(bundle.payload.playerScore.value)
                   : undefined}
