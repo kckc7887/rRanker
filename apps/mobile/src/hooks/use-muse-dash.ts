@@ -8,12 +8,19 @@ import type {
   MuseDashPlayDetail,
   MuseDashPlayer,
 } from '@/domain/muse-dash';
+import { isMuseDashTestUserId } from '@/domain/bound-account';
 import { museDashProvider } from '@/providers/muse-dash-provider';
+import {
+  maxedMuseDashPlayDetailSnapshot,
+  maxedMuseDashPlayerSnapshot,
+} from '@/providers/maxed-musedash-test-provider';
 import { cacheFirstLoad } from '@/services/cache-first';
 import { queryClient } from '@/state/query-client';
 import {
+  loadMuseDashAlbumsCacheFirst,
   loadMuseDashAlbumsFresh,
   loadMuseDashCeFresh,
+  loadMuseDashDiffdiffCacheFirst,
   loadMuseDashDiffdiffFresh,
   loadMuseDashPlayDetailFresh,
   loadMuseDashPlayerFresh,
@@ -75,6 +82,14 @@ export function useMuseDashSearch(query: string) {
 export function useMuseDashPlayer(userId: string | null) {
   const queryKey = ['musedash', 'player', userId] as const;
   return useMuseDashCacheFirst<MuseDashPlayer>(queryKey, async () => {
+    // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
+    if (userId !== null && isMuseDashTestUserId(userId)) {
+      const [albums, diffdiff] = await Promise.all([
+        loadMuseDashAlbumsCacheFirst(cache),
+        loadMuseDashDiffdiffCacheFirst(cache),
+      ]);
+      return maxedMuseDashPlayerSnapshot(albums.data, diffdiff.data);
+    }
     const snapshot = await cacheFirstLoad({
       loadCached: () => cache.loadPlayer(userId!),
       loadFresh: async () => {
@@ -101,6 +116,10 @@ export function useMuseDashPlayDetail(
   const enabled = uid !== null && difficulty !== null && platform !== null && userId !== null;
   const queryKey = ['musedash', 'play-detail', userId, uid, difficulty, platform] as const;
   return useMuseDashCacheFirst<MuseDashPlayDetail>(queryKey, async () => {
+    // 示例账号：全 AP（miss 0）直接生成，不请求 /rank 明细。
+    if (userId !== null && isMuseDashTestUserId(userId)) {
+      return maxedMuseDashPlayDetailSnapshot();
+    }
     const snapshot = await cacheFirstLoad({
       loadCached: () => cache.loadPlayDetail(userId!, uid!, difficulty!, platform!),
       loadFresh: async () => {
@@ -128,6 +147,9 @@ export function useMuseDashPlayDetails(
   const queryDefs = useMemo(() => items.map((item) => ({
     queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
     queryFn: async (): Promise<MuseDashSnapshot<MuseDashPlayDetail>> => {
+      if (userId !== null && isMuseDashTestUserId(userId)) {
+        return maxedMuseDashPlayDetailSnapshot();
+      }
       const queryKey = ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const;
       const snapshot = await cacheFirstLoad({
         loadCached: () => cache.loadPlayDetail(userId!, item.uid, item.difficulty, item.platform),

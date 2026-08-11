@@ -528,6 +528,7 @@ export const useSession = create<SessionState>((set, get) => ({
         || account.providerId === 'maimai-test'
         || account.providerId === 'chunithm-test'
         || account.providerId === 'phigros-test'
+        || account.providerId === 'musedash-test'
         || account.providerId === 'chunithm-temp'
         || account.providerId === 'tuf'
         || account.providerId === 'musedash-moe',

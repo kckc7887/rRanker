@@ -27,6 +27,13 @@ export const MAIMAI_TEST_ACCOUNT_ID = 'maimai:test';
 export const CHUNITHM_TEST_ACCOUNT_ID = 'chunithm:test';
 export const PHIGROS_TEST_ACCOUNT_ID = 'phigros:test';
 export const CHUNITHM_TEMP_ACCOUNT_ID = 'chunithm:temp';
+/** 喵斯示例账号的哨兵 user_id；含非 hex 字符，与真实 32 位 hex user_id 永不冲突。 */
+export const MUSEDASH_TEST_USER_ID = 'rranker-demo-maxed';
+export const MUSEDASH_TEST_ACCOUNT_ID = `musedash:musedash-moe:${MUSEDASH_TEST_USER_ID}`;
+
+export function isMuseDashTestUserId(userId: string): boolean {
+  return userId === MUSEDASH_TEST_USER_ID;
+}
 
 export function isLocalMaimaiAccountId(accountId: string): boolean {
   return accountId === LOCAL_MAIMAI_ACCOUNT_ID
@@ -58,6 +65,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'chunithm-temp': '无成绩临时账号',
   tuf: 'TUF 社区',
   'musedash-moe': 'MuseDash.moe',
+  'musedash-test': '示例查分器',
 };
 
 export function createTufBoundAccount(input: {
@@ -106,6 +114,22 @@ export function createMuseDashBoundAccount(input: {
 export function museDashUserIdFromAccountId(accountId: string): string | null {
   const match = /^musedash:musedash-moe:(.+)$/.exec(accountId);
   return match ? match[1] : null;
+}
+
+export function createMaxedMuseDashTestAccount(
+  rl = 0,
+  displayName = '示例账号',
+): BoundAccount {
+  const profile = getGameProfile('musedash');
+  return {
+    id: MUSEDASH_TEST_ACCOUNT_ID,
+    gameId: 'musedash',
+    providerId: 'musedash-test',
+    displayName,
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: Number.isFinite(rl) ? rl.toFixed(2) : '—',
+    providerTitle: PROVIDER_TITLES['musedash-test'],
+  };
 }
 
 export function createTestBoundAccount(): BoundAccount {

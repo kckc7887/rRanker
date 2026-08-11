@@ -41,7 +41,11 @@ import {
   CHUNITHM_CATALOG_SCHEMA_VERSION,
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
-import { tufPlayerIdFromAccountId, museDashUserIdFromAccountId } from '@/domain/bound-account';
+import {
+  tufPlayerIdFromAccountId,
+  museDashUserIdFromAccountId,
+  isMuseDashTestUserId,
+} from '@/domain/bound-account';
 import {
   loadTufPlayerFresh,
   makeTufSnapshot,
@@ -50,6 +54,8 @@ import {
 import {
   loadMuseDashPlayerFresh,
   makeMuseDashSnapshot,
+  loadMuseDashAlbumsCacheFirst,
+  loadMuseDashDiffdiffCacheFirst,
   MuseDashCache,
 } from '@/services/muse-dash-cache';
 import type { TufPlayer } from '@/domain/tuf';
@@ -60,6 +66,7 @@ import {
   buildMaxedPhigrosSnapshot,
   MaxedPhigrosTestProvider,
 } from '@/providers/maxed-phigros-test-provider';
+import { maxedMuseDashPlayerSnapshot } from '@/providers/maxed-musedash-test-provider';
 
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
@@ -127,6 +134,30 @@ export function useGameData() {
       }
       if (activeGameId === 'musedash') {
         const userId = museDashUserIdFromAccountId(activeAccountId);
+        if (activeProviderId === 'musedash-test' && userId !== null && isMuseDashTestUserId(userId)) {
+          const toBundle = (player: MuseDashPlayer, source: DataSource): GameDataBundle => ({
+            gameId: 'musedash', providerId: 'musedash-test', profile: getGameProfile('musedash'),
+            payload: {
+              kind: 'musedash', player,
+              playerScore: {
+                label: 'Rating', value: player.rl ?? 0,
+                display: player.rl == null || !Number.isFinite(player.rl) ? '—' : player.rl.toFixed(2),
+              },
+              source,
+            },
+          });
+          // 曲库/定数表缓存优先：示例账号首屏不再等待网络拉取。
+          const [albums, diffdiff] = await Promise.all([
+            loadMuseDashAlbumsCacheFirst(museDashCache),
+            loadMuseDashDiffdiffCacheFirst(museDashCache),
+          ]);
+          const snapshot = maxedMuseDashPlayerSnapshot(
+            albums.data,
+            diffdiff.data,
+            activeAccount?.displayName ?? '示例账号',
+          );
+          return toBundle(snapshot.data, snapshot.source);
+        }
         if (activeProviderId !== 'musedash-moe' || userId === null) {
           return {
             gameId: 'musedash', providerId: null, profile: getGameProfile('musedash'),

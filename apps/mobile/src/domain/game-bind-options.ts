@@ -10,7 +10,8 @@ export type ProviderId =
   | 'phi-taptap'
   | 'chunithm-temp'
   | 'tuf'
-  | 'musedash-moe';
+  | 'musedash-moe'
+  | 'musedash-test';
 export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
 export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'adofai' | 'musedash' | 'test';
 export type ProviderBindingKind = 'credentials' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
@@ -133,14 +134,24 @@ export const GAME_OPTIONS: GameOption[] = [
     icon: museDashIcon,
     available: true,
     pendingDetail: '',
-    providers: [{
-      id: 'musedash-moe',
-      bindingKind: 'public-player',
-      title: 'MuseDash.moe',
-      detail: '搜索公开玩家 · 无需登录',
-      icon: museDashMoeIcon,
-      available: true,
-    }],
+    providers: [
+      {
+        id: 'musedash-moe',
+        bindingKind: 'public-player',
+        title: 'MuseDash.moe',
+        detail: '搜索公开玩家 · 无需登录',
+        icon: museDashMoeIcon,
+        available: true,
+      },
+      {
+        id: 'musedash-test',
+        bindingKind: 'fixture',
+        title: '示例查分器',
+        detail: '全曲全谱面满成绩 · 可删除后重新添加',
+        icon: exampleAccountIcon,
+        available: true,
+      },
+    ],
   },
   {
     id: 'phigros',

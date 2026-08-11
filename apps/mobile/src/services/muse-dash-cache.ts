@@ -24,6 +24,7 @@ import {
 } from '@/domain/muse-dash';
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { cacheFirstLoad } from '@/services/cache-first';
 
 /** 构造 Muse Dash 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeMuseDashSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
@@ -71,6 +72,40 @@ export function loadMuseDashCeFresh(): Promise<MuseDashCeResponse> {
 
 export function loadMuseDashDiffdiffFresh(): Promise<MuseDashDiffdiffSnapshot['data']> {
   return dedupe('diffdiff', () => museDashProvider.getDiffdiff());
+}
+
+/**
+ * 全局公开资源（曲库/定数表）的缓存优先读取：供示例账号生成与页面 hook 复用，
+ * 网络请求由 inflightLoads 去重，多路并发只发一次。
+ */
+export function loadMuseDashAlbumsCacheFirst(
+  cache: Pick<MuseDashCache, 'loadAlbums' | 'saveAlbums'>,
+): Promise<MuseDashAlbumsSnapshot> {
+  return cacheFirstLoad({
+    loadCached: () => cache.loadAlbums(),
+    loadFresh: async () => {
+      const albums = await loadMuseDashAlbumsFresh();
+      const fresh = makeMuseDashSnapshot(albums);
+      void cache.saveAlbums(fresh).catch(() => undefined);
+      return fresh;
+    },
+    onFresh: () => undefined,
+  });
+}
+
+export function loadMuseDashDiffdiffCacheFirst(
+  cache: Pick<MuseDashCache, 'loadDiffdiff' | 'saveDiffdiff'>,
+): Promise<MuseDashDiffdiffSnapshot> {
+  return cacheFirstLoad({
+    loadCached: () => cache.loadDiffdiff(),
+    loadFresh: async () => {
+      const entries = await loadMuseDashDiffdiffFresh();
+      const fresh = makeMuseDashSnapshot(entries);
+      void cache.saveDiffdiff(fresh).catch(() => undefined);
+      return fresh;
+    },
+    onFresh: () => undefined,
+  });
 }
 
 /**
