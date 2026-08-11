@@ -1,45 +1,55 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  formatPhigrosChallengeBadge,
-  resolvePhigrosChallengeTheme,
-} from '@/domain/phigros-challenge-theme';
+import { resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 
+/** 账号列表用的 Phigros RKS 数字标签，背景与边框由课题模式配色决定；无课题模式时使用白档。 */
 export function PhigrosAccountTags({ rks, challengeModeRank }: {
   rks: string;
   challengeModeRank?: number | null;
 }) {
   const rksNumber = Number(rks);
   const rksDisplay = Number.isFinite(rksNumber) ? rksNumber.toFixed(2) : '—';
-  const challenge = challengeModeRank == null
-    ? null
-    : resolvePhigrosChallengeTheme(challengeModeRank);
-  return <View style={styles.row}>
-    <View style={[styles.tag, styles.rks]} accessibilityLabel={`RKS ${rksDisplay}`}>
-      <Text style={styles.rksValue}>{rksDisplay}</Text>
-    </View>
-    {challenge ? <LinearGradient
+  const challenge = resolvePhigrosChallengeTheme(challengeModeRank ?? 0);
+  return (
+    <LinearGradient
+      accessibilityLabel={`RKS ${rksDisplay}`}
       colors={[...challenge.borderColors]}
       locations={[...challenge.borderLocations]}
       start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
-      style={styles.challengeBorder}
-      accessibilityLabel={`课题模式 ${formatPhigrosChallengeBadge(challengeModeRank!)}`}
+      style={styles.border}
+      testID="phigros-rks-tag-border"
     >
-      <LinearGradient colors={[...challenge.fillColors]} locations={[...challenge.fillLocations]}
-        start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.tag}>
-        <Text style={[styles.challengeValue, { color: challenge.textColor }]}>
-          {formatPhigrosChallengeBadge(challengeModeRank!)}
-        </Text>
+      <LinearGradient
+        colors={[...challenge.fillColors]}
+        locations={[...challenge.fillLocations]}
+        start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }}
+        style={styles.tag}
+        testID="phigros-rks-tag"
+      >
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: challenge.overlayColor }]} />
+        <Text style={[styles.rksValue, { color: challenge.textColor }]}>{rksDisplay}</Text>
       </LinearGradient>
-    </LinearGradient> : <View style={[styles.tag, styles.empty]}><Text style={styles.emptyValue}>—</Text></View>}
-  </View>;
+    </LinearGradient>
+  );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  tag: { minHeight: 28, borderRadius: 8, paddingHorizontal: 9, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 5 },
-  rks: { backgroundColor: '#242934' },
-  rksValue: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  challengeBorder: { borderRadius: 9, padding: 1.5 }, challengeValue: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  empty: { backgroundColor: '#E5E7EB' }, emptyValue: { color: '#6B7280', fontSize: 13, fontWeight: '800' },
+  border: {
+    alignSelf: 'flex-start',
+    minWidth: 74,
+    marginTop: 2,
+    borderRadius: 10,
+    padding: 2,
+    alignItems: 'center',
+  },
+  tag: {
+    minWidth: 70,
+    minHeight: 28,
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  rksValue: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });
