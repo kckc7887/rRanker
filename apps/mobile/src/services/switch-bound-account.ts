@@ -1,18 +1,8 @@
 import { router, type Href } from 'expo-router';
-import { clearAccountDataQueries } from '@/services/invalidate-account-data';
 import { useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 
 const sessions = new SecureSessionStore();
-
-/** 由 switchBoundAccount 置位，供 useSyncOnAccountSwitch 跳过重复清缓存。 */
-let accountSwitchClearedCache = false;
-
-export function consumeAccountSwitchCacheCleared(): boolean {
-  if (!accountSwitchClearedCache) return false;
-  accountSwitchClearedCache = false;
-  return true;
-}
 
 const OVERVIEW_HREF = '/(tabs)/(overview)' as Href;
 
@@ -25,9 +15,9 @@ function navigateToOverviewAccountPage(): void {
 }
 
 /**
- * 切换到指定已绑定账号：先清账号查询缓存，再更新会话；
+ * 切换到指定已绑定账号：保留按账号隔离的查询缓存并更新会话；
  * 默认进入对应游戏总览账号页（`navigateToOverview: false` 时留在当前页）。
- * 总览等页在数据就绪前保持加载态，避免缓存命中时边渲染边重拉导致卡顿。
+ * 目标账号已有缓存时直接复用；首次访问时由对应 query 自行进入加载态。
  */
 export function switchBoundAccount(
   accountId: string,
@@ -39,8 +29,6 @@ export function switchBoundAccount(
 
   const navigateToOverview = options?.navigateToOverview !== false;
   if (activeAccountId !== accountId) {
-    clearAccountDataQueries();
-    accountSwitchClearedCache = true;
     selectBoundAccount(accountId);
     void sessions.setActiveAccountId(accountId);
   }

@@ -5,8 +5,6 @@ import { getGameProfile } from '@/domain/game-profile';
 import type { Player, ScoreSnapshot } from '@/domain/models';
 import {
   accountDataQueryKeys,
-  accountScopedDataQueryKeys,
-  clearAccountDataQueries,
   invalidateAccountDataQueries,
   patchMaimaiPlayerDisplayName,
 } from '@/services/invalidate-account-data';
@@ -71,24 +69,6 @@ describe('invalidateAccountDataQueries', () => {
     expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
       accountDataQueryKeys().map((key) => [...key]),
     );
-  });
-});
-
-describe('clearAccountDataQueries', () => {
-  it('removes only account-scoped data queries, keeping global resources', () => {
-    const client = new QueryClient();
-    const spy = vi.spyOn(client, 'removeQueries');
-
-    clearAccountDataQueries(client);
-
-    expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
-      accountScopedDataQueryKeys().map((key) => [...key]),
-    );
-  });
-
-  it('keeps account-independent resources like the chunithm catalog out of the clear list', () => {
-    expect(accountScopedDataQueryKeys()).not.toContainEqual(['chunithm-catalog']);
-    expect(accountDataQueryKeys()).toContainEqual(['chunithm-catalog']);
   });
 });
 

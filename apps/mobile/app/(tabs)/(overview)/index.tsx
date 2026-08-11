@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  InteractionManager,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -119,6 +127,7 @@ function PublicOverviewScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const refreshingRef = useRef(false);
+  const accountSwitchTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
   const renderableData = data?.payload && typeof data.payload === 'object' ? data : undefined;
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
@@ -152,6 +161,11 @@ function PublicOverviewScreen() {
   useEffect(() => {
     void hydratePins();
   }, [hydratePins]);
+
+  useEffect(() => () => {
+    accountSwitchTaskRef.current?.cancel();
+    accountSwitchTaskRef.current = null;
+  }, []);
 
   const syncData = useCallback(async (): Promise<boolean> => {
     if (refreshingRef.current) return false;
@@ -364,8 +378,12 @@ function PublicOverviewScreen() {
 
   const onSelectAccount = (account: BoundAccount) => {
     setPickerVisible(false);
-    // 已在总览账号页：只清缓存并切换，等待加载后展示。
-    switchBoundAccount(account.id, { navigateToOverview: false });
+    accountSwitchTaskRef.current?.cancel();
+    accountSwitchTaskRef.current = InteractionManager.runAfterInteractions(() => {
+      accountSwitchTaskRef.current = null;
+      // 已在总览账号页：弹层退场后复用目标账号缓存并切换。
+      switchBoundAccount(account.id, { navigateToOverview: false });
+    });
   };
 
   const openUpload = () => {
