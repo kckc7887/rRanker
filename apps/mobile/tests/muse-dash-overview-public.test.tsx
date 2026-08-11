@@ -1,11 +1,16 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
+import { InteractionManager } from 'react-native';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createMuseDashBoundAccount } from '@/domain/bound-account';
 
 const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
 const mockSwitchBoundAccount = jest.fn();
+const mockCancelInteraction = jest.fn();
+const mockRunAfterInteractions = jest.spyOn(InteractionManager, 'runAfterInteractions');
+let pendingInteraction: (() => void) | null = null;
+let mockAccountSelect: ((account: typeof mockFirstAccount) => void) | null = null;
 let mockNullPayload = false;
 const mockFirstAccount = createMuseDashBoundAccount({
   userId: '6ea4f986ffd211e8aa980242ac110011', displayName: 'SiMOOOOOON', rl: 3.45,
@@ -47,6 +52,7 @@ jest.mock('@/components/AccountSwitchSheet', () => ({
     onSelectAccount: (account: typeof mockFirstAccount) => void;
   }) => {
     const RN = jest.requireActual<typeof import('react-native')>('react-native');
+    mockAccountSelect = onSelectAccount;
     return visible ? <>
       <RN.Text>账号切换已打开</RN.Text>
       <RN.Pressable accessibilityLabel="选择喵斯二号" onPress={() => onSelectAccount(accounts[1])} />
@@ -124,6 +130,20 @@ jest.mock('@/domain/chunithm-maintenance', () => ({
 describe('Muse Dash public overview', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    pendingInteraction = null;
+    mockAccountSelect = null;
+    mockRunAfterInteractions.mockImplementation((task) => {
+      pendingInteraction = typeof task === 'function'
+        ? task
+        : task
+          ? () => { void task.gen(); }
+          : null;
+      return {
+        then: jest.fn(),
+        done: jest.fn(),
+        cancel: mockCancelInteraction,
+      } as never;
+    });
     mockNullPayload = false;
     mockRefetch.mockResolvedValue({ data: mockBundle });
   });
@@ -142,12 +162,32 @@ describe('Muse Dash public overview', () => {
     await fireEvent.press(screen.getByLabelText('当前玩家 SiMOOOOOON，点击切换账号'));
     expect(screen.getByText('账号切换已打开')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('选择喵斯二号'));
+    expect(screen.queryByText('账号切换已打开')).toBeNull();
+    expect(mockSwitchBoundAccount).not.toHaveBeenCalled();
+    await act(async () => { pendingInteraction?.(); });
     expect(mockSwitchBoundAccount).toHaveBeenCalledWith(mockSecondAccount.id, { navigateToOverview: false });
 
     await fireEvent.press(screen.getByLabelText('同步数据，当前 MuseDash.moe'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(screen.getByText('来源：MuseDash.moe')).toBeTruthy();
     expect(screen.queryByText(/读取方式/)).toBeNull();
+  });
+
+  it('cancels superseded and unmounted deferred account switches', async () => {
+    const screen = await render(<OverviewScreen />);
+    await fireEvent.press(screen.getByLabelText('当前玩家 SiMOOOOOON，点击切换账号'));
+    const selectAccount = mockAccountSelect;
+    expect(selectAccount).not.toBeNull();
+
+    await act(async () => {
+      selectAccount?.(mockSecondAccount);
+      selectAccount?.(mockFirstAccount);
+    });
+    expect(mockCancelInteraction).toHaveBeenCalledTimes(1);
+    expect(mockSwitchBoundAccount).not.toHaveBeenCalled();
+
+    await act(async () => { screen.unmount(); });
+    expect(mockCancelInteraction).toHaveBeenCalledTimes(2);
   });
 
   it('rejects a stale null payload before the public shell reads player fields', async () => {

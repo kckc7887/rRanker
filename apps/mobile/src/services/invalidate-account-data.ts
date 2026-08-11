@@ -15,7 +15,7 @@ const ACCOUNT_SCOPED_QUERY_KEYS = [
   ['songs'],
 ] as const;
 
-/** 全局资源查询：与账号无关（如中二曲库），切号不应清除，否则切回需重新网络拉取。 */
+/** 全局资源查询：与账号无关（如中二曲库）。 */
 const GLOBAL_QUERY_KEYS = [
   ['chunithm-catalog'],
 ] as const;
@@ -36,17 +36,6 @@ export async function invalidateAccountDataQueries(
       refetchType,
     })),
   );
-}
-
-/**
- * 同步清空账号维度查询缓存。切换账号时在更新 activeAccountId 前调用，
- * 避免下一帧仍渲染旧 RQ 缓存并叠加重拉导致卡顿。
- * 不清理全局资源（chunithm-catalog 等账号无关曲库），切号不白拉。
- */
-export function clearAccountDataQueries(client: QueryClient = queryClient): void {
-  for (const queryKey of ACCOUNT_SCOPED_QUERY_KEYS) {
-    client.removeQueries({ queryKey: [...queryKey] });
-  }
 }
 
 /**
@@ -85,9 +74,4 @@ export function patchMaimaiPlayerDisplayName(
 /** 全量数据查询 key（账号维度 + 全局资源），供存储管理清缓存等全量失效使用。 */
 export function accountDataQueryKeys(): readonly (readonly string[])[] {
   return ALL_QUERY_KEYS;
-}
-
-/** 仅账号维度查询 key，供切号路径清缓存使用。 */
-export function accountScopedDataQueryKeys(): readonly (readonly string[])[] {
-  return ACCOUNT_SCOPED_QUERY_KEYS;
 }

@@ -19,7 +19,6 @@ import {
   DemoAccountStore,
 } from '@/storage/demo-account-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { useSyncOnAccountSwitch } from '@/hooks/use-sync-on-account-switch';
 import {
   createMaxedChunithmTestAccount,
   createChunithmTempAccount,
@@ -129,11 +128,6 @@ async function loadOptionalBoundAccounts() {
   ];
 }
 
-function AccountSwitchSync() {
-  useSyncOnAccountSwitch();
-  return null;
-}
-
 export const unstable_settings = { anchor: '(tabs)' };
 export default function RootLayout() {
   const restoreStatus = useSession((state) => state.restoreStatus);
@@ -201,7 +195,6 @@ function ThemedNavigation() {
   };
   return <ThemeProvider value={navigationTheme}>
     <NotificationProvider>
-      <AccountSwitchSync />
       <Stack screenOptions={{
         headerBackButtonDisplayMode: 'minimal', headerBackButtonMenuEnabled: false,
         headerStyle: { backgroundColor: theme.surface }, headerTintColor: theme.text,
