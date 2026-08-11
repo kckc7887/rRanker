@@ -11,13 +11,17 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
 } as unknown as ReturnType<typeof Animated.loop>);
 
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+
+type MockSessionState = {
+  activeGameId: string;
+  activeAccountId: string;
+  activeProviderId: string | null;
+  session: { mode: string } | null;
+};
+let mockSessionState: MockSessionState;
 jest.mock('@/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
-  useSession: (selector: (state: { activeGameId: string; activeAccountId: string; session: { mode: string } }) => unknown) => selector({
-    activeGameId: 'phigros',
-    activeAccountId: 'phigros:test',
-    session: { mode: 'phi-session' },
-  }),
+  useSession: (selector: (state: MockSessionState) => unknown) => selector(mockSessionState),
 }));
 jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({
@@ -76,6 +80,15 @@ jest.mock('@/hooks/use-game-data', () => ({
 }));
 
 describe('Phigros best list', () => {
+  beforeEach(() => {
+    mockSessionState = {
+      activeGameId: 'phigros',
+      activeAccountId: 'phigros:phi-taptap:demo',
+      activeProviderId: 'phi-taptap',
+      session: { mode: 'phi-session' },
+    };
+  });
+
   it('renders Phi3 and Best27 sections with Phigros cards', async () => {
     const screen = await render(<Best50Screen />);
     expect(screen.getByTestId('phigros-best-results-list')).toBeTruthy();
@@ -85,5 +98,30 @@ describe('Phigros best list', () => {
     expect(screen.getAllByText('1,000,000').length).toBeGreaterThan(0);
     await fireEvent.press(screen.getByLabelText('生成B30图片'));
     expect(mockPush).toHaveBeenCalledWith('/best-image');
+  });
+
+  it('renders the list for the sample account without a session', async () => {
+    mockSessionState = {
+      activeGameId: 'phigros',
+      activeAccountId: 'phigros:test',
+      activeProviderId: 'phigros-test',
+      session: null,
+    };
+    const screen = await render(<Best50Screen />);
+    expect(screen.getByTestId('phigros-best-results-list')).toBeTruthy();
+    expect(screen.getByText('Phi3')).toBeTruthy();
+    expect(screen.queryByText('尚未绑定 TapTap 账号')).toBeNull();
+  });
+
+  it('shows the unbound hint when no TapTap session exists', async () => {
+    mockSessionState = {
+      activeGameId: 'phigros',
+      activeAccountId: 'phigros:phi-taptap:demo',
+      activeProviderId: 'phi-taptap',
+      session: null,
+    };
+    const screen = await render(<Best50Screen />);
+    expect(screen.queryByTestId('phigros-best-results-list')).toBeNull();
+    expect(screen.getByText('尚未绑定 TapTap 账号')).toBeTruthy();
   });
 });

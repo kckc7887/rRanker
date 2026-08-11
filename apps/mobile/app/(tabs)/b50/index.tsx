@@ -16,7 +16,7 @@ import {
 } from '@/domain/chunithm-score-presentation';
 import type { BestListSection, ChunithmBestListSection } from '@/domain/game-data';
 import type { DataSource, ScoreRecord } from '@/domain/models';
-import { canReadChunithmScores } from '@/domain/provider-capabilities';
+import { canReadChunithmScores, canReadPhigrosScores } from '@/domain/provider-capabilities';
 import { phigrosChartNoteKey } from '@/domain/phigros-xing';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useGameData } from '@/hooks/use-game-data';
@@ -230,11 +230,12 @@ function MaimaiBest50Screen() {
 
 function PhigrosBestScreen() {
   const session = useSession((s) => s.session);
+  const activeProviderId = useSession((s) => s.activeProviderId);
   const gameData = useGameData();
   const catalogQuery = usePhigrosCatalog();
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
-  const hasSession = session?.mode === 'phi-session';
+  const canReadScores = canReadPhigrosScores(activeProviderId, session?.mode);
   const phigrosPayload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
 
   const catalogSongs = catalogQuery.data?.snapshot.songs ?? [];
@@ -314,7 +315,7 @@ function PhigrosBestScreen() {
     [noteTotalByKey, titleMap],
   );
 
-  if (!hasSession && !isGameLoading) {
+  if (!canReadScores && !isGameLoading) {
     return (
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <View style={styles.center}>

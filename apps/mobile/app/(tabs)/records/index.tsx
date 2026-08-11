@@ -23,7 +23,7 @@ import {
   type ChunithmScoreCardData,
 } from '@/domain/chunithm-score-presentation';
 import type { DataSource, ScoreRecord } from '@/domain/models';
-import { canReadChunithmScores } from '@/domain/provider-capabilities';
+import { canReadChunithmScores, canReadPhigrosScores } from '@/domain/provider-capabilities';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
@@ -390,6 +390,7 @@ function ChunithmRecordsScreen() {
 
 function PhigrosRecordsScreen() {
   const session = useSession((s) => s.session);
+  const activeProviderId = useSession((s) => s.activeProviderId);
   const gameData = useGameData();
   const catalogQuery = usePhigrosCatalog();
   const kyouChartTags = usePhigrosKyouChartTags();
@@ -403,7 +404,7 @@ function PhigrosRecordsScreen() {
     clearFilters,
   } = usePhigrosRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
-  const hasSession = session?.mode === 'phi-session';
+  const canReadScores = canReadPhigrosScores(activeProviderId, session?.mode);
   const phigrosPayload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
   const records = useMemo(
     () => phigrosPayload?.records ?? [],
@@ -537,7 +538,7 @@ function PhigrosRecordsScreen() {
     || selectedKyouTagIds.length > 0
   );
 
-  if (!hasSession && !isGameLoading) {
+  if (!canReadScores && !isGameLoading) {
     return (
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <View style={styles.center}>

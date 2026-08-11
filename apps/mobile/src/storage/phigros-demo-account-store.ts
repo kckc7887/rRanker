@@ -20,6 +20,10 @@ type StoredPhigrosDemoAccountV1 = {
 const STORE_KEY = 'rranker.phigros-demo-account.v1';
 export const DEFAULT_PHIGROS_DEMO_PLAYER_NAME = '示例账号';
 
+export function isPhigrosDemoAccountId(accountId: string): boolean {
+  return accountId === PHIGROS_TEST_ACCOUNT_ID;
+}
+
 export function parsePhigrosDemoAccountProfile(value: unknown): PhigrosDemoAccountProfile | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as { version?: unknown; account?: unknown };
