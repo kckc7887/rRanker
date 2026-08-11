@@ -78,6 +78,13 @@ jest.mock('expo-router', () => ({
   }),
   useLocalSearchParams: () => mockSongRouteParams,
 }));
+jest.mock('@/state/session-store', () => ({
+  UNBOUND_ACCOUNT_ID: 'maimai:unbound',
+  useSession: (selector: (state: { activeGameId: 'maimai'; activeAccountId: string }) => unknown) => selector({
+    activeGameId: 'maimai',
+    activeAccountId: 'maimai:diving-fish:demo',
+  }),
+}));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');

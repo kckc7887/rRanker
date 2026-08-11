@@ -40,7 +40,6 @@ const exampleAccountIcon = require('../../assets/images/maimai-test.png') as Ima
 const phigrosIcon = require('../../assets/images/phigros.png') as ImageSourcePropType;
 const taptapIcon = require('../../assets/images/taptap.png') as ImageSourcePropType;
 const chunithmIcon = require('../../assets/images/chunithm.png') as ImageSourcePropType;
-const testGameIcon = require('../../assets/images/icon.png') as ImageSourcePropType;
 const adofaiIcon = require('../../assets/images/adofai.png') as ImageSourcePropType;
 const tufIcon = require('../../assets/images/tuf.png') as ImageSourcePropType;
 const museDashIcon = require('../../assets/images/musedash.png') as ImageSourcePropType;
@@ -142,14 +141,6 @@ export const GAME_OPTIONS: GameOption[] = [
       icon: museDashMoeIcon,
       available: true,
     }],
-  },
-  {
-    id: 'test',
-    title: '测试游戏',
-    icon: testGameIcon,
-    available: true,
-    pendingDetail: '',
-    providers: [],
   },
   {
     id: 'phigros',

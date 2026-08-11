@@ -22,6 +22,7 @@ const mockRefetchCatalog = jest.fn(async () => undefined);
 const mockPush = jest.fn();
 const mockSessionState = {
   activeGameId: 'chunithm',
+  activeAccountId: 'chunithm:test',
   activeProviderId: 'lxns',
   session: { mode: 'lxns-oauth' } as { mode: string } | null,
 };
@@ -49,6 +50,7 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
 }));
 jest.mock('@/state/session-store', () => ({
+  UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: unknown) => unknown) => selector(mockSessionState),
 }));
 

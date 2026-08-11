@@ -12,8 +12,10 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
 
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/state/session-store', () => ({
-  useSession: (selector: (state: { activeGameId: string; session: { mode: string } }) => unknown) => selector({
+  UNBOUND_ACCOUNT_ID: 'maimai:unbound',
+  useSession: (selector: (state: { activeGameId: string; activeAccountId: string; session: { mode: string } }) => unknown) => selector({
     activeGameId: 'phigros',
+    activeAccountId: 'phigros:test',
     session: { mode: 'phi-session' },
   }),
 }));

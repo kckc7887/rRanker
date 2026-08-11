@@ -37,7 +37,7 @@ import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
 import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
 import { useRecordsFilter } from '@/state/records-filter';
-import { useSession } from '@/state/session-store';
+import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufRecordsScreen } from '@/screens/TufScreens';
@@ -49,6 +49,7 @@ export default function RecordsTabScreen() {
 
 export function RecordsScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
+  const activeAccountId = useSession((s) => s.activeAccountId);
   const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const catalog = useDetailedCatalog();
   const dxRatingChartTags = useDxRatingChartTags();
@@ -133,6 +134,10 @@ export function RecordsScreen() {
   }, [data, deferredFilterSpec, dxRatingChartTags.data, dxRatingTagIndex, searchBySongId]);
 
   const isEmpty = !!data && filtered.length === 0;
+
+  if (activeAccountId === UNBOUND_ACCOUNT_ID) {
+    return <EmptyDataView title="暂无绑定账号" detail="请先在设置 → 游戏管理中绑定账号" />;
+  }
 
   if (activeGameId === 'phigros') {
     return <PhigrosRecordsScreen />;

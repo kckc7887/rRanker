@@ -9,7 +9,6 @@ import {
   createMaxedMaimaiTestAccount,
   createMaxedPhigrosTestAccount,
   createMuseDashBoundAccount,
-  createTestBoundAccount,
   createTufBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
@@ -52,10 +51,9 @@ const mockAccount = createMaimaiBoundAccount({
 });
 const mockLocalAccount = createLocalMaimaiAccount('本地玩家', 0);
 const mockTestAccount = createMaxedMaimaiTestAccount();
-const mockEmptyGameAccount = createTestBoundAccount();
 const mockTufAccount = createTufBoundAccount({ playerId: 4242, displayName: 'TUF 玩家' });
 const mockMuseDashAccount = createMuseDashBoundAccount({ userId: 'u-muse-1', displayName: '喵斯玩家' });
-let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount];
+let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount];
 let mockExpandedGameId: GameId = 'maimai';
 
 describe('示例账号图标', () => {
@@ -70,14 +68,12 @@ describe('示例账号图标', () => {
   it('冰与火之舞与 TUF 社区使用各自的正式图标', () => {
     const adofai = findGame('adofai');
     const tufIcon = adofai?.providers.find((provider) => provider.id === 'tuf')?.icon;
-    expect(adofai?.icon).not.toBe(findGame('test')?.icon);
     expect(tufIcon).not.toBe(adofai?.icon);
   });
 
   it('喵斯快跑与喵斯快跑社区使用各自的正式图标', () => {
     const musedash = findGame('musedash');
     const musedashMoeIcon = musedash?.providers.find((provider) => provider.id === 'musedash-moe')?.icon;
-    expect(musedash?.icon).not.toBe(findGame('test')?.icon);
     expect(musedashMoeIcon).not.toBe(musedash?.icon);
   });
 });
@@ -225,7 +221,7 @@ describe('M3A game account management', () => {
     jest.clearAllMocks();
     mockClearOrder.length = 0;
     mockExpandedGameId = 'maimai';
-    mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount, mockEmptyGameAccount];
+    mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount];
   });
 
   const renderScreen = () => render(
@@ -237,7 +233,7 @@ describe('M3A game account management', () => {
   it('keeps the original account cards and add button while grouping existing games', async () => {
     const screen = await renderScreen();
     expect(screen.getByLabelText('收起游戏 舞萌 DX')).toBeTruthy();
-    expect(screen.getByLabelText('收起游戏 测试游戏')).toBeTruthy();
+    expect(screen.queryByLabelText('收起游戏 测试游戏')).toBeNull();
     expect(screen.getByText('水鱼查分器')).toBeTruthy();
     expect(screen.getByText('测试水鱼')).toBeTruthy();
     expect(screen.getByLabelText('添加游戏账号')).toBeTruthy();
@@ -252,6 +248,7 @@ describe('M3A game account management', () => {
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     expect(screen.getByText('选择游戏')).toBeTruthy();
     expect(screen.getByText('Phigros')).toBeTruthy();
+    expect(screen.queryByText('测试游戏')).toBeNull();
     expect(screen.getByLabelText('水鱼查分器')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('水鱼查分器'));
     await waitFor(() => expect(screen.getByText('登录查分器')).toBeTruthy());
@@ -262,7 +259,7 @@ describe('M3A game account management', () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('收起游戏 舞萌 DX'));
     expect(screen.queryByText('测试水鱼')).toBeNull();
-    expect(screen.getByText('空数据')).toBeTruthy();
+    expect(screen.queryByText('空数据')).toBeNull();
     await fireEvent.press(screen.getByLabelText('展开游戏 舞萌 DX'));
     expect(screen.getByText('测试水鱼')).toBeTruthy();
   });
@@ -381,7 +378,7 @@ describe('M3A game account management', () => {
   });
 
   it('offers game-scoped personal data cleanup for the final account', async () => {
-    mockBoundAccounts = [mockAccount, mockEmptyGameAccount];
+    mockBoundAccounts = [mockAccount];
     const screen = await renderScreen();
     await fireEvent.press(screen.getByText('解除绑定'));
     expect(screen.getByText('确认解绑并保留个人数据')).toBeTruthy();
@@ -438,7 +435,7 @@ describe('M3A game account management', () => {
 
   it('continues clearing, logs out and reports the failed part when one store fails', async () => {
     mockClearSnapshots.mockRejectedValueOnce(new Error('locked'));
-    mockBoundAccounts = [mockAccount, mockEmptyGameAccount];
+    mockBoundAccounts = [mockAccount];
     const screen = await renderScreen();
     await fireEvent.press(screen.getByText('解除绑定'));
     await fireEvent.press(screen.getByText('解绑并清除个人数据'));
