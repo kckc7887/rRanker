@@ -159,6 +159,10 @@ jest.mock('@/services/tuf-cache', () => ({
     clearPlayer: (playerId: number) => mockClearTufCache(playerId),
   })),
 }));
+jest.mock('@/services/account-thumbnail', () => ({
+  hydrateBoundAccountThumbnails: jest.fn(async () => undefined),
+  persistBoundAccountThumbnail: jest.fn(async () => undefined),
+}));
 jest.mock('@/storage/musedash-account-store', () => ({
   MuseDashAccountStore: jest.fn(() => ({
     remove: (userId: string) => mockRemoveMuseDashAccount(userId),

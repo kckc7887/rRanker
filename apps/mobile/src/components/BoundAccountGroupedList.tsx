@@ -11,6 +11,7 @@ import { groupBoundAccountGameIds, type BoundAccount } from '@/domain/bound-acco
 import { findGame, type GameId } from '@/domain/game-bind-options';
 import { useAppTheme } from '@/theme/app-theme';
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
+import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
 import { hydrateChunithmAccountSummaries } from '@/services/hydrate-chunithm-account-summaries';
 import { hydratePhigrosAccountSummaries } from '@/services/hydrate-phigros-account-summaries';
 
@@ -21,6 +22,7 @@ function useHydrateAccountSummaries(accountIds: string): void {
     if (ranFor.current === accountIds) return;
     ranFor.current = accountIds;
     void hydrateBoundAccountAvatars();
+    void hydrateBoundAccountThumbnails();
     void hydrateChunithmAccountSummaries();
     void hydratePhigrosAccountSummaries();
   }, [accountIds]);
