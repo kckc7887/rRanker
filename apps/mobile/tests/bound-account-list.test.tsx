@@ -2,9 +2,13 @@ import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { processColor } from 'react-native';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
+import { TUF_RATING_THEME } from '@/components/adofai/TufOverviewDetails';
+import { MUSE_DASH_RATING_THEME } from '@/components/musedash/MuseDashOverviewDetails';
 import {
   createChunithmBoundAccount,
+  createMuseDashBoundAccount,
   createPhigrosBoundAccount,
+  createTufBoundAccount,
 } from '@/domain/bound-account';
 import { resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 import { resolveChunithmPossessionTheme, resolveChunithmRatingTierBorder } from '@/domain/chunithm-rating-theme';
@@ -79,5 +83,60 @@ describe('BoundAccountGroupedList Chunithm metadata', () => {
       .toEqual(theme.fillColors.map((color) => processColor(color)));
     expect(screen.getByTestId('chunithm-rating-tag-border').props.colors)
       .toEqual(resolveChunithmRatingTierBorder(14.5).borderColors.map((color) => processColor(color)));
+  });
+});
+
+describe('BoundAccountGroupedList TUF and Muse Dash metadata', () => {
+  it('shows a numeric-only RANKED SCORE tag tinted with the TUF theme', async () => {
+    const account = createTufBoundAccount({ playerId: 1, displayName: 'TUF玩家', rankedScore: 15.4321 });
+    const screen = await render(<BoundAccountGroupedList
+      accounts={[account]} expandedGameId="adofai" activeAccountId={account.id}
+      onToggleGame={jest.fn()} onSelectAccount={jest.fn()}
+    />);
+
+    expect(screen.getByLabelText('RANKED SCORE 15.43')).toBeTruthy();
+    expect(screen.getByText('15.43')).toBeTruthy();
+    expect(screen.queryByText('RANKED SCORE')).toBeNull();
+    expect(screen.getByTestId('tuf-rating-tag').props.colors)
+      .toEqual(TUF_RATING_THEME.borderColors.map((color) => processColor(color)));
+    expect(screen.getByTestId('tuf-rating-tag-fill').props.colors)
+      .toEqual(TUF_RATING_THEME.fillColors.map((color) => processColor(color)));
+  });
+
+  it('shows a numeric-only Rating tag tinted with the Muse Dash theme', async () => {
+    const account = createMuseDashBoundAccount({ userId: 'md-1', displayName: '喵斯玩家', rl: 15.4321 });
+    const screen = await render(<BoundAccountGroupedList
+      accounts={[account]} expandedGameId="musedash" activeAccountId={account.id}
+      onToggleGame={jest.fn()} onSelectAccount={jest.fn()}
+    />);
+
+    expect(screen.getByLabelText('Rating 15.43')).toBeTruthy();
+    expect(screen.getByText('15.43')).toBeTruthy();
+    expect(screen.getByTestId('musedash-rating-tag').props.colors)
+      .toEqual(MUSE_DASH_RATING_THEME.borderColors.map((color) => processColor(color)));
+    expect(screen.getByTestId('musedash-rating-tag-fill').props.colors)
+      .toEqual(MUSE_DASH_RATING_THEME.fillColors.map((color) => processColor(color)));
+  });
+
+  it('keeps the theme tint when the score is missing', async () => {
+    const tuf = createTufBoundAccount({ playerId: 1, displayName: 'TUF玩家' });
+    const tufScreen = await render(<BoundAccountGroupedList
+      accounts={[tuf]} expandedGameId="adofai" activeAccountId={tuf.id}
+      onToggleGame={jest.fn()} onSelectAccount={jest.fn()}
+    />);
+    expect(tufScreen.getByLabelText('RANKED SCORE —')).toBeTruthy();
+    expect(tufScreen.getByText('—')).toBeTruthy();
+    expect(tufScreen.getByTestId('tuf-rating-tag').props.colors)
+      .toEqual(TUF_RATING_THEME.borderColors.map((color) => processColor(color)));
+
+    const muse = createMuseDashBoundAccount({ userId: 'md-1', displayName: '喵斯玩家' });
+    const museScreen = await render(<BoundAccountGroupedList
+      accounts={[muse]} expandedGameId="musedash" activeAccountId={muse.id}
+      onToggleGame={jest.fn()} onSelectAccount={jest.fn()}
+    />);
+    expect(museScreen.getByLabelText('Rating —')).toBeTruthy();
+    expect(museScreen.getByText('—')).toBeTruthy();
+    expect(museScreen.getByTestId('musedash-rating-tag-fill').props.colors)
+      .toEqual(MUSE_DASH_RATING_THEME.fillColors.map((color) => processColor(color)));
   });
 });
