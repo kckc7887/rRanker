@@ -7,12 +7,20 @@ import { useRecordsFilter } from '@/state/records-filter';
 
 const mockPush = jest.fn();
 let mockRecordsDxRatingState: 'live' | 'cache' | 'error' | 'loading' = 'live';
+let mockActiveAccountId = 'maimai:diving-fish:demo';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
 } as unknown as ReturnType<typeof Animated.loop>);
 
 jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href) } }));
+jest.mock('@/state/session-store', () => ({
+  UNBOUND_ACCOUNT_ID: 'maimai:unbound',
+  useSession: (selector: (state: { activeGameId: 'maimai'; activeAccountId: string }) => unknown) => selector({
+    activeGameId: 'maimai',
+    activeAccountId: mockActiveAccountId,
+  }),
+}));
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -152,7 +160,19 @@ describe('M4 score list cards', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRecordsDxRatingState = 'live';
+    mockActiveAccountId = 'maimai:diving-fish:demo';
     useRecordsFilter.getState().reset();
+  });
+
+  it('shows the unbound empty state on best and records', async () => {
+    mockActiveAccountId = 'maimai:unbound';
+    const best = await render(<Best50Screen />);
+    expect(best.getByText('暂无绑定账号')).toBeTruthy();
+    expect(best.queryByTestId('best50-results-list')).toBeNull();
+
+    const records = await render(<RecordsScreen />);
+    expect(records.getByText('暂无绑定账号')).toBeTruthy();
+    expect(records.queryByTestId('records-results-list')).toBeNull();
   });
 
   it('renders Best35 above Best15 and sorts each section by Rating', async () => {

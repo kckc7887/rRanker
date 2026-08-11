@@ -4,6 +4,7 @@ import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { DxRatingCard } from '@/components/DxRatingCard';
+import { EmptyDataView } from '@/components/EmptyDataView';
 import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
@@ -71,7 +72,7 @@ import { queryClient } from '@/state/query-client';
 import { readSettledGameDataBundle } from '@/services/game-data-query';
 import { awaitChunithmFresh } from '@/services/chunithm-personal-service';
 import { awaitScoreFresh } from '@/services/score-service';
-import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
+import { applyLxnsTokenRotation, UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
@@ -104,6 +105,7 @@ function PublicOverviewScreen() {
   const activeSession = useSession((s) => s.session);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const updateBoundAccountScore = useSession((s) => s.updateBoundAccountScore);
+  const isUnbound = activeAccountId === UNBOUND_ACCOUNT_ID;
   const expandedGameId = useGamePickerUi((s) => s.expandedGameId);
   const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
@@ -399,6 +401,10 @@ function PublicOverviewScreen() {
     }
     setChunithmSyncGuideVisible(true);
   };
+
+  if (isUnbound) {
+    return <EmptyDataView title="暂无绑定账号" detail="请先在设置 → 游戏管理中绑定账号" />;
+  }
 
   return (
     <View collapsable={false} style={[styles.page, { backgroundColor: theme.background }]}>

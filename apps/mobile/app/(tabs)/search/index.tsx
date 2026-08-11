@@ -31,7 +31,7 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useUserLibrary } from '@/hooks/use-user-library';
-import { useSession } from '@/state/session-store';
+import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
 import { useCatalogFilter } from '@/state/catalog-filter';
 import { useChunithmCatalogFilter } from '@/state/chunithm-catalog-filter';
 import { usePhigrosCatalogFilter } from '@/state/phigros-catalog-filter';
@@ -54,6 +54,7 @@ export default function SearchTabScreen() {
 
 export function SearchScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
+  const activeAccountId = useSession((s) => s.activeAccountId);
   const query = useDetailedCatalog();
   const dxRatingChartTags = useDxRatingChartTags();
   const tabBottomInset = useNativeTabBottomInset();
@@ -156,6 +157,10 @@ export function SearchScreen() {
     toggleFavorite,
     versionLabelsById,
   ]);
+
+  if (activeAccountId === UNBOUND_ACCOUNT_ID) {
+    return <EmptyDataView title="暂无绑定账号" detail="请先在设置 → 游戏管理中绑定账号" />;
+  }
 
   if (activeGameId === 'phigros') {
     return <PhigrosSearchScreen />;

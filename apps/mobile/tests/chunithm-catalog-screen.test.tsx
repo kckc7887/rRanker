@@ -108,8 +108,9 @@ jest.mock('@/theme/app-theme', () => ({
   }),
 }));
 jest.mock('@/state/session-store', () => ({
-  useSession: (selector: (state: { activeGameId: 'chunithm' }) => unknown) => (
-    selector({ activeGameId: 'chunithm' })
+  UNBOUND_ACCOUNT_ID: 'maimai:unbound',
+  useSession: (selector: (state: { activeGameId: 'chunithm'; activeAccountId: string }) => unknown) => (
+    selector({ activeGameId: 'chunithm', activeAccountId: 'chunithm:test' })
   ),
 }));
 jest.mock('@/hooks/use-chunithm-catalog', () => ({

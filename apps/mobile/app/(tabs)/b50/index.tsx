@@ -23,7 +23,7 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { useSession } from '@/state/session-store';
+import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufBestScreen } from '@/screens/TufScreens';
 import { MuseDashBestScreen } from '@/screens/MuseDashScreens';
@@ -49,6 +49,10 @@ export default function Best50TabScreen() {
 
 export function Best50Screen() {
   const activeGameId = useSession((s) => s.activeGameId);
+  const activeAccountId = useSession((s) => s.activeAccountId);
+  if (activeAccountId === UNBOUND_ACCOUNT_ID) {
+    return <EmptyDataView title="暂无绑定账号" detail="请先在设置 → 游戏管理中绑定账号" />;
+  }
   if (activeGameId === 'chunithm') {
     return <ChunithmBestScreen />;
   }

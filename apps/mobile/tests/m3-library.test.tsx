@@ -194,6 +194,7 @@ jest.mock('@/state/game-picker-ui', () => ({
   }),
 }));
 jest.mock('@/state/session-store', () => ({
+  UNBOUND_ACCOUNT_ID: 'maimai:unbound',
   useSession: (selector: (state: typeof mockSessionState) => unknown) => selector(mockSessionState),
 }));
 
@@ -288,6 +289,17 @@ describe('M3A personal library screens', () => {
       fixtures.fixturePlayer.displayName,
     );
     expect(mockRefetchScore).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the unbound empty state on overview and search', async () => {
+    Object.assign(mockSessionState, { activeAccountId: 'maimai:unbound' });
+    const overview = await render(<OverviewScreen />);
+    expect(overview.getByText('暂无绑定账号')).toBeTruthy();
+    expect(overview.queryByTestId('overview-scroll')).toBeNull();
+
+    const search = await render(<SearchScreen />);
+    expect(search.getByText('暂无绑定账号')).toBeTruthy();
+    expect(search.queryByLabelText('歌曲搜索')).toBeNull();
   });
 
   it('lists favorites, practice charts and missing catalog entries with filters', async () => {

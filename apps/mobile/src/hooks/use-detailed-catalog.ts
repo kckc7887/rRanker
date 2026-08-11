@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { CatalogSnapshot } from '@/domain/models';
 import { ResourceService } from '@/services/resource-service';
 import { cacheFirstLoad } from '@/services/cache-first';
-import { useSession } from '@/state/session-store';
+import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { aliasesForCatalogSong } from '@/domain/catalog';
@@ -14,7 +14,7 @@ export function useDetailedCatalog() {
   const activeAccountId = useSession((state) => state.activeAccountId);
   const activeGameId = useSession((state) => state.activeGameId);
   const provider = useSession((state) => state.catalogProvider);
-  const enabled = activeGameId === 'maimai';
+  const enabled = activeGameId === 'maimai' && activeAccountId !== UNBOUND_ACCOUNT_ID;
   const queryKey = ['detailed-catalog', activeAccountId, activeGameId];
   return useQuery({
     enabled,
