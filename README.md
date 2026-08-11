@@ -42,10 +42,13 @@ rRanker 是一个聚合了多家音乐游戏数据的数据管理应用，提供
 |<img src="assets/images/app/喵斯/总览页.JPG" alt="喵斯总览页" width="100">|<img src="assets/images/app/喵斯/成绩页.JPG" alt="喵斯成绩页" width="100">|<img src="assets/images/app/喵斯/歌曲详情.JPG" alt="喵斯歌曲详情页" width="100">|
 
 ### 冰与火之舞 A Dance of Ice and Fire
+
 |总览|
 |--|
-<img src="assets/images/app/adofai/总览页.JPG" alt="A Dance of Ice and Fire总览页" width="100">
+|<img src="assets/images/app/adofai/总览页.JPG" alt="A Dance of Ice and Fire总览页" width="100">|
+
 ### 其它
+
 |随机歌曲|曲库|主题|存储管理|机厅查找|
 |--|--|--|--|--|
 |<img src="assets/images/app/Phigros/随机歌曲.JPG" alt="随机歌曲" width="100">|<img src="assets/images/app/舞萌DX/曲库页.JPG" alt="曲库" width="100">|<img src="assets/images/app/深色模式与主题切换.JPG" alt="主题" width="100">|<img src="assets/images/app/存储管理.JPG" alt="存储管理" width="100">|<img src="assets/images/app/机厅查找.JPG" alt="机厅查找" width="100">|
@@ -59,7 +62,9 @@ rRanker 是一个聚合了多家音乐游戏数据的数据管理应用，提供
 1. 🎨 切换主题色，深浅色模式，快捷清理缓存。
 1. 🎲 随机歌曲推荐。
 1. 🔧 更多功能......
+
 ## 🚀 快速开始
+
 ```bash
 cd apps/mobile
 npm install
@@ -82,7 +87,9 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [nearcade](https://nearcade.phizone.cn/)
 
 ## ⚠️ 声明
+
 本项目仅提供数据管理功能，本项目与相关的任何游戏官方没有任何关系。
 
 ## 📜 许可证
+
 本项目采用 [GNU Affero General Public License v3.0](LICENSE)（SPDX：`AGPL-3.0-only`），Copyright (c) 2026 尘言 潁川ホコリ。
