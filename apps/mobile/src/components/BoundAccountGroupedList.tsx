@@ -7,6 +7,9 @@ import { BoundAccountAvatar } from '@/components/BoundAccountAvatar';
 import { ChunithmRatingTag } from '@/components/ChunithmRatingTag';
 import { DxRatingTag } from '@/components/DxRatingTag';
 import { PhigrosAccountTags } from '@/components/PhigrosAccountTags';
+import { TintedRatingTag } from '@/components/TintedRatingTag';
+import { TUF_RATING_THEME } from '@/components/adofai/TufOverviewDetails';
+import { MUSE_DASH_RATING_THEME } from '@/components/musedash/MuseDashOverviewDetails';
 import { groupBoundAccountGameIds, type BoundAccount } from '@/domain/bound-account';
 import { findGame, type GameId } from '@/domain/game-bind-options';
 import { useAppTheme } from '@/theme/app-theme';
@@ -86,6 +89,22 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
                 />
               ) : null}
               {account.gameId === 'phigros' ? <PhigrosAccountTags rks={account.scoreDisplay} challengeModeRank={account.challengeModeRank} /> : null}
+              {account.gameId === 'adofai' ? (
+                <TintedRatingTag
+                  theme={TUF_RATING_THEME}
+                  display={account.scoreDisplay}
+                  accessibilityLabel={`RANKED SCORE ${account.scoreDisplay}`}
+                  testID="tuf-rating-tag"
+                />
+              ) : null}
+              {account.gameId === 'musedash' ? (
+                <TintedRatingTag
+                  theme={MUSE_DASH_RATING_THEME}
+                  display={account.scoreDisplay}
+                  accessibilityLabel={`Rating ${account.scoreDisplay}`}
+                  testID="musedash-rating-tag"
+                />
+              ) : null}
               <Text style={[styles.providerLine, { color: theme.textMuted }]}>{account.providerTitle}</Text></View>
             </Pressable>
             {renderActions ? <View style={[styles.actions, { borderTopColor: theme.border }]}>{renderActions(account)}</View> : null}
