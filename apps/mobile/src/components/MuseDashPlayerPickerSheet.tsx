@@ -41,7 +41,6 @@ export function MuseDashPlayerPickerSheet({
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" visible={visible} onRequestClose={onClose}>
       <View style={[styles.page, { backgroundColor: theme.background }]}>
-        <View style={styles.signature} />
         <View style={styles.header}>
           <View><Text style={[styles.title, { color: theme.text }]}>绑定喵斯快跑玩家</Text>
             <Text style={[styles.detail, { color: theme.textMuted }]}>仅搜索公开资料，不需要账号或 Token；支持直接输入 32 位 user_id</Text></View>
@@ -95,7 +94,6 @@ export function MuseDashPlayerPickerSheet({
 
 const styles = StyleSheet.create({
   page: { flex: 1, paddingHorizontal: 18 },
-  signature: { height: 4, marginHorizontal: -18, backgroundColor: '#FF5A8A' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 20 },
   title: { fontSize: 22, fontWeight: '800' }, detail: { fontSize: 12, marginTop: 4 }, close: { fontSize: 16, fontWeight: '700' },
   input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 14, height: 48, fontSize: 15 },

@@ -991,7 +991,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'chunithm-test') return '示例查分器';
   if (providerId === 'chunithm-temp') return '无成绩临时账号';
   if (providerId === 'tuf') return 'TUF 社区';
-  if (providerId === 'musedash-moe') return '喵斯快跑社区';
+  if (providerId === 'musedash-moe') return 'MuseDash.moe';
   return '本地';
 }
 

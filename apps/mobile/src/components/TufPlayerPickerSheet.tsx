@@ -33,7 +33,6 @@ export function TufPlayerPickerSheet({
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" visible={visible} onRequestClose={onClose}>
       <View style={[styles.page, { backgroundColor: theme.background }]}>
-        <View style={styles.signature}><View style={styles.ice} /><View style={styles.fire} /></View>
         <View style={styles.header}>
           <View><Text style={[styles.title, { color: theme.text }]}>绑定 TUF 玩家</Text>
             <Text style={[styles.detail, { color: theme.textMuted }]}>仅搜索公开资料，不需要账号或 Token</Text></View>
@@ -89,8 +88,6 @@ export function TufPlayerPickerSheet({
 
 const styles = StyleSheet.create({
   page: { flex: 1, paddingHorizontal: 18 },
-  signature: { flexDirection: 'row', height: 4, marginHorizontal: -18 },
-  ice: { flex: 1, backgroundColor: '#44C7F4' }, fire: { flex: 1, backgroundColor: '#F15B55' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 20 },
   title: { fontSize: 22, fontWeight: '800' }, detail: { fontSize: 12, marginTop: 4 }, close: { fontSize: 16, fontWeight: '700' },
   input: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 13, paddingHorizontal: 14, height: 48, fontSize: 15 },

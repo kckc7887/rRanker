@@ -21,7 +21,7 @@ export type JsonRequestOptions<T> = {
   baseUrl: string;
   /** 状态码 → 错误（文案由调用方按游戏提供）。 */
   error: (status: number) => ProviderError;
-  /** 游戏名（用于超时/网络/结构错误的文案，如「喵斯快跑社区」）。 */
+  /** 游戏名（用于超时/网络/结构错误的文案，如「MuseDash.moe」）。 */
   label: string;
   timeoutMs?: number;
   retries?: number;
