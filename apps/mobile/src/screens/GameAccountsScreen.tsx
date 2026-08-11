@@ -513,7 +513,7 @@ export function GameAccountsScreen() {
   });
 
   const openPicker = () => {
-    setExpandedPickerGameId('maimai');
+    setExpandedPickerGameId(null);
     setPickerVisible(true);
   };
 
