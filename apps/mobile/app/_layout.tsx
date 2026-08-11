@@ -45,6 +45,7 @@ import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
+import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
 import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
 import { startTimer } from '@/utils/startup-timing';
 import { TufAccountStore } from '@/storage/tuf-account-store';
@@ -161,6 +162,7 @@ export default function RootLayout() {
           stop();
           void hydrateBoundAccountAvatars().catch(() => undefined);
           void hydrateLocalAccountRatings().catch(() => undefined);
+          void hydrateBoundAccountThumbnails().catch(() => undefined);
         });
     }
   }, [restoreStatus]);

@@ -11,6 +11,7 @@ import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
 import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService, staleCachedSnapshot } from '@/services/score-service';
 import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
+import { persistBoundAccountThumbnail } from '@/services/account-thumbnail';
 import { queryClient } from '@/state/query-client';
 import type { ScoreSnapshot, DataSource } from '@/domain/models';
 import type { ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
@@ -441,12 +442,17 @@ export function useGameData() {
       const avatarUrl = d.providerId === 'lxns'
         ? buildLxnsIconUrl(d.payload.player.presentation?.iconId)
         : undefined;
+      const scoreDisplay = formatPlayerScore(d.payload.playerScore.value, d.profile.ratingDigits);
       updateBoundAccountScore(
         activeAccountId,
-        formatPlayerScore(d.payload.playerScore.value, d.profile.ratingDigits),
+        scoreDisplay,
         d.payload.player.displayName,
         avatarUrl,
       );
+      void persistBoundAccountThumbnail(activeAccountId, {
+        scoreDisplay,
+        avatarUrl: avatarUrl ?? undefined,
+      }).catch(() => undefined);
       if (avatarUrl) {
         void persistBoundAccountAvatar(activeAccountId, avatarUrl);
       }
@@ -459,6 +465,11 @@ export function useGameData() {
         d.payload.avatarUrl ?? undefined,
         d.payload.challengeModeRank,
       );
+      void persistBoundAccountThumbnail(activeAccountId, {
+        scoreDisplay: d.payload.playerScore.display,
+        avatarUrl: d.payload.avatarUrl ?? undefined,
+        challengeModeRank: d.payload.challengeModeRank,
+      }).catch(() => undefined);
       if (d.providerId === 'phi-taptap') {
         void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
           displayName: d.payload.player.displayName,
@@ -480,6 +491,11 @@ export function useGameData() {
         undefined,
         d.payload.player?.rating_possession ?? null,
       );
+      void persistBoundAccountThumbnail(activeAccountId, {
+        scoreDisplay: d.payload.playerScore.display,
+        avatarUrl: avatarUrl ?? undefined,
+        ratingPossession: d.payload.player?.rating_possession ?? null,
+      }).catch(() => undefined);
       if (d.providerId === 'lxns') {
         void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
           displayName: d.payload.player?.name ?? '落雪账号（待同步）',
@@ -498,6 +514,10 @@ export function useGameData() {
         d.payload.player.name,
         d.payload.player.avatarUrl ?? d.payload.player.avatar ?? undefined,
       );
+      void persistBoundAccountThumbnail(activeAccountId, {
+        scoreDisplay: d.payload.playerScore.display,
+        avatarUrl: d.payload.player.avatarUrl ?? d.payload.player.avatar ?? undefined,
+      }).catch(() => undefined);
     }
     if (d.payload.kind === 'musedash') {
       updateBoundAccountScore(
@@ -505,6 +525,9 @@ export function useGameData() {
         d.payload.playerScore.display,
         d.payload.player.user.nickname,
       );
+      void persistBoundAccountThumbnail(activeAccountId, {
+        scoreDisplay: d.payload.playerScore.display,
+      }).catch(() => undefined);
     }
   }, [activeAccountId, query.data, updateBoundAccountScore]);
 
