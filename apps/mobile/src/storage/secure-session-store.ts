@@ -9,6 +9,7 @@ import {
 } from '@/domain/bound-account';
 import { isMaimaiDemoAccountId } from '@/storage/demo-account-store';
 import { isChunithmDemoAccountId } from '@/storage/chunithm-demo-account-store';
+import { isPhigrosDemoAccountId } from '@/storage/phigros-demo-account-store';
 import type { ProviderSession } from '@/providers/contracts';
 import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
 import { startTimer } from '@/utils/startup-timing';
@@ -607,6 +608,7 @@ export class SecureSessionStore {
     const builtin = isLocalMaimaiAccountId(accountId)
       || isMaimaiDemoAccountId(accountId)
       || isChunithmDemoAccountId(accountId)
+      || isPhigrosDemoAccountId(accountId)
       || accountId === MAIMAI_TEST_ACCOUNT_ID
       || accountId === CHUNITHM_TEMP_ACCOUNT_ID
       || accountId === TEST_ACCOUNT_ID;

@@ -3,6 +3,7 @@ import {
   CHUNITHM_TEMP_ACCOUNT_ID,
   LOCAL_MAIMAI_ACCOUNT_ID,
   MAIMAI_TEST_ACCOUNT_ID,
+  PHIGROS_TEST_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import type { StoredProviderAccountInput } from '@/storage/secure-session-store';
 import { utf8ByteLength } from '@/storage/large-secure-value-store';
@@ -79,6 +80,15 @@ describe('SecureSessionStore 内置账号兼容', () => {
     await store.setActiveAccountId(CHUNITHM_TEST_ACCOUNT_ID);
     const vault = await store.loadVault();
     expect(vault.activeAccountId).toBe(CHUNITHM_TEST_ACCOUNT_ID);
+    expect(vault.accounts).toEqual([]);
+    expect(vault.credentials).toEqual([]);
+  });
+
+  it('允许 Phigros 示例账号作为活跃账号且不写入远程凭据', async () => {
+    const store = createStore();
+    await store.setActiveAccountId(PHIGROS_TEST_ACCOUNT_ID);
+    const vault = await store.loadVault();
+    expect(vault.activeAccountId).toBe(PHIGROS_TEST_ACCOUNT_ID);
     expect(vault.accounts).toEqual([]);
     expect(vault.credentials).toEqual([]);
   });
