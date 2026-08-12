@@ -18,19 +18,24 @@ import {
   isDrawViewHierarchyError, requestBestImageExportPermission, saveBestImageCapture,
   shouldUseBestImageRenderInContext,
 } from '@/features/best-image/best-image-export';
-import { prepareBestImageWebViewSources, type BestImageWebViewSource } from '@/features/best-image/prepare-best-image-webview-sources';
+import {
+  bestImagePagesDirectory,
+  prepareBestImageWebViewSources,
+  type BestImageWebViewSource,
+} from '@/features/best-image/prepare-best-image-webview-sources';
 import { useAppTheme } from '@/theme/app-theme';
 
 const OUTPUT_WIDTHS = [1080, 1440, 2160] as const;
 
 export function FixedBestImageScreen({
-  playerName, imageType, htmlForWidth, disabled = false, notice,
+  playerName, imageType, htmlForWidth, disabled = false, notice, preparing = null,
 }: {
   playerName: string;
   imageType: 'best30' | 'top20';
   htmlForWidth: (width: number) => string;
   disabled?: boolean;
   notice?: string | null;
+  preparing?: { done: number; total: number } | null;
 }) {
   const theme = useAppTheme();
   const { showNotification } = useNotification();
@@ -61,7 +66,7 @@ export function FixedBestImageScreen({
     setSourceError(null);
     setSource(null);
     try {
-      const prepared = prepareBestImageWebViewSources([html]);
+      const prepared = prepareBestImageWebViewSources([html], bestImagePagesDirectory());
       setSource(prepared.sources[0] ?? null);
       return prepared.dispose;
     } catch {
@@ -156,6 +161,10 @@ export function FixedBestImageScreen({
           : <ActivityIndicator color={theme.accent} />}
       </View>
       <Text style={[styles.meta, { color: theme.textMuted }]} testID="fixed-best-image-webview-status">{width} × {measuredHeight} px · {status}</Text>
+      {preparing && preparing.total > 0 ? <View accessibilityLiveRegion="polite" testID="fixed-best-image-preparing" style={[styles.progressRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <ActivityIndicator color={theme.accent} size="small" />
+        <Text style={[styles.progressText, { color: theme.textMuted }]}>正在逐张缓存歌曲封面 {preparing.done}/{preparing.total}，完成后可导出</Text>
+      </View> : null}
       {sourceError ? <View style={styles.sourceErrorBlock}>
         <Text accessibilityRole="alert" style={[styles.sourceError, { color: theme.danger }]}>{sourceError}</Text>
         <Pressable accessibilityLabel="重试成绩图片预览" accessibilityRole="button" onPress={() => setSourceAttempt((value) => value + 1)}>
@@ -184,6 +193,8 @@ const styles = StyleSheet.create({
   widthText: { fontSize: 13, fontWeight: '800' }, notice: { marginTop: 12, fontSize: 12, lineHeight: 18 }, previewLabel: { marginTop: 24 },
   preview: { alignSelf: 'center', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderRadius: 18, borderWidth: 1 },
   webview: { width: '100%', height: '100%', flex: 1, backgroundColor: 'transparent' }, meta: { marginTop: 8, fontSize: 11, textAlign: 'center' },
+  progressRow: { minHeight: 44, marginTop: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  progressText: { flexShrink: 1, fontSize: 12, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
   sourceErrorBlock: { marginTop: 10, alignItems: 'center', gap: 6 }, sourceError: { fontSize: 12, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
   retryText: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
   exportButton: { minHeight: 48, marginTop: 16, borderRadius: 14, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },

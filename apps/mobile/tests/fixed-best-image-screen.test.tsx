@@ -17,7 +17,8 @@ jest.mock('react-native-webview', () => {
 });
 jest.mock('react-native-view-shot', () => ({ captureRef: mockCaptureRef }));
 jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
-  prepareBestImageWebViewSources: () => ({ sources: [{ uri: 'file:///cache/page.html' }], dispose: mockDispose }),
+  bestImagePagesDirectory: () => ({ uri: 'file:///document/rranker/best-image-pages' }),
+  prepareBestImageWebViewSources: () => ({ sources: [{ uri: 'file:///document/rranker/best-image-pages/page.html' }], dispose: mockDispose }),
 }));
 jest.mock('@/features/best-image/best-image-export', () => ({
   bestImageCaptureDimensions: (width: number, height: number) => ({ width, height }),
@@ -48,13 +49,24 @@ describe('FixedBestImageScreen shared WebView path', () => {
       playerName="测试玩家"
     />);
     const preview = screen.getByTestId('fixed-best-image-preview');
-    expect(preview.props.source).toEqual({ uri: 'file:///cache/page.html' });
+    expect(preview.props.source).toEqual({ uri: 'file:///document/rranker/best-image-pages/page.html' });
 
     await act(async () => { fireEvent.press(screen.getByLabelText('导出成绩图片')); });
     const exporter = screen.getByTestId('fixed-best-image-export');
-    expect(exporter.props.source).toEqual({ uri: 'file:///cache/page.html' });
+    expect(exporter.props.source).toEqual({ uri: 'file:///document/rranker/best-image-pages/page.html' });
     await act(async () => { screen.unmount(); });
     expect(mockDispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the cover localization progress inside the preview area', async () => {
+    const screen = await render(<FixedBestImageScreen
+      htmlForWidth={(width) => `<html>${width}</html>`}
+      imageType="best30"
+      playerName="测试玩家"
+      preparing={{ done: 3, total: 30 }}
+    />);
+    expect(screen.getByTestId('fixed-best-image-preparing'))
+      .toHaveTextContent('正在逐张缓存歌曲封面 3/30，完成后可导出');
   });
 
 });
