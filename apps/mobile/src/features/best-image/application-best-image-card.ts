@@ -62,17 +62,17 @@ function renderBadge(badge: ApplicationBestImageBadgePresentation): string {
 
 export function renderApplicationBestImageCard(card: ApplicationBestImageCardPresentation): string {
   const cover = card.coverUri
-    ? `<img class="song-jacket" alt="" src="${escapeApplicationBestImageHtml(card.coverUri)}" onerror="this.style.display='none'">`
+    ? `<img class="song-jacket" alt="" src="${escapeApplicationBestImageHtml(card.coverUri)}">`
     : '';
   const art = card.coverUri
-    ? `<div class="card-art" aria-hidden="true"><img class="card-art-image" alt="" src="${escapeApplicationBestImageHtml(card.coverUri)}" onerror="this.style.display='none'"><div class="card-art-veil"></div></div>`
+    ? `<div class="card-art" aria-hidden="true"><img class="card-art-image" alt="" src="${escapeApplicationBestImageHtml(card.coverUri)}"><div class="card-art-veil"></div></div>`
     : '';
   const primaryStyle = card.primary.textBackground
     ? ` style="background:${escapeApplicationBestImageHtml(card.primary.textBackground)};background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent"`
     : '';
   const primaryBadge = card.primary.badge ? renderBadge(card.primary.badge) : '';
   const iconRow = card.iconRow?.length
-    ? `<div class="tag-row icon-row">${card.iconRow.map((icon) => `<img class="tag-icon" alt="${escapeApplicationBestImageHtml(icon.label)}" src="${escapeApplicationBestImageHtml(icon.source)}" onerror="this.style.display='none'">`).join('')}</div>`
+    ? `<div class="tag-row icon-row">${card.iconRow.map((icon) => `<img class="tag-icon" alt="${escapeApplicationBestImageHtml(icon.label)}" src="${escapeApplicationBestImageHtml(icon.source)}">`).join('')}</div>`
     : '';
   const badgeRows = card.badgeRows?.filter((row) => row.length > 0)
     .map((row) => `<div class="tag-row">${row.map(renderBadge).join('')}</div>`).join('') ?? '';

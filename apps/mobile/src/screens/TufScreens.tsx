@@ -12,7 +12,6 @@ import { GameChartResultCard } from '@/components/game-content/GameChartResultCa
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { Card } from '@/components/Card';
-import { BestImageEntryButton } from '@/components/BestImageEntryButton';
 import { TagEditor } from '@/components/TagEditor';
 import { TufScoreCard, TufWorldAchievementBadge } from '@/components/adofai/TufScoreCard';
 import { TufSongRow } from '@/components/adofai/TufSongRow';
@@ -120,10 +119,9 @@ export function TufBestScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
           <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 条</Text>
         </View>,
-        ListHeaderComponent: <View>
-          <BestImageEntryButton label="导出 Top20 图片" />
-          {missing > 0 ? <Text style={[styles.notice, { color: theme.textMuted }]}>有 {missing} 条 Top 记录未公开，已跳过。</Text> : null}
-        </View>,
+        ListHeaderComponent: missing > 0
+          ? <Text style={[styles.notice, { color: theme.textMuted }]}>有 {missing} 条 Top 记录未公开，已跳过。</Text>
+          : null,
         renderItem: ({ item, index }) => <TufScoreCard pass={item} position={index + 1} />,
       }} />
   </View>;

@@ -18,7 +18,6 @@ import {
 import { useNotification } from '@/components/AppNotification';
 import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
 import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
-import { MuseDashBestImageScreen, TufBestImageScreen } from '@/screens/CommunityBestImageScreens';
 import { useSession } from '@/state/session-store';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
@@ -189,8 +188,6 @@ export default function BestImageScreen() {
   const activeGameId = useSession((state) => state.activeGameId);
   if (activeGameId === 'chunithm') return <ChunithmBestImageScreen />;
   if (activeGameId === 'phigros') return <PhigrosBestImageScreen />;
-  if (activeGameId === 'adofai') return <TufBestImageScreen />;
-  if (activeGameId === 'musedash') return <MuseDashBestImageScreen />;
   return <MaimaiBestImageScreen />;
 }
 

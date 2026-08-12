@@ -138,7 +138,6 @@ describe('TUF screens', () => {
   it('keeps the profile Top 20 order instead of pass response order', async () => {
     const screen = await render(<TufBestScreen />);
     const labels = screen.getAllByLabelText(/^查看关卡/).map((node) => node.props.accessibilityLabel);
-    expect(screen.getByLabelText('导出 Top20 图片')).toBeTruthy();
     expect(labels[0]).toContain('第二条');
     expect(labels[1]).toContain('第一条');
   });
