@@ -13,17 +13,21 @@ import { SongMetadataTable, type SongMetadataItem } from '@/components/game-cont
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { Card } from '@/components/Card';
 import { TagEditor } from '@/components/TagEditor';
-import { TufScoreCard } from '@/components/adofai/TufScoreCard';
+import { TufScoreCard, TufWorldAchievementBadge } from '@/components/adofai/TufScoreCard';
 import { TufSongRow } from '@/components/adofai/TufSongRow';
 import { TufDifficultyBadge } from '@/components/adofai/TufDifficultyBadge';
 import {
-  TufCatalogFilterBar, TufRecordsFilterBar, type TufDifficultyBand,
+  TufCatalogFilterBar, TufRecordsFilterBar, type TufDifficultyBand, type TufPassAchievementFilter,
 } from '@/components/adofai/TufFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
 import {
+  filterTufPasses,
+  tufDifficultyBounds,
+  tufDifficultyVisual,
   tufMediaImageCandidates,
+  tufPguRange,
   tufTagIconUrl,
   type TufJudgements,
   type TufLevel,
@@ -130,19 +134,46 @@ export function TufRecordsScreen() {
   const [sortBy, setSortBy] = useState<TufPassSort>('date');
   const [order, setOrder] = useState<TufSortOrder>('DESC');
   const [bestPerLevel, setBestPerLevel] = useState(false);
+  const [difficultyBand, setDifficultyBand] = useState<TufDifficultyBand>('all');
+  const [difficultyMin, setDifficultyMin] = useState('');
+  const [difficultyMax, setDifficultyMax] = useState('');
+  const [includeSpecial, setIncludeSpecial] = useState(true);
+  const [achievement, setAchievement] = useState<TufPassAchievementFilter>('all');
   const [keyword, setKeyword] = useState('');
   const [filterExpanded, setFilterExpanded] = useState(false);
   const debounced = useDebouncedValue(keyword, 350);
   const query = useTufPasses(playerId, { sortBy, order, bestPerLevel, query: debounced.trim() || undefined });
-  const records = uniqueById(query.data?.pages.flatMap((page) => page.passes) ?? []);
-  const total = query.data?.pages[0]?.total;
+  const difficultyBounds = tufDifficultyBounds(difficultyMin, difficultyMax);
+  const localFilterActive = difficultyBand !== 'all' || difficultyMin !== '' || difficultyMax !== ''
+    || !includeSpecial || achievement !== 'all';
+  const fetchNextRecordsPage = query.fetchNextPage;
+  const recordsHaveNextPage = query.hasNextPage;
+  const recordsFetchingNextPage = query.isFetchingNextPage;
+  const recordsNextPageFailed = query.isFetchNextPageError;
+  useEffect(() => {
+    if (localFilterActive && recordsHaveNextPage && !recordsFetchingNextPage && !recordsNextPageFailed) {
+      void fetchNextRecordsPage();
+    }
+  }, [fetchNextRecordsPage, localFilterActive, recordsFetchingNextPage, recordsHaveNextPage, recordsNextPageFailed]);
+  const loadedRecords = uniqueById(query.data?.pages.flatMap((page) => page.passes) ?? []);
+  const records = filterTufPasses(loadedRecords, {
+    band: difficultyBand,
+    ...difficultyBounds,
+    includeSpecial,
+  }, achievement);
+  const total = localFilterActive && !query.hasNextPage ? records.length : query.data?.pages[0]?.total;
   const controls = <>
     <SearchHeader accessibilityLabel="筛选 TUF 成绩" placeholder="搜索关卡、歌曲或作者" value={keyword}
       onChangeText={setKeyword} loaded={records.length} total={total} />
     <TufRecordsFilterBar expanded={filterExpanded} sortBy={sortBy} order={order} bestPerLevel={bestPerLevel}
+      difficultyBand={difficultyBand} difficultyMin={difficultyMin} difficultyMax={difficultyMax}
+      includeSpecial={includeSpecial} achievement={achievement}
       onExpandedChange={setFilterExpanded} onSortByChange={setSortBy} onOrderChange={setOrder}
-      onBestPerLevelChange={setBestPerLevel} onReset={() => {
-        setSortBy('date'); setOrder('DESC'); setBestPerLevel(false);
+      onBestPerLevelChange={setBestPerLevel} onDifficultyBandChange={setDifficultyBand}
+      onDifficultyMinChange={setDifficultyMin} onDifficultyMaxChange={setDifficultyMax}
+      onIncludeSpecialChange={setIncludeSpecial} onAchievementChange={setAchievement} onReset={() => {
+        setSortBy('date'); setOrder('DESC'); setBestPerLevel(false); setDifficultyBand('all');
+        setDifficultyMin(''); setDifficultyMax(''); setIncludeSpecial(true); setAchievement('all');
       }} />
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
@@ -168,16 +199,17 @@ export function TufSearchScreen() {
   const [sortBy, setSortBy] = useState<TufLevelSort>('RECENT');
   const [order, setOrder] = useState<TufSortOrder>('DESC');
   const [difficultyBand, setDifficultyBand] = useState<TufDifficultyBand>('all');
+  const [difficultyMin, setDifficultyMin] = useState('');
+  const [difficultyMax, setDifficultyMax] = useState('');
   const [includeSpecial, setIncludeSpecial] = useState(true);
   const debounced = useDebouncedValue(keyword, 350);
   const difficulties = useTufDifficulties();
   const specialDifficulties = difficulties.data?.filter((item) => item.type !== 'PGU').map((item) => item.name) ?? [];
-  const pguRange = difficultyBand === 'all'
-    ? (includeSpecial ? undefined : 'P1,U20')
-    : `${difficultyBand}1,${difficultyBand}20`;
+  const difficultyBounds = tufDifficultyBounds(difficultyMin, difficultyMax);
+  const pguRange = tufPguRange({ band: difficultyBand, ...difficultyBounds });
   const query = useTufLevelSearch(debounced, {
     sort: sortBy, order, pguRange,
-    specialDifficulties: includeSpecial && difficultyBand !== 'all' && specialDifficulties.length
+    specialDifficulties: includeSpecial && specialDifficulties.length
       ? specialDifficulties
       : undefined,
   });
@@ -187,10 +219,15 @@ export function TufSearchScreen() {
     <SearchHeader accessibilityLabel="搜索 TUF 关卡" placeholder="搜索关卡、歌曲或作者" value={keyword}
       onChangeText={setKeyword} loaded={levels.length} total={total} />
     <TufCatalogFilterBar expanded={filterExpanded} sortBy={sortBy} order={order} difficultyBand={difficultyBand}
+      difficultyMin={difficultyMin} difficultyMax={difficultyMax}
       includeSpecial={includeSpecial} specialAvailable={specialDifficulties.length > 0}
       onExpandedChange={setFilterExpanded} onSortByChange={setSortBy} onOrderChange={setOrder}
-      onDifficultyBandChange={setDifficultyBand} onIncludeSpecialChange={setIncludeSpecial}
-      onReset={() => { setSortBy('RECENT'); setOrder('DESC'); setDifficultyBand('all'); setIncludeSpecial(true); }} />
+      onDifficultyBandChange={setDifficultyBand} onDifficultyMinChange={setDifficultyMin}
+      onDifficultyMaxChange={setDifficultyMax} onIncludeSpecialChange={setIncludeSpecial}
+      onReset={() => {
+        setSortBy('RECENT'); setOrder('DESC'); setDifficultyBand('all'); setDifficultyMin('');
+        setDifficultyMax(''); setIncludeSpecial(true);
+      }} />
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <CatalogListPage beforeList={search} isLoading={query.isLoading} isError={query.isError}
@@ -275,10 +312,7 @@ function TufUpstreamTag({ name }: { name: string }) {
 
 function TufJudgementTable({ judgements, total }: { judgements: TufJudgements | null | undefined; total: number | null }) {
   const theme = useAppTheme();
-  return <View accessibilityLabel="TUF 判定详情" style={[styles.judgementPanel, {
-    backgroundColor: theme.dark ? '#181638' : theme.surfaceMuted,
-    borderColor: theme.border,
-  }]}>
+  return <View accessibilityLabel="TUF 判定详情" style={styles.judgementPanel}>
     <View style={styles.judgementMatrix}>{TUF_JUDGEMENT_ROWS.map((row, rowIndex) => (
       <View key={rowIndex} style={styles.judgementRow}>{row.map((item) => (
         <View key={item.key} style={styles.judgementCell} testID={`tuf-judgement-${item.key}`}>
@@ -289,7 +323,8 @@ function TufJudgementTable({ judgements, total }: { judgements: TufJudgements | 
     ))}</View>
     <View style={[styles.totalCell, { borderLeftColor: theme.dark ? 'rgba(255,255,255,0.12)' : theme.border }]}>
       <Text style={[styles.totalLabel, { color: theme.dark ? '#9B98B7' : theme.textMuted }]}>总物量</Text>
-      <Text style={[styles.totalValue, { color: theme.text }]}>{total ?? '—'}</Text>
+      <Text adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}
+        style={[styles.totalValue, { color: theme.text }]}>{total ?? '—'}</Text>
     </View>
   </View>;
 }
@@ -325,6 +360,7 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
     level.downloadCount == null ? null : `下载 ${level.downloadCount}`,
   ].filter(Boolean).join(' · ') || (level.stats ? JSON.stringify(level.stats) : '—') : '—';
   const difficultyName = level?.difficulty?.name ?? 'Unranked';
+  const difficultyVisual = tufDifficultyVisual(level?.difficulty);
   const difficultyMatch = difficultyName.trim().toUpperCase().match(/^([PGU])(\d{1,2})$/);
   const difficultyNumber = difficultyMatch?.[2] ?? '—';
   const baseScore = level?.baseScore ?? level?.difficulty?.baseScore;
@@ -358,7 +394,8 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
     />
     <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty={!level}
       error={query.error} onRetry={() => void query.refetch()} emptyText="未找到该 TUF 关卡" data={level}
-      renderData={() => <ScrollView contentInsetAdjustmentBehavior="automatic" style={[styles.page, { backgroundColor: theme.background }]}
+      renderData={() => <ScrollView automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
+        testID="tuf-level-detail-scroll" style={[styles.page, { backgroundColor: theme.background }]}
         contentContainerStyle={styles.detail}>
         <TufLevelHero level={level!} />
         <SongMetadataTable accessibilityLabel="TUF 关卡信息" items={metadata} testIDPrefix="tuf-level-metadata"
@@ -366,7 +403,14 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
           cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel} valueStyle={styles.metadataValue}
           valueBlockStyle={styles.metadataBlock} measureStyle={styles.metadataMeasure} />
         <View style={styles.detailBody}>
-          <GameChartResultCard style={[styles.chartCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
+          <GameChartResultCard style={[styles.chartCard, {
+            backgroundColor: theme.surface,
+            borderColor: difficultyVisual?.border ?? theme.border,
+          }]}
+            gradient={difficultyVisual ? {
+              colors: [`${difficultyVisual.background}${theme.dark ? '66' : '38'}`, theme.surface],
+              start: { x: 0, y: 0 }, end: { x: 1, y: 1 },
+            } : undefined}
             testID="tuf-level-chart" accessibilityLabel={`难度 ${chart!.difficulty.label}`}>
             <View style={styles.chartHeader}>
               <TufDifficultyBadge difficulty={chart!.difficulty} display="band" source={level!.difficulty} />
@@ -382,12 +426,8 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
                 {scoreQuery.isLoading ? <ActivityIndicator size="small" /> : null}
               </View>
               {bestPass?.isWorldsFirst || bestPass?.isWorldsFirstPP ? <View style={styles.achievementRow}>
-                {bestPass.isWorldsFirst ? <View testID="tuf-detail-wf" style={[styles.achievementBadge, styles.wfBadge]}>
-                  <Text style={styles.achievementText}>WF</Text>
-                </View> : null}
-                {bestPass.isWorldsFirstPP ? <View testID="tuf-detail-pp" style={[styles.achievementBadge, styles.ppBadge]}>
-                  <Text style={styles.achievementText}>PP</Text>
-                </View> : null}
+                {bestPass.isWorldsFirst ? <TufWorldAchievementBadge kind="wf" testID="tuf-detail-wf" /> : null}
+                {bestPass.isWorldsFirstPP ? <TufWorldAchievementBadge kind="pp" testID="tuf-detail-pp" /> : null}
               </View> : null}
               {scoreQuery.isError ? <Pressable accessibilityRole="button" accessibilityLabel="重新读取关卡成绩"
                 onPress={() => void scoreQuery.refetch()}>
@@ -460,7 +500,7 @@ const styles = StyleSheet.create({
   hero: { position: 'relative', overflow: 'hidden', backgroundColor: '#253845' },
   heroFallbackImage: { position: 'absolute', width: '44%', height: '44%', alignSelf: 'center', top: '28%', opacity: 0.9 },
   heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
-  heroScroll: { flexGrow: 0, overflow: 'hidden' },
+  heroScroll: { width: '100%', maxWidth: '100%', flexGrow: 0, alignSelf: 'stretch', overflow: 'hidden' },
   heroScrollContent: { paddingRight: 20 },
   heroId: { color: 'rgba(255,255,255,0.82)', fontSize: 13, fontWeight: '800', letterSpacing: 0.35 },
   heroTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900', letterSpacing: -0.45, textShadowColor: 'rgba(0,0,0,0.36)', textShadowRadius: 8 },
@@ -490,10 +530,6 @@ const styles = StyleSheet.create({
   scoreValueRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 10 },
   resultScore: { fontSize: 34, lineHeight: 42, fontWeight: '900', letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
   achievementRow: { minHeight: 27, marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  achievementBadge: { minWidth: 39, height: 25, borderRadius: 999, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9 },
-  wfBadge: { backgroundColor: '#247FC1' },
-  ppBadge: { backgroundColor: '#7B4FB2' },
-  achievementText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
   scoreError: { marginTop: 4, fontSize: 11, lineHeight: 16, fontWeight: '700' },
   statRow: { flexDirection: 'row', marginTop: 16, gap: 28 },
   statCell: { gap: 2 },
@@ -509,15 +545,15 @@ const styles = StyleSheet.create({
   upstreamTagIcon: { width: 18, height: 18 },
   upstreamTagText: { flexShrink: 1, fontSize: 10, lineHeight: 14, fontWeight: '800' },
   emptyInline: { fontSize: 12, fontWeight: '700' },
-  judgementPanel: { minHeight: 118, marginTop: 13, borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 10, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  judgementMatrix: { flex: 1, gap: 9 },
+  judgementPanel: { minHeight: 104, marginTop: 13, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },
   judgementRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
   judgementCell: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 2 },
   judgementLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
   judgementValue: { fontSize: 18, lineHeight: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  totalCell: { width: 66, borderLeftWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 5, paddingLeft: 8 },
+  totalCell: { width: 78, flexShrink: 0, borderLeftWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 5, paddingLeft: 8 },
   totalLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
-  totalValue: { fontSize: 22, lineHeight: 27, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  totalValue: { width: '100%', fontSize: 21, lineHeight: 27, fontWeight: '900', fontVariant: ['tabular-nums'], textAlign: 'center' },
   songInfoCard: { padding: 0, overflow: 'hidden' },
   songInfoTitle: { paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, lineHeight: 21, fontWeight: '900' },
   infoRow: { minHeight: 46, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
