@@ -104,6 +104,14 @@ export const TufLevelDetailResponseSchema = z.object({
 }).passthrough();
 export const TufDifficultyListSchema = z.array(TufDifficultySchema);
 export const TufDifficultyHashSchema = z.object({ hash: z.string().min(1) }).passthrough();
+export const TufVideoDetailsSchema = z.object({
+  title: z.string(),
+  channelName: z.string(),
+  timestamp: nullableString,
+  image: nullableString,
+  embed: nullableString,
+  downloadLink: nullableString,
+}).passthrough();
 
 export type TufDifficulty = z.infer<typeof TufDifficultySchema>;
 export type TufJudgements = z.infer<typeof TufJudgementsSchema>;
@@ -114,6 +122,7 @@ export type TufPlayerSearchResponse = z.infer<typeof TufPlayerSearchResponseSche
 export type TufPassPage = z.infer<typeof TufPassPageSchema>;
 export type TufLevelPage = z.infer<typeof TufLevelPageSchema>;
 export type TufLevelDetailResponse = z.infer<typeof TufLevelDetailResponseSchema>;
+export type TufVideoDetails = z.infer<typeof TufVideoDetailsSchema>;
 export type TufPassSort = 'score' | 'speed' | 'date' | 'xacc' | 'difficulty' | 'impact';
 export type TufSortOrder = 'ASC' | 'DESC';
 export type TufLevelSort = 'RECENT' | 'DIFF' | 'CLEARS' | 'TOTAL_CLEARS' | 'LIKES' | 'BASESCORE' | 'BPM' | 'TILES' | 'TIME';
@@ -135,6 +144,38 @@ export type TufLevelQuery = {
   specialDifficulties?: readonly string[];
 };
 export const TUF_PAGE_SIZE = 30;
+export const TUF_IMAGE_PROXY_URL = 'https://api.tuforums.com/v2/media/image-proxy';
+
+export function tufHttpsUrl(value: string | null | undefined): string | null {
+  if (!value?.trim()) return null;
+  try {
+    const parsed = new URL(value.trim());
+    return parsed.protocol === 'https:' ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function tufMediaImageCandidates(
+  image: string | null | undefined,
+  difficultyIcon: string | null | undefined,
+): string[] {
+  const candidates: string[] = [];
+  const mediaImage = tufHttpsUrl(image);
+  if (mediaImage) {
+    const parsed = new URL(mediaImage);
+    const alreadyProxied = parsed.hostname === 'api.tuforums.com'
+      && parsed.pathname === '/v2/media/image-proxy';
+    if (alreadyProxied) {
+      candidates.push(mediaImage);
+    } else {
+      candidates.push(`${TUF_IMAGE_PROXY_URL}?url=${encodeURIComponent(mediaImage)}`, mediaImage);
+    }
+  }
+  const icon = tufHttpsUrl(difficultyIcon);
+  if (icon && !candidates.includes(icon)) candidates.push(icon);
+  return candidates;
+}
 
 export type TufSongExtension = { level: TufLevel; upstreamSongId: number | null };
 export type TufChartExtension = { level: TufLevel; upstreamSongId: number | null };

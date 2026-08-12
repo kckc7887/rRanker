@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import type { TufLevel, TufPass, TufPlayer } from '@/domain/tuf';
+import { Dimensions, StyleSheet } from 'react-native';
+import type { TufLevel, TufPass, TufPlayer, TufVideoDetails } from '@/domain/tuf';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
 
 const mockPush = jest.fn();
@@ -14,6 +15,8 @@ const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
 let mockLevelDetail: TufLevel | undefined;
 let mockProfile: TufPlayer | undefined;
+let mockVideoDetails: TufVideoDetails | undefined;
+let mockDark = false;
 
 jest.mock('expo-router', () => ({
   router: {
@@ -23,6 +26,11 @@ jest.mock('expo-router', () => ({
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('expo-image', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return { Image: (props: React.ComponentProps<typeof RN.View>) => React.createElement(RN.View, props) };
+});
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
@@ -55,6 +63,7 @@ jest.mock('@/hooks/use-user-library', () => ({
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: unknown) => value }));
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
+  dark: mockDark,
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', border: '#DDD', text: '#111',
   textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF',
 }) }));
@@ -67,6 +76,7 @@ jest.mock('@/hooks/use-tuf', () => ({
   useTufLevelSearch: (...args: unknown[]) => mockUseTufLevelSearch(...args),
   useTufDifficulties: () => mockUseTufDifficulties(),
   useTufLevel: () => ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
+  useTufVideoDetails: () => ({ data: mockVideoDetails, isLoading: !mockVideoDetails, isError: false, error: null, refetch: mockRefetch }),
 }));
 
 const level = {
@@ -94,6 +104,7 @@ function infinite<T>(items: T[], field: 'passes' | 'results') {
 describe('TUF screens', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
     mockProfile = {
       id: 25, name: '公开玩家', rankedScore: 1824.52, generalScore: 1900, ppScore: 300,
       averageXacc: 99.8, totalPasses: 20, universalPassCount: 10, worldFirstCount: 2,
@@ -110,6 +121,8 @@ describe('TUF screens', () => {
       isLoading: false, isError: false, error: null, refetch: mockRefetch,
     });
     mockLevelDetail = level;
+    mockVideoDetails = undefined;
+    mockDark = false;
   });
 
   it('keeps the profile Top 20 order instead of pass response order', async () => {
@@ -121,7 +134,9 @@ describe('TUF screens', () => {
 
   it('changes server-side record sorting and requests the next page once', async () => {
     const screen = await render(<TufRecordsScreen />);
-    await fireEvent.press(screen.getByText('XACC'));
+    await fireEvent.press(screen.getByLabelText('展开筛选器'));
+    await fireEvent.press(screen.getByLabelText('选择成绩排序'));
+    await fireEvent.press(screen.getByLabelText('选择排序 XACC'));
     expect(mockUseTufPasses).toHaveBeenLastCalledWith(25, expect.objectContaining({ sortBy: 'xacc' }));
     fireEvent(screen.getByTestId('tuf-records-results-list'), 'endReached');
     expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
@@ -145,6 +160,7 @@ describe('TUF screens', () => {
     const screen = await render(<TufRecordsScreen />);
     await fireEvent.changeText(screen.getByLabelText('筛选 TUF 成绩'), '技术');
     expect(mockUseTufPasses).toHaveBeenLastCalledWith(25, expect.objectContaining({ query: '技术' }));
+    await fireEvent.press(screen.getByLabelText('展开筛选器'));
     await fireEvent.press(screen.getByLabelText('每关最佳'));
     expect(mockUseTufPasses).toHaveBeenLastCalledWith(25, expect.objectContaining({ bestPerLevel: true }));
     await fireEvent.press(screen.getByText('升序 ↑'));
@@ -162,9 +178,11 @@ describe('TUF screens', () => {
 
   it('applies catalog sorting and PGU difficulty filters through server query options', async () => {
     const screen = await render(<TufSearchScreen />);
-    await fireEvent.press(screen.getAllByText('难度')[0]);
+    await fireEvent.press(screen.getByLabelText('展开筛选器'));
+    await fireEvent.press(screen.getByLabelText('选择关卡排序'));
+    await fireEvent.press(screen.getByLabelText('选择排序 难度'));
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({ sort: 'DIFF' }));
-    await fireEvent.press(screen.getByText('G'));
+    await fireEvent.press(screen.getByLabelText('筛选难度 G'));
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
       sort: 'DIFF', pguRange: 'G1,G20', specialDifficulties: ['Unranked', 'Marathon'],
     }));
@@ -181,6 +199,59 @@ describe('TUF screens', () => {
     expect(screen.getByText('TUF 关卡页')).toBeTruthy();
     expect(screen.getByText('视频')).toBeTruthy();
     expect(screen.queryByText('谱面下载')).toBeNull();
+  });
+
+  it('renders a real TUF media hero and falls back from proxy to the original image', async () => {
+    const videoLink = 'https://www.youtube.com/watch?v=PUvyMb-qPVs';
+    const image = 'https://i.ytimg.com/vi/PUvyMb-qPVs/maxresdefault.jpg';
+    mockLevelDetail = { ...level, videoLink };
+    mockVideoDetails = {
+      title: '#4426', channelName: 'Kaleido', timestamp: null, image,
+      embed: 'https://www.youtube.com/embed/PUvyMb-qPVs', downloadLink: null,
+    };
+    const screen = await render(<TufLevelDetailScreen levelId="11372" />);
+    const heroImage = screen.getByLabelText('关卡头图 关卡 A');
+    expect(heroImage.props.source).toBe(`https://api.tuforums.com/v2/media/image-proxy?url=${encodeURIComponent(image)}`);
+    await fireEvent(heroImage, 'error');
+    expect(screen.getByLabelText('关卡头图 关卡 A').props.source).toBe(image);
+  });
+
+  it('uses the difficulty icon while media is loading and the local icon after remote failures', async () => {
+    const icon = 'https://api.tuforums.com/icons/G12.png';
+    mockUseTufLevelSearch.mockReturnValue(infinite([{ ...level, difficulty: { ...level.difficulty!, icon } }], 'results'));
+    const screen = await render(<TufSearchScreen />);
+    const cover = screen.getByLabelText('关卡封面 关卡 A');
+    expect(cover.props.source).toBe(icon);
+    await fireEvent(cover, 'error');
+    expect(screen.getByLabelText('关卡封面 关卡 A').props.source).not.toEqual(icon);
+  });
+
+  it('falls back from proxy to original image, difficulty icon, then the local ADOFAI icon', async () => {
+    const image = 'https://i.ytimg.com/vi/PUvyMb-qPVs/maxresdefault.jpg';
+    const icon = 'https://api.tuforums.com/icons/G12.png';
+    mockVideoDetails = {
+      title: '#4426', channelName: 'Kaleido', timestamp: null, image,
+      embed: 'https://www.youtube.com/embed/PUvyMb-qPVs', downloadLink: null,
+    };
+    mockUseTufLevelSearch.mockReturnValue(infinite([{ ...level, videoLink: 'https://www.youtube.com/watch?v=PUvyMb-qPVs', difficulty: { ...level.difficulty!, icon } }], 'results'));
+    const screen = await render(<TufSearchScreen />);
+    const readSource = () => screen.getByLabelText('关卡封面 关卡 A').props.source;
+    expect(readSource()).toBe(`https://api.tuforums.com/v2/media/image-proxy?url=${encodeURIComponent(image)}`);
+    await fireEvent(screen.getByLabelText('关卡封面 关卡 A'), 'error');
+    expect(readSource()).toBe(image);
+    await fireEvent(screen.getByLabelText('关卡封面 关卡 A'), 'error');
+    expect(readSource()).toBe(icon);
+    await fireEvent(screen.getByLabelText('关卡封面 关卡 A'), 'error');
+    expect(readSource()).not.toEqual(icon);
+  });
+
+  it('keeps a long title inside the 16:9 hero in dark mode without requiring media', async () => {
+    mockDark = true;
+    mockLevelDetail = { ...level, song: '这是一个用于验证详情页长标题布局不会破坏媒体头图比例的超长关卡名称' };
+    const screen = await render(<TufLevelDetailScreen levelId="11372" />);
+    const heroStyle = StyleSheet.flatten(screen.getByTestId('tuf-level-hero').props.style);
+    expect(heroStyle).toMatchObject({ width: 390, height: 219 });
+    expect(screen.getByText(mockLevelDetail.song).props.numberOfLines).toBe(3);
   });
 
   it('shows a back button that navigates back when possible', async () => {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   TufDifficultyHashSchema, TufDifficultyListSchema, TufLevelDetailResponseSchema,
   TufLevelPageSchema, TufPassPageSchema, TufPlayerSchema, TufPlayerSearchResponseSchema,
+  TufVideoDetailsSchema, tufHttpsUrl,
   type TufLevelQuery, type TufPassQuery,
 } from '@/domain/tuf';
 import { ProviderError } from './errors';
@@ -89,6 +90,11 @@ export class TufProvider {
     return this.request(`/v2/database/levels?${params}`, TufLevelPageSchema);
   }
   getLevel(levelId: number) { return this.request(`/v2/database/levels/${levelId}`, TufLevelDetailResponseSchema); }
+  getVideoDetails(videoLink: string) {
+    const normalized = tufHttpsUrl(videoLink);
+    if (!normalized) throw new ProviderError('unknown', 'TUF 视频链接无效', false);
+    return this.request(`/v2/media/video-details/${encodeURIComponent(normalized)}`, TufVideoDetailsSchema);
+  }
   getDifficulties() { return this.request('/v2/database/difficulties', TufDifficultyListSchema); }
   getDifficultyHash() { return this.request('/v2/database/difficulties/hash', TufDifficultyHashSchema); }
 }

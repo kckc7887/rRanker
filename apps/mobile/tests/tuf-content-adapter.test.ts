@@ -29,6 +29,6 @@ describe('ADOFAI TUF content adapter', () => {
     expect(presentTufChart(level, pass).achievementRows.flat().some((badge) => badge.key === 'wf')).toBe(true);
     const sparse = TufLevelPageSchema.parse(levelPage).results[0];
     expect(adofaiContentAdapter.normalizeChart(sparse).notes).toEqual([]);
-    expect(presentTufLevel(sparse).chartBadges[0]).toMatchObject({ label: 'Legacy 12', tone: 'legacy' });
+    expect(presentTufLevel(sparse).chartBadges[0]).toMatchObject({ label: 'Legacy 12', tone: 'tuf-legacy' });
   });
 });

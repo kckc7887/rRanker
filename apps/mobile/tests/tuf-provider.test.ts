@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import playerProfile from './fixtures/tuf/player-profile.sanitized.json';
 import passPage from './fixtures/tuf/pass-page.sanitized.json';
 import levelPage from './fixtures/tuf/level-page.sanitized.json';
+import { tufMediaImageCandidates } from '@/domain/tuf';
 import { ProviderError } from '@/providers/errors';
 import { TufProvider } from '@/providers/tuf-provider';
 
@@ -66,5 +67,65 @@ describe('TufProvider', () => {
     expect(server).toHaveBeenCalledTimes(2);
     const malformed = vi.fn().mockResolvedValue(response({ id: 'bad' }));
     await expect(new TufProvider(malformed as typeof fetch).getPlayer(25)).rejects.toBeInstanceOf(ProviderError);
+  });
+
+  it.each([
+    ['YouTube', 'https://www.youtube.com/watch?v=PUvyMb-qPVs', 'https://i.ytimg.com/vi/PUvyMb-qPVs/maxresdefault.jpg'],
+    ['哔哩哔哩', 'https://www.bilibili.com/video/BV1xx411c7mD', 'https://api.tuforums.com/v2/media/image-proxy?url=http%3A%2F%2Fi1.hdslb.com%2Fcover.jpg'],
+  ])('reads %s video details through the TUF endpoint and URL-encodes the link', async (_, videoLink, image) => {
+    const details = {
+      title: '#4426', channelName: 'Kaleido', timestamp: '2024-01-02T00:00:00.000Z',
+      image, embed: 'https://player.example/embed', downloadLink: null,
+    };
+    const fetcher = vi.fn().mockResolvedValue(response(details));
+    const result = await new TufProvider(fetcher as typeof fetch, 'https://tuf.test').getVideoDetails(videoLink);
+    expect(result.image).toBe(image);
+    expect(fetcher.mock.calls[0][0]).toBe(`https://tuf.test/v2/media/video-details/${encodeURIComponent(videoLink)}`);
+  });
+
+  it('accepts an empty media image without turning the level into an error', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({
+      title: '无封面', channelName: '作者', timestamp: null, image: '', embed: null, downloadLink: null,
+    }));
+    await expect(new TufProvider(fetcher as typeof fetch).getVideoDetails('https://video.example/watch'))
+      .resolves.toMatchObject({ image: '' });
+  });
+
+  it('rejects an invalid or non-HTTPS video link before requesting TUF', () => {
+    const fetcher = vi.fn();
+    const provider = new TufProvider(fetcher as typeof fetch);
+    expect(() => provider.getVideoDetails('not-a-url')).toThrow('TUF 视频链接无效');
+    expect(() => provider.getVideoDetails('http://video.example/watch')).toThrow('TUF 视频链接无效');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('uses the existing TUF retry and failure policy for video details', async () => {
+    const fetcher = vi.fn().mockResolvedValue(response({}, 503));
+    await expect(new TufProvider(fetcher as typeof fetch).getVideoDetails('https://video.example/watch'))
+      .rejects.toMatchObject({ code: 'network', retryable: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('TUF media image candidates', () => {
+  const icon = 'https://api.tuforums.com/icons/G12.png';
+
+  it('tries a TUF proxy before the original YouTube image and difficulty icon', () => {
+    const image = 'https://i.ytimg.com/vi/PUvyMb-qPVs/maxresdefault.jpg';
+    expect(tufMediaImageCandidates(image, icon)).toEqual([
+      `https://api.tuforums.com/v2/media/image-proxy?url=${encodeURIComponent(image)}`,
+      image,
+      icon,
+    ]);
+  });
+
+  it('does not wrap a Bilibili image already returned through the TUF proxy', () => {
+    const proxied = 'https://api.tuforums.com/v2/media/image-proxy?url=http%3A%2F%2Fi1.hdslb.com%2Fcover.jpg';
+    expect(tufMediaImageCandidates(proxied, icon)).toEqual([proxied, icon]);
+  });
+
+  it('falls back to the difficulty icon and rejects unsafe image candidates', () => {
+    expect(tufMediaImageCandidates('', icon)).toEqual([icon]);
+    expect(tufMediaImageCandidates('http://unsafe.example/cover.jpg', 'not-a-url')).toEqual([]);
   });
 });
