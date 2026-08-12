@@ -200,6 +200,48 @@ export function TufRecordsFilterBar({
   </FilterShell>;
 }
 
+export function TufRandomFilterBar({
+  expanded, difficultyBand, difficultyMin, difficultyMax, includeSpecial, achievement,
+  onExpandedChange, onDifficultyBandChange, onDifficultyMinChange, onDifficultyMaxChange,
+  onIncludeSpecialChange, onAchievementChange, onReset,
+}: {
+  expanded: boolean;
+  difficultyBand: TufDifficultyBand;
+  difficultyMin: string;
+  difficultyMax: string;
+  includeSpecial: boolean;
+  achievement: TufPassAchievementFilter;
+  onExpandedChange: (expanded: boolean) => void;
+  onDifficultyBandChange: (band: TufDifficultyBand) => void;
+  onDifficultyMinChange: (value: string) => void;
+  onDifficultyMaxChange: (value: string) => void;
+  onIncludeSpecialChange: (value: boolean) => void;
+  onAchievementChange: (value: TufPassAchievementFilter) => void;
+  onReset: () => void;
+}) {
+  const theme = useAppTheme();
+  const summary = [
+    difficultyBand === 'all' ? null : `${difficultyBand} 段`,
+    difficultyMin || difficultyMax ? `${difficultyMin || '1'}~${difficultyMax || '20'}` : null,
+    includeSpecial ? null : '不含特殊',
+    achievement === 'all' ? null : achievement.toUpperCase(),
+  ].filter(Boolean).join(' · ') || '全部';
+  return <FilterShell expanded={expanded} summary={summary}
+    onExpandedChange={onExpandedChange} onReset={onReset}>
+    <DifficultyFilters difficultyBand={difficultyBand} difficultyMin={difficultyMin} difficultyMax={difficultyMax}
+      includeSpecial={includeSpecial} onDifficultyBandChange={onDifficultyBandChange}
+      onDifficultyMinChange={onDifficultyMinChange} onDifficultyMaxChange={onDifficultyMaxChange}
+      onIncludeSpecialChange={onIncludeSpecialChange} />
+    <View style={styles.row}><Text style={[styles.label, { color: theme.textMuted }]}>成就</Text><View style={styles.wrap}>
+      <NeutralChip label="全部" active={achievement === 'all'} onPress={() => onAchievementChange('all')} accessibilityLabel="筛选成就 全部" />
+      {(['wf', 'pp'] as const).map((value) => <FilterChipFrame key={value} active={achievement === value}
+        accessibilityLabel={`筛选成就 ${value.toUpperCase()}`} onPress={() => onAchievementChange(value)}>
+        <TufWorldAchievementBadge kind={value} testID={`tuf-random-filter-${value}`} />
+      </FilterChipFrame>)}
+    </View></View>
+  </FilterShell>;
+}
+
 export function TufCatalogFilterBar({
   expanded, sortBy, order, difficultyBand, difficultyMin, difficultyMax, includeSpecial, specialAvailable,
   onExpandedChange, onSortByChange, onOrderChange, onDifficultyBandChange,

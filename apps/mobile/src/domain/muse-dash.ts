@@ -151,6 +151,26 @@ export type MuseDashRawScore = {
   constant?: number;
 };
 
+export type MuseDashRandomChart = {
+  key: string;
+  song: MuseDashSong;
+  albumTitle: string;
+  difficultyIndex: number;
+  officialLevel: string;
+  constant?: number;
+  score?: MuseDashRawScore;
+};
+
+export type MuseDashRandomChartFilters = {
+  difficultySlot: 'all' | 0 | 1 | 2 | 3 | 4;
+  dlc: 'all' | string;
+  constantMin: string;
+  constantMax: string;
+  accMin: string;
+  accMax: string;
+  achievement: 'all' | 'fc' | 'ap';
+};
+
 /** Muse Dash 缓存快照：独立命名空间 `musedash:`，不复用其他游戏快照。 */
 export type MuseDashAlbumsSnapshot = { data: MuseDashAlbumsResponse; source: DataSource };
 export type MuseDashCeSnapshot = { data: MuseDashCeResponse; source: DataSource };
@@ -354,4 +374,84 @@ export function museDashSongsByUid(
     }
   }
   return map;
+}
+
+export function buildMuseDashRawScores(
+  player: MuseDashPlayer,
+  albums: MuseDashAlbumsResponse | undefined,
+  ce: MuseDashCeResponse | undefined,
+  diffdiff: readonly MuseDashDiffdiffEntry[] | undefined,
+): MuseDashRawScore[] {
+  const songsByUid = albums ? museDashSongsByUid(albums) : new Map();
+  const constants = diffdiff ? museDashDiffdiffMap(diffdiff) : null;
+  return player.plays.map((play) => {
+    const joined = songsByUid.get(play.uid);
+    return {
+      play,
+      song: joined?.song ?? null,
+      albumTitle: joined?.albumTitle ?? '未知专辑',
+      characterName: ce ? museDashCharacterName(ce, play.character_uid) : null,
+      elfinName: ce ? museDashElfinName(ce, play.elfin_uid) : null,
+      constant: constants?.get(`${play.uid}:${play.difficulty}`)?.[4],
+    };
+  });
+}
+
+export function sortMuseDashRawScores(scores: readonly MuseDashRawScore[]): MuseDashRawScore[] {
+  return [...scores].sort((left, right) =>
+    (right.play.sum ?? right.play.score) - (left.play.sum ?? left.play.score));
+}
+
+/** 全曲库谱面池；成绩仅作为可选 join，不会在默认筛选下排除未游玩谱面。 */
+export function buildMuseDashRandomCharts(
+  albums: MuseDashAlbumsResponse,
+  diffdiff: readonly MuseDashDiffdiffEntry[],
+  scores: readonly MuseDashRawScore[],
+): MuseDashRandomChart[] {
+  const constants = museDashDiffdiffMap(diffdiff);
+  const scoresByChart = new Map(scores.map((score) => [
+    `${score.play.uid}:${score.play.difficulty}`,
+    score,
+  ]));
+  return museDashSongsFromAlbums(albums).flatMap(({ song, albumTitle }) =>
+    song.difficulty.flatMap((officialLevel, difficultyIndex) => {
+      if (officialLevel === '0') return [];
+      const key = `${song.uid}:${difficultyIndex}`;
+      return [{
+        key,
+        song,
+        albumTitle,
+        difficultyIndex,
+        officialLevel,
+        constant: constants.get(key)?.[4],
+        score: scoresByChart.get(key),
+      }];
+    }));
+}
+
+export function filterMuseDashRandomCharts(
+  charts: readonly MuseDashRandomChart[],
+  filters: MuseDashRandomChartFilters,
+  missByChart: ReadonlyMap<string, number | undefined>,
+): MuseDashRandomChart[] {
+  const scoreFilterActive = filters.accMin.trim() !== ''
+    || filters.accMax.trim() !== ''
+    || filters.achievement !== 'all';
+  return charts.filter((chart) => {
+    if (filters.difficultySlot !== 'all' && chart.difficultyIndex !== filters.difficultySlot) return false;
+    if (!matchesMuseDashDlcFilter(chart.albumTitle, filters.dlc)) return false;
+    if (filters.constantMin.trim() !== '' || filters.constantMax.trim() !== '') {
+      if (chart.constant === undefined
+        || !matchesMuseDashConstantRange(chart.constant, filters.constantMin, filters.constantMax)) return false;
+    }
+    if (scoreFilterActive && !chart.score) return false;
+    if (chart.score && !matchesMuseDashAccRange(chart.score.play.acc, filters.accMin, filters.accMax)) return false;
+    if (filters.achievement !== 'all' && chart.score
+      && !matchesMuseDashAchievementFilter(
+        chart.score.play.acc,
+        missByChart.get(chart.key),
+        filters.achievement,
+      )) return false;
+    return true;
+  });
 }

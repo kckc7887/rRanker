@@ -3,6 +3,7 @@ import {
   buildLxnsIconUrl,
 } from '@/domain/account-avatar';
 import type { BoundAccount } from '@/domain/bound-account';
+import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
 import {
   buildChunithmMapIconUrl,
   CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
@@ -12,11 +13,14 @@ import {
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSession } from '@/state/session-store';
 import { syncAllAccountAvatars } from '@/services/resolve-account-avatar';
+import { resolveTufAvatarUrl } from '@/domain/tuf';
+import { TufCache } from '@/services/tuf-cache';
 
 export { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
 
 const AVATAR_RESOURCE_SCHEMA = 1;
 const repository = new SqliteSnapshotRepository();
+const tufCache = new TufCache();
 
 type StoredAccountAvatar = {
   avatarUrl: string;
@@ -43,6 +47,16 @@ export async function resolveBoundAccountAvatarUrl(account: BoundAccount): Promi
       AVATAR_RESOURCE_SCHEMA,
     );
     return cached?.avatarUrl ?? null;
+  }
+
+  if (account.providerId === 'tuf') {
+    const persisted = await repository.getResource<StoredAccountAvatar>(
+      accountAvatarResourceKey(account.id),
+      AVATAR_RESOURCE_SCHEMA,
+    );
+    if (persisted?.avatarUrl) return persisted.avatarUrl;
+    const playerId = tufPlayerIdFromAccountId(account.id);
+    return playerId === null ? null : resolveTufAvatarUrl((await tufCache.loadPlayer(playerId))?.data);
   }
 
   return null;

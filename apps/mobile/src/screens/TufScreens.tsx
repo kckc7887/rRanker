@@ -12,6 +12,7 @@ import { GameChartResultCard } from '@/components/game-content/GameChartResultCa
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { Card } from '@/components/Card';
+import { BestImageEntryButton } from '@/components/BestImageEntryButton';
 import { TagEditor } from '@/components/TagEditor';
 import { TufScoreCard, TufWorldAchievementBadge } from '@/components/adofai/TufScoreCard';
 import { TufSongRow } from '@/components/adofai/TufSongRow';
@@ -24,6 +25,7 @@ import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
 import {
   filterTufPasses,
+  selectTufTopPasses,
   tufDifficultyBounds,
   tufDifficultyVisual,
   tufMediaImageCandidates,
@@ -96,12 +98,9 @@ export function TufBestScreen() {
   const profile = useTufProfile(playerId);
   const passes = useTufPasses(playerId, { sortBy: 'impact', order: 'DESC', bestPerLevel: true });
   const allPasses = passes.data?.pages.flatMap((page) => page.passes) ?? [];
-  const passById = new Map(allPasses.map((pass) => [pass.id, pass]));
-  const ordered = profile.data?.topScores.slice(0, 20).flatMap((top) => {
-    const pass = passById.get(top.id);
-    return pass ? [{ ...pass, impact: top.impact }] : [];
-  }) ?? [];
-  const missing = Math.max(0, Math.min(20, profile.data?.topScores.length ?? 0) - ordered.length);
+  const top = selectTufTopPasses(profile.data?.topScores ?? [], allPasses);
+  const ordered = top.passes;
+  const missing = top.missing;
   const sections: TufBestSection[] = [{ id: 'top20', title: 'Top 20 Impact', data: ordered }];
   const loading = profile.isLoading || passes.isLoading;
   const error = profile.error ?? passes.error;
@@ -121,7 +120,10 @@ export function TufBestScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
           <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 条</Text>
         </View>,
-        ListHeaderComponent: missing > 0 ? <Text style={[styles.notice, { color: theme.textMuted }]}>有 {missing} 条 Top 记录未公开，已跳过。</Text> : null,
+        ListHeaderComponent: <View>
+          <BestImageEntryButton label="导出 Top20 图片" />
+          {missing > 0 ? <Text style={[styles.notice, { color: theme.textMuted }]}>有 {missing} 条 Top 记录未公开，已跳过。</Text> : null}
+        </View>,
         renderItem: ({ item, index }) => <TufScoreCard pass={item} position={index + 1} />,
       }} />
   </View>;

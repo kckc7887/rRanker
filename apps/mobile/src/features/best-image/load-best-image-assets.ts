@@ -48,6 +48,10 @@ async function loadDataUri(moduleId: number, mimeType: string): Promise<string> 
   }
 }
 
+export function loadBestImageAssetDataUri(moduleId: number, mimeType = 'image/png'): Promise<string> {
+  return loadDataUri(moduleId, mimeType);
+}
+
 export async function loadBestImageAssets(
   fontSource: number,
   ratingFrameSource: number,

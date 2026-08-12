@@ -4,6 +4,22 @@ import type { DataSource } from '@/domain/models';
 const nullableNumber = z.number().finite().nullable().optional();
 const nullableString = z.string().nullable().optional();
 
+export type TufAvatarSource = {
+  avatar?: string | null;
+  avatarUrl?: string | null;
+  pfp?: string | null;
+  user?: { avatarUrl?: string | null } | null;
+};
+
+/** TUF 同时在搜索结果与公开资料里使用过不同头像字段；统一在边界解析。 */
+export function resolveTufAvatarUrl(player: TufAvatarSource | null | undefined): string | null {
+  return player?.pfp?.trim()
+    || player?.user?.avatarUrl?.trim()
+    || player?.avatarUrl?.trim()
+    || player?.avatar?.trim()
+    || null;
+}
+
 export const TufDifficultySchema = z.object({
   id: z.number().int(), name: z.string().min(1), type: z.string().min(1),
   sortOrder: z.number().int().optional(), baseScore: nullableNumber,
@@ -71,6 +87,7 @@ const TufTopScoreSchema = z.object({ id: z.number().int(), impact: z.number().fi
 
 export const TufPlayerSchema = z.object({
   id: z.number().int(), name: z.string().min(1), avatar: nullableString, avatarUrl: nullableString, pfp: nullableString,
+  user: z.object({ avatarUrl: nullableString }).passthrough().nullable().optional(),
   discordId: nullableString, rankedScore: z.number().finite().optional().default(0),
   generalScore: z.number().finite().optional().default(0),
   ppScore: z.number().finite().optional().default(0), averageXacc: nullableNumber,
@@ -85,7 +102,7 @@ export const TufPlayerSchema = z.object({
   topScores: z.array(TufTopScoreSchema).optional().default([]),
 }).passthrough().transform((player) => ({
   ...player,
-  avatarUrl: player.avatarUrl ?? player.pfp ?? player.avatar,
+  avatarUrl: resolveTufAvatarUrl(player),
   globalRank: player.globalRank ?? player.rankedScoreRank ?? player.rank,
   worldFirstCount: player.worldFirstCount ?? player.worldsFirstCount ?? 0,
 }));
@@ -264,6 +281,29 @@ export function filterTufPasses(
   achievement: TufPassAchievementFilter = 'all',
 ): TufPass[] {
   return passes.filter((pass) => tufPassMatchesFilters(pass, difficulty, achievement));
+}
+
+/** bestPerLevel 分页的防御性去重：保留上游排序中最先出现的每关最佳。 */
+export function uniqueTufPassesByLevel(passes: readonly TufPass[]): TufPass[] {
+  const byLevel = new Map<number, TufPass>();
+  for (const pass of passes) {
+    if (!byLevel.has(pass.levelId)) byLevel.set(pass.levelId, pass);
+  }
+  return [...byLevel.values()];
+}
+
+export function selectTufTopPasses(
+  topScores: readonly { id: number; impact: number }[],
+  passes: readonly TufPass[],
+  limit = 20,
+): { passes: TufPass[]; missing: number } {
+  const requested = topScores.slice(0, Math.max(0, limit));
+  const byId = new Map(passes.map((pass) => [pass.id, pass]));
+  const selected = requested.flatMap((top) => {
+    const pass = byId.get(top.id);
+    return pass ? [{ ...pass, impact: top.impact }] : [];
+  });
+  return { passes: selected, missing: requested.length - selected.length };
 }
 
 const TUF_BAND_COLORS = { P: '#00C8FF', G: '#F2A700', U: '#7B4FB2' } as const;

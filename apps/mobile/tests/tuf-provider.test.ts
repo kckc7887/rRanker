@@ -4,6 +4,8 @@ import passPage from './fixtures/tuf/pass-page.sanitized.json';
 import levelPage from './fixtures/tuf/level-page.sanitized.json';
 import {
   selectBestTufLevelPass,
+  resolveTufAvatarUrl,
+  TufPlayerSchema,
   tufDifficultyVisual,
   tufMediaImageCandidates,
   tufTagIconUrl,
@@ -17,6 +19,14 @@ function response(body: unknown, status = 200, headers?: Record<string, string>)
 }
 
 describe('TufProvider', () => {
+  it('resolves root pfp first, then nested user.avatarUrl and legacy avatar fields', () => {
+    expect(resolveTufAvatarUrl({ pfp: ' https://example.test/pfp.png ', user: { avatarUrl: 'https://example.test/user.png' } }))
+      .toBe('https://example.test/pfp.png');
+    expect(TufPlayerSchema.parse({ id: 1, name: '嵌套头像', user: { avatarUrl: 'https://example.test/user.png' } }).avatarUrl)
+      .toBe('https://example.test/user.png');
+    expect(resolveTufAvatarUrl({ avatarUrl: 'https://example.test/legacy.png' })).toBe('https://example.test/legacy.png');
+    expect(resolveTufAvatarUrl({})).toBeNull();
+  });
   it('parses sanitized player, pass and paged level snapshots without credentials', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(response(playerProfile))

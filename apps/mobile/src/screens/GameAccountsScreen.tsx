@@ -58,6 +58,7 @@ import { TufAccountStore } from '@/storage/tuf-account-store';
 import { TufCache } from '@/services/tuf-cache';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 import { MuseDashCache } from '@/services/muse-dash-cache';
+import { resolveTufAvatarUrl } from '@/domain/tuf';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -292,7 +293,7 @@ export function GameAccountsScreen() {
       return;
     }
     const account = createTufBoundAccount({
-      playerId: player.id, displayName: player.name, avatarUrl: player.avatarUrl ?? player.avatar,
+      playerId: player.id, displayName: player.name, avatarUrl: resolveTufAvatarUrl(player),
     });
     await tufAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: account.avatarUrl });
     upsertBoundAccount(account);

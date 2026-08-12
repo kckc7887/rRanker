@@ -8,6 +8,9 @@ import {
   MuseDashCeResponseSchema,
   MuseDashDiffdiffResponseSchema,
   MuseDashPlayerSchema,
+  buildMuseDashRandomCharts,
+  buildMuseDashRawScores,
+  filterMuseDashRandomCharts,
   museDashAccTone,
   museDashCharacterName,
   museDashCoverUrl,
@@ -60,6 +63,32 @@ describe('Muse Dash content adapter', () => {
     expect(song.charts[0]).toMatchObject({ label: 'EASY', level: '2', order: 0, libraryRef: { type: 'SD', levelIndex: 0 } });
     expect(song.charts[4]).toMatchObject({ label: 'EX', level: '12', libraryRef: { type: 'SD', levelIndex: 4 } });
     expect(song.extension.song).toBe(fullSong.song);
+  });
+
+  it('builds a full-catalog random pool and only requires scores for score conditions', () => {
+    const rawScores = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff);
+    const charts = buildMuseDashRandomCharts(parsedAlbums, parsedDiffdiff, rawScores);
+    expect(charts.length).toBeGreaterThan(rawScores.length);
+    expect(charts.some((chart) => !chart.score)).toBe(true);
+    const defaults = filterMuseDashRandomCharts(charts, {
+      difficultySlot: 'all', dlc: 'all', constantMin: '', constantMax: '',
+      accMin: '', accMax: '', achievement: 'all',
+    }, new Map());
+    expect(defaults.some((chart) => !chart.score)).toBe(true);
+    const accFiltered = filterMuseDashRandomCharts(charts, {
+      difficultySlot: 'all', dlc: 'all', constantMin: '', constantMax: '',
+      accMin: '95', accMax: '', achievement: 'all',
+    }, new Map());
+    expect(accFiltered.every((chart) => chart.score && chart.score.play.acc >= 95)).toBe(true);
+    const playedChart = charts.find((chart) => chart.score)!;
+    const first = playedChart.score!;
+    const missMap = new Map([[playedChart.key, 0]]);
+    const fc = filterMuseDashRandomCharts(charts, {
+      difficultySlot: first.play.difficulty as 0 | 1 | 2 | 3 | 4,
+      dlc: first.albumTitle, constantMin: '', constantMax: '', accMin: '', accMax: '', achievement: 'fc',
+    }, missMap);
+    expect(fc.every((chart) => !!chart.score)).toBe(true);
+    expect(fc.map((chart) => chart.key)).toContain(playedChart.key);
   });
 
   it('skips missing difficulty slots and keeps SD library keys', () => {

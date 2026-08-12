@@ -48,7 +48,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
 }) {
   const theme = useAppTheme();
   const avatarHydrateKey = accounts
-    .filter((account) => account.providerId === 'lxns' || account.providerId === 'phi-taptap')
+    .filter((account) => account.providerId === 'lxns' || account.providerId === 'phi-taptap' || account.providerId === 'tuf')
     .map((account) => account.id)
     .join('|');
   useHydrateAccountSummaries(avatarHydrateKey);
