@@ -12,6 +12,7 @@ describe('fixed community best image html', () => {
       avatarUrl: 'https://example.test/a.png?x=1&y=2',
       avatarFallbackUrl: 'data:image/png;base64,test',
       dataSource: 'TUF <公开>',
+      cardLayout: { asideMetricKey: 'impact' },
       theme: { accent: '#24B8E6', accentSoft: '#DFF6FC', secondaryAccent: '#F05B5B' },
       sections: [{
         id: 'top20', title: 'Top 20', items: [{
@@ -25,11 +26,19 @@ describe('fixed community best image html', () => {
       }],
     });
     expect(html).toContain(`width:${width}px`);
+    expect(html).toContain('class="preview-stage"');
+    expect(html).toContain('class="canvas"');
+    expect(html).toContain('data-layout-content');
     expect(html).toContain('grid-template-columns:repeat(3');
     expect(html).toContain('&lt;玩家 &amp; A&gt;');
     expect(html).toContain('&lt;Song&gt;');
     expect(html).not.toContain('<Song>');
-    expect(html).toContain("type:'best-image-ready'");
+    expect(html).toContain("type: 'best-image-ready'");
+    expect(html).toContain('ResizeObserver');
+    expect(html).toContain('class="position">1.</span>');
+    expect(html).toContain('<aside><small>Impact</small><strong>9.99</strong></aside>');
+    expect(html).not.toContain('document-title');
+    expect(html).not.toContain('document.body.scrollHeight');
     expect(html).toContain('#F05B5B');
   });
 });

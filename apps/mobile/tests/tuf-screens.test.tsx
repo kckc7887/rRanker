@@ -4,6 +4,7 @@ import { Dimensions, processColor, StyleSheet } from 'react-native';
 import type { TufLevel, TufLevelPass, TufPass, TufPlayer, TufVideoDetails } from '@/domain/tuf';
 import { BADGE_GOLD_BORDER_COLORS } from '@/features/best-image/best-image-badge-theme';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
+import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -14,6 +15,9 @@ const mockRefetch = jest.fn();
 const mockUseTufPasses = jest.fn();
 const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
+const mockPrefetchTufPassPage = jest.fn(async (_playerId: number, _options: unknown, offset: number) => ({
+  passes: [], total: 61, offset, limit: 30,
+}));
 let mockLevelDetail: TufLevel | undefined;
 let mockLevelBestPass: TufLevelPass | undefined;
 let mockProfile: TufPlayer | undefined;
@@ -25,6 +29,7 @@ jest.mock('expo-router', () => ({
     push: (value: unknown) => mockPush(value),
     replace: (value: unknown) => mockReplace(value),
   },
+  Stack: { Screen: () => null },
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -73,6 +78,7 @@ jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unkno
   activeAccountId: 'adofai:tuf:25', activeGameId: 'adofai',
 }) }));
 jest.mock('@/hooks/use-tuf', () => ({
+  prefetchTufPassPage: mockPrefetchTufPassPage,
   useTufProfile: () => ({ data: mockProfile, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
   useTufPasses: (...args: unknown[]) => mockUseTufPasses(...args),
   useTufLevelSearch: (...args: unknown[]) => mockUseTufLevelSearch(...args),
@@ -132,8 +138,20 @@ describe('TUF screens', () => {
   it('keeps the profile Top 20 order instead of pass response order', async () => {
     const screen = await render(<TufBestScreen />);
     const labels = screen.getAllByLabelText(/^查看关卡/).map((node) => node.props.accessibilityLabel);
+    expect(screen.getByLabelText('导出 Top20 图片')).toBeTruthy();
     expect(labels[0]).toContain('第二条');
     expect(labels[1]).toContain('第一条');
+  });
+
+  it('shows and disables the random page after the first pass page while the complete pool warms in background', async () => {
+    mockUseTufPasses.mockReturnValue({
+      ...infinite([pass(1, '首批成绩')], 'passes'),
+      data: { pages: [{ passes: [pass(1, '首批成绩')], total: 61, offset: 0, limit: 30 }] },
+    });
+    const screen = await render(<TufRandomChartsScreen />);
+    expect(screen.getByTestId('random-charts-scroll')).toBeTruthy();
+    expect(screen.getByText('正在加载完整随机池 · 已加载 1/61')).toBeTruthy();
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toEqual({ disabled: true });
   });
 
   it('changes server-side record sorting and requests the next page once', async () => {

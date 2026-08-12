@@ -46,7 +46,7 @@ export function TufBestImageScreen() {
   const htmlForWidth = useCallback((width: number) => buildFixedBestImageHtml({
     width, title: 'Top20', playerName: profile.data?.name ?? 'TUF 玩家', ratingLabel: 'Rating',
     ratingDisplay: profile.data?.rankedScore.toFixed(2) ?? '—', avatarUrl: resolveTufAvatarUrl(profile.data),
-    avatarFallbackUrl: fallbackAvatar, sections, dataSource: 'TUF 公开成绩',
+    avatarFallbackUrl: fallbackAvatar, sections, dataSource: 'TUF 公开成绩', cardLayout: { asideMetricKey: 'impact' },
     theme: { accent: '#24B8E6', accentSoft: '#DFF6FC', secondaryAccent: '#F05B5B' },
   }), [fallbackAvatar, profile.data, sections]);
   const loading = profile.isLoading || passes.isLoading || fallbackAvatar === undefined;
@@ -91,7 +91,7 @@ export function MuseDashBestImageScreen() {
   const sections = useMemo<BestSectionPresentation[]>(() => [{ id: 'best30', title: 'Best 30', items: cards }], [cards]);
   const htmlForWidth = useCallback((width: number) => buildFixedBestImageHtml({
     width, title: 'B30', playerName: player.data?.user.nickname ?? '喵斯快跑玩家', ratingLabel: 'Rating',
-    ratingDisplay: player.data?.rl?.toFixed(2) ?? '—', sections, dataSource: 'MuseDash.moe',
+    ratingDisplay: player.data?.rl?.toFixed(2) ?? '—', sections, dataSource: 'MuseDash.moe', cardLayout: { asideMetricKey: 'rating' },
     theme: { accent: '#D743A7', accentSoft: '#F9E1F3', secondaryAccent: '#7B4FD6' },
   }), [player.data, sections]);
   const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;

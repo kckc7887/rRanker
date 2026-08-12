@@ -25,6 +25,10 @@ const TUF_QUERY_OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
 
 const cache = new TufCache();
 
+function pageIndexFromOffset(offset: number): number {
+  return Math.floor(offset / TUF_PAGE_SIZE);
+}
+
 export function useTufPlayerSearch(query: string) {
   const normalized = query.trim();
   return useQuery({
@@ -59,36 +63,61 @@ export function useTufProfile(playerId: number | null) {
   });
 }
 
-function pageIndexFromOffset(offset: number): number {
-  return Math.floor(offset / TUF_PAGE_SIZE);
+function tufPassesQueryKey(playerId: number, options: Omit<TufPassQuery, 'offset' | 'limit'>) {
+  return ['tuf', 'player', playerId, 'passes', options] as const;
+}
+
+function mergeTufPassPage(
+  playerId: number,
+  options: Omit<TufPassQuery, 'offset' | 'limit'>,
+  page: TufPassPage,
+): void {
+  const queryKey = tufPassesQueryKey(playerId, options);
+  queryClient.setQueryData<InfiniteData<TufPassPage>>(queryKey, (old) => {
+    if (!old) return undefined;
+    const entries = old.pages.map((item, index) => ({ page: item, pageParam: old.pageParams[index] ?? item.offset }));
+    const existing = entries.findIndex((entry) => entry.page.offset === page.offset);
+    if (existing >= 0) entries[existing] = { page, pageParam: page.offset };
+    else entries.push({ page, pageParam: page.offset });
+    entries.sort((left, right) => left.page.offset - right.page.offset);
+    return { pages: entries.map((entry) => entry.page), pageParams: entries.map((entry) => entry.pageParam) };
+  });
+}
+
+async function loadTufPassPage(
+  playerId: number,
+  options: Omit<TufPassQuery, 'offset' | 'limit'>,
+  offset: number,
+): Promise<TufPassPage> {
+  const snapshot = await cacheFirstLoad({
+    loadCached: () => cache.loadPassPage(playerId, options, offset),
+    loadFresh: async () => {
+      const page = await tufProvider.getPasses(playerId, {
+        ...options, offset, limit: TUF_PAGE_SIZE,
+      });
+      const fresh = makeTufSnapshot(page);
+      void cache.savePassPage(playerId, options, offset, fresh).catch(() => undefined);
+      return fresh;
+    },
+    onFresh: (fresh) => mergeTufPassPage(playerId, options, fresh.data),
+  });
+  return snapshot.data;
+}
+
+export async function prefetchTufPassPage(
+  playerId: number,
+  options: Omit<TufPassQuery, 'offset' | 'limit'>,
+  offset: number,
+): Promise<TufPassPage> {
+  const page = await loadTufPassPage(playerId, options, offset);
+  mergeTufPassPage(playerId, options, page);
+  return page;
 }
 
 export function useTufPasses(playerId: number | null, options: Omit<TufPassQuery, 'offset' | 'limit'>) {
-  const queryKey = ['tuf', 'player', playerId, 'passes', options] as const;
   return useInfiniteQuery({
-    queryKey,
-    queryFn: async ({ pageParam }): Promise<TufPassPage> => {
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => cache.loadPassPage(playerId!, options, pageParam),
-        loadFresh: async () => {
-          const page = await tufProvider.getPasses(playerId!, {
-            ...options, offset: pageParam, limit: TUF_PAGE_SIZE,
-          });
-          const fresh = makeTufSnapshot(page);
-          void cache.savePassPage(playerId!, options, pageParam, fresh).catch(() => undefined);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          const pageIndex = pageIndexFromOffset(pageParam);
-          queryClient.setQueryData<InfiniteData<TufPassPage>>(queryKey, (old) => {
-            if (!old) return undefined;
-            const pages = old.pages.map((page, index) => (index === pageIndex ? fresh.data : page));
-            return { ...old, pages };
-          });
-        },
-      });
-      return snapshot.data;
-    },
+    queryKey: ['tuf', 'player', playerId, 'passes', options] as const,
+    queryFn: ({ pageParam }): Promise<TufPassPage> => loadTufPassPage(playerId!, options, pageParam),
     initialPageParam: 0,
     getNextPageParam: (last) => last.offset + last.passes.length < last.total
       ? last.offset + last.limit

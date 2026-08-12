@@ -49,4 +49,30 @@ describe('RandomChartsPage host contract', () => {
     await fireEvent.press(screen.getByTestId('random-charts-draw'));
     expect(onDraw).toHaveBeenCalledTimes(1);
   });
+
+  it('shows complete-pool progress and keeps drawing disabled until ready', async () => {
+    const retry = jest.fn();
+    const screen = await render(<RandomChartsPage
+      count={1}
+      drawDisabled
+      emptyMessage="无结果"
+      filter={<Text>筛选器</Text>}
+      hasDrawn={false}
+      onCountChange={onCountChange}
+      onDraw={onDraw}
+      onRetryPool={retry}
+      poolError="有 1 页加载失败"
+      poolSize={30}
+      poolStatus="正在加载完整随机池 · 已加载 30/90"
+      resultCount={0}
+      results={null}
+      sourceItems={[]}
+    />);
+    expect(screen.getByText('正在加载完整随机池 · 已加载 30/90')).toBeTruthy();
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toEqual({ disabled: true });
+    await fireEvent.press(screen.getByTestId('random-charts-draw'));
+    expect(onDraw).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText('重试加载随机池'));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
 });

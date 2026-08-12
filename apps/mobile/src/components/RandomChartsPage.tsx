@@ -26,6 +26,10 @@ export type RandomChartsPageProps = {
   resultCount: number;
   results: ReactNode;
   emptyMessage: string;
+  drawDisabled?: boolean;
+  poolStatus?: string;
+  poolError?: string | null;
+  onRetryPool?: () => void;
 };
 
 function CountChip({
@@ -72,6 +76,10 @@ export function RandomChartsPage({
   resultCount,
   results,
   emptyMessage,
+  drawDisabled = false,
+  poolStatus,
+  poolError,
+  onRetryPool,
 }: RandomChartsPageProps) {
   const theme = useAppTheme();
   return (
@@ -106,13 +114,22 @@ export function RandomChartsPage({
 
         <Card>
           <Text style={[styles.poolHint, { color: theme.textMuted }]}>
-            候选谱面 {poolSize} 条
+            {poolStatus ?? `候选谱面 ${poolSize} 条`}
           </Text>
+          {poolError ? <View style={styles.poolErrorRow}>
+            <Text accessibilityRole="alert" style={[styles.poolErrorText, { color: theme.danger }]}>{poolError}</Text>
+            {onRetryPool ? <Pressable accessibilityLabel="重试加载随机池" accessibilityRole="button"
+              onPress={onRetryPool} style={[styles.retryButton, { borderColor: theme.accent }]}>
+              <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
+            </Pressable> : null}
+          </View> : null}
           <Pressable
             accessibilityLabel={hasDrawn ? '再抽一次' : '抽取'}
             accessibilityRole="button"
+            accessibilityState={{ disabled: drawDisabled }}
+            disabled={drawDisabled}
             onPress={onDraw}
-            style={[styles.drawButton, { backgroundColor: theme.accent }]}
+            style={[styles.drawButton, { backgroundColor: theme.accent }, drawDisabled && styles.disabled]}
             testID="random-charts-draw"
           >
             <Text style={styles.drawButtonText}>
@@ -197,6 +214,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   poolHint: { fontSize: 12, marginBottom: 10 },
+  poolErrorRow: { marginBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  poolErrorText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  retryButton: { minHeight: 30, minWidth: 60, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  retryButtonText: { fontSize: 12, fontWeight: '800' },
   drawButton: {
     minHeight: 44,
     borderRadius: 12,
@@ -204,6 +225,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   drawButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  disabled: { opacity: 0.55 },
   resultSection: { gap: 10 },
   resultList: { gap: 10 },
   emptyText: { fontSize: 13, lineHeight: 20 },

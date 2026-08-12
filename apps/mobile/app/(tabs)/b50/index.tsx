@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import { router, type Href } from 'expo-router';
-import { Pressable, StyleSheet, Text, View, type SectionListRenderItem } from 'react-native';
+import { StyleSheet, Text, View, type SectionListRenderItem } from 'react-native';
+import { BestImageEntryButton } from '@/components/BestImageEntryButton';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { BestListPage } from '@/components/game-content/GameListPages';
@@ -128,14 +128,7 @@ function ChunithmBestScreen() {
           stickySectionHeadersEnabled: false,
           keyExtractor: (record, index) => `${record.songId}-${record.levelIndex}-${index}`,
           ListHeaderComponent: <View style={styles.header}>
-              <Pressable
-                accessibilityLabel="生成B50图片"
-                accessibilityRole="button"
-                onPress={() => router.push('/best-image' as Href)}
-                style={[styles.generateButton, { backgroundColor: theme.accent }]}
-              >
-                <Text style={styles.generateButtonText}>生成B50图片</Text>
-              </Pressable>
+              <BestImageEntryButton label="生成B50图片" />
               <SourceStatus items={payload ? [
               {
                 key: 'scores',
@@ -204,14 +197,7 @@ function MaimaiBest50Screen() {
           stickySectionHeadersEnabled: false,
           keyExtractor: (record) => `${record.songId}-${record.type}-${record.levelIndex}-${record.version}`,
           ListHeaderComponent: <View style={styles.header}>
-              <Pressable
-                accessibilityLabel="生成B50图片"
-                accessibilityRole="button"
-                onPress={() => router.push('/best-image' as Href)}
-                style={[styles.generateButton, { backgroundColor: theme.accent }]}
-              >
-                <Text style={styles.generateButtonText}>生成B50图片</Text>
-              </Pressable>
+              <BestImageEntryButton label="生成B50图片" />
               <SourceStatus items={maimai ? [
                 { key: 'scores', label: maimai.source.label, updatedAt: maimai.source.updatedAt, state: maimai.source.isStale ? 'cache' : 'live' },
                 { key: 'catalog', label: maimai.catalogSource.label, updatedAt: maimai.catalogSource.updatedAt, state: maimai.catalogSource.isStale ? 'cache' : 'live' },
@@ -283,14 +269,7 @@ function PhigrosBestScreen() {
     };
   const listHeader = (
     <View style={styles.header}>
-      <Pressable
-        accessibilityLabel="生成B30图片"
-        accessibilityRole="button"
-        onPress={() => router.push('/best-image' as Href)}
-        style={[styles.generateButton, { backgroundColor: theme.accent }]}
-      >
-        <Text style={styles.generateButtonText}>生成B30图片</Text>
-      </Pressable>
+      <BestImageEntryButton label="生成B30图片" />
       <SourceStatus items={[
         { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
         { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
@@ -359,16 +338,6 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { padding: 16, gap: 10 },
   header: { gap: 9, marginBottom: 2 },
-  generateButton: {
-    minHeight: 46,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#246BFD',
-  },
-  generateButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   sectionHeader: { marginTop: 10, marginBottom: 2, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   sectionTitle: { color: '#111827', fontSize: 18, fontWeight: '800' },
   sectionCount: { color: '#8A93A3', fontSize: 11 },
