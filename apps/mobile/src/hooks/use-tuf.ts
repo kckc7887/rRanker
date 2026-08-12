@@ -2,6 +2,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
 import {
   TUF_PAGE_SIZE,
+  tufHttpsUrl,
   type TufLevelDetailResponse,
   type TufLevelPage,
   type TufLevelQuery,
@@ -151,6 +152,16 @@ export function useTufDifficulties() {
       });
       return snapshot.data;
     },
+    ...TUF_QUERY_OPTIONS,
+  });
+}
+
+export function useTufVideoDetails(videoLink: string | null | undefined) {
+  const normalized = tufHttpsUrl(videoLink);
+  return useQuery({
+    queryKey: ['tuf', 'media', 'video-details', normalized],
+    queryFn: () => tufProvider.getVideoDetails(normalized!),
+    enabled: normalized !== null,
     ...TUF_QUERY_OPTIONS,
   });
 }

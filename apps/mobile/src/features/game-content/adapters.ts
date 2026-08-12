@@ -490,7 +490,14 @@ function tufLevelLabel(level: TufLevel): string {
 }
 
 function tufLevelTone(level: TufLevel): string {
-  return level.difficulty?.type?.toLowerCase() ?? 'unranked';
+  const type = level.difficulty?.type?.trim().toUpperCase();
+  const name = level.difficulty?.name?.trim().toUpperCase();
+  if (name && /^P\d/.test(name)) return 'tuf-p';
+  if (name && /^G\d/.test(name)) return 'tuf-g';
+  if (name && /^U\d/.test(name)) return 'tuf-u';
+  if (type === 'LEGACY' || name?.includes('LEGACY')) return 'tuf-legacy';
+  if (!level.difficulty || name === 'UNRANKED') return 'tuf-unranked';
+  return 'tuf-special';
 }
 
 function tufChart(level: TufLevel): GameChart<'adofai', TufChartExtension> {
