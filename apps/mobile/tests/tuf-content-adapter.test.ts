@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import passPage from './fixtures/tuf/pass-page.sanitized.json';
 import levelPage from './fixtures/tuf/level-page.sanitized.json';
 import {
-  filterTufPasses, tufDifficultyBounds, tufPguRange, TufLevelPageSchema, TufPassPageSchema,
+  filterTufPasses, selectTufTopPasses, tufDifficultyBounds, tufPguRange, TufLevelPageSchema, TufPassPageSchema,
+  uniqueTufPassesByLevel,
   type TufPass,
 } from '@/domain/tuf';
 import { adofaiContentAdapter, presentTufChart, presentTufLevel, presentTufScore } from '@/features/game-content/adapters';
@@ -64,5 +65,17 @@ describe('ADOFAI TUF content adapter', () => {
       .toEqual([records[0], records[3]]);
     expect(filterTufPasses(records, { band: 'all', min: 1, max: 20, includeSpecial: false }, 'pp'))
       .toEqual([records[1]]);
+  });
+
+  it('deduplicates paged best-per-level results and keeps public Top order while skipping missing passes', () => {
+    const another = { ...pass, id: pass.id + 1, levelId: pass.levelId + 1 };
+    expect(uniqueTufPassesByLevel([pass, { ...pass, id: pass.id + 2 }, another]).map((item) => item.id))
+      .toEqual([pass.id, another.id]);
+    const selected = selectTufTopPasses([
+      { id: another.id, impact: 20 }, { id: 999999, impact: 19 }, { id: pass.id, impact: 18 },
+    ], [pass, another]);
+    expect(selected.passes.map((item) => item.id)).toEqual([another.id, pass.id]);
+    expect(selected.passes.map((item) => item.impact)).toEqual([20, 18]);
+    expect(selected.missing).toBe(1);
   });
 });

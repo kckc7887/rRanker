@@ -42,8 +42,18 @@ describe('per-game toolbox registry', () => {
     expect(summarizeGameTools('chunithm')).toBe('Rating 计算器 · 收藏品进度 · 随机歌曲 · 机厅查找 · 成绩图片');
   });
 
+  it.each([
+    ['adofai', '随机歌曲 · 机厅查找 · 成绩图片'],
+    ['musedash', '随机歌曲 · 机厅查找 · 成绩图片'],
+  ] as const)('registers the shared toolbox order for %s', (gameId, summary) => {
+    expect(getGameToolbox(gameId).tools.map((tool) => tool.id)).toEqual([
+      'random-charts', 'arcade-finder', 'best-image',
+    ]);
+    expect(summarizeGameTools(gameId)).toBe(summary);
+  });
+
   it('keeps profile capabilities consistent with registered tools', () => {
-    const gameIds: GameId[] = ['maimai', 'chunithm', 'phigros', 'test'];
+    const gameIds: GameId[] = ['maimai', 'chunithm', 'phigros', 'adofai', 'musedash', 'test'];
     for (const gameId of gameIds) {
       expect(getGameProfile(gameId).capabilities.hasTools)
         .toBe(getGameToolbox(gameId).tools.length > 0);

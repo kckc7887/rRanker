@@ -3,7 +3,7 @@ import {
   ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { TufPlayer } from '@/domain/tuf';
+import { resolveTufAvatarUrl, type TufPlayer } from '@/domain/tuf';
 import { findGame, findProvider } from '@/domain/game-bind-options';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useTufPlayerSearch, useTufProfile } from '@/hooks/use-tuf';
@@ -82,7 +82,7 @@ export function TufPlayerPickerSheet({
               ? <Text style={[styles.stateText, { color: theme.textMuted }]}>没有找到公开玩家</Text>
               : null}
             {players.map((item) => {
-              const avatarUrl = item.avatarUrl ?? item.avatar ?? null;
+              const avatarUrl = resolveTufAvatarUrl(item);
               return <Pressable
                 key={String(item.id)}
                 accessibilityRole="button"

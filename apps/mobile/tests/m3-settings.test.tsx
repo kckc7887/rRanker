@@ -33,6 +33,7 @@ const mockClearUserData = jest.fn(async () => []);
 const mockRemoveBoundAccount = jest.fn();
 const mockSelectBoundAccount = jest.fn();
 const mockUpsertBoundAccount = jest.fn();
+const mockUpdateBoundAccountScore = jest.fn();
 const mockRenameLocalAccount = jest.fn();
 const mockUpsertLocalAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveLocalAccount = jest.fn(async (_accountId?: string) => undefined);
@@ -120,10 +121,16 @@ jest.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: jest.fn
   },
   setActiveAccountId: async (accountId: string) => mockSetActiveAccountId(accountId),
 })) }));
-jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: jest.fn(() => ({ clear: async () => {
-  mockClearOrder.push('cache');
-  return mockClearSnapshots();
-} })) }));
+jest.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: jest.fn(() => ({
+  clear: async () => {
+    mockClearOrder.push('cache');
+    return mockClearSnapshots();
+  },
+  getResource: async () => ({ avatarUrl: 'https://example.test/tuf-avatar.png' }),
+  getLatest: async () => null,
+  saveResource: async () => undefined,
+  deleteResource: async () => undefined,
+})) }));
 jest.mock('@/storage/local-account-store', () => ({
   LocalAccountStore: jest.fn(() => ({
     upsert: (profile: { id: string; displayName: string }) => mockUpsertLocalAccount(profile),
@@ -208,6 +215,7 @@ jest.mock('@/state/session-store', () => {
     activeAccountId: mockAccount.id,
     selectBoundAccount: mockSelectBoundAccount,
     upsertBoundAccount: mockUpsertBoundAccount,
+    updateBoundAccountScore: mockUpdateBoundAccountScore,
     renameLocalAccount: mockRenameLocalAccount,
     removeBoundAccount: mockRemoveBoundAccount,
     restoreError: null,

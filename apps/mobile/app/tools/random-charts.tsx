@@ -4,12 +4,16 @@ import type { GameId } from '@/domain/game-bind-options';
 import { ChunithmRandomChartsScreen } from '@/screens/ChunithmRandomChartsScreen';
 import { MaimaiRandomChartsScreen } from '@/screens/MaimaiRandomChartsScreen';
 import { PhigrosRandomChartsScreen } from '@/screens/PhigrosRandomChartsScreen';
+import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
+import { MuseDashRandomChartsScreen } from '@/screens/MuseDashRandomChartsScreen';
 import { useSession } from '@/state/session-store';
 
 const RANDOM_CHARTS_SCREENS: Partial<Record<GameId, ComponentType>> = {
   maimai: MaimaiRandomChartsScreen,
   phigros: PhigrosRandomChartsScreen,
   chunithm: ChunithmRandomChartsScreen,
+  adofai: TufRandomChartsScreen,
+  musedash: MuseDashRandomChartsScreen,
 };
 
 export default function RandomChartsToolScreen() {

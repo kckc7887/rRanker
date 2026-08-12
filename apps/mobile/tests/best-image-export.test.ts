@@ -54,6 +54,8 @@ describe('best image export', () => {
       .toBe('rRanker-玩家_A-custom-20260716T080910Z-2of3.png');
     expect(bestImageExportFilename('玩家', 'best50', 0, 1, now))
       .toBe('rRanker-玩家-best50-20260716T080910Z.png');
+    expect(bestImageExportFilename('TUF 玩家', 'top20', 0, 1, now))
+      .toBe('rRanker-TUF 玩家-top20-20260716T080910Z.png');
   });
 
   it('uses logical points on iOS and physical pixels on Android', () => {

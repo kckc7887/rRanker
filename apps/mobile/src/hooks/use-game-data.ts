@@ -58,7 +58,7 @@ import {
   loadMuseDashDiffdiffCacheFirst,
   MuseDashCache,
 } from '@/services/muse-dash-cache';
-import type { TufPlayer } from '@/domain/tuf';
+import { resolveTufAvatarUrl, type TufPlayer } from '@/domain/tuf';
 import type { MuseDashPlayer } from '@/domain/muse-dash';
 import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
@@ -539,16 +539,18 @@ export function useGameData() {
       }
     }
     if (d.payload.kind === 'adofai') {
+      const avatarUrl = resolveTufAvatarUrl(d.payload.player);
       updateBoundAccountScore(
         activeAccountId,
         d.payload.playerScore.display,
         d.payload.player.name,
-        d.payload.player.avatarUrl ?? d.payload.player.avatar ?? undefined,
+        avatarUrl ?? undefined,
       );
       void persistBoundAccountThumbnail(activeAccountId, {
         scoreDisplay: d.payload.playerScore.display,
-        avatarUrl: d.payload.player.avatarUrl ?? d.payload.player.avatar ?? undefined,
+        avatarUrl: avatarUrl ?? undefined,
       }).catch(() => undefined);
+      if (avatarUrl) void persistBoundAccountAvatar(activeAccountId, avatarUrl);
     }
     if (d.payload.kind === 'musedash') {
       updateBoundAccountScore(

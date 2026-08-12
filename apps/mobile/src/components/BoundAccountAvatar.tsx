@@ -25,7 +25,7 @@ export function BoundAccountAvatar({
   useEffect(() => {
     if (!account) return;
     if (account.avatarUrl) return;
-    if (account.providerId !== 'lxns' && account.providerId !== 'phi-taptap') return;
+    if (account.providerId !== 'lxns' && account.providerId !== 'phi-taptap' && account.providerId !== 'tuf') return;
 
     void syncAllAccountAvatars(
       [account],

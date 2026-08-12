@@ -164,11 +164,55 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     emptyDetail: '测试游戏暂无可用工具。',
   },
   adofai: {
-    tools: [],
+    tools: [
+      {
+        id: 'random-charts',
+        href: '/tools/random-charts',
+        title: '随机歌曲',
+        detail: '按难度、区间与达成状态随机抽取公开成绩中的关卡',
+        summaryLabel: '随机歌曲',
+      },
+      {
+        id: 'arcade-finder',
+        href: '/tools/arcade-finder',
+        title: '机厅查找',
+        detail: '按定位查看附近机厅，搜索店名与跳转导航',
+        summaryLabel: '机厅查找',
+      },
+      {
+        id: 'best-image',
+        href: '/best-image',
+        title: '生成成绩图片',
+        detail: '生成并导出 Top20 成绩图片',
+        summaryLabel: '成绩图片',
+      },
+    ],
     emptyDetail: '冰与火之舞首版暂无可用工具。',
   },
   musedash: {
-    tools: [],
+    tools: [
+      {
+        id: 'random-charts',
+        href: '/tools/random-charts',
+        title: '随机歌曲',
+        detail: '按难度、DLC、定数与成绩条件随机抽取谱面',
+        summaryLabel: '随机歌曲',
+      },
+      {
+        id: 'arcade-finder',
+        href: '/tools/arcade-finder',
+        title: '机厅查找',
+        detail: '按定位查看附近机厅，搜索店名与跳转导航',
+        summaryLabel: '机厅查找',
+      },
+      {
+        id: 'best-image',
+        href: '/best-image',
+        title: '生成成绩图片',
+        detail: '生成并导出 B30 成绩图片',
+        summaryLabel: '成绩图片',
+      },
+    ],
     emptyDetail: '喵斯快跑首版暂无可用工具。',
   },
 };

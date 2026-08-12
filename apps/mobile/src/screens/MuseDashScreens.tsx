@@ -16,6 +16,7 @@ import {
   Svg,
 } from 'react-native-svg';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
+import { BestImageEntryButton } from '@/components/BestImageEntryButton';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
@@ -40,18 +41,13 @@ import {
   matchesMuseDashConstantRange,
   matchesMuseDashDifficultySlotFilter,
   matchesMuseDashDlcFilter,
-  museDashCharacterName,
+  buildMuseDashRawScores,
   museDashCoverUrl,
   museDashDiffdiffMap,
-  museDashElfinName,
   museDashSongAuthor,
-  museDashSongsByUid,
   museDashSongsFromAlbums,
+  museDashSongsByUid,
   museDashSongTitle,
-  type MuseDashAlbumsResponse,
-  type MuseDashCeResponse,
-  type MuseDashDiffdiffEntry,
-  type MuseDashPlayer,
   type MuseDashRawScore,
   type MuseDashSong,
 } from '@/domain/muse-dash';
@@ -80,27 +76,6 @@ const CARD_GAP = 12;
 function useActiveMuseDashUserId() {
   const accountId = useSession((state) => state.activeAccountId);
   return museDashUserIdFromAccountId(accountId);
-}
-
-function buildRawScores(
-  player: MuseDashPlayer,
-  albums: MuseDashAlbumsResponse | undefined,
-  ce: MuseDashCeResponse | undefined,
-  diffdiff: MuseDashDiffdiffEntry[] | undefined,
-): MuseDashRawScore[] {
-  const songsByUid = albums ? museDashSongsByUid(albums) : new Map();
-  const constants = diffdiff ? museDashDiffdiffMap(diffdiff) : null;
-  return player.plays.map((play) => {
-    const joined = songsByUid.get(play.uid);
-    return {
-      play,
-      song: joined?.song ?? null,
-      albumTitle: joined?.albumTitle ?? '未知专辑',
-      characterName: ce ? museDashCharacterName(ce, play.character_uid) : null,
-      elfinName: ce ? museDashElfinName(ce, play.elfin_uid) : null,
-      constant: constants?.get(`${play.uid}:${play.difficulty}`)?.[4],
-    };
-  });
 }
 
 function SearchHeader({
@@ -132,7 +107,7 @@ export function MuseDashBestScreen() {
   const ce = useMuseDashCe();
   const diffdiff = useMuseDashDiffdiff();
   const rawScores = useMemo(
-    () => player.data ? buildRawScores(player.data, albums.data, ce.data, diffdiff.data) : [],
+    () => player.data ? buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data) : [],
     [player.data, albums.data, ce.data, diffdiff.data],
   );
   const ordered = useMemo(() => [...rawScores]
@@ -157,6 +132,7 @@ export function MuseDashBestScreen() {
         contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
         scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
         keyExtractor: (item) => `${item.play.uid}:${item.play.difficulty}`,
+        ListHeaderComponent: <BestImageEntryButton label="导出 B30 图片" />,
         renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
           <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 条</Text>
@@ -185,7 +161,7 @@ export function MuseDashRecordsScreen() {
     setConstantMin, setConstantMax, setAccMin, setAccMax, setAchievement, clearFilters,
   } = useMuseDashRecordsFilter();
   const rawScores = useMemo(
-    () => player.data ? buildRawScores(player.data, albums.data, ce.data, diffdiff.data) : [],
+    () => player.data ? buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data) : [],
     [player.data, albums.data, ce.data, diffdiff.data],
   );
   const dlcOptions = useMemo(() => albums.data
@@ -437,7 +413,7 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   const scoreByDifficulty = useMemo(() => {
     if (!player.data) return new Map<number, MuseDashRawScore>();
     const map = new Map<number, MuseDashRawScore>();
-    for (const raw of buildRawScores(player.data, albums.data, ce.data, diffdiff.data)) {
+    for (const raw of buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data)) {
       if (raw.play.uid !== songId) continue;
       const previous = map.get(raw.play.difficulty);
       if (!previous || (raw.play.sum ?? 0) > (previous.play.sum ?? 0)) map.set(raw.play.difficulty, raw);

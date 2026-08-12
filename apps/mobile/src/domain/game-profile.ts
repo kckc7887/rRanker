@@ -51,13 +51,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'RATING',
     ratingDigits: 0,
     bestSections: [],
-    capabilities: {
-      hasCatalog: true,
-      hasRecords: true,
-      hasBestList: true,
-      // 中二首版先开放标准工具箱空态，具体工具后续注册。
-      hasTools: true,
-    },
+    capabilities: { ...commonNav, hasTools: getGameToolbox('chunithm').tools.length > 0 },
   },
   test: {
     id: 'test',
@@ -84,7 +78,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'RANKED SCORE',
     ratingDigits: 0,
     bestSections: [{ id: 'top20', title: 'Top 20 Impact', size: 20 }],
-    capabilities: { ...commonNav, hasTools: false },
+    capabilities: { ...commonNav, hasTools: getGameToolbox('adofai').tools.length > 0 },
   },
   musedash: {
     id: 'musedash',
@@ -92,7 +86,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'Rating',
     ratingDigits: 0,
     bestSections: [{ id: 'best30', title: 'Best 30', size: 30 }],
-    capabilities: { ...commonNav, hasTools: false },
+    capabilities: { ...commonNav, hasTools: getGameToolbox('musedash').tools.length > 0 },
   },
 };
 
