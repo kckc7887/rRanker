@@ -43,11 +43,11 @@ describe('per-game toolbox registry', () => {
   });
 
   it.each([
-    ['adofai', '随机歌曲 · 机厅查找 · 成绩图片'],
-    ['musedash', '随机歌曲 · 机厅查找 · 成绩图片'],
+    ['adofai', '随机歌曲 · 机厅查找'],
+    ['musedash', '随机歌曲 · 机厅查找'],
   ] as const)('registers the shared toolbox order for %s', (gameId, summary) => {
     expect(getGameToolbox(gameId).tools.map((tool) => tool.id)).toEqual([
-      'random-charts', 'arcade-finder', 'best-image',
+      'random-charts', 'arcade-finder',
     ]);
     expect(summarizeGameTools(gameId)).toBe(summary);
   });

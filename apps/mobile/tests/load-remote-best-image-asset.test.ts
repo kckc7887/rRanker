@@ -20,7 +20,6 @@ vi.mock('@/features/best-image/load-best-image-jackets', () => ({
 // Mocked native modules must be registered before the module under test is imported.
 // eslint-disable-next-line import/first
 import {
-  loadFirstRemoteBestImageAssetDataUri,
   loadRemoteBestImageAssetDataUri,
 } from '@/features/best-image/load-remote-best-image-asset';
 
@@ -40,18 +39,14 @@ describe('remote best image asset localization', () => {
     expect(mocks.prefetch).not.toHaveBeenCalled();
   });
 
-  it('prefetches a cache miss and tries candidates in order', async () => {
+  it('prefetches a cache miss', async () => {
     mocks.getCachePathAsync
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
       .mockResolvedValueOnce('/cache/original.png');
-    mocks.prefetch.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    await expect(loadFirstRemoteBestImageAssetDataUri([
-      'https://example.test/proxy.png',
-      'https://example.test/original.png',
-    ])).resolves.toBe('data:image/png;base64,YWJj');
-    expect(mocks.prefetch).toHaveBeenNthCalledWith(1, 'https://example.test/proxy.png', 'disk');
-    expect(mocks.prefetch).toHaveBeenNthCalledWith(2, 'https://example.test/original.png', 'disk');
+    mocks.prefetch.mockResolvedValueOnce(true);
+    await expect(loadRemoteBestImageAssetDataUri('https://example.test/original.png'))
+      .resolves.toBe('data:image/png;base64,YWJj');
+    expect(mocks.prefetch).toHaveBeenCalledWith('https://example.test/original.png', 'disk');
   });
 
   it('treats missing and failed items as a per-item null fallback', async () => {

@@ -31,13 +31,3 @@ export async function loadRemoteBestImageAssetDataUri(url: string | null | undef
     return null;
   }
 }
-
-export async function loadFirstRemoteBestImageAssetDataUri(
-  candidates: readonly (string | null | undefined)[],
-): Promise<string | null> {
-  for (const candidate of candidates) {
-    const localized = await loadRemoteBestImageAssetDataUri(candidate);
-    if (localized) return localized;
-  }
-  return null;
-}

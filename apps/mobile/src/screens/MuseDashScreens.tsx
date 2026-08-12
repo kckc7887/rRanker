@@ -16,7 +16,6 @@ import {
   Svg,
 } from 'react-native-svg';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
-import { BestImageEntryButton } from '@/components/BestImageEntryButton';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
@@ -132,7 +131,6 @@ export function MuseDashBestScreen() {
         contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
         scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
         keyExtractor: (item) => `${item.play.uid}:${item.play.difficulty}`,
-        ListHeaderComponent: <BestImageEntryButton label="导出 B30 图片" />,
         renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
           <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 条</Text>
