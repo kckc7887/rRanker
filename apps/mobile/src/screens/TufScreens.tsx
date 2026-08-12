@@ -27,9 +27,11 @@ import {
   selectTufTopPasses,
   tufDifficultyBounds,
   tufDifficultyVisual,
+  tufHttpsUrl,
   tufMediaImageCandidates,
   tufPguRange,
   tufTagIconUrl,
+  tufVideoPlatform,
   type TufJudgements,
   type TufLevel,
   type TufLevelSort,
@@ -371,6 +373,8 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
     ? judgementValues.reduce<number>((sum, value) => sum + (value ?? 0), 0)
     : null;
   const total = level?.tilecount ?? level?.autoTileCount ?? judgementTotal;
+  const videoUrl = tufHttpsUrl(level?.videoLink);
+  const videoPlatform = tufVideoPlatform(level?.videoLink);
   return <>
     <SongDetailChrome
       topInset={insets.top + 8}
@@ -455,6 +459,18 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
                 : <Text style={[styles.emptyInline, { color: theme.textMuted }]}>—</Text>}
             </View>
             <TufJudgementTable judgements={bestPass?.judgements} total={total ?? null} />
+            {videoPlatform && videoUrl ? <View style={styles.videoActions}>
+              {videoPlatform === 'bilibili' ? <Pressable accessibilityRole="link" accessibilityLabel="跳转Ｂ站"
+                testID="tuf-level-bilibili-link" onPress={() => void Linking.openURL(videoUrl)}
+                style={[styles.videoAction, videoActionStyle(theme.dark, difficultyVisual, theme.border)]}>
+                <Text style={[styles.videoActionText, videoActionTextStyle(theme.dark, difficultyVisual, theme.text)]}>跳转Ｂ站</Text>
+              </Pressable> : null}
+              {videoPlatform === 'youtube' ? <Pressable accessibilityRole="link" accessibilityLabel="跳转油管"
+                testID="tuf-level-youtube-link" onPress={() => void Linking.openURL(videoUrl)}
+                style={[styles.videoAction, videoActionStyle(theme.dark, difficultyVisual, theme.border)]}>
+                <Text style={[styles.videoActionText, videoActionTextStyle(theme.dark, difficultyVisual, theme.text)]}>跳转油管</Text>
+              </Pressable> : null}
+            </View> : null}
           </GameChartResultCard>
           <Card style={styles.songInfoCard} testID="tuf-level-song-info">
             <Text style={[styles.songInfoTitle, { color: theme.text }]}>歌曲信息</Text>
@@ -487,6 +503,28 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
         </View>
       </ScrollView>} />
   </>;
+}
+
+function videoActionStyle(
+  dark: boolean,
+  visual: ReturnType<typeof tufDifficultyVisual>,
+  fallbackBorder: string,
+) {
+  if (visual) {
+    return dark
+      ? { backgroundColor: visual.background, borderColor: visual.background }
+      : { borderColor: visual.border };
+  }
+  return { backgroundColor: dark ? fallbackBorder : 'transparent', borderColor: fallbackBorder };
+}
+
+function videoActionTextStyle(
+  dark: boolean,
+  visual: ReturnType<typeof tufDifficultyVisual>,
+  fallbackText: string,
+) {
+  if (!visual) return { color: fallbackText };
+  return dark ? { color: visual.text } : { color: visual.border };
 }
 
 const styles = StyleSheet.create({
@@ -554,6 +592,9 @@ const styles = StyleSheet.create({
   totalCell: { width: 78, flexShrink: 0, borderLeftWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 5, paddingLeft: 8 },
   totalLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
   totalValue: { width: '100%', fontSize: 21, lineHeight: 27, fontWeight: '900', fontVariant: ['tabular-nums'], textAlign: 'center' },
+  videoActions: { marginTop: 13, gap: 8 },
+  videoAction: { borderWidth: 1, borderRadius: 11, padding: 10, alignItems: 'center', backgroundColor: 'transparent' },
+  videoActionText: { fontWeight: '700' },
   songInfoCard: { padding: 0, overflow: 'hidden' },
   songInfoTitle: { paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, lineHeight: 21, fontWeight: '900' },
   infoRow: { minHeight: 46, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 16 },

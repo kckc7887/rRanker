@@ -367,6 +367,17 @@ export function tufHttpsUrl(value: string | null | undefined): string | null {
   }
 }
 
+export type TufVideoPlatform = 'bilibili' | 'youtube';
+
+export function tufVideoPlatform(value: string | null | undefined): TufVideoPlatform | null {
+  const url = tufHttpsUrl(value);
+  if (!url) return null;
+  const host = new URL(url).hostname.toLowerCase();
+  if (host === 'youtu.be' || host === 'youtube.com' || host.endsWith('.youtube.com')) return 'youtube';
+  if (host === 'bilibili.com' || host.endsWith('.bilibili.com') || host === 'b23.tv') return 'bilibili';
+  return null;
+}
+
 export function tufMediaImageCandidates(
   image: string | null | undefined,
   difficultyIcon: string | null | undefined,
