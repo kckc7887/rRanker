@@ -9,6 +9,13 @@ export type PreparedBestImageWebViewSources = {
 
 let sourceBatch = 0;
 
+/** Documents/rranker/best-image-pages —— 固定成绩图本地 HTML 舞台（对齐 Phigros 字体舞台）。 */
+export function bestImagePagesDirectory(): Directory {
+  const directory = new Directory(Paths.document, 'rranker', 'best-image-pages');
+  directory.create({ intermediates: true, idempotent: true });
+  return directory;
+}
+
 export function inlineBestImageWebViewSources(htmlPages: readonly string[]): BestImageWebViewSource[] {
   return htmlPages.map((html) => ({ html, baseUrl: 'https://assets2.lxns.net/' }));
 }

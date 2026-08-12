@@ -113,7 +113,7 @@ export function presentMuseDashApplicationBestImageCard(
 
 export function presentTufApplicationBestImageCard(
   pass: TufPass,
-  coverUri: string,
+  coverUri: string | null,
   tagIcons: Readonly<Record<string, string | null>>,
 ): ApplicationBestImageCardPresentation {
   const presentation = presentTufScore(pass);

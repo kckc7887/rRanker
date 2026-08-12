@@ -88,7 +88,7 @@ describe('buildPhigrosBestImageAppHtml', () => {
     const html = buildAppHtml();
     expect(html).toContain('grid-template-columns:repeat(3,minmax(0,1fr))');
     expect(html).toContain('--card-bg:#D84B68;--card-fg:#FFFFFF');
-    expect(html).toContain('<div class="card-art" aria-hidden="true"><img class="card-art-image" alt="" src="data:image/png;base64,cover"><div class="card-art-veil"></div></div>');
+    expect(html).toContain('<div class="card-art" aria-hidden="true"><img class="card-art-image" alt="" src="data:image/png;base64,cover" onerror="this.style.display=\'none\'"><div class="card-art-veil"></div></div>');
     expect(html).toContain('.card-art-veil{position:absolute;inset:0;background:var(--card-bg);opacity:.8;-webkit-backdrop-filter:blur(');
     expect(html).not.toContain('level-badge');
     expect(html).not.toContain('IN&ensp;');

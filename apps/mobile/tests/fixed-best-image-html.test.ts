@@ -37,6 +37,7 @@ describe('fixed community best image html', () => {
     expect(html).toContain('<span class="primary-label">Score</span>');
     expect(html).toContain('G12 -&gt; 9.99');
     expect(html).toContain('class="tag-icon"');
+    expect(html).toContain("onerror=\"this.style.display='none'\"");
     expect(html).toContain('<div class="section-divider"><span>Top1</span>');
     expect(html).not.toContain('accent-lines');
     expect(html).not.toContain('section-heading');

@@ -13,7 +13,6 @@ import {
 import {
   resolveTufAvatarUrl,
   selectTufTopPasses,
-  tufHttpsUrl,
   tufMediaImageCandidates,
   tufTagIconUrl,
   type TufPass,
@@ -111,9 +110,6 @@ export function TufBestImageScreen() {
   });
   const mediaImages = mediaQueries.map((query) => query.data?.image ?? null);
   const mediaKey = mediaImages.join('|');
-  const mediaReady = mediaQueries.every((query, index) => (
-    tufHttpsUrl(ordered[index]?.level.videoLink) === null || !query.isPending
-  ));
   const assetKey = `${resolveTufAvatarUrl(profile.data) ?? ''}|${ordered.map((pass) => pass.id).join(',')}|${mediaKey}`;
   const loadAssets = useCallback(async (onProgress: (done: number, total: number) => void): Promise<TufImageAssets> => {
     const tagNames = [...new Set(ordered.flatMap((pass) => pass.level.tags.map((tag) => (
@@ -144,25 +140,40 @@ export function TufBestImageScreen() {
     }
     return { avatar, covers, tagIcons };
   }, [mediaImages, ordered, profile.data]);
-  const assets = usePreparedAssets({ enabled: mediaReady && ordered.length > 0, key: assetKey, load: loadAssets, retryToken: assetRetry });
-  const cards = useMemo(() => assets.data ? ordered.map((pass) => presentTufApplicationBestImageCard(
+  const assets = usePreparedAssets({ enabled: ordered.length > 0, key: assetKey, load: loadAssets, retryToken: assetRetry });
+  const remoteTagIcons = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    for (const pass of ordered) {
+      for (const tag of pass.level.tags) {
+        const name = typeof tag === 'string' ? tag : tag.name;
+        if (map[name] === undefined) map[name] = tufTagIconUrl(name);
+      }
+    }
+    return map;
+  }, [ordered]);
+  const cards = useMemo(() => ordered.map((pass, index) => presentTufApplicationBestImageCard(
     pass,
-    assets.data!.covers[pass.id]!,
-    assets.data!.tagIcons,
-  )) : [], [assets.data, ordered]);
+    assets.data
+      ? assets.data.covers[pass.id]!
+      : (tufMediaImageCandidates(mediaImages[index], pass.level.difficulty?.icon)[0] ?? null),
+    assets.data ? assets.data.tagIcons : remoteTagIcons,
+  )), [assets.data, mediaImages, ordered, remoteTagIcons]);
   const htmlForWidth = useCallback((width: number) => buildFixedBestImageHtml({
     width,
     playerName: profile.data?.name ?? 'TUF 玩家',
     ratingDisplay: profile.data?.rankedScore.toFixed(2) ?? '—',
-    avatarUri: assets.data?.avatar,
+    avatarUri: assets.data?.avatar ?? resolveTufAvatarUrl(profile.data),
     sectionTitle: `Top${cards.length}`,
     cards,
     dataSource: 'TUF',
   }), [assets.data?.avatar, cards, profile.data]);
-  const loading = profile.isLoading || passes.isLoading || !mediaReady || (ordered.length > 0 && assets.data === null && assets.error === null);
-  const error = profile.error ?? passes.error ?? assets.error;
+  const loading = profile.isLoading || passes.isLoading;
+  const error = profile.error ?? passes.error;
+  const preparing = assets.data === null && assets.error === null && assets.total > 0
+    ? { done: assets.done, total: assets.total }
+    : null;
   if (playerId === null) return <EmptyBestImage text="请先绑定 TUF 玩家" />;
-  if (loading) return <EmptyBestImage text={assets.total > 0 ? `正在准备成绩图素材 ${assets.done}/${assets.total}` : '正在准备 TopN 成绩图'} />;
+  if (loading) return <EmptyBestImage text="正在准备 TopN 成绩图" />;
   return <QueryStateView<TufPass[]>
     data={!error && ordered.length ? ordered : undefined}
     emptyText="当前公开资料没有可导出的 Top20 成绩"
@@ -177,11 +188,12 @@ export function TufBestImageScreen() {
       setAssetRetry((value) => value + 1);
     }}
     renderData={() => <FixedBestImageScreen
-      disabled={cards.length === 0}
+      disabled={cards.length === 0 || (assets.data === null && assets.error === null)}
       htmlForWidth={htmlForWidth}
       imageType="top20"
       notice={top.missing > 0 ? `有 ${top.missing} 条 Top 记录未公开，已跳过。` : null}
       playerName={profile.data?.name ?? 'TUF 玩家'}
+      preparing={preparing}
     />}
   />;
 }
@@ -217,11 +229,11 @@ export function MuseDashBestImageScreen() {
     return { covers };
   }, [ordered]);
   const assets = usePreparedAssets({ enabled: ordered.length > 0, key: coverKey, load: loadAssets, retryToken: assetRetry });
-  const cards = useMemo(() => assets.data ? ordered.map((score) => presentMuseDashApplicationBestImageCard(
+  const cards = useMemo(() => ordered.map((score) => presentMuseDashApplicationBestImageCard(
     score,
     missMap.get(`${score.play.uid}:${score.play.difficulty}`),
-    assets.data!.covers[score.play.uid] ?? null,
-  )) : [], [assets.data, missMap, ordered]);
+    assets.data ? assets.data.covers[score.play.uid] ?? null : museDashCoverUrl(score.song?.cover),
+  )), [assets.data, missMap, ordered]);
   const htmlForWidth = useCallback((width: number) => buildFixedBestImageHtml({
     width,
     playerName: player.data?.user.nickname ?? '喵斯快跑玩家',
@@ -230,11 +242,13 @@ export function MuseDashBestImageScreen() {
     cards,
     dataSource: 'MuseDash.moe',
   }), [cards, player.data]);
-  const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading
-    || (ordered.length > 0 && assets.data === null && assets.error === null);
-  const error = player.error ?? albums.error ?? ce.error ?? diffdiff.error ?? assets.error;
+  const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
+  const error = player.error ?? albums.error ?? ce.error ?? diffdiff.error;
+  const preparing = assets.data === null && assets.error === null && assets.total > 0
+    ? { done: assets.done, total: assets.total }
+    : null;
   if (userId === null) return <EmptyBestImage text="请先绑定喵斯快跑玩家" />;
-  if (loading) return <EmptyBestImage text={assets.total > 0 ? `正在准备成绩图素材 ${assets.done}/${assets.total}` : '正在准备 BestN 成绩图'} />;
+  if (loading) return <EmptyBestImage text="正在准备 BestN 成绩图" />;
   return <QueryStateView<MuseDashRawScore[]>
     data={!error && ordered.length ? ordered : undefined}
     emptyText="当前没有可导出的喵斯快跑成绩"
@@ -250,10 +264,11 @@ export function MuseDashBestImageScreen() {
       setAssetRetry((value) => value + 1);
     }}
     renderData={() => <FixedBestImageScreen
-      disabled={cards.length === 0}
+      disabled={cards.length === 0 || (assets.data === null && assets.error === null)}
       htmlForWidth={htmlForWidth}
       imageType="best30"
       playerName={player.data?.user.nickname ?? '喵斯快跑玩家'}
+      preparing={preparing}
     />}
   />;
 }
