@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Dimensions, StyleSheet } from 'react-native';
-import type { TufLevel, TufPass, TufPlayer, TufVideoDetails } from '@/domain/tuf';
+import type { TufLevel, TufLevelPass, TufPass, TufPlayer, TufVideoDetails } from '@/domain/tuf';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
 
 const mockPush = jest.fn();
@@ -14,6 +14,7 @@ const mockUseTufPasses = jest.fn();
 const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
 let mockLevelDetail: TufLevel | undefined;
+let mockLevelBestPass: TufLevelPass | undefined;
 let mockProfile: TufPlayer | undefined;
 let mockVideoDetails: TufVideoDetails | undefined;
 let mockDark = false;
@@ -76,6 +77,7 @@ jest.mock('@/hooks/use-tuf', () => ({
   useTufLevelSearch: (...args: unknown[]) => mockUseTufLevelSearch(...args),
   useTufDifficulties: () => mockUseTufDifficulties(),
   useTufLevel: () => ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
+  useTufLevelBestPass: () => ({ data: mockLevelBestPass, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
   useTufVideoDetails: () => ({ data: mockVideoDetails, isLoading: !mockVideoDetails, isError: false, error: null, refetch: mockRefetch }),
 }));
 
@@ -121,6 +123,7 @@ describe('TUF screens', () => {
       isLoading: false, isError: false, error: null, refetch: mockRefetch,
     });
     mockLevelDetail = level;
+    mockLevelBestPass = undefined;
     mockVideoDetails = undefined;
     mockDark = false;
   });
@@ -196,9 +199,10 @@ describe('TUF screens', () => {
     mockLevelDetail = { ...level, dlLink: 'http://unsafe.example/file', videoLink: 'https://video.example/watch' };
     const screen = await render(<TufLevelDetailScreen levelId="11372" />);
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
-    expect(screen.getByText('TUF 关卡页')).toBeTruthy();
-    expect(screen.getByText('视频')).toBeTruthy();
+    expect(screen.getByText('查看 TUF 关卡页')).toBeTruthy();
+    expect(screen.queryByText('视频')).toBeNull();
     expect(screen.queryByText('谱面下载')).toBeNull();
+    expect(screen.queryByText('创意工坊')).toBeNull();
   });
 
   it('renders a real TUF media hero and falls back from proxy to the original image', async () => {
@@ -245,13 +249,87 @@ describe('TUF screens', () => {
     expect(readSource()).not.toEqual(icon);
   });
 
-  it('keeps a long title inside the 16:9 hero in dark mode without requiring media', async () => {
+  it('keeps long title and artist in scrolling single-line fields inside a square dark hero', async () => {
     mockDark = true;
-    mockLevelDetail = { ...level, song: '这是一个用于验证详情页长标题布局不会破坏媒体头图比例的超长关卡名称' };
+    mockLevelDetail = {
+      ...level,
+      song: '这是一个用于验证详情页长标题布局不会破坏方形媒体封面的超长关卡名称',
+      artist: '这是一位名字同样非常非常长并且不应该换行的艺术家',
+    };
     const screen = await render(<TufLevelDetailScreen levelId="11372" />);
     const heroStyle = StyleSheet.flatten(screen.getByTestId('tuf-level-hero').props.style);
-    expect(heroStyle).toMatchObject({ width: 390, height: 219 });
-    expect(screen.getByText(mockLevelDetail.song).props.numberOfLines).toBe(3);
+    expect(heroStyle).toMatchObject({ width: 390, height: 390 });
+    expect(screen.getByTestId('tuf-level-title-scroll')).toBeTruthy();
+    expect(screen.getByTestId('tuf-level-artist-scroll')).toBeTruthy();
+    expect(screen.getByText(mockLevelDetail.song).props.numberOfLines).toBe(1);
+    expect(screen.getByText(mockLevelDetail.artist).props.numberOfLines).toBe(1);
+    expect(screen.getByText('#11372')).toBeTruthy();
+    expect(screen.queryByText('TUF #11372')).toBeNull();
+  });
+
+  it('keeps list card achievements hidden and places a compact difficulty below the score row', async () => {
+    const scored = pass(1, '卡片层级');
+    scored.isWorldsFirst = true;
+    scored.judgements = { perfect: 600 };
+    mockUseTufPasses.mockReturnValue(infinite([scored], 'passes'));
+    const screen = await render(<TufRecordsScreen />);
+    expect(screen.getByText('Score')).toBeTruthy();
+    expect(screen.getByText('99.50%')).toBeTruthy();
+    expect(screen.getByText('1.00×')).toBeTruthy();
+    expect(screen.queryByText('WF')).toBeNull();
+    expect(screen.queryByText('Perfect')).toBeNull();
+    const difficulty = screen.getByLabelText('难度 G12，基准分 12.34');
+    expect(StyleSheet.flatten(difficulty.props.style)).toMatchObject({ alignSelf: 'flex-start' });
+    const impactSide = screen.getByText('Impact').parent;
+    expect(StyleSheet.flatten(impactSide?.props.style)).toMatchObject({ alignItems: 'center', justifyContent: 'center' });
+  });
+
+  it('renders the current player result, compact PGU header, tags and the 3+4 judgement matrix', async () => {
+    mockLevelDetail = {
+      ...level,
+      bpm: 155,
+      levelLengthInMs: 142_838,
+      tilecount: 600,
+      tags: [{ id: 3, name: 'Full VFX' }, { id: 99, name: '未映射标签' }],
+      clears: 12,
+      uniqueClears: 8,
+      likes: 4,
+      curations: [{}],
+      difficulty: { ...level.difficulty!, type: 'PGU', color: '#F2A700' },
+    };
+    mockLevelBestPass = {
+      id: 700,
+      levelId: level.id,
+      playerId: 25,
+      scoreV2: 15000,
+      accuracy: 0.9876,
+      speed: 1.25,
+      impact: 20,
+      isWorldsFirst: true,
+      isWorldsFirstPP: true,
+      judgements: {
+        ePerfect: 40, perfect: 425, lPerfect: 50,
+        earlyDouble: 9, earlySingle: 36, lateSingle: 40, lateDouble: 0,
+      },
+    } as TufLevelPass;
+    const screen = await render(<TufLevelDetailScreen levelId="11372" />);
+    expect(screen.getByText('G')).toBeTruthy();
+    expect(screen.getByText('12')).toBeTruthy();
+    expect(screen.getByText('15000.00')).toBeTruthy();
+    expect(screen.getByText('98.76%')).toBeTruthy();
+    expect(screen.getByText('1.25×')).toBeTruthy();
+    expect(screen.getByTestId('tuf-detail-wf')).toBeTruthy();
+    expect(screen.getByTestId('tuf-detail-pp')).toBeTruthy();
+    expect(screen.getByText('精快!')).toBeTruthy();
+    expect(screen.getByText('太慢!!')).toBeTruthy();
+    expect(screen.getByText('600')).toBeTruthy();
+    const tagIcon = screen.getByLabelText('Full VFX 标签图标');
+    expect(tagIcon.props.source).toContain('7a5b84eeea6fc0ce86d25da07d19595481a31d7e');
+    await fireEvent(tagIcon, 'error');
+    expect(screen.queryByLabelText('Full VFX 标签图标')).toBeNull();
+    expect(screen.getByText('Full VFX')).toBeTruthy();
+    expect(screen.queryByLabelText('未映射标签 标签图标')).toBeNull();
+    expect(screen.getByText('查看 TUF 关卡页')).toBeTruthy();
   });
 
   it('shows a back button that navigates back when possible', async () => {

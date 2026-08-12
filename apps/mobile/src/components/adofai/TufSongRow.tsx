@@ -26,7 +26,7 @@ export const TufSongRow = memo(function TufSongRow({ level }: { level: TufLevel 
     cover={<Image accessibilityLabel={`关卡封面 ${level.song}`} cachePolicy="disk" contentFit="cover"
       onError={candidate ? () => setCandidateIndex((index) => index + 1) : undefined}
       source={candidate ?? ADOFAI_ICON} style={styles.cover} transition={120} />}
-    badges={badge ? <TufDifficultyBadge difficulty={badge} /> : null} />;
+    badges={badge ? <TufDifficultyBadge difficulty={badge} source={level.difficulty} /> : null} />;
 });
 
 const styles = StyleSheet.create({

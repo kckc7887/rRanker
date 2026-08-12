@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
   TufDifficultyHashSchema, TufDifficultyListSchema, TufLevelDetailResponseSchema,
-  TufLevelPageSchema, TufPassPageSchema, TufPlayerSchema, TufPlayerSearchResponseSchema,
+  TufLevelPageSchema, TufLevelPassListSchema, TufPassPageSchema, TufPlayerSchema, TufPlayerSearchResponseSchema,
   TufVideoDetailsSchema, tufHttpsUrl,
   type TufLevelQuery, type TufPassQuery,
 } from '@/domain/tuf';
@@ -90,6 +90,7 @@ export class TufProvider {
     return this.request(`/v2/database/levels?${params}`, TufLevelPageSchema);
   }
   getLevel(levelId: number) { return this.request(`/v2/database/levels/${levelId}`, TufLevelDetailResponseSchema); }
+  getLevelPasses(levelId: number) { return this.request(`/v2/database/passes/level/${levelId}`, TufLevelPassListSchema); }
   getVideoDetails(videoLink: string) {
     const normalized = tufHttpsUrl(videoLink);
     if (!normalized) throw new ProviderError('unknown', 'TUF 视频链接无效', false);

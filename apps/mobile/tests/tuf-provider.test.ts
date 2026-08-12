@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import playerProfile from './fixtures/tuf/player-profile.sanitized.json';
 import passPage from './fixtures/tuf/pass-page.sanitized.json';
 import levelPage from './fixtures/tuf/level-page.sanitized.json';
-import { tufMediaImageCandidates } from '@/domain/tuf';
+import {
+  selectBestTufLevelPass,
+  tufDifficultyVisual,
+  tufMediaImageCandidates,
+  tufTagIconUrl,
+  type TufLevelPass,
+} from '@/domain/tuf';
 import { ProviderError } from '@/providers/errors';
 import { TufProvider } from '@/providers/tuf-provider';
 
@@ -47,6 +53,30 @@ describe('TufProvider', () => {
       offset: '30', limit: '30', query: 'stamina', sort: 'DIFF_ASC',
       pguRange: 'G1,G20', specialDifficulties: 'Unranked,Marathon',
     });
+  });
+
+  it('reads level passes from the exact public endpoint without requiring an embedded level', async () => {
+    const levelPass = {
+      id: 700, levelId: 4426, playerId: 486, scoreV2: 15000, accuracy: 99.5, speed: 1,
+      impact: 12.5, judgements: { perfect: 600 },
+    };
+    const fetcher = vi.fn().mockResolvedValue(response([levelPass]));
+    const result = await new TufProvider(fetcher as typeof fetch, 'https://tuf.test').getLevelPasses(4426);
+    expect(result).toEqual([expect.objectContaining(levelPass)]);
+    expect(result[0]).not.toHaveProperty('level');
+    expect(fetcher.mock.calls[0][0]).toBe('https://tuf.test/v2/database/passes/level/4426');
+  });
+
+  it('accepts an empty level pass list and rejects malformed or failed responses', async () => {
+    const empty = vi.fn().mockResolvedValue(response([]));
+    await expect(new TufProvider(empty as typeof fetch).getLevelPasses(4426)).resolves.toEqual([]);
+    const malformed = vi.fn().mockResolvedValue(response([{ id: 1, levelId: 4426 }]));
+    await expect(new TufProvider(malformed as typeof fetch).getLevelPasses(4426))
+      .rejects.toMatchObject({ code: 'upstream_schema' });
+    const failed = vi.fn().mockResolvedValue(response({}, 503));
+    await expect(new TufProvider(failed as typeof fetch).getLevelPasses(4426))
+      .rejects.toMatchObject({ code: 'network' });
+    expect(failed).toHaveBeenCalledTimes(2);
   });
 
   it.each([401, 403])('reports public API policy changes for HTTP %s without retry', async (status) => {
@@ -104,6 +134,59 @@ describe('TufProvider', () => {
     await expect(new TufProvider(fetcher as typeof fetch).getVideoDetails('https://video.example/watch'))
       .rejects.toMatchObject({ code: 'network', retryable: true });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('TUF level presentation helpers', () => {
+  const levelPass = (overrides: Partial<TufLevelPass>): TufLevelPass => ({
+    id: 1, levelId: 4426, playerId: 25, scoreV2: 100, accuracy: 99, speed: 1,
+    impact: null, ...overrides,
+  });
+
+  it('selects the active player best pass with deterministic score, XACC, Impact and id ties', () => {
+    const passes = [
+      levelPass({ id: 1, playerId: 99, scoreV2: 999 }),
+      levelPass({ id: 2, scoreV2: 101, accuracy: 98, impact: 30 }),
+      levelPass({ id: 3, scoreV2: 101, accuracy: 99, impact: 20 }),
+      levelPass({ id: 4, scoreV2: 101, accuracy: 99, impact: 21 }),
+      levelPass({ id: 5, scoreV2: 101, accuracy: 99, impact: 21 }),
+    ];
+    expect(selectBestTufLevelPass(passes, 25)?.id).toBe(5);
+    expect(selectBestTufLevelPass(passes, null)).toBeUndefined();
+  });
+
+  it.each([
+    ['P1', '#0099ff', 'P'], ['P20', '#44ff15', 'P'],
+    ['G1', '#F2A700', 'G'], ['G20', '#D20097', 'G'],
+    ['U1', '#7B4FB2', 'U'], ['U20', '#000000', 'U'],
+  ] as const)('keeps the real TUF spectrum color for %s', (name, color, band) => {
+    expect(tufDifficultyVisual({ name, type: 'PGU', color })).toMatchObject({
+      band,
+      background: color.toUpperCase(),
+    });
+  });
+
+  it('chooses readable text, uses band fallback colors and keeps special difficulties neutral', () => {
+    expect(tufDifficultyVisual({ name: 'P20', type: 'PGU', color: '#44ff15' })?.text).toBe('#172033');
+    expect(tufDifficultyVisual({ name: 'U20', type: 'PGU', color: '#000000' })?.text).toBe('#FFFFFF');
+    expect(tufDifficultyVisual({ name: 'G12', type: 'PGU', color: 'bad' })?.background).toBe('#F2A700');
+    expect(tufDifficultyVisual({ name: 'Legacy 12', type: 'LEGACY', color: '#FF0000' })).toBeNull();
+  });
+
+  it('recognizes every current P1-P20, G1-G20 and U1-U20 difficulty label', () => {
+    const labels = (['P', 'G', 'U'] as const).flatMap((band) => (
+      Array.from({ length: 20 }, (_, index) => `${band}${index + 1}`)
+    ));
+    expect(labels).toHaveLength(60);
+    expect(labels.every((name) => tufDifficultyVisual({ name, type: 'PGU', color: null }) !== null)).toBe(true);
+  });
+
+  it('pins verified TUFHelper Raw icons and returns text-only fallback for unknown tags', () => {
+    expect(tufTagIconUrl('Full VFX')).toBe(
+      'https://raw.githubusercontent.com/coyami-ke/TUFHelper/7a5b84eeea6fc0ce86d25da07d19595481a31d7e/Assets/TUFHelper/Assets/Sprites/TagIcons/Icon_VFX_FullVFX.png',
+    );
+    expect(tufTagIconUrl('Camera')).toContain('/Icon_VFX_Cam.png');
+    expect(tufTagIconUrl('未映射标签')).toBeNull();
   });
 });
 
