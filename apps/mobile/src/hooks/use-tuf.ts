@@ -188,13 +188,18 @@ export function useTufDifficulties() {
 }
 
 export function useTufVideoDetails(videoLink: string | null | undefined) {
+  return useQuery(tufVideoDetailsQueryOptions(videoLink));
+}
+
+/** TufSongRow 与成绩图批量封面共用同一 Provider、缓存键和缓存时长。 */
+export function tufVideoDetailsQueryOptions(videoLink: string | null | undefined) {
   const normalized = tufHttpsUrl(videoLink);
-  return useQuery({
+  return {
     queryKey: ['tuf', 'media', 'video-details', normalized],
     queryFn: () => tufProvider.getVideoDetails(normalized!),
     enabled: normalized !== null,
     ...TUF_QUERY_OPTIONS,
-  });
+  } as const;
 }
 
 export function useTufLevelBestPass(levelId: number | null, playerId: number | null) {

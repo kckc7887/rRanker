@@ -17,8 +17,7 @@ jest.mock('react-native-webview', () => {
 });
 jest.mock('react-native-view-shot', () => ({ captureRef: mockCaptureRef }));
 jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
-  inlineBestImageWebViewSources: () => [{ html: '<html>inline preview</html>', baseUrl: 'https://assets2.lxns.net/' }],
-  prepareAndroidBestImageWebViewSources: () => ({ sources: [{ uri: 'file:///cache/export.html' }], dispose: mockDispose }),
+  prepareBestImageWebViewSources: () => ({ sources: [{ uri: 'file:///cache/page.html' }], dispose: mockDispose }),
 }));
 jest.mock('@/features/best-image/best-image-export', () => ({
   bestImageCaptureDimensions: (width: number, height: number) => ({ width, height }),
@@ -42,19 +41,20 @@ describe('FixedBestImageScreen shared WebView path', () => {
     if (originalPlatform) Object.defineProperty(Platform, 'OS', originalPlatform);
   });
 
-  it('uses inline HTML for preview and a temporary file only for Android export', async () => {
+  it('uses the same prepared local HTML source for preview and export', async () => {
     const screen = await render(<FixedBestImageScreen
       htmlForWidth={(width) => `<html>${width}</html>`}
       imageType="top20"
       playerName="测试玩家"
     />);
     const preview = screen.getByTestId('fixed-best-image-preview');
-    expect(preview.props.source).toEqual({ html: '<html>inline preview</html>', baseUrl: 'https://assets2.lxns.net/' });
+    expect(preview.props.source).toEqual({ uri: 'file:///cache/page.html' });
 
     await act(async () => { fireEvent.press(screen.getByLabelText('导出成绩图片')); });
     const exporter = screen.getByTestId('fixed-best-image-export');
-    expect(exporter.props.source).toEqual({ uri: 'file:///cache/export.html' });
+    expect(exporter.props.source).toEqual({ uri: 'file:///cache/page.html' });
     await act(async () => { screen.unmount(); });
     expect(mockDispose).toHaveBeenCalledTimes(1);
   });
+
 });

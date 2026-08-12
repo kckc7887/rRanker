@@ -18,9 +18,7 @@ import {
   isDrawViewHierarchyError, requestBestImageExportPermission, saveBestImageCapture,
   shouldUseBestImageRenderInContext,
 } from '@/features/best-image/best-image-export';
-import {
-  inlineBestImageWebViewSources, prepareAndroidBestImageWebViewSources, type BestImageWebViewSource,
-} from '@/features/best-image/prepare-best-image-webview-sources';
+import { prepareBestImageWebViewSources, type BestImageWebViewSource } from '@/features/best-image/prepare-best-image-webview-sources';
 import { useAppTheme } from '@/theme/app-theme';
 
 const OUTPUT_WIDTHS = [1080, 1440, 2160] as const;
@@ -41,15 +39,15 @@ export function FixedBestImageScreen({
   const [measuredHeight, setMeasuredHeight] = useState(Math.ceil(1080 * 0.75));
   const pageId = `${imageType}-${width}`;
   const [previewStates, setPreviewStates] = useState<Record<string, BestImageWebViewState>>({});
-  const [androidExportSource, setAndroidExportSource] = useState<BestImageWebViewSource | null>(null);
+  const [source, setSource] = useState<BestImageWebViewSource | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
+  const [sourceAttempt, setSourceAttempt] = useState(0);
   const [exporting, setExporting] = useState(false);
   const [exportHeight, setExportHeight] = useState(Math.ceil(1080 * 0.75));
   const exportRef = useRef<View>(null);
   const exportResolve = useRef<((height: number) => void) | null>(null);
   const exportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const html = useMemo(() => htmlForWidth(width), [htmlForWidth, width]);
-  const inlineSource = useMemo(() => inlineBestImageWebViewSources([html])[0]!, [html]);
 
   useEffect(() => () => {
     if (exportTimer.current) clearTimeout(exportTimer.current);
@@ -61,18 +59,18 @@ export function FixedBestImageScreen({
     setMeasuredHeight(Math.ceil(width * 0.75));
     setPreviewStates({ [pageId]: { phase: 'loading', version: null } });
     setSourceError(null);
-    if (Platform.OS !== 'android') return;
-    setAndroidExportSource(null);
+    setSource(null);
     try {
-      const prepared = prepareAndroidBestImageWebViewSources([html]);
-      setAndroidExportSource(prepared.sources[0] ?? null);
+      const prepared = prepareBestImageWebViewSources([html]);
+      setSource(prepared.sources[0] ?? null);
       return prepared.dispose;
     } catch {
-      setSourceError('WebView 本地导出页面准备失败');
+      setSourceError('WebView 本地成绩图片页面准备失败');
     }
-  }, [html, pageId, width]);
-  const previewSource = inlineSource;
-  const exportSource = Platform.OS === 'android' ? androidExportSource : inlineSource;
+  }, [html, pageId, sourceAttempt, width]);
+  const previewSource = source;
+  const exportSource = source;
+  const allowingReadAccessToURL = source && 'uri' in source ? source.uri.replace(/\/[^/]*$/u, '/') : undefined;
   const previewState = previewStates[pageId] ?? { phase: 'loading' as const, version: null };
   useBestImageWebViewTimeout(!!previewSource, pageId, previewState.phase, setPreviewStates);
 
@@ -148,7 +146,7 @@ export function FixedBestImageScreen({
       {notice ? <Text accessibilityRole="alert" style={[styles.notice, { color: theme.textMuted }]}>{notice}</Text> : null}
       <Text style={[styles.label, styles.previewLabel, { color: theme.text }]}>预览</Text>
       <View accessibilityLabel="固定成绩图片预览" style={[styles.preview, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
-        {previewSource ? <WebView allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs bounces={false}
+        {previewSource ? <WebView allowFileAccess allowFileAccessFromFileURLs allowingReadAccessToURL={allowingReadAccessToURL} bounces={false}
           javaScriptEnabled mixedContentMode="never" onError={() => updateBestImageWebViewState(setPreviewStates, pageId, 'error')}
           onLoadEnd={() => markBestImageWebViewLoaded(setPreviewStates, pageId)}
           onLoadStart={() => updateBestImageWebViewState(setPreviewStates, pageId, 'loading', null)}
@@ -158,7 +156,12 @@ export function FixedBestImageScreen({
           : <ActivityIndicator color={theme.accent} />}
       </View>
       <Text style={[styles.meta, { color: theme.textMuted }]} testID="fixed-best-image-webview-status">{width} × {measuredHeight} px · {status}</Text>
-      {sourceError ? <Text accessibilityRole="alert" style={[styles.sourceError, { color: theme.danger }]}>{sourceError}</Text> : null}
+      {sourceError ? <View style={styles.sourceErrorBlock}>
+        <Text accessibilityRole="alert" style={[styles.sourceError, { color: theme.danger }]}>{sourceError}</Text>
+        <Pressable accessibilityLabel="重试成绩图片预览" accessibilityRole="button" onPress={() => setSourceAttempt((value) => value + 1)}>
+          <Text style={[styles.retryText, { color: theme.accent }]}>重试</Text>
+        </Pressable>
+      </View> : null}
       <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!exportSource || disabled || exporting}
         onPress={() => void exportImage()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!exportSource || disabled || exporting) && styles.disabled]}>
         {exporting ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}<Text style={styles.exportText}>{exporting ? '正在导出' : '导出到相册'}</Text>
@@ -167,7 +170,7 @@ export function FixedBestImageScreen({
     <Modal animationType="none" onRequestClose={() => undefined} transparent={false} visible={exporting}>
       {exportSource ? <View style={styles.exportRoot}><View ref={exportRef} collapsable={false}
         style={{ width: width / PixelRatio.get(), height: exportHeight / PixelRatio.get(), backgroundColor: '#F3F6FA' }}>
-        <WebView allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs androidLayerType="software"
+        <WebView allowFileAccess allowFileAccessFromFileURLs allowingReadAccessToURL={allowingReadAccessToURL} androidLayerType="software"
           bounces={false} javaScriptEnabled mixedContentMode="never" onMessage={(event) => handleExportMessage(event.nativeEvent.data)}
           originWhitelist={['*']} scrollEnabled={false} source={exportSource} style={styles.webview} testID="fixed-best-image-export" />
       </View><View style={[styles.overlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={{ color: theme.textSecondary }}>正在准备导出</Text></View></View> : null}
@@ -181,7 +184,8 @@ const styles = StyleSheet.create({
   widthText: { fontSize: 13, fontWeight: '800' }, notice: { marginTop: 12, fontSize: 12, lineHeight: 18 }, previewLabel: { marginTop: 24 },
   preview: { alignSelf: 'center', overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderRadius: 18, borderWidth: 1 },
   webview: { width: '100%', height: '100%', flex: 1, backgroundColor: 'transparent' }, meta: { marginTop: 8, fontSize: 11, textAlign: 'center' },
-  sourceError: { marginTop: 10, fontSize: 12, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
+  sourceErrorBlock: { marginTop: 10, alignItems: 'center', gap: 6 }, sourceError: { fontSize: 12, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
+  retryText: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
   exportButton: { minHeight: 48, marginTop: 16, borderRadius: 14, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   exportText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' }, disabled: { opacity: 0.55 }, exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#FFFFFF' },
   overlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12 },
