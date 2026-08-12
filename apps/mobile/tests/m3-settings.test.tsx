@@ -302,6 +302,17 @@ describe('M3A game account management', () => {
     expect(screen.getByLabelText('删除示例账号 示例账号')).toBeTruthy();
   });
 
+  it('allows deleting the Muse Dash demo account', async () => {
+    mockBoundAccounts = [createMaxedMuseDashTestAccount()];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('删除示例账号 示例账号'));
+    expect(screen.getByText('确认删除并保留个人数据')).toBeTruthy();
+    await fireEvent.press(screen.getByText('删除并清除个人数据'));
+    await waitFor(() => expect(mockRemoveMuseDashDemoAccount).toHaveBeenCalledTimes(1));
+    expect(mockClearMuseDashCache).toHaveBeenCalledWith('rranker-demo-maxed');
+    expect(mockRemoveBoundAccount).toHaveBeenCalledWith('musedash:musedash-moe:rranker-demo-maxed');
+  });
+
   it('switches to existing demo account when demo provider is selected again', async () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));

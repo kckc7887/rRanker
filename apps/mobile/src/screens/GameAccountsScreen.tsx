@@ -633,7 +633,8 @@ export function GameAccountsScreen() {
     const isLocal = account.providerId === 'local';
     const isGeneratedTest = account.providerId === 'maimai-test'
       || account.providerId === 'chunithm-test'
-      || account.providerId === 'phigros-test';
+      || account.providerId === 'phigros-test'
+      || account.providerId === 'musedash-test';
     const isChunithmTemp = account.providerId === 'chunithm-temp';
     const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
     const isTuf = account.providerId === 'tuf';
