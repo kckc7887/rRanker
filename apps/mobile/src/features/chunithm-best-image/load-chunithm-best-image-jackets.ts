@@ -1,12 +1,9 @@
-import { File } from 'expo-file-system';
-import { Image } from 'expo-image';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import { imageCachePathToFileUri } from '@/features/best-image/load-best-image-jackets';
+import { loadRemoteBestImageAssetDataUri } from '@/features/best-image/load-remote-best-image-asset';
 
 export const CHUNITHM_BEST_IMAGE_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
 
 const jacketDataUriCache = new Map<string, Promise<string | null>>();
-const remoteImageDataUriCache = new Map<string, Promise<string | null>>();
 
 /** WORLD'S END 优先 originId，其余用 songId。 */
 export function resolveChunithmBestImageJacketId(
@@ -28,38 +25,12 @@ export function chunithmBestImageJacketUrl(jacketId: string): string {
   return `${CHUNITHM_BEST_IMAGE_JACKET_ROOT}/${encodeURIComponent(jacketId)}.png`;
 }
 
-async function loadUrlDataUri(url: string): Promise<string | null> {
-  const cached = remoteImageDataUriCache.get(url);
-  if (cached) return cached;
-
-  const pending = (async () => {
-    let localUri = await Image.getCachePathAsync(url);
-    if (!localUri) {
-      const prefetched = await Image.prefetch(url, 'disk');
-      if (!prefetched) return null;
-      localUri = await Image.getCachePathAsync(url);
-    }
-    if (!localUri) return null;
-    return `data:image/png;base64,${await new File(imageCachePathToFileUri(localUri)).base64()}`;
-  })();
-  remoteImageDataUriCache.set(url, pending);
-
-  try {
-    const result = await pending;
-    if (!result) remoteImageDataUriCache.delete(url);
-    return result;
-  } catch {
-    remoteImageDataUriCache.delete(url);
-    return null;
-  }
-}
-
 async function loadJacketDataUri(jacketId: string): Promise<string | null> {
   const url = chunithmBestImageJacketUrl(jacketId);
   const cached = jacketDataUriCache.get(url);
   if (cached) return cached;
 
-  const pending = loadUrlDataUri(url);
+  const pending = loadRemoteBestImageAssetDataUri(url);
   jacketDataUriCache.set(url, pending);
 
   try {
@@ -87,6 +58,5 @@ export async function loadChunithmBestImageJackets(
 }
 
 export async function loadChunithmRemoteImageDataUri(url: string | null | undefined): Promise<string | null> {
-  if (!url) return null;
-  return loadUrlDataUri(url);
+  return loadRemoteBestImageAssetDataUri(url);
 }

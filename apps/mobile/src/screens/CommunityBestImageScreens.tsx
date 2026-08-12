@@ -1,66 +1,192 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { FixedBestImageScreen } from '@/components/FixedBestImageScreen';
 import { QueryStateView } from '@/components/QueryStateView';
 import { museDashUserIdFromAccountId, tufPlayerIdFromAccountId } from '@/domain/bound-account';
-import { buildMuseDashRawScores, sortMuseDashRawScores, type MuseDashRawScore } from '@/domain/muse-dash';
-import { resolveTufAvatarUrl, selectTufTopPasses, type TufPass } from '@/domain/tuf';
+import {
+  buildMuseDashRawScores,
+  museDashCoverUrl,
+  sortMuseDashRawScores,
+  type MuseDashRawScore,
+} from '@/domain/muse-dash';
+import {
+  resolveTufAvatarUrl,
+  selectTufTopPasses,
+  tufHttpsUrl,
+  tufMediaImageCandidates,
+  tufTagIconUrl,
+  type TufPass,
+} from '@/domain/tuf';
 import { buildFixedBestImageHtml } from '@/features/best-image/build-fixed-best-image-html';
+import {
+  presentMuseDashApplicationBestImageCard,
+  presentTufApplicationBestImageCard,
+} from '@/features/best-image/community-best-image-presentation';
 import { loadBestImageAssetDataUri } from '@/features/best-image/load-best-image-assets';
-import { presentMuseDashScore, presentTufScore } from '@/features/game-content/adapters';
-import type { BestSectionPresentation, ScoreCardPresentation } from '@/features/game-content/presentation';
-import { useMuseDashAlbums, useMuseDashCe, useMuseDashDiffdiff, useMuseDashPlayDetails, useMuseDashPlayer } from '@/hooks/use-muse-dash';
-import { useTufPasses, useTufProfile } from '@/hooks/use-tuf';
+import {
+  loadFirstRemoteBestImageAssetDataUri,
+  loadRemoteBestImageAssetDataUri,
+} from '@/features/best-image/load-remote-best-image-asset';
+import {
+  useMuseDashAlbums,
+  useMuseDashCe,
+  useMuseDashDiffdiff,
+  useMuseDashPlayDetails,
+  useMuseDashPlayer,
+} from '@/hooks/use-muse-dash';
+import { tufVideoDetailsQueryOptions, useTufPasses, useTufProfile } from '@/hooks/use-tuf';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
 const ADOFAI_ICON = require('../../assets/images/adofai.png') as number;
+
+type PreparedAssets<T> = {
+  data: T | null;
+  error: Error | null;
+  done: number;
+  total: number;
+};
+
+function usePreparedAssets<T>({
+  enabled,
+  key,
+  load,
+  retryToken,
+}: {
+  enabled: boolean;
+  key: string;
+  load: (onProgress: (done: number, total: number) => void) => Promise<T>;
+  retryToken: number;
+}): PreparedAssets<T> {
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const [state, setState] = useState<PreparedAssets<T>>({ data: null, error: null, done: 0, total: 0 });
+  useEffect(() => {
+    let cancelled = false;
+    if (!enabled) {
+      setState({ data: null, error: null, done: 0, total: 0 });
+      return;
+    }
+    setState({ data: null, error: null, done: 0, total: 0 });
+    void loadRef.current((done, total) => {
+      if (!cancelled) setState((current) => ({ ...current, done, total }));
+    }).then((data) => {
+      if (!cancelled) setState((current) => ({ ...current, data, error: null }));
+    }).catch((error: unknown) => {
+      if (!cancelled) setState((current) => ({
+        ...current,
+        error: error instanceof Error ? error : new Error('成绩图素材准备失败'),
+      }));
+    });
+    return () => { cancelled = true; };
+  }, [enabled, key, retryToken]);
+  return state;
+}
 
 function EmptyBestImage({ text }: { text: string }) {
   const theme = useAppTheme();
   return <View style={[styles.center, { backgroundColor: theme.background }]}><Text style={{ color: theme.textMuted }}>{text}</Text></View>;
 }
 
+type TufImageAssets = {
+  avatar: string;
+  covers: Readonly<Record<number, string>>;
+  tagIcons: Readonly<Record<string, string | null>>;
+};
+
 export function TufBestImageScreen() {
   const accountId = useSession((state) => state.activeAccountId);
   const playerId = tufPlayerIdFromAccountId(accountId);
   const profile = useTufProfile(playerId);
   const passes = useTufPasses(playerId, { sortBy: 'impact', order: 'DESC', bestPerLevel: true });
-  const [fallbackAvatar, setFallbackAvatar] = useState<string | null | undefined>(undefined);
-  useEffect(() => {
-    let cancelled = false;
-    void loadBestImageAssetDataUri(ADOFAI_ICON).then((value) => {
-      if (!cancelled) setFallbackAvatar(value);
-    }).catch(() => { if (!cancelled) setFallbackAvatar(null); });
-    return () => { cancelled = true; };
-  }, []);
+  const [assetRetry, setAssetRetry] = useState(0);
   const top = useMemo(() => selectTufTopPasses(
-      profile.data?.topScores ?? [],
-      passes.data?.pages.flatMap((page) => page.passes) ?? [],
-    ), [passes.data?.pages, profile.data?.topScores]);
+    profile.data?.topScores ?? [],
+    passes.data?.pages.flatMap((page) => page.passes) ?? [],
+  ), [passes.data?.pages, profile.data?.topScores]);
   const ordered = top.passes;
-  const missing = top.missing;
-  const sections = useMemo<BestSectionPresentation[]>(() => [{
-    id: 'top20', title: 'Top 20 Impact', items: ordered.map((pass, index) => presentTufScore(pass, index + 1)),
-  }], [ordered]);
+  const mediaQueries = useQueries({
+    queries: ordered.map((pass) => tufVideoDetailsQueryOptions(pass.level.videoLink)),
+  });
+  const mediaImages = mediaQueries.map((query) => query.data?.image ?? null);
+  const mediaKey = mediaImages.join('|');
+  const mediaReady = mediaQueries.every((query, index) => (
+    tufHttpsUrl(ordered[index]?.level.videoLink) === null || !query.isPending
+  ));
+  const assetKey = `${resolveTufAvatarUrl(profile.data) ?? ''}|${ordered.map((pass) => pass.id).join(',')}|${mediaKey}`;
+  const loadAssets = useCallback(async (onProgress: (done: number, total: number) => void): Promise<TufImageAssets> => {
+    const tagNames = [...new Set(ordered.flatMap((pass) => pass.level.tags.map((tag) => (
+      typeof tag === 'string' ? tag : tag.name
+    ))).filter((name) => tufTagIconUrl(name) !== null))];
+    const total = ordered.length + tagNames.length + 2;
+    let done = 0;
+    onProgress(done, total);
+    const localIcon = await loadBestImageAssetDataUri(ADOFAI_ICON);
+    done += 1;
+    onProgress(done, total);
+    const avatar = await loadRemoteBestImageAssetDataUri(resolveTufAvatarUrl(profile.data)) ?? localIcon;
+    done += 1;
+    onProgress(done, total);
+    const covers: Record<number, string> = {};
+    for (const [index, pass] of ordered.entries()) {
+      covers[pass.id] = await loadFirstRemoteBestImageAssetDataUri(
+        tufMediaImageCandidates(mediaImages[index], pass.level.difficulty?.icon),
+      ) ?? localIcon;
+      done += 1;
+      onProgress(done, total);
+    }
+    const tagIcons: Record<string, string | null> = {};
+    for (const name of tagNames) {
+      tagIcons[name] = await loadRemoteBestImageAssetDataUri(tufTagIconUrl(name));
+      done += 1;
+      onProgress(done, total);
+    }
+    return { avatar, covers, tagIcons };
+  }, [mediaImages, ordered, profile.data]);
+  const assets = usePreparedAssets({ enabled: mediaReady && ordered.length > 0, key: assetKey, load: loadAssets, retryToken: assetRetry });
+  const cards = useMemo(() => assets.data ? ordered.map((pass) => presentTufApplicationBestImageCard(
+    pass,
+    assets.data!.covers[pass.id]!,
+    assets.data!.tagIcons,
+  )) : [], [assets.data, ordered]);
   const htmlForWidth = useCallback((width: number) => buildFixedBestImageHtml({
-    width, title: 'Top20', playerName: profile.data?.name ?? 'TUF 玩家', ratingLabel: 'Rating',
-    ratingDisplay: profile.data?.rankedScore.toFixed(2) ?? '—', avatarUrl: resolveTufAvatarUrl(profile.data),
-    avatarFallbackUrl: fallbackAvatar, sections, dataSource: 'TUF 公开成绩', cardLayout: { asideMetricKey: 'impact' },
-    theme: { accent: '#24B8E6', accentSoft: '#DFF6FC', secondaryAccent: '#F05B5B' },
-  }), [fallbackAvatar, profile.data, sections]);
-  const loading = profile.isLoading || passes.isLoading || fallbackAvatar === undefined;
-  const error = profile.error ?? passes.error;
+    width,
+    playerName: profile.data?.name ?? 'TUF 玩家',
+    ratingDisplay: profile.data?.rankedScore.toFixed(2) ?? '—',
+    avatarUri: assets.data?.avatar,
+    sectionTitle: `Top${cards.length}`,
+    cards,
+    dataSource: 'TUF',
+  }), [assets.data?.avatar, cards, profile.data]);
+  const loading = profile.isLoading || passes.isLoading || !mediaReady || (ordered.length > 0 && assets.data === null && assets.error === null);
+  const error = profile.error ?? passes.error ?? assets.error;
   if (playerId === null) return <EmptyBestImage text="请先绑定 TUF 玩家" />;
+  if (loading) return <EmptyBestImage text={assets.total > 0 ? `正在准备成绩图素材 ${assets.done}/${assets.total}` : '正在准备 TopN 成绩图'} />;
   return <QueryStateView<TufPass[]>
-    data={!loading && ordered.length ? ordered : undefined} error={error} isEmpty={!loading && ordered.length === 0}
-    isError={!!error} isLoading={loading} emptyText="当前公开资料没有可导出的 Top20 成绩"
-    onRetry={() => { void profile.refetch(); void passes.refetch(); }}
-    renderData={() => <FixedBestImageScreen disabled={ordered.length === 0} htmlForWidth={htmlForWidth}
-      imageType="top20" playerName={profile.data?.name ?? 'TUF 玩家'}
-      notice={missing > 0 ? `有 ${missing} 条 Top 记录未公开，已跳过。` : null} />}
+    data={!error && ordered.length ? ordered : undefined}
+    emptyText="当前公开资料没有可导出的 Top20 成绩"
+    error={error}
+    isEmpty={!error && ordered.length === 0}
+    isError={!!error}
+    isLoading={false}
+    onRetry={() => {
+      void profile.refetch();
+      void passes.refetch();
+      mediaQueries.forEach((query) => { void query.refetch(); });
+      setAssetRetry((value) => value + 1);
+    }}
+    renderData={() => <FixedBestImageScreen
+      disabled={cards.length === 0}
+      htmlForWidth={htmlForWidth}
+      imageType="top20"
+      notice={top.missing > 0 ? `有 ${top.missing} 条 Top 记录未公开，已跳过。` : null}
+      playerName={profile.data?.name ?? 'TUF 玩家'}
+    />}
   />;
 }
+
+type MuseDashImageAssets = { covers: Readonly<Record<string, string | null>> };
 
 export function MuseDashBestImageScreen() {
   const accountId = useSession((state) => state.activeAccountId);
@@ -69,40 +195,66 @@ export function MuseDashBestImageScreen() {
   const albums = useMuseDashAlbums();
   const ce = useMuseDashCe();
   const diffdiff = useMuseDashDiffdiff();
+  const [assetRetry, setAssetRetry] = useState(0);
   const ordered = useMemo(() => player.data
     ? sortMuseDashRawScores(buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data)).slice(0, 30)
     : [], [albums.data, ce.data, diffdiff.data, player.data]);
   const detailItems = useMemo(() => ordered.map((score) => ({
-    uid: score.play.uid, difficulty: score.play.difficulty, platform: score.play.platform ?? 'mobile',
+    uid: score.play.uid,
+    difficulty: score.play.difficulty,
+    platform: score.play.platform ?? 'mobile',
   })), [ordered]);
   const missMap = useMuseDashPlayDetails(detailItems, userId, ordered.length > 0);
-  const cards = useMemo<ScoreCardPresentation[]>(() => ordered.map((score, index) => {
-    const presentation = presentMuseDashScore(score, {
-      position: index + 1,
-      detail: { play: { miss: missMap.get(`${score.play.uid}:${score.play.difficulty}`) } },
-    });
-    return {
-      ...presentation,
-      achievementRows: [...presentation.achievementRows, [{
-        key: 'platform', label: (score.play.platform ?? 'mobile') === 'pc' ? 'PC 端' : '移动端', tone: 'muted',
-      }]],
-    };
-  }), [missMap, ordered]);
-  const sections = useMemo<BestSectionPresentation[]>(() => [{ id: 'best30', title: 'Best 30', items: cards }], [cards]);
+  const coverKey = ordered.map((score) => `${score.play.uid}:${score.song?.cover ?? ''}`).join('|');
+  const loadAssets = useCallback(async (onProgress: (done: number, total: number) => void): Promise<MuseDashImageAssets> => {
+    const unique = [...new Map(ordered.map((score) => [score.play.uid, score])).values()];
+    const covers: Record<string, string | null> = {};
+    onProgress(0, unique.length);
+    for (const [index, score] of unique.entries()) {
+      covers[score.play.uid] = await loadRemoteBestImageAssetDataUri(museDashCoverUrl(score.song?.cover));
+      onProgress(index + 1, unique.length);
+    }
+    return { covers };
+  }, [ordered]);
+  const assets = usePreparedAssets({ enabled: ordered.length > 0, key: coverKey, load: loadAssets, retryToken: assetRetry });
+  const cards = useMemo(() => assets.data ? ordered.map((score) => presentMuseDashApplicationBestImageCard(
+    score,
+    missMap.get(`${score.play.uid}:${score.play.difficulty}`),
+    assets.data!.covers[score.play.uid] ?? null,
+  )) : [], [assets.data, missMap, ordered]);
   const htmlForWidth = useCallback((width: number) => buildFixedBestImageHtml({
-    width, title: 'B30', playerName: player.data?.user.nickname ?? '喵斯快跑玩家', ratingLabel: 'Rating',
-    ratingDisplay: player.data?.rl?.toFixed(2) ?? '—', sections, dataSource: 'MuseDash.moe', cardLayout: { asideMetricKey: 'rating' },
-    theme: { accent: '#D743A7', accentSoft: '#F9E1F3', secondaryAccent: '#7B4FD6' },
-  }), [player.data, sections]);
-  const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
-  const error = player.error ?? albums.error ?? ce.error ?? diffdiff.error;
+    width,
+    playerName: player.data?.user.nickname ?? '喵斯快跑玩家',
+    ratingDisplay: player.data?.rl?.toFixed(2) ?? '—',
+    sectionTitle: `Best${cards.length}`,
+    cards,
+    dataSource: 'MuseDash.moe',
+  }), [cards, player.data]);
+  const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading
+    || (ordered.length > 0 && assets.data === null && assets.error === null);
+  const error = player.error ?? albums.error ?? ce.error ?? diffdiff.error ?? assets.error;
   if (userId === null) return <EmptyBestImage text="请先绑定喵斯快跑玩家" />;
+  if (loading) return <EmptyBestImage text={assets.total > 0 ? `正在准备成绩图素材 ${assets.done}/${assets.total}` : '正在准备 BestN 成绩图'} />;
   return <QueryStateView<MuseDashRawScore[]>
-    data={!loading && ordered.length ? ordered : undefined} error={error} isEmpty={!loading && ordered.length === 0}
-    isError={!!error} isLoading={loading} emptyText="当前没有可导出的喵斯快跑成绩"
-    onRetry={() => { void player.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
-    renderData={() => <FixedBestImageScreen disabled={ordered.length === 0} htmlForWidth={htmlForWidth}
-      imageType="best30" playerName={player.data?.user.nickname ?? '喵斯快跑玩家'} />}
+    data={!error && ordered.length ? ordered : undefined}
+    emptyText="当前没有可导出的喵斯快跑成绩"
+    error={error}
+    isEmpty={!error && ordered.length === 0}
+    isError={!!error}
+    isLoading={false}
+    onRetry={() => {
+      void player.refetch();
+      void albums.refetch();
+      void ce.refetch();
+      void diffdiff.refetch();
+      setAssetRetry((value) => value + 1);
+    }}
+    renderData={() => <FixedBestImageScreen
+      disabled={cards.length === 0}
+      htmlForWidth={htmlForWidth}
+      imageType="best30"
+      playerName={player.data?.user.nickname ?? '喵斯快跑玩家'}
+    />}
   />;
 }
 

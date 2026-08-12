@@ -2,10 +2,12 @@ export function buildBestImageCanvasRuntime({
   width,
   minimumHeight,
   assetTimeoutMs = 5_000,
+  waitForFonts = false,
 }: {
   width: number;
   minimumHeight: number;
   assetTimeoutMs?: number;
+  waitForFonts?: boolean;
 }): string {
   return `<script>
     (() => {
@@ -82,9 +84,9 @@ export function buildBestImageCanvasRuntime({
       window.addEventListener('load', schedule);
       schedule();
 
-      const fontReady = document.fonts && document.fonts.ready
+      ${waitForFonts ? `const fontReady = document.fonts && document.fonts.ready
         ? document.fonts.ready.catch(() => undefined)
-        : Promise.resolve();
+        : Promise.resolve();` : ''}
       const imageReady = Array.from(document.images).map((image) => image.complete
         ? Promise.resolve()
         : new Promise((resolve) => {
@@ -97,7 +99,7 @@ export function buildBestImageCanvasRuntime({
             image.addEventListener('error', settle);
           }));
       const assetTimeout = new Promise((resolve) => window.setTimeout(resolve, ${Math.max(1, Math.round(assetTimeoutMs))}));
-      Promise.race([Promise.all([fontReady, ...imageReady]), assetTimeout]).then(() => {
+      Promise.race([Promise.all([${waitForFonts ? 'fontReady, ' : ''}...imageReady]), assetTimeout]).then(() => {
         window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
           measureAndFit();
           if (!readySent) {

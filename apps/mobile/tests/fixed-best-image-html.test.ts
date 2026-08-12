@@ -2,27 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { buildFixedBestImageHtml } from '@/features/best-image/build-fixed-best-image-html';
 
 describe('fixed community best image html', () => {
-  it.each([1080, 1440, 2160])('renders a three-column escaped document at width %s', (width) => {
+  it.each([1080, 1440, 2160])('renders the shared application card contract at width %s', (width) => {
     const html = buildFixedBestImageHtml({
       width,
-      title: 'Top20',
       playerName: '<玩家 & A>',
-      ratingLabel: 'Rating',
       ratingDisplay: '123.45',
-      avatarUrl: 'https://example.test/a.png?x=1&y=2',
-      avatarFallbackUrl: 'data:image/png;base64,test',
+      avatarUri: 'data:image/png;base64,test',
+      sectionTitle: 'Top1',
       dataSource: 'TUF <公开>',
-      cardLayout: { asideMetricKey: 'impact' },
-      theme: { accent: '#24B8E6', accentSoft: '#DFF6FC', secondaryAccent: '#F05B5B' },
-      sections: [{
-        id: 'top20', title: 'Top 20', items: [{
-          key: '1', gameId: 'fictional', route: { songId: '1' }, position: 1,
-          title: '<Song>', accessibilityLabel: 'song',
-          primaryMetric: { key: 'score', label: 'Score', text: '100.00' },
-          secondaryMetrics: [{ key: 'impact', label: 'Impact', text: '9.99' }],
-          difficulty: { key: 'difficulty', label: 'G12', tone: 'tuf-g' },
-          achievementRows: [[{ key: 'wf', label: 'WF', tone: 'world-first' }]],
-        }],
+      cards: [{
+        key: '1',
+        accessibilityLabel: 'song',
+        identifier: 'ID42',
+        title: '<Song>',
+        coverUri: 'data:image/png;base64,cover',
+        palette: { background: '#F2A700', border: '#B87F00', text: '#172033' },
+        primary: { label: 'Score', text: '100.00' },
+        relation: { text: 'G12 -> 9.99' },
+        iconRow: [{ key: 'featured', label: 'Featured', source: 'data:image/png;base64,tag' }],
+        badgeRows: [[{ key: 'wf', label: 'WF', background: '#FFF3B0', text: '#4B3A05' }]],
       }],
     });
     expect(html).toContain(`width:${width}px`);
@@ -35,10 +33,16 @@ describe('fixed community best image html', () => {
     expect(html).not.toContain('<Song>');
     expect(html).toContain("type: 'best-image-ready'");
     expect(html).toContain('ResizeObserver');
-    expect(html).toContain('class="position">1.</span>');
-    expect(html).toContain('<aside><small>Impact</small><strong>9.99</strong></aside>');
-    expect(html).not.toContain('document-title');
+    expect(html).toContain('<span class="song-rank">ID42</span>');
+    expect(html).toContain('<span class="primary-label">Score</span>');
+    expect(html).toContain('G12 -&gt; 9.99');
+    expect(html).toContain('class="tag-icon"');
+    expect(html).toContain('<div class="section-divider"><span>Top1</span>');
+    expect(html).not.toContain('accent-lines');
+    expect(html).not.toContain('section-heading');
+    expect(html).not.toContain('<aside');
+    expect(html).not.toContain('1 条');
     expect(html).not.toContain('document.body.scrollHeight');
-    expect(html).toContain('#F05B5B');
+    expect(html).toContain('Designed by EgawaHokori. Data from TUF &lt;公开&gt;.');
   });
 });
