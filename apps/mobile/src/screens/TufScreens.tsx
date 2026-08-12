@@ -461,12 +461,12 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
             <TufJudgementTable judgements={bestPass?.judgements} total={total ?? null} />
             {videoPlatform && videoUrl ? <View style={styles.videoActions}>
               {videoPlatform === 'bilibili' ? <Pressable accessibilityRole="link" accessibilityLabel="跳转Ｂ站"
-                testID="tuf-level-bilibili-link" onPress={() => void Linking.openURL(videoUrl)}
+                testID="tuf-level-bilibili-link" onPress={() => { void Linking.openURL(videoUrl).catch(() => undefined); }}
                 style={[styles.videoAction, videoActionStyle(theme.dark, difficultyVisual, theme.border)]}>
                 <Text style={[styles.videoActionText, videoActionTextStyle(theme.dark, difficultyVisual, theme.text)]}>跳转Ｂ站</Text>
               </Pressable> : null}
               {videoPlatform === 'youtube' ? <Pressable accessibilityRole="link" accessibilityLabel="跳转油管"
-                testID="tuf-level-youtube-link" onPress={() => void Linking.openURL(videoUrl)}
+                testID="tuf-level-youtube-link" onPress={() => { void Linking.openURL(videoUrl).catch(() => undefined); }}
                 style={[styles.videoAction, videoActionStyle(theme.dark, difficultyVisual, theme.border)]}>
                 <Text style={[styles.videoActionText, videoActionTextStyle(theme.dark, difficultyVisual, theme.text)]}>跳转油管</Text>
               </Pressable> : null}

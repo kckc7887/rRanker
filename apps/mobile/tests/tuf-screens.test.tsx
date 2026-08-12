@@ -386,6 +386,14 @@ describe('TUF screens', () => {
     expect(screen.queryByTestId('tuf-level-youtube-link')).toBeNull();
   });
 
+  it('swallows a rejected openURL rejection after the system still opened the link', async () => {
+    const openUrl = jest.spyOn(Linking, 'openURL').mockRejectedValue(new Error('Unable to open URL'));
+    mockLevelDetail = { ...level, videoLink: 'https://youtu.be/daWYfwlJizg' };
+    const screen = await render(<TufLevelDetailScreen levelId="11372" />);
+    await fireEvent.press(screen.getByLabelText('跳转油管'));
+    expect(openUrl).toHaveBeenCalledWith('https://youtu.be/daWYfwlJizg');
+  });
+
   it('renders the current player result, compact PGU header, tags and the 3+4 judgement matrix', async () => {
     mockLevelDetail = {
       ...level,
