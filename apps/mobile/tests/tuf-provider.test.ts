@@ -9,6 +9,7 @@ import {
   tufDifficultyVisual,
   tufMediaImageCandidates,
   tufTagIconUrl,
+  tufVideoPlatform,
   type TufLevelPass,
 } from '@/domain/tuf';
 import { ProviderError } from '@/providers/errors';
@@ -202,7 +203,6 @@ describe('TUF level presentation helpers', () => {
 
 describe('TUF media image candidates', () => {
   const icon = 'https://api.tuforums.com/icons/G12.png';
-
   it('tries a TUF proxy before the original YouTube image and difficulty icon', () => {
     const image = 'https://i.ytimg.com/vi/PUvyMb-qPVs/maxresdefault.jpg';
     expect(tufMediaImageCandidates(image, icon)).toEqual([
@@ -220,5 +220,29 @@ describe('TUF media image candidates', () => {
   it('falls back to the difficulty icon and rejects unsafe image candidates', () => {
     expect(tufMediaImageCandidates('', icon)).toEqual([icon]);
     expect(tufMediaImageCandidates('http://unsafe.example/cover.jpg', 'not-a-url')).toEqual([]);
+  });
+});
+
+describe('TUF video platform', () => {
+  it('recognizes every YouTube host shape', () => {
+    expect(tufVideoPlatform('https://www.youtube.com/watch?v=PUvyMb-qPVs')).toBe('youtube');
+    expect(tufVideoPlatform('https://youtu.be/daWYfwlJizg')).toBe('youtube');
+    expect(tufVideoPlatform('https://m.youtube.com/watch?v=abc123')).toBe('youtube');
+    expect(tufVideoPlatform('https://youtube.com/shorts/abc123')).toBe('youtube');
+  });
+
+  it('recognizes every Bilibili host shape', () => {
+    expect(tufVideoPlatform('https://www.bilibili.com/video/BV1xx411c7mD')).toBe('bilibili');
+    expect(tufVideoPlatform('https://bilibili.com/video/BV1xx411c7mD')).toBe('bilibili');
+    expect(tufVideoPlatform('https://m.bilibili.com/video/BV1xx411c7mD')).toBe('bilibili');
+    expect(tufVideoPlatform('https://b23.tv/BV1xx411c7mD')).toBe('bilibili');
+  });
+
+  it('rejects missing, unsafe and unrelated links', () => {
+    expect(tufVideoPlatform(null)).toBeNull();
+    expect(tufVideoPlatform(undefined)).toBeNull();
+    expect(tufVideoPlatform('')).toBeNull();
+    expect(tufVideoPlatform('http://www.bilibili.com/video/BV1xx411c7mD')).toBeNull();
+    expect(tufVideoPlatform('https://video.example.invalid/watch/9001')).toBeNull();
   });
 });

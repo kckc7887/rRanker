@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Dimensions, processColor, StyleSheet } from 'react-native';
+import { Dimensions, Linking, processColor, StyleSheet } from 'react-native';
 import type { TufLevel, TufLevelPass, TufPass, TufPlayer, TufVideoDetails } from '@/domain/tuf';
 import { BADGE_GOLD_BORDER_COLORS } from '@/features/best-image/best-image-badge-theme';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
@@ -358,6 +358,32 @@ describe('TUF screens', () => {
     expect(screen.getByTestId('tuf-pass-1').children).toHaveLength(1);
     const impactSide = screen.getByText('Impact').parent;
     expect(StyleSheet.flatten(impactSide?.props.style)).toMatchObject({ alignItems: 'center', justifyContent: 'center' });
+  });
+
+  it('shows the matching Bilibili jump button below the judgement table', async () => {
+    const openUrl = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    mockLevelDetail = { ...level, videoLink: 'https://www.bilibili.com/video/BV1xx411c7mD' };
+    const screen = await render(<TufLevelDetailScreen levelId="11372" />);
+    expect(screen.getByTestId('tuf-level-bilibili-link')).toBeTruthy();
+    expect(screen.queryByTestId('tuf-level-youtube-link')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('跳转Ｂ站'));
+    expect(openUrl).toHaveBeenCalledWith('https://www.bilibili.com/video/BV1xx411c7mD');
+  });
+
+  it('shows only the YouTube jump button and opens the linked video', async () => {
+    const openUrl = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    mockLevelDetail = { ...level, videoLink: 'https://youtu.be/daWYfwlJizg' };
+    const screen = await render(<TufLevelDetailScreen levelId="11372" />);
+    expect(screen.getByTestId('tuf-level-youtube-link')).toBeTruthy();
+    expect(screen.queryByTestId('tuf-level-bilibili-link')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('跳转油管'));
+    expect(openUrl).toHaveBeenCalledWith('https://youtu.be/daWYfwlJizg');
+  });
+
+  it('hides both platform jump buttons without a recognized video link', async () => {
+    const screen = await render(<TufLevelDetailScreen levelId="11372" />);
+    expect(screen.queryByTestId('tuf-level-bilibili-link')).toBeNull();
+    expect(screen.queryByTestId('tuf-level-youtube-link')).toBeNull();
   });
 
   it('renders the current player result, compact PGU header, tags and the 3+4 judgement matrix', async () => {
