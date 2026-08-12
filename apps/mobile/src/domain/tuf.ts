@@ -63,6 +63,10 @@ export const TufPassSchema = z.object({
   level: TufLevelSchema,
 }).passthrough();
 
+export const TufLevelPassSchema = TufPassSchema.omit({ level: true }).extend({
+  playerId: z.number().int(),
+}).passthrough();
+
 const TufTopScoreSchema = z.object({ id: z.number().int(), impact: z.number().finite() }).passthrough();
 
 export const TufPlayerSchema = z.object({
@@ -94,6 +98,7 @@ export const TufPassPageSchema = z.object({
   total: z.number().int().nonnegative(), passes: z.array(TufPassSchema),
   limit: z.number().int().positive(), offset: z.number().int().nonnegative(),
 }).passthrough();
+export const TufLevelPassListSchema = z.array(TufLevelPassSchema);
 export const TufLevelPageSchema = z.object({
   total: z.number().int().nonnegative(), results: z.array(TufLevelSchema),
   limit: z.number().int().positive(), offset: z.number().int().nonnegative(),
@@ -117,6 +122,7 @@ export type TufDifficulty = z.infer<typeof TufDifficultySchema>;
 export type TufJudgements = z.infer<typeof TufJudgementsSchema>;
 export type TufLevel = z.infer<typeof TufLevelSchema>;
 export type TufPass = z.infer<typeof TufPassSchema>;
+export type TufLevelPass = z.infer<typeof TufLevelPassSchema>;
 export type TufPlayer = z.infer<typeof TufPlayerSchema>;
 export type TufPlayerSearchResponse = z.infer<typeof TufPlayerSearchResponseSchema>;
 export type TufPassPage = z.infer<typeof TufPassPageSchema>;
@@ -145,6 +151,121 @@ export type TufLevelQuery = {
 };
 export const TUF_PAGE_SIZE = 30;
 export const TUF_IMAGE_PROXY_URL = 'https://api.tuforums.com/v2/media/image-proxy';
+export const TUF_TAG_ICON_COMMIT = '7a5b84eeea6fc0ce86d25da07d19595481a31d7e';
+const TUF_TAG_ICON_BASE = `https://raw.githubusercontent.com/coyami-ke/TUFHelper/${TUF_TAG_ICON_COMMIT}/Assets/TUFHelper/Assets/Sprites/TagIcons`;
+
+const TUF_TAG_ICON_FILES: Readonly<Record<string, string>> = {
+  Pseudo: 'Icon_Playstyle_Pseudo.png',
+  Rolling: 'Icon_Playstyle_Roll.png',
+  Indexing: 'Icon_Playstyle_Index.png',
+  Tech: 'Icon_Playstyle_Tech.png',
+  'Key Count': 'Icon_Playstyle_Keycount.png',
+  'Key Count+': 'Icon_Playstyle_KeycountPlus.png',
+  Feetdex: 'Icon_Playstyle_Feetdex.png',
+  'Feet Switch': 'Icon_Playstyle_Feetswitch.png',
+  '1 Key Limit': 'Icon_Limit_1.png',
+  '2 Key Limit': 'Icon_Limit_2.png',
+  '4 Key Limit': 'Icon_Limit_4.png',
+  '8 Key Limit': 'Icon_Limit_8.png',
+  '10 Key Limit': 'Icon_Limit_10.png',
+  '12 Key Limit': 'Icon_Limit_12.png',
+  '16 Key Limit': 'Icon_Limit_16.png',
+  'Overlay Allowed': 'Icon_Limit_Overlay.png',
+  '2-Hand Pseudos': 'Icon_Limit_2Hand.png',
+  'Onhand/Offhand Limit': 'Icon_Limit_Side.png',
+  'Variable Key Limit': 'Icon_Limit_Change.png',
+  'Judgement Limit': 'Icon_Judgment_Limit.png',
+  'HP Bar': 'Icon_Judgment_HP.png',
+  'Detailed Judgement': 'Icon_Judgment_Detail.png',
+  'Free Roam': 'Icon_Gimmick_Freeroam.png',
+  'Multi Track': 'Icon_Gimmick_Multi.png',
+  Math: 'Icon_Gimmick_Math.png',
+  RPG: 'Icon_Gimmick_RPG.png',
+  Memorization: 'Icon_Gimmick_Memory.png',
+  'Unorthodox Reading': 'Icon_Gimmick_Reading.png',
+  'Arrow Key': 'Icon_Gimmick_Arrow.png',
+  'Full VFX': 'Icon_VFX_FullVFX.png',
+  Camera: 'Icon_VFX_Cam.png',
+  Filters: 'Icon_VFX_Filter.png',
+  'Non-VFX': 'Icon_VFX_NoVFX.png',
+  Decorations: 'Icon_VFX_Deco.png',
+  'Low VFX': 'Icon_VFX_LowVFX.png',
+  Tiny: 'Icon_Time_Tiny.png',
+  '30+ Seconds': 'Icon_Time_30s.png',
+  '1+ Minute': 'Icon_Time_1m.png',
+  '2+ Minutes': 'Icon_Time_2m.png',
+  '3+ Minutes': 'Icon_Time_3m.png',
+  '5+ Minutes': 'Icon_Time_5m.png',
+  '7+ Minutes': 'Icon_Time_7m.png',
+  '10+ Minutes': 'Icon_Time_10m.png',
+  '15+ Minutes': 'Icon_Time_15m.png',
+  '20+ Minutes': 'Icon_Time_20m.png',
+  '30+ Minutes': 'Icon_Time_30m.png',
+  '45+ Minutes': 'Icon_Time_45m.png',
+  '1+ Hours': 'Icon_Time_1h.png',
+  '1.5+ Hours': 'Icon_Time_15h.png',
+  '2+ Hours': 'Icon_Time_2h.png',
+  Timeless: 'Icon_Time_Infinity.png',
+  'Youtube Stream': 'Icon_Mod_YSMod.png',
+  'Key Limiter': 'Icon_Mod_Keylimit.png',
+  DLC: 'Icon_DLC_DLC.png',
+  Hold: 'Icon_DLC_Hold.png',
+  'Multi Planet': 'Icon_DLC_MultiPlanet.png',
+  'Pure Perfect Basescore Increase': 'Icon_Misc_PurePerfect.png',
+  'Auto Tile': 'Icon_Misc_Auto.png',
+  'Basescore Edit': 'Icon_Misc_Basescore.png',
+};
+
+const TUF_BAND_COLORS = { P: '#00C8FF', G: '#F2A700', U: '#7B4FB2' } as const;
+
+export type TufDifficultyVisual = {
+  band: 'P' | 'G' | 'U';
+  background: string;
+  border: string;
+  text: '#FFFFFF' | '#172033';
+};
+
+function normalizedHex(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && /^#[0-9a-f]{6}$/i.test(trimmed) ? trimmed.toUpperCase() : null;
+}
+
+function darkenHex(value: string): string {
+  const channels = [1, 3, 5].map((offset) => Math.round(Number.parseInt(value.slice(offset, offset + 2), 16) * 0.76));
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`.toUpperCase();
+}
+
+export function tufDifficultyVisual(
+  difficulty: Pick<TufDifficulty, 'name' | 'type' | 'color'> | null | undefined,
+): TufDifficultyVisual | null {
+  const match = difficulty?.name.trim().toUpperCase().match(/^([PGU])(?:[1-9]|1\d|20)$/);
+  if (!match || (difficulty?.type.trim().toUpperCase() !== 'PGU' && difficulty?.type.trim() !== '')) return null;
+  const band = match[1] as TufDifficultyVisual['band'];
+  const background = normalizedHex(difficulty?.color) ?? TUF_BAND_COLORS[band];
+  const red = Number.parseInt(background.slice(1, 3), 16);
+  const green = Number.parseInt(background.slice(3, 5), 16);
+  const blue = Number.parseInt(background.slice(5, 7), 16);
+  const luminance = (red * 299 + green * 587 + blue * 114) / 1000;
+  return { band, background, border: darkenHex(background), text: luminance >= 155 ? '#172033' : '#FFFFFF' };
+}
+
+export function tufTagIconUrl(tagName: string): string | null {
+  const file = TUF_TAG_ICON_FILES[tagName.trim()];
+  return file ? `${TUF_TAG_ICON_BASE}/${file}` : null;
+}
+
+export function selectBestTufLevelPass(
+  passes: readonly TufLevelPass[],
+  playerId: number | null,
+): TufLevelPass | undefined {
+  if (playerId === null) return undefined;
+  return passes.filter((pass) => pass.playerId === playerId).sort((left, right) => (
+    right.scoreV2 - left.scoreV2
+    || right.accuracy - left.accuracy
+    || (right.impact ?? Number.NEGATIVE_INFINITY) - (left.impact ?? Number.NEGATIVE_INFINITY)
+    || right.id - left.id
+  ))[0];
+}
 
 export function tufHttpsUrl(value: string | null | undefined): string | null {
   if (!value?.trim()) return null;

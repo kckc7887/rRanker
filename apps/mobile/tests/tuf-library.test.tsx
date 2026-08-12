@@ -52,6 +52,7 @@ jest.mock('@/hooks/use-tuf', () => ({
     data: { level, rerateHistory: [] }, isLoading: false, isError: false, error: null,
     refetch: jest.fn(),
   }),
+  useTufLevelBestPass: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
   useTufVideoDetails: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
 }));
 jest.mock('@/hooks/use-user-library', () => ({

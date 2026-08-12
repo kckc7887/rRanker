@@ -2,8 +2,10 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
 import {
   TUF_PAGE_SIZE,
+  selectBestTufLevelPass,
   tufHttpsUrl,
   type TufLevelDetailResponse,
+  type TufLevelPass,
   type TufLevelPage,
   type TufLevelQuery,
   type TufPassPage,
@@ -164,6 +166,16 @@ export function useTufVideoDetails(videoLink: string | null | undefined) {
     enabled: normalized !== null,
     ...TUF_QUERY_OPTIONS,
   });
+}
+
+export function useTufLevelBestPass(levelId: number | null, playerId: number | null) {
+  const query = useQuery({
+    queryKey: ['tuf', 'level', levelId, 'passes'],
+    queryFn: (): Promise<TufLevelPass[]> => tufProvider.getLevelPasses(levelId!),
+    enabled: levelId !== null && playerId !== null,
+    ...TUF_QUERY_OPTIONS,
+  });
+  return { ...query, data: selectBestTufLevelPass(query.data ?? [], playerId) };
 }
 
 export function useTufLevel(levelId: number | null) {

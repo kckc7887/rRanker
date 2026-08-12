@@ -14,34 +14,34 @@ export function TufScoreCard({ pass, position }: { pass: TufPass; position?: num
     side={<View style={styles.side}>
       <Text style={[styles.sideLabel, { color: theme.textMuted }]}>Impact</Text>
       <Text style={[styles.impact, { color: theme.accent }]}>{impact}</Text>
-      <TufDifficultyBadge difficulty={presentation.difficulty} />
     </View>}>
-    <View style={styles.metrics}>
-      <Text style={[styles.scoreLabel, { color: theme.textMuted }]}>Score V2</Text>
+    <View style={styles.scoreLine}>
+      <Text style={[styles.scoreLabel, { color: theme.textMuted }]}>Score</Text>
       <Text style={[styles.score, { color: theme.text }]}>{presentation.primaryMetric.text}</Text>
-      <Text style={[styles.metric, { color: theme.textMuted }]}>XACC {formatTufAccuracy(pass.accuracy)} · {pass.speed.toFixed(2)}x</Text>
-    </View>
-    <View style={styles.badges}>{presentation.achievementRows.flat().map((badge) => (
-      <View key={badge.key} style={[styles.badge, { borderColor: theme.border }]}>
-        <Text style={[styles.badgeText, { color: theme.textMuted }]}>{badge.label}{badge.value ? ` ${badge.value}` : ''}</Text>
+      <View style={[styles.metricChip, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+        <Text style={[styles.metricChipText, { color: theme.textSecondary }]}>{formatTufAccuracy(pass.accuracy)}</Text>
       </View>
-    ))}</View>
+      <View style={[styles.metricChip, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+        <Text style={[styles.metricChipText, { color: theme.textSecondary }]}>{pass.speed.toFixed(2)}×</Text>
+      </View>
+    </View>
+    <TufDifficultyBadge difficulty={presentation.difficulty} display="label"
+      source={pass.level.difficulty} style={styles.difficulty} />
   </GameScoreCard>;
 }
 
 const styles = StyleSheet.create({
-  card: { minHeight: 112, borderRadius: 14, padding: 14, flexDirection: 'row', gap: 12 },
-  main: { flex: 1, gap: 7 },
+  card: { minHeight: 102, borderRadius: 14, padding: 14, flexDirection: 'row', gap: 12 },
+  main: { flex: 1, minWidth: 0, gap: 9 },
   title: { fontSize: 16, fontWeight: '800' },
   pressed: { opacity: 0.76 },
-  metrics: { gap: 1 },
+  scoreLine: { minHeight: 27, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   scoreLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.45 },
   score: { fontSize: 21, lineHeight: 25, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  metric: { fontSize: 12 },
+  metricChip: { minHeight: 22, borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
+  metricChipText: { fontSize: 10, lineHeight: 14, fontWeight: '800', fontVariant: ['tabular-nums'] },
   impact: { fontSize: 19, lineHeight: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  side: { minWidth: 72, alignItems: 'flex-end', gap: 3 },
+  side: { minWidth: 68, alignItems: 'center', justifyContent: 'center', gap: 3 },
   sideLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.35 },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  badge: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingHorizontal: 5, paddingVertical: 2 },
-  badgeText: { fontSize: 9, fontWeight: '700' },
+  difficulty: { alignSelf: 'flex-start' },
 });

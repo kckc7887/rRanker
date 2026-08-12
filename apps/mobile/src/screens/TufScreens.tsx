@@ -6,9 +6,9 @@ import {
   ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput,
   useWindowDimensions, View, type ImageSourcePropType,
 } from 'react-native';
+import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
-import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { Card } from '@/components/Card';
@@ -22,12 +22,29 @@ import {
 import { QueryStateView } from '@/components/QueryStateView';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
-import { tufMediaImageCandidates, type TufLevel, type TufLevelSort, type TufPass, type TufPassSort, type TufSortOrder } from '@/domain/tuf';
+import {
+  tufMediaImageCandidates,
+  tufTagIconUrl,
+  type TufJudgements,
+  type TufLevel,
+  type TufLevelSort,
+  type TufPass,
+  type TufPassSort,
+  type TufSortOrder,
+} from '@/domain/tuf';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentTufChart } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { useTufDifficulties, useTufLevel, useTufLevelSearch, useTufPasses, useTufProfile, useTufVideoDetails } from '@/hooks/use-tuf';
+import {
+  useTufDifficulties,
+  useTufLevel,
+  useTufLevelBestPass,
+  useTufLevelSearch,
+  useTufPasses,
+  useTufProfile,
+  useTufVideoDetails,
+} from '@/hooks/use-tuf';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -189,11 +206,6 @@ export function TufSearchScreen() {
   </View>;
 }
 
-function safeHttps(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try { const parsed = new URL(url); return parsed.protocol === 'https:' ? parsed.toString() : null; } catch { return null; }
-}
-
 function TufLevelHero({ level }: { level: TufLevel }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
@@ -210,10 +222,9 @@ function TufLevelHero({ level }: { level: TufLevel }) {
   useEffect(() => setCandidateIndex(0), [candidates]);
   const candidate = candidates[candidateIndex];
   const mediaActive = candidateIndex < mediaCandidates.length;
-  const difficulty = presentTufChart(level).difficulty;
 
-  return <View testID="tuf-level-hero" style={[styles.hero, { width, height: Math.round(width * 9 / 16) }]}>
-    {mediaActive && candidate ? <Image accessibilityLabel={`关卡头图 ${level.song}`} blurRadius={3}
+  return <View testID="tuf-level-hero" style={[styles.hero, { width, height: width }]}>
+    {mediaActive && candidate ? <Image accessibilityLabel={`关卡头图 ${level.song}`}
       cachePolicy="disk" contentFit="cover" onError={() => setCandidateIndex((index) => index + 1)}
       source={candidate} style={StyleSheet.absoluteFillObject} transition={120} /> : (
       <LinearGradient colors={theme.dark ? ['#173346', '#3C416A', '#532A2C'] : ['#DDF6FF', '#E5E7F7', '#FFE2DF']}
@@ -226,12 +237,59 @@ function TufLevelHero({ level }: { level: TufLevel }) {
     <LinearGradient pointerEvents="none" colors={['rgba(10,18,28,0.02)', 'rgba(10,18,28,0.84)']}
       locations={[0.15, 1]} style={StyleSheet.absoluteFillObject} />
     <View style={styles.heroCopy}>
-      <View style={styles.heroMetaRow}>
-        <Text style={styles.heroId}>TUF #{level.id}</Text>
-        <TufDifficultyBadge difficulty={difficulty} />
-      </View>
-      <Text numberOfLines={3} style={styles.heroTitle}>{level.song}</Text>
-      <Text numberOfLines={1} style={styles.heroArtist}>{level.artist || '艺术家未知'}</Text>
+      <Text numberOfLines={1} style={styles.heroId}>#{level.id}</Text>
+      <AutoScrollText contentContainerStyle={styles.heroScrollContent} style={styles.heroScroll}
+        testID="tuf-level-title-scroll" text={level.song} textStyle={styles.heroTitle} />
+      <AutoScrollText contentContainerStyle={styles.heroScrollContent} style={styles.heroScroll}
+        testID="tuf-level-artist-scroll" text={level.artist || '艺术家未知'} textStyle={styles.heroArtist} />
+    </View>
+  </View>;
+}
+
+const TUF_JUDGEMENT_ROWS = [
+  [
+    { key: 'ePerfect', label: '精快!', color: '#F2DC4B' },
+    { key: 'perfect', label: '完美!', color: '#45D483' },
+    { key: 'lPerfect', label: '稍慢!', color: '#F2DC4B' },
+  ],
+  [
+    { key: 'earlyDouble', label: '太快!!', color: '#FF314A' },
+    { key: 'earlySingle', label: '太快!', color: '#FF6547' },
+    { key: 'lateSingle', label: '太慢!', color: '#FF6547' },
+    { key: 'lateDouble', label: '太慢!!', color: '#FF314A' },
+  ],
+] as const satisfies readonly (readonly { key: keyof TufJudgements; label: string; color: string }[])[];
+
+function TufUpstreamTag({ name }: { name: string }) {
+  const theme = useAppTheme();
+  const icon = tufTagIconUrl(name);
+  const [iconFailed, setIconFailed] = useState(false);
+  useEffect(() => setIconFailed(false), [icon]);
+  return <View accessibilityLabel={`标签 ${name}`}
+    style={[styles.upstreamTag, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+    {icon && !iconFailed ? <Image accessibilityLabel={`${name} 标签图标`} cachePolicy="disk" contentFit="contain"
+      onError={() => setIconFailed(true)} source={icon} style={styles.upstreamTagIcon} /> : null}
+    <Text numberOfLines={1} style={[styles.upstreamTagText, { color: theme.textSecondary }]}>{name}</Text>
+  </View>;
+}
+
+function TufJudgementTable({ judgements, total }: { judgements: TufJudgements | null | undefined; total: number | null }) {
+  const theme = useAppTheme();
+  return <View accessibilityLabel="TUF 判定详情" style={[styles.judgementPanel, {
+    backgroundColor: theme.dark ? '#181638' : theme.surfaceMuted,
+    borderColor: theme.border,
+  }]}>
+    <View style={styles.judgementMatrix}>{TUF_JUDGEMENT_ROWS.map((row, rowIndex) => (
+      <View key={rowIndex} style={styles.judgementRow}>{row.map((item) => (
+        <View key={item.key} style={styles.judgementCell} testID={`tuf-judgement-${item.key}`}>
+          <Text numberOfLines={1} style={[styles.judgementLabel, { color: theme.dark ? '#9B98B7' : theme.textMuted }]}>{item.label}</Text>
+          <Text style={[styles.judgementValue, { color: item.color }]}>{judgements?.[item.key] ?? '—'}</Text>
+        </View>
+      ))}</View>
+    ))}</View>
+    <View style={[styles.totalCell, { borderLeftColor: theme.dark ? 'rgba(255,255,255,0.12)' : theme.border }]}>
+      <Text style={[styles.totalLabel, { color: theme.dark ? '#9B98B7' : theme.textMuted }]}>总物量</Text>
+      <Text style={[styles.totalValue, { color: theme.text }]}>{total ?? '—'}</Text>
     </View>
   </View>;
 }
@@ -239,9 +297,12 @@ function TufLevelHero({ level }: { level: TufLevel }) {
 export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
+  const playerId = useActiveTufPlayerId();
   const numericId = /^\d+$/.test(levelId) ? Number(levelId) : null;
   const query = useTufLevel(numericId);
   const level = query.data?.level;
+  const scoreQuery = useTufLevelBestPass(level?.id ?? null, playerId);
+  const bestPass = scoreQuery.data;
   const chart = level ? presentTufChart(level) : null;
   const library = useUserLibrary();
   const songItem = level ? library.data?.find((item) => item.key === library.songKey(level.id)) : undefined;
@@ -251,28 +312,29 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
     ? () => void library.setSongFavorite(String(level.id), !favorite)
     : undefined;
   const localTags = level ? (songItem?.kind === 'song' ? songItem.tags : []) : [];
-  const tags = level?.tags.map((tag) => typeof tag === 'string' ? tag : tag.name).join('、') || '—';
+  const tags = level?.tags.map((tag) => typeof tag === 'string' ? tag : tag.name) ?? [];
   const credits = level?.levelCredits.map((credit) => `${credit.creator.name}（${credit.role}）`).join('、') || '—';
   const metadata: SongMetadataItem[] = level ? [
-    { key: 'artist', label: '艺术家', value: level.artist || '—', flex: 1 },
     { key: 'bpm', label: 'BPM', value: level.bpm == null ? '—' : String(level.bpm), flex: 1 },
     { key: 'duration', label: '时长', value: level.levelLengthInMs == null ? '—' : `${(level.levelLengthInMs / 1000).toFixed(1)} 秒`, flex: 1 },
-    { key: 'tiles', label: '物量', value: String(level.tilecount ?? level.autoTileCount ?? '—'), flex: 1 },
-    { key: 'credits', label: '谱师 / VFX', value: credits, flex: 2 },
-    { key: 'tags', label: '标签', value: tags, flex: 2 },
-    { key: 'curations', label: '策展', value: level.curations.length ? `${level.curations.length} 条` : '—', flex: 1 },
-    { key: 'stats', label: '社区统计', value: [
-      level.clears == null ? null : `通关 ${level.clears}`,
-      level.uniqueClears == null ? null : `玩家 ${level.uniqueClears}`,
-      level.likes == null ? null : `喜欢 ${level.likes}`,
-      level.downloadCount == null ? null : `下载 ${level.downloadCount}`,
-    ].filter(Boolean).join(' · ') || (level.stats ? JSON.stringify(level.stats) : '—'), flex: 2 },
   ] : [];
-  const links = level ? [
-    ['TUF 关卡页', `https://tuforums.com/levels/${level.id}`],
-    ['谱面下载', safeHttps(level.dlLink ?? level.downloadLink)], ['创意工坊', safeHttps(level.workshopLink)],
-    ['视频', safeHttps(level.videoLink)],
-  ].filter((item): item is [string, string] => typeof item[1] === 'string') : [];
+  const communityStats = level ? [
+    level.clears == null ? null : `通关 ${level.clears}`,
+    level.uniqueClears == null ? null : `玩家 ${level.uniqueClears}`,
+    level.likes == null ? null : `喜欢 ${level.likes}`,
+    level.downloadCount == null ? null : `下载 ${level.downloadCount}`,
+  ].filter(Boolean).join(' · ') || (level.stats ? JSON.stringify(level.stats) : '—') : '—';
+  const difficultyName = level?.difficulty?.name ?? 'Unranked';
+  const difficultyMatch = difficultyName.trim().toUpperCase().match(/^([PGU])(\d{1,2})$/);
+  const difficultyNumber = difficultyMatch?.[2] ?? '—';
+  const baseScore = level?.baseScore ?? level?.difficulty?.baseScore;
+  const judgementValues = bestPass?.judgements
+    ? TUF_JUDGEMENT_ROWS.flatMap((row) => row.map((item) => bestPass.judgements?.[item.key]))
+    : [];
+  const judgementTotal = judgementValues.length > 0 && judgementValues.every((value) => typeof value === 'number')
+    ? judgementValues.reduce<number>((sum, value) => sum + (value ?? 0), 0)
+    : null;
+  const total = level?.tilecount ?? level?.autoTileCount ?? judgementTotal;
   return <>
     <SongDetailChrome
       topInset={insets.top + 8}
@@ -299,32 +361,89 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
       renderData={() => <ScrollView contentInsetAdjustmentBehavior="automatic" style={[styles.page, { backgroundColor: theme.background }]}
         contentContainerStyle={styles.detail}>
         <TufLevelHero level={level!} />
+        <SongMetadataTable accessibilityLabel="TUF 关卡信息" items={metadata} testIDPrefix="tuf-level-metadata"
+          interaction="platform-detail" style={styles.metadata} cellRootStyle={styles.metadataCellRoot}
+          cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel} valueStyle={styles.metadataValue}
+          valueBlockStyle={styles.metadataBlock} measureStyle={styles.metadataMeasure} />
         <View style={styles.detailBody}>
-          <SongMetadataTable accessibilityLabel="TUF 关卡信息" items={metadata} testIDPrefix="tuf-level-metadata"
-            style={styles.metadata} cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel}
-            valueStyle={styles.metadataValue} valueBlockStyle={styles.metadataBlock} measureStyle={styles.metadataMeasure} />
           <GameChartResultCard style={[styles.chartCard, { backgroundColor: theme.surface, borderColor: theme.border }]}
             testID="tuf-level-chart" accessibilityLabel={`难度 ${chart!.difficulty.label}`}>
             <View style={styles.chartHeader}>
-              <TufDifficultyBadge difficulty={chart!.difficulty} />
-              <Text style={[styles.chartCharter, { color: theme.textMuted }]}>谱师 / VFX：{chart!.charter}</Text>
+              <TufDifficultyBadge difficulty={chart!.difficulty} display="band" source={level!.difficulty} />
+              <View style={styles.levelBlock}>
+                <Text style={[styles.levelNumber, { color: theme.text }]}>{difficultyNumber}</Text>
+                <Text style={[styles.baseScore, { color: theme.textMuted }]}>{baseScore == null ? '—' : baseScore.toFixed(2)}</Text>
+              </View>
             </View>
-            {chart!.notes.map((group) => <GameNoteTable key={group.key} mode="cells" group={group}
-              containerStyle={styles.noteTable} itemStyle={[styles.noteItem, { borderColor: theme.border }]}
-              labelStyle={[styles.noteLabel, { color: theme.textMuted }]} valueStyle={[styles.noteValue, { color: theme.text }]} />)}
+            <View style={styles.resultBlock}>
+              <Text style={[styles.resultLabel, { color: theme.textMuted }]}>Score</Text>
+              <View style={styles.scoreValueRow}>
+                <Text style={[styles.resultScore, { color: theme.text }]}>{bestPass ? bestPass.scoreV2.toFixed(2) : '—'}</Text>
+                {scoreQuery.isLoading ? <ActivityIndicator size="small" /> : null}
+              </View>
+              {bestPass?.isWorldsFirst || bestPass?.isWorldsFirstPP ? <View style={styles.achievementRow}>
+                {bestPass.isWorldsFirst ? <View testID="tuf-detail-wf" style={[styles.achievementBadge, styles.wfBadge]}>
+                  <Text style={styles.achievementText}>WF</Text>
+                </View> : null}
+                {bestPass.isWorldsFirstPP ? <View testID="tuf-detail-pp" style={[styles.achievementBadge, styles.ppBadge]}>
+                  <Text style={styles.achievementText}>PP</Text>
+                </View> : null}
+              </View> : null}
+              {scoreQuery.isError ? <Pressable accessibilityRole="button" accessibilityLabel="重新读取关卡成绩"
+                onPress={() => void scoreQuery.refetch()}>
+                <Text style={[styles.scoreError, { color: theme.accent }]}>成绩读取失败，点击重试</Text>
+              </Pressable> : null}
+            </View>
+            <View style={styles.statRow}>
+              <View style={styles.statCell}>
+                <Text style={[styles.statLabel, { color: theme.textMuted }]}>XACC</Text>
+                <Text style={[styles.statValue, { color: theme.text }]}>{bestPass ? `${Math.abs(bestPass.accuracy) <= 1 ? (bestPass.accuracy * 100).toFixed(2) : bestPass.accuracy.toFixed(2)}%` : '—'}</Text>
+              </View>
+              <View style={styles.statCell}>
+                <Text style={[styles.statLabel, { color: theme.textMuted }]}>倍速</Text>
+                <Text style={[styles.statValue, { color: theme.text }]}>{bestPass ? `${bestPass.speed.toFixed(2)}×` : '—'}</Text>
+              </View>
+            </View>
+            <View style={[styles.divider, { backgroundColor: theme.border }]} />
+            <View style={styles.charterBlock}>
+              <Text style={[styles.charterLabel, { color: theme.textMuted }]}>谱师 / VFX</Text>
+              <Text style={[styles.charterValue, { color: theme.text }]}>{credits}</Text>
+            </View>
+            <View style={styles.tagsBlock}>
+              <Text style={[styles.charterLabel, { color: theme.textMuted }]}>标签</Text>
+              {tags.length ? <View style={styles.upstreamTags}>{tags.map((tag) => <TufUpstreamTag key={tag} name={tag} />)}</View>
+                : <Text style={[styles.emptyInline, { color: theme.textMuted }]}>—</Text>}
+            </View>
+            <TufJudgementTable judgements={bestPass?.judgements} total={total ?? null} />
           </GameChartResultCard>
-          <View style={styles.links}>{links.map(([label, url]) => <Pressable key={label} accessibilityRole="link"
-            onPress={() => void Linking.openURL(url)} style={[styles.link, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            <Text style={[styles.linkText, { color: theme.accent }]}>{label}</Text>
-          </Pressable>)}</View>
-          <Card>
+          <Card style={styles.songInfoCard} testID="tuf-level-song-info">
+            <Text style={[styles.songInfoTitle, { color: theme.text }]}>歌曲信息</Text>
+            <View style={[styles.infoRow, { borderTopColor: theme.border }]}>
+              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>策展</Text>
+              <Text style={[styles.infoValue, { color: theme.text }]}>{level!.curations.length ? `${level!.curations.length} 条` : '—'}</Text>
+            </View>
+            <View style={[styles.infoRow, { borderTopColor: theme.border }]}>
+              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>社区统计</Text>
+              <Text style={[styles.infoValue, { color: theme.text }]}>{communityStats}</Text>
+            </View>
+            {level!.description ? <View style={[styles.infoRow, { borderTopColor: theme.border }]}>
+              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>说明</Text>
+              <Text style={[styles.infoValue, { color: theme.text }]}>{level!.description}</Text>
+            </View> : null}
+            <Pressable accessibilityRole="link" accessibilityLabel="打开 TUF 关卡页"
+              onPress={() => void Linking.openURL(`https://tuforums.com/levels/${level!.id}`)}
+              style={[styles.infoLink, { borderTopColor: theme.border }]}>
+              <Text style={[styles.infoLabel, { color: theme.textMuted }]}>来源</Text>
+              <Text style={[styles.linkText, { color: theme.accent }]}>查看 TUF 关卡页</Text>
+            </Pressable>
+          </Card>
+          <Card testID="tuf-level-personal-tags">
             <TagEditor testID="tuf-level-local-tags" tags={localTags}
               presets={library.tagPresets ?? []}
               historyTags={buildTagHistory(library.data ?? [], library.songKey(level!.id), library.tagPresets ?? [])}
               disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
               onChange={(tags) => library.setTags({ kind: 'song', songId: String(level!.id) }, tags)} />
           </Card>
-          {level!.description ? <Text style={[styles.description, { color: theme.textMuted }]}>{level!.description}</Text> : null}
         </View>
       </ScrollView>} />
   </>;
@@ -337,24 +456,73 @@ const styles = StyleSheet.create({
   searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   searchInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 }, resultCount: { fontSize: 11 },
   detail: { paddingBottom: 40 },
-  detailBody: { padding: 16, gap: 12 },
+  detailBody: { paddingHorizontal: 20, paddingTop: 16, gap: 14 },
   hero: { position: 'relative', overflow: 'hidden', backgroundColor: '#253845' },
-  heroFallbackImage: { position: 'absolute', width: '42%', height: '64%', alignSelf: 'center', top: '18%', opacity: 0.88 },
-  heroCopy: { position: 'absolute', left: 18, right: 18, bottom: 18, gap: 4 },
-  heroMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  heroId: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  heroTitle: { color: '#FFFFFF', fontSize: 27, lineHeight: 32, fontWeight: '900', letterSpacing: -0.45, textShadowColor: 'rgba(0,0,0,0.36)', textShadowRadius: 8 },
-  heroArtist: { color: 'rgba(255,255,255,0.9)', fontSize: 14, lineHeight: 19, fontWeight: '600' },
+  heroFallbackImage: { position: 'absolute', width: '44%', height: '44%', alignSelf: 'center', top: '28%', opacity: 0.9 },
+  heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
+  heroScroll: { flexGrow: 0, overflow: 'hidden' },
+  heroScrollContent: { paddingRight: 20 },
+  heroId: { color: 'rgba(255,255,255,0.82)', fontSize: 13, fontWeight: '800', letterSpacing: 0.35 },
+  heroTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900', letterSpacing: -0.45, textShadowColor: 'rgba(0,0,0,0.36)', textShadowRadius: 8 },
+  heroArtist: { color: 'rgba(255,255,255,0.94)', fontSize: 15, lineHeight: 21, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.3)', textShadowRadius: 6 },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
   headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   headerFavoriteActive: {},
   headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
-  metadata: { borderRadius: 15, overflow: 'hidden', flexDirection: 'row', flexWrap: 'wrap' }, metadataCell: { minWidth: '48%', padding: 13 },
-  metadataLabel: { fontSize: 10 }, metadataValue: { fontSize: 13, fontWeight: '700' }, metadataBlock: {}, metadataMeasure: { position: 'absolute', opacity: 0 },
-  chartCard: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 15, padding: 15, gap: 9 },
-  chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  chartCharter: { flex: 1, fontSize: 12, textAlign: 'right' },
-  noteTable: { flexDirection: 'row', gap: 8 }, noteItem: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, padding: 8, minWidth: 72 }, noteLabel: { fontSize: 9 }, noteValue: { fontSize: 15, fontWeight: '800' },
-  links: { gap: 8 }, link: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 13 }, linkText: { fontWeight: '800' }, description: { lineHeight: 20 },
+  metadata: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 12 },
+  metadataCellRoot: { minWidth: 0 },
+  metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
+  metadataLabel: { fontSize: 10, fontWeight: '800' },
+  metadataValue: { fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center' },
+  metadataBlock: { position: 'relative', minWidth: 0, alignSelf: 'stretch' },
+  metadataMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
+  chartCard: {
+    borderWidth: 1, borderRadius: 24, padding: 18,
+    shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4,
+  },
+  chartHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  levelBlock: { alignItems: 'flex-end', paddingTop: 3 },
+  levelNumber: { fontSize: 32, lineHeight: 34, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  baseScore: { fontSize: 11, lineHeight: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  resultBlock: { alignItems: 'flex-start', gap: 3, marginTop: 22 },
+  resultLabel: { fontSize: 12, fontWeight: '700' },
+  scoreValueRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  resultScore: { fontSize: 34, lineHeight: 42, fontWeight: '900', letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
+  achievementRow: { minHeight: 27, marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  achievementBadge: { minWidth: 39, height: 25, borderRadius: 999, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9 },
+  wfBadge: { backgroundColor: '#247FC1' },
+  ppBadge: { backgroundColor: '#7B4FB2' },
+  achievementText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  scoreError: { marginTop: 4, fontSize: 11, lineHeight: 16, fontWeight: '700' },
+  statRow: { flexDirection: 'row', marginTop: 16, gap: 28 },
+  statCell: { gap: 2 },
+  statLabel: { fontSize: 11, fontWeight: '700' },
+  statValue: { fontSize: 18, lineHeight: 23, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
+  charterBlock: { gap: 4 },
+  charterLabel: { fontSize: 10, lineHeight: 14, fontWeight: '800', letterSpacing: 0.25 },
+  charterValue: { fontSize: 13, lineHeight: 19, fontWeight: '700' },
+  tagsBlock: { marginTop: 15, gap: 7 },
+  upstreamTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  upstreamTag: { maxWidth: '100%', minHeight: 28, borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  upstreamTagIcon: { width: 18, height: 18 },
+  upstreamTagText: { flexShrink: 1, fontSize: 10, lineHeight: 14, fontWeight: '800' },
+  emptyInline: { fontSize: 12, fontWeight: '700' },
+  judgementPanel: { minHeight: 118, marginTop: 13, borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 10, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  judgementMatrix: { flex: 1, gap: 9 },
+  judgementRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  judgementCell: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  judgementLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  judgementValue: { fontSize: 18, lineHeight: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  totalCell: { width: 66, borderLeftWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 5, paddingLeft: 8 },
+  totalLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  totalValue: { fontSize: 22, lineHeight: 27, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  songInfoCard: { padding: 0, overflow: 'hidden' },
+  songInfoTitle: { paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, lineHeight: 21, fontWeight: '900' },
+  infoRow: { minHeight: 46, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  infoLink: { minHeight: 46, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 16 },
+  infoLabel: { width: 58, fontSize: 11, lineHeight: 18, fontWeight: '800' },
+  infoValue: { flex: 1, fontSize: 12, lineHeight: 18, fontWeight: '700', textAlign: 'right' },
+  linkText: { flex: 1, fontSize: 12, lineHeight: 18, fontWeight: '800', textAlign: 'right' },
 });
