@@ -1,7 +1,8 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Dimensions, StyleSheet } from 'react-native';
+import { Dimensions, processColor, StyleSheet } from 'react-native';
 import type { TufLevel, TufLevelPass, TufPass, TufPlayer, TufVideoDetails } from '@/domain/tuf';
+import { BADGE_GOLD_BORDER_COLORS } from '@/features/best-image/best-image-badge-theme';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
 
 const mockPush = jest.fn();
@@ -137,10 +138,13 @@ describe('TUF screens', () => {
 
   it('changes server-side record sorting and requests the next page once', async () => {
     const screen = await render(<TufRecordsScreen />);
+    expect(screen.getByText('全部')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('展开筛选器'));
     await fireEvent.press(screen.getByLabelText('选择成绩排序'));
     await fireEvent.press(screen.getByLabelText('选择排序 XACC'));
     expect(mockUseTufPasses).toHaveBeenLastCalledWith(25, expect.objectContaining({ sortBy: 'xacc' }));
+    await fireEvent.press(screen.getByLabelText('收起筛选器'));
+    expect(screen.getByText('全部')).toBeTruthy();
     fireEvent(screen.getByTestId('tuf-records-results-list'), 'endReached');
     expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
   });
@@ -170,6 +174,37 @@ describe('TUF screens', () => {
     expect(mockUseTufPasses).toHaveBeenLastCalledWith(25, expect.objectContaining({ order: 'ASC' }));
   });
 
+  it('shares difficulty controls with catalog and filters complete records by range, special, WF and PP', async () => {
+    const p4 = pass(1, 'P4 WF');
+    p4.level = { ...p4.level, difficulty: { ...p4.level.difficulty!, name: 'P4' } };
+    p4.isWorldsFirst = true;
+    const g12 = pass(2, 'G12 PP');
+    g12.level = { ...g12.level, difficulty: { ...g12.level.difficulty!, name: 'G12' } };
+    g12.isWorldsFirstPP = true;
+    const special = pass(3, '特殊 WF PP');
+    special.level = { ...special.level, difficulty: { ...special.level.difficulty!, name: 'Unranked' } };
+    special.isWorldsFirst = true;
+    special.isWorldsFirstPP = true;
+    mockUseTufPasses.mockReturnValue(infinite([p4, g12, special], 'passes'));
+
+    const screen = await render(<TufRecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('展开筛选器'));
+    expect(screen.getByLabelText('最低难度')).toBeTruthy();
+    expect(screen.getByLabelText('最高难度')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('筛选难度 G'));
+    await fireEvent.changeText(screen.getByLabelText('最低难度'), '10');
+    await fireEvent.changeText(screen.getByLabelText('最高难度'), '15');
+    await fireEvent.press(screen.getByLabelText('筛选成就 PP'));
+    expect(screen.getByTestId('tuf-filter-pp-gradient').props.colors)
+      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
+    await fireEvent.press(screen.getByLabelText('包含特殊难度'));
+
+    expect(screen.getByText('G12 PP')).toBeTruthy();
+    expect(screen.queryByText('P4 WF')).toBeNull();
+    expect(screen.queryByText('特殊 WF PP')).toBeNull();
+    expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
   it('resets level search by query key and paginates without prefetching', async () => {
     const screen = await render(<TufSearchScreen />);
     expect(mockFetchNextPage).not.toHaveBeenCalled();
@@ -189,10 +224,17 @@ describe('TUF screens', () => {
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
       sort: 'DIFF', pguRange: 'G1,G20', specialDifficulties: ['Unranked', 'Marathon'],
     }));
+    await fireEvent.changeText(screen.getByLabelText('最低难度'), '5');
+    await fireEvent.changeText(screen.getByLabelText('最高难度'), '14');
+    expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
+      pguRange: 'G5,G14', specialDifficulties: ['Unranked', 'Marathon'],
+    }));
     await fireEvent.press(screen.getByLabelText('包含特殊难度'));
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
-      pguRange: 'G1,G20', specialDifficulties: undefined,
+      pguRange: 'G5,G14', specialDifficulties: undefined,
     }));
+    await fireEvent.press(screen.getByLabelText('收起筛选器'));
+    expect(screen.getByText('G 段 · 5~14 · 不含特殊')).toBeTruthy();
   });
 
   it('handles sparse detail fields and exposes HTTPS links only', async () => {
@@ -259,27 +301,44 @@ describe('TUF screens', () => {
     const screen = await render(<TufLevelDetailScreen levelId="11372" />);
     const heroStyle = StyleSheet.flatten(screen.getByTestId('tuf-level-hero').props.style);
     expect(heroStyle).toMatchObject({ width: 390, height: 390 });
-    expect(screen.getByTestId('tuf-level-title-scroll')).toBeTruthy();
-    expect(screen.getByTestId('tuf-level-artist-scroll')).toBeTruthy();
+    expect(screen.getByTestId('tuf-level-detail-scroll').props).toMatchObject({
+      automaticallyAdjustContentInsets: false,
+      contentInsetAdjustmentBehavior: 'never',
+    });
+    const titleScroll = screen.getByTestId('tuf-level-title-scroll');
+    const artistScroll = screen.getByTestId('tuf-level-artist-scroll');
+    await fireEvent(titleScroll, 'layout', { nativeEvent: { layout: { width: 180 } } });
+    await fireEvent(titleScroll, 'contentSizeChange', 520, 34);
+    await fireEvent(artistScroll, 'layout', { nativeEvent: { layout: { width: 180 } } });
+    await fireEvent(artistScroll, 'contentSizeChange', 420, 21);
+    expect(screen.getByTestId('tuf-level-title-scroll').props.scrollEnabled).toBe(true);
+    expect(screen.getByTestId('tuf-level-artist-scroll').props.scrollEnabled).toBe(true);
     expect(screen.getByText(mockLevelDetail.song).props.numberOfLines).toBe(1);
     expect(screen.getByText(mockLevelDetail.artist).props.numberOfLines).toBe(1);
     expect(screen.getByText('#11372')).toBeTruthy();
     expect(screen.queryByText('TUF #11372')).toBeNull();
   });
 
-  it('keeps list card achievements hidden and places a compact difficulty below the score row', async () => {
+  it('keeps judgements hidden, uses shared gold achievements and places compact difficulty below the score row', async () => {
     const scored = pass(1, '卡片层级');
     scored.isWorldsFirst = true;
+    scored.isWorldsFirstPP = true;
     scored.judgements = { perfect: 600 };
     mockUseTufPasses.mockReturnValue(infinite([scored], 'passes'));
     const screen = await render(<TufRecordsScreen />);
     expect(screen.getByText('Score')).toBeTruthy();
     expect(screen.getByText('99.50%')).toBeTruthy();
     expect(screen.getByText('1.00×')).toBeTruthy();
-    expect(screen.queryByText('WF')).toBeNull();
+    expect(screen.getByText('WF')).toBeTruthy();
+    expect(screen.getByText('PP')).toBeTruthy();
     expect(screen.queryByText('Perfect')).toBeNull();
+    expect(screen.getByTestId('tuf-pass-1-wf-gradient').props.colors)
+      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
+    expect(screen.getByTestId('tuf-pass-1-pp-gradient').props.colors)
+      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
     const difficulty = screen.getByLabelText('难度 G12，基准分 12.34');
     expect(StyleSheet.flatten(difficulty.props.style)).toMatchObject({ alignSelf: 'flex-start' });
+    expect(screen.getByTestId('tuf-pass-1').children).toHaveLength(1);
     const impactSide = screen.getByText('Impact').parent;
     expect(StyleSheet.flatten(impactSide?.props.style)).toMatchObject({ alignItems: 'center', justifyContent: 'center' });
   });
@@ -320,9 +379,18 @@ describe('TUF screens', () => {
     expect(screen.getByText('1.25×')).toBeTruthy();
     expect(screen.getByTestId('tuf-detail-wf')).toBeTruthy();
     expect(screen.getByTestId('tuf-detail-pp')).toBeTruthy();
+    expect(screen.getByTestId('tuf-detail-wf-gradient').props.colors)
+      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
+    expect(screen.getByTestId('tuf-detail-pp-gradient').props.colors)
+      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
+    expect(screen.getByTestId('tuf-level-chart').props.colors[0]).toBe(processColor('#F2A70038'));
     expect(screen.getByText('精快!')).toBeTruthy();
     expect(screen.getByText('太慢!!')).toBeTruthy();
-    expect(screen.getByText('600')).toBeTruthy();
+    const total = screen.getByText('600');
+    expect(total.props).toMatchObject({ adjustsFontSizeToFit: true, minimumFontScale: 0.65, numberOfLines: 1 });
+    expect(StyleSheet.flatten(screen.getByLabelText('TUF 判定详情').props.style)).not.toEqual(
+      expect.objectContaining({ backgroundColor: expect.anything(), borderWidth: expect.anything() }),
+    );
     const tagIcon = screen.getByLabelText('Full VFX 标签图标');
     expect(tagIcon.props.source).toContain('7a5b84eeea6fc0ce86d25da07d19595481a31d7e');
     await fireEvent(tagIcon, 'error');

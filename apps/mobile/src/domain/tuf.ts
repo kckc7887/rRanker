@@ -132,6 +132,14 @@ export type TufVideoDetails = z.infer<typeof TufVideoDetailsSchema>;
 export type TufPassSort = 'score' | 'speed' | 'date' | 'xacc' | 'difficulty' | 'impact';
 export type TufSortOrder = 'ASC' | 'DESC';
 export type TufLevelSort = 'RECENT' | 'DIFF' | 'CLEARS' | 'TOTAL_CLEARS' | 'LIKES' | 'BASESCORE' | 'BPM' | 'TILES' | 'TIME';
+export type TufDifficultyBand = 'all' | 'P' | 'G' | 'U';
+export type TufPassAchievementFilter = 'all' | 'wf' | 'pp';
+export type TufDifficultyFilter = {
+  band: TufDifficultyBand;
+  min: number;
+  max: number;
+  includeSpecial: boolean;
+};
 export type TufPassQuery = {
   offset: number;
   limit: number;
@@ -215,6 +223,48 @@ const TUF_TAG_ICON_FILES: Readonly<Record<string, string>> = {
   'Auto Tile': 'Icon_Misc_Auto.png',
   'Basescore Edit': 'Icon_Misc_Basescore.png',
 };
+
+function tufRangeValue(value: string, fallback: number): number {
+  const parsed = /^\d{1,2}$/.test(value.trim()) ? Number(value) : fallback;
+  return Math.min(20, Math.max(1, parsed));
+}
+
+export function tufDifficultyBounds(minValue: string, maxValue: string): { min: number; max: number } {
+  const first = tufRangeValue(minValue, 1);
+  const second = tufRangeValue(maxValue, 20);
+  return { min: Math.min(first, second), max: Math.max(first, second) };
+}
+
+export function tufPguRange(filter: Pick<TufDifficultyFilter, 'band' | 'min' | 'max'>): string {
+  const firstBand = filter.band === 'all' ? 'P' : filter.band;
+  const lastBand = filter.band === 'all' ? 'U' : filter.band;
+  return `${firstBand}${filter.min},${lastBand}${filter.max}`;
+}
+
+export function tufPassMatchesFilters(
+  pass: TufPass,
+  difficulty: TufDifficultyFilter,
+  achievement: TufPassAchievementFilter = 'all',
+): boolean {
+  if (achievement === 'wf' && !pass.isWorldsFirst) return false;
+  if (achievement === 'pp' && !pass.isWorldsFirstPP) return false;
+
+  const match = pass.level.difficulty?.name.trim().toUpperCase().match(/^([PGU])(\d{1,2})$/);
+  if (!match) return difficulty.includeSpecial;
+  const band = match[1] as Exclude<TufDifficultyBand, 'all'>;
+  const value = Number(match[2]);
+  return (difficulty.band === 'all' || difficulty.band === band)
+    && value >= difficulty.min
+    && value <= difficulty.max;
+}
+
+export function filterTufPasses(
+  passes: readonly TufPass[],
+  difficulty: TufDifficultyFilter,
+  achievement: TufPassAchievementFilter = 'all',
+): TufPass[] {
+  return passes.filter((pass) => tufPassMatchesFilters(pass, difficulty, achievement));
+}
 
 const TUF_BAND_COLORS = { P: '#00C8FF', G: '#F2A700', U: '#7B4FB2' } as const;
 
