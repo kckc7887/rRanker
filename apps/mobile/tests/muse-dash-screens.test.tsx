@@ -180,6 +180,7 @@ describe('Muse Dash screens', () => {
     useMuseDashCatalogFilter.getState().reset();
   });  it('orders the Best list by community rating (sum) descending with ACC-led cards', async () => {
     const screen = await render(<MuseDashBestScreen />);
+    expect(screen.getByLabelText('导出 B30 图片')).toBeTruthy();
     expect(screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel)[0])
       .toContain('Another Track');
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);

@@ -1,18 +1,24 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { router } from 'expo-router';
 import { useAppTheme } from '@/theme/app-theme';
 
-export function BestImageEntryButton({ label }: { label: string }) {
+export function BestImageEntryButton({
+  label,
+  accessibilityLabel = label,
+  testID,
+}: {
+  label: string;
+  accessibilityLabel?: string;
+  testID?: string;
+}) {
   const theme = useAppTheme();
-  return <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={() => router.push('/best-image')}
-    style={({ pressed }) => [styles.button, { backgroundColor: theme.accentSoft, borderColor: theme.accent }, pressed && styles.pressed]}>
-    <Ionicons color={theme.accent} name="image-outline" size={18} />
-    <Text style={[styles.text, { color: theme.accent }]}>{label}</Text>
+  return <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" onPress={() => router.push('/best-image')}
+    style={[styles.button, { backgroundColor: theme.accent }]} testID={testID}>
+    <Text style={styles.text}>{label}</Text>
   </Pressable>;
 }
 
 const styles = StyleSheet.create({
-  button: { minHeight: 44, marginBottom: 9, borderWidth: 1, borderRadius: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  text: { fontSize: 13, fontWeight: '800' }, pressed: { opacity: 0.7 },
+  button: { minHeight: 46, borderRadius: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#246BFD' },
+  text: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
 });
