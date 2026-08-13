@@ -52,6 +52,13 @@ const KYOU_TAGS = [
 ];
 
 describe('PhigrosFilterBar chapter picker', () => {
+  it('can stay expanded without rendering collapse controls', async () => {
+    const screen = await render(<PhigrosFilterBar {...baseProps} collapsible={false} collapsed />);
+    expect(screen.getByText('定数')).toBeTruthy();
+    expect(screen.queryByLabelText('展开筛选，当前 全部')).toBeNull();
+    expect(screen.queryByLabelText('收起筛选')).toBeNull();
+  });
+
   it('does not render the chapter row without versions', async () => {
     const screen = await render(<PhigrosFilterBar {...baseProps} />);
     expect(screen.queryByText('章节')).toBeNull();

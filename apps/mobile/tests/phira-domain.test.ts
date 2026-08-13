@@ -52,6 +52,8 @@ describe('Phira domain contracts', () => {
   it('filters constant, ACC, grade and XING without relying on difficulty names', () => {
     const item = { chart, record: { id: 1, chart: chart.id, score: 999_000, accuracy: .999, perfect: 99, good: 1, bad: 0, miss: 0, fullCombo: true, best: true, created: null }, poolRks: null, queriedAt: '2026-08-13T00:00:00.000Z' };
     expect(phiraRecordXing(item)).toBe('good');
+    expect(presentPhiraScore(item).achievementRows.flat().find((badge) => badge.key === 'xing'))
+      .toMatchObject({ label: 'XING-GOOD', tone: 'xing-good' });
     expect(filterPhiraBests([item], { keyword: 'test', constantMin: '15', constantMax: '16', accuracyMin: '99', accuracyMax: '100', rank: 'fc', xing: 'good', sort: 'score' })).toEqual([item]);
   });
 

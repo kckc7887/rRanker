@@ -1,5 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { StyleSheet } from 'react-native';
+import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
 
 const mockRefetch = jest.fn(async () => ({ data: undefined }));
@@ -17,8 +19,13 @@ const mockBest = {
 };
 let mockBests: Record<string, typeof mockBest> = {};
 let mockCatalogCharts: typeof mockChart[] = [];
+let mockChromeProps: {
+  topInset: number;
+  backStyle: (pressed: boolean) => object[];
+  favoriteStyle?: (pressed: boolean) => object[];
+} | null = null;
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
+jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: jest.fn(), back: jest.fn() } }));
 jest.mock('expo-image', () => ({ Image: (props: object) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props} />; } }));
 jest.mock('expo-linear-gradient', () => ({ LinearGradient: ({ children, ...props }: { children?: React.ReactNode }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props}>{children}</RN.View>; } }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -45,18 +52,20 @@ jest.mock('@/hooks/use-phira', () => ({
 }));
 jest.mock('@/components/SourceStatus', () => ({ SourceStatus: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>数据状态</RN.Text>; } }));
 jest.mock('@/components/TagEditor', () => ({ TagEditor: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>本地标签</RN.Text>; } }));
-jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
+jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: (props: typeof mockChromeProps) => { mockChromeProps = props; return null; } }));
 jest.mock('@/components/phigros/PhigrosScoreValue', () => ({ PhigrosScoreValue: ({ score }: { score: number }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{score}</RN.Text>; } }));
 jest.mock('@/components/phigros/PhigrosRateBadge', () => ({ PhigrosRateBadge: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>FC</RN.Text>; }, resolvePhigrosRate: () => 'v' }));
+jest.mock('@/components/phigros/PhigrosXingBadge', () => ({ PhigrosXingBadge: ({ kind }: { kind: string }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{`XING-${kind.toUpperCase()}`}</RN.Text>; } }));
 
 describe('Phira page contracts', () => {
-  beforeEach(() => { mockBests = {}; mockCatalogCharts = []; jest.clearAllMocks(); });
+  beforeEach(() => { mockBests = {}; mockCatalogCharts = []; mockChromeProps = null; jest.clearAllMocks(); });
 
   it('shows Best20 and uses the upstream full difficulty name', async () => {
     mockBests = { '38294': mockBest };
     const screen = await render(<PhiraBestScreen />);
     expect(screen.getByText('Best20')).toBeTruthy();
     expect(screen.getByText('AT Lv.16')).toBeTruthy();
+    expect(screen.getByText('XING-GOOD')).toBeTruthy();
     await screen.unmount();
   });
 
@@ -99,10 +108,25 @@ describe('Phira page contracts', () => {
     expect(screen.getByText('Click')).toBeTruthy();
     expect(screen.getAllByText('总计')).toHaveLength(1);
     expect(screen.getByText('Perfect')).toBeTruthy();
+    expect(screen.getByText('XING-GOOD')).toBeTruthy();
+    expect(screen.getByTestId('phira-song-title-scroll')).toBeTruthy();
+    expect(StyleSheet.flatten(mockChromeProps?.backStyle(false))).toMatchObject({ left: 8, top: 0 });
+    expect(StyleSheet.flatten(mockChromeProps?.favoriteStyle?.(false))).toMatchObject({ right: 8, top: 0 });
     expect(screen.getByText('评分：4.50 / 5（10 票）')).toBeTruthy();
     expect(screen.getByText('本地标签')).toBeTruthy();
     expect(screen.queryByText(/练习清单/)).toBeNull();
     expect(screen.queryByText(/难度标签/)).toBeNull();
+    await screen.unmount();
+  });
+
+  it('keeps the random-song filter expanded without hint or collapse controls', async () => {
+    mockBests = { '38294': mockBest };
+    const screen = await render(<PhiraRandomChartsScreen />);
+    expect(screen.getByTestId('random-charts-filter')).toBeTruthy();
+    expect(screen.getByText('定数')).toBeTruthy();
+    expect(screen.queryByText(/沿用/)).toBeNull();
+    expect(screen.queryByLabelText(/展开筛选/)).toBeNull();
+    expect(screen.queryByLabelText('收起筛选')).toBeNull();
     await screen.unmount();
   });
 });
