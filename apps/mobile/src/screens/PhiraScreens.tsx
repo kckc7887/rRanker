@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
@@ -18,7 +18,7 @@ import { PHIGROS_SONG_DETAIL_STYLES as detailStyles } from '@/components/phigros
 import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
 import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
 import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
-import { filterPhiraBests, filterPhiraCharts, type PhiraCatalogSort } from '@/domain/phira-filters';
+import { filterPhiraBests, filterPhiraCharts, type PhiraCatalogSort, type PhiraScoreSort } from '@/domain/phira-filters';
 import { formatPhiraAccuracy, formatPhiraRating, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
@@ -32,6 +32,16 @@ import { useAppTheme } from '@/theme/app-theme';
 
 function usePlayerId() { return phiraPlayerIdFromAccountId(useSession((state) => state.activeAccountId)); }
 const actualBests = (items: Record<string, PhiraQueriedBest> | undefined) => Object.values(items ?? {}).filter((item) => item.record !== null);
+const PHIRA_SCORE_SORT_OPTIONS = [
+  { value: 'score', label: 'Score' }, { value: 'acc', label: 'ACC' }, { value: 'constant', label: '定数' },
+] as const;
+const PHIRA_CATALOG_STATUS_OPTIONS = [
+  { value: 'ranked', label: '上架' }, { value: 'special', label: '特殊' }, { value: 'unstable', label: '未上架' },
+] as const;
+const PHIRA_CATALOG_SORT_OPTIONS = [
+  { value: 'updated', label: '最近更新' }, { value: 'constant-desc', label: '定数降序' },
+  { value: 'constant-asc', label: '定数升序' }, { value: 'name', label: '名称' },
+] as const;
 
 function Search({ value, onChangeText, placeholder }: { value: string; onChangeText: (value: string) => void; placeholder: string }) {
   const theme = useAppTheme();
@@ -71,8 +81,11 @@ export function PhiraRecordsScreen() {
       rank={filter.rank} xing={filter.xing} onConstantMinChange={filter.setConstantMin}
       onConstantMaxChange={filter.setConstantMax} onAccuracyMinChange={filter.setAccuracyMin}
       onAccuracyMaxChange={filter.setAccuracyMax} onRankChange={filter.setRank}
-      onXingChange={filter.setXing} onReset={filter.clearFilters} />
-    <View style={[styles.filters, { backgroundColor: theme.surface }]}>{(['score', 'acc', 'constant'] as const).map((value) => <Pressable key={value} onPress={() => filter.setSort(value)} style={[styles.chip, { borderColor: filter.sort === value ? theme.accent : theme.border }]}><Text style={{ color: filter.sort === value ? theme.accent : theme.textSecondary }}>{value === 'score' ? 'Score' : value === 'acc' ? 'ACC' : '定数'}</Text></Pressable>)}</View></>;
+      onXingChange={filter.setXing} selectRows={[{
+        id: 'sort', label: '排序', value: filter.sort, options: PHIRA_SCORE_SORT_OPTIONS,
+        accessibilityLabel: '选择成绩排序', optionAccessibilityPrefix: '选择成绩排序',
+        onChange: (value) => filter.setSort(value as PhiraScoreSort),
+      }]} onReset={filter.clearFilters} /></>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}><RecordsListPage beforeList={controls}
     isLoading={player.isLoading || query.isLoading} isError={player.isError || query.isError} error={player.error ?? query.error} onRetry={() => void retry()} isEmpty={!player.isLoading && !query.isLoading && items.length === 0}
     emptyText="查询过歌曲后，最佳成绩会显示在这里" data={items.length ? items : undefined}
@@ -84,15 +97,19 @@ export function PhiraCatalogScreen() {
   const [collapsed, setCollapsed] = useState(true); const [constantMin, setConstantMin] = useState(''); const [constantMax, setConstantMax] = useState(''); const [sort, setSort] = useState<PhiraCatalogSort>('updated');
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
   const charts = useMemo(() => filterPhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? [], constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
-  const controls = <><Search value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面" /><View style={[styles.filters, { backgroundColor: theme.surface }]}>
-    {(['ranked', 'special', 'unstable'] as const).map((value) => <Pressable accessibilityLabel={`谱面状态 ${PHIRA_STATUS_LABELS[value]}`} accessibilityState={{ selected: status === value }} key={value} onPress={() => setStatus(value)} style={[styles.chip, { borderColor: status === value ? theme.accent : theme.border }]}><Text style={{ color: status === value ? theme.accent : theme.textSecondary }}>{PHIRA_STATUS_LABELS[value]}</Text></Pressable>)}</View>
+  const controls = <><Search value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面" />
     <PhigrosFilterBar showLevel={false} level="all" onLevelChange={() => undefined} collapsed={collapsed}
       constantMin={constantMin} constantMax={constantMax} onCollapsedChange={setCollapsed}
       onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-      onReset={() => { setConstantMin(''); setConstantMax(''); }} />
-    <View style={[styles.filters, { backgroundColor: theme.surface }]}>{([
-      ['updated', '最近更新'], ['constant-desc', '定数降序'], ['constant-asc', '定数升序'], ['name', '名称'],
-    ] as const).map(([value, label]) => <Pressable key={value} onPress={() => setSort(value)} style={[styles.chip, { borderColor: sort === value ? theme.accent : theme.border }]}><Text style={{ color: sort === value ? theme.accent : theme.textSecondary }}>{label}</Text></Pressable>)}</View></>;
+      selectRows={[
+        { id: 'status', label: '类别', value: status, options: PHIRA_CATALOG_STATUS_OPTIONS,
+          accessibilityLabel: '选择谱面类别', optionAccessibilityPrefix: '选择谱面类别',
+          onChange: (value) => setStatus(value as PhiraChartStatus) },
+        { id: 'sort', label: '排序', value: sort, options: PHIRA_CATALOG_SORT_OPTIONS,
+          accessibilityLabel: '选择曲库排序', optionAccessibilityPrefix: '选择曲库排序',
+          onChange: (value) => setSort(value as PhiraCatalogSort) },
+      ]}
+      onReset={() => { setStatus('ranked'); setSort('updated'); setConstantMin(''); setConstantMax(''); }} /></>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage beforeList={controls} isLoading={query.isLoading} isError={query.isError} error={query.error}
     onRetry={() => void query.refetch()} isEmpty={!query.isLoading && charts.length === 0} emptyText="没有找到 Phira 谱面" data={charts.length ? charts : undefined}
     flatListProps={{ style: styles.list, contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <PhiraSongRow chart={item} />,
@@ -140,5 +157,5 @@ export function PhiraSongDetailScreen({ chartId }: { chartId: string }) {
 
 const styles = StyleSheet.create({
   page: { flex: 1 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center' }, list: { flex: 1 }, listContent: { padding: 16, gap: 10 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }, sectionTitle: { fontSize: 18, fontWeight: '800' },
-  searchWrap: { padding: 12, borderBottomWidth: StyleSheet.hairlineWidth }, search: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }, filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }, chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  searchWrap: { padding: 12, borderBottomWidth: StyleSheet.hairlineWidth }, search: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
 });

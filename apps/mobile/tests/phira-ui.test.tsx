@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
 
@@ -60,16 +60,30 @@ describe('Phira page contracts', () => {
     await screen.unmount();
   });
 
-  it('keeps the records empty prompt and catalog has exactly the three public states', async () => {
+  it('puts records sorting and catalog category/sorting into expanded filter dropdowns', async () => {
     const records = await render(<PhiraRecordsScreen />);
     expect(records.getByText('查询过歌曲后，最佳成绩会显示在这里')).toBeTruthy();
+    expect(records.getByLabelText(/展开筛选，当前 .*排序 Score/)).toBeTruthy();
+    await fireEvent.press(records.getByLabelText(/展开筛选/));
+    await fireEvent.press(records.getByLabelText('选择成绩排序，当前 Score'));
+    await fireEvent.press(records.getByLabelText('选择成绩排序 ACC'));
+    expect(records.getByLabelText('选择成绩排序，当前 ACC')).toBeTruthy();
     await records.unmount();
+
     const catalog = await render(<PhiraCatalogScreen />);
-    expect(catalog.getByText('上架')).toBeTruthy();
-    expect(catalog.getByText('特殊')).toBeTruthy();
-    expect(catalog.getByText('未上架')).toBeTruthy();
+    expect(catalog.getByLabelText(/展开筛选，当前 .*类别 上架.*排序 最近更新/)).toBeTruthy();
+    await fireEvent.press(catalog.getByLabelText(/展开筛选/));
+    await fireEvent.press(catalog.getByLabelText('选择谱面类别，当前 上架'));
+    expect(catalog.getByLabelText('选择谱面类别 上架')).toBeTruthy();
+    expect(catalog.getByLabelText('选择谱面类别 特殊')).toBeTruthy();
+    expect(catalog.getByLabelText('选择谱面类别 未上架')).toBeTruthy();
     expect(catalog.queryByText('热门')).toBeNull();
-    expect(catalog.queryByLabelText('谱面状态 全部')).toBeNull();
+    expect(catalog.queryByLabelText('选择谱面类别 全部')).toBeNull();
+    await fireEvent.press(catalog.getByLabelText('选择谱面类别 特殊'));
+    expect(catalog.getByLabelText('选择谱面类别，当前 特殊')).toBeTruthy();
+    await fireEvent.press(catalog.getByLabelText('选择曲库排序，当前 最近更新'));
+    await fireEvent.press(catalog.getByLabelText('选择曲库排序 定数降序'));
+    expect(catalog.getByLabelText('选择曲库排序，当前 定数降序')).toBeTruthy();
     await catalog.unmount();
   });
 

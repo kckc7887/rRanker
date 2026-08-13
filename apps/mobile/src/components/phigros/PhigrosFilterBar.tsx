@@ -25,11 +25,22 @@ const PHIGROS_XING_FILTERS: readonly { value: PhigrosXingKind; label: string }[]
 ];
 
 type ChapterDropdownValue = string | 'all';
-type OpenDropdown = 'chapter' | null;
+type OpenDropdown = string | null;
 export type PhigrosKyouTagFilterState = 'ready' | 'loading' | 'unavailable';
+
+export type PhigrosFilterSelectRow = {
+  id: string;
+  label: string;
+  value: string;
+  options: readonly FilterSelectOption[];
+  accessibilityLabel: string;
+  optionAccessibilityPrefix: string;
+  onChange: (value: string) => void;
+};
 
 export interface PhigrosFilterBarProps {
   showLevel?: boolean;
+  selectRows?: readonly PhigrosFilterSelectRow[];
   collapsed: boolean;
   level: PhigrosLevel | 'all';
   constantMin: string;
@@ -68,7 +79,8 @@ export function buildPhigrosFilterSummary({
   versions,
   kyouTags,
   selectedKyouTagIds,
-}: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank' | 'xing' | 'chapter' | 'versions' | 'kyouTags' | 'selectedKyouTagIds'>): string {
+  selectRows,
+}: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank' | 'xing' | 'chapter' | 'versions' | 'kyouTags' | 'selectedKyouTagIds' | 'selectRows'>): string {
   const selectedChapter = versions?.find((item) => String(item.id) === chapter);
   return [
     level === 'all' ? null : phigrosLevelLabel(level),
@@ -78,6 +90,7 @@ export function buildPhigrosFilterSummary({
     xing ? phigrosXingLabel(xing) : null,
     chapter === 'all' || !selectedChapter ? null : `章节 ${selectedChapter.title}`,
     selectedKyouTagIds?.length ? `标签 ${formatPhigrosKyouTagFilterValue(kyouTags ?? [], selectedKyouTagIds)}` : null,
+    ...(selectRows ?? []).map((row) => `${row.label} ${row.options.find((option) => option.value === row.value)?.label ?? row.value}`),
   ].filter(Boolean).join(' · ') || '全部';
 }
 
@@ -93,6 +106,7 @@ export function formatPhigrosKyouTagFilterValue(
 
 export function PhigrosFilterBar({
   showLevel = true,
+  selectRows = [],
   collapsed,
   level,
   constantMin,
@@ -142,7 +156,7 @@ export function PhigrosFilterBar({
 
   const summary = buildPhigrosFilterSummary({
     level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter, versions,
-    kyouTags, selectedKyouTagIds,
+    kyouTags, selectedKyouTagIds, selectRows,
   });
 
   if (collapsed) {
@@ -181,6 +195,26 @@ export function PhigrosFilterBar({
           </Pressable>
         </View>
       </View>
+
+      {selectRows.map((row) => {
+        const dropdownId = `select:${row.id}`;
+        const valueLabel = row.options.find((option) => option.value === row.value)?.label ?? row.value;
+        return (
+          <View key={row.id} style={styles.filterRow}>
+            <Text style={[styles.filterLabel, { color: theme.textMuted }]}>{row.label}</Text>
+            <FilterAnchoredDropdown
+              accessibilityLabel={`${row.accessibilityLabel}，当前 ${valueLabel}`}
+              onOpenChange={setDropdownOpen(dropdownId)}
+              onSelect={row.onChange}
+              open={openDropdown === dropdownId}
+              optionAccessibilityPrefix={row.optionAccessibilityPrefix}
+              options={row.options}
+              selectedValue={row.value}
+              valueLabel={valueLabel}
+            />
+          </View>
+        );
+      })}
 
       {showLevel ? <View style={styles.filterRow}>
         <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
