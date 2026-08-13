@@ -8,14 +8,14 @@ const mockAccount = createPhiraBoundAccount({ playerId: 323528, displayName: '�
 const mockRefetch = jest.fn(async () => ({ data: mockBundle }));
 const mockBundle = {
   gameId: 'phira', providerId: 'phira-community',
-  profile: { id: 'phira', title: 'Phira', ratingLabel: 'Ranking Score', ratingDigits: 4,
+  profile: { id: 'phira', title: 'Phira', ratingLabel: 'Ranking Score', ratingDigits: 2,
     bestSections: [{ id: 'best20', title: 'Best20', size: 20 }], capabilities: { hasCatalog: true, hasRecords: true, hasBestList: true, hasTools: true } },
   payload: {
     kind: 'phira', snapshot: {
       player: { id: 323528, name: '尘言', avatar: null, rks: 5.3326573, bio: null },
       stats: { numRecords: 217, avgAccuracy: .991174 }, pool: { bestPool: [], recentPool: [], rks: 5.3326573 },
       recent: [], seedCharts: [], source: { kind: 'phira', label: 'Phira 社区公开数据', updatedAt: '2026-08-13T09:00:00.000Z', isStale: false },
-    }, bests: null, playerScore: { label: 'Ranking Score', value: 5.3326573, display: '5.3327' },
+    }, bests: null, playerScore: { label: 'Ranking Score', value: 5.3326573, display: '5.33' },
     source: { kind: 'phira', label: 'Phira 社区公开数据', updatedAt: '2026-08-13T09:00:00.000Z', isStale: false },
   },
 } as const;
@@ -48,8 +48,8 @@ jest.mock('@/domain/chunithm-maintenance', () => ({ CHUNITHM_MAINTENANCE_MESSAGE
 test('Phira overview shows the three requested public metrics and no practice count', async () => {
   const screen = await render(<OverviewScreen />);
   expect(screen.getByText('Phira · 玩家概览')).toBeTruthy();
-  expect(screen.getByText('Ranking Score 5.3327 · 总游玩次数 217 · 平均准确率 99.12%')).toBeTruthy();
-  expect(screen.getByText(/Phira 社区公开数据/)).toBeTruthy();
+  expect(screen.getByText('Ranking Score 5.33 · 总游玩次数 217 · 平均准确率 99.12%')).toBeTruthy();
+  expect(screen.getAllByText(/Phira 社区公开数据/)).toHaveLength(2);
   expect(screen.getByText('收藏 0 首')).toBeTruthy();
   expect(screen.queryByText(/练习 0 张/)).toBeNull();
   await screen.unmount();

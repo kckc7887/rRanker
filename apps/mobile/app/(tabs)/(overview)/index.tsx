@@ -462,7 +462,7 @@ function PublicOverviewScreen() {
               <Text style={styles.switchHint}>·点击切换·</Text>
             </Pressable>
 
-            {bundle.payload.kind === 'adofai' || bundle.payload.kind === 'musedash' ? (
+            {bundle.payload.kind === 'adofai' || bundle.payload.kind === 'musedash' || bundle.payload.kind === 'phira' ? (
               <SourceStatus items={[{
                 key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt,
                 state: bundle.payload.source.isStale ? 'cache' : 'live',

@@ -106,10 +106,11 @@ export function useGameData() {
         if (activeProviderId !== 'phira-community' || playerId === null) {
           return { gameId: 'phira', providerId: null, profile: getGameProfile('phira'), payload: emptyGamePayload('phira', '未绑定 Phira 玩家') };
         }
+        const phiraProfile = getGameProfile('phira');
         const toBundle = async (snapshot: Awaited<ReturnType<typeof loadPhiraPlayerFresh>>): Promise<GameDataBundle> => ({
-          gameId: 'phira', providerId: 'phira-community', profile: getGameProfile('phira'),
+          gameId: 'phira', providerId: 'phira-community', profile: phiraProfile,
           payload: { kind: 'phira', snapshot, bests: await phiraCache.loadBests(playerId),
-            playerScore: { label: 'Ranking Score', value: snapshot.player.rks, display: snapshot.player.rks.toFixed(4) }, source: snapshot.source },
+            playerScore: { label: 'Ranking Score', value: snapshot.player.rks, display: snapshot.player.rks.toFixed(phiraProfile.ratingDigits) }, source: snapshot.source },
         });
         const snapshot = await cacheFirstLoad({
           loadCached: () => phiraCache.loadPlayer(playerId),
