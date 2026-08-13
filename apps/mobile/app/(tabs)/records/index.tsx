@@ -42,6 +42,7 @@ import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from
 import { useAppTheme } from '@/theme/app-theme';
 import { TufRecordsScreen } from '@/screens/TufScreens';
 import { MuseDashRecordsScreen } from '@/screens/MuseDashScreens';
+import { PhiraRecordsScreen } from '@/screens/PhiraScreens';
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
@@ -146,6 +147,8 @@ export function RecordsScreen() {
   if (activeGameId === 'chunithm') {
     return <ChunithmRecordsScreen />;
   }
+
+  if (activeGameId === 'phira') return <PhiraRecordsScreen />;
 
   if (activeGameId === 'adofai') {
     return <TufRecordsScreen />;

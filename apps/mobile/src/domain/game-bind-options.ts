@@ -11,9 +11,10 @@ export type ProviderId =
   | 'chunithm-temp'
   | 'tuf'
   | 'musedash-moe'
+  | 'phira-community'
   | 'musedash-test';
 export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
-export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'adofai' | 'musedash' | 'test';
+export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'phira' | 'adofai' | 'musedash' | 'test';
 export type ProviderBindingKind = 'credentials' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
 
 export type ProviderOption = {
@@ -45,6 +46,8 @@ const adofaiIcon = require('../../assets/images/adofai.png') as ImageSourcePropT
 const tufIcon = require('../../assets/images/tuf.png') as ImageSourcePropType;
 const museDashIcon = require('../../assets/images/musedash.png') as ImageSourcePropType;
 const museDashMoeIcon = require('../../assets/images/musedash-moe.png') as ImageSourcePropType;
+/** 从 https://phira.moe/favicon.svg 原样提取的内嵌 PNG。 */
+const phiraIcon = require('../../assets/images/phira.png') as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
   {
@@ -152,6 +155,21 @@ export const GAME_OPTIONS: GameOption[] = [
         available: true,
       },
     ],
+  },
+  {
+    id: 'phira',
+    title: 'Phira',
+    icon: phiraIcon,
+    available: true,
+    pendingDetail: '',
+    providers: [{
+      id: 'phira-community',
+      bindingKind: 'public-player',
+      title: 'Phira社区',
+      detail: '公开玩家 ID 或用户名 · 无需登录',
+      icon: phiraIcon,
+      available: true,
+    }],
   },
   {
     id: 'phigros',

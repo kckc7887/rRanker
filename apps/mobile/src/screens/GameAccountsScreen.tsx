@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GamePickerSheet } from '@/components/GamePickerSheet';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import { TufPlayerPickerSheet } from '@/components/TufPlayerPickerSheet';
+import { PhiraPlayerPickerSheet } from '@/components/PhiraPlayerPickerSheet';
 import { MuseDashPlayerPickerSheet } from '@/components/MuseDashPlayerPickerSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
@@ -25,6 +26,8 @@ import {
   createMaxedPhigrosTestAccount,
   createMuseDashBoundAccount,
   createTufBoundAccount,
+  createPhiraBoundAccount,
+  phiraPlayerIdFromAccountId,
   museDashUserIdFromAccountId,
   tufPlayerIdFromAccountId,
   MUSEDASH_TEST_USER_ID,
@@ -59,6 +62,8 @@ import { TufCache } from '@/services/tuf-cache';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 import { MuseDashCache } from '@/services/muse-dash-cache';
 import { resolveTufAvatarUrl } from '@/domain/tuf';
+import { PhiraAccountStore } from '@/storage/phira-account-store';
+import { PhiraCache } from '@/services/phira-cache';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -72,6 +77,8 @@ const tufAccounts = new TufAccountStore();
 const tufCache = new TufCache();
 const museDashAccounts = new MuseDashAccountStore();
 const museDashCache = new MuseDashCache();
+const phiraAccounts = new PhiraAccountStore();
+const phiraCache = new PhiraCache();
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
@@ -97,6 +104,7 @@ export function GameAccountsScreen() {
   const [renameAccount, setRenameAccount] = useState<BoundAccount | null>(null);
   const [tufPickerVisible, setTufPickerVisible] = useState(false);
   const [museDashPickerVisible, setMuseDashPickerVisible] = useState(false);
+  const [phiraPickerVisible, setPhiraPickerVisible] = useState(false);
 
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
 
@@ -181,6 +189,23 @@ export function GameAccountsScreen() {
     actions: [
       { label: '取消', tone: 'cancel' },
       { label: '确认解绑', tone: 'destructive', onPress: () => void removeMuseDashAccount(account, false) },
+    ],
+  });
+
+  const promptRemovePhira = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
+    title: '解除最后一个账号',
+    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏和本地标签？`,
+    variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认解绑并保留个人数据', tone: 'destructive', onPress: () => void removePhiraAccount(account, false) },
+      { label: '解绑并清除个人数据', tone: 'destructive', onPress: () => void removePhiraAccount(account, true) },
+    ],
+  } : {
+    title: '解除玩家绑定', message: `将清除「${account.displayName}」的本机资料和成绩缓存。`, variant: 'warning',
+    actions: [
+      { label: '取消', tone: 'cancel' },
+      { label: '确认解绑', tone: 'destructive', onPress: () => void removePhiraAccount(account, false) },
     ],
   });
 
@@ -325,6 +350,23 @@ export function GameAccountsScreen() {
         ? `已解除 TUF 玩家「${account.displayName}」的绑定并清除个人数据`
         : `已解除 TUF 玩家「${account.displayName}」的绑定；个人数据已保留`);
     setBusy(false);
+  };
+
+  const bindPhiraPlayer = async (player: import('@/domain/phira').PhiraUser) => {
+    const account = createPhiraBoundAccount({ playerId: player.id, displayName: player.name, rks: player.rks, avatarUrl: player.avatar });
+    await phiraAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: player.avatar });
+    upsertBoundAccount(account); selectBoundAccount(account.id); await sessions.setActiveAccountId(account.id);
+    setMessage(`已绑定 Phira 玩家「${player.name}」`); setPhiraPickerVisible(false); setPickerVisible(false);
+  };
+
+  const removePhiraAccount = async (account: BoundAccount, includePersonalData: boolean) => {
+    setBusy(true); const failures: string[] = [];
+    const attempt = async (label: string, action: () => Promise<unknown>) => { try { await action(); } catch { failures.push(label); } };
+    const playerId = phiraPlayerIdFromAccountId(account.id);
+    if (playerId !== null) { await attempt('账号', () => phiraAccounts.remove(playerId)); await attempt('缓存', () => phiraCache.clearPlayer(playerId)); }
+    if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
+    removeBoundAccount(account.id); await attempt('当前账号', persistActiveAccountId); queryClient.removeQueries({ queryKey: ['phira'] });
+    setMessage(failures.length ? `部分清除失败（${failures.join('、')}）` : `已解除 Phira 玩家「${account.displayName}」的绑定`); setBusy(false);
   };
 
   const bindMuseDashPlayer = async (player: import('@/components/MuseDashPlayerPickerSheet').MuseDashSearchResult) => {
@@ -591,6 +633,7 @@ export function GameAccountsScreen() {
     if (provider.bindingKind === 'public-player') {
       setPickerVisible(false);
       if (provider.id === 'musedash-moe') setMuseDashPickerVisible(true);
+      else if (provider.id === 'phira-community') setPhiraPickerVisible(true);
       else setTufPickerVisible(true);
       return;
     }
@@ -640,6 +683,7 @@ export function GameAccountsScreen() {
     const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
     const isTuf = account.providerId === 'tuf';
     const isMuseDash = account.providerId === 'musedash-moe';
+    const isPhira = account.providerId === 'phira-community';
     return (
       <>
         {!isActive ? (
@@ -677,6 +721,11 @@ export function GameAccountsScreen() {
         ) : isMuseDash ? (
           <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
             disabled={busy} onPress={() => promptRemoveMuseDash(account)}>
+            <Text style={styles.unbind}>解除绑定</Text>
+          </Pressable>
+        ) : isPhira ? (
+          <Pressable accessibilityRole="button" accessibilityLabel={`解除绑定 ${account.displayName}`}
+            disabled={busy} onPress={() => promptRemovePhira(account)}>
             <Text style={styles.unbind}>解除绑定</Text>
           </Pressable>
         ) : isRemote ? (
@@ -723,6 +772,7 @@ export function GameAccountsScreen() {
         onClose={() => closeLogin({ reopenPicker: true })} onSuccess={finishLogin} />
       {tufPickerVisible ? <TufPlayerPickerSheet visible onClose={() => setTufPickerVisible(false)} onSelect={bindTufPlayer} /> : null}
       {museDashPickerVisible ? <MuseDashPlayerPickerSheet visible onClose={() => setMuseDashPickerVisible(false)} onSelect={bindMuseDashPlayer} /> : null}
+      {phiraPickerVisible ? <PhiraPlayerPickerSheet visible onClose={() => setPhiraPickerVisible(false)} onSelect={bindPhiraPlayer} /> : null}
 
       <RenameLocalAccountSheet visible={renameAccount !== null} initialName={renameAccount?.displayName ?? ''}
         onClose={() => setRenameAccount(null)} onSave={(displayName) => {

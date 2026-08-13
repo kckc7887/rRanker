@@ -85,7 +85,7 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
   );
 });
 
-const styles = StyleSheet.create({
+export const PHIGROS_SONG_ROW_STYLES = StyleSheet.create({
   row: { borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   openSong: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
   coverWrap: { width: 58, height: 58 },
@@ -98,3 +98,4 @@ const styles = StyleSheet.create({
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
   favorite: { paddingHorizontal: 4, paddingVertical: 8 },
 });
+const styles = PHIGROS_SONG_ROW_STYLES;

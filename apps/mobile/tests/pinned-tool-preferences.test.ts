@@ -22,7 +22,7 @@ describe('pinned tool preferences', () => {
         phigros: ['rating'],
         test: [],
       },
-    })).toEqual({ maimai: ['rating'], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] });
+    })).toEqual({ maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [] });
   });
 
   it('keeps valid plate ids only for games with a plate tool', () => {
@@ -39,6 +39,7 @@ describe('pinned tool preferences', () => {
       maimai: [6101],
       chunithm: [],
       phigros: [],
+      phira: [],
       adofai: [], musedash: [],
       test: [],
     });
@@ -49,9 +50,9 @@ describe('pinned tool preferences', () => {
       version: 1,
       pinnedToolIdsByGame: { maimai: ['rating'], phigros: [], test: [] },
     })).toEqual({
-      pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] },
-      pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] },
-      pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], adofai: [], musedash: [], test: [] },
+      pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [] },
+      pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [] },
+      pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [] },
     });
   });
 
@@ -72,6 +73,7 @@ describe('pinned tool preferences', () => {
         ],
         maimai: [{ kind: 'trophy', id: 866 }],
         phigros: [],
+        phira: [],
         adofai: [], musedash: [],
         test: [],
       },
@@ -85,6 +87,7 @@ describe('pinned tool preferences', () => {
         { kind: 'trophy', id: 0 },
       ],
       phigros: [],
+      phira: [],
       adofai: [], musedash: [],
       test: [],
     });
@@ -98,6 +101,7 @@ describe('pinned tool preferences', () => {
         maimai: ['rating', 'versions'],
         chunithm: [],
         phigros: [],
+        phira: [],
         adofai: [], musedash: [],
         test: [],
       },
@@ -105,6 +109,7 @@ describe('pinned tool preferences', () => {
         maimai: [6101, 6102],
         chunithm: [],
         phigros: [],
+        phira: [],
         adofai: [], musedash: [],
         test: [],
       },
@@ -112,6 +117,7 @@ describe('pinned tool preferences', () => {
         maimai: [],
         chunithm: [],
         phigros: [],
+        phira: [],
         adofai: [], musedash: [],
         test: [],
       },
@@ -121,6 +127,7 @@ describe('pinned tool preferences', () => {
         maimai: ['rating', 'versions'],
         chunithm: [],
         phigros: [],
+        phira: [],
         adofai: [], musedash: [],
         test: [],
       },
@@ -128,6 +135,7 @@ describe('pinned tool preferences', () => {
         maimai: [6101, 6102],
         chunithm: [],
         phigros: [],
+        phira: [],
         adofai: [], musedash: [],
         test: [],
       },
@@ -135,6 +143,7 @@ describe('pinned tool preferences', () => {
         maimai: [],
         chunithm: [],
         phigros: [],
+        phira: [],
         adofai: [], musedash: [],
         test: [],
       },

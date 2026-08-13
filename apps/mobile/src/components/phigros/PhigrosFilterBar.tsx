@@ -29,6 +29,7 @@ type OpenDropdown = 'chapter' | null;
 export type PhigrosKyouTagFilterState = 'ready' | 'loading' | 'unavailable';
 
 export interface PhigrosFilterBarProps {
+  showLevel?: boolean;
   collapsed: boolean;
   level: PhigrosLevel | 'all';
   constantMin: string;
@@ -91,6 +92,7 @@ export function formatPhigrosKyouTagFilterValue(
 }
 
 export function PhigrosFilterBar({
+  showLevel = true,
   collapsed,
   level,
   constantMin,
@@ -180,7 +182,7 @@ export function PhigrosFilterBar({
         </View>
       </View>
 
-      <View style={styles.filterRow}>
+      {showLevel ? <View style={styles.filterRow}>
         <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
         <ScrollView
           horizontal
@@ -198,7 +200,7 @@ export function PhigrosFilterBar({
             />
           ))}
         </ScrollView>
-      </View>
+      </View> : null}
 
       {showChapterPicker ? (
         <View style={styles.filterRow}>

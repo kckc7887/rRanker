@@ -254,7 +254,7 @@ function Detail({
       ? lowresUrl
       : blurUrl;
   const metadataItems: SongMetadataItem[] = [
-    { key: 'illustrator', label: '曲绘师', value: song.illustrator ?? '未知', flex: 1 },
+    { key: 'illustrator', label: '曲绘画师', value: song.illustrator ?? '未知', flex: 1 },
     ...(song.version ? [{ key: 'chapter', label: '章节', value: song.version, flex: 1 }] : []),
   ];
 
@@ -691,7 +691,7 @@ function DetailRateBadge({ record }: { record: ScoreRecord }) {
   return <PhigrosRateBadge rate={resolvePhigrosRate(record)} fc={record.fc === 'ap'} />;
 }
 
-const styles = StyleSheet.create({
+export const PHIGROS_SONG_DETAIL_STYLES = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingBottom: 48 },
   deferredPlaceholder: { minHeight: 180 },
@@ -800,3 +800,4 @@ const styles = StyleSheet.create({
   aliasActionText: { fontSize: 12, fontWeight: '700' },
   meta: { color: '#6B7280', fontSize: 12 },
 });
+const styles = PHIGROS_SONG_DETAIL_STYLES;

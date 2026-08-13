@@ -46,6 +46,7 @@ import {
 import { useAppTheme } from '@/theme/app-theme';
 import { TufSearchScreen } from '@/screens/TufScreens';
 import { MuseDashCatalogScreen } from '@/screens/MuseDashScreens';
+import { PhiraCatalogScreen } from '@/screens/PhiraScreens';
 
 const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
 export default function SearchTabScreen() {
@@ -165,6 +166,7 @@ export function SearchScreen() {
   if (activeGameId === 'phigros') {
     return <PhigrosSearchScreen />;
   }
+  if (activeGameId === 'phira') return <PhiraCatalogScreen />;
 
   if (activeGameId === 'chunithm') {
     return <ChunithmSearchScreen />;

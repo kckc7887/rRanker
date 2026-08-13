@@ -1,0 +1,33 @@
+import { useMemo, useState } from 'react';
+import { Text, View } from 'react-native';
+import { RandomChartsPage } from '@/components/RandomChartsPage';
+import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
+import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
+import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
+import { pickRandomItems, type RandomChartsCount } from '@/domain/random-charts';
+import type { PhiraQueriedBest } from '@/domain/phira';
+import { filterPhiraBests } from '@/domain/phira-filters';
+import { usePhiraBests } from '@/hooks/use-phira';
+import { useSession } from '@/state/session-store';
+import { usePhiraRecordsFilter } from '@/state/phira-records-filter';
+import { useAppTheme } from '@/theme/app-theme';
+
+export function PhiraRandomChartsScreen() {
+  const theme = useAppTheme(); const id = phiraPlayerIdFromAccountId(useSession((state) => state.activeAccountId));
+  const query = usePhiraBests(id); const [count, setCount] = useState<RandomChartsCount>(1); const [results, setResults] = useState<PhiraQueriedBest[]>([]); const [drawn, setDrawn] = useState(false);
+  const filter = usePhiraRecordsFilter();
+  const pool = useMemo(() => filterPhiraBests(Object.values(query.data?.items ?? {}), filter), [filter, query.data?.items]);
+  const draw = () => { setResults(pickRandomItems(pool, count, `${Date.now()}-${Math.random()}`)); setDrawn(true); };
+  return <RandomChartsPage count={count} onCountChange={setCount} filter={<View><View style={{ padding: 14 }}><Text style={{ color: theme.textSecondary }}>沿用成绩页筛选，仅从已有最佳成绩的缓存池抽取</Text></View>
+    <PhigrosFilterBar showLevel={false} level="all" onLevelChange={() => undefined}
+      collapsed={filter.collapsed} onCollapsedChange={filter.setCollapsed}
+      constantMin={filter.constantMin} constantMax={filter.constantMax}
+      accuracyMin={filter.accuracyMin} accuracyMax={filter.accuracyMax}
+      rank={filter.rank} xing={filter.xing} onConstantMinChange={filter.setConstantMin}
+      onConstantMaxChange={filter.setConstantMax} onAccuracyMinChange={filter.setAccuracyMin}
+      onAccuracyMaxChange={filter.setAccuracyMax} onRankChange={filter.setRank}
+      onXingChange={filter.setXing} onReset={filter.clearFilters} /></View>}
+    sourceItems={[{ key: 'scores', label: 'Phira 已查询最佳成绩', updatedAt: query.data?.source.updatedAt, state: query.isError ? 'unavailable' : query.data?.source.isStale ? 'cache' : 'live' }]}
+    poolSize={pool.length} onDraw={draw} hasDrawn={drawn} resultCount={results.length} results={results.map((item) => <PhiraScoreCard key={item.chart.id} item={item} />)}
+    emptyMessage="成绩页缓存中没有可抽取的歌曲" drawDisabled={!pool.length} poolError={query.error instanceof Error ? query.error.message : null} onRetryPool={() => void query.refetch()} />;
+}

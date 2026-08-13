@@ -6,14 +6,16 @@ export function PhigrosDifficultyBadge({
   constant,
   showLabel = true,
   showConstant = true,
+  labelOverride,
 }: {
   levelIndex: number;
   constant: number;
   showLabel?: boolean;
   showConstant?: boolean;
+  labelOverride?: string;
 }) {
   const colors = phigrosLevelColors(levelIndex);
-  const label = phigrosLevelLabel(levelIndex);
+  const label = labelOverride ?? phigrosLevelLabel(levelIndex);
 
   return (
     <View

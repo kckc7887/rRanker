@@ -75,6 +75,7 @@ import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufLevelDetailScreen } from '@/screens/TufScreens';
 import { MuseDashSongDetailScreen } from '@/screens/MuseDashScreens';
+import { PhiraSongDetailScreen } from '@/screens/PhiraScreens';
 
 const CARD_GAP = 12;
 const DIFFICULTY_ORDER: Record<Difficulty, number> = {
@@ -95,6 +96,7 @@ export default function SongDetailScreen() {
   if (activeGameId === 'phigros') {
     return <PhigrosSongDetail songId={songId} levelIndex={initialLevelIndex} />;
   }
+  if (activeGameId === 'phira') return <PhiraSongDetailScreen chartId={songId} />;
   if (activeGameId === 'chunithm') {
     return <ChunithmSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
   }

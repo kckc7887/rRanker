@@ -27,6 +27,7 @@ import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { TufBestScreen } from '@/screens/TufScreens';
 import { MuseDashBestScreen } from '@/screens/MuseDashScreens';
+import { PhiraBestScreen } from '@/screens/PhiraScreens';
 
 type BestSection = BestListSection & { data: ScoreRecord[] };
 
@@ -59,6 +60,7 @@ export function Best50Screen() {
   if (activeGameId === 'phigros') {
     return <PhigrosBestScreen />;
   }
+  if (activeGameId === 'phira') return <PhiraBestScreen />;
   if (activeGameId === 'adofai') {
     return <TufBestScreen />;
   }

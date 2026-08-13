@@ -28,6 +28,7 @@ import {
   createMaxedPhigrosTestAccount,
   createTufBoundAccount,
   createMuseDashBoundAccount,
+  createPhiraBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
@@ -54,6 +55,7 @@ import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-rat
 import { startTimer } from '@/utils/startup-timing';
 import { TufAccountStore } from '@/storage/tuf-account-store';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
+import { PhiraAccountStore } from '@/storage/phira-account-store';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -64,6 +66,7 @@ const museDashDemoAccount = new MuseDashDemoAccountStore();
 const chunithmTempAccount = new ChunithmTempAccountStore();
 const tufAccounts = new TufAccountStore();
 const museDashAccounts = new MuseDashAccountStore();
+const phiraAccounts = new PhiraAccountStore();
 const snapshots = new SqliteSnapshotRepository();
 
 async function loadLocalBoundAccounts() {
@@ -124,7 +127,7 @@ async function loadMuseDashDemoBoundAccount() {
 }
 
 async function loadOptionalBoundAccounts() {
-  const [locals, demos, chunithmDemo, phigrosDemo, museDashDemo, hasChunithmTemp, storedTufAccounts, storedMuseDashAccounts] = await Promise.all([
+  const [locals, demos, chunithmDemo, phigrosDemo, museDashDemo, hasChunithmTemp, storedTufAccounts, storedMuseDashAccounts, storedPhiraAccounts] = await Promise.all([
     loadLocalBoundAccounts(),
     loadDemoBoundAccounts(),
     loadChunithmDemoBoundAccount(),
@@ -133,6 +136,7 @@ async function loadOptionalBoundAccounts() {
     chunithmTempAccount.load(),
     tufAccounts.load(),
     museDashAccounts.load(),
+    phiraAccounts.load(),
   ]);
   return [
     ...locals,
@@ -143,6 +147,7 @@ async function loadOptionalBoundAccounts() {
     ...(hasChunithmTemp ? [createChunithmTempAccount()] : []),
     ...storedTufAccounts.map((account) => createTufBoundAccount(account)),
     ...storedMuseDashAccounts.map((account) => createMuseDashBoundAccount(account)),
+    ...storedPhiraAccounts.map((account) => createPhiraBoundAccount(account)),
   ];
 }
 

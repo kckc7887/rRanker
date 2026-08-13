@@ -7,7 +7,7 @@ export type Difficulty =
   | 'remaster'
   | 'utage'
   | 'unknown';
-export type DataSourceKind = 'fixture' | 'diving-fish' | 'lxns' | 'dxrating' | 'kyou' | 'tuf' | 'musedash' | 'local' | 'generated' | 'cache';
+export type DataSourceKind = 'fixture' | 'diving-fish' | 'lxns' | 'dxrating' | 'kyou' | 'tuf' | 'musedash' | 'phira' | 'local' | 'generated' | 'cache';
 
 export interface DataSource {
   kind: DataSourceKind;
@@ -160,7 +160,7 @@ export interface CollectionSnapshot {
 }
 
 export interface SourceStatusItem {
-  key: 'scores' | 'catalog' | 'detail' | 'aliases' | 'plates' | 'collections' | 'dxrating-tags' | 'phigros-kyou-tags';
+  key: 'scores' | 'catalog' | 'detail' | 'aliases' | 'plates' | 'collections' | 'dxrating-tags' | 'phigros-kyou-tags' | 'notes';
   label: string;
   updatedAt?: string;
   state: 'live' | 'cache' | 'unavailable';

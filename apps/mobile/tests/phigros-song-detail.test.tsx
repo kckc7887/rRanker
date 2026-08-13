@@ -274,18 +274,18 @@ describe('Phigros song detail', () => {
     expect(screen.getByTestId('phigros-song-title-scroll').props.horizontal).toBe(true);
     expect(screen.getByText('测试曲').props.numberOfLines).toBe(1);
     expect(screen.getAllByText('测试曲绘师').length).toBeGreaterThan(0);
-    expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBe(2);
-    await fireEvent(screen.getByTestId('phigros-metadata-measure-曲绘师'), 'textLayout', {
+    expect(screen.getByTestId('phigros-metadata-value-曲绘画师').props.numberOfLines).toBe(2);
+    await fireEvent(screen.getByTestId('phigros-metadata-measure-曲绘画师'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
     await fireEvent(screen.getByTestId('phigros-metadata-measure-章节'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
-    await fireEvent.press(screen.getByLabelText('展开曲绘师'));
-    expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBeUndefined();
+    await fireEvent.press(screen.getByLabelText('展开曲绘画师'));
+    expect(screen.getByTestId('phigros-metadata-value-曲绘画师').props.numberOfLines).toBeUndefined();
     expect(screen.getByTestId('phigros-metadata-value-章节').props.numberOfLines).toBeUndefined();
-    await fireEvent.press(screen.getByLabelText('收起曲绘师'));
-    expect(screen.getByTestId('phigros-metadata-value-曲绘师').props.numberOfLines).toBe(2);
+    await fireEvent.press(screen.getByLabelText('收起曲绘画师'));
+    expect(screen.getByTestId('phigros-metadata-value-曲绘画师').props.numberOfLines).toBe(2);
     expect(screen.getByTestId('phigros-metadata-value-章节').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy();
