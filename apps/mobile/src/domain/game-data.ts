@@ -4,6 +4,7 @@ import type { DataSource, Player, ScoreRecord, ScoreSnapshot } from './models';
 import type { ChunithmPlayer, ChunithmScore } from './chunithm-personal';
 import type { TufPlayer } from './tuf';
 import type { MuseDashPlayer } from './muse-dash';
+import type { PhiraBestSnapshot, PhiraPlayerSnapshot } from './phira';
 
 /** 通用 BestN 分区；具体谱面条目仍可按游戏扩展。 */
 export type BestListSection = {
@@ -42,6 +43,13 @@ export type GamePayload =
   | {
       kind: 'musedash';
       player: MuseDashPlayer;
+      playerScore: PlayerScoreSummary;
+      source: DataSource;
+    }
+  | {
+      kind: 'phira';
+      snapshot: PhiraPlayerSnapshot;
+      bests: PhiraBestSnapshot | null;
       playerScore: PlayerScoreSummary;
       source: DataSource;
     }

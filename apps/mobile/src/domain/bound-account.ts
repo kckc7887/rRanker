@@ -65,8 +65,32 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'chunithm-temp': '无成绩临时账号',
   tuf: 'TUF 社区',
   'musedash-moe': 'MuseDash.moe',
+  'phira-community': 'Phira社区',
   'musedash-test': '示例查分器',
 };
+
+export function createPhiraBoundAccount(input: {
+  playerId: number; displayName: string; rks?: number | null; avatarUrl?: string | null;
+}): BoundAccount {
+  const profile = getGameProfile('phira');
+  return {
+    id: `phira:community:${input.playerId}`,
+    gameId: 'phira',
+    providerId: 'phira-community',
+    displayName: input.displayName,
+    scoreLabel: profile.ratingLabel,
+    scoreDisplay: input.rks == null || !Number.isFinite(input.rks) ? '—' : input.rks.toFixed(4),
+    providerTitle: PROVIDER_TITLES['phira-community'],
+    avatarUrl: input.avatarUrl,
+  };
+}
+
+export function phiraPlayerIdFromAccountId(accountId: string): number | null {
+  const match = /^phira:community:(\d+)$/.exec(accountId);
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
 
 export function createTufBoundAccount(input: {
   playerId: number;
@@ -288,6 +312,6 @@ export function createPhigrosBoundAccount(input: {
 }
 
 export function groupBoundAccountGameIds(accounts: BoundAccount[]): GameId[] {
-  const order: GameId[] = ['maimai', 'chunithm', 'phigros', 'adofai', 'musedash', 'test'];
+  const order: GameId[] = ['maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test'];
   return order.filter((gameId) => accounts.some((account) => account.gameId === gameId));
 }

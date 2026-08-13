@@ -45,6 +45,7 @@ import {
   tufPlayerIdFromAccountId,
   museDashUserIdFromAccountId,
   isMuseDashTestUserId,
+  phiraPlayerIdFromAccountId,
 } from '@/domain/bound-account';
 import {
   loadTufPlayerFresh,
@@ -67,6 +68,8 @@ import {
   MaxedPhigrosTestProvider,
 } from '@/providers/maxed-phigros-test-provider';
 import { maxedMuseDashPlayerSnapshot } from '@/providers/maxed-musedash-test-provider';
+import { phiraCache } from '@/services/phira-cache';
+import { loadPhiraPlayerFresh, refreshPhiraSeedBests } from '@/services/phira-service';
 
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
@@ -94,10 +97,32 @@ export function useGameData() {
 
   const query = useQuery({
     queryKey,
-    ...(activeGameId === 'adofai' || activeGameId === 'musedash'
+    ...(activeGameId === 'adofai' || activeGameId === 'musedash' || activeGameId === 'phira'
       ? { staleTime: 60_000, gcTime: 10 * 60_000 }
       : {}),
-    queryFn: async (): Promise<GameDataBundle> => {
+    queryFn: async ({ signal }): Promise<GameDataBundle> => {
+      if (activeGameId === 'phira') {
+        const playerId = phiraPlayerIdFromAccountId(activeAccountId);
+        if (activeProviderId !== 'phira-community' || playerId === null) {
+          return { gameId: 'phira', providerId: null, profile: getGameProfile('phira'), payload: emptyGamePayload('phira', '未绑定 Phira 玩家') };
+        }
+        const toBundle = async (snapshot: Awaited<ReturnType<typeof loadPhiraPlayerFresh>>): Promise<GameDataBundle> => ({
+          gameId: 'phira', providerId: 'phira-community', profile: getGameProfile('phira'),
+          payload: { kind: 'phira', snapshot, bests: await phiraCache.loadBests(playerId),
+            playerScore: { label: 'Ranking Score', value: snapshot.player.rks, display: snapshot.player.rks.toFixed(4) }, source: snapshot.source },
+        });
+        const snapshot = await cacheFirstLoad({
+          loadCached: () => phiraCache.loadPlayer(playerId),
+          loadFresh: async () => {
+            const fresh = await loadPhiraPlayerFresh(playerId, signal);
+            void refreshPhiraSeedBests(fresh, signal).then(() => toBundle(fresh))
+              .then((bundle) => queryClient.setQueryData(queryKey, bundle)).catch(() => undefined);
+            return fresh;
+          },
+          onFresh: (fresh) => { void toBundle(fresh).then((bundle) => queryClient.setQueryData(queryKey, bundle)); },
+        });
+        return toBundle(snapshot);
+      }
       if (activeGameId === 'adofai') {
         const playerId = tufPlayerIdFromAccountId(activeAccountId);
         if (activeProviderId !== 'tuf' || playerId === null) {
@@ -562,6 +587,10 @@ export function useGameData() {
         scoreDisplay: d.payload.playerScore.display,
       }).catch(() => undefined);
     }
+    if (d.payload.kind === 'phira') {
+      updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.name, d.payload.snapshot.player.avatar ?? undefined);
+      void persistBoundAccountThumbnail(activeAccountId, { scoreDisplay: d.payload.playerScore.display, avatarUrl: d.payload.snapshot.player.avatar ?? undefined }).catch(() => undefined);
+    }
   }, [activeAccountId, query.data, updateBoundAccountScore]);
 
   return {
@@ -576,6 +605,8 @@ export function useGameData() {
         : query.data.payload.kind === 'adofai'
           ? query.data.payload.source.isStale
           : query.data.payload.kind === 'musedash'
+            ? query.data.payload.source.isStale
+          : query.data.payload.kind === 'phira'
             ? query.data.payload.source.isStale
         : (query.data.payload.kind === 'maimai' || query.data.payload.kind === 'phigros')
           && (query.data.payload.source.isStale || query.data.payload.catalogSource.isStale)

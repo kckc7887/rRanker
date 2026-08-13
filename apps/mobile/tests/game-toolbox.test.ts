@@ -43,6 +43,7 @@ describe('per-game toolbox registry', () => {
   });
 
   it.each([
+    ['phira', '随机歌曲 · 机厅查找'],
     ['adofai', '随机歌曲 · 机厅查找'],
     ['musedash', '随机歌曲 · 机厅查找'],
   ] as const)('registers the shared toolbox order for %s', (gameId, summary) => {
@@ -53,7 +54,7 @@ describe('per-game toolbox registry', () => {
   });
 
   it('keeps profile capabilities consistent with registered tools', () => {
-    const gameIds: GameId[] = ['maimai', 'chunithm', 'phigros', 'adofai', 'musedash', 'test'];
+    const gameIds: GameId[] = ['maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test'];
     for (const gameId of gameIds) {
       expect(getGameProfile(gameId).capabilities.hasTools)
         .toBe(getGameToolbox(gameId).tools.length > 0);

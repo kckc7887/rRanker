@@ -10,8 +10,8 @@ export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
 export const MAX_BACKUP_ITEMS = 5000;
 
-const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'chunithm', 'phigros', 'adofai', 'musedash', 'test']);
-const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'adofai', 'musedash', 'test']);
+const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test']);
+const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test']);
 
 /**
  * 曲库歌曲 id 规范化：adofai 关卡 id 是完整数字（如 11372），

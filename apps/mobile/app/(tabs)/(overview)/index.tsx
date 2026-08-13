@@ -510,7 +510,8 @@ function PublicOverviewScreen() {
               || bundle.payload.kind === 'phigros'
               || bundle.payload.kind === 'chunithm'
               || bundle.payload.kind === 'adofai'
-              || bundle.payload.kind === 'musedash' ? (
+              || bundle.payload.kind === 'musedash'
+              || bundle.payload.kind === 'phira' ? (
               <DxRatingCard
                 borderless={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData}
                 label={bundle.payload.playerScore.label}
@@ -522,6 +523,8 @@ function PublicOverviewScreen() {
                   ? formatTufOverviewRatingMeta(bundle.payload.player)
                   : bundle.payload.kind === 'musedash'
                     ? formatMuseDashOverviewRatingMeta(bundle.payload.player)
+                    : bundle.payload.kind === 'phira'
+                      ? `总游玩次数 ${bundle.payload.snapshot.stats.numRecords}`
                     : bundle.payload.kind === 'chunithm'
                       ? formatChunithmBestMeta(bundle.payload.bestSections)
                       : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
@@ -542,6 +545,8 @@ function PublicOverviewScreen() {
                   : undefined}
                 sideBadge={bundle.payload.kind === 'adofai'
                   ? { title: '世界排名', value: formatTufRankBadge(bundle.payload.player) }
+                  : bundle.payload.kind === 'phira'
+                    ? { title: '平均准确率', value: `${(bundle.payload.snapshot.stats.avgAccuracy * 100).toFixed(2)}%` }
                   : bundle.payload.kind === 'phigros'
                     ? { title: '课题模式', value: formatPhigrosChallengeBadge(bundle.payload.challengeModeRank) }
                     : maimaiCourseRankBadge(bundle)}
@@ -683,9 +688,10 @@ function PublicOverviewScreen() {
                     || bundle.payload.kind === 'chunithm'
                     || bundle.payload.kind === 'adofai'
                     || bundle.payload.kind === 'musedash'
+                    || bundle.payload.kind === 'phira'
                     ? (library.isError
                         ? '个人数据暂不可用'
-                        : bundle.payload.kind === 'adofai'
+                        : bundle.payload.kind === 'adofai' || bundle.payload.kind === 'phira'
                           ? `收藏 ${favorites} 首`
                           : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
                     : '当前游戏暂未开放个人曲库'}
@@ -701,7 +707,7 @@ function PublicOverviewScreen() {
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
-              ) : bundle.payload.kind === 'musedash' ? (
+              ) : bundle.payload.kind === 'musedash' || bundle.payload.kind === 'phira' ? (
                 <>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
@@ -967,6 +973,7 @@ function displayName(bundle: GameDataBundle): string {
   }
   if (bundle.payload.kind === 'adofai') return bundle.payload.player.name;
   if (bundle.payload.kind === 'musedash') return bundle.payload.player.user.nickname;
+  if (bundle.payload.kind === 'phira') return bundle.payload.snapshot.player.name;
   return bundle.payload.displayName;
 }
 
@@ -1013,6 +1020,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'chunithm-temp') return '无成绩临时账号';
   if (providerId === 'tuf') return 'TUF 社区';
   if (providerId === 'musedash-moe') return 'MuseDash.moe';
+  if (providerId === 'phira-community') return 'Phira社区';
   return '本地';
 }
 

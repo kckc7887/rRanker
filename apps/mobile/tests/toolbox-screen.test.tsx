@@ -32,6 +32,7 @@ jest.mock('@/state/toolbox-pins', () => ({
       maimai: mockPinnedToolIds,
       chunithm: [],
       phigros: [],
+      phira: [],
       adofai: [],
       musedash: [],
       test: [],

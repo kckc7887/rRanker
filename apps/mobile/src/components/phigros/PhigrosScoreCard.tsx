@@ -85,7 +85,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   );
 });
 
-const styles = StyleSheet.create({
+export const PHIGROS_SCORE_CARD_STYLES = StyleSheet.create({
   card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   main: { flex: 1, minWidth: 0, gap: 4 },
   title: { fontSize: 15, fontWeight: '700' },
@@ -95,3 +95,4 @@ const styles = StyleSheet.create({
   acc: { fontSize: 12, fontWeight: '700' },
   rks: { fontSize: 20, fontWeight: '900' },
 });
+const styles = PHIGROS_SCORE_CARD_STYLES;
