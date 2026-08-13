@@ -19,21 +19,24 @@ function navigateToOverviewAccountPage(): void {
  * 默认进入对应游戏总览账号页（`navigateToOverview: false` 时留在当前页）。
  * 目标账号已有缓存时直接复用；首次访问时由对应 query 自行进入加载态。
  */
-export function switchBoundAccount(
+export async function switchBoundAccount(
   accountId: string,
   options?: { navigateToOverview?: boolean },
-): void {
+): Promise<void> {
   const { activeAccountId, boundAccounts, selectBoundAccount } = useSession.getState();
   const account = boundAccounts.find((item) => item.id === accountId);
   if (!account) return;
 
   const navigateToOverview = options?.navigateToOverview !== false;
+  let persist: Promise<void> | null = null;
   if (activeAccountId !== accountId) {
     selectBoundAccount(accountId);
-    void sessions.setActiveAccountId(accountId);
+    persist = sessions.setActiveAccountId(accountId);
   }
 
   if (navigateToOverview) {
     navigateToOverviewAccountPage();
   }
+
+  if (persist) await persist;
 }

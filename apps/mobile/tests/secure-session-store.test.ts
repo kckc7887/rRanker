@@ -3,6 +3,7 @@ import {
   CHUNITHM_TEMP_ACCOUNT_ID,
   LOCAL_MAIMAI_ACCOUNT_ID,
   MAIMAI_TEST_ACCOUNT_ID,
+  MUSEDASH_TEST_ACCOUNT_ID,
   PHIGROS_TEST_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import type { StoredProviderAccountInput } from '@/storage/secure-session-store';
@@ -91,6 +92,116 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect(vault.activeAccountId).toBe(PHIGROS_TEST_ACCOUNT_ID);
     expect(vault.accounts).toEqual([]);
     expect(vault.credentials).toEqual([]);
+  });
+
+  it.each([
+    'maimai:local:second',
+    MAIMAI_TEST_ACCOUNT_ID,
+    CHUNITHM_TEMP_ACCOUNT_ID,
+    CHUNITHM_TEST_ACCOUNT_ID,
+    PHIGROS_TEST_ACCOUNT_ID,
+    MUSEDASH_TEST_ACCOUNT_ID,
+    'adofai:tuf:25',
+    'musedash:musedash-moe:community-user',
+    'phira:community:323528',
+  ])('允许任意已绑定账号 %s 作为冷启动活跃指针', async (accountId) => {
+    const store = createStore();
+
+    await store.setActiveAccountId(accountId);
+
+    const index = JSON.parse(sqlite.values.get('rranker.provider.sessions.index.v4')!) as {
+      activeAccountId: string | null;
+      accounts: unknown[];
+      credentials: unknown[];
+    };
+    expect(index.activeAccountId).toBe(accountId);
+    expect(index.accounts).toEqual([]);
+    expect(index.credentials).toEqual([]);
+  });
+
+  it('普通切换只更新 v4 索引，不读取或重写安全凭据', async () => {
+    const store = createStore();
+    await store.upsertAccount(account('maimai:diving-fish:a'));
+    vi.clearAllMocks();
+
+    await store.setActiveAccountId('phira:community:323528');
+
+    const secureStore = await import('expo-secure-store');
+    expect(secureStore.getItemAsync).not.toHaveBeenCalled();
+    expect(secureStore.setItemAsync).not.toHaveBeenCalled();
+    const index = JSON.parse(sqlite.values.get('rranker.provider.sessions.index.v4')!) as {
+      activeAccountId: string | null;
+    };
+    expect(index.activeAccountId).toBe('phira:community:323528');
+  });
+
+  it('快速连续 A→B→C 切换时持久化最后一次选择', async () => {
+    const store = createStore();
+
+    await Promise.all([
+      store.setActiveAccountId('adofai:tuf:25'),
+      store.setActiveAccountId('musedash:musedash-moe:community-user'),
+      store.setActiveAccountId('phira:community:323528'),
+    ]);
+
+    const index = JSON.parse(sqlite.values.get('rranker.provider.sessions.index.v4')!) as {
+      activeAccountId: string | null;
+    };
+    expect(index.activeAccountId).toBe('phira:community:323528');
+  });
+
+  it('跨实例串行化元数据、令牌与快速切换，最后一次账号选择获胜', async () => {
+    const indexKey = 'rranker.provider.sessions.index.v4';
+    let delayNextIndexRead = false;
+    const delayedKv = {
+      getItem: async (key: string) => {
+        const value = sqlite.values.get(key) ?? null;
+        if (key === indexKey && delayNextIndexRead) {
+          delayNextIndexRead = false;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        return value;
+      },
+      setItem: async (key: string, value: string) => { sqlite.values.set(key, value); },
+      removeItem: async (key: string) => { sqlite.values.delete(key); },
+    };
+    const backgroundStore = new SecureSessionStore(delayedKv);
+    const switchStore = new SecureSessionStore(delayedKv);
+    const accountA = account('maimai:diving-fish:a');
+    const accountB = account('maimai:diving-fish:b');
+    await backgroundStore.upsertAccount(accountA);
+    await backgroundStore.upsertAccount(accountB);
+    await switchStore.setActiveAccountId(accountA.id);
+
+    delayNextIndexRead = true;
+    const metadataUpdate = backgroundStore.updateAccountMetadata(accountA.id, {
+      displayName: '更新后的玩家 A',
+      scoreDisplay: '15000',
+    });
+    await Promise.resolve();
+    const metadataSwitch = switchStore.setActiveAccountId(accountB.id);
+    await Promise.all([metadataUpdate, metadataSwitch]);
+
+    await switchStore.setActiveAccountId(accountA.id);
+    const rotated = {
+      mode: 'import-token' as const,
+      value: 'rotated-token-a',
+      persistable: true as const,
+    };
+    delayNextIndexRead = true;
+    const tokenUpdate = backgroundStore.updateAccountSession(accountA.id, rotated);
+    await Promise.resolve();
+    const tokenSwitch = switchStore.setActiveAccountId(accountB.id);
+    await Promise.all([tokenUpdate, tokenSwitch]);
+
+    const vault = await switchStore.loadVault();
+    expect(vault.activeAccountId).toBe(accountB.id);
+    expect(vault.accounts.find((item) => item.id === accountA.id)).toMatchObject({
+      displayName: '更新后的玩家 A',
+      scoreDisplay: '15000',
+    });
+    expect(vault.credentials.find((item) => item.id === `credential:${accountA.id}`)?.session)
+      .toEqual(rotated);
   });
 
   it('远程账号删除仍保留其他远程账号和内置活跃状态', async () => {

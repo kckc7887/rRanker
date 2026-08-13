@@ -6,8 +6,12 @@ import {
   createChunithmTempAccount,
   createLocalMaimaiAccount,
   createMaxedMaimaiTestAccount,
+  createMaxedMuseDashTestAccount,
   createMaxedPhigrosTestAccount,
+  createMuseDashBoundAccount,
+  createPhiraBoundAccount,
   createTestBoundAccount,
+  createTufBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
   MAIMAI_TEST_ACCOUNT_ID,
   TEST_ACCOUNT_ID,
@@ -491,6 +495,28 @@ describe('useSession store', () => {
       id: extra.id,
       displayName: '离线二号',
     });
+  });
+
+  it.each([
+    ['TUF 社区', createTufBoundAccount({ playerId: 25, displayName: 'TUF 玩家' })],
+    ['MuseDash.moe', createMuseDashBoundAccount({ userId: 'community-user', displayName: '喵斯玩家' })],
+    ['Phira 社区', createPhiraBoundAccount({ playerId: 323528, displayName: 'Phira 玩家' })],
+    ['喵斯示例', createMaxedMuseDashTestAccount()],
+  ])('cold restores the selected optional %s account', async (_label, optionalAccount) => {
+    await restoreSession(
+      async () => ({
+        version: 3 as const,
+        activeAccountId: optionalAccount.id,
+        credentials: [],
+        accounts: [],
+      }),
+      async () => [createLocalMaimaiAccount('默认玩家', 0), optionalAccount],
+    );
+
+    const state = useSession.getState();
+    expect(state.activeAccountId).toBe(optionalAccount.id);
+    expect(state.activeGameId).toBe(optionalAccount.gameId);
+    expect(state.activeProviderId).toBe(optionalAccount.providerId);
   });
 
   it('falls back to unbound empty data and exposes a restore error', async () => {

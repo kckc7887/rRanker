@@ -72,12 +72,12 @@ describe('switchBoundAccount', () => {
 
   it.each(demoAccounts)(
     'preserves warm account caches when switching to and from $providerId',
-    (demo) => {
+    async (demo) => {
       const removeQueries = vi.spyOn(queryClient, 'removeQueries');
 
-      switchBoundAccount(demo.id, { navigateToOverview: false });
+      await switchBoundAccount(demo.id, { navigateToOverview: false });
       expect(mocks.sessionState?.activeAccountId).toBe(demo.id);
-      switchBoundAccount(local.id, { navigateToOverview: false });
+      await switchBoundAccount(local.id, { navigateToOverview: false });
       expect(mocks.sessionState?.activeAccountId).toBe(local.id);
 
       expect(removeQueries).not.toHaveBeenCalled();
@@ -89,4 +89,21 @@ describe('switchBoundAccount', () => {
       expect(mocks.setActiveAccountId).toHaveBeenCalledWith(local.id);
     },
   );
+
+  it('does not persist or navigate again when selecting the active account in place', async () => {
+    await switchBoundAccount(local.id, { navigateToOverview: false });
+
+    expect(mocks.setActiveAccountId).not.toHaveBeenCalled();
+    expect(mocks.dismissTo).not.toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('ignores an account id that is not currently bound', async () => {
+    await switchBoundAccount('phira:community:missing');
+
+    expect(mocks.sessionState?.activeAccountId).toBe(local.id);
+    expect(mocks.setActiveAccountId).not.toHaveBeenCalled();
+    expect(mocks.dismissTo).not.toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
 });

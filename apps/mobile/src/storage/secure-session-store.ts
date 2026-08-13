@@ -1,15 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import Storage from 'expo-sqlite/kv-store';
 import type { GameId, RemoteProviderId } from '@/domain/game-bind-options';
-import {
-  CHUNITHM_TEMP_ACCOUNT_ID,
-  isLocalMaimaiAccountId,
-  MAIMAI_TEST_ACCOUNT_ID,
-  TEST_ACCOUNT_ID,
-} from '@/domain/bound-account';
-import { isMaimaiDemoAccountId } from '@/storage/demo-account-store';
-import { isChunithmDemoAccountId } from '@/storage/chunithm-demo-account-store';
-import { isPhigrosDemoAccountId } from '@/storage/phigros-demo-account-store';
 import type { ProviderSession } from '@/providers/contracts';
 import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
 import { startTimer } from '@/utils/startup-timing';
@@ -79,6 +70,21 @@ type KeyValueStore = {
   setItem(key: string, value: string): Promise<unknown>;
   removeItem(key: string): Promise<unknown>;
 };
+
+const storageMutationTails = new WeakMap<KeyValueStore, Promise<void>>();
+
+function enqueueStorageMutation<T>(
+  storage: KeyValueStore,
+  mutation: () => Promise<T>,
+): Promise<T> {
+  const previous = storageMutationTails.get(storage) ?? Promise.resolve();
+  const result = previous.then(mutation, mutation);
+  const tail = result.then(() => undefined, () => undefined);
+  storageMutationTails.set(storage, tail);
+  return result.finally(() => {
+    if (storageMutationTails.get(storage) === tail) storageMutationTails.delete(storage);
+  });
+}
 
 const EMPTY_VAULT: SessionVault = {
   version: 3,
@@ -353,6 +359,27 @@ export class SecureSessionStore {
     private readonly secrets = new LargeSecureValueStore(),
   ) {}
 
+  private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    return enqueueStorageMutation(this.storage, mutation);
+  }
+
+  private async loadOrCreateIndexUnlocked(): Promise<SessionIndex> {
+    const currentRaw = await this.storage.getItem(INDEX_KEY);
+    const current = currentRaw ? parseSessionIndex(currentRaw) : null;
+    if (current) return current;
+
+    const vault = await this.loadVault();
+    const migratedRaw = await this.storage.getItem(INDEX_KEY);
+    const migrated = migratedRaw ? parseSessionIndex(migratedRaw) : null;
+    if (migrated) return migrated;
+
+    await this.saveVaultUnlocked(vault);
+    const createdRaw = await this.storage.getItem(INDEX_KEY);
+    const created = createdRaw ? parseSessionIndex(createdRaw) : null;
+    if (!created) throw new Error('无法建立本机会话索引');
+    return created;
+  }
+
   private async loadIndexedVault(index: SessionIndex): Promise<SessionVault> {
     const credentials: StoredProviderCredential[] = [];
     for (const item of index.credentials) {
@@ -377,7 +404,7 @@ export class SecureSessionStore {
   private async migrateLegacyVault(vault: SessionVault): Promise<SessionVault | null> {
     const expected = sanitizeVault(vault);
     try {
-      await this.saveVault(expected);
+      await this.saveVaultUnlocked(expected);
       const raw = await this.storage.getItem(INDEX_KEY);
       const index = raw ? parseSessionIndex(raw) : null;
       const verified = index ? await this.loadIndexedVault(index) : null;
@@ -466,7 +493,7 @@ export class SecureSessionStore {
     return legacyVault;
   }
 
-  async saveVault(vault: SessionVault): Promise<void> {
+  private async saveVaultUnlocked(vault: SessionVault): Promise<void> {
     const sanitized = sanitizeVault(vault);
     const currentRaw = await this.storage.getItem(INDEX_KEY);
     const current = currentRaw ? parseSessionIndex(currentRaw) : null;
@@ -519,8 +546,11 @@ export class SecureSessionStore {
     }
   }
 
-  async upsertAccount(account: StoredProviderAccountInput): Promise<string> {
-    if (!isPersistableSession(account.session)) return '';
+  async saveVault(vault: SessionVault): Promise<void> {
+    await this.enqueueMutation(() => this.saveVaultUnlocked(vault));
+  }
+
+  private async upsertAccountUnlocked(account: StoredProviderAccountInput): Promise<string> {
     const vault = await this.loadVault();
     const credentialId = account.credentialId
       ?? credentialIdForLegacyAccount(account.id);
@@ -539,7 +569,7 @@ export class SecureSessionStore {
       challengeModeRank: account.challengeModeRank,
       ratingPossession: account.ratingPossession,
     };
-    await this.saveVault({
+    await this.saveVaultUnlocked({
       version: 3,
       activeAccountId: account.id,
       credentials: [
@@ -554,19 +584,26 @@ export class SecureSessionStore {
     return credentialId;
   }
 
+  async upsertAccount(account: StoredProviderAccountInput): Promise<string> {
+    if (!isPersistableSession(account.session)) return '';
+    return this.enqueueMutation(() => this.upsertAccountUnlocked(account));
+  }
+
   /** 按账号解析共享凭据并轮换 token，不改变 activeAccountId。 */
   async updateAccountSession(accountId: string, session: ProviderSession): Promise<void> {
     if (!isPersistableSession(session)) return;
-    const vault = await this.loadVault();
-    const existing = vault.accounts.find((account) => account.id === accountId);
-    if (!existing) return;
-    await this.saveVault({
-      ...vault,
-      credentials: vault.credentials.map((credential) => (
-        credential.id === existing.credentialId
-          ? { ...credential, session }
-          : credential
-      )),
+    await this.enqueueMutation(async () => {
+      const vault = await this.loadVault();
+      const existing = vault.accounts.find((account) => account.id === accountId);
+      if (!existing) return;
+      await this.saveVaultUnlocked({
+        ...vault,
+        credentials: vault.credentials.map((credential) => (
+          credential.id === existing.credentialId
+            ? { ...credential, session }
+            : credential
+        )),
+      });
     });
   }
 
@@ -576,44 +613,41 @@ export class SecureSessionStore {
     metadata: Pick<StoredProviderAccount, 'displayName' | 'scoreDisplay'>
       & Partial<Pick<StoredProviderAccount, 'challengeModeRank' | 'ratingPossession'>>,
   ): Promise<void> {
-    const vault = await this.loadVault();
-    if (!vault.accounts.some((account) => account.id === accountId)) return;
-    await this.saveVault({
-      ...vault,
-      accounts: vault.accounts.map((account) => (
-        account.id === accountId ? { ...account, ...metadata } : account
-      )),
+    await this.enqueueMutation(async () => {
+      const index = await this.loadOrCreateIndexUnlocked();
+      if (!index.accounts.some((account) => account.id === accountId)) return;
+      await this.storage.setItem(INDEX_KEY, JSON.stringify({
+        ...index,
+        accounts: index.accounts.map((account) => (
+          account.id === accountId ? { ...account, ...metadata } : account
+        )),
+      }));
     });
   }
 
   async removeAccount(accountId: string): Promise<void> {
-    const vault = await this.loadVault();
-    const accounts = vault.accounts.filter((item) => item.id !== accountId);
-    const activeAccountId = vault.activeAccountId === accountId
-      ? (accounts[0]?.id ?? null)
-      : vault.activeAccountId;
-    await this.saveVault({
-      ...vault,
-      activeAccountId,
-      accounts,
+    await this.enqueueMutation(async () => {
+      const vault = await this.loadVault();
+      const accounts = vault.accounts.filter((item) => item.id !== accountId);
+      const activeAccountId = vault.activeAccountId === accountId
+        ? (accounts[0]?.id ?? null)
+        : vault.activeAccountId;
+      await this.saveVaultUnlocked({
+        ...vault,
+        activeAccountId,
+        accounts,
+      });
     });
   }
 
   async setActiveAccountId(accountId: string | null): Promise<void> {
-    const vault = await this.loadVault();
-    if (accountId === null) {
-      await this.saveVault({ ...vault, activeAccountId: null });
-      return;
-    }
-    const builtin = isLocalMaimaiAccountId(accountId)
-      || isMaimaiDemoAccountId(accountId)
-      || isChunithmDemoAccountId(accountId)
-      || isPhigrosDemoAccountId(accountId)
-      || accountId === MAIMAI_TEST_ACCOUNT_ID
-      || accountId === CHUNITHM_TEMP_ACCOUNT_ID
-      || accountId === TEST_ACCOUNT_ID;
-    if (!builtin && !vault.accounts.some((account) => account.id === accountId)) return;
-    await this.saveVault({ ...vault, activeAccountId: accountId });
+    await this.enqueueMutation(async () => {
+      const index = await this.loadOrCreateIndexUnlocked();
+      await this.storage.setItem(INDEX_KEY, JSON.stringify({
+        ...index,
+        activeAccountId: accountId,
+      }));
+    });
   }
 
   /** @deprecated 兼容旧单会话调用；新代码请用 loadVault。 */
@@ -628,32 +662,36 @@ export class SecureSessionStore {
   /** @deprecated 兼容旧单会话；新登录请用 upsertAccount。 */
   async save(session: ProviderSession): Promise<void> {
     if (!isPersistableSession(session)) return;
-    const vault = await this.loadVault();
-    if (vault.activeAccountId) {
-      const existing = vault.accounts.find((account) => account.id === vault.activeAccountId);
-      if (existing) {
-        await this.upsertAccount({
-          ...existing,
-          session,
-        });
-        return;
+    await this.enqueueMutation(async () => {
+      const vault = await this.loadVault();
+      if (vault.activeAccountId) {
+        const existing = vault.accounts.find((account) => account.id === vault.activeAccountId);
+        if (existing) {
+          await this.upsertAccountUnlocked({
+            ...existing,
+            session,
+          });
+          return;
+        }
       }
-    }
-    await this.upsertAccount({
-      id: 'maimai:diving-fish:pending',
-      gameId: 'maimai',
-      providerId: 'diving-fish',
-      displayName: '水鱼账号',
-      scoreDisplay: '—',
-      session,
+      await this.upsertAccountUnlocked({
+        id: 'maimai:diving-fish:pending',
+        gameId: 'maimai',
+        providerId: 'diving-fish',
+        displayName: '水鱼账号',
+        scoreDisplay: '—',
+        session,
+      });
     });
   }
 
   async clear(): Promise<void> {
-    await this.clearIndexedVault();
-    await SecureStore.deleteItemAsync(VAULT_KEY);
-    await SecureStore.deleteItemAsync(V2_VAULT_KEY);
-    await SecureStore.deleteItemAsync(LEGACY_SESSION_KEY);
+    await this.enqueueMutation(async () => {
+      await this.clearIndexedVault();
+      await SecureStore.deleteItemAsync(VAULT_KEY);
+      await SecureStore.deleteItemAsync(V2_VAULT_KEY);
+      await SecureStore.deleteItemAsync(LEGACY_SESSION_KEY);
+    });
   }
 
   private async clearIndexedVault(): Promise<void> {
