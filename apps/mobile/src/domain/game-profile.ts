@@ -76,7 +76,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     id: 'phira',
     title: 'Phira',
     ratingLabel: 'Ranking Score',
-    ratingDigits: 4,
+    ratingDigits: 2,
     bestSections: [{ id: 'best20', title: 'Best20', size: 20 }],
     capabilities: { ...commonNav, hasTools: getGameToolbox('phira').tools.length > 0 },
   },
