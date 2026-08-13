@@ -382,7 +382,8 @@ function PublicOverviewScreen() {
     accountSwitchTaskRef.current = InteractionManager.runAfterInteractions(() => {
       accountSwitchTaskRef.current = null;
       // 已在总览账号页：弹层退场后复用目标账号缓存并切换。
-      switchBoundAccount(account.id, { navigateToOverview: false });
+      void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
+        .catch(() => undefined);
     });
   };
 

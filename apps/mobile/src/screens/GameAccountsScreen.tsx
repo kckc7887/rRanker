@@ -85,7 +85,6 @@ export function GameAccountsScreen() {
   const { showActionNotification, showNotification } = useNotification();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const activeAccountId = useSession((s) => s.activeAccountId);
-  const selectBoundAccount = useSession((s) => s.selectBoundAccount);
   const upsertBoundAccount = useSession((s) => s.upsertBoundAccount);
   const renameLocalAccount = useSession((s) => s.renameLocalAccount);
   const removeBoundAccount = useSession((s) => s.removeBoundAccount);
@@ -228,8 +227,8 @@ export function GameAccountsScreen() {
       // refetch — which freezes the UI and can stretch the iOS tab bar.
       setPickerVisible(false);
       InteractionManager.runAfterInteractions(() => {
-        selectBoundAccount(account.id);
-        void sessions.setActiveAccountId(account.id);
+        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
+          .catch(() => undefined);
         setRenameAccount(account);
       });
     } catch (error) {
@@ -260,8 +259,8 @@ export function GameAccountsScreen() {
       upsertBoundAccount(account);
       setPickerVisible(false);
       InteractionManager.runAfterInteractions(() => {
-        selectBoundAccount(account.id);
-        void sessions.setActiveAccountId(account.id);
+        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
+          .catch(() => undefined);
         setMessage(`已添加示例账号「${account.displayName}」`);
       });
     } catch (error) {
@@ -292,8 +291,8 @@ export function GameAccountsScreen() {
       upsertBoundAccount(account);
       setPickerVisible(false);
       InteractionManager.runAfterInteractions(() => {
-        selectBoundAccount(account.id);
-        void sessions.setActiveAccountId(account.id);
+        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
+          .catch(() => undefined);
         setMessage(`已添加中二节奏示例账号「${account.displayName}」`);
       });
     } catch (error) {
@@ -311,8 +310,7 @@ export function GameAccountsScreen() {
   const bindTufPlayer = async (player: import('@/domain/tuf').TufPlayer) => {
     const existing = boundAccounts.find((account) => account.id === `adofai:tuf:${player.id}`);
     if (existing) {
-      selectBoundAccount(existing.id);
-      await sessions.setActiveAccountId(existing.id);
+      await switchBoundAccount(existing.id, { navigateToOverview: false });
       setMessage(`TUF 玩家「${existing.displayName}」已绑定，已切换到该玩家`);
       setTufPickerVisible(false);
       return;
@@ -322,8 +320,7 @@ export function GameAccountsScreen() {
     });
     await tufAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: account.avatarUrl });
     upsertBoundAccount(account);
-    selectBoundAccount(account.id);
-    await sessions.setActiveAccountId(account.id);
+    await switchBoundAccount(account.id, { navigateToOverview: false });
     setMessage(`已绑定 TUF 玩家「${player.name}」`);
     setTufPickerVisible(false);
     setPickerVisible(false);
@@ -355,7 +352,7 @@ export function GameAccountsScreen() {
   const bindPhiraPlayer = async (player: import('@/domain/phira').PhiraUser) => {
     const account = createPhiraBoundAccount({ playerId: player.id, displayName: player.name, rks: player.rks, avatarUrl: player.avatar });
     await phiraAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: player.avatar });
-    upsertBoundAccount(account); selectBoundAccount(account.id); await sessions.setActiveAccountId(account.id);
+    upsertBoundAccount(account); await switchBoundAccount(account.id, { navigateToOverview: false });
     setMessage(`已绑定 Phira 玩家「${player.name}」`); setPhiraPickerVisible(false); setPickerVisible(false);
   };
 
@@ -372,8 +369,7 @@ export function GameAccountsScreen() {
   const bindMuseDashPlayer = async (player: import('@/components/MuseDashPlayerPickerSheet').MuseDashSearchResult) => {
     const existing = boundAccounts.find((account) => account.id === `musedash:musedash-moe:${player.userId}`);
     if (existing) {
-      selectBoundAccount(existing.id);
-      await sessions.setActiveAccountId(existing.id);
+      await switchBoundAccount(existing.id, { navigateToOverview: false });
       setMessage(`喵斯快跑玩家「${existing.displayName}」已绑定，已切换到该玩家`);
       setMuseDashPickerVisible(false);
       return;
@@ -381,8 +377,7 @@ export function GameAccountsScreen() {
     const account = createMuseDashBoundAccount({ userId: player.userId, displayName: player.nickname });
     await museDashAccounts.upsert({ userId: player.userId, displayName: player.nickname });
     upsertBoundAccount(account);
-    selectBoundAccount(account.id);
-    await sessions.setActiveAccountId(account.id);
+    await switchBoundAccount(account.id, { navigateToOverview: false });
     setMessage(`已绑定喵斯快跑玩家「${player.nickname}」`);
     setMuseDashPickerVisible(false);
     setPickerVisible(false);
@@ -428,8 +423,8 @@ export function GameAccountsScreen() {
       upsertBoundAccount(account);
       setPickerVisible(false);
       InteractionManager.runAfterInteractions(() => {
-        selectBoundAccount(account.id);
-        void sessions.setActiveAccountId(account.id);
+        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
+          .catch(() => undefined);
         setMessage(`已添加 Phigros 示例账号「${account.displayName}」`);
       });
     } catch (error) {
@@ -460,8 +455,8 @@ export function GameAccountsScreen() {
       upsertBoundAccount(account);
       setPickerVisible(false);
       InteractionManager.runAfterInteractions(() => {
-        selectBoundAccount(account.id);
-        void sessions.setActiveAccountId(account.id);
+        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
+          .catch(() => undefined);
         setMessage(`已添加喵斯快跑示例账号「${account.displayName}」`);
       });
     } catch (error) {
@@ -662,7 +657,8 @@ export function GameAccountsScreen() {
 
   const onSelectAccount = (account: BoundAccount) => {
     // 游戏管理内切换：只换会话，留在本页，不跳总览。
-    switchBoundAccount(account.id, { navigateToOverview: false });
+    void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
+      .catch(() => undefined);
   };
 
   const toggleGame = (gameId: GameId) => setCollapsedManagedGameIds((current) => {
