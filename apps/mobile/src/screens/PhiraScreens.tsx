@@ -82,7 +82,7 @@ export function PhiraRecordsScreen() {
       onConstantMaxChange={filter.setConstantMax} onAccuracyMinChange={filter.setAccuracyMin}
       onAccuracyMaxChange={filter.setAccuracyMax} onRankChange={filter.setRank}
       onXingChange={filter.setXing} selectRows={[{
-        id: 'sort', label: '排序', value: filter.sort, options: PHIRA_SCORE_SORT_OPTIONS,
+        id: 'sort', label: '排序', value: filter.sort, defaultValue: 'score', options: PHIRA_SCORE_SORT_OPTIONS,
         accessibilityLabel: '选择成绩排序', optionAccessibilityPrefix: '选择成绩排序',
         onChange: (value) => filter.setSort(value as PhiraScoreSort),
       }]} onReset={filter.clearFilters} /></>;
@@ -102,10 +102,10 @@ export function PhiraCatalogScreen() {
       constantMin={constantMin} constantMax={constantMax} onCollapsedChange={setCollapsed}
       onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
       selectRows={[
-        { id: 'status', label: '类别', value: status, options: PHIRA_CATALOG_STATUS_OPTIONS,
+        { id: 'status', label: '类别', value: status, defaultValue: 'ranked', options: PHIRA_CATALOG_STATUS_OPTIONS,
           accessibilityLabel: '选择谱面类别', optionAccessibilityPrefix: '选择谱面类别',
           onChange: (value) => setStatus(value as PhiraChartStatus) },
-        { id: 'sort', label: '排序', value: sort, options: PHIRA_CATALOG_SORT_OPTIONS,
+        { id: 'sort', label: '排序', value: sort, defaultValue: 'updated', options: PHIRA_CATALOG_SORT_OPTIONS,
           accessibilityLabel: '选择曲库排序', optionAccessibilityPrefix: '选择曲库排序',
           onChange: (value) => setSort(value as PhiraCatalogSort) },
       ]}

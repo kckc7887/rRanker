@@ -63,15 +63,17 @@ describe('Phira page contracts', () => {
   it('puts records sorting and catalog category/sorting into expanded filter dropdowns', async () => {
     const records = await render(<PhiraRecordsScreen />);
     expect(records.getByText('查询过歌曲后，最佳成绩会显示在这里')).toBeTruthy();
-    expect(records.getByLabelText(/展开筛选，当前 .*排序 Score/)).toBeTruthy();
+    expect(records.getByLabelText('展开筛选，当前 全部')).toBeTruthy();
     await fireEvent.press(records.getByLabelText(/展开筛选/));
     await fireEvent.press(records.getByLabelText('选择成绩排序，当前 Score'));
     await fireEvent.press(records.getByLabelText('选择成绩排序 ACC'));
     expect(records.getByLabelText('选择成绩排序，当前 ACC')).toBeTruthy();
+    await fireEvent.press(records.getByLabelText('收起筛选'));
+    expect(records.getByLabelText('展开筛选，当前 排序 ACC')).toBeTruthy();
     await records.unmount();
 
     const catalog = await render(<PhiraCatalogScreen />);
-    expect(catalog.getByLabelText(/展开筛选，当前 .*类别 上架.*排序 最近更新/)).toBeTruthy();
+    expect(catalog.getByLabelText('展开筛选，当前 全部')).toBeTruthy();
     await fireEvent.press(catalog.getByLabelText(/展开筛选/));
     await fireEvent.press(catalog.getByLabelText('选择谱面类别，当前 上架'));
     expect(catalog.getByLabelText('选择谱面类别 上架')).toBeTruthy();
@@ -84,6 +86,8 @@ describe('Phira page contracts', () => {
     await fireEvent.press(catalog.getByLabelText('选择曲库排序，当前 最近更新'));
     await fireEvent.press(catalog.getByLabelText('选择曲库排序 定数降序'));
     expect(catalog.getByLabelText('选择曲库排序，当前 定数降序')).toBeTruthy();
+    await fireEvent.press(catalog.getByLabelText('收起筛选'));
+    expect(catalog.getByLabelText('展开筛选，当前 类别 特殊 · 排序 定数降序')).toBeTruthy();
     await catalog.unmount();
   });
 
