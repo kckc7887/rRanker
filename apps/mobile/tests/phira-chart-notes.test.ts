@@ -55,4 +55,10 @@ describe('Phira chart note readers', () => {
     expect(await countPhiraChartZip(await zip.generateAsync({ type: 'arraybuffer' }))).toEqual({ click: 1, hold: 0, flick: 0, drag: 0 });
     await expect(countPhiraChartZip(new Uint8Array([1, 2, 3]).buffer)).rejects.toThrow();
   });
+
+  it('stops before parsing when the detail request is cancelled', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(countPhiraChartZip(new ArrayBuffer(0), controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  });
 });

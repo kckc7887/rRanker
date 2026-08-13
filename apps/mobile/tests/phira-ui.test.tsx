@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StyleSheet } from 'react-native';
+import { InteractionManager, StyleSheet } from 'react-native';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
 
@@ -19,6 +19,7 @@ const mockBest = {
 };
 let mockBests: Record<string, typeof mockBest> = {};
 let mockCatalogCharts: typeof mockChart[] = [];
+let mockNotesEnabled: boolean[] = [];
 let mockChromeProps: {
   topInset: number;
   backStyle: (pressed: boolean) => object[];
@@ -47,7 +48,7 @@ jest.mock('@/hooks/use-phira', () => ({
   usePhiraCharts: () => ({ data: { pages: [{ results: mockCatalogCharts }] }, isLoading: false, isError: false, error: null, refetch: mockRefetch, hasNextPage: false, isFetchingNextPage: false, fetchNextPage: jest.fn() }),
   usePhiraChart: () => ({ data: mockChart, isLoading: false, isError: false, error: null }),
   usePhiraChartBest: () => ({ data: mockBest, isLoading: false, isError: false, error: null }),
-  usePhiraNotes: () => ({ data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false }),
+  usePhiraNotes: (_chart: unknown, enabled = true) => { mockNotesEnabled.push(enabled); return { data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false }; },
   usePhiraUploader: () => ({ data: undefined, isLoading: false, isError: true }),
 }));
 jest.mock('@/components/SourceStatus', () => ({ SourceStatus: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>数据状态</RN.Text>; } }));
@@ -58,7 +59,7 @@ jest.mock('@/components/phigros/PhigrosRateBadge', () => ({ PhigrosRateBadge: ()
 jest.mock('@/components/phigros/PhigrosXingBadge', () => ({ PhigrosXingBadge: ({ kind }: { kind: string }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{`XING-${kind.toUpperCase()}`}</RN.Text>; } }));
 
 describe('Phira page contracts', () => {
-  beforeEach(() => { mockBests = {}; mockCatalogCharts = []; mockChromeProps = null; jest.clearAllMocks(); });
+  beforeEach(() => { mockBests = {}; mockCatalogCharts = []; mockNotesEnabled = []; mockChromeProps = null; jest.clearAllMocks(); });
 
   it('shows Best20 and uses the upstream full difficulty name', async () => {
     mockBests = { '38294': mockBest };
@@ -128,5 +129,18 @@ describe('Phira page contracts', () => {
     expect(screen.queryByLabelText(/展开筛选/)).toBeNull();
     expect(screen.queryByLabelText('收起筛选')).toBeNull();
     await screen.unmount();
+  });
+
+  it('cancels deferred detail work when leaving during the navigation transition', async () => {
+    const cancel = jest.fn();
+    const interaction = jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(() => ({
+      cancel,
+    }) as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>);
+    const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
+    expect(mockNotesEnabled).toEqual([false]);
+    await screen.unmount();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(mockNotesEnabled).not.toContain(true);
+    interaction.mockRestore();
   });
 });

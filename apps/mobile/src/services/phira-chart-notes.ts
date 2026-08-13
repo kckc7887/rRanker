@@ -10,6 +10,10 @@ import type { PhiraNoteCounts } from '@/domain/phira';
  */
 
 const emptyCounts = (): PhiraNoteCounts => ({ click: 0, hold: 0, flick: 0, drag: 0 });
+const throwIfAborted = (signal?: AbortSignal) => {
+  if (!signal?.aborted) return;
+  const error = new Error('Phira 谱面读取已取消'); error.name = 'AbortError'; throw error;
+};
 const addKind = (counts: PhiraNoteCounts, kind: number, mapping: readonly string[]) => {
   const key = mapping[kind] as keyof PhiraNoteCounts | undefined;
   if (key) counts[key] += 1;
@@ -133,17 +137,21 @@ function infoValue(text: string, key: string): string | null {
   return match?.[1]?.replace(/^['"]|['"]$/g, '') ?? null;
 }
 
-export async function countPhiraChartZip(data: ArrayBuffer): Promise<PhiraNoteCounts> {
+export async function countPhiraChartZip(data: ArrayBuffer, signal?: AbortSignal): Promise<PhiraNoteCounts> {
+  throwIfAborted(signal);
   const zip = await JSZip.loadAsync(data);
+  throwIfAborted(signal);
   const entries = Object.values(zip.files).filter((entry) => !entry.dir);
   const info = entries.find((entry) => /(^|\/)info\.ya?ml$/i.test(entry.name));
   const infoText = info ? await info.async('text') : '';
+  throwIfAborted(signal);
   const chartName = infoValue(infoText, 'chart');
   const format = infoValue(infoText, 'format')?.toLowerCase() ?? null;
   const chartEntry = (chartName ? zip.file(chartName) : null)
     ?? entries.find((entry) => /\.(json|pec|pbc)$/i.test(entry.name));
   if (!chartEntry) throw new Error('谱面包中没有可读取的谱面文件');
-  const bytes = await chartEntry.async('uint8array');
+  const bytes = await chartEntry.async('uint8array', () => throwIfAborted(signal));
+  throwIfAborted(signal);
   if (format === 'pbc' || /\.pbc$/i.test(chartEntry.name)) return countPbcNotes(bytes);
   const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   if (format === 'pec' || /\.pec$/i.test(chartEntry.name) || !text.trimStart().startsWith('{')) return countPecNotes(text);
