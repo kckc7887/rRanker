@@ -128,7 +128,7 @@ export function PhigrosSongDetail({
         )}
       />
       <PhigrosDetailChrome
-        song={song}
+        songTitle={song?.title}
         favorite={favorite}
         favoriteDisabled={favoriteDisabled}
         onToggleFavorite={onToggleFavorite}
@@ -137,13 +137,13 @@ export function PhigrosSongDetail({
   </>;
 }
 
-function PhigrosDetailChrome({
-  song,
+export function PhigrosDetailChrome({
+  songTitle,
   favorite,
   favoriteDisabled,
   onToggleFavorite,
 }: {
-  song?: Song;
+  songTitle?: string;
   favorite: boolean;
   favoriteDisabled: boolean;
   onToggleFavorite?: () => void;
@@ -159,8 +159,8 @@ function PhigrosDetailChrome({
         Platform.OS !== 'ios' && styles.headerButtonBg,
         pressed && { opacity: 0.7 },
       ]}
-      favorite={song && onToggleFavorite ? {
-        label: favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`,
+      favorite={songTitle && onToggleFavorite ? {
+        label: favorite ? `取消收藏 ${songTitle}` : `收藏 ${songTitle}`,
         active: favorite,
         disabled: favoriteDisabled,
         onPress: onToggleFavorite,

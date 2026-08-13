@@ -40,6 +40,7 @@ export type PhigrosFilterSelectRow = {
 };
 
 export interface PhigrosFilterBarProps {
+  collapsible?: boolean;
   showLevel?: boolean;
   selectRows?: readonly PhigrosFilterSelectRow[];
   collapsed: boolean;
@@ -108,6 +109,7 @@ export function formatPhigrosKyouTagFilterValue(
 }
 
 export function PhigrosFilterBar({
+  collapsible = true,
   showLevel = true,
   selectRows = [],
   collapsed,
@@ -162,7 +164,7 @@ export function PhigrosFilterBar({
     kyouTags, selectedKyouTagIds, selectRows,
   });
 
-  if (collapsed) {
+  if (collapsible && collapsed) {
     return (
       <View style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
         <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
@@ -188,14 +190,14 @@ export function PhigrosFilterBar({
         <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
         <View style={styles.headerActions}>
           <ResetFilterButton onPress={handleReset} />
-          <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
-            onPress={() => {
-              setOpenDropdown(null);
-              onCollapsedChange(true);
-            }} hitSlop={8}
-            style={styles.headerAction}>
-            <CollapseToggleAction expanded label="收起" />
-          </Pressable>
+          {collapsible ? <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
+              onPress={() => {
+                setOpenDropdown(null);
+                onCollapsedChange(true);
+              }} hitSlop={8}
+              style={styles.headerAction}>
+              <CollapseToggleAction expanded label="收起" />
+            </Pressable> : null}
         </View>
       </View>
 

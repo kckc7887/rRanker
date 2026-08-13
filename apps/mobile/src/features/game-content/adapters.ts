@@ -56,6 +56,8 @@ import {
   formatPhiraAccuracy, PHIRA_STATUS_LABELS, phiraChartStatus, phiraGrade,
   type PhiraChart, type PhiraNoteCounts, type PhiraQueriedBest,
 } from '@/domain/phira';
+import { phiraRecordXing } from '@/domain/phira-filters';
+import { phigrosXingLabel } from '@/domain/phigros-xing';
 
 export type PhiraRawChart = { chart: PhiraChart; notes?: PhiraNoteCounts | null };
 
@@ -107,6 +109,7 @@ export const phiraContentAdapter: GameContentAdapter<
 export function presentPhiraScore(raw: PhiraQueriedBest, position?: number): ScoreCardPresentation<'phira'> {
   const record = raw.record;
   const grade = record ? phiraGrade(record) : '—';
+  const xing = phiraRecordXing(raw);
   return {
     key: String(record?.id ?? `unplayed:${raw.chart.id}`), gameId: 'phira',
     route: { songId: String(raw.chart.id) }, position, title: raw.chart.name,
@@ -118,12 +121,19 @@ export function presentPhiraScore(raw: PhiraQueriedBest, position?: number): Sco
     ],
     difficulty: { key: 'difficulty', label: raw.chart.level, value: raw.chart.difficulty.toFixed(1), tone: '4' },
     grade: record ? { key: 'grade', label: grade, tone: grade.toLowerCase() } : undefined,
-    achievementRows: record ? [[
-      { key: 'perfect', label: 'Perfect', value: String(record.perfect), tone: 'perfect' },
-      { key: 'good', label: 'Good', value: String(record.good), tone: 'good' },
-      { key: 'bad', label: 'Bad', value: String(record.bad), tone: 'bad' },
-      { key: 'miss', label: 'Miss', value: String(record.miss), tone: 'miss' },
-    ]] : [],
+    achievementRows: record ? [
+      ...(xing ? [[{
+        key: 'xing',
+        label: phigrosXingLabel(xing),
+        tone: `xing-${xing}`,
+      }]] : []),
+      [
+        { key: 'perfect', label: 'Perfect', value: String(record.perfect), tone: 'perfect' },
+        { key: 'good', label: 'Good', value: String(record.good), tone: 'good' },
+        { key: 'bad', label: 'Bad', value: String(record.bad), tone: 'bad' },
+        { key: 'miss', label: 'Miss', value: String(record.miss), tone: 'miss' },
+      ],
+    ] : [],
   };
 }
 

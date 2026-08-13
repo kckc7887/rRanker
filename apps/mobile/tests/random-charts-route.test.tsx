@@ -40,6 +40,12 @@ jest.mock('@/screens/MuseDashRandomChartsScreen', () => ({
     return <Text>musedash-random</Text>;
   },
 }));
+jest.mock('@/screens/PhiraRandomChartsScreen', () => ({
+  PhiraRandomChartsScreen: () => {
+    const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
+    return <Text>phira-random</Text>;
+  },
+}));
 
 describe('random charts route registry', () => {
   it.each([
@@ -48,6 +54,7 @@ describe('random charts route registry', () => {
     ['chunithm', 'chunithm-random'],
     ['adofai', 'adofai-random'],
     ['musedash', 'musedash-random'],
+    ['phira', 'phira-random'],
   ] as const)('dispatches %s to its own screen', async (gameId, text) => {
     mockActiveGameId = gameId;
     const screen = await render(<RandomChartsToolScreen />);
