@@ -28,11 +28,6 @@ export type StorageUsageReport = {
 
 const SEGMENT_COLORS: Record<string, string> = {
   app: '#94A3B8',
-  maimai: '#F43F5E',
-  chunithm: '#27A7E7',
-  phigros: '#8B5CF6',
-  adofai: '#F15B55',
-  musedash: '#EC4899',
   shared: '#0EA5E9',
   test: '#64748B',
 };
@@ -72,18 +67,8 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
       bytes: gameBytes[index] ?? 0,
       clearable: true,
       clearCategoryId: adapter.gameId as GameId,
-      color: SEGMENT_COLORS[adapter.gameId] ?? '#6366F1',
-      ...(adapter.gameId === 'maimai'
-        ? { note: '成绩与曲库缓存；不含本地账号成绩' }
-        : adapter.gameId === 'chunithm'
-          ? { note: '成绩与曲库缓存' }
-          : adapter.gameId === 'phigros'
-            ? { note: '存档、曲库与图片缓存' }
-            : adapter.gameId === 'adofai'
-              ? { note: '玩家资料、成绩与曲库缓存' }
-              : adapter.gameId === 'musedash'
-                ? { note: '曲库、定数表、名称表与玩家成绩缓存' }
-                : {}),
+      color: adapter.color,
+      note: adapter.note,
     })),
     {
       id: 'shared',

@@ -5,6 +5,7 @@ import {
 } from '@/storage/storage-clear-prefs-store';
 import { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
+import { clearStorageByCategories } from '@/features/storage-management/clear-storage-cache';
 import {
   isAppOwnedCacheEntry,
   isExpoSystemCacheEntry,
@@ -33,6 +34,7 @@ vi.mock('@/domain/game-bind-options', () => {
     phigros: 'Phigros',
     adofai: '冰与火之舞',
     musedash: '喵斯快跑',
+    phira: 'Phira',
     test: '测试游戏',
   };
   return {
@@ -142,6 +144,54 @@ describe('musedash storage segment', () => {
     const adapter = getGameStorageAdapter('musedash');
     expect(adapter).toBeDefined();
     expect(adapter?.title).toBe('喵斯快跑');
+  });
+});
+
+describe('phira storage segment', () => {
+  it('is registered in the clearable category list', () => {
+    expect(listClearableCategoryIds()).toContain('phira');
+  });
+
+  it('measures and clears every Phira resource through the common adapter', async () => {
+    const clearAccountScores = vi.fn(async () => undefined);
+    const clearResources = vi.fn(async () => undefined);
+    const snapshots = {
+      listAccountScoreSizes: vi.fn(async () => []),
+      listResourceSizes: vi.fn(async () => [
+        { key: 'phira:player:323528', bytes: 10 },
+        { key: 'phira:bests:323528', bytes: 20 },
+        { key: 'phira:charts:ranked:0:', bytes: 30 },
+        { key: 'phira:chart:38294', bytes: 40 },
+        { key: 'phira:notes:38294', bytes: 50 },
+        { key: 'musedash:catalog', bytes: 999 },
+      ]),
+      clearAccountScores,
+      clearResources,
+    };
+    const adapter = getGameStorageAdapter('phira');
+    expect(adapter?.title).toBe('Phira');
+    await expect(adapter?.measure(snapshots as never)).resolves.toBe(150);
+    await adapter?.clear(snapshots as never);
+    expect(clearAccountScores).toHaveBeenCalledWith([]);
+    expect(clearResources).toHaveBeenCalledWith([
+      'phira:player:323528',
+      'phira:bests:323528',
+      'phira:charts:ranked:0:',
+      'phira:chart:38294',
+      'phira:notes:38294',
+    ]);
+  });
+
+  it('removes Phira in-memory queries after clearing persistent cache', async () => {
+    const client = {
+      invalidateQueries: vi.fn(async () => undefined),
+      removeQueries: vi.fn(),
+    };
+    await expect(clearStorageByCategories(['phira'], client as never)).resolves.toEqual({
+      clearedIds: ['phira'],
+      failures: [],
+    });
+    expect(client.removeQueries).toHaveBeenCalledWith({ queryKey: ['phira'] });
   });
 });
 
