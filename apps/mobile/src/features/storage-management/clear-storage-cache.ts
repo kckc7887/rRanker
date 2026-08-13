@@ -54,6 +54,7 @@ export async function clearStorageByCategories(
       'plates',
       'collections',
       'dxrating-chart-tags',
+      'phira',
     ]) {
       client.removeQueries({ queryKey: [key] });
     }

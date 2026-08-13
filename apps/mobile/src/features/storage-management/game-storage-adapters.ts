@@ -45,6 +45,8 @@ export type StorageSegmentId = 'app' | 'shared' | GameId;
 export type GameStorageAdapter = {
   gameId: GameId;
   title: string;
+  color: string;
+  note: string;
   measure: (snapshots: SqliteSnapshotRepository) => Promise<number>;
   clear: (snapshots: SqliteSnapshotRepository) => Promise<void>;
 };
@@ -80,6 +82,10 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   }
   // Muse Dash 曲库、定数表、名称表与玩家成绩缓存
   if (gameId === 'musedash' && key.startsWith('musedash:')) {
+    return true;
+  }
+  // Phira 玩家资料、最佳成绩、曲库分页、谱面详情与物量计数缓存
+  if (gameId === 'phira' && key.startsWith('phira:')) {
     return true;
   }
   const accountId = accountIdFromResourceKey(key);
@@ -179,6 +185,8 @@ export async function measureDurableLocalMaimaiBytes(
 const maimaiAdapter: GameStorageAdapter = {
   gameId: 'maimai',
   title: findGame('maimai')?.title ?? '舞萌 DX',
+  color: '#F43F5E',
+  note: '成绩与曲库缓存；不含本地账号成绩',
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'maimai', true),
   clear: (snapshots) => clearGameSqlite(snapshots, 'maimai', true),
 };
@@ -186,6 +194,8 @@ const maimaiAdapter: GameStorageAdapter = {
 const phigrosAdapter: GameStorageAdapter = {
   gameId: 'phigros',
   title: findGame('phigros')?.title ?? 'Phigros',
+  color: '#8B5CF6',
+  note: '存档、曲库与图片缓存',
   async measure(snapshots) {
     const sqlite = await measureGameSqliteBytes(snapshots, 'phigros', false);
     return sqlite
@@ -202,6 +212,8 @@ const phigrosAdapter: GameStorageAdapter = {
 const chunithmAdapter: GameStorageAdapter = {
   gameId: 'chunithm',
   title: findGame('chunithm')?.title ?? '中二节奏',
+  color: '#27A7E7',
+  note: '成绩与曲库缓存',
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'chunithm', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'chunithm', false),
 };
@@ -209,6 +221,8 @@ const chunithmAdapter: GameStorageAdapter = {
 const adofaiAdapter: GameStorageAdapter = {
   gameId: 'adofai',
   title: findGame('adofai')?.title ?? '冰与火之舞',
+  color: '#F15B55',
+  note: '玩家资料、成绩与曲库缓存',
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'adofai', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'adofai', false),
 };
@@ -216,8 +230,19 @@ const adofaiAdapter: GameStorageAdapter = {
 const musedashAdapter: GameStorageAdapter = {
   gameId: 'musedash',
   title: findGame('musedash')?.title ?? '喵斯快跑',
+  color: '#EC4899',
+  note: '曲库、定数表、名称表与玩家成绩缓存',
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'musedash', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'musedash', false),
+};
+
+const phiraAdapter: GameStorageAdapter = {
+  gameId: 'phira',
+  title: findGame('phira')?.title ?? 'Phira',
+  color: '#8D5BD6',
+  note: '玩家资料、最佳成绩、曲库、谱面与物量缓存',
+  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'phira', false),
+  clear: (snapshots) => clearGameSqlite(snapshots, 'phira', false),
 };
 
 /** 新游戏接入：在此注册 measure/clear 即可出现在环形图与勾选列表。 */
@@ -227,6 +252,7 @@ export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   phigrosAdapter,
   adofaiAdapter,
   musedashAdapter,
+  phiraAdapter,
 ];
 
 export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | undefined {
