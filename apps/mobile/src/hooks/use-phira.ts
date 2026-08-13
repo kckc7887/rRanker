@@ -116,15 +116,18 @@ export function usePhiraUploader(userId: number | null) {
     queryFn: ({ signal }) => phiraProvider.getUploader(userId!, signal), ...OPTIONS });
 }
 
-export function usePhiraNotes(chart: PhiraChart | undefined) {
+export function usePhiraNotes(chart: PhiraChart | undefined, enabled = true) {
   return useQuery({
-    queryKey: ['phira', 'notes', chart?.id, chart?.chartUpdated], enabled: !!chart?.file,
+    queryKey: ['phira', 'notes', chart?.id, chart?.chartUpdated], enabled: enabled && !!chart?.file,
     queryFn: async ({ signal }) => {
       const cached = await phiraCache.loadNotes(chart!.id);
       if (cached && cached.chartUpdated === (chart!.chartUpdated ?? null)) return cached;
       try {
         const data = await phiraProvider.downloadChart(chart!.file!, signal);
-        const value: import('@/domain/phira').PhiraNoteSnapshot = { chartUpdated: chart!.chartUpdated ?? null, counts: await countPhiraChartZip(data), source: phiraSource() };
+        const value: import('@/domain/phira').PhiraNoteSnapshot = { chartUpdated: chart!.chartUpdated ?? null, counts: await countPhiraChartZip(data, signal), source: phiraSource() };
+        if (signal.aborted) {
+          const aborted = new Error('Phira 谱面读取已取消'); aborted.name = 'AbortError'; throw aborted;
+        }
         await phiraCache.saveNotes(chart!.id, value); return value;
       } catch (error) {
         if (signal.aborted) throw error;
