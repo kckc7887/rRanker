@@ -32,6 +32,7 @@ export type PhigrosFilterSelectRow = {
   id: string;
   label: string;
   value: string;
+  defaultValue?: string;
   options: readonly FilterSelectOption[];
   accessibilityLabel: string;
   optionAccessibilityPrefix: string;
@@ -90,7 +91,9 @@ export function buildPhigrosFilterSummary({
     xing ? phigrosXingLabel(xing) : null,
     chapter === 'all' || !selectedChapter ? null : `章节 ${selectedChapter.title}`,
     selectedKyouTagIds?.length ? `标签 ${formatPhigrosKyouTagFilterValue(kyouTags ?? [], selectedKyouTagIds)}` : null,
-    ...(selectRows ?? []).map((row) => `${row.label} ${row.options.find((option) => option.value === row.value)?.label ?? row.value}`),
+    ...(selectRows ?? []).map((row) => row.defaultValue !== undefined && row.value === row.defaultValue
+      ? null
+      : `${row.label} ${row.options.find((option) => option.value === row.value)?.label ?? row.value}`),
   ].filter(Boolean).join(' · ') || '全部';
 }
 
