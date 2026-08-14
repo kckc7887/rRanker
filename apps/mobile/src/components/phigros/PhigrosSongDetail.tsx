@@ -554,6 +554,20 @@ function ChartCard({
       <NotesTable notes={asPhigrosNotes(chart.notes)} pending={notesPending} />
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
+        disabled={library.isUpdating}
+        onPress={() => void library.setChartPractice(song.id, PHIGROS_CHART_TYPE, chart.levelIndex, !practice)}
+        style={[
+          styles.action,
+          practiceActionStyle(colors.fg, practice),
+        ]}
+      >
+        <Text style={[styles.actionText, practiceTextStyle(colors.fg, practice)]}>
+          {practice ? '已加入练习清单' : '加入练习清单'}
+        </Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
         accessibilityLabel={`查看谱面确认：${song.title} ${label}`}
         onPress={() => router.push({
           pathname: '/songs/phigros-chart-preview',
@@ -571,20 +585,6 @@ function ChartCard({
       >
         <Text style={[styles.actionText, practiceTextStyle(colors.fg, false)]}>
           查看谱面确认
-        </Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
-        disabled={library.isUpdating}
-        onPress={() => void library.setChartPractice(song.id, PHIGROS_CHART_TYPE, chart.levelIndex, !practice)}
-        style={[
-          styles.action,
-          practiceActionStyle(colors.fg, practice),
-        ]}
-      >
-        <Text style={[styles.actionText, practiceTextStyle(colors.fg, practice)]}>
-          {practice ? '已加入练习清单' : '加入练习清单'}
         </Text>
       </Pressable>
       <TagEditor
