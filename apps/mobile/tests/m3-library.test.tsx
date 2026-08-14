@@ -127,6 +127,9 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
     refetch: jest.fn(),
   }),
 }));
+jest.mock('@/hooks/use-phira', () => ({
+  usePhiraChartsByIds: () => ({ data: [], isLoading: false, isError: false, error: null, refetch: jest.fn() }),
+}));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   return { data: { player: fixtures.fixturePlayer, records: fixtures.fixtureRecords, source: fixtures.fixtureSource,

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { PhiraChart, PhiraChartPage, PhiraChartStatus, PhiraPlayerSnapshot } from '@/domain/phira';
 import { phiraProvider } from '@/providers/phira-provider';
@@ -73,6 +74,16 @@ export function usePhiraCharts(status: PhiraChartStatus, search: string) {
     },
     // Phira /chart 的 page=1 返回与 page=0 相同的首页，翻页须跳过 1（0 → 2 → 3 → …）。
     getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
+    ...OPTIONS,
+  });
+}
+
+/** 按谱面 ID 批量读取（Phira 官方收藏页同款 /chart/multi-get），供个人曲库行展示。 */
+export function usePhiraChartsByIds(ids: readonly number[]) {
+  const sorted = useMemo(() => [...new Set(ids)].sort((a, b) => a - b), [ids]);
+  return useQuery({
+    queryKey: ['phira', 'charts-by-ids', sorted], enabled: sorted.length > 0,
+    queryFn: ({ signal }) => phiraProvider.getChartsByIds(sorted, signal),
     ...OPTIONS,
   });
 }
