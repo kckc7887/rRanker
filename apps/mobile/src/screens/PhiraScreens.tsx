@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, InteractionManager, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
@@ -201,6 +202,17 @@ function PhiraSongDetailContent({
         <View style={[detailStyles.chartDivider, { backgroundColor: theme.border }]} /><Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
         {noteGroup ? <GameNoteTable mode="grid" group={noteGroup} accessibilityLabel="谱面物量" containerStyle={[detailStyles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} rowStyle={detailStyles.notesRow} headerRowStyle={detailStyles.notesHeaderRow} headerTextStyle={[detailStyles.notesCell, detailStyles.notesHeader, { color: theme.textMuted }]} valueTextStyle={[detailStyles.notesCell, detailStyles.notesValue, { color: theme.text }]} /> : <Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>{notes.isLoading ? '加载物量中…' : `物量不可用${notes.data?.unavailableReason ? `：${notes.data.unavailableReason}` : ''}`}</Text>}
         {judgement ? <GameNoteTable mode="grid" group={judgement} accessibilityLabel="判定详情" containerStyle={[detailStyles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} rowStyle={detailStyles.notesRow} headerRowStyle={detailStyles.notesHeaderRow} headerTextStyle={[detailStyles.notesCell, detailStyles.notesHeader, { color: theme.textMuted }]} valueTextStyle={[detailStyles.notesCell, detailStyles.notesValue, { color: theme.text }]} /> : null}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`查看谱面确认：${chart.name}`}
+          onPress={() => router.push({
+            pathname: '/songs/phigros-chart-preview',
+            params: { game: 'phira', chartId: String(chart.id), title: chart.name },
+          } as Href)}
+          style={[detailStyles.action, { backgroundColor: 'transparent', borderColor: colors.fg }]}
+        >
+          <Text style={[detailStyles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
+        </Pressable>
       </GameChartResultCard></View>
       <View style={detailStyles.details}><SourceStatus items={[{ key: 'detail', label: 'Phira 谱面详情', updatedAt: chart.updated ?? undefined, state: chartUnavailable ? 'unavailable' : 'live' }, { key: 'scores', label: playerId === null ? '未绑定玩家' : 'Phira 最佳成绩', state: playerId === null ? 'unavailable' : score.isError ? 'unavailable' : 'live' }, { key: 'notes', label: notes.data?.counts ? '谱面物量' : '谱面物量不可用', state: notes.data?.counts ? 'live' : notes.isLoading ? 'cache' : 'unavailable' }]} />
         <Card><View style={detailStyles.songInformation}><Text style={[detailStyles.informationTitle, { color: theme.text }]}>歌曲信息</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>标签：{chart.tags.join('、') || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>更新于：{chart.updated ? new Date(chart.updated).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>上传于：{chart.created ? new Date(chart.created).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>简介：{chart.description || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>评分：{formatPhiraRating(chart.rating)}（{chart.ratingCount} 票）</Text></View></Card>

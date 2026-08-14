@@ -1,7 +1,7 @@
 {
   "name": "mobile",
   "main": "expo-router/entry",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "license": "AGPL-3.0-only",
   "scripts": {
     "postinstall": "node scripts/patch-react-native-webview-xiaomi-bridge.cjs",
@@ -16,6 +16,7 @@
     "test:ui": "jest --runInBand",
     "test:watch": "vitest",
     "build:chart-preview": "node scripts/build-chart-preview.mjs",
+    "build:phigros-chart-preview": "node scripts/build-phigros-chart-preview.mjs",
     "prebuild:android": "expo prebuild --platform android --no-install",
     "apk:debug": "expo prebuild --platform android && cd android && gradlew.bat assembleDebug",
     "apk:release": "expo prebuild --platform android && cd android && gradlew.bat assembleRelease",

@@ -453,5 +453,11 @@ describe('Phigros song detail', () => {
 
     fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
     expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
+
+    await fireEvent.press(screen.getAllByLabelText(/查看谱面确认：/)[0]!);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/songs/phigros-chart-preview',
+      params: { game: 'phigros', songId: 'Song.A', levelIndex: '3', title: '测试曲 AT' },
+    });
   });
 });

@@ -1,0 +1,64 @@
+/**
+ * Phira 谱面 ZIP 内容定位，语义与 @/services/phira-chart-notes 的 countPhiraChartZip
+ * 以及 refer/phira prpr 的 info.yml 读取约定一致：
+ * info.yml 提供 chart/music/illustration/format 键，缺失时按扩展名推断。
+ * 仅 PGR 谱面支持观赏预览，其它格式由调用方给出明确提示。
+ */
+
+import { infoValue } from '@/services/phira-chart-notes';
+
+export type PhiraChartZipFileEntry = {
+  name: string;
+  dir: boolean;
+};
+
+export type PhiraChartFormat = 'pgr' | 'rpe' | 'pec' | 'pbc';
+
+export type PhiraChartZipMediaPlan = {
+  chartEntryName: string | null;
+  musicEntryName: string | null;
+  illustrationEntryName: string | null;
+};
+
+const CHART_EXTENSION_PATTERN = /\.(json|pec|pbc)$/i;
+const MUSIC_EXTENSION_PATTERN = /\.(mp3|ogg|wav|m4a|aac|flac)$/i;
+
+/** 按 info.yml 键或扩展名推断定位谱面、音乐与曲绘条目；不解析谱面内容。 */
+export function resolvePhiraChartZipMediaPlan(
+  entries: readonly PhiraChartZipFileEntry[],
+  infoText: string | null,
+): PhiraChartZipMediaPlan {
+  const files = entries.filter((entry) => !entry.dir && typeof entry.name === 'string');
+  const chartName = infoText ? infoValue(infoText, 'chart') : null;
+  const musicName = infoText ? infoValue(infoText, 'music') : null;
+  const illustrationName = infoText ? infoValue(infoText, 'illustration') : null;
+
+  const chartEntryName = (chartName && files.some((entry) => entry.name === chartName)
+    ? chartName
+    : files.find((entry) => CHART_EXTENSION_PATTERN.test(entry.name))?.name) ?? null;
+  const musicEntryName = (musicName && files.some((entry) => entry.name === musicName)
+    ? musicName
+    : files.find((entry) => MUSIC_EXTENSION_PATTERN.test(entry.name))?.name) ?? null;
+  const illustrationEntryName = (illustrationName && files.some((entry) => entry.name === illustrationName)
+    ? illustrationName
+    : null);
+
+  return { chartEntryName, musicEntryName, illustrationEntryName };
+}
+
+/**
+ * 判定谱面格式，分支与 countPhiraChartZip 一致：
+ * pbc/pec 优先按 info.yml format 与扩展名，JSON 文本按 META 键区分 RPE 与 PGR。
+ */
+export function classifyPhiraChartFormat(
+  entryName: string,
+  formatHint: string | null,
+  text: string,
+): PhiraChartFormat {
+  const hint = formatHint?.toLowerCase() ?? null;
+  if (hint === 'pbc' || /\.pbc$/i.test(entryName)) return 'pbc';
+  if (hint === 'pec' || /\.pec$/i.test(entryName) || !text.trimStart().startsWith('{')) return 'pec';
+  return hint === 'rpe' || text.includes('"META"') ? 'rpe' : 'pgr';
+}
+
+export const PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE = '暂不支持预览该谱面格式（仅支持 PGR）';

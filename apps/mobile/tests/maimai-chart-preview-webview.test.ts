@@ -134,6 +134,16 @@ describe('chart preview webview helpers', () => {
     });
   });
 
+  it('keeps the default title but accepts a custom one from other preview screens', () => {
+    expect(chartPreviewNativeScreenOptions(true, 'ios', '自定义标题')).toEqual({
+      title: '自定义标题',
+      headerShown: false,
+      orientation: 'landscape',
+      autoHideHomeIndicator: true,
+    });
+    expect(chartPreviewNativeScreenOptions(false, 'android')).toMatchObject({ title: '谱面确认' });
+  });
+
   it('keeps the fullscreen lock visible inside the iOS safe area', () => {
     const html = readFileSync(
       resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
