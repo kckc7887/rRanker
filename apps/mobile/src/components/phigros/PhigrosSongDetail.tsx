@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, type Href } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   InteractionManager,
@@ -28,6 +28,7 @@ import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosXingBadge } from './PhigrosXingBadge';
 import { QueryStateView } from '@/components/QueryStateView';
 import { SourceStatus } from '@/components/SourceStatus';
+import { useNotification } from '@/components/AppNotification';
 import type { Chart, PhigrosChartNotes, ScoreRecord, Song } from '@/domain/models';
 import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import {
@@ -44,6 +45,7 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useAppTheme } from '@/theme/app-theme';
+import { openChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-open';
 
 const PHIGROS_CHART_TYPE = 'SD' as const;
 
@@ -459,6 +461,10 @@ function ChartCard({
   onShowAllKyouTags: (tags: readonly PhigrosKyouResolvedTag[]) => void;
 }) {
   const theme = useAppTheme();
+  const { showNotification } = useNotification();
+  const navigation = useNavigation();
+  const cancelPreviewNavigation = useRef<(() => void) | null>(null);
+  useEffect(() => () => cancelPreviewNavigation.current?.(), []);
   const colors = phigrosLevelColors(chart.levelIndex);
   const label = phigrosLevelLabel(chart.levelIndex);
   const chartItem = library.data?.find((item) => item.key === library.chartKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex));
@@ -569,15 +575,26 @@ function ChartCard({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`查看谱面确认：${song.title} ${label}`}
-        onPress={() => router.push({
-          pathname: '/songs/phigros-chart-preview',
-          params: {
+        onPress={() => {
+          cancelPreviewNavigation.current?.();
+          cancelPreviewNavigation.current = openChartPreviewNavigation({
             game: 'phigros',
             songId: song.id,
-            levelIndex: String(chart.levelIndex),
+            levelIndex: chart.levelIndex,
             title: `${song.title} ${label}`,
-          },
-        } as Href)}
+          }, {
+            push: (href) => router.push(href),
+            topRouteName: () => {
+              const state = typeof navigation.getState === 'function' ? navigation.getState() : undefined;
+              return state?.routes[state.index ?? 0]?.name;
+            },
+            onFail: (message) => showNotification({
+              title: '无法打开谱面确认',
+              message,
+              variant: 'error',
+            }),
+          });
+        }}
         style={[
           styles.action,
           styles.chartSearchAction,

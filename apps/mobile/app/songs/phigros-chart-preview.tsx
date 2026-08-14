@@ -3,11 +3,13 @@ import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { WebView } from 'react-native-webview';
 import Storage from 'expo-sqlite/kv-store';
-import JSZip from 'jszip';
 import {
-  type PhigrosChartPreviewConfig,
   type PhigrosChartPreviewSettings,
 } from '@/features/phigros-chart-preview/phigros-chart-preview-inject';
+import {
+  buildPhigrosChartPreviewInput,
+  buildPhiraChartPreviewInput,
+} from '@/features/phigros-chart-preview/chart-preview-input';
 import {
   phigrosChartPreviewAllowsFileAccess,
   preparePhigrosChartPreviewWebViewSource,
@@ -21,26 +23,12 @@ import {
   parseChartPreviewBridgeMessage,
 } from '@/features/maimai-chart-preview/chart-preview-inject';
 import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
-import {
-  loadPhigrosChartPreviewBundle,
-  phigrosChartPreviewLevelLabel,
-} from '@/domain/phigros-chart-preview';
-import {
-  buildPhiraRpeBundlePlan,
-  classifyPhiraChartFormat,
-  PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE,
-  resolvePhiraChartZipMediaPlan,
-} from '@/domain/phira-chart-preview';
-import { infoValue, throwIfAborted } from '@/services/phira-chart-notes';
 import { usePhiraChart } from '@/hooks/use-phira';
-import { phiraProvider } from '@/providers/phira-provider';
 import { useAppTheme } from '@/theme/app-theme';
+import type { PhiraChart } from '@/domain/phira';
+import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 
 const SETTINGS_KEY = 'phigros-chart-preview-settings';
-/** 谱面文本经 HTML 配置注入的上限，避免超大谱面拖垮 WebView。 */
-const CHART_TEXT_LIMIT = 6_000_000;
-/** RPE 社区谱面普遍远大于 PGR（真实谱面 66661 的 chart JSON 约 24MB），RPE 上限单独放宽。 */
-const RPE_CHART_TEXT_LIMIT = 32_000_000;
 /** Phigros 仅需读取 OSS 的三个 JSON 指针文件，超时给得短。 */
 const PHIGROS_PREPARE_TIMEOUT_MS = 20_000;
 /** Phira 需要下载并解包谱面 ZIP，社区文件可能较大，超时放宽。 */
@@ -70,7 +58,7 @@ async function saveSettings(partial: PhigrosChartPreviewSettings): Promise<void>
 type MappedPreview =
   | { error: string }
   | { game: 'phigros'; songId: string; levelIndex: number; title?: string }
-  | { game: 'phira'; chartId: number; title?: string };
+  | { game: 'phira'; chartId: number; title?: string; chart?: PhiraChart };
 
 function mapParams(
   game: string | undefined,
@@ -95,136 +83,11 @@ function mapParams(
   return { error: '缺少游戏参数' };
 }
 
-type PreparedPreview = {
-  config: PhigrosChartPreviewConfig;
-  musicDataBase64?: string | null;
-};
-
-async function buildPhigrosConfig(
-  mapped: Extract<MappedPreview, { game: 'phigros' }>,
-  settings: PhigrosChartPreviewSettings,
-  signal: AbortSignal,
-): Promise<PreparedPreview> {
-  const bundle = await loadPhigrosChartPreviewBundle({
-    songId: mapped.songId,
-    difficulty: phigrosChartPreviewLevelLabel(mapped.levelIndex),
-  }, signal);
-  return {
-    config: {
-      game: 'phigros',
-      title: mapped.title ?? `${bundle.song.title} ${bundle.target.difficulty}`,
-      chartUrl: bundle.chart.url,
-      musicUrl: bundle.music.url,
-      illustrationUrl: bundle.illustration.url,
-      settings,
-    },
-  };
-}
-
-function zipBasename(entryName: string, fallback: string): string {
-  const segments = entryName.split('/').filter((segment) => segment.length > 0);
-  const name = segments[segments.length - 1];
-  return name && name.length > 0 ? name : fallback;
-}
-
-async function buildPhiraConfig(
-  mapped: Extract<MappedPreview, { game: 'phira' }>,
-  settings: PhigrosChartPreviewSettings,
-  signal: AbortSignal,
-): Promise<PreparedPreview> {
-  const chart = await phiraProvider.getChart(mapped.chartId, signal);
-  if (!chart.file) throw new Error('该谱面未提供可下载文件');
-  const zipData = await phiraProvider.downloadChart(chart.file, signal);
-  const zip = await JSZip.loadAsync(zipData);
-  throwIfAborted(signal);
-  const entries = Object.values(zip.files).map((entry) => ({ name: entry.name, dir: entry.dir }));
-  const infoEntry = entries.find((entry) => !entry.dir && /(^|\/)info\.ya?ml$/i.test(entry.name));
-  const infoText = infoEntry ? await zip.file(infoEntry.name)!.async('text') : '';
-  throwIfAborted(signal);
-
-  const plan = resolvePhiraChartZipMediaPlan(entries, infoText || null);
-  if (!plan.chartEntryName) throw new Error('谱面包中没有可读取的谱面文件');
-  const chartEntry = zip.file(plan.chartEntryName)!;
-  const chartBytes = await chartEntry.async('uint8array', () => throwIfAborted(signal));
-  throwIfAborted(signal);
-  const formatHint = infoText ? infoValue(infoText, 'format') : null;
-  if (formatHint?.toLowerCase() === 'pbc' || /\.pbc$/i.test(plan.chartEntryName)) {
-    throw new Error(PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE);
-  }
-  const chartText = new TextDecoder('utf-8', { fatal: true }).decode(chartBytes);
-  const format = classifyPhiraChartFormat(plan.chartEntryName, formatHint, chartText);
-  if (format !== 'pgr' && format !== 'rpe') throw new Error(PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE);
-  // RPE 社区谱面普遍比 PGR 大（66661 谱面 JSON 约 24MB），上限单独放宽；PGR 维持原值不变。
-  const chartTextLimit = format === 'rpe' ? RPE_CHART_TEXT_LIMIT : CHART_TEXT_LIMIT;
-  if (chartText.length > chartTextLimit) throw new Error('谱面过大，暂不支持预览');
-
-  if (!plan.musicEntryName) throw new Error('谱面包缺少音乐文件');
-  const musicBytes = await zip.file(plan.musicEntryName)!.async('uint8array', () => throwIfAborted(signal));
-  throwIfAborted(signal);
-  const musicFile = await stagePhiraChartMusic(musicBytes, zipBasename(plan.musicEntryName, 'music.bin'));
-
-  let illustrationUrl = typeof chart.illustration === 'string' && chart.illustration.trim() !== ''
-    ? chart.illustration
-    : undefined;
-  if (!illustrationUrl && plan.illustrationEntryName) {
-    const imageBytes = await zip.file(plan.illustrationEntryName)!.async('uint8array', () => throwIfAborted(signal));
-    throwIfAborted(signal);
-    illustrationUrl = (await stagePhiraChartMusic(imageBytes, zipBasename(plan.illustrationEntryName, 'illustration.png'))).uri;
-  }
-
-  if (format === 'rpe') {
-    // RPE 谱面包资源：文本资源读文本注入（extra.json/info.yml/.glsl），其余落盘到 rpe/{chartId}/。
-    const bundlePlan = buildPhiraRpeBundlePlan(entries);
-    let extraJson: string | null = null;
-    const shaders: Record<string, string> = {};
-    const stagedFiles: { name: string; bytes: Uint8Array }[] = [];
-    for (const file of bundlePlan) {
-      const entry = zip.file(file.entryName);
-      if (!entry) continue;
-      if (file.text) {
-        if (file.name === 'extra.json') {
-          extraJson = await entry.async('text', () => throwIfAborted(signal));
-        } else if (/\.glsl$/i.test(file.name)) {
-          shaders[file.name] = await entry.async('text', () => throwIfAborted(signal));
-        }
-        // info.yml 已随 infoText 读取注入；info.txt 等其余文本条目播放器不引用，不落盘。
-        throwIfAborted(signal);
-        continue;
-      }
-      stagedFiles.push({ name: file.name, bytes: await entry.async('uint8array', () => throwIfAborted(signal)) });
-      throwIfAborted(signal);
-    }
-    const { basePath } = await stagePhiraRpeBundle(mapped.chartId, stagedFiles);
-    return {
-      config: {
-        game: 'phira',
-        title: mapped.title ?? chart.name,
-        chartText,
-        illustrationUrl,
-        settings,
-        format: 'rpe',
-        rpeAssets: { basePath, extraJson, infoYml: infoText || null, shaders },
-      },
-      musicDataBase64: musicFile.base64,
-    };
-  }
-
-  return {
-    config: {
-      game: 'phira',
-      title: mapped.title ?? chart.name,
-      chartText,
-      illustrationUrl,
-      settings,
-    },
-    musicDataBase64: musicFile.base64,
-  };
-}
-
 export default function PhigrosChartPreviewScreen() {
   const theme = useAppTheme();
   const webRef = useRef<WebView>(null);
   const params = useLocalSearchParams<{
+    requestId?: string;
     game?: string;
     songId?: string;
     levelIndex?: string;
@@ -232,12 +95,29 @@ export default function PhigrosChartPreviewScreen() {
     title?: string;
   }>();
 
-  const mapped = useMemo(
-    () => mapParams(params.game, params.songId, params.levelIndex, params.chartId, params.title),
-    // useLocalSearchParams 每次渲染都返回新对象，必须依赖字符串字段而不是 params 本身。
-    [params.game, params.songId, params.levelIndex, params.chartId, params.title],
+  const handedRequest = useMemo(
+    () => resolveChartPreviewNavigation(params.requestId),
+    [params.requestId],
   );
-  const phiraChartId = !('error' in mapped) && mapped.game === 'phira' ? mapped.chartId : null;
+
+  const mapped = useMemo(
+    (): MappedPreview => {
+      if (params.requestId) {
+        if (!handedRequest) return { error: '谱面确认请求已失效，请返回歌曲详情重试' };
+        if (handedRequest.game === 'phigros') return handedRequest;
+        return {
+          game: 'phira',
+          chartId: handedRequest.chart.id,
+          title: handedRequest.chart.name,
+          chart: handedRequest.chart,
+        };
+      }
+      return mapParams(params.game, params.songId, params.levelIndex, params.chartId, params.title);
+    },
+    // useLocalSearchParams 每次渲染都返回新对象，必须依赖字符串字段而不是 params 本身。
+    [params.requestId, handedRequest, params.game, params.songId, params.levelIndex, params.chartId, params.title],
+  );
+  const phiraChartId = !('error' in mapped) && mapped.game === 'phira' && !mapped.chart ? mapped.chartId : null;
   const phiraChart = usePhiraChart(phiraChartId);
 
   const [source, setSource] = useState<PhigrosChartPreviewWebViewSource | null>(null);
@@ -257,7 +137,7 @@ export default function PhigrosChartPreviewScreen() {
         cancelled = true;
       };
     }
-    if (mapped.game === 'phira' && phiraChart.data === undefined && !phiraChart.isError) {
+    if (mapped.game === 'phira' && !mapped.chart && phiraChart.data === undefined && !phiraChart.isError) {
       setSource(null);
       return () => {
         cancelled = true;
@@ -279,8 +159,11 @@ export default function PhigrosChartPreviewScreen() {
       try {
         const settings = await loadSettings();
         const preparedConfig = mapped.game === 'phigros'
-          ? await buildPhigrosConfig(mapped, settings, controller.signal)
-          : await buildPhiraConfig(mapped, settings, controller.signal);
+          ? await buildPhigrosChartPreviewInput(mapped, settings, controller.signal)
+          : await buildPhiraChartPreviewInput(mapped, settings, controller.signal, {
+              stageMusic: stagePhiraChartMusic,
+              stageRpeBundle: stagePhiraRpeBundle,
+            });
         if (cancelled) return;
         const prepared = await preparePhigrosChartPreviewWebViewSource(
           preparedConfig.config,
