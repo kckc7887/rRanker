@@ -10,8 +10,10 @@ import {
   CHUNITHM_CATALOG_RESOURCE_KEY,
   CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX,
 } from '@/domain/chunithm';
+import { CHUNITHM_COLLECTION_LIST_RESOURCE_KEY } from '@/domain/chunithm-collections';
 import { clearPhigrosIllustrationStage, phigrosIllustrationStageDirectory } from '@/features/phigros-best-image/load-phigros-image-assets';
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
+import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { isAppOwnedCacheEntry } from '@/features/storage-management/expo-system-cache';
@@ -19,6 +21,7 @@ import {
   clearAppOwnedCacheContents,
   measureDirectoryBytes,
   APP_CACHE_ROOT,
+  MAIMAI_ASSETS_ROOT,
   PHIGROS_FONT_ROOT,
 } from '@/features/storage-management/fs-storage';
 import { reloadUiIconFonts } from '@/features/storage-management/ui-icon-fonts';
@@ -59,6 +62,8 @@ function accountIdFromResourceKey(key: string): string | null {
   if (key.startsWith('score:')) return key.slice('score:'.length);
   if (key.startsWith('chunithm-score:')) return key.slice('chunithm-score:'.length);
   if (key.startsWith('account-avatar:')) return key.slice('account-avatar:'.length);
+  if (key.startsWith('account-thumbnail:')) return key.slice('account-thumbnail:'.length);
+  if (key.startsWith('phigros-save:')) return key.slice('phigros-save:'.length);
   return null;
 }
 
@@ -74,6 +79,10 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
     return true;
   }
   if (gameId === 'chunithm' && key.startsWith(CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX)) {
+    return true;
+  }
+  // 中二收藏品列表缓存
+  if (gameId === 'chunithm' && key.startsWith(`${CHUNITHM_COLLECTION_LIST_RESOURCE_KEY}:`)) {
     return true;
   }
   // TUF 玩家资料、成绩分页、曲库分页、关卡详情与难度列表缓存
@@ -186,9 +195,15 @@ const maimaiAdapter: GameStorageAdapter = {
   gameId: 'maimai',
   title: findGame('maimai')?.title ?? '舞萌 DX',
   color: '#F43F5E',
-  note: '成绩与曲库缓存；不含本地账号成绩',
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'maimai', true),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'maimai', true),
+  note: '成绩、曲库与导出图素材缓存；不含本地账号成绩',
+  async measure(snapshots) {
+    const sqlite = await measureGameSqliteBytes(snapshots, 'maimai', true);
+    return sqlite + measureDirectoryBytes(MAIMAI_ASSETS_ROOT());
+  },
+  async clear(snapshots) {
+    await clearGameSqlite(snapshots, 'maimai', true);
+    clearMaimaiUiCache();
+  },
 };
 
 const phigrosAdapter: GameStorageAdapter = {

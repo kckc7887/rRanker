@@ -31,6 +31,12 @@ export function loadPhigrosKyouAliases() {
   return aliasesPromise;
 }
 
+/** 清缓存后重置模块级别名缓存，避免旧 promise 在 1 小时 stale 期内继续返回已清掉的数据。 */
+export function resetPhigrosKyouAliasesCache(): void {
+  aliasesPromise = null;
+  aliasesLoadedAt = 0;
+}
+
 export function usePhigrosKyouChartTags() {
   const activeGameId = useSession((state) => state.activeGameId);
   return useQuery({
