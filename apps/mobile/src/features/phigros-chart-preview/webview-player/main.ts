@@ -1,11 +1,12 @@
 /**
  * Phigros / Phira 谱面确认 WebView 播放器入口。
  * 谱面解析与渲染移植自 demo/phigros-chart-preview（pgr-core/renderer/hit-sound），
- * 对时与性能方案对齐舞萌谱面确认播放器：
+ * 对时、性能与控制面板全部对齐舞萌谱面确认播放器：
  * - 音乐解码为 AudioBuffer，经 AudioBufferSourceNode 在 AudioContext 时钟上播放，
  *   不使用 HTMLMediaElement 时钟（其 currentTime 有延迟抖动，seek/暂停恢复漂移大）；
  * - PlaybackClock 分段时钟记录播放起点与倍速变化，任意时刻反查精确音乐位置；
  * - 视觉与打击音统一使用 getAudioContextOutputTime 的输出端时间（贴合实际听感）；
+ * - 控制器为舞萌式时间轴（音符密度条/刻度/播放头）+ 走带按钮 + 拨轮设置；
  * - 仅播放中常驻 rAF 渲染；暂停/拖动按事件渲染，画布 DPR 封顶与全屏像素预算；
  * - 主线程解析 PGR（WebView file:// 下不使用 Worker）。
  * 观赏播放不包含触控判定与真实计分。
@@ -39,7 +40,6 @@ export interface PhigrosChartPreviewSettings {
   backgroundDim?: number;
   multiHint?: boolean;
   lineColor?: string;
-  hitSound?: boolean;
   hitSoundVolume?: number;
 }
 
@@ -61,17 +61,26 @@ const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({
   backgroundDim: 0.55,
   multiHint: true,
   lineColor: 'white',
-  hitSound: true,
   hitSoundVolume: 1,
 });
 
 const SKIN_BASE = './skin/';
 const LINE_COLORS: readonly string[] = ['white', 'gold', 'blue'];
+const LINE_COLOR_LABELS: readonly string[] = ['白色', '金色', '蓝色'];
 /** 与舞萌播放器一致的音频调度常量。 */
 const SOURCE_START_LEAD_TIME_S = 0.05;
 const SOURCE_FADE_TIME_S = 0.015;
 const MUSIC_END_EPSILON_S = 0.05;
 const CHART_END_EPSILON_S = 0.25;
+const STEP_SECONDS = 5;
+/** 拨轮（移植舞萌 setupWheelPopup/createWheel）。 */
+const WHEEL_ITEM_HEIGHT = 28;
+const NOTE_BAR_COLORS: Readonly<Record<string, string>> = Object.freeze({
+  tap: '#FFD700',
+  drag: '#00CED1',
+  hold: '#FF8C00',
+  flick: '#ff69b4',
+});
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
@@ -101,7 +110,6 @@ function loadSettings(raw: PhigrosChartPreviewSettings | null | undefined): Requ
     backgroundDim: bounded(source.backgroundDim, 0.2, 0.85, DEFAULT_SETTINGS.backgroundDim),
     multiHint: typeof source.multiHint === 'boolean' ? source.multiHint : DEFAULT_SETTINGS.multiHint,
     lineColor: LINE_COLORS.includes(source.lineColor ?? '') ? source.lineColor! : DEFAULT_SETTINGS.lineColor,
-    hitSound: typeof source.hitSound === 'boolean' ? source.hitSound : DEFAULT_SETTINGS.hitSound,
     hitSoundVolume: bounded(source.hitSoundVolume, 0, 1, DEFAULT_SETTINGS.hitSoundVolume),
   };
 }
@@ -146,34 +154,173 @@ function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> 
   });
 }
 
+/** 拨轮，逐语义移植舞萌 createWheel。 */
+function buildWheelValues(min: number, max: number, step: number): number[] {
+  const values: number[] = [];
+  for (let value = min; value <= max + 1e-9; value += step) {
+    values.push(Math.round(value * 100) / 100);
+  }
+  return values;
+}
+
+function createWheel(
+  viewport: HTMLElement,
+  list: HTMLElement,
+  onChange: (value: number) => void,
+  min: number,
+  max: number,
+  step: number,
+  initial: number,
+  labels?: readonly string[],
+): { getValue: () => number; scrollTo: (v: number) => void } {
+  const values = buildWheelValues(min, max, step);
+  let current = values.includes(initial) ? initial : values[0] ?? min;
+  let settleTimer = 0;
+
+  const itemLabel = (v: number) => {
+    if (labels) {
+      const i = values.indexOf(v);
+      return labels[i] ?? String(v);
+    }
+    return v.toFixed(2);
+  };
+
+  const refreshList = () => {
+    list.replaceChildren(
+      ...values.map((value) => {
+        const item = document.createElement('div');
+        item.className = 'wheel-item';
+        item.dataset.value = String(value);
+        item.textContent = itemLabel(value);
+        item.setAttribute('role', 'option');
+        item.setAttribute('aria-selected', value === current ? 'true' : 'false');
+        return item;
+      }),
+    );
+  };
+
+  refreshList();
+
+  const indexOf = (value: number) =>
+    Math.max(0, values.findIndex((item) => Math.abs(item - value) < 1e-9));
+
+  const applySelection = (value: number, notify: boolean) => {
+    current = value;
+    for (const child of list.children) {
+      const el = child as HTMLElement;
+      el.setAttribute('aria-selected', el.dataset.value === String(value) ? 'true' : 'false');
+    }
+    if (notify) onChange(value);
+  };
+
+  const scrollToValue = (value: number, behavior: ScrollBehavior = 'auto') => {
+    const index = indexOf(value);
+    viewport.scrollTo({ top: index * WHEEL_ITEM_HEIGHT, behavior });
+  };
+
+  const valueFromScroll = () => {
+    const index = clamp(Math.round(viewport.scrollTop / WHEEL_ITEM_HEIGHT), 0, values.length - 1);
+    return values[index]!;
+  };
+
+  viewport.addEventListener('scroll', () => {
+    const next = valueFromScroll();
+    if (Math.abs(next - current) > 1e-9) applySelection(next, true);
+    window.clearTimeout(settleTimer);
+    settleTimer = window.setTimeout(() => {
+      scrollToValue(valueFromScroll(), 'smooth');
+    }, 80);
+  }, { passive: true });
+
+  scrollToValue(current);
+  applySelection(current, false);
+
+  return { getValue: () => current, scrollTo: scrollToValue };
+}
+
+let activePopupClose: (() => void) | null = null;
+
+/** 拨轮字段，逐语义移植舞萌 setupWheelPopup，并支持自定义数值显示。 */
+function setupWheelPopup(
+  trigger: HTMLElement,
+  popup: HTMLElement,
+  viewport: HTMLElement,
+  list: HTMLElement,
+  valSpan: HTMLElement,
+  onChange: (value: number) => void,
+  min: number,
+  max: number,
+  step: number,
+  initial: number,
+  labels?: readonly string[],
+  format: (value: number) => string = (value) => value.toFixed(2),
+): { getValue: () => number } {
+  const wheel = createWheel(viewport, list, (value) => {
+    valSpan.textContent = labels ? (labels[value] ?? String(value)) : format(value);
+    onChange(value);
+  }, min, max, step, initial, labels);
+
+  let open = false;
+
+  const openPopup = () => {
+    activePopupClose?.();
+    open = true;
+    popup.style.visibility = '';
+    popup.style.pointerEvents = '';
+    const triggerRect = trigger.getBoundingClientRect();
+    popup.style.bottom = `${window.innerHeight - triggerRect.top + 4}px`;
+    popup.style.left = `${triggerRect.left + triggerRect.width / 2}px`;
+    popup.style.transform = 'translateX(-50%)';
+    wheel.scrollTo(wheel.getValue());
+    activePopupClose = closePopup;
+  };
+
+  const closePopup = () => {
+    open = false;
+    popup.style.visibility = 'hidden';
+    popup.style.pointerEvents = 'none';
+    if (activePopupClose === closePopup) activePopupClose = null;
+  };
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (open) closePopup();
+    else openPopup();
+  });
+
+  document.addEventListener('click', () => {
+    if (open) closePopup();
+  });
+
+  popup.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+  popup.addEventListener('touchstart', (e) => {
+    e.stopPropagation();
+  });
+
+  valSpan.textContent = labels ? (labels[Math.round(initial)] ?? String(initial)) : format(initial);
+
+  return wheel;
+}
+
 function start(): void {
   const elements = {
     stage: $('stage'),
     canvas: $('chart-canvas') as HTMLCanvasElement,
-    loadPanel: $('load-panel'),
-    loadKicker: $('load-kicker'),
-    loadTitle: $('load-title'),
-    loadDetail: $('load-detail'),
-    start: $('start-button') as HTMLButtonElement,
-    retry: $('retry-button') as HTMLButtonElement,
     play: $('play-button') as HTMLButtonElement,
     playIcon: $('play-icon') as SVGElement,
-    seek: $('seek') as HTMLInputElement,
+    btnRestart: $('btn-restart') as HTMLButtonElement,
+    btnStepBack: $('btn-step-back') as HTMLButtonElement,
+    btnStepForward: $('btn-step-forward') as HTMLButtonElement,
+    fullscreen: $('btn-fullscreen') as HTMLButtonElement,
+    timelineHost: $('timeline-host'),
+    timelineBars: $('timeline-bars'),
+    timelineRuler: $('timeline-ruler'),
+    timelinePlayhead: $('timeline-playhead'),
+    timelineBadge: $('timeline-badge'),
     timeLabel: $('time-label'),
-    fullscreen: $('fullscreen-button') as HTMLButtonElement,
-    speed: $('playback-speed') as HTMLInputElement,
-    speedOutput: $('speed-output') as HTMLOutputElement,
-    noteSize: $('note-size') as HTMLInputElement,
-    noteSizeOutput: $('note-size-output') as HTMLOutputElement,
-    volume: $('volume') as HTMLInputElement,
-    volumeOutput: $('volume-output') as HTMLOutputElement,
-    dim: $('background-dim') as HTMLInputElement,
-    dimOutput: $('dim-output') as HTMLOutputElement,
     multiHint: $('multi-hint') as HTMLButtonElement,
-    lineColor: $('line-color') as HTMLSelectElement,
-    hitSound: $('hit-sound') as HTMLButtonElement,
-    hitSoundVolume: $('hit-sound-volume') as HTMLInputElement,
-    hitSoundVolumeOutput: $('hit-sound-volume-output') as HTMLOutputElement,
     gameProgress: $('game-progress-fill'),
     score: $('score-display'),
     comboBlock: $('combo-block'),
@@ -189,15 +336,17 @@ function start(): void {
   const playbackClock = new PlaybackClock();
   let loadController: AbortController | null = null;
   let ready = false;
-  let seeking = false;
   let isPlaying = false;
   let isFullscreen = false;
+  let timelineDragging = false;
+  let wasPlayingBeforeDrag = false;
   let rafId = 0;
   let lastRafTs = 0;
   let currentChartTime = 0;
   let chartOffset = 0;
   let chartDuration = 0;
   let completionTimes: number[] = [];
+  let timelineNotes: { time: number; kind: string }[] = [];
   let controlsTimer = 0;
   let audioContext: AudioContext | null = null;
   let musicGain: GainNode | null = null;
@@ -215,21 +364,19 @@ function start(): void {
   if (config.title) elements.title.textContent = config.title;
   elements.status.textContent = config.game === 'phira' ? 'Phira 谱面' : config.game === 'phigros' ? 'Phigros 谱面' : '';
 
-  function setStage(kicker: string, title: string, detail: string): void {
-    elements.loadKicker.textContent = kicker;
-    elements.loadTitle.textContent = title;
-    elements.loadDetail.textContent = detail;
+  function setStatus(text: string): void {
+    elements.status.textContent = text;
   }
 
   function setControlsEnabled(value: boolean): void {
     elements.play.disabled = !value;
-    elements.seek.disabled = !value;
+    elements.btnRestart.disabled = !value;
+    elements.btnStepBack.disabled = !value;
+    elements.btnStepForward.disabled = !value;
     elements.fullscreen.disabled = !value;
-    for (const control of [
-      elements.speed, elements.noteSize, elements.volume, elements.dim,
-      elements.hitSoundVolume, elements.lineColor, elements.multiHint, elements.hitSound,
-    ]) {
-      control.disabled = !value;
+    elements.multiHint.disabled = !value;
+    for (const id of ['speed-trigger', 'note-size-trigger', 'volume-trigger', 'dim-trigger', 'hit-sound-volume-trigger', 'line-color-trigger']) {
+      ($(id) as HTMLButtonElement).disabled = !value;
     }
   }
 
@@ -271,7 +418,7 @@ function start(): void {
       musicBuffer = await context.decodeAudioData(bytes);
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
-      elements.status.textContent = `${error instanceof Error ? error.message : '谱面音乐不可用'}（仍可静音看谱）`;
+      setStatus(`${error instanceof Error ? error.message : '谱面音乐不可用'}（仍可静音看谱）`);
       musicBuffer = null;
     }
   }
@@ -340,23 +487,11 @@ function start(): void {
   }
 
   function applySettings(): void {
-    elements.speed.value = String(settings.playbackSpeed);
-    elements.noteSize.value = String(settings.noteScale);
-    elements.volume.value = String(settings.volume);
-    elements.dim.value = String(settings.backgroundDim);
     elements.multiHint.setAttribute('aria-pressed', String(settings.multiHint));
-    elements.lineColor.value = settings.lineColor;
-    elements.hitSound.setAttribute('aria-pressed', String(settings.hitSound));
-    elements.hitSoundVolume.value = String(settings.hitSoundVolume);
-    elements.speedOutput.value = `${settings.playbackSpeed.toFixed(2)}×`;
-    elements.noteSizeOutput.value = `${settings.noteScale.toFixed(2)}×`;
-    elements.volumeOutput.value = `${Math.round(settings.volume * 100)}%`;
-    elements.dimOutput.value = `${Math.round(settings.backgroundDim * 100)}%`;
-    elements.hitSoundVolumeOutput.value = `${Math.round(settings.hitSoundVolume * 100)}%`;
     if (musicGain) musicGain.gain.value = settings.volume;
     renderer.setSettings({ ...settings, lineColor: settings.lineColor as LineColorKey });
     if (hitSoundGain) hitSoundGain.gain.value = settings.hitSoundVolume;
-    if (!settings.hitSound || settings.hitSoundVolume <= 0) stopActiveHitSounds();
+    if (settings.hitSoundVolume <= 0) stopActiveHitSounds();
   }
 
   function persistSettings(): void {
@@ -415,7 +550,7 @@ function start(): void {
 
   function playHitSound(kind: HitSoundKind, delay: number, outputNow: number): void {
     const buffer = hitSoundBuffers?.[kind];
-    if (!buffer || !audioContext || !hitSoundGain || !settings.hitSound || settings.hitSoundVolume <= 0) return;
+    if (!buffer || !audioContext || !hitSoundGain || settings.hitSoundVolume <= 0) return;
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(hitSoundGain);
@@ -452,6 +587,90 @@ function start(): void {
     lastHitSoundTime = time;
   }
 
+  // ---- 舞萌式时间轴 ----
+  function buildTimeline(): void {
+    elements.timelineBars.replaceChildren();
+    if (chartDuration <= 0) return;
+    const rect = elements.timelineHost.getBoundingClientRect();
+    const w = Math.max(1, Math.ceil(rect.width));
+    const bucketCount = Math.min(200, w);
+    const step = chartDuration / bucketCount;
+    const buckets: Record<string, number>[] = Array.from({ length: bucketCount }, (_, i) => ({
+      startTime: i * step, tap: 0, drag: 0, hold: 0, flick: 0, total: 0,
+    }));
+    for (const note of timelineNotes) {
+      const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.time / step)));
+      const b = buckets[idx]!;
+      if (note.kind === 'drag') b.drag += 1;
+      else if (note.kind === 'hold') b.hold += 1;
+      else if (note.kind === 'flick') b.flick += 1;
+      else b.tap += 1;
+      b.total += 1;
+    }
+    let maxTotal = 1;
+    for (const b of buckets) { if (b.total > maxTotal) maxTotal = b.total; }
+    const barH = 22;
+    for (const b of buckets) {
+      if (b.total === 0) continue;
+      const h = Math.max(2, (b.total / maxTotal) * barH);
+      const left = ((b.startTime / chartDuration) * 100).toFixed(2);
+      const widthPct = ((step / chartDuration) * 100).toFixed(2);
+      const bar = document.createElement('div');
+      bar.className = 'timeline-bar';
+      bar.style.left = `${left}%`;
+      bar.style.width = `${widthPct}%`;
+      bar.style.height = `${h}px`;
+      for (const key of ['tap', 'drag', 'hold', 'flick'] as const) {
+        const ratio = b[key] / b.total;
+        if (ratio === 0) continue;
+        const seg = document.createElement('div');
+        seg.style.flex = String(ratio);
+        seg.style.width = '100%';
+        seg.style.backgroundColor = NOTE_BAR_COLORS[key]!;
+        bar.appendChild(seg);
+      }
+      elements.timelineBars.appendChild(bar);
+    }
+
+    elements.timelineRuler.replaceChildren();
+    const rulerRect = elements.timelineRuler.getBoundingClientRect();
+    const rw = Math.max(1, rulerRect.width);
+    const total = Math.max(1, chartDuration);
+    const tickStep = [1, 5, 10, 15, 30, 60, 120, 300].find((s) => (rw * s) / total >= 4) ?? 300;
+    const labelStep = [5, 10, 15, 30, 60, 120, 300, 600].find((s) => (rw * s) / total >= 24) ?? 600;
+    for (let t = 0; t <= chartDuration; t += tickStep) {
+      const pct = ((t / total) * 100).toFixed(2);
+      const isMajor = t % labelStep === 0;
+      const isMedium = Number.isInteger(t / (labelStep / 2));
+      const cls = isMajor ? 'major' : isMedium ? 'medium' : 'minor';
+      const tick = document.createElement('div');
+      tick.className = `timeline-tick ${cls}`;
+      tick.style.left = `${pct}%`;
+      elements.timelineRuler.appendChild(tick);
+      if (isMajor) {
+        const label = document.createElement('div');
+        label.className = 'timeline-label';
+        label.style.left = `${pct}%`;
+        label.textContent = formatTime(t);
+        elements.timelineRuler.appendChild(label);
+      }
+    }
+  }
+
+  function updatePlayhead(chartTime: number): void {
+    if (chartDuration <= 0) return;
+    const pct = Math.min(100, Math.max(0, (chartTime / chartDuration) * 100));
+    elements.timelinePlayhead.style.left = `${pct}%`;
+    elements.timelineBadge.style.left = `${pct}%`;
+    elements.timelineBadge.textContent = formatTime(chartTime);
+  }
+
+  function seekFromTimelineEvent(event: PointerEvent): void {
+    const rect = elements.timelineHost.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+    seekToChartTime((pct / 100) * chartDuration);
+  }
+
   function renderHud(chartTime: number): void {
     const passed = upperBound(completionTimes, chartTime);
     const total = Math.max(1, completionTimes.length);
@@ -460,9 +679,7 @@ function start(): void {
     elements.combo.textContent = String(passed);
     elements.comboBlock.classList.toggle('is-visible', passed >= 3);
     elements.timeLabel.textContent = `${formatTime(chartTime)} / ${formatTime(chartDuration)}`;
-    if (!seeking) {
-      elements.seek.value = String(chartTime);
-    }
+    updatePlayhead(chartTime);
   }
 
   function renderFrame(chartTime: number): void {
@@ -478,12 +695,8 @@ function start(): void {
     ready = false;
     isPlaying = false;
     setControlsEnabled(false);
-    elements.loadPanel.classList.remove('is-hidden');
-    elements.start.disabled = true;
-    elements.start.hidden = false;
-    elements.retry.hidden = true;
     try {
-      setStage('CONNECTING', '正在读取谱面资源', '正在确认谱面与音乐资源。');
+      setStatus('正在读取谱面资源…');
       const [chartText, image] = await Promise.all([
         loadChartText(signal),
         typeof config.illustrationUrl === 'string' && config.illustrationUrl.trim() !== ''
@@ -494,15 +707,15 @@ function start(): void {
           : Promise.resolve(null),
       ]);
       if (signal.aborted) return;
-      setStage('PROCESSING', '正在解析谱面', '计算速度积分、判定线事件和跨判定线多押。');
+      setStatus('正在解析谱面…');
       const chart: PgrChart = await new Promise((resolve, reject) => {
-        // 主线程解析：WebView file:// 下不使用 Worker，解析期间加载面板保持可见。
+        // 主线程解析：WebView file:// 下不使用 Worker，解析期间状态保持可见。
         window.setTimeout(() => {
           try { resolve(parsePgrChart(chartText)); } catch (error) { reject(error); }
         }, 0);
       });
       if (signal.aborted) return;
-      setStage('BUFFERING', '正在准备音乐与曲绘', `${chart.stats.noteCount} notes · ${chart.stats.lineCount} lines`);
+      setStatus('正在准备音乐与曲绘…');
       const [noteAssets] = await Promise.all([
         loadNoteAssets(signal),
         decodeMusic(signal),
@@ -520,18 +733,18 @@ function start(): void {
       completionTimes = chart.lines
         .flatMap((line) => line.notes.map((note) => note.kind === 'hold' ? note.endTime : note.time))
         .sort((a, b) => a - b);
-      elements.seek.max = String(chartDuration);
-      if (musicBuffer) elements.status.textContent = '';
+      timelineNotes = chart.lines
+        .flatMap((line) => line.notes.map((note) => ({ time: note.time, kind: note.kind })))
+        .sort((a, b) => a.time - b.time);
+      buildTimeline();
+      if (musicBuffer) setStatus('');
       ready = true;
       setControlsEnabled(true);
-      elements.start.disabled = false;
-      setStage('READY', '谱面已就绪', `${chart.stats.noteCount} notes · ${chart.stats.lineCount} lines · ${chart.stats.eventCount} events`);
+      renderFrame(0);
       postStatus('ready', {});
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-      elements.start.hidden = true;
-      elements.retry.hidden = false;
-      setStage('LOAD FAILED', '无法打开谱面', error instanceof Error ? error.message : String(error));
+      setStatus(error instanceof Error ? error.message : '无法打开谱面');
       postStatus('error', { message: error instanceof Error ? error.message : '谱面播放失败' });
     }
   }
@@ -617,8 +830,7 @@ function start(): void {
         /* 打击音解码失败不影响播放 */
       }
     } catch (error) {
-      elements.loadPanel.classList.remove('is-hidden');
-      setStage('PLAYBACK FAILED', '没有开始播放音乐', error instanceof Error ? error.message : String(error));
+      setStatus(error instanceof Error ? error.message : '没有开始播放音乐');
       return;
     }
     if (currentChartTime >= chartDuration - 0.05) currentChartTime = 0;
@@ -675,75 +887,122 @@ function start(): void {
   new ResizeObserver(applyStageMetrics).observe(elements.stage);
   applyStageMetrics();
 
-  elements.start.addEventListener('click', () => {
-    elements.loadPanel.classList.add('is-hidden');
-    void startPlayback();
-  });
-  elements.retry.addEventListener('click', () => { void loadPreview(); });
+  // ---- 事件绑定 ----
   elements.play.addEventListener('click', () => {
+    if (!ready) return;
     if (isPlaying) pausePlayback();
     else void startPlayback();
   });
-  elements.seek.addEventListener('pointerdown', () => { seeking = true; });
-  elements.seek.addEventListener('pointerup', () => { seeking = false; });
-  elements.seek.addEventListener('input', () => {
-    seekToChartTime(Number(elements.seek.value));
+  elements.btnRestart.addEventListener('click', () => {
+    if (!ready) return;
+    seekToChartTime(0);
+    if (!isPlaying) renderFrame(0);
   });
-  elements.speed.addEventListener('input', () => {
-    settings.playbackSpeed = Number(elements.speed.value);
-    // 播放中改变倍速：采样级同步（与舞萌一致），不打断当前声源。
-    if (isPlaying && isSourcePlaying && audioContext && sourceNode) {
-      const now = audioContext.currentTime;
-      const musicTime = getMusicTime();
-      sourceNode.playbackRate.setValueAtTime(settings.playbackSpeed, now);
-      playbackClock.appendSegment(now, settings.playbackSpeed, musicTime);
-    }
-    applySettings();
-    persistSettings();
-    if (!isPlaying) renderFrame(currentChartTime);
+  elements.btnStepBack.addEventListener('click', () => {
+    if (!ready) return;
+    seekToChartTime(currentChartTime - STEP_SECONDS);
   });
-  elements.noteSize.addEventListener('input', () => {
-    settings.noteScale = Number(elements.noteSize.value);
-    applySettings();
-    persistSettings();
-    if (!isPlaying) renderFrame(currentChartTime);
+  elements.btnStepForward.addEventListener('click', () => {
+    if (!ready) return;
+    seekToChartTime(currentChartTime + STEP_SECONDS);
   });
-  elements.volume.addEventListener('input', () => {
-    settings.volume = Number(elements.volume.value);
-    applySettings();
-    persistSettings();
+
+  elements.timelineHost.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    timelineDragging = true;
+    wasPlayingBeforeDrag = isPlaying;
+    if (isPlaying) pausePlayback();
+    seekFromTimelineEvent(e);
   });
-  elements.dim.addEventListener('input', () => {
-    settings.backgroundDim = Number(elements.dim.value);
-    applySettings();
-    persistSettings();
-    if (!isPlaying) renderFrame(currentChartTime);
+  document.addEventListener('pointermove', (e) => {
+    if (!timelineDragging) return;
+    seekFromTimelineEvent(e);
   });
+  document.addEventListener('pointerup', () => {
+    if (!timelineDragging) return;
+    timelineDragging = false;
+    if (wasPlayingBeforeDrag) void startPlayback();
+  });
+  document.addEventListener('pointercancel', () => {
+    timelineDragging = false;
+  });
+
+  // 拨轮设置
+  setupWheelPopup(
+    $('speed-trigger'), $('speed-popup'), $('speed-wheel'), $('speed-list'), $('speed-val'),
+    (value) => {
+      settings.playbackSpeed = value;
+      // 播放中改变倍速：采样级同步（与舞萌一致），不打断当前声源。
+      if (isPlaying && isSourcePlaying && audioContext && sourceNode) {
+        const now = audioContext.currentTime;
+        const musicTime = getMusicTime();
+        sourceNode.playbackRate.setValueAtTime(value, now);
+        playbackClock.appendSegment(now, value, musicTime);
+      }
+      applySettings();
+      persistSettings();
+      if (!isPlaying) renderFrame(currentChartTime);
+    },
+    0.5, 2, 0.05, settings.playbackSpeed, undefined, (value) => `${value.toFixed(2)}×`,
+  );
+  setupWheelPopup(
+    $('note-size-trigger'), $('note-size-popup'), $('note-size-wheel'), $('note-size-list'), $('note-size-val'),
+    (value) => {
+      settings.noteScale = value;
+      applySettings();
+      persistSettings();
+      if (!isPlaying) renderFrame(currentChartTime);
+    },
+    0.6, 1.8, 0.05, settings.noteScale, undefined, (value) => `${value.toFixed(2)}×`,
+  );
+  setupWheelPopup(
+    $('volume-trigger'), $('volume-popup'), $('volume-wheel'), $('volume-list'), $('volume-val'),
+    (value) => {
+      settings.volume = value;
+      applySettings();
+      persistSettings();
+    },
+    0, 1, 0.01, settings.volume, undefined, (value) => `${Math.round(value * 100)}%`,
+  );
+  setupWheelPopup(
+    $('dim-trigger'), $('dim-popup'), $('dim-wheel'), $('dim-list'), $('dim-val'),
+    (value) => {
+      settings.backgroundDim = value;
+      applySettings();
+      persistSettings();
+      if (!isPlaying) renderFrame(currentChartTime);
+    },
+    0.2, 0.85, 0.01, settings.backgroundDim, undefined, (value) => `${Math.round(value * 100)}%`,
+  );
+  setupWheelPopup(
+    $('hit-sound-volume-trigger'), $('hit-sound-volume-popup'), $('hit-sound-volume-wheel'), $('hit-sound-volume-list'), $('hit-sound-volume-val'),
+    (value) => {
+      settings.hitSoundVolume = value;
+      applySettings();
+      persistSettings();
+    },
+    0, 1, 0.01, settings.hitSoundVolume, undefined, (value) => `${Math.round(value * 100)}%`,
+  );
+  setupWheelPopup(
+    $('line-color-trigger'), $('line-color-popup'), $('line-color-wheel'), $('line-color-list'), $('line-color-val'),
+    (value) => {
+      settings.lineColor = LINE_COLORS[value] ?? 'white';
+      applySettings();
+      persistSettings();
+      if (!isPlaying) renderFrame(currentChartTime);
+    },
+    0, LINE_COLOR_LABELS.length - 1, 1, Math.max(0, LINE_COLORS.indexOf(settings.lineColor)), LINE_COLOR_LABELS,
+  );
+
   elements.multiHint.addEventListener('click', () => {
+    if (!ready) return;
     settings.multiHint = !settings.multiHint;
     applySettings();
     persistSettings();
     if (!isPlaying) renderFrame(currentChartTime);
   });
-  elements.lineColor.addEventListener('change', () => {
-    settings.lineColor = elements.lineColor.value;
-    applySettings();
-    persistSettings();
-    if (!isPlaying) renderFrame(currentChartTime);
-  });
-  elements.hitSound.addEventListener('click', () => {
-    stopActiveHitSounds();
-    settings.hitSound = !settings.hitSound;
-    applySettings();
-    persistSettings();
-    resetHitSoundTimeline(currentChartTime);
-    if (!isPlaying) renderFrame(currentChartTime);
-  });
-  elements.hitSoundVolume.addEventListener('input', () => {
-    settings.hitSoundVolume = Number(elements.hitSoundVolume.value);
-    applySettings();
-    persistSettings();
-  });
+
   elements.fullscreen.addEventListener('click', () => setFullscreen(!isFullscreen));
   elements.stage.addEventListener('pointerdown', () => {
     if (!isFullscreen) return;
@@ -753,6 +1012,9 @@ function start(): void {
       elements.controls.classList.add('hidden');
     }
   });
+
+  window.addEventListener('resize', buildTimeline);
+  new ResizeObserver(buildTimeline).observe(elements.timelineHost);
 
   window.addEventListener('message', (event) => {
     const data = event.data as { type?: string } | undefined;

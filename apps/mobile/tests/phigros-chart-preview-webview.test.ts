@@ -33,17 +33,26 @@ describe('phigros chart preview webview template', () => {
     );
   });
 
-  it('下方播放控制器对齐舞萌样式：面板/accent 播放钮/transport 图标钮/细条滑块/胶囊 toggle', () => {
+  it('下方播放控制器对齐舞萌样式：时间轴/accent 播放钮/transport 图标钮/拨轮/胶囊 toggle，无 demo 残留', () => {
     const html = templateHtml();
     expect(html).toContain('--accent: #5b8cff');
-    expect(html).toContain('#controls {');
     expect(html).toContain('#play-button {');
     expect(html).toContain('.transport-btn');
-    expect(html).toContain('#seek::-webkit-slider-thumb');
+    expect(html).toContain('id="timeline-host"');
+    expect(html).toContain('id="timeline-playhead"');
+    expect(html).toContain('class="wheel-trigger" id="speed-trigger"');
+    expect(html).toContain('class="wheel-highlight"');
+    expect(html).toContain('id="line-color-trigger"');
     expect(html).toContain('.toggle[aria-pressed="true"]');
     expect(html).toContain('id="multi-hint" type="button" aria-pressed="true"');
     expect(html).toContain('id="time-label"');
     expect(html).toContain('background: rgba(11,13,18,0.92)');
     expect(html).toContain('backdrop-filter: blur(12px)');
+    expect(html).toContain('body.fullscreen .controls-settings { display: none; }');
+    // demo 残留清理：无加载面板、无滑块、无打击音效开关
+    expect(html).not.toContain('load-panel');
+    expect(html).not.toContain('id="seek"');
+    expect(html).not.toContain('type="range"');
+    expect(html).not.toContain('id="hit-sound"');
   });
 });

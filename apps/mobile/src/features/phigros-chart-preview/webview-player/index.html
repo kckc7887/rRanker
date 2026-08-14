@@ -14,6 +14,7 @@
       --muted: #9aa3b2;
       --accent: #5b8cff;
       --border: #2a3140;
+      --wheel-item-h: 28px;
     }
     * { box-sizing: border-box; }
     html, body {
@@ -88,33 +89,7 @@
     .combo-block strong { font-size: var(--combo-font-size, 26px); font-weight: 600; font-variant-numeric: tabular-nums; }
     .combo-block span { margin-top: .55em; font-size: var(--combo-label-font-size, 8px); letter-spacing: .08em; opacity: .85; }
 
-    .load-panel {
-      position: absolute;
-      z-index: 6;
-      top: 50%; left: 50%; translate: -50% -50%;
-      width: min(360px, calc(100% - 32px));
-      padding: 22px 18px;
-      text-align: center;
-      background: rgba(0,0,0,.78);
-      border-radius: 12px;
-      transition: opacity 180ms ease, visibility 180ms ease;
-    }
-    .load-panel.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-    .load-panel h1 { margin: .4em 0; font-size: 19px; font-weight: 600; }
-    .load-panel p:not(.load-kicker) { margin: 0 auto 1.3em; color: rgba(255,255,255,.7); line-height: 1.6; font-size: 12px; }
-    .load-kicker { margin: 0; font-size: 9px; letter-spacing: .22em; opacity: .6; }
-    .load-mark { display: flex; justify-content: center; gap: 7px; margin-bottom: 16px; }
-    .load-mark i { width: 26px; height: 2px; background: #fff; animation: scan 1s ease-in-out infinite alternate; }
-    .load-mark i:nth-child(2) { animation-delay: 120ms; }
-    .load-mark i:nth-child(3) { animation-delay: 240ms; }
-    @keyframes scan { from { opacity: .15; translate: -5px 0; } to { opacity: 1; translate: 5px 0; } }
-
-    .primary-action, .text-action { border: 0; cursor: pointer; font-family: inherit; }
-    .primary-action { min-width: 132px; padding: .8em 1.6em; color: #111; background: #fff; font-weight: 700; border-radius: 8px; }
-    .text-action { display: block; margin: 12px auto 0; color: #fff; background: transparent; text-decoration: underline; font-family: inherit; }
-    button:disabled { cursor: not-allowed; opacity: .4; }
-
-    /* ---- 下方播放控制器：样式对齐舞萌谱面确认 ---- */
+    /* ---- 下方播放控制器：样式与交互对齐舞萌谱面确认 ---- */
     #controls {
       flex-shrink: 0;
       background: var(--panel);
@@ -130,9 +105,10 @@
       gap: 8px;
     }
     .row.wrap { flex-wrap: wrap; }
-    button, label, input[type="range"], select {
+    button, label {
       font: inherit;
     }
+    button:disabled { cursor: not-allowed; opacity: .4; }
     #play-button {
       width: 40px;
       height: 40px;
@@ -184,68 +160,174 @@
       height: 20px;
       display: block;
     }
-    #seek { flex: 1; }
-    #seek, .field input[type="range"] {
-      -webkit-appearance: none;
-      appearance: none;
-      height: 2px;
-      background: var(--border);
-      border-radius: 1px;
-      outline: none;
-    }
-    #seek::-webkit-slider-thumb, .field input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 8px;
-      height: 18px;
-      border-radius: 3px;
-      background: #fff;
-      border: 0;
-      box-shadow: 0 0 6px rgba(255,255,255,0.6);
-      cursor: pointer;
-    }
-    #seek::-moz-range-thumb, .field input[type="range"]::-moz-range-thumb {
-      width: 8px;
-      height: 18px;
-      border-radius: 3px;
-      background: #fff;
-      border: 0;
-      box-shadow: 0 0 6px rgba(255,255,255,0.6);
-      cursor: pointer;
-    }
     #time-label {
       font-size: 12px;
       color: var(--muted);
       font-variant-numeric: tabular-nums;
     }
+    /* 时间轴：舞萌式音符密度条 + 刻度 + 播放头 */
+    #timeline-host {
+      flex: 1;
+      position: relative;
+      height: 36px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+    }
+    #timeline-bars {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 14px;
+      height: 22px;
+      overflow: hidden;
+    }
+    .timeline-bar {
+      position: absolute;
+      bottom: 0;
+      min-width: 1px;
+      display: flex;
+      flex-direction: column-reverse;
+    }
+    #timeline-ruler {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 4px;
+      height: 10px;
+    }
+    .timeline-tick {
+      position: absolute;
+      bottom: 0;
+      width: 1px;
+      background: var(--border);
+    }
+    .timeline-tick.major { height: 8px; background: var(--accent); }
+    .timeline-tick.medium { height: 5px; }
+    .timeline-tick.minor { height: 3px; }
+    .timeline-label {
+      position: absolute;
+      bottom: -9px;
+      font-size: 8px;
+      color: var(--muted);
+      font-family: monospace;
+      transform: translateX(-50%);
+    }
+    #timeline-playhead {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      border-radius: 2px;
+      background: #fff;
+      box-shadow: 0 0 8px rgba(255,255,255,0.7);
+      pointer-events: none;
+      transform: translateX(-1px);
+      z-index: 10;
+    }
+    #timeline-badge {
+      position: absolute;
+      top: -16px;
+      transform: translateX(-50%);
+      background: #fff;
+      color: #0b0d12;
+      font-size: 10px;
+      font-family: monospace;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 10;
+    }
+    /* 拨轮：舞萌式触发钮 + 滚动吸附滚轮 */
     .field {
       display: flex;
       align-items: center;
       gap: 6px;
       font-size: 12px;
       color: var(--muted);
+      white-space: nowrap;
     }
-    .field input[type="range"] { width: 88px; }
-    .field output {
-      color: var(--text);
-      font-size: 12px;
-      font-weight: 700;
-      font-variant-numeric: tabular-nums;
-      min-width: 42px;
-      text-align: right;
-    }
-    .field select {
+    .wheel-trigger {
       appearance: none;
-      min-width: 54px;
-      padding: 4px 20px 4px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      height: 26px;
+      padding: 0 6px;
       background: var(--panel);
       border: 1px solid var(--border);
       border-radius: 8px;
       color: var(--text);
       font-size: 12px;
       font-weight: 700;
+      font-variant-numeric: tabular-nums;
       cursor: pointer;
       font-family: inherit;
+    }
+    .wheel-trigger.text {
+      width: 54px;
+      min-width: 54px;
+      flex-shrink: 0;
+      font-variant-numeric: normal;
+    }
+    .wheel-trigger:active { opacity: 0.7; }
+    .wheel-popup {
+      position: fixed;
+      z-index: 1000;
+      filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
+    }
+    .wheel-popup .wheel {
+      border-radius: 12px;
+    }
+    .wheel {
+      position: relative;
+      width: 72px;
+      height: calc(var(--wheel-item-h) * 3);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #0f131a;
+      overflow: hidden;
+      touch-action: pan-y;
+    }
+    .wheel-viewport {
+      height: 100%;
+      overflow-y: auto;
+      scroll-snap-type: y mandatory;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .wheel-viewport::-webkit-scrollbar { display: none; }
+    .wheel-list {
+      padding: var(--wheel-item-h) 0;
+    }
+    .wheel-item {
+      height: var(--wheel-item-h);
+      line-height: var(--wheel-item-h);
+      text-align: center;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      scroll-snap-align: center;
+    }
+    .wheel-item[aria-selected="true"] {
+      color: var(--text);
+      font-weight: 700;
+    }
+    .wheel-highlight {
+      pointer-events: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: var(--wheel-item-h);
+      transform: translateY(-50%);
+      border-top: 1px solid rgba(91, 140, 255, 0.45);
+      border-bottom: 1px solid rgba(91, 140, 255, 0.45);
+      background: rgba(91, 140, 255, 0.12);
     }
     .toggle {
       appearance: none;
@@ -280,6 +362,7 @@
       width: min(100vw, calc(100vh * 16 / 9));
       height: auto;
     }
+    /* 全屏控制层与舞萌 fs-overlay 一致：只保留时间轴 + 时间 + 走带按钮。 */
     body.fullscreen #controls {
       position: absolute;
       z-index: 8;
@@ -293,6 +376,7 @@
       transition: translate 220ms ease, opacity 220ms ease;
     }
     body.fullscreen #controls.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }
+    body.fullscreen .controls-settings { display: none; }
 
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
   </style>
@@ -311,45 +395,99 @@
           <div class="score-block"><strong id="score-display">0000000</strong></div>
           <div class="combo-block" id="combo-block"><strong id="combo-display">0</strong><span>COMBO</span></div>
         </div>
-        <div class="load-panel" id="load-panel" role="status" aria-live="polite">
-          <div class="load-mark" aria-hidden="true"><i></i><i></i><i></i></div>
-          <p class="load-kicker" id="load-kicker">CONNECTING</p>
-          <h1 id="load-title">正在准备谱面</h1>
-          <p id="load-detail">正在读取谱面资源。</p>
-          <button class="primary-action" id="start-button" type="button" disabled>开始播放</button>
-          <button class="text-action" id="retry-button" type="button" hidden>重新加载</button>
-        </div>
       </section>
     </div>
     <section id="controls" aria-label="播放控制">
       <div class="row">
-        <input class="seek" id="seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="播放进度" disabled />
+        <div id="timeline-host">
+          <div id="timeline-bars"></div>
+          <div id="timeline-ruler"></div>
+          <div id="timeline-playhead"></div>
+          <div id="timeline-badge"></div>
+        </div>
       </div>
       <div class="row" style="justify-content:center">
         <span id="time-label">0:00 / 0:00</span>
       </div>
       <div class="row transport-group">
-        <div class="transport-side left"></div>
+        <div class="transport-side left">
+          <button class="transport-btn" id="btn-restart" type="button" aria-label="重播" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 014-4h12"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 01-4 4H5"/></svg>
+          </button>
+          <button class="transport-btn" id="btn-step-back" type="button" aria-label="步退" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
         <button id="play-button" type="button" aria-label="播放" disabled>
           <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         </button>
         <div class="transport-side right">
-          <button class="transport-btn" id="fullscreen-button" type="button" aria-label="进入全屏" title="全屏" disabled>
+          <button class="transport-btn" id="btn-step-forward" type="button" aria-label="步进" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="transport-btn" id="btn-fullscreen" type="button" aria-label="进入全屏" title="全屏" disabled>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/></svg>
           </button>
         </div>
       </div>
-      <div class="row wrap">
-        <div class="field setting-range"><span>播放速度</span><input id="playback-speed" type="range" min="0.5" max="2" step="0.05" value="1" /><output id="speed-output">1.00×</output></div>
-        <div class="field setting-range"><span>音符大小</span><input id="note-size" type="range" min="0.6" max="1.8" step="0.05" value="1" /><output id="note-size-output">1.00×</output></div>
-        <div class="field setting-range"><span>音乐音量</span><input id="volume" type="range" min="0" max="1" step="0.01" value="1" /><output id="volume-output">100%</output></div>
-        <div class="field setting-range"><span>背景暗度</span><input id="background-dim" type="range" min="0.2" max="0.85" step="0.01" value="0.55" /><output id="dim-output">55%</output></div>
-        <div class="field setting-range"><span>打击音量</span><input id="hit-sound-volume" type="range" min="0" max="1" step="0.01" value="1" /><output id="hit-sound-volume-output">100%</output></div>
-        <div class="field"><span>判定线颜色</span><select id="line-color"><option value="white">白色</option><option value="gold">金色</option><option value="blue">蓝色</option></select></div>
+      <div class="row wrap controls-settings">
+        <div class="field wheel-field"><span>播放速度</span>
+          <button class="wheel-trigger" id="speed-trigger" type="button"><span id="speed-val">1.00×</span></button>
+          <div class="wheel-popup" id="speed-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="播放速度拨轮">
+              <div class="wheel-viewport" id="speed-wheel"><div class="wheel-list" id="speed-list"></div></div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field wheel-field"><span>音符大小</span>
+          <button class="wheel-trigger" id="note-size-trigger" type="button"><span id="note-size-val">1.00×</span></button>
+          <div class="wheel-popup" id="note-size-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="音符大小拨轮">
+              <div class="wheel-viewport" id="note-size-wheel"><div class="wheel-list" id="note-size-list"></div></div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field wheel-field"><span>音乐音量</span>
+          <button class="wheel-trigger" id="volume-trigger" type="button"><span id="volume-val">100%</span></button>
+          <div class="wheel-popup" id="volume-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="音乐音量拨轮">
+              <div class="wheel-viewport" id="volume-wheel"><div class="wheel-list" id="volume-list"></div></div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field wheel-field"><span>背景暗度</span>
+          <button class="wheel-trigger" id="dim-trigger" type="button"><span id="dim-val">55%</span></button>
+          <div class="wheel-popup" id="dim-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="背景暗度拨轮">
+              <div class="wheel-viewport" id="dim-wheel"><div class="wheel-list" id="dim-list"></div></div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field wheel-field"><span>打击音量</span>
+          <button class="wheel-trigger" id="hit-sound-volume-trigger" type="button"><span id="hit-sound-volume-val">100%</span></button>
+          <div class="wheel-popup" id="hit-sound-volume-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="打击音量拨轮">
+              <div class="wheel-viewport" id="hit-sound-volume-wheel"><div class="wheel-list" id="hit-sound-volume-list"></div></div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field wheel-field"><span>判定线颜色</span>
+          <button class="wheel-trigger text" id="line-color-trigger" type="button"><span id="line-color-val">白色</span></button>
+          <div class="wheel-popup" id="line-color-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="判定线颜色拨轮">
+              <div class="wheel-viewport" id="line-color-wheel"><div class="wheel-list" id="line-color-list"></div></div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="row wrap">
+      <div class="row wrap controls-settings">
         <button class="toggle" id="multi-hint" type="button" aria-pressed="true">多押辅助</button>
-        <button class="toggle" id="hit-sound" type="button" aria-pressed="true">打击音效</button>
       </div>
     </section>
   </div>

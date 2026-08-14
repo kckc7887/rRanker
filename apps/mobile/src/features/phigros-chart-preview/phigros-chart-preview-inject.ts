@@ -7,7 +7,6 @@ export type PhigrosChartPreviewSettings = {
   backgroundDim?: number;
   multiHint?: boolean;
   lineColor?: string;
-  hitSound?: boolean;
   hitSoundVolume?: number;
 };
 
