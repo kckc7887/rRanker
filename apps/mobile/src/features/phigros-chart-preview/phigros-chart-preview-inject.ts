@@ -8,6 +8,17 @@ export type PhigrosChartPreviewSettings = {
   multiHint?: boolean;
   lineColor?: string;
   hitSoundVolume?: number;
+  aspectRatio?: number | null;
+  flipX?: boolean;
+  effects?: boolean;
+};
+
+export type PhigrosChartPreviewRpeAssets = {
+  /** 相对播放器 HTML 的谱面包资源目录（判定线贴图/背景/gif/视频），以 / 结尾。 */
+  basePath: string;
+  extraJson: string | null;
+  infoYml: string | null;
+  shaders: Record<string, string>;
 };
 
 export type PhigrosChartPreviewConfig = {
@@ -19,6 +30,9 @@ export type PhigrosChartPreviewConfig = {
   illustrationUrl?: string;
   hitSounds?: { click?: string; drag?: string; flick?: string };
   settings?: PhigrosChartPreviewSettings;
+  /** 谱面格式：pgr（默认）或 rpe；RPE 时提供 rpeAssets。 */
+  format?: 'pgr' | 'rpe';
+  rpeAssets?: PhigrosChartPreviewRpeAssets | null;
 };
 
 export function buildPhigrosChartPreviewConfigJson(config: PhigrosChartPreviewConfig): string {
@@ -31,6 +45,8 @@ export function buildPhigrosChartPreviewConfigJson(config: PhigrosChartPreviewCo
     illustrationUrl: config.illustrationUrl ?? null,
     hitSounds: config.hitSounds ?? null,
     settings: config.settings ?? null,
+    format: config.format ?? 'pgr',
+    rpeAssets: config.rpeAssets ?? null,
   });
 }
 

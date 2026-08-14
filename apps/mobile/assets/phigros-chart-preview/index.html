@@ -78,16 +78,22 @@
       background: #000;
     }
     #chart-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .gl-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: none; pointer-events: none; }
 
     .game-hud { position: absolute; z-index: 3; inset: 0; pointer-events: none; text-shadow: 0 1px 5px rgba(0,0,0,.72); }
     .game-progress { position: absolute; top: 0; left: 0; width: 100%; height: var(--progress-height, 3px); background: rgba(255,255,255,.1); }
     .game-progress i { display: block; width: 0; height: 100%; background: rgba(255,255,255,.72); box-shadow: 0 0 5px #fff; }
-    .score-block { position: absolute; top: 10px; right: 12px; display: grid; justify-items: end; line-height: 1; }
+    .score-block { position: absolute; top: 10px; right: 12px; display: grid; justify-items: end; line-height: 1; transform-origin: center; }
     .score-block strong { font-size: var(--score-font-size, 22px); font-weight: 600; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
-    .combo-block { position: absolute; top: 14px; left: 50%; translate: -50% 0; display: none; justify-items: center; line-height: .9; }
+    .combo-block { position: absolute; top: 14px; left: 50%; translate: -50% 0; display: none; justify-items: center; line-height: .9; transform-origin: center; }
     .combo-block.is-visible { display: grid; }
-    .combo-block strong { font-size: var(--combo-font-size, 26px); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .combo-block strong { font-size: var(--combo-font-size, 26px); font-weight: 600; font-variant-numeric: tabular-nums; transform-origin: center; }
     .combo-block span { margin-top: .55em; font-size: var(--combo-label-font-size, 8px); letter-spacing: .08em; opacity: .85; }
+    /* RPE attachUI：HUD 元素跟随判定线（默认隐藏，仅谱面声明 attachUI 时显示） */
+    .hud-attach { position: absolute; left: 50%; top: 50%; transform-origin: center; font-family: inherit; font-size: clamp(16px, 2.6vw, 40px); font-weight: 700; color: #fff; white-space: nowrap; }
+    #hud-pause { font-size: clamp(22px, 4vw, 64px); }
+    #hud-name { font-size: clamp(14px, 2vw, 32px); }
+    #hud-level { font-size: clamp(12px, 1.6vw, 24px); font-weight: 500; }
 
     /* ---- 下方播放控制器：样式与交互对齐舞萌谱面确认 ---- */
     #controls {
@@ -394,6 +400,9 @@
           <div class="game-progress"><i id="game-progress-fill"></i></div>
           <div class="score-block"><strong id="score-display">0000000</strong></div>
           <div class="combo-block" id="combo-block"><strong id="combo-display">0</strong><span>COMBO</span></div>
+          <div class="hud-attach" id="hud-pause" hidden>Ⅱ</div>
+          <div class="hud-attach" id="hud-name" hidden></div>
+          <div class="hud-attach" id="hud-level" hidden></div>
         </div>
       </section>
     </div>

@@ -28,6 +28,40 @@ describe('phigros chart preview config injection', () => {
       illustrationUrl: null,
       hitSounds: null,
       settings: null,
+      format: 'pgr',
+      rpeAssets: null,
+    });
+  });
+
+  it('RPE 配置序列化 format 与 rpeAssets 文本注入', () => {
+    const parsed = JSON.parse(buildPhigrosChartPreviewConfigJson({
+      game: 'phira',
+      title: '测试 RPE',
+      chartText: '{"META":{}}',
+      format: 'rpe',
+      rpeAssets: {
+        basePath: './rpe/38294/',
+        extraJson: '{"effects":[]}',
+        infoYml: 'name: Test',
+        shaders: { 'camera_pr.glsl': 'void main(){}' },
+      },
+    }));
+    expect(parsed).toEqual({
+      game: 'phira',
+      title: '测试 RPE',
+      chartUrl: null,
+      chartText: '{"META":{}}',
+      musicUrl: null,
+      illustrationUrl: null,
+      hitSounds: null,
+      settings: null,
+      format: 'rpe',
+      rpeAssets: {
+        basePath: './rpe/38294/',
+        extraJson: '{"effects":[]}',
+        infoYml: 'name: Test',
+        shaders: { 'camera_pr.glsl': 'void main(){}' },
+      },
     });
   });
 

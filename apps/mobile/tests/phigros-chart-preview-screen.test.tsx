@@ -8,6 +8,7 @@ const mockInjectJavaScript = jest.fn();
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
 const mockPrepare = jest.fn();
 const mockStageMusic = jest.fn();
+const mockStageRpeBundle = jest.fn();
 let latestScreenOptions: Record<string, unknown> | undefined;
 let hardwareBackHandler: (() => boolean | null | undefined) | undefined;
 let mockRouteParams: Record<string, string> = {
@@ -73,6 +74,10 @@ jest.mock('@/features/phigros-chart-preview/prepare-phigros-chart-preview-webvie
       base64: 'QUJDRA==',
     });
   },
+  stagePhiraRpeBundle: (...args: unknown[]) => {
+    mockStageRpeBundle(...args);
+    return Promise.resolve({ basePath: './rpe/38294/' });
+  },
 }));
 
 jest.mock('@/domain/phigros-chart-preview', () => ({
@@ -123,6 +128,17 @@ async function buildPhiraZip(): Promise<ArrayBuffer> {
   return zip.generateAsync({ type: 'arraybuffer' });
 }
 
+async function buildPhiraRpeZip(): Promise<ArrayBuffer> {
+  const zip = new JSZip();
+  zip.file('info.yml', 'chart: chart.json\nmusic: song.mp3\nname: Test RPE\nlevel: IN Lv.16');
+  zip.file('chart.json', JSON.stringify({ META: { RPEVersion: 160 }, BPMList: [{ bpm: 120, startTime: [0, 0, 1] }], judgeLineList: [] }));
+  zip.file('extra.json', JSON.stringify({ bpm: [{ time: [0, 0, 1], bpm: 120 }], effects: [] }));
+  zip.file('camera_pr.glsl', 'void main(){}');
+  zip.file('bg.png', new Uint8Array([9, 9, 9]));
+  zip.file('song.mp3', new Uint8Array([1, 2, 3, 4]));
+  return zip.generateAsync({ type: 'arraybuffer' });
+}
+
 describe('PhigrosChartPreviewScreen', () => {
   beforeEach(() => {
     latestScreenOptions = undefined;
@@ -137,6 +153,7 @@ describe('PhigrosChartPreviewScreen', () => {
     mockSaveSettings.mockClear();
     mockPrepare.mockClear();
     mockStageMusic.mockClear();
+    mockStageRpeBundle.mockClear();
     mockGetChart.mockClear();
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
       hardwareBackHandler = handler;
@@ -175,6 +192,31 @@ describe('PhigrosChartPreviewScreen', () => {
     }), 'QUJDRA=='));
     expect(mockPrepare).toHaveBeenCalledTimes(1);
     expect(mockStageMusic).toHaveBeenCalled();
+  });
+
+  it('phira RPE 谱面：文本资源注入、其余资源落盘 rpe/{chartId}/', async () => {
+    mockZipBuffer = await buildPhiraRpeZip();
+    mockRouteParams = { game: 'phira', chartId: '38294', title: '测试 RPE' };
+    render(<PhigrosChartPreviewScreen />);
+    await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
+
+    await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
+      game: 'phira',
+      chartText: expect.stringContaining('"META"'),
+      format: 'rpe',
+      rpeAssets: expect.objectContaining({
+        basePath: './rpe/38294/',
+        extraJson: expect.stringContaining('"effects"'),
+        infoYml: expect.stringContaining('Test RPE'),
+        shaders: { 'camera_pr.glsl': 'void main(){}' },
+      }),
+    }), 'QUJDRA=='));
+    expect(mockPrepare).toHaveBeenCalledTimes(1);
+    // 非文本条目（bg.png/song.mp3）落盘；文本条目（chart.json/extra.json/info.yml/glsl）不落盘
+    expect(mockStageRpeBundle).toHaveBeenCalledWith(38294, [
+      { name: 'bg.png', bytes: expect.any(Uint8Array) },
+      { name: 'song.mp3', bytes: expect.any(Uint8Array) },
+    ]);
   });
 
   it('缺少游戏参数时显示阻断错误且不渲染 WebView', async () => {
