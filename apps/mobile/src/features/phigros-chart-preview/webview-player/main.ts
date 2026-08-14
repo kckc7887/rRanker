@@ -659,6 +659,18 @@ function start(): void {
     postStatus('fullscreen', { active });
   }
 
+  // HUD 随播放窗（16:9 舞台）宽度缩放，比例沿用 demo 的 clamp 视觉范围。
+  function applyStageMetrics(): void {
+    const width = elements.stage.getBoundingClientRect().width;
+    if (width <= 0) return;
+    elements.stage.style.setProperty('--score-font-size', `${Math.round(clamp(width * 0.033, 16, 60))}px`);
+    elements.stage.style.setProperty('--combo-font-size', `${Math.round(clamp(width * 0.034, 16, 62))}px`);
+    elements.stage.style.setProperty('--combo-label-font-size', `${Math.round(clamp(width * 0.007, 8, 13))}px`);
+    elements.stage.style.setProperty('--progress-height', `${Math.round(clamp(width * 0.0022, 2, 4))}px`);
+  }
+  new ResizeObserver(applyStageMetrics).observe(elements.stage);
+  applyStageMetrics();
+
   elements.start.addEventListener('click', () => {
     elements.loadPanel.classList.add('is-hidden');
     void startPlayback();
