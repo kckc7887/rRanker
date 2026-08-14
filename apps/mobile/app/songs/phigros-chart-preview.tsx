@@ -37,6 +37,10 @@ import { useAppTheme } from '@/theme/app-theme';
 const SETTINGS_KEY = 'phigros-chart-preview-settings';
 /** 谱面文本经 HTML 配置注入的上限，避免超大谱面拖垮 WebView。 */
 const CHART_TEXT_LIMIT = 6_000_000;
+/** Phigros 仅需读取 OSS 的三个 JSON 指针文件，超时给得短。 */
+const PHIGROS_PREPARE_TIMEOUT_MS = 20_000;
+/** Phira 需要下载并解包谱面 ZIP，社区文件可能较大，超时放宽。 */
+const PHIRA_PREPARE_TIMEOUT_MS = 60_000;
 
 async function loadSettings(): Promise<PhigrosChartPreviewSettings> {
   try {
@@ -64,25 +68,25 @@ type MappedPreview =
   | { game: 'phigros'; songId: string; levelIndex: number; title?: string }
   | { game: 'phira'; chartId: number; title?: string };
 
-function mapParams(params: {
-  game?: string;
-  songId?: string;
-  levelIndex?: string;
-  chartId?: string;
-  title?: string;
-}): MappedPreview {
-  const title = typeof params.title === 'string' && params.title.trim() !== '' ? params.title.trim() : undefined;
-  if (params.game === 'phigros') {
-    const songId = params.songId?.trim();
-    const levelIndex = params.levelIndex === undefined ? NaN : Number(params.levelIndex);
-    if (!songId) return { error: '缺少歌曲参数' };
-    if (!Number.isInteger(levelIndex) || levelIndex < 0 || levelIndex > 3) return { error: '缺少或无效的难度参数' };
-    return { game: 'phigros', songId, levelIndex, title };
+function mapParams(
+  game: string | undefined,
+  songId: string | undefined,
+  levelIndex: string | undefined,
+  chartId: string | undefined,
+  title: string | undefined,
+): MappedPreview {
+  const normalizedTitle = typeof title === 'string' && title.trim() !== '' ? title.trim() : undefined;
+  if (game === 'phigros') {
+    const normalizedSongId = songId?.trim();
+    const parsedLevelIndex = levelIndex === undefined ? NaN : Number(levelIndex);
+    if (!normalizedSongId) return { error: '缺少歌曲参数' };
+    if (!Number.isInteger(parsedLevelIndex) || parsedLevelIndex < 0 || parsedLevelIndex > 3) return { error: '缺少或无效的难度参数' };
+    return { game: 'phigros', songId: normalizedSongId, levelIndex: parsedLevelIndex, title: normalizedTitle };
   }
-  if (params.game === 'phira') {
-    const chartId = Number(params.chartId);
-    if (!Number.isInteger(chartId) || chartId <= 0) return { error: '缺少或无效的谱面 ID' };
-    return { game: 'phira', chartId, title };
+  if (game === 'phira') {
+    const parsedChartId = Number(chartId);
+    if (!Number.isInteger(parsedChartId) || parsedChartId <= 0) return { error: '缺少或无效的谱面 ID' };
+    return { game: 'phira', chartId: parsedChartId, title: normalizedTitle };
   }
   return { error: '缺少游戏参数' };
 }
@@ -176,7 +180,11 @@ export default function PhigrosChartPreviewScreen() {
     title?: string;
   }>();
 
-  const mapped = useMemo(() => mapParams(params), [params]);
+  const mapped = useMemo(
+    () => mapParams(params.game, params.songId, params.levelIndex, params.chartId, params.title),
+    // useLocalSearchParams 每次渲染都返回新对象，必须依赖字符串字段而不是 params 本身。
+    [params.game, params.songId, params.levelIndex, params.chartId, params.title],
+  );
   const phiraChartId = !('error' in mapped) && mapped.game === 'phira' ? mapped.chartId : null;
   const phiraChart = usePhiraChart(phiraChartId);
 
@@ -188,6 +196,9 @@ export default function PhigrosChartPreviewScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    let controller: AbortController | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
     if ('error' in mapped) {
       setSource(null);
       return () => {
@@ -208,9 +219,13 @@ export default function PhigrosChartPreviewScreen() {
     setStageError(null);
 
     void (async () => {
+      controller = new AbortController();
+      timeout = setTimeout(
+        () => controller?.abort(),
+        mapped.game === 'phigros' ? PHIGROS_PREPARE_TIMEOUT_MS : PHIRA_PREPARE_TIMEOUT_MS,
+      );
       try {
         const settings = await loadSettings();
-        const controller = new AbortController();
         const config = mapped.game === 'phigros'
           ? await buildPhigrosConfig(mapped, settings, controller.signal)
           : await buildPhiraConfig(mapped, settings, controller.signal);
@@ -219,13 +234,19 @@ export default function PhigrosChartPreviewScreen() {
         if (!cancelled) setSource(prepared);
       } catch (error) {
         if (!cancelled) {
-          setStageError(error instanceof Error ? error.message : '无法准备谱面确认资源');
+          setStageError(controller?.signal.aborted
+            ? '准备谱面确认资源超时，请返回重试'
+            : error instanceof Error ? error.message : '无法准备谱面确认资源');
         }
+      } finally {
+        if (timeout) clearTimeout(timeout);
       }
     })();
 
     return () => {
       cancelled = true;
+      controller?.abort();
+      if (timeout) clearTimeout(timeout);
       // 卸载时停止播放；cleanup 必须读最新 webRef。
       // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional latest ref
       webRef.current?.injectJavaScript(chartPreviewStopScript());

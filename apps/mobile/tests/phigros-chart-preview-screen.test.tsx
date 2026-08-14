@@ -24,7 +24,9 @@ jest.mock('expo-router', () => ({
       return null;
     },
   },
-  useLocalSearchParams: () => mockRouteParams,
+  // 真实 useLocalSearchParams 每次渲染都返回新对象；这里同样每次展开，
+  // 防止屏幕对 params 对象身份的错误依赖在测试中被掩盖。
+  useLocalSearchParams: () => ({ ...mockRouteParams }),
 }));
 
 jest.mock('react-native-webview', () => {
@@ -81,14 +83,16 @@ jest.mock('@/domain/phigros-chart-preview', () => ({
   phigrosChartPreviewLevelLabel: () => 'AT',
 }));
 
+const mockPhiraChart = {
+  id: 38294,
+  name: '测试谱面',
+  illustration: null,
+  file: 'https://phira.example/chart.zip',
+};
 jest.mock('@/hooks/use-phira', () => ({
   usePhiraChart: (chartId: number | null) => ({
-    data: chartId === null ? undefined : {
-      id: chartId,
-      name: '测试谱面',
-      illustration: null,
-      file: 'https://phira.example/chart.zip',
-    },
+    // 与 react-query 的结构共享一致：data 身份在渲染间保持稳定。
+    data: chartId === null ? undefined : mockPhiraChart,
     isError: false,
     error: null,
   }),
@@ -152,6 +156,8 @@ describe('PhigrosChartPreviewScreen', () => {
       illustrationUrl: 'https://assets.example/illustrations/DistortedFate.Sakuzyo.png',
       settings: { playbackSpeed: 1.5 },
     })));
+    // 参数对象身份在每次渲染都会变化，prepare 只应执行一次。
+    expect(mockPrepare).toHaveBeenCalledTimes(1);
   });
 
   it('phira 参数经 ZIP 解包后注入谱面文本与本地音乐 URI', async () => {
@@ -165,6 +171,7 @@ describe('PhigrosChartPreviewScreen', () => {
       chartText: expect.stringContaining('"formatVersion"'),
       musicUrl: 'file:///phigros-chart-preview/song.mp3',
     })));
+    expect(mockPrepare).toHaveBeenCalledTimes(1);
     expect(mockStageMusic).toHaveBeenCalled();
   });
 
