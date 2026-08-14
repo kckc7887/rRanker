@@ -580,6 +580,7 @@ function ChartCard({
         } as Href)}
         style={[
           styles.action,
+          styles.chartSearchAction,
           practiceActionStyle(colors.fg, false),
         ]}
       >
@@ -811,6 +812,7 @@ export const PHIGROS_SONG_DETAIL_STYLES = StyleSheet.create({
     padding: 10,
     alignItems: 'center',
   },
+  chartSearchAction: { marginTop: 0 },
   actionText: { fontWeight: '700' },
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
   songInformation: { gap: 12 },
