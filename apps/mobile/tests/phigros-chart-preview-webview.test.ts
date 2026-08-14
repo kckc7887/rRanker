@@ -32,4 +32,18 @@ describe('phigros chart preview webview template', () => {
       html.indexOf('<!--PLAYER_SCRIPT-->'),
     );
   });
+
+  it('下方播放控制器对齐舞萌样式：面板/accent 播放钮/transport 图标钮/细条滑块/胶囊 toggle', () => {
+    const html = templateHtml();
+    expect(html).toContain('--accent: #5b8cff');
+    expect(html).toContain('#controls {');
+    expect(html).toContain('#play-button {');
+    expect(html).toContain('.transport-btn');
+    expect(html).toContain('#seek::-webkit-slider-thumb');
+    expect(html).toContain('.toggle[aria-pressed="true"]');
+    expect(html).toContain('id="multi-hint" type="button" aria-pressed="true"');
+    expect(html).toContain('id="time-label"');
+    expect(html).toContain('background: rgba(11,13,18,0.92)');
+    expect(html).toContain('backdrop-filter: blur(12px)');
+  });
 });

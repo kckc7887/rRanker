@@ -157,12 +157,10 @@ function start(): void {
     start: $('start-button') as HTMLButtonElement,
     retry: $('retry-button') as HTMLButtonElement,
     play: $('play-button') as HTMLButtonElement,
-    playIcon: $('play-icon'),
+    playIcon: $('play-icon') as SVGElement,
     seek: $('seek') as HTMLInputElement,
-    currentTime: $('current-time'),
-    duration: $('duration'),
+    timeLabel: $('time-label'),
     fullscreen: $('fullscreen-button') as HTMLButtonElement,
-    fieldset: $('settings-fieldset') as HTMLFieldSetElement,
     speed: $('playback-speed') as HTMLInputElement,
     speedOutput: $('speed-output') as HTMLOutputElement,
     noteSize: $('note-size') as HTMLInputElement,
@@ -171,9 +169,9 @@ function start(): void {
     volumeOutput: $('volume-output') as HTMLOutputElement,
     dim: $('background-dim') as HTMLInputElement,
     dimOutput: $('dim-output') as HTMLOutputElement,
-    multiHint: $('multi-hint') as HTMLInputElement,
+    multiHint: $('multi-hint') as HTMLButtonElement,
     lineColor: $('line-color') as HTMLSelectElement,
-    hitSound: $('hit-sound') as HTMLInputElement,
+    hitSound: $('hit-sound') as HTMLButtonElement,
     hitSoundVolume: $('hit-sound-volume') as HTMLInputElement,
     hitSoundVolumeOutput: $('hit-sound-volume-output') as HTMLOutputElement,
     gameProgress: $('game-progress-fill'),
@@ -227,7 +225,12 @@ function start(): void {
     elements.play.disabled = !value;
     elements.seek.disabled = !value;
     elements.fullscreen.disabled = !value;
-    elements.fieldset.disabled = !value;
+    for (const control of [
+      elements.speed, elements.noteSize, elements.volume, elements.dim,
+      elements.hitSoundVolume, elements.lineColor, elements.multiHint, elements.hitSound,
+    ]) {
+      control.disabled = !value;
+    }
   }
 
   async function ensureAudio(): Promise<AudioContext> {
@@ -341,9 +344,9 @@ function start(): void {
     elements.noteSize.value = String(settings.noteScale);
     elements.volume.value = String(settings.volume);
     elements.dim.value = String(settings.backgroundDim);
-    elements.multiHint.checked = settings.multiHint;
+    elements.multiHint.setAttribute('aria-pressed', String(settings.multiHint));
     elements.lineColor.value = settings.lineColor;
-    elements.hitSound.checked = settings.hitSound;
+    elements.hitSound.setAttribute('aria-pressed', String(settings.hitSound));
     elements.hitSoundVolume.value = String(settings.hitSoundVolume);
     elements.speedOutput.value = `${settings.playbackSpeed.toFixed(2)}×`;
     elements.noteSizeOutput.value = `${settings.noteScale.toFixed(2)}×`;
@@ -456,9 +459,9 @@ function start(): void {
     elements.score.textContent = String(Math.floor(passed / total * 1_000_000)).padStart(7, '0');
     elements.combo.textContent = String(passed);
     elements.comboBlock.classList.toggle('is-visible', passed >= 3);
+    elements.timeLabel.textContent = `${formatTime(chartTime)} / ${formatTime(chartDuration)}`;
     if (!seeking) {
       elements.seek.value = String(chartTime);
-      elements.currentTime.textContent = formatTime(chartTime);
     }
   }
 
@@ -518,7 +521,6 @@ function start(): void {
         .flatMap((line) => line.notes.map((note) => note.kind === 'hold' ? note.endTime : note.time))
         .sort((a, b) => a - b);
       elements.seek.max = String(chartDuration);
-      elements.duration.textContent = formatTime(chartDuration);
       if (musicBuffer) elements.status.textContent = '';
       ready = true;
       setControlsEnabled(true);
@@ -535,7 +537,9 @@ function start(): void {
   }
 
   function syncPlayButtons(): void {
-    elements.playIcon.textContent = isPlaying ? 'Ⅱ' : '▶';
+    elements.playIcon.innerHTML = isPlaying
+      ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>'
+      : '<path d="M8 5v14l11-7z"/>';
     elements.play.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
   }
 
@@ -684,7 +688,6 @@ function start(): void {
   elements.seek.addEventListener('pointerup', () => { seeking = false; });
   elements.seek.addEventListener('input', () => {
     seekToChartTime(Number(elements.seek.value));
-    elements.currentTime.textContent = formatTime(currentChartTime);
   });
   elements.speed.addEventListener('input', () => {
     settings.playbackSpeed = Number(elements.speed.value);
@@ -716,8 +719,8 @@ function start(): void {
     persistSettings();
     if (!isPlaying) renderFrame(currentChartTime);
   });
-  elements.multiHint.addEventListener('change', () => {
-    settings.multiHint = elements.multiHint.checked;
+  elements.multiHint.addEventListener('click', () => {
+    settings.multiHint = !settings.multiHint;
     applySettings();
     persistSettings();
     if (!isPlaying) renderFrame(currentChartTime);
@@ -728,9 +731,9 @@ function start(): void {
     persistSettings();
     if (!isPlaying) renderFrame(currentChartTime);
   });
-  elements.hitSound.addEventListener('change', () => {
+  elements.hitSound.addEventListener('click', () => {
     stopActiveHitSounds();
-    settings.hitSound = elements.hitSound.checked;
+    settings.hitSound = !settings.hitSound;
     applySettings();
     persistSettings();
     resetHitSoundTimeline(currentChartTime);
