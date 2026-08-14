@@ -1,6 +1,6 @@
 import type { PhigrosRankFilter } from './phigros-filters';
 import type { PhigrosXingKind } from './phigros-xing';
-import { phiraGrade, type PhiraChart, type PhiraQueriedBest } from './phira';
+import { phiraGrade, type PhiraChart, type PhiraChartPage, type PhiraQueriedBest } from './phira';
 
 export type PhiraScoreSort = 'score' | 'acc' | 'constant';
 export type PhiraCatalogSort = 'updated' | 'constant-asc' | 'constant-desc' | 'name';
@@ -68,4 +68,31 @@ export function filterPhiraCharts(
     if (sort === 'name') return a.name.localeCompare(b.name);
     return Date.parse(b.updated ?? '') - Date.parse(a.updated ?? '');
   });
+}
+
+/** Phira 曲库按 id 去重保序：服务端 page=1 返回与 page=0 相同的首页，且 updated 排序在请求间漂移会造成跨页重叠。 */
+export function dedupePhiraCharts(values: readonly PhiraChart[]): PhiraChart[] {
+  const seen = new Set<number>();
+  return values.filter((chart) => {
+    if (seen.has(chart.id)) return false;
+    seen.add(chart.id);
+    return true;
+  });
+}
+
+/**
+ * Phira /chart 分页下一页参数：
+ * 服务端 page 从 1 开始且 page<1 会钳制为 1（实测所有 type：page=1 与 page=0 返回完全相同的首页），
+ * 因此首页用 0（沿用既有缓存键），后续翻页跳过 1：0 → 2 → 3 → …。
+ */
+export function phiraCatalogNextPage(
+  pages: readonly PhiraChartPage[],
+  last: PhiraChartPage | undefined,
+): number | undefined {
+  const loaded = pages.reduce((sum, page) => sum + page.results.length, 0);
+  const hasMore = last?.total !== undefined
+    ? loaded < last.total
+    : (last?.results.length ?? 0) >= 30;
+  if (!hasMore) return undefined;
+  return pages.length === 1 ? 2 : pages.length + 1;
 }

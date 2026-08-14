@@ -21,7 +21,7 @@ import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
 import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
 import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
 import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
-import { filterPhiraBests, filterPhiraCharts, type PhiraCatalogSort, type PhiraScoreSort } from '@/domain/phira-filters';
+import { dedupePhiraCharts, filterPhiraBests, filterPhiraCharts, type PhiraCatalogSort, type PhiraScoreSort } from '@/domain/phira-filters';
 import { formatPhiraAccuracy, formatPhiraRating, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraChart, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
@@ -99,7 +99,8 @@ export function PhiraCatalogScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const [status, setStatus] = useState<PhiraChartStatus>('ranked'); const [keyword, setKeyword] = useState('');
   const [collapsed, setCollapsed] = useState(true); const [constantMin, setConstantMin] = useState(''); const [constantMax, setConstantMax] = useState(''); const [sort, setSort] = useState<PhiraCatalogSort>('updated');
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
-  const charts = useMemo(() => filterPhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? [], constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
+  // Phira /chart 的 page=1 与 page=0 重复且 updated 排序在请求间漂移，跨页需按 id 去重，避免 FlatList 重复 key。
+  const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
   const controls = <><Search value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面" />
     <PhigrosFilterBar showLevel={false} level="all" onLevelChange={() => undefined} collapsed={collapsed}
       constantMin={constantMin} constantMax={constantMax} onCollapsedChange={setCollapsed}
