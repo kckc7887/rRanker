@@ -21,6 +21,7 @@ import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useMuseDashAlbums } from '@/hooks/use-muse-dash';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { usePhiraChartsByIds } from '@/hooks/use-phira';
 import { useTufLevelSearch } from '@/hooks/use-tuf';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
@@ -28,7 +29,8 @@ import { useAppTheme } from '@/theme/app-theme';
 
 type Mode = 'all' | 'favorite' | 'practice';
 type MuseDashLibrarySong = { id: string; title: string; artist?: string; cover?: string };
-type LibrarySong = Song | ChunithmSong | TufLevel | MuseDashLibrarySong;
+type PhiraLibrarySong = { id: string; title: string; illustration: string | null };
+type LibrarySong = Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong;
 
 function isChunithmSong(song: LibrarySong): song is ChunithmSong {
   return 'difficulties' in song;
@@ -42,10 +44,15 @@ function isMuseDashSong(song: LibrarySong): song is MuseDashLibrarySong {
   return 'cover' in song;
 }
 
+function isPhiraLibrarySong(song: LibrarySong): song is PhiraLibrarySong {
+  return 'illustration' in song;
+}
+
 export default function UserLibraryScreen() {
   const activeGameId = useSession((state) => state.activeGameId);
   if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
   if (activeGameId === 'musedash') return <MuseDashLibraryScreen />;
+  if (activeGameId === 'phira') return <PhiraLibraryScreen />;
   return <SharedLibraryScreen />;
 }
 
@@ -164,6 +171,23 @@ function MuseDashLibraryScreen() {
   return <LibraryList items={items} songsById={songsById} />;
 }
 
+function PhiraLibraryScreen() {
+  const library = useUserLibrary();
+  const items = library.data ?? [];
+  const chartIds = useMemo(() => [...new Set((library.data ?? [])
+    .filter((item) => item.kind === 'song' && /^\d+$/.test(item.songId))
+    .map((item) => Number(item.songId)))], [library.data]);
+  const charts = usePhiraChartsByIds(chartIds);
+  const songsById = useMemo(() => {
+    const map = new Map<string, LibrarySong>();
+    for (const chart of charts.data ?? []) {
+      map.set(String(chart.id), { id: String(chart.id), title: chart.name, illustration: chart.illustration });
+    }
+    return map;
+  }, [charts.data]);
+  return <LibraryList items={items} songsById={songsById} />;
+}
+
 function LibraryRow({
   item,
   song,
@@ -175,7 +199,7 @@ function LibraryRow({
 }) {
   const theme = useAppTheme();
   const chunithmSong = song && isChunithmSong(song) ? song : undefined;
-  const standardSong = song && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) ? song : undefined;
+  const standardSong = song && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) ? song : undefined;
   const tufLevel = song && isTufLevel(song) ? song : undefined;
   const museDashSong = song && isMuseDashSong(song) ? song : undefined;
   const chart = item.kind === 'chart'
@@ -246,6 +270,12 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
         transition={120}
       />
     );
+  }
+  if (isPhiraLibrarySong(song)) {
+    return song.illustration
+      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={song.illustration}
+        style={styles.cover} transition={120} />
+      : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   return <SongCover songId={song.id} />;
 }

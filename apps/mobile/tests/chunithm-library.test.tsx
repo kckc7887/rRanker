@@ -50,6 +50,9 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({
 jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({ data: undefined }),
 }));
+jest.mock('@/hooks/use-phira', () => ({
+  usePhiraChartsByIds: () => ({ data: [], isLoading: false, isError: false, error: null, refetch: jest.fn() }),
+}));
 jest.mock('@/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
     data: [
