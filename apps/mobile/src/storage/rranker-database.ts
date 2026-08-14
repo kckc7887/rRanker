@@ -28,6 +28,15 @@ export function runSerializedSchemaInit(task: () => Promise<void>): Promise<void
   return run;
 }
 
+/**
+ * 清缓存收尾压缩：wal checkpoint + VACUUM，让 DELETE 后的数据库文件物理体积收缩。
+ * 失败由调用方决定是否吞掉（体积不收缩不影响清除结果）。
+ */
+export async function compactRrankerDatabase(): Promise<void> {
+  const db = await getRrankerDatabase();
+  await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE); VACUUM;');
+}
+
 /** 测试用：重置单例与 schema 串行链。 */
 export function resetRrankerDatabaseForTests(): void {
   databasePromise = null;

@@ -18,9 +18,16 @@ import {
   listClearableCategoryIds,
 } from '@/features/storage-management/storage-usage';
 
+const mocks = vi.hoisted(() => ({
+  execAsync: vi.fn(async () => undefined),
+  measureDirectoryBytes: vi.fn(() => 0),
+  clearMaimaiUiCache: vi.fn(),
+  resetPhigrosKyouAliasesCache: vi.fn(),
+}));
+
 vi.mock('expo-sqlite', () => ({
   openDatabaseAsync: vi.fn(async () => ({
-    execAsync: vi.fn(async () => undefined),
+    execAsync: mocks.execAsync,
     getFirstAsync: vi.fn(async () => null),
     getAllAsync: vi.fn(async () => []),
     runAsync: vi.fn(async () => undefined),
@@ -43,10 +50,11 @@ vi.mock('@/domain/game-bind-options', () => {
 });
 
 vi.mock('@/features/storage-management/fs-storage', () => ({
-  measureDirectoryBytes: () => 0,
+  measureDirectoryBytes: mocks.measureDirectoryBytes,
   clearAppOwnedCacheContents: () => undefined,
   APP_CACHE_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,
+  MAIMAI_ASSETS_ROOT: () => null,
 }));
 
 vi.mock('@/features/storage-management/ui-icon-fonts', () => ({
@@ -60,6 +68,14 @@ vi.mock('@/features/phigros-best-image/load-phigros-image-assets', () => ({
 
 vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
   clearPhigrosFontCache: () => undefined,
+}));
+
+vi.mock('@/features/best-image/maimai-ui-cache', () => ({
+  clearMaimaiUiCache: mocks.clearMaimaiUiCache,
+}));
+
+vi.mock('@/hooks/use-phigros-kyou', () => ({
+  resetPhigrosKyouAliasesCache: mocks.resetPhigrosKyouAliasesCache,
 }));
 
 describe('storage-clear-prefs', () => {
@@ -198,5 +214,140 @@ describe('phira storage segment', () => {
 describe('shared cache note wording', () => {
   it('uses the unified include/exclude wording', () => {
     expect(sharedCacheNote()).toBe('临时文件与图片缓存；不含系统图标字体');
+  });
+});
+
+describe('phigros resource coverage', () => {
+  it('measures and clears the cloud save snapshot and account thumbnails', async () => {
+    const clearAccountScores = vi.fn(async () => undefined);
+    const clearResources = vi.fn(async () => undefined);
+    const snapshots = {
+      listAccountScoreSizes: vi.fn(async () => []),
+      listResourceSizes: vi.fn(async () => [
+        { key: 'phigros-save:phigros:phi-taptap:1', bytes: 100 },
+        { key: 'account-thumbnail:phigros:phi-taptap:1', bytes: 20 },
+        { key: 'phigros-kyou-aliases', bytes: 30 },
+        { key: 'account-avatar:phigros:phi-taptap:1', bytes: 40 },
+        { key: 'musedash:albums', bytes: 999 },
+      ]),
+      clearAccountScores,
+      clearResources,
+    };
+    const adapter = getGameStorageAdapter('phigros');
+    await expect(adapter?.measure(snapshots as never)).resolves.toBe(190);
+    await adapter?.clear(snapshots as never);
+    expect(clearAccountScores).toHaveBeenCalledWith([]);
+    expect(clearResources).toHaveBeenCalledWith([
+      'phigros-save:phigros:phi-taptap:1',
+      'account-thumbnail:phigros:phi-taptap:1',
+      'phigros-kyou-aliases',
+      'account-avatar:phigros:phi-taptap:1',
+    ]);
+  });
+});
+
+describe('chunithm resource coverage', () => {
+  it('clears the collection list snapshot through the game adapter', async () => {
+    const clearResources = vi.fn(async () => undefined);
+    const snapshots = {
+      listAccountScoreSizes: vi.fn(async () => []),
+      listResourceSizes: vi.fn(async () => [
+        { key: 'chunithm-collections:character', bytes: 10 },
+        { key: 'chunithm-collections:trophy', bytes: 20 },
+        { key: 'chunithm-song-detail:803', bytes: 30 },
+        { key: 'maimai:collections', bytes: 999 },
+      ]),
+      clearAccountScores: vi.fn(async () => undefined),
+      clearResources,
+    };
+    const adapter = getGameStorageAdapter('chunithm');
+    await expect(adapter?.measure(snapshots as never)).resolves.toBe(60);
+    await adapter?.clear(snapshots as never);
+    expect(clearResources).toHaveBeenCalledWith([
+      'chunithm-collections:character',
+      'chunithm-collections:trophy',
+      'chunithm-song-detail:803',
+    ]);
+  });
+});
+
+describe('maimai resource coverage', () => {
+  it('keeps durable local account thumbnails and clears the maimai-assets directory', async () => {
+    const clearAccountScores = vi.fn(async () => undefined);
+    const clearResources = vi.fn(async () => undefined);
+    mocks.measureDirectoryBytes.mockReturnValueOnce(1000);
+    const snapshots = {
+      listAccountScoreSizes: vi.fn(async () => [
+        { accountId: 'maimai:lxns:u1', bytes: 100 },
+        { accountId: 'maimai:local:a', bytes: 200 },
+      ]),
+      listResourceSizes: vi.fn(async () => [
+        { key: 'account-thumbnail:maimai:lxns:u1', bytes: 10 },
+        { key: 'account-thumbnail:maimai:local:a', bytes: 20 },
+        { key: 'account-avatar:maimai:local:a', bytes: 30 },
+      ]),
+      measureCatalogBytes: vi.fn(async () => 0),
+      measureLegacyScoreBytes: vi.fn(async () => 0),
+      clearCatalog: vi.fn(async () => undefined),
+      clearAccountScores,
+      clearResources,
+    };
+    const adapter = getGameStorageAdapter('maimai');
+    // SQLite 可清部分 110 + maimai-assets 目录 1000
+    await expect(adapter?.measure(snapshots as never)).resolves.toBe(1110);
+    await adapter?.clear(snapshots as never);
+    expect(clearAccountScores).toHaveBeenCalledWith(['maimai:lxns:u1']);
+    expect(clearResources).toHaveBeenCalledWith(['account-thumbnail:maimai:lxns:u1']);
+    expect(mocks.clearMaimaiUiCache).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('clearing storage compacts the database and resets in-memory caches', () => {
+  it('runs wal checkpoint and VACUUM after clearing', async () => {
+    mocks.execAsync.mockClear();
+    const client = {
+      invalidateQueries: vi.fn(async () => undefined),
+      removeQueries: vi.fn(),
+    };
+    await clearStorageByCategories(['maimai'], client as never);
+    expect(mocks.execAsync).toHaveBeenCalledWith(expect.stringContaining('VACUUM'));
+  });
+
+  it('resets the Phigros kyou alias cache when phigros is cleared', async () => {
+    mocks.resetPhigrosKyouAliasesCache.mockClear();
+    const client = {
+      invalidateQueries: vi.fn(async () => undefined),
+      removeQueries: vi.fn(),
+    };
+    await clearStorageByCategories(['phigros'], client as never);
+    expect(mocks.resetPhigrosKyouAliasesCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reset the kyou alias cache when phigros is not cleared', async () => {
+    mocks.resetPhigrosKyouAliasesCache.mockClear();
+    const client = {
+      invalidateQueries: vi.fn(async () => undefined),
+      removeQueries: vi.fn(),
+    };
+    await clearStorageByCategories(['maimai'], client as never);
+    expect(mocks.resetPhigrosKyouAliasesCache).not.toHaveBeenCalled();
+  });
+
+  it('removes queries for every game cache namespace', async () => {
+    const client = {
+      invalidateQueries: vi.fn(async () => undefined),
+      removeQueries: vi.fn(),
+    };
+    await clearStorageByCategories(['shared'], client as never);
+    for (const key of [
+      'tuf',
+      'musedash',
+      'phigros-catalog',
+      'phigros-kyou-chart-tags',
+      'chunithm-collections',
+      'best-image-collections',
+    ]) {
+      expect(client.removeQueries).toHaveBeenCalledWith({ queryKey: [key] });
+    }
   });
 });

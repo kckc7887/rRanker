@@ -1,11 +1,11 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { isAppOwnedCacheEntry } from '@/features/storage-management/expo-system-cache';
 
 export { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
 export {
   isAppOwnedCacheEntry,
   isExpoSystemCacheEntry,
 } from '@/features/storage-management/expo-system-cache';
-import { isAppOwnedCacheEntry } from '@/features/storage-management/expo-system-cache';
 
 type DirectoryListOptions = {
   /** 按条目名跳过（不计入体积 / 不删除） */
@@ -68,4 +68,5 @@ export function clearAppOwnedCacheContents(directory: Directory = APP_CACHE_ROOT
 }
 
 export const PHIGROS_FONT_ROOT = () => new Directory(Paths.document, 'rranker', 'phigros-fonts');
+export const MAIMAI_ASSETS_ROOT = () => new Directory(Paths.document, 'rranker', 'maimai-assets');
 export const APP_CACHE_ROOT = () => new Directory(Paths.cache);
