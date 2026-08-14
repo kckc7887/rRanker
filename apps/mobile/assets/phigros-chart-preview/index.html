@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>谱面确认</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0d12;
+      --panel: #161a22;
+      --text: #f3f5f8;
+      --muted: #9aa3b2;
+      --border: #2a3140;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+      gap: 8px;
+    }
+    #header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 22px;
+      flex-shrink: 0;
+    }
+    #title {
+      font-size: 15px;
+      font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #status {
+      font-size: 11px;
+      color: var(--muted);
+      flex-shrink: 0;
+      max-width: 55%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #stage-wrap {
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+    .stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      isolation: isolate;
+      background: #000;
+    }
+    #chart-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+    .game-hud { position: absolute; z-index: 3; inset: 0; pointer-events: none; text-shadow: 0 1px 5px rgba(0,0,0,.72); }
+    .game-progress { position: absolute; top: 0; left: 0; width: 100%; height: 3px; background: rgba(255,255,255,.1); }
+    .game-progress i { display: block; width: 0; height: 100%; background: rgba(255,255,255,.72); box-shadow: 0 0 5px #fff; }
+    .score-block { position: absolute; top: 10px; right: 12px; display: grid; justify-items: end; line-height: 1; }
+    .score-block strong { font-size: 22px; font-weight: 600; letter-spacing: .02em; font-variant-numeric: tabular-nums; }
+    .combo-block { position: absolute; top: 14px; left: 50%; translate: -50% 0; display: none; justify-items: center; line-height: .9; }
+    .combo-block.is-visible { display: grid; }
+    .combo-block strong { font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .combo-block span { margin-top: .55em; font-size: 8px; letter-spacing: .08em; opacity: .85; }
+
+    .load-panel {
+      position: absolute;
+      z-index: 6;
+      top: 50%; left: 50%; translate: -50% -50%;
+      width: min(360px, calc(100% - 32px));
+      padding: 22px 18px;
+      text-align: center;
+      background: rgba(0,0,0,.78);
+      border-radius: 12px;
+      transition: opacity 180ms ease, visibility 180ms ease;
+    }
+    .load-panel.is-hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    .load-panel h1 { margin: .4em 0; font-size: 19px; font-weight: 600; }
+    .load-panel p:not(.load-kicker) { margin: 0 auto 1.3em; color: rgba(255,255,255,.7); line-height: 1.6; font-size: 12px; }
+    .load-kicker { margin: 0; font-size: 9px; letter-spacing: .22em; opacity: .6; }
+    .load-mark { display: flex; justify-content: center; gap: 7px; margin-bottom: 16px; }
+    .load-mark i { width: 26px; height: 2px; background: #fff; animation: scan 1s ease-in-out infinite alternate; }
+    .load-mark i:nth-child(2) { animation-delay: 120ms; }
+    .load-mark i:nth-child(3) { animation-delay: 240ms; }
+    @keyframes scan { from { opacity: .15; translate: -5px 0; } to { opacity: 1; translate: 5px 0; } }
+
+    .primary-action, .text-action, .icon-button, .play-button { border: 0; cursor: pointer; }
+    .primary-action { min-width: 132px; padding: .8em 1.6em; color: #111; background: #fff; font-weight: 700; border-radius: 8px; }
+    .text-action { display: block; margin: 12px auto 0; color: #fff; background: transparent; text-decoration: underline; }
+    button:disabled { cursor: not-allowed; opacity: .4; }
+
+    #controls {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .transport-row { display: grid; grid-template-columns: auto auto minmax(60px, 1fr) auto auto; align-items: center; gap: 9px; }
+    .play-button { width: 40px; height: 40px; border-radius: 50%; color: #111; background: #fff; font-size: 15px; flex-shrink: 0; }
+    .icon-button { width: 36px; height: 36px; flex-shrink: 0; background: transparent; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; color: #fff; }
+    .time-code { min-width: 4.6ch; font-family: Consolas, monospace; font-size: 11px; opacity: .85; text-align: center; }
+    input[type="range"] { accent-color: #fff; cursor: pointer; min-width: 0; }
+    .seek { width: 100%; }
+    .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 0; padding: 0; border: 0; }
+    .setting { min-width: 0; font-size: 11px; color: rgba(255,255,255,.68); }
+    .setting-range { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 9px; }
+    .setting-range input { grid-column: 1 / -1; width: 100%; }
+    .setting output { color: #fff; font-family: Consolas, monospace; font-size: 11px; }
+    .setting-select { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 9px; }
+    .setting-select select { min-width: 66px; padding: 4px 20px 4px 7px; color: #fff; border: 1px solid rgba(255,255,255,.32); border-radius: 6px; background: #171717; }
+    .setting-switch { position: relative; display: grid; grid-template-columns: auto 38px; align-items: center; gap: 9px; white-space: nowrap; }
+    .setting-switch input { position: absolute; z-index: 2; top: 50%; right: 0; width: 38px; height: 20px; margin: 0; translate: 0 -50%; opacity: 0; cursor: pointer; }
+    .setting-switch i { position: relative; width: 38px; height: 20px; border-radius: 99px; background: #393939; }
+    .setting-switch i::after { content: ""; position: absolute; width: 14px; height: 14px; top: 3px; left: 3px; border-radius: 50%; background: #aaa; transition: translate 150ms ease; }
+    .setting-switch input:checked + i { background: #eee; }
+    .setting-switch input:checked + i::after { translate: 18px 0; background: #111; }
+
+    body.fullscreen #app { padding: 0; gap: 0; }
+    body.fullscreen #header { display: none; }
+    body.fullscreen #stage-wrap {
+      position: absolute;
+      inset: 0;
+      border: 0;
+      border-radius: 0;
+    }
+    body.fullscreen .stage { aspect-ratio: auto; width: 100%; height: 100%; }
+    body.fullscreen #controls {
+      position: absolute;
+      z-index: 8;
+      inset: auto 0 0;
+      flex: none;
+      border: 0;
+      border-radius: 0;
+      background: linear-gradient(180deg, transparent, rgba(0,0,0,.85) 26%, rgba(0,0,0,.94));
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+      transition: translate 220ms ease, opacity 220ms ease;
+    }
+    body.fullscreen #controls.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }
+
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header id="header">
+      <span id="title">谱面确认</span>
+      <span id="status"></span>
+    </header>
+    <div id="stage-wrap">
+      <section class="stage" id="stage" aria-label="谱面确认舞台">
+        <canvas id="chart-canvas" aria-hidden="true"></canvas>
+        <div class="game-hud" aria-hidden="true">
+          <div class="game-progress"><i id="game-progress-fill"></i></div>
+          <div class="score-block"><strong id="score-display">0000000</strong></div>
+          <div class="combo-block" id="combo-block"><strong id="combo-display">0</strong><span>COMBO</span></div>
+        </div>
+        <div class="load-panel" id="load-panel" role="status" aria-live="polite">
+          <div class="load-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+          <p class="load-kicker" id="load-kicker">CONNECTING</p>
+          <h1 id="load-title">正在准备谱面</h1>
+          <p id="load-detail">正在读取谱面资源。</p>
+          <button class="primary-action" id="start-button" type="button" disabled>开始播放</button>
+          <button class="text-action" id="retry-button" type="button" hidden>重新加载</button>
+        </div>
+      </section>
+    </div>
+    <section id="controls" aria-label="播放控制">
+      <div class="transport-row">
+        <button class="play-button" id="play-button" type="button" aria-label="播放" disabled><span aria-hidden="true" id="play-icon">▶</span></button>
+        <span class="time-code" id="current-time">00:00</span>
+        <input class="seek" id="seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="播放进度" disabled />
+        <span class="time-code" id="duration">00:00</span>
+        <button class="icon-button" id="fullscreen-button" type="button" aria-label="进入全屏" title="全屏" disabled>⛶</button>
+      </div>
+      <fieldset class="settings-grid" id="settings-fieldset" disabled>
+        <label class="setting setting-range"><span>播放速度</span><output id="speed-output">1.00×</output><input id="playback-speed" type="range" min="0.5" max="2" step="0.05" value="1" /></label>
+        <label class="setting setting-range"><span>音符大小</span><output id="note-size-output">1.00×</output><input id="note-size" type="range" min="0.6" max="1.8" step="0.05" value="1" /></label>
+        <label class="setting setting-range"><span>音乐音量</span><output id="volume-output">100%</output><input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
+        <label class="setting setting-range"><span>背景暗度</span><output id="dim-output">55%</output><input id="background-dim" type="range" min="0.2" max="0.85" step="0.01" value="0.55" /></label>
+        <label class="setting setting-select"><span>判定线颜色</span><select id="line-color"><option value="white">白色</option><option value="gold">金色</option><option value="blue">蓝色</option></select></label>
+        <label class="setting setting-switch"><span>多押辅助</span><input id="multi-hint" type="checkbox" checked /><i aria-hidden="true"></i></label>
+        <label class="setting setting-range"><span>打击音量</span><output id="hit-sound-volume-output">100%</output><input id="hit-sound-volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
+        <label class="setting setting-switch"><span>打击音效</span><input id="hit-sound" type="checkbox" checked /><i aria-hidden="true"></i></label>
+      </fieldset>
+    </section>
+  </div>
+  <audio id="music" preload="auto" crossorigin="anonymous"></audio>
+  <!--PHIGROS_CHART_PREVIEW_CONFIG-->
+  <script src="./player.js"></script>
+</body>
+</html>

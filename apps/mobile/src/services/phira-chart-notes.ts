@@ -10,7 +10,7 @@ import type { PhiraNoteCounts } from '@/domain/phira';
  */
 
 const emptyCounts = (): PhiraNoteCounts => ({ click: 0, hold: 0, flick: 0, drag: 0 });
-const throwIfAborted = (signal?: AbortSignal) => {
+export const throwIfAborted = (signal?: AbortSignal) => {
   if (!signal?.aborted) return;
   const error = new Error('Phira 谱面读取已取消'); error.name = 'AbortError'; throw error;
 };
@@ -132,7 +132,7 @@ export function countPbcNotes(bytes: Uint8Array): PhiraNoteCounts {
   return counts;
 }
 
-function infoValue(text: string, key: string): string | null {
+export function infoValue(text: string, key: string): string | null {
   const match = text.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+?)\\s*$`, 'mi'));
   return match?.[1]?.replace(/^['"]|['"]$/g, '') ?? null;
 }

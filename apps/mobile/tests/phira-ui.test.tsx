@@ -1,6 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { InteractionManager, StyleSheet } from 'react-native';
+import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
 
@@ -117,6 +118,11 @@ describe('Phira page contracts', () => {
     expect(screen.getByText('本地标签')).toBeTruthy();
     expect(screen.queryByText(/练习清单/)).toBeNull();
     expect(screen.queryByText(/难度标签/)).toBeNull();
+    await fireEvent.press(screen.getByLabelText('查看谱面确认：初音未来的消失'));
+    expect(jest.mocked(mockRouter.push)).toHaveBeenCalledWith({
+      pathname: '/songs/phigros-chart-preview',
+      params: { game: 'phira', chartId: '38294', title: '初音未来的消失' },
+    });
     await screen.unmount();
   });
 

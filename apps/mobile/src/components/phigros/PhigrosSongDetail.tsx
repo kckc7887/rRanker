@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   InteractionManager,
@@ -551,6 +552,27 @@ function ChartCard({
       </Text>
       <PhigrosKyouChartTags tags={kyouTags} onShowAll={onShowAllKyouTags} />
       <NotesTable notes={asPhigrosNotes(chart.notes)} pending={notesPending} />
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`查看谱面确认：${song.title} ${label}`}
+        onPress={() => router.push({
+          pathname: '/songs/phigros-chart-preview',
+          params: {
+            game: 'phigros',
+            songId: song.id,
+            levelIndex: String(chart.levelIndex),
+            title: `${song.title} ${label}`,
+          },
+        } as Href)}
+        style={[
+          styles.action,
+          practiceActionStyle(colors.fg, false),
+        ]}
+      >
+        <Text style={[styles.actionText, practiceTextStyle(colors.fg, false)]}>
+          查看谱面确认
+        </Text>
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}

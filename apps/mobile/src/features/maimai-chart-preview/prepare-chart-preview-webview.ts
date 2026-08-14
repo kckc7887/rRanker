@@ -27,13 +27,13 @@ export type ChartPreviewWebViewSource = {
   allowingReadAccessToURL: string;
 };
 
-function chartPreviewStageDirectory(): Directory {
-  const directory = new Directory(Paths.cache, 'rranker-chart-preview');
+export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Directory {
+  const directory = new Directory(Paths.cache, name);
   directory.create({ intermediates: true, idempotent: true });
   return directory;
 }
 
-async function stageAsset(moduleId: number, fileName: string, directory: Directory): Promise<File> {
+export async function stageAsset(moduleId: number, fileName: string, directory: Directory): Promise<File> {
   const sourceUri = await loadAssetFileUri(moduleId, fileName);
   const target = new File(directory, fileName);
   const source = new File(sourceUri);
@@ -42,7 +42,7 @@ async function stageAsset(moduleId: number, fileName: string, directory: Directo
   return target;
 }
 
-async function loadAssetFileUri(moduleId: number, fileName: string): Promise<string> {
+export async function loadAssetFileUri(moduleId: number, fileName: string): Promise<string> {
   const asset = Asset.fromModule(moduleId);
   await asset.downloadAsync();
   if (!asset.localUri) throw new Error(`无法加载资源 ${fileName}`);
@@ -56,7 +56,7 @@ async function loadAssetFileUri(moduleId: number, fileName: string): Promise<str
   return embeddedAsset.localUri;
 }
 
-async function readAssetText(moduleId: number): Promise<string> {
+export async function readAssetText(moduleId: number): Promise<string> {
   const sourceUri = await loadAssetFileUri(moduleId, 'index.html');
   return await new File(sourceUri).text();
 }

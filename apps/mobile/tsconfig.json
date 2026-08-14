@@ -17,6 +17,7 @@
   ],
   "exclude": [
     "src/features/maimai-chart-preview/engine/**",
-    "src/features/maimai-chart-preview/webview-player/**"
+    "src/features/maimai-chart-preview/webview-player/**",
+    "src/features/phigros-chart-preview/webview-player/**"
   ]
 }
