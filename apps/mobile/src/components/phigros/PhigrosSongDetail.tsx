@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { GestureHandlerRootView, Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
@@ -56,6 +57,26 @@ const CARD_GAP = 12;
 const IN_LEVEL_INDEX = 2;
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
+
+/**
+ * 与舞萌详情（app/songs/[songId].tsx）相同的 iOS 手势公共路径：
+ * iOS 上两层滚动手势竞争会取消滚动区内原生 Pressable 的点击（表现为按钮完全无反应），
+ * 详情滚动区内的按钮统一走 gesture-handler 按压体系。
+ */
+function DetailPressable(props: ComponentProps<typeof Pressable>) {
+  return Platform.OS === 'android'
+    ? <Pressable {...props} />
+    : <GesturePressable {...props as ComponentProps<typeof GesturePressable>} />;
+}
+
+function DetailGestureRoot({ children, style }: {
+  children: ReactNode;
+  style?: ComponentProps<typeof View>['style'];
+}) {
+  return Platform.OS === 'android'
+    ? <View style={style}>{children}</View>
+    : <GestureHandlerRootView style={style}>{children}</GestureHandlerRootView>;
+}
 
 export function PhigrosSongDetail({
   songId,
@@ -558,7 +579,7 @@ function ChartCard({
       </Text>
       <PhigrosKyouChartTags tags={kyouTags} onShowAll={onShowAllKyouTags} />
       <NotesTable notes={asPhigrosNotes(chart.notes)} pending={notesPending} />
-      <Pressable
+      <DetailPressable
         accessibilityRole="button"
         accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
         disabled={library.isUpdating}
@@ -571,8 +592,8 @@ function ChartCard({
         <Text style={[styles.actionText, practiceTextStyle(colors.fg, practice)]}>
           {practice ? '已加入练习清单' : '加入练习清单'}
         </Text>
-      </Pressable>
-      <Pressable
+      </DetailPressable>
+      <DetailPressable
         accessibilityRole="button"
         accessibilityLabel={`查看谱面确认：${song.title} ${label}`}
         onPress={() => {
@@ -604,7 +625,7 @@ function ChartCard({
         <Text style={[styles.actionText, practiceTextStyle(colors.fg, false)]}>
           查看谱面确认
         </Text>
-      </Pressable>
+      </DetailPressable>
       <TagEditor
         tags={chartItem?.tags ?? []}
         presets={library.tagPresets ?? []}
@@ -638,7 +659,7 @@ function PhigrosSongInformation({ aliases }: { aliases: readonly string[] }) {
   return (
     <View style={styles.songInformation}>
       <Text style={[styles.informationTitle, { color: theme.text }]}>歌曲信息</Text>
-      <View style={styles.aliasBlock}>
+      <DetailGestureRoot style={styles.aliasBlock}>
         <Text
           accessible={false}
           onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}
@@ -655,7 +676,7 @@ function PhigrosSongInformation({ aliases }: { aliases: readonly string[] }) {
           {aliasText}
         </Text>
         {overflow ? (
-          <Pressable
+          <DetailPressable
             accessibilityRole="button"
             accessibilityLabel={expanded ? '收起别名' : '展开别名'}
             hitSlop={6}
@@ -663,9 +684,9 @@ function PhigrosSongInformation({ aliases }: { aliases: readonly string[] }) {
             style={styles.aliasAction}
           >
             <Text style={[styles.aliasActionText, { color: theme.accent }]}>{expanded ? '收起' : '展开'}</Text>
-          </Pressable>
+          </DetailPressable>
         ) : null}
-      </View>
+      </DetailGestureRoot>
     </View>
   );
 }

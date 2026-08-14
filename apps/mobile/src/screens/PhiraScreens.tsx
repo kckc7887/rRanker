@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, InteractionManager, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { GestureHandlerRootView, Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
@@ -37,6 +38,27 @@ import { useAppTheme } from '@/theme/app-theme';
 
 function usePlayerId() { return phiraPlayerIdFromAccountId(useSession((state) => state.activeAccountId)); }
 const actualBests = (items: Record<string, PhiraQueriedBest> | undefined) => Object.values(items ?? {}).filter((item) => item.record !== null);
+
+/**
+ * 与舞萌/Phigros 详情相同的 iOS 手势公共路径：
+ * iOS 上滚动手势竞争会取消滚动区内原生 Pressable 的点击（表现为按钮完全无反应），
+ * Phira 详情滚动区内的按钮同样走 gesture-handler 按压体系。
+ */
+function DetailPressable(props: ComponentProps<typeof Pressable>) {
+  return Platform.OS === 'android'
+    ? <Pressable {...props} />
+    : <GesturePressable {...props as ComponentProps<typeof GesturePressable>} />;
+}
+
+function DetailGestureRoot({ children, style }: {
+  children: ReactNode;
+  style?: ComponentProps<typeof View>['style'];
+}) {
+  return Platform.OS === 'android'
+    ? <View style={style}>{children}</View>
+    : <GestureHandlerRootView style={style}>{children}</GestureHandlerRootView>;
+}
+
 const PHIRA_SCORE_SORT_OPTIONS = [
   { value: 'score', label: 'Score' }, { value: 'acc', label: 'ACC' }, { value: 'constant', label: '定数' },
 ] as const;
@@ -209,28 +231,30 @@ function PhiraSongDetailContent({
         <View style={[detailStyles.chartDivider, { backgroundColor: theme.border }]} /><Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
         {noteGroup ? <GameNoteTable mode="grid" group={noteGroup} accessibilityLabel="谱面物量" containerStyle={[detailStyles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} rowStyle={detailStyles.notesRow} headerRowStyle={detailStyles.notesHeaderRow} headerTextStyle={[detailStyles.notesCell, detailStyles.notesHeader, { color: theme.textMuted }]} valueTextStyle={[detailStyles.notesCell, detailStyles.notesValue, { color: theme.text }]} /> : <Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>{notes.isLoading ? '加载物量中…' : `物量不可用${notes.data?.unavailableReason ? `：${notes.data.unavailableReason}` : ''}`}</Text>}
         {judgement ? <GameNoteTable mode="grid" group={judgement} accessibilityLabel="判定详情" containerStyle={[detailStyles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} rowStyle={detailStyles.notesRow} headerRowStyle={detailStyles.notesHeaderRow} headerTextStyle={[detailStyles.notesCell, detailStyles.notesHeader, { color: theme.textMuted }]} valueTextStyle={[detailStyles.notesCell, detailStyles.notesValue, { color: theme.text }]} /> : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`查看谱面确认：${chart.name}`}
-          onPress={() => {
-            cancelPreviewNavigation.current?.();
-            cancelPreviewNavigation.current = openChartPreviewNavigation({ game: 'phira', chart }, {
-              push: (href) => router.push(href),
-              topRouteName: () => {
-                const state = typeof navigation.getState === 'function' ? navigation.getState() : undefined;
-                return state?.routes[state.index ?? 0]?.name;
-              },
-              onFail: (message) => showNotification({
-                title: '无法打开谱面确认',
-                message,
-                variant: 'error',
-              }),
-            });
-          }}
-          style={[detailStyles.action, { backgroundColor: 'transparent', borderColor: colors.fg }]}
-        >
-          <Text style={[detailStyles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
-        </Pressable>
+        <DetailGestureRoot>
+          <DetailPressable
+            accessibilityRole="button"
+            accessibilityLabel={`查看谱面确认：${chart.name}`}
+            onPress={() => {
+              cancelPreviewNavigation.current?.();
+              cancelPreviewNavigation.current = openChartPreviewNavigation({ game: 'phira', chart }, {
+                push: (href) => router.push(href),
+                topRouteName: () => {
+                  const state = typeof navigation.getState === 'function' ? navigation.getState() : undefined;
+                  return state?.routes[state.index ?? 0]?.name;
+                },
+                onFail: (message) => showNotification({
+                  title: '无法打开谱面确认',
+                  message,
+                  variant: 'error',
+                }),
+              });
+            }}
+            style={[detailStyles.action, { backgroundColor: 'transparent', borderColor: colors.fg }]}
+          >
+            <Text style={[detailStyles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
+          </DetailPressable>
+        </DetailGestureRoot>
       </GameChartResultCard></View>
       <View style={detailStyles.details}><SourceStatus items={[{ key: 'detail', label: 'Phira 谱面详情', updatedAt: chart.updated ?? undefined, state: chartUnavailable ? 'unavailable' : 'live' }, { key: 'scores', label: playerId === null ? '未绑定玩家' : 'Phira 最佳成绩', state: playerId === null ? 'unavailable' : score.isError ? 'unavailable' : 'live' }, { key: 'notes', label: notes.data?.counts ? '谱面物量' : '谱面物量不可用', state: notes.data?.counts ? 'live' : notes.isLoading ? 'cache' : 'unavailable' }]} />
         <Card><View style={detailStyles.songInformation}><Text style={[detailStyles.informationTitle, { color: theme.text }]}>歌曲信息</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>标签：{chart.tags.join('、') || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>更新于：{chart.updated ? new Date(chart.updated).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>上传于：{chart.created ? new Date(chart.created).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>简介：{chart.description || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>评分：{formatPhiraRating(chart.rating)}（{chart.ratingCount} 票）</Text></View></Card>

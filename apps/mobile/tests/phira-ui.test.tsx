@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager, StyleSheet } from 'react-native';
+import { InteractionManager, Platform, StyleSheet } from 'react-native';
 import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
@@ -37,6 +37,18 @@ jest.mock('expo-image', () => ({ Image: (props: object) => { const RN = jest.req
 jest.mock('expo-linear-gradient', () => ({ LinearGradient: ({ children, ...props }: { children?: React.ReactNode }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props}>{children}</RN.View>; } }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
+jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    GestureHandlerRootView: RN.View,
+    Pressable: (props: React.ComponentProps<typeof RN.Pressable>) => React.createElement(
+      RN.Pressable,
+      { ...props, testID: props.testID ?? 'gesture-handler-pressable' },
+    ),
+    ScrollView: RN.ScrollView,
+  };
+});
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: false, background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', input: '#F1F3F5',
@@ -126,7 +138,9 @@ describe('Phira page contracts', () => {
     expect(screen.getByText('本地标签')).toBeTruthy();
     expect(screen.queryByText(/练习清单/)).toBeNull();
     expect(screen.queryByText(/难度标签/)).toBeNull();
-    await fireEvent.press(screen.getByLabelText('查看谱面确认：初音未来的消失'));
+    const previewButton = screen.getByLabelText('查看谱面确认：初音未来的消失');
+    expect(previewButton.props.testID).toBe('gesture-handler-pressable');
+    await fireEvent.press(previewButton);
     expect(jest.mocked(mockRouter.push)).toHaveBeenCalledWith(expect.objectContaining({
       pathname: '/songs/phigros-chart-preview',
       params: { requestId: expect.stringMatching(/^cp-/) },
@@ -134,6 +148,18 @@ describe('Phira page contracts', () => {
     const href = jest.mocked(mockRouter.push).mock.calls.at(-1)?.[0] as unknown as { params: { requestId: string } };
     expect(resolveChartPreviewNavigation(href.params.requestId)).toEqual({ game: 'phira', chart: mockChart });
     await screen.unmount();
+  });
+
+  it('uses a native RN pressable for the detail preview button on Android', async () => {
+    const originalOS = Platform.OS;
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
+    try {
+      const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
+      expect(screen.getByLabelText('查看谱面确认：初音未来的消失').props.testID).toBeUndefined();
+      await screen.unmount();
+    } finally {
+      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
+    }
   });
 
   it('keeps the random-song filter expanded without hint or collapse controls', async () => {
