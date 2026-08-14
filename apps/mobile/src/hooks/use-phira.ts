@@ -4,6 +4,7 @@ import { phiraProvider } from '@/providers/phira-provider';
 import { cacheFirstLoad } from '@/services/cache-first';
 import { countPhiraChartZip } from '@/services/phira-chart-notes';
 import { phiraCache, phiraSource } from '@/services/phira-cache';
+import { phiraCatalogNextPage } from '@/domain/phira-filters';
 import {
   loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraSeedBests,
 } from '@/services/phira-service';
@@ -70,11 +71,8 @@ export function usePhiraCharts(status: PhiraChartStatus, search: string) {
       });
       return snapshot.data;
     },
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((sum, page) => sum + page.results.length, 0);
-      if (last.total !== undefined) return loaded < last.total ? pages.length : undefined;
-      return last.results.length >= 30 ? pages.length : undefined;
-    },
+    // Phira /chart 的 page=1 返回与 page=0 相同的首页，翻页须跳过 1（0 → 2 → 3 → …）。
+    getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
     ...OPTIONS,
   });
 }
