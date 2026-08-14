@@ -53,10 +53,14 @@ function buildSampleSong(): Song {
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     GestureHandlerRootView: RN.View,
-    Pressable: RN.Pressable,
+    Pressable: (props: React.ComponentProps<typeof RN.Pressable>) => React.createElement(
+      RN.Pressable,
+      { ...props, testID: props.testID ?? 'gesture-handler-pressable' },
+    ),
     ScrollView: RN.ScrollView,
   };
 });
@@ -455,6 +459,11 @@ describe('Phigros song detail', () => {
 
     fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
     expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
+
+    // iOS（jest-expo 默认平台）：滚动区内的练习/谱面确认按钮必须走 gesture-handler 按压体系，
+    // 否则 iOS 滚动手势竞争会取消原生 Pressable 的点击，表现为按钮完全无反应。
+    expect(screen.getAllByLabelText(/查看谱面确认：/)[0]!.props.testID).toBe('gesture-handler-pressable');
+    expect(screen.getAllByLabelText('加入练习清单')[0]!.props.testID).toBe('gesture-handler-pressable');
 
     await fireEvent.press(screen.getAllByLabelText(/查看谱面确认：/)[0]!);
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
