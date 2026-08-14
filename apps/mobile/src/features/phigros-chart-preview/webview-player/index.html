@@ -12,6 +12,7 @@
       --panel: #161a22;
       --text: #f3f5f8;
       --muted: #9aa3b2;
+      --accent: #5b8cff;
       --border: #2a3140;
     }
     * { box-sizing: border-box; }
@@ -63,7 +64,7 @@
       place-items: center;
       background: #000;
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 12px;
       overflow: hidden;
       position: relative;
     }
@@ -108,42 +109,162 @@
     .load-mark i:nth-child(3) { animation-delay: 240ms; }
     @keyframes scan { from { opacity: .15; translate: -5px 0; } to { opacity: 1; translate: 5px 0; } }
 
-    .primary-action, .text-action, .icon-button, .play-button { border: 0; cursor: pointer; }
+    .primary-action, .text-action { border: 0; cursor: pointer; font-family: inherit; }
     .primary-action { min-width: 132px; padding: .8em 1.6em; color: #111; background: #fff; font-weight: 700; border-radius: 8px; }
-    .text-action { display: block; margin: 12px auto 0; color: #fff; background: transparent; text-decoration: underline; }
+    .text-action { display: block; margin: 12px auto 0; color: #fff; background: transparent; text-decoration: underline; font-family: inherit; }
     button:disabled { cursor: not-allowed; opacity: .4; }
 
+    /* ---- 下方播放控制器：样式对齐舞萌谱面确认 ---- */
     #controls {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+      flex-shrink: 0;
       background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 10px 12px;
+      border-radius: 12px;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
     }
-    .transport-row { display: grid; grid-template-columns: auto auto minmax(60px, 1fr) auto auto; align-items: center; gap: 9px; }
-    .play-button { width: 40px; height: 40px; border-radius: 50%; color: #111; background: #fff; font-size: 15px; flex-shrink: 0; }
-    .icon-button { width: 36px; height: 36px; flex-shrink: 0; background: transparent; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; color: #fff; }
-    .time-code { min-width: 4.6ch; font-family: Consolas, monospace; font-size: 11px; opacity: .85; text-align: center; }
-    input[type="range"] { accent-color: #fff; cursor: pointer; min-width: 0; }
-    .seek { width: 100%; }
-    .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 0; padding: 0; border: 0; }
-    .setting { min-width: 0; font-size: 11px; color: rgba(255,255,255,.68); }
-    .setting-range { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 9px; }
-    .setting-range input { grid-column: 1 / -1; width: 100%; }
-    .setting output { color: #fff; font-family: Consolas, monospace; font-size: 11px; }
-    .setting-select { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 9px; }
-    .setting-select select { min-width: 66px; padding: 4px 20px 4px 7px; color: #fff; border: 1px solid rgba(255,255,255,.32); border-radius: 6px; background: #171717; }
-    .setting-switch { position: relative; display: grid; grid-template-columns: auto 38px; align-items: center; gap: 9px; white-space: nowrap; }
-    .setting-switch input { position: absolute; z-index: 2; top: 50%; right: 0; width: 38px; height: 20px; margin: 0; translate: 0 -50%; opacity: 0; cursor: pointer; }
-    .setting-switch i { position: relative; width: 38px; height: 20px; border-radius: 99px; background: #393939; }
-    .setting-switch i::after { content: ""; position: absolute; width: 14px; height: 14px; top: 3px; left: 3px; border-radius: 50%; background: #aaa; transition: translate 150ms ease; }
-    .setting-switch input:checked + i { background: #eee; }
-    .setting-switch input:checked + i::after { translate: 18px 0; background: #111; }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .row.wrap { flex-wrap: wrap; }
+    button, label, input[type="range"], select {
+      font: inherit;
+    }
+    #play-button {
+      width: 40px;
+      height: 40px;
+      min-width: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 0;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    #play-button svg {
+      width: 20px;
+      height: 20px;
+      display: block;
+    }
+    .transport-group {
+      justify-content: center;
+    }
+    .transport-side {
+      flex: 1;
+      display: flex;
+      gap: 4px;
+    }
+    .transport-side.left { justify-content: flex-end; }
+    .transport-side.right { justify-content: flex-start; }
+    .transport-btn {
+      width: 36px;
+      height: 36px;
+      min-width: 0;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: transparent;
+      border: 0;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .transport-btn:active { color: var(--accent); }
+    .transport-btn svg {
+      width: 20px;
+      height: 20px;
+      display: block;
+    }
+    #seek { flex: 1; }
+    #seek, .field input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 2px;
+      background: var(--border);
+      border-radius: 1px;
+      outline: none;
+    }
+    #seek::-webkit-slider-thumb, .field input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 8px;
+      height: 18px;
+      border-radius: 3px;
+      background: #fff;
+      border: 0;
+      box-shadow: 0 0 6px rgba(255,255,255,0.6);
+      cursor: pointer;
+    }
+    #seek::-moz-range-thumb, .field input[type="range"]::-moz-range-thumb {
+      width: 8px;
+      height: 18px;
+      border-radius: 3px;
+      background: #fff;
+      border: 0;
+      box-shadow: 0 0 6px rgba(255,255,255,0.6);
+      cursor: pointer;
+    }
+    #time-label {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .field {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .field input[type="range"] { width: 88px; }
+    .field output {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      min-width: 42px;
+      text-align: right;
+    }
+    .field select {
+      appearance: none;
+      min-width: 54px;
+      padding: 4px 20px 4px 8px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .toggle {
+      appearance: none;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+    }
+    .toggle[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
 
     body.fullscreen #app { padding: 0; gap: 0; }
     body.fullscreen #header { display: none; }
@@ -163,11 +284,12 @@
       position: absolute;
       z-index: 8;
       inset: auto 0 0;
-      flex: none;
       border: 0;
       border-radius: 0;
-      background: linear-gradient(180deg, transparent, rgba(0,0,0,.85) 26%, rgba(0,0,0,.94));
-      padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+      background: rgba(11,13,18,0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
       transition: translate 220ms ease, opacity 220ms ease;
     }
     body.fullscreen #controls.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }
@@ -200,23 +322,35 @@
       </section>
     </div>
     <section id="controls" aria-label="播放控制">
-      <div class="transport-row">
-        <button class="play-button" id="play-button" type="button" aria-label="播放" disabled><span aria-hidden="true" id="play-icon">▶</span></button>
-        <span class="time-code" id="current-time">00:00</span>
+      <div class="row">
         <input class="seek" id="seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="播放进度" disabled />
-        <span class="time-code" id="duration">00:00</span>
-        <button class="icon-button" id="fullscreen-button" type="button" aria-label="进入全屏" title="全屏" disabled>⛶</button>
       </div>
-      <fieldset class="settings-grid" id="settings-fieldset" disabled>
-        <label class="setting setting-range"><span>播放速度</span><output id="speed-output">1.00×</output><input id="playback-speed" type="range" min="0.5" max="2" step="0.05" value="1" /></label>
-        <label class="setting setting-range"><span>音符大小</span><output id="note-size-output">1.00×</output><input id="note-size" type="range" min="0.6" max="1.8" step="0.05" value="1" /></label>
-        <label class="setting setting-range"><span>音乐音量</span><output id="volume-output">100%</output><input id="volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
-        <label class="setting setting-range"><span>背景暗度</span><output id="dim-output">55%</output><input id="background-dim" type="range" min="0.2" max="0.85" step="0.01" value="0.55" /></label>
-        <label class="setting setting-select"><span>判定线颜色</span><select id="line-color"><option value="white">白色</option><option value="gold">金色</option><option value="blue">蓝色</option></select></label>
-        <label class="setting setting-switch"><span>多押辅助</span><input id="multi-hint" type="checkbox" checked /><i aria-hidden="true"></i></label>
-        <label class="setting setting-range"><span>打击音量</span><output id="hit-sound-volume-output">100%</output><input id="hit-sound-volume" type="range" min="0" max="1" step="0.01" value="1" /></label>
-        <label class="setting setting-switch"><span>打击音效</span><input id="hit-sound" type="checkbox" checked /><i aria-hidden="true"></i></label>
-      </fieldset>
+      <div class="row" style="justify-content:center">
+        <span id="time-label">0:00 / 0:00</span>
+      </div>
+      <div class="row transport-group">
+        <div class="transport-side left"></div>
+        <button id="play-button" type="button" aria-label="播放" disabled>
+          <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <div class="transport-side right">
+          <button class="transport-btn" id="fullscreen-button" type="button" aria-label="进入全屏" title="全屏" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 00-2 2v3"/><path d="M21 8V5a2 2 0 00-2-2h-3"/><path d="M3 16v3a2 2 0 002 2h3"/><path d="M16 21h3a2 2 0 002-2v-3"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="row wrap">
+        <div class="field setting-range"><span>播放速度</span><input id="playback-speed" type="range" min="0.5" max="2" step="0.05" value="1" /><output id="speed-output">1.00×</output></div>
+        <div class="field setting-range"><span>音符大小</span><input id="note-size" type="range" min="0.6" max="1.8" step="0.05" value="1" /><output id="note-size-output">1.00×</output></div>
+        <div class="field setting-range"><span>音乐音量</span><input id="volume" type="range" min="0" max="1" step="0.01" value="1" /><output id="volume-output">100%</output></div>
+        <div class="field setting-range"><span>背景暗度</span><input id="background-dim" type="range" min="0.2" max="0.85" step="0.01" value="0.55" /><output id="dim-output">55%</output></div>
+        <div class="field setting-range"><span>打击音量</span><input id="hit-sound-volume" type="range" min="0" max="1" step="0.01" value="1" /><output id="hit-sound-volume-output">100%</output></div>
+        <div class="field"><span>判定线颜色</span><select id="line-color"><option value="white">白色</option><option value="gold">金色</option><option value="blue">蓝色</option></select></div>
+      </div>
+      <div class="row wrap">
+        <button class="toggle" id="multi-hint" type="button" aria-pressed="true">多押辅助</button>
+        <button class="toggle" id="hit-sound" type="button" aria-pressed="true">打击音效</button>
+      </div>
     </section>
   </div>
   <script src="./music-data.js"></script>
