@@ -3,12 +3,20 @@ import { jest } from '@jest/globals';
 import { BackHandler } from 'react-native';
 import JSZip from 'jszip';
 import PhigrosChartPreviewScreen from '../app/songs/phigros-chart-preview';
+import { stageChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 
 const mockInjectJavaScript = jest.fn();
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
 const mockPrepare = jest.fn();
 const mockStageMusic = jest.fn();
 const mockStageRpeBundle = jest.fn();
+const mockLoadPhigrosBundle = jest.fn(async (...args: unknown[]) => ({
+  target: { songId: (args[0] as { songId: string }).songId, difficulty: 'AT' },
+  song: { title: 'Distorted Fate' },
+  chart: { url: 'https://assets.example/charts/DistortedFate.Sakuzyo/AT.json' },
+  music: { url: 'https://assets.example/music/DistortedFate.Sakuzyo.ogg' },
+  illustration: { url: 'https://assets.example/illustrations/DistortedFate.Sakuzyo.png' },
+}));
 let latestScreenOptions: Record<string, unknown> | undefined;
 let hardwareBackHandler: (() => boolean | null | undefined) | undefined;
 let mockRouteParams: Record<string, string> = {
@@ -81,13 +89,7 @@ jest.mock('@/features/phigros-chart-preview/prepare-phigros-chart-preview-webvie
 }));
 
 jest.mock('@/domain/phigros-chart-preview', () => ({
-  loadPhigrosChartPreviewBundle: () => Promise.resolve({
-    target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
-    song: { title: 'Distorted Fate' },
-    chart: { url: 'https://assets.example/charts/DistortedFate.Sakuzyo/AT.json' },
-    music: { url: 'https://assets.example/music/DistortedFate.Sakuzyo.ogg' },
-    illustration: { url: 'https://assets.example/illustrations/DistortedFate.Sakuzyo.png' },
-  }),
+  loadPhigrosChartPreviewBundle: (...args: unknown[]) => mockLoadPhigrosBundle(...args),
   phigrosChartPreviewLevelLabel: () => 'AT',
 }));
 
@@ -154,6 +156,7 @@ describe('PhigrosChartPreviewScreen', () => {
     mockPrepare.mockClear();
     mockStageMusic.mockClear();
     mockStageRpeBundle.mockClear();
+    mockLoadPhigrosBundle.mockClear();
     mockGetChart.mockClear();
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
       hardwareBackHandler = handler;
@@ -180,6 +183,22 @@ describe('PhigrosChartPreviewScreen', () => {
     expect(mockPrepare).toHaveBeenCalledTimes(1);
   });
 
+  it('从短令牌完整接收 Phigros 问题歌曲，不依赖原始查询参数', async () => {
+    const songId = '祈-我ら神祖と共に歩む者なり-.光吉猛修VS穴山大輔VSKaiVS水野健治VS大国奏音';
+    const href = stageChartPreviewNavigation({
+      game: 'phigros', songId, levelIndex: 3, title: '祈-我ら神祖と共に歩む者なり- AT',
+    });
+    mockRouteParams = { requestId: href.params.requestId };
+
+    render(<PhigrosChartPreviewScreen />);
+    await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
+
+    expect(mockLoadPhigrosBundle).toHaveBeenCalledWith({ songId, difficulty: 'AT' }, expect.any(AbortSignal));
+    expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
+      game: 'phigros', title: '祈-我ら神祖と共に歩む者なり- AT',
+    }), null);
+  });
+
   it('phira 参数经 ZIP 解包后注入谱面文本与本地音乐 URI', async () => {
     mockZipBuffer = await buildPhiraZip();
     mockRouteParams = { game: 'phira', chartId: '38294', title: '测试谱面' };
@@ -192,6 +211,36 @@ describe('PhigrosChartPreviewScreen', () => {
     }), 'QUJDRA=='));
     expect(mockPrepare).toHaveBeenCalledTimes(1);
     expect(mockStageMusic).toHaveBeenCalled();
+  });
+
+  it('从短令牌直接接收 Phira 谱面元数据，不在目标页重复请求详情', async () => {
+    mockZipBuffer = await buildPhiraZip();
+    const chart = {
+      id: 66661,
+      name: 'Help me, ERINNNNNN!!',
+      level: 'IN Lv.16', difficulty: 16, charter: '测试谱师', composer: '测试曲师',
+      illustrator: null, description: null, ranked: false, stable: false,
+      illustration: null, preview: null, file: 'https://phira.example/66661.zip',
+      uploader: 1, tags: [], rating: null, ratingCount: 0,
+      created: null, updated: null, chartUpdated: null,
+    };
+    const href = stageChartPreviewNavigation({ game: 'phira', chart });
+    mockRouteParams = { requestId: href.params.requestId };
+
+    render(<PhigrosChartPreviewScreen />);
+    await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
+
+    expect(mockGetChart).not.toHaveBeenCalled();
+    expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
+      game: 'phira', title: 'Help me, ERINNNNNN!!', chartText: expect.stringContaining('"formatVersion"'),
+    }), 'QUJDRA==');
+  });
+
+  it('短令牌不存在时明确显示交接错误，不静默等待', async () => {
+    mockRouteParams = { requestId: 'missing-request' };
+    render(<PhigrosChartPreviewScreen />);
+    await waitFor(() => expect(screen.getByText('谱面确认请求已失效，请返回歌曲详情重试')).toBeTruthy());
+    expect(screen.queryByTestId('phigros-chart-preview-webview')).toBeNull();
   });
 
   it('phira RPE 谱面：文本资源注入、其余资源落盘 rpe/{chartId}/', async () => {

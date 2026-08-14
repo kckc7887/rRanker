@@ -5,6 +5,7 @@ import SongDetailScreen from '../app/songs/[songId]';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import type { Song } from '@/domain/models';
+import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 
 jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
   (callback as () => void)();
@@ -71,6 +72,7 @@ jest.mock('expo-router', () => ({
   useNavigation: () => ({
     canGoBack: () => mockCanGoBack(),
     goBack: () => mockBack(),
+    getState: () => ({ index: 0, routes: [{ name: 'songs/[songId]' }] }),
   }),
   useLocalSearchParams: () => mockSongRouteParams,
 }));
@@ -455,9 +457,13 @@ describe('Phigros song detail', () => {
     expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
 
     await fireEvent.press(screen.getAllByLabelText(/查看谱面确认：/)[0]!);
-    expect(mockPush).toHaveBeenCalledWith({
+    expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
       pathname: '/songs/phigros-chart-preview',
-      params: { game: 'phigros', songId: 'Song.A', levelIndex: '3', title: '测试曲 AT' },
+      params: { requestId: expect.stringMatching(/^cp-/) },
+    }));
+    const href = mockPush.mock.calls.at(-1)?.[0] as { params: { requestId: string } };
+    expect(resolveChartPreviewNavigation(href.params.requestId)).toEqual({
+      game: 'phigros', songId: 'Song.A', levelIndex: 3, title: '测试曲 AT',
     });
   });
 });

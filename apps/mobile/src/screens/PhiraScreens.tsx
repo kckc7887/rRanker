@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router, type Href } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, InteractionManager, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -17,6 +17,8 @@ import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosRateBadge, resolvePhigrosRate } from '@/components/phigros/PhigrosRateBadge';
 import { PhigrosScoreValue } from '@/components/phigros/PhigrosScoreValue';
 import { PhigrosDetailChrome, PHIGROS_SONG_DETAIL_STYLES as detailStyles } from '@/components/phigros/PhigrosSongDetail';
+import { useNotification } from '@/components/AppNotification';
+import { openChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-open';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
 import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
 import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
@@ -168,6 +170,10 @@ function PhiraSongDetailContent({
   playerId: number | null;
 }) {
   const theme = useAppTheme(); const { width } = useWindowDimensions();
+  const { showNotification } = useNotification();
+  const navigation = useNavigation();
+  const cancelPreviewNavigation = useRef<(() => void) | null>(null);
+  useEffect(() => () => cancelPreviewNavigation.current?.(), []);
   const [deferredReady, setDeferredReady] = useState(false); const [coverFailed, setCoverFailed] = useState(false);
   useEffect(() => {
     setDeferredReady(false);
@@ -206,10 +212,21 @@ function PhiraSongDetailContent({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`查看谱面确认：${chart.name}`}
-          onPress={() => router.push({
-            pathname: '/songs/phigros-chart-preview',
-            params: { game: 'phira', chartId: String(chart.id), title: chart.name },
-          } as Href)}
+          onPress={() => {
+            cancelPreviewNavigation.current?.();
+            cancelPreviewNavigation.current = openChartPreviewNavigation({ game: 'phira', chart }, {
+              push: (href) => router.push(href),
+              topRouteName: () => {
+                const state = typeof navigation.getState === 'function' ? navigation.getState() : undefined;
+                return state?.routes[state.index ?? 0]?.name;
+              },
+              onFail: (message) => showNotification({
+                title: '无法打开谱面确认',
+                message,
+                variant: 'error',
+              }),
+            });
+          }}
           style={[detailStyles.action, { backgroundColor: 'transparent', borderColor: colors.fg }]}
         >
           <Text style={[detailStyles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
