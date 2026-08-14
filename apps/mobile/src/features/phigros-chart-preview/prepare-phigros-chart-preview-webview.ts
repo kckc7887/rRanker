@@ -45,12 +45,13 @@ async function readAssetBase64(moduleId: number, fileName: string): Promise<stri
 }
 
 /**
- * 将 HTML / player.js / 内置皮肤落到缓存目录，打击音以 data URL 注入配置。
- * file:// WebView 上比依赖 injectedJavaScriptBeforeContentLoaded 更稳，
- * 且 iOS 下不依赖 file fetch。
+ * 将 HTML / player.js / 内置皮肤落到缓存目录，打击音以 data URL 注入配置，
+ * 本地音乐以 base64 写入 music-data.js（iOS file:// 下无法 fetch 本地文件）。
+ * file:// WebView 上比依赖 injectedJavaScriptBeforeContentLoaded 更稳。
  */
 export async function preparePhigrosChartPreviewWebViewSource(
   config: PhigrosChartPreviewConfig,
+  musicDataBase64: string | null = null,
 ): Promise<PhigrosChartPreviewWebViewSource> {
   const directory = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME);
   await stageAsset(PLAYER_MODULE, 'player.js', directory);
@@ -67,6 +68,10 @@ export async function preparePhigrosChartPreviewWebViewSource(
     hitSounds[kind] = `data:audio/wav;base64,${base64}`;
   }
 
+  const musicDataFile = new File(directory, 'music-data.js');
+  musicDataFile.create({ overwrite: true });
+  musicDataFile.write(`window.__PHIGROS_MUSIC_DATA__=${musicDataBase64 ? JSON.stringify(musicDataBase64) : 'null'};`);
+
   const template = await readAssetText(HTML_MODULE);
   const html = applyPhigrosChartPreviewConfigToHtml(template, { ...config, hitSounds });
   const htmlFile = new File(directory, 'index.html');
@@ -79,14 +84,14 @@ export async function preparePhigrosChartPreviewWebViewSource(
   };
 }
 
-/** Phira 谱面音乐落盘到预览 stage 目录，供 WebView 以 file:// URI 播放。 */
-export async function stagePhiraChartMusic(bytes: Uint8Array, fileName: string): Promise<string> {
+/** Phira 谱面音乐落盘到预览 stage 目录，并返回其 base64 供 WebView 解码。 */
+export async function stagePhiraChartMusic(bytes: Uint8Array, fileName: string): Promise<{ uri: string; base64: string }> {
   const directory = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME);
   const file = new File(directory, fileName);
   if (file.exists) file.delete();
   file.create();
   file.write(bytes);
-  return file.uri;
+  return { uri: file.uri, base64: await file.base64() };
 }
 
 export function phigrosChartPreviewAllowsFileAccess(): boolean {

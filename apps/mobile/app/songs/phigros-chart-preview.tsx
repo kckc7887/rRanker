@@ -91,22 +91,29 @@ function mapParams(
   return { error: '缺少游戏参数' };
 }
 
+type PreparedPreview = {
+  config: PhigrosChartPreviewConfig;
+  musicDataBase64?: string | null;
+};
+
 async function buildPhigrosConfig(
   mapped: Extract<MappedPreview, { game: 'phigros' }>,
   settings: PhigrosChartPreviewSettings,
   signal: AbortSignal,
-): Promise<PhigrosChartPreviewConfig> {
+): Promise<PreparedPreview> {
   const bundle = await loadPhigrosChartPreviewBundle({
     songId: mapped.songId,
     difficulty: phigrosChartPreviewLevelLabel(mapped.levelIndex),
   }, signal);
   return {
-    game: 'phigros',
-    title: mapped.title ?? `${bundle.song.title} ${bundle.target.difficulty}`,
-    chartUrl: bundle.chart.url,
-    musicUrl: bundle.music.url,
-    illustrationUrl: bundle.illustration.url,
-    settings,
+    config: {
+      game: 'phigros',
+      title: mapped.title ?? `${bundle.song.title} ${bundle.target.difficulty}`,
+      chartUrl: bundle.chart.url,
+      musicUrl: bundle.music.url,
+      illustrationUrl: bundle.illustration.url,
+      settings,
+    },
   };
 }
 
@@ -120,7 +127,7 @@ async function buildPhiraConfig(
   mapped: Extract<MappedPreview, { game: 'phira' }>,
   settings: PhigrosChartPreviewSettings,
   signal: AbortSignal,
-): Promise<PhigrosChartPreviewConfig> {
+): Promise<PreparedPreview> {
   const chart = await phiraProvider.getChart(mapped.chartId, signal);
   if (!chart.file) throw new Error('该谱面未提供可下载文件');
   const zipData = await phiraProvider.downloadChart(chart.file, signal);
@@ -148,7 +155,7 @@ async function buildPhiraConfig(
   if (!plan.musicEntryName) throw new Error('谱面包缺少音乐文件');
   const musicBytes = await zip.file(plan.musicEntryName)!.async('uint8array', () => throwIfAborted(signal));
   throwIfAborted(signal);
-  const musicUrl = await stagePhiraChartMusic(musicBytes, zipBasename(plan.musicEntryName, 'music.bin'));
+  const musicFile = await stagePhiraChartMusic(musicBytes, zipBasename(plan.musicEntryName, 'music.bin'));
 
   let illustrationUrl = typeof chart.illustration === 'string' && chart.illustration.trim() !== ''
     ? chart.illustration
@@ -156,16 +163,18 @@ async function buildPhiraConfig(
   if (!illustrationUrl && plan.illustrationEntryName) {
     const imageBytes = await zip.file(plan.illustrationEntryName)!.async('uint8array', () => throwIfAborted(signal));
     throwIfAborted(signal);
-    illustrationUrl = await stagePhiraChartMusic(imageBytes, zipBasename(plan.illustrationEntryName, 'illustration.png'));
+    illustrationUrl = (await stagePhiraChartMusic(imageBytes, zipBasename(plan.illustrationEntryName, 'illustration.png'))).uri;
   }
 
   return {
-    game: 'phira',
-    title: mapped.title ?? chart.name,
-    chartText,
-    musicUrl,
-    illustrationUrl,
-    settings,
+    config: {
+      game: 'phira',
+      title: mapped.title ?? chart.name,
+      chartText,
+      illustrationUrl,
+      settings,
+    },
+    musicDataBase64: musicFile.base64,
   };
 }
 
@@ -226,11 +235,14 @@ export default function PhigrosChartPreviewScreen() {
       );
       try {
         const settings = await loadSettings();
-        const config = mapped.game === 'phigros'
+        const preparedConfig = mapped.game === 'phigros'
           ? await buildPhigrosConfig(mapped, settings, controller.signal)
           : await buildPhiraConfig(mapped, settings, controller.signal);
         if (cancelled) return;
-        const prepared = await preparePhigrosChartPreviewWebViewSource(config);
+        const prepared = await preparePhigrosChartPreviewWebViewSource(
+          preparedConfig.config,
+          preparedConfig.musicDataBase64 ?? null,
+        );
         if (!cancelled) setSource(prepared);
       } catch (error) {
         if (!cancelled) {

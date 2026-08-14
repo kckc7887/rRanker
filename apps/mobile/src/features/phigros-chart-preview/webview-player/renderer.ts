@@ -18,6 +18,11 @@ const JUDGE_LINE_COLORS: Readonly<Record<string, string>> = Object.freeze({
   gold: 'rgba(255, 236, 159, 0.8823529412)',
   blue: 'rgba(180, 225, 255, 0.9215686275)',
 });
+/** 与舞萌渲染器一致：DPR=3 设备封顶 2，节省约 56% 像素。 */
+const MAX_DPR = 2;
+const FULLSCREEN_MIN_DPR = 1;
+/** 与舞萌渲染器一致的全屏总像素预算，避免大屏合成顶满 vsync 预算。 */
+const FULLSCREEN_MAX_PIXELS = 2_500_000;
 
 export type LineColorKey = 'white' | 'gold' | 'blue';
 export type NoteKindKey = 'tap' | 'drag' | 'flick' | 'hold';
@@ -203,6 +208,7 @@ export class PgrRenderer {
   private hitEvents: HitEffectEvent[] = [];
   private lastTime = Number.NaN;
   private settings: RendererSettings = { noteScale: 1, multiHint: true, backgroundDim: 0.55, lineColor: 'white' };
+  private fullscreen = false;
   lastRenderedTime = 0;
   lastVisitedNotes = 0;
   maxVisitedNotes = 0;
@@ -239,11 +245,23 @@ export class PgrRenderer {
 
   setSettings(settings: Partial<RendererSettings>): void { this.settings = { ...this.settings, ...settings }; }
 
+  setFullscreen(active: boolean): void {
+    if (this.fullscreen === active) return;
+    this.fullscreen = active;
+    this.resize();
+  }
+
   resize(): void {
     const rect = this.canvas.getBoundingClientRect();
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    const width = Math.max(1, Math.round(rect.width * ratio));
-    const height = Math.max(1, Math.round(rect.height * ratio));
+    const rawDpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    let dpr = rawDpr;
+    if (this.fullscreen) {
+      const area = Math.max(1, rect.width * rect.height);
+      const budgetDpr = Math.sqrt(FULLSCREEN_MAX_PIXELS / area);
+      dpr = Math.min(rawDpr, Math.max(FULLSCREEN_MIN_DPR, budgetDpr));
+    }
+    const width = Math.max(1, Math.round(rect.width * dpr));
+    const height = Math.max(1, Math.round(rect.height * dpr));
     if (this.canvas.width !== width || this.canvas.height !== height) {
       this.canvas.width = width;
       this.canvas.height = height;
