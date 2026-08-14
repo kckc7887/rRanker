@@ -68,7 +68,10 @@ jest.mock('@/features/phigros-chart-preview/prepare-phigros-chart-preview-webvie
   },
   stagePhiraChartMusic: (...args: unknown[]) => {
     mockStageMusic(...args);
-    return Promise.resolve('file:///phigros-chart-preview/song.mp3');
+    return Promise.resolve({
+      uri: 'file:///phigros-chart-preview/song.mp3',
+      base64: 'QUJDRA==',
+    });
   },
 }));
 
@@ -155,7 +158,7 @@ describe('PhigrosChartPreviewScreen', () => {
       musicUrl: 'https://assets.example/music/DistortedFate.Sakuzyo.ogg',
       illustrationUrl: 'https://assets.example/illustrations/DistortedFate.Sakuzyo.png',
       settings: { playbackSpeed: 1.5 },
-    })));
+    }), null));
     // 参数对象身份在每次渲染都会变化，prepare 只应执行一次。
     expect(mockPrepare).toHaveBeenCalledTimes(1);
   });
@@ -169,8 +172,7 @@ describe('PhigrosChartPreviewScreen', () => {
     await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
       game: 'phira',
       chartText: expect.stringContaining('"formatVersion"'),
-      musicUrl: 'file:///phigros-chart-preview/song.mp3',
-    })));
+    }), 'QUJDRA=='));
     expect(mockPrepare).toHaveBeenCalledTimes(1);
     expect(mockStageMusic).toHaveBeenCalled();
   });

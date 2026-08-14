@@ -1,9 +1,14 @@
 /**
  * Phigros / Phira 谱面确认 WebView 播放器入口。
- * 移植自 demo/phigros-chart-preview 的 app.js 与 pgr-worker.js：
- * 以 <audio>.currentTime - chart.offset 为唯一谱面时钟，
- * 主线程解析 PGR（WebView file:// 下不使用 Worker），
- * 音乐经 Web Audio 与打击音共用输出图，观赏播放不包含触控判定与真实计分。
+ * 谱面解析与渲染移植自 demo/phigros-chart-preview（pgr-core/renderer/hit-sound），
+ * 对时与性能方案对齐舞萌谱面确认播放器：
+ * - 音乐解码为 AudioBuffer，经 AudioBufferSourceNode 在 AudioContext 时钟上播放，
+ *   不使用 HTMLMediaElement 时钟（其 currentTime 有延迟抖动，seek/暂停恢复漂移大）；
+ * - PlaybackClock 分段时钟记录播放起点与倍速变化，任意时刻反查精确音乐位置；
+ * - 视觉与打击音统一使用 getAudioContextOutputTime 的输出端时间（贴合实际听感）；
+ * - 仅播放中常驻 rAF 渲染；暂停/拖动按事件渲染，画布 DPR 封顶与全屏像素预算；
+ * - 主线程解析 PGR（WebView file:// 下不使用 Worker）。
+ * 观赏播放不包含触控判定与真实计分。
  */
 
 import { PgrRenderer, type LineColorKey, type NoteAssets } from './renderer';
@@ -16,10 +21,13 @@ import {
   type HitSoundEvent,
   type HitSoundKind,
 } from './hit-sound';
+import { PlaybackClock } from './playbackClock';
+import { getAudioContextOutputTime } from './audioClock';
 
 declare global {
   interface Window {
     __PHIGROS_CHART_PREVIEW__?: PhigrosChartPreviewConfig;
+    __PHIGROS_MUSIC_DATA__?: string | null;
     ReactNativeWebView?: { postMessage: (message: string) => void };
   }
 }
@@ -59,6 +67,11 @@ const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({
 
 const SKIN_BASE = './skin/';
 const LINE_COLORS: readonly string[] = ['white', 'gold', 'blue'];
+/** 与舞萌播放器一致的音频调度常量。 */
+const SOURCE_START_LEAD_TIME_S = 0.05;
+const SOURCE_FADE_TIME_S = 0.015;
+const MUSIC_END_EPSILON_S = 0.05;
+const CHART_END_EPSILON_S = 0.25;
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
@@ -73,6 +86,10 @@ function $(id: string): HTMLElement {
 function bounded(value: unknown, min: number, max: number, fallback: number): number {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function loadSettings(raw: PhigrosChartPreviewSettings | null | undefined): Required<PhigrosChartPreviewSettings> {
@@ -129,28 +146,10 @@ function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> 
   });
 }
 
-async function waitForAudio(audio: HTMLAudioElement, signal: AbortSignal): Promise<void> {
-  if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) return;
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      audio.removeEventListener('loadedmetadata', onReady);
-      audio.removeEventListener('error', onError);
-      signal.removeEventListener('abort', onAbort);
-    };
-    const onReady = () => { cleanup(); resolve(); };
-    const onError = () => { cleanup(); reject(new Error('谱面音乐无法加载或当前设备不支持该音频格式')); };
-    const onAbort = () => { cleanup(); reject(new DOMException('已取消', 'AbortError')); };
-    audio.addEventListener('loadedmetadata', onReady, { once: true });
-    audio.addEventListener('error', onError, { once: true });
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
 function start(): void {
   const elements = {
     stage: $('stage'),
     canvas: $('chart-canvas') as HTMLCanvasElement,
-    audio: $('music') as HTMLAudioElement,
     loadPanel: $('load-panel'),
     loadKicker: $('load-kicker'),
     loadTitle: $('load-title'),
@@ -189,21 +188,31 @@ function start(): void {
   const renderer = new PgrRenderer(elements.canvas);
   const config = window.__PHIGROS_CHART_PREVIEW__ ?? {};
   let settings = loadSettings(config.settings);
+  const playbackClock = new PlaybackClock();
   let loadController: AbortController | null = null;
   let ready = false;
   let seeking = false;
+  let isPlaying = false;
+  let isFullscreen = false;
+  let rafId = 0;
+  let lastRafTs = 0;
+  let currentChartTime = 0;
+  let chartOffset = 0;
+  let chartDuration = 0;
   let completionTimes: number[] = [];
   let controlsTimer = 0;
+  let audioContext: AudioContext | null = null;
+  let musicGain: GainNode | null = null;
+  let musicBuffer: AudioBuffer | null = null;
+  let sourceNode: AudioBufferSourceNode | null = null;
+  let sourceGain: GainNode | null = null;
+  let isSourcePlaying = false;
   let hitSoundBuffers: Partial<Record<HitSoundKind, AudioBuffer>> | null = null;
-  let hitSoundContext: AudioContext | null = null;
-  let musicMediaSource: MediaElementAudioSourceNode | null = null;
   let hitSoundGain: GainNode | null = null;
   const activeHitSounds = new Set<AudioBufferSourceNode>();
   let hitSoundEvents: HitSoundEvent[] = [];
   let hitSoundCursor = 0;
   let lastHitSoundTime = -1e-6;
-  let isFullscreen = false;
-  let chartOffset = 0;
 
   if (config.title) elements.title.textContent = config.title;
   elements.status.textContent = config.game === 'phira' ? 'Phira 谱面' : config.game === 'phigros' ? 'Phigros 谱面' : '';
@@ -221,6 +230,112 @@ function start(): void {
     elements.fieldset.disabled = !value;
   }
 
+  async function ensureAudio(): Promise<AudioContext> {
+    if (!audioContext) {
+      const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) throw new Error('浏览器不支持 Web Audio');
+      audioContext = new AudioContextClass({ latencyHint: 'interactive' });
+      musicGain = audioContext.createGain();
+      musicGain.gain.value = settings.volume;
+      musicGain.connect(audioContext.destination);
+      hitSoundGain = audioContext.createGain();
+      hitSoundGain.gain.value = settings.hitSoundVolume;
+      hitSoundGain.connect(audioContext.destination);
+    }
+    try {
+      await audioContext.resume();
+    } catch {
+      // 尚无用户手势授权时保持 suspended；点击开始播放会再次 resume。
+    }
+    return audioContext;
+  }
+
+  /** 解码音乐为 AudioBuffer；失败时进入静音看谱模式（与舞萌一致）。 */
+  async function decodeMusic(signal: AbortSignal): Promise<void> {
+    try {
+      const context = await ensureAudio();
+      let bytes: ArrayBuffer;
+      // Phira 音乐为本地文件，iOS file:// 下无法 fetch，优先使用注入的 base64。
+      if (typeof window.__PHIGROS_MUSIC_DATA__ === 'string' && window.__PHIGROS_MUSIC_DATA__.length > 0) {
+        bytes = decodeBase64DataUrl(window.__PHIGROS_MUSIC_DATA__);
+      } else if (typeof config.musicUrl === 'string' && config.musicUrl.trim() !== '') {
+        const response = await fetch(config.musicUrl, { signal });
+        if (!response.ok) throw new Error(`谱面音乐不可用（HTTP ${response.status}）`);
+        bytes = await response.arrayBuffer();
+      } else {
+        throw new Error('未提供谱面音乐资源');
+      }
+      musicBuffer = await context.decodeAudioData(bytes);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
+      elements.status.textContent = `${error instanceof Error ? error.message : '谱面音乐不可用'}（仍可静音看谱）`;
+      musicBuffer = null;
+    }
+  }
+
+  function getMusicTime(): number {
+    if (!audioContext || !isSourcePlaying) return playbackClock.offset;
+    const outputTime = getAudioContextOutputTime(audioContext);
+    playbackClock.prune(outputTime);
+    return playbackClock.positionAt(outputTime);
+  }
+
+  function stopSource(fade: boolean): void {
+    const source = sourceNode;
+    const gain = sourceGain;
+    sourceNode = null;
+    sourceGain = null;
+    isSourcePlaying = false;
+    if (!source) return;
+    if (fade && audioContext) {
+      const now = audioContext.currentTime;
+      try {
+        gain!.gain.cancelScheduledValues(now);
+        gain!.gain.setValueAtTime(gain!.gain.value, now);
+        gain!.gain.linearRampToValueAtTime(0, now + SOURCE_FADE_TIME_S);
+        source.stop(now + SOURCE_FADE_TIME_S + 0.01);
+      } catch {
+        /* ignore */
+      }
+    } else {
+      try { source.stop(); } catch { /* already stopped */ }
+    }
+    try { source.disconnect(); } catch { /* ignore */ }
+    try { gain?.disconnect(); } catch { /* ignore */ }
+  }
+
+  async function playFromMusicPosition(positionSec: number): Promise<void> {
+    if (!musicBuffer) return;
+    const context = await ensureAudio();
+    if (!musicGain) return;
+    stopSource(true);
+    const duration = musicBuffer.duration;
+    const clamped = clamp(positionSec, 0, Math.max(0, duration - 0.01));
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = musicBuffer;
+    source.playbackRate.value = settings.playbackSpeed;
+    const startTime = context.currentTime + SOURCE_START_LEAD_TIME_S;
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(1, startTime + SOURCE_FADE_TIME_S);
+    source.connect(gain);
+    gain.connect(musicGain);
+    source.onended = () => {
+      if (sourceNode === source) {
+        sourceNode = null;
+        sourceGain = null;
+        isSourcePlaying = false;
+        playbackClock.clear();
+      }
+    };
+    source.start(startTime, clamped);
+    sourceNode = source;
+    sourceGain = gain;
+    isSourcePlaying = true;
+    const audibleAt = getAudioContextOutputTime(context) + SOURCE_START_LEAD_TIME_S;
+    playbackClock.set(audibleAt, clamped, settings.playbackSpeed);
+  }
+
   function applySettings(): void {
     elements.speed.value = String(settings.playbackSpeed);
     elements.noteSize.value = String(settings.noteScale);
@@ -235,8 +350,7 @@ function start(): void {
     elements.volumeOutput.value = `${Math.round(settings.volume * 100)}%`;
     elements.dimOutput.value = `${Math.round(settings.backgroundDim * 100)}%`;
     elements.hitSoundVolumeOutput.value = `${Math.round(settings.hitSoundVolume * 100)}%`;
-    elements.audio.playbackRate = settings.playbackSpeed;
-    elements.audio.volume = settings.volume;
+    if (musicGain) musicGain.gain.value = settings.volume;
     renderer.setSettings({ ...settings, lineColor: settings.lineColor as LineColorKey });
     if (hitSoundGain) hitSoundGain.gain.value = settings.hitSoundVolume;
     if (!settings.hitSound || settings.hitSoundVolume <= 0) stopActiveHitSounds();
@@ -275,31 +389,19 @@ function start(): void {
 
   async function ensureHitSoundsReady(): Promise<void> {
     if (!config.hitSounds) throw new Error('打击音资源尚未提供');
-    if (!hitSoundContext) {
-      const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) throw new Error('浏览器不支持 Web Audio');
-      hitSoundContext = new AudioContextClass({ latencyHint: 'interactive' });
-      hitSoundGain = hitSoundContext.createGain();
-      hitSoundGain.gain.value = settings.hitSoundVolume;
-      hitSoundGain.connect(hitSoundContext.destination);
-    }
-    await hitSoundContext.resume();
     if (!hitSoundBuffers) {
+      const context = await ensureAudio();
       const entries = await Promise.all((['click', 'drag', 'flick'] as HitSoundKind[]).map(async (kind) => {
         const dataUrl = config.hitSounds?.[kind];
         if (!dataUrl) throw new Error(`缺少打击音 ${kind}`);
         const bytes = decodeBase64DataUrl(dataUrl);
         try {
-          return [kind, await hitSoundContext!.decodeAudioData(bytes)] as const;
+          return [kind, await context.decodeAudioData(bytes)] as const;
         } catch (error) {
           throw new Error(`${kind}.wav Web Audio 解码失败（${bytes.byteLength} bytes）：${error instanceof Error ? error.message : String(error)}`);
         }
       }));
       hitSoundBuffers = Object.fromEntries(entries);
-    }
-    if (!musicMediaSource) {
-      musicMediaSource = hitSoundContext.createMediaElementSource(elements.audio);
-      musicMediaSource.connect(hitSoundContext.destination);
     }
   }
 
@@ -308,13 +410,14 @@ function start(): void {
     lastHitSoundTime = time;
   }
 
-  function playHitSound(kind: HitSoundKind, delay: number): void {
+  function playHitSound(kind: HitSoundKind, delay: number, outputNow: number): void {
     const buffer = hitSoundBuffers?.[kind];
-    if (!buffer || !hitSoundContext || !hitSoundGain || !settings.hitSound || settings.hitSoundVolume <= 0) return;
-    const source = hitSoundContext.createBufferSource();
+    if (!buffer || !audioContext || !hitSoundGain || !settings.hitSound || settings.hitSoundVolume <= 0) return;
+    const source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(hitSoundGain);
-    const scheduledAt = hitSoundContext.currentTime + delay;
+    // 与舞萌正解音调度一致：以输出端时间为参考，且不早于当前调度时刻。
+    const scheduledAt = Math.max(audioContext.currentTime, outputNow + delay);
     source.addEventListener('ended', () => activeHitSounds.delete(source), { once: true });
     activeHitSounds.add(source);
     source.start(scheduledAt);
@@ -328,20 +431,41 @@ function start(): void {
   }
 
   function updateHitSounds(time: number): void {
-    if (!ready || elements.audio.paused || !hitSoundBuffers || !hitSoundContext) return;
+    if (!ready || !isPlaying || !hitSoundBuffers || !audioContext) return;
     if (!Number.isFinite(lastHitSoundTime) || time < lastHitSoundTime || time - lastHitSoundTime > 0.25) {
       stopActiveHitSounds();
       resetHitSoundTimeline(time);
       return;
     }
-    const horizon = time + HIT_SOUND_LOOKAHEAD_SECONDS * settings.playbackSpeed;
+    const outputNow = getAudioContextOutputTime(audioContext);
+    const speed = playbackClock.schedulingSpeed(settings.playbackSpeed);
+    const horizon = time + HIT_SOUND_LOOKAHEAD_SECONDS * speed;
     while (hitSoundCursor < hitSoundEvents.length && hitSoundEvents[hitSoundCursor]!.time <= horizon) {
       const event = hitSoundEvents[hitSoundCursor]!;
-      const delay = hitSoundScheduleDelay(event.time, time, settings.playbackSpeed);
-      playHitSound(event.sound, delay);
+      const delay = hitSoundScheduleDelay(event.time, time, speed);
+      playHitSound(event.sound, delay, outputNow);
       hitSoundCursor += 1;
     }
     lastHitSoundTime = time;
+  }
+
+  function renderHud(chartTime: number): void {
+    const passed = upperBound(completionTimes, chartTime);
+    const total = Math.max(1, completionTimes.length);
+    elements.gameProgress.style.width = `${Math.min(100, chartTime / Math.max(1, chartDuration) * 100)}%`;
+    elements.score.textContent = String(Math.floor(passed / total * 1_000_000)).padStart(7, '0');
+    elements.combo.textContent = String(passed);
+    elements.comboBlock.classList.toggle('is-visible', passed >= 3);
+    if (!seeking) {
+      elements.seek.value = String(chartTime);
+      elements.currentTime.textContent = formatTime(chartTime);
+    }
+  }
+
+  function renderFrame(chartTime: number): void {
+    updateHitSounds(chartTime);
+    renderer.render(chartTime);
+    renderHud(chartTime);
   }
 
   async function loadPreview(): Promise<void> {
@@ -349,14 +473,12 @@ function start(): void {
     loadController = new AbortController();
     const { signal } = loadController;
     ready = false;
+    isPlaying = false;
     setControlsEnabled(false);
     elements.loadPanel.classList.remove('is-hidden');
     elements.start.disabled = true;
     elements.start.hidden = false;
     elements.retry.hidden = true;
-    elements.audio.pause();
-    elements.audio.removeAttribute('src');
-    elements.audio.load();
     try {
       setStage('CONNECTING', '正在读取谱面资源', '正在确认谱面与音乐资源。');
       const [chartText, image] = await Promise.all([
@@ -377,19 +499,15 @@ function start(): void {
         }, 0);
       });
       if (signal.aborted) return;
-      if (typeof config.musicUrl !== 'string' || config.musicUrl.trim() === '') {
-        throw new Error('未提供谱面音乐资源');
-      }
       setStage('BUFFERING', '正在准备音乐与曲绘', `${chart.stats.noteCount} notes · ${chart.stats.lineCount} lines`);
-      elements.audio.src = config.musicUrl;
-      elements.audio.load();
       const [noteAssets] = await Promise.all([
         loadNoteAssets(signal),
-        waitForAudio(elements.audio, signal),
+        decodeMusic(signal),
       ]);
       if (signal.aborted) return;
       renderer.setChart(chart);
       chartOffset = chart.offset;
+      chartDuration = chart.stats.maxTime;
       renderer.setIllustration(image);
       renderer.setNoteAssets(noteAssets);
       renderer.setSettings({ ...settings, lineColor: settings.lineColor as LineColorKey });
@@ -399,8 +517,9 @@ function start(): void {
       completionTimes = chart.lines
         .flatMap((line) => line.notes.map((note) => note.kind === 'hold' ? note.endTime : note.time))
         .sort((a, b) => a - b);
-      elements.seek.max = String(elements.audio.duration || chart.stats.maxTime + chart.offset);
-      elements.duration.textContent = formatTime(elements.audio.duration);
+      elements.seek.max = String(chartDuration);
+      elements.duration.textContent = formatTime(chartDuration);
+      if (musicBuffer) elements.status.textContent = '';
       ready = true;
       setControlsEnabled(true);
       elements.start.disabled = false;
@@ -415,64 +534,124 @@ function start(): void {
     }
   }
 
-  async function togglePlayback(): Promise<void> {
-    if (!ready) return;
-    if (elements.audio.paused) {
-      try {
-        await ensureHitSoundsReady();
-        await elements.audio.play();
-      } catch (error) {
-        elements.loadPanel.classList.remove('is-hidden');
-        setStage('PLAYBACK FAILED', '没有开始播放音乐', error instanceof Error ? error.message : String(error));
-      }
-    } else elements.audio.pause();
-  }
-
-  function updatePlayState(): void {
-    const paused = elements.audio.paused;
-    if (paused) {
-      stopActiveHitSounds();
-      const chartTime = Math.max(0, elements.audio.currentTime - chartOffset);
-      resetHitSoundTimeline(chartTime);
-    }
-    elements.playIcon.textContent = paused ? '▶' : 'Ⅱ';
-    elements.play.setAttribute('aria-label', paused ? '播放' : '暂停');
-    if (!paused) scheduleControlsHide();
+  function syncPlayButtons(): void {
+    elements.playIcon.textContent = isPlaying ? 'Ⅱ' : '▶';
+    elements.play.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
   }
 
   function scheduleControlsHide(): void {
     window.clearTimeout(controlsTimer);
     elements.controls.classList.remove('hidden');
-    if (isFullscreen && !elements.audio.paused) {
+    if (isFullscreen && isPlaying) {
       controlsTimer = window.setTimeout(() => elements.controls.classList.add('hidden'), 1800);
     }
   }
 
-  function resetTimelineAt(time: number): void {
-    const chartTime = Math.max(0, time - chartOffset);
-    renderer.resetTimeline(chartTime);
-    resetHitSoundTimeline(chartTime);
+  function seekToChartTime(target: number): void {
+    const clamped = clamp(target, 0, chartDuration);
+    currentChartTime = clamped;
+    stopActiveHitSounds();
+    resetHitSoundTimeline(clamped);
+    if (isPlaying) {
+      if (musicBuffer && clamped + chartOffset < musicBuffer.duration - MUSIC_END_EPSILON_S) {
+        void playFromMusicPosition(clamped + chartOffset);
+      } else {
+        stopSource(true);
+        lastRafTs = performance.now();
+      }
+    } else {
+      playbackClock.setOffset(clamped + chartOffset);
+    }
+    renderer.resetTimeline(clamped);
+    renderer.render(clamped);
+    renderHud(clamped);
   }
 
-  function updateFrame(): void {
-    const chartTime = Math.max(0, elements.audio.currentTime - chartOffset);
-    updateHitSounds(chartTime);
-    renderer.render(chartTime);
-    const passed = upperBound(completionTimes, chartTime);
-    const total = Math.max(1, completionTimes.length);
-    elements.gameProgress.style.width = `${Math.min(100, elements.audio.currentTime / Math.max(1, elements.audio.duration) * 100)}%`;
-    elements.score.textContent = String(Math.floor(passed / total * 1_000_000)).padStart(7, '0');
-    elements.combo.textContent = String(passed);
-    elements.comboBlock.classList.toggle('is-visible', passed >= 3);
-    if (!seeking) {
-      elements.seek.value = String(elements.audio.currentTime || 0);
-      elements.currentTime.textContent = formatTime(elements.audio.currentTime);
+  function finishPlayback(): void {
+    isPlaying = false;
+    stopSource(true);
+    stopActiveHitSounds();
+    currentChartTime = chartDuration;
+    syncPlayButtons();
+    lastRafTs = 0;
+    renderer.render(chartDuration);
+    renderHud(chartDuration);
+    scheduleControlsHide();
+  }
+
+  function tick(timestamp: number): void {
+    if (!isPlaying) return;
+    let chartTime = currentChartTime;
+    if (musicBuffer && isSourcePlaying && audioContext) {
+      const musicTime = getMusicTime();
+      if (musicTime >= musicBuffer.duration - MUSIC_END_EPSILON_S) {
+        stopSource(true);
+      } else {
+        chartTime = Math.max(0, musicTime - chartOffset);
+      }
+    } else {
+      if (lastRafTs > 0) {
+        chartTime += ((timestamp - lastRafTs) / 1000) * settings.playbackSpeed;
+      }
+      lastRafTs = timestamp;
     }
-    requestAnimationFrame(updateFrame);
+    if (chartTime >= chartDuration + CHART_END_EPSILON_S) {
+      finishPlayback();
+      return;
+    }
+    currentChartTime = chartTime;
+    renderFrame(chartTime);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  async function startPlayback(): Promise<void> {
+    try {
+      await ensureAudio();
+      try {
+        await ensureHitSoundsReady();
+      } catch {
+        /* 打击音解码失败不影响播放 */
+      }
+    } catch (error) {
+      elements.loadPanel.classList.remove('is-hidden');
+      setStage('PLAYBACK FAILED', '没有开始播放音乐', error instanceof Error ? error.message : String(error));
+      return;
+    }
+    if (currentChartTime >= chartDuration - 0.05) currentChartTime = 0;
+    isPlaying = true;
+    syncPlayButtons();
+    scheduleControlsHide();
+    lastRafTs = 0;
+    resetHitSoundTimeline(currentChartTime);
+    if (musicBuffer && currentChartTime + chartOffset < musicBuffer.duration - MUSIC_END_EPSILON_S) {
+      await playFromMusicPosition(currentChartTime + chartOffset);
+    } else {
+      stopSource(true);
+      lastRafTs = performance.now();
+    }
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function pausePlayback(): void {
+    isPlaying = false;
+    syncPlayButtons();
+    if (isSourcePlaying) {
+      playbackClock.setOffset(getMusicTime());
+      stopSource(false);
+    }
+    stopActiveHitSounds();
+    resetHitSoundTimeline(currentChartTime);
+    cancelAnimationFrame(rafId);
+    lastRafTs = 0;
+    renderer.render(currentChartTime);
+    renderHud(currentChartTime);
+    scheduleControlsHide();
   }
 
   function setFullscreen(active: boolean): void {
     isFullscreen = active;
+    renderer.setFullscreen(active);
     document.body.classList.toggle('fullscreen', active);
     elements.fullscreen.setAttribute('aria-label', active ? '退出全屏' : '进入全屏');
     if (!active) elements.controls.classList.remove('hidden');
@@ -480,39 +659,39 @@ function start(): void {
     postStatus('fullscreen', { active });
   }
 
-  elements.start.addEventListener('click', async () => {
+  elements.start.addEventListener('click', () => {
     elements.loadPanel.classList.add('is-hidden');
-    await togglePlayback();
+    void startPlayback();
   });
   elements.retry.addEventListener('click', () => { void loadPreview(); });
-  elements.play.addEventListener('click', () => { void togglePlayback(); });
-  elements.audio.addEventListener('play', updatePlayState);
-  elements.audio.addEventListener('pause', updatePlayState);
-  elements.audio.addEventListener('ended', updatePlayState);
-  elements.audio.addEventListener('durationchange', () => {
-    if (!Number.isFinite(elements.audio.duration)) return;
-    elements.seek.max = String(elements.audio.duration);
-    elements.duration.textContent = formatTime(elements.audio.duration);
+  elements.play.addEventListener('click', () => {
+    if (isPlaying) pausePlayback();
+    else void startPlayback();
   });
   elements.seek.addEventListener('pointerdown', () => { seeking = true; });
   elements.seek.addEventListener('pointerup', () => { seeking = false; });
   elements.seek.addEventListener('input', () => {
-    stopActiveHitSounds();
-    elements.audio.currentTime = Number(elements.seek.value);
-    elements.currentTime.textContent = formatTime(elements.audio.currentTime);
-    resetTimelineAt(elements.audio.currentTime);
+    seekToChartTime(Number(elements.seek.value));
+    elements.currentTime.textContent = formatTime(currentChartTime);
   });
   elements.speed.addEventListener('input', () => {
-    stopActiveHitSounds();
     settings.playbackSpeed = Number(elements.speed.value);
+    // 播放中改变倍速：采样级同步（与舞萌一致），不打断当前声源。
+    if (isPlaying && isSourcePlaying && audioContext && sourceNode) {
+      const now = audioContext.currentTime;
+      const musicTime = getMusicTime();
+      sourceNode.playbackRate.setValueAtTime(settings.playbackSpeed, now);
+      playbackClock.appendSegment(now, settings.playbackSpeed, musicTime);
+    }
     applySettings();
     persistSettings();
-    resetTimelineAt(elements.audio.currentTime);
+    if (!isPlaying) renderFrame(currentChartTime);
   });
   elements.noteSize.addEventListener('input', () => {
     settings.noteScale = Number(elements.noteSize.value);
     applySettings();
     persistSettings();
+    if (!isPlaying) renderFrame(currentChartTime);
   });
   elements.volume.addEventListener('input', () => {
     settings.volume = Number(elements.volume.value);
@@ -523,23 +702,27 @@ function start(): void {
     settings.backgroundDim = Number(elements.dim.value);
     applySettings();
     persistSettings();
+    if (!isPlaying) renderFrame(currentChartTime);
   });
   elements.multiHint.addEventListener('change', () => {
     settings.multiHint = elements.multiHint.checked;
     applySettings();
     persistSettings();
+    if (!isPlaying) renderFrame(currentChartTime);
   });
   elements.lineColor.addEventListener('change', () => {
     settings.lineColor = elements.lineColor.value;
     applySettings();
     persistSettings();
+    if (!isPlaying) renderFrame(currentChartTime);
   });
   elements.hitSound.addEventListener('change', () => {
     stopActiveHitSounds();
     settings.hitSound = elements.hitSound.checked;
     applySettings();
     persistSettings();
-    resetTimelineAt(elements.audio.currentTime);
+    resetHitSoundTimeline(currentChartTime);
+    if (!isPlaying) renderFrame(currentChartTime);
   });
   elements.hitSoundVolume.addEventListener('input', () => {
     settings.hitSoundVolume = Number(elements.hitSoundVolume.value);
@@ -551,7 +734,7 @@ function start(): void {
     if (!isFullscreen) return;
     if (elements.controls.classList.contains('hidden')) {
       elements.controls.classList.remove('hidden');
-    } else if (!elements.audio.paused) {
+    } else if (isPlaying) {
       elements.controls.classList.add('hidden');
     }
   });
@@ -560,15 +743,14 @@ function start(): void {
     const data = event.data as { type?: string } | undefined;
     if (!data || typeof data !== 'object') return;
     if (data.type === 'exit-fullscreen') setFullscreen(false);
-    if (data.type === 'stop') {
-      elements.audio.pause();
-      stopActiveHitSounds();
-    }
+    if (data.type === 'stop') pausePlayback();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && isPlaying) pausePlayback();
   });
 
   applySettings();
-  updatePlayState();
-  requestAnimationFrame(updateFrame);
+  syncPlayButtons();
   void loadPreview();
 }
 

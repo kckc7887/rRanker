@@ -12,7 +12,8 @@ const SOUND_BY_NOTE_KIND: Readonly<Record<string, HitSoundKind>> = Object.freeze
   flick: 'flick',
 });
 
-export const HIT_SOUND_LOOKAHEAD_SECONDS = 0.12;
+/** 与舞萌谱面确认一致的前瞻窗口：提前 1.5 秒调度，掉帧时仍有裕量。 */
+export const HIT_SOUND_LOOKAHEAD_SECONDS = 1.5;
 
 export interface HitSoundEvent {
   time: number;

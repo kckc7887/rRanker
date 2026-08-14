@@ -137,7 +137,7 @@ describe('phigros chart preview hit sounds（移植 demo 打击音用例）', ()
   });
 
   it('打击音提前量按谱面时间和倍速换算为 Web Audio 调度延迟', () => {
-    expect(HIT_SOUND_LOOKAHEAD_SECONDS).toBe(0.12);
+    expect(HIT_SOUND_LOOKAHEAD_SECONDS).toBe(1.5);
     expect(Math.abs(hitSoundScheduleDelay(10.12, 10, 1) - 0.12)).toBeLessThan(1e-12);
     expect(Math.abs(hitSoundScheduleDelay(10.12, 10, 2) - 0.06)).toBeLessThan(1e-12);
     expect(hitSoundScheduleDelay(9.9, 10, 1)).toBe(0);
