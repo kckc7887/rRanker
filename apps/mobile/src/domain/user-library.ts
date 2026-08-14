@@ -16,10 +16,11 @@ const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'phira', 'adofai',
 /**
  * 曲库歌曲 id 规范化：adofai 关卡 id 是完整数字（如 11372），
  * musedash 歌曲 uid 是「专辑-歌曲」格式（如 "0-48"），
+ * phira 谱面 id 是 5 位完整数字（如 66661），
  * 都不适用 maimai 的 U·TA·GE 截断语义，原样保留；其余游戏沿用 normalizeSongId。
  */
 export function normalizeLibrarySongId(gameId: GameId, songId: string | number): string {
-  return gameId === 'adofai' || gameId === 'musedash' ? String(songId) : normalizeSongId(songId);
+  return gameId === 'adofai' || gameId === 'musedash' || gameId === 'phira' ? String(songId) : normalizeSongId(songId);
 }
 
 export interface SongLibraryTarget {

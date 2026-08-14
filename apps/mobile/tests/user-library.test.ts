@@ -36,6 +36,25 @@ describe('user library domain', () => {
     expect(inferGameIdFromKey('song:musedash:0-47')).toBe('musedash');
   });
 
+  it('keeps phira chart ids intact instead of applying maimai id truncation', () => {
+    expect(songLibraryKey('phira', 66661)).toBe('song:phira:66661');
+    expect(songLibraryKey('phira', '66661')).toBe('song:phira:66661');
+    expect(normalizeLibraryItem({ ...song, gameId: 'phira', songId: '66661' }).key).toBe('song:phira:66661');
+    expect(normalizeLibraryItem({ ...song, gameId: 'phira', songId: '38294' }).key).toBe('song:phira:38294');
+    expect(inferGameIdFromKey('song:phira:66661')).toBe('phira');
+  });
+
+  it('round-trips phira song items through backups without truncation', () => {
+    const phiraSong: SongLibraryItem = {
+      ...song, gameId: 'phira', songId: '66661', key: songLibraryKey('phira', 66661),
+    };
+    const backup = createUserDataBackup([phiraSong], updatedAt);
+    const parsed = parseUserDataBackup(backup);
+    expect(parsed.items).toEqual([
+      expect.objectContaining({ key: 'song:phira:66661', gameId: 'phira', songId: '66661' }),
+    ]);
+  });
+
   it('round-trips adofai song items through backups', () => {
     const adofaiSong: SongLibraryItem = {
       ...song, gameId: 'adofai', songId: '11372', key: songLibraryKey('adofai', 11372),
