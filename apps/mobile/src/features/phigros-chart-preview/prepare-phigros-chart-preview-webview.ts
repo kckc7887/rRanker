@@ -32,23 +32,6 @@ const HIT_SOUND_ASSETS: readonly { kind: 'click' | 'drag' | 'flick'; fileName: s
   { kind: 'flick', fileName: 'flick.wav', moduleId: require('../../../assets/phigros-chart-preview/hit-sounds/flick.wav') },
 ];
 
-/**
- * RPE 内置特效预设（prpr 后处理预设，来源 refer/phira/prpr，GPL-3.0，许可证随 assets/shaders 分发）：
- * 以 prpr 预设名注入 shader 文本，谱面包内同名 shader 优先（与 demo 语义一致）。
- */
-const RPE_PRESET_SHADER_ASSETS: readonly { name: string; fileName: string; moduleId: number }[] = [
-  { name: 'chromatic', fileName: 'chromatic.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/chromatic.glsl') },
-  { name: 'circleBlur', fileName: 'circle_blur.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/circle_blur.glsl') },
-  { name: 'fisheye', fileName: 'fisheye.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/fisheye.glsl') },
-  { name: 'glitch', fileName: 'glitch.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/glitch.glsl') },
-  { name: 'grayscale', fileName: 'grayscale.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/grayscale.glsl') },
-  { name: 'noise', fileName: 'noise.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/noise.glsl') },
-  { name: 'pixel', fileName: 'pixel.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/pixel.glsl') },
-  { name: 'radialBlur', fileName: 'radial_blur.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/radial_blur.glsl') },
-  { name: 'shockwave', fileName: 'shockwave.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/shockwave.glsl') },
-  { name: 'vignette', fileName: 'vignette.glsl', moduleId: require('../../../assets/phigros-chart-preview/shaders/vignette.glsl') },
-];
-
 export type PhigrosChartPreviewWebViewSource = {
   uri: string;
   allowingReadAccessToURL: string;
@@ -89,18 +72,8 @@ export async function preparePhigrosChartPreviewWebViewSource(
   musicDataFile.create({ overwrite: true });
   musicDataFile.write(`window.__PHIGROS_MUSIC_DATA__=${musicDataBase64 ? JSON.stringify(musicDataBase64) : 'null'};`);
 
-  // RPE：谱面包 shader 之外补齐 prpr 内置预设（同名时谱面包优先，与 demo 语义一致）。
-  let rpeAssets = config.rpeAssets ?? null;
-  if (config.format === 'rpe' && rpeAssets) {
-    const shaders = { ...rpeAssets.shaders };
-    for (const { name, moduleId } of RPE_PRESET_SHADER_ASSETS) {
-      if (!(name in shaders)) shaders[name] = await readAssetText(moduleId);
-    }
-    rpeAssets = { ...rpeAssets, shaders };
-  }
-
   const template = await readAssetText(HTML_MODULE);
-  const html = applyPhigrosChartPreviewConfigToHtml(template, { ...config, hitSounds, rpeAssets });
+  const html = applyPhigrosChartPreviewConfigToHtml(template, { ...config, hitSounds });
   const htmlFile = new File(directory, 'index.html');
   htmlFile.create({ overwrite: true });
   htmlFile.write(html);

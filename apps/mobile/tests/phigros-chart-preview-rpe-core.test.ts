@@ -11,6 +11,7 @@ import {
   type RpeEvent,
   type RpeEventLayer,
 } from '@/features/phigros-chart-preview/webview-player/rpe-core';
+import { RPE_PRESET_SHADERS } from '@/features/phigros-chart-preview/webview-player/rpe-preset-shaders';
 
 // 与 demo/phira-rpe-chart-preview/tests/rpe-core.test.mjs 同语义的移植测试：
 // 缓动表顺序、速度积分、事件插值、音符归一化、父子线、extra.json/info.yml 解析。
@@ -284,5 +285,16 @@ describe('rpe core（demo 语义移植）', () => {
     expect(kfs[0]!.t).toBe(0);
     expect(kfs.some((kf) => kf.v === 1)).toBe(true);
     expect(kfs.every((kf, index) => index === 0 || kfs[index - 1]!.t <= kf.t)).toBe(true);
+  });
+
+  it('prpr 内置特效预设内嵌齐全（10 个预设名 + 非空 GLSL 源）', () => {
+    expect(Object.keys(RPE_PRESET_SHADERS).sort()).toEqual([
+      'chromatic', 'circleBlur', 'fisheye', 'glitch', 'grayscale',
+      'noise', 'pixel', 'radialBlur', 'shockwave', 'vignette',
+    ]);
+    for (const [name, source] of Object.entries(RPE_PRESET_SHADERS)) {
+      expect(source, name).toContain('void main()');
+      expect(source, name).toContain('screenTexture');
+    }
   });
 });

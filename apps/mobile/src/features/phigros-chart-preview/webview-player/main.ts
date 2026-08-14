@@ -16,6 +16,7 @@ import { PgrRenderer, type LineColorKey, type NoteAssets } from './renderer';
 import { parsePgrChart, type PgrChart } from './pgr-core';
 import { RpeRenderer, type RpeAttachUiTransform, type RpeChartAssets } from './rpe-renderer';
 import { buildGifAnim, parseRpeChart, type RpeChart, type RpeGifKeyframe } from './rpe-core';
+import { RPE_PRESET_SHADERS } from './rpe-preset-shaders';
 import {
   buildHitSoundEvents,
   findHitSoundCursor,
@@ -490,6 +491,10 @@ function start(): void {
       const cleaned = basename.replace(/[^A-Za-z0-9._-]/g, '_');
       const source = injectedShaders[effect.shader] ?? injectedShaders[cleaned];
       if (typeof source === 'string') shaders.set(effect.shader, source);
+    }
+    // prpr 内置特效预设兜底（内嵌随包分发）：谱面包未提供同名 shader 时使用，与 demo 语义一致。
+    for (const [name, source] of Object.entries(RPE_PRESET_SHADERS)) {
+      if (!shaders.has(name)) shaders.set(name, source);
     }
     return { textures, videos, shaders, gifs, gifAnims };
   }
