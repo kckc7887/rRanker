@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildPhiraRpeBundlePlan,
   classifyPhiraChartFormat,
   PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE,
   resolvePhiraChartZipMediaPlan,
+  sanitizeRpeBundleFileName,
 } from '@/domain/phira-chart-preview';
 
 const files = (names: string[]) => names.map((name) => ({ name, dir: false }));
@@ -51,5 +53,39 @@ describe('phira chart format classification', () => {
 
   it('非 PGR 谱面使用统一不支持文案', () => {
     expect(PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE).toContain('仅支持 PGR');
+  });
+});
+
+describe('phira RPE bundle plan', () => {
+  it('文件名清洗：取 basename 并剔除危险字符', () => {
+    expect(sanitizeRpeBundleFileName('a/b/c.png')).toBe('c.png');
+    expect(sanitizeRpeBundleFileName('../etc/passwd')).toBe('passwd');
+    expect(sanitizeRpeBundleFileName('my shader.glsl')).toBe('my_shader.glsl');
+    expect(sanitizeRpeBundleFileName('/camera_pr.glsl')).toBe('camera_pr.glsl');
+    expect(sanitizeRpeBundleFileName('dir/')).toBe('dir');
+    expect(sanitizeRpeBundleFileName('')).toBe('file.bin');
+  });
+
+  it('RPE 谱面包计划：全部条目扁平化、文本条目标记、重名先到先得', () => {
+    const plan = buildPhiraRpeBundlePlan([
+      { name: 'extra.json', dir: false },
+      { name: 'info.yml', dir: false },
+      { name: 'sub/camera_pr.glsl', dir: false },
+      { name: 'sub/Tap.png', dir: false },
+      { name: 'bg/Tap.png', dir: false },
+      { name: 'videos/demo.mp4', dir: false },
+      { name: 'song.mp3', dir: false },
+      { name: 'chart.json', dir: false },
+      { name: 'dir/', dir: true },
+    ]);
+    expect(plan).toEqual([
+      { name: 'extra.json', entryName: 'extra.json', text: true },
+      { name: 'info.yml', entryName: 'info.yml', text: true },
+      { name: 'camera_pr.glsl', entryName: 'sub/camera_pr.glsl', text: true },
+      { name: 'Tap.png', entryName: 'sub/Tap.png', text: false },
+      { name: 'demo.mp4', entryName: 'videos/demo.mp4', text: false },
+      { name: 'song.mp3', entryName: 'song.mp3', text: false },
+      { name: 'chart.json', entryName: 'chart.json', text: true },
+    ]);
   });
 });

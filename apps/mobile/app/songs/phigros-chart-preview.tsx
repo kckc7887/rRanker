@@ -12,6 +12,7 @@ import {
   phigrosChartPreviewAllowsFileAccess,
   preparePhigrosChartPreviewWebViewSource,
   stagePhiraChartMusic,
+  stagePhiraRpeBundle,
   type PhigrosChartPreviewWebViewSource,
 } from '@/features/phigros-chart-preview/prepare-phigros-chart-preview-webview';
 import {
@@ -25,6 +26,7 @@ import {
   phigrosChartPreviewLevelLabel,
 } from '@/domain/phigros-chart-preview';
 import {
+  buildPhiraRpeBundlePlan,
   classifyPhiraChartFormat,
   PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE,
   resolvePhiraChartZipMediaPlan,
@@ -37,6 +39,8 @@ import { useAppTheme } from '@/theme/app-theme';
 const SETTINGS_KEY = 'phigros-chart-preview-settings';
 /** 谱面文本经 HTML 配置注入的上限，避免超大谱面拖垮 WebView。 */
 const CHART_TEXT_LIMIT = 6_000_000;
+/** RPE 社区谱面普遍远大于 PGR（真实谱面 66661 的 chart JSON 约 24MB），RPE 上限单独放宽。 */
+const RPE_CHART_TEXT_LIMIT = 32_000_000;
 /** Phigros 仅需读取 OSS 的三个 JSON 指针文件，超时给得短。 */
 const PHIGROS_PREPARE_TIMEOUT_MS = 20_000;
 /** Phira 需要下载并解包谱面 ZIP，社区文件可能较大，超时放宽。 */
@@ -149,8 +153,10 @@ async function buildPhiraConfig(
   }
   const chartText = new TextDecoder('utf-8', { fatal: true }).decode(chartBytes);
   const format = classifyPhiraChartFormat(plan.chartEntryName, formatHint, chartText);
-  if (format !== 'pgr') throw new Error(PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE);
-  if (chartText.length > CHART_TEXT_LIMIT) throw new Error('谱面过大，暂不支持预览');
+  if (format !== 'pgr' && format !== 'rpe') throw new Error(PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE);
+  // RPE 社区谱面普遍比 PGR 大（66661 谱面 JSON 约 24MB），上限单独放宽；PGR 维持原值不变。
+  const chartTextLimit = format === 'rpe' ? RPE_CHART_TEXT_LIMIT : CHART_TEXT_LIMIT;
+  if (chartText.length > chartTextLimit) throw new Error('谱面过大，暂不支持预览');
 
   if (!plan.musicEntryName) throw new Error('谱面包缺少音乐文件');
   const musicBytes = await zip.file(plan.musicEntryName)!.async('uint8array', () => throwIfAborted(signal));
@@ -164,6 +170,43 @@ async function buildPhiraConfig(
     const imageBytes = await zip.file(plan.illustrationEntryName)!.async('uint8array', () => throwIfAborted(signal));
     throwIfAborted(signal);
     illustrationUrl = (await stagePhiraChartMusic(imageBytes, zipBasename(plan.illustrationEntryName, 'illustration.png'))).uri;
+  }
+
+  if (format === 'rpe') {
+    // RPE 谱面包资源：文本资源读文本注入（extra.json/info.yml/.glsl），其余落盘到 rpe/{chartId}/。
+    const bundlePlan = buildPhiraRpeBundlePlan(entries);
+    let extraJson: string | null = null;
+    const shaders: Record<string, string> = {};
+    const stagedFiles: { name: string; bytes: Uint8Array }[] = [];
+    for (const file of bundlePlan) {
+      const entry = zip.file(file.entryName);
+      if (!entry) continue;
+      if (file.text) {
+        if (file.name === 'extra.json') {
+          extraJson = await entry.async('text', () => throwIfAborted(signal));
+        } else if (/\.glsl$/i.test(file.name)) {
+          shaders[file.name] = await entry.async('text', () => throwIfAborted(signal));
+        }
+        // info.yml 已随 infoText 读取注入；info.txt 等其余文本条目播放器不引用，不落盘。
+        throwIfAborted(signal);
+        continue;
+      }
+      stagedFiles.push({ name: file.name, bytes: await entry.async('uint8array', () => throwIfAborted(signal)) });
+      throwIfAborted(signal);
+    }
+    const { basePath } = await stagePhiraRpeBundle(mapped.chartId, stagedFiles);
+    return {
+      config: {
+        game: 'phira',
+        title: mapped.title ?? chart.name,
+        chartText,
+        illustrationUrl,
+        settings,
+        format: 'rpe',
+        rpeAssets: { basePath, extraJson, infoYml: infoText || null, shaders },
+      },
+      musicDataBase64: musicFile.base64,
+    };
   }
 
   return {

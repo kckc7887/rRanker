@@ -33,6 +33,15 @@ describe('phigros chart preview webview template', () => {
     );
   });
 
+  it('RPE 演出层元素齐备：GL 后处理画布与 attachUI HUD 节点', () => {
+    const html = templateHtml();
+    expect(html).toContain('.gl-canvas');
+    expect(html).toContain('.hud-attach');
+    expect(html).toContain('id="hud-pause"');
+    expect(html).toContain('id="hud-name"');
+    expect(html).toContain('id="hud-level"');
+  });
+
   it('下方播放控制器对齐舞萌样式：时间轴/accent 播放钮/transport 图标钮/拨轮/胶囊 toggle，无 demo 残留', () => {
     const html = templateHtml();
     expect(html).toContain('--accent: #5b8cff');

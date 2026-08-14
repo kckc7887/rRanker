@@ -14,6 +14,8 @@
 
 import { PgrRenderer, type LineColorKey, type NoteAssets } from './renderer';
 import { parsePgrChart, type PgrChart } from './pgr-core';
+import { RpeRenderer, type RpeAttachUiTransform, type RpeChartAssets } from './rpe-renderer';
+import { buildGifAnim, parseRpeChart, type RpeChart, type RpeGifKeyframe } from './rpe-core';
 import {
   buildHitSoundEvents,
   findHitSoundCursor,
@@ -41,6 +43,10 @@ export interface PhigrosChartPreviewSettings {
   multiHint?: boolean;
   lineColor?: string;
   hitSoundVolume?: number;
+  /** RPE 专属：宽高比覆盖（null = 谱面默认）与翻转/特效开关。 */
+  aspectRatio?: number | null;
+  flipX?: boolean;
+  effects?: boolean;
 }
 
 export interface PhigrosChartPreviewConfig {
@@ -52,6 +58,14 @@ export interface PhigrosChartPreviewConfig {
   illustrationUrl?: string;
   hitSounds?: Partial<Record<HitSoundKind, string>>;
   settings?: PhigrosChartPreviewSettings | null;
+  /** 谱面格式：pgr（默认）或 rpe。RPE 时提供 rpeAssets。 */
+  format?: 'pgr' | 'rpe';
+  rpeAssets?: {
+    basePath: string;
+    extraJson: string | null;
+    infoYml: string | null;
+    shaders: Record<string, string>;
+  } | null;
 }
 
 const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({
@@ -62,6 +76,9 @@ const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({
   multiHint: true,
   lineColor: 'white',
   hitSoundVolume: 1,
+  aspectRatio: null,
+  flipX: false,
+  effects: true,
 });
 
 const SKIN_BASE = './skin/';
@@ -81,6 +98,15 @@ const NOTE_BAR_COLORS: Readonly<Record<string, string>> = Object.freeze({
   hold: '#FF8C00',
   flick: '#ff69b4',
 });
+
+/** WebCodecs ImageDecoder 最小类型（Android WebView 可用；iOS 无则降级静态贴图）。 */
+interface ImageDecoderConstructor {
+  new (init: { data: ArrayBuffer; type: string }): {
+    tracks: { ready: Promise<{ selectedTrack: { frameCount: number } }> };
+    decode: (options: { frameIndex: number }) => Promise<{ image: { close: () => void }; duration: number }>;
+    close: () => void;
+  };
+}
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
@@ -111,6 +137,9 @@ function loadSettings(raw: PhigrosChartPreviewSettings | null | undefined): Requ
     multiHint: typeof source.multiHint === 'boolean' ? source.multiHint : DEFAULT_SETTINGS.multiHint,
     lineColor: LINE_COLORS.includes(source.lineColor ?? '') ? source.lineColor! : DEFAULT_SETTINGS.lineColor,
     hitSoundVolume: bounded(source.hitSoundVolume, 0, 1, DEFAULT_SETTINGS.hitSoundVolume),
+    aspectRatio: typeof source.aspectRatio === 'number' && Number.isFinite(source.aspectRatio) ? source.aspectRatio : null,
+    flipX: typeof source.flipX === 'boolean' ? source.flipX : DEFAULT_SETTINGS.flipX,
+    effects: typeof source.effects === 'boolean' ? source.effects : DEFAULT_SETTINGS.effects,
   };
 }
 
@@ -322,20 +351,26 @@ function start(): void {
     timeLabel: $('time-label'),
     multiHint: $('multi-hint') as HTMLButtonElement,
     gameProgress: $('game-progress-fill'),
+    progressBar: document.querySelector('.game-progress') as HTMLElement,
+    scoreBlock: document.querySelector('.score-block') as HTMLElement,
     score: $('score-display'),
     comboBlock: $('combo-block'),
     combo: $('combo-display'),
+    pauseNode: $('hud-pause'),
+    nameNode: $('hud-name'),
+    levelNode: $('hud-level'),
     controls: $('controls'),
     title: $('title'),
     status: $('status'),
   };
 
-  const renderer = new PgrRenderer(elements.canvas);
   const config = window.__PHIGROS_CHART_PREVIEW__ ?? {};
+  const isRpe = config.format === 'rpe';
+  type PreviewRenderer = PgrRenderer | RpeRenderer;
+  const renderer: PreviewRenderer = isRpe ? new RpeRenderer(elements.canvas) : new PgrRenderer(elements.canvas);
   let settings = loadSettings(config.settings);
   const playbackClock = new PlaybackClock();
-  let loadController: AbortController | null = null;
-  let ready = false;
+  let loadController: AbortController | null = null;  let ready = false;
   let isPlaying = false;
   let isFullscreen = false;
   let timelineDragging = false;
@@ -360,6 +395,143 @@ function start(): void {
   let hitSoundEvents: HitSoundEvent[] = [];
   let hitSoundCursor = 0;
   let lastHitSoundTime = -1e-6;
+
+  /** RPE：加载谱面包资源（贴图/gif/视频；shader 文本来自注入配置）。 */
+  async function loadRpeChartAssets(chart: RpeChart, signal: AbortSignal): Promise<RpeChartAssets> {
+    const basePath = config.rpeAssets?.basePath ?? '';
+    const textures = new Map<string, HTMLImageElement>();
+    const videos = new Map<string, HTMLVideoElement>();
+    const gifs = new Map<string, { frames: ImageBitmap[]; durationsMs: number[]; cumulativeMs: number[]; totalMs: number }>();
+    const gifAnims = new Map<number, RpeGifKeyframe[]>();
+    const jobs: Promise<unknown>[] = [];
+    const textureNames = new Set<string>();
+    for (const line of chart.lines) {
+      if (line.texture !== 'line.png' && line.gifEvents.length === 0) textureNames.add(line.texture);
+    }
+    // shader sampler2D uniform 引用的图片
+    for (const effect of chart.extras.effects) {
+      for (const value of Object.values(effect.vars)) {
+        if (typeof value === 'string') textureNames.add(value);
+      }
+    }
+    for (const name of textureNames) {
+      jobs.push(loadImage(`${basePath}${name}`, signal)
+        .then((image) => textures.set(name, image))
+        .catch((error) => console.warn(`判定线贴图加载失败 ${name}:`, error)));
+    }
+    // gif 判定线（prpr JudgeLineKind::TextureGif）：ImageDecoder 解码帧；iOS 无 ImageDecoder 时降级静态贴图
+    for (const line of chart.lines) {
+      if (line.gifEvents.length === 0 || gifs.has(line.texture)) continue;
+      jobs.push((async () => {
+        try {
+          const imageDecoderCtor = (globalThis as { ImageDecoder?: ImageDecoderConstructor }).ImageDecoder;
+          if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
+          const response = await fetch(`${basePath}${line.texture}`, { signal });
+          if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
+          const bytes = await response.arrayBuffer();
+          const lower = line.texture.toLowerCase();
+          const mimeType = lower.endsWith('.apng') ? 'image/apng' : 'image/gif';
+          const decoder = new imageDecoderCtor({ data: bytes, type: mimeType });
+          const { selectedTrack } = await decoder.tracks.ready;
+          const frames: ImageBitmap[] = [];
+          const durationsMs: number[] = [];
+          for (let index = 0; index < selectedTrack.frameCount; index += 1) {
+            const { image, duration } = await decoder.decode({ frameIndex: index });
+            frames.push(await createImageBitmap(image as ImageBitmapSource));
+            durationsMs.push(duration / 1000);
+            image.close();
+          }
+          decoder.close();
+          const cumulativeMs: number[] = [];
+          let totalMs = 0;
+          for (const duration of durationsMs) {
+            totalMs += duration;
+            cumulativeMs.push(totalMs);
+          }
+          gifs.set(line.texture, { frames, durationsMs, cumulativeMs, totalMs });
+          gifAnims.set(line.lineIndex, buildGifAnim(line.gifEvents, totalMs, chart.bpmList));
+        } catch (error) {
+          console.warn(`gif 判定线解码失败 ${line.texture}（降级为静态贴图）:`, error);
+          try {
+            const image = await loadImage(`${basePath}${line.texture}`, signal);
+            textures.set(line.texture, image);
+          } catch {
+            /* 忽略 */
+          }
+        }
+      })());
+    }
+    for (const video of chart.extras.videos) {
+      jobs.push(new Promise<void>((resolve) => {
+        const element = document.createElement('video');
+        element.muted = true;
+        element.preload = 'auto';
+        element.playsInline = true;
+        element.src = `${basePath}${video.path}`;
+        const done = () => {
+          element.removeEventListener('loadedmetadata', done);
+          element.removeEventListener('error', done);
+          resolve();
+        };
+        element.addEventListener('loadedmetadata', done, { once: true });
+        element.addEventListener('error', done, { once: true });
+        element.load();
+        videos.set(video.path, element);
+      }));
+    }
+    await Promise.all(jobs);
+    // RN 侧落盘的 shader 以清洗后的扁平文件名为键（domain/phira-chart-preview 的 sanitizeRpeBundleFileName），
+    // extra.json 的 effect.shader 引用原始文件名（如 '/camera_pr.glsl'），按同一规则清洗后兜底查找。
+    const shaders = new Map<string, string>();
+    const injectedShaders = config.rpeAssets?.shaders ?? {};
+    for (const effect of chart.extras.effects) {
+      if (shaders.has(effect.shader)) continue;
+      const basename = effect.shader.split('/').filter((segment) => segment.length > 0).pop() ?? effect.shader;
+      const cleaned = basename.replace(/[^A-Za-z0-9._-]/g, '_');
+      const source = injectedShaders[effect.shader] ?? injectedShaders[cleaned];
+      if (typeof source === 'string') shaders.set(effect.shader, source);
+    }
+    return { textures, videos, shaders, gifs, gifAnims };
+  }
+
+  // attachUI：HUD 元素跟随判定线（prpr Chart::with_element 语义；1 Pause/2 ComboNumber/3 Combo/4 Score/5 Bar/6 Name/7 Level）
+  const ATTACH_UI_ELEMENTS: Readonly<Record<number, { element: () => HTMLElement; always: boolean }>> = Object.freeze({
+    1: { element: () => elements.pauseNode, always: false },
+    2: { element: () => elements.combo, always: true },
+    3: { element: () => elements.comboBlock, always: true },
+    4: { element: () => elements.scoreBlock, always: true },
+    5: { element: () => elements.progressBar, always: true },
+    6: { element: () => elements.nameNode, always: false },
+    7: { element: () => elements.levelNode, always: false },
+  });
+
+  function applyAttachUi(attach: Partial<Record<number, RpeAttachUiTransform>>): void {
+    for (const [key, { element: getElement, always }] of Object.entries(ATTACH_UI_ELEMENTS)) {
+      const element = getElement();
+      const transform = attach[Number(key)];
+      if (!transform) {
+        element.hidden = !always;
+        element.style.left = '';
+        element.style.top = '';
+        element.style.right = '';
+        element.style.transform = '';
+        element.style.opacity = '';
+        element.style.color = '';
+        continue;
+      }
+      element.hidden = false;
+      element.style.right = '';
+      element.style.left = `${transform.x}px`;
+      element.style.top = `${transform.y}px`;
+      element.style.transform = `translate(-50%, -50%) rotate(${transform.rot}rad) scale(${transform.scaleX}, ${transform.scaleY})`;
+      element.style.opacity = String(Math.max(0, Math.min(1, transform.alpha)));
+      element.style.color = transform.color ? `rgb(${transform.color[0]},${transform.color[1]},${transform.color[2]})` : '';
+    }
+  }
+
+  function applyAttachUiFromRenderer(): void {
+    if (isRpe) applyAttachUi((renderer as RpeRenderer).attachUi);
+  }
 
   if (config.title) elements.title.textContent = config.title;
   elements.status.textContent = config.game === 'phira' ? 'Phira 谱面' : config.game === 'phigros' ? 'Phigros 谱面' : '';
@@ -685,6 +857,7 @@ function start(): void {
   function renderFrame(chartTime: number): void {
     updateHitSounds(chartTime);
     renderer.render(chartTime);
+    applyAttachUiFromRenderer();
     renderHud(chartTime);
   }
 
@@ -708,34 +881,75 @@ function start(): void {
       ]);
       if (signal.aborted) return;
       setStatus('正在解析谱面…');
-      const chart: PgrChart = await new Promise((resolve, reject) => {
+      const chart: PgrChart | RpeChart = await new Promise((resolve, reject) => {
         // 主线程解析：WebView file:// 下不使用 Worker，解析期间状态保持可见。
         window.setTimeout(() => {
-          try { resolve(parsePgrChart(chartText)); } catch (error) { reject(error); }
+          try {
+            resolve(isRpe
+              ? parseRpeChart(chartText, { extraJson: config.rpeAssets?.extraJson ?? null, infoYml: config.rpeAssets?.infoYml ?? null })
+              : parsePgrChart(chartText));
+          } catch (error) { reject(error); }
         }, 0);
       });
       if (signal.aborted) return;
       setStatus('正在准备音乐与曲绘…');
-      const [noteAssets] = await Promise.all([
+      const rpeChart = isRpe ? (chart as RpeChart) : null;
+      const [noteAssets, chartAssets] = await Promise.all([
         loadNoteAssets(signal),
+        rpeChart ? loadRpeChartAssets(rpeChart, signal) : Promise.resolve(null),
         decodeMusic(signal),
       ]);
       if (signal.aborted) return;
-      renderer.setChart(chart);
-      chartOffset = chart.offset;
-      chartDuration = chart.stats.maxTime;
-      renderer.setIllustration(image);
-      renderer.setNoteAssets(noteAssets);
-      renderer.setSettings({ ...settings, lineColor: settings.lineColor as LineColorKey });
-      hitSoundEvents = buildHitSoundEvents(chart);
+      // RPE：背景优先取谱面包内 META.background，缺失时回退远程曲绘
+      let illustration = image;
+      if (rpeChart?.background) {
+        const basePath = config.rpeAssets?.basePath ?? '';
+        try {
+          illustration = await loadImage(`${basePath}${rpeChart.background}`, signal);
+        } catch {
+          /* 回退远程曲绘 */
+        }
+      }
+      if (isRpe) {
+        (renderer as RpeRenderer).setChart(rpeChart!);
+        (renderer as RpeRenderer).setChartAssets(chartAssets!);
+        chartOffset = rpeChart!.offset;
+        chartDuration = rpeChart!.stats.maxTime;
+        hitSoundEvents = buildHitSoundEvents({
+          lines: rpeChart!.lines.map((line) => ({
+            notes: line.notes
+              .filter((note) => !note.isFake)
+              .map((note) => ({ kind: note.kind, time: note.hitTime })),
+          })),
+        });
+        completionTimes = rpeChart!.lines
+          .flatMap((line) => line.notes.map((note) => (note.isFake ? null : note.kind === 'hold' ? note.endHitTime : note.hitTime)))
+          .filter((value): value is number => value !== null)
+          .sort((a, b) => a - b);
+        timelineNotes = rpeChart!.lines
+          .flatMap((line) => line.notes.filter((note) => !note.isFake).map((note) => ({ time: note.hitTime, kind: note.kind })))
+          .sort((a, b) => a.time - b.time);
+        elements.nameNode.textContent = rpeChart!.info.name ?? '';
+        elements.levelNode.textContent = rpeChart!.info.level ?? '';
+        applyAttachUi({});
+      } else {
+        const pgrChart = chart as PgrChart;
+        (renderer as PgrRenderer).setChart(pgrChart);
+        chartOffset = pgrChart.offset;
+        chartDuration = pgrChart.stats.maxTime;
+        hitSoundEvents = buildHitSoundEvents(pgrChart);
+        completionTimes = pgrChart.lines
+          .flatMap((line) => line.notes.map((note) => note.kind === 'hold' ? note.endTime : note.time))
+          .sort((a, b) => a - b);
+        timelineNotes = pgrChart.lines
+          .flatMap((line) => line.notes.map((note) => ({ time: note.time, kind: note.kind })))
+          .sort((a, b) => a.time - b.time);
+      }
       hitSoundCursor = 0;
       lastHitSoundTime = -1e-6;
-      completionTimes = chart.lines
-        .flatMap((line) => line.notes.map((note) => note.kind === 'hold' ? note.endTime : note.time))
-        .sort((a, b) => a - b);
-      timelineNotes = chart.lines
-        .flatMap((line) => line.notes.map((note) => ({ time: note.time, kind: note.kind })))
-        .sort((a, b) => a.time - b.time);
+      renderer.setIllustration(illustration);
+      renderer.setNoteAssets(noteAssets);
+      renderer.setSettings({ ...settings, lineColor: settings.lineColor as LineColorKey });
       buildTimeline();
       if (musicBuffer) setStatus('');
       ready = true;
@@ -781,6 +995,7 @@ function start(): void {
     }
     renderer.resetTimeline(clamped);
     renderer.render(clamped);
+    applyAttachUiFromRenderer();
     renderHud(clamped);
   }
 
@@ -792,6 +1007,7 @@ function start(): void {
     syncPlayButtons();
     lastRafTs = 0;
     renderer.render(chartDuration);
+    applyAttachUiFromRenderer();
     renderHud(chartDuration);
     scheduleControlsHide();
   }
@@ -861,6 +1077,7 @@ function start(): void {
     cancelAnimationFrame(rafId);
     lastRafTs = 0;
     renderer.render(currentChartTime);
+    applyAttachUiFromRenderer();
     renderHud(currentChartTime);
     scheduleControlsHide();
   }
