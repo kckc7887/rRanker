@@ -1,0 +1,256 @@
+/**
+ * 谱面确认公共屏幕壳（公共路径）：
+ * 承接各游戏谱面确认屏幕的全部共有逻辑——prepare 执行与超时中止、
+ * 卸载停播、返回键退出全屏、ready/fullscreen/error/settings 桥接、
+ * 播放器设置 KV 读写合并、错误/加载分支与 WebView 属性透传。
+ * 游戏差异仅通过 props 表达（请求对象、文案、testID、注入策略），
+ * 壳不感知具体游戏，不出现游戏 ID / Storage key 字面量分支。
+ */
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { Stack } from 'expo-router';
+import { WebView } from 'react-native-webview';
+import Storage from 'expo-sqlite/kv-store';
+import {
+  chartPreviewExitFullscreenScript,
+  chartPreviewStopScript,
+  parseChartPreviewBridgeMessage,
+} from '@/features/maimai-chart-preview/chart-preview-inject';
+import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
+import { useAppTheme } from '@/theme/app-theme';
+
+export type ChartPreviewShellSource = { uri: string; allowingReadAccessToURL: string };
+
+export type ChartPreviewShellRequest<TPayload> =
+  | { kind: 'error'; message: string }
+  | { kind: 'waiting' }
+  | {
+      kind: 'ready';
+      payload: TPayload;
+      timeoutMs?: number;
+      prepare: (signal: AbortSignal, settings: unknown) => Promise<ChartPreviewShellSource>;
+    };
+
+export type ChartPreviewScreenShellProps<TPayload> = {
+  request: ChartPreviewShellRequest<TPayload>;
+  settingsKey: string;
+  testID: string;
+  accessibilityLabel: string;
+  errorHint: string;
+  prepareErrorFallback: string;
+  externalError?: string | null;
+  allowFileAccess: boolean;
+  buildInjectedJavaScript?: (payload: TPayload) => string;
+  reInjectOnLoadEnd?: boolean;
+};
+
+async function loadSettings(settingsKey: string): Promise<unknown> {
+  try {
+    const raw = await Storage.getItem(settingsKey);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+async function saveSettings(settingsKey: string, partial: Record<string, unknown>): Promise<void> {
+  try {
+    const raw = await Storage.getItem(settingsKey);
+    const current: Record<string, unknown> = raw ? JSON.parse(raw) as Record<string, unknown> : {};
+    const merged = { ...current, ...partial };
+    await Storage.setItem(settingsKey, JSON.stringify(merged));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function ChartPreviewScreenShell<TPayload>({
+  request,
+  settingsKey,
+  testID,
+  accessibilityLabel,
+  errorHint,
+  prepareErrorFallback,
+  externalError,
+  allowFileAccess,
+  buildInjectedJavaScript,
+  reInjectOnLoadEnd,
+}: ChartPreviewScreenShellProps<TPayload>) {
+  const theme = useAppTheme();
+  const webRef = useRef<WebView>(null);
+
+  const [source, setSource] = useState<ChartPreviewShellSource | null>(null);
+  const [stageError, setStageError] = useState<string | null>(null);
+  const [playerError, setPlayerError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // deps 定稿为 request；settingsKey / prepareErrorFallback 为屏幕级恒定值。
+  useEffect(() => {
+    let cancelled = false;
+    let controller: AbortController | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    if (request.kind !== 'ready') {
+      setSource(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setSource(null);
+    setReady(false);
+    setIsFullscreen(false);
+    setPlayerError(null);
+    setStageError(null);
+
+    void (async () => {
+      const localController = new AbortController();
+      controller = localController;
+      if (request.timeoutMs !== undefined) {
+        timeout = setTimeout(() => localController.abort(), request.timeoutMs);
+      }
+      try {
+        const settings = await loadSettings(settingsKey);
+        const prepared = await request.prepare(localController.signal, settings);
+        if (!cancelled) setSource(prepared);
+      } catch (error) {
+        if (!cancelled) {
+          setStageError(localController.signal.aborted
+            ? '准备谱面确认资源超时，请返回重试'
+            : error instanceof Error ? error.message : prepareErrorFallback);
+        }
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      if (timeout) clearTimeout(timeout);
+      // 卸载时停止播放；cleanup 必须读最新 webRef。
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional latest ref
+      webRef.current?.injectJavaScript(chartPreviewStopScript());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps 定稿为 request
+  }, [request]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      webRef.current?.injectJavaScript(chartPreviewExitFullscreenScript());
+      return true;
+    });
+    return () => subscription.remove();
+  }, [isFullscreen]);
+
+  // 与两屏现状一致：injected 随 request 稳定，不随注入构建器的渲染期引用变化。
+  const injected = useMemo(() => {
+    if (request.kind === 'ready' && buildInjectedJavaScript) {
+      return buildInjectedJavaScript(request.payload);
+    }
+    return 'true;';
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 注入构建器随屏幕恒定
+  }, [request]);
+
+  const blockingError = (request.kind === 'error' ? request.message : null)
+    ?? externalError
+    ?? stageError
+    ?? playerError;
+
+  return (
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS)} />
+      {blockingError ? (
+        <View style={styles.center} accessibilityLabel={`谱面确认错误：${blockingError}`}>
+          <Text style={[styles.error, { color: theme.text }]}>{blockingError}</Text>
+          <Text style={[styles.hint, { color: theme.textMuted }]}>{errorHint}</Text>
+        </View>
+      ) : !source ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={theme.accent} />
+          <Text style={[styles.hint, { color: theme.textMuted }]}>正在准备播放器…</Text>
+        </View>
+      ) : (
+        <View style={styles.webviewWrap}>
+          {!ready ? (
+            <View style={styles.loadingOverlay} pointerEvents="none">
+              <ActivityIndicator color={theme.accent} />
+            </View>
+          ) : null}
+          <WebView
+            ref={webRef}
+            testID={testID}
+            accessibilityLabel={accessibilityLabel}
+            allowFileAccess={allowFileAccess}
+            allowFileAccessFromFileURLs
+            allowingReadAccessToURL={source.allowingReadAccessToURL}
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            javaScriptEnabled
+            domStorageEnabled
+            originWhitelist={['*']}
+            mixedContentMode="always"
+            setSupportMultipleWindows={false}
+            source={{ uri: source.uri }}
+            injectedJavaScriptBeforeContentLoaded={injected}
+            style={styles.webview}
+            onLoadEnd={() => {
+              if (!reInjectOnLoadEnd || request.kind !== 'ready') return;
+              const script = buildInjectedJavaScript?.(request.payload);
+              if (script !== undefined) webRef.current?.injectJavaScript(script);
+            }}
+            onMessage={(event) => {
+              const data = parseChartPreviewBridgeMessage(event.nativeEvent.data);
+              if (!data) return;
+              if (data.type === 'ready') setReady(true);
+              if (data.type === 'fullscreen' && typeof data.active === 'boolean') {
+                setIsFullscreen(data.active);
+              }
+              if (data.type === 'error') {
+                setIsFullscreen(false);
+                setPlayerError(data.message ?? '谱面播放失败');
+              }
+              if (data.type === 'settings') {
+                const { type: _type, message: _message, active: _active, ...settings } = data;
+                void saveSettings(settingsKey, settings);
+              }
+            }}
+            onError={() => {
+              setIsFullscreen(false);
+              setPlayerError('WebView 加载失败');
+            }}
+            onHttpError={() => {
+              setIsFullscreen(false);
+              setPlayerError('WebView 资源加载失败');
+            }}
+          />
+        </View>
+      )}
+      {Platform.OS === 'web' && !blockingError ? (
+        <Text style={[styles.hint, { color: theme.textMuted, padding: 12 }]}>
+          Web 端谱面确认依赖本地 file 资源，请在 iOS/Android 上使用。
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 },
+  error: { fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  hint: { fontSize: 13, textAlign: 'center' },
+  webviewWrap: { flex: 1 },
+  webview: { flex: 1, backgroundColor: '#0b0d12' },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(11,13,18,0.72)',
+  },
+});
