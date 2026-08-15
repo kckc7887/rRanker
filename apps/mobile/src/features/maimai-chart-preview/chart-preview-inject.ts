@@ -1,5 +1,7 @@
 /** 纯函数：供 RN 壳与单元测试共用，避免拉取 react-native。 */
 
+import { createChartPreviewInjectors } from '@/features/chart-preview-shared/chart-preview-inject-factory';
+
 export type ChartPreviewSettings = {
   hiSpeed?: number;
   playbackSpeed?: number;
@@ -44,23 +46,29 @@ export function parseChartPreviewBridgeMessage(raw: string): ChartPreviewBridgeM
   }
 }
 
-export function buildChartPreviewConfigJson(config: ChartPreviewInjectConfig): string {
-  return JSON.stringify({
+const chartPreviewInjectors = createChartPreviewInjectors<ChartPreviewInjectConfig>({
+  globalVar: '__CHART_PREVIEW__',
+  placeholder: '<!--CHART_PREVIEW_CONFIG-->',
+  serialize: (config) => JSON.stringify({
     chartId: config.chartId,
     difficulty: config.difficulty,
     title: config.title ?? '',
     settings: config.settings ?? null,
     answerSoundUrl: config.answerSoundUrl,
     buddySide: config.buddySide ?? null,
-  });
+  }),
+});
+
+export function buildChartPreviewConfigJson(config: ChartPreviewInjectConfig): string {
+  return chartPreviewInjectors.buildConfigJson(config);
 }
 
 export function buildChartPreviewConfigScript(config: ChartPreviewInjectConfig): string {
-  return `<script>window.__CHART_PREVIEW__=${buildChartPreviewConfigJson(config)};</script>`;
+  return chartPreviewInjectors.buildConfigScript(config);
 }
 
 export function buildChartPreviewInjectedJavaScript(config: ChartPreviewInjectConfig): string {
-  return `window.__CHART_PREVIEW__={...(window.__CHART_PREVIEW__||{}),...${buildChartPreviewConfigJson(config)}};true;`;
+  return chartPreviewInjectors.buildInjectedJavaScript(config);
 }
 
 export function chartPreviewStopScript(): string {
@@ -73,9 +81,5 @@ export function chartPreviewExitFullscreenScript(): string {
 
 /** 把配置脚本写入 HTML 模板（file:// 下比 injectedJavaScript 更可靠）。 */
 export function applyChartPreviewConfigToHtml(html: string, config: ChartPreviewInjectConfig): string {
-  const script = buildChartPreviewConfigScript(config);
-  if (html.includes('<!--CHART_PREVIEW_CONFIG-->')) {
-    return html.replace('<!--CHART_PREVIEW_CONFIG-->', script);
-  }
-  return script + html;
+  return chartPreviewInjectors.applyConfigToHtml(html, config);
 }

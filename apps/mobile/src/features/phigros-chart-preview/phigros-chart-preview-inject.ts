@@ -1,5 +1,7 @@
 /** 纯函数：供 RN 壳与单元测试共用，避免拉取 react-native。 */
 
+import { createChartPreviewInjectors } from '@/features/chart-preview-shared/chart-preview-inject-factory';
+
 export type PhigrosChartPreviewSettings = {
   playbackSpeed?: number;
   noteScale?: number;
@@ -35,8 +37,10 @@ export type PhigrosChartPreviewConfig = {
   rpeAssets?: PhigrosChartPreviewRpeAssets | null;
 };
 
-export function buildPhigrosChartPreviewConfigJson(config: PhigrosChartPreviewConfig): string {
-  return JSON.stringify({
+const phigrosChartPreviewInjectors = createChartPreviewInjectors<PhigrosChartPreviewConfig>({
+  globalVar: '__PHIGROS_CHART_PREVIEW__',
+  placeholder: '<!--PHIGROS_CHART_PREVIEW_CONFIG-->',
+  serialize: (config) => JSON.stringify({
     game: config.game,
     title: config.title ?? '',
     chartUrl: config.chartUrl ?? null,
@@ -47,22 +51,22 @@ export function buildPhigrosChartPreviewConfigJson(config: PhigrosChartPreviewCo
     settings: config.settings ?? null,
     format: config.format ?? 'pgr',
     rpeAssets: config.rpeAssets ?? null,
-  });
+  }),
+});
+
+export function buildPhigrosChartPreviewConfigJson(config: PhigrosChartPreviewConfig): string {
+  return phigrosChartPreviewInjectors.buildConfigJson(config);
 }
 
 export function buildPhigrosChartPreviewConfigScript(config: PhigrosChartPreviewConfig): string {
-  return `<script>window.__PHIGROS_CHART_PREVIEW__=${buildPhigrosChartPreviewConfigJson(config)};</script>`;
+  return phigrosChartPreviewInjectors.buildConfigScript(config);
 }
 
 export function buildPhigrosChartPreviewInjectedJavaScript(config: PhigrosChartPreviewConfig): string {
-  return `window.__PHIGROS_CHART_PREVIEW__={...(window.__PHIGROS_CHART_PREVIEW__||{}),...${buildPhigrosChartPreviewConfigJson(config)}};true;`;
+  return phigrosChartPreviewInjectors.buildInjectedJavaScript(config);
 }
 
 /** 把配置脚本写入 HTML 模板（file:// 下比 injectedJavaScript 更可靠）。 */
 export function applyPhigrosChartPreviewConfigToHtml(html: string, config: PhigrosChartPreviewConfig): string {
-  const script = buildPhigrosChartPreviewConfigScript(config);
-  if (html.includes('<!--PHIGROS_CHART_PREVIEW_CONFIG-->')) {
-    return html.replace('<!--PHIGROS_CHART_PREVIEW_CONFIG-->', script);
-  }
-  return script + html;
+  return phigrosChartPreviewInjectors.applyConfigToHtml(html, config);
 }

@@ -1,6 +1,7 @@
 import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
+import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import {
   applyChartPreviewConfigToHtml,
   type ChartPreviewInjectConfig,
@@ -68,22 +69,22 @@ export async function readAssetText(moduleId: number): Promise<string> {
 export async function prepareChartPreviewWebViewSource(
   config: ChartPreviewInjectConfig,
 ): Promise<ChartPreviewWebViewSource> {
-  const directory = chartPreviewStageDirectory();
-  await stageAsset(PLAYER_MODULE, 'player.js', directory);
-  await stageAsset(SENSOR_MODULE, 'sensor.webp', directory);
-  const answerFile = await stageAsset(ANSWER_MODULE, 'answer.wav', directory);
-  const answerSoundUrl = `data:audio/wav;base64,${await answerFile.base64()}`;
-
-  const template = await readAssetText(HTML_MODULE);
-  const html = applyChartPreviewConfigToHtml(template, { ...config, answerSoundUrl });
-  const htmlFile = new File(directory, 'index.html');
-  htmlFile.create({ overwrite: true });
-  htmlFile.write(html);
-
-  return {
-    uri: htmlFile.uri,
-    allowingReadAccessToURL: directory.uri,
-  };
+  return prepareChartPreviewWebviewFromPlan({
+    directoryName: 'rranker-chart-preview',
+    stagedAssets: [
+      { fileName: 'player.js', moduleId: PLAYER_MODULE },
+      { fileName: 'sensor.webp', moduleId: SENSOR_MODULE },
+      { fileName: 'answer.wav', moduleId: ANSWER_MODULE },
+    ],
+    dataUrlAssets: [
+      { key: 'answerSoundUrl', moduleId: ANSWER_MODULE, fileName: 'answer.wav' },
+    ],
+    htmlModuleId: HTML_MODULE,
+    buildHtml: (template, dataUrls) => applyChartPreviewConfigToHtml(template, {
+      ...config,
+      answerSoundUrl: dataUrls.answerSoundUrl,
+    }),
+  });
 }
 
 export function chartPreviewAllowsFileAccess(): boolean {

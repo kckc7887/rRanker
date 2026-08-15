@@ -1,15 +1,11 @@
 import { Directory, File } from 'expo-file-system';
 import { Platform } from 'react-native';
+import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import {
   applyPhigrosChartPreviewConfigToHtml,
   type PhigrosChartPreviewConfig,
 } from './phigros-chart-preview-inject';
-import {
-  chartPreviewStageDirectory,
-  loadAssetFileUri,
-  readAssetText,
-  stageAsset,
-} from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
+import { chartPreviewStageDirectory } from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
 
 const HTML_MODULE = require('../../../assets/phigros-chart-preview/index.html') as number;
 const PLAYER_MODULE = require('../../../assets/phigros-chart-preview/player.bundle') as number;
@@ -39,11 +35,6 @@ export type PhigrosChartPreviewWebViewSource = {
 
 const STAGE_DIRECTORY_NAME = 'rranker-phigros-chart-preview';
 
-async function readAssetBase64(moduleId: number, fileName: string): Promise<string> {
-  const sourceUri = await loadAssetFileUri(moduleId, fileName);
-  return new File(sourceUri).base64();
-}
-
 /**
  * 将 HTML / player.js / 内置皮肤落到缓存目录，打击音以 data URL 注入配置，
  * 本地音乐以 base64 写入 music-data.js（iOS file:// 下无法 fetch 本地文件）。
@@ -53,35 +44,30 @@ export async function preparePhigrosChartPreviewWebViewSource(
   config: PhigrosChartPreviewConfig,
   musicDataBase64: string | null = null,
 ): Promise<PhigrosChartPreviewWebViewSource> {
-  const directory = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME);
-  await stageAsset(PLAYER_MODULE, 'player.js', directory);
-
-  const skinDirectory = new Directory(directory, 'skin');
-  skinDirectory.create({ intermediates: true, idempotent: true });
-  for (const { fileName, moduleId } of SKIN_ASSETS) {
-    await stageAsset(moduleId, `skin/${fileName}`, directory);
-  }
-
-  const hitSounds: NonNullable<PhigrosChartPreviewConfig['hitSounds']> = {};
-  for (const { kind, fileName, moduleId } of HIT_SOUND_ASSETS) {
-    const base64 = await readAssetBase64(moduleId, fileName);
-    hitSounds[kind] = `data:audio/wav;base64,${base64}`;
-  }
-
-  const musicDataFile = new File(directory, 'music-data.js');
-  musicDataFile.create({ overwrite: true });
-  musicDataFile.write(`window.__PHIGROS_MUSIC_DATA__=${musicDataBase64 ? JSON.stringify(musicDataBase64) : 'null'};`);
-
-  const template = await readAssetText(HTML_MODULE);
-  const html = applyPhigrosChartPreviewConfigToHtml(template, { ...config, hitSounds });
-  const htmlFile = new File(directory, 'index.html');
-  htmlFile.create({ overwrite: true });
-  htmlFile.write(html);
-
-  return {
-    uri: htmlFile.uri,
-    allowingReadAccessToURL: directory.uri,
-  };
+  return prepareChartPreviewWebviewFromPlan({
+    directoryName: STAGE_DIRECTORY_NAME,
+    stagedAssets: [
+      { fileName: 'player.js', moduleId: PLAYER_MODULE },
+      ...SKIN_ASSETS.map(({ fileName, moduleId }) => ({ fileName: `skin/${fileName}`, moduleId })),
+    ],
+    dataUrlAssets: HIT_SOUND_ASSETS.map(({ kind, fileName, moduleId }) => ({
+      key: kind,
+      moduleId,
+      fileName,
+    })),
+    writers: [
+      async (directory) => {
+        const musicDataFile = new File(directory, 'music-data.js');
+        musicDataFile.create({ overwrite: true });
+        musicDataFile.write(`window.__PHIGROS_MUSIC_DATA__=${musicDataBase64 ? JSON.stringify(musicDataBase64) : 'null'};`);
+      },
+    ],
+    htmlModuleId: HTML_MODULE,
+    buildHtml: (template, dataUrls) => applyPhigrosChartPreviewConfigToHtml(template, {
+      ...config,
+      hitSounds: dataUrls,
+    }),
+  });
 }
 
 /** Phira 谱面音乐落盘到预览 stage 目录，并返回其 base64 供 WebView 解码。 */
