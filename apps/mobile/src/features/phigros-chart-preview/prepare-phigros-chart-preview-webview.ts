@@ -10,22 +10,25 @@ import { chartPreviewStageDirectory } from '@/features/maimai-chart-preview/prep
 const HTML_MODULE = require('../../../assets/phigros-chart-preview/index.html') as number;
 const PLAYER_MODULE = require('../../../assets/phigros-chart-preview/player.bundle') as number;
 
-const SKIN_ASSETS: readonly { fileName: string; moduleId: number }[] = [
-  { fileName: 'Tap2.png', moduleId: require('../../../assets/phigros-chart-preview/skin/Tap2.png') },
-  { fileName: 'Tap2HL.png', moduleId: require('../../../assets/phigros-chart-preview/skin/Tap2HL.png') },
-  { fileName: 'Drag.png', moduleId: require('../../../assets/phigros-chart-preview/skin/Drag.png') },
-  { fileName: 'DragHL.png', moduleId: require('../../../assets/phigros-chart-preview/skin/DragHL.png') },
-  { fileName: 'Flick2.png', moduleId: require('../../../assets/phigros-chart-preview/skin/Flick2.png') },
-  { fileName: 'Flick2HL.png', moduleId: require('../../../assets/phigros-chart-preview/skin/Flick2HL.png') },
-  { fileName: 'Hold2.png', moduleId: require('../../../assets/phigros-chart-preview/skin/Hold2.png') },
-  { fileName: 'Hold2HL.png', moduleId: require('../../../assets/phigros-chart-preview/skin/Hold2HL.png') },
-  { fileName: 'hit.png', moduleId: require('../../../assets/phigros-chart-preview/skin/hit.png') },
+/** 内置皮肤与命中音源：对象存储 rranker-phigros-data/chart-preview（与本地 assets/phigros-chart-preview 同名同路径）。 */
+const PHIGROS_CHART_PREVIEW_ASSET_BASE = 'https://rranker-phigros-data.cn-nb1.rains3.com/chart-preview';
+
+const SKIN_ASSETS: readonly { fileName: string; url: string; bytes: number }[] = [
+  { fileName: 'Tap2.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/Tap2.png`, bytes: 4_062 },
+  { fileName: 'Tap2HL.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/Tap2HL.png`, bytes: 18_905 },
+  { fileName: 'Drag.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/Drag.png`, bytes: 2_481 },
+  { fileName: 'DragHL.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/DragHL.png`, bytes: 16_064 },
+  { fileName: 'Flick2.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/Flick2.png`, bytes: 7_508 },
+  { fileName: 'Flick2HL.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/Flick2HL.png`, bytes: 33_584 },
+  { fileName: 'Hold2.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/Hold2.png`, bytes: 1_251_031 },
+  { fileName: 'Hold2HL.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/Hold2HL.png`, bytes: 1_171_989 },
+  { fileName: 'hit.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/hit.png`, bytes: 356_117 },
 ];
 
-const HIT_SOUND_ASSETS: readonly { kind: 'click' | 'drag' | 'flick'; fileName: string; moduleId: number }[] = [
-  { kind: 'click', fileName: 'click.wav', moduleId: require('../../../assets/phigros-chart-preview/hit-sounds/click.wav') },
-  { kind: 'drag', fileName: 'drag.wav', moduleId: require('../../../assets/phigros-chart-preview/hit-sounds/drag.wav') },
-  { kind: 'flick', fileName: 'flick.wav', moduleId: require('../../../assets/phigros-chart-preview/hit-sounds/flick.wav') },
+const HIT_SOUND_ASSETS: readonly { kind: 'click' | 'drag' | 'flick'; fileName: string; url: string; bytes: number }[] = [
+  { kind: 'click', fileName: 'hit-sounds/click.wav', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/hit-sounds/click.wav`, bytes: 21_838 },
+  { kind: 'drag', fileName: 'hit-sounds/drag.wav', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/hit-sounds/drag.wav`, bytes: 83_354 },
+  { kind: 'flick', fileName: 'hit-sounds/flick.wav', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/hit-sounds/flick.wav`, bytes: 71_774 },
 ];
 
 export type PhigrosChartPreviewWebViewSource = {
@@ -48,12 +51,13 @@ export async function preparePhigrosChartPreviewWebViewSource(
     directoryName: STAGE_DIRECTORY_NAME,
     stagedAssets: [
       { fileName: 'player.js', moduleId: PLAYER_MODULE },
-      ...SKIN_ASSETS.map(({ fileName, moduleId }) => ({ fileName: `skin/${fileName}`, moduleId })),
+      ...SKIN_ASSETS.map(({ fileName, url, bytes }) => ({ fileName: `skin/${fileName}`, url, bytes })),
     ],
-    dataUrlAssets: HIT_SOUND_ASSETS.map(({ kind, fileName, moduleId }) => ({
+    dataUrlAssets: HIT_SOUND_ASSETS.map(({ kind, fileName, url, bytes }) => ({
       key: kind,
-      moduleId,
       fileName,
+      url,
+      bytes,
     })),
     writers: [
       async (directory) => {

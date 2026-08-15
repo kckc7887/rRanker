@@ -35,19 +35,22 @@ export type GameOption = {
   providers: ProviderOption[];
 };
 
-const maimaiIcon = require('../../assets/images/maimai-dx.png') as ImageSourcePropType;
-const divingFishIcon = require('../../assets/images/diving-fish.png') as ImageSourcePropType;
-const lxnsIcon = require('../../assets/images/lxns.png') as ImageSourcePropType;
-const exampleAccountIcon = require('../../assets/images/example-account.png') as ImageSourcePropType;
-const phigrosIcon = require('../../assets/images/phigros.png') as ImageSourcePropType;
-const taptapIcon = require('../../assets/images/taptap.png') as ImageSourcePropType;
-const chunithmIcon = require('../../assets/images/chunithm.png') as ImageSourcePropType;
-const adofaiIcon = require('../../assets/images/adofai.png') as ImageSourcePropType;
-const tufIcon = require('../../assets/images/tuf.png') as ImageSourcePropType;
-const museDashIcon = require('../../assets/images/musedash.png') as ImageSourcePropType;
-const museDashMoeIcon = require('../../assets/images/musedash-moe.png') as ImageSourcePropType;
+/** 游戏 / Provider 图标源：对象存储 rranker/assets/images（与本地 assets/images 同名同路径）。 */
+const REMOTE_IMAGE_BASE = 'https://rranker.cn-nb1.rains3.com/assets/images';
+
+const maimaiIcon = { uri: `${REMOTE_IMAGE_BASE}/maimai-dx.png` } as ImageSourcePropType;
+const divingFishIcon = { uri: `${REMOTE_IMAGE_BASE}/diving-fish.png` } as ImageSourcePropType;
+const lxnsIcon = { uri: `${REMOTE_IMAGE_BASE}/lxns.png` } as ImageSourcePropType;
+const exampleAccountIcon = { uri: `${REMOTE_IMAGE_BASE}/example-account.png` } as ImageSourcePropType;
+const phigrosIcon = { uri: `${REMOTE_IMAGE_BASE}/phigros.png` } as ImageSourcePropType;
+const taptapIcon = { uri: `${REMOTE_IMAGE_BASE}/taptap.png` } as ImageSourcePropType;
+const chunithmIcon = { uri: `${REMOTE_IMAGE_BASE}/chunithm.png` } as ImageSourcePropType;
+const adofaiIcon = { uri: `${REMOTE_IMAGE_BASE}/adofai.png` } as ImageSourcePropType;
+const tufIcon = { uri: `${REMOTE_IMAGE_BASE}/tuf.png` } as ImageSourcePropType;
+const museDashIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash.png` } as ImageSourcePropType;
+const museDashMoeIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash-moe.png` } as ImageSourcePropType;
 /** 从 https://phira.moe/favicon.svg 原样提取的内嵌 PNG。 */
-const phiraIcon = require('../../assets/images/phira.png') as ImageSourcePropType;
+const phiraIcon = { uri: `${REMOTE_IMAGE_BASE}/phira.png` } as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
   {
