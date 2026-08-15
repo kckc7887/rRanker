@@ -1,13 +1,14 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import { StyleSheet, type ImageSourcePropType } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { TufDifficultyBadge } from './TufDifficultyBadge';
 import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { tufMediaImageCandidates, type TufLevel } from '@/domain/tuf';
+import { findGame } from '@/domain/game-bind-options';
 import { presentTufLevel } from '@/features/game-content/adapters';
 import { useTufVideoDetails } from '@/hooks/use-tuf';
 
-const ADOFAI_ICON = require('../../../assets/images/adofai.png') as ImageSourcePropType;
+const ADOFAI_ICON = findGame('adofai')!.icon;
 
 export const TufSongRow = memo(function TufSongRow({ level }: { level: TufLevel }) {
   const presentation = presentTufLevel(level);

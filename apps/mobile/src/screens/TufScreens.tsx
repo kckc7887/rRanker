@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput,
-  useWindowDimensions, View, type ImageSourcePropType,
+  useWindowDimensions, View,
 } from 'react-native';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
@@ -22,6 +22,7 @@ import {
 import { QueryStateView } from '@/components/QueryStateView';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
+import { findGame } from '@/domain/game-bind-options';
 import {
   filterTufPasses,
   selectTufTopPasses,
@@ -56,7 +57,7 @@ import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
-const ADOFAI_ICON = require('../../assets/images/adofai.png') as ImageSourcePropType;
+const ADOFAI_ICON = findGame('adofai')!.icon;
 
 function useActiveTufPlayerId() {
   const accountId = useSession((state) => state.activeAccountId);
