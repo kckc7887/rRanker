@@ -2,6 +2,10 @@
  * RPE 谱面 Canvas 渲染器，
  * 语义对照 PhiZone/player（Line.ts/PlainNote.ts/LongNote.ts/Video.ts/Game.ts/ShaderPipeline.ts）
  * 与 TeamFlos/phira 的 prpr 核心（RPE 路径）。接口与 PgrRenderer 对齐，供 main.ts 按谱面格式二选一。
+ *
+ * 许可证：本文件语义对照 PhiZone/player（MPL-2.0，https://github.com/PhiZone/player）与
+ * TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira）移植，相应部分按各自原许可提供
+ * （与本项目 AGPL-3.0 兼容）；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
 import {

@@ -80,11 +80,15 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [水鱼查分器](https://maimai.diving-fish.com)
 - [落雪咖啡屋](https://maimai.lxns.net/)
 - [Phi-plugin](https://github.com/Catrong/phi-plugin)
-- [maimai-prober-frontend](https://github.com/Lxns-Network/maimai-prober-frontend)（舞萌谱面预览引擎）
-- [nonebot-plugin-maimaidx](https://github.com/Yuri-YuzuChaN/nonebot-plugin-maimaidx)（B50 成绩图布局）
-- [maimaiDX](https://github.com/Yuri-YuzuChaN/maimaiDX)（B50 成绩图布局）
-- [DXRating](https://github.com/gekichumai/dxrating)（谱面标签数据）
+- [maimai-prober-frontend](https://github.com/Lxns-Network/maimai-prober-frontend)
+- [nonebot-plugin-maimaidx](https://github.com/Yuri-YuzuChaN/nonebot-plugin-maimaidx)
+- [maimaiDX](https://github.com/Yuri-YuzuChaN/maimaiDX)
+- [DXRating](https://github.com/gekichumai/dxrating)
 - [nearcade](https://nearcade.phizone.cn/)
+- [PhiZone Player](https://github.com/PhiZone/player)
+- [phira](https://github.com/TeamFlos/phira)
+
+第三方组件许可证与来源声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## ⚠️ 声明
 
