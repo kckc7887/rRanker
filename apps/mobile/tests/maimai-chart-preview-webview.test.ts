@@ -10,7 +10,7 @@ import {
   parseChartPreviewBridgeMessage,
 } from '@/features/maimai-chart-preview/chart-preview-inject';
 import { chartPreviewCanvasSize } from '@/features/maimai-chart-preview/webview-player/fullscreenLayout';
-import { toggleFullscreenLockUiState } from '@/features/maimai-chart-preview/webview-player/fullscreenLock';
+import { toggleFullscreenLockUiState } from '@/features/chart-preview-shared/webview-player/fullscreenLock';
 import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
 
 describe('chart preview webview helpers', () => {
@@ -166,7 +166,17 @@ describe('chart preview webview helpers', () => {
       'utf8',
     );
     expect(html).toContain('#fs-lock.hidden { opacity: 0; pointer-events: none; }');
-    expect(html).toContain('transition: opacity 0.2s;');
+    expect(html).toContain('transition: opacity 220ms ease;');
+  });
+
+  it('slides the fullscreen overlay out from the bottom like the phigros player', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    // 统一横屏表现：控制器底部滑出 220ms（与 Phigros/Phira 一致）。
+    expect(html).toContain('transition: translate 220ms ease, opacity 220ms ease;');
+    expect(html).toContain('#fs-overlay.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }');
   });
 
   it('stages a second canvas for dual buddy previews hidden in single mode', () => {

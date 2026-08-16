@@ -27,6 +27,7 @@ import {
 } from './hit-sound';
 import { PlaybackClock } from './playbackClock';
 import { getAudioContextOutputTime } from './audioClock';
+import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 
 declare global {
   interface Window {
@@ -363,6 +364,7 @@ function start(): void {
     nameNode: $('hud-name'),
     levelNode: $('hud-level'),
     controls: $('controls'),
+    fsLock: $('fs-lock') as HTMLButtonElement,
     title: $('title'),
     status: $('status'),
   };
@@ -386,6 +388,8 @@ function start(): void {
   let completionTimes: number[] = [];
   let timelineNotes: { time: number; kind: string }[] = [];
   let controlsTimer = 0;
+  let controlsVisible = true;
+  let fsLocked = false;
   let audioContext: AudioContext | null = null;
   let musicGain: GainNode | null = null;
   let musicBuffer: AudioBuffer | null = null;
@@ -977,12 +981,26 @@ function start(): void {
     elements.play.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
   }
 
-  function scheduleControlsHide(): void {
+  function syncControlsVisibility(): void {
+    elements.controls.classList.toggle('hidden', !controlsVisible || fsLocked);
+    elements.fsLock.classList.toggle('hidden', !controlsVisible);
+  }
+
+  function showControls(): void {
     window.clearTimeout(controlsTimer);
-    elements.controls.classList.remove('hidden');
-    if (isFullscreen && isPlaying) {
-      controlsTimer = window.setTimeout(() => elements.controls.classList.add('hidden'), 1800);
-    }
+    controlsVisible = true;
+    syncControlsVisibility();
+    if (!isFullscreen) return;
+    controlsTimer = window.setTimeout(() => {
+      controlsVisible = false;
+      syncControlsVisibility();
+    }, 5000);
+  }
+
+  function hideControls(): void {
+    window.clearTimeout(controlsTimer);
+    controlsVisible = false;
+    syncControlsVisibility();
   }
 
   function seekToChartTime(target: number): void {
@@ -1016,7 +1034,7 @@ function start(): void {
     renderer.render(chartDuration);
     applyAttachUiFromRenderer();
     renderHud(chartDuration);
-    scheduleControlsHide();
+    showControls();
   }
 
   function tick(timestamp: number): void {
@@ -1059,7 +1077,7 @@ function start(): void {
     if (currentChartTime >= chartDuration - 0.05) currentChartTime = 0;
     isPlaying = true;
     syncPlayButtons();
-    scheduleControlsHide();
+    showControls();
     lastRafTs = 0;
     resetHitSoundTimeline(currentChartTime);
     if (musicBuffer && currentChartTime + chartOffset < musicBuffer.duration - MUSIC_END_EPSILON_S) {
@@ -1086,7 +1104,7 @@ function start(): void {
     renderer.render(currentChartTime);
     applyAttachUiFromRenderer();
     renderHud(currentChartTime);
-    scheduleControlsHide();
+    showControls();
   }
 
   function setFullscreen(active: boolean): void {
@@ -1094,8 +1112,16 @@ function start(): void {
     renderer.setFullscreen(active);
     document.body.classList.toggle('fullscreen', active);
     elements.fullscreen.setAttribute('aria-label', active ? '退出全屏' : '进入全屏');
-    if (!active) elements.controls.classList.remove('hidden');
-    scheduleControlsHide();
+    if (!active) {
+      fsLocked = false;
+      elements.fsLock.classList.remove('locked');
+      elements.fsLock.setAttribute('aria-label', '锁定');
+      window.clearTimeout(controlsTimer);
+      controlsVisible = true;
+      syncControlsVisibility();
+    } else {
+      showControls();
+    }
     postStatus('fullscreen', { active });
   }
 
@@ -1230,11 +1256,17 @@ function start(): void {
   elements.fullscreen.addEventListener('click', () => setFullscreen(!isFullscreen));
   elements.stage.addEventListener('pointerdown', () => {
     if (!isFullscreen) return;
-    if (elements.controls.classList.contains('hidden')) {
-      elements.controls.classList.remove('hidden');
-    } else if (isPlaying) {
-      elements.controls.classList.add('hidden');
-    }
+    if (controlsVisible) hideControls();
+    else showControls();
+  });
+  elements.fsLock.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const nextState = toggleFullscreenLockUiState(fsLocked);
+    fsLocked = nextState.locked;
+    elements.fsLock.classList.toggle('locked', fsLocked);
+    elements.fsLock.setAttribute('aria-label', nextState.actionLabel);
+    if (nextState.overlayHidden) hideControls();
+    else showControls();
   });
 
   window.addEventListener('resize', buildTimeline);

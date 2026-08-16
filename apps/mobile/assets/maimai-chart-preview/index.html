@@ -272,11 +272,11 @@
       gap: 8px;
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
-      transition: opacity 0.2s;
+      transition: translate 220ms ease, opacity 220ms ease;
       touch-action: none;
     }
     body.fullscreen #fs-overlay { display: flex; }
-    #fs-overlay.hidden { opacity: 0; pointer-events: none; }
+    #fs-overlay.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }
     #fs-lock {
       display: none;
       position: fixed;
@@ -296,7 +296,7 @@
       align-items: center;
       justify-content: center;
       flex: 0 0 36px;
-      transition: opacity 0.2s;
+      transition: opacity 220ms ease;
     }
     body.fullscreen #fs-lock { display: flex; }
     #fs-lock.hidden { opacity: 0; pointer-events: none; }

@@ -42,6 +42,25 @@ describe('phigros chart preview webview template', () => {
     expect(html).toContain('id="hud-level"');
   });
 
+  it('横屏全屏锁定按钮与舞萌一致：右侧常驻、锁定高亮、深浅色变量齐备', () => {
+    const html = templateHtml();
+    expect(html).toContain('<button id="fs-lock" type="button" aria-label="锁定">');
+    expect(html).toContain('body.fullscreen #fs-lock { display: flex; }');
+    expect(html).toContain('#fs-lock.hidden { opacity: 0; pointer-events: none; }');
+    expect(html).toContain('#fs-lock.locked { color: var(--accent); background: var(--lock-bg-strong); }');
+    expect(html).toContain('--lock-bg: rgba(11,13,18,0.6)');
+    expect(html).toContain('--lock-bg-strong: rgba(11,13,18,0.8)');
+    expect(html).toContain('--lock-bg: rgba(255,255,255,0.72)');
+    expect(html).toContain('--lock-bg-strong: rgba(255,255,255,0.88)');
+    expect(html).toContain('html[data-theme="light"] #fs-lock { border: 1px solid var(--border); }');
+  });
+
+  it('全屏控制器显隐动画与舞萌一致：底部滑出 220ms', () => {
+    const html = templateHtml();
+    expect(html).toContain('transition: translate 220ms ease, opacity 220ms ease;');
+    expect(html).toContain('body.fullscreen #controls.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }');
+  });
+
   it('下方播放控制器对齐舞萌样式：时间轴/accent 播放钮/transport 图标钮/拨轮/胶囊 toggle，无 demo 残留', () => {
     const html = templateHtml();
     expect(html).toContain('--accent: #5b8cff');
