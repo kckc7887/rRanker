@@ -2,7 +2,7 @@ import { RenderContext, getGradientColors } from "./BaseRenderer";
 import { NoteRenderer, holdRipplePhase } from "./NoteRenderer";
 import { SlideRenderer } from "./SlideRenderer";
 import { HoldRenderer } from "./HoldRenderer";
-import { TouchRenderer } from "./TouchRenderer";
+import { TouchRenderer , fireworkTriggerMs } from "./TouchRenderer";
 import { TimingTimeline } from "../core/timing/TimingTimeline";
 import {
   Note,
@@ -36,7 +36,6 @@ import {
   HOLD_RIPPLE_EXPAND_MS,
   TOUCH_HIT_EFFECT_DURATION_MS,
 } from "../utils/constants";
-import { fireworkTriggerMs } from "./TouchRenderer";
 
 const MAX_DPR = 2;
 const FULLSCREEN_MIN_DPR = 1;

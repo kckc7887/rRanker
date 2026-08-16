@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createMaimaiBoundAccount, createTufBoundAccount } from '@/domain/bound-account';
+import { resolveAccountAvatarUrl } from '@/services/resolve-account-avatar';
+import { tufProvider } from '@/providers/tuf-provider';
+
 const sqlite = vi.hoisted(() => ({
   getLatest: vi.fn(),
   getResource: vi.fn(),
@@ -17,10 +21,6 @@ vi.mock('@/storage/sqlite-snapshot-repository', () => ({
     deleteResource = vi.fn().mockResolvedValue(undefined);
   },
 }));
-
-import { createMaimaiBoundAccount, createTufBoundAccount } from '@/domain/bound-account';
-import { resolveAccountAvatarUrl } from '@/services/resolve-account-avatar';
-import { tufProvider } from '@/providers/tuf-provider';
 
 const lxnsAccount = createMaimaiBoundAccount({
   providerId: 'lxns',

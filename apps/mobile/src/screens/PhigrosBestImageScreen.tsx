@@ -329,6 +329,9 @@ export function PhigrosBestImageScreen() {
       setAssetProgress({ done: uniqueIds.length, total: uniqueIds.length });
     });
     return () => { cancelled = true; };
+    // selectedSongKey 是 selectedSongIds.join('|') 的派生签名：ids 内容任何变化必然
+    // 改变 key 并触发本 effect 重跑，此处闭包取到的 ids 与 key 属同一次渲染。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, selectedSongKey]);
 
   useEffect(() => {

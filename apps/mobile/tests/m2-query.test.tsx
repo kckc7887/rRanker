@@ -735,7 +735,7 @@ describe('M2 song query screens', () => {
       ]),
     }));
     const notification = mockShowActionNotification.mock.calls.at(-1)?.[0] as {
-      actions?: Array<{ label: string; onPress?: () => void }>;
+      actions?: { label: string; onPress?: () => void }[];
     } | undefined;
     notification?.actions?.find((action) => action.label === '1P 谱面')?.onPress?.();
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({

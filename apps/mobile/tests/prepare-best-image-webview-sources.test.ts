@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  inlineBestImageWebViewSources,
+  prepareBestImageWebViewSources,
+} from '@/features/best-image/prepare-best-image-webview-sources';
+
 const storedFiles = new Map<string, { content: string; exists: boolean }>();
 
 vi.mock('expo-file-system', () => ({
@@ -29,11 +34,6 @@ vi.mock('expo-file-system', () => ({
     }
   },
 }));
-
-import {
-  inlineBestImageWebViewSources,
-  prepareBestImageWebViewSources,
-} from '@/features/best-image/prepare-best-image-webview-sources';
 
 describe('best image WebView sources', () => {
   beforeEach(() => storedFiles.clear());

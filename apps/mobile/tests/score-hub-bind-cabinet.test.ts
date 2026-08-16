@@ -1,8 +1,8 @@
+import { bindCabinetByQr, fetchMe } from '@/services/score-hub-client';
+
 const fetchMock = vi.hoisted(() => vi.fn());
 
 vi.mock('expo/fetch', () => ({ fetch: fetchMock }));
-
-import { bindCabinetByQr, fetchMe } from '@/services/score-hub-client';
 
 function jsonResponse(status: number, body: unknown) {
   return {

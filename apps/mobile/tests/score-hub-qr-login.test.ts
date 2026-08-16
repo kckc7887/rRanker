@@ -1,7 +1,3 @@
-const fetchMock = vi.hoisted(() => vi.fn());
-
-vi.mock('expo/fetch', () => ({ fetch: fetchMock }));
-
 import {
   isQrExpiredErrorBody,
   loginByQr,
@@ -9,6 +5,10 @@ import {
   parseQrLoginInitBody,
   pollQrLoginUntilToken,
 } from '@/services/score-hub-client';
+
+const fetchMock = vi.hoisted(() => vi.fn());
+
+vi.mock('expo/fetch', () => ({ fetch: fetchMock }));
 
 function jsonResponse(status: number, body: unknown) {
   return {

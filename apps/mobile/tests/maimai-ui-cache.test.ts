@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import JSZip from 'jszip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  MAIMAI_UI_CACHE_VERSION,
   clearMaimaiUiCache,
   createMaimaiUiPreparer,
   type MaimaiUiProgress,

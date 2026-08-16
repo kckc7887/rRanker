@@ -1,4 +1,4 @@
-import { BaseRenderer, RenderContext, getGradientColors } from "./BaseRenderer";
+import { BaseRenderer, getGradientColors } from "./BaseRenderer";
 import { Note, Point2D, NoteRenderPosition, ButtonPosition, HoldStartNote } from "../types";
 import {
   NOTE_SIZE_RATIO,
@@ -54,10 +54,6 @@ export class NoteRenderer extends BaseRenderer {
   // 按 (方位,配色,EX) 预渲染的 tap sprite，radius/mirror 变化时整体失效。
   private tapSpriteCache = new Map<string, HTMLCanvasElement>();
   private tapSpriteBasis = "";
-
-  constructor(context: RenderContext) {
-    super(context);
-  }
 
   getPositionOnRing(position: ButtonPosition): Point2D {
     return this.getButtonPosition(position);

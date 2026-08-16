@@ -7,7 +7,11 @@ import {
 } from './phigros-chart-preview-inject';
 import { chartPreviewStageDirectory } from '@/features/chart-preview-shared/chart-preview-assets';
 
+// Metro 静态资源模块编号只能在运行时 require 取得（模块级常量），
+// 改写为 import 需补齐 .html/.bundle 的模块声明且无行为收益。
+ 
 const HTML_MODULE = require('../../../assets/phigros-chart-preview/index.html') as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const PLAYER_MODULE = require('../../../assets/phigros-chart-preview/player.bundle') as number;
 
 /** 内置皮肤与命中音源：对象存储 rranker-phigros-data/chart-preview（与本地 assets/phigros-chart-preview 同名同路径）。 */

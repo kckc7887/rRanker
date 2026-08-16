@@ -29,7 +29,11 @@ export {
   stageAsset,
 } from '@/features/chart-preview-shared/chart-preview-assets';
 
+// Metro 静态资源模块编号只能在运行时 require 取得（模块级常量），
+// 改写为 import 需补齐 .html/.bundle/.webp/.wav 的模块声明且无行为收益。
+ 
 const HTML_MODULE = require('../../../assets/maimai-chart-preview/index.html') as number;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const PLAYER_MODULE = require('../../../assets/maimai-chart-preview/player.bundle') as number;
 const SENSOR_MODULE = require('../../../assets/maimai-chart-preview/sensor.webp') as number;
 const ANSWER_MODULE = require('../../../assets/maimai-chart-preview/answer.wav') as number;
