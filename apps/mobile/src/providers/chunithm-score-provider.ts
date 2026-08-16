@@ -15,7 +15,7 @@ import { ProviderError, providerErrorFromStatus } from './errors';
 import { LXNS_API_ROOT } from './lxns-config';
 import {
   lxnsAccessTokenExpired,
-  refreshLxnsAccessToken,
+  rotateLxnsTokens,
   type LxnsOAuthSession,
 } from './lxns-oauth';
 import type { LxnsTokenRotationHandler } from './lxns-score-provider';
@@ -62,7 +62,7 @@ export class ChunithmScoreProvider {
     if (!lxnsAccessTokenExpired(this.session)) return this.session.accessToken;
     if (!this.refreshPromise) {
       this.refreshPromise = (async () => {
-        const next = await refreshLxnsAccessToken(this.session.refreshToken);
+        const next = await rotateLxnsTokens(this.session.refreshToken);
         this.session = next;
         await this.onTokensRotated?.(next);
       })().finally(() => {

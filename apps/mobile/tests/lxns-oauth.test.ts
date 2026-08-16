@@ -3,6 +3,7 @@ import {
   buildAuthorizeUrl,
   createPkcePair,
   lxnsAccessTokenExpired,
+  type PendingLxnsOAuth,
 } from '@/providers/lxns-oauth';
 import { LXNS_OAUTH_CLIENT_ID, LXNS_OAUTH_REDIRECT_URI } from '@/providers/lxns-config';
 
@@ -21,11 +22,13 @@ vi.mock('expo-secure-store', () => ({
 }));
 
 describe('lxns oauth helpers', () => {
-  it('builds authorize url with PKCE and OOB redirect', async () => {
+  it('builds authorize url with PKCE, scheme redirect and state', async () => {
     const { challenge } = await createPkcePair();
-    const url = buildAuthorizeUrl(challenge);
+    const url = buildAuthorizeUrl(challenge, 'state-token');
     expect(url).toContain(`client_id=${LXNS_OAUTH_CLIENT_ID}`);
     expect(url).toContain(`redirect_uri=${encodeURIComponent(LXNS_OAUTH_REDIRECT_URI)}`);
+    expect(LXNS_OAUTH_REDIRECT_URI).toBe('rranker://oauth/lxns');
+    expect(url).toContain('state=state-token');
     expect(url).toContain('code_challenge_method=S256');
     expect(url).toContain(`code_challenge=${encodeURIComponent(challenge)}`);
     expect(challenge).toBe('abcd-_ef');
@@ -46,6 +49,111 @@ describe('lxns oauth helpers', () => {
       expiresAt: Date.now() + 120_000,
       persistable: true,
     })).toBe(false);
+  });
+});
+
+type FetchMock = ReturnType<typeof vi.fn>;
+
+function tokenResponse(payload: Record<string, unknown>): FetchMock {
+  return vi.fn(async () => ({
+    ok: true,
+    status: 200,
+    json: async () => payload,
+  }));
+}
+
+/** 以独立模块实例加载 lxns-oauth，隔离模块级轮换缓存并注入网络/存储 mock。 */
+async function loadLxnsOAuthModule(options: {
+  fetchImpl?: FetchMock;
+  pending?: PendingLxnsOAuth | null;
+} = {}) {
+  vi.resetModules();
+  if (options.fetchImpl) vi.doMock('expo/fetch', () => ({ fetch: options.fetchImpl }));
+  vi.doMock('expo-secure-store', () => ({
+    getItemAsync: vi.fn(async (key: string) => (
+      key === 'rranker.lxns.oauth.pending.v2' && options.pending
+        ? JSON.stringify(options.pending)
+        : null
+    )),
+    setItemAsync: vi.fn(async () => undefined),
+    deleteItemAsync: vi.fn(async () => undefined),
+    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
+  }));
+  return import('@/providers/lxns-oauth');
+}
+
+describe('rotateLxnsTokens', () => {
+  it('deduplicates concurrent refreshes for the same refresh token', async () => {
+    const fetchMock = tokenResponse({
+      access_token: 'a1',
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: 'r2',
+    });
+    const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+    const [first, second] = await Promise.all([
+      rotateLxnsTokens('r1'),
+      rotateLxnsTokens('r1'),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first).toEqual(second);
+    expect(first.refreshToken).toBe('r2');
+    expect(first.accessToken).toBe('a1');
+  });
+
+  it('reuses the cached rotation for a stale refresh token without network', async () => {
+    const fetchMock = tokenResponse({
+      access_token: 'a1',
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: 'r2',
+    });
+    const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+    const first = await rotateLxnsTokens('r1');
+    const second = await rotateLxnsTokens('r1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
+  });
+});
+
+describe('exchangeLxnsAuthorizationCode state check', () => {
+  const pending: PendingLxnsOAuth = {
+    verifier: 'verifier',
+    state: 'expected-state',
+    gameId: 'maimai',
+  };
+
+  it('rejects a mismatched state before any network request', async () => {
+    const fetchMock = tokenResponse({
+      access_token: 'a1',
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: 'r2',
+    });
+    const { exchangeLxnsAuthorizationCode } = await loadLxnsOAuthModule({
+      fetchImpl: fetchMock,
+      pending,
+    });
+    await expect(
+      exchangeLxnsAuthorizationCode('auth-code', 'wrong-state'),
+    ).rejects.toMatchObject({ code: 'authentication' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('exchanges with matching state and clears pending verifier', async () => {
+    const fetchMock = tokenResponse({
+      access_token: 'a1',
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: 'r2',
+    });
+    const { exchangeLxnsAuthorizationCode } = await loadLxnsOAuthModule({
+      fetchImpl: fetchMock,
+      pending,
+    });
+    const session = await exchangeLxnsAuthorizationCode('auth-code', 'expected-state');
+    expect(session.accessToken).toBe('a1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

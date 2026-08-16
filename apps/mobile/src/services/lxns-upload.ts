@@ -3,7 +3,7 @@ import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
 import {
   lxnsAccessTokenExpired,
-  refreshLxnsAccessToken,
+  rotateLxnsTokens,
   type LxnsOAuthSession,
 } from '@/providers/lxns-oauth';
 import { LXNS_API_ROOT } from '@/providers/lxns-config';
@@ -48,7 +48,7 @@ export async function uploadRecordsToLxns(input: {
 
   let session = input.session;
   if (lxnsAccessTokenExpired(session)) {
-    session = await refreshLxnsAccessToken(session.refreshToken);
+    session = await rotateLxnsTokens(session.refreshToken);
     await input.onTokensRotated?.(session);
   }
 
