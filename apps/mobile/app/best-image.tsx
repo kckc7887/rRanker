@@ -1,23 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { WebView } from 'react-native-webview';
-import { captureRef } from 'react-native-view-shot';
 import {
   ActivityIndicator,
-  FlatList,
-  Modal,
-  PixelRatio,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
-import { useNotification } from '@/components/AppNotification';
-import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
-import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
 import { useSession } from '@/state/session-store';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
@@ -38,21 +27,11 @@ import {
 import {
   buildBestImageHtml,
   minimumBestImageHeight,
-  parseBestImageHeightMessage,
-  parseBestImageReadyMessage,
-  parseBestImageRuntimeMessage,
   ratingFrameIndex,
   type BestImageScoreSection,
   type BestImageType,
 } from '@/features/best-image/build-best-image-html';
-import {
-  BEST_IMAGE_WEBVIEW_PHASE_LABELS,
-  markBestImageWebViewLoaded,
-  updateBestImageWebViewRenderingState,
-  updateBestImageWebViewState,
-  useBestImageWebViewTimeout,
-  type BestImageWebViewState,
-} from '@/features/best-image/best-image-webview-state';
+import { BEST_IMAGE_WEBVIEW_PHASE_LABELS, useBestImageWebViewTimeout } from '@/features/best-image/best-image-webview-state';
 import {
   buildCustomBestImageSections,
   DEFAULT_CUSTOM_BEST_IMAGE_FILTERS,
@@ -76,17 +55,15 @@ import {
   type BestImageRatingStyle,
   type BestImageStyleSelections,
 } from '@/features/best-image/best-image-style-preferences';
+import {
+  BestImageChoiceChip,
+  BestImageScreenShell,
+  bestImageScreenSharedStyles,
+} from '@/features/best-image/best-image-screen-shell';
+import { useBestImageScreenController } from '@/features/best-image/use-best-image-screen-controller';
 import { useBestImageCollections } from '@/features/best-image/use-best-image-collections';
 import { loadBestImageJackets } from '@/features/best-image/load-best-image-jackets';
-import {
-  bestImageCaptureDimensions,
-  bestImageExportFilename,
-  deleteBestImageCapture,
-  isDrawViewHierarchyError,
-  requestBestImageExportPermission,
-  saveBestImageCapture,
-  shouldUseBestImageRenderInContext,
-} from '@/features/best-image/best-image-export';
+import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   prepareBestImageWebViewSources,
   type BestImageWebViewSource,
@@ -99,6 +76,8 @@ import {
   prepareMaimaiUi,
   type MaimaiUiProgress,
 } from '@/features/best-image/maimai-ui-cache';
+import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
+import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
 import type { Directory } from 'expo-file-system';
 
 const IMAGE_TYPES: { id: BestImageType; label: string }[] = [
@@ -140,25 +119,19 @@ const FONT_PROGRESS_LABELS: Record<MaimaiFontProgress['phase'], string> = {
   downloading: '正在下载导出字体',
   ready: '导出字体准备完成',
   error: '导出字体准备失败',
-};function ChoiceChip({ label, selected, disabled = false, onPress, accessibilityLabel }: {
-  label: string;
-  selected: boolean;
-  disabled?: boolean;
-  onPress: () => void;
-  accessibilityLabel?: string;
-}) {
-  const theme = useAppTheme();
-  return <Pressable
-    accessibilityLabel={accessibilityLabel ?? label}
-    accessibilityRole="button"
-    accessibilityState={{ disabled, selected }}
-    disabled={disabled}
-    onPress={onPress}
-    style={[styles.chip, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, disabled && styles.chipDisabled]}
-  >
-    <Text style={[styles.chipText, { color: theme.textSecondary }, selected && { color: theme.accent }, disabled && styles.chipTextDisabled]}>{label}</Text>
-  </Pressable>;
-}
+};
+
+/** 控制器偏好对象与舞萌 P2 store 的适配（save 保持原 .catch 吞错语义）。 */
+type MaimaiBestImagePrefs = { selections: BestImageStyleSelections; ratingStyle: BestImageRatingStyle };
+const maimaiPreferencesAdapter = {
+  load: (accountId: string) => bestImageStylePreferencesStore.load(accountId).then((preferences) => ({
+    selections: preferences.selections,
+    ratingStyle: preferences.ratingStyle,
+  })),
+  save: (accountId: string, prefs: MaimaiBestImagePrefs) => bestImageStylePreferencesStore
+    .save(accountId, prefs.selections, prefs.ratingStyle)
+    .catch(() => undefined),
+};
 
 function StylePreview({
   kind,
@@ -193,21 +166,11 @@ export default function BestImageScreen() {
 
 export function MaimaiBestImageScreen() {
   const theme = useAppTheme();
-  const { showNotification } = useNotification();
   const { data, activeAccountId } = useGameData();
-  const window = useWindowDimensions();
-  const [imageType, setImageType] = useState<BestImageType>('best50');
-  const [outputWidth, setOutputWidth] = useState(1080);
-  const [pageHeights, setPageHeights] = useState<Record<string, number>>({});
   const [embeddedAssets, setEmbeddedAssets] = useState<BestImageEmbeddedAssets | null>(null);
   const [assetError, setAssetError] = useState<string | null>(null);
   const [coverUrls, setCoverUrls] = useState<Record<string, string | null> | null>(null);
   const [coverProgress, setCoverProgress] = useState({ completed: 0, total: 0 });
-  const [activePicker, setActivePicker] = useState<BestImageCollectionKind | null>(null);
-  const [styleSelections, setStyleSelections] = useState<BestImageStyleSelections>({});
-  const [ratingStyle, setRatingStyle] = useState<BestImageRatingStyle>('game');
-  const [stylePreferencesReady, setStylePreferencesReady] = useState(false);
-  const [quantityText, setQuantityText] = useState(String(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.quantity));
   const [quantity, setQuantity] = useState(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.quantity);
   const [versions, setVersions] = useState<string[]>([]);
   const [splitVersions, setSplitVersions] = useState(false);
@@ -223,11 +186,6 @@ export function MaimaiBestImageScreen() {
   const [nearMiss, setNearMiss] = useState(false);
   const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
   const [selectedDxRatingTagIds, setSelectedDxRatingTagIds] = useState<number[]>([]);
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [exportPageIndex, setExportPageIndex] = useState<number | null>(null);
-  const [exportHeight, setExportHeight] = useState(minimumBestImageHeight(1080));
-  const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const [webViewStates, setWebViewStates] = useState<Record<string, BestImageWebViewState>>({});
   const [webViewSources, setWebViewSources] = useState<BestImageWebViewSource[] | null>(null);
   const [webViewSourceError, setWebViewSourceError] = useState<string | null>(null);
   const [fontAttempt, setFontAttempt] = useState(0);
@@ -236,10 +194,6 @@ export function MaimaiBestImageScreen() {
   const [fontProgress, setFontProgress] = useState<MaimaiFontProgress>({ phase: 'checking', completed: 0, total: 1, currentFont: null });
   const [uiProgress, setUiProgress] = useState<MaimaiUiProgress>({ phase: 'checking', completed: 0, total: 1, currentEntry: null });
   const [exportAssetError, setExportAssetError] = useState<string | null>(null);
-  const exportCaptureRef = useRef<View>(null);
-  const exportReadyResolver = useRef<((height: number) => void) | null>(null);
-  const exportReadyRejecter = useRef<((error: Error) => void) | null>(null);
-  const exportTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const randomizedSelections = useRef(new Set<string>());
   const collections = useBestImageCollections();
   const maimai = data?.payload.kind === 'maimai' ? data.payload : null;
@@ -247,6 +201,50 @@ export function MaimaiBestImageScreen() {
   const basePlayer = player ?? FALLBACK_PLAYER;
   const rating = maimai?.playerScore.value ?? 0;
   const frameSource = RATING_FRAME_SOURCES[ratingFrameIndex(rating)]!;
+
+  const controller = useBestImageScreenController<BestImageType, MaimaiBestImagePrefs, BestImageCollectionKind>(
+    {
+      accountId: activeAccountId,
+      defaultType: 'best50',
+      defaultWidth: 1080,
+      defaultQuantityText: String(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.quantity),
+      defaultPreferences: { selections: {}, ratingStyle: 'game' },
+      preferences: maimaiPreferencesAdapter,
+      onPreferencesLoadStart: () => { randomizedSelections.current.clear(); },
+      defaultExportHeight: minimumBestImageHeight,
+      wrapExportPageError: true,
+      exportBusyIncludesIndex: true,
+      previewRenderingGuard: true,
+    },
+  );
+  const {
+    width: outputWidth,
+    type: imageType,
+    quantityText,
+    prefs,
+    prefsReady: stylePreferencesReady,
+    setPrefs,
+    picker: activePicker,
+    setPicker: setActivePicker,
+    pageHeights,
+    setPageHeights,
+    pageIndex: currentPageIndex,
+    setPageIndex: setCurrentPageIndex,
+    previewStates: webViewStates,
+    setPreviewStates: setWebViewStates,
+    exportIndex: exportPageIndex,
+    exportHeight,
+    exportStatus,
+    exportCaptureRef,
+    exportImages: runExportImages,
+    cancelExportRequest,
+    handleExportMessage,
+    handlePreviewMessage,
+  } = controller;
+  const { selections: styleSelections, ratingStyle } = prefs;
+  const setRatingStyle = (nextRatingStyle: BestImageRatingStyle) => {
+    setPrefs((current) => ({ ...current, ratingStyle: nextRatingStyle }));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -283,24 +281,6 @@ export function MaimaiBestImageScreen() {
   }, [fontAttempt]);
 
   useEffect(() => {
-    let cancelled = false;
-    setStylePreferencesReady(false);
-    randomizedSelections.current.clear();
-    bestImageStylePreferencesStore.load(activeAccountId).then((preferences) => {
-      if (cancelled) return;
-      setStyleSelections(preferences.selections);
-      setRatingStyle(preferences.ratingStyle);
-      setStylePreferencesReady(true);
-    });
-    return () => { cancelled = true; };
-  }, [activeAccountId]);
-
-  useEffect(() => {
-    if (!stylePreferencesReady) return;
-    void bestImageStylePreferencesStore.save(activeAccountId, styleSelections, ratingStyle).catch(() => undefined);
-  }, [activeAccountId, ratingStyle, stylePreferencesReady, styleSelections]);
-
-  useEffect(() => {
     const items = collections.data?.items;
     if (!stylePreferencesReady || !items) return;
     const needsUpdate = STYLE_ITEMS.some(({ kind }) => {
@@ -310,11 +290,11 @@ export function MaimaiBestImageScreen() {
       return !randomizedSelections.current.has(`${activeAccountId ?? 'local-preview'}:${kind}`);
     });
     if (!needsUpdate) return;
-    setStyleSelections((current) => {
-      const next = { ...current };
+    setPrefs((current) => {
+      const next = { ...current.selections };
       let changed = false;
       for (const { kind } of STYLE_ITEMS) {
-        const selection = current[kind];
+        const selection = current.selections[kind];
         if (selection?.mode === 'item' && !items.some((item) => item.kind === kind && item.id === selection.item.id)) {
           delete next[kind];
           changed = true;
@@ -334,9 +314,9 @@ export function MaimaiBestImageScreen() {
           changed = true;
         }
       }
-      return changed ? next : current;
+      return changed ? { ...current, selections: next } : current;
     });
-  }, [activeAccountId, collections.data?.items, stylePreferencesReady, styleSelections]);
+  }, [activeAccountId, collections.data?.items, prefs, setPrefs, stylePreferencesReady, styleSelections]);
 
   const previewPlayer = useMemo(() => ({
     displayName: basePlayer.displayName,
@@ -443,7 +423,7 @@ export function MaimaiBestImageScreen() {
   useEffect(() => {
     setCurrentPageIndex(0);
     setPageHeights({});
-  }, [imageType, pageStructureKey]);
+  }, [imageType, pageStructureKey, setCurrentPageIndex, setPageHeights]);
 
   const coverRequestKey = JSON.stringify(scoreSections.flatMap((section) => section.records.map((record) => record.songId)));
   useEffect(() => {
@@ -490,12 +470,8 @@ export function MaimaiBestImageScreen() {
       setWebViewSourceError('WebView 本地页面准备失败');
     }
   }, [coverUrls, embeddedAssets, assetsDirectory, htmlGenerationKey]);
-  const screenWidth = window.width > 0 ? window.width : 390;
-  const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
-  const previewHeight = previewWidth * 4 / 3;
-  const currentPage = pages[Math.min(currentPageIndex, pages.length - 1)]!;
-  const outputHeight = pageHeights[currentPage.id] ?? minimumBestImageHeight(outputWidth);
-  const currentWebViewState = webViewStates[currentPage.id];
+  const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
+  const currentWebViewState = webViewStates[pages[Math.min(currentPageIndex, pages.length - 1)]!.id];
   const webViewStatusText = webViewSourceError
     ? 'WebView 版本未知 · 本地页面准备失败'
     : webViewSources
@@ -511,15 +487,10 @@ export function MaimaiBestImageScreen() {
 
   useBestImageWebViewTimeout(
     !!webViewSources,
-    currentPage.id,
+    pages[Math.min(currentPageIndex, pages.length - 1)]!.id,
     currentWebViewState?.phase,
     setWebViewStates,
   );
-
-  const chooseWidth = (nextWidth: number) => {
-    setOutputWidth(nextWidth);
-    setPageHeights({});
-  };
 
   const handleSoloAchievementChange = (value: MaimaiFcAchievement | null) => {
     setSoloAchievement(value);
@@ -554,361 +525,174 @@ export function MaimaiBestImageScreen() {
   const selectCollection = (choice: BestImageCollectionChoice) => {
     if (!activePicker) return;
     if (choice.mode === 'random') randomizedSelections.current.add(`${activeAccountId ?? 'local-preview'}:${activePicker}`);
-    setStyleSelections((current) => {
-      const next = { ...current };
+    setPrefs((current) => {
+      const next = { ...current.selections };
       if (choice.mode === 'current') delete next[activePicker];
       else next[activePicker] = choice;
-      return next;
+      return { ...current, selections: next };
     });
     setActivePicker(null);
   };
 
-  const waitForExportPage = (pageIndex: number): Promise<number> => new Promise((resolve, reject) => {
-    if (exportTimeout.current) clearTimeout(exportTimeout.current);
-    exportReadyResolver.current = resolve;
-    exportReadyRejecter.current = reject;
-    const pageId = pages[pageIndex]?.id;
-    const knownHeight = pageId ? pageHeights[pageId] : undefined;
-    // Prefer the preview-measured height so the export WebView never first mounts at the
-    // minimum 3:4 box and letterboxes while assets resolve on page 2+.
-    setExportHeight(knownHeight ?? minimumBestImageHeight(outputWidth));
-    setExportPageIndex(pageIndex);
-    exportTimeout.current = setTimeout(() => {
-      exportReadyResolver.current = null;
-      exportReadyRejecter.current = null;
-      reject(new Error('图片渲染超时'));
-    }, 30_000);
+  const exportImages = () => runExportImages({
+    pages,
+    htmlPages,
+    sources: webViewSources,
+    canExport: assetsReady && formValid,
+    buildExportFilename: (index, pageCount) => bestImageExportFilename(basePlayer.displayName, imageType, index, pageCount),
   });
 
-  const handleExportMessage = (dataValue: string) => {
-    const measured = parseBestImageHeightMessage(dataValue, outputWidth);
-    if (measured !== null) setExportHeight(measured);
-    const readyHeight = parseBestImageReadyMessage(dataValue, outputWidth);
-    if (readyHeight === null || !exportReadyResolver.current) return;
-    setExportHeight(readyHeight);
-    const resolve = exportReadyResolver.current;
-    exportReadyResolver.current = null;
-    exportReadyRejecter.current = null;
-    if (exportTimeout.current) clearTimeout(exportTimeout.current);
-    exportTimeout.current = null;
-    // Allow the native capture view to adopt the final height and the WebView to re-fit at scale 1.
-    setTimeout(() => resolve(readyHeight), 320);
-  };
-
-  const exportImages = async () => {
-    if (!htmlPages || !webViewSources || !assetsReady || !formValid || exportBusy) return;
-    const captures: { uri: string; filename: string }[] = [];
-    try {
-      await requestBestImageExportPermission();
-      for (let index = 0; index < htmlPages.length; index += 1) {
-        setExportStatus(`正在导出 ${index + 1}/${htmlPages.length}`);
-        let uri: string;
-        try {
-          const height = await waitForExportPage(index);
-          const dimensions = bestImageCaptureDimensions(outputWidth, height, PixelRatio.get(), Platform.OS);
-          const useRenderInContext = shouldUseBestImageRenderInContext(Platform.OS, outputWidth, height);
-          const captureOptions = {
-            format: 'png',
-            quality: 1,
-            result: 'tmpfile',
-            ...dimensions,
-            ...(useRenderInContext ? { useRenderInContext: true } : {}),
-          } as const;
-          try {
-            uri = await captureRef(exportCaptureRef, captureOptions);
-          } catch (error) {
-            if (Platform.OS !== 'ios' || useRenderInContext || !isDrawViewHierarchyError(error)) throw error;
-            uri = await captureRef(exportCaptureRef, { ...captureOptions, useRenderInContext: true });
-          }
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : '未知错误';
-          throw new Error(`第 ${index + 1}/${htmlPages.length} 页渲染失败：${reason}`);
-        }
-        captures.push({
-          uri,
-          filename: bestImageExportFilename(basePlayer.displayName, imageType, index, htmlPages.length),
-        });
-      }
-      setExportPageIndex(null);
-      for (let index = 0; index < captures.length; index += 1) {
-        setExportStatus(`正在保存 ${index + 1}/${captures.length}`);
-        try {
-          await saveBestImageCapture(captures[index]!.uri, captures[index]!.filename);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : '未知错误';
-          throw new Error(`第 ${index + 1}/${captures.length} 页保存失败：${reason}`);
-        }
-      }
-      showNotification({
-        title: '导出完成',
-        message: `已保存 ${captures.length} 张成绩图片到相册`,
-        variant: 'success',
-      });
-    } catch (error) {
-      showNotification({
-        title: '导出失败',
-        message: error instanceof Error ? error.message : '无法导出成绩图片',
-        variant: 'error',
-      });
-    } finally {
-      if (exportTimeout.current) clearTimeout(exportTimeout.current);
-      exportTimeout.current = null;
-      exportReadyResolver.current = null;
-      exportReadyRejecter.current = null;
-      setExportPageIndex(null);
-      setExportStatus(null);
-      captures.forEach((capture) => deleteBestImageCapture(capture.uri));
-    }
-  };
-
-  return <>
-    <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <Text style={[styles.label, { color: theme.text }]}>选择类型</Text>
+  return <BestImageScreenShell
+    imageTypes={IMAGE_TYPES}
+    activeType={imageType}
+    onSelectType={(id) => controller.setType(id)}
+    customPanelBody={imageType === 'custom' ? <>
+      <MaimaiFilterBar
+        collapsed={false}
+        collapsible={false}
+        onCollapsedChange={() => undefined}
+        difficulty={difficulty}
+        version="all"
+        type={type}
+        constantMin={constantMin}
+        constantMax={constantMax}
+        achievementMin={achievementMin}
+        achievementMax={achievementMax}
+        soloAchievement={soloAchievement}
+        multiAchievement={multiAchievement}
+        versionLocale={versionLocale}
+        versions={versionOptions}
+        dxRatingTags={dxRatingChartTags.data?.tags ?? []}
+        selectedDxRatingTagIds={selectedDxRatingTagIds}
+        dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+        versionMulti
+        selectedVersions={versions}
+        currentVersionTitle={maimai?.currentVersionTitle}
+        onDifficultyChange={setDifficulty}
+        onVersionChange={() => undefined}
+        onTypeChange={setType}
+        onConstantMinChange={setConstantMin}
+        onConstantMaxChange={setConstantMax}
+        onAchievementMinChange={setAchievementMin}
+        onAchievementMaxChange={setAchievementMax}
+        onSoloAchievementChange={handleSoloAchievementChange}
+        onMultiAchievementChange={handleMultiAchievementChange}
+        onVersionLocaleChange={setVersionLocale}
+        onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+        onVersionsChange={handleVersionsChange}
+        onReset={resetCustomFilters}
+      />
+      <View style={styles.fieldRow}>
+        <View style={styles.textFieldWrap}>
+          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
+          <TextInput accessibilityLabel="自定义数量" autoCorrect={false} value={quantityText} onChangeText={(value) => {
+            controller.setQuantityText(value);
+            const parsed = parseBestImageQuantity(value);
+            if (parsed !== null) setQuantity(parsed);
+          }} placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, quantityError && styles.textInputError]} />
+          {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
+        </View>
+      </View>
+      <View style={styles.chipRow}>
+        <BestImageChoiceChip accessibilityLabel="区分版本" label="区分版本" disabled={versions.length < 2} reportDisabledState selected={splitVersions} onPress={() => setSplitVersions((value) => !value)} styles={{ chip: styles.chip, chipText: styles.chipText, chipDisabled: styles.chipDisabled, chipTextDisabled: styles.chipTextDisabled }} />
+        <BestImageChoiceChip accessibilityLabel="寸筛选" label="寸" reportDisabledState selected={nearMiss} onPress={() => setNearMiss((value) => !value)} styles={{ chip: styles.chip, chipText: styles.chipText, chipDisabled: styles.chipDisabled, chipTextDisabled: styles.chipTextDisabled }} />
+        <BestImageChoiceChip accessibilityLabel="严格筛选" label="严格筛选" disabled={!hasAchievementFilter} reportDisabledState selected={strictAchievement} onPress={() => setStrictAchievement((value) => !value)} styles={{ chip: styles.chip, chipText: styles.chipText, chipDisabled: styles.chipDisabled, chipTextDisabled: styles.chipTextDisabled }} />
+      </View>
+    </> : null}
+    styleListHeader={<View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
       <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
-        {IMAGE_TYPES.map((item) => {
-          const selected = imageType === item.id;
-          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setImageType(item.id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
-            <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item.label}</Text>
+        {RATING_STYLES.map(({ id, label }) => {
+          const selected = ratingStyle === id;
+          return <Pressable key={id} accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setRatingStyle(id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+            <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{label}</Text>
           </Pressable>;
         })}
       </View>
-
-      {imageType === 'custom' ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
-        <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>
-        <MaimaiFilterBar
-          collapsed={false}
-          collapsible={false}
-          onCollapsedChange={() => undefined}
-          difficulty={difficulty}
-          version="all"
-          type={type}
-          constantMin={constantMin}
-          constantMax={constantMax}
-          achievementMin={achievementMin}
-          achievementMax={achievementMax}
-          soloAchievement={soloAchievement}
-          multiAchievement={multiAchievement}
-          versionLocale={versionLocale}
-          versions={versionOptions}
-          dxRatingTags={dxRatingChartTags.data?.tags ?? []}
-          selectedDxRatingTagIds={selectedDxRatingTagIds}
-          dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
-          versionMulti
-          selectedVersions={versions}
-          currentVersionTitle={maimai?.currentVersionTitle}
-          onDifficultyChange={setDifficulty}
-          onVersionChange={() => undefined}
-          onTypeChange={setType}
-          onConstantMinChange={setConstantMin}
-          onConstantMaxChange={setConstantMax}
-          onAchievementMinChange={setAchievementMin}
-          onAchievementMaxChange={setAchievementMax}
-          onSoloAchievementChange={handleSoloAchievementChange}
-          onMultiAchievementChange={handleMultiAchievementChange}
-          onVersionLocaleChange={setVersionLocale}
-          onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
-          onVersionsChange={handleVersionsChange}
-          onReset={resetCustomFilters}
-        />
-        <View style={styles.fieldRow}>
-          <View style={styles.textFieldWrap}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
-            <TextInput accessibilityLabel="自定义数量" autoCorrect={false} value={quantityText} onChangeText={(value) => {
-              setQuantityText(value);
-              const parsed = parseBestImageQuantity(value);
-              if (parsed !== null) setQuantity(parsed);
-            }} placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, quantityError && styles.textInputError]} />
-            {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
-          </View>
-        </View>
-        <View style={styles.chipRow}>
-          <ChoiceChip accessibilityLabel="区分版本" label="区分版本" disabled={versions.length < 2} selected={splitVersions} onPress={() => setSplitVersions((value) => !value)} />
-          <ChoiceChip accessibilityLabel="寸筛选" label="寸" selected={nearMiss} onPress={() => setNearMiss((value) => !value)} />
-          <ChoiceChip accessibilityLabel="严格筛选" label="严格筛选" disabled={!hasAchievementFilter} selected={strictAchievement} onPress={() => setStrictAchievement((value) => !value)} />
-        </View>
-      </View> : null}
-
-      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>样式选择</Text>
-      <View style={[styles.styleList, { backgroundColor: theme.surface }]}>
-        <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
-          <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
-            {RATING_STYLES.map(({ id, label }) => {
-              const selected = ratingStyle === id;
-              return <Pressable key={id} accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setRatingStyle(id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
-                <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{label}</Text>
-              </Pressable>;
-            })}
-          </View>
-        </View>
-        {STYLE_ITEMS.map(({ kind, label }) => {
-          const selection = styleSelections[kind];
-          const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;
-          const fallbackName = kind === 'trophy' ? basePlayer.presentation?.trophyName : `玩家当前${label}`;
-          const selectionName = selection?.mode === 'off' ? '已关闭' : selection?.mode === 'random' ? `随机 · ${selection.item.name}` : selectedItem?.name ?? fallbackName ?? '未设置';
-          return <Pressable key={kind} accessibilityLabel={`选择${label}`} accessibilityRole="button" onPress={() => setActivePicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
-            <View style={styles.stylePreview}><StylePreview kind={kind} selection={selection} player={basePlayer} /></View>
-            <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{label}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{selectionName}</Text></View>
-            <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-          </Pressable>;
-        })}
-      </View>
-
-      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>分辨率</Text>
-      <View style={styles.widthOptions}>
-        {OUTPUT_WIDTHS.map((width) => {
-          const selected = outputWidth === width;
-          return <Pressable key={width} accessibilityLabel={`宽度 ${width} 像素`} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => chooseWidth(width)} style={[styles.widthOption, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}>
-            <Text style={[styles.widthOptionText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{width}px</Text>
-          </Pressable>;
-        })}
-      </View>
-      <Text style={[styles.dimensionMeta, { color: theme.textMuted }]}>{outputWidth} × {outputHeight} px · 每页最多 {maximumRowsPerPage} 行 · 第 {currentPageIndex + 1}/{pages.length} 页</Text>
-
-      <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>预览</Text>
-      <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
-        {webViewSources ? <FlatList
-          data={webViewSources}
-          horizontal
-          initialNumToRender={2}
-          keyExtractor={(_, index) => pages[index]!.id}
-          maxToRenderPerBatch={3}
-          onMomentumScrollEnd={(event) => setCurrentPageIndex(Math.round(event.nativeEvent.contentOffset.x / previewWidth))}
-          pagingEnabled
-          renderItem={({ item: source, index }) => <View style={{ width: previewWidth, height: previewHeight }}>
-            <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} allowFileAccessFromFileURLs allowingReadAccessToURL={assetsDirectory?.uri} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']}
-              onError={() => updateBestImageWebViewState(setWebViewStates, pages[index]!.id, 'error')}
-              onLoadEnd={() => markBestImageWebViewLoaded(setWebViewStates, pages[index]!.id)}
-              onLoadStart={() => updateBestImageWebViewState(setWebViewStates, pages[index]!.id, 'loading')}
-              onMessage={(event) => {
-                const pageId = pages[index]!.id;
-                const runtime = parseBestImageRuntimeMessage(event.nativeEvent.data, outputWidth);
-                if (runtime) updateBestImageWebViewRenderingState(setWebViewStates, pageId, runtime.version);
-                const measuredHeight = parseBestImageHeightMessage(event.nativeEvent.data, outputWidth);
-                if (measuredHeight !== null) {
-                  setPageHeights((current) => ({ ...current, [pageId]: measuredHeight }));
-                  updateBestImageWebViewRenderingState(setWebViewStates, pageId);
-                }
-                const readyHeight = parseBestImageReadyMessage(event.nativeEvent.data, outputWidth);
-                if (readyHeight !== null) updateBestImageWebViewState(setWebViewStates, pageId, 'ready');
-              }}
-              onRenderProcessGone={(event) => updateBestImageWebViewState(setWebViewStates, pages[index]!.id, event.nativeEvent.didCrash ? 'crashed' : 'terminated')}
-              scrollEnabled={false} source={source} style={styles.webview} testID={`best-image-html-preview-${index}`} />
-          </View>}
-          showsHorizontalScrollIndicator={false}
-          removeClippedSubviews={false}
-          style={styles.previewPager}
-          windowSize={3}
-        /> : <View style={styles.loadingPreview}>
-          {exportAssetError || assetError || webViewSourceError ? <View style={styles.loadingContent}>
-            <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{exportAssetError ?? assetError ?? webViewSourceError}</Text>
-            {exportAssetError ? <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
-              <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
-            </Pressable> : null}
-          </View> : <View style={styles.loadingContent}>
-            <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
-            <Text style={[styles.loadingText, { color: theme.textMuted }]}>{!assetsDirectory ? assetStatusText : coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
-          </View>}
-        </View>}
-      </View>
-      {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === currentPageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
-      {webViewSources && !assetsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: exportAssetError ? theme.danger : theme.border }]}>
-        {exportAssetError ? <>
-          <Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{exportAssetError}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
-            <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
-          </Pressable>
-        </> : <>
-          <ActivityIndicator color={theme.accent} size="small" />
-          <Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{assetStatusText}；所需素材准备完成后可导出</Text>
-        </>}
-      </View> : null}
-      <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={!webViewSources || !assetsReady || !formValid || exportBusy} onPress={() => void exportImages()} style={[styles.exportButton, { backgroundColor: theme.accent }, (!webViewSources || !assetsReady || !formValid || exportBusy) && styles.exportButtonDisabled]}>
-        {exportBusy ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
-        <Text style={styles.exportButtonText}>{exportStatus ?? (assetsReady ? '导出到相册' : '所需素材准备完成后可导出')}</Text>
-      </Pressable>
-      <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID="best-image-webview-status">{webViewStatusText}</Text>
-    </ScrollView>
-
-    <BestImageCollectionPicker visible={activePicker !== null} kind={activePicker} items={collections.data?.items ?? []} selectedId={activePicker && (styleSelections[activePicker]?.mode === 'item' || styleSelections[activePicker]?.mode === 'random') ? styleSelections[activePicker].item.id : null} selectedMode={activePicker ? styleSelections[activePicker]?.mode ?? 'current' : 'current'} isLoading={collections.isLoading} isError={collections.isError} onRetry={() => { void collections.refetch(); }} onClose={() => setActivePicker(null)} onSelect={selectCollection} />
-
-    <Modal visible={exportPageIndex !== null} animationType="none" transparent={false} onRequestClose={() => exportReadyRejecter.current?.(new Error('导出已取消'))}>
-      {exportPageIndex !== null && htmlPages?.[exportPageIndex] && webViewSources?.[exportPageIndex] ? <View style={styles.exportRoot}>
-        <View ref={exportCaptureRef} collapsable={false} style={{ width: outputWidth / PixelRatio.get(), height: exportHeight / PixelRatio.get(), backgroundColor: '#E7EDF5' }}>
-          <WebView
-            key={`export-${exportPageIndex}-${outputWidth}`}
-            accessibilityLabel={`导出渲染 第${exportPageIndex + 1}页`}
-            allowFileAccess={Platform.OS === 'android'}
-            allowFileAccessFromFileURLs
-            allowingReadAccessToURL={assetsDirectory?.uri}
-            androidLayerType="software"
-            bounces={false}
-            javaScriptEnabled
-            mixedContentMode="never"
-            originWhitelist={['*']}
-            onMessage={(event) => handleExportMessage(event.nativeEvent.data)}
-            scrollEnabled={false}
-            source={webViewSources[exportPageIndex]}
-            style={styles.webview}
-          />
-        </View>
-        <View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View>
-      </View> : null}
-    </Modal>
-  </>;
+    </View>}
+    styleRows={STYLE_ITEMS.map(({ kind, label }) => {
+      const selection = styleSelections[kind];
+      const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;
+      const fallbackName = kind === 'trophy' ? basePlayer.presentation?.trophyName : `玩家当前${label}`;
+      const selectionName = selection?.mode === 'off' ? '已关闭' : selection?.mode === 'random' ? `随机 · ${selection.item.name}` : selectedItem?.name ?? fallbackName ?? '未设置';
+      return <Pressable key={kind} accessibilityLabel={`选择${label}`} accessibilityRole="button" onPress={() => setActivePicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
+        <View style={styles.stylePreview}><StylePreview kind={kind} selection={selection} player={basePlayer} /></View>
+        <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{label}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{selectionName}</Text></View>
+        <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
+      </Pressable>;
+    })}
+    widths={OUTPUT_WIDTHS}
+    activeWidth={outputWidth}
+    onChooseWidth={(nextWidth) => {
+      controller.setWidth(nextWidth);
+      setPageHeights({});
+    }}
+    dimensionMeta={`${outputWidth} × ${outputHeight} px · 每页最多 ${maximumRowsPerPage} 行 · 第 ${currentPageIndex + 1}/${pages.length} 页`}
+    previewTestIdPrefix="best-image"
+    sources={webViewSources}
+    pages={pages}
+    pageIndex={currentPageIndex}
+    onPageIndexChange={setCurrentPageIndex}
+    onPreviewStatesChange={setWebViewStates}
+    onPreviewMessage={handlePreviewMessage}
+    fileAccessFromFileURLs
+    allowingReadAccessToUrl={assetsDirectory?.uri}
+    loadingPreview={exportAssetError || assetError || webViewSourceError ? <View style={styles.loadingContent}>
+      <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{exportAssetError ?? assetError ?? webViewSourceError}</Text>
+      {exportAssetError ? <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
+        <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
+      </Pressable> : null}
+    </View> : <View style={styles.loadingContent}>
+      <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
+      <Text style={[styles.loadingText, { color: theme.textMuted }]}>{!assetsDirectory ? assetStatusText : coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
+    </View>}
+    fontStatus={webViewSources && !assetsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: exportAssetError ? theme.danger : theme.border }]}>
+      {exportAssetError ? <>
+        <Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{exportAssetError}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
+          <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
+        </Pressable>
+      </> : <>
+        <ActivityIndicator color={theme.accent} size="small" />
+        <Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{assetStatusText}；所需素材准备完成后可导出</Text>
+      </>}
+    </View> : null}
+    fontStatusAboveDots={false}
+    exportDisabled={!webViewSources || !assetsReady || !formValid || exportBusy}
+    exportSpinner={exportBusy}
+    exportIdleLabel={assetsReady ? '导出到相册' : '所需素材准备完成后可导出'}
+    exportStatus={exportStatus}
+    onExport={() => void exportImages()}
+    statusTestId="best-image-webview-status"
+    statusText={webViewStatusText}
+    exportIndex={exportPageIndex}
+    exportHeight={exportHeight}
+    exportSource={exportPageIndex !== null && htmlPages?.[exportPageIndex] && webViewSources?.[exportPageIndex] ? webViewSources[exportPageIndex]! : null}
+    exportWebViewKeyPrefix="export"
+    captureRef={exportCaptureRef}
+    captureBackgroundColor="#E7EDF5"
+    onExportMessage={handleExportMessage}
+    onRequestCloseExport={cancelExportRequest}
+    pickers={<BestImageCollectionPicker visible={activePicker !== null} kind={activePicker} items={collections.data?.items ?? []} selectedId={activePicker && (styleSelections[activePicker]?.mode === 'item' || styleSelections[activePicker]?.mode === 'random') ? styleSelections[activePicker].item.id : null} selectedMode={activePicker ? styleSelections[activePicker]?.mode ?? 'current' : 'current'} isLoading={collections.isLoading} isError={collections.isError} onRetry={() => { void collections.refetch(); }} onClose={() => setActivePicker(null)} onSelect={selectCollection} />}
+    styles={styles}
+  />;
 }
 
-const styles = StyleSheet.create({
-  page: { flex: 1 },
-  content: { padding: 16, paddingBottom: 32, alignItems: 'stretch' },
-  label: { fontSize: 15, fontWeight: '800', marginBottom: 10 },
-  sectionLabel: { marginTop: 24 },
-  segmentedControl: { flexDirection: 'row', padding: 4, borderRadius: 14 },
-  segment: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  segmentText: { fontSize: 14, fontWeight: '700' },
-  customPanel: { marginTop: 16, padding: 14, gap: 10, borderRadius: 16 },
-  panelTitle: { fontSize: 15, fontWeight: '800' },
-  fieldRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+const maimaiStyles = StyleSheet.create({
+  // 舞萌差异键：数量输入行（fieldLabel 带 marginBottom、无 gap 汇聚）、
+  // 错误文案字号、chip 行、禁用 chip、素材错误/重试、素材状态条、导出遮罩底色。
   textFieldWrap: { flex: 1, minWidth: 0 },
   fieldLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
-  textInput: { minHeight: 40, paddingHorizontal: 11, borderWidth: 1, borderRadius: 10, fontSize: 14 },
-  textInputError: { borderColor: '#D92D20' },
   errorText: { marginTop: 4, fontSize: 10, lineHeight: 14 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  chip: { minWidth: 46, height: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11, borderWidth: 1, borderRadius: 999 },
   chipDisabled: { opacity: 0.42 },
-  chipText: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
   chipTextDisabled: { color: '#9CA3AF' },
-  styleList: { overflow: 'hidden', borderRadius: 16 },
-  ratingStyleRow: { paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
-  styleRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth },
-  stylePreview: { width: 132, minHeight: 46, alignItems: 'center', justifyContent: 'center' },
-  styleCopy: { flex: 1, minWidth: 0 },
-  styleName: { fontSize: 14, fontWeight: '800' },
-  styleValue: { fontSize: 12, marginTop: 3 },
-  chevron: { fontSize: 26, fontWeight: '300' },
-  noAsset: { fontSize: 12 },
-  widthOptions: { flexDirection: 'row', gap: 8 },
-  widthOption: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1 },
-  widthOptionText: { fontSize: 13, fontWeight: '700' },
-  dimensionMeta: { fontSize: 12, marginTop: 8, textAlign: 'right' },
-  previewFrame: { alignSelf: 'center', overflow: 'hidden', borderRadius: 18, borderWidth: 1 },
-  previewPager: { flex: 1 },
-  webview: { flex: 1, backgroundColor: 'transparent' },
-  loadingPreview: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingContent: { alignItems: 'center', gap: 10 },
-  loadingText: { fontSize: 12, fontWeight: '600' },
   assetError: { fontSize: 14, fontWeight: '700' },
   retryButton: { minHeight: 34, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 999, borderWidth: 1 },
   retryButtonText: { fontSize: 13, fontWeight: '700' },
   fontStatus: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
   fontStatusText: { fontSize: 12, fontWeight: '600' },
-  pageDots: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  pageDot: { width: 6, height: 6, borderRadius: 3 },
-  exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14 },
-  exportButtonDisabled: { opacity: 0.55 },
-  exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  webViewStatusText: { marginTop: 7, fontSize: 11, lineHeight: 16, textAlign: 'center' },
-  exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#FFFFFF' },
-  exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  exportOverlayText: { fontSize: 14, fontWeight: '700' },
+  exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#E7EDF5' },
 });
+
+/** 共享骨架样式 + 舞萌差异覆盖。 */
+const styles = { ...bestImageScreenSharedStyles, ...maimaiStyles };

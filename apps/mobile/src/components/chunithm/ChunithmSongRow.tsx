@@ -1,6 +1,5 @@
-import { memo, useState } from 'react';
-import { Image } from 'expo-image';
-import { StyleSheet, Text, View } from 'react-native';
+import { memo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import {
   type ChunithmDifficulty,
   type ChunithmSong,
@@ -30,7 +29,6 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
   displayedVersionTitle?: string;
   matchedAlias?: string;
 }) {
-  const [coverFailed, setCoverFailed] = useState(false);
   const presentation = presentChunithmSong(song);
   const difficulties = [...(displayedDifficulties ?? song.difficulties)].sort(
     (left, right) => left.difficulty - right.difficulty,
@@ -50,21 +48,14 @@ export const ChunithmSongRow = memo(function ChunithmSongRow({
       matchNote={matchedAlias ? `别名：${matchedAlias}` : undefined}
       matchNoteStyle={styles.meta}
       subtitleContent={<>{song.artist ?? '艺术家未知'} · {displayedVersionTitle ?? song.versionTitle}</>}
-      cover={coverFailed ? (
-        <View style={[styles.cover, styles.coverPlaceholder]}>
-          <Text style={styles.coverNote}>♪</Text>
-        </View>
-      ) : (
-        <Image
-          accessibilityLabel={`歌曲封面 ${song.title}`}
-          cachePolicy="disk"
-          contentFit="cover"
-          onError={() => setCoverFailed(true)}
-          source={chunithmJacketUrl(song)}
-          style={styles.cover}
-          transition={120}
-        />
-      )}
+      cover={null}
+      coverImage={{
+        source: chunithmJacketUrl(song),
+        accessibilityLabel: `歌曲封面 ${song.title}`,
+        imageStyle: styles.cover,
+        placeholderStyle: [styles.cover, styles.coverPlaceholder],
+        noteStyle: styles.coverNote,
+      }}
       badges={(
         <View style={styles.difficulties}>
           {difficulties.map((difficulty) => (

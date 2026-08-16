@@ -1,6 +1,5 @@
-import { memo, useState } from 'react';
-import { Image } from 'expo-image';
-import { StyleSheet, Text, View } from 'react-native';
+import { memo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { MuseDashDifficultyBadge } from './MuseDashDifficultyBadge';
 import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { museDashCoverUrl, type MuseDashSong } from '@/domain/muse-dash';
@@ -15,7 +14,6 @@ export const MuseDashSongRow = memo(function MuseDashSongRow({
   albumTitle: string;
   constants?: readonly (number | undefined)[];
 }) {
-  const [coverFailed, setCoverFailed] = useState(false);
   const presentation = presentMuseDashSong({ song, albumTitle }, constants);
   const coverUrl = museDashCoverUrl(song.cover);
   const slots = song.difficulty.flatMap((level, difficultyIndex) =>
@@ -29,21 +27,15 @@ export const MuseDashSongRow = memo(function MuseDashSongRow({
       mainStyle={styles.main}
       titleStyle={styles.title}
       subtitleStyle={styles.meta}
-      cover={coverUrl && !coverFailed ? (
-        <Image
-          accessibilityLabel={`歌曲封面 ${song.name}`}
-          cachePolicy="disk"
-          contentFit="cover"
-          onError={() => setCoverFailed(true)}
-          source={coverUrl}
-          style={styles.cover}
-          transition={120}
-        />
-      ) : (
-        <View style={[styles.cover, styles.coverPlaceholder]}>
-          <Text style={styles.coverNote}>♪</Text>
-        </View>
-      )}      badges={(
+      cover={null}
+      coverImage={{
+        source: coverUrl,
+        accessibilityLabel: `歌曲封面 ${song.name}`,
+        imageStyle: styles.cover,
+        placeholderStyle: [styles.cover, styles.coverPlaceholder],
+        noteStyle: styles.coverNote,
+      }}
+      badges={(
         <View style={styles.difficulties}>
           {slots.map(({ difficultyIndex, level }) => (
             <MuseDashDifficultyBadge

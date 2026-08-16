@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -21,6 +20,8 @@ import { GameChartResultCard } from '@/components/game-content/GameChartResultCa
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
+import { SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
+import { SongDetailHero } from '@/components/game-content/SongDetailHero';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosKyouChartTags, PhigrosKyouChartTagsSheet } from './PhigrosKyouChartTags';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
@@ -156,8 +157,8 @@ export function PhigrosDetailChrome({
     <SharedSongDetailChrome
       topInset={insets.top}
       backStyle={(pressed) => [
-        styles.headerButton,
-        styles.headerFloatingButton,
+        SONG_DETAIL_CHROME_STYLES.headerButton,
+        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
         { top: insets.top, left: 8 },
         pressed && { opacity: 0.7 },
       ]}
@@ -168,10 +169,10 @@ export function PhigrosDetailChrome({
         onPress: onToggleFavorite,
       } : undefined}
       favoriteStyle={(pressed) => [
-        styles.headerButton,
-        styles.headerFloatingButton,
+        SONG_DETAIL_CHROME_STYLES.headerButton,
+        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
         { top: insets.top, right: 8 },
-        favorite && styles.headerFavoriteActive,
+        favorite && SONG_DETAIL_CHROME_STYLES.headerFavoriteActive,
         pressed && { opacity: 0.7 },
       ]}
     />
@@ -260,12 +261,10 @@ function Detail({
 
   return (
     <ScrollView testID="phigros-song-detail-scroll" contentContainerStyle={styles.content}>
-      <View style={[styles.hero, { width, height: width }]}>
-        {coverFailed || !coverSource ? (
-          <View style={[styles.heroPlaceholder, { backgroundColor: theme.input }]}>
-            <Text style={styles.heroPlaceholderNote}>♪</Text>
-          </View>
-        ) : (
+      <SongDetailHero
+        size={width}
+        style={styles.hero}
+        cover={coverFailed || !coverSource ? undefined : (
           <Image
             accessibilityLabel="曲绘"
             cachePolicy="disk"
@@ -286,24 +285,22 @@ function Detail({
             transition={120}
           />
         )}
-        <LinearGradient
-          pointerEvents="none"
-          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
-          locations={[0, 1]}
-          style={styles.heroShade}
+        placeholderStyle={[styles.heroPlaceholder, { backgroundColor: theme.input }]}
+        placeholderNoteStyle={styles.heroPlaceholderNote}
+        shadeColors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']}
+        shadeStyle={styles.heroShade}
+        copyStyle={styles.heroCopy}
+      >
+        <Text numberOfLines={1} style={styles.songId}>#{song.id}</Text>
+        <AutoScrollText
+          testID="phigros-song-title-scroll"
+          text={song.title}
+          textStyle={styles.title}
+          style={styles.singleLine}
+          contentContainerStyle={styles.singleLineContent}
         />
-        <View style={styles.heroCopy}>
-          <Text numberOfLines={1} style={styles.songId}>#{song.id}</Text>
-          <AutoScrollText
-            testID="phigros-song-title-scroll"
-            text={song.title}
-            textStyle={styles.title}
-            style={styles.singleLine}
-            contentContainerStyle={styles.singleLineContent}
-          />
-          <Text numberOfLines={1} style={styles.artist}>{song.artist ?? '曲师未知'}</Text>
-        </View>
-      </View>
+        <Text numberOfLines={1} style={styles.artist}>{song.artist ?? '曲师未知'}</Text>
+      </SongDetailHero>
 
       <SongMetadataTable
         accessibilityLabel="歌曲详情数据"
@@ -722,9 +719,6 @@ export const PHIGROS_SONG_DETAIL_STYLES = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8,
   },
   artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
-  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerFavoriteActive: {},
   metadataTable: {
     flexDirection: 'row', alignItems: 'flex-start',
     borderBottomWidth: StyleSheet.hairlineWidth,

@@ -1,8 +1,5 @@
-import { useState } from 'react';
-import MaskedView from '@react-native-masked-view/masked-view';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Animated, StyleSheet, Text, View } from 'react-native';
-import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
+import { StyleSheet, Text, View } from 'react-native';
+import { FlowingGradientValue } from '@/components/game-content/FlowingGradientValue';
 
 type GradientColors = readonly [string, string, ...string[]];
 
@@ -84,61 +81,35 @@ function FlowingGradientText({
   testID: string;
   accessibilityLabel: string;
 }) {
-  const [width, setWidth] = useState(120);
-  const progress = useFlowingProgress(true, duration);
-  const measuredWidth = Math.max(width, 1);
-  const trackWidth = measuredWidth * FLOW_GRADIENT_REPEATS;
-  const translateX = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-trackWidth + measuredWidth, 0],
-  });
   const textStyle = [styles.score, { fontSize, lineHeight }];
 
   return (
-    <View style={styles.scoreMeasureWrap}>
-      <Text
-        pointerEvents="none"
-        style={[...textStyle, styles.scoreMeasure]}
-        onLayout={(event) => {
-          const next = Math.ceil(event.nativeEvent.layout.width);
-          if (next > 0 && next !== width) setWidth(next);
-        }}
-      >
-        {text}
-      </Text>
-      <MaskedView
-        accessible
-        accessibilityLabel={accessibilityLabel}
-        maskElement={(
-          <View style={styles.scoreMaskRoot}>
-            <Text style={[...textStyle, styles.scoreMaskText]}>{text}</Text>
-          </View>
-        )}
-        style={[styles.scoreMask, { width: measuredWidth, height: lineHeight }]}
-        testID={testID}
-      >
-        <View style={{ width: measuredWidth, height: lineHeight }}>
-          <Animated.View
-            style={[
-              styles.flowTrack,
-              {
-                width: trackWidth,
-                height: lineHeight,
-                transform: [{ translateX }],
-              },
-            ]}
-          >
-            <LinearGradient
-              colors={colors}
-              end={{ x: 1, y: 0.5 }}
-              start={{ x: 0, y: 0.5 }}
-              style={{ width: trackWidth, height: lineHeight }}
-              testID={`${testID}-gradient`}
-            />
-          </Animated.View>
+    <FlowingGradientValue
+      accessible
+      accessibilityLabel={accessibilityLabel}
+      duration={duration}
+      flowing
+      initialWidth={120}
+      maskElement={(
+        <View style={styles.scoreMaskRoot}>
+          <Text style={[...textStyle, styles.scoreMaskText]}>{text}</Text>
         </View>
-      </MaskedView>
-    </View>
+      )}
+      maskStyle={(state) => [styles.scoreMask, { width: state.width, height: lineHeight }]}
+      measure="hidden-text"
+      measureTextStyle={[...textStyle, styles.scoreMeasure]}
+      measureWrapStyle={styles.scoreMeasureWrap}
+      text={text}
+      testID={testID}
+      alignTrackToContent
+      trackHeight={lineHeight}
+      trackMultiplier={FLOW_GRADIENT_REPEATS}
+      trackStyle={styles.flowTrack}
+      trackWrapStyle={(state) => ({ width: state.width, height: lineHeight })}
+      flowingColors={colors}
+      flowingStyle={(state) => ({ width: state.trackWidth, height: lineHeight })}
+      flowingTestID={`${testID}-gradient`}
+    />
   );
 }
 

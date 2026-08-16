@@ -1,5 +1,4 @@
 import { memo, useState } from 'react';
-import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Animated,
@@ -10,6 +9,7 @@ import {
   type TextStyle,
 } from 'react-native';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
+import { FlowingGradientValue } from '@/components/game-content/FlowingGradientValue';
 import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 import {
   chunithmAchievementBadges,
@@ -85,39 +85,26 @@ export function ChunithmGradientScore({
   height?: number;
   textStyle?: StyleProp<TextStyle>;
 }) {
-  const [width, setWidth] = useState(180);
-  const progress = useFlowingProgress(flowing, 1_800);
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
   return (
-    <MaskedView
+    <FlowingGradientValue
       accessibilityLabel={text}
-      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-      style={[styles.scoreMask, { height }]}
-      testID={flowing ? 'flowing-chunithm-score' : 'gradient-chunithm-score'}
+      duration={1_800}
+      flowing={flowing}
+      flowingColors={CHUNITHM_FLOWING_RANK_GRADIENT}
+      flowingLocations={CHUNITHM_FLOWING_RANK_LOCATIONS}
+      flowingStyle={StyleSheet.absoluteFill}
+      flowingTestID="chunithm-flowing-score-gradient"
+      initialWidth={180}
       maskElement={<Text style={[styles.score, textStyle, styles.maskText]}>{text}</Text>}
-    >
-      {flowing ? (
-        <Animated.View style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
-          <LinearGradient
-            colors={CHUNITHM_FLOWING_RANK_GRADIENT}
-            end={{ x: 1, y: 0.5 }}
-            locations={CHUNITHM_FLOWING_RANK_LOCATIONS}
-            start={{ x: 0, y: 0.5 }}
-            style={StyleSheet.absoluteFill}
-            testID="chunithm-flowing-score-gradient"
-          />
-        </Animated.View>
-      ) : (
-        <LinearGradient
-          colors={CHUNITHM_RANK_GRADIENT}
-          end={{ x: 1, y: 0.5 }}
-          locations={CHUNITHM_RANK_GRADIENT_LOCATIONS}
-          start={{ x: 0, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-          testID="chunithm-static-score-gradient"
-        />
-      )}
-    </MaskedView>
+      maskStyle={[styles.scoreMask, { height }]}
+      measure="mask-layout"
+      staticColors={CHUNITHM_RANK_GRADIENT}
+      staticLocations={CHUNITHM_RANK_GRADIENT_LOCATIONS}
+      staticStyle={StyleSheet.absoluteFill}
+      staticTestID="chunithm-static-score-gradient"
+      testID={flowing ? 'flowing-chunithm-score' : 'gradient-chunithm-score'}
+      trackStyle={styles.flowTrack}
+    />
   );
 }
 
@@ -226,42 +213,55 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
       mainStyle={styles.main}
       presentation={presentation}
       pressedStyle={styles.pressed}
-      side={<View style={styles.ratingBlock}>
-        <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
-        <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>
-          {formatChunithmRating(record.rating)}
-        </Text>
-      </View>}
-      testID={`chunithm-score-card-${record.key}`}
-      titleStyle={styles.title}
-    >
-        {scoreGradient ? (
-          <ChunithmGradientScore flowing={record.rank === 'SSS+'} text={scoreText} />
-        ) : (
-          <Text style={[styles.score, { color: theme.text }]}>{scoreText}</Text>
-        )}
-        <View style={styles.tagRows}>
-          <View style={styles.tagRow} testID={`chunithm-primary-tags-${record.key}`}>
-            <ChunithmDifficultyBadge
-              constant={record.difficultyConstant}
-              display="label-and-value"
-              level={record.level}
-              levelIndex={record.levelIndex}
-              worldsEndLabel={record.worldsEndLabel}
-            />
-            <RankBadge rank={record.rank} />
-          </View>
-          <View style={styles.tagRow} testID={`chunithm-achievement-tags-${record.key}`}>
-            {achievements.map((achievement) => (
+      metricSide={{
+        blockStyle: styles.ratingBlock,
+        lines: [
+          { text: 'Rating', style: styles.ratingLabel, color: theme.textMuted },
+          {
+            text: formatChunithmRating(record.rating),
+            style: styles.rating,
+            color: record.rating === undefined ? theme.textMuted : theme.accent,
+          },
+        ],
+      }}
+      tagRows={{
+        containerStyle: styles.tagRows,
+        rowStyle: styles.tagRow,
+        rows: [
+          {
+            testID: `chunithm-primary-tags-${record.key}`,
+            content: <>
+              <ChunithmDifficultyBadge
+                constant={record.difficultyConstant}
+                display="label-and-value"
+                level={record.level}
+                levelIndex={record.levelIndex}
+                worldsEndLabel={record.worldsEndLabel}
+              />
+              <RankBadge rank={record.rank} />
+            </>,
+          },
+          {
+            testID: `chunithm-achievement-tags-${record.key}`,
+            content: achievements.map((achievement) => (
               <AchievementBadge
                 key={achievement.id}
                 label={achievement.label}
                 testID={`chunithm-${achievement.id}-${achievement.tone}`}
                 tone={achievement.tone}
               />
-            ))}
-          </View>
-        </View>
+            )),
+          },
+        ],
+      }}
+      testID={`chunithm-score-card-${record.key}`}
+      titleStyle={styles.title}
+    >
+      {scoreGradient ? (
+        <ChunithmGradientScore flowing={record.rank === 'SSS+'} text={scoreText} />
+      ) : (
+        <Text style={[styles.score, { color: theme.text }]}>{scoreText}</Text>
+      )}
     </GameScoreCard>
   );
 });

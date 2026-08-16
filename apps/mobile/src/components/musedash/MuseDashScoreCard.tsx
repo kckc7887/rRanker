@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { MuseDashAccValue } from './MuseDashAccValue';
 import { MuseDashAchievementBadge, MuseDashGradeBadge, MuseDashNeutralBadge, MuseDashRankBadge } from './MuseDashBadges';
@@ -34,38 +34,50 @@ export const MuseDashScoreCard = memo(function MuseDashScoreCard({
       mainStyle={styles.main}
       presentation={presentation}
       pressedStyle={styles.pressed}
-      side={<View style={styles.ratingBlock}>
-        <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
-        <Text style={[styles.rating, { color: theme.accent }]}>{ratingText}</Text>
-      </View>}
+      metricSide={{
+        blockStyle: styles.ratingBlock,
+        lines: [
+          { text: 'Rating', style: styles.ratingLabel, color: theme.textMuted },
+          { text: ratingText, style: styles.rating, color: theme.accent },
+        ],
+      }}
+      tagRows={{
+        containerStyle: styles.tagRows,
+        rowStyle: styles.tagRow,
+        testID: `musedash-card-tags-${score.play.uid}-${score.play.difficulty}`,
+        rows: [
+          {
+            content: <>
+              <MuseDashDifficultyBadge
+                constant={score.constant}
+                display="label-and-value"
+                level={score.song?.difficulty[score.play.difficulty]}
+                levelIndex={score.play.difficulty}
+              />
+              {presentation.grade ? <MuseDashGradeBadge label={presentation.grade.label} tone={presentation.grade.tone} /> : null}
+              {presentation.achievementRows.flat().filter((badge) => badge.key === 'achievement').map((badge) => (
+                <MuseDashAchievementBadge key={badge.key} label={badge.label} tone={badge.tone} />
+              ))}
+              {rankBadge ? (rankBadge.tone === 'rank-rainbow'
+                ? <LayeredGradientBadge key="rank" label={rankBadge.label} numberOfLines={1} tone="rainbow"
+                  style={styles.rainbowBadge} textStyle={styles.rainbowBadgeText} />
+                : <MuseDashRankBadge key="rank" label={rankBadge.label} tone={rankBadge.tone} />) : null}
+            </>,
+          },
+          {
+            content: <>
+              {presentation.achievementRows.flat().filter((badge) => badge.key !== 'achievement').map((badge) => (
+                <MuseDashNeutralBadge key={badge.key} label={badge.label} />
+              ))}
+              <MuseDashNeutralBadge label={platform === 'pc' ? 'PC 端' : '移动端'} />
+            </>,
+          },
+        ],
+      }}
       testID={`musedash-score-${score.play.uid}-${score.play.difficulty}`}
       titleStyle={styles.title}
     >
       <MuseDashAccValue acc={score.play.acc} />
-      <View style={styles.tagRows} testID={`musedash-card-tags-${score.play.uid}-${score.play.difficulty}`}>
-        <View style={styles.tagRow}>
-          <MuseDashDifficultyBadge
-            constant={score.constant}
-            display="label-and-value"
-            level={score.song?.difficulty[score.play.difficulty]}
-            levelIndex={score.play.difficulty}
-          />
-          {presentation.grade ? <MuseDashGradeBadge label={presentation.grade.label} tone={presentation.grade.tone} /> : null}
-          {presentation.achievementRows.flat().filter((badge) => badge.key === 'achievement').map((badge) => (
-            <MuseDashAchievementBadge key={badge.key} label={badge.label} tone={badge.tone} />
-          ))}
-          {rankBadge ? (rankBadge.tone === 'rank-rainbow'
-            ? <LayeredGradientBadge key="rank" label={rankBadge.label} numberOfLines={1} tone="rainbow"
-              style={styles.rainbowBadge} textStyle={styles.rainbowBadgeText} />
-            : <MuseDashRankBadge key="rank" label={rankBadge.label} tone={rankBadge.tone} />) : null}
-        </View>
-        <View style={styles.tagRow}>
-          {presentation.achievementRows.flat().filter((badge) => badge.key !== 'achievement').map((badge) => (
-            <MuseDashNeutralBadge key={badge.key} label={badge.label} />
-          ))}
-          <MuseDashNeutralBadge label={platform === 'pc' ? 'PC 端' : '移动端'} />
-        </View>
-      </View>
     </GameScoreCard>
   );
 });

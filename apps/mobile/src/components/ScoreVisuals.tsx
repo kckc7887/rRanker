@@ -4,6 +4,8 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
+import { FlowingGradientValue } from '@/components/game-content/FlowingGradientValue';
+import { GameDifficultyBadge } from '@/components/game-content/GameDifficultyBadge';
 import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 import { useAppTheme } from '@/theme/app-theme';
 import type { ChartType, Difficulty } from '@/domain/models';
@@ -92,35 +94,33 @@ export function DifficultyBadge({ difficulty, constant, display, compact = false
     : effectiveDisplay === 'label-and-constant' && constant !== undefined
       ? `${visual.label} (${constant.toFixed(1)})`
       : visual.label;
-  const badgeStyle = [
+  const badgeVariants = [
     styles.difficultyBadge,
     compact && !mini && styles.difficultyBadgeCompact,
     mini && styles.difficultyBadgeMini,
   ];
-  const textStyle = [
+  const textVariants = [
     styles.difficultyText,
     compact && !mini && styles.difficultyTextCompact,
     mini && styles.difficultyTextMini,
-    { color: visual.badgeText },
   ];
   if (difficulty === 'utage') {
     const label = specialLabel?.trim() || 'U·TA·GE';
-    return <View
+    return <GameDifficultyBadge
       accessibilityLabel={label}
-      style={[...badgeStyle, {
-        backgroundColor: MAIMAI_UTAGE_COLOR,
-        borderColor: MAIMAI_UTAGE_COLOR,
-      }]}
-      testID="maimai-utage-difficulty-badge">
-      <Text numberOfLines={1} style={textStyle}>{label}</Text>
-    </View>;
+      badgeVariants={badgeVariants}
+      testID="maimai-utage-difficulty-badge"
+      text={label}
+      textVariants={textVariants}
+      theme={{ background: MAIMAI_UTAGE_COLOR, border: MAIMAI_UTAGE_COLOR, text: visual.badgeText }}
+    />;
   }
-  return <View style={[
-    ...badgeStyle,
-    { backgroundColor: visual.badgeBackground, borderColor: visual.badgeBorder },
-  ]}>
-    <Text numberOfLines={1} style={textStyle}>{text}</Text>
-  </View>;
+  return <GameDifficultyBadge
+    badgeVariants={badgeVariants}
+    text={text}
+    textVariants={textVariants}
+    theme={{ background: visual.badgeBackground, border: visual.badgeBorder, text: visual.badgeText }}
+  />;
 }
 
 export function ChartTypeBadge({ type }: { type: ChartType }) {
@@ -176,20 +176,22 @@ export function ScoreStatusBadges({ rate, achievements, fc, fs, nearMissFirst = 
 function GradientAchievement({ text, flowing = false, compact = false }: {
   text: string; flowing?: boolean; compact?: boolean;
 }) {
-  const [width, setWidth] = useState(compact ? 170 : 260);
-  const progress = useFlowingProgress(flowing, 1800);
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
   const textStyle = [styles.achievement, compact && styles.achievementCompact, styles.maskText];
-  return <MaskedView accessible accessibilityLabel={text} testID={flowing ? 'flowing-achievement' : 'rainbow-achievement'}
-    onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
-    style={[styles.achievementMask, compact && styles.achievementMaskCompact]}
-    maskElement={<View style={styles.achievementMaskContent}><Text style={textStyle}>{text}</Text></View>}>
-    {flowing ? <Animated.View style={[styles.flowTrack, { width: width * 2, transform: [{ translateX }] }]}>
-      <LinearGradient testID="flowing-achievement-gradient" colors={FLOWING_RAINBOW}
-        start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />
-    </Animated.View> : <LinearGradient testID="rainbow-achievement-gradient" colors={RAINBOW}
-      start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.gradientFill} />}
-  </MaskedView>;
+  return <FlowingGradientValue accessible accessibilityLabel={text}
+    testID={flowing ? 'flowing-achievement' : 'rainbow-achievement'}
+    duration={1800}
+    flowing={flowing}
+    initialWidth={compact ? 170 : 260}
+    measure="mask-layout"
+    maskStyle={[styles.achievementMask, compact && styles.achievementMaskCompact]}
+    maskElement={<View style={styles.achievementMaskContent}><Text style={textStyle}>{text}</Text></View>}
+    trackStyle={styles.flowTrack}
+    flowingColors={FLOWING_RAINBOW}
+    flowingStyle={styles.gradientFill}
+    flowingTestID="flowing-achievement-gradient"
+    staticColors={RAINBOW}
+    staticStyle={styles.gradientFill}
+    staticTestID="rainbow-achievement-gradient" />;
 }
 
 function RateBadge({ value }: { value: string }) {

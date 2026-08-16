@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
 import { useAppTheme } from '@/theme/app-theme';
+import { BestImagePickerShell } from '@/features/best-image/best-image-picker-shell';
 import type { ChunithmBestImageCollectionItem } from './load-chunithm-best-image-collections';
 import type {
   ChunithmBestImageStyleChoice,
@@ -31,7 +28,6 @@ export function ChunithmBestImageStylePicker({
   onSelect: (choice: ChunithmBestImageStyleChoice) => void;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const label = '角色';
 
@@ -54,31 +50,17 @@ export function ChunithmBestImageStylePicker({
   };
 
   return (
-    <Modal
+    <BestImagePickerShell
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.title, { color: theme.text }]}>选择{label}</Text>
-            <Text style={[styles.count, { color: theme.textMuted }]}>{filteredItems.length} 项</Text>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭素材选择" hitSlop={12} onPress={onClose}>
-            <Text style={[styles.close, { color: theme.accent }]}>完成</Text>
-          </Pressable>
-        </View>
-        <TextInput
-          accessibilityLabel={`搜索${label}`}
-          value={query}
-          onChangeText={setQuery}
-          placeholder={`搜索${label}`}
-          placeholderTextColor={theme.textMuted}
-          style={[styles.search, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-        />
+      onClose={onClose}
+      title={['选择', label]}
+      countText={[filteredItems.length, ' 项']}
+      closeLabel="关闭素材选择"
+      searchLabel={`搜索${label}`}
+      searchPlaceholder={`搜索${label}`}
+      query={query}
+      onQueryChange={setQuery}
+      aboveList={(
         <View style={styles.modeRow}>
           <Pressable
             accessibilityRole="button"
@@ -105,39 +87,48 @@ export function ChunithmBestImageStylePicker({
             <Text style={[styles.modeText, { color: theme.textSecondary }, selection?.mode === 'off' && { color: theme.accent }]}>关闭</Text>
           </Pressable>
         </View>
-        <FlatList
-          data={filteredItems}
-          keyExtractor={(item) => `${item.kind}-${item.id}`}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => {
-            const selected = (selection?.mode === 'item' || selection?.mode === 'random')
-              && selection.id === item.id;
-            const uri = buildChunithmCharacterUrl(item.id);
-            return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={`选择${item.name}`}
-                onPress={() => onSelect({ mode: 'item', id: item.id, name: item.name })}
-                style={[styles.item, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
-              >
-                <View style={styles.preview}>
-                  {uri ? (
-                    <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
-                  ) : (
-                    <Text style={[styles.noPreview, { color: theme.textMuted }]}>无预览</Text>
-                  )}
-                </View>
-                <View style={styles.copy}>
-                  <Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.name}</Text>
-                  <Text style={[styles.itemId, { color: theme.textMuted }]}>#{item.id}</Text>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
-      </View>
-    </Modal>
+      )}
+      data={filteredItems}
+      keyExtractor={(item) => `${item.kind}-${item.id}`}
+      flatListProps={{
+        renderItem: ({ item }) => {
+          const selected = (selection?.mode === 'item' || selection?.mode === 'random')
+            && selection.id === item.id;
+          const uri = buildChunithmCharacterUrl(item.id);
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`选择${item.name}`}
+              onPress={() => onSelect({ mode: 'item', id: item.id, name: item.name })}
+              style={[styles.item, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
+            >
+              <View style={styles.preview}>
+                {uri ? (
+                  <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
+                ) : (
+                  <Text style={[styles.noPreview, { color: theme.textMuted }]}>无预览</Text>
+                )}
+              </View>
+              <View style={styles.copy}>
+                <Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.name}</Text>
+                <Text style={[styles.itemId, { color: theme.textMuted }]}>#{item.id}</Text>
+              </View>
+            </Pressable>
+          );
+        },
+      }}
+      styles={{
+        root: styles.root,
+        grabber: styles.grabber,
+        header: styles.header,
+        title: styles.title,
+        count: styles.count,
+        done: styles.close,
+        search: styles.search,
+        listContent: styles.list,
+      }}
+    />
   );
 }
 

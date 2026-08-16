@@ -9,7 +9,7 @@ import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { formatPushAcc } from '@/domain/phigros-push';
 import { resolvePhigrosXingKind } from '@/domain/phigros-xing';
 import { useAppTheme } from '@/theme/app-theme';
-import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { COMPACT_METRIC_CARD_STYLES, GameScoreCard } from '@/components/game-content/GameScoreCard';
 import { presentPhigrosScore } from '@/features/game-content/adapters';
 
 export type PhigrosPushHint = {
@@ -49,13 +49,14 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
     <GameScoreCard
       cardStyle={styles.card}
       mainStyle={styles.main}
+      metricSide={{
+        blockStyle: styles.stats,
+        lines: [
+          { text: pushHint ? formatPushAcc(pushHint.targetAcc) : accText, style: styles.acc, color: theme.text },
+          { text: rksText, style: styles.rks, color: theme.accent },
+        ],
+      }}
       presentation={presentation}
-      side={<View style={styles.stats}>
-        <Text style={[styles.acc, { color: theme.text }]}>
-          {pushHint ? formatPushAcc(pushHint.targetAcc) : accText}
-        </Text>
-        <Text style={[styles.rks, { color: theme.accent }]}>{rksText}</Text>
-      </View>}
       titleStyle={styles.title}
     >
         <PhigrosScoreValue
@@ -86,13 +87,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
 });
 
 export const PHIGROS_SCORE_CARD_STYLES = StyleSheet.create({
-  card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  main: { flex: 1, minWidth: 0, gap: 4 },
-  title: { fontSize: 15, fontWeight: '700' },
-  tags: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  ...COMPACT_METRIC_CARD_STYLES,
   pushLine: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-  stats: { minWidth: 56, alignItems: 'flex-end', gap: 4 },
-  acc: { fontSize: 12, fontWeight: '700' },
-  rks: { fontSize: 20, fontWeight: '900' },
 });
 const styles = PHIGROS_SCORE_CARD_STYLES;

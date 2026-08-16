@@ -1,15 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CollectionImage } from '@/components/CollectionImage';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import type { CollectionItem } from '@/domain/models';
@@ -18,6 +14,7 @@ import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from './best-image-badge-theme';
+import { BestImagePickerShell } from './best-image-picker-shell';
 import type {
   BestImageCollectionChoice,
   BestImageCollectionKind,
@@ -114,7 +111,6 @@ export function BestImageCollectionPicker({
   onSelect: (choice: BestImageCollectionChoice) => void;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const [selectedTrophyLevel, setSelectedTrophyLevel] = useState<TrophyLevel>('all');
   const label = kind ? LABELS[kind] : '';
@@ -146,131 +142,121 @@ export function BestImageCollectionPicker({
   };
 
   return (
-    <Modal
+    <BestImagePickerShell
       visible={visible && kind !== null}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.title, { color: theme.text }]}>选择{label}</Text>
-            <Text style={[styles.count, { color: theme.textMuted }]}>{isLoading ? '正在读取落雪收藏品…' : `${filteredItems.length} 项`}</Text>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭收藏品选择器" hitSlop={12} onPress={onClose}>
-            <Text style={[styles.done, { color: theme.accent }]}>完成</Text>
-          </Pressable>
-        </View>
-        <TextInput
-          accessibilityLabel={`搜索${label}`}
-          autoCorrect={false}
-          clearButtonMode="while-editing"
-          onChangeText={setQuery}
-          placeholder={`搜索${label}名称或 ID`}
-          placeholderTextColor={theme.textMuted}
-          style={[styles.search, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-          value={query}
-        />
-        {kind === 'trophy' ? (
-          <View style={styles.levelSection}>
-            <Text style={[styles.levelLabel, { color: theme.textSecondary }]}>称号等级</Text>
-            <View style={styles.levelFilters}>
-              {TROPHY_LEVELS.map((level) => {
-                const selected = selectedTrophyLevel === level.id;
-                return (
-                  <Pressable
-                    key={level.id}
-                    accessibilityLabel={`筛选称号等级 ${level.label}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    onPress={() => setSelectedTrophyLevel(level.id)}
-                    style={[styles.levelFilter, { borderColor: theme.border, backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
-                  >
-                    <Text style={[styles.levelFilterText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{level.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
-
-        {isLoading && items.length === 0 ? (
-          <View style={styles.center}><ActivityIndicator color={theme.accent} /><Text style={[styles.status, { color: theme.textMuted }]}>正在从落雪读取完整列表</Text></View>
-        ) : isError && items.length === 0 ? (
-          <View style={styles.center}>
-            <Text style={[styles.status, { color: theme.textMuted }]}>落雪收藏品加载失败</Text>
-            <Pressable accessibilityRole="button" onPress={onRetry} style={[styles.retry, { backgroundColor: theme.accent }]}><Text style={styles.retryText}>重试</Text></Pressable>
-          </View>
-        ) : (
-          <FlatList
-            data={filteredItems}
-            initialNumToRender={16}
-            keyExtractor={(item) => `${item.kind}-${item.id}`}
-            keyboardShouldPersistTaps="handled"
-            maxToRenderPerBatch={16}
-            windowSize={7}
-            ListHeaderComponent={(
-              <View style={styles.quickChoices}>
-                <Pressable
-                  accessibilityLabel={`使用玩家当前${label}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: selectedMode === 'current' }}
-                  onPress={() => onSelect({ mode: 'current' })}
-                  style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, styles.currentItem, pressed && styles.pressed]}
-                >
-                  <View style={[styles.currentBadge, { backgroundColor: theme.accentSoft }]}><Text style={[styles.currentBadgeText, { color: theme.accent }]}>当前</Text></View>
-                  <View style={styles.itemCopy}><Text style={[styles.itemName, { color: theme.text }]}>使用玩家当前{label}</Text><Text style={[styles.itemId, { color: theme.textMuted }]}>恢复账号同步的素材</Text></View>
-                  {selectedMode === 'current' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-                </Pressable>
-                <View style={styles.quickChoiceRow}>
-                  <Pressable
-                    accessibilityLabel={`随机${label}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: selectedMode === 'random' }}
-                    disabled={kindItems.length === 0}
-                    onPress={selectRandom}
-                    style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selectedMode === 'random' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-                  >
-                    <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>↻</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>随机</Text>
-                    {selectedMode === 'random' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel={`关闭${label}`}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: selectedMode === 'off' }}
-                    onPress={() => onSelect({ mode: 'off' })}
-                    style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selectedMode === 'off' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-                  >
-                    <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>×</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>关闭</Text>
-                    {selectedMode === 'off' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-                  </Pressable>
-                </View>
-              </View>
-            )}
-            ListEmptyComponent={<Text style={[styles.empty, { color: theme.textMuted }]}>没有符合条件的{label}</Text>}
-            renderItem={({ item }) => {
-              const selected = selectedMode === 'item' && item.id === selectedId;
+      onClose={onClose}
+      title={['选择', label]}
+      countText={isLoading ? '正在读取落雪收藏品…' : `${filteredItems.length} 项`}
+      closeLabel="关闭收藏品选择器"
+      searchLabel={`搜索${label}`}
+      searchPlaceholder={`搜索${label}名称或 ID`}
+      searchProps={{ autoCorrect: false, clearButtonMode: 'while-editing' }}
+      query={query}
+      onQueryChange={setQuery}
+      aboveList={kind === 'trophy' ? (
+        <View style={styles.levelSection}>
+          <Text style={[styles.levelLabel, { color: theme.textSecondary }]}>称号等级</Text>
+          <View style={styles.levelFilters}>
+            {TROPHY_LEVELS.map((level) => {
+              const selected = selectedTrophyLevel === level.id;
               return (
                 <Pressable
-                  accessibilityLabel={`${item.name}，#${item.id}`}
+                  key={level.id}
+                  accessibilityLabel={`筛选称号等级 ${level.label}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  onPress={() => onSelect({ mode: 'item', item })}
-                  style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
+                  onPress={() => setSelectedTrophyLevel(level.id)}
+                  style={[styles.levelFilter, { borderColor: theme.border, backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
                 >
-                  <ItemPreview item={item} />
-                  <View style={styles.itemCopy}><Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.name}</Text><Text style={[styles.itemId, { color: theme.textMuted }]}>#{item.id}{item.kind === 'trophy' ? ` · ${trophyLevelLabel(item.color)}` : ''}</Text></View>
-                  {selected ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+                  <Text style={[styles.levelFilterText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{level.label}</Text>
                 </Pressable>
               );
-            }}
-            contentContainerStyle={styles.listContent}
-          />
-        )}
-      </View>
-    </Modal>
+            })}
+          </View>
+        </View>
+      ) : null}
+      listNode={isLoading && items.length === 0 ? (
+        <View style={styles.center}><ActivityIndicator color={theme.accent} /><Text style={[styles.status, { color: theme.textMuted }]}>正在从落雪读取完整列表</Text></View>
+      ) : isError && items.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={[styles.status, { color: theme.textMuted }]}>落雪收藏品加载失败</Text>
+          <Pressable accessibilityRole="button" onPress={onRetry} style={[styles.retry, { backgroundColor: theme.accent }]}><Text style={styles.retryText}>重试</Text></Pressable>
+        </View>
+      ) : undefined}
+      data={filteredItems}
+      keyExtractor={(item) => `${item.kind}-${item.id}`}
+      flatListProps={{
+        initialNumToRender: 16,
+        keyboardShouldPersistTaps: 'handled',
+        maxToRenderPerBatch: 16,
+        windowSize: 7,
+        ListHeaderComponent: (
+          <View style={styles.quickChoices}>
+            <Pressable
+              accessibilityLabel={`使用玩家当前${label}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selectedMode === 'current' }}
+              onPress={() => onSelect({ mode: 'current' })}
+              style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, styles.currentItem, pressed && styles.pressed]}
+            >
+              <View style={[styles.currentBadge, { backgroundColor: theme.accentSoft }]}><Text style={[styles.currentBadgeText, { color: theme.accent }]}>当前</Text></View>
+              <View style={styles.itemCopy}><Text style={[styles.itemName, { color: theme.text }]}>使用玩家当前{label}</Text><Text style={[styles.itemId, { color: theme.textMuted }]}>恢复账号同步的素材</Text></View>
+              {selectedMode === 'current' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+            </Pressable>
+            <View style={styles.quickChoiceRow}>
+              <Pressable
+                accessibilityLabel={`随机${label}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedMode === 'random' }}
+                disabled={kindItems.length === 0}
+                onPress={selectRandom}
+                style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selectedMode === 'random' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
+              >
+                <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>↻</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>随机</Text>
+                {selectedMode === 'random' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+              </Pressable>
+              <Pressable
+                accessibilityLabel={`关闭${label}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedMode === 'off' }}
+                onPress={() => onSelect({ mode: 'off' })}
+                style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selectedMode === 'off' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
+              >
+                <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>×</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>关闭</Text>
+                {selectedMode === 'off' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+              </Pressable>
+            </View>
+          </View>
+        ),
+        ListEmptyComponent: <Text style={[styles.empty, { color: theme.textMuted }]}>没有符合条件的{label}</Text>,
+        renderItem: ({ item }) => {
+          const selected = selectedMode === 'item' && item.id === selectedId;
+          return (
+            <Pressable
+              accessibilityLabel={`${item.name}，#${item.id}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => onSelect({ mode: 'item', item })}
+              style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
+            >
+              <ItemPreview item={item} />
+              <View style={styles.itemCopy}><Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.name}</Text><Text style={[styles.itemId, { color: theme.textMuted }]}>#{item.id}{item.kind === 'trophy' ? ` · ${trophyLevelLabel(item.color)}` : ''}</Text></View>
+              {selected ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+            </Pressable>
+          );
+        },
+      }}
+      styles={{
+        root: styles.root,
+        grabber: styles.grabber,
+        header: styles.header,
+        title: styles.title,
+        count: styles.count,
+        done: styles.done,
+        search: styles.search,
+        listContent: styles.listContent,
+      }}
+    />
   );
 }
 

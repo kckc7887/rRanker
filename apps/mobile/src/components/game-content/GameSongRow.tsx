@@ -1,9 +1,12 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { Image } from 'expo-image';
 import { router, type Href } from 'expo-router';
 import {
   Pressable,
+  StyleSheet,
   Text,
   View,
+  type ImageStyle,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -11,10 +14,38 @@ import {
 import type { SongRowPresentation } from '@/features/game-content/presentation';
 import { useAppTheme } from '@/theme/app-theme';
 
+/** 封面图两态渲染描述：source 为空或加载失败时回退 ♪ 占位；wrapStyle 提供时额外包一层固定外框。 */
+export type SongRowCoverImage = {
+  source: string | null;
+  accessibilityLabel: string;
+  imageStyle: StyleProp<ImageStyle>;
+  wrapStyle?: StyleProp<ViewStyle>;
+  placeholderStyle: StyleProp<ViewStyle>;
+  noteStyle: StyleProp<TextStyle>;
+};
+
+/**
+ * 固定外框封面行样式组。
+ * 源自 Phigros 布局，Phigros/Phira 共用；收敛到公共层以消除 Phira 对 Phigros 文件的跨游戏样式依赖。
+ */
+export const WRAPPED_COVER_ROW_STYLES = StyleSheet.create({
+  row: { borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  openSong: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  coverWrap: { width: 58, height: 58 },
+  cover: { width: 58, height: 58, borderRadius: 9 },
+  placeholder: { width: 58, height: 58, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  placeholderNote: { color: '#6B7280', fontSize: 24 },
+  meta: { flex: 1, gap: 3 },
+  title: { fontWeight: '700' },
+  composer: { fontSize: 11 },
+  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+});
+
 type GameSongRowProps = {
   presentation: SongRowPresentation;
   cover: ReactNode;
   badges: ReactNode;
+  coverImage?: SongRowCoverImage;
   accessory?: ReactNode;
   rowStyle: StyleProp<ViewStyle>;
   mainStyle: StyleProp<ViewStyle>;
@@ -36,6 +67,7 @@ export function GameSongRow({
   presentation,
   cover,
   badges,
+  coverImage,
   accessory,
   rowStyle,
   mainStyle,
@@ -53,6 +85,8 @@ export function GameSongRow({
   matchNoteStyle,
 }: GameSongRowProps) {
   const theme = useAppTheme();
+  // 封面失败回退状态机：失败后固定 ♪ 占位，直到组件卸载（与各游戏原有行为一致）
+  const [coverFailed, setCoverFailed] = useState(false);
   const openDetail = () => router.push(
     `/songs/${encodeURIComponent(presentation.route.songId)}` as Href,
   );
@@ -61,9 +95,30 @@ export function GameSongRow({
       {presentation.title}
     </Text>
   );
+  const coverImageNode = coverImage && coverImage.source != null && !coverFailed ? (
+    <Image
+      accessibilityLabel={coverImage.accessibilityLabel}
+      cachePolicy="disk"
+      contentFit="cover"
+      onError={() => setCoverFailed(true)}
+      source={coverImage.source}
+      style={coverImage.imageStyle}
+      transition={120}
+    />
+  ) : null;
+  const coverPlaceholderNode = coverImage ? (
+    <View style={coverImage.placeholderStyle}>
+      <Text style={coverImage.noteStyle}>♪</Text>
+    </View>
+  ) : null;
+  const coverNode = !coverImage
+    ? cover
+    : coverImage.wrapStyle !== undefined
+      ? <View style={coverImage.wrapStyle}>{coverImageNode ?? coverPlaceholderNode}</View>
+      : coverImageNode ?? coverPlaceholderNode;
   const content = (
     <>
-      {cover}
+      {coverNode}
       <View style={mainStyle}>
         {titleWrapperStyle ? <View style={titleWrapperStyle}>{title}</View> : title}
         {matchNote != null && (
