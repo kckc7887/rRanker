@@ -45,6 +45,7 @@ jest.mock('expo-sqlite/kv-store', () => ({
 
 jest.mock('@/theme/app-theme', () => ({
   useAppTheme: () => ({
+    dark: true,
     accent: '#246BFD',
     background: '#ffffff',
     text: '#111111',

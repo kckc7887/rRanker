@@ -161,6 +161,10 @@ export function ChartPreviewScreenShell<TPayload>({
     ?? stageError
     ?? playerError;
 
+  // 播放器 WebView 的深浅色底色（与播放器 HTML 的 --bg 保持一致，避免加载闪色）。
+  const webviewBackground = theme.dark ? '#0b0d12' : '#F7F8FA';
+  const loadingOverlayBackground = theme.dark ? 'rgba(11,13,18,0.72)' : 'rgba(247,248,250,0.72)';
+
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
       <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS)} />
@@ -177,7 +181,7 @@ export function ChartPreviewScreenShell<TPayload>({
       ) : (
         <View style={styles.webviewWrap}>
           {!ready ? (
-            <View style={styles.loadingOverlay} pointerEvents="none">
+            <View style={[styles.loadingOverlay, { backgroundColor: loadingOverlayBackground }]} pointerEvents="none">
               <ActivityIndicator color={theme.accent} />
             </View>
           ) : null}
@@ -197,7 +201,7 @@ export function ChartPreviewScreenShell<TPayload>({
             setSupportMultipleWindows={false}
             source={{ uri: source.uri }}
             injectedJavaScriptBeforeContentLoaded={injected}
-            style={styles.webview}
+            style={[styles.webview, { backgroundColor: webviewBackground }]}
             onLoadEnd={() => {
               if (!reInjectOnLoadEnd || request.kind !== 'ready') return;
               const script = buildInjectedJavaScript?.(request.payload);
@@ -245,12 +249,11 @@ const styles = StyleSheet.create({
   error: { fontSize: 16, fontWeight: '700', textAlign: 'center' },
   hint: { fontSize: 13, textAlign: 'center' },
   webviewWrap: { flex: 1 },
-  webview: { flex: 1, backgroundColor: '#0b0d12' },
+  webview: { flex: 1 },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(11,13,18,0.72)',
   },
 });

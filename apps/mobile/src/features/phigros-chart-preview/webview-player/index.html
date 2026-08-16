@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="dark light" />
   <title>谱面确认</title>
   <style>
     :root {
@@ -15,6 +15,31 @@
       --accent: #5b8cff;
       --border: #2a3140;
       --wheel-item-h: 28px;
+      --playhead: #fff;
+      --playhead-glow: 0 0 8px rgba(255,255,255,0.7);
+      --badge-bg: #fff;
+      --badge-text: #0b0d12;
+      --wheel-bg: #0f131a;
+      --overlay-panel: rgba(11,13,18,0.92);
+    }
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #F7F8FA;
+      --panel: #FFFFFF;
+      --text: #111827;
+      --muted: #6B7280;
+      --border: #D1D5DB;
+      --playhead: #111827;
+      --playhead-glow: none;
+      --badge-bg: #111827;
+      --badge-text: #F7F8FA;
+      --wheel-bg: #FFFFFF;
+      --overlay-panel: rgba(247,248,250,0.92);
+    }
+    html[data-theme="light"] .wheel-highlight {
+      border-top-color: rgba(91,140,255,0.55);
+      border-bottom-color: rgba(91,140,255,0.55);
+      background: rgba(91,140,255,0.16);
     }
     * { box-sizing: border-box; }
     html, body {
@@ -226,8 +251,8 @@
       bottom: 0;
       width: 2px;
       border-radius: 2px;
-      background: #fff;
-      box-shadow: 0 0 8px rgba(255,255,255,0.7);
+      background: var(--playhead);
+      box-shadow: var(--playhead-glow);
       pointer-events: none;
       transform: translateX(-1px);
       z-index: 10;
@@ -236,8 +261,8 @@
       position: absolute;
       top: -16px;
       transform: translateX(-50%);
-      background: #fff;
-      color: #0b0d12;
+      background: var(--badge-bg);
+      color: var(--badge-text);
       font-size: 10px;
       font-family: monospace;
       font-weight: 700;
@@ -295,7 +320,7 @@
       height: calc(var(--wheel-item-h) * 3);
       border: 1px solid var(--border);
       border-radius: 10px;
-      background: #0f131a;
+      background: var(--wheel-bg);
       overflow: hidden;
       touch-action: pan-y;
     }
@@ -375,7 +400,7 @@
       inset: auto 0 0;
       border: 0;
       border-radius: 0;
-      background: rgba(11,13,18,0.92);
+      background: var(--overlay-panel);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
       padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
@@ -502,6 +527,7 @@
   </div>
   <script src="./music-data.js"></script>
   <!--PHIGROS_CHART_PREVIEW_CONFIG-->
+  <script>(function(){var c=window.__PHIGROS_CHART_PREVIEW__;if(c&&c.theme==='light'){document.documentElement.setAttribute('data-theme','light');}})();</script>
   <!--PLAYER_SCRIPT-->
 </body>
 </html>

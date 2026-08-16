@@ -35,6 +35,8 @@ export type PhigrosChartPreviewConfig = {
   /** 谱面格式：pgr（默认）或 rpe；RPE 时提供 rpeAssets。 */
   format?: 'pgr' | 'rpe';
   rpeAssets?: PhigrosChartPreviewRpeAssets | null;
+  /** 播放器界面主题：跟随应用深浅色模式，缺省深色（与历史产物一致）。 */
+  theme?: 'light' | 'dark';
 };
 
 const phigrosChartPreviewInjectors = createChartPreviewInjectors<PhigrosChartPreviewConfig>({
@@ -51,6 +53,7 @@ const phigrosChartPreviewInjectors = createChartPreviewInjectors<PhigrosChartPre
     settings: config.settings ?? null,
     format: config.format ?? 'pgr',
     rpeAssets: config.rpeAssets ?? null,
+    theme: config.theme ?? 'dark',
   }),
 });
 

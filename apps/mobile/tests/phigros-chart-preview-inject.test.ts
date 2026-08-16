@@ -30,6 +30,7 @@ describe('phigros chart preview config injection', () => {
       settings: null,
       format: 'pgr',
       rpeAssets: null,
+      theme: 'dark',
     });
   });
 
@@ -62,7 +63,16 @@ describe('phigros chart preview config injection', () => {
         infoYml: 'name: Test',
         shaders: { 'camera_pr.glsl': 'void main(){}' },
       },
+      theme: 'dark',
     });
+  });
+
+  it('浅色主题随配置序列化进 WebView', () => {
+    const parsed = JSON.parse(buildPhigrosChartPreviewConfigJson({
+      game: 'phigros',
+      theme: 'light',
+    }));
+    expect(parsed.theme).toBe('light');
   });
 
   it('把配置脚本写入 HTML 标记并保留注入脚本的合并语义', () => {

@@ -13,6 +13,7 @@ import {
 } from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
 import type { BuddyPreviewSide, ChartPreviewSettings } from '@/features/maimai-chart-preview/chart-preview-inject';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
+import { useAppTheme } from '@/theme/app-theme';
 
 function parseChartType(value: string | undefined): ChartType | null {
   if (value === 'SD' || value === 'DX' || value === 'UTAGE') return value;
@@ -29,6 +30,8 @@ type MappedPreview =
     };
 
 export default function MaimaiChartPreviewScreen() {
+  const theme = useAppTheme();
+  const isDark = theme.dark;
   const params = useLocalSearchParams<{
     songId?: string;
     chartType?: string;
@@ -78,9 +81,13 @@ export default function MaimaiChartPreviewScreen() {
           payload: mapped,
           // 舞萌 prepare 无超时中止（与现状一致），signal 保留接口位不使用。
           prepare: (signal: AbortSignal, settings: unknown) =>
-            prepareChartPreviewWebViewSource({ ...mapped, settings: settings as ChartPreviewSettings }),
+            prepareChartPreviewWebViewSource({
+              ...mapped,
+              settings: settings as ChartPreviewSettings,
+              theme: isDark ? 'dark' : 'light',
+            }),
         }),
-    [mapped],
+    [mapped, isDark],
   );
 
   return (

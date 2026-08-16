@@ -56,6 +56,8 @@ export interface ChartPreviewConfig {
   answerSoundUrl?: string;
   /** Buddy 宴谱预览侧：'0'=1P，'1'=2P，'dual'=1P+2P 同屏。 */
   buddySide?: '0' | '1' | 'dual';
+  /** 播放器界面主题：由 RN 侧按应用深浅色注入。 */
+  theme?: 'light' | 'dark';
 }
 
 const CHART_BASE = 'https://assets2.lxns.net/maimai/chart';
