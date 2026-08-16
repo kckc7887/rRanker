@@ -84,6 +84,7 @@ const mockCatalog: ChunithmCatalogSnapshot = {
 };
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
 }));

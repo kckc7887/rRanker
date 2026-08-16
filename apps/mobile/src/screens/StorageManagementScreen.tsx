@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { StorageDonutChart } from '@/components/StorageDonutChart';
 import { useNotification } from '@/components/AppNotification';
 import { clearStorageByCategories } from '@/features/storage-management/clear-storage-cache';

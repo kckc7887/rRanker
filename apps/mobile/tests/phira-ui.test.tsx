@@ -36,6 +36,7 @@ jest.mock('expo-router', () => ({
 jest.mock('expo-image', () => ({ Image: (props: object) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props} />; } }));
 jest.mock('expo-linear-gradient', () => ({ LinearGradient: ({ children, ...props }: { children?: React.ReactNode }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.View {...props}>{children}</RN.View>; } }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }));
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');

@@ -3,6 +3,8 @@ import type { BestListSection } from '@/domain/game-data';
 import type { CatalogSnapshot, DataSource, Player, ScoreRecord } from '@/domain/models';
 import { PHIGROS_MAX_SCORE, roundRks } from '@/domain/phigros';
 import type { CatalogDrivenScoreProvider } from '@/providers/contracts';
+import { generatedSource } from '@/providers/generated-source';
+
 
 export type MaxedPhigrosSnapshot = {
   player: Player;
@@ -17,14 +19,6 @@ export type MaxedPhigrosSnapshot = {
   source: DataSource;
 };
 
-function generatedSource(): DataSource {
-  return {
-    kind: 'generated',
-    label: '示例查分器（全曲全谱面满成绩）',
-    updatedAt: new Date().toISOString(),
-    isStale: false,
-  };
-}
 
 export function buildMaxedPhigrosRecords(catalog: CatalogSnapshot): ScoreRecord[] {
   return catalog.songs.flatMap((song) => {

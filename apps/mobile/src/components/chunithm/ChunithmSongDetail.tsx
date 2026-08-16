@@ -1,4 +1,4 @@
-import { type ComponentProps, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
@@ -13,10 +13,11 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { Pressable as GesturePressable, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
+import { DetailPressable } from '@/components/game-content/DetailPressable';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
@@ -78,12 +79,6 @@ const DIFFICULTY_CARD_VISUAL: Record<ChunithmLevelIndex, {
 };
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
-
-function DetailPressable(props: ComponentProps<typeof Pressable>) {
-  return Platform.OS === 'android'
-    ? <Pressable {...props} />
-    : <GesturePressable {...props as ComponentProps<typeof GesturePressable>} />;
-}
 
 function mergeSong(
   catalogSong: ChunithmSong | undefined,

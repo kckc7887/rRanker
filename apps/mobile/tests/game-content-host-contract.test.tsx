@@ -18,6 +18,7 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {

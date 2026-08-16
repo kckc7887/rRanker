@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { TufDifficultyBadge } from './TufDifficultyBadge';
 import { TufWorldAchievementBadge } from './TufScoreCard';

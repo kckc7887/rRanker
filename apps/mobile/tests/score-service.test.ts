@@ -1,6 +1,6 @@
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/sanitized';
-import { FixtureCatalogProvider, FixtureProvider } from '@/providers/fixture-provider';
+import { FixtureCatalogProvider, FixtureProvider } from './fixture-provider';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { buildScoreSnapshot, awaitScoreFresh, ScoreService } from '@/services/score-service';

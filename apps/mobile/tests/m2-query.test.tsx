@@ -43,6 +43,7 @@ let mockDxRatingTagState: 'live' | 'cache' | 'error' | 'loading' = 'live';
 let mockUserLibraryData: unknown[] = [];
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/components/AppNotification', () => ({
   NotificationOutlet: () => null,
   useNotification: () => ({

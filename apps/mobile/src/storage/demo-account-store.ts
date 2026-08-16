@@ -1,15 +1,10 @@
 import Storage from 'expo-sqlite/kv-store';
 import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
+import type { KeyValueStore } from '@/storage/create-demo-account-store';
 
 export type DemoAccountProfile = {
   id: string;
   displayName: string;
-};
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
 };
 
 type StoredDemoAccountsV1 = {

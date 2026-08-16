@@ -5,6 +5,7 @@ import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import type { Song } from '@/domain/models';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('expo-image', () => ({ Image: () => null }));
 jest.mock('@/theme/app-theme', () => ({

@@ -1,10 +1,5 @@
 import Storage from 'expo-sqlite/kv-store';
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
+import type { KeyValueStore } from '@/storage/create-demo-account-store';
 
 type StoredChunithmTempAccountV1 = {
   version: 1;

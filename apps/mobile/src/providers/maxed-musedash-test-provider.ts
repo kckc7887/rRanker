@@ -1,5 +1,6 @@
 import { MUSEDASH_TEST_USER_ID } from '@/domain/bound-account';
 import type { DataSource } from '@/domain/models';
+import { generatedSource } from '@/providers/generated-source';
 import {
   museDashDiffdiffMap,
   museDashSongsFromAlbums,
@@ -11,15 +12,6 @@ import {
 } from '@/domain/muse-dash';
 
 export type MaxedMuseDashPlayerSnapshot = { data: MuseDashPlayer; source: DataSource };
-
-function generatedSource(): DataSource {
-  return {
-    kind: 'generated',
-    label: '示例查分器（全曲全谱面满成绩）',
-    updatedAt: new Date().toISOString(),
-    isStale: false,
-  };
-}
 
 /** 单谱面理论满分（Muse Dash 满分 1,000,000）。 */
 export const MUSE_DASH_MAX_SCORE = 1_000_000;
