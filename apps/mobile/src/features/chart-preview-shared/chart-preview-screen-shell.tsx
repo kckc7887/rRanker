@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
 import Storage from 'expo-sqlite/kv-store';
 import {
@@ -168,6 +169,8 @@ export function ChartPreviewScreenShell<TPayload>({
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
       <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS)} />
+      {/* 入口详情页因深色沉浸头声明了白字状态栏且 push 后仍挂载；壳必须显式接管，否则浅色下白字叠白 header。 */}
+      <StatusBar style={theme.statusBar} />
       {blockingError ? (
         <View style={styles.center} accessibilityLabel={`谱面确认错误：${blockingError}`}>
           <Text style={[styles.error, { color: theme.text }]}>{blockingError}</Text>

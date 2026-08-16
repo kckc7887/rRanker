@@ -46,12 +46,22 @@ jest.mock('expo-sqlite/kv-store', () => ({
 jest.mock('@/theme/app-theme', () => ({
   useAppTheme: () => ({
     dark: true,
+    statusBar: 'light',
     accent: '#246BFD',
     background: '#ffffff',
     text: '#111111',
     textMuted: '#666666',
   }),
 }));
+
+jest.mock('expo-status-bar', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');
+  return {
+    StatusBar: (props: { style?: string }) =>
+      React.createElement(ReactNative.View, { testID: `shell-status-bar-${props.style}` }),
+  };
+});
 
 /** 虚构游戏专属 payload：壳对该结构零感知，只透传给注入构建器。 */
 type FictionalPayload = { chartName: string };
@@ -113,6 +123,17 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     expect(screen.getByText('正在准备播放器…')).toBeTruthy();
     expect(countTreeNodesOfType(view.toJSON(), 'ActivityIndicator')).toBe(1);
     expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+  });
+
+  it('壳显式接管状态栏样式，不被栈内前页的深色沉浸头声明覆盖', async () => {
+    await renderFictionalShell({
+      kind: 'ready',
+      payload: { chartName: '虚构谱面' },
+      prepare: async () => fictionalSource,
+    });
+
+    // 主题 mock 的 statusBar 为 'light'；虚构游戏无需自带 StatusBar 组件。
+    expect(screen.getByTestId('shell-status-bar-light')).toBeTruthy();
   });
 
   it('prepare 完成后按虚构配置渲染 WebView 并透传 source 与注入脚本', async () => {
