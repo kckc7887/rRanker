@@ -1,5 +1,5 @@
 import { RenderContext, getGradientColors } from "./BaseRenderer";
-import { NoteRenderer } from "./NoteRenderer";
+import { NoteRenderer, holdRipplePhase } from "./NoteRenderer";
 import { SlideRenderer } from "./SlideRenderer";
 import { HoldRenderer } from "./HoldRenderer";
 import { TouchRenderer } from "./TouchRenderer";
@@ -33,6 +33,7 @@ import {
   RAINBOW_SPEED_DEG_PER_SEC,
   NOTE_HIT_EFFECT_DURATION_MS,
   NOTE_VISIBILITY_AFTER_MS,
+  HOLD_RIPPLE_EXPAND_MS,
 } from "../utils/constants";
 import { fireworkTriggerMs } from "./TouchRenderer";
 
@@ -155,6 +156,7 @@ interface PreparedRenderNotes {
   touchIndex: TimeWindowIndex;
   layeredIndex: TimeWindowIndex;
   approachIndex: TimeWindowIndex;
+  holdIndex: TimeWindowIndex;
   /** 谱面内最小的 note 流速倍率幅值（|<HS*x>|，≤1），粗筛窗口按它放大提前量 */
   minHiSpeed: number;
 }
@@ -274,6 +276,7 @@ export class MainRenderer {
     touchIndex: EMPTY_TIME_WINDOW_INDEX,
     layeredIndex: EMPTY_TIME_WINDOW_INDEX,
     approachIndex: EMPTY_TIME_WINDOW_INDEX,
+    holdIndex: EMPTY_TIME_WINDOW_INDEX,
     minHiSpeed: 1,
   };
   private visibleTouchCountByPos = new Map<string, number>();
@@ -685,8 +688,10 @@ export class MainRenderer {
       );
     }
 
-    // 击打特效画在最上层，盖住所有 note。
+    // 击打特效画在最上层，盖住所有 note；hold 波纹在其下层先行绘制。
     if (this.config.showHitEffect) {
+      const [holdLo, holdHi] = windowRange(prepared.holdIndex, nowMs, 0);
+      this.renderHoldRipples(prepared.holds, holdLo, holdHi, nowMs);
       this.renderTapHitEffect(hitEffectNotes, timing.currentTimeMs);
     }
 
@@ -905,6 +910,8 @@ export class MainRenderer {
     layeredHeads.reverse();
     approachGroups.sort((a, b) => a.timingMs - b.timingMs);
     fireworkTouches.sort((a, b) => fireworkTriggerMs(a) - fireworkTriggerMs(b));
+    // holds 此前仅用于 layeredHeads / approachGroups（已构建完），此处转升序供波纹窗口索引。
+    holds.sort((a, b) => a.timingMs - b.timingMs);
 
     const timingOf = (note: Note) => note.timingMs;
 
@@ -940,6 +947,11 @@ export class MainRenderer {
         approachGroups,
         (group) => group.timingMs,
         (group) => group.timingMs,
+      ),
+      holdIndex: buildTimeWindowIndex(
+        holds,
+        timingOf,
+        (h) => h.timingMs + (60000 * h.duration) / h.bpm + HOLD_RIPPLE_EXPAND_MS,
       ),
     };
   }
@@ -1437,6 +1449,22 @@ export class MainRenderer {
       tap.type === "break",
       isSimultaneous,
     );
+  }
+
+  // hold 波纹：hold 开始到结束期间，判定点上每 0.1s 一圈向外扩散的光环。
+  private renderHoldRipples(
+    holds: readonly HoldStartNote[],
+    lo: number,
+    hi: number,
+    nowMs: number,
+  ): void {
+    for (let i = lo; i < hi; i++) {
+      const hold = holds[i];
+      const phase = holdRipplePhase(hold, nowMs);
+      if (!phase) continue;
+      const p = this.noteRenderer.getPositionOnRing(hold.position);
+      this.noteRenderer.renderHoldRipple(p.x, p.y, COLORS.HIT_EFFECT_GOLD, phase.progress);
+    }
   }
 
   private renderTapHitEffect(notes: Note[], currentTimeMs: number): void {

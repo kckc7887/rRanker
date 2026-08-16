@@ -10,6 +10,15 @@ export const NOTE_VISIBILITY_AFTER_MS = 0;
 /** 打击效果持续时间（毫秒） */
 export const NOTE_HIT_EFFECT_DURATION_MS = 450;
 
+/** Hold 判定点波纹生成间隔（毫秒） */
+export const HOLD_RIPPLE_INTERVAL_MS = 100;
+
+/** Hold 判定点波纹单个扩散时长（毫秒） */
+export const HOLD_RIPPLE_EXPAND_MS = 100;
+
+/** Hold 波纹最大半径相对打击特效中心六边形基准半径的倍数 */
+export const HOLD_RIPPLE_MAX_RADIUS_RATIO = 2;
+
 /** 相邻按钮之间的角度（弧度） */
 export const BUTTON_ANGLE_STEP = Math.PI / 4;
 
