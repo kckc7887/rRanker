@@ -415,7 +415,7 @@ async function main(): Promise<void> {
     r.setMirrorMode((saved.mirrorMode as string) || 'none');
     r.setPinkSlideStart(!!saved.pinkSlideStart);
     r.setSlideRotation(saved.slideRotation ?? true);
-    r.setHighlightExNotes(saved.highlightExNotes ?? true);
+    r.setHighlightExNotes(saved.highlightExNotes ?? false);
     r.setNormalColorBreakSlide(!!saved.normalColorBreakSlide);
     r.setShowHitEffect(saved.showHitEffect ?? true);
     r.setShowFireworks(saved.showFireworks ?? true);
@@ -900,7 +900,7 @@ async function main(): Promise<void> {
 
   setupToggle(togglePink, !!saved.pinkSlideStart, (v) => { for (const r of renderers) r.setPinkSlideStart(v); saveSettings({ pinkSlideStart: v }); });
   setupToggle(toggleStarRot, saved.slideRotation ?? true, (v) => { for (const r of renderers) r.setSlideRotation(v); saveSettings({ slideRotation: v }); });
-  setupToggle(toggleEx, saved.highlightExNotes ?? true, (v) => { for (const r of renderers) r.setHighlightExNotes(v); saveSettings({ highlightExNotes: v }); });
+  setupToggle(toggleEx, saved.highlightExNotes ?? false, (v) => { for (const r of renderers) r.setHighlightExNotes(v); saveSettings({ highlightExNotes: v }); });
   setupToggle(toggleBreakSlide, !!saved.normalColorBreakSlide, (v) => { for (const r of renderers) r.setNormalColorBreakSlide(v); saveSettings({ normalColorBreakSlide: v }); });
   setupToggle(toggleHit, saved.showHitEffect ?? true, (v) => { for (const r of renderers) r.setShowHitEffect(v); saveSettings({ showHitEffect: v }); });
   setupToggle(toggleFirework, saved.showFireworks ?? true, (v) => { for (const r of renderers) r.setShowFireworks(v); saveSettings({ showFireworks: v }); });
