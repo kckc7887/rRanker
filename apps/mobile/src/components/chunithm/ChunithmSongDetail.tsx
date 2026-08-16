@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -23,6 +22,8 @@ import { GameChartResultCard } from '@/components/game-content/GameChartResultCa
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
+import { SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
+import { SongDetailHero } from '@/components/game-content/SongDetailHero';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
 import {
@@ -190,8 +191,8 @@ function DetailChrome({
     <SharedSongDetailChrome
       topInset={insets.top}
       backStyle={(pressed) => [
-        styles.headerButton,
-        styles.headerFloatingButton,
+        SONG_DETAIL_CHROME_STYLES.headerButton,
+        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
         { top: insets.top, left: 8 },
         pressed && styles.pressed,
       ]}
@@ -202,10 +203,10 @@ function DetailChrome({
         onPress: onToggleFavorite,
       } : undefined}
       favoriteStyle={(pressed) => [
-        styles.headerButton,
-        styles.headerFloatingButton,
+        SONG_DETAIL_CHROME_STYLES.headerButton,
+        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
         { top: insets.top, right: 8 },
-        favorite && styles.headerFavoriteActive,
+        favorite && SONG_DETAIL_CHROME_STYLES.headerFavoriteActive,
         pressed && styles.pressed,
         favoriteDisabled && styles.disabled,
       ]}
@@ -329,10 +330,10 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [song.id]);
   return (
-    <View style={[styles.hero, { width, height: width }]}>
-      {failed ? (
-        <View style={styles.heroPlaceholder}><Text style={styles.heroPlaceholderText}>♪</Text></View>
-      ) : (
+    <SongDetailHero
+      size={width}
+      style={styles.hero}
+      cover={failed ? undefined : (
         <Image
           accessibilityLabel={`歌曲封面 ${song.title}`}
           cachePolicy="disk"
@@ -343,18 +344,16 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
           transition={120}
         />
       )}
-      <LinearGradient
-        colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.48)']}
-        locations={[0, 1]}
-        pointerEvents="none"
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.heroCopy}>
-        <HorizontalText text={`#${song.id}`} textStyle={styles.songId} />
-        <HorizontalText text={song.title} textStyle={styles.songTitle} />
-        <HorizontalText text={song.artist ?? '艺术家未知'} textStyle={styles.artist} />
-      </View>
-    </View>
+      placeholderStyle={styles.heroPlaceholder}
+      placeholderNoteStyle={styles.heroPlaceholderText}
+      shadeColors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.48)']}
+      shadeStyle={StyleSheet.absoluteFill}
+      copyStyle={styles.heroCopy}
+    >
+      <HorizontalText text={`#${song.id}`} textStyle={styles.songId} />
+      <HorizontalText text={song.title} textStyle={styles.songTitle} />
+      <HorizontalText text={song.artist ?? '艺术家未知'} textStyle={styles.artist} />
+    </SongDetailHero>
   );
 }
 
@@ -831,9 +830,6 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingBottom: 32 },
-  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerFavoriteActive: {},
   hero: { position: 'relative', overflow: 'hidden' },
   heroPlaceholder: {
     ...StyleSheet.absoluteFillObject,

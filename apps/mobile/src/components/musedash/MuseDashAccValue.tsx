@@ -1,6 +1,5 @@
-import MaskedView from '@react-native-masked-view/masked-view';
-import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, Text, type TextStyle } from 'react-native';
+import { FlowingGradientValue } from '@/components/game-content/FlowingGradientValue';
 import { MUSE_DASH_ACC_GRADIENTS, museDashAccGradientKind } from '@/domain/musedash-acc-theme';
 import { formatMuseDashAcc } from '@/features/game-content/adapters';
 import { useAppTheme } from '@/theme/app-theme';
@@ -18,15 +17,14 @@ export function MuseDashAccValue({ acc, style }: { acc: number | undefined; styl
   }
   const lineHeight = (style as TextStyle | undefined)?.lineHeight ?? styles.value.lineHeight;
   return (
-    <MaskedView
+    <FlowingGradientValue
       accessibilityLabel={text}
-      style={[styles.mask, { height: lineHeight }]}
-      testID={`musedash-acc-gradient-${kind}`}
       maskElement={<Text style={[styles.value, styles.maskText, style]}>{text}</Text>}
-    >
-      <LinearGradient colors={MUSE_DASH_ACC_GRADIENTS[kind]} end={{ x: 1, y: 0.5 }} start={{ x: 0, y: 0.5 }}
-        style={StyleSheet.absoluteFill} />
-    </MaskedView>
+      maskStyle={[styles.mask, { height: lineHeight }]}
+      staticColors={MUSE_DASH_ACC_GRADIENTS[kind]}
+      staticStyle={StyleSheet.absoluteFill}
+      testID={`musedash-acc-gradient-${kind}`}
+    />
   );
 }
 

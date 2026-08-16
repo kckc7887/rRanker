@@ -1,8 +1,7 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Image } from 'expo-image';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { GameSongRow } from '@/components/game-content/GameSongRow';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { GameSongRow, WRAPPED_COVER_ROW_STYLES } from '@/components/game-content/GameSongRow';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import type { Song } from '@/domain/models';
 import { presentStandardSong } from '@/features/game-content/adapters';
@@ -24,7 +23,6 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
   matchedAlias?: string;
 }) {
   const theme = useAppTheme();
-  const [coverFailed, setCoverFailed] = useState(false);
   const presentation = presentStandardSong('phigros', song);
 
   return (
@@ -37,25 +35,15 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
       subtitleStyle={styles.composer}
       matchNote={matchedAlias ? `别名：${matchedAlias}` : undefined}
       matchNoteStyle={styles.composer}
-      cover={(
-        <View style={styles.coverWrap}>
-          {coverFailed || !blurUrl ? (
-            <View style={[styles.placeholder, { backgroundColor: theme.input }]}>
-              <Text style={styles.placeholderNote}>♪</Text>
-            </View>
-          ) : (
-            <Image
-              accessibilityLabel="曲绘"
-              cachePolicy="disk"
-              contentFit="cover"
-              onError={() => setCoverFailed(true)}
-              source={blurUrl}
-              style={styles.cover}
-              transition={120}
-            />
-          )}
-        </View>
-      )}
+      cover={null}
+      coverImage={{
+        source: blurUrl,
+        accessibilityLabel: '曲绘',
+        imageStyle: styles.cover,
+        wrapStyle: styles.coverWrap,
+        placeholderStyle: [styles.placeholder, { backgroundColor: theme.input }],
+        noteStyle: styles.placeholderNote,
+      }}
       badges={(
         <View style={styles.badges}>
             {[...(song.charts ?? [])]
@@ -86,16 +74,7 @@ export const PhigrosSongRow = memo(function PhigrosSongRow({
 });
 
 export const PHIGROS_SONG_ROW_STYLES = StyleSheet.create({
-  row: { borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  openSong: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  coverWrap: { width: 58, height: 58 },
-  cover: { width: 58, height: 58, borderRadius: 9 },
-  placeholder: { width: 58, height: 58, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  placeholderNote: { color: '#6B7280', fontSize: 24 },
-  meta: { flex: 1, gap: 3 },
-  title: { fontWeight: '700' },
-  composer: { fontSize: 11 },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  ...WRAPPED_COVER_ROW_STYLES,
   favorite: { paddingHorizontal: 4, paddingVertical: 8 },
 });
 const styles = PHIGROS_SONG_ROW_STYLES;

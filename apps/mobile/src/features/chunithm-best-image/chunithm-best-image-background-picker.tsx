@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  FlatList,
   Image,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChunithmSong } from '@/domain/chunithm';
 import { useAppTheme } from '@/theme/app-theme';
+import { BestImagePickerShell } from '@/features/best-image/best-image-picker-shell';
 import { filterChunithmBestImageBackgroundSongs } from './chunithm-best-image-background';
 import type { ChunithmBestImageBackgroundChoice } from './chunithm-best-image-preferences';
 import { chunithmBestImageJacketUrl } from './load-chunithm-best-image-jackets';
@@ -30,7 +27,6 @@ export function ChunithmBestImageBackgroundPicker({
   onSelect: (choice: ChunithmBestImageBackgroundChoice) => void;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -42,31 +38,17 @@ export function ChunithmBestImageBackgroundPicker({
   }, [query, songs]);
 
   return (
-    <Modal
+    <BestImagePickerShell
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.title, { color: theme.text }]}>选择歌曲背景</Text>
-            <Text style={[styles.count, { color: theme.textMuted }]}>{filteredSongs.length} 首歌曲</Text>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭背景选择" hitSlop={12} onPress={onClose}>
-            <Text style={[styles.close, { color: theme.accent }]}>完成</Text>
-          </Pressable>
-        </View>
-        <TextInput
-          accessibilityLabel="搜索背景歌曲"
-          value={query}
-          onChangeText={setQuery}
-          placeholder="搜索标题、艺术家或歌曲 ID"
-          placeholderTextColor={theme.textMuted}
-          style={[styles.search, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-        />
+      onClose={onClose}
+      title="选择歌曲背景"
+      countText={[filteredSongs.length, ' 首歌曲']}
+      closeLabel="关闭背景选择"
+      searchLabel="搜索背景歌曲"
+      searchPlaceholder="搜索标题、艺术家或歌曲 ID"
+      query={query}
+      onQueryChange={setQuery}
+      aboveList={(
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ selected: selection.mode === 'default' }}
@@ -86,43 +68,52 @@ export function ChunithmBestImageBackgroundPicker({
             <Text style={[styles.itemMeta, { color: theme.textMuted }]}>浅色渐变</Text>
           </View>
         </Pressable>
-        <FlatList
-          data={filteredSongs}
-          keyExtractor={(song) => String(song.id)}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => {
-            const selected = selection.mode === 'song' && selection.songId === item.id;
-            return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                accessibilityLabel={`使用${item.title}作为背景`}
-                onPress={() => onSelect({ mode: 'song', songId: item.id })}
-                style={[
-                  styles.item,
-                  { backgroundColor: theme.surface, borderColor: theme.border },
-                  selected && { backgroundColor: theme.accentSoft, borderColor: theme.accent },
-                ]}
-              >
-                <View style={[styles.preview, { backgroundColor: theme.surfaceMuted }]}>
-                  <Image
-                    source={{ uri: chunithmBestImageJacketUrl(String(item.id)) }}
-                    style={styles.previewImage}
-                    resizeMode="cover"
-                  />
-                </View>
-                <View style={styles.copy}>
-                  <Text numberOfLines={1} style={[styles.itemName, { color: theme.text }]}>{item.title}</Text>
-                  <Text numberOfLines={1} style={[styles.itemMeta, { color: theme.textMuted }]}>
-                    {item.artist?.trim() || '未知艺术家'} · ID{item.id}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
-      </View>
-    </Modal>
+      )}
+      data={filteredSongs}
+      keyExtractor={(song) => String(song.id)}
+      flatListProps={{
+        renderItem: ({ item }) => {
+          const selected = selection.mode === 'song' && selection.songId === item.id;
+          return (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              accessibilityLabel={`使用${item.title}作为背景`}
+              onPress={() => onSelect({ mode: 'song', songId: item.id })}
+              style={[
+                styles.item,
+                { backgroundColor: theme.surface, borderColor: theme.border },
+                selected && { backgroundColor: theme.accentSoft, borderColor: theme.accent },
+              ]}
+            >
+              <View style={[styles.preview, { backgroundColor: theme.surfaceMuted }]}>
+                <Image
+                  source={{ uri: chunithmBestImageJacketUrl(String(item.id)) }}
+                  style={styles.previewImage}
+                  resizeMode="cover"
+                />
+              </View>
+              <View style={styles.copy}>
+                <Text numberOfLines={1} style={[styles.itemName, { color: theme.text }]}>{item.title}</Text>
+                <Text numberOfLines={1} style={[styles.itemMeta, { color: theme.textMuted }]}>
+                  {item.artist?.trim() || '未知艺术家'} · ID{item.id}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        },
+      }}
+      styles={{
+        root: styles.root,
+        grabber: styles.grabber,
+        header: styles.header,
+        title: styles.title,
+        count: styles.count,
+        done: styles.close,
+        search: styles.search,
+        listContent: styles.list,
+      }}
+    />
   );
 }
 

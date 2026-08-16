@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import MaskedView from '@react-native-masked-view/masked-view';
+import { FlowingGradientValue } from '@/components/game-content/FlowingGradientValue';
 import { resolveDxRatingTheme, type DxRatingTheme } from '@/domain/dx-rating-theme';
 
 const EMPTY_THEME: DxRatingTheme = {
@@ -126,24 +126,19 @@ function RatingValue({
   return (
     <View style={styles.outlinedValueWrap}>
       {colors.length >= 2 ? (
-        <MaskedView
+        <FlowingGradientValue
           // 进程首次挂载的遮罩快照可能为空且不会再重拍（切换账号会重建卡片生效）；
           // 首帧用隐形预热挂载吃掉该坑位，双 rAF 后换 key 重建为正式挂载，与切号路径一致。
           key={maskSettled ? 'gradient-live' : 'gradient-warm'}
           // Android 硬件模式可能缓存首次文字布局前的空遮罩，software 模式可随布局完成立即更新。
           androidRenderingMode="software"
           pointerEvents="none"
-          style={[StyleSheet.absoluteFill, maskSettled ? undefined : styles.outlineWarm]}
+          maskStyle={[StyleSheet.absoluteFill, maskSettled ? undefined : styles.outlineWarm]}
           testID="dx-rating-card-value-gradient"
           maskElement={<RatingOutlineMask display={display} settled={maskSettled} />}
-        >
-          <LinearGradient
-            colors={colors as readonly [string, string, ...string[]]}
-            end={{ x: 1, y: 0.5 }}
-            start={{ x: 0, y: 0.5 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </MaskedView>
+          staticColors={colors as readonly [string, string, ...string[]]}
+          staticStyle={StyleSheet.absoluteFill}
+        />
       ) : (
         <View
           pointerEvents="none"

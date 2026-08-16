@@ -1,6 +1,12 @@
-import { CryptoDigestAlgorithm, digest } from 'expo-crypto';
-import { Directory, File, Paths } from 'expo-file-system';
+import { Directory, File } from 'expo-file-system';
 import JSZip from 'jszip';
+import {
+  clearFontCacheDirectory,
+  createFontCacheDirectories,
+  createFontCacheGuard,
+  errorMessage,
+  sha256,
+} from '@/features/best-image/best-image-font-cache-core';
 
 const FONT_BASE_URL = 'https://rranker-phigros-data.cn-nb1.rains3.com/fonts';
 export const PHIGROS_FONT_CACHE_VERSION = 'v1';
@@ -80,20 +86,6 @@ export type PreparedPhigrosFonts = {
 
 type ProgressListener = (progress: PhigrosFontProgress) => void;
 
-function bytesToHex(value: ArrayBuffer): string {
-  return Array.from(new Uint8Array(value), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const stableBytes = new Uint8Array(bytes.byteLength);
-  stableBytes.set(bytes);
-  return bytesToHex(await digest(CryptoDigestAlgorithm.SHA256, stableBytes));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export type PreparePhigrosFontsOptions = {
   /** 仅准备这些字体；未提供时准备完整清单。核心字体始终包含。 */
   neededNames?: readonly string[];
@@ -102,22 +94,7 @@ export type PreparePhigrosFontsOptions = {
 export function createPhigrosFontPreparer(
   manifest: readonly PhigrosFontManifestEntry[] = PHIGROS_FONT_MANIFEST,
 ) {
-  const inFlightFonts = new Map<string, Promise<File>>();
-
-  const directories = () => {
-    const directory = new Directory(Paths.document, 'rranker', 'phigros-fonts', PHIGROS_FONT_CACHE_VERSION);
-    const fontDirectory = new Directory(directory, 'font');
-    const temporaryDirectory = new Directory(directory, 'tmp');
-    directory.create({ intermediates: true, idempotent: true });
-    fontDirectory.create({ intermediates: true, idempotent: true });
-    temporaryDirectory.create({ intermediates: true, idempotent: true });
-    return { directory, fontDirectory, temporaryDirectory };
-  };
-
-  async function isValidFont(file: File, entry: PhigrosFontManifestEntry): Promise<boolean> {
-    if (!file.exists || file.size !== entry.fontBytes) return false;
-    return await sha256(await file.bytes()) === entry.fontSha256;
-  }
+  const directories = createFontCacheDirectories('phigros-fonts', PHIGROS_FONT_CACHE_VERSION);
 
   async function downloadFont(
     entry: PhigrosFontManifestEntry,
@@ -160,23 +137,7 @@ export function createPhigrosFontPreparer(
     }
   }
 
-  async function ensureFont(
-    entry: PhigrosFontManifestEntry,
-    fontDirectory: Directory,
-    temporaryDirectory: Directory,
-    onDownloadStart: () => void,
-  ): Promise<File> {
-    const file = new File(fontDirectory, entry.cssFileName);
-    if (await isValidFont(file, entry)) return file;
-    if (file.exists) file.delete();
-    const existing = inFlightFonts.get(entry.name);
-    if (existing) return existing;
-    onDownloadStart();
-    const pending = downloadFont(entry, fontDirectory, temporaryDirectory)
-      .finally(() => inFlightFonts.delete(entry.name));
-    inFlightFonts.set(entry.name, pending);
-    return pending;
-  }
+  const { ensureFont } = createFontCacheGuard({ downloadFont });
 
   return async function preparePhigrosFonts(
     onProgress?: ProgressListener,
@@ -231,6 +192,5 @@ export const preparePhigrosFonts = createPhigrosFontPreparer();
 
 /** 清除成绩图字体本地下载缓存（Documents/rranker/phigros-fonts）。 */
 export function clearPhigrosFontCache(): void {
-  const root = new Directory(Paths.document, 'rranker', 'phigros-fonts');
-  if (root.exists) root.delete();
+  clearFontCacheDirectory('phigros-fonts');
 }

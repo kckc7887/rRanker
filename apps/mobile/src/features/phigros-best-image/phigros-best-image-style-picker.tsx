@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  FlatList,
   Image,
   type ImageSourcePropType,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/app-theme';
+import { BestImagePickerShell } from '@/features/best-image/best-image-picker-shell';
 import type { PhigrosImageStyleChoice } from './phigros-best-image-preferences';
 
 export type PhigrosBestImagePickerKind = 'avatar' | 'background';
@@ -43,7 +40,6 @@ export function PhigrosBestImageStylePicker({
   onSelect: (choice: PhigrosImageStyleChoice) => void;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState('');
   const label = kind ? LABELS[kind] : '';
 
@@ -64,101 +60,93 @@ export function PhigrosBestImageStylePicker({
   };
 
   return (
-    <Modal
+    <BestImagePickerShell
       visible={visible && kind !== null}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.title, { color: theme.text }]}>选择{label}</Text>
-            <Text style={[styles.count, { color: theme.textMuted }]}>{filteredItems.length} 项</Text>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="关闭素材选择" hitSlop={12} onPress={onClose}>
-            <Text style={[styles.done, { color: theme.accent }]}>完成</Text>
-          </Pressable>
-        </View>
-        <TextInput
-          accessibilityLabel={`搜索${label}`}
-          autoCorrect={false}
-          clearButtonMode="while-editing"
-          onChangeText={setQuery}
-          placeholder={`搜索${label}名称或 ID`}
-          placeholderTextColor={theme.textMuted}
-          style={[styles.search, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-          value={query}
-        />
-        <FlatList
-          data={filteredItems}
-          initialNumToRender={16}
-          keyExtractor={(item) => item.key}
-          keyboardShouldPersistTaps="handled"
-          maxToRenderPerBatch={16}
-          windowSize={7}
-          ListHeaderComponent={(
-            <View style={styles.quickChoices}>
+      onClose={onClose}
+      title={['选择', label]}
+      countText={[filteredItems.length, ' 项']}
+      closeLabel="关闭素材选择"
+      searchLabel={`搜索${label}`}
+      searchPlaceholder={`搜索${label}名称或 ID`}
+      searchProps={{ autoCorrect: false, clearButtonMode: 'while-editing' }}
+      query={query}
+      onQueryChange={setQuery}
+      data={filteredItems}
+      keyExtractor={(item) => item.key}
+      flatListProps={{
+        initialNumToRender: 16,
+        keyboardShouldPersistTaps: 'handled',
+        maxToRenderPerBatch: 16,
+        windowSize: 7,
+        ListHeaderComponent: (
+          <View style={styles.quickChoices}>
+            <Pressable
+              accessibilityLabel={`使用玩家当前${label}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selection?.mode === 'current' }}
+              onPress={() => onSelect({ mode: 'current' })}
+              style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, styles.currentItem, pressed && styles.pressed]}
+            >
+              <View style={[styles.currentBadge, { backgroundColor: theme.accentSoft }]}><Text style={[styles.currentBadgeText, { color: theme.accent }]}>当前</Text></View>
+              <View style={styles.itemCopy}><Text style={[styles.itemName, { color: theme.text }]}>使用玩家当前{label}</Text><Text style={[styles.itemMeta, { color: theme.textMuted }]}>恢复账号同步的素材</Text></View>
+              {selection?.mode === 'current' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+            </Pressable>
+            <View style={styles.quickChoiceRow}>
               <Pressable
-                accessibilityLabel={`使用玩家当前${label}`}
+                accessibilityLabel={`随机${label}`}
                 accessibilityRole="button"
-                accessibilityState={{ selected: selection?.mode === 'current' }}
-                onPress={() => onSelect({ mode: 'current' })}
-                style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, styles.currentItem, pressed && styles.pressed]}
+                accessibilityState={{ selected: selection?.mode === 'random' }}
+                disabled={items.length === 0}
+                onPress={selectRandom}
+                style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selection?.mode === 'random' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
               >
-                <View style={[styles.currentBadge, { backgroundColor: theme.accentSoft }]}><Text style={[styles.currentBadgeText, { color: theme.accent }]}>当前</Text></View>
-                <View style={styles.itemCopy}><Text style={[styles.itemName, { color: theme.text }]}>使用玩家当前{label}</Text><Text style={[styles.itemMeta, { color: theme.textMuted }]}>恢复账号同步的素材</Text></View>
-                {selection?.mode === 'current' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+                <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>↻</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>随机</Text>
+                {selection?.mode === 'random' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
               </Pressable>
-              <View style={styles.quickChoiceRow}>
-                <Pressable
-                  accessibilityLabel={`随机${label}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: selection?.mode === 'random' }}
-                  disabled={items.length === 0}
-                  onPress={selectRandom}
-                  style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selection?.mode === 'random' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>↻</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>随机</Text>
-                  {selection?.mode === 'random' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-                </Pressable>
-                <Pressable
-                  accessibilityLabel={`关闭${label}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: selection?.mode === 'off' }}
-                  onPress={() => onSelect({ mode: 'off' })}
-                  style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selection?.mode === 'off' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>×</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>关闭</Text>
-                  {selection?.mode === 'off' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-                </Pressable>
-              </View>
+              <Pressable
+                accessibilityLabel={`关闭${label}`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selection?.mode === 'off' }}
+                onPress={() => onSelect({ mode: 'off' })}
+                style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selection?.mode === 'off' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
+              >
+                <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>×</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>关闭</Text>
+                {selection?.mode === 'off' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+              </Pressable>
             </View>
-          )}
-          ListEmptyComponent={<Text style={[styles.empty, { color: theme.textMuted }]}>没有符合条件的{label}</Text>}
-          renderItem={({ item }) => {
-            const selected = selection?.mode === 'item' && selection.key === item.key;
-            return (
-              <Pressable
-                accessibilityLabel={`${item.label}，${item.meta}`}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => onSelect({ mode: 'item', key: item.key })}
-                style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-              >
-                <View style={styles.imagePreview}>
-                  <Image source={item.source} resizeMode="cover" style={kind === 'avatar' ? styles.avatarImage : styles.backgroundImage} />
-                </View>
-                <View style={styles.itemCopy}><Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.label}</Text><Text numberOfLines={1} style={[styles.itemMeta, { color: theme.textMuted }]}>{item.meta}</Text></View>
-                {selected ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-              </Pressable>
-            );
-          }}
-          contentContainerStyle={styles.listContent}
-        />
-      </View>
-    </Modal>
+          </View>
+        ),
+        ListEmptyComponent: <Text style={[styles.empty, { color: theme.textMuted }]}>没有符合条件的{label}</Text>,
+        renderItem: ({ item }) => {
+          const selected = selection?.mode === 'item' && selection.key === item.key;
+          return (
+            <Pressable
+              accessibilityLabel={`${item.label}，${item.meta}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+              onPress={() => onSelect({ mode: 'item', key: item.key })}
+              style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
+            >
+              <View style={styles.imagePreview}>
+                <Image source={item.source} resizeMode="cover" style={kind === 'avatar' ? styles.avatarImage : styles.backgroundImage} />
+              </View>
+              <View style={styles.itemCopy}><Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.label}</Text><Text numberOfLines={1} style={[styles.itemMeta, { color: theme.textMuted }]}>{item.meta}</Text></View>
+              {selected ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
+            </Pressable>
+          );
+        },
+      }}
+      styles={{
+        root: styles.root,
+        grabber: styles.grabber,
+        header: styles.header,
+        title: styles.title,
+        count: styles.count,
+        done: styles.done,
+        search: styles.search,
+        listContent: styles.listContent,
+      }}
+    />
   );
 }
 

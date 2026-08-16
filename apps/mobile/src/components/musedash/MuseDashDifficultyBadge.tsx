@@ -1,7 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
 import { MUSE_DASH_DIFFICULTY_LABELS } from '@/domain/muse-dash';
 import { museDashLevelTheme } from '@/domain/musedash-level-theme';
 import { isNumericMuseDashLevel } from '@/features/game-content/adapters';
+import { GameDifficultyBadge } from '@/components/game-content/GameDifficultyBadge';
 
 export type MuseDashDifficultyBadgeDisplay = 'constant' | 'label' | 'label-and-value';
 
@@ -30,25 +30,5 @@ export function MuseDashDifficultyBadge({
   const accessibilityLabel = display === 'constant'
     ? `${label}，定数 ${constantText ?? '未知'}`
     : `${label}，标级 ${level ?? '未知'}，定数 ${constantText ?? '未知'}`;
-  return (
-    <View
-      accessibilityLabel={accessibilityLabel}
-      style={[styles.badge, { backgroundColor: colors.background, borderColor: colors.border }]}
-    >
-      <Text numberOfLines={1} style={[styles.text, { color: colors.text }]}>{text}</Text>
-    </View>
-  );
+  return <GameDifficultyBadge accessibilityLabel={accessibilityLabel} text={text} theme={colors} />;
 }
-
-const styles = StyleSheet.create({
-  badge: {
-    minWidth: 32,
-    height: 24,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: { fontSize: 9, fontWeight: '900', letterSpacing: 0.25 },
-});
