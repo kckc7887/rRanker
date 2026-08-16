@@ -104,7 +104,8 @@ export async function buildPhiraChartPreviewInput(
   const plan = resolvePhiraChartZipMediaPlan(entries, infoText || null);
   if (!plan.chartEntryName) throw new Error('谱面包中没有可读取的谱面文件');
   const chartEntry = zip.file(plan.chartEntryName)!;
-  const chartBytes = await chartEntry.async('uint8array', () => throwIfAborted(signal));
+  // 取消检查只走顶层 throwIfAborted：JSZip 进度回调中 throw 会穿透 Promise 成为全局未捕获异常。
+  const chartBytes = await chartEntry.async('uint8array');
   throwIfAborted(signal);
   const formatHint = infoText ? infoValue(infoText, 'format') : null;
   if (formatHint?.toLowerCase() === 'pbc' || /\.pbc$/i.test(plan.chartEntryName)) {
@@ -118,7 +119,7 @@ export async function buildPhiraChartPreviewInput(
   if (chartText.length > chartTextLimit) throw new Error('谱面过大，暂不支持预览');
 
   if (!plan.musicEntryName) throw new Error('谱面包缺少音乐文件');
-  const musicBytes = await zip.file(plan.musicEntryName)!.async('uint8array', () => throwIfAborted(signal));
+  const musicBytes = await zip.file(plan.musicEntryName)!.async('uint8array');
   throwIfAborted(signal);
   const musicFile = await staging.stageMusic(musicBytes, zipBasename(plan.musicEntryName, 'music.bin'));
 
@@ -126,7 +127,7 @@ export async function buildPhiraChartPreviewInput(
     ? chart.illustration
     : undefined;
   if (!illustrationUrl && plan.illustrationEntryName) {
-    const imageBytes = await zip.file(plan.illustrationEntryName)!.async('uint8array', () => throwIfAborted(signal));
+    const imageBytes = await zip.file(plan.illustrationEntryName)!.async('uint8array');
     throwIfAborted(signal);
     illustrationUrl = (await staging.stageMusic(imageBytes, zipBasename(plan.illustrationEntryName, 'illustration.png'))).uri;
   }
@@ -142,15 +143,15 @@ export async function buildPhiraChartPreviewInput(
       if (!entry) continue;
       if (file.text) {
         if (file.name === 'extra.json') {
-          extraJson = await entry.async('text', () => throwIfAborted(signal));
+          extraJson = await entry.async('text');
         } else if (/\.glsl$/i.test(file.name)) {
-          shaders[file.name] = await entry.async('text', () => throwIfAborted(signal));
+          shaders[file.name] = await entry.async('text');
         }
         // info.yml 已随 infoText 读取注入；info.txt 等其余文本条目播放器不引用，不落盘。
         throwIfAborted(signal);
         continue;
       }
-      stagedFiles.push({ name: file.name, bytes: await entry.async('uint8array', () => throwIfAborted(signal)) });
+      stagedFiles.push({ name: file.name, bytes: await entry.async('uint8array') });
       throwIfAborted(signal);
     }
     const { basePath } = await staging.stageRpeBundle(input.chartId, stagedFiles);

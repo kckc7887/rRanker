@@ -150,7 +150,10 @@ export async function countPhiraChartZip(data: ArrayBuffer, signal?: AbortSignal
   const chartEntry = (chartName ? zip.file(chartName) : null)
     ?? entries.find((entry) => /\.(json|pec|pbc)$/i.test(entry.name));
   if (!chartEntry) throw new Error('谱面包中没有可读取的谱面文件');
-  const bytes = await chartEntry.async('uint8array', () => throwIfAborted(signal));
+  // 不把取消检查作为进度回调传入：JSZip 的 data 回调运行在自有流机件（setImmediate）里，
+  // 在回调中 throw 不会 reject 该 Promise，而是穿透为全局未捕获异常（RN 打 ERROR 日志）。
+  // 取消语义仅由每个 await 之后的顶层 throwIfAborted 承担。
+  const bytes = await chartEntry.async('uint8array');
   throwIfAborted(signal);
   if (format === 'pbc' || /\.pbc$/i.test(chartEntry.name)) return countPbcNotes(bytes);
   const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
