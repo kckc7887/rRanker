@@ -194,6 +194,23 @@ export class NoteRenderer extends BaseRenderer {
     });
   }
 
+  /** touch / touch-hold 打击特效：以判定位置为圆心的实心圆，扩散到与 hold 波纹同大（基准半径 ×2）；
+   *  时长由调用方传入（TOUCH_HIT_EFFECT_DURATION_MS = 225ms，普通特效一半）；
+   *  透明度 30%→100%（alpha 0.7→0，结束时完全透明）。 */
+  renderTouchHitEffect(x: number, y: number, color: string, progress: number): void {
+    const r = this.getHitEffectBaseRadius() * HOLD_RIPPLE_MAX_RADIUS_RATIO * progress;
+    const alpha = 0.7 * (1 - progress);
+    if (r <= 0 || alpha <= 0) return;
+    this.withContext(() => {
+      const ctx = this.context.ctx;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.fill();
+    });
+  }
+
   renderTapHitEffect(
     x: number,
     y: number,

@@ -10,6 +10,9 @@ export const NOTE_VISIBILITY_AFTER_MS = 0;
 /** 打击效果持续时间（毫秒） */
 export const NOTE_HIT_EFFECT_DURATION_MS = 450;
 
+/** touch / touch-hold 打击特效持续时间（毫秒）：为普通特效的一半，消失速度 2x */
+export const TOUCH_HIT_EFFECT_DURATION_MS = NOTE_HIT_EFFECT_DURATION_MS / 2;
+
 /** Hold 判定点波纹生成间隔（毫秒） */
 export const HOLD_RIPPLE_INTERVAL_MS = 100;
 
