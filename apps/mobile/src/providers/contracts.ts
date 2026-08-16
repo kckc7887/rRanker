@@ -23,15 +23,16 @@ export interface ScoreProvider {
   getPlayer(): Promise<Player>;
   getRecords(): Promise<ScoreRecord[]>;
 }
-export interface CatalogDrivenScoreProvider {
+/** 曲库驱动的查分器：各游戏保留自己的曲库模型（默认为统一 CatalogSnapshot），成绩统一产出 ScoreRecord[]。 */
+export interface CatalogDrivenScoreProvider<TCatalog = CatalogSnapshot> {
   getPlayer(): Promise<Player>;
-  getRecordsFromCatalog(catalog: CatalogSnapshot): Promise<ScoreRecord[]>;
+  getRecordsFromCatalog(catalog: TCatalog): Promise<ScoreRecord[]>;
 }
 export type AnyScoreProvider = ScoreProvider | CatalogDrivenScoreProvider;
 
-export function isCatalogDrivenScoreProvider(
-  provider: AnyScoreProvider,
-): provider is CatalogDrivenScoreProvider {
+export function isCatalogDrivenScoreProvider<TCatalog = CatalogSnapshot>(
+  provider: ScoreProvider | CatalogDrivenScoreProvider<TCatalog>,
+): provider is CatalogDrivenScoreProvider<TCatalog> {
   return 'getRecordsFromCatalog' in provider;
 }
 export interface CatalogProvider {

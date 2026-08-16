@@ -6,6 +6,8 @@ import type {
   ChunithmPlayer,
   ChunithmScore,
 } from '@/domain/chunithm-personal';
+import type { Player, ScoreRecord } from '@/domain/models';
+import type { CatalogDrivenScoreProvider } from '@/providers/contracts';
 import { generatedSource } from '@/providers/generated-source';
 
 type RatedGeneratedScore = {
@@ -47,29 +49,61 @@ export function maxChunithmChartOverPower(levelValue: number): number {
   return roundToTwo((Math.max(0, levelValue) + 3) * 5);
 }
 
+/** 中二难度档 → 统一难度槽位：0-4 按档位序号对齐（ULTIMA 落 remaster 槽），WORLD'S END 落特殊谱面槽。 */
+const CHUNITHM_UNIFIED_DIFFICULTIES = [
+  'basic', 'advanced', 'expert', 'master', 'remaster', 'utage',
+] as const;
+
+/** 统一模型侧：为每个未禁用谱面生成满成绩 ScoreRecord（WORLD'S END 无 Rating 语义，记 0）。 */
+export function buildMaxedChunithmRecords(catalog: ChunithmCatalogSnapshot): ScoreRecord[] {
+  return catalog.songs.flatMap((song) => {
+    if (song.disabled) return [];
+    return song.difficulties.map((difficulty): ScoreRecord => ({
+      songId: String(song.id),
+      type: 'SD',
+      levelIndex: difficulty.difficulty,
+      level: difficulty.level,
+      difficulty: CHUNITHM_UNIFIED_DIFFICULTIES[difficulty.difficulty],
+      difficultyConstant: difficulty.levelValue,
+      charter: difficulty.noteDesigner,
+      versionId: difficulty.versionId,
+      title: song.title,
+      achievements: 101,
+      dxScore: null,
+      rating: difficulty.difficulty === 5 ? 0 : maxChunithmChartRating(difficulty.levelValue),
+      fc: 'alljusticecritical',
+      fs: null,
+      rate: 'sssp',
+      version: song.versionTitle,
+    }));
+  });
+}
+
+/** 转换层：统一 ScoreRecord → 旧 ChunithmScore 兼容模型（存储/展示边界，字段值与迁移前直构完全一致）。 */
+function chunithmScoreFromRecord(record: ScoreRecord): ChunithmScore {
+  return {
+    id: Number(record.songId),
+    song_name: record.title,
+    level: record.level,
+    level_index: record.levelIndex,
+    score: 1_010_000,
+    ...(record.levelIndex === 5
+      ? {}
+      : {
+          rating: record.rating,
+          over_power: maxChunithmChartOverPower(record.difficultyConstant),
+        }),
+    clear: 'catastrophy',
+    full_combo: 'alljusticecritical',
+    full_chain: 'fullchain2',
+    rank: 'sssp',
+  };
+}
+
 export function buildMaxedChunithmScores(
   catalog: ChunithmCatalogSnapshot,
 ): ChunithmScore[] {
-  return catalog.songs.flatMap((song) => {
-    if (song.disabled) return [];
-    return song.difficulties.map((difficulty): ChunithmScore => ({
-      id: song.id,
-      song_name: song.title,
-      level: difficulty.level,
-      level_index: difficulty.difficulty,
-      score: 1_010_000,
-      ...(difficulty.difficulty === 5
-        ? {}
-        : {
-            rating: maxChunithmChartRating(difficulty.levelValue),
-            over_power: maxChunithmChartOverPower(difficulty.levelValue),
-          }),
-      clear: 'catastrophy',
-      full_combo: 'alljusticecritical',
-      full_chain: 'fullchain2',
-      rank: 'sssp',
-    }));
-  });
+  return buildMaxedChunithmRecords(catalog).map(chunithmScoreFromRecord);
 }
 
 export function buildMaxedChunithmBests(
@@ -151,4 +185,21 @@ export function buildMaxedChunithmSnapshot(
     bests,
     source: generatedSource(),
   };
+}
+
+export class MaxedChunithmTestProvider implements CatalogDrivenScoreProvider<ChunithmCatalogSnapshot> {
+  constructor(private readonly displayName = '示例账号') {}
+
+  async getPlayer(): Promise<Player> {
+    return {
+      id: CHUNITHM_TEST_ACCOUNT_ID,
+      displayName: this.displayName,
+      rating: 0,
+      source: generatedSource(),
+    };
+  }
+
+  async getRecordsFromCatalog(catalog: ChunithmCatalogSnapshot): Promise<ScoreRecord[]> {
+    return buildMaxedChunithmRecords(catalog);
+  }
 }

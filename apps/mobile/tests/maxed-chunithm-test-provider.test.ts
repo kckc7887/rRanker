@@ -1,6 +1,8 @@
 import type { ChunithmCatalogSnapshot, ChunithmSong } from '@/domain/chunithm';
+import { isCatalogDrivenScoreProvider } from '@/providers/contracts';
 import {
   buildMaxedChunithmSnapshot,
+  MaxedChunithmTestProvider,
   maxChunithmChartOverPower,
   maxChunithmChartRating,
 } from '@/providers/maxed-chunithm-test-provider';
@@ -114,5 +116,15 @@ describe('中二节奏全满示例账号', () => {
       .reduce((sum, value) => sum + value, 0);
     expect(snapshot.player.over_power).toBe(expectedOverPower);
     expect(snapshot.source).toMatchObject({ kind: 'generated', isStale: false });
+  });
+
+  it('实现 CatalogDrivenScoreProvider，统一成绩覆盖全部启用谱面', async () => {
+    const provider = new MaxedChunithmTestProvider();
+    expect(isCatalogDrivenScoreProvider(provider)).toBe(true);
+    const records = await provider.getRecordsFromCatalog(catalog);
+    const enabledKeys = catalog.songs
+      .filter((song) => !song.disabled)
+      .flatMap((song) => song.difficulties.map((difficulty) => `${song.id}:${difficulty.difficulty}`));
+    expect(records.map((record) => `${Number(record.songId)}:${record.levelIndex}`)).toEqual(enabledKeys);
   });
 });

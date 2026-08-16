@@ -1,4 +1,5 @@
 import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore, type KeyValueStore } from '@/storage/create-preferences-store';
 import type { CollectionItem } from '@/domain/models';
 
 export type BestImageCollectionKind = 'icon' | 'plate' | 'trophy' | 'frame';
@@ -15,12 +16,6 @@ export type BestImageStylePreferencesV3 = {
   version: 3;
   selections: BestImageStyleSelections;
   ratingStyle: BestImageRatingStyle;
-};
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
 };
 
 const KINDS: readonly BestImageCollectionKind[] = ['icon', 'plate', 'trophy', 'frame'];
@@ -71,19 +66,17 @@ export function parseBestImageStylePreferences(value: unknown): BestImageStylePr
   return { version: 3, selections: output, ratingStyle };
 }
 
+const { load, save } = createPreferencesStore<BestImageStylePreferencesV3, string | null | undefined>({
+  storeKey: keyFor,
+  defaults: () => ({ version: 3, selections: {}, ratingStyle: 'game' }),
+  parse: parseBestImageStylePreferences,
+});
+
 export class BestImageStylePreferencesStore {
   constructor(private readonly storage: KeyValueStore = Storage) {}
 
-  async load(accountId: string | null | undefined): Promise<BestImageStylePreferencesV3> {
-    const key = keyFor(accountId);
-    try {
-      const raw = await this.storage.getItem(key);
-      if (!raw) return { version: 3, selections: {}, ratingStyle: 'game' };
-      return parseBestImageStylePreferences(JSON.parse(raw));
-    } catch {
-      await this.storage.removeItem(key).catch(() => undefined);
-      return { version: 3, selections: {}, ratingStyle: 'game' };
-    }
+  load(accountId: string | null | undefined): Promise<BestImageStylePreferencesV3> {
+    return load(this.storage, accountId);
   }
 
   async save(
@@ -91,8 +84,7 @@ export class BestImageStylePreferencesStore {
     selections: BestImageStyleSelections,
     ratingStyle: BestImageRatingStyle = 'game',
   ): Promise<void> {
-    const value: BestImageStylePreferencesV3 = { version: 3, selections, ratingStyle };
-    await this.storage.setItem(keyFor(accountId), JSON.stringify(value));
+    await save(this.storage, accountId, { version: 3, selections, ratingStyle });
   }
 }
 

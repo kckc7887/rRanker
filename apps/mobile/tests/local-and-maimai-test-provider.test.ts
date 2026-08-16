@@ -4,6 +4,7 @@ import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { buildMaxedMaimaiRecords, MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
+import { isCatalogDrivenScoreProvider } from '@/providers/contracts';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { buildScoreSnapshot, ScoreService } from '@/services/score-service';
 
@@ -157,6 +158,16 @@ describe('舞萌示例查分器', () => {
     expect(records.every((record) => record.fs === 'fsdp')).toBe(true);
     expect(records.find((record) => record.type === 'SD')?.dxScore).toBe(60);
     expect(records.find((record) => record.type === 'DX')?.dxScore).toBeNull();
+  });
+
+  it('实现 CatalogDrivenScoreProvider，统一成绩覆盖全部启用谱面', async () => {
+    const provider = new MaxedMaimaiTestProvider();
+    expect(isCatalogDrivenScoreProvider(provider)).toBe(true);
+    const records = await provider.getRecordsFromCatalog(catalog);
+    const enabledKeys = catalog.songs
+      .filter((song) => !song.disabled)
+      .flatMap((song) => song.charts.map((chart) => `${chart.songId}:${chart.type}:${chart.levelIndex}`));
+    expect(records.map((record) => `${record.songId}:${record.type}:${record.levelIndex}`)).toEqual(enabledKeys);
   });
 
   it('只取一次详细曲库并从 B50 动态计算 Rating', async () => {

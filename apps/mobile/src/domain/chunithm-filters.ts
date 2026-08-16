@@ -3,6 +3,7 @@ import type {
   ChunithmLevelIndex,
 } from './chunithm';
 import type { ChunithmRank } from './chunithm-score-presentation';
+import { normalizeNumericInput } from '@/utils/numeric-input';
 
 export const CHUNITHM_LEVELS: readonly ChunithmLevelIndex[] = [0, 1, 2, 3, 4, 5];
 
@@ -21,7 +22,7 @@ export type ChunithmChartFilter = {
 };
 
 export function parseChunithmConstantBound(input: string): number | undefined {
-  const text = input.normalize('NFKC').trim().replace(',', '.');
+  const text = normalizeNumericInput(input);
   if (!text) return undefined;
   const value = Number(text);
   return Number.isFinite(value) && value >= 0 ? value : undefined;

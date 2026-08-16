@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { RandomChartsCount } from '@/domain/random-charts';
 import type { TufDifficultyBand, TufPassAchievementFilter } from '@/domain/tuf';
 
@@ -14,12 +14,6 @@ export type TufRandomChartsPreferences = {
 type StoredTufRandomChartsPreferencesV1 = {
   schemaVersion: 1;
 } & TufRandomChartsPreferences;
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
 
 const STORE_KEY = 'rranker.toolbox.tuf-random-charts.v1';
 const VALID_COUNTS = new Set<RandomChartsCount>([1, 2, 3, 4]);
@@ -69,29 +63,18 @@ export function parseTufRandomChartsPreferences(
   return output;
 }
 
-export class TufRandomChartsPreferencesStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
-
-  async load(): Promise<TufRandomChartsPreferences> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw
-        ? parseTufRandomChartsPreferences(JSON.parse(raw))
-        : defaultTufRandomChartsPreferences();
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return defaultTufRandomChartsPreferences();
-    }
-  }
-
-  async save(preferences: TufRandomChartsPreferences): Promise<void> {
-    const value: StoredTufRandomChartsPreferencesV1 = {
+const { Store: TufRandomChartsPreferencesStore } =
+  createPreferencesStore<TufRandomChartsPreferences>({
+    storeKey: STORE_KEY,
+    defaults: defaultTufRandomChartsPreferences,
+    parse: parseTufRandomChartsPreferences,
+    toStored: (preferences) => ({
       schemaVersion: 1,
       ...parseTufRandomChartsPreferences({ schemaVersion: 1, ...preferences }),
-    };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
-  }
-}
+    }) satisfies StoredTufRandomChartsPreferencesV1,
+  });
+
+export { TufRandomChartsPreferencesStore };
 
 export const tufRandomChartsPreferencesStore =
   new TufRandomChartsPreferencesStore();

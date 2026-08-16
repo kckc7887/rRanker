@@ -4,6 +4,7 @@ import type { CatalogSnapshot, DataSource, Player, ScoreRecord } from '@/domain/
 import { PHIGROS_MAX_SCORE, roundRks } from '@/domain/phigros';
 import type { CatalogDrivenScoreProvider } from '@/providers/contracts';
 import { generatedSource } from '@/providers/generated-source';
+import { buildMaxedScoreRecords } from '@/providers/maxed-records';
 
 
 export type MaxedPhigrosSnapshot = {
@@ -21,29 +22,22 @@ export type MaxedPhigrosSnapshot = {
 
 
 export function buildMaxedPhigrosRecords(catalog: CatalogSnapshot): ScoreRecord[] {
-  return catalog.songs.flatMap((song) => {
-    if (song.disabled) return [];
-    return song.charts.flatMap((chart): ScoreRecord[] => {
-      if (!Number.isInteger(chart.levelIndex) || chart.levelIndex < 0 || chart.levelIndex > 3) {
-        return [];
-      }
-      return [{
-        ...chart,
-        title: song.title,
-        achievements: 100,
-        dxScore: PHIGROS_MAX_SCORE,
-        rating: Math.max(0, chart.difficultyConstant),
-        fc: 'ap',
-        fs: null,
-        rate: 'phi',
-        version: song.version,
-      }];
-    });
-  }).sort((left, right) => (
-    right.rating - left.rating
-    || left.songId.localeCompare(right.songId, 'en')
-    || left.levelIndex - right.levelIndex
-  ));
+  return buildMaxedScoreRecords(catalog, {
+    achievements: 100,
+    includeChart: (chart) => Number.isInteger(chart.levelIndex)
+      && chart.levelIndex >= 0
+      && chart.levelIndex <= 3,
+    dxScore: () => PHIGROS_MAX_SCORE,
+    rating: (chart) => Math.max(0, chart.difficultyConstant),
+    fc: 'ap',
+    fs: null,
+    rate: 'phi',
+    compare: (left, right) => (
+      right.rating - left.rating
+      || left.songId.localeCompare(right.songId, 'en')
+      || left.levelIndex - right.levelIndex
+    ),
+  });
 }
 
 export function buildMaxedPhigrosSnapshot(

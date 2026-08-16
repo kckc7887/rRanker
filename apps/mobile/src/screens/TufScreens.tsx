@@ -3,12 +3,13 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput,
+  ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text,
   useWindowDimensions, View,
 } from 'react-native';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { Card } from '@/components/Card';
@@ -70,25 +71,6 @@ function LoadingFooter({ loading }: { loading: boolean }) {
 
 function uniqueById<T extends { id: number }>(items: T[]): T[] {
   return [...new Map(items.map((item) => [item.id, item])).values()];
-}
-
-function SearchHeader({
-  accessibilityLabel, placeholder, value, onChangeText, loaded, total,
-}: {
-  accessibilityLabel: string;
-  placeholder: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  loaded: number;
-  total?: number;
-}) {
-  const theme = useAppTheme();
-  return <View style={[styles.searchWrap, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-    <TextInput accessibilityLabel={accessibilityLabel} placeholder={placeholder} placeholderTextColor={theme.textMuted}
-      value={value} onChangeText={onChangeText}
-      style={[styles.searchInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]} />
-    <Text style={[styles.resultCount, { color: theme.textMuted }]}>已加载 {loaded}{total == null ? '' : ` / ${total}`} 条</Text>
-  </View>;
 }
 
 type TufBestSection = { id: string; title: string; data: TufPass[] };
@@ -166,7 +148,7 @@ export function TufRecordsScreen() {
   }, achievement);
   const total = localFilterActive && !query.hasNextPage ? records.length : query.data?.pages[0]?.total;
   const controls = <>
-    <SearchHeader accessibilityLabel="筛选 TUF 成绩" placeholder="搜索关卡、歌曲或作者" value={keyword}
+    <GameSearchHeader accessibilityLabel="筛选 TUF 成绩" placeholder="搜索关卡、歌曲或作者" value={keyword}
       onChangeText={setKeyword} loaded={records.length} total={total} />
     <TufRecordsFilterBar expanded={filterExpanded} sortBy={sortBy} order={order} bestPerLevel={bestPerLevel}
       difficultyBand={difficultyBand} difficultyMin={difficultyMin} difficultyMax={difficultyMax}
@@ -219,7 +201,7 @@ export function TufSearchScreen() {
   const levels = uniqueById(query.data?.pages.flatMap((page) => page.results) ?? []);
   const total = query.data?.pages[0]?.total;
   const search = <>
-    <SearchHeader accessibilityLabel="搜索 TUF 关卡" placeholder="搜索关卡、歌曲或作者" value={keyword}
+    <GameSearchHeader accessibilityLabel="搜索 TUF 关卡" placeholder="搜索关卡、歌曲或作者" value={keyword}
       onChangeText={setKeyword} loaded={levels.length} total={total} />
     <TufCatalogFilterBar expanded={filterExpanded} sortBy={sortBy} order={order} difficultyBand={difficultyBand}
       difficultyMin={difficultyMin} difficultyMax={difficultyMax}
@@ -530,8 +512,6 @@ const styles = StyleSheet.create({
   page: { flex: 1 }, list: { flex: 1 }, listContent: { padding: 12, gap: 9 }, footer: { marginVertical: 18 },
   sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 }, notice: { padding: 12, fontSize: 12 },
-  searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  searchInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 }, resultCount: { fontSize: 11 },
   detail: { paddingBottom: 40 },
   detailBody: { paddingHorizontal: 20, paddingTop: 16, gap: 14 },
   hero: { position: 'relative', overflow: 'hidden', backgroundColor: '#253845' },

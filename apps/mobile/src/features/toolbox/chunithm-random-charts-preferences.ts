@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { ChunithmLevelIndex } from '@/domain/chunithm';
 import type { ChunithmRandomChartFilters } from '@/domain/chunithm-random-charts';
 import {
@@ -14,12 +14,6 @@ export type ChunithmRandomChartsPreferences = ChunithmRandomChartFilters & {
 type StoredChunithmRandomChartsPreferencesV1 = {
   schemaVersion: 1;
 } & ChunithmRandomChartsPreferences;
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
 
 const STORE_KEY = 'rranker.toolbox.chunithm-random-charts.v1';
 const VALID_COUNTS = new Set<RandomChartsCount>([1, 2, 3, 4]);
@@ -73,29 +67,18 @@ export function parseChunithmRandomChartsPreferences(
   return output;
 }
 
-export class ChunithmRandomChartsPreferencesStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
-
-  async load(): Promise<ChunithmRandomChartsPreferences> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw
-        ? parseChunithmRandomChartsPreferences(JSON.parse(raw))
-        : defaultChunithmRandomChartsPreferences();
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return defaultChunithmRandomChartsPreferences();
-    }
-  }
-
-  async save(preferences: ChunithmRandomChartsPreferences): Promise<void> {
-    const value: StoredChunithmRandomChartsPreferencesV1 = {
+const { Store: ChunithmRandomChartsPreferencesStore } =
+  createPreferencesStore<ChunithmRandomChartsPreferences>({
+    storeKey: STORE_KEY,
+    defaults: defaultChunithmRandomChartsPreferences,
+    parse: parseChunithmRandomChartsPreferences,
+    toStored: (preferences) => ({
       schemaVersion: 1,
       ...parseChunithmRandomChartsPreferences({ schemaVersion: 1, ...preferences }),
-    };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
-  }
-}
+    }) satisfies StoredChunithmRandomChartsPreferencesV1,
+  });
+
+export { ChunithmRandomChartsPreferencesStore };
 
 export const chunithmRandomChartsPreferencesStore =
   new ChunithmRandomChartsPreferencesStore();

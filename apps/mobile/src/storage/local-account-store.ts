@@ -1,23 +1,12 @@
 import Storage from 'expo-sqlite/kv-store';
 import { isLocalMaimaiAccountId } from '@/domain/bound-account';
+import { createAccountListStore, type KeyValueStore } from '@/storage/create-account-list-store';
 
 export type LocalAccountProfile = {
   id: string;
   displayName: string;
 };
 
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
-
-type StoredLocalAccountsV1 = {
-  version: 1;
-  accounts: LocalAccountProfile[];
-};
-
-const STORE_KEY = 'rranker.local-maimai-accounts.v1';
 export const DEFAULT_LOCAL_PLAYER_NAME = '本地玩家';
 export const LOCAL_PLAYER_NAME_MAX_LENGTH = 20;
 
@@ -47,40 +36,37 @@ export function parseLocalAccountProfiles(value: unknown): LocalAccountProfile[]
   return profiles;
 }
 
-export class LocalAccountStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
-
-  async load(): Promise<LocalAccountProfile[]> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw ? parseLocalAccountProfiles(JSON.parse(raw)) : [];
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return [];
-    }
-  }
-
-  async upsert(profile: LocalAccountProfile): Promise<void> {
+const { Store } = createAccountListStore<LocalAccountProfile>({
+  storeKey: 'rranker.local-maimai-accounts.v1',
+  parse: parseLocalAccountProfiles,
+  keyOf: (account) => account.id,
+  normalize: (profile) => {
     const displayName = normalizeLocalPlayerName(profile.displayName);
     if (!isLocalMaimaiAccountId(profile.id) || !displayName) {
       throw new Error('本地玩家名称不能为空');
     }
-    const accounts = (await this.load()).filter((account) => account.id !== profile.id);
-    const value: StoredLocalAccountsV1 = {
-      version: 1,
-      accounts: [...accounts, { id: profile.id, displayName }],
-    };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
+    return { id: profile.id, displayName };
+  },
+});
+
+/** 本地账号 store：基于公共工厂实例化，薄包装保持 upsert/remove 返回 void 的原方法签名。 */
+export class LocalAccountStore {
+  private readonly store: InstanceType<typeof Store>;
+
+  constructor(private readonly storage: KeyValueStore = Storage) {
+    this.store = new Store(storage);
+  }
+
+  load(): Promise<LocalAccountProfile[]> {
+    return this.store.load();
+  }
+
+  async upsert(profile: LocalAccountProfile): Promise<void> {
+    await this.store.upsert(profile);
   }
 
   async remove(accountId: string): Promise<void> {
-    const accounts = (await this.load()).filter((account) => account.id !== accountId);
-    if (accounts.length === 0) {
-      await this.storage.removeItem(STORE_KEY);
-      return;
-    }
-    const value: StoredLocalAccountsV1 = { version: 1, accounts };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
+    await this.store.remove(accountId);
   }
 }
 

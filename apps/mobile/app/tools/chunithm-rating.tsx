@@ -13,6 +13,7 @@ import {
   minimumScoreForChunithmRating,
 } from '@/domain/chunithm-rating';
 import { useAppTheme } from '@/theme/app-theme';
+import { parseNumericInput } from '@/utils/numeric-input';
 
 const CLEAR_TIERS: readonly { id: ChunithmClearTier; label: string; hint: string }[] = [
   { id: 'ajc', label: 'AJC', hint: 'ALL JUSTICE CRITICAL（1,010,000 分）' },
@@ -20,11 +21,6 @@ const CLEAR_TIERS: readonly { id: ChunithmClearTier; label: string; hint: string
   { id: 'fc', label: 'FC', hint: 'FULL COMBO' },
   { id: 'none', label: '无', hint: '无连击奖励' },
 ];
-
-function parseNumericInput(value: string): number {
-  const normalized = value.normalize('NFKC').trim().replace(',', '.');
-  return normalized ? Number(normalized) : Number.NaN;
-}
 
 export default function ChunithmRatingToolScreen() {
   const theme = useAppTheme();

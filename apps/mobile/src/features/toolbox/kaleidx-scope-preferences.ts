@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import {
   KALEIDX_GATE_IDS,
   KALEIDX_GATES_BY_ID,
@@ -21,12 +21,6 @@ export type KaleidxProgressByAccount = Record<string, KaleidxAccountProgress>;
 type StoredKaleidxProgressV1 = {
   version: 1;
   byAccount: KaleidxProgressByAccount;
-};
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
 };
 
 const STORE_KEY = 'rranker.toolbox.kaleidx-scope.v1';
@@ -78,24 +72,17 @@ export function parseKaleidxProgress(value: unknown): KaleidxProgressByAccount {
   return output;
 }
 
-export class KaleidxScopePreferencesStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
+const { Store: KaleidxScopePreferencesStore } =
+  createPreferencesStore<KaleidxProgressByAccount>({
+    storeKey: STORE_KEY,
+    defaults: () => ({}),
+    parse: parseKaleidxProgress,
+    toStored: (byAccount) => ({
+      version: 1,
+      byAccount: parseKaleidxProgress({ version: 1, byAccount }),
+    }) satisfies StoredKaleidxProgressV1,
+  });
 
-  async load(): Promise<KaleidxProgressByAccount> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw ? parseKaleidxProgress(JSON.parse(raw)) : {};
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return {};
-    }
-  }
-
-  async save(byAccount: KaleidxProgressByAccount): Promise<void> {
-    const parsed = parseKaleidxProgress({ version: 1, byAccount });
-    const value: StoredKaleidxProgressV1 = { version: 1, byAccount: parsed };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
-  }
-}
+export { KaleidxScopePreferencesStore };
 
 export const kaleidxScopePreferencesStore = new KaleidxScopePreferencesStore();

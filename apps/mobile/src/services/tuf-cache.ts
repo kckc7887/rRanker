@@ -23,28 +23,18 @@ import {
 } from '@/domain/tuf';
 import { tufProvider } from '@/providers/tuf-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { clearResourcesByPrefix, createInflightGuard, makeSnapshot } from '@/services/snapshot-cache-utils';
 
 /** 构造 TUF 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeTufSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
-  return {
-    data,
-    source: { kind: 'tuf', label: 'TUF 社区公开数据', updatedAt, isStale: false },
-  };
+  return makeSnapshot(data, { kind: 'tuf', label: 'TUF 社区公开数据' }, updatedAt);
 }
 
 /** 同一 TUF 玩家资料并发读取共享一次网络请求（总览与最佳页可能并发）。 */
-const inflightPlayerLoads = new Map<number, Promise<TufPlayer>>();
+const inflightPlayerLoads = createInflightGuard<number>();
 
 export function loadTufPlayerFresh(playerId: number): Promise<TufPlayer> {
-  const inflight = inflightPlayerLoads.get(playerId);
-  if (inflight) return inflight;
-  const fresh = tufProvider.getPlayerProfile(playerId);
-  inflightPlayerLoads.set(playerId, fresh);
-  const cleanup = () => {
-    if (inflightPlayerLoads.get(playerId) === fresh) inflightPlayerLoads.delete(playerId);
-  };
-  void fresh.then(cleanup, cleanup);
-  return fresh;
+  return inflightPlayerLoads.dedupe(playerId, () => tufProvider.getPlayerProfile(playerId));
 }
 
 /**
@@ -131,15 +121,14 @@ export class TufCache {
 
   /** 解绑玩家时清理其资料与成绩页缓存；曲库等全局公开资源保留。 */
   async clearPlayer(playerId: number): Promise<void> {
-    const rows = await this.repository.listResourceSizes();
-    const keys = rows
-      .map((row) => row.key)
-      .filter((key) => key === tufPlayerCacheKey(playerId) || key.startsWith(`tuf:passes:${playerId}:`));
-    if (keys.length > 0) await this.repository.clearResources(keys);
+    await clearResourcesByPrefix(this.repository, {
+      keys: [tufPlayerCacheKey(playerId)],
+      prefixes: [`tuf:passes:${playerId}:`],
+    });
   }
 }
 
 /** 测试用：清除 in-flight 去重表。 */
 export function resetTufInflightForTests(): void {
-  inflightPlayerLoads.clear();
+  inflightPlayerLoads.resetForTests();
 }

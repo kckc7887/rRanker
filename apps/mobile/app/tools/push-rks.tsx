@@ -11,11 +11,7 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
-
-function parseNumericInput(value: string): number {
-  const normalized = value.normalize('NFKC').trim().replace(',', '.');
-  return normalized ? Number(normalized) : Number.NaN;
-}
+import { parseNumericInput } from '@/utils/numeric-input';
 
 function parseDelta(value: string): number | null {
   const n = parseNumericInput(value);

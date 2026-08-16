@@ -5,6 +5,7 @@ import { Card } from '@/components/Card';
 import { FormField } from '@/components/FormField';
 import { calculateChartRating, minimumAchievementForRating, ratingTableDescending } from '@/domain/rating';
 import { useAppTheme } from '@/theme/app-theme';
+import { parseNumericInput } from '@/utils/numeric-input';
 
 export default function RatingToolScreen() {
   const { constant: routeConstant } = useLocalSearchParams<{ constant?: string }>();
@@ -25,9 +26,5 @@ export default function RatingToolScreen() {
     <Card><FormField label="目标 Rating（整数）" value={target} onChangeText={setTarget} /><Text style={[styles.result, { color: theme.text }]}>最低达成率：{reverse === null ? '无法达到或输入无效' : `${reverse.toFixed(4)}%`}</Text></Card>
     <Card><Text style={[styles.heading, { color: theme.text }]}>当前定数的达成率档</Text>{rows.map((row) => <View key={row.achievement} style={[styles.tableRow, { borderTopColor: theme.border }]}><Text style={[styles.cell, { color: theme.textSecondary }]}>{row.achievement.toFixed(4)}%</Text><Text style={[styles.cell, { color: theme.textSecondary }]}>Rating {row.rating}</Text></View>)}</Card>
   </ScrollView>;
-}
-function parseNumericInput(value: string): number {
-  const normalized = value.normalize('NFKC').trim().replace(',', '.');
-  return normalized ? Number(normalized) : Number.NaN;
 }
 const styles = StyleSheet.create({ page: { flex: 1, backgroundColor: '#F7F8FA' }, content: { padding: 16, gap: 12 }, row: { flexDirection: 'row', gap: 10 }, result: { fontSize: 18, fontWeight: '700', color: '#111827', marginTop: 12 }, note: { color: '#6B7280', fontSize: 12, marginTop: 6 }, error: { color: '#B91C1C', marginTop: 8 }, warning: { color: '#B45309', marginTop: 8, lineHeight: 19 }, heading: { color: '#111827', fontWeight: '700', marginBottom: 8 }, tableRow: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5E7EB', paddingVertical: 6 }, cell: { color: '#374151' } });

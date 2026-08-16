@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { GameId } from '@/domain/game-bind-options';
 import {
   ARCADE_RADIUS_OPTIONS,
@@ -15,12 +15,6 @@ export type ArcadeFinderPreferences = {
 export type ArcadeFinderPreferencesV1 = {
   version: 1;
 } & ArcadeFinderPreferences;
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
 
 const LEGACY_STORE_KEY = 'rranker.toolbox.arcade-finder.v1';
 const VALID_RADIUS = new Set<number>(ARCADE_RADIUS_OPTIONS);
@@ -67,37 +61,27 @@ export function parseArcadeFinderPreferences(
   return output;
 }
 
-export class ArcadeFinderPreferencesStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
+const { Store: ArcadeFinderPreferencesStore } =
+  createPreferencesStore<ArcadeFinderPreferences, GameId>({
+    storeKey,
+    defaults: defaultArcadeFinderPreferences,
+    parse: parseArcadeFinderPreferences,
+    toStored: (preferences, gameId) => ({
+      version: 1,
+      ...parseArcadeFinderPreferences({ version: 1, ...preferences }, gameId),
+    }) satisfies ArcadeFinderPreferencesV1,
+    // One-time migration of the pre–per-game key into maimai prefs.
+    onMissing: async ({ storage, scope, save }) => {
+      if (scope !== 'maimai') return null;
+      const legacy = await storage.getItem(LEGACY_STORE_KEY);
+      if (!legacy) return null;
+      const prefs = parseArcadeFinderPreferences(JSON.parse(legacy), 'maimai');
+      await save(prefs);
+      await storage.removeItem(LEGACY_STORE_KEY).catch(() => undefined);
+      return prefs;
+    },
+  });
 
-  async load(gameId: GameId): Promise<ArcadeFinderPreferences> {
-    try {
-      const raw = await this.storage.getItem(storeKey(gameId));
-      if (raw) return parseArcadeFinderPreferences(JSON.parse(raw), gameId);
-
-      // One-time migration of the pre–per-game key into maimai prefs.
-      if (gameId === 'maimai') {
-        const legacy = await this.storage.getItem(LEGACY_STORE_KEY);
-        if (legacy) {
-          const prefs = parseArcadeFinderPreferences(JSON.parse(legacy), 'maimai');
-          await this.save('maimai', prefs);
-          await this.storage.removeItem(LEGACY_STORE_KEY).catch(() => undefined);
-          return prefs;
-        }
-      }
-
-      return defaultArcadeFinderPreferences(gameId);
-    } catch {
-      await this.storage.removeItem(storeKey(gameId)).catch(() => undefined);
-      return defaultArcadeFinderPreferences(gameId);
-    }
-  }
-
-  async save(gameId: GameId, preferences: ArcadeFinderPreferences): Promise<void> {
-    const parsed = parseArcadeFinderPreferences({ version: 1, ...preferences }, gameId);
-    const value: ArcadeFinderPreferencesV1 = { version: 1, ...parsed };
-    await this.storage.setItem(storeKey(gameId), JSON.stringify(value));
-  }
-}
+export { ArcadeFinderPreferencesStore };
 
 export const arcadeFinderPreferencesStore = new ArcadeFinderPreferencesStore();

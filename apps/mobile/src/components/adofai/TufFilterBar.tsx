@@ -5,6 +5,7 @@ import { TufDifficultyBadge } from './TufDifficultyBadge';
 import { TufWorldAchievementBadge } from './TufScoreCard';
 import { FilterAnchoredDropdown } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
+import { joinFilterSummary } from '@/components/game-content/FilterShell';
 import type {
   TufDifficultyBand, TufLevelSort, TufPassAchievementFilter, TufPassSort, TufSortOrder,
 } from '@/domain/tuf';
@@ -31,6 +32,8 @@ const BAND_BADGES: Record<Exclude<TufDifficultyBand, 'all'>, BadgePresentation> 
   U: { key: 'U', label: 'U', tone: 'tuf-u' },
 };
 
+// Tuf 本地外壳与公共 FilterShell 存在结构性差异（收起态为单个 Pressable 且无重置按钮、
+// 标题为「筛选与排序」、hairlineWidth 边框、按钮无按压态、区间输入定宽居中），无法零视觉变化收敛，保守保留。
 function FilterShell({
   expanded, summary, onExpandedChange, onReset, children,
 }: {
@@ -165,13 +168,13 @@ export function TufRecordsFilterBar({
   const theme = useAppTheme();
   const [sortOpen, setSortOpen] = useState(false);
   const sortLabel = RECORD_SORTS.find((item) => item.value === sortBy)?.label ?? sortBy;
-  const summary = [
+  const summary = joinFilterSummary([
     difficultyBand === 'all' ? null : `${difficultyBand} 段`,
     difficultyMin || difficultyMax ? `${difficultyMin || '1'}~${difficultyMax || '20'}` : null,
     includeSpecial ? null : '不含特殊',
     achievement === 'all' ? null : achievement.toUpperCase(),
     bestPerLevel ? '每关最佳' : null,
-  ].filter(Boolean).join(' · ') || '全部';
+  ]);
   return <FilterShell expanded={expanded} summary={summary}
     onExpandedChange={onExpandedChange} onReset={onReset}>
     <View style={styles.row}><Text style={[styles.label, { color: theme.textMuted }]}>排序</Text>
@@ -220,12 +223,12 @@ export function TufRandomFilterBar({
   onReset: () => void;
 }) {
   const theme = useAppTheme();
-  const summary = [
+  const summary = joinFilterSummary([
     difficultyBand === 'all' ? null : `${difficultyBand} 段`,
     difficultyMin || difficultyMax ? `${difficultyMin || '1'}~${difficultyMax || '20'}` : null,
     includeSpecial ? null : '不含特殊',
     achievement === 'all' ? null : achievement.toUpperCase(),
-  ].filter(Boolean).join(' · ') || '全部';
+  ]);
   return <FilterShell expanded={expanded} summary={summary}
     onExpandedChange={onExpandedChange} onReset={onReset}>
     <DifficultyFilters difficultyBand={difficultyBand} difficultyMin={difficultyMin} difficultyMax={difficultyMax}
@@ -267,11 +270,11 @@ export function TufCatalogFilterBar({
   const theme = useAppTheme();
   const [sortOpen, setSortOpen] = useState(false);
   const sortLabel = LEVEL_SORTS.find((item) => item.value === sortBy)?.label ?? sortBy;
-  const summary = [
+  const summary = joinFilterSummary([
     difficultyBand === 'all' ? null : `${difficultyBand} 段`,
     difficultyMin || difficultyMax ? `${difficultyMin || '1'}~${difficultyMax || '20'}` : null,
     includeSpecial ? null : '不含特殊',
-  ].filter(Boolean).join(' · ') || '全部';
+  ]);
   return <FilterShell expanded={expanded} summary={summary} onExpandedChange={onExpandedChange} onReset={onReset}>
     <View style={styles.row}><Text style={[styles.label, { color: theme.textMuted }]}>排序</Text>
       <FilterAnchoredDropdown open={sortOpen} onOpenChange={setSortOpen} valueLabel={sortLabel}

@@ -14,7 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
-import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
+import { DetailPressable } from '@/components/game-content/DetailPressable';
+import { ExpandableTextLine } from '@/components/game-content/ExpandableTextLine';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
@@ -624,44 +625,21 @@ function ChartCard({
 
 function PhigrosSongInformation({ aliases }: { aliases: readonly string[] }) {
   const theme = useAppTheme();
-  const [expanded, setExpanded] = useState(false);
-  const [overflow, setOverflow] = useState(false);
-  const aliasText = `别名：${aliases.join('、') || '无'}`;
-  useEffect(() => {
-    setExpanded(false);
-    setOverflow(false);
-  }, [aliasText]);
   return (
     <View style={styles.songInformation}>
       <Text style={[styles.informationTitle, { color: theme.text }]}>歌曲信息</Text>
-      <DetailGestureRoot style={styles.aliasBlock}>
-        <Text
-          accessible={false}
-          onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}
-          style={[styles.informationValue, styles.aliasMeasure, { color: theme.text }]}
-          testID="phigros-alias-overflow-measure"
-        >
-          {aliasText}
-        </Text>
-        <Text
-          numberOfLines={expanded ? undefined : 1}
-          style={[styles.informationValue, { color: theme.text }]}
-          testID="phigros-alias-text"
-        >
-          {aliasText}
-        </Text>
-        {overflow ? (
-          <DetailPressable
-            accessibilityRole="button"
-            accessibilityLabel={expanded ? '收起别名' : '展开别名'}
-            hitSlop={6}
-            onPress={() => setExpanded((value) => !value)}
-            style={styles.aliasAction}
-          >
-            <Text style={[styles.aliasActionText, { color: theme.accent }]}>{expanded ? '收起' : '展开'}</Text>
-          </DetailPressable>
-        ) : null}
-      </DetailGestureRoot>
+      <ExpandableTextLine
+        actionColor={theme.accent}
+        actionLabel="别名"
+        actionStyle={styles.aliasAction}
+        actionTextStyle={styles.aliasActionText}
+        blockStyle={styles.aliasBlock}
+        measureStyle={styles.aliasMeasure}
+        testIDPrefix="phigros-alias"
+        text={`别名：${aliases.join('、') || '无'}`}
+        textColor={theme.text}
+        textStyle={styles.informationValue}
+      />
     </View>
   );
 }

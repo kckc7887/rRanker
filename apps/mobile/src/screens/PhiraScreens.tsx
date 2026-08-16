@@ -3,13 +3,14 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, InteractionManager, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, InteractionManager, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
+import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { Card } from '@/components/Card';
 import { SourceStatus } from '@/components/SourceStatus';
@@ -51,14 +52,6 @@ const PHIRA_CATALOG_SORT_OPTIONS = [
   { value: 'constant-asc', label: '定数升序' }, { value: 'name', label: '名称' },
 ] as const;
 
-function Search({ value, onChangeText, placeholder }: { value: string; onChangeText: (value: string) => void; placeholder: string }) {
-  const theme = useAppTheme();
-  return <View style={[styles.searchWrap, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-    <TextInput accessibilityLabel={placeholder} value={value} onChangeText={onChangeText} placeholder={placeholder}
-      placeholderTextColor={theme.textMuted} style={[styles.search, { backgroundColor: theme.background, borderColor: theme.border, color: theme.text }]} />
-  </View>;
-}
-
 export function PhiraBestScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const player = usePhiraPlayer(id);
   const ordered = (player.data?.pool.bestPool ?? []).map((pool) => ({
@@ -82,7 +75,8 @@ export function PhiraRecordsScreen() {
   const filter = usePhiraRecordsFilter();
   const items = useMemo(() => filterPhiraBests(actualBests(query.data?.items), filter), [filter, query.data?.items]);
   const retry = async () => { await refreshAll(); await query.refetch(); };
-  const controls = <><Search value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索已查询歌曲" />
+  const controls = <><GameSearchHeader value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索已查询歌曲"
+    wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhigrosFilterBar showLevel={false} level="all" onLevelChange={() => undefined}
       collapsed={filter.collapsed} onCollapsedChange={filter.setCollapsed}
       constantMin={filter.constantMin} constantMax={filter.constantMax}
@@ -109,7 +103,8 @@ export function PhiraCatalogScreen() {
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
   // Phira /chart 的 page=1 与 page=0 重复且 updated 排序在请求间漂移，跨页需按 id 去重，避免 FlatList 重复 key。
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
-  const controls = <><Search value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面" />
+  const controls = <><GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面"
+    wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhigrosFilterBar showLevel={false} level="all" onLevelChange={() => undefined} collapsed={collapsed}
       constantMin={constantMin} constantMax={constantMax} onCollapsedChange={setCollapsed}
       onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}

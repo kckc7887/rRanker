@@ -1,7 +1,9 @@
 import type { CatalogSnapshot, Song } from '@/domain/models';
+import { isCatalogDrivenScoreProvider } from '@/providers/contracts';
 import {
   buildMaxedPhigrosRecords,
   buildMaxedPhigrosSnapshot,
+  MaxedPhigrosTestProvider,
 } from '@/providers/maxed-phigros-test-provider';
 
 const source = {
@@ -79,5 +81,18 @@ describe('Phigros 全满示例账号', () => {
       fullCombo: [8, 8, 8, 8],
       phi: [8, 8, 8, 8],
     });
+  });
+
+  it('实现 CatalogDrivenScoreProvider，统一成绩覆盖全部启用谱面', async () => {
+    const provider = new MaxedPhigrosTestProvider();
+    expect(isCatalogDrivenScoreProvider(provider)).toBe(true);
+    const records = await provider.getRecordsFromCatalog(catalog);
+    const enabledKeys = new Set(catalog.songs
+      .filter((song) => !song.disabled)
+      .flatMap((song) => song.charts.map((chart) => `${chart.songId}:${chart.levelIndex}`)));
+    expect(records).toHaveLength(enabledKeys.size);
+    for (const record of records) {
+      expect(enabledKeys.has(`${record.songId}:${record.levelIndex}`)).toBe(true);
+    }
   });
 });

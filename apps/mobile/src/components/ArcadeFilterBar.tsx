@@ -1,6 +1,6 @@
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { NeutralChip } from '@/components/MaimaiFilterBar';
+import { FilterShell, filterShellStyles } from '@/components/game-content/FilterShell';
 import {
   ARCADE_RADIUS_OPTIONS,
   buildArcadeFilterSummary,
@@ -62,54 +62,9 @@ export function ArcadeFilterBar({
     );
   };
 
-  if (collapsed) {
-    return (
-      <View style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`展开筛选，当前 ${summary}`}
-          accessibilityState={{ expanded: false }}
-          onPress={() => onCollapsedChange(false)}
-          style={styles.collapsedMain}
-        >
-          <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
-          <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
-        </Pressable>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={onReset} />
-          <Pressable accessible={false} hitSlop={8} onPress={() => onCollapsedChange(false)} style={styles.headerAction}>
-            <CollapseToggleAction expanded={false} label="展开" />
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View
-      style={[
-        styles.filterBar,
-        styles.filterBarExpanded,
-        { backgroundColor: theme.surface, borderBottomColor: theme.border },
-      ]}
-    >
-      <View style={styles.expandedHeader}>
-        <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={onReset} />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="收起筛选"
-            accessibilityState={{ expanded: true }}
-            onPress={() => onCollapsedChange(true)}
-            hitSlop={8}
-            style={styles.headerAction}
-          >
-            <CollapseToggleAction expanded label="收起" />
-          </Pressable>
-        </View>
-      </View>
-
+    <FilterShell collapsed={collapsed} summary={summary} barExtraStyle={styles.filterBarExpanded}
+      onCollapsedChange={onCollapsedChange} onReset={onReset}>
       <ScrollView
         style={{ maxHeight: expandedBodyMaxHeight }}
         contentContainerStyle={styles.expandedBody}
@@ -117,8 +72,8 @@ export function ArcadeFilterBar({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
       >
-        <View style={[styles.filterRow, styles.filterRowTop]}>
-          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>原点</Text>
+        <View style={[filterShellStyles.filterRow, styles.filterRowTop]}>
+          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>原点</Text>
           <View style={styles.originBlock}>
             <Text numberOfLines={2} style={[styles.originLabel, { color: theme.text }]}>
               {originLabel}
@@ -140,8 +95,8 @@ export function ArcadeFilterBar({
           </View>
         </View>
 
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>距离</Text>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>距离</Text>
           <View style={styles.chipWrap}>
             {ARCADE_RADIUS_OPTIONS.map((radius) => (
               <NeutralChip
@@ -155,8 +110,8 @@ export function ArcadeFilterBar({
           </View>
         </View>
 
-        <View style={[styles.filterRow, styles.filterRowTop]}>
-          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>机型</Text>
+        <View style={[filterShellStyles.filterRow, styles.filterRowTop]}>
+          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>机型</Text>
           <View style={styles.chipWrap}>
             {gameTitles.map((title) => (
               <NeutralChip
@@ -170,57 +125,16 @@ export function ArcadeFilterBar({
           </View>
         </View>
       </ScrollView>
-    </View>
+    </FilterShell>
   );
 }
 
-function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: string }) {
-  const theme = useAppTheme();
-  return (
-    <View style={styles.collapseActionRow}>
-      <Text style={[styles.collapseAction, { color: theme.accent }]}>{label}</Text>
-      <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.accent} />
-    </View>
-  );
-}
-
-function ResetFilterButton({ onPress }: { onPress: () => void }) {
-  const theme = useAppTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="重置筛选"
-      hitSlop={8}
-      onPress={onPress}
-      style={({ pressed }) => [styles.resetButton, pressed && styles.resetButtonPressed]}
-    >
-      <Text style={[styles.resetButtonText, { color: theme.accent }]}>重置</Text>
-    </Pressable>
-  );
-}
-
+// 机厅查找专属样式：展开态收缩、滚动体与原点/机型行；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
-  filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   filterBarExpanded: { flexShrink: 1 },
   expandedBody: { gap: 10, paddingBottom: 4 },
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   filterRowTop: { alignItems: 'flex-start' },
-  filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
-  wideFilterLabel: { width: 44 },
   chipWrap: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
   originBlock: { flex: 1, minWidth: 0, gap: 8 },
   originLabel: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
-  collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  collapsedLabel: { fontSize: 12, fontWeight: '700' },
-  collapsedSummary: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
-  collapseAction: { fontSize: 12, fontWeight: '800' },
-  collapseActionRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  expandedTitle: { fontSize: 13, fontWeight: '800' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  headerAction: { minHeight: 28, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  resetButton: { minHeight: 28, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  resetButtonPressed: { opacity: 0.62 },
-  resetButtonText: { fontSize: 12, fontWeight: '800' },
 });

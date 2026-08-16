@@ -1,48 +1,42 @@
-import { fetch as expoFetch } from 'expo/fetch';
 import type { DataSource, Player, ScoreRecord } from '@/domain/models';
 import { normalizeLxnsCourseRank } from '@/domain/maimai-course-rank';
 import {
-  LxnsEnvelopeSchema,
   LxnsPlayerSchema,
   LxnsScoreSchema,
   mapLxnsScore,
 } from '@/domain/schemas';
 import type { ProviderSession, ScoreProvider } from './contracts';
-import { ProviderError, providerErrorFromStatus } from './errors';
-import { LXNS_API_ROOT } from './lxns-config';
+import { ProviderError } from './errors';
 import {
-  lxnsAccessTokenExpired,
-  rotateLxnsTokens,
-  type LxnsOAuthSession,
-} from './lxns-oauth';
+  LxnsOAuthRequestCore,
+  type LxnsOAuthRequestTexts,
+  type LxnsTokenRotationHandler,
+} from './lxns-oauth-request';
+import type { LxnsOAuthSession } from './lxns-oauth';
 
-export type LxnsTokenRotationHandler = (session: LxnsOAuthSession) => void | Promise<void>;
+export type { LxnsTokenRotationHandler } from './lxns-oauth-request';
 
-function lxnsErrorFromStatus(status: number): ProviderError {
-  const base = providerErrorFromStatus(status);
-  return new ProviderError(
-    base.code,
-    base.message.replace('水鱼', '落雪'),
-    base.retryable,
-  );
-}
+const LXNS_REQUEST_TEXTS: LxnsOAuthRequestTexts = {
+  envelopeSchemaMessage: '落雪响应结构与已验证契约不一致',
+  authRejectedFallback: '落雪拒绝了本次请求',
+  timeoutMessage: '落雪读取超时',
+};
 
 export class LxnsScoreProvider implements ScoreProvider {
-  private session: LxnsOAuthSession;
-  private refreshPromise: Promise<void> | null = null;
+  private readonly oauth: LxnsOAuthRequestCore;
 
   constructor(
     session: ProviderSession,
-    private readonly onTokensRotated?: LxnsTokenRotationHandler,
+    onTokensRotated?: LxnsTokenRotationHandler,
   ) {
     if (session.mode !== 'lxns-oauth') {
       throw new ProviderError('authentication', '落雪成绩读取需要 OAuth 会话', false);
     }
-    this.session = session;
+    this.oauth = new LxnsOAuthRequestCore(session, onTokensRotated);
   }
 
   getSession(): LxnsOAuthSession {
-    return this.session;
+    return this.oauth.getSession();
   }
 
   private source(): DataSource {
@@ -54,65 +48,8 @@ export class LxnsScoreProvider implements ScoreProvider {
     };
   }
 
-  private async ensureFreshAccessToken(): Promise<string> {
-    if (!lxnsAccessTokenExpired(this.session)) return this.session.accessToken;
-    if (!this.refreshPromise) {
-      this.refreshPromise = (async () => {
-        const next = await rotateLxnsTokens(this.session.refreshToken);
-        this.session = next;
-        await this.onTokensRotated?.(next);
-      })().finally(() => {
-        this.refreshPromise = null;
-      });
-    }
-    await this.refreshPromise;
-    return this.session.accessToken;
-  }
-
   private async request(path: string, optional = false): Promise<unknown | null> {
-    const accessToken = await this.ensureFreshAccessToken();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    try {
-      const response = await expoFetch(`${LXNS_API_ROOT}${path}`, {
-        headers: {
-          Accept: 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        signal: controller.signal,
-      });
-      if (optional && response.status === 404) return null;
-      if (!response.ok) {
-        const error = lxnsErrorFromStatus(response.status);
-        throw new ProviderError(error.code, `${error.message}（${path}）`, error.retryable, { cause: error });
-      }
-      const payload: unknown = await response.json();
-      const envelope = LxnsEnvelopeSchema.safeParse(payload);
-      if (!envelope.success) {
-        throw new ProviderError('upstream_schema', '落雪响应结构与已验证契约不一致', true);
-      }
-      if (!envelope.data.success) {
-        if (optional && envelope.data.code === 404) return null;
-        throw new ProviderError(
-          'authentication',
-          envelope.data.message ?? '落雪拒绝了本次请求',
-          false,
-        );
-      }
-      if (optional && (envelope.data.data === null || envelope.data.data === undefined)) return null;
-      return envelope.data.data;
-    } catch (error) {
-      if (error instanceof ProviderError) throw error;
-      if (error instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', '落雪返回了无效 JSON', true, { cause: error });
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', '落雪读取超时', true, { cause: error });
-      }
-      throw new ProviderError('network', '无法连接落雪服务', true, { cause: error });
-    } finally {
-      clearTimeout(timeout);
-    }
+    return this.oauth.request(path, optional, LXNS_REQUEST_TEXTS);
   }
 
   async getPlayer(): Promise<Player> {

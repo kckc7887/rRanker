@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
+import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
   type ChunithmLevelIndex,
@@ -50,12 +50,12 @@ export function buildChunithmFilterSummary({
 }: Pick<ChunithmFilterBarProps,
   'difficulty' | 'version' | 'constantMin' | 'constantMax' | 'rankMin' | 'rankMax' | 'versions'>): string {
   const selectedVersion = versions.find((item) => String(item.id) === version);
-  return [
+  return joinFilterSummary([
     difficulty === 'all' ? null : CHUNITHM_DIFFICULTY_LABELS[difficulty],
     selectedVersion?.title,
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
     rankMin || rankMax ? `评价 ${rankMin || '不限'}~${rankMax || '不限'}` : null,
-  ].filter(Boolean).join(' · ') || '全部';
+  ]);
 }
 
 export function ChunithmFilterBar({
@@ -106,60 +106,15 @@ export function ChunithmFilterBar({
     onReset();
   };
 
-  if (collapsed) {
-    return (
-      <View style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <Pressable
-          accessibilityLabel={`展开中二筛选，当前 ${summary}`}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: false }}
-          onPress={() => onCollapsedChange(false)}
-          style={styles.collapsedMain}
-        >
-          <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
-          <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
-        </Pressable>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={handleReset} />
-          <Pressable
-            accessible={false}
-            hitSlop={8}
-            onPress={() => onCollapsedChange(false)}
-            style={styles.headerAction}
-          >
-            <CollapseToggleAction expanded={false} label="展开" />
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-      <View style={styles.expandedHeader}>
-        <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={handleReset} />
-          <Pressable
-            accessibilityLabel="收起中二筛选"
-            accessibilityRole="button"
-            accessibilityState={{ expanded: true }}
-            hitSlop={8}
-            onPress={() => {
-              setOpenDropdown(null);
-              onCollapsedChange(true);
-            }}
-            style={styles.headerAction}
-          >
-            <CollapseToggleAction expanded label="收起" />
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
+    <FilterShell collapsed={collapsed} summary={summary} barStyle={filterShellStyles.filterBarPlain}
+      expandLabelPrefix="展开中二筛选" collapseLabel="收起中二筛选" resetLabel="重置中二筛选"
+      onCollapsedChange={onCollapsedChange} onReset={handleReset}
+      onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabelPlain, { color: theme.textMuted }]}>难度</Text>
         <ScrollView
-          contentContainerStyle={styles.chipRow}
+          contentContainerStyle={filterShellStyles.chipRowPadded}
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.chipScroll}
@@ -178,8 +133,8 @@ export function ChunithmFilterBar({
         </ScrollView>
       </View>
 
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>版本</Text>
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabelPlain, { color: theme.textMuted }]}>版本</Text>
         <FilterAnchoredDropdown
           accessibilityLabel={`中二版本筛选，当前 ${selectedVersionLabel}`}
           onOpenChange={setDropdownOpen('version')}
@@ -192,9 +147,9 @@ export function ChunithmFilterBar({
         />
       </View>
 
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, showRankRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <View style={styles.rangeRow}>
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabelPlain, showRankRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
+        <View style={filterShellStyles.rangeRow}>
           <TextInput
             accessibilityLabel="中二最低定数"
             autoCorrect={false}
@@ -202,10 +157,10 @@ export function ChunithmFilterBar({
             onChangeText={onConstantMinChange}
             placeholder="下限"
             placeholderTextColor={theme.textMuted}
-            style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
+            style={[filterShellStyles.rangeInputPlain, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
             value={constantMin}
           />
-          <Text style={[styles.rangeSeparator, { color: theme.textMuted }]}>~</Text>
+          <Text style={[filterShellStyles.rangeSeparatorPlain, { color: theme.textMuted }]}>~</Text>
           <TextInput
             accessibilityLabel="中二最高定数"
             autoCorrect={false}
@@ -213,15 +168,15 @@ export function ChunithmFilterBar({
             onChangeText={onConstantMaxChange}
             placeholder="上限"
             placeholderTextColor={theme.textMuted}
-            style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
+            style={[filterShellStyles.rangeInputPlain, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
             value={constantMax}
           />
         </View>
       </View>
 
       {showRankRange ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>评价</Text>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabelPlain, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>评价</Text>
           <View style={styles.rankDropdownRow}>
             <FilterAnchoredDropdown
               accessibilityLabel={`中二评价下限，当前 ${rankMin ?? '不限'}`}
@@ -248,76 +203,12 @@ export function ChunithmFilterBar({
           </View>
         </View>
       ) : null}
-    </View>
+    </FilterShell>
   );
 }
 
-function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: string }) {
-  const theme = useAppTheme();
-  return (
-    <View style={styles.collapseActionRow}>
-      <Text style={[styles.collapseAction, { color: theme.accent }]}>{label}</Text>
-      <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.accent} />
-    </View>
-  );
-}
-
-function ResetFilterButton({ onPress }: { onPress: () => void }) {
-  const theme = useAppTheme();
-  return (
-    <Pressable
-      accessibilityLabel="重置中二筛选"
-      accessibilityRole="button"
-      hitSlop={8}
-      onPress={onPress}
-      style={({ pressed }) => [styles.resetButton, pressed && styles.resetButtonPressed]}
-    >
-      <Text style={[styles.resetButtonText, { color: theme.accent }]}>重置</Text>
-    </Pressable>
-  );
-}
-
+// Chunithm 专属样式：横向芯片滚动收缩与评价双下拉行；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
-  filterBar: { padding: 16, gap: 10, borderBottomWidth: 1 },
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  filterLabel: { fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
-  wideFilterLabel: { width: 44 },
   chipScroll: { flexGrow: 0, flexShrink: 1 },
-  chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 1 },
-  rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  rangeInput: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 0,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-  },
-  rangeSeparator: { fontSize: 13, fontWeight: '700' },
   rankDropdownRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  collapsedBar: {
-    minHeight: 48,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  collapsedLabel: { fontSize: 12, fontWeight: '700' },
-  collapsedSummary: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
-  collapseAction: { fontSize: 12, fontWeight: '800' },
-  collapseActionRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  expandedTitle: { fontSize: 13, fontWeight: '800' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  headerAction: { minHeight: 28, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  resetButton: { minHeight: 28, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  resetButtonPressed: { opacity: 0.62 },
-  resetButtonText: { fontSize: 12, fontWeight: '800' },
 });

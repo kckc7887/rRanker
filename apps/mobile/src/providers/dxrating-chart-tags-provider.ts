@@ -5,7 +5,7 @@ import type {
   DxRatingChartTag,
   DxRatingSheetType,
 } from '@/domain/dxrating-chart-tags';
-import { ProviderError } from '@/providers/errors';
+import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from '@/providers/errors';
 
 const TAGS_URL = 'https://miruku.dxrating.net/api/v1/tags';
 
@@ -59,11 +59,12 @@ function richDescription(value: Record<string, string>) {
   return { text: segments.map((segment) => segment.text).join(''), segments };
 }
 
-function providerErrorFromStatus(status: number): ProviderError {
-  if (status === 429) return new ProviderError('rate_limit', 'DXRating 请求过于频繁，请稍后重试', true);
-  if (status >= 500) return new ProviderError('network', 'DXRating 服务暂时不可用', true);
-  return new ProviderError('network', `DXRating 返回 HTTP ${status}`, status >= 500);
-}
+/** DXRating 状态码分支文案：无 401/403/404 分支且兜底 code 为 network，逐字保留原实现。 */
+const DXRATING_STATUS_TEXTS: ProviderStatusTexts = {
+  rateLimit: 'DXRating 请求过于频繁，请稍后重试',
+  server: 'DXRating 服务暂时不可用',
+  fallback: { message: (status) => `DXRating 返回 HTTP ${status}`, code: 'network' },
+};
 
 export function mapDxRatingChartTags(input: unknown): DxRatingChartTagsSnapshot {
   const parsed = TagsResponseSchema.safeParse(input);
@@ -121,7 +122,7 @@ export class DxRatingChartTagsProvider {
         headers: { Accept: 'application/json' },
         signal: controller.signal,
       });
-      if (!response.ok) throw providerErrorFromStatus(response.status);
+      if (!response.ok) throw providerErrorFromStatus(response.status, DXRATING_STATUS_TEXTS);
       return mapDxRatingChartTags(await response.json());
     } catch (error) {
       if (error instanceof ProviderError) throw error;

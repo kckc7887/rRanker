@@ -1,4 +1,3 @@
-import type { ChunithmLevelIndex } from '@/domain/chunithm';
 import type { ChunithmPlayer } from '@/domain/chunithm-personal';
 import {
   resolveChunithmPossessionTheme,
@@ -18,6 +17,7 @@ import {
   STATUS_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
 import { minimumBestImageHeight } from '@/features/best-image/build-best-image-html';
+import { CHUNITHM_DIFFICULTY_COLORS } from '@/domain/chunithm-level-theme';
 import { chunithmBestImageJacketUrl } from './load-chunithm-best-image-jackets';
 import type { ChunithmBestImagePage, ChunithmBestImageType } from './chunithm-best-image';
 
@@ -35,15 +35,6 @@ export type ChunithmBestImageHtmlInput = {
   hideCharacter?: boolean;
   /** 底部署名的数据源文案（查分器名称）。 */
   dataSource?: string;
-};
-
-const DIFFICULTY_COLORS: Record<ChunithmLevelIndex, string> = {
-  0: '#4AA58A',
-  1: '#E27A24',
-  2: '#D6403A',
-  3: '#7526CF',
-  4: '#17171A',
-  5: '#7B61FF',
 };
 
 function escapeHtml(value: string): string {
@@ -104,7 +95,7 @@ function renderScoreCard(
   const jacketUrl = hasPreparedJacket
     ? coverUrls[jacketId]
     : chunithmBestImageJacketUrl(jacketId);
-  const difficultyColor = DIFFICULTY_COLORS[record.levelIndex];
+  const difficultyColor = CHUNITHM_DIFFICULTY_COLORS[record.levelIndex];
   const isUltima = record.levelIndex === 4;
   const isWorldsEnd = record.levelIndex === 5;
   const cardClass = isWorldsEnd

@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { MaimaiFcAchievement, MaimaiFsAchievement } from '@/domain/maimai-filters';
 import type { ChartType, Difficulty } from '@/domain/models';
 import type {
@@ -17,12 +17,6 @@ export type RandomChartsPreferences = MaimaiRandomChartFilters & {
 type StoredRandomChartsPreferencesV3 = {
   schemaVersion: 3;
 } & RandomChartsPreferences;
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
 
 const STORE_KEY = 'rranker.toolbox.random-charts.v1';
 const VALID_COUNTS = new Set<RandomChartsCount>([1, 2, 3, 4]);
@@ -137,22 +131,13 @@ function toStored(preferences: RandomChartsPreferences): StoredRandomChartsPrefe
   };
 }
 
-export class RandomChartsPreferencesStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
+const { Store: RandomChartsPreferencesStore } = createPreferencesStore<RandomChartsPreferences>({
+  storeKey: STORE_KEY,
+  defaults: defaultRandomChartsPreferences,
+  parse: parseRandomChartsPreferences,
+  toStored,
+});
 
-  async load(): Promise<RandomChartsPreferences> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw ? parseRandomChartsPreferences(JSON.parse(raw)) : defaultRandomChartsPreferences();
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return defaultRandomChartsPreferences();
-    }
-  }
-
-  async save(preferences: RandomChartsPreferences): Promise<void> {
-    await this.storage.setItem(STORE_KEY, JSON.stringify(toStored(preferences)));
-  }
-}
+export { RandomChartsPreferencesStore };
 
 export const randomChartsPreferencesStore = new RandomChartsPreferencesStore();

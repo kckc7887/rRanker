@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
+  Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View,
 } from 'react-native';
 import {
   Defs,
@@ -19,6 +19,7 @@ import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/gam
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -75,24 +76,6 @@ const CARD_GAP = 12;
 function useActiveMuseDashUserId() {
   const accountId = useSession((state) => state.activeAccountId);
   return museDashUserIdFromAccountId(accountId);
-}
-
-function SearchHeader({
-  accessibilityLabel, placeholder, value, onChangeText, loaded,
-}: {
-  accessibilityLabel: string;
-  placeholder: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  loaded: number;
-}) {
-  const theme = useAppTheme();
-  return <View style={[styles.searchWrap, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-    <TextInput accessibilityLabel={accessibilityLabel} placeholder={placeholder} placeholderTextColor={theme.textMuted}
-      value={value} onChangeText={onChangeText}
-      style={[styles.searchInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]} />
-    <Text style={[styles.resultCount, { color: theme.textMuted }]}>已加载 {loaded} 条</Text>
-  </View>;
 }
 
 type MuseDashBestSection = { id: string; title: string; data: MuseDashRawScore[] };
@@ -201,7 +184,7 @@ export function MuseDashRecordsScreen() {
   const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
   const error = player.error ?? albums.error ?? ce.error ?? diffdiff.error;
   const controls = <>
-    <SearchHeader accessibilityLabel="筛选喵斯快跑成绩" placeholder="搜索歌曲、作者或 uid" value={keyword}
+    <GameSearchHeader accessibilityLabel="筛选喵斯快跑成绩" placeholder="搜索歌曲、作者或 uid" value={keyword}
       onChangeText={setKeyword} loaded={records.length} />
     <MuseDashRecordsFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
       constantMin={constantMin} constantMax={constantMax} accMin={accMin} accMax={accMax}
@@ -269,7 +252,7 @@ export function MuseDashCatalogScreen() {
     return values;
   }, [constants]);
   const search = <>
-    <SearchHeader accessibilityLabel="搜索喵斯快跑歌曲" placeholder="搜索歌曲或作者" value={keyword}
+    <GameSearchHeader accessibilityLabel="搜索喵斯快跑歌曲" placeholder="搜索歌曲或作者" value={keyword}
       onChangeText={setKeyword} loaded={songs.length} />
     <MuseDashCatalogFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
       constantMin={constantMin} constantMax={constantMax} dlcOptions={dlcOptions}
@@ -550,8 +533,6 @@ const styles = StyleSheet.create({
   headerFavoriteActive: {},
   sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 },
-  searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
-  searchInput: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 }, resultCount: { fontSize: 11 },
   detail: { paddingBottom: 32 },
   hero: { position: 'relative', backgroundColor: '#D1D5DB', overflow: 'hidden' },
   heroSvg: { position: 'absolute', top: 0, left: 0 },

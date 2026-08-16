@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { GameId } from '@/domain/game-bind-options';
 import type { ChunithmCollectionKind } from '@/domain/chunithm-collections';
 import { getGameToolbox } from '@/domain/game-toolbox';
@@ -15,12 +15,6 @@ export type HomePinPreferences = {
   pinnedToolIdsByGame: PinnedToolIdsByGame;
   pinnedPlateIdsByGame: PinnedPlateIdsByGame;
   pinnedCollectionIdsByGame: PinnedCollectionIdsByGame;
-};
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
 };
 
 type StoredPinnedToolsV1 = {
@@ -105,27 +99,16 @@ export function parsePinnedToolPreferences(value: unknown): PinnedToolIdsByGame 
   return parseHomePinPreferences(value).pinnedToolIdsByGame;
 }
 
-export class PinnedToolPreferencesStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
+const { Store: PinnedToolPreferencesStore } = createPreferencesStore<HomePinPreferences>({
+  storeKey: STORE_KEY,
+  defaults: emptyHomePinPreferences,
+  parse: parseHomePinPreferences,
+  toStored: (preferences) => ({
+    version: 1,
+    ...parseHomePinPreferences({ version: 1, ...preferences }),
+  }) satisfies StoredPinnedToolsV1,
+});
 
-  async load(): Promise<HomePinPreferences> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw ? parseHomePinPreferences(JSON.parse(raw)) : emptyHomePinPreferences();
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return emptyHomePinPreferences();
-    }
-  }
-
-  async save(preferences: HomePinPreferences): Promise<void> {
-    const parsed = parseHomePinPreferences({ version: 1, ...preferences });
-    const value: StoredPinnedToolsV1 = {
-      version: 1,
-      ...parsed,
-    };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
-  }
-}
+export { PinnedToolPreferencesStore };
 
 export const pinnedToolPreferencesStore = new PinnedToolPreferencesStore();
