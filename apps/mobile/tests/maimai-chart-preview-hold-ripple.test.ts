@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { holdRipplePhase } from '@/features/maimai-chart-preview/engine/renderers/NoteRenderer';
-import type { HoldStartNote } from '@/features/maimai-chart-preview/engine/types';
+import type {
+  HoldStartNote,
+  TouchHoldStartNote,
+} from '@/features/maimai-chart-preview/engine/types';
 
 // duration（拍）× bpm → hold 持续毫秒：60000 × duration / bpm。
 function makeHold(timingMs: number, duration: number, bpm: number): HoldStartNote {
@@ -14,6 +17,22 @@ function makeHold(timingMs: number, duration: number, bpm: number): HoldStartNot
     scale: 1,
     bpm,
     duration,
+    isHoldStart: true,
+  };
+}
+
+function makeTouchHold(timingMs: number, duration: number, bpm: number): TouchHoldStartNote {
+  return {
+    type: 'touch-hold-start',
+    position: 'C',
+    timing: 0,
+    timingMs,
+    measure: 1,
+    positionInMeasure: 0,
+    scale: 1,
+    bpm,
+    duration,
+    durationMs: (60000 * duration) / bpm,
     isHoldStart: true,
   };
 }
@@ -80,5 +99,11 @@ describe('holdRipplePhase', () => {
     expect(holdRipplePhase(hold, 950)).toEqual({ generateMs: 900, progress: 0.5 });
     // 1000ms：恰为结束时刻，允许生成最后一圈（g=1000 ≤ 1000）
     expect(holdRipplePhase(hold, 1000)).toEqual({ generateMs: 1000, progress: 0 });
+  });
+
+  it('touch-hold 也是 hold，共用同一波纹相位函数', () => {
+    const hold = makeTouchHold(0, 2, 120); // 持续 1000ms
+    expect(holdRipplePhase(hold, 950)).toEqual({ generateMs: 900, progress: 0.5 });
+    expect(holdRipplePhase(hold, 1100)).toBeNull();
   });
 });
