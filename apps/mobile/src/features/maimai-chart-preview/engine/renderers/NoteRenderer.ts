@@ -1,5 +1,5 @@
 import { BaseRenderer, RenderContext, getGradientColors } from "./BaseRenderer";
-import { Note, Point2D, NoteRenderPosition, ButtonPosition } from "../types";
+import { Note, Point2D, NoteRenderPosition, ButtonPosition, HoldStartNote } from "../types";
 import {
   NOTE_SIZE_RATIO,
   TAP_INNER_RING_RATIO,
@@ -9,6 +9,9 @@ import {
   NOTE_VISIBILITY_AFTER_MS,
   NOTE_HIT_EFFECT_DURATION_MS,
   NOTE_LIGHTEN_RATIO,
+  HOLD_RIPPLE_INTERVAL_MS,
+  HOLD_RIPPLE_EXPAND_MS,
+  HOLD_RIPPLE_MAX_RADIUS_RATIO,
 } from "../utils/constants";
 
 export const INVISIBLE_NOTE_POSITION: NoteRenderPosition = Object.freeze({
@@ -17,6 +20,28 @@ export const INVISIBLE_NOTE_POSITION: NoteRenderPosition = Object.freeze({
   scale: 0,
   visible: false,
 });
+
+export interface HoldRipplePhase {
+  /** 当前活跃波纹的生成时刻（谱面毫秒） */
+  generateMs: number;
+  /** 扩散进度 0..1（<1），1 时已消失 */
+  progress: number;
+}
+
+// hold 开始到结束期间每 HOLD_RIPPLE_INTERVAL_MS 生成一个波纹；
+// 单波纹扩散 HOLD_RIPPLE_EXPAND_MS 后消失。间隔与扩散时长相同（均 0.1s），波纹无缝衔接；
+// 同一 hold 同一时刻至多 1 个活跃波纹。
+export function holdRipplePhase(hold: HoldStartNote, nowMs: number): HoldRipplePhase | null {
+  const startMs = hold.timingMs;
+  if (nowMs < startMs) return null;
+  const endMs = startMs + (60000 * hold.duration) / hold.bpm;
+  const k = Math.floor((nowMs - startMs) / HOLD_RIPPLE_INTERVAL_MS);
+  const generateMs = startMs + k * HOLD_RIPPLE_INTERVAL_MS;
+  if (generateMs > endMs) return null; // hold 已结束，不再生成新波纹
+  const t = nowMs - generateMs;
+  if (t >= HOLD_RIPPLE_EXPAND_MS) return null; // 该波纹已扩散完毕
+  return { generateMs, progress: t / HOLD_RIPPLE_EXPAND_MS };
+}
 
 // sprite 相对基准尺寸的边距倍率（覆盖 EX 环 ×1.43 + 描边）与超采样倍率。
 const TAP_SPRITE_HALF_RATIO = 1.7;
@@ -142,6 +167,27 @@ export class NoteRenderer extends BaseRenderer {
     p.closePath();
   }
 
+  /** 打击特效中心六边形外接圆基准半径（hold 波纹最大半径按此 ×2）。 */
+  private getHitEffectBaseRadius(): number {
+    return this.scaleByRadius(NOTE_SIZE_RATIO) * 1.36 * 1.5;
+  }
+
+  /** hold 判定点波纹：以判定点为圆心向外扩散并渐透明的圆环，线宽与击打特效一致。 */
+  renderHoldRipple(x: number, y: number, color: string, progress: number): void {
+    const r = this.getHitEffectBaseRadius() * HOLD_RIPPLE_MAX_RADIUS_RATIO * progress;
+    const alpha = 1 - progress; // 透明度 0% → 100%
+    if (r <= 0 || alpha <= 0) return;
+    this.withContext(() => {
+      const ctx = this.context.ctx;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = this.scaleByRadius(NOTE_STROKE_WIDTH_RATIO) * 2;
+      ctx.stroke();
+    });
+  }
+
   renderTapHitEffect(
     x: number,
     y: number,
@@ -157,7 +203,7 @@ export class NoteRenderer extends BaseRenderer {
     const subAng = 1 - (progress - 1) * (progress - 1);
     const subRad = Math.max(0, Math.min(1, 1 - (8 / 9) * progress * progress));
 
-    const baseR = this.scaleByRadius(NOTE_SIZE_RATIO) * 1.36 * 1.5;
+    const baseR = this.getHitEffectBaseRadius();
     const angle = this.getButtonAngle(position);
     const sub1 = angle + Math.PI / 6;
     const sub2 = angle - Math.PI / 6;
