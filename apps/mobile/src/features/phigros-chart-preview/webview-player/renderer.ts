@@ -2,6 +2,9 @@
  * Phigros PGR Canvas 渲染器，移植自 demo/phigros-chart-preview/renderer.js。
  * 固定使用内置皮肤（Tap2/Drag/Flick2/Hold2 及 HL 变体、hit.png），
  * 图集参数硬编码 hit: 6×5、普通 Hold 50/50、高亮 Hold 96/97、hitfx 1。
+ *
+ * 许可证：渲染语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
+ * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
 import { findEventIndex, type PgrChart, type PgrHeightEvent, type PgrLine, type PgrMoveEvent, type PgrNote, type PgrTweenEvent } from './pgr-core';

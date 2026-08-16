@@ -5,6 +5,10 @@
  * - 速度高度 = 事件内积分 + 事件结束后恒定 end 速度延伸（getIntegral 语义）；
  * - 多事件层相加；extra.json 的 bpm 覆盖谱面 BPMList；负 alpha 保留（渲染层按 prpr 整线隐藏）；
  * - 事件值可为数值/数组/字符串（文本事件），数组逐分量插值。
+ *
+ * 许可证：本文件语义对照 PhiZone/player（MPL-2.0，https://github.com/PhiZone/player）与
+ * TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira）移植，相应部分按各自原许可提供
+ * （与本项目 AGPL-3.0 兼容）；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
 export const RPE_WIDTH = 1350;

@@ -10,6 +10,9 @@
  * - 仅播放中常驻 rAF 渲染；暂停/拖动按事件渲染，画布 DPR 封顶与全屏像素预算；
  * - 主线程解析 PGR（WebView file:// 下不使用 Worker）。
  * 观赏播放不包含触控判定与真实计分。
+ *
+ * 许可证：谱面解析与渲染部分语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
+ * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
 import { PgrRenderer, type LineColorKey, type NoteAssets } from './renderer';

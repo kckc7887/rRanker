@@ -4,6 +4,7 @@
  * 且谱面包未提供对应文件时使用，与 demo/phira-rpe-chart-preview 语义一致
  * （circleBlur/radialBlur 仅文件名带下划线，shader 名不变）。
  * 内嵌为字符串常量随 player.bundle 分发，不依赖 metro 资源解析。
+ * 许可证全文与上游来源说明见仓库根 THIRD_PARTY_NOTICES.md。
  */
 export const RPE_PRESET_SHADERS: Readonly<Record<string, string>> = Object.freeze({
   chromatic: `#version 100
