@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { TufRandomFilterBar, type TufDifficultyBand, type TufPassAchievementFilter } from '@/components/adofai/TufFilterBar';
+import { TufRandomFilterBar } from '@/components/adofai/TufFilterBar';
 import { TufScoreCard } from '@/components/adofai/TufScoreCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { RandomChartsPage } from '@/components/RandomChartsPage';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
-import { pickRandomItems, type RandomChartsCount } from '@/domain/random-charts';
+import { pickRandomItems } from '@/domain/random-charts';
 import { filterTufPasses, tufDifficultyBounds, uniqueTufPassesByLevel, type TufPass } from '@/domain/tuf';
 import { prefetchTufPassPage, useTufPasses } from '@/hooks/use-tuf';
 import { loadOffsetPagesBounded, offsetPageStarts } from '@/services/offset-pagination';
+import { useTufRandomChartsFilter } from '@/state/tuf-random-charts-filter';
 import { useSession } from '@/state/session-store';
 
 export function TufRandomChartsScreen() {
@@ -15,17 +16,20 @@ export function TufRandomChartsScreen() {
   const playerId = tufPlayerIdFromAccountId(accountId);
   const queryOptions = useMemo(() => ({ sortBy: 'impact' as const, order: 'DESC' as const, bestPerLevel: true }), []);
   const query = useTufPasses(playerId, queryOptions);
-  const [count, setCount] = useState<RandomChartsCount>(1);
-  const [expanded, setExpanded] = useState(false);
-  const [difficultyBand, setDifficultyBand] = useState<TufDifficultyBand>('all');
-  const [difficultyMin, setDifficultyMin] = useState('');
-  const [difficultyMax, setDifficultyMax] = useState('');
-  const [includeSpecial, setIncludeSpecial] = useState(true);
-  const [achievement, setAchievement] = useState<TufPassAchievementFilter>('all');
+  const {
+    count, collapsed, difficultyBand, difficultyMin, difficultyMax, includeSpecial,
+    achievement, hydrate, setCount, setCollapsed, setDifficultyBand, setDifficultyMin,
+    setDifficultyMax, setIncludeSpecial, setAchievement, clearFilters,
+  } = useTufRandomChartsFilter();
   const [results, setResults] = useState<TufPass[] | null>(null);
   const [lastSeed, setLastSeed] = useState<string | null>(null);
   const [failedOffsets, setFailedOffsets] = useState<number[]>([]);
   const [retryVersion, setRetryVersion] = useState(0);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
+
   const firstPage = query.data?.pages[0];
   useEffect(() => {
     if (playerId === null || !firstPage) return;
@@ -82,14 +86,11 @@ export function TufRandomChartsScreen() {
       emptyMessage="没有符合条件的公开成绩，请放宽筛选后再试。"
       filter={<TufRandomFilterBar
         achievement={achievement} difficultyBand={difficultyBand} difficultyMax={difficultyMax}
-        difficultyMin={difficultyMin} expanded={expanded} includeSpecial={includeSpecial}
+        difficultyMin={difficultyMin} expanded={!collapsed} includeSpecial={includeSpecial}
         onAchievementChange={setAchievement} onDifficultyBandChange={setDifficultyBand}
         onDifficultyMaxChange={setDifficultyMax} onDifficultyMinChange={setDifficultyMin}
-        onExpandedChange={setExpanded} onIncludeSpecialChange={setIncludeSpecial}
-        onReset={() => {
-          setDifficultyBand('all'); setDifficultyMin(''); setDifficultyMax('');
-          setIncludeSpecial(true); setAchievement('all');
-        }} />}
+        onExpandedChange={(value) => setCollapsed(!value)} onIncludeSpecialChange={setIncludeSpecial}
+        onReset={clearFilters} />}
       hasDrawn={results !== null}
       onCountChange={setCount}
       onDraw={draw}

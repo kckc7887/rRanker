@@ -5,7 +5,7 @@ import {
   applyPhigrosChartPreviewConfigToHtml,
   type PhigrosChartPreviewConfig,
 } from './phigros-chart-preview-inject';
-import { chartPreviewStageDirectory } from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
+import { chartPreviewStageDirectory } from '@/features/chart-preview-shared/chart-preview-assets';
 
 const HTML_MODULE = require('../../../assets/phigros-chart-preview/index.html') as number;
 const PLAYER_MODULE = require('../../../assets/phigros-chart-preview/player.bundle') as number;

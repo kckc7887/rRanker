@@ -1,5 +1,6 @@
+import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
-import { ProviderError } from './errors';
+import { ProviderError, providerErrorFromStatus } from './errors';
 
 type FetchLike = typeof fetch;
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -25,6 +26,12 @@ export type JsonRequestOptions<T> = {
   label: string;
   timeoutMs?: number;
   retries?: number;
+  /**
+   * 三段错误文案逐字覆盖（结构不一致/读取超时/无法连接）。
+   * 缺省按 label 生成，保持既有调用方行为不变；
+   * 供文案与 label 模板存在空格或措辞差异的存量 Provider（如 TUF）零变化收敛使用。
+   */
+  messages?: { schema?: string; timeout?: string; network?: string };
 };
 
 /** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
@@ -32,6 +39,9 @@ export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T>
   const { path, schema, fetcher, baseUrl, error, label } = options;
   const timeoutMs = options.timeoutMs ?? 12_000;
   const retries = options.retries ?? 2;
+  const schemaMessage = options.messages?.schema ?? `${label}数据结构与已验证契约不一致`;
+  const timeoutMessage = options.messages?.timeout ?? `${label}数据读取超时`;
+  const networkMessage = options.messages?.network ?? `无法连接${label}服务`;
   let previousError: ProviderError | null = null;
   for (let attempt = 0; attempt < retries; attempt += 1) {
     const controller = new AbortController();
@@ -52,17 +62,53 @@ export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T>
       return schema.parse(await response.json());
     } catch (caught) {
       if (caught instanceof z.ZodError || caught instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', `${label}数据结构与已验证契约不一致`, true, { cause: caught });
+        throw new ProviderError('upstream_schema', schemaMessage, true, { cause: caught });
       }
       if (caught instanceof ProviderError) throw caught;
       const normalized = caught instanceof Error && caught.name === 'AbortError'
-        ? new ProviderError('timeout', `${label}数据读取超时`, true, { cause: caught })
-        : new ProviderError('network', `无法连接${label}服务`, true, { cause: caught });
+        ? new ProviderError('timeout', timeoutMessage, true, { cause: caught })
+        : new ProviderError('network', networkMessage, true, { cause: caught });
       if (attempt === 0) { previousError = normalized; continue; }
       throw normalized;
     } finally {
       clearTimeout(timeout);
     }
   }
-  throw previousError ?? new ProviderError('network', `无法连接${label}服务`, true);
+  throw previousError ?? new ProviderError('network', networkMessage, true);
+}
+
+export type ProviderJsonOptions = {
+  baseUrl: string;
+  path: string;
+  /** 三段错误文案（无效 JSON/读取超时/无法连接），由调用方按数据源逐字提供。 */
+  invalidJsonMessage: string;
+  timeoutMessage: string;
+  networkMessage: string;
+};
+
+/**
+ * 公共曲库类 JSON GET：expoFetch + 12s 超时 + 状态码（providerErrorFromStatus）
+ * 与解析/超时/网络错误归一化，无重试（LXNS 公共曲库语义）。
+ */
+export async function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  try {
+    const response = await expoFetch(`${options.baseUrl}${options.path}`, {
+      headers: { Accept: 'application/json' }, signal: controller.signal,
+    });
+    if (!response.ok) throw providerErrorFromStatus(response.status);
+    return await response.json();
+  } catch (error) {
+    if (error instanceof ProviderError) throw error;
+    if (error instanceof SyntaxError) {
+      throw new ProviderError('upstream_schema', options.invalidJsonMessage, true, { cause: error });
+    }
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new ProviderError('timeout', options.timeoutMessage, true, { cause: error });
+    }
+    throw new ProviderError('network', options.networkMessage, true, { cause: error });
+  } finally {
+    clearTimeout(timeout);
+  }
 }

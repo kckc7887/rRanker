@@ -1,7 +1,8 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
+import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { PhigrosKyouTagFilterSheet } from '@/components/phigros/PhigrosKyouTagFilterSheet';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
@@ -375,18 +376,8 @@ function ResetFilterButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
-  label: string; active: boolean; onPress: () => void; accessibilityLabel?: string;
-}) {
-  const theme = useAppTheme();
-  return (
-    <FilterChipFrame active={active} shape="pill" accessibilityLabel={accessibilityLabel ?? `筛选 ${label}`} onPress={onPress}>
-      <View style={[styles.neutralChip, { backgroundColor: theme.surface, borderColor: theme.border }, active && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-        <Text style={[styles.neutralChipText, { color: theme.textSecondary }, active && styles.neutralChipTextActive]}>{label}</Text>
-      </View>
-    </FilterChipFrame>
-  );
-}
+// 薄兼容导出：筛选芯片已收敛至 MaimaiFilterBar 公共实现，保留本模块原有导出符号。
+export { NeutralChip };
 
 export function LevelChip({ level, active, onPress }: {
   level: PhigrosLevel; active: boolean; onPress: () => void;
@@ -439,29 +430,6 @@ function XingChip({ value, active, onPress }: {
   );
 }
 
-function FilterChipFrame({
-  active,
-  accessibilityLabel,
-  onPress,
-  children,
-  shape = 'pill',
-}: {
-  active: boolean;
-  accessibilityLabel: string;
-  onPress: () => void;
-  children: ReactNode;
-  shape?: 'pill' | 'rounded';
-}) {
-  const theme = useAppTheme();
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ selected: active }} onPress={onPress}
-      style={[styles.chipFrame, shape === 'rounded' && styles.roundedChipFrame, active && { borderColor: theme.accent }]}>
-      {children}
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -470,11 +438,6 @@ const styles = StyleSheet.create({
   wideFilterLabel: { width: 44 },
   chipScroll: { flexGrow: 0, flexShrink: 1 },
   chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 1 },
-  chipFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 999, padding: 2, alignItems: 'center', justifyContent: 'center' },
-  roundedChipFrame: { borderRadius: 10 },
-  neutralChip: { minHeight: 30, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
-  neutralChipText: { color: '#374151', fontSize: 12 },
-  neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
   levelChip: { minHeight: 30, borderRadius: 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   levelChipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
   rankChip: { minHeight: 30, borderRadius: 8, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },

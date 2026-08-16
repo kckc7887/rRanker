@@ -17,8 +17,8 @@ import {
   chartPreviewExitFullscreenScript,
   chartPreviewStopScript,
   parseChartPreviewBridgeMessage,
-} from '@/features/maimai-chart-preview/chart-preview-inject';
-import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
+} from './chart-preview-bridge';
+import { chartPreviewNativeScreenOptions } from './chart-preview-native-screen-options';
 import { useAppTheme } from '@/theme/app-theme';
 
 export type ChartPreviewShellSource = { uri: string; allowingReadAccessToURL: string };

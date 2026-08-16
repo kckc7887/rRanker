@@ -52,7 +52,7 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { cache: new Directory('file://', 'cache') } };
 });
 
-vi.mock('@/features/maimai-chart-preview/prepare-chart-preview-webview', () => ({
+vi.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
   chartPreviewStageDirectory: (name: string) => mockFs.makeStageDirectory(name),
   loadAssetFileUri: async (moduleId: number) => `file://asset/${moduleId}`,
   readAssetText: async (moduleId: number) => mockFs.readAssetTexts.get(moduleId) ?? '',

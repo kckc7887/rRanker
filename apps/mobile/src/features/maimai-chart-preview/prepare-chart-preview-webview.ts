@@ -1,12 +1,18 @@
-import { Asset } from 'expo-asset';
-import { Directory, File, Paths } from 'expo-file-system';
+/**
+ * 舞萌谱面确认 WebView prepare（兼容层）：
+ * stage 目录/资产解析四件与 asset URI 解析已下沉到 chart-preview-shared 公共层，
+ * 本文件保留舞萌 stage 目录名默认值与全部原导出名/签名，调用方零改动；
+ * 舞萌专属的资产清单声明与 file 访问开关保留原地。
+ */
+
+import { Directory } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
+import { chartPreviewStageDirectory as chartPreviewStageDirectoryBase } from '@/features/chart-preview-shared/chart-preview-assets';
 import {
   applyChartPreviewConfigToHtml,
   type ChartPreviewInjectConfig,
 } from './chart-preview-inject';
-import { resolveChartPreviewAssetUri } from './chart-preview-asset-uri';
 
 export {
   applyChartPreviewConfigToHtml,
@@ -17,6 +23,11 @@ export {
   parseChartPreviewBridgeMessage,
   type ChartPreviewInjectConfig,
 } from './chart-preview-inject';
+export {
+  loadAssetFileUri,
+  readAssetText,
+  stageAsset,
+} from '@/features/chart-preview-shared/chart-preview-assets';
 
 const HTML_MODULE = require('../../../assets/maimai-chart-preview/index.html') as number;
 const PLAYER_MODULE = require('../../../assets/maimai-chart-preview/player.bundle') as number;
@@ -29,37 +40,7 @@ export type ChartPreviewWebViewSource = {
 };
 
 export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Directory {
-  const directory = new Directory(Paths.cache, name);
-  directory.create({ intermediates: true, idempotent: true });
-  return directory;
-}
-
-export async function stageAsset(moduleId: number, fileName: string, directory: Directory): Promise<File> {
-  const sourceUri = await loadAssetFileUri(moduleId, fileName);
-  const target = new File(directory, fileName);
-  const source = new File(sourceUri);
-  if (target.exists) target.delete();
-  source.copy(target);
-  return target;
-}
-
-export async function loadAssetFileUri(moduleId: number, fileName: string): Promise<string> {
-  const asset = Asset.fromModule(moduleId);
-  await asset.downloadAsync();
-  if (!asset.localUri) throw new Error(`无法加载资源 ${fileName}`);
-
-  const resolved = resolveChartPreviewAssetUri(asset.localUri, asset.type, Platform.OS);
-  if (!resolved.requiresDownload) return resolved.uri;
-
-  const embeddedAsset = Asset.fromURI(resolved.uri);
-  await embeddedAsset.downloadAsync();
-  if (!embeddedAsset.localUri) throw new Error(`无法加载资源 ${fileName}`);
-  return embeddedAsset.localUri;
-}
-
-export async function readAssetText(moduleId: number): Promise<string> {
-  const sourceUri = await loadAssetFileUri(moduleId, 'index.html');
-  return await new File(sourceUri).text();
+  return chartPreviewStageDirectoryBase(name);
 }
 
 /**

@@ -1,3 +1,9 @@
+/**
+ * 播放分段时钟（谱面确认 WebView 播放器公共层）：
+ * 以 AudioContext 输出端时间为横轴记录播放起止与倍速变化，
+ * 任意时刻都能反查精确的音乐位置，pause/seek/倍速变化不丢样本。
+ */
+
 interface PlaybackClockSegment {
   startTime: number;
   startOffset: number;

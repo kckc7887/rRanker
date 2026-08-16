@@ -15,5 +15,5 @@ export {
   type AudioManagerConfig,
   type PreparedAudioEvent,
 } from "./audio/AudioManager";
-export { getAudioContextOutputTime } from "./audio/audioClock";
+export { getAudioContextOutputTime } from "../../../chart-preview-shared/webview-player/audioClock";
 export { TimingTimeline } from "./timing/TimingTimeline";
