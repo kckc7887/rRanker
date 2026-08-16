@@ -53,6 +53,13 @@ describe('chart preview webview helpers', () => {
     })).toContain('"buddySide":"1"');
   });
 
+  it('serializes the player theme with dark as the default', () => {
+    expect(buildChartPreviewConfigJson({ chartId: 10834, difficulty: 5 }))
+      .toContain('"theme":"dark"');
+    expect(buildChartPreviewConfigJson({ chartId: 10834, difficulty: 5, theme: 'light' }))
+      .toContain('"theme":"light"');
+  });
+
   it('writes config into html template marker for file:// loading', () => {
     const html = applyChartPreviewConfigToHtml(
       '<html><!--CHART_PREVIEW_CONFIG--><script src="./player.js"></script></html>',
@@ -172,6 +179,24 @@ describe('chart preview webview helpers', () => {
     expect(html).toContain('body.dual #canvas-wrap');
     expect(html).toContain('#canvas-stage-2 {\n      display: none;');
     expect(html).toContain('class="side-chip">2P');
+  });
+
+  it('adapts the player chrome to light mode while keeping the canvas dark', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    expect(html).toContain('html[data-theme="light"] {');
+    expect(html).toContain('--bg: #F7F8FA');
+    expect(html).toContain('--panel: #FFFFFF');
+    expect(html).toContain('--playhead: #111827');
+    expect(html).toContain('--wheel-bg: #FFFFFF');
+    expect(html).toContain('#canvas-wrap {\n      flex-shrink: 0;\n      display: grid;\n      place-items: center;\n      background: #000;');
+    const configIndex = html.indexOf('<!--CHART_PREVIEW_CONFIG-->');
+    const themeScriptIndex = html.indexOf("c.theme==='light'");
+    const playerScriptIndex = html.indexOf('<!--PLAYER_SCRIPT-->');
+    expect(themeScriptIndex).toBeGreaterThan(configIndex);
+    expect(themeScriptIndex).toBeLessThan(playerScriptIndex);
   });
 
   it('hides controls while locked and restores them when unlocked', () => {

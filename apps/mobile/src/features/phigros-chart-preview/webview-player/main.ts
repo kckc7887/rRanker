@@ -67,6 +67,8 @@ export interface PhigrosChartPreviewConfig {
     infoYml: string | null;
     shaders: Record<string, string>;
   } | null;
+  /** 播放器界面主题：由 RN 侧按应用深浅色注入。 */
+  theme?: 'light' | 'dark';
 }
 
 const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({

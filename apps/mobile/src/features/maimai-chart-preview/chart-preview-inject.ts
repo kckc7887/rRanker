@@ -27,6 +27,8 @@ export type ChartPreviewInjectConfig = {
   settings?: ChartPreviewSettings;
   answerSoundUrl?: string;
   buddySide?: BuddyPreviewSide;
+  /** 播放器界面主题：跟随应用深浅色模式，缺省深色（与历史产物一致）。 */
+  theme?: 'light' | 'dark';
 };
 
 export type ChartPreviewBridgeMessage = ChartPreviewSettings & {
@@ -56,6 +58,7 @@ const chartPreviewInjectors = createChartPreviewInjectors<ChartPreviewInjectConf
     settings: config.settings ?? null,
     answerSoundUrl: config.answerSoundUrl,
     buddySide: config.buddySide ?? null,
+    theme: config.theme ?? 'dark',
   }),
 });
 

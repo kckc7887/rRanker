@@ -55,7 +55,8 @@ describe('phigros chart preview webview template', () => {
     expect(html).toContain('.toggle[aria-pressed="true"]');
     expect(html).toContain('id="multi-hint" type="button" aria-pressed="true"');
     expect(html).toContain('id="time-label"');
-    expect(html).toContain('background: rgba(11,13,18,0.92)');
+    expect(html).toContain('--overlay-panel: rgba(11,13,18,0.92)');
+    expect(html).toContain('background: var(--overlay-panel)');
     expect(html).toContain('backdrop-filter: blur(12px)');
     expect(html).toContain('body.fullscreen .controls-settings { display: none; }');
     // demo 残留清理：无加载面板、无滑块、无打击音效开关
@@ -63,5 +64,22 @@ describe('phigros chart preview webview template', () => {
     expect(html).not.toContain('id="seek"');
     expect(html).not.toContain('type="range"');
     expect(html).not.toContain('id="hit-sound"');
+  });
+
+  it('播放器界面跟随深浅色主题：浅色变量集与配置后即时切换脚本', () => {
+    const html = templateHtml();
+    // 深色为默认值，浅色经 html[data-theme="light"] 覆盖，谱面画布区保持黑底。
+    expect(html).toContain('html[data-theme="light"] {');
+    expect(html).toContain('--bg: #F7F8FA');
+    expect(html).toContain('--panel: #FFFFFF');
+    expect(html).toContain('--playhead: #111827');
+    expect(html).toContain('--wheel-bg: #FFFFFF');
+    expect(html).toContain('background: #000');
+    // 配置脚本之后、播放器脚本之前应用主题，避免首帧闪色。
+    const configIndex = html.indexOf('<!--PHIGROS_CHART_PREVIEW_CONFIG-->');
+    const themeScriptIndex = html.indexOf("c.theme==='light'");
+    const playerScriptIndex = html.indexOf('<!--PLAYER_SCRIPT-->');
+    expect(themeScriptIndex).toBeGreaterThan(configIndex);
+    expect(themeScriptIndex).toBeLessThan(playerScriptIndex);
   });
 });

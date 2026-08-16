@@ -17,6 +17,7 @@ import { usePhiraChart } from '@/hooks/use-phira';
 import type { PhiraChart } from '@/domain/phira';
 import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
+import { useAppTheme } from '@/theme/app-theme';
 
 /** Phigros 仅需读取 OSS 的三个 JSON 指针文件，超时给得短。 */
 const PHIGROS_PREPARE_TIMEOUT_MS = 20_000;
@@ -52,6 +53,7 @@ function mapParams(
 }
 
 export default function PhigrosChartPreviewScreen() {
+  const isDark = useAppTheme().dark;
   const params = useLocalSearchParams<{
     requestId?: string;
     game?: string;
@@ -102,10 +104,13 @@ export default function PhigrosChartPreviewScreen() {
               stageMusic: stagePhiraChartMusic,
               stageRpeBundle: stagePhiraRpeBundle,
             });
-        return preparePhigrosChartPreviewWebViewSource(prepared.config, prepared.musicDataBase64 ?? null);
+        return preparePhigrosChartPreviewWebViewSource(
+          { ...prepared.config, theme: isDark ? 'dark' : 'light' },
+          prepared.musicDataBase64 ?? null,
+        );
       },
     };
-  }, [mapped, phiraChart.data, phiraChart.isError]);
+  }, [mapped, phiraChart.data, phiraChart.isError, isDark]);
 
   // externalError 仅参与渲染层错误组合；request 仍为 ready，prepare 照常执行。
   const externalError = phiraChartId !== null && phiraChart.isError
