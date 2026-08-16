@@ -18,7 +18,7 @@ import {
 } from '../engine';
 import { PlaybackClock } from './playbackClock';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
-import { toggleFullscreenLockUiState } from './fullscreenLock';
+import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 import {
   beatsToMs,
   calculateMusicTime,
