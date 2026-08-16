@@ -1,9 +1,16 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { DxRatingTagFilterSheet } from '@/components/maimai/DxRatingTagFilterSheet';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
+import {
+  FilterChipFrame,
+  FilterShell,
+  NeutralChip,
+  filterShellStyles,
+  joinFilterSummary,
+} from '@/components/game-content/FilterShell';
 import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import {
   MAIMAI_FC_ACHIEVEMENTS,
@@ -23,6 +30,9 @@ type OpenDropdown = 'version' | 'solo' | 'multi' | null;
 type VersionSheetValue = string | 'all';
 type SoloSheetValue = MaimaiFcAchievement | 'all';
 type MultiSheetValue = MaimaiFsAchievement | 'all';
+
+// 薄兼容导出：公共筛选芯片已收敛至 game-content/FilterShell，保留本模块历史导出符号供既有调用方使用。
+export { FilterChipFrame, NeutralChip };
 
 export type DxRatingTagFilterState = 'ready' | 'loading' | 'unavailable';
 
@@ -109,7 +119,7 @@ export function buildMaimaiFilterSummary({
   const soloLabel = soloAchievement ? `单人 ${maimaiFcAchievementLabel(soloAchievement)}` : null;
   const multiLabel = multiAchievement ? `多人 ${maimaiFsAchievementLabel(multiAchievement)}` : null;
   const tagLabel = formatDxRatingTagFilterValue(dxRatingTags, selectedDxRatingTagIds);
-  return [
+  return joinFilterSummary([
     difficulty === 'all' ? null : DIFFICULTY_VISUAL[difficulty].label,
     versionLabel,
     type === 'all' ? null : type,
@@ -118,7 +128,7 @@ export function buildMaimaiFilterSummary({
     achievementMin || achievementMax ? `达成率 ${achievementMin || '不限'}~${achievementMax || '不限'}%` : null,
     soloLabel,
     multiLabel,
-  ].filter(Boolean).join(' · ') || '全部';
+  ]);
 }
 
 export function MaimaiFilterBar({
@@ -245,43 +255,13 @@ export function MaimaiFilterBar({
     versionMulti, selectedVersions,
   });
 
-  if (collapsible && collapsed) {
-    return (
-      <View style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
-          accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)}
-          style={styles.collapsedMain}>
-          <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
-          <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
-        </Pressable>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={handleReset} />
-          <Pressable accessible={false} hitSlop={8} onPress={() => onCollapsedChange(false)}
-            style={styles.headerAction}>
-            <CollapseToggleAction expanded={false} label="展开" />
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-      <View style={styles.expandedHeader}>
-        <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={handleReset} />
-          {collapsible ? <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
-            onPress={() => { setOpenDropdown(null); onCollapsedChange(true); }} hitSlop={8}
-            style={styles.headerAction}>
-            <CollapseToggleAction expanded label="收起" />
-          </Pressable> : null}
-        </View>
-      </View>
-
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+    <FilterShell collapsed={collapsed} collapsible={collapsible} summary={summary}
+      onCollapsedChange={onCollapsedChange} onReset={handleReset}
+      onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>难度</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filterShellStyles.chipRow}>
           <NeutralChip label="全部" active={difficulty === 'all'} onPress={() => onDifficultyChange('all')} />
           {DIFFICULTIES.map((item) => {
             const active = difficulty === item;
@@ -296,8 +276,8 @@ export function MaimaiFilterBar({
         </ScrollView>
       </View>
 
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>版本</Text>
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>版本</Text>
         <View style={styles.dropdownControls}>
           <FilterAnchoredDropdown
             open={openDropdown === 'version'}
@@ -331,9 +311,9 @@ export function MaimaiFilterBar({
         </View>
       </View>
 
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>类型</Text>
-        <View style={styles.chipRow}>
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>类型</Text>
+        <View style={filterShellStyles.chipRow}>
           <NeutralChip label="全部" active={type === 'all'} onPress={() => onTypeChange('all')} />
           {TYPES.map((item) => {
             const active = type === item;
@@ -348,8 +328,8 @@ export function MaimaiFilterBar({
       </View>
 
       {onDxRatingTagIdsChange ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>标签</Text>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>标签</Text>
           <Pressable accessibilityRole="button"
             accessibilityLabel={`谱面标签筛选，${dxRatingTagState === 'ready' ? `当前 ${tagFilterValue}` : tagFilterValue}`}
             accessibilityState={{ disabled: dxRatingTagState !== 'ready', expanded: tagSheetVisible }}
@@ -367,37 +347,37 @@ export function MaimaiFilterBar({
         </View>
       ) : null}
 
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, showAchievementRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <View style={styles.rangeRow}>
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabel, showAchievementRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
+        <View style={filterShellStyles.rangeRow}>
           <TextInput accessibilityLabel="最低定数" autoCorrect={false} keyboardType="decimal-pad"
             placeholder="下限" placeholderTextColor={theme.textMuted} value={constantMin} onChangeText={onConstantMinChange}
-            style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          <Text style={styles.rangeSeparator}>~</Text>
+            style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+          <Text style={filterShellStyles.rangeSeparator}>~</Text>
           <TextInput accessibilityLabel="最高定数" autoCorrect={false} keyboardType="decimal-pad"
             placeholder="上限" placeholderTextColor={theme.textMuted} value={constantMax} onChangeText={onConstantMaxChange}
-            style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+            style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         </View>
       </View>
 
       {showAchievementRange ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>达成率</Text>
-          <View style={styles.rangeRow}>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>达成率</Text>
+          <View style={filterShellStyles.rangeRow}>
             <TextInput accessibilityLabel="最低达成率" autoCorrect={false} keyboardType="decimal-pad"
               placeholder="下限" placeholderTextColor={theme.textMuted} value={achievementMin} onChangeText={onAchievementMinChange}
-              style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-            <Text style={styles.rangeSeparator}>~</Text>
+              style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+            <Text style={filterShellStyles.rangeSeparator}>~</Text>
             <TextInput accessibilityLabel="最高达成率" autoCorrect={false} keyboardType="decimal-pad"
               placeholder="上限" placeholderTextColor={theme.textMuted} value={achievementMax} onChangeText={onAchievementMaxChange}
-              style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+              style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
           </View>
         </View>
       ) : null}
 
       {showAchievementPickers ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>成就</Text>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>成就</Text>
           <View style={styles.achievementDropdownRow}>
             <FilterAnchoredDropdown
               open={openDropdown === 'solo'}
@@ -431,40 +411,7 @@ export function MaimaiFilterBar({
         onApply={onDxRatingTagIdsChange}
         onClose={() => setTagSheetVisible(false)}
       /> : null}
-    </View>
-  );
-}
-
-function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: string }) {
-  const theme = useAppTheme();
-  return (
-    <View style={styles.collapseActionRow}>
-      <Text style={[styles.collapseAction, { color: theme.accent }]}>{label}</Text>
-      <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.accent} />
-    </View>
-  );
-}
-
-function ResetFilterButton({ onPress }: { onPress: () => void }) {
-  const theme = useAppTheme();
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel="重置筛选" hitSlop={8} onPress={onPress}
-      style={({ pressed }) => [styles.resetButton, pressed && styles.resetButtonPressed]}>
-      <Text style={[styles.resetButtonText, { color: theme.accent }]}>重置</Text>
-    </Pressable>
-  );
-}
-
-export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
-  label: string; active: boolean; onPress: () => void; accessibilityLabel?: string;
-}) {
-  const theme = useAppTheme();
-  return (
-    <FilterChipFrame active={active} accessibilityLabel={accessibilityLabel ?? `筛选 ${label}`} onPress={onPress}>
-      <View style={[styles.neutralChip, { backgroundColor: theme.surface, borderColor: theme.border }, active && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-        <Text style={[styles.neutralChipText, { color: theme.textSecondary }, active && styles.neutralChipTextActive]}>{label}</Text>
-      </View>
-    </FilterChipFrame>
+    </FilterShell>
   );
 }
 
@@ -478,40 +425,8 @@ function QuickChip({ label, active, onPress }: { label: string; active: boolean;
   );
 }
 
-export function FilterChipFrame({
-  active,
-  accessibilityLabel,
-  onPress,
-  children,
-  shape = 'pill',
-}: {
-  active: boolean;
-  accessibilityLabel: string;
-  onPress: () => void;
-  children: ReactNode;
-  shape?: 'pill' | 'rounded';
-}) {
-  const theme = useAppTheme();
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ selected: active }} onPress={onPress}
-      style={[styles.chipFrame, shape === 'rounded' && styles.roundedChipFrame, active && { borderColor: theme.accent }]}>
-      {children}
-    </Pressable>
-  );
-}
-
+// Maimai 专属样式：版本切换、标签触发器、快捷芯片等；公共样式见 game-content/FilterShell 的 filterShellStyles。
 const styles = StyleSheet.create({
-  filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
-  wideFilterLabel: { width: 44 },
-  chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  chipFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 999, padding: 2, alignItems: 'center', justifyContent: 'center' },
-  roundedChipFrame: { borderRadius: 10 },
-  neutralChip: { minHeight: 30, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
-  neutralChipText: { color: '#374151', fontSize: 12 },
-  neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
   dropdownControls: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
   versionQuickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   quickChip: { minHeight: 28, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
@@ -527,35 +442,4 @@ const styles = StyleSheet.create({
   localeButton: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
   localeText: { color: '#4B5563', fontSize: 12, fontWeight: '700' },
   localeTextActive: { color: '#FFF' },
-  rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  rangeInput: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 44,
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 0,
-    color: '#111827',
-    fontSize: 14,
-    lineHeight: 20,
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-  },
-  rangeSeparator: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
-  collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  collapsedLabel: { fontSize: 12, fontWeight: '700' },
-  collapsedSummary: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
-  collapseAction: { fontSize: 12, fontWeight: '800' },
-  collapseActionRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  expandedTitle: { fontSize: 13, fontWeight: '800' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  headerAction: { minHeight: 28, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  resetButton: { minHeight: 28, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  resetButtonPressed: { opacity: 0.62 },
-  resetButtonText: { fontSize: 12, fontWeight: '800' },
 });

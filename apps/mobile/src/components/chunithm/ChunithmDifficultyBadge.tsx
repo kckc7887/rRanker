@@ -4,20 +4,8 @@ import {
   CHUNITHM_DIFFICULTY_LABELS,
   type ChunithmLevelIndex,
 } from '@/domain/chunithm';
+import { CHUNITHM_DIFFICULTY_THEME } from '@/domain/chunithm-level-theme';
 import { SPECIAL_DIFFICULTY_GRADIENT } from '@/components/special-difficulty-theme';
-
-const DIFFICULTY_THEME: Record<ChunithmLevelIndex, {
-  background: string;
-  border: string;
-  text: string;
-}> = {
-  0: { background: '#4AA58A', border: '#4AA58A', text: '#FFFFFF' },
-  1: { background: '#E27A24', border: '#E27A24', text: '#FFFFFF' },
-  2: { background: '#D6403A', border: '#D6403A', text: '#FFFFFF' },
-  3: { background: '#7526CF', border: '#7526CF', text: '#FFFFFF' },
-  4: { background: '#17171A', border: '#E83A58', text: '#FFFFFF' },
-  5: { background: '#7B61FF', border: '#F24FD4', text: '#FFFFFF' },
-};
 
 export const CHUNITHM_WORLDS_END_GRADIENT = SPECIAL_DIFFICULTY_GRADIENT;
 
@@ -36,7 +24,7 @@ export function ChunithmDifficultyBadge({
   display?: ChunithmDifficultyBadgeDisplay;
   worldsEndLabel?: string;
 }) {
-  const colors = DIFFICULTY_THEME[levelIndex];
+  const colors = CHUNITHM_DIFFICULTY_THEME[levelIndex];
   const label = CHUNITHM_DIFFICULTY_LABELS[levelIndex];
   const constantText = constant === undefined ? '—' : constant.toFixed(1);
   const valueText = levelIndex === 5 ? (worldsEndLabel?.trim() || '—') : constantText;

@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { ChunithmBestImageSelectionCount } from './chunithm-best-image';
 
 export type ChunithmBestImageStyleMode = 'current' | 'item' | 'random' | 'off';
@@ -110,18 +110,12 @@ export function resolveChunithmBestImageStyleId(
   return currentId ?? null;
 }
 
-export const chunithmBestImagePreferencesStore = {
-  async load(accountId: string): Promise<ChunithmBestImageStylePreferences> {
-    try {
-      const raw = await Storage.getItem(`${PREFIX}${accountId}`);
-      return raw
-        ? parseChunithmBestImageStylePreferences(JSON.parse(raw))
-        : { ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES };
-    } catch {
-      return { ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES };
-    }
-  },
-  async save(accountId: string, value: ChunithmBestImageStylePreferences): Promise<void> {
-    await Storage.setItem(`${PREFIX}${accountId}`, JSON.stringify(value));
-  },
-};
+const { Store } = createPreferencesStore<ChunithmBestImageStylePreferences, string>({
+  storeKey: (accountId) => `${PREFIX}${accountId}`,
+  defaults: () => ({ ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES }),
+  parse: parseChunithmBestImageStylePreferences,
+  // 历史行为：读到坏数据仅回退默认值，不清理对应 key。
+  clearOnError: false,
+});
+
+export const chunithmBestImagePreferencesStore = new Store();

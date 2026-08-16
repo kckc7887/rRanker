@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import type { CatalogSnapshot } from '@/domain/models';
-import { mapPhigrosKyouAliases } from '@/domain/phigros-kyou';
+import { mapPhigrosKyouAliases, type PhigrosKyouAliasesSnapshot } from '@/domain/phigros-kyou';
 import { loadPhigrosKyouAliases } from '@/hooks/use-phigros-kyou';
+import { aliasedCatalogSource, useAliasedCatalog } from '@/hooks/use-aliased-catalog';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { normalizeSearchText } from '@/utils/search';
 
-function mergeAliases(existing: readonly string[] | undefined, incoming: readonly string[] | undefined): string[] {
+function mergeAliasLists(existing: readonly string[] | undefined, incoming: readonly string[] | undefined): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
   for (const alias of [...(existing ?? []), ...(incoming ?? [])]) {
@@ -20,34 +20,37 @@ function mergeAliases(existing: readonly string[] | undefined, incoming: readonl
 
 export function usePhigrosCatalog() {
   const provider = useMemo(() => new PhigrosCatalogProvider(), []);
-  return useQuery({
+  return useAliasedCatalog<
+    CatalogSnapshot,
+    PhigrosKyouAliasesSnapshot,
+    { snapshot: CatalogSnapshot; provider: PhigrosCatalogProvider }
+  >({
     queryKey: ['phigros-catalog'],
-    queryFn: async (): Promise<{ snapshot: CatalogSnapshot; provider: PhigrosCatalogProvider }> => {
+    // Phigros 曲库由 provider 内存缓存承载（resetCatalogCache 后重拉 OSS），无本地持久化快照。
+    loadCached: async () => null,
+    loadCatalog: () => {
       provider.resetCatalogCache();
-      const snapshot = await provider.getCatalog();
-      try {
-        const aliasSnapshot = await loadPhigrosKyouAliases();
-        const aliases = new Map(mapPhigrosKyouAliases(aliasSnapshot, snapshot).aliases
-          .map((item) => [item.songId, item.aliases]));
-        return {
-          snapshot: {
-            ...snapshot,
-            songs: snapshot.songs.map((song) => ({
-              ...song,
-              aliases: mergeAliases(song.aliases, aliases.get(song.id)),
-            })),
-            source: aliasSnapshot.source.isStale
-              ? { ...snapshot.source, kind: 'cache', isStale: true, label: `${snapshot.source.label}（含缓存别名）` }
-              : snapshot.source,
-          },
-          provider,
-        };
-      } catch {
-        return {
-          snapshot: { ...snapshot, source: { ...snapshot.source, label: `${snapshot.source.label}（别名暂不可用）` } },
-          provider,
-        };
-      }
+      return provider.getCatalog();
     },
+    loadAliases: loadPhigrosKyouAliases,
+    mergeAliases: (catalog, aliasSnapshot) => {
+      if (!aliasSnapshot) return catalog;
+      const aliases = new Map(mapPhigrosKyouAliases(aliasSnapshot, catalog).aliases
+        .map((item) => [item.songId, item.aliases]));
+      return {
+        ...catalog,
+        songs: catalog.songs.map((song) => ({
+          ...song,
+          aliases: mergeAliasLists(song.aliases, aliases.get(song.id)),
+        })),
+      };
+    },
+    composeSource: (catalog, aliasSnapshot) => aliasedCatalogSource(catalog, aliasSnapshot, {
+      stale: '（含缓存别名）',
+      aliasMissing: '（别名暂不可用）',
+    }, { includeCatalogStale: false }),
+    wrapData: (catalog) => ({ snapshot: catalog, provider }),
+    // 无本地缓存路径，cacheFirstLoad 不会触发后台回写。
+    onFresh: () => undefined,
   });
 }

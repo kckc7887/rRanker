@@ -25,53 +25,39 @@ import {
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { cacheFirstLoad } from '@/services/cache-first';
+import { clearResourcesByPrefix, createInflightGuard, makeSnapshot } from '@/services/snapshot-cache-utils';
 
 /** 构造 Muse Dash 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeMuseDashSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
-  return {
-    data,
-    source: { kind: 'musedash', label: 'MuseDash.moe', updatedAt, isStale: false },
-  };
+  return makeSnapshot(data, { kind: 'musedash', label: 'MuseDash.moe' }, updatedAt);
 }
 
 /** 并发读取共享一次网络请求（总览、成绩、曲库可能并发）。 */
-const inflightLoads = new Map<string, Promise<unknown>>();
-
-function dedupe<T>(key: string, loader: () => Promise<T>): Promise<T> {
-  const inflight = inflightLoads.get(key) as Promise<T> | undefined;
-  if (inflight) return inflight;
-  const fresh = loader();
-  inflightLoads.set(key, fresh);
-  const cleanup = () => {
-    if (inflightLoads.get(key) === fresh) inflightLoads.delete(key);
-  };
-  void fresh.then(cleanup, cleanup);
-  return fresh;
-}
+const inflightLoads = createInflightGuard<string>();
 
 export function loadMuseDashPlayerFresh(userId: string): Promise<MuseDashPlayer> {
-  return dedupe(`player:${userId}`, () => museDashProvider.getPlayer(userId));
+  return inflightLoads.dedupe(`player:${userId}`, () => museDashProvider.getPlayer(userId));
 }
 
 export function loadMuseDashPlayDetailFresh(
   uid: string, difficulty: number, platform: string, userId: string,
 ): Promise<MuseDashPlayDetail> {
-  return dedupe(
+  return inflightLoads.dedupe(
     `detail:${userId}:${uid}:${difficulty}:${platform}`,
     () => museDashProvider.getPlayDetail(uid, difficulty, platform, userId),
   );
 }
 
 export function loadMuseDashAlbumsFresh(): Promise<MuseDashAlbumsResponse> {
-  return dedupe('albums', () => museDashProvider.getAlbums());
+  return inflightLoads.dedupe('albums', () => museDashProvider.getAlbums());
 }
 
 export function loadMuseDashCeFresh(): Promise<MuseDashCeResponse> {
-  return dedupe('ce', () => museDashProvider.getCe());
+  return inflightLoads.dedupe('ce', () => museDashProvider.getCe());
 }
 
 export function loadMuseDashDiffdiffFresh(): Promise<MuseDashDiffdiffSnapshot['data']> {
-  return dedupe('diffdiff', () => museDashProvider.getDiffdiff());
+  return inflightLoads.dedupe('diffdiff', () => museDashProvider.getDiffdiff());
 }
 
 /**
@@ -157,15 +143,14 @@ export class MuseDashCache {
 
   /** 解绑玩家时清理其资料、成绩明细缓存；曲库、定数表、名称表等全局公开资源保留。 */
   async clearPlayer(userId: string): Promise<void> {
-    await this.repository.deleteResource(museDashPlayerCacheKey(userId));
-    const prefix = `musedash:detail:${userId}:`;
-    for (const { key } of await this.repository.listResourceSizes()) {
-      if (key.startsWith(prefix)) await this.repository.deleteResource(key);
-    }
+    await clearResourcesByPrefix(this.repository, {
+      keys: [museDashPlayerCacheKey(userId)],
+      prefixes: [`musedash:detail:${userId}:`],
+    });
   }
 }
 
 /** 测试用：清除 in-flight 去重表。 */
 export function resetMuseDashInflightForTests(): void {
-  inflightLoads.clear();
+  inflightLoads.resetForTests();
 }

@@ -6,6 +6,7 @@ import {
 } from '@/domain/phigros';
 import { PHIGROS_RATE_LABELS, type PhigrosRateKind } from '@/domain/phigros-rate-theme';
 import type { Difficulty } from '@/domain/models';
+import { normalizeNumericInput } from '@/utils/numeric-input';
 
 export type PhigrosRankFilter = PhigrosRateKind | 'fc';
 
@@ -53,7 +54,7 @@ export function matchesPhigrosLevel(
 }
 
 export function parsePhigrosScoreBound(input: string): number | undefined {
-  const text = input.normalize('NFKC').trim().replace(',', '.');
+  const text = normalizeNumericInput(input);
   if (!text) return undefined;
   const value = Number(text);
   return Number.isFinite(value) && value >= 0 && value <= PHIGROS_MAX_SCORE ? value : undefined;

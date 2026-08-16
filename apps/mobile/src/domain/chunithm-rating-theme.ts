@@ -1,4 +1,5 @@
 import { resolveDxRatingTheme, type DxRatingTheme } from './dx-rating-theme';
+import { resolveTier } from './tier-theme';
 
 export type ChunithmRatingTierId =
   | 'green'
@@ -61,11 +62,7 @@ const POSSESSION_LABELS: Record<ChunithmPossessionId, string> = {
 
 export function resolveChunithmRatingTier(rating: number): ChunithmRatingTierTheme {
   const value = Number.isFinite(rating) ? Math.max(0, rating) : 0;
-  let matched = RATING_TIERS[0]!;
-  for (const tier of RATING_TIERS) {
-    if (value >= tier.min) matched = tier;
-  }
-  return matched.theme;
+  return resolveTier(RATING_TIERS, value);
 }
 
 /** 把档位色规范化为渐变边框：单色档复制为双色，虹档保留完整六色均分。 */

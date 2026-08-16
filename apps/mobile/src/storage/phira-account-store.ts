@@ -1,12 +1,6 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createAccountListStore } from '@/storage/create-account-list-store';
 
 export type PhiraAccountProfile = { playerId: number; displayName: string; avatarUrl?: string | null };
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
-const STORE_KEY = 'rranker.phira-accounts.v1';
 
 export function parsePhiraAccounts(value: unknown): PhiraAccountProfile[] {
   if (!value || typeof value !== 'object') return [];
@@ -24,24 +18,10 @@ export function parsePhiraAccounts(value: unknown): PhiraAccountProfile[] {
   });
 }
 
-export class PhiraAccountStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
-  async load() {
-    try { const raw = await this.storage.getItem(STORE_KEY); return raw ? parsePhiraAccounts(JSON.parse(raw)) : []; }
-    catch { await this.storage.removeItem(STORE_KEY).catch(() => undefined); return []; }
-  }
-  private save(accounts: PhiraAccountProfile[]) {
-    return this.storage.setItem(STORE_KEY, JSON.stringify({ version: 1, accounts }));
-  }
-  async upsert(account: PhiraAccountProfile) {
-    const current = await this.load();
-    const next = [...current.filter((item) => item.playerId !== account.playerId), account];
-    await this.save(next); return next;
-  }
-  async remove(playerId: number) {
-    const next = (await this.load()).filter((item) => item.playerId !== playerId);
-    if (next.length) await this.save(next); else await this.storage.removeItem(STORE_KEY);
-    return next;
-  }
-}
+// Phira 的 upsert 原实现不做任何清洗校验，故不传 normalize。
+export const PhiraAccountStore = createAccountListStore<PhiraAccountProfile>({
+  storeKey: 'rranker.phira-accounts.v1',
+  parse: parsePhiraAccounts,
+  keyOf: (account) => account.playerId,
+}).Store;
 export const phiraAccountStore = new PhiraAccountStore();

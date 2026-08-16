@@ -1,5 +1,6 @@
 import type { DxRatingTheme } from './dx-rating-theme';
 import { parseChallengeModeRank } from './phigros';
+import { resolveTier, type ThemeTier } from './tier-theme';
 
 const TWO_STOPS = [0, 1] as const;
 const THREE_STOPS = [0, 0.52, 1] as const;
@@ -73,9 +74,19 @@ const THEMES: readonly Omit<DxRatingTheme, 'starCount'>[] = [
   },
 ];
 
+/**
+ * 课题分档位区间宽度 100：原实现 parseChallengeModeRank 取 level = min(5, floor(value / 100))
+ * 后直接索引 THEMES，与 min = [0, 100, 200, 300, 400, 500] 的升序 tier 表逐值等价
+ * （value 归一化后落在 [100k, 100(k+1)) 即第 k 档，≥500 恒为最后一档），
+ * 故派生 tier 视图接入公共 resolveTier，THEMES 主题数据保持不动。
+ */
+const CHALLENGE_TIERS: readonly ThemeTier<Omit<DxRatingTheme, 'starCount'>>[] = THEMES.map(
+  (theme, index) => ({ min: index * 100, theme }),
+);
+
 export function resolvePhigrosChallengeTheme(challengeModeRank: number): DxRatingTheme {
-  const parsed = parseChallengeModeRank(challengeModeRank);
-  const theme = THEMES[parsed.level] ?? THEMES[0]!;
+  const value = Number.isFinite(challengeModeRank) ? Math.max(0, Math.floor(challengeModeRank)) : 0;
+  const theme = resolveTier(CHALLENGE_TIERS, value);
   return { ...theme, starCount: 0 };
 }
 

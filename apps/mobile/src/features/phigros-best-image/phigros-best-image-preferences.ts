@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { PhigrosBestImageOverflowCount } from './phigros-best-image';
 
 export type PhigrosImageStyleMode = 'current' | 'item' | 'random' | 'off';
@@ -44,14 +44,13 @@ export function parsePhigrosBestImageStylePreferences(value: unknown): PhigrosBe
   };
 }
 
-export const phigrosBestImagePreferencesStore = {
-  async load(accountId: string): Promise<PhigrosBestImageStylePreferences> {
-    try {
-      const raw = await Storage.getItem(`${PREFIX}${accountId}`);
-      return raw ? parsePhigrosBestImageStylePreferences(JSON.parse(raw)) : defaults;
-    } catch { return defaults; }
-  },
-  async save(accountId: string, value: PhigrosBestImageStylePreferences): Promise<void> {
-    await Storage.setItem(`${PREFIX}${accountId}`, JSON.stringify(value));
-  },
-};
+const { Store } = createPreferencesStore<PhigrosBestImageStylePreferences, string>({
+  storeKey: (accountId) => `${PREFIX}${accountId}`,
+  // 历史行为：defaults 为共享对象引用（load 回退时原样返回，不做拷贝）。
+  defaults: () => defaults,
+  parse: parsePhigrosBestImageStylePreferences,
+  // 历史行为：读到坏数据仅回退默认值，不清理对应 key。
+  clearOnError: false,
+});
+
+export const phigrosBestImagePreferencesStore = new Store();

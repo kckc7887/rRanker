@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type {
   MuseDashAchievementFilter,
   MuseDashDifficultySlot,
@@ -20,12 +20,6 @@ export type MuseDashRandomChartsPreferences = {
 type StoredMuseDashRandomChartsPreferencesV1 = {
   schemaVersion: 1;
 } & MuseDashRandomChartsPreferences;
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
 
 const STORE_KEY = 'rranker.toolbox.musedash-random-charts.v1';
 const VALID_COUNTS = new Set<RandomChartsCount>([1, 2, 3, 4]);
@@ -80,29 +74,18 @@ export function parseMuseDashRandomChartsPreferences(
   return output;
 }
 
-export class MuseDashRandomChartsPreferencesStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
-
-  async load(): Promise<MuseDashRandomChartsPreferences> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw
-        ? parseMuseDashRandomChartsPreferences(JSON.parse(raw))
-        : defaultMuseDashRandomChartsPreferences();
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return defaultMuseDashRandomChartsPreferences();
-    }
-  }
-
-  async save(preferences: MuseDashRandomChartsPreferences): Promise<void> {
-    const value: StoredMuseDashRandomChartsPreferencesV1 = {
+const { Store: MuseDashRandomChartsPreferencesStore } =
+  createPreferencesStore<MuseDashRandomChartsPreferences>({
+    storeKey: STORE_KEY,
+    defaults: defaultMuseDashRandomChartsPreferences,
+    parse: parseMuseDashRandomChartsPreferences,
+    toStored: (preferences) => ({
       schemaVersion: 1,
       ...parseMuseDashRandomChartsPreferences({ schemaVersion: 1, ...preferences }),
-    };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
-  }
-}
+    }) satisfies StoredMuseDashRandomChartsPreferencesV1,
+  });
+
+export { MuseDashRandomChartsPreferencesStore };
 
 export const museDashRandomChartsPreferencesStore =
   new MuseDashRandomChartsPreferencesStore();

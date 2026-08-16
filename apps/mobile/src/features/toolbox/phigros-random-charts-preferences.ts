@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { PhigrosLevel } from '@/domain/phigros';
 import type { PhigrosRankFilter } from '@/domain/phigros-filters';
 import type {
@@ -16,12 +16,6 @@ export type PhigrosRandomChartsPreferences = PhigrosRandomChartFilters & {
 type StoredPhigrosRandomChartsPreferencesV3 = {
   version: 3;
 } & PhigrosRandomChartsPreferences;
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
 
 const STORE_KEY = 'rranker.toolbox.phigros-random-charts.v1';
 const VALID_COUNTS = new Set<PhigrosRandomChartsCount>([1, 2, 3, 4]);
@@ -110,28 +104,17 @@ export function parsePhigrosRandomChartsPreferences(
   return output;
 }
 
-export class PhigrosRandomChartsPreferencesStore {
-  constructor(private readonly storage: KeyValueStore = Storage) {}
-
-  async load(): Promise<PhigrosRandomChartsPreferences> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw
-        ? parsePhigrosRandomChartsPreferences(JSON.parse(raw))
-        : defaultPhigrosRandomChartsPreferences();
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return defaultPhigrosRandomChartsPreferences();
-    }
-  }
-
-  async save(preferences: PhigrosRandomChartsPreferences): Promise<void> {
-    const value: StoredPhigrosRandomChartsPreferencesV3 = {
+const { Store: PhigrosRandomChartsPreferencesStore } =
+  createPreferencesStore<PhigrosRandomChartsPreferences>({
+    storeKey: STORE_KEY,
+    defaults: defaultPhigrosRandomChartsPreferences,
+    parse: parsePhigrosRandomChartsPreferences,
+    toStored: (preferences) => ({
       version: 3,
       ...parsePhigrosRandomChartsPreferences({ version: 3, ...preferences }),
-    };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
-  }
-}
+    }) satisfies StoredPhigrosRandomChartsPreferencesV3,
+  });
+
+export { PhigrosRandomChartsPreferencesStore };
 
 export const phigrosRandomChartsPreferencesStore = new PhigrosRandomChartsPreferencesStore();

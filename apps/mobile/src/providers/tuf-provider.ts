@@ -5,18 +5,23 @@ import {
   TufVideoDetailsSchema, tufHttpsUrl,
   type TufLevelQuery, type TufPassQuery,
 } from '@/domain/tuf';
-import { ProviderError } from './errors';
+import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from './errors';
 import { requestJson } from './http-json';
 
 const TUF_API_BASE = 'https://api.tuforums.com';
 type FetchLike = typeof fetch;
 
+/** TUF 状态码分支文案：401 并入 permission、无 authentication 分支，逐字保留原实现。 */
+const TUF_STATUS_TEXTS: ProviderStatusTexts = {
+  permission: 'TUF 公开接口策略已变化，暂时无法读取社区数据',
+  noData: 'TUF 未找到对应数据',
+  rateLimit: 'TUF 请求过于频繁，请稍后重试',
+  server: 'TUF 社区服务暂时不可用',
+  fallback: { message: (status) => `TUF 返回 HTTP ${status}` },
+};
+
 function statusError(status: number): ProviderError {
-  if (status === 401 || status === 403) return new ProviderError('permission', 'TUF 公开接口策略已变化，暂时无法读取社区数据', false);
-  if (status === 404) return new ProviderError('no_data', 'TUF 未找到对应数据', false);
-  if (status === 429) return new ProviderError('rate_limit', 'TUF 请求过于频繁，请稍后重试', true);
-  if (status >= 500) return new ProviderError('network', 'TUF 社区服务暂时不可用', true);
-  return new ProviderError('unknown', `TUF 返回 HTTP ${status}`, false);
+  return providerErrorFromStatus(status, TUF_STATUS_TEXTS);
 }
 
 export class TufProvider {

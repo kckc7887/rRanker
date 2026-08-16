@@ -13,11 +13,11 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { DetailPressable } from '@/components/game-content/DetailPressable';
+import { ExpandableTextLine } from '@/components/game-content/ExpandableTextLine';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
@@ -31,6 +31,7 @@ import {
   type ChunithmLevelIndex,
   type ChunithmSong,
 } from '@/domain/chunithm';
+import { CHUNITHM_DIFFICULTY_CARD_VISUAL } from '@/domain/chunithm-level-theme';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
 import {
   buildTagHistory,
@@ -62,21 +63,6 @@ import { chunithmJacketUrl } from './ChunithmSongRow';
 
 const CARD_GAP = 12;
 const CHUNITHM_CHART_TYPE = 'SD' as const;
-
-const DIFFICULTY_CARD_VISUAL: Record<ChunithmLevelIndex, {
-  color: string;
-  tint: string;
-  border?: string;
-  darkAction?: string;
-}> = {
-  0: { color: '#4AA58A', tint: '#ECF8F3' },
-  1: { color: '#E27A24', tint: '#FFF6E8' },
-  2: { color: '#D6403A', tint: '#FFF0F0' },
-  3: { color: '#7526CF', tint: '#F3EAFD' },
-  // ULTIMA：黑底红边，对齐难度标签
-  4: { color: '#E83A58', tint: '#17171A', border: '#E83A58', darkAction: '#E83A58' },
-  5: { color: '#7B61FF', tint: '#F3EEFF' },
-};
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 
@@ -323,45 +309,20 @@ function ChunithmDetailBody({
 
 function ChunithmAliasLine({ aliases }: { aliases: readonly string[] }) {
   const theme = useAppTheme();
-  const text = `别名：${aliases.join('、') || '无'}`;
-  const [expanded, setExpanded] = useState(false);
-  const [overflow, setOverflow] = useState(false);
-  useEffect(() => { setExpanded(false); setOverflow(false); }, [text]);
-  const content = (
-    <>
-      <Text
-        accessible={false}
-        style={[styles.body, styles.aliasMeasure, { color: theme.textSecondary }]}
-        testID="chunithm-alias-overflow-measure"
-        onTextLayout={(event) => setOverflow(event.nativeEvent.lines.length > 1)}
-      >
-        {text}
-      </Text>
-      <Text
-        numberOfLines={expanded ? undefined : 1}
-        style={[styles.body, { color: theme.textSecondary }]}
-        testID="chunithm-alias-text"
-      >
-        {text}
-      </Text>
-      {overflow ? (
-        <DetailPressable
-          accessibilityLabel={expanded ? '收起别名' : '展开别名'}
-          accessibilityRole="button"
-          hitSlop={6}
-          onPress={() => setExpanded((value) => !value)}
-          style={styles.aliasAction}
-        >
-          <Text style={[styles.aliasActionText, { color: theme.accent }]}>
-            {expanded ? '收起' : '展开'}
-          </Text>
-        </DetailPressable>
-      ) : null}
-    </>
+  return (
+    <ExpandableTextLine
+      actionColor={theme.accent}
+      actionLabel="别名"
+      actionStyle={styles.aliasAction}
+      actionTextStyle={styles.aliasActionText}
+      blockStyle={styles.aliasBlock}
+      measureStyle={styles.aliasMeasure}
+      testIDPrefix="chunithm-alias"
+      text={`别名：${aliases.join('、') || '无'}`}
+      textColor={theme.textSecondary}
+      textStyle={styles.body}
+    />
   );
-  return Platform.OS === 'android'
-    ? <View style={styles.aliasBlock}>{content}</View>
-    : <GestureHandlerRootView style={styles.aliasBlock}>{content}</GestureHandlerRootView>;
 }
 
 function Hero({ song, width }: { song: ChunithmSong; width: number }) {
@@ -494,7 +455,7 @@ function DifficultyCard({
   onRetryDetail: () => void;
 }) {
   const theme = useAppTheme();
-  const visual = DIFFICULTY_CARD_VISUAL[difficulty.difficulty];
+  const visual = CHUNITHM_DIFFICULTY_CARD_VISUAL[difficulty.difficulty];
   const ultima = difficulty.difficulty === 4;
   const worldsEnd = difficulty.difficulty === 5;
   const specialCard = ultima || worldsEnd;

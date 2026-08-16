@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
+import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import { MuseDashAchievementBadge } from '@/components/musedash/MuseDashBadges';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
 import { MUSE_DASH_DIFFICULTY_LABELS, museDashAchievementFilterLabel } from '@/domain/muse-dash';
@@ -30,35 +30,19 @@ export function buildMuseDashFilterSummary({
   achievement?: MuseDashAchievementFilter;
 }): string {
   const difficultyLabel = DIFFICULTY_SLOTS.find((item) => item.value === String(difficultySlot))?.label ?? '全部';
-  return [
+  return joinFilterSummary([
     difficultySlot === 'all' ? null : difficultyLabel,
     dlc === 'all' ? null : dlc,
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
     accMin || accMax ? `达成率 ${accMin || '不限'}~${accMax || '不限'}%` : null,
     achievement && achievement !== 'all' ? museDashAchievementFilterLabel(achievement) : null,
-  ].filter(Boolean).join(' · ') || '全部';
-}
-
-function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: string }) {
-  const theme = useAppTheme();
-  return <View style={styles.collapseActionRow}>
-    <Text style={[styles.collapseAction, { color: theme.accent }]}>{label}</Text>
-    <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.accent} />
-  </View>;
-}
-
-function ResetFilterButton({ onPress }: { onPress: () => void }) {
-  const theme = useAppTheme();
-  return <Pressable accessibilityRole="button" accessibilityLabel="重置筛选" onPress={onPress}
-    hitSlop={8} style={({ pressed }) => [styles.resetButton, pressed && styles.resetButtonPressed]}>
-    <Text style={[styles.resetButtonText, { color: theme.accent }]}>重置</Text>
-  </Pressable>;
+  ]);
 }
 
 function FilterRow({ label, wide = false, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
   const theme = useAppTheme();
-  return <View style={styles.filterRow}>
-    <Text style={[styles.filterLabel, wide && styles.wideFilterLabel, { color: theme.textMuted }]}>{label}</Text>
+  return <View style={filterShellStyles.filterRow}>
+    <Text style={[filterShellStyles.filterLabel, wide && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>{label}</Text>
     {children}
   </View>;
 }
@@ -77,60 +61,12 @@ function RangeInputs({
   return <View style={styles.rangeRow}>
     <TextInput accessibilityLabel={minLabel} autoCorrect={false} keyboardType="decimal-pad"
       placeholder="下限" placeholderTextColor={theme.textMuted} value={min} onChangeText={onMinChange}
-      style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-    <Text style={styles.rangeSeparator}>~</Text>
+      style={[filterShellStyles.rangeInputPlain, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+    <Text style={filterShellStyles.rangeSeparator}>~</Text>
     <TextInput accessibilityLabel={maxLabel} autoCorrect={false} keyboardType="decimal-pad"
       placeholder="上限" placeholderTextColor={theme.textMuted} value={max} onChangeText={onMaxChange}
-      style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+      style={[filterShellStyles.rangeInputPlain, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
   </View>;
-}
-
-function FilterShell({
-  collapsed, summary, onCollapsedChange, onReset, children,
-}: {
-  collapsed: boolean;
-  summary: string;
-  onCollapsedChange: (collapsed: boolean) => void;
-  onReset: () => void;
-  children: React.ReactNode;
-}) {
-  const theme = useAppTheme();
-  if (collapsed) {
-    return (
-      <View style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
-          accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)}
-          style={styles.collapsedMain}>
-          <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
-          <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
-        </Pressable>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={onReset} />
-          <Pressable accessible={false} hitSlop={8} onPress={() => onCollapsedChange(false)}
-            style={styles.headerAction}>
-            <CollapseToggleAction expanded={false} label="展开" />
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-  return (
-    <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-      <View style={styles.expandedHeader}>
-        <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={onReset} />
-          <Pressable accessibilityRole="button" accessibilityLabel="收起筛选"
-            accessibilityState={{ expanded: true }}
-            onPress={() => onCollapsedChange(true)} hitSlop={8}
-            style={styles.headerAction}>
-            <CollapseToggleAction expanded label="收起" />
-          </Pressable>
-        </View>
-      </View>
-      {children}
-    </View>
-  );
 }
 
 export function MuseDashCatalogFilterBar({
@@ -165,7 +101,7 @@ export function MuseDashCatalogFilterBar({
     onReset();
   };
   return (
-    <FilterShell collapsed={collapsed} summary={summary}
+    <FilterShell collapsed={collapsed} summary={summary} barStyle={filterShellStyles.filterBarPlain}
       onCollapsedChange={onCollapsedChange} onReset={handleReset}>
       <FilterRow label="难度">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
@@ -238,7 +174,7 @@ export function MuseDashRecordsFilterBar({
     onReset();
   };
   return (
-    <FilterShell collapsed={collapsed} summary={summary}
+    <FilterShell collapsed={collapsed} summary={summary} barStyle={filterShellStyles.filterBarPlain}
       onCollapsedChange={onCollapsedChange} onReset={handleReset}>
       <FilterRow label="难度">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
@@ -290,38 +226,8 @@ export function MuseDashRecordsFilterBar({
   );
 }
 
+// MuseDash 游戏差异样式保留本地：芯片行作为水平 ScrollView 内容容器（无 flexDirection）；区间行带 minWidth 收缩。
 const styles = StyleSheet.create({
-  collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  collapsedLabel: { fontSize: 12, fontWeight: '700' },
-  collapsedSummary: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
-  collapseAction: { fontSize: 12, fontWeight: '800' },
-  collapseActionRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  expandedTitle: { fontSize: 13, fontWeight: '800' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  headerAction: { minHeight: 28, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  resetButton: { minHeight: 28, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  resetButtonPressed: { opacity: 0.62 },
-  resetButtonText: { fontSize: 12, fontWeight: '800' },
-  filterBar: { padding: 16, gap: 10, borderBottomWidth: 1 },
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
-  wideFilterLabel: { width: 44 },
   chipRow: { gap: 6, alignItems: 'center' },
   rangeRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  rangeInput: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 0,
-    fontSize: 14,
-    lineHeight: 20,
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-  },
-  rangeSeparator: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
 });

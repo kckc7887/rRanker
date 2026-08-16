@@ -3,21 +3,18 @@ import type { CatalogSnapshot, Player, ScoreRecord } from '@/domain/models';
 import type { CatalogDrivenScoreProvider } from '@/providers/contracts';
 import { generatedSource } from '@/providers/generated-source';
 import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
+import { buildMaxedScoreRecords } from '@/providers/maxed-records';
 
 export function buildMaxedMaimaiRecords(catalog: CatalogSnapshot): ScoreRecord[] {
-  return catalog.songs.flatMap((song) => {
-    if (song.disabled) return [];
-    return song.charts.map((chart): ScoreRecord => ({
-      ...chart,
-      title: song.title,
-      achievements: 101,
-      dxScore: chart.notes && typeof chart.notes.total === 'number' ? chart.notes.total * 3 : null,
-      rating: calculateChartRating(chart.difficultyConstant, 101),
-      fc: 'app',
-      fs: 'fsdp',
-      rate: 'sssp',
-      version: song.version,
-    }));
+  return buildMaxedScoreRecords(catalog, {
+    achievements: 101,
+    dxScore: (chart) => (chart.notes && typeof chart.notes.total === 'number'
+      ? chart.notes.total * 3
+      : null),
+    rating: (chart) => calculateChartRating(chart.difficultyConstant, 101),
+    fc: 'app',
+    fs: 'fsdp',
+    rate: 'sssp',
   });
 }
 

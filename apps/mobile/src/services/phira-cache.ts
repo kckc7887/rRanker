@@ -9,9 +9,10 @@ import {
 } from '@/domain/phira';
 import type { DataSource } from '@/domain/models';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { snapshotSource } from '@/services/snapshot-cache-utils';
 
 export function phiraSource(updatedAt = new Date().toISOString()): DataSource {
-  return { kind: 'phira', label: 'Phira 社区公开数据', updatedAt, isStale: false };
+  return snapshotSource({ kind: 'phira', label: 'Phira 社区公开数据' }, updatedAt);
 }
 
 export class PhiraCache {

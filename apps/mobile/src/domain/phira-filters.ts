@@ -1,6 +1,7 @@
 import type { PhigrosRankFilter } from './phigros-filters';
 import type { PhigrosXingKind } from './phigros-xing';
 import { phiraGrade, type PhiraChart, type PhiraChartPage, type PhiraQueriedBest } from './phira';
+import { normalizeNumericInput } from '@/utils/numeric-input';
 
 export type PhiraScoreSort = 'score' | 'acc' | 'constant';
 export type PhiraCatalogSort = 'updated' | 'constant-asc' | 'constant-desc' | 'name';
@@ -17,7 +18,7 @@ export type PhiraScoreFilters = {
 };
 
 function finiteBound(value: string): number | undefined {
-  const normalized = value.normalize('NFKC').trim().replace(',', '.');
+  const normalized = normalizeNumericInput(value);
   if (!normalized) return undefined;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : Number.NaN;

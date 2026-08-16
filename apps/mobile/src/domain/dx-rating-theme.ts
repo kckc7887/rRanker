@@ -1,5 +1,7 @@
 /** 舞萌 Rating 应用主题，参数以用户提供的 preview.html 为准。 */
 
+import { resolveTier } from './tier-theme';
+
 export type DxRatingTheme = {
   id: string;
   label: string;
@@ -146,11 +148,8 @@ function starCountFor(value: number): number {
 
 export function resolveDxRatingTheme(rating: number): DxRatingTheme {
   const value = Number.isFinite(rating) ? Math.max(0, Math.floor(rating)) : 0;
-  let matched = TIERS[0]!;
-  for (const tier of TIERS) {
-    if (value >= tier.min) matched = tier;
-  }
-  return { ...matched.theme, starCount: starCountFor(value) };
+  const theme = resolveTier(TIERS, value);
+  return { ...theme, starCount: starCountFor(value) };
 }
 
 export const DX_RATING_TIER_MINS = TIERS.map((tier) => tier.min);

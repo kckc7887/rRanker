@@ -1,8 +1,10 @@
 import { MUSEDASH_TEST_USER_ID } from '@/domain/bound-account';
-import type { DataSource } from '@/domain/models';
+import type { DataSource, Player, ScoreRecord } from '@/domain/models';
+import type { CatalogDrivenScoreProvider } from '@/providers/contracts';
 import { generatedSource } from '@/providers/generated-source';
 import {
   museDashDiffdiffMap,
+  museDashSongTitle,
   museDashSongsFromAlbums,
   type MuseDashAlbumsResponse,
   type MuseDashDiffdiffEntry,
@@ -41,28 +43,61 @@ export function buildMaxedMuseDashRl(plays: readonly MuseDashPlay[]): number {
   return total / 5;
 }
 
+/** 喵斯难度档 → 统一难度槽位：按档位序号 0-4 对齐（EASY/HARD/MASTER/HIDDEN/EX）。 */
+const MUSEDASH_UNIFIED_DIFFICULTIES = [
+  'basic', 'advanced', 'expert', 'master', 'remaster',
+] as const;
+
+/** 统一模型侧：为曲库中每个非空难度档生成满成绩 ScoreRecord；difficultyConstant 0 表示该谱面无社区定数。 */
+export function buildMaxedMuseDashRecords(
+  albums: MuseDashAlbumsResponse,
+  constants: ReadonlyMap<string, MuseDashDiffdiffEntry> | null,
+): ScoreRecord[] {
+  return museDashSongsFromAlbums(albums).flatMap(({ song, albumTitle }) => (
+    song.difficulty.flatMap((level, difficultyIndex): ScoreRecord[] => {
+      if (level === '0') return [];
+      const constant = constants?.get(`${song.uid}:${difficultyIndex}`)?.[4];
+      return [{
+        songId: song.uid,
+        type: 'SD',
+        levelIndex: difficultyIndex,
+        level,
+        difficulty: MUSEDASH_UNIFIED_DIFFICULTIES[difficultyIndex],
+        difficultyConstant: constant ?? 0,
+        title: museDashSongTitle(song),
+        achievements: 100,
+        dxScore: MUSE_DASH_MAX_SCORE,
+        rating: maxedMuseDashChartSum(constant) ?? 0,
+        fc: 'ap',
+        fs: null,
+        rate: 's',
+        version: albumTitle,
+      }];
+    })
+  ));
+}
+
+/** 转换层：统一 ScoreRecord → 旧 MuseDashPlay 兼容模型（字段值与迁移前直构完全一致；定数表常量均为正数，0 即无定数、sum 省略）。 */
+function museDashPlayFromRecord(record: ScoreRecord): MuseDashPlay {
+  return {
+    uid: record.songId,
+    difficulty: record.levelIndex,
+    score: MUSE_DASH_MAX_SCORE,
+    acc: 100,
+    sum: maxedMuseDashChartSum(record.difficultyConstant > 0 ? record.difficultyConstant : undefined),
+    i: 1,
+    platform: 'mobile',
+    history: { lastRank: 1 },
+    character_uid: '1',
+    elfin_uid: '1',
+  };
+}
+
 export function buildMaxedMuseDashPlays(
   albums: MuseDashAlbumsResponse,
   constants: ReadonlyMap<string, MuseDashDiffdiffEntry> | null,
 ): MuseDashPlay[] {
-  return museDashSongsFromAlbums(albums).flatMap(({ song }) => (
-    song.difficulty.flatMap((level, difficultyIndex): MuseDashPlay[] => {
-      if (level === '0') return [];
-      const constant = constants?.get(`${song.uid}:${difficultyIndex}`)?.[4];
-      return [{
-        uid: song.uid,
-        difficulty: difficultyIndex,
-        score: MUSE_DASH_MAX_SCORE,
-        acc: 100,
-        sum: maxedMuseDashChartSum(constant),
-        i: 1,
-        platform: 'mobile',
-        history: { lastRank: 1 },
-        character_uid: '1',
-        elfin_uid: '1',
-      }];
-    })
-  ));
+  return buildMaxedMuseDashRecords(albums, constants).map(museDashPlayFromRecord);
 }
 
 export function buildMaxedMuseDashPlayer(
@@ -115,4 +150,27 @@ export function maxedMuseDashPlayDetailSnapshot(): MaxedMuseDashPlayDetailSnapsh
     data: buildMaxedMuseDashPlayDetail(),
     source: generatedSource(),
   };
+}
+
+/** 统一模型侧的曲库输入：专辑曲库 + 定数表索引（null 表示完全无定数表）。 */
+export type MaxedMuseDashCatalog = {
+  albums: MuseDashAlbumsResponse;
+  constants: ReadonlyMap<string, MuseDashDiffdiffEntry> | null;
+};
+
+export class MaxedMuseDashTestProvider implements CatalogDrivenScoreProvider<MaxedMuseDashCatalog> {
+  constructor(private readonly displayName = '示例账号') {}
+
+  async getPlayer(): Promise<Player> {
+    return {
+      id: MUSEDASH_TEST_USER_ID,
+      displayName: this.displayName,
+      rating: 0,
+      source: generatedSource(),
+    };
+  }
+
+  async getRecordsFromCatalog(catalog: MaxedMuseDashCatalog): Promise<ScoreRecord[]> {
+    return buildMaxedMuseDashRecords(catalog.albums, catalog.constants);
+  }
 }

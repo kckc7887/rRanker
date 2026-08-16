@@ -3,16 +3,21 @@ import {
   PhiraChartPageSchema, PhiraChartSchema, PhiraPoolResponseSchema, PhiraRecordListSchema,
   PhiraUserPageSchema, PhiraUserSchema, PhiraUserStatsSchema, type PhiraChartStatus,
 } from '@/domain/phira';
-import { ProviderError } from './errors';
+import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from './errors';
 
 export const PHIRA_API_BASE = 'https://phira.5wyxi.com';
 type FetchLike = typeof fetch;
 
+/** Phira 状态码分支文案：无 401/403 分支（落入兜底），逐字保留原实现。 */
+const PHIRA_STATUS_TEXTS: ProviderStatusTexts = {
+  noData: 'Phira 未找到对应数据',
+  rateLimit: 'Phira 请求过于频繁，请稍后重试',
+  server: 'Phira 社区服务暂时不可用',
+  fallback: { message: (status) => `Phira 返回 HTTP ${status}` },
+};
+
 function statusError(status: number): ProviderError {
-  if (status === 404) return new ProviderError('no_data', 'Phira 未找到对应数据', false);
-  if (status === 429) return new ProviderError('rate_limit', 'Phira 请求过于频繁，请稍后重试', true);
-  if (status >= 500) return new ProviderError('network', 'Phira 社区服务暂时不可用', true);
-  return new ProviderError('unknown', `Phira 返回 HTTP ${status}`, false);
+  return providerErrorFromStatus(status, PHIRA_STATUS_TEXTS);
 }
 
 export class PhiraProvider {

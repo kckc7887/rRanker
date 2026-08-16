@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
+import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { PhigrosKyouTagFilterSheet } from '@/components/phigros/PhigrosKyouTagFilterSheet';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
@@ -85,7 +86,7 @@ export function buildPhigrosFilterSummary({
   selectRows,
 }: Pick<PhigrosFilterBarProps, 'level' | 'constantMin' | 'constantMax' | 'accuracyMin' | 'accuracyMax' | 'rank' | 'xing' | 'chapter' | 'versions' | 'kyouTags' | 'selectedKyouTagIds' | 'selectRows'>): string {
   const selectedChapter = versions?.find((item) => String(item.id) === chapter);
-  return [
+  return joinFilterSummary([
     level === 'all' ? null : phigrosLevelLabel(level),
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
     accuracyMin || accuracyMax ? `Acc ${accuracyMin || '不限'}~${accuracyMax || '不限'}%` : null,
@@ -96,7 +97,7 @@ export function buildPhigrosFilterSummary({
     ...(selectRows ?? []).map((row) => row.defaultValue !== undefined && row.value === row.defaultValue
       ? null
       : `${row.label} ${row.options.find((option) => option.value === row.value)?.label ?? row.value}`),
-  ].filter(Boolean).join(' · ') || '全部';
+  ]);
 }
 
 export function formatPhigrosKyouTagFilterValue(
@@ -165,49 +166,16 @@ export function PhigrosFilterBar({
     kyouTags, selectedKyouTagIds, selectRows,
   });
 
-  if (collapsible && collapsed) {
-    return (
-      <View style={[styles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`展开筛选，当前 ${summary}`}
-          accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)}
-          style={styles.collapsedMain}>
-          <Text style={[styles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
-          <Text numberOfLines={1} style={[styles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
-        </Pressable>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={handleReset} />
-          <Pressable accessible={false} hitSlop={8} onPress={() => onCollapsedChange(false)}
-            style={styles.headerAction}>
-            <CollapseToggleAction expanded={false} label="展开" />
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={[styles.filterBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-      <View style={styles.expandedHeader}>
-        <Text style={[styles.expandedTitle, { color: theme.text }]}>筛选</Text>
-        <View style={styles.headerActions}>
-          <ResetFilterButton onPress={handleReset} />
-          {collapsible ? <Pressable accessibilityRole="button" accessibilityLabel="收起筛选" accessibilityState={{ expanded: true }}
-              onPress={() => {
-                setOpenDropdown(null);
-                onCollapsedChange(true);
-              }} hitSlop={8}
-              style={styles.headerAction}>
-              <CollapseToggleAction expanded label="收起" />
-            </Pressable> : null}
-        </View>
-      </View>
-
+    <FilterShell collapsed={collapsed} collapsible={collapsible} summary={summary}
+      onCollapsedChange={onCollapsedChange} onReset={handleReset}
+      onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
       {selectRows.map((row) => {
         const dropdownId = `select:${row.id}`;
         const valueLabel = row.options.find((option) => option.value === row.value)?.label ?? row.value;
         return (
-          <View key={row.id} style={styles.filterRow}>
-            <Text style={[styles.filterLabel, { color: theme.textMuted }]}>{row.label}</Text>
+          <View key={row.id} style={filterShellStyles.filterRow}>
+            <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>{row.label}</Text>
             <FilterAnchoredDropdown
               accessibilityLabel={`${row.accessibilityLabel}，当前 ${valueLabel}`}
               onOpenChange={setDropdownOpen(dropdownId)}
@@ -222,13 +190,13 @@ export function PhigrosFilterBar({
         );
       })}
 
-      {showLevel ? <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, { color: theme.textMuted }]}>难度</Text>
+      {showLevel ? <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>难度</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.chipScroll}
-          contentContainerStyle={styles.chipRow}
+          contentContainerStyle={filterShellStyles.chipRowPadded}
         >
           <NeutralChip label="全部" active={level === 'all'} onPress={() => onLevelChange('all')} />
           {PHIGROS_LEVELS.map((item) => (
@@ -243,8 +211,8 @@ export function PhigrosFilterBar({
       </View> : null}
 
       {showChapterPicker ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>章节</Text>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>章节</Text>
           <FilterAnchoredDropdown
             accessibilityLabel={`章节筛选，当前 ${selectedChapterLabel}`}
             onOpenChange={setDropdownOpen('chapter')}
@@ -259,8 +227,8 @@ export function PhigrosFilterBar({
       ) : null}
 
       {showKyouTagPicker ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, { color: theme.textMuted }]}>标签</Text>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>标签</Text>
           <Pressable accessibilityRole="button"
             accessibilityLabel={`谱面标签筛选，${kyouTagState === 'ready'
               ? `当前 ${formatPhigrosKyouTagFilterValue(kyouTags, selectedKyouTagIds)}`
@@ -279,42 +247,42 @@ export function PhigrosFilterBar({
         </View>
       ) : null}
 
-      <View style={styles.filterRow}>
-        <Text style={[styles.filterLabel, showAccuracyRange && styles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <View style={styles.rangeRow}>
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabel, showAccuracyRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
+        <View style={filterShellStyles.rangeRow}>
           <TextInput accessibilityLabel="最低定数" autoCorrect={false} keyboardType="decimal-pad"
             placeholder="下限" placeholderTextColor={theme.textMuted} value={constantMin} onChangeText={onConstantMinChange}
-            style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          <Text style={styles.rangeSeparator}>~</Text>
+            style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+          <Text style={filterShellStyles.rangeSeparator}>~</Text>
           <TextInput accessibilityLabel="最高定数" autoCorrect={false} keyboardType="decimal-pad"
             placeholder="上限" placeholderTextColor={theme.textMuted} value={constantMax} onChangeText={onConstantMaxChange}
-            style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+            style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         </View>
       </View>
 
       {showAccuracyRange ? (
-        <View style={[styles.filterRow, styles.accuracyRow]}>
-          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>Acc</Text>
-          <View style={styles.rangeRow}>
+        <View style={[filterShellStyles.filterRow, styles.accuracyRow]}>
+          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>Acc</Text>
+          <View style={filterShellStyles.rangeRow}>
             <TextInput accessibilityLabel="最低 Acc" autoCorrect={false} keyboardType="decimal-pad"
               placeholder="下限" placeholderTextColor={theme.textMuted} value={accuracyMin} onChangeText={onAccuracyMinChange}
-              style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-            <Text style={styles.rangeSeparator}>~</Text>
+              style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+            <Text style={filterShellStyles.rangeSeparator}>~</Text>
             <TextInput accessibilityLabel="最高 Acc" autoCorrect={false} keyboardType="decimal-pad"
               placeholder="上限" placeholderTextColor={theme.textMuted} value={accuracyMax} onChangeText={onAccuracyMaxChange}
-              style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+              style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
           </View>
         </View>
       ) : null}
 
       {showRankPicker ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>评价</Text>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>评价</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.chipScroll}
-            contentContainerStyle={styles.chipRow}
+            contentContainerStyle={filterShellStyles.chipRowPadded}
           >
             <NeutralChip label="全部" active={rank === null} onPress={() => onRankChange(null)} />
             {PHIGROS_RANK_FILTERS.map((item) => (
@@ -330,9 +298,9 @@ export function PhigrosFilterBar({
       ) : null}
 
       {showXingPicker ? (
-        <View style={styles.filterRow}>
-          <Text style={[styles.filterLabel, styles.wideFilterLabel, { color: theme.textMuted }]}>XING</Text>
-          <View style={styles.chipRow}>
+        <View style={filterShellStyles.filterRow}>
+          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>XING</Text>
+          <View style={filterShellStyles.chipRowPadded}>
             <NeutralChip
               label="关闭"
               accessibilityLabel="XING 筛选 关闭"
@@ -352,31 +320,11 @@ export function PhigrosFilterBar({
       ) : null}
       {showKyouTagPicker ? <PhigrosKyouTagFilterSheet visible={tagSheetVisible} tags={kyouTags}
         selectedTagIds={selectedKyouTagIds} onApply={onKyouTagIdsChange} onClose={() => setTagSheetVisible(false)} /> : null}
-    </View>
+    </FilterShell>
   );
 }
 
-function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: string }) {
-  const theme = useAppTheme();
-  return (
-    <View style={styles.collapseActionRow}>
-      <Text style={[styles.collapseAction, { color: theme.accent }]}>{label}</Text>
-      <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.accent} />
-    </View>
-  );
-}
-
-function ResetFilterButton({ onPress }: { onPress: () => void }) {
-  const theme = useAppTheme();
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel="重置筛选" hitSlop={8} onPress={onPress}
-      style={({ pressed }) => [styles.resetButton, pressed && styles.resetButtonPressed]}>
-      <Text style={[styles.resetButtonText, { color: theme.accent }]}>重置</Text>
-    </Pressable>
-  );
-}
-
-// 薄兼容导出：筛选芯片已收敛至 MaimaiFilterBar 公共实现，保留本模块原有导出符号。
+// 薄兼容导出：筛选芯片已收敛至公共 FilterShell（经 MaimaiFilterBar 兼容层），保留本模块原有导出符号。
 export { NeutralChip };
 
 export function LevelChip({ level, active, onPress }: {
@@ -430,49 +378,14 @@ function XingChip({ value, active, onPress }: {
   );
 }
 
+// Phigros 专属样式：难度/评价芯片、Kyou 标签触发器与 Acc 行距；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
-  filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   accuracyRow: { marginBottom: 14 },
-  filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
-  wideFilterLabel: { width: 44 },
   chipScroll: { flexGrow: 0, flexShrink: 1 },
-  chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 1 },
   levelChip: { minHeight: 30, borderRadius: 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   levelChipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
   rankChip: { minHeight: 30, borderRadius: 8, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
-  rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  rangeInput: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 44,
-    backgroundColor: '#FFF',
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 0,
-    color: '#111827',
-    fontSize: 14,
-    lineHeight: 20,
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-  },
-  rangeSeparator: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
   tagPicker: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8 },
   tagPickerText: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18, fontWeight: '600' },
   disabled: { opacity: 0.5 },
-  collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  collapsedLabel: { fontSize: 12, fontWeight: '700' },
-  collapsedSummary: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
-  collapseAction: { fontSize: 12, fontWeight: '800' },
-  collapseActionRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  expandedHeader: { minHeight: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  expandedTitle: { fontSize: 13, fontWeight: '800' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  headerAction: { minHeight: 28, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
-  resetButton: { minHeight: 28, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  resetButtonPressed: { opacity: 0.62 },
-  resetButtonText: { fontSize: 12, fontWeight: '800' },
 });
