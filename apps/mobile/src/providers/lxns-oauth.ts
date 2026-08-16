@@ -14,6 +14,14 @@ import {
 } from './lxns-config';
 
 const PENDING_VERIFIER_KEY = 'rranker.lxns.oauth.pending.v1';
+const PENDING_OAUTH_KEY = 'rranker.lxns.oauth.pending.v2';
+
+/** 进行中的落雪授权：PKCE verifier + state + 发起绑定的游戏。 */
+export type PendingLxnsOAuth = {
+  verifier: string;
+  state: string;
+  gameId: 'maimai' | 'chunithm';
+};
 
 const TokenResponseSchema = z.object({
   access_token: z.string().min(1),
@@ -51,6 +59,10 @@ export async function createPkcePair(): Promise<{ verifier: string; challenge: s
   return { verifier, challenge: challengeUrl };
 }
 
+async function createStateValue(): Promise<string> {
+  return base64UrlFromBytes(await Crypto.getRandomBytesAsync(16));
+}
+
 export function buildAuthorizeUrl(codeChallenge: string, state?: string): string {
   const query = new URLSearchParams({
     response_type: 'code',
@@ -64,16 +76,38 @@ export function buildAuthorizeUrl(codeChallenge: string, state?: string): string
   return `${LXNS_OAUTH_AUTHORIZE_URL}?${query.toString()}`;
 }
 
-export async function beginLxnsAuthorize(): Promise<string> {
+export async function beginLxnsAuthorize(input: {
+  gameId: 'maimai' | 'chunithm';
+}): Promise<string> {
   const { verifier, challenge } = await createPkcePair();
-  await SecureStore.setItemAsync(PENDING_VERIFIER_KEY, verifier, {
+  const state = await createStateValue();
+  const pending: PendingLxnsOAuth = { verifier, state, gameId: input.gameId };
+  await SecureStore.setItemAsync(PENDING_OAUTH_KEY, JSON.stringify(pending), {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
-  return buildAuthorizeUrl(challenge);
+  return buildAuthorizeUrl(challenge, state);
 }
 
 export async function clearPendingLxnsVerifier(): Promise<void> {
-  await SecureStore.deleteItemAsync(PENDING_VERIFIER_KEY);
+  await SecureStore.deleteItemAsync(PENDING_OAUTH_KEY);
+  await SecureStore.deleteItemAsync(PENDING_VERIFIER_KEY).catch(() => undefined);
+}
+
+/** 读取进行中的授权信息（回调页据此确定绑定目标游戏并校验 state）。 */
+export async function readPendingLxnsOAuth(): Promise<PendingLxnsOAuth | null> {
+  const raw = await SecureStore.getItemAsync(PENDING_OAUTH_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PendingLxnsOAuth>;
+    if (typeof parsed.verifier !== 'string'
+      || typeof parsed.state !== 'string'
+      || (parsed.gameId !== 'maimai' && parsed.gameId !== 'chunithm')) {
+      return null;
+    }
+    return parsed as PendingLxnsOAuth;
+  } catch {
+    return null;
+  }
 }
 
 function parseTokenPayload(payload: unknown): z.infer<typeof TokenResponseSchema> {
@@ -135,26 +169,32 @@ async function postToken(body: Record<string, string>): Promise<LxnsOAuthSession
   }
 }
 
-export async function exchangeLxnsAuthorizationCode(code: string): Promise<LxnsOAuthSession> {
+export async function exchangeLxnsAuthorizationCode(
+  code: string,
+  expectState?: string,
+): Promise<LxnsOAuthSession> {
   const trimmed = code.trim();
-  if (!trimmed) throw new ProviderError('authentication', '请输入落雪授权码', false);
-  const verifier = await SecureStore.getItemAsync(PENDING_VERIFIER_KEY);
-  if (!verifier) {
+  if (!trimmed) throw new ProviderError('authentication', '缺少落雪授权码', false);
+  const pending = await readPendingLxnsOAuth();
+  if (!pending) {
     throw new ProviderError('authentication', '找不到本机 PKCE 验证信息，请重新打开授权页', false);
   }
-  try {
-    const session = await postToken({
-      grant_type: 'authorization_code',
-      code: trimmed,
-      client_id: LXNS_OAUTH_CLIENT_ID,
-      redirect_uri: LXNS_OAUTH_REDIRECT_URI,
-      code_verifier: verifier,
-    });
-    await clearPendingLxnsVerifier();
-    return session;
-  } catch (error) {
-    throw error;
+  if (expectState !== undefined && pending.state !== expectState) {
+    throw new ProviderError('authentication', '授权状态校验失败，请重新发起授权', false);
   }
+  return exchangeWithVerifier(trimmed, pending.verifier);
+}
+
+async function exchangeWithVerifier(code: string, verifier: string): Promise<LxnsOAuthSession> {
+  const session = await postToken({
+    grant_type: 'authorization_code',
+    code,
+    client_id: LXNS_OAUTH_CLIENT_ID,
+    redirect_uri: LXNS_OAUTH_REDIRECT_URI,
+    code_verifier: verifier,
+  });
+  await clearPendingLxnsVerifier();
+  return session;
 }
 
 export async function refreshLxnsAccessToken(refreshToken: string): Promise<LxnsOAuthSession> {
@@ -163,6 +203,58 @@ export async function refreshLxnsAccessToken(refreshToken: string): Promise<Lxns
     client_id: LXNS_OAUTH_CLIENT_ID,
     refresh_token: refreshToken,
   });
+}
+
+/**
+ * 公共令牌轮换：按 refreshToken 去重并发刷新，并缓存最近的轮换结果。
+ * 落雪 refresh_token 单次有效：同一旧 token 的并发刷新只有一个真实请求；
+ * 持有旧 token 的实例可从缓存直接拿到本进程内最新会话，避免 invalid_grant。
+ */
+const inFlightRefreshes = new Map<string, Promise<LxnsOAuthSession>>();
+const recentRotations = new Map<string, LxnsOAuthSession>();
+const RECENT_ROTATIONS_LIMIT = 64;
+
+export async function rotateLxnsTokens(refreshToken: string): Promise<LxnsOAuthSession> {
+  const rotated = recentRotations.get(refreshToken);
+  if (rotated) return rotated;
+  const existing = inFlightRefreshes.get(refreshToken);
+  if (existing) return existing;
+  const promise = refreshLxnsAccessToken(refreshToken)
+    .then((next) => {
+      recentRotations.set(refreshToken, next);
+      if (recentRotations.size > RECENT_ROTATIONS_LIMIT) {
+        const oldest = recentRotations.keys().next().value;
+        if (typeof oldest === 'string') recentRotations.delete(oldest);
+      }
+      return next;
+    })
+    .finally(() => {
+      inFlightRefreshes.delete(refreshToken);
+    });
+  inFlightRefreshes.set(refreshToken, promise);
+  return promise;
+}
+
+/** 落雪授权结果事件：回调页与登录 Sheet 之间的轻量通知。 */
+export type LxnsOAuthOutcome =
+  | { status: 'success'; gameId: 'maimai' | 'chunithm'; accountName: string }
+  | { status: 'error'; message: string };
+
+const outcomeListeners = new Set<(outcome: LxnsOAuthOutcome) => void>();
+
+export function subscribeLxnsOAuthOutcome(
+  listener: (outcome: LxnsOAuthOutcome) => void,
+): () => void {
+  outcomeListeners.add(listener);
+  return () => {
+    outcomeListeners.delete(listener);
+  };
+}
+
+export function notifyLxnsOAuthOutcome(outcome: LxnsOAuthOutcome): void {
+  for (const listener of [...outcomeListeners]) {
+    listener(outcome);
+  }
 }
 
 export function lxnsAccessTokenExpired(session: LxnsOAuthSession, now = Date.now()): boolean {

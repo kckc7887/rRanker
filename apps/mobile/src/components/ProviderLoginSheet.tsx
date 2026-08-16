@@ -26,7 +26,10 @@ import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { ProviderError } from '@/providers/errors';
 import type { ProviderSession } from '@/providers/contracts';
-import { beginLxnsAuthorize, exchangeLxnsAuthorizationCode } from '@/providers/lxns-oauth';
+import {
+  beginLxnsAuthorize,
+  subscribeLxnsOAuthOutcome,
+} from '@/providers/lxns-oauth';
 import { PhigrosScoreProvider, type DeviceCodeResult } from '@/providers/phigros-score-provider';
 import { bindLxnsAccount, type LxnsBindingResult } from '@/services/lxns-account-binding';
 import { validateAndActivateSession } from '@/services/session-validation';
@@ -80,7 +83,6 @@ export function ProviderLoginSheet({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [importToken, setImportToken] = useState('');
-  const [authCode, setAuthCode] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [phiDevice, setPhiDevice] = useState<DeviceCodeResult | null>(null);
@@ -112,7 +114,6 @@ export function ProviderLoginSheet({
     setUsername('');
     setPassword('');
     setImportToken('');
-    setAuthCode('');
     setMessage('');
     setBusy(false);
     setPhiDevice(null);
@@ -200,31 +201,14 @@ export function ProviderLoginSheet({
     setBusy(true);
     setMessage('正在打开落雪授权页…');
     try {
-      const url = await beginLxnsAuthorize();
+      const url = await beginLxnsAuthorize({
+        gameId: gameId === 'chunithm' ? 'chunithm' : 'maimai',
+      });
       await Linking.openURL(url);
-      setMessage('请在浏览器完成授权，将授权码粘贴到下方。');
+      setMessage('请在浏览器完成授权，完成后将自动返回并绑定。');
     } catch (error) {
       setMessage(messageFor(error));
     } finally {
-      setBusy(false);
-    }
-  };
-
-  const connectWithLxnsCode = async () => {
-    if (!authCode.trim()) { setMessage('请粘贴落雪授权码'); return; }
-    setBusy(true);
-    setMessage('正在换取令牌并验证成绩…');
-    try {
-      const newSession = await exchangeLxnsAuthorizationCode(authCode);
-      const result = await bindLxnsAccount({
-        gameId: gameId === 'chunithm' ? 'chunithm' : 'maimai',
-        session: newSession,
-      });
-      await activateLxnsBinding(result);
-      reset();
-      onSuccess();
-    } catch (error) {
-      setMessage(messageFor(error));
       setBusy(false);
     }
   };
@@ -384,6 +368,25 @@ export function ProviderLoginSheet({
     setBusy(false);
   };
 
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+
+  // 回调页完成落雪授权绑定后通知本 Sheet 收尾（冷启动时无订阅者，由回调页独立展示结果）。
+  useEffect(() => {
+    if (!visible || !isLxns) return;
+    const expectedGameId = gameId === 'chunithm' ? 'chunithm' : 'maimai';
+    return subscribeLxnsOAuthOutcome((outcome) => {
+      if (outcome.status === 'success') {
+        if (outcome.gameId !== expectedGameId) return;
+        reset();
+        onSuccessRef.current();
+        return;
+      }
+      setMessage(outcome.message);
+      setBusy(false);
+    });
+  }, [visible, isLxns, gameId]);
+
   if (!provider) return null;
 
   return (
@@ -471,27 +474,8 @@ export function ProviderLoginSheet({
                   <Text style={styles.primaryText}>打开落雪授权页</Text>
                 </Pressable>
                 <Text style={styles.hint}>
-                  授权页无回调；同意后复制授权码，粘贴到下方验证。本 App 使用 PKCE，不保存应用秘钥。
+                  点击后跳转浏览器完成授权，同意后将自动返回并绑定。本 App 使用 PKCE，不保存应用秘钥。
                 </Text>
-                <TextInput
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  textContentType="oneTimeCode"
-                  autoComplete="off"
-                  editable={!busy}
-                  placeholder="授权码（如 JVJ6-VPTM-MGHZ）"
-                  value={authCode}
-                  onChangeText={setAuthCode}
-                  placeholderTextColor={theme.textMuted}
-                  style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-                />
-                <Pressable
-                  disabled={busy}
-                  onPress={() => void connectWithLxnsCode()}
-                  style={({ pressed }) => [styles.secondary, { borderColor: theme.accent }, pressed && !busy && styles.secondaryPressed]}
-                >
-                  <Text style={[styles.secondaryText, { color: theme.accent }]}>验证授权码并绑定</Text>
-                </Pressable>
                 <Text style={styles.security}>
                   Access Token 约 15 分钟过期；刷新令牌保存在系统 SecureStore，不进入 SQLite 或日志。
                 </Text>
