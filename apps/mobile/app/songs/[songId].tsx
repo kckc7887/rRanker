@@ -1,5 +1,5 @@
-import { type ComponentProps, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useMemo, useState } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -7,21 +7,17 @@ import {
   InteractionManager,
   Linking,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
-import {
-  GestureHandlerRootView,
-  Pressable as GesturePressable,
-} from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
+import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
@@ -174,20 +170,6 @@ function MaimaiSongDetailScreen({
       />
     </View>
   </>;
-}
-
-function DetailPressable(props: ComponentProps<typeof Pressable>) {
-  return Platform.OS === 'android'
-    ? <Pressable {...props} />
-    : <GesturePressable {...props as ComponentProps<typeof GesturePressable>} />;
-}
-
-function DetailGestureRoot({ children, style }: {
-  children: ReactNode; style?: ComponentProps<typeof View>['style'];
-}) {
-  return Platform.OS === 'android'
-    ? <View style={style}>{children}</View>
-    : <GestureHandlerRootView style={style}>{children}</GestureHandlerRootView>;
 }
 
 function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }: {

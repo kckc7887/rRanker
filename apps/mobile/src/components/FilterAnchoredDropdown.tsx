@@ -9,7 +9,7 @@ import {
   View,
   type LayoutRectangle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppTheme } from '@/theme/app-theme';
 
 export type FilterSelectOption<T extends string = string> = {

@@ -4,7 +4,6 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Appearance, AppState, StyleSheet, View } from 'react-native';
-import 'react-native-reanimated';
 
 import { queryClient } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';

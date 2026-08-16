@@ -1,4 +1,5 @@
-import CryptoJS from 'crypto-js';
+import type CryptoJS from 'crypto-js';
+import { AES, Base64, Hex, WordArray } from '@/utils/crypto-subset';
 import JSZip from 'jszip';
 import type { Difficulty, PhigrosChartNotes, ScoreRecord } from '@/domain/models';
 
@@ -87,20 +88,20 @@ function uint8ArrayToWordArray(data: Uint8Array): CryptoJS.lib.WordArray {
       | (data[i + 3] ?? 0),
     );
   }
-  return CryptoJS.lib.WordArray.create(words, data.length);
+  return WordArray.create(words, data.length);
 }
 
 export function decryptAes(encryptedBase64: string): Uint8Array {
-  const key = CryptoJS.enc.Base64.parse(AES_KEY_B64);
-  const iv = CryptoJS.enc.Base64.parse(AES_IV_B64);
-  const decrypted = CryptoJS.AES.decrypt(encryptedBase64, key, { iv });
+  const key = Base64.parse(AES_KEY_B64);
+  const iv = Base64.parse(AES_IV_B64);
+  const decrypted = AES.decrypt(encryptedBase64, key, { iv });
   return wordArrayToUint8Array(decrypted);
 }
 
 export function decryptBytes(data: Uint8Array): Uint8Array {
-  const key = CryptoJS.enc.Base64.parse(AES_KEY_B64);
-  const iv = CryptoJS.enc.Base64.parse(AES_IV_B64);
-  const decrypted = CryptoJS.AES.decrypt(
+  const key = Base64.parse(AES_KEY_B64);
+  const iv = Base64.parse(AES_IV_B64);
+  const decrypted = AES.decrypt(
     // crypto-js 接受 { ciphertext: WordArray }；类型定义偏窄，这里按运行时契约传参
     { ciphertext: uint8ArrayToWordArray(data) } as unknown as string,
     key,
@@ -266,7 +267,7 @@ export function formatPhigrosDataMoney(money: readonly number[]): string {
 }
 
 function base64ToBytes(b64: string): Uint8Array {
-  const hexStr = CryptoJS.enc.Base64.parse(b64).toString(CryptoJS.enc.Hex);
+  const hexStr = Base64.parse(b64).toString(Hex);
   const pairs = hexStr.match(/.{2}/g);
   if (!pairs) return new Uint8Array(0);
   return new Uint8Array(pairs.map((b) => parseInt(b, 16)));

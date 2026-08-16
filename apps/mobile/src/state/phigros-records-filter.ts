@@ -1,73 +1,24 @@
-import { create } from 'zustand';
+import { createFilterStore } from '@/state/create-filter-store';
 import type { PhigrosRankFilter } from '@/domain/phigros-filters';
 import type { PhigrosLevel } from '@/domain/phigros';
 import type { PhigrosXingKind } from '@/domain/phigros-xing';
 
-interface PhigrosRecordsFilterState {
-  keyword: string;
-  collapsed: boolean;
-  level: PhigrosLevel | 'all';
-  constantMin: string;
-  constantMax: string;
-  accuracyMin: string;
-  accuracyMax: string;
-  rank: PhigrosRankFilter | null;
-  xing: PhigrosXingKind | null;
-  chapter: string | 'all';
-  selectedKyouTagIds: number[];
-  setKeyword: (value: string) => void;
-  setCollapsed: (value: boolean) => void;
-  setLevel: (level: PhigrosLevel | 'all') => void;
-  setConstantMin: (value: string) => void;
-  setConstantMax: (value: string) => void;
-  setAccuracyMin: (value: string) => void;
-  setAccuracyMax: (value: string) => void;
-  setRank: (value: PhigrosRankFilter | null) => void;
-  setXing: (value: PhigrosXingKind | null) => void;
-  setChapter: (value: string | 'all') => void;
-  setSelectedKyouTagIds: (value: number[]) => void;
-  clearFilters: () => void;
-  reset: () => void;
-}
-
-const DEFAULT_STATE = {
-  keyword: '',
-  collapsed: true,
-  level: 'all' as const,
-  constantMin: '',
-  constantMax: '',
-  accuracyMin: '',
-  accuracyMax: '',
-  rank: null as PhigrosRankFilter | null,
-  xing: null as PhigrosXingKind | null,
-  chapter: 'all' as const,
-  selectedKyouTagIds: [] as number[],
-};
-
-export const usePhigrosRecordsFilter = create<PhigrosRecordsFilterState>((set) => ({
-  ...DEFAULT_STATE,
-  setKeyword: (keyword) => set({ keyword }),
-  setCollapsed: (collapsed) => set({ collapsed }),
-  setLevel: (level) => set({ level }),
-  setConstantMin: (constantMin) => set({ constantMin }),
-  setConstantMax: (constantMax) => set({ constantMax }),
-  setAccuracyMin: (accuracyMin) => set({ accuracyMin }),
-  setAccuracyMax: (accuracyMax) => set({ accuracyMax }),
-  setRank: (rank) => set({ rank }),
-  setXing: (xing) => set({ xing }),
-  setChapter: (chapter) => set({ chapter }),
-  setSelectedKyouTagIds: (selectedKyouTagIds) => set({ selectedKyouTagIds }),
-  clearFilters: () => set({
+export const usePhigrosRecordsFilter = createFilterStore({
+  defaults: {
     keyword: '',
-    level: 'all',
+    collapsed: true,
+    level: 'all' as PhigrosLevel | 'all',
     constantMin: '',
     constantMax: '',
     accuracyMin: '',
     accuracyMax: '',
-    rank: null,
-    xing: null,
-    chapter: 'all',
-    selectedKyouTagIds: [],
-  }),
-  reset: () => set(DEFAULT_STATE),
-}));
+    rank: null as PhigrosRankFilter | null,
+    xing: null as PhigrosXingKind | null,
+    chapter: 'all' as string | 'all',
+    selectedKyouTagIds: [] as number[],
+  },
+  clearKeys: [
+    'keyword', 'level', 'constantMin', 'constantMax', 'accuracyMin', 'accuracyMax',
+    'rank', 'xing', 'chapter', 'selectedKyouTagIds',
+  ],
+});

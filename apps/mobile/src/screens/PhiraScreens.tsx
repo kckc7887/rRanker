@@ -1,13 +1,13 @@
-import { type ComponentProps, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, InteractionManager, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
-import { GestureHandlerRootView, Pressable as GesturePressable } from 'react-native-gesture-handler';
+import { ActivityIndicator, InteractionManager, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
+import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
@@ -39,26 +39,6 @@ import { useAppTheme } from '@/theme/app-theme';
 
 function usePlayerId() { return phiraPlayerIdFromAccountId(useSession((state) => state.activeAccountId)); }
 const actualBests = (items: Record<string, PhiraQueriedBest> | undefined) => Object.values(items ?? {}).filter((item) => item.record !== null);
-
-/**
- * 与舞萌/Phigros 详情相同的 iOS 手势公共路径：
- * iOS 上滚动手势竞争会取消滚动区内原生 Pressable 的点击（表现为按钮完全无反应），
- * Phira 详情滚动区内的按钮同样走 gesture-handler 按压体系。
- */
-function DetailPressable(props: ComponentProps<typeof Pressable>) {
-  return Platform.OS === 'android'
-    ? <Pressable {...props} />
-    : <GesturePressable {...props as ComponentProps<typeof GesturePressable>} />;
-}
-
-function DetailGestureRoot({ children, style }: {
-  children: ReactNode;
-  style?: ComponentProps<typeof View>['style'];
-}) {
-  return Platform.OS === 'android'
-    ? <View style={style}>{children}</View>
-    : <GestureHandlerRootView style={style}>{children}</GestureHandlerRootView>;
-}
 
 const PHIRA_SCORE_SORT_OPTIONS = [
   { value: 'score', label: 'Score' }, { value: 'acc', label: 'ACC' }, { value: 'constant', label: '定数' },

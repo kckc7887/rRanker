@@ -1,5 +1,5 @@
 import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/sanitized';
-import type { DetailedCatalogProvider, ScoreProvider } from './contracts';
+import type { DetailedCatalogProvider, ScoreProvider } from '@/providers/contracts';
 
 export class FixtureProvider implements ScoreProvider {
   async getPlayer() { return structuredClone(fixturePlayer); }

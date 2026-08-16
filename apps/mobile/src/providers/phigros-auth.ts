@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import CryptoJS from 'crypto-js';
+import { Base64, HmacSHA1, MD5 } from '@/utils/crypto-subset';
 import { ProviderError } from './errors';
 
 const TAPTAP_CLIENT_ID = 'rAK3FfdieFob2Nn8Am';
@@ -184,8 +184,8 @@ async function getProfile(token: TapTapToken): Promise<z.infer<typeof ProfileDat
   const port = '443';
   const sigBase = `${ts}\n${nonce}\n${method}\n${uri}\n${host}\n${port}\n\n`;
 
-  const mac = CryptoJS.enc.Base64.stringify(
-    CryptoJS.HmacSHA1(sigBase, token.mac_key),
+  const mac = Base64.stringify(
+    HmacSHA1(sigBase, token.mac_key),
   );
 
   const controller = new AbortController();
@@ -206,7 +206,7 @@ export async function exchangeSessionToken(token: TapTapToken): Promise<PhigrosS
   const profile = await getProfile(token);
   const ts = String(Math.floor(Date.now() / 1000));
 
-  const lcHash = CryptoJS.MD5(ts + LC_APP_KEY).toString();
+  const lcHash = MD5(ts + LC_APP_KEY).toString();
   const lcSign = `${lcHash},${ts}`;
 
   const controller = new AbortController();

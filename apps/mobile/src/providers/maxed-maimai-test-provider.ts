@@ -1,16 +1,8 @@
 import { calculateChartRating } from '@/domain/rating';
-import type { CatalogSnapshot, DataSource, Player, ScoreRecord } from '@/domain/models';
+import type { CatalogSnapshot, Player, ScoreRecord } from '@/domain/models';
 import type { CatalogDrivenScoreProvider } from '@/providers/contracts';
+import { generatedSource } from '@/providers/generated-source';
 import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
-
-function generatedSource(): DataSource {
-  return {
-    kind: 'generated',
-    label: '示例查分器（全谱面满成绩）',
-    updatedAt: new Date().toISOString(),
-    isStale: false,
-  };
-}
 
 export function buildMaxedMaimaiRecords(catalog: CatalogSnapshot): ScoreRecord[] {
   return catalog.songs.flatMap((song) => {
@@ -41,7 +33,7 @@ export class MaxedMaimaiTestProvider implements CatalogDrivenScoreProvider {
       displayName: this.displayName,
       rating: 0,
       extension: { kind: 'maimai', courseRank: 23 },
-      source: generatedSource(),
+      source: generatedSource('示例查分器（全谱面满成绩）'),
     };
   }
 

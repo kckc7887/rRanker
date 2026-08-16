@@ -14,6 +14,7 @@ import type {
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
   background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', border: '#DDD', text: '#111',
   textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF',

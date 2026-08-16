@@ -6,7 +6,7 @@ import type {
   ChunithmPlayer,
   ChunithmScore,
 } from '@/domain/chunithm-personal';
-import type { DataSource } from '@/domain/models';
+import { generatedSource } from '@/providers/generated-source';
 
 type RatedGeneratedScore = {
   score: ChunithmScore;
@@ -17,14 +17,6 @@ export type MaxedChunithmSnapshot = Omit<ChunithmPersonalSnapshot, 'player'> & {
   player: ChunithmPlayer;
 };
 
-function generatedSource(): DataSource {
-  return {
-    kind: 'generated',
-    label: '示例查分器（全曲全谱面满成绩）',
-    updatedAt: new Date().toISOString(),
-    isStale: false,
-  };
-}
 
 function roundToTwo(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
