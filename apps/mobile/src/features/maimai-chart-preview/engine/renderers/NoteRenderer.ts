@@ -30,8 +30,11 @@ export interface HoldRipplePhase {
 
 // hold 开始到结束期间每 HOLD_RIPPLE_INTERVAL_MS 生成一个波纹；
 // 单波纹扩散 HOLD_RIPPLE_EXPAND_MS 后消失。间隔与扩散时长相同（均 0.1s），波纹无缝衔接；
-// 同一 hold 同一时刻至多 1 个活跃波纹。
-export function holdRipplePhase(hold: HoldStartNote, nowMs: number): HoldRipplePhase | null {
+// 同一 hold 同一时刻至多 1 个活跃波纹。按钮 hold 与 touch-hold 结构同源，共用本函数。
+export function holdRipplePhase(
+  hold: Pick<HoldStartNote, "timingMs" | "duration" | "bpm">,
+  nowMs: number,
+): HoldRipplePhase | null {
   const startMs = hold.timingMs;
   if (nowMs < startMs) return null;
   const endMs = startMs + (60000 * hold.duration) / hold.bpm;
@@ -67,15 +70,18 @@ export class NoteRenderer extends BaseRenderer {
   calculateHitEffectPosition(
     note: Note,
     currentTimeMs: number,
-  ): { x: number; y: number; progress: number } {
+  ): { x: number; y: number; progress: number; angle: number } {
     const position = note.position as ButtonPosition;
     const angle = this.getButtonAngle(position);
     const timeDiff = currentTimeMs - note.timingMs;
-    if (timeDiff < 0 || timeDiff > NOTE_HIT_EFFECT_DURATION_MS) return { x: 0, y: 0, progress: -1 };
+    if (timeDiff < 0 || timeDiff > NOTE_HIT_EFFECT_DURATION_MS) {
+      return { x: 0, y: 0, progress: -1, angle };
+    }
     return {
       x: this.context.centerX + Math.cos(angle) * this.context.radius,
       y: this.context.centerY + Math.sin(angle) * this.context.radius,
       progress: timeDiff / NOTE_HIT_EFFECT_DURATION_MS,
+      angle,
     };
   }
 
@@ -191,7 +197,7 @@ export class NoteRenderer extends BaseRenderer {
   renderTapHitEffect(
     x: number,
     y: number,
-    position: ButtonPosition,
+    angle: number,
     color: string,
     progress: number,
     type: "hexagon" | "star",
@@ -204,7 +210,6 @@ export class NoteRenderer extends BaseRenderer {
     const subRad = Math.max(0, Math.min(1, 1 - (8 / 9) * progress * progress));
 
     const baseR = this.getHitEffectBaseRadius();
-    const angle = this.getButtonAngle(position);
     const sub1 = angle + Math.PI / 6;
     const sub2 = angle - Math.PI / 6;
     const r0 = baseR * scale;

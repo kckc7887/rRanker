@@ -144,6 +144,7 @@ interface PreparedRenderNotes {
   touches: (TouchNote | TouchHoldStartNote)[];
   fireworkTouches: (TouchNote | TouchHoldStartNote)[];
   holds: HoldStartNote[];
+  touchHolds: TouchHoldStartNote[];
   holdEndMap: Map<string, HoldEndNote>;
   noteMeta: WeakMap<Note, RenderNoteMeta>;
   approachGroups: ApproachIndicatorGroup[];
@@ -157,6 +158,7 @@ interface PreparedRenderNotes {
   layeredIndex: TimeWindowIndex;
   approachIndex: TimeWindowIndex;
   holdIndex: TimeWindowIndex;
+  touchHoldIndex: TimeWindowIndex;
   /** 谱面内最小的 note 流速倍率幅值（|<HS*x>|，≤1），粗筛窗口按它放大提前量 */
   minHiSpeed: number;
 }
@@ -264,6 +266,7 @@ export class MainRenderer {
     touches: [],
     fireworkTouches: [],
     holds: [],
+    touchHolds: [],
     holdEndMap: new Map(),
     noteMeta: new WeakMap(),
     approachGroups: [],
@@ -277,6 +280,7 @@ export class MainRenderer {
     layeredIndex: EMPTY_TIME_WINDOW_INDEX,
     approachIndex: EMPTY_TIME_WINDOW_INDEX,
     holdIndex: EMPTY_TIME_WINDOW_INDEX,
+    touchHoldIndex: EMPTY_TIME_WINDOW_INDEX,
     minHiSpeed: 1,
   };
   private visibleTouchCountByPos = new Map<string, number>();
@@ -642,6 +646,16 @@ export class MainRenderer {
       prepared;
 
     const nowMs = timing.currentTimeMs;
+
+    // 击打特效（六边形 + hold/touch-hold 波纹）统一画在所有音符之下、烟花之上。
+    if (this.config.showHitEffect) {
+      const [holdLo, holdHi] = windowRange(prepared.holdIndex, nowMs, 0);
+      this.renderHoldRipples(prepared.holds, holdLo, holdHi, nowMs);
+      const [touchHoldLo, touchHoldHi] = windowRange(prepared.touchHoldIndex, nowMs, 0);
+      this.renderTouchHoldRipples(prepared.touchHolds, touchHoldLo, touchHoldHi, nowMs);
+      this.renderTapHitEffect(hitEffectNotes, timing.currentTimeMs);
+    }
+
     // HS<1 的 note 接近时间更长,粗筛提前量按谱面最小倍率放大
     const lookAheadMs = BASE_APPROACH_TIME_MS / this.config.hiSpeed / prepared.minHiSpeed;
 
@@ -686,13 +700,6 @@ export class MainRenderer {
         timing.currentTimeMs,
         this.getNoteMeta(noteMeta, touches[i]).simultaneousNoteCount >= 2,
       );
-    }
-
-    // 击打特效画在最上层，盖住所有 note；hold 波纹在其下层先行绘制。
-    if (this.config.showHitEffect) {
-      const [holdLo, holdHi] = windowRange(prepared.holdIndex, nowMs, 0);
-      this.renderHoldRipples(prepared.holds, holdLo, holdHi, nowMs);
-      this.renderTapHitEffect(hitEffectNotes, timing.currentTimeMs);
     }
 
     this.ctx.restore();
@@ -875,12 +882,15 @@ export class MainRenderer {
         }
       }
 
+      // touch / touch-hold 也纳入击打特效；与按钮 hold 对齐——hold 特效由 hold-end 在结束时刻触发，
+      // touch-hold 同样由 touch-hold-end 在结束时刻触发（开始时刻无特效）。
       if (
-        isButtonNote(note) &&
-        !isTouchNote(note) &&
-        !isTouchHoldStartNote(note) &&
-        !isHoldStartNote(note) &&
-        !(isSlideNote(note) && note.isHeadless)
+        isTouchNote(note) ||
+        note.type === "touch-hold-end" ||
+        (isButtonNote(note) &&
+          !isTouchHoldStartNote(note) &&
+          !isHoldStartNote(note) &&
+          !(isSlideNote(note) && note.isHeadless))
       ) {
         hitEffectNotes.push(note);
       }
@@ -912,6 +922,8 @@ export class MainRenderer {
     fireworkTouches.sort((a, b) => fireworkTriggerMs(a) - fireworkTriggerMs(b));
     // holds 此前仅用于 layeredHeads / approachGroups（已构建完），此处转升序供波纹窗口索引。
     holds.sort((a, b) => a.timingMs - b.timingMs);
+    // touches 已升序，filter 保持顺序，供 touch-hold 波纹窗口索引。
+    const touchHolds = touches.filter(isTouchHoldStartNote);
 
     const timingOf = (note: Note) => note.timingMs;
 
@@ -927,6 +939,7 @@ export class MainRenderer {
       touches,
       fireworkTouches,
       holds,
+      touchHolds,
       holdEndMap,
       noteMeta,
       approachGroups,
@@ -952,6 +965,11 @@ export class MainRenderer {
         holds,
         timingOf,
         (h) => h.timingMs + (60000 * h.duration) / h.bpm + HOLD_RIPPLE_EXPAND_MS,
+      ),
+      touchHoldIndex: buildTimeWindowIndex(
+        touchHolds,
+        timingOf,
+        (h) => h.timingMs + h.durationMs + HOLD_RIPPLE_EXPAND_MS,
       ),
     };
   }
@@ -1467,6 +1485,22 @@ export class MainRenderer {
     }
   }
 
+  // touch-hold 也是 hold：同参数波纹，判定点取触摸判定区中心（含镜像）。
+  private renderTouchHoldRipples(
+    holds: readonly TouchHoldStartNote[],
+    lo: number,
+    hi: number,
+    nowMs: number,
+  ): void {
+    for (let i = lo; i < hi; i++) {
+      const hold = holds[i];
+      const phase = holdRipplePhase(hold, nowMs);
+      if (!phase) continue;
+      const p = this.touchRenderer.getTouchPosition(hold.position);
+      this.noteRenderer.renderHoldRipple(p.x, p.y, COLORS.HIT_EFFECT_GOLD, phase.progress);
+    }
+  }
+
   private renderTapHitEffect(notes: Note[], currentTimeMs: number): void {
     // hitEffectNotes 按 timingMs 升序，二分定位窗口下界（currentTimeMs - DURATION），之后线性扫。
     const windowStartMs = currentTimeMs - NOTE_HIT_EFFECT_DURATION_MS;
@@ -1478,22 +1512,39 @@ export class MainRenderer {
       else hi = mid;
     }
 
-    // 同 position 后到的 note 已命中时让前面的特效退场。
-    const lastHitTimingByPos = new Map<ButtonPosition, number>();
+    // 同 position 后到的 note 已命中时让前面的特效退场（按钮为数字键、触摸区为字符串键，天然不冲突）。
+    const lastHitTimingByPos = new Map<ButtonPosition | string, number>();
     for (let i = lo; i < notes.length; i++) {
       const n = notes[i];
       if (n.timingMs > currentTimeMs) break;
-      const cur = lastHitTimingByPos.get(n.position as ButtonPosition);
+      const cur = lastHitTimingByPos.get(n.position);
       if (cur === undefined || n.timingMs > cur) {
-        lastHitTimingByPos.set(n.position as ButtonPosition, n.timingMs);
+        lastHitTimingByPos.set(n.position, n.timingMs);
       }
     }
 
     for (let i = lo; i < notes.length; i++) {
       const note = notes[i];
       if (note.timingMs > currentTimeMs) break;
-      const latest = lastHitTimingByPos.get(note.position as ButtonPosition);
+      const latest = lastHitTimingByPos.get(note.position);
       if (latest !== undefined && latest > note.timingMs) continue;
+
+      // touch / touch-hold-end：位置取触摸判定区中心（含镜像），方向角由圆心指向判定点。
+      if (isTouchNote(note) || note.type === "touch-hold-end") {
+        const timeDiff = currentTimeMs - note.timingMs;
+        if (timeDiff < 0 || timeDiff > NOTE_HIT_EFFECT_DURATION_MS) continue;
+        const p = this.touchRenderer.getTouchPosition(note.position);
+        const angle = Math.atan2(p.y - this.centerY, p.x - this.centerX);
+        this.noteRenderer.renderTapHitEffect(
+          p.x,
+          p.y,
+          angle,
+          COLORS.HIT_EFFECT_GOLD,
+          timeDiff / NOTE_HIT_EFFECT_DURATION_MS,
+          "hexagon",
+        );
+        continue;
+      }
 
       const pos = this.noteRenderer.calculateHitEffectPosition(note, currentTimeMs);
       if (!(0 <= pos.progress && pos.progress <= 1)) continue;
@@ -1501,7 +1552,7 @@ export class MainRenderer {
       this.noteRenderer.renderTapHitEffect(
         pos.x,
         pos.y,
-        note.position as ButtonPosition,
+        pos.angle,
         COLORS.HIT_EFFECT_GOLD,
         pos.progress,
         note.type === "break" || (isTapNote(note) && note.isStar) ? "star" : "hexagon",
