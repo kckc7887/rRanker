@@ -273,7 +273,7 @@ describe('好友码多目标写入', () => {
       token: 'qr-token',
       friendCode: '987654321098765',
     });
-    const phases: Array<{ kind: string; authMode?: string }> = [];
+    const phases: { kind: string; authMode?: string }[] = [];
     const result = await uploadMaimaiFromQrLogin({
       credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
       selectedAccountIds: [local.id],

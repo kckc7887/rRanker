@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { NativeModules, Platform } from 'react-native';
+import { acquireArcadeGpsOrigin } from '@/utils/acquire-arcade-gps-origin';
+
 const {
   requestForegroundPermissionsAsync,
   hasServicesEnabledAsync,
@@ -38,9 +41,6 @@ vi.mock('@react-native-community/geolocation', () => ({
     getCurrentPosition,
   },
 }));
-
-import { NativeModules, Platform } from 'react-native';
-import { acquireArcadeGpsOrigin } from '@/utils/acquire-arcade-gps-origin';
 
 describe('acquireArcadeGpsOrigin', () => {
   beforeEach(() => {

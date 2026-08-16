@@ -4,10 +4,6 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 const AVATAR_RESOURCE_SCHEMA = 1;
 const repository = new SqliteSnapshotRepository();
 
-type StoredAccountAvatar = {
-  avatarUrl: string;
-};
-
 export async function persistBoundAccountAvatar(
   accountId: string,
   avatarUrl: string | null,

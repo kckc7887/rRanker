@@ -200,7 +200,7 @@ function canonicalize(value: unknown): unknown {
   );
 }
 
-async function screenHash(screen: Awaited<ReturnType<typeof render>>, parts: Array<{ label?: RegExp; testId?: string }>): Promise<string> {
+async function screenHash(screen: Awaited<ReturnType<typeof render>>, parts: { label?: RegExp; testId?: string }[]): Promise<string> {
   const trees: unknown[] = [];
   for (const part of parts) {
     if (part.label) {

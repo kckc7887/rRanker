@@ -1,4 +1,4 @@
-import { BaseRenderer, RenderContext } from "./BaseRenderer";
+import { BaseRenderer } from "./BaseRenderer";
 import { TouchNote, TouchHoldStartNote, Point2D, TouchPosition } from "../types";
 import {
   TOUCH_SENSOR_RADII,
@@ -61,10 +61,6 @@ export class TouchRenderer extends BaseRenderer {
   // touch 花瓣精灵缓存，key = 层|变体|花瓣索引。
   private touchPetalSprites = new Map<string, HTMLCanvasElement>();
   private touchSpriteBasis = "";
-
-  constructor(context: RenderContext) {
-    super(context);
-  }
 
   /** canvas backing store 相对逻辑坐标的缩放（含 DPR），精灵按它烘焙保持原生分辨率。 */
   private getBackingScale(): number {
@@ -825,7 +821,7 @@ export class TouchRenderer extends BaseRenderer {
 
   /** 烟花单例：touches 须已按 hasFirework 过滤并按 fireworkTriggerMs 升序，二分取最近已触发者。 */
   renderTouchFireworks(
-    touches: ReadonlyArray<TouchNote | TouchHoldStartNote>,
+    touches: readonly (TouchNote | TouchHoldStartNote)[],
     currentTimeMs: number,
   ): void {
     let lo = 0;

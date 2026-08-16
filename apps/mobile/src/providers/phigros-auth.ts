@@ -72,7 +72,7 @@ export type GameSaveMeta = {
 
 /** 从 LeanCloud 返回的多条存档中取 updatedAt 最新且含 gameFile 的一条 */
 export function pickLatestGameSave(
-  results: Array<{ summary: string; gameFile: { url: string }; updatedAt: string }>,
+  results: { summary: string; gameFile: { url: string }; updatedAt: string }[],
 ): GameSaveMeta {
   const candidates = results.filter((item) => item.summary && item.gameFile?.url);
   if (!candidates.length) {
