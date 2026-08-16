@@ -34,6 +34,7 @@ import {
   NOTE_HIT_EFFECT_DURATION_MS,
   NOTE_VISIBILITY_AFTER_MS,
   HOLD_RIPPLE_EXPAND_MS,
+  TOUCH_HIT_EFFECT_DURATION_MS,
 } from "../utils/constants";
 import { fireworkTriggerMs } from "./TouchRenderer";
 
@@ -1529,19 +1530,17 @@ export class MainRenderer {
       const latest = lastHitTimingByPos.get(note.position);
       if (latest !== undefined && latest > note.timingMs) continue;
 
-      // touch / touch-hold-end：位置取触摸判定区中心（含镜像），方向角由圆心指向判定点。
+      // touch / touch-hold-end：实心圆扩散特效，位置取触摸判定区中心（含镜像）；
+      // 时长为普通特效一半（225ms），消失速度 2x。
       if (isTouchNote(note) || note.type === "touch-hold-end") {
         const timeDiff = currentTimeMs - note.timingMs;
-        if (timeDiff < 0 || timeDiff > NOTE_HIT_EFFECT_DURATION_MS) continue;
+        if (timeDiff < 0 || timeDiff > TOUCH_HIT_EFFECT_DURATION_MS) continue;
         const p = this.touchRenderer.getTouchPosition(note.position);
-        const angle = Math.atan2(p.y - this.centerY, p.x - this.centerX);
-        this.noteRenderer.renderTapHitEffect(
+        this.noteRenderer.renderTouchHitEffect(
           p.x,
           p.y,
-          angle,
           COLORS.HIT_EFFECT_GOLD,
-          timeDiff / NOTE_HIT_EFFECT_DURATION_MS,
-          "hexagon",
+          timeDiff / TOUCH_HIT_EFFECT_DURATION_MS,
         );
         continue;
       }
