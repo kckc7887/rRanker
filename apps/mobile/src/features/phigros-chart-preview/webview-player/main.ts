@@ -25,8 +25,8 @@ import {
   type HitSoundEvent,
   type HitSoundKind,
 } from './hit-sound';
-import { PlaybackClock } from './playbackClock';
-import { getAudioContextOutputTime } from './audioClock';
+import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
+import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 
 declare global {

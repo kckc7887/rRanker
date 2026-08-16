@@ -1,4 +1,3 @@
-import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import type {
   ChunithmAliasSnapshot,
@@ -16,7 +15,8 @@ import type {
   ChunithmCollectionRequiredSong,
 } from '@/domain/chunithm-collections';
 import type { DataSource } from '@/domain/models';
-import { ProviderError, providerErrorFromStatus } from './errors';
+import { ProviderError } from './errors';
+import { fetchProviderJson } from './http-json';
 
 const API_ROOT = 'https://maimai.lxns.net/api/v0/chunithm';
 
@@ -163,43 +163,14 @@ function versionAtOrBefore(
   );
 }
 
-async function getJson(path: string): Promise<unknown> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await expoFetch(`${API_ROOT}${path}`, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw providerErrorFromStatus(response.status);
-    return await response.json();
-  } catch (error) {
-    if (error instanceof ProviderError) throw error;
-    if (error instanceof SyntaxError) {
-      throw new ProviderError(
-        'upstream_schema',
-        'LXNS 中二曲库返回了无效 JSON',
-        true,
-        { cause: error },
-      );
-    }
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new ProviderError(
-        'timeout',
-        'LXNS 中二曲库读取超时',
-        true,
-        { cause: error },
-      );
-    }
-    throw new ProviderError(
-      'network',
-      '无法连接 LXNS 中二曲库',
-      true,
-      { cause: error },
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
+function getJson(path: string): Promise<unknown> {
+  return fetchProviderJson({
+    baseUrl: API_ROOT,
+    path,
+    invalidJsonMessage: 'LXNS 中二曲库返回了无效 JSON',
+    timeoutMessage: 'LXNS 中二曲库读取超时',
+    networkMessage: '无法连接 LXNS 中二曲库',
+  });
 }
 
 function mapDifficulty(

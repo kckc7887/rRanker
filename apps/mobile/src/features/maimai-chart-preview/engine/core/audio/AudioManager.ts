@@ -1,6 +1,6 @@
 import { Note, AudioConfig } from "../../types";
 import { ANSWER_SOUND_BASE_OFFSET_MS } from "../../utils/constants";
-import { getAudioContextOutputTime } from "./audioClock";
+import { getAudioContextOutputTime } from "../../../../chart-preview-shared/webview-player/audioClock";
 
 const SCHEDULE_LOOKAHEAD_MS = 1500;
 // 待播源上限，达到即停止本帧调度由后续帧续上，等效自适应收缩前瞻。

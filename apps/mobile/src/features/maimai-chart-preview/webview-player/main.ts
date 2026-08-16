@@ -16,7 +16,7 @@ import {
   type ChartDifficulty,
   type PreparedAudioEvent,
 } from '../engine';
-import { PlaybackClock } from './playbackClock';
+import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 import {

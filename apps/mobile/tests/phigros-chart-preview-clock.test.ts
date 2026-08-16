@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PlaybackClock } from '@/features/phigros-chart-preview/webview-player/playbackClock';
+import { PlaybackClock } from '@/features/chart-preview-shared/webview-player/playbackClock';
 
 describe('phigros chart preview playback clock（移植舞萌分段时钟）', () => {
   it('静止时返回 setOffset 保存的位置', () => {

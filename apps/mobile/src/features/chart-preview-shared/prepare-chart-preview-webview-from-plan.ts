@@ -4,7 +4,7 @@
  * 额外写盘回调、HTML 模板与 buildHtml），由本执行器按固定顺序完成
  * 「stage 目录 → 落盘资产 → data URL 资产 → 额外写盘 → 读模板 →
  * 生成并写入 index.html」，落盘文件集合与返回值由清单决定，不感知具体游戏。
- * 落盘与资产解析复用 maimai prepare 模块的公共函数，不重复实现。
+ * 落盘与资产解析复用本目录 chart-preview-assets 公共层，不重复实现。
  * 资产来源用判别联合表达：moduleId 为本地 bundle 资产（每次覆盖落盘），
  * url + bytes 为对象存储远程资产（已缓存且大小匹配时跳过下载）。
  */
@@ -15,7 +15,7 @@ import {
   loadAssetFileUri,
   readAssetText,
   stageAsset,
-} from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
+} from './chart-preview-assets';
 
 export type ChartPreviewStagedAsset =
   | { fileName: string; moduleId: number }

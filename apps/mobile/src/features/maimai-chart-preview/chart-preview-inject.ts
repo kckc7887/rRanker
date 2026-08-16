@@ -1,5 +1,13 @@
-/** 纯函数：供 RN 壳与单元测试共用，避免拉取 react-native。 */
+/**
+ * 舞萌谱面确认注入配置（兼容层）：
+ * 桥接消息解析与停止/退出全屏脚本已下沉到 chart-preview-shared 公共层，
+ * 本文件保留舞萌专属的注入配置类型、序列化规则与全部原导出名，
+ * 调用方零改动；纯函数，不拉取 react-native。
+ */
 
+import {
+  parseChartPreviewBridgeMessage as parseChartPreviewBridgeMessageBase,
+} from '@/features/chart-preview-shared/chart-preview-bridge';
 import { createChartPreviewInjectors } from '@/features/chart-preview-shared/chart-preview-inject-factory';
 
 export type ChartPreviewSettings = {
@@ -38,14 +46,7 @@ export type ChartPreviewBridgeMessage = ChartPreviewSettings & {
 };
 
 export function parseChartPreviewBridgeMessage(raw: string): ChartPreviewBridgeMessage | null {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return parsed !== null && typeof parsed === 'object'
-      ? parsed as ChartPreviewBridgeMessage
-      : null;
-  } catch {
-    return null;
-  }
+  return parseChartPreviewBridgeMessageBase(raw) as ChartPreviewBridgeMessage | null;
 }
 
 const chartPreviewInjectors = createChartPreviewInjectors<ChartPreviewInjectConfig>({
@@ -74,13 +75,10 @@ export function buildChartPreviewInjectedJavaScript(config: ChartPreviewInjectCo
   return chartPreviewInjectors.buildInjectedJavaScript(config);
 }
 
-export function chartPreviewStopScript(): string {
-  return `window.postMessage({type:'stop'}, '*');true;`;
-}
-
-export function chartPreviewExitFullscreenScript(): string {
-  return `window.postMessage({type:'exit-fullscreen'}, '*');true;`;
-}
+export {
+  chartPreviewStopScript,
+  chartPreviewExitFullscreenScript,
+} from '@/features/chart-preview-shared/chart-preview-bridge';
 
 /** 把配置脚本写入 HTML 模板（file:// 下比 injectedJavaScript 更可靠）。 */
 export function applyChartPreviewConfigToHtml(html: string, config: ChartPreviewInjectConfig): string {

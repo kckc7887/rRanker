@@ -1,12 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { router, type Href } from 'expo-router';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
-import {
-  MuseDashRecordsFilterBar,
-  type MuseDashAchievementFilter,
-  type MuseDashDifficultySlot,
-  type MuseDashDlcFilter,
-} from '@/components/musedash/MuseDashFilterBar';
+import { MuseDashRecordsFilterBar } from '@/components/musedash/MuseDashFilterBar';
 import { MuseDashScoreCard } from '@/components/musedash/MuseDashScoreCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { RandomChartsPage, RandomUnplayedChartCard } from '@/components/RandomChartsPage';
@@ -20,7 +15,7 @@ import {
   type MuseDashAlbumsResponse,
   type MuseDashRandomChart,
 } from '@/domain/muse-dash';
-import { pickRandomItems, type RandomChartsCount } from '@/domain/random-charts';
+import { pickRandomItems } from '@/domain/random-charts';
 import {
   useMuseDashAlbums,
   useMuseDashCe,
@@ -28,6 +23,7 @@ import {
   useMuseDashPlayDetails,
   useMuseDashPlayer,
 } from '@/hooks/use-muse-dash';
+import { useMuseDashRandomChartsFilter } from '@/state/musedash-random-charts-filter';
 import { useSession } from '@/state/session-store';
 
 export function MuseDashRandomChartsScreen() {
@@ -37,17 +33,18 @@ export function MuseDashRandomChartsScreen() {
   const diffdiff = useMuseDashDiffdiff();
   const ce = useMuseDashCe();
   const player = useMuseDashPlayer(userId);
-  const [count, setCount] = useState<RandomChartsCount>(1);
-  const [collapsed, setCollapsed] = useState(false);
-  const [difficultySlot, setDifficultySlot] = useState<MuseDashDifficultySlot>('all');
-  const [dlc, setDlc] = useState<MuseDashDlcFilter>('all');
-  const [constantMin, setConstantMin] = useState('');
-  const [constantMax, setConstantMax] = useState('');
-  const [accMin, setAccMin] = useState('');
-  const [accMax, setAccMax] = useState('');
-  const [achievement, setAchievement] = useState<MuseDashAchievementFilter>('all');
+  const {
+    count, collapsed, difficultySlot, dlc, constantMin, constantMax, accMin, accMax,
+    achievement, hydrate, setCount, setCollapsed, setDifficultySlot, setDlc,
+    setConstantMin, setConstantMax, setAccMin, setAccMax, setAchievement,
+    clearFilters,
+  } = useMuseDashRandomChartsFilter();
   const [results, setResults] = useState<MuseDashRandomChart[] | null>(null);
   const [lastSeed, setLastSeed] = useState<string | null>(null);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
 
   const rawScores = useMemo(() => player.data
     ? buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data)
@@ -102,10 +99,7 @@ export function MuseDashRandomChartsScreen() {
         onAchievementChange={setAchievement} onCollapsedChange={setCollapsed}
         onConstantMaxChange={setConstantMax} onConstantMinChange={setConstantMin}
         onDifficultySlotChange={setDifficultySlot} onDlcChange={setDlc}
-        onReset={() => {
-          setDifficultySlot('all'); setDlc('all'); setConstantMin(''); setConstantMax('');
-          setAccMin(''); setAccMax(''); setAchievement('all');
-        }} />}
+        onReset={clearFilters} />}
       hasDrawn={results !== null}
       onCountChange={setCount}
       onDraw={draw}
