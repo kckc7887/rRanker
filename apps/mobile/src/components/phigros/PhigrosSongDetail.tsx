@@ -180,7 +180,6 @@ export function PhigrosDetailChrome({
         styles.headerButton,
         styles.headerFloatingButton,
         { top: insets.top, left: 8 },
-        Platform.OS !== 'ios' && styles.headerButtonBg,
         pressed && { opacity: 0.7 },
       ]}
       favorite={songTitle && onToggleFavorite ? {
@@ -194,8 +193,6 @@ export function PhigrosDetailChrome({
         styles.headerFloatingButton,
         { top: insets.top, right: 8 },
         favorite && styles.headerFavoriteActive,
-        Platform.OS !== 'ios' && styles.headerButtonBg,
-        Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
         pressed && { opacity: 0.7 },
       ]}
     />
@@ -771,9 +768,7 @@ export const PHIGROS_SONG_DETAIL_STYLES = StyleSheet.create({
   artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   headerFavoriteActive: {},
-  headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   metadataTable: {
     flexDirection: 'row', alignItems: 'flex-start',
     borderBottomWidth: StyleSheet.hairlineWidth,
