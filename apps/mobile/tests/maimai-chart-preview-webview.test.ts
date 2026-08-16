@@ -199,6 +199,21 @@ describe('chart preview webview helpers', () => {
     expect(themeScriptIndex).toBeLessThan(playerScriptIndex);
   });
 
+  it('adapts the fullscreen lock button to light mode with an outline', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    // 深色保持原半透明底值；浅色换白色半透明底并加细边框（浮在浅色 letterbox 上保持可见）。
+    expect(html).toContain('--lock-bg: rgba(11,13,18,0.6)');
+    expect(html).toContain('--lock-bg-strong: rgba(11,13,18,0.8)');
+    expect(html).toContain('--lock-bg: rgba(255,255,255,0.72)');
+    expect(html).toContain('--lock-bg-strong: rgba(255,255,255,0.88)');
+    expect(html).toContain('background: var(--lock-bg);');
+    expect(html).toContain('#fs-lock.locked { color: var(--accent); background: var(--lock-bg-strong); }');
+    expect(html).toContain('html[data-theme="light"] #fs-lock { border: 1px solid var(--border); }');
+  });
+
   it('hides controls while locked and restores them when unlocked', () => {
     expect(toggleFullscreenLockUiState(false)).toEqual({
       locked: true,
