@@ -227,7 +227,7 @@ beforeEach(() => {
 
 test('maimai song detail chrome contract', async () => {
   const screen = await render(<SongDetailScreen />);
-  expect(await chromeHash(screen)).toBe('64cb9da7ba4805538f9b8ee084160e236cae151554784b6c8a51a50a349a7d60');
+  expect(await chromeHash(screen)).toBe('434176f516894c70ea08870a3a486071c801f0188eda67c99d0bc902b7a0b064');
 });
 
 test('chunithm song detail chrome contract', async () => {
@@ -265,7 +265,7 @@ test('chunithm song detail chrome contract', async () => {
     hasSyncedData: true,
   };
   const screen = await render(<ChunithmSongDetail songId="3" />);
-  expect(await chromeHash(screen)).toBe('c53ccf89579614e4eb8069a09dc6e369442bc5e2caff9c8c1148136a492a0a9d');
+  expect(await chromeHash(screen)).toBe('fee58b7eff2d7e713afe81b213dc0b282b88bd15c285e2180aff75abdc9a16b2');
 });
 
 test('phigros song detail chrome contract', async () => {
@@ -288,7 +288,7 @@ test('phigros song detail chrome contract', async () => {
     source: { kind: 'generated', label: 'TapTap云存档', updatedAt: '2026-07-20T01:00:00.000Z', isStale: false },
   };
   const screen = await render(<SongDetailScreen />);
-  expect(await chromeHash(screen)).toBe('8c5aca6558ef5b7ff5ca294886d9183481ca6ce62927485f5974b1936acff055');
+  expect(await chromeHash(screen)).toBe('1d91f783b0490b0b0d40a4c931fa6937c27bad9e7b8a5cb7b4d163c3b939d2d0');
 });
 
 test('tuf level detail chrome contract', async () => {
@@ -299,7 +299,7 @@ test('tuf level detail chrome contract', async () => {
     levelCredits: [], tags: [], curations: [],
   } as TufLevel;
   const screen = await render(<TufLevelDetailScreen levelId="11372" />);
-  expect(await chromeHash(screen)).toBe('2e0dce77556169d0cb4ef3f1ccd8b0ece53fa48eb1f8e9efe426fd8e49fc9383');
+  expect(await chromeHash(screen)).toBe('189c66e5be95e2aed8c7b81023c57fc5df909f5110eb7bacdb0427d52d74b1b4');
 });
 
 test('musedash song detail chrome contract', async () => {
@@ -324,5 +324,5 @@ test('musedash song detail chrome contract', async () => {
     user: { user_id: '6ea4f986ffd211e8aa980242ac110011', nickname: 'SiMOOOOOON' },
   };
   const screen = await render(<MuseDashSongDetailScreen songId="0-47" />);
-  expect(await chromeHash(screen)).toBe('58a06119d0a89fa83bb7ae70797a98da55fcac4264c028d38fceec6529aa1ae1');
+  expect(await chromeHash(screen)).toBe('d8cd026363a326bef2c1caf2ba8fd6cfc0930723dd8cb68b8fdf7a97889f969c');
 });

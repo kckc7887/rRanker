@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
+  Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 import {
   Defs,
@@ -452,7 +452,7 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
       topInset={insets.top}
       backStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 },
-        Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
+        pressed && { opacity: 0.7 },
       ]}
       favorite={joined && onToggleFavorite ? {
         label: favorite ? `取消收藏 ${museDashSongTitle(joined.song)}` : `收藏 ${museDashSongTitle(joined.song)}`,
@@ -463,8 +463,6 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
       favoriteStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
         favorite && styles.headerFavoriteActive,
-        Platform.OS !== 'ios' && styles.headerButtonBg,
-        Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
         pressed && { opacity: 0.7 },
       ]}
     />
@@ -549,9 +547,7 @@ const styles = StyleSheet.create({
   page: { flex: 1 }, list: { flex: 1 }, listContent: { padding: 12, gap: 9 },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   headerFavoriteActive: {},
-  headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 },
   searchWrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },

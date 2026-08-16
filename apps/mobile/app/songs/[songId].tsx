@@ -199,7 +199,7 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
       topInset={insets.top}
       backStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 },
-        Platform.OS !== 'ios' && styles.headerButtonBg, pressed && { opacity: 0.7 },
+        pressed && { opacity: 0.7 },
       ]}
       favorite={song && onToggleFavorite ? {
         label: favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`,
@@ -210,8 +210,6 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
       favoriteStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
         favorite && styles.headerFavoriteActive,
-        Platform.OS !== 'ios' && styles.headerButtonBg,
-        Platform.OS !== 'ios' && favorite && styles.headerFavoriteActiveBg,
         pressed && { opacity: 0.7 },
       ]}
     />
@@ -800,9 +798,7 @@ const styles = StyleSheet.create({
   artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerButtonBg: { backgroundColor: 'rgba(17,24,39,0.62)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)' },
   headerFavoriteActive: {},
-  headerFavoriteActiveBg: { backgroundColor: 'rgba(141,91,214,0.88)' },
   metadataTable: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#D8DEE8', paddingHorizontal: 12, paddingVertical: 13, gap: 6 },
   metadataCellRoot: { minWidth: 0 }, metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 },
   versionCellRoot: { flex: 1.8, minWidth: 0 }, versionCell: { flex: 1 },
