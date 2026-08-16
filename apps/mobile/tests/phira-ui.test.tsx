@@ -60,8 +60,8 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   setTagPresets: jest.fn(), setTags: jest.fn(), setSongFavorite: jest.fn(),
 }) }));
 jest.mock('@/hooks/use-phira', () => ({
-  usePhiraPlayer: () => ({ data: { pool: { bestPool: mockBests['38294'] ? [{ chart: mockChart, record: mockBest.record, rks: 12 }] : [], recentPool: [] } }, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
-  usePhiraBests: () => ({ data: { items: mockBests, source: { kind: 'phira', label: 'Phira', updatedAt: 'now', isStale: false } }, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
+  usePhiraPlayer: () => ({ data: { pool: { bestPool: mockBests['38294'] ? [{ chart: mockChart, record: mockBest.record, rks: 12 }] : [], recentPool: [] } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
+  usePhiraBests: () => ({ data: { items: mockBests, source: { kind: 'phira', label: 'Phira', updatedAt: 'now', isStale: false } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
   useRefreshAllPhiraBests: () => mockRefreshAll,
   usePhiraCharts: () => ({ data: { pages: [{ results: mockCatalogCharts }] }, isLoading: false, isError: false, error: null, refetch: mockRefetch, hasNextPage: false, isFetchingNextPage: false, fetchNextPage: jest.fn() }),
   usePhiraChart: () => ({ data: mockChart, isLoading: false, isError: false, error: null }),
@@ -89,6 +89,20 @@ describe('Phira page contracts', () => {
     expect(screen.getByText('AT Lv.16')).toBeTruthy();
     expect(screen.getByText('XING-GOOD')).toBeTruthy();
     await screen.unmount();
+  });
+
+  it('applies the shared tab-bar inset contract to the best, records and catalog lists', async () => {
+    mockBests = { '38294': mockBest };
+    mockCatalogCharts = [mockChart];
+    const best = await render(<PhiraBestScreen />);
+    expect(best.getByTestId('phira-best-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
+    await best.unmount();
+    const records = await render(<PhiraRecordsScreen />);
+    expect(records.getByTestId('phira-records-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
+    await records.unmount();
+    const catalog = await render(<PhiraCatalogScreen />);
+    expect(catalog.getByTestId('phira-catalog-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
+    await catalog.unmount();
   });
 
   it('puts records sorting and catalog category/sorting into expanded filter dropdowns', async () => {

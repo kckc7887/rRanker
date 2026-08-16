@@ -586,6 +586,7 @@ function PhigrosSearchScreen() {
         data={query.data && filtered.length > 0 ? filtered : undefined}
         flatListProps={{
           testID: 'phigros-catalog-results-list',
+          contentInsetAdjustmentBehavior: 'automatic',
           keyExtractor: songKey,
           ...TAB_LIST_CACHE_PROPS,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
