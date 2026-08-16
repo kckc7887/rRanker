@@ -13,6 +13,7 @@ import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { Card } from '@/components/Card';
 import { SourceStatus } from '@/components/SourceStatus';
+import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosRateBadge, resolvePhigrosRate } from '@/components/phigros/PhigrosRateBadge';
@@ -88,7 +89,8 @@ export function PhiraBestScreen() {
     isLoading={player.isLoading} isError={player.isError} error={player.error}
     onRetry={() => { void player.refetch(); }} isEmpty={!player.isLoading && ordered.length === 0}
     emptyText={id === null ? '请先绑定 Phira 玩家' : '当前官方池没有 Best 成绩'} data={ordered.length ? sections : undefined}
-    sectionListProps={{ style: styles.list, contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
+    sectionListProps={{ testID: 'phira-best-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
+      contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
       keyExtractor: (item) => String(item.record!.id), stickySectionHeadersEnabled: false,
       renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text><Text style={{ color: theme.textMuted }}>{section.data.length} 条</Text></View>,
       renderItem: ({ item, index }) => <PhiraScoreCard item={item} rank={index + 1} /> }} /></View>;
@@ -116,7 +118,9 @@ export function PhiraRecordsScreen() {
   return <View style={[styles.page, { backgroundColor: theme.background }]}><RecordsListPage beforeList={controls}
     isLoading={player.isLoading || query.isLoading} isError={player.isError || query.isError} error={player.error ?? query.error} onRetry={() => void retry()} isEmpty={!player.isLoading && !query.isLoading && items.length === 0}
     emptyText="查询过歌曲后，最佳成绩会显示在这里" data={items.length ? items : undefined}
-    flatListProps={{ style: styles.list, contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], refreshing: player.isFetching || query.isFetching, onRefresh: () => void retry(), keyExtractor: (item) => String(item.record!.id), renderItem: ({ item }) => <PhiraScoreCard item={item} /> }} /></View>;
+    flatListProps={{ testID: 'phira-records-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
+      contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+      refreshing: player.isFetching || query.isFetching, onRefresh: () => void retry(), keyExtractor: (item) => String(item.record!.id), renderItem: ({ item }) => <PhiraScoreCard item={item} /> }} /></View>;
 }
 
 export function PhiraCatalogScreen() {
@@ -140,7 +144,9 @@ export function PhiraCatalogScreen() {
       onReset={() => { setStatus('ranked'); setSort('updated'); setConstantMin(''); setConstantMax(''); }} /></>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage beforeList={controls} isLoading={query.isLoading} isError={query.isError} error={query.error}
     onRetry={() => void query.refetch()} isEmpty={!query.isLoading && charts.length === 0} emptyText="没有找到 Phira 谱面" data={charts.length ? charts : undefined}
-    flatListProps={{ style: styles.list, contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <PhiraSongRow chart={item} />,
+    flatListProps={{ testID: 'phira-catalog-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
+      contentContainerStyle: [styles.listContent, { paddingBottom: inset + 20 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+      keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <PhiraSongRow chart={item} />,
       onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }, ListFooterComponent: query.isFetchingNextPage ? <ActivityIndicator /> : null }} /></View>;
 }
 
