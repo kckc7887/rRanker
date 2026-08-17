@@ -96,6 +96,38 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     bestSections: [{ id: 'best30', title: 'Best 30', size: 30 }],
     capabilities: { ...commonNav, hasTools: getGameToolbox('musedash').tools.length > 0 },
   },
+  'osu-standard': {
+    id: 'osu-standard',
+    title: 'osu!standard',
+    ratingLabel: 'PP',
+    ratingDigits: 0,
+    bestSections: [{ id: 'top100', title: 'Top 100', size: 100 }],
+    capabilities: { ...commonNav, hasTools: getGameToolbox('osu-standard').tools.length > 0 },
+  },
+  'osu-mania': {
+    id: 'osu-mania',
+    title: 'osu!mania',
+    ratingLabel: 'PP',
+    ratingDigits: 0,
+    bestSections: [{ id: 'top100', title: 'Top 100', size: 100 }],
+    capabilities: { ...commonNav, hasTools: getGameToolbox('osu-mania').tools.length > 0 },
+  },
+  'osu-catch': {
+    id: 'osu-catch',
+    title: 'osu!catch',
+    ratingLabel: 'PP',
+    ratingDigits: 0,
+    bestSections: [{ id: 'top100', title: 'Top 100', size: 100 }],
+    capabilities: { ...commonNav, hasTools: getGameToolbox('osu-catch').tools.length > 0 },
+  },
+  'osu-taiko': {
+    id: 'osu-taiko',
+    title: 'osu!taiko',
+    ratingLabel: 'PP',
+    ratingDigits: 0,
+    bestSections: [{ id: 'top100', title: 'Top 100', size: 100 }],
+    capabilities: { ...commonNav, hasTools: getGameToolbox('osu-taiko').tools.length > 0 },
+  },
 };
 
 export function getGameProfile(id: GameId): GameProfile {

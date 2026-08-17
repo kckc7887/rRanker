@@ -214,6 +214,22 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     ],
     emptyDetail: '喵斯快跑首版暂无可用工具。',
   },
+  'osu-standard': {
+    tools: [],
+    emptyDetail: 'osu!standard 暂无可用工具。',
+  },
+  'osu-mania': {
+    tools: [],
+    emptyDetail: 'osu!mania 暂无可用工具。',
+  },
+  'osu-catch': {
+    tools: [],
+    emptyDetail: 'osu!catch 暂无可用工具。',
+  },
+  'osu-taiko': {
+    tools: [],
+    emptyDetail: 'osu!taiko 暂无可用工具。',
+  },
 };
 
 export function getGameToolbox(gameId: GameId): GameToolbox {

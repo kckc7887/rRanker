@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
   Image,
   Modal,
@@ -13,8 +14,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   GAME_OPTIONS,
   type GameId,
+  type GameOption,
   type ProviderOption,
 } from '@/domain/game-bind-options';
+import { familyForId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
 
 function Chevron({ expanded }: { expanded: boolean }) {
@@ -62,6 +65,28 @@ export function GamePickerSheet({
   const insets = useSafeAreaInsets();
   const sheetTitle = title ?? (mode === 'switch' ? '切换游戏' : '选择游戏');
 
+  /** 家族聚合：同 familyId 的游戏折叠为一个板块行（锚点携带查分器，成员为模式子行）。 */
+  const entries = useMemo(() => {
+    const result: { key: string; game: GameOption; familyTitle?: string; modeGames: GameOption[] }[] = [];
+    const seenFamilies = new Set<string>();
+    for (const game of GAME_OPTIONS) {
+      if (game.hiddenInPicker) continue;
+      if (!game.familyId) {
+        result.push({ key: game.id, game, modeGames: [] });
+        continue;
+      }
+      if (seenFamilies.has(game.familyId)) continue;
+      seenFamilies.add(game.familyId);
+      result.push({
+        key: `family:${game.familyId}`,
+        game,
+        familyTitle: familyForId(game.familyId)?.title,
+        modeGames: GAME_OPTIONS.filter((item) => item.familyId === game.familyId),
+      });
+    }
+    return result;
+  }, []);
+
   return (
     <Modal
       visible={visible}
@@ -87,18 +112,19 @@ export function GamePickerSheet({
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>游戏</Text>
           <View style={styles.list}>
-            {GAME_OPTIONS.map((game) => {
+            {entries.map(({ key, game, familyTitle, modeGames }) => {
+              const isFamily = familyTitle !== undefined;
               const expanded = expandedGameId === game.id;
               const gameIsCurrent = mode === 'switch' && currentGameId === game.id
                 && (game.providers.length === 0 || currentProviderId != null);
               return (
-                <View key={game.id} style={[styles.gameCard, { backgroundColor: theme.surface }]}>
+                <View key={key} style={[styles.gameCard, { backgroundColor: theme.surface }]}>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityState={{ expanded: game.available ? expanded : undefined }}
                     onPress={() => {
                       if (!game.available) {
-                        onSelectUnavailableGame(game.title, game.pendingDetail);
+                        onSelectUnavailableGame(familyTitle ?? game.title, game.pendingDetail);
                         return;
                       }
                       onToggleGame(game.id);
@@ -113,7 +139,7 @@ export function GamePickerSheet({
                     <View style={styles.copy}>
                       <View style={styles.titleRow}>
                         <Text style={[styles.gameName, { color: theme.text }, !game.available && { color: theme.textMuted }]}>
-                          {game.title}
+                          {familyTitle ?? game.title}
                         </Text>
                         {!game.available ? <Text style={styles.badge}>待实现</Text> : null}
                         {gameIsCurrent && game.providers.length === 0 ? (
@@ -123,13 +149,15 @@ export function GamePickerSheet({
                       <Text style={[styles.detail, { color: theme.textMuted }]}>
                         {!game.available
                           ? game.pendingDetail
-                          : game.providers.length === 0
-                            ? mode === 'switch'
-                              ? '空数据预览 · 点下方切换'
-                              : '空数据预览 · 在总览切换'
-                            : expanded
-                              ? mode === 'switch' ? '选择查分器切换' : '选择查分器继续绑定'
-                              : `${game.providers.length} 个查分器 · 点按展开`}
+                          : isFamily && mode === 'switch'
+                            ? `${modeGames.length} 个模式 · 点按展开`
+                            : game.providers.length === 0
+                              ? mode === 'switch'
+                                ? '空数据预览 · 点下方切换'
+                                : '空数据预览 · 在总览切换'
+                              : expanded
+                                ? mode === 'switch' ? '选择查分器切换' : '选择查分器继续绑定'
+                                : `${game.providers.length} 个查分器 · 点按展开`}
                       </Text>
                     </View>
                     {game.available ? <Chevron expanded={expanded} /> : (
@@ -144,7 +172,38 @@ export function GamePickerSheet({
 
                   {game.available && expanded ? (
                     <View style={[styles.providerNest, { backgroundColor: theme.surfaceMuted, borderTopColor: theme.border }]}>
-                      {game.providers.length === 0 ? (
+                      {isFamily && mode === 'switch' ? (
+                        modeGames.map((modeGame) => (
+                          <Pressable
+                            key={modeGame.id}
+                            accessibilityRole="button"
+                            accessibilityLabel={`切换到${modeGame.title}`}
+                            disabled={!onSelectGame}
+                            onPress={() => onSelectGame?.(modeGame.id)}
+                            style={({ pressed }) => [
+                              styles.providerRow, { backgroundColor: theme.surface },
+                              pressed && styles.providerPressed,
+                              currentGameId === modeGame.id && { borderColor: theme.accent, borderWidth: 1 },
+                            ]}
+                          >
+                            <Image source={modeGame.icon} style={styles.providerIcon} />
+                            <View style={styles.copy}>
+                              <View style={styles.titleRow}>
+                                <Text style={[styles.providerName, { color: theme.text }]}>{modeGame.title}</Text>
+                                {currentGameId === modeGame.id ? <Text style={styles.currentBadge}>当前</Text> : null}
+                              </View>
+                              <Text style={[styles.detail, { color: theme.textMuted }]}>模式</Text>
+                            </View>
+                            <SymbolView
+                              name="chevron.right"
+                              size={14}
+                              tintColor="#C0C4CC"
+                              weight="semibold"
+                              fallback={<Ionicons name="chevron-forward" size={16} color="#C0C4CC" />}
+                            />
+                          </Pressable>
+                        ))
+                      ) : game.providers.length === 0 ? (
                         mode === 'switch' && onSelectGame ? (
                           <Pressable
                             accessibilityRole="button"

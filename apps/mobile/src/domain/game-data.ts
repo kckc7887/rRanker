@@ -5,6 +5,7 @@ import type { ChunithmPlayer, ChunithmScore } from './chunithm-personal';
 import type { TufPlayer } from './tuf';
 import type { MuseDashPlayer } from './muse-dash';
 import type { PhiraBestSnapshot, PhiraPlayerSnapshot } from './phira';
+import { formatOsuPp, type OsuBestScore, type OsuPlayer, type OsuSnapshot } from './osu';
 
 /** 通用 BestN 分区；具体谱面条目仍可按游戏扩展。 */
 export type BestListSection = {
@@ -97,6 +98,13 @@ export type GamePayload =
       hasSyncedData: boolean;
     }
   | {
+      kind: 'osu';
+      player: OsuPlayer;
+      bestScores: OsuBestScore[];
+      playerScore: PlayerScoreSummary;
+      source: DataSource;
+    }
+  | {
       kind: 'empty';
       gameId: GameId;
       displayName: string;
@@ -155,5 +163,23 @@ export function emptyGamePayload(gameId: GameId, displayName: string): Extract<G
       updatedAt: new Date().toISOString(),
       isStale: false,
     },
+  };
+}
+
+/** osu! 模式载荷：四模式游戏共用同一形状，PP 为主信息。 */
+export function osuPayloadFromSnapshot(
+  snapshot: OsuSnapshot,
+  profile: GameProfile,
+): Extract<GamePayload, { kind: 'osu' }> {
+  return {
+    kind: 'osu',
+    player: snapshot.data.player,
+    bestScores: snapshot.data.bestScores,
+    playerScore: {
+      label: profile.ratingLabel,
+      value: snapshot.data.player.pp,
+      display: formatOsuPp(snapshot.data.player.pp),
+    },
+    source: snapshot.source,
   };
 }

@@ -33,6 +33,10 @@ export function defaultArcadeFinderPreferences(gameId: GameId = 'maimai'): Arcad
     adofai: [],
     musedash: [],
     test: [],
+    'osu-standard': [],
+    'osu-mania': [],
+    'osu-catch': [],
+    'osu-taiko': [],
   };
   return {
     radiusKm: 10,

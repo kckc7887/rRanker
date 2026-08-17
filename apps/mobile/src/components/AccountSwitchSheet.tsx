@@ -3,6 +3,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GameId } from '@/domain/game-bind-options';
 import type { BoundAccount } from '@/domain/bound-account';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
+import { OsuRatingTag } from '@/components/osu/OsuRatingTag';
+import { isOsuGameId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
 
 /** 总览切换：仅列出已绑定游戏，展开为账号行。 */
@@ -52,6 +54,11 @@ export function AccountSwitchSheet({
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>已绑定</Text>
           <BoundAccountGroupedList accounts={accounts} expandedGameId={expandedGameId} activeAccountId={activeAccountId}
             onToggleGame={onToggleGame} onSelectAccount={onSelectAccount}
+            renderRatingTag={(account) => (
+              account.providerId === 'osu' && isOsuGameId(account.gameId)
+                ? <OsuRatingTag display={account.scoreDisplay} />
+                : null
+            )}
             emptyText="暂无已绑定账号，请先在设置 → 游戏管理中绑定。" />
         </ScrollView>
       </View>

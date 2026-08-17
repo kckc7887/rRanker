@@ -47,6 +47,8 @@ import { useAppTheme } from '@/theme/app-theme';
 import { TufSearchScreen } from '@/screens/TufScreens';
 import { MuseDashCatalogScreen } from '@/screens/MuseDashScreens';
 import { PhiraCatalogScreen } from '@/screens/PhiraScreens';
+import { OsuCatalogScreen } from '@/screens/OsuScreens';
+import { isOsuGameId } from '@/domain/game-mode-family';
 
 const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
 export default function SearchTabScreen() {
@@ -167,6 +169,8 @@ export function SearchScreen() {
     return <PhigrosSearchScreen />;
   }
   if (activeGameId === 'phira') return <PhiraCatalogScreen />;
+
+  if (isOsuGameId(activeGameId)) return <OsuCatalogScreen />;
 
   if (activeGameId === 'chunithm') {
     return <ChunithmSearchScreen />;

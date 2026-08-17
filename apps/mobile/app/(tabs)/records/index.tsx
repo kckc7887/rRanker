@@ -43,6 +43,8 @@ import { useAppTheme } from '@/theme/app-theme';
 import { TufRecordsScreen } from '@/screens/TufScreens';
 import { MuseDashRecordsScreen } from '@/screens/MuseDashScreens';
 import { PhiraRecordsScreen } from '@/screens/PhiraScreens';
+import { OsuRecordsScreen } from '@/screens/OsuScreens';
+import { isOsuGameId } from '@/domain/game-mode-family';
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
@@ -149,6 +151,8 @@ export function RecordsScreen() {
   }
 
   if (activeGameId === 'phira') return <PhiraRecordsScreen />;
+
+  if (isOsuGameId(activeGameId)) return <OsuRecordsScreen />;
 
   if (activeGameId === 'adofai') {
     return <TufRecordsScreen />;

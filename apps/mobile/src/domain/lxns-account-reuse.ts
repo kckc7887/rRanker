@@ -1,34 +1,22 @@
 import type { BoundAccount } from './bound-account';
 import type { GameId } from './game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
+import { reusableSharedCredentialAccounts } from './shared-credential-account-reuse';
 
+/** 落雪账号复用（舞萌/中二互绑）：共享凭据复用公共逻辑的薄包装，行为与原实现一致。 */
 export function reusableLxnsAccounts(input: {
   targetGameId: Extract<GameId, 'maimai' | 'chunithm'>;
   accounts: readonly BoundAccount[];
   sessionsByAccountId: Readonly<Record<string, ProviderSession | undefined>>;
   credentialIdsByAccountId: Readonly<Record<string, string | undefined>>;
 }): BoundAccount[] {
-  const targetCredentialIds = new Set(
-    input.accounts
-      .filter((account) => (
-        account.gameId === input.targetGameId
-        && account.providerId === 'lxns'
-      ))
-      .map((account) => input.credentialIdsByAccountId[account.id])
-      .filter((value): value is string => typeof value === 'string'),
-  );
-  const seen = new Set<string>();
-  return input.accounts.filter((account) => {
-    if (account.providerId !== 'lxns' || account.gameId === input.targetGameId) return false;
-    const credentialId = input.credentialIdsByAccountId[account.id];
-    const session = input.sessionsByAccountId[account.id];
-    if (!credentialId
-      || targetCredentialIds.has(credentialId)
-      || seen.has(credentialId)
-      || session?.mode !== 'lxns-oauth') {
-      return false;
-    }
-    seen.add(credentialId);
-    return true;
+  return reusableSharedCredentialAccounts({
+    providerId: 'lxns',
+    sessionMode: 'lxns-oauth',
+    targetGameId: input.targetGameId,
+    siblingGameIds: input.targetGameId === 'maimai' ? ['chunithm'] : ['maimai'],
+    accounts: input.accounts,
+    sessionsByAccountId: input.sessionsByAccountId,
+    credentialIdsByAccountId: input.credentialIdsByAccountId,
   });
 }

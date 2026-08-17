@@ -1,5 +1,6 @@
 import type { GameId, ProviderId } from './game-bind-options';
 import { formatPlayerScore } from './game-data';
+import type { OsuGameId } from './game-mode-family';
 import { getGameProfile } from './game-profile';
 
 /** 已绑定账号：切换列表展开后的一页行（图标由 UI 按 provider/game 解析）。 */
@@ -67,6 +68,7 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'musedash-moe': 'MuseDash.moe',
   'phira-community': 'Phira社区',
   'musedash-test': '示例查分器',
+  osu: 'osu! 官方',
 };
 
 export function createPhiraBoundAccount(input: {
@@ -311,7 +313,43 @@ export function createPhigrosBoundAccount(input: {
   };
 }
 
+/**
+ * osu! 模式账号：一个 osu 用户按模式各绑定一个账号，账号 id 含模式与用户 id；
+ * 凭据（credentialId）跨模式共享，由会话层统一管理。
+ */
+export function createOsuBoundAccount(input: {
+  gameId: OsuGameId;
+  userId: number;
+  displayName: string;
+  pp: number | null;
+  avatarUrl?: string | null;
+}): BoundAccount {
+  const profile = getGameProfile(input.gameId);
+  return {
+    id: `${input.gameId}:osu:${input.userId}`,
+    gameId: input.gameId,
+    providerId: 'osu',
+    displayName: input.displayName,
+    scoreLabel: profile.ratingLabel,
+    // 不千分位：账号行 scoreDisplay 需可被 Number() 解析恢复（会话库回读）。
+    scoreDisplay: input.pp == null || !Number.isFinite(input.pp) ? '—' : String(Math.round(input.pp)),
+    providerTitle: PROVIDER_TITLES.osu,
+    avatarUrl: input.avatarUrl,
+  };
+}
+
+/** 从 osu 模式账号 id 解析 osu 用户 id；非 osu 账号返回 null。 */
+export function osuUserIdFromAccountId(accountId: string): number | null {
+  const match = /^osu-(standard|mania|catch|taiko):osu:(\d+)$/.exec(accountId);
+  if (!match) return null;
+  const userId = Number(match[2]);
+  return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
+}
+
 export function groupBoundAccountGameIds(accounts: BoundAccount[]): GameId[] {
-  const order: GameId[] = ['maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test'];
+  const order: GameId[] = [
+    'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash',
+    'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko', 'test',
+  ];
   return order.filter((gameId) => accounts.some((account) => account.gameId === gameId));
 }

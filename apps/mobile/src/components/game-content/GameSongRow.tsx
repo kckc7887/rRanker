@@ -57,6 +57,8 @@ type GameSongRowProps = {
   subtitle?: string;
   subtitleContent?: ReactNode;
   wholeRowPressable?: boolean;
+  /** false 时整行不可点击（歌曲详情未接入的游戏）；缺省 true，行为不变。 */
+  pressable?: boolean;
   testID?: string;
   accessibilityLabel?: string | null;
   matchNote?: ReactNode;
@@ -79,6 +81,7 @@ export function GameSongRow({
   subtitle = presentation.subtitle,
   subtitleContent,
   wholeRowPressable = false,
+  pressable = true,
   testID,
   accessibilityLabel = presentation.accessibilityLabel,
   matchNote,
@@ -133,6 +136,15 @@ export function GameSongRow({
       </View>
     </>
   );
+
+  if (!pressable) {
+    return (
+      <View style={[rowStyle, { backgroundColor: theme.surface }]} testID={testID}>
+        {content}
+        {accessory}
+      </View>
+    );
+  }
 
   if (wholeRowPressable) {
     return (

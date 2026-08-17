@@ -232,6 +232,7 @@ function ThemedNavigation() {
         <Stack.Screen name="songs/chart-preview" options={{ title: '谱面确认' }} />
         <Stack.Screen name="songs/phigros-chart-preview" options={{ title: '谱面确认' }} />
         <Stack.Screen name="oauth/lxns" options={{ title: '落雪授权' }} />
+        <Stack.Screen name="oauth/osu" options={{ title: 'osu! 授权' }} />
       </Stack>
       <StatusBar style={theme.statusBar} />
     </NotificationProvider>

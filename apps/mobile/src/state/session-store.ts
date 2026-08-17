@@ -2,11 +2,14 @@ import { create } from 'zustand';
 import {
   createChunithmBoundAccount,
   createMaimaiBoundAccount,
+  createOsuBoundAccount,
   createPhigrosBoundAccount,
+  osuUserIdFromAccountId,
   LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
 import type { GameId, ProviderId, RemoteProviderId } from '@/domain/game-bind-options';
+import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
 import type { AnyScoreProvider, DetailedCatalogProvider, ProviderSession } from '@/providers/contracts';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
@@ -27,8 +30,30 @@ const localRepository = new SqliteSnapshotRepository();
 export const UNBOUND_ACCOUNT_ID = 'maimai:unbound';
 
 type LxnsOAuthSession = Extract<ProviderSession, { mode: 'lxns-oauth' }>;
+type OsuOAuthSession = Extract<ProviderSession, { mode: 'osu-oauth' }>;
 
 export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthSession): Promise<void> {
+  const state = useSession.getState();
+  const credentialId = state.credentialIdsByAccountId[accountId];
+  const linkedAccountIds = credentialId
+    ? Object.entries(state.credentialIdsByAccountId)
+      .filter(([, value]) => value === credentialId)
+      .map(([id]) => id)
+    : [accountId];
+  const sessionsByAccountId = { ...state.sessionsByAccountId };
+  for (const linkedAccountId of linkedAccountIds) {
+    sessionsByAccountId[linkedAccountId] = next;
+  }
+  useSession.setState({
+    sessionsByAccountId,
+    session: linkedAccountIds.includes(state.activeAccountId) ? next : state.session,
+  });
+  const { SecureSessionStore } = await import('@/storage/secure-session-store');
+  await new SecureSessionStore().updateAccountSession(accountId, next);
+}
+
+/** osu! 令牌轮换：新会话广播到共享 credential 的所有模式账号并持久化。 */
+export async function applyOsuTokenRotation(accountId: string, next: OsuOAuthSession): Promise<void> {
   const state = useSession.getState();
   const credentialId = state.credentialIdsByAccountId[accountId];
   const linkedAccountIds = credentialId
@@ -168,6 +193,13 @@ interface SessionState {
   renameLocalAccount: (accountId: string, displayName: string) => void;
   selectBoundAccount: (accountId: string) => void;
   removeBoundAccount: (accountId: string) => void;
+  /** osu! 多模式绑定激活：一次写入多个模式账号（共享 credential）并激活其中一个。 */
+  setOsuBinding: (input: {
+    accounts: BoundAccount[];
+    credentialId: string;
+    session: OsuOAuthSession;
+    activeAccountId: string;
+  }) => void;
   setActiveProviderId: (providerId: ProviderId) => void;
   setActiveGameId: (gameId: GameId) => void;
   clearSession: () => void;
@@ -176,7 +208,7 @@ interface SessionState {
 }
 
 function providersForAccount(account: BoundAccount, sessionsByAccountId: SessionsByAccountId) {
-  if (account.gameId === 'test' || account.gameId === 'chunithm' || account.gameId === 'adofai' || account.gameId === 'musedash' || account.gameId === 'phira' || !account.providerId) {
+  if (account.gameId === 'test' || account.gameId === 'chunithm' || account.gameId === 'adofai' || account.gameId === 'musedash' || account.gameId === 'phira' || isOsuGameId(account.gameId) || !account.providerId) {
     return emptyProviders();
   }
   if (account.gameId === 'phigros') {
@@ -281,6 +313,15 @@ function boundFromStored(account: StoredProviderAccount): BoundAccount {
       displayName: account.displayName,
       rating: Number.isFinite(rating) ? rating : null,
       ratingPossession: account.ratingPossession,
+    });
+  }
+  if (isOsuGameId(account.gameId) && account.providerId === 'osu') {
+    const pp = Number(account.scoreDisplay);
+    return createOsuBoundAccount({
+      gameId: account.gameId as OsuGameId,
+      userId: osuUserIdFromAccountId(account.id) ?? 0,
+      displayName: account.displayName,
+      pp: Number.isFinite(pp) && account.scoreDisplay !== '—' ? pp : null,
     });
   }
   return createMaimaiBoundAccount({
@@ -503,6 +544,33 @@ export const useSession = create<SessionState>((set, get) => ({
       restCredentialIds,
       activeAccountId === accountId ? null : activeAccountId,
     ));
+  },
+  setOsuBinding: (input) => {
+    const nextSessions = { ...get().sessionsByAccountId };
+    const nextCredentialIds = { ...get().credentialIdsByAccountId };
+    for (const account of input.accounts) {
+      nextSessions[account.id] = input.session;
+      nextCredentialIds[account.id] = input.credentialId;
+    }
+    const nextAccounts = dedupeAccounts([
+      ...get().boundAccounts,
+      ...input.accounts,
+    ]);
+    const active = input.accounts.find((account) => account.id === input.activeAccountId)
+      ?? input.accounts[0];
+    if (!active) return;
+    set({
+      sessionsByAccountId: nextSessions,
+      credentialIdsByAccountId: nextCredentialIds,
+      boundAccounts: nextAccounts,
+      session: input.session,
+      activeAccountId: active.id,
+      activeGameId: active.gameId,
+      activeProviderId: 'osu',
+      ...providersForAccount(active, nextSessions),
+      restoreStatus: 'ready',
+      restoreError: null,
+    });
   },
   setActiveProviderId: (providerId) => {
     const { boundAccounts } = get();

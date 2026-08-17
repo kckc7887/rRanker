@@ -20,9 +20,9 @@ describe('pinned tool preferences', () => {
         maimai: ['rating', 'rating', 'unknown', 3],
         chunithm: ['rating'],
         phigros: ['rating'],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
-    })).toEqual({ maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [] });
+    })).toEqual({ maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] });
   });
 
   it('keeps valid plate ids only for games with a plate tool', () => {
@@ -33,7 +33,7 @@ describe('pinned tool preferences', () => {
         maimai: [6101, 6101, -1, 1.5, '6102'],
         chunithm: [6101],
         phigros: [6101],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
     }).pinnedPlateIdsByGame).toEqual({
       maimai: [6101],
@@ -41,7 +41,7 @@ describe('pinned tool preferences', () => {
       phigros: [],
       phira: [],
       adofai: [], musedash: [],
-      test: [],
+      test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
     });
   });
 
@@ -50,9 +50,9 @@ describe('pinned tool preferences', () => {
       version: 1,
       pinnedToolIdsByGame: { maimai: ['rating'], phigros: [], test: [] },
     })).toEqual({
-      pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [] },
-      pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [] },
-      pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [] },
+      pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
+      pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
+      pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
     });
   });
 
@@ -75,7 +75,7 @@ describe('pinned tool preferences', () => {
         phigros: [],
         phira: [],
         adofai: [], musedash: [],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
     }).pinnedCollectionIdsByGame).toEqual({
       maimai: [],
@@ -89,7 +89,7 @@ describe('pinned tool preferences', () => {
       phigros: [],
       phira: [],
       adofai: [], musedash: [],
-      test: [],
+      test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
     });
   });
 
@@ -103,7 +103,7 @@ describe('pinned tool preferences', () => {
         phigros: [],
         phira: [],
         adofai: [], musedash: [],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
       pinnedPlateIdsByGame: {
         maimai: [6101, 6102],
@@ -111,7 +111,7 @@ describe('pinned tool preferences', () => {
         phigros: [],
         phira: [],
         adofai: [], musedash: [],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
       pinnedCollectionIdsByGame: {
         maimai: [],
@@ -119,7 +119,7 @@ describe('pinned tool preferences', () => {
         phigros: [],
         phira: [],
         adofai: [], musedash: [],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
     });
     await expect(store.load()).resolves.toEqual({
@@ -129,7 +129,7 @@ describe('pinned tool preferences', () => {
         phigros: [],
         phira: [],
         adofai: [], musedash: [],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
       pinnedPlateIdsByGame: {
         maimai: [6101, 6102],
@@ -137,7 +137,7 @@ describe('pinned tool preferences', () => {
         phigros: [],
         phira: [],
         adofai: [], musedash: [],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
       pinnedCollectionIdsByGame: {
         maimai: [],
@@ -145,7 +145,7 @@ describe('pinned tool preferences', () => {
         phigros: [],
         phira: [],
         adofai: [], musedash: [],
-        test: [],
+        test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
     });
   });

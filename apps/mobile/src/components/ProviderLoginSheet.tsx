@@ -21,7 +21,15 @@ import {
   type BoundAccount,
 } from '@/domain/bound-account';
 import type { GameId, ProviderOption } from '@/domain/game-bind-options';
+import {
+  boundModesOfCredential,
+  familyForGameId,
+  OSU_FAMILY,
+  type OsuGameId,
+} from '@/domain/game-mode-family';
 import { reusableLxnsAccounts } from '@/domain/lxns-account-reuse';
+import { reusablePartiallyBoundAccounts } from '@/domain/shared-credential-account-reuse';
+import { OsuModeSelectSheet } from '@/components/osu/OsuModeSelectSheet';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { ProviderError } from '@/providers/errors';
@@ -30,8 +38,14 @@ import {
   beginLxnsAuthorize,
   subscribeLxnsOAuthOutcome,
 } from '@/providers/lxns-oauth';
+import {
+  beginOsuAuthorize,
+  subscribeOsuOAuthOutcome,
+  type OsuOAuthSession,
+} from '@/providers/osu-oauth';
 import { PhigrosScoreProvider, type DeviceCodeResult } from '@/providers/phigros-score-provider';
 import { bindLxnsAccount, type LxnsBindingResult } from '@/services/lxns-account-binding';
+import { bindOsuModes } from '@/services/osu-account-binding';
 import { validateAndActivateSession } from '@/services/session-validation';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
@@ -88,12 +102,15 @@ export function ProviderLoginSheet({
   const [phiDevice, setPhiDevice] = useState<DeviceCodeResult | null>(null);
   const [phiExpiresAt, setPhiExpiresAt] = useState(0);
   const [showReusableAccounts, setShowReusableAccounts] = useState(false);
+  const [osuModeAccount, setOsuModeAccount] = useState<BoundAccount | null>(null);
   const phiTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phiPollingRef = useRef(false);
   const phiNextAllowedAtRef = useRef(0);
 
   const isLxns = provider?.id === 'lxns';
+  const isOsu = provider?.id === 'osu';
   const isPhigros = provider?.id === 'phi-taptap';
+  const setOsuBinding = useSession((s) => s.setOsuBinding);
   const reusableAccounts = useMemo(() => {
     if (!isLxns || (gameId !== 'maimai' && gameId !== 'chunithm')) return [];
     return reusableLxnsAccounts({
@@ -110,6 +127,27 @@ export function ProviderLoginSheet({
     sessionsByAccountId,
   ]);
 
+  /** osu! 复用列表：尚未绑定全部模式的 osu 账号（按凭据去重）。 */
+  const osuReusableAccounts = useMemo(() => {
+    if (!isOsu) return [];
+    return reusablePartiallyBoundAccounts({
+      providerId: 'osu',
+      sessionMode: 'osu-oauth',
+      familyModeGameIds: OSU_FAMILY.modeGameIds,
+      accounts: boundAccounts,
+      sessionsByAccountId,
+      credentialIdsByAccountId,
+    });
+  }, [boundAccounts, credentialIdsByAccountId, isOsu, sessionsByAccountId]);
+
+  const osuModeAccountBound = useMemo<readonly OsuGameId[]>(() => {
+    if (!osuModeAccount) return [];
+    const credentialId = credentialIdsByAccountId[osuModeAccount.id];
+    if (!credentialId) return [];
+    return [...boundModesOfCredential(boundAccounts, credentialIdsByAccountId, credentialId)]
+      .filter((gameId): gameId is OsuGameId => OSU_FAMILY.modeGameIds.includes(gameId));
+  }, [boundAccounts, credentialIdsByAccountId, osuModeAccount]);
+
   const reset = () => {
     setUsername('');
     setPassword('');
@@ -119,6 +157,7 @@ export function ProviderLoginSheet({
     setPhiDevice(null);
     setPhiExpiresAt(0);
     setShowReusableAccounts(false);
+    setOsuModeAccount(null);
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
     phiPollingRef.current = false;
     phiNextAllowedAtRef.current = 0;
@@ -229,6 +268,55 @@ export function ProviderLoginSheet({
         credentialId,
       });
       await activateLxnsBinding(result);
+      reset();
+      onSuccess();
+    } catch (error) {
+      setMessage(messageFor(error));
+      setBusy(false);
+    }
+  };
+
+  const openOsuAuthorize = async () => {
+    setBusy(true);
+    setMessage('正在打开 osu! 授权页…');
+    try {
+      const url = await beginOsuAuthorize();
+      await Linking.openURL(url);
+      setMessage('请在浏览器完成授权，完成后将选择模式并绑定。');
+    } catch (error) {
+      setMessage(messageFor(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 复用已有 osu 账号：进入该账号的模式选择，只绑定新勾选的模式。 */
+  const bindOsuReuse = async (selected: readonly OsuGameId[]) => {
+    const account = osuModeAccount;
+    const session = account ? sessionsByAccountId[account.id] : undefined;
+    const credentialId = account ? credentialIdsByAccountId[account.id] : undefined;
+    if (!account || session?.mode !== 'osu-oauth' || !credentialId) {
+      setOsuModeAccount(null);
+      setMessage('已有 osu! 账号凭据不可用，请重新授权');
+      return;
+    }
+    setBusy(true);
+    setMessage(`正在使用「${account.displayName}」绑定选中模式…`);
+    try {
+      const result = await bindOsuModes({
+        modeGameIds: selected,
+        session,
+        credentialId,
+        existingAccounts: boundAccounts,
+        credentialIdsByAccountId,
+      });
+      setOsuBinding({
+        accounts: result.accounts,
+        credentialId: result.credentialId,
+        session: result.session as OsuOAuthSession,
+        activeAccountId: result.activeAccountId,
+      });
+      invalidateAll();
       reset();
       onSuccess();
     } catch (error) {
@@ -387,6 +475,20 @@ export function ProviderLoginSheet({
     });
   }, [visible, isLxns, gameId]);
 
+  // 回调页完成 osu! 授权绑定后通知本 Sheet 收尾（冷启动时无订阅者，由回调页独立展示结果）。
+  useEffect(() => {
+    if (!visible || !isOsu) return;
+    return subscribeOsuOAuthOutcome((outcome) => {
+      if (outcome.status === 'success') {
+        reset();
+        onSuccessRef.current();
+        return;
+      }
+      setMessage(outcome.message);
+      setBusy(false);
+    });
+  }, [visible, isOsu]);
+
   if (!provider) return null;
 
   return (
@@ -421,7 +523,9 @@ export function ProviderLoginSheet({
           <View style={styles.identity}>
             <Image source={provider.icon} style={styles.icon} />
             <Text style={[styles.providerName, { color: theme.text }]}>{provider.title}</Text>
-            <Text style={[styles.gameLine, { color: theme.textMuted }]}>用于绑定 {gameTitle}</Text>
+            <Text style={[styles.gameLine, { color: theme.textMuted }]}>
+              用于绑定 {isOsu ? 'osu!（选择模式）' : gameTitle}
+            </Text>
           </View>
 
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -463,6 +567,74 @@ export function ProviderLoginSheet({
                 <Text style={styles.security}>
                   Session Token 仅保存在系统 SecureStore，不进入 SQLite 或日志。
                 </Text>
+              </>
+            ) : isOsu ? (
+              <>
+                <Pressable
+                  disabled={busy}
+                  onPress={() => void openOsuAuthorize()}
+                  style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
+                >
+                  <Text style={styles.primaryText}>打开 osu! 授权页</Text>
+                </Pressable>
+                <Text style={styles.hint}>
+                  点击后跳转浏览器完成授权，同意后返回并选择要绑定的模式。
+                </Text>
+                <Text style={styles.security}>
+                  Access Token 约 24 小时过期；刷新令牌保存在系统 SecureStore，不进入 SQLite 或日志。
+                </Text>
+                {osuReusableAccounts.length > 0 ? (
+                  <View style={[styles.reuseSection, { borderTopColor: theme.border }]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="使用已有osu账号"
+                      disabled={busy}
+                      onPress={() => setShowReusableAccounts((current) => !current)}
+                      style={({ pressed }) => [
+                        styles.secondary,
+                        { borderColor: theme.accent },
+                        pressed && !busy && styles.secondaryPressed,
+                      ]}
+                    >
+                      <Text style={[styles.secondaryText, { color: theme.accent }]}>
+                        使用已有osu账号
+                      </Text>
+                    </Pressable>
+                    {showReusableAccounts ? (
+                      <View style={styles.reuseList}>
+                        {osuReusableAccounts.map((account) => {
+                          const credentialId = credentialIdsByAccountId[account.id];
+                          const boundModes = credentialId
+                            ? [...boundModesOfCredential(boundAccounts, credentialIdsByAccountId, credentialId)]
+                              .map((id) => familyForGameId(id)?.title)
+                              .filter((title): title is string => typeof title === 'string')
+                            : [];
+                          return (
+                            <Pressable
+                              key={credentialId}
+                              accessibilityRole="button"
+                              accessibilityLabel={`使用已有osu账号 ${account.displayName}`}
+                              disabled={busy}
+                              onPress={() => setOsuModeAccount(account)}
+                              style={({ pressed }) => [
+                                styles.reuseAccount,
+                                { backgroundColor: theme.surfaceMuted, borderColor: theme.border },
+                                pressed && !busy && styles.secondaryPressed,
+                              ]}
+                            >
+                              <Text style={[styles.reuseName, { color: theme.text }]}>
+                                {account.displayName}
+                              </Text>
+                              <Text style={[styles.hint, { color: theme.textMuted }]}>
+                                已绑定 {boundModes.length > 0 ? boundModes.join('、') : '部分模式'}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
               </>
             ) : isLxns ? (
               <>
@@ -589,6 +761,13 @@ export function ProviderLoginSheet({
           </View>
         </ScrollView>
       </View>
+      <OsuModeSelectSheet
+        visible={osuModeAccount !== null}
+        alreadyBound={osuModeAccountBound}
+        busy={busy}
+        onClose={() => setOsuModeAccount(null)}
+        onSubmit={(selected) => void bindOsuReuse(selected)}
+      />
     </Modal>
   );
 }

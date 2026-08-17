@@ -28,6 +28,8 @@ import { useAppTheme } from '@/theme/app-theme';
 import { TufBestScreen } from '@/screens/TufScreens';
 import { MuseDashBestScreen } from '@/screens/MuseDashScreens';
 import { PhiraBestScreen } from '@/screens/PhiraScreens';
+import { OsuBestScreen } from '@/screens/OsuScreens';
+import { isOsuGameId } from '@/domain/game-mode-family';
 
 type BestSection = BestListSection & { data: ScoreRecord[] };
 
@@ -61,6 +63,7 @@ export function Best50Screen() {
     return <PhigrosBestScreen />;
   }
   if (activeGameId === 'phira') return <PhiraBestScreen />;
+  if (isOsuGameId(activeGameId)) return <OsuBestScreen />;
   if (activeGameId === 'adofai') {
     return <TufBestScreen />;
   }
