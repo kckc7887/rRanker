@@ -1,11 +1,19 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { View } from 'react-native';
 import {
   GameSongRow,
   WRAPPED_COVER_ROW_STYLES,
   type SongRowCoverImage,
 } from '@/components/game-content/GameSongRow';
+import { GameDifficultyBadge } from '@/components/game-content/GameDifficultyBadge';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import type { OsuCatalogSong } from '@/domain/osu';
+
+/** 曲库页空难度标签：不显示任何字，仅一个空格宽度的空胶囊（osu 品牌粉）。 */
+const OSU_CATALOG_BADGE_THEME = {
+  background: '#FF66AA',
+  border: '#FF66AA',
+  text: '#FFFFFF',
+} as const;
 
 /**
  * osu! 曲库行：封面（失败回退 ♪）、标题、作者不变；
@@ -36,7 +44,7 @@ export function OsuSongRow({ gameId, song }: {
       }}
       cover={<View />}
       coverImage={coverImage}
-      badges={<Text style={styles.blankBadge}> </Text>}
+      badges={<GameDifficultyBadge testID="osu-catalog-difficulty-badge" text=" " theme={OSU_CATALOG_BADGE_THEME} />}
       rowStyle={WRAPPED_COVER_ROW_STYLES.row}
       mainStyle={WRAPPED_COVER_ROW_STYLES.meta}
       titleStyle={WRAPPED_COVER_ROW_STYLES.title}
@@ -47,7 +55,3 @@ export function OsuSongRow({ gameId, song }: {
     />
   );
 }
-
-const styles = StyleSheet.create({
-  blankBadge: { opacity: 0 },
-});

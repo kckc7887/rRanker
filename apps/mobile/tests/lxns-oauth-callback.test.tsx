@@ -1,15 +1,15 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import LxnsOAuthCallbackScreen from '../app/oauth/lxns';
 import { createMaimaiBoundAccount } from '@/domain/bound-account';
 
 let mockParams: Record<string, string | undefined> = {};
-const mockReplace = jest.fn((..._args: unknown[]) => undefined);
+const mockDismissTo = jest.fn((..._args: unknown[]) => undefined);
 const mockExchange = jest.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
 const mockNotify = jest.fn((..._args: unknown[]) => undefined);
 
 jest.mock('expo-router', () => ({
-  router: { replace: (...args: unknown[]) => mockReplace(...args) },
+  router: { dismissTo: (...args: unknown[]) => mockDismissTo(...args) },
   useLocalSearchParams: () => mockParams,
 }));
 
@@ -73,7 +73,7 @@ const mockSession = {
 
 beforeEach(() => {
   mockParams = {};
-  mockReplace.mockClear();
+  mockDismissTo.mockClear();
   mockExchange.mockReset();
   mockNotify.mockClear();
   mockBindLxnsAccount.mockReset();
@@ -134,5 +134,20 @@ describe('LXNS OAuth 回调页', () => {
       status: 'error',
       message: '找不到本机授权信息，请在 App 内重新发起授权',
     });
+  });
+
+  it('返回首页走 dismissTo 回退到既有主页（不再 replace 新建页面）', async () => {
+    mockParams = { code: 'auth-code', state: 'expected-state' };
+    mockExchange.mockResolvedValue(mockSession);
+    mockBindLxnsAccount.mockResolvedValue({
+      account: mockAccount,
+      credentialId: 'lxns:credential',
+      session: mockSession,
+    });
+
+    await act(async () => { render(<LxnsOAuthCallbackScreen />); });
+
+    fireEvent.press(screen.getByLabelText('返回首页'));
+    expect(mockDismissTo).toHaveBeenCalledWith('/');
   });
 });

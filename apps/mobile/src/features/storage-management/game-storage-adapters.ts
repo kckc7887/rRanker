@@ -1,5 +1,6 @@
 import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
+import { isOsuGameId } from '@/domain/game-mode-family';
 import { DXRATING_CHART_TAGS_RESOURCE_KEY } from '@/domain/dxrating-chart-tags';
 import {
   isPhigrosKyouResourceKey,
@@ -95,6 +96,10 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   }
   // Phira 玩家资料、最佳成绩、曲库分页、谱面详情与物量计数缓存
   if (gameId === 'phira' && key.startsWith('phira:')) {
+    return true;
+  }
+  // osu! 分模式玩家快照（资源 key：osu:{modeGameId}:{userId}，四模式各自归属）
+  if (isOsuGameId(gameId) && key.startsWith(`osu:${gameId}:`)) {
     return true;
   }
   const accountId = accountIdFromResourceKey(key);
@@ -260,6 +265,46 @@ const phiraAdapter: GameStorageAdapter = {
   clear: (snapshots) => clearGameSqlite(snapshots, 'phira', false),
 };
 
+/** osu! 四模式：后台各注册为独立游戏，按模式统计/清除各自的快照缓存。 */
+const OSU_STORAGE_COLOR = '#FF66AA';
+const OSU_STORAGE_NOTE = '玩家资料与 Top 100 成绩快照缓存';
+
+const osuStandardAdapter: GameStorageAdapter = {
+  gameId: 'osu-standard',
+  title: findGame('osu-standard')?.title ?? 'osu!standard',
+  color: OSU_STORAGE_COLOR,
+  note: OSU_STORAGE_NOTE,
+  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-standard', false),
+  clear: (snapshots) => clearGameSqlite(snapshots, 'osu-standard', false),
+};
+
+const osuManiaAdapter: GameStorageAdapter = {
+  gameId: 'osu-mania',
+  title: findGame('osu-mania')?.title ?? 'osu!mania',
+  color: OSU_STORAGE_COLOR,
+  note: OSU_STORAGE_NOTE,
+  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-mania', false),
+  clear: (snapshots) => clearGameSqlite(snapshots, 'osu-mania', false),
+};
+
+const osuCatchAdapter: GameStorageAdapter = {
+  gameId: 'osu-catch',
+  title: findGame('osu-catch')?.title ?? 'osu!catch',
+  color: OSU_STORAGE_COLOR,
+  note: OSU_STORAGE_NOTE,
+  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-catch', false),
+  clear: (snapshots) => clearGameSqlite(snapshots, 'osu-catch', false),
+};
+
+const osuTaikoAdapter: GameStorageAdapter = {
+  gameId: 'osu-taiko',
+  title: findGame('osu-taiko')?.title ?? 'osu!taiko',
+  color: OSU_STORAGE_COLOR,
+  note: OSU_STORAGE_NOTE,
+  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-taiko', false),
+  clear: (snapshots) => clearGameSqlite(snapshots, 'osu-taiko', false),
+};
+
 /** 新游戏接入：在此注册 measure/clear 即可出现在环形图与勾选列表。 */
 export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   maimaiAdapter,
@@ -268,6 +313,10 @@ export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   adofaiAdapter,
   musedashAdapter,
   phiraAdapter,
+  osuStandardAdapter,
+  osuManiaAdapter,
+  osuCatchAdapter,
+  osuTaikoAdapter,
 ];
 
 export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | undefined {

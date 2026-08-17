@@ -135,7 +135,7 @@ export function GamePickerSheet({
                       !game.available && styles.disabled,
                     ]}
                   >
-                    <Image source={game.icon} style={styles.gameIcon} />
+                    <Image source={isFamily ? (game.familyIcon ?? game.icon) : game.icon} style={styles.gameIcon} />
                     <View style={styles.copy}>
                       <View style={styles.titleRow}>
                         <Text style={[styles.gameName, { color: theme.text }, !game.available && { color: theme.textMuted }]}>

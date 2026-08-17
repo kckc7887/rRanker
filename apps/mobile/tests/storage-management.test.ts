@@ -43,6 +43,10 @@ vi.mock('@/domain/game-bind-options', () => {
     musedash: '喵斯快跑',
     phira: 'Phira',
     test: '测试游戏',
+    'osu-standard': 'osu!standard',
+    'osu-mania': 'osu!mania',
+    'osu-catch': 'osu!catch',
+    'osu-taiko': 'osu!taiko',
   };
   return {
     findGame: (id: string) => ({ id, title: titles[id] ?? '未知游戏' }),
@@ -208,6 +212,47 @@ describe('phira storage segment', () => {
       failures: [],
     });
     expect(client.removeQueries).toHaveBeenCalledWith({ queryKey: ['phira'] });
+  });
+});
+
+describe('osu storage segment', () => {
+  it('registers all four modes in the clearable category list', () => {
+    for (const gameId of ['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']) {
+      expect(listClearableCategoryIds()).toContain(gameId);
+    }
+  });
+
+  it('exposes a measure/clear adapter with the mode title', () => {
+    expect(getGameStorageAdapter('osu-standard')?.title).toBe('osu!standard');
+    expect(getGameStorageAdapter('osu-catch')?.title).toBe('osu!catch');
+  });
+
+  it('measures and clears only the matching mode snapshot and account resources', async () => {
+    const clearAccountScores = vi.fn(async () => undefined);
+    const clearResources = vi.fn(async () => undefined);
+    const snapshots = {
+      listAccountScoreSizes: vi.fn(async () => []),
+      listResourceSizes: vi.fn(async () => [
+        { key: 'osu:osu-standard:2', bytes: 100 },
+        { key: 'osu:osu-mania:2', bytes: 200 },
+        { key: 'osu:osu-catch:3', bytes: 300 },
+        { key: 'account-thumbnail:osu-standard:osu:2', bytes: 10 },
+        { key: 'account-avatar:osu-standard:osu:2', bytes: 20 },
+        { key: 'phira:player:1', bytes: 999 },
+      ]),
+      clearAccountScores,
+      clearResources,
+    };
+    const adapter = getGameStorageAdapter('osu-standard');
+    // 仅 osu-standard 自身的快照 + 该模式账号的头像/缩略图（accountId 前缀归属）
+    await expect(adapter?.measure(snapshots as never)).resolves.toBe(130);
+    await adapter?.clear(snapshots as never);
+    expect(clearAccountScores).toHaveBeenCalledWith([]);
+    expect(clearResources).toHaveBeenCalledWith([
+      'osu:osu-standard:2',
+      'account-thumbnail:osu-standard:osu:2',
+      'account-avatar:osu-standard:osu:2',
+    ]);
   });
 });
 

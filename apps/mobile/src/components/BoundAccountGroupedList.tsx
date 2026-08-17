@@ -103,7 +103,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
       }
       let entry = familyByMode.get(family.id);
       if (!entry) {
-        entry = { familyId: family.id, title: family.title, icon: game.icon, modes: [] };
+        entry = { familyId: family.id, title: family.title, icon: game.familyIcon ?? game.icon, modes: [] };
         familyByMode.set(family.id, entry);
       }
       entry.modes.push({

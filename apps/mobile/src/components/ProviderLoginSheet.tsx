@@ -479,7 +479,7 @@ export function ProviderLoginSheet({
   useEffect(() => {
     if (!visible || !isOsu) return;
     return subscribeOsuOAuthOutcome((outcome) => {
-      if (outcome.status === 'success') {
+      if (outcome.status === 'success' || outcome.status === 'awaiting-mode-selection') {
         reset();
         onSuccessRef.current();
         return;
