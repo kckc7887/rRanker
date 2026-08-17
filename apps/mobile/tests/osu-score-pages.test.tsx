@@ -1,6 +1,8 @@
+import { StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
+import { OsuSongRow } from '@/components/osu/OsuSongRow';
 import { OsuBestScreen } from '@/screens/OsuScreens';
 import type { OsuBestScore } from '@/domain/osu';
 
@@ -57,9 +59,33 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     expect(screen.getByText('73')).toBeTruthy();
   });
 
+  it('右侧 PP 值使用主题色', async () => {
+    const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
+    const pp = StyleSheet.flatten(screen.getByText('73').props.style);
+    expect(pp.color).toBe('#246BFD');
+  });
+
   it('PP 缺失时显示占位符', async () => {
     const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, pp: null }} />);
     expect(screen.getByText('—')).toBeTruthy();
+  });
+});
+
+describe('OsuSongRow 曲库行', () => {
+  it('难度标签为空胶囊（不显示任何字，仅占位宽度）', async () => {
+    const screen = await render(
+      <OsuSongRow gameId="osu-standard" song={{
+        beatmapSetId: 3720,
+        title: 'Tori no Uta',
+        artist: 'Lix',
+        creator: 'James',
+        listCover: null,
+      }} />,
+    );
+    expect(screen.getByText('Tori no Uta')).toBeTruthy();
+    expect(screen.getByText('Lix')).toBeTruthy();
+    expect(screen.getByTestId('osu-catalog-difficulty-badge')).toBeTruthy();
+    expect(screen.getByText(' ')).toBeTruthy();
   });
 });
 

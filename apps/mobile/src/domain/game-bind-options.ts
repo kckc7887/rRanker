@@ -40,6 +40,8 @@ export type GameOption = {
   familyId?: string;
   /** 家族非锚点成员：picker 中不单独列出行，只经家族锚点渲染。 */
   hiddenInPicker?: boolean;
+  /** 家族板块行图标（锚点成员提供；缺省用自身 icon）。 */
+  familyIcon?: ImageSourcePropType;
 };
 
 /** 游戏 / Provider 图标源：对象存储 rranker/assets/images（与本地 assets/images 同名同路径）。 */
@@ -58,7 +60,12 @@ const museDashIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash.png` } as ImageSource
 const museDashMoeIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash-moe.png` } as ImageSourcePropType;
 /** 从 https://phira.moe/favicon.svg 原样提取的内嵌 PNG。 */
 const phiraIcon = { uri: `${REMOTE_IMAGE_BASE}/phira.png` } as ImageSourcePropType;
+/** osu! 家族板块通用图标。 */
 const osuIcon = { uri: `${REMOTE_IMAGE_BASE}/osu.png` } as ImageSourcePropType;
+const osuStandardIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-standard.png` } as ImageSourcePropType;
+const osuManiaIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-mania.png` } as ImageSourcePropType;
+const osuCatchIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-catch.png` } as ImageSourcePropType;
+const osuTaikoIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-taiko.png` } as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
   {
@@ -210,10 +217,11 @@ export const GAME_OPTIONS: GameOption[] = [
   {
     id: 'osu-standard',
     title: 'osu!standard',
-    icon: osuIcon,
+    icon: osuStandardIcon,
     available: true,
     pendingDetail: '',
     familyId: 'osu',
+    familyIcon: osuIcon,
     providers: [
       {
         id: 'osu',
@@ -228,7 +236,7 @@ export const GAME_OPTIONS: GameOption[] = [
   {
     id: 'osu-mania',
     title: 'osu!mania',
-    icon: osuIcon,
+    icon: osuManiaIcon,
     available: true,
     pendingDetail: '',
     familyId: 'osu',
@@ -238,7 +246,7 @@ export const GAME_OPTIONS: GameOption[] = [
   {
     id: 'osu-catch',
     title: 'osu!catch',
-    icon: osuIcon,
+    icon: osuCatchIcon,
     available: true,
     pendingDetail: '',
     familyId: 'osu',
@@ -248,7 +256,7 @@ export const GAME_OPTIONS: GameOption[] = [
   {
     id: 'osu-taiko',
     title: 'osu!taiko',
-    icon: osuIcon,
+    icon: osuTaikoIcon,
     available: true,
     pendingDetail: '',
     familyId: 'osu',

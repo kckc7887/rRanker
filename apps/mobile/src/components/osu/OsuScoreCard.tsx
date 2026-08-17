@@ -44,7 +44,7 @@ export function OsuScoreCard({ gameId, score, position }: {
         blockStyle: COMPACT_METRIC_CARD_STYLES.stats,
         lines: [
           { text: formatOsuAccuracy(score.accuracy), style: COMPACT_METRIC_CARD_STYLES.acc, color: theme.textMuted },
-          { text: ppText, style: COMPACT_METRIC_CARD_STYLES.rks, color: theme.text },
+          { text: ppText, style: COMPACT_METRIC_CARD_STYLES.rks, color: theme.accent },
         ],
       }}
       tagRows={{

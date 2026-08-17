@@ -128,7 +128,9 @@ export default function LxnsOAuthCallbackScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="返回首页"
-            onPress={() => router.replace('/')}
+            // dismissTo('/')：回退到栈内已有的主页（tabs），而不是 replace 新建一份
+            // 主页实例（replace 会造成「主页可被退出、退出回到账号管理页」的叠层 bug）。
+            onPress={() => router.dismissTo('/')}
             style={({ pressed }) => [
               styles.primary,
               { backgroundColor: theme.accent },

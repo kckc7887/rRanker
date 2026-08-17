@@ -65,6 +65,9 @@ export default function OsuOAuthCallbackScreen() {
         );
         if (cancelled) return;
         setStatus({ kind: 'selecting', session });
+        // 深链把本页压在登录 Sheet（Modal）之下：先通知 Sheet 关闭，
+        // 否则用户仍停留在绑定页、看不到本页的模式选择。
+        notifyOsuOAuthOutcome({ status: 'awaiting-mode-selection' });
       } catch (error) {
         fail(messageFor(error));
       }
@@ -157,7 +160,9 @@ export default function OsuOAuthCallbackScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="返回首页"
-            onPress={() => router.replace('/')}
+            // dismissTo('/')：回退到栈内已有的主页（tabs），而不是 replace 新建一份
+            // 主页实例（replace 会造成「主页可被退出、退出回到账号管理页」的叠层 bug）。
+            onPress={() => router.dismissTo('/')}
             style={({ pressed }) => [
               styles.primary,
               { backgroundColor: theme.accent },

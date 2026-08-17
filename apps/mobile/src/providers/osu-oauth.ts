@@ -202,7 +202,9 @@ export async function rotateOsuTokens(refreshToken: string): Promise<OsuOAuthSes
 /** osu! 授权结果事件：回调页与登录 Sheet 之间的轻量通知。 */
 export type OsuOAuthOutcome =
   | { status: 'success'; accountName: string }
-  | { status: 'error'; message: string };
+  | { status: 'error'; message: string }
+  /** 授权码已换取、回调页进入模式选择：通知登录 Sheet 关闭，避免 Modal 盖住回调页。 */
+  | { status: 'awaiting-mode-selection' };
 
 const outcomeListeners = new Set<(outcome: OsuOAuthOutcome) => void>();
 
