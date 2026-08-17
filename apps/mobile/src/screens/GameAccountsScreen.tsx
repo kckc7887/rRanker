@@ -17,6 +17,7 @@ import { PhiraPlayerPickerSheet } from '@/components/PhiraPlayerPickerSheet';
 import { MuseDashPlayerPickerSheet } from '@/components/MuseDashPlayerPickerSheet';
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
+import { OsuRatingTag } from '@/components/osu/OsuRatingTag';
 import {
   createAdditionalLocalMaimaiAccountId,
   createLocalMaimaiAccount,
@@ -29,6 +30,7 @@ import {
   createPhiraBoundAccount,
   phiraPlayerIdFromAccountId,
   museDashUserIdFromAccountId,
+  osuUserIdFromAccountId,
   tufPlayerIdFromAccountId,
   MUSEDASH_TEST_USER_ID,
   LOCAL_MAIMAI_ACCOUNT_ID,
@@ -45,6 +47,8 @@ import { useUserLibrary } from '@/hooks/use-user-library';
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { OsuCache } from '@/services/osu-cache';
+import { isOsuGameId } from '@/domain/game-mode-family';
 import { queryClient } from '@/state/query-client';
 import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
@@ -79,6 +83,7 @@ const museDashAccounts = new MuseDashAccountStore();
 const museDashCache = new MuseDashCache();
 const phiraAccounts = new PhiraAccountStore();
 const phiraCache = new PhiraCache();
+const osuCache = new OsuCache();
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
@@ -125,6 +130,13 @@ export function GameAccountsScreen() {
     };
     await attempt('凭据', () => sessions.removeAccount(account.id));
     await attempt('缓存', () => snapshots.clear(account.id));
+    if (account.providerId === 'osu' && isOsuGameId(account.gameId)) {
+      const osuGameId = account.gameId;
+      const userId = osuUserIdFromAccountId(account.id);
+      if (userId !== null) {
+        await attempt('模式缓存', () => osuCache.clear(osuGameId, userId));
+      }
+    }
     if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
     removeBoundAccount(account.id);
     await attempt('当前账号', persistActiveAccountId);
@@ -676,7 +688,7 @@ export function GameAccountsScreen() {
       || account.providerId === 'phigros-test'
       || account.providerId === 'musedash-test';
     const isChunithmTemp = account.providerId === 'chunithm-temp';
-    const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap';
+    const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap' || account.providerId === 'osu';
     const isTuf = account.providerId === 'tuf';
     const isMuseDash = account.providerId === 'musedash-moe';
     const isPhira = account.providerId === 'phira-community';
@@ -748,6 +760,11 @@ export function GameAccountsScreen() {
           isGameExpanded={(gameId) => !collapsedManagedGameIds.has(gameId)}
           activeAccountId={activeAccountId} onToggleGame={toggleGame} onSelectAccount={onSelectAccount}
           renderActions={renderAccountActions}
+          renderRatingTag={(account) => (
+            account.providerId === 'osu' && isOsuGameId(account.gameId)
+              ? <OsuRatingTag display={account.scoreDisplay} />
+              : null
+          )}
           emptyText="暂无已绑定账号。点击右下角添加，展开游戏后选择查分器绑定。" />
       </ScrollView>
 

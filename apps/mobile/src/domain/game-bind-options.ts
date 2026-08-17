@@ -12,9 +12,12 @@ export type ProviderId =
   | 'tuf'
   | 'musedash-moe'
   | 'phira-community'
-  | 'musedash-test';
-export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap'>;
-export type GameId = 'maimai' | 'chunithm' | 'phigros' | 'phira' | 'adofai' | 'musedash' | 'test';
+  | 'musedash-test'
+  | 'osu';
+export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap' | 'osu'>;
+export type GameId =
+  | 'maimai' | 'chunithm' | 'phigros' | 'phira' | 'adofai' | 'musedash' | 'test'
+  | 'osu-standard' | 'osu-mania' | 'osu-catch' | 'osu-taiko';
 export type ProviderBindingKind = 'credentials' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
 
 export type ProviderOption = {
@@ -33,6 +36,10 @@ export type GameOption = {
   available: boolean;
   pendingDetail: string;
   providers: ProviderOption[];
+  /** 多模式家族 id：前台把同家族成员聚合为一个板块（见 domain/game-mode-family）。 */
+  familyId?: string;
+  /** 家族非锚点成员：picker 中不单独列出行，只经家族锚点渲染。 */
+  hiddenInPicker?: boolean;
 };
 
 /** 游戏 / Provider 图标源：对象存储 rranker/assets/images（与本地 assets/images 同名同路径）。 */
@@ -51,6 +58,7 @@ const museDashIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash.png` } as ImageSource
 const museDashMoeIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash-moe.png` } as ImageSourcePropType;
 /** 从 https://phira.moe/favicon.svg 原样提取的内嵌 PNG。 */
 const phiraIcon = { uri: `${REMOTE_IMAGE_BASE}/phira.png` } as ImageSourcePropType;
+const osuIcon = { uri: `${REMOTE_IMAGE_BASE}/osu.png` } as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
   {
@@ -198,6 +206,54 @@ export const GAME_OPTIONS: GameOption[] = [
         available: true,
       },
     ],
+  },
+  {
+    id: 'osu-standard',
+    title: 'osu!standard',
+    icon: osuIcon,
+    available: true,
+    pendingDetail: '',
+    familyId: 'osu',
+    providers: [
+      {
+        id: 'osu',
+        bindingKind: 'oauth-code',
+        title: 'osu! OAuth',
+        detail: 'OAuth 授权（授权后选择模式绑定）',
+        icon: osuIcon,
+        available: true,
+      },
+    ],
+  },
+  {
+    id: 'osu-mania',
+    title: 'osu!mania',
+    icon: osuIcon,
+    available: true,
+    pendingDetail: '',
+    familyId: 'osu',
+    hiddenInPicker: true,
+    providers: [],
+  },
+  {
+    id: 'osu-catch',
+    title: 'osu!catch',
+    icon: osuIcon,
+    available: true,
+    pendingDetail: '',
+    familyId: 'osu',
+    hiddenInPicker: true,
+    providers: [],
+  },
+  {
+    id: 'osu-taiko',
+    title: 'osu!taiko',
+    icon: osuIcon,
+    available: true,
+    pendingDetail: '',
+    familyId: 'osu',
+    hiddenInPicker: true,
+    providers: [],
   },
 ];
 

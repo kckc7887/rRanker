@@ -94,13 +94,17 @@ const EMPTY_VAULT: SessionVault = {
 };
 
 function isRemoteProviderId(value: unknown): value is RemoteProviderId {
-  return value === 'diving-fish' || value === 'lxns' || value === 'phi-taptap';
+  return value === 'diving-fish' || value === 'lxns' || value === 'phi-taptap' || value === 'osu';
 }
 
 function isGameId(value: unknown): value is GameId {
   return value === 'maimai'
     || value === 'chunithm'
     || value === 'phigros'
+    || value === 'osu-standard'
+    || value === 'osu-mania'
+    || value === 'osu-catch'
+    || value === 'osu-taiko'
     || value === 'test';
 }
 
@@ -108,6 +112,11 @@ function isPersistableSession(session: ProviderSession): session is ProviderSess
   if (session.persistable !== true) return false;
   if (session.mode === 'jwt' || session.mode === 'import-token' || session.mode === 'phi-session') return true;
   if (session.mode === 'lxns-oauth') {
+    return typeof session.accessToken === 'string'
+      && typeof session.refreshToken === 'string'
+      && typeof session.expiresAt === 'number';
+  }
+  if (session.mode === 'osu-oauth') {
     return typeof session.accessToken === 'string'
       && typeof session.refreshToken === 'string'
       && typeof session.expiresAt === 'number';

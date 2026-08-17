@@ -90,6 +90,7 @@ import {
 import {
   formatMuseDashOverviewRatingMeta, MUSE_DASH_RATING_THEME,
 } from '@/components/musedash/MuseDashOverviewDetails';
+import { formatOsuPlayTime } from '@/domain/osu';
 
 export default function OverviewTabScreen() {
   return <CachedTabScreen><OverviewScreen /></CachedTabScreen>;
@@ -463,7 +464,7 @@ function PublicOverviewScreen() {
               <Text style={styles.switchHint}>·点击切换·</Text>
             </Pressable>
 
-            {bundle.payload.kind === 'adofai' || bundle.payload.kind === 'musedash' || bundle.payload.kind === 'phira' ? (
+            {bundle.payload.kind === 'adofai' || bundle.payload.kind === 'musedash' || bundle.payload.kind === 'phira' || bundle.payload.kind === 'osu' ? (
               <SourceStatus items={[{
                 key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt,
                 state: bundle.payload.source.isStale ? 'cache' : 'live',
@@ -512,7 +513,8 @@ function PublicOverviewScreen() {
               || bundle.payload.kind === 'chunithm'
               || bundle.payload.kind === 'adofai'
               || bundle.payload.kind === 'musedash'
-              || bundle.payload.kind === 'phira' ? (
+              || bundle.payload.kind === 'phira'
+              || bundle.payload.kind === 'osu' ? (
               <DxRatingCard
                 borderless={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData}
                 label={bundle.payload.playerScore.label}
@@ -528,7 +530,9 @@ function PublicOverviewScreen() {
                       ? `总游玩次数 ${bundle.payload.snapshot.stats.numRecords}`
                     : bundle.payload.kind === 'chunithm'
                       ? formatChunithmBestMeta(bundle.payload.bestSections)
-                      : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
+                      : bundle.payload.kind === 'osu'
+                        ? formatOsuPlayTime(bundle.payload.player.playTimeSeconds)
+                        : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
                 themeOverride={bundle.payload.kind === 'adofai'
                   ? TUF_RATING_THEME
                   : bundle.payload.kind === 'musedash'
@@ -708,7 +712,7 @@ function PublicOverviewScreen() {
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
                 </>
-              ) : bundle.payload.kind === 'musedash' || bundle.payload.kind === 'phira' ? (
+              ) : bundle.payload.kind === 'musedash' || bundle.payload.kind === 'phira' || bundle.payload.kind === 'osu' ? (
                 <>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
                   <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
@@ -975,6 +979,7 @@ function displayName(bundle: GameDataBundle): string {
   if (bundle.payload.kind === 'adofai') return bundle.payload.player.name;
   if (bundle.payload.kind === 'musedash') return bundle.payload.player.user.nickname;
   if (bundle.payload.kind === 'phira') return bundle.payload.snapshot.player.name;
+  if (bundle.payload.kind === 'osu') return bundle.payload.player.username;
   return bundle.payload.displayName;
 }
 
@@ -1022,6 +1027,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'tuf') return 'TUF 社区';
   if (providerId === 'musedash-moe') return 'MuseDash.moe';
   if (providerId === 'phira-community') return 'Phira社区';
+  if (providerId === 'osu') return 'osu! 官方';
   return '本地';
 }
 

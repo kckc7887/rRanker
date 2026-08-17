@@ -4,6 +4,7 @@ import {
   emptyGamePayload,
   formatPlayerScore,
   maimaiPayloadFromSnapshot,
+  osuPayloadFromSnapshot,
   type GameDataBundle,
 } from '@/domain/game-data';
 import { buildLxnsIconUrl } from '@/domain/account-avatar';
@@ -17,6 +18,7 @@ import type { ScoreSnapshot, DataSource } from '@/domain/models';
 import type { ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
 import {
   applyLxnsTokenRotation,
+  applyOsuTokenRotation,
   UNBOUND_ACCOUNT_ID,
   useSession,
 } from '@/state/session-store';
@@ -25,6 +27,7 @@ import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
+import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
 import { PhigrosSaveCache, stalePhigrosPayload, type PhigrosGameDataPayload } from '@/services/phigros-save-cache';
 import { cacheFirstLoad, isCacheFallback } from '@/services/cache-first';
@@ -33,6 +36,9 @@ import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 import { ResourceService } from '@/services/resource-service';
+import { isOsuGameId } from '@/domain/game-mode-family';
+import { loadOsuSnapshotFresh, OsuCache } from '@/services/osu-cache';
+import type { OsuSnapshot } from '@/domain/osu';
 import {
   CHUNITHM_CATALOG_RESOURCE_KEY,
   type ChunithmCatalogSnapshot,
@@ -42,6 +48,7 @@ import {
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
 import {
+  osuUserIdFromAccountId,
   tufPlayerIdFromAccountId,
   museDashUserIdFromAccountId,
   isMuseDashTestUserId,
@@ -74,6 +81,7 @@ import { loadPhiraPlayerFresh, refreshPhiraSeedBests } from '@/services/phira-se
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
 const museDashCache = new MuseDashCache();
+const osuCache = new OsuCache();
 
 export function useGameData() {
   const session = useSession((s) => s.session);
@@ -302,6 +310,40 @@ export function useGameData() {
           providerId: activeProviderId,
           profile: getGameProfile('chunithm'),
           payload: emptyGamePayload('chunithm', '临时账号'),
+        };
+      }
+      if (isOsuGameId(activeGameId)) {
+        const userId = osuUserIdFromAccountId(activeAccountId);
+        if (activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null) {
+          const provider = new OsuScoreProvider(
+            session,
+            (next) => applyOsuTokenRotation(activeAccountId, next),
+          );
+          const toBundle = (snapshot: OsuSnapshot): GameDataBundle => ({
+            gameId: activeGameId,
+            providerId: 'osu',
+            profile: getGameProfile(activeGameId),
+            payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)),
+          });
+          // 缓存优先：先渲染本地快照，后台刷新成功后静默回写。
+          const snapshot = await cacheFirstLoad({
+            loadCached: () => osuCache.load(activeGameId, userId),
+            loadFresh: async () => {
+              const fresh = await loadOsuSnapshotFresh(provider, activeGameId, userId);
+              void osuCache.save(activeGameId, userId, fresh).catch(() => undefined);
+              return fresh;
+            },
+            onFresh: (fresh) => {
+              queryClient.setQueryData(queryKey, toBundle(fresh));
+            },
+          });
+          return toBundle(snapshot);
+        }
+        return {
+          gameId: activeGameId,
+          providerId: activeProviderId,
+          profile: getGameProfile(activeGameId),
+          payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号'),
         };
       }
       if (activeGameId === 'test') {
@@ -592,6 +634,21 @@ export function useGameData() {
       updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.name, d.payload.snapshot.player.avatar ?? undefined);
       void persistBoundAccountThumbnail(activeAccountId, { scoreDisplay: d.payload.playerScore.display, avatarUrl: d.payload.snapshot.player.avatar ?? undefined }).catch(() => undefined);
     }
+    if (d.payload.kind === 'osu') {
+      updateBoundAccountScore(
+        activeAccountId,
+        d.payload.playerScore.display,
+        d.payload.player.username,
+        d.payload.player.avatarUrl ?? undefined,
+      );
+      void persistBoundAccountThumbnail(activeAccountId, {
+        scoreDisplay: d.payload.playerScore.display,
+        avatarUrl: d.payload.player.avatarUrl ?? undefined,
+      }).catch(() => undefined);
+      if (d.payload.player.avatarUrl) {
+        void persistBoundAccountAvatar(activeAccountId, d.payload.player.avatarUrl);
+      }
+    }
   }, [activeAccountId, query.data, updateBoundAccountScore]);
 
   return {
@@ -608,6 +665,8 @@ export function useGameData() {
           : query.data.payload.kind === 'musedash'
             ? query.data.payload.source.isStale
           : query.data.payload.kind === 'phira'
+            ? query.data.payload.source.isStale
+          : query.data.payload.kind === 'osu'
             ? query.data.payload.source.isStale
         : (query.data.payload.kind === 'maimai' || query.data.payload.kind === 'phigros')
           && (query.data.payload.source.isStale || query.data.payload.catalogSource.isStale)
