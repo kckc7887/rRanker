@@ -1,10 +1,12 @@
 import {
+  buildOsuBeatmapsetSearchQuery,
   formatOsuAccuracy,
   formatOsuPlayTime,
   formatOsuPp,
+  normalizeOsuCatalogSongs,
   normalizeOsuSnapshot,
-  osuCatalogSongsFromBest,
   OSU_RULESET_BY_GAME_ID,
+  type OsuBeatmapsetSearchRaw,
   type OsuBestScoreRaw,
   type OsuUserResponseRaw,
 } from '@/domain/osu';
@@ -57,6 +59,126 @@ function rawScore(overrides: Record<string, unknown> = {}): OsuBestScoreRaw {
   } as OsuBestScoreRaw;
 }
 
+function rawSearch(overrides: Record<string, unknown> = {}): OsuBeatmapsetSearchRaw {
+  return {
+    beatmapsets: [
+      {
+        id: 3720,
+        title: 'Tori no Uta',
+        title_unicode: '鳥の詩',
+        artist: 'Lix',
+        artist_unicode: undefined,
+        creator: 'James',
+        covers: { list: 'https://assets.ppy.sh/beatmaps/3720/covers/list.jpg' },
+        status: 'ranked',
+        beatmaps: [
+          { id: 22423, beatmapset_id: 3720, difficulty_rating: 7.34, version: 'Insane', mode: 'osu', mode_int: 0, status: 'ranked' },
+          { id: 22424, beatmapset_id: 3720, difficulty_rating: 3.56, version: 'Hard', mode: 'osu', mode_int: 0, status: 'ranked' },
+          { id: 22425, beatmapset_id: 3720, difficulty_rating: 2.1, version: 'Muzukashii', mode: 'taiko', mode_int: 1, status: 'ranked' },
+          { id: 22426, beatmapset_id: 3720, difficulty_rating: 4.4, version: 'Fruits', mode: 'fruits', mode_int: 2, status: 'ranked' },
+        ],
+      },
+    ],
+    total: 1,
+    cursor_string: null,
+    recommended_difficulty: 4.72,
+    search: { sort: 'ranked_desc' },
+    ...overrides,
+  } as OsuBeatmapsetSearchRaw;
+}
+
+describe('osu! 曲库搜索口径', () => {
+  const base = {
+    gameId: 'osu-standard' as const,
+    general: [] as const,
+    status: 'any' as const,
+    genre: 0,
+    language: 0,
+    nsfw: false,
+    extras: [] as const,
+  };
+
+  it('buildOsuBeatmapsetSearchQuery：m 恒为当前模式且 nsfw 恒携带', () => {
+    expect(buildOsuBeatmapsetSearchQuery(base)).toEqual({ m: '0', nsfw: 'false' });
+    expect(buildOsuBeatmapsetSearchQuery({ ...base, gameId: 'osu-taiko' })).toEqual({ m: '1', nsfw: 'false' });
+    expect(buildOsuBeatmapsetSearchQuery({ ...base, gameId: 'osu-catch' })).toEqual({ m: '2', nsfw: 'false' });
+    expect(buildOsuBeatmapsetSearchQuery({ ...base, gameId: 'osu-mania' })).toEqual({ m: '3', nsfw: 'false' });
+  });
+
+  it('buildOsuBeatmapsetSearchQuery：常规/其他点号连接，非默认项与 q/cursor 才携带', () => {
+    expect(buildOsuBeatmapsetSearchQuery({
+      ...base,
+      gameId: 'osu-catch',
+      general: ['recommended', 'converts'],
+      status: 'loved',
+      genre: 9,
+      language: 6,
+      nsfw: true,
+      extras: ['video', 'storyboard'],
+      q: '  stars>6  ',
+      cursor: 'abc',
+    })).toEqual({
+      m: '2',
+      c: 'recommended.converts',
+      s: 'loved',
+      g: '9',
+      l: '6',
+      nsfw: 'true',
+      e: 'video.storyboard',
+      q: 'stars>6',
+      cursor_string: 'abc',
+    });
+  });
+
+  it('buildOsuBeatmapsetSearchQuery：q 为空串时不携带', () => {
+    expect(buildOsuBeatmapsetSearchQuery({ ...base, q: '   ' })).toEqual({ m: '0', nsfw: 'false' });
+  });
+
+  it('normalizeOsuCatalogSongs：unicode 优先、只留当前模式、难度升序', () => {
+    const songs = normalizeOsuCatalogSongs(rawSearch(), 'osu-standard');
+    expect(songs).toHaveLength(1);
+    expect(songs[0].title).toBe('鳥の詩');
+    expect(songs[0].artist).toBe('Lix');
+    expect(songs[0].difficultyRatings).toEqual([3.56, 7.34]);
+  });
+
+  it('normalizeOsuCatalogSongs：catch 模式取 fruits 谱面（含转谱）', () => {
+    const songs = normalizeOsuCatalogSongs(rawSearch(), 'osu-catch');
+    expect(songs[0].difficultyRatings).toEqual([4.4]);
+  });
+
+  it('normalizeOsuCatalogSongs：mode 字段缺失时按 mode_int 兜底', () => {
+    const raw = rawSearch();
+    raw.beatmapsets[0].beatmaps = [
+      { id: 1, beatmapset_id: 3720, difficulty_rating: 5.5, version: 'Another', mode_int: 0 },
+    ];
+    const songs = normalizeOsuCatalogSongs(raw, 'osu-standard');
+    expect(songs[0].difficultyRatings).toEqual([5.5]);
+  });
+
+  it('normalizeOsuCatalogSongs：封面 list@2x → list → card@2x → card 回退', () => {
+    const listAt2x = normalizeOsuCatalogSongs(rawSearch({
+      beatmapsets: [{ ...rawSearch().beatmapsets[0], covers: { 'list@2x': 'https://x/l2.jpg' } }],
+    }), 'osu-standard');
+    expect(listAt2x[0].listCover).toBe('https://x/l2.jpg');
+    const card = normalizeOsuCatalogSongs(rawSearch({
+      beatmapsets: [{ ...rawSearch().beatmapsets[0], covers: { card: 'https://x/c.jpg' } }],
+    }), 'osu-standard');
+    expect(card[0].listCover).toBe('https://x/c.jpg');
+    const none = normalizeOsuCatalogSongs(rawSearch({
+      beatmapsets: [{ ...rawSearch().beatmapsets[0], covers: {} }],
+    }), 'osu-standard');
+    expect(none[0].listCover).toBeNull();
+  });
+
+  it('normalizeOsuCatalogSongs：beatmaps 缺失时难度为空数组', () => {
+    const raw = rawSearch();
+    raw.beatmapsets[0].beatmaps = undefined;
+    const songs = normalizeOsuCatalogSongs(raw, 'osu-standard');
+    expect(songs[0].difficultyRatings).toEqual([]);
+  });
+});
+
 describe('osu! 数据规范化', () => {
   it('ruleset 映射：catch 的 API 值是 fruits', () => {
     expect(OSU_RULESET_BY_GAME_ID['osu-standard']).toBe('osu');
@@ -103,14 +225,6 @@ describe('osu! 数据规范化', () => {
     expect(snapshot.player.pp).toBe(0);
     expect(snapshot.player.accuracy).toBeNull();
     expect(snapshot.player.globalRank).toBeNull();
-  });
-
-  it('osuCatalogSongsFromBest 按 beatmapset id 去重', () => {
-    const songs = osuCatalogSongsFromBest(
-      normalizeOsuSnapshot(rawUser(), [rawScore(), rawScore({ id: 2 })]).bestScores,
-    );
-    expect(songs).toHaveLength(1);
-    expect(songs[0].beatmapSetId).toBe(3720);
   });
 
   it('展示口径：PP 千分位、准确率两位小数、游戏时间', () => {

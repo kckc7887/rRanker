@@ -1,18 +1,28 @@
-import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import {
   BestListPage,
   CatalogListPage,
   RecordsListPage,
 } from '@/components/game-content/GameListPages';
+import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
+import { OsuCatalogFilterBar } from '@/components/osu/OsuCatalogFilterBar';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import { OsuSongRow } from '@/components/osu/OsuSongRow';
 import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
-import { osuCatalogSongsFromBest, type OsuBestScore } from '@/domain/osu';
+import {
+  type OsuBestScore,
+  type OsuCatalogSong,
+  type OsuExtraFlag,
+  type OsuGeneralFlag,
+  type OsuSearchStatus,
+} from '@/domain/osu';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
+import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -130,37 +140,79 @@ export function OsuRecordsScreen() {
   );
 }
 
-/** osu! 曲库页：由 Top 100 的 beatmapset 去重派生；难度标签无字仅空格宽度。 */
+/** osu! 曲库页：直连 osu.ppy.sh 谱面搜索（每首歌 = 一个 beatmapset）；m 恒为当前模式，玩家不可见。 */
 export function OsuCatalogScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const gameId = useActiveOsuGameId();
-  const { data, isLoading, isError, error, refetch } = useGameData();
-  const payload = data?.payload.kind === 'osu' ? data.payload : null;
-  const songs = useMemo(
-    () => (payload ? osuCatalogSongsFromBest(payload.bestScores) : []),
-    [payload],
-  );
+  const [keyword, setKeyword] = useState('');
+  const [filterExpanded, setFilterExpanded] = useState(false);
+  const [general, setGeneral] = useState<readonly OsuGeneralFlag[]>([]);
+  const [status, setStatus] = useState<OsuSearchStatus>('any');
+  const [genre, setGenre] = useState(0);
+  const [language, setLanguage] = useState(0);
+  const [nsfw, setNsfw] = useState(false);
+  const [extras, setExtras] = useState<readonly OsuExtraFlag[]>([]);
+  const debouncedKeyword = useDebouncedValue(keyword, 350);
+  // 逐字段依赖稳定输入身份：hook 下游 useMemo/queryKey 依赖该对象引用，避免每次渲染重建触发重复请求。
+  const searchInput = useMemo(() => ({
+    q: debouncedKeyword.trim() || undefined,
+    general,
+    status,
+    genre,
+    language,
+    nsfw,
+    extras,
+  }), [debouncedKeyword, general, status, genre, language, nsfw, extras]);
+  const query = useOsuCatalogSearch(gameId, searchInput);
+  const controls = gameId ? (
+    <>
+      <GameSearchHeader
+        accessibilityLabel="搜索 osu! 谱面"
+        placeholder="搜索标题、艺术家、谱师或标签"
+        value={keyword}
+        onChangeText={setKeyword}
+        loaded={query.songs.length}
+        total={query.total}
+      />
+      <OsuCatalogFilterBar
+        collapsed={!filterExpanded}
+        general={general}
+        status={status}
+        genre={genre}
+        language={language}
+        nsfw={nsfw}
+        extras={extras}
+        recommendedDifficulty={query.recommendedDifficulty}
+        onCollapsedChange={(value) => setFilterExpanded(!value)}
+        onGeneralChange={setGeneral}
+        onStatusChange={setStatus}
+        onGenreChange={setGenre}
+        onLanguageChange={setLanguage}
+        onNsfwChange={setNsfw}
+        onExtrasChange={setExtras}
+        onReset={() => {
+          setGeneral([]);
+          setStatus('any');
+          setGenre(0);
+          setLanguage(0);
+          setNsfw(false);
+          setExtras([]);
+        }}
+      />
+    </>
+  ) : null;
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <CatalogListPage
-        beforeList={
-          <View style={styles.header}>
-            <SourceStatus items={payload ? [{
-              key: 'scores',
-              label: payload.source.label,
-              updatedAt: payload.source.updatedAt,
-              state: payload.source.isStale ? 'cache' : 'live',
-            }] : []} />
-          </View>
-        }
-        isLoading={isLoading}
-        isError={isError}
-        isEmpty={!isLoading && songs.length === 0}
-        error={error}
-        onRetry={refetch ? () => void refetch() : undefined}
-        emptyText="当前账号暂无成绩，曲库由最佳成绩派生"
-        data={songs.length ? songs : undefined}
+      <CatalogListPage<OsuCatalogSong>
+        beforeList={controls}
+        isLoading={query.bound && query.isLoading}
+        isError={query.isError}
+        isEmpty={!query.bound || (!query.isLoading && query.songs.length === 0)}
+        error={query.error}
+        onRetry={() => void query.refetch()}
+        emptyText={query.bound ? '没有找到符合条件的谱面' : '请先在游戏管理中绑定 osu! 账号'}
+        data={query.songs.length ? query.songs : undefined}
         flatListProps={{
           testID: 'osu-catalog-results-list',
           style: styles.list,
@@ -172,6 +224,11 @@ export function OsuCatalogScreen() {
           renderItem: ({ item }) => (
             gameId ? <OsuSongRow gameId={gameId} song={item} /> : null
           ),
+          onEndReachedThreshold: 0.35,
+          onEndReached: () => {
+            if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
+          },
+          ListFooterComponent: query.isFetchingNextPage ? <ActivityIndicator style={styles.footer} /> : null,
         }}
       />
     </View>
@@ -183,6 +240,7 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { padding: 16, gap: 10 },
   header: { gap: 9, marginBottom: 2 },
+  footer: { marginVertical: 18 },
   sectionHeader: {
     marginTop: 10,
     marginBottom: 2,
