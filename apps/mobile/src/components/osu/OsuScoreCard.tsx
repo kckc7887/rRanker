@@ -7,9 +7,10 @@ import type { OsuGameId } from '@/domain/game-mode-family';
 import { formatOsuAccuracy, formatOsuPp, type OsuBestScore } from '@/domain/osu';
 import { useAppTheme } from '@/theme/app-theme';
 import { OsuDifficultyBadge } from './OsuDifficultyBadge';
+import { OsuRankTag } from './OsuRankTag';
 
 /**
- * osu! 最佳成绩卡：标题歌名、主信息得分、下方难度标签（N★）、
+ * osu! 最佳成绩卡：标题歌名、主信息得分、下方评价标签 + 难度标签（N★）、
  * 右侧上下居中小字准确率 + 大字 PP。歌曲详情页暂未接入，卡片不可点击。
  */
 export function OsuScoreCard({ gameId, score, position }: {
@@ -50,7 +51,14 @@ export function OsuScoreCard({ gameId, score, position }: {
       tagRows={{
         containerStyle: COMPACT_METRIC_CARD_STYLES.tags,
         rowStyle: styles.tagRow,
-        rows: [{ content: <OsuDifficultyBadge star={score.beatmap.difficultyRating} /> }],
+        rows: [{
+          content: (
+            <>
+              <OsuRankTag rank={score.rank} testID={`osu-rank-tag-${score.rank}`} />
+              <OsuDifficultyBadge star={score.beatmap.difficultyRating} />
+            </>
+          ),
+        }],
       }}
       testID={`osu-score-card-${score.id}`}
     >
