@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import {
@@ -93,6 +94,24 @@ describe('OsuCatalogFilterBar 筛选栏', () => {
     expect(screen.getByText('不良内容')).toBeTruthy();
     expect(screen.getByText('其他')).toBeTruthy();
     expect(screen.queryByText('模式')).toBeNull();
+  });
+
+  it('布局合同：两行各两个下拉、两行独占，且每个下拉都位于横向行容器内（防纵向 flex 塌陷叠压）', async () => {
+    const screen = await render(<OsuCatalogFilterBar {...baseProps} />);
+    const pairRows = screen.getAllByTestId('osu-catalog-filter-pair-row');
+    expect(pairRows).toHaveLength(2);
+    const fullRows = screen.getAllByTestId('osu-catalog-filter-full-row');
+    expect(fullRows).toHaveLength(2);
+    for (const row of [...pairRows, ...fullRows]) {
+      expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
+    }
+    // 一行两个：每个 pair row 直接包含两个下拉根节点；独占行各一个。
+    for (const row of pairRows) {
+      expect(row.children.filter((child) => typeof child !== 'string')).toHaveLength(2);
+    }
+    for (const row of fullRows) {
+      expect(row.children.filter((child) => typeof child !== 'string')).toHaveLength(1);
+    }
   });
 
   it('单选分类：选择后回调且触发器值标签更新', async () => {

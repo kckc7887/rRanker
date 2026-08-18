@@ -173,103 +173,100 @@ export function OsuCatalogFilterBar({
       expandLabelPrefix="展开 osu! 筛选" collapseLabel="收起 osu! 筛选" resetLabel="重置 osu! 筛选"
       onCollapsedChange={onCollapsedChange} onReset={handleReset}
       onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
-      <View style={styles.pairRow}>
-        <View style={styles.pairCell}>
-          <FilterAnchoredDropdown<OsuGeneralFlag>
-            accessibilityLabel={`osu! 常规筛选，当前 ${generalLabel}`}
-            caption="常规"
-            multiple
-            onOpenChange={setDropdownOpen('general')}
-            open={openDropdown === 'general'}
-            optionAccessibilityPrefix="选择常规"
-            options={generalOptions}
-            selectedValue={general[0] ?? 'recommended'}
-            selectedValues={general}
-            onValuesChange={(values) => onGeneralChange(values)}
-            onSelect={() => undefined}
-            valueLabel={generalLabel}
-            dropdownFooter={multiFooter}
-          />
-        </View>
-        <View style={styles.pairCell}>
-          <FilterAnchoredDropdown<OsuSearchStatus>
-            accessibilityLabel={`osu! 分类筛选，当前 ${statusLabel}`}
-            caption="分类"
-            onOpenChange={setDropdownOpen('status')}
-            onSelect={onStatusChange}
-            open={openDropdown === 'status'}
-            optionAccessibilityPrefix="选择分类"
-            options={statusOptions}
-            selectedValue={status}
-            valueLabel={statusLabel}
-          />
-        </View>
+      <View testID="osu-catalog-filter-pair-row" style={styles.pairRow}>
+        <FilterAnchoredDropdown<OsuGeneralFlag>
+          accessibilityLabel={`osu! 常规筛选，当前 ${generalLabel}`}
+          caption="常规"
+          multiple
+          onOpenChange={setDropdownOpen('general')}
+          open={openDropdown === 'general'}
+          optionAccessibilityPrefix="选择常规"
+          options={generalOptions}
+          selectedValue={general[0] ?? 'recommended'}
+          selectedValues={general}
+          onValuesChange={(values) => onGeneralChange(values)}
+          onSelect={() => undefined}
+          valueLabel={generalLabel}
+          dropdownFooter={multiFooter}
+        />
+        <FilterAnchoredDropdown<OsuSearchStatus>
+          accessibilityLabel={`osu! 分类筛选，当前 ${statusLabel}`}
+          caption="分类"
+          onOpenChange={setDropdownOpen('status')}
+          onSelect={onStatusChange}
+          open={openDropdown === 'status'}
+          optionAccessibilityPrefix="选择分类"
+          options={statusOptions}
+          selectedValue={status}
+          valueLabel={statusLabel}
+        />
       </View>
 
-      <View style={styles.pairRow}>
-        <View style={styles.pairCell}>
-          <FilterAnchoredDropdown
-            accessibilityLabel={`osu! 流派筛选，当前 ${genreLabel}`}
-            caption="流派"
-            onOpenChange={setDropdownOpen('genre')}
-            onSelect={(value) => onGenreChange(Number(value))}
-            open={openDropdown === 'genre'}
-            optionAccessibilityPrefix="选择流派"
-            options={genreOptions}
-            selectedValue={String(genre)}
-            valueLabel={genreLabel}
-          />
-        </View>
-        <View style={styles.pairCell}>
-          <FilterAnchoredDropdown
-            accessibilityLabel={`osu! 语言筛选，当前 ${languageLabel}`}
-            caption="语言"
-            onOpenChange={setDropdownOpen('language')}
-            onSelect={(value) => onLanguageChange(Number(value))}
-            open={openDropdown === 'language'}
-            optionAccessibilityPrefix="选择语言"
-            options={languageOptions}
-            selectedValue={String(language)}
-            valueLabel={languageLabel}
-          />
-        </View>
+      <View testID="osu-catalog-filter-pair-row" style={styles.pairRow}>
+        <FilterAnchoredDropdown
+          accessibilityLabel={`osu! 流派筛选，当前 ${genreLabel}`}
+          caption="流派"
+          onOpenChange={setDropdownOpen('genre')}
+          onSelect={(value) => onGenreChange(Number(value))}
+          open={openDropdown === 'genre'}
+          optionAccessibilityPrefix="选择流派"
+          options={genreOptions}
+          selectedValue={String(genre)}
+          valueLabel={genreLabel}
+        />
+        <FilterAnchoredDropdown
+          accessibilityLabel={`osu! 语言筛选，当前 ${languageLabel}`}
+          caption="语言"
+          onOpenChange={setDropdownOpen('language')}
+          onSelect={(value) => onLanguageChange(Number(value))}
+          open={openDropdown === 'language'}
+          optionAccessibilityPrefix="选择语言"
+          options={languageOptions}
+          selectedValue={String(language)}
+          valueLabel={languageLabel}
+        />
       </View>
 
-      <FilterAnchoredDropdown
-        accessibilityLabel={`osu! 不良内容筛选，当前 ${nsfwLabel}`}
-        caption="不良内容"
-        onOpenChange={setDropdownOpen('nsfw')}
-        onSelect={(value) => onNsfwChange(value === 'true')}
-        open={openDropdown === 'nsfw'}
-        optionAccessibilityPrefix="选择不良内容"
-        options={nsfwOptions}
-        selectedValue={String(nsfw)}
-        valueLabel={nsfwLabel}
-      />
+      <View testID="osu-catalog-filter-full-row" style={styles.fullRow}>
+        <FilterAnchoredDropdown
+          accessibilityLabel={`osu! 不良内容筛选，当前 ${nsfwLabel}`}
+          caption="不良内容"
+          onOpenChange={setDropdownOpen('nsfw')}
+          onSelect={(value) => onNsfwChange(value === 'true')}
+          open={openDropdown === 'nsfw'}
+          optionAccessibilityPrefix="选择不良内容"
+          options={nsfwOptions}
+          selectedValue={String(nsfw)}
+          valueLabel={nsfwLabel}
+        />
+      </View>
 
-      <FilterAnchoredDropdown<OsuExtraFlag>
-        accessibilityLabel={`osu! 其他筛选，当前 ${extrasLabel}`}
-        caption="其他"
-        multiple
-        onOpenChange={setDropdownOpen('extras')}
-        open={openDropdown === 'extras'}
-        optionAccessibilityPrefix="选择其他"
-        options={extraOptions}
-        selectedValue={extras[0] ?? 'video'}
-        selectedValues={extras}
-        onValuesChange={(values) => onExtrasChange(values)}
-        onSelect={() => undefined}
-        valueLabel={extrasLabel}
-        dropdownFooter={multiFooter}
-      />
+      <View testID="osu-catalog-filter-full-row" style={styles.fullRow}>
+        <FilterAnchoredDropdown<OsuExtraFlag>
+          accessibilityLabel={`osu! 其他筛选，当前 ${extrasLabel}`}
+          caption="其他"
+          multiple
+          onOpenChange={setDropdownOpen('extras')}
+          open={openDropdown === 'extras'}
+          optionAccessibilityPrefix="选择其他"
+          options={extraOptions}
+          selectedValue={extras[0] ?? 'video'}
+          selectedValues={extras}
+          onValuesChange={(values) => onExtrasChange(values)}
+          onSelect={() => undefined}
+          valueLabel={extrasLabel}
+          dropdownFooter={multiFooter}
+        />
+      </View>
     </FilterShell>
   );
 }
 
-// osu 专属样式：一行两个下拉单元与多选完成按钮；其余公共样式见 game-content/FilterShell。
+// osu 专属样式：公共 FilterAnchoredDropdown 根节点 flex:1 只在横向行容器内生效（宽度分配），
+// 每个下拉必须直接放在 row 容器里（同中二评价双下拉行），不得放进纵向 cell 包裹层（flexBasis 0 会导致列容器高度塌陷、内容互相叠压）。
 const styles = StyleSheet.create({
-  pairRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  pairCell: { flex: 1, minWidth: 0 },
+  pairRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  fullRow: { flexDirection: 'row' },
   doneButton: { borderRadius: 8, paddingVertical: 9, alignItems: 'center' },
   doneText: { fontSize: 13, fontWeight: '700' },
 });
