@@ -96,21 +96,15 @@ describe('OsuCatalogFilterBar 筛选栏', () => {
     expect(screen.queryByText('模式')).toBeNull();
   });
 
-  it('布局合同：两行各两个下拉、两行独占，且每个下拉都位于横向行容器内（防纵向 flex 塌陷叠压）', async () => {
+  it('布局合同：三行各两个控件，且每个控件都位于横向行容器内（防纵向 flex 塌陷叠压）', async () => {
     const screen = await render(<OsuCatalogFilterBar {...baseProps} />);
     const pairRows = screen.getAllByTestId('osu-catalog-filter-pair-row');
-    expect(pairRows).toHaveLength(2);
-    const fullRows = screen.getAllByTestId('osu-catalog-filter-full-row');
-    expect(fullRows).toHaveLength(2);
-    for (const row of [...pairRows, ...fullRows]) {
-      expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
-    }
-    // 一行两个：每个 pair row 直接包含两个下拉根节点；独占行各一个。
+    expect(pairRows).toHaveLength(3);
+    expect(screen.queryAllByTestId('osu-catalog-filter-full-row')).toHaveLength(0);
     for (const row of pairRows) {
+      expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
+      // 一行两个：每个 pair row 直接包含两个下拉/复选框列表根节点。
       expect(row.children.filter((child) => typeof child !== 'string')).toHaveLength(2);
-    }
-    for (const row of fullRows) {
-      expect(row.children.filter((child) => typeof child !== 'string')).toHaveLength(1);
     }
   });
 
@@ -127,7 +121,7 @@ describe('OsuCatalogFilterBar 筛选栏', () => {
     expect(onStatusChange).toHaveBeenCalledWith('loved');
   });
 
-  it('多选常规：勾选即回调、完成按钮关闭', async () => {
+  it('复选框常规：勾选即回调、列表保持展开且没有完成按钮', async () => {
     const onGeneralChange = jest.fn();
     const screen = await render(<OsuCatalogFilterBar
       {...baseProps}
@@ -138,7 +132,20 @@ describe('OsuCatalogFilterBar 筛选栏', () => {
     await waitFor(() => expect(screen.getByLabelText('选择常规 包括转谱')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('选择常规 包括转谱'));
     expect(onGeneralChange).toHaveBeenCalledWith(['converts']);
-    await fireEvent.press(screen.getByLabelText('完成筛选选择'));
+    // 勾选后列表保持展开、可继续勾选；公共复选框列表没有完成按钮。
+    expect(screen.getByLabelText('选择常规 推荐难度')).toBeTruthy();
+    expect(screen.queryByLabelText('完成筛选选择')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('关闭下拉列表'));
+  });
+
+  it('复选框其他：勾选即回调且没有完成按钮', async () => {
+    const onExtrasChange = jest.fn();
+    const screen = await render(<OsuCatalogFilterBar {...baseProps} onExtrasChange={onExtrasChange} />);
+    await fireEvent.press(screen.getByLabelText('osu! 其他筛选，当前 全部'));
+    await waitFor(() => expect(screen.getByLabelText('选择其他 有视频')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('选择其他 有视频'));
+    expect(onExtrasChange).toHaveBeenCalledWith(['video']);
+    expect(screen.queryByLabelText('完成筛选选择')).toBeNull();
   });
 
   it('不良内容单选：显示/隐藏映射 nsfw', async () => {
