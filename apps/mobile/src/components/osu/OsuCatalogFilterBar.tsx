@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
+import { FilterCheckboxList } from '@/components/game-content/FilterCheckboxList';
 import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import {
   OSU_EXTRA_FILTERS,
@@ -14,7 +15,6 @@ import {
   type OsuSearchStatus,
 } from '@/domain/osu';
 import { formatOsuStar } from '@/domain/osu-star-theme';
-import { useAppTheme } from '@/theme/app-theme';
 
 type OpenDropdown = 'general' | 'status' | 'genre' | 'language' | 'nsfw' | 'extras' | null;
 
@@ -93,8 +93,8 @@ export function buildOsuCatalogFilterSummary({
 
 /**
  * osu! 曲库筛选栏：全部选项来自 osu.ppy.sh 官方搜索接口（m 恒为当前模式，不提供任何模式控件）。
- * 六个筛选组均用公共 FilterAnchoredDropdown：常规/其他为多选（勾选+完成），其余为单选；
- * 布局一行两个（常规+分类、流派+语言），不良内容与其他各独占一行。
+ * 六个筛选组布局三行各两个（常规+分类、流派+语言、不良内容+其他）：
+ * 常规/其他用公共 FilterCheckboxList（选项带复选框、勾选即生效、无完成按钮），其余用公共 FilterAnchoredDropdown 单选。
  */
 export function OsuCatalogFilterBar({
   collapsed,
@@ -114,7 +114,6 @@ export function OsuCatalogFilterBar({
   onExtrasChange,
   onReset,
 }: OsuCatalogFilterBarProps) {
-  const theme = useAppTheme();
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
   const setDropdownOpen = (id: OpenDropdown) => (open: boolean) => {
     setOpenDropdown(open ? id : null);
@@ -156,13 +155,6 @@ export function OsuCatalogFilterBar({
     recommendedDifficulty,
   });
 
-  const multiFooter = (close: () => void) => (
-    <Pressable accessibilityRole="button" accessibilityLabel="完成筛选选择" onPress={close}
-      style={[styles.doneButton, { backgroundColor: theme.accentSoft }]}>
-      <Text style={[styles.doneText, { color: theme.accent }]}>完成</Text>
-    </Pressable>
-  );
-
   const handleReset = () => {
     setOpenDropdown(null);
     onReset();
@@ -174,20 +166,16 @@ export function OsuCatalogFilterBar({
       onCollapsedChange={onCollapsedChange} onReset={handleReset}
       onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
       <View testID="osu-catalog-filter-pair-row" style={styles.pairRow}>
-        <FilterAnchoredDropdown<OsuGeneralFlag>
+        <FilterCheckboxList<OsuGeneralFlag>
           accessibilityLabel={`osu! 常规筛选，当前 ${generalLabel}`}
           caption="常规"
-          multiple
           onOpenChange={setDropdownOpen('general')}
           open={openDropdown === 'general'}
           optionAccessibilityPrefix="选择常规"
           options={generalOptions}
-          selectedValue={general[0] ?? 'recommended'}
           selectedValues={general}
           onValuesChange={(values) => onGeneralChange(values)}
-          onSelect={() => undefined}
           valueLabel={generalLabel}
-          dropdownFooter={multiFooter}
         />
         <FilterAnchoredDropdown<OsuSearchStatus>
           accessibilityLabel={`osu! 分类筛选，当前 ${statusLabel}`}
@@ -227,7 +215,7 @@ export function OsuCatalogFilterBar({
         />
       </View>
 
-      <View testID="osu-catalog-filter-full-row" style={styles.fullRow}>
+      <View testID="osu-catalog-filter-pair-row" style={styles.pairRow}>
         <FilterAnchoredDropdown
           accessibilityLabel={`osu! 不良内容筛选，当前 ${nsfwLabel}`}
           caption="不良内容"
@@ -239,34 +227,24 @@ export function OsuCatalogFilterBar({
           selectedValue={String(nsfw)}
           valueLabel={nsfwLabel}
         />
-      </View>
-
-      <View testID="osu-catalog-filter-full-row" style={styles.fullRow}>
-        <FilterAnchoredDropdown<OsuExtraFlag>
+        <FilterCheckboxList<OsuExtraFlag>
           accessibilityLabel={`osu! 其他筛选，当前 ${extrasLabel}`}
           caption="其他"
-          multiple
           onOpenChange={setDropdownOpen('extras')}
           open={openDropdown === 'extras'}
           optionAccessibilityPrefix="选择其他"
           options={extraOptions}
-          selectedValue={extras[0] ?? 'video'}
           selectedValues={extras}
           onValuesChange={(values) => onExtrasChange(values)}
-          onSelect={() => undefined}
           valueLabel={extrasLabel}
-          dropdownFooter={multiFooter}
         />
       </View>
     </FilterShell>
   );
 }
 
-// osu 专属样式：公共 FilterAnchoredDropdown 根节点 flex:1 只在横向行容器内生效（宽度分配），
-// 每个下拉必须直接放在 row 容器里（同中二评价双下拉行），不得放进纵向 cell 包裹层（flexBasis 0 会导致列容器高度塌陷、内容互相叠压）。
+// osu 专属样式：公共下拉/复选框列表根节点 flex:1 只在横向行容器内生效（宽度分配），
+// 每个控件必须直接放在 row 容器里（同中二评价双下拉行），不得放进纵向 cell 包裹层（flexBasis 0 会导致列容器高度塌陷、内容互相叠压）。
 const styles = StyleSheet.create({
   pairRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  fullRow: { flexDirection: 'row' },
-  doneButton: { borderRadius: 8, paddingVertical: 9, alignItems: 'center' },
-  doneText: { fontSize: 13, fontWeight: '700' },
 });

@@ -7,18 +7,12 @@ import {
 import { GameDifficultyBadge } from '@/components/game-content/GameDifficultyBadge';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import type { OsuCatalogSong } from '@/domain/osu';
-
-/** 曲库页空难度标签：不显示任何字，仅一个空格宽度的空胶囊（osu 品牌粉）。 */
-const OSU_CATALOG_BADGE_THEME = {
-  background: '#FF66AA',
-  border: '#FF66AA',
-  text: '#FFFFFF',
-} as const;
+import { resolveOsuStarTheme } from '@/domain/osu-star-theme';
 
 /**
  * osu! 曲库行：封面（失败回退 ♪）、标题、作者不变；
- * 难度标签为该 beatmapset 下当前模式全部难度（升序）的空胶囊，可换行、不显示任何字。
- * 歌曲详情未接入，行不可点击。
+ * 难度标签为该 beatmapset 下当前模式全部难度（升序）的空胶囊，可换行、不显示任何字，
+ * 每个胶囊按星数命中 osu 官方十一档色阶（osu-star-theme）。歌曲详情未接入，行不可点击。
  */
 export function OsuSongRow({ gameId, song }: {
   gameId: OsuGameId;
@@ -52,7 +46,7 @@ export function OsuSongRow({ gameId, song }: {
               key={`${rating}-${index}`}
               testID="osu-catalog-difficulty-badge"
               text=" "
-              theme={OSU_CATALOG_BADGE_THEME}
+              theme={resolveOsuStarTheme(rating)}
               // 仅一个空格字符的窄胶囊：列容器默认交叉轴拉伸会把胶囊拉成整行宽，
               // 必须左对齐并去掉最小宽度/内边距，宽度只贴住空格字符。
               style={{ alignSelf: 'flex-start', minWidth: 0, paddingHorizontal: 4 }}
