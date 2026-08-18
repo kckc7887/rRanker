@@ -1,9 +1,9 @@
 import { StyleSheet } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import { OsuSongRow } from '@/components/osu/OsuSongRow';
-import { OsuBestScreen } from '@/screens/OsuScreens';
+import { OsuBestScreen, OsuCatalogScreen } from '@/screens/OsuScreens';
 import type { OsuBestScore } from '@/domain/osu';
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
@@ -109,7 +109,7 @@ describe('OsuScoreCard 最佳成绩卡', () => {
 });
 
 describe('OsuSongRow 曲库行', () => {
-  it('难度标签为空胶囊（不显示任何字，仅占位宽度）', async () => {
+  it('难度标签为该 set 全部难度升序的空胶囊（不显示任何字，仅占位宽度）', async () => {
     const screen = await render(
       <OsuSongRow gameId="osu-standard" song={{
         beatmapSetId: 3720,
@@ -117,15 +117,31 @@ describe('OsuSongRow 曲库行', () => {
         artist: 'Lix',
         creator: 'James',
         listCover: null,
+        difficultyRatings: [3.56, 7.34],
       }} />,
     );
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
     expect(screen.getByText('Lix')).toBeTruthy();
-    expect(screen.getByText(' ')).toBeTruthy();
-    const badge = screen.getByTestId('osu-catalog-difficulty-badge');
-    const badgeStyle = StyleSheet.flatten(badge.props.style);
+    expect(screen.getAllByText(' ')).toHaveLength(2);
+    const badges = screen.getAllByTestId('osu-catalog-difficulty-badge');
+    expect(badges).toHaveLength(2);
+    const badgeStyle = StyleSheet.flatten(badges[0].props.style);
     expect(badgeStyle.alignSelf).toBe('flex-start');
     expect(badgeStyle.minWidth).toBe(0);
+  });
+
+  it('无难度时不渲染任何胶囊', async () => {
+    const screen = await render(
+      <OsuSongRow gameId="osu-standard" song={{
+        beatmapSetId: 3720,
+        title: 'Tori no Uta',
+        artist: 'Lix',
+        creator: 'James',
+        listCover: null,
+        difficultyRatings: [],
+      }} />,
+    );
+    expect(screen.queryAllByTestId('osu-catalog-difficulty-badge')).toHaveLength(0);
   });
 });
 
@@ -172,11 +188,79 @@ jest.mock('@/state/session-store', () => ({
   }),
 }));
 
+const catalogSong = {
+  beatmapSetId: 3720,
+  title: 'Tori no Uta',
+  artist: 'Lix',
+  creator: 'James',
+  listCover: null,
+  difficultyRatings: [3.56, 7.34],
+};
+
+jest.mock('@/hooks/use-osu-catalog', () => ({
+  useOsuCatalogSearch: jest.fn(() => ({
+    bound: true,
+    songs: [catalogSong],
+    total: 1,
+    recommendedDifficulty: 4.72,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: jest.fn(),
+  })),
+}));
+
 describe('OsuBestScreen 最佳页', () => {
   it('单分区标题 Top 100 并渲染成绩卡', async () => {
     const screen = await render(<OsuBestScreen />);
     expect(screen.getByText('Top 100')).toBeTruthy();
     expect(screen.getByText('1 条成绩')).toBeTruthy();
     expect(screen.getByText('1. Tori no Uta')).toBeTruthy();
+  });
+});
+
+describe('OsuCatalogScreen 曲库页', () => {
+  it('搜索框直连 API 关键词并按 beatmapset 渲染歌曲', async () => {
+    const screen = await render(<OsuCatalogScreen />);
+    expect(screen.getByLabelText('搜索 osu! 谱面')).toBeTruthy();
+    expect(screen.getByPlaceholderText('搜索标题、艺术家、谱师或标签')).toBeTruthy();
+    expect(screen.getByText('已加载 1 / 1 条')).toBeTruthy();
+    expect(screen.getByText('Tori no Uta')).toBeTruthy();
+    expect(screen.getAllByTestId('osu-catalog-difficulty-badge')).toHaveLength(2);
+  });
+
+  it('筛选器不含任何模式控件（m 对玩家不可见不可改）', async () => {
+    const screen = await render(<OsuCatalogScreen />);
+    expect(screen.queryByText('模式')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('展开 osu! 筛选，当前 全部'));
+    expect(screen.queryByText('模式')).toBeNull();
+    expect(screen.getByLabelText('osu! 常规筛选，当前 全部')).toBeTruthy();
+    expect(screen.getByLabelText('osu! 分类筛选，当前 全部')).toBeTruthy();
+    expect(screen.getByLabelText('osu! 流派筛选，当前 全部')).toBeTruthy();
+    expect(screen.getByLabelText('osu! 语言筛选，当前 全部')).toBeTruthy();
+    expect(screen.getByLabelText('osu! 不良内容筛选，当前 隐藏')).toBeTruthy();
+    expect(screen.getByLabelText('osu! 其他筛选，当前 全部')).toBeTruthy();
+  });
+
+  it('未绑定 osu 账号时提示绑定且不发请求渲染', async () => {
+    const { useOsuCatalogSearch } = jest.requireMock<typeof import('@/hooks/use-osu-catalog')>('@/hooks/use-osu-catalog');
+    (useOsuCatalogSearch as jest.Mock).mockReturnValueOnce({
+      bound: false,
+      songs: [],
+      total: undefined,
+      recommendedDifficulty: null,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: jest.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: jest.fn(),
+    });
+    const screen = await render(<OsuCatalogScreen />);
+    expect(screen.getByText('请先在游戏管理中绑定 osu! 账号')).toBeTruthy();
   });
 });

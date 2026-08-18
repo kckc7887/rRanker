@@ -3,8 +3,12 @@ import { z } from 'zod';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import {
   OSU_RULESET_BY_GAME_ID,
+  OsuBeatmapsetSearchResponseSchema,
   OsuBestScoreSchema,
   OsuUserResponseSchema,
+  buildOsuBeatmapsetSearchQuery,
+  type OsuBeatmapsetSearchParams,
+  type OsuBeatmapsetSearchRaw,
   type OsuBestScoreRaw,
   type OsuUserResponseRaw,
 } from '@/domain/osu';
@@ -117,5 +121,11 @@ export class OsuScoreProvider {
       `/users/${userId}/scores/best?mode=${ruleset}&limit=${limit}&offset=0`,
       z.array(OsuBestScoreSchema),
     );
+  }
+
+  /** 谱面搜索（曲库页）：每页 50 份 beatmapset（上游固定），cursor_string 翻页；m 恒为当前模式。 */
+  searchBeatmapsets(params: OsuBeatmapsetSearchParams): Promise<OsuBeatmapsetSearchRaw> {
+    const query = new URLSearchParams(buildOsuBeatmapsetSearchQuery(params)).toString();
+    return this.request(`/beatmapsets/search?${query}`, OsuBeatmapsetSearchResponseSchema);
   }
 }

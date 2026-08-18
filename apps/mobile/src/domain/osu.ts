@@ -91,6 +91,38 @@ export const OsuUserResponseSchema = z.object({
 }).passthrough();
 export type OsuUserResponseRaw = z.infer<typeof OsuUserResponseSchema>;
 
+/** GET /api/v2/beatmapsets/search 响应条目：beatmap（含 mode/mode_int 供按模式过滤）。 */
+const OsuSearchBeatmapSchema = z.object({
+  id: z.number(),
+  beatmapset_id: z.number(),
+  difficulty_rating: z.number(),
+  version: z.string(),
+  mode: z.string().optional(),
+  mode_int: z.number().optional(),
+  status: z.string().optional(),
+}).passthrough();
+
+/** GET /api/v2/beatmapsets/search 响应条目：beatmapset（曲库页的「歌曲」）。 */
+const OsuSearchBeatmapsetSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  title_unicode: z.string().optional(),
+  artist: z.string(),
+  artist_unicode: z.string().optional(),
+  creator: z.string(),
+  covers: OsuCoversSchema,
+  beatmaps: z.array(OsuSearchBeatmapSchema).optional(),
+}).passthrough();
+
+/** GET /api/v2/beatmapsets/search 响应：每页 50 份（上游 osu.beatmaps.max 固定），cursor_string 翻页。 */
+export const OsuBeatmapsetSearchResponseSchema = z.object({
+  beatmapsets: z.array(OsuSearchBeatmapsetSchema),
+  total: z.number(),
+  cursor_string: z.string().nullable().optional(),
+  recommended_difficulty: z.number().nullable().optional(),
+}).passthrough();
+export type OsuBeatmapsetSearchRaw = z.infer<typeof OsuBeatmapsetSearchResponseSchema>;
+
 // ---- 规范化快照（游戏自有 DTO，独立于上游字段） ----
 
 export type OsuBeatmapInfo = {
@@ -136,30 +168,158 @@ export type OsuSnapshotData = {
   bestScores: OsuBestScore[];
 };
 
-/** 曲库页条目：由 Top 100 的 beatmapset 按 id 去重派生（osu 无上游曲库资源）。 */
+/** 曲库页条目：一首歌 = 一个 beatmapset；难度标签为该 set 下当前模式全部 beatmaps 星数升序。 */
 export type OsuCatalogSong = {
   beatmapSetId: number;
   title: string;
   artist: string;
   creator: string;
   listCover: string | null;
+  difficultyRatings: number[];
 };
 
-export function osuCatalogSongsFromBest(scores: readonly OsuBestScore[]): OsuCatalogSong[] {
-  const seen = new Set<number>();
-  const songs: OsuCatalogSong[] = [];
-  for (const score of scores) {
-    if (seen.has(score.beatmapset.id)) continue;
-    seen.add(score.beatmapset.id);
-    songs.push({
-      beatmapSetId: score.beatmapset.id,
-      title: score.beatmapset.title,
-      artist: score.beatmapset.artist,
-      creator: score.beatmapset.creator,
-      listCover: score.beatmapset.listCover,
-    });
-  }
-  return songs;
+// ---- 曲库搜索（beatmapset search）筛选口径 ----
+
+/** 常规组筛选（请求参数 c，点号连接）：与 osu 官网侧栏一致。 */
+export type OsuGeneralFlag =
+  | 'recommended' | 'converts' | 'follows' | 'spotlights' | 'featured_artists';
+
+/** 分类筛选（请求参数 s）：与 osu 官网一致。 */
+export type OsuSearchStatus =
+  | 'any' | 'leaderboard' | 'ranked' | 'qualified' | 'loved'
+  | 'favourites' | 'pending' | 'wip' | 'graveyard' | 'mine';
+
+/** 其他筛选（请求参数 e，点号连接）。 */
+export type OsuExtraFlag = 'video' | 'storyboard';
+
+export const OSU_GENERAL_FILTERS: readonly { flag: OsuGeneralFlag; label: string }[] = [
+  { flag: 'recommended', label: '推荐难度' },
+  { flag: 'converts', label: '包括转谱' },
+  { flag: 'follows', label: '已关注谱师' },
+  { flag: 'spotlights', label: '聚光灯谱面' },
+  { flag: 'featured_artists', label: '精选艺术家' },
+];
+
+export const OSU_STATUS_FILTERS: readonly { value: OsuSearchStatus; label: string }[] = [
+  { value: 'any', label: '全部' },
+  { value: 'leaderboard', label: '拥有排行榜' },
+  { value: 'ranked', label: '上架' },
+  { value: 'qualified', label: '过审' },
+  { value: 'loved', label: '社区喜爱' },
+  { value: 'favourites', label: '收藏' },
+  { value: 'pending', label: '待定' },
+  { value: 'wip', label: '制作中' },
+  { value: 'graveyard', label: '坟场' },
+  { value: 'mine', label: '我做的谱面' },
+];
+
+export const OSU_GENRE_FILTERS: readonly { value: number; label: string }[] = [
+  { value: 0, label: '全部' },
+  { value: 1, label: '未指定' },
+  { value: 2, label: '电子游戏' },
+  { value: 3, label: '动漫' },
+  { value: 4, label: '摇滚' },
+  { value: 5, label: '流行' },
+  { value: 6, label: '其他' },
+  { value: 7, label: '新奇' },
+  { value: 9, label: '嘻哈' },
+  { value: 10, label: '电子' },
+  { value: 11, label: '金属' },
+  { value: 12, label: '古典' },
+  { value: 13, label: '民谣' },
+  { value: 14, label: '爵士' },
+];
+
+export const OSU_LANGUAGE_FILTERS: readonly { value: number; label: string }[] = [
+  { value: 0, label: '全部' },
+  { value: 1, label: '英语' },
+  { value: 2, label: '汉语' },
+  { value: 3, label: '法语' },
+  { value: 4, label: '德语' },
+  { value: 5, label: '意大利语' },
+  { value: 6, label: '日语' },
+  { value: 7, label: '韩语' },
+  { value: 8, label: '西班牙语' },
+  { value: 9, label: '瑞典语' },
+  { value: 10, label: '俄语' },
+  { value: 11, label: '波兰语' },
+  { value: 12, label: '器乐' },
+  { value: 13, label: '未指定' },
+  { value: 14, label: '其他' },
+];
+
+export const OSU_EXTRA_FILTERS: readonly { flag: OsuExtraFlag; label: string }[] = [
+  { flag: 'video', label: '有视频' },
+  { flag: 'storyboard', label: '有故事板' },
+];
+
+/** 不良内容：隐藏（默认，nsfw=false）/ 显示（nsfw=true）。 */
+export const OSU_NSFW_FILTERS: readonly { value: boolean; label: string }[] = [
+  { value: false, label: '隐藏' },
+  { value: true, label: '显示' },
+];
+
+/** 曲库搜索请求（UI 筛选状态口径，经 buildOsuBeatmapsetSearchQuery 转为请求参数）。 */
+export type OsuBeatmapsetSearchParams = {
+  gameId: OsuGameId;
+  q?: string;
+  cursor?: string;
+  general: readonly OsuGeneralFlag[];
+  status: OsuSearchStatus;
+  genre: number;
+  language: number;
+  nsfw: boolean;
+  extras: readonly OsuExtraFlag[];
+};
+
+/**
+ * UI 筛选状态 → 请求参数：
+ * - m 恒为当前游戏模式（OSU_MODE_INT_BY_GAME_ID），玩家不可见不可改；
+ * - c/e 点号连接常规/其他多选，仅在非空时携带；
+ * - s/g/l 非默认（any/0）才携带；nsfw 恒携带（默认 false）；q/cursor_string 非空才携带。
+ */
+export function buildOsuBeatmapsetSearchQuery(
+  params: OsuBeatmapsetSearchParams,
+): Record<string, string> {
+  const query: Record<string, string> = { m: String(OSU_MODE_INT_BY_GAME_ID[params.gameId]) };
+  if (params.general.length > 0) query.c = [...new Set(params.general)].join('.');
+  if (params.status !== 'any') query.s = params.status;
+  if (params.genre !== 0) query.g = String(params.genre);
+  if (params.language !== 0) query.l = String(params.language);
+  query.nsfw = params.nsfw ? 'true' : 'false';
+  if (params.extras.length > 0) query.e = [...new Set(params.extras)].join('.');
+  const q = params.q?.trim();
+  if (q) query.q = q;
+  if (params.cursor) query.cursor_string = params.cursor;
+  return query;
+}
+
+/** 搜索响应 → 曲库条目：标题/作者 unicode 优先；难度仅取当前模式全部 beatmaps（含转谱）并升序。 */
+export function normalizeOsuCatalogSongs(
+  raw: OsuBeatmapsetSearchRaw,
+  gameId: OsuGameId,
+): OsuCatalogSong[] {
+  const ruleset = OSU_RULESET_BY_GAME_ID[gameId];
+  const modeInt = OSU_MODE_INT_BY_GAME_ID[gameId];
+  return raw.beatmapsets.map((set) => {
+    const covers = set.covers as Record<string, string | undefined>;
+    const ratings = (set.beatmaps ?? [])
+      .filter((beatmap) => beatmap.mode === ruleset || beatmap.mode_int === modeInt)
+      .map((beatmap) => beatmap.difficulty_rating)
+      .sort((a, b) => a - b);
+    return {
+      beatmapSetId: set.id,
+      title: set.title_unicode ?? set.title,
+      artist: set.artist_unicode ?? set.artist,
+      creator: set.creator,
+      listCover: covers['list@2x']
+        ?? covers.list
+        ?? covers['card@2x']
+        ?? covers.card
+        ?? null,
+      difficultyRatings: ratings,
+    };
+  });
 }
 
 /** 快照 = 数据 + 来源（与 TUF/喵斯快照同构，data 字段承载游戏自有 DTO）。 */
