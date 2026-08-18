@@ -79,6 +79,15 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     expect(StyleSheet.flatten(screen.getByText('SS').props.style).color).toBe('#FFFFFF');
   });
 
+  it('标签行顺序：难度标签在前、评价标签在后', async () => {
+    const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
+    const row = screen.getByTestId('osu-score-card-tags');
+    const labels = row.children.map((child) => (
+      typeof child === 'string' ? null : child.props.accessibilityLabel
+    ));
+    expect(labels).toEqual(['难度 7.34★', '评价 SS']);
+  });
+
   it('银 SS（XH）底色不变、字色 #def3fa', async () => {
     const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, rank: 'XH' }} />);
     expect(StyleSheet.flatten(screen.getByLabelText('评价 SS').props.style).backgroundColor).toBe('#de31ae');
