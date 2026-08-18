@@ -84,8 +84,11 @@ describe('OsuSongRow 曲库行', () => {
     );
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
     expect(screen.getByText('Lix')).toBeTruthy();
-    expect(screen.getByTestId('osu-catalog-difficulty-badge')).toBeTruthy();
     expect(screen.getByText(' ')).toBeTruthy();
+    const badge = screen.getByTestId('osu-catalog-difficulty-badge');
+    const badgeStyle = StyleSheet.flatten(badge.props.style);
+    expect(badgeStyle.alignSelf).toBe('flex-start');
+    expect(badgeStyle.minWidth).toBe(0);
   });
 });
 

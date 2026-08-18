@@ -44,7 +44,16 @@ export function OsuSongRow({ gameId, song }: {
       }}
       cover={<View />}
       coverImage={coverImage}
-      badges={<GameDifficultyBadge testID="osu-catalog-difficulty-badge" text=" " theme={OSU_CATALOG_BADGE_THEME} />}
+      badges={(
+        <GameDifficultyBadge
+          testID="osu-catalog-difficulty-badge"
+          text=" "
+          theme={OSU_CATALOG_BADGE_THEME}
+          // 仅一个空格字符的窄胶囊：列容器默认交叉轴拉伸会把胶囊拉成整行宽，
+          // 必须左对齐并去掉最小宽度/内边距，宽度只贴住空格字符。
+          style={{ alignSelf: 'flex-start', minWidth: 0, paddingHorizontal: 4 }}
+        />
+      )}
       rowStyle={WRAPPED_COVER_ROW_STYLES.row}
       mainStyle={WRAPPED_COVER_ROW_STYLES.meta}
       titleStyle={WRAPPED_COVER_ROW_STYLES.title}
