@@ -69,6 +69,34 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, pp: null }} />);
     expect(screen.getByText('—')).toBeTruthy();
   });
+
+  it('X 评价渲染 SS 胶囊（#de31ae 白字）', async () => {
+    const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
+    const tag = screen.getByLabelText('评价 SS');
+    const tagStyle = StyleSheet.flatten(tag.props.style);
+    expect(tagStyle.backgroundColor).toBe('#de31ae');
+    expect(tagStyle.borderRadius).toBe(999);
+    expect(StyleSheet.flatten(screen.getByText('SS').props.style).color).toBe('#FFFFFF');
+  });
+
+  it('银 SS（XH）底色不变、字色 #def3fa', async () => {
+    const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, rank: 'XH' }} />);
+    expect(StyleSheet.flatten(screen.getByLabelText('评价 SS').props.style).backgroundColor).toBe('#de31ae');
+    expect(StyleSheet.flatten(screen.getByText('SS').props.style).color).toBe('#def3fa');
+  });
+
+  it('F 评价底色 #393939、字色 #cc3333', async () => {
+    const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, rank: 'F' }} />);
+    const tagStyle = StyleSheet.flatten(screen.getByLabelText('评价 F').props.style);
+    expect(tagStyle.backgroundColor).toBe('#393939');
+    expect(StyleSheet.flatten(screen.getByText('F').props.style).color).toBe('#cc3333');
+  });
+
+  it('未知评价不渲染评价标签，难度标签保留', async () => {
+    const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, rank: 'G' }} />);
+    expect(screen.queryByLabelText(/评价/)).toBeNull();
+    expect(screen.getByLabelText('难度 7.34★')).toBeTruthy();
+  });
 });
 
 describe('OsuSongRow 曲库行', () => {

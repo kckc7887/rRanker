@@ -302,5 +302,7 @@ const styles = StyleSheet.create({
   layeredRateFrame: { minWidth: 32, height: 24 },
   layeredRateContent: { paddingHorizontal: 8 },
   statusText: { fontSize: 10, lineHeight: 12, fontWeight: '900', letterSpacing: 0.45, textAlign: 'center', includeFontPadding: false },
-  normalBadge: { backgroundColor: '#E5E7EB' }, normalText: { color: '#374151' },
+  // 999 胶囊：SS 以下普通评价与 SS 以上渐变评价统一胶囊形（statusBadge 的 9 半径由 FC/AP/FS 玻璃徽章保留）
+  normalBadge: { backgroundColor: '#E5E7EB', borderRadius: 999 },
+  normalText: { color: '#374151' },
 });

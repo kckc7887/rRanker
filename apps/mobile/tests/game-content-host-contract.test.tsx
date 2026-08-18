@@ -110,5 +110,7 @@ test('exports the stable score-card and song-row host tree contract', async () =
   const canonicalTrees = canonicalize(trees) as unknown[];
   const hash = createHash('sha256').update(JSON.stringify(canonicalTrees)).digest('hex');
   expect(trees).toHaveLength(5);
-  expect(hash).toBe('dc8083f720a32aefd28df87577fa369ab30d5afe94e9f7e7126e4f019106fc55');
+  // 2026-08-18 有意视觉变更（用户要求）：舞萌 SS 以下普通评价标签统一胶囊形（normalBadge borderRadius 9→999），
+  // 基线随用户指定样式更新（非重构漂移），见 changelog/2026-08-18_osu评价标签与舞萌评价胶囊统一.md。
+  expect(hash).toBe('e45be0e9a3441afcbe9301bb76ec164a1f80d0c40d103603a3329dbb32f51033');
 });
