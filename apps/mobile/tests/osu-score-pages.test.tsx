@@ -132,7 +132,7 @@ describe('OsuSongRow 曲库行', () => {
     expect(badgeStyle.minWidth).toBe(0);
   });
 
-  it('每个难度胶囊按星数命中官方十一档色阶（不再全部粉色）', async () => {
+  it('每个难度胶囊按星数取官方连续色阶（不再全部粉色）', async () => {
     const screen = await render(
       <OsuSongRow gameId="osu-standard" song={{
         beatmapSetId: 3720,
@@ -145,10 +145,10 @@ describe('OsuSongRow 曲库行', () => {
     );
     const badges = screen.getAllByTestId('osu-catalog-difficulty-badge');
     expect(badges).toHaveLength(3);
-    // 0.9 → #4290FB；3.56 → #F6F05C；7.34 → #6563DE。
-    expect(StyleSheet.flatten(badges[0].props.style).backgroundColor).toBe('#4290FB');
-    expect(StyleSheet.flatten(badges[1].props.style).backgroundColor).toBe('#F6F05C');
-    expect(StyleSheet.flatten(badges[2].props.style).backgroundColor).toBe('#6563DE');
+    // 0.9 → #4BB3FE；3.56 → #F9D760；7.34 → #4240B0（osu-web 连续色阶伽马2.2插值）。
+    expect(StyleSheet.flatten(badges[0].props.style).backgroundColor).toBe('#4BB3FE');
+    expect(StyleSheet.flatten(badges[1].props.style).backgroundColor).toBe('#F9D760');
+    expect(StyleSheet.flatten(badges[2].props.style).backgroundColor).toBe('#4240B0');
   });
 
   it('无难度时不渲染任何胶囊', async () => {
