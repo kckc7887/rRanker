@@ -251,6 +251,33 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        
+      - name: Set iOS build number
+        shell: pwsh
+        run: |
+          $config = Get-Content app.json -Raw | ConvertFrom-Json
+
+          if (-not $config.expo.ios) {
+            $config.expo | Add-Member `
+              -NotePropertyName ios `
+              -NotePropertyValue ([PSCustomObject]@{})
+          }
+
+          if ($config.expo.ios.PSObject.Properties.Name -contains "buildNumber") {
+            $config.expo.ios.buildNumber = [string]$env:BUILD_NUMBER
+          } else {
+            $config.expo.ios | Add-Member `
+              -NotePropertyName buildNumber `
+              -NotePropertyValue ([string]$env:BUILD_NUMBER)
+          }
+
+          $config |
+            ConvertTo-Json -Depth 100 |
+            Set-Content `
+              -Path app.json `
+              -Encoding utf8NoBOM
+
+          Write-Host "Set expo.ios.buildNumber = $env:BUILD_NUMBER"
 
       - name: Expo prebuild
         run: npx expo prebuild --platform ios --no-install
