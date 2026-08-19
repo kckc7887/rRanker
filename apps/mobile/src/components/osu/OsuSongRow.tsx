@@ -12,7 +12,8 @@ import { resolveOsuStarTheme } from '@/domain/osu-star-theme';
 /**
  * osu! 曲库行：封面（失败回退 ♪）、标题、作者不变；
  * 难度标签为该 beatmapset 下当前模式全部难度（升序）的空胶囊，可换行、不显示任何字，
- * 每个胶囊按星数命中 osu 官方十一档色阶（osu-star-theme）。歌曲详情未接入，行不可点击。
+ * 每个胶囊按星数命中 osu 官方十一档色阶（osu-star-theme）。
+ * 点击进入歌曲详情页（/songs/{beatmapset id}，路由已分发 osu 详情）。
  */
 export function OsuSongRow({ gameId, song }: {
   gameId: OsuGameId;
@@ -59,7 +60,6 @@ export function OsuSongRow({ gameId, song }: {
       titleStyle={WRAPPED_COVER_ROW_STYLES.title}
       subtitleStyle={WRAPPED_COVER_ROW_STYLES.composer}
       openStyle={WRAPPED_COVER_ROW_STYLES.openSong}
-      pressable={false}
       testID={`osu-song-row-${song.beatmapSetId}`}
     />
   );

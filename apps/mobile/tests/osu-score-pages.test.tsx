@@ -46,6 +46,8 @@ const score: OsuBestScore = {
     creator: 'James',
     listCover: 'https://assets.ppy.sh/beatmaps/3720/covers/list.jpg',
   },
+  statistics: { perfect: 520, great: 12, good: 3, ok: 1, meh: 0, miss: 0 },
+  achievedAt: '2026-01-01T00:00:00.000Z',
 };
 
 describe('OsuScoreCard 最佳成绩卡', () => {

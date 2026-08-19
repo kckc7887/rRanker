@@ -3,10 +3,12 @@ import { z } from 'zod';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import {
   OSU_RULESET_BY_GAME_ID,
+  OsuBeatmapsetLookupSchema,
   OsuBeatmapsetSearchResponseSchema,
   OsuBestScoreSchema,
   OsuUserResponseSchema,
   buildOsuBeatmapsetSearchQuery,
+  type OsuBeatmapsetLookupRaw,
   type OsuBeatmapsetSearchParams,
   type OsuBeatmapsetSearchRaw,
   type OsuBestScoreRaw,
@@ -127,5 +129,10 @@ export class OsuScoreProvider {
   searchBeatmapsets(params: OsuBeatmapsetSearchParams): Promise<OsuBeatmapsetSearchRaw> {
     const query = new URLSearchParams(buildOsuBeatmapsetSearchQuery(params)).toString();
     return this.request(`/beatmapsets/search?${query}`, OsuBeatmapsetSearchResponseSchema);
+  }
+
+  /** 谱面集详情（歌曲详情页）：返回 BeatmapsetExtended 原始数据，模式过滤在规范化层做。 */
+  getBeatmapset(beatmapsetId: number | string): Promise<OsuBeatmapsetLookupRaw> {
+    return this.request(`/beatmapsets/${encodeURIComponent(String(beatmapsetId))}`, OsuBeatmapsetLookupSchema);
   }
 }

@@ -30,6 +30,11 @@ const OsuCoversSchema = z.object({
   'slimcover@2x': z.string().optional(),
 }).passthrough();
 
+/**
+ * 单张谱面原始结构（BeatmapExtended 属性）：详情页需要 bpm/cs（mania 即键数）/
+ * drain（HP）/accuracy（OD）/ar/物件计数/时长等属性；上游可能对部分字段返回
+ * null（未统计），统一 nullable 容错，缺失时规范化为 null。
+ */
 const OsuBeatmapSchema = z.object({
   id: z.number(),
   beatmapset_id: z.number(),
@@ -38,7 +43,18 @@ const OsuBeatmapSchema = z.object({
   mode: z.string(),
   status: z.string().optional(),
   total_length: z.number().optional(),
-  max_combo: z.number().optional(),
+  max_combo: z.number().nullable().optional(),
+  bpm: z.number().nullable().optional(),
+  cs: z.number().nullable().optional(),
+  drain: z.number().nullable().optional(),
+  accuracy: z.number().nullable().optional(),
+  ar: z.number().nullable().optional(),
+  count_circles: z.number().nullable().optional(),
+  count_sliders: z.number().nullable().optional(),
+  count_spinners: z.number().nullable().optional(),
+  hit_length: z.number().nullable().optional(),
+  mode_int: z.number().nullable().optional(),
+  url: z.string().nullable().optional(),
 }).passthrough();
 
 const OsuBeatmapsetSchema = z.object({
@@ -57,6 +73,16 @@ const OsuWeightSchema = z.object({
   pp: z.number(),
 }).passthrough();
 
+/** 成绩判定计数（20220705 版 statistics）：各键可能缺失或为 null，逐字段容错。 */
+const OsuScoreStatisticsSchema = z.object({
+  perfect: z.number().nullable().optional(),
+  great: z.number().nullable().optional(),
+  good: z.number().nullable().optional(),
+  ok: z.number().nullable().optional(),
+  meh: z.number().nullable().optional(),
+  miss: z.number().nullable().optional(),
+}).passthrough();
+
 /** 个人最佳成绩条目（x-api-version 20220705 新版格式 + legacy score 字段容错）。 */
 export const OsuBestScoreSchema = z.object({
   id: z.number(),
@@ -70,6 +96,9 @@ export const OsuBestScoreSchema = z.object({
   beatmap: OsuBeatmapSchema.optional().nullable(),
   beatmapset: OsuBeatmapsetSchema.optional().nullable(),
   weight: OsuWeightSchema.optional().nullable(),
+  statistics: OsuScoreStatisticsSchema.nullable().optional(),
+  ended_at: z.string().nullable().optional(),
+  created_at: z.string().nullable().optional(),
 }).passthrough();
 export type OsuBestScoreRaw = z.infer<typeof OsuBestScoreSchema>;
 
@@ -123,6 +152,37 @@ export const OsuBeatmapsetSearchResponseSchema = z.object({
 }).passthrough();
 export type OsuBeatmapsetSearchRaw = z.infer<typeof OsuBeatmapsetSearchResponseSchema>;
 
+/** beatmapset 的流派（BeatmapsetExtended.genre，仅取 name 展示）。 */
+const OsuGenreSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().optional(),
+}).passthrough();
+
+/** beatmapset 的语言（BeatmapsetExtended.language，仅取 name 展示）。 */
+const OsuLanguageSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().optional(),
+}).passthrough();
+
+/** GET /api/v2/beatmapsets/{id} 响应（BeatmapsetExtended，歌曲详情页数据源）。 */
+export const OsuBeatmapsetLookupSchema = z.object({
+  id: z.number(),
+  title: z.string(),
+  title_unicode: z.string().optional(),
+  artist: z.string(),
+  artist_unicode: z.string().optional(),
+  creator: z.string(),
+  covers: OsuCoversSchema,
+  status: z.string().optional(),
+  genre: OsuGenreSchema.nullable().optional(),
+  language: OsuLanguageSchema.nullable().optional(),
+  rating: z.number().nullable().optional(),
+  favourite_count: z.number().nullable().optional(),
+  play_count: z.number().nullable().optional(),
+  beatmaps: z.array(OsuBeatmapSchema).optional(),
+}).passthrough();
+export type OsuBeatmapsetLookupRaw = z.infer<typeof OsuBeatmapsetLookupSchema>;
+
 // ---- 规范化快照（游戏自有 DTO，独立于上游字段） ----
 
 export type OsuBeatmapInfo = {
@@ -140,6 +200,16 @@ export type OsuBeatmapsetInfo = {
   listCover: string | null;
 };
 
+/** 判定计数展示口径：旧缓存/旧版成绩无 statistics 时整体为 null。 */
+export type OsuScoreStatistics = {
+  perfect: number | null;
+  great: number | null;
+  good: number | null;
+  ok: number | null;
+  meh: number | null;
+  miss: number | null;
+};
+
 export type OsuBestScore = {
   id: number;
   /** 展示用得分：新版 total_score，legacy 回退 score/classic_total_score。 */
@@ -150,6 +220,10 @@ export type OsuBestScore = {
   rank: string;
   beatmap: OsuBeatmapInfo;
   beatmapset: OsuBeatmapsetInfo;
+  /** 判定计数（perfect/great/good/ok/meh/miss）；旧版成绩或旧缓存无该数据时为 null。 */
+  statistics: OsuScoreStatistics | null;
+  /** 达成时间（ISO 字符串）：新版 ended_at，legacy 回退 created_at；缺失为 null。 */
+  achievedAt: string | null;
 };
 
 export type OsuPlayer = {
@@ -176,6 +250,39 @@ export type OsuCatalogSong = {
   creator: string;
   listCover: string | null;
   difficultyRatings: number[];
+};
+
+/** 歌曲详情页单张谱面（BeatmapExtended 规范化）：数值属性缺失为 null，展示层负责 '—'。 */
+export type OsuBeatmapDetail = {
+  id: number;
+  version: string;
+  difficultyRating: number;
+  mode: string | null;
+  totalLength: number | null;
+  bpm: number | null;
+  cs: number | null;
+  drain: number | null;
+  accuracy: number | null;
+  ar: number | null;
+  countCircles: number | null;
+  countSliders: number | null;
+  countSpinners: number | null;
+  maxCombo: number | null;
+};
+
+/** 歌曲详情页歌曲（GET /beatmapsets/{id} 规范化）：beatmaps 已按当前模式过滤并按星数降序。 */
+export type OsuBeatmapsetDetail = {
+  beatmapSetId: number;
+  title: string;
+  artist: string;
+  creator: string;
+  cover: string | null;
+  status: string | null;
+  genreName: string | null;
+  languageName: string | null;
+  rating: number | null;
+  favouriteCount: number | null;
+  beatmaps: OsuBeatmapDetail[];
 };
 
 // ---- 曲库搜索（beatmapset search）筛选口径 ----
@@ -322,6 +429,60 @@ export function normalizeOsuCatalogSongs(
   });
 }
 
+/**
+ * beatmapset lookup 响应 → 歌曲详情 DTO：
+ * - 标题/艺术家 unicode 优先；封面取方形卡片图优先（详情 Hero 为方形，card@2x 分辨率最合适）；
+ * - 难度过滤口径与曲库 normalizeOsuCatalogSongs 完全一致（mode === ruleset || mode_int === modeInt），
+ *   过滤后按星数从高到低排序（详情页轮播自高星起）；
+ * - 全部数值属性 optionalNumber 容错，缺失归一化为 null。
+ */
+export function normalizeOsuBeatmapsetDetail(
+  raw: OsuBeatmapsetLookupRaw,
+  gameId: OsuGameId,
+): OsuBeatmapsetDetail {
+  const ruleset = OSU_RULESET_BY_GAME_ID[gameId];
+  const modeInt = OSU_MODE_INT_BY_GAME_ID[gameId];
+  const covers = raw.covers as Record<string, string | undefined>;
+  const beatmaps = (raw.beatmaps ?? [])
+    .filter((beatmap) => beatmap.mode === ruleset || beatmap.mode_int === modeInt)
+    .map((beatmap) => ({
+      id: beatmap.id,
+      version: beatmap.version,
+      difficultyRating: beatmap.difficulty_rating,
+      mode: beatmap.mode ?? null,
+      totalLength: optionalNumber(beatmap.total_length),
+      bpm: optionalNumber(beatmap.bpm),
+      cs: optionalNumber(beatmap.cs),
+      drain: optionalNumber(beatmap.drain),
+      accuracy: optionalNumber(beatmap.accuracy),
+      ar: optionalNumber(beatmap.ar),
+      countCircles: optionalNumber(beatmap.count_circles),
+      countSliders: optionalNumber(beatmap.count_sliders),
+      countSpinners: optionalNumber(beatmap.count_spinners),
+      maxCombo: optionalNumber(beatmap.max_combo),
+    }))
+    .sort((left, right) => right.difficultyRating - left.difficultyRating);
+  return {
+    beatmapSetId: raw.id,
+    title: raw.title_unicode ?? raw.title,
+    artist: raw.artist_unicode ?? raw.artist,
+    creator: raw.creator,
+    cover: covers['card@2x']
+      ?? covers.card
+      ?? covers['cover@2x']
+      ?? covers.cover
+      ?? covers['list@2x']
+      ?? covers.list
+      ?? null,
+    status: raw.status ?? null,
+    genreName: raw.genre?.name ?? null,
+    languageName: raw.language?.name ?? null,
+    rating: optionalNumber(raw.rating),
+    favouriteCount: optionalNumber(raw.favourite_count),
+    beatmaps,
+  };
+}
+
 /** 快照 = 数据 + 来源（与 TUF/喵斯快照同构，data 字段承载游戏自有 DTO）。 */
 export type OsuSnapshot = {
   data: OsuSnapshotData;
@@ -351,6 +512,16 @@ const OsuBeatmapsetInfoSnapshotSchema = z.object({
   listCover: z.string().nullable(),
 }).passthrough();
 
+/** 快照中的判定计数：可选字段（旧缓存无 statistics 时整体缺失），向后兼容不迁移。 */
+const OsuScoreStatisticsSnapshotSchema = z.object({
+  perfect: z.number().nullable().optional(),
+  great: z.number().nullable().optional(),
+  good: z.number().nullable().optional(),
+  ok: z.number().nullable().optional(),
+  meh: z.number().nullable().optional(),
+  miss: z.number().nullable().optional(),
+}).passthrough();
+
 const OsuBestScoreSnapshotSchema = z.object({
   id: z.number(),
   score: z.number(),
@@ -360,6 +531,8 @@ const OsuBestScoreSnapshotSchema = z.object({
   rank: z.string(),
   beatmap: OsuBeatmapInfoSnapshotSchema,
   beatmapset: OsuBeatmapsetInfoSnapshotSchema,
+  statistics: OsuScoreStatisticsSnapshotSchema.nullable().optional(),
+  achievedAt: z.string().nullable().optional(),
 }).passthrough();
 
 const OsuPlayerSnapshotSchema = z.object({
@@ -437,12 +610,47 @@ export function normalizeOsuSnapshot(
             ?? covers.card
             ?? null,
         },
+        // 判定计数：上游缺失（旧版成绩）时整体归一化为 null，展示层显示 '—'。
+        statistics: raw.statistics ? {
+          perfect: optionalNumber(raw.statistics.perfect),
+          great: optionalNumber(raw.statistics.great),
+          good: optionalNumber(raw.statistics.good),
+          ok: optionalNumber(raw.statistics.ok),
+          meh: optionalNumber(raw.statistics.meh),
+          miss: optionalNumber(raw.statistics.miss),
+        } : null,
+        // 达成时间：新版 ended_at 优先，legacy 回退 created_at。
+        achievedAt: raw.ended_at ?? raw.created_at ?? null,
       }];
     }),
   };
 }
 
 // ---- 展示口径 ----
+
+/** beatmapset 状态 → 中文标签（详情页简要信息栏「分类」列；未知状态展示层回退「未知」）。 */
+export const OSU_STATUS_LABELS: Record<string, string> = {
+  ranked: '上架',
+  approved: '认可',
+  qualified: '过审',
+  loved: '社区喜爱',
+  pending: '待定',
+  wip: '制作中',
+  graveyard: '坟场',
+};
+
+/**
+ * 推荐星级（纯函数，不依赖上游 recommended_difficulty）：
+ * - osu-taiko：pp^0.35 × 0.27；
+ * - 其余三模式（standard/catch/mania）：pp^0.4 × 0.195；
+ * - pp 为 null/undefined/非有限数/≤0（未绑定、未加载、无成绩）时返回 1★。
+ */
+export function recommendedOsuStar(gameId: OsuGameId, pp: number | null | undefined): number {
+  if (pp == null || !Number.isFinite(pp) || pp <= 0) return 1;
+  const base = gameId === 'osu-taiko' ? 0.35 : 0.4;
+  const scale = gameId === 'osu-taiko' ? 0.27 : 0.195;
+  return Math.pow(pp, base) * scale;
+}
 
 /** PP 展示：四舍五入整数 + 千分位（osu! 官方口径）。 */
 export function formatOsuPp(pp: number | null | undefined): string {

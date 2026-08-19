@@ -11,7 +11,7 @@ import { OsuRankTag } from './OsuRankTag';
 
 /**
  * osu! 最佳成绩卡：标题歌名、主信息得分、下方难度标签（N★）+ 评价标签、
- * 右侧上下居中小字准确率 + 大字 PP。歌曲详情页暂未接入，卡片不可点击。
+ * 右侧上下居中小字准确率 + 大字 PP。点击进入歌曲详情页（songId = beatmapset id）。
  */
 export function OsuScoreCard({ gameId, score, position }: {
   gameId: OsuGameId;
@@ -41,6 +41,7 @@ export function OsuScoreCard({ gameId, score, position }: {
       cardStyle={COMPACT_METRIC_CARD_STYLES.card}
       mainStyle={COMPACT_METRIC_CARD_STYLES.main}
       titleStyle={COMPACT_METRIC_CARD_STYLES.title}
+      pressedStyle={styles.pressed}
       metricSide={{
         blockStyle: COMPACT_METRIC_CARD_STYLES.stats,
         lines: [
@@ -78,4 +79,5 @@ const styles = StyleSheet.create({
   scoreLabel: { fontSize: 11, fontWeight: '700' },
   score: { fontSize: 24, fontWeight: '900', letterSpacing: 0.2 },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  pressed: { opacity: 0.7 },
 });

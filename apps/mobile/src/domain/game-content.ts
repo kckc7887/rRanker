@@ -18,7 +18,8 @@ export type GameChartIdentity<TGameId extends string = GameId> = GameContentId<T
 export type GameNoteValue = {
   key: string;
   label: string;
-  value: number;
+  /** 判定/物量计数值；允许 string 以承载无数据占位符（如 osu 判定表的 '—'）。 */
+  value: number | string;
 };
 
 export type GameNoteGroup = {
