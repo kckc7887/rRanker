@@ -74,10 +74,17 @@ jobs:
             throw "ASC_PRIVATE_KEY_BASE64 is missing"
           }
 
-          $keyDirectory = Join-Path $env:RUNNER_TEMP "asc-private-keys"
-          New-Item -ItemType Directory -Force -Path $keyDirectory | Out-Null
+          $keyDirectory = Join-Path $HOME ".appstoreconnect/private_keys"
 
-          $keyPath = Join-Path $keyDirectory "AuthKey_$($env:ASC_KEY_ID).p8"
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "$keyDirectory" |
+            Out-Null
+
+          $keyPath = Join-Path `
+            $keyDirectory `
+            "AuthKey_$($env:ASC_KEY_ID).p8"
 
           [IO.File]::WriteAllBytes(
             $keyPath,
@@ -87,7 +94,8 @@ jobs:
           chmod 600 "$keyPath"
 
           "ASC_KEY_PATH=$keyPath" >> $env:GITHUB_ENV
-          "API_PRIVATE_KEYS_DIR=$keyDirectory" >> $env:GITHUB_ENV
+
+          Write-Host "App Store Connect API key installed"
 
       - name: Get next TestFlight build number
         id: build
@@ -599,8 +607,8 @@ jobs:
             --upload-app `
             -f "$env:IPA_PATH" `
             -t ios `
-            --api-key "$env:ASC_KEY_ID" `
-            --api-issuer "$env:ASC_ISSUER_ID"
+            --apiKey "$env:ASC_KEY_ID" `
+            --apiIssuer "$env:ASC_ISSUER_ID"
 
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
