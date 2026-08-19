@@ -7,6 +7,7 @@ import type { OsuGameId } from '@/domain/game-mode-family';
 import { formatOsuAccuracy, formatOsuPp, type OsuBestScore } from '@/domain/osu';
 import { useAppTheme } from '@/theme/app-theme';
 import { OsuDifficultyBadge } from './OsuDifficultyBadge';
+import { OsuModBadge } from './OsuModBadge';
 import { OsuRankTag } from './OsuRankTag';
 
 /**
@@ -57,6 +58,9 @@ export function OsuScoreCard({ gameId, score, position }: {
             <>
               <OsuDifficultyBadge star={score.beatmap.difficultyRating} />
               <OsuRankTag rank={score.rank} testID={`osu-rank-tag-${score.rank}`} />
+              {(score.mods ?? []).map((acronym) => (
+                <OsuModBadge key={acronym} acronym={acronym} />
+              ))}
             </>
           ),
           testID: 'osu-score-card-tags',

@@ -9,6 +9,16 @@ import type { OsuBestScore } from '@/domain/osu';
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+// 模组徽章测试固定走文字回退形态：图标根路径置空（hook 短路不发请求、不触碰文件系统）
+jest.mock('@/providers/osu-config', () => ({
+  ...jest.requireActual<typeof import('@/providers/osu-config')>('@/providers/osu-config'),
+  OSU_MOD_ICONS_ROOT: '',
+}));
+jest.mock('expo-file-system', () => ({
+  Directory: class {},
+  File: class {},
+  Paths: { document: 'mock' },
+}));
 jest.mock('@/theme/app-theme', () => ({
   useAppTheme: () => ({
     background: '#fff',
@@ -47,6 +57,7 @@ const score: OsuBestScore = {
     listCover: 'https://assets.ppy.sh/beatmaps/3720/covers/list.jpg',
   },
   statistics: { perfect: 520, great: 12, good: 3, ok: 1, meh: 0, miss: 0 },
+  mods: ['HD', 'DT'],
   achievedAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -81,13 +92,40 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     expect(StyleSheet.flatten(screen.getByText('SS').props.style).color).toBe('#FFFFFF');
   });
 
-  it('标签行顺序：难度标签在前、评价标签在后', async () => {
+  it('标签行顺序：难度标签在前、评价标签其后、模组徽章按上游顺序在后', async () => {
     const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
     const row = screen.getByTestId('osu-score-card-tags');
     const labels = row.children.map((child) => (
       typeof child === 'string' ? null : child.props.accessibilityLabel
     ));
-    expect(labels).toEqual(['难度 7.34★', '评价 SS']);
+    expect(labels).toEqual(['难度 7.34★', '评价 SS', '模组 HD', '模组 DT']);
+  });
+
+  it('模组徽章：圆形（增难红 #FF6666）+ 文字回退形态（图标根路径未配置）', async () => {
+    const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
+    const hd = screen.getByTestId('osu-mod-badge-HD');
+    const hdStyle = StyleSheet.flatten(hd.props.style);
+    expect(hdStyle.backgroundColor).toBe('#FF6666');
+    expect(hdStyle.borderRadius).toBe(11);
+    expect(hdStyle.width).toBe(22);
+    expect(hdStyle.height).toBe(22);
+    expect(StyleSheet.flatten(screen.getByText('HD').props.style).color).toBe('#591E1E');
+    expect(screen.getByTestId('osu-mod-badge-DT')).toBeTruthy();
+  });
+
+  it('空 mods 不渲染任何模组徽章', async () => {
+    const screen = await render(
+      <OsuScoreCard gameId="osu-standard" score={{ ...score, mods: [] }} />,
+    );
+    expect(screen.queryAllByTestId(/osu-mod-badge-/)).toHaveLength(0);
+  });
+
+  it('未知模组 acronym 静默跳过，已知模组保留', async () => {
+    const screen = await render(
+      <OsuScoreCard gameId="osu-standard" score={{ ...score, mods: ['HD', 'ZZ'] }} />,
+    );
+    expect(screen.getByTestId('osu-mod-badge-HD')).toBeTruthy();
+    expect(screen.queryByTestId('osu-mod-badge-ZZ')).toBeNull();
   });
 
   it('银 SS（XH）底色不变、字色 #def3fa', async () => {

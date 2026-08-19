@@ -83,6 +83,15 @@ const OsuScoreStatisticsSchema = z.object({
   miss: z.number().nullable().optional(),
 }).passthrough();
 
+/**
+ * 成绩模组（mods）：legacy 格式为 acronym 字符串数组，新版 solo score 为
+ * { acronym, settings } 对象数组；两者并存容错，规范化时统一提取 acronym。
+ */
+const OsuScoreModsSchema = z.array(z.union([
+  z.string(),
+  z.object({ acronym: z.string().optional() }).passthrough(),
+])).optional().nullable();
+
 /** 个人最佳成绩条目（x-api-version 20220705 新版格式 + legacy score 字段容错）。 */
 export const OsuBestScoreSchema = z.object({
   id: z.number(),
@@ -97,6 +106,7 @@ export const OsuBestScoreSchema = z.object({
   beatmapset: OsuBeatmapsetSchema.optional().nullable(),
   weight: OsuWeightSchema.optional().nullable(),
   statistics: OsuScoreStatisticsSchema.nullable().optional(),
+  mods: OsuScoreModsSchema,
   ended_at: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),
 }).passthrough();
@@ -224,6 +234,8 @@ export type OsuBestScore = {
   beatmapset: OsuBeatmapsetInfo;
   /** 判定计数（perfect/great/good/ok/meh/miss）；旧版成绩或旧缓存无该数据时为 null。 */
   statistics: OsuScoreStatistics | null;
+  /** 达成成绩所用模组的 acronym（如 HD/DT）；旧版成绩或旧缓存无该数据时为空数组。 */
+  mods: string[];
   /** 达成时间（ISO 字符串）：新版 ended_at，legacy 回退 created_at；缺失为 null。 */
   achievedAt: string | null;
 };
@@ -537,6 +549,8 @@ const OsuBestScoreSnapshotSchema = z.object({
   beatmap: OsuBeatmapInfoSnapshotSchema,
   beatmapset: OsuBeatmapsetInfoSnapshotSchema,
   statistics: OsuScoreStatisticsSnapshotSchema.nullable().optional(),
+  /** 可选字段（旧缓存无 mods 时整体缺失），向后兼容不迁移。 */
+  mods: z.array(z.string()).optional(),
   achievedAt: z.string().nullable().optional(),
 }).passthrough();
 
@@ -570,6 +584,19 @@ export const OsuSnapshotSchema = z.object({
 
 function optionalNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * 成绩模组提取：legacy 字符串直接取，新版对象取 acronym；
+ * 无效项（空串/无 acronym/非字符串非对象）静默丢弃，整体缺失归一化为空数组。
+ */
+function normalizeOsuScoreMods(mods: OsuBestScoreRaw['mods']): string[] {
+  if (!mods) return [];
+  return mods.flatMap((mod) => {
+    if (typeof mod === 'string') return mod ? [mod] : [];
+    if (typeof mod === 'object' && mod != null && mod.acronym) return [mod.acronym];
+    return [];
+  });
 }
 
 /** 原始响应 → 游戏自有快照（纯函数，成绩缺 beatmap/beatmapset 的条目不可展示，剔除）。 */
@@ -626,6 +653,8 @@ export function normalizeOsuSnapshot(
         } : null,
         // 达成时间：新版 ended_at 优先，legacy 回退 created_at。
         achievedAt: raw.ended_at ?? raw.created_at ?? null,
+        // 模组 acronym：legacy 字符串/新版对象统一提取；缺失为空数组。
+        mods: normalizeOsuScoreMods(raw.mods),
       }];
     }),
   };

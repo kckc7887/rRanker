@@ -39,6 +39,7 @@ import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { OsuModBadge } from './OsuModBadge';
 import { OsuRankTag } from './OsuRankTag';
 
 const CARD_GAP = 12;
@@ -404,6 +405,9 @@ function DifficultyCard({
         {score ? (
           <View style={styles.badgeRow}>
             <OsuRankTag rank={score.rank} testID={`osu-detail-rank-${score.rank}`} />
+            {(score.mods ?? []).map((acronym) => (
+              <OsuModBadge key={acronym} acronym={acronym} />
+            ))}
           </View>
         ) : null}
       </View>

@@ -8,6 +8,7 @@ import {
   normalizeOsuSnapshot,
   OSU_RULESET_BY_GAME_ID,
   OsuBeatmapsetLookupSchema,
+  OsuSnapshotSchema,
   recommendedOsuStar,
   type OsuBeatmapsetLookupRaw,
   type OsuBeatmapsetSearchRaw,
@@ -451,6 +452,47 @@ describe('osu! 成绩判定计数与达成时间', () => {
       created_at: '2025-06-01T00:00:00.000Z',
     })]);
     expect(snapshot.bestScores[0].achievedAt).toBe('2025-06-01T00:00:00.000Z');
+  });
+});
+
+describe('osu! 成绩模组 mods', () => {
+  it('legacy 字符串数组直接提取 acronym', () => {
+    const snapshot = normalizeOsuSnapshot(rawUser(), [rawScore({ mods: ['HD', 'DT'] })]);
+    expect(snapshot.bestScores[0].mods).toEqual(['HD', 'DT']);
+  });
+
+  it('新版 solo score 对象数组（含 settings）取 acronym', () => {
+    const snapshot = normalizeOsuSnapshot(rawUser(), [rawScore({
+      mods: [{ acronym: 'HD', settings: {} }, { acronym: 'DT', settings: { speed_change: 1.5 } }],
+    })]);
+    expect(snapshot.bestScores[0].mods).toEqual(['HD', 'DT']);
+  });
+
+  it('混合格式：空串与无 acronym 的对象静默丢弃，其余保留', () => {
+    const snapshot = normalizeOsuSnapshot(rawUser(), [rawScore({
+      mods: ['', { settings: {} }, 'HD', { acronym: '' }, 'DT'],
+    })]);
+    expect(snapshot.bestScores[0].mods).toEqual(['HD', 'DT']);
+  });
+
+  it('mods 缺失或为 null 时归一化为空数组', () => {
+    const missing = normalizeOsuSnapshot(rawUser(), [rawScore({ mods: undefined })]);
+    expect(missing.bestScores[0].mods).toEqual([]);
+    const nullable = normalizeOsuSnapshot(rawUser(), [rawScore({ mods: null })]);
+    expect(nullable.bestScores[0].mods).toEqual([]);
+  });
+
+  it('快照 Schema：旧缓存无 mods 字段时通过校验（向后兼容不迁移）', () => {
+    const snapshot = normalizeOsuSnapshot(rawUser(), [rawScore({ mods: ['HD'] })]);
+    const legacy = JSON.parse(JSON.stringify({
+      data: {
+        player: { ...snapshot.player },
+        bestScores: [{ ...snapshot.bestScores[0], mods: undefined }],
+      },
+      source: { kind: 'osu', label: 'osu.ppy.sh', updatedAt: '2026-01-01T00:00:00.000Z', isStale: false },
+    })) as Record<string, unknown>;
+    const parsed = OsuSnapshotSchema.parse(legacy);
+    expect(parsed.data.bestScores[0].mods).toBeUndefined();
   });
 });
 
