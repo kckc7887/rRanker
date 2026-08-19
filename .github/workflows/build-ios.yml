@@ -1,0 +1,192 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo prebuild
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: cd ios && pod install
+
+      - name: Install Apple signing credentials
+        shell: pwsh
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "distribution.p12"
+          $profilePath = Join-Path $env:RUNNER_TEMP "profile.mobileprovision"
+          $profilePlist = Join-Path $env:RUNNER_TEMP "profile.plist"
+          $keychainPath = Join-Path $env:RUNNER_TEMP "app-signing.keychain-db"
+
+          [IO.File]::WriteAllBytes(
+            $certPath,
+            [Convert]::FromBase64String($env:BUILD_CERTIFICATE_BASE64)
+          )
+
+          [IO.File]::WriteAllBytes(
+            $profilePath,
+            [Convert]::FromBase64String($env:BUILD_PROVISION_PROFILE_BASE64)
+          )
+
+          security create-keychain -p "$env:KEYCHAIN_PASSWORD" "$keychainPath"
+          security set-keychain-settings -lut 21600 "$keychainPath"
+          security unlock-keychain -p "$env:KEYCHAIN_PASSWORD" "$keychainPath"
+
+          security import "$certPath" `
+            -P "$env:P12_PASSWORD" `
+            -A `
+            -t cert `
+            -f pkcs12 `
+            -k "$keychainPath"
+
+          security set-key-partition-list `
+            -S "apple-tool:,apple:" `
+            -k "$env:KEYCHAIN_PASSWORD" `
+            "$keychainPath"
+
+          security list-keychains -d user -s "$keychainPath"
+
+          $decodedProfile = security cms -D -i "$profilePath"
+          $decodedProfile | Set-Content -Path "$profilePlist" -Encoding utf8NoBOM
+
+          $uuid = (& /usr/libexec/PlistBuddy -c "Print :UUID" "$profilePlist").Trim()
+          $profileName = (& /usr/libexec/PlistBuddy -c "Print :Name" "$profilePlist").Trim()
+          $teamId = (& /usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" "$profilePlist").Trim()
+          $applicationIdentifier = (& /usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$profilePlist").Trim()
+          $bundleId = $applicationIdentifier.Substring($applicationIdentifier.IndexOf(".") + 1)
+
+          $profilesDirectory = Join-Path $HOME "Library/MobileDevice/Provisioning Profiles"
+          New-Item -ItemType Directory -Force -Path "$profilesDirectory" | Out-Null
+          Copy-Item "$profilePath" (Join-Path $profilesDirectory "$uuid.mobileprovision")
+
+          "PROFILE_NAME=$profileName" >> $env:GITHUB_ENV
+          "TEAM_ID=$teamId" >> $env:GITHUB_ENV
+          "BUNDLE_ID=$bundleId" >> $env:GITHUB_ENV
+          "KEYCHAIN_PATH=$keychainPath" >> $env:GITHUB_ENV
+
+          Write-Host "Bundle ID: $bundleId"
+          Write-Host "Team ID: $teamId"
+          Write-Host "Provisioning Profile: $profileName"
+
+      - name: Detect Xcode workspace and scheme
+        shell: pwsh
+        run: |
+          $workspace = Get-ChildItem ios -Filter *.xcworkspace | Select-Object -First 1
+
+          if (-not $workspace) {
+            throw "No Xcode workspace found"
+          }
+
+          $scheme = Get-ChildItem ios -Recurse -Filter *.xcscheme |
+            Where-Object {
+              $_.FullName -notmatch "/Pods/" -and
+              $_.FullName -notmatch "\\Pods\\"
+            } |
+            Select-Object -First 1
+
+          if (-not $scheme) {
+            throw "No Xcode scheme found"
+          }
+
+          "WORKSPACE=$($workspace.FullName)" >> $env:GITHUB_ENV
+          "SCHEME=$($scheme.BaseName)" >> $env:GITHUB_ENV
+
+          Write-Host "Workspace: $($workspace.FullName)"
+          Write-Host "Scheme: $($scheme.BaseName)"
+
+      - name: Archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+
+          xcodebuild `
+            -workspace "$env:WORKSPACE" `
+            -scheme "$env:SCHEME" `
+            -configuration Release `
+            -destination "generic/platform=iOS" `
+            -archivePath "$PWD/build/rRanker.xcarchive" `
+            DEVELOPMENT_TEAM="$env:TEAM_ID" `
+            CODE_SIGN_STYLE=Manual `
+            CODE_SIGN_IDENTITY="Apple Distribution" `
+            PROVISIONING_PROFILE_SPECIFIER="$env:PROFILE_NAME" `
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" `
+            archive
+
+      - name: Create ExportOptions.plist
+        shell: pwsh
+        run: |
+          $plist = @{
+            method = "app-store-connect"
+            destination = "export"
+            signingStyle = "manual"
+            signingCertificate = "Apple Distribution"
+            teamID = $env:TEAM_ID
+            provisioningProfiles = @{
+              $env:BUNDLE_ID = $env:PROFILE_NAME
+            }
+          }
+
+          $jsonPath = Join-Path $env:RUNNER_TEMP "export-options.json"
+          $plistPath = Join-Path $env:RUNNER_TEMP "ExportOptions.plist"
+
+          $plist | ConvertTo-Json -Depth 10 | Set-Content $jsonPath
+
+          python3 -c "import json, plistlib; d=json.load(open('$jsonPath')); plistlib.dump(d,open('$plistPath','wb'))"
+
+          "EXPORT_OPTIONS_PLIST=$plistPath" >> $env:GITHUB_ENV
+
+      - name: Export IPA
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/export | Out-Null
+
+          xcodebuild `
+            -exportArchive `
+            -archivePath "$PWD/build/rRanker.xcarchive" `
+            -exportPath "$PWD/build/export" `
+            -exportOptionsPlist "$env:EXPORT_OPTIONS_PLIST"
+
+      - name: Show IPA
+        shell: pwsh
+        run: Get-ChildItem build/export -Filter *.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: rRanker-iOS
+          path: apps/mobile/build/export/*.ipa
+          if-no-files-found: error
+
+      - name: Cleanup keychain
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:KEYCHAIN_PATH -and (Test-Path $env:KEYCHAIN_PATH)) {
+            security delete-keychain "$env:KEYCHAIN_PATH"
+          }
