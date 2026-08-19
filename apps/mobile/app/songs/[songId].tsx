@@ -29,6 +29,7 @@ import {
   DxRatingChartTagSheet,
   type DxRatingChartTagSheetData,
 } from '@/components/maimai/DxRatingChartTagSheet';
+import { OsuSongDetail } from '@/components/osu/OsuSongDetail';
 import { PhigrosSongDetail } from '@/components/phigros/PhigrosSongDetail';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
@@ -38,6 +39,7 @@ import { TagEditor } from '@/components/TagEditor';
 import { useNotification } from '@/components/AppNotification';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
+import { isOsuGameId } from '@/domain/game-mode-family';
 import {
   dxRatingTagsForChart,
   type DxRatingChartTagsSnapshot,
@@ -101,6 +103,10 @@ export default function SongDetailScreen() {
   }
   if (activeGameId === 'musedash') {
     return <MuseDashSongDetailScreen songId={songId} />;
+  }
+  // osu! 四模式共用歌曲详情页，songId = beatmapset id。
+  if (activeGameId && isOsuGameId(activeGameId)) {
+    return <OsuSongDetail beatmapsetId={songId} />;
   }
 
   return <MaimaiSongDetailScreen
