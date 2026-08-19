@@ -113,6 +113,7 @@ function rawLookup(overrides: Record<string, unknown> = {}): OsuBeatmapsetLookup
     rating: 4.8,
     favourite_count: 1234,
     play_count: 999999,
+    tags: 'anime lia vocal  aah ',
     beatmaps: [
       {
         id: 22423, beatmapset_id: 3720, difficulty_rating: 3.56, version: 'Hard',
@@ -370,7 +371,7 @@ describe('osu! 歌曲详情规范化 normalizeOsuBeatmapsetDetail', () => {
     expect(detail.beatmaps[1].countCircles).toBeNull();
   });
 
-  it('unicode 标题优先、封面 card@2x 优先链、genre/language 取 name、rating/favourite_count 容错', () => {
+  it('unicode 标题优先、封面 card@2x 优先链、genre/language 取 name、rating/favourite_count 容错、tags 空格拆分', () => {
     const detail = normalizeOsuBeatmapsetDetail(rawLookup(), 'osu-standard');
     expect(detail.beatmapSetId).toBe(3720);
     expect(detail.title).toBe('鳥の詩');
@@ -382,6 +383,8 @@ describe('osu! 歌曲详情规范化 normalizeOsuBeatmapsetDetail', () => {
     expect(detail.languageName).toBe('日语');
     expect(detail.rating).toBe(4.8);
     expect(detail.favouriteCount).toBe(1234);
+    // 谱师标签：上游空格分隔字符串 → 数组（连续空格/首尾空格剔除）
+    expect(detail.tags).toEqual(['anime', 'lia', 'vocal', 'aah']);
 
     // covers 仅含 list 时按优先链回退
     const listOnly = normalizeOsuBeatmapsetDetail(
@@ -390,17 +393,19 @@ describe('osu! 歌曲详情规范化 normalizeOsuBeatmapsetDetail', () => {
     );
     expect(listOnly.cover).toBe('https://x/list.jpg');
 
-    // genre/language/rating/favourite_count 缺失或 null 归一化为 null
+    // genre/language/rating/favourite_count 缺失或 null 归一化为 null；tags 缺失/null 为空数组
     const sparse = normalizeOsuBeatmapsetDetail(rawLookup({
       genre: null,
       language: undefined,
       rating: null,
       favourite_count: undefined,
+      tags: null,
     }), 'osu-standard');
     expect(sparse.genreName).toBeNull();
     expect(sparse.languageName).toBeNull();
     expect(sparse.rating).toBeNull();
     expect(sparse.favouriteCount).toBeNull();
+    expect(sparse.tags).toEqual([]);
   });
 
   it('beatmaps 缺失时为空数组', () => {

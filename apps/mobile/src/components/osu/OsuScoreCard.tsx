@@ -25,7 +25,7 @@ export function OsuScoreCard({ gameId, score, position }: {
       presentation={{
         key: String(score.id),
         gameId,
-        route: { songId: String(score.beatmapset.id) },
+        route: { songId: String(score.beatmapset.id), levelIndex: score.beatmap.id },
         position,
         title: score.beatmapset.title,
         accessibilityLabel: `成绩 ${score.beatmapset.title}，得分 ${score.score.toLocaleString('en-US')}，准确率 ${formatOsuAccuracy(score.accuracy)}，PP ${ppText}`,

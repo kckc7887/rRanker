@@ -56,6 +56,7 @@ const detail: OsuBeatmapsetDetail = {
   languageName: '日语',
   rating: 4.8,
   favouriteCount: 1234,
+  tags: ['anime', 'vocal', 'aah'],
   beatmaps: [
     {
       id: 22424, version: 'Insane', difficultyRating: 6.9, mode: 'osu',
@@ -231,46 +232,66 @@ describe('OsuSongDetail 歌曲详情页', () => {
     expect(screen.getByText('语言')).toBeTruthy();
     expect(screen.getByTestId('osu-metadata-value-语言').props.children).toBe('日语');
 
-    // 歌曲信息卡：谱师胶囊、玩家评价
+    // 歌曲信息卡：谱师自打的标签胶囊流、玩家评价
     expect(screen.getByTestId('osu-song-info-card')).toBeTruthy();
     expect(screen.getByText('歌曲信息')).toBeTruthy();
-    expect(screen.getByText('谱师')).toBeTruthy();
-    expect(screen.getByText('James')).toBeTruthy();
+    expect(screen.getByText('标签')).toBeTruthy();
+    expect(screen.getByText('anime')).toBeTruthy();
+    expect(screen.getByText('vocal')).toBeTruthy();
+    expect(screen.getByText('aah')).toBeTruthy();
     expect(screen.getByText('玩家评价：4.8 分')).toBeTruthy();
 
-    // Hard 难度卡：版本名、星级徽章、得分/准确率/连击、评价标签、谱面属性
+    // Hard 难度卡：左上难度名、右上星数、得分、评价标签、statCell 次要信息、谱师、判定矩阵、达成时间
     const hard = within(screen.getByTestId('osu-detail-difficulty-22423'));
     expect(hard.getByText('Hard')).toBeTruthy();
-    expect(hard.getByText('5.50★')).toBeTruthy();
+    expect(hard.getByText('5.50')).toBeTruthy();
+    expect(hard.getByText('★')).toBeTruthy();
     expect(hard.getByText('Score')).toBeTruthy();
     expect(hard.getByText('985,754')).toBeTruthy();
-    expect(hard.getByText('98.52%')).toBeTruthy();
-    expect(hard.getByText('450x')).toBeTruthy();
     expect(hard.getByTestId('osu-detail-rank-X')).toBeTruthy();
     expect(hard.getByText('SS')).toBeTruthy();
-    expect(hard.getByText('谱师：James')).toBeTruthy();
-    expect(hard.getByText('时长：2:09')).toBeTruthy();
-    expect(hard.getByText('BPM：180')).toBeTruthy();
-    expect(hard.getByText('圆圈数量：520')).toBeTruthy();
-    expect(hard.getByText('滑条数量：12')).toBeTruthy();
-    expect(hard.getByText('按键数量：4.0')).toBeTruthy();
-    expect(hard.getByText('掉血速度：6.0')).toBeTruthy();
-    expect(hard.getByText('准度要求：8.0')).toBeTruthy();
+    expect(hard.getByText('准确率')).toBeTruthy();
+    expect(hard.getByText('98.52%')).toBeTruthy();
+    expect(hard.getByText('最大连击')).toBeTruthy();
+    expect(hard.getByText('450x')).toBeTruthy();
+    expect(hard.getByText('时长')).toBeTruthy();
+    expect(hard.getByText('2:09')).toBeTruthy();
+    expect(hard.getByText('BPM')).toBeTruthy();
+    expect(hard.getByText('180')).toBeTruthy();
+    expect(hard.getByText('谱师')).toBeTruthy();
+    expect(hard.getByText('James')).toBeTruthy();
     expect(hard.getByText('达成时间：2026-01-01')).toBeTruthy();
-    // 卡头右侧不渲染等级/定数块（osu 卡无 chunithm 式 levelBlock）
+    // 不再渲染物件/键数/HP/OD 属性行与等级/定数块
+    expect(hard.queryByText(/圆圈数量/)).toBeNull();
+    expect(hard.queryByText(/滑条数量/)).toBeNull();
+    expect(hard.queryByText(/按键数量/)).toBeNull();
+    expect(hard.queryByText(/掉血速度/)).toBeNull();
+    expect(hard.queryByText(/准度要求/)).toBeNull();
     expect(hard.queryByText(/^LV \d/)).toBeNull();
     expect(hard.queryByText(/定数/)).toBeNull();
 
-    // 判定表七列：六列判定计数 + PP
+    // 判定矩阵：两行六判定（各带固定色）+ 右侧 PP 块
     const notes = within(hard.getByLabelText('osu 判定统计'));
-    for (const label of ['PERFECT', 'GREAT', 'GOOD', 'OK', 'MEH', 'MISS', 'PP']) {
-      expect(notes.getByText(label)).toBeTruthy();
+    for (const key of ['perfect', 'great', 'good', 'ok', 'meh', 'miss'] as const) {
+      expect(notes.getByTestId(`osu-judgement-${key}`)).toBeTruthy();
     }
-    for (const value of ['520', '12', '3', '1']) {
-      expect(notes.getByText(value)).toBeTruthy();
-    }
+    expect(notes.getByText('PERFECT')).toBeTruthy();
+    expect(notes.getByText('GREAT')).toBeTruthy();
+    expect(notes.getByText('GOOD')).toBeTruthy();
+    expect(notes.getByText('OK')).toBeTruthy();
+    expect(notes.getByText('MEH')).toBeTruthy();
+    expect(notes.getByText('MISS')).toBeTruthy();
+    expect(notes.getByText('PP')).toBeTruthy();
+    expect(notes.getByText('520')).toBeTruthy();
+    expect(notes.getByText('12')).toBeTruthy();
+    expect(notes.getByText('3')).toBeTruthy();
+    expect(notes.getByText('1')).toBeTruthy();
     expect(notes.getAllByText('—')).toHaveLength(2);
     expect(notes.getByText('73')).toBeTruthy();
+    // 判定计数带各自固定色（PERFECT #66CCFF、MISS #FF6666）
+    expect(JSON.stringify(notes.getByText('520').props.style)).toContain('#66CCFF');
+    expect(JSON.stringify(within(notes.getByTestId('osu-judgement-miss')).getByText('—').props.style))
+      .toContain('#FF6666');
 
     // 难度降序 [6.9, 5.5, 4.3, 2.1]；pp=5000 → 推荐 5.88★ → 默认定位第 2 张（Hard）
     const carousel = screen.getByLabelText('osu 难度卡片');
@@ -290,7 +311,18 @@ describe('OsuSongDetail 歌曲详情页', () => {
     const carousel = screen.getByLabelText('osu 难度卡片');
     expect(carousel.props.contentOffset.x).toBe(carousel.props.snapToInterval);
     // 首卡为最高星 6.9★，Hard（5.5★）为第 2 张
-    expect(within(screen.getByTestId('osu-detail-difficulty-22424')).getByText('6.90★')).toBeTruthy();
+    expect(within(screen.getByTestId('osu-detail-difficulty-22424')).getByText('6.90')).toBeTruthy();
+  });
+
+  it('成绩卡带入 beatmap id 时优先定位该难度（覆盖推荐难度）', async () => {
+    const screen = await render(<OsuSongDetail beatmapsetId="3720" initialBeatmapId={22427} />);
+    // Normal（4.3★，beatmap 22427）为第 3 张；pp=5000 推荐本应定位第 2 张 Hard
+    const carousel = screen.getByLabelText('osu 难度卡片');
+    expect(carousel.props.contentOffset.x).toBe(carousel.props.snapToInterval * 2);
+    // 带入不存在的 beatmap id 时回退推荐难度定位
+    const fallback = await render(<OsuSongDetail beatmapsetId="3720" initialBeatmapId={99999} />);
+    expect(fallback.getByLabelText('osu 难度卡片').props.contentOffset.x)
+      .toBe(fallback.getByLabelText('osu 难度卡片').props.snapToInterval);
   });
 
   it('快照未加载（payload undefined）时推荐 1.0★，定位到最近的 2.1★ 卡片', async () => {
@@ -307,12 +339,14 @@ describe('OsuSongDetail 歌曲详情页', () => {
     expect(carousel.props.contentOffset.x).toBe(carousel.props.snapToInterval * 3);
   });
 
-  it('未游玩难度：得分/判定全列/达成时间为 — 且不渲染评价标签', async () => {
+  it('未游玩难度：得分/准确率/连击/判定六列/PP 为 —，时长与 BPM 正常，不渲染评价标签', async () => {
     const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
     const easy = within(screen.getByTestId('osu-detail-difficulty-22425'));
-    // 得分 + 准确率 + 连击 + 判定六列 + PP = 10 个 '—'（达成时间为组合文本「达成时间：—」）
+    // 得分 + 准确率 + 连击 + 判定六列 + PP = 10 个 '—'（达成时间为组合文本「达成时间：—」，时长/BPM 有谱面值）
     expect(easy.getAllByText('—')).toHaveLength(10);
     expect(easy.getByText('达成时间：—')).toBeTruthy();
+    expect(easy.getByText('1:40')).toBeTruthy();
+    expect(easy.getByText('150')).toBeTruthy();
     const notes = within(easy.getByLabelText('osu 判定统计'));
     expect(notes.getAllByText('—')).toHaveLength(7);
     expect(easy.queryAllByLabelText(/^评价 /)).toHaveLength(0);
@@ -414,14 +448,14 @@ describe('osu! 详情入口解锁', () => {
     expect(mockPush).toHaveBeenCalledWith('/songs/3720');
   });
 
-  it('OsuScoreCard 可按压，点击进入歌曲详情（songId = beatmapset id）', async () => {
+  it('OsuScoreCard 可按压，点击进入歌曲详情并定位该成绩的 beatmap', async () => {
     const screen = await render(<OsuScoreCard gameId="osu-standard" score={hardScore} />);
     const card = screen.getByTestId('osu-score-card-166715063');
     expect(card.props.accessibilityRole).toBe('button');
     await fireEvent.press(card);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '3720' },
+      params: { songId: '3720', levelIndex: '22423' },
     });
   });
 });
