@@ -13,7 +13,6 @@ import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
-import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
@@ -21,7 +20,6 @@ import { SongDetailHero } from '@/components/game-content/SongDetailHero';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
 import type { GamePayload } from '@/domain/game-data';
-import type { GameNoteValue } from '@/domain/game-content';
 import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
 import {
   OSU_STATUS_LABELS,
@@ -33,6 +31,7 @@ import {
   type OsuBestScore,
   type OsuScoreStatistics,
 } from '@/domain/osu';
+import { resolveOsuStarTheme } from '@/domain/osu-star-theme';
 import { buildTagHistory } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
 import { useGameData } from '@/hooks/use-game-data';
@@ -40,7 +39,6 @@ import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
-import { OsuDifficultyBadge } from './OsuDifficultyBadge';
 import { OsuRankTag } from './OsuRankTag';
 
 const CARD_GAP = 12;
@@ -52,22 +50,37 @@ type OsuGameDataPayload = Extract<GamePayload, { kind: 'osu' }>;
 
 /**
  * osu! 歌曲详情页：songId = beatmapset id。
- * 结构对标 ChunithmSongDetail（Hero + 简要信息栏 + 难度轮播 + 歌曲信息区），
- * 难度自高星起降序排列，成绩复用当前模式 Top 100 快照按 beatmap id 匹配。
+ * 结构对标公共详情模式（Hero + 简要信息栏 + 难度轮播 + 歌曲信息区）：
+ * 难度自高星起降序，星级色作为难度卡主题色（渐变 + 描边）；
+ * 进入定位优先成绩卡带入的 beatmap id，否则按 pp 推荐星级取最近卡片。
  */
-export function OsuSongDetail({ beatmapsetId }: { beatmapsetId?: string }) {
+export function OsuSongDetail({
+  beatmapsetId,
+  initialBeatmapId,
+}: {
+  beatmapsetId?: string;
+  initialBeatmapId?: number;
+}) {
   const activeGameId = useSession((s) => s.activeGameId);
   // 路由层已按 isOsuGameId 分发；此处收窄类型并防御非 osu 游戏误入。
   if (!isOsuGameId(activeGameId)) return <View style={styles.page} />;
-  return <OsuSongDetailContent gameId={activeGameId} beatmapsetId={beatmapsetId} />;
+  return (
+    <OsuSongDetailContent
+      gameId={activeGameId}
+      beatmapsetId={beatmapsetId}
+      initialBeatmapId={initialBeatmapId}
+    />
+  );
 }
 
 function OsuSongDetailContent({
   gameId,
   beatmapsetId,
+  initialBeatmapId,
 }: {
   gameId: OsuGameId;
   beatmapsetId?: string;
+  initialBeatmapId?: number;
 }) {
   const theme = useAppTheme();
   const detail = useOsuBeatmapsetDetail(gameId, beatmapsetId ?? null);
@@ -107,6 +120,7 @@ function OsuSongDetailContent({
           renderData={(item) => (
             <OsuDetailBody
               gameId={gameId}
+              initialBeatmapId={initialBeatmapId}
               library={library}
               payload={payload}
               song={item}
@@ -170,11 +184,13 @@ function OsuDetailBody({
   song,
   payload,
   library,
+  initialBeatmapId,
 }: {
   gameId: OsuGameId;
   song: OsuBeatmapsetDetail;
   payload?: OsuGameDataPayload;
   library: LibraryHook;
+  initialBeatmapId?: number;
 }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
@@ -187,15 +203,20 @@ function OsuDetailBody({
     { key: 'genre', label: '流派', value: song.genreName ?? '未知', flex: 1 },
     { key: 'language', label: '语言', value: song.languageName ?? '未知', flex: 1 },
   ];
-  // 推荐难度定位：|星数 − 推荐星级| 最小的卡片；列表降序 + 严格小于比较，并列时天然取更高星。
+  // 进入定位：成绩卡带入的 beatmap id 优先；否则按推荐星级取最近卡片
+  // （列表降序 + 严格小于比较，并列时天然取更高星）。
   const recommended = recommendedOsuStar(gameId, payload?.player.pp);
-  let initialIndex = 0;
+  const requestedIndex = initialBeatmapId === undefined
+    ? -1
+    : song.beatmaps.findIndex((beatmap) => beatmap.id === initialBeatmapId);
+  let recommendedIndex = 0;
   for (let index = 1; index < song.beatmaps.length; index += 1) {
     if (Math.abs(song.beatmaps[index].difficultyRating - recommended)
-      < Math.abs(song.beatmaps[initialIndex].difficultyRating - recommended)) {
-      initialIndex = index;
+      < Math.abs(song.beatmaps[recommendedIndex].difficultyRating - recommended)) {
+      recommendedIndex = index;
     }
   }
+  const initialIndex = requestedIndex >= 0 ? requestedIndex : recommendedIndex;
   // 本 beatmapset 内按 beatmap id 匹配 Top 100 成绩（同谱多条时取最高分一条）。
   const scoresByBeatmapId = useMemo(() => {
     const map = new Map<number, OsuBestScore>();
@@ -254,13 +275,24 @@ function OsuDetailBody({
       <View style={styles.details}>
         <Card testID="osu-song-info-card">
           <Text style={[styles.sectionTitle, { color: theme.text }]}>歌曲信息</Text>
-          <View style={styles.infoRow}>
-            <Text style={[styles.infoLabel, { color: theme.textMuted }]}>谱师</Text>
-            <View style={styles.creatorPill}>
-              <Text style={[styles.creatorPillText, { color: theme.textSecondary }]}>
-                {song.creator || '未提供'}
-              </Text>
-            </View>
+          <View style={styles.tagsBlock}>
+            <Text style={[styles.infoLabel, { color: theme.textMuted }]}>标签</Text>
+            {song.tags.length > 0 ? (
+              <View style={styles.mapperTags}>
+                {song.tags.map((tag) => (
+                  <View
+                    key={tag}
+                    style={[styles.mapperTag, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}
+                  >
+                    <Text numberOfLines={1} style={[styles.mapperTagText, { color: theme.textSecondary }]}>
+                      {tag}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text style={[styles.emptyInline, { color: theme.textMuted }]}>—</Text>
+            )}
           </View>
           <Text style={[styles.body, { color: theme.textSecondary }]}>
             玩家评价：{song.rating != null && song.rating > 0
@@ -335,23 +367,33 @@ function DifficultyCard({
   width: number;
 }) {
   const theme = useAppTheme();
+  // 星级色即难度卡主题色：描边 + 从星色到卡面的对角渐变（透明后缀随深浅色，同 TUF 难度卡）。
+  const starTheme = resolveOsuStarTheme(beatmap.difficultyRating);
   const chartKey = library.chartKey(String(song.beatmapSetId), OSU_CHART_TYPE, beatmap.id);
   const chartItem = library.data?.find((item) => item.key === chartKey);
   return (
     <GameChartResultCard
       accessibilityLabel={`${song.title} ${beatmap.version} 难度卡片`}
+      gradient={{
+        colors: [`${starTheme.background}${theme.dark ? '66' : '38'}`, theme.surface],
+        start: { x: 0, y: 0 },
+        end: { x: 1, y: 1 },
+      }}
       style={[
         styles.difficultyCard,
-        { width, backgroundColor: theme.surface, borderColor: theme.border },
+        { width, backgroundColor: theme.surface, borderColor: starTheme.background },
       ]}
       testID={`osu-detail-difficulty-${beatmap.id}`}
     >
       <View style={styles.chartHeader}>
-        <View style={styles.chartIdentity}>
-          <Text numberOfLines={1} style={[styles.version, { color: theme.text }]}>
-            {beatmap.version}
+        <Text numberOfLines={1} style={[styles.version, { color: theme.text }]}>
+          {beatmap.version}
+        </Text>
+        <View style={styles.levelBlock}>
+          <Text style={[styles.levelNumber, { color: theme.text }]}>
+            {beatmap.difficultyRating.toFixed(2)}
           </Text>
-          <OsuDifficultyBadge star={beatmap.difficultyRating} />
+          <Text style={[styles.levelStar, { color: theme.textMuted }]}>★</Text>
         </View>
       </View>
       <View style={styles.resultBlock}>
@@ -359,51 +401,46 @@ function DifficultyCard({
         <Text style={[styles.score, { color: theme.text }]}>
           {score ? score.score.toLocaleString('en-US') : '—'}
         </Text>
-        <View style={styles.statRow}>
-          <Text style={[styles.statValue, { color: theme.textSecondary }]}>
-            {score ? formatOsuAccuracy(score.accuracy) : '—'}
-          </Text>
-          <Text style={[styles.statValue, { color: theme.textSecondary }]}>
-            {score?.maxCombo != null ? `${score.maxCombo}x` : '—'}
-          </Text>
-        </View>
         {score ? (
           <View style={styles.badgeRow}>
             <OsuRankTag rank={score.rank} testID={`osu-detail-rank-${score.rank}`} />
           </View>
         ) : null}
       </View>
+      <View style={styles.statRow}>
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: theme.textMuted }]}>准确率</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>
+            {score ? formatOsuAccuracy(score.accuracy) : '—'}
+          </Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: theme.textMuted }]}>最大连击</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>
+            {score?.maxCombo != null ? `${score.maxCombo}x` : '—'}
+          </Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: theme.textMuted }]}>时长</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>
+            {formatOsuDuration(beatmap.totalLength)}
+          </Text>
+        </View>
+        <View style={styles.statCell}>
+          <Text style={[styles.statLabel, { color: theme.textMuted }]}>BPM</Text>
+          <Text style={[styles.statValue, { color: theme.text }]}>
+            {formatOsuBpm(beatmap.bpm)}
+          </Text>
+        </View>
+      </View>
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
-      <Text style={[styles.charter, { color: theme.textSecondary }]}>
-        谱师：{song.creator || '未提供'}
-      </Text>
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
-        时长：{formatOsuDuration(beatmap.totalLength)}
-      </Text>
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
-        BPM：{formatOsuBpm(beatmap.bpm)}
-      </Text>
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
-        圆圈数量：{formatOsuCount(beatmap.countCircles)}
-      </Text>
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
-        滑条数量：{formatOsuCount(beatmap.countSliders)}
-      </Text>
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
-        按键数量：{formatOsuDecimal(beatmap.cs)}
-      </Text>
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
-        掉血速度：{formatOsuDecimal(beatmap.drain)}
-      </Text>
-      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
-        准度要求：{formatOsuDecimal(beatmap.accuracy)}
-      </Text>
-      <StatisticsTable
-        borderColor={theme.border}
-        labelColor={theme.textMuted}
-        score={score}
-        valueColor={theme.text}
-      />
+      <View style={styles.charterBlock}>
+        <Text style={[styles.charterLabel, { color: theme.textMuted }]}>谱师</Text>
+        <Text style={[styles.charterValue, { color: theme.text }]}>
+          {song.creator || '未提供'}
+        </Text>
+      </View>
+      <JudgementMatrix score={score} />
       <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         达成时间：{score?.achievedAt?.slice(0, 10) ?? '—'}
       </Text>
@@ -425,50 +462,60 @@ function DifficultyCard({
   );
 }
 
-/** 判定表七列：六列判定计数 + PP；无成绩或旧缓存无 statistics 时全列 '—'。 */
-const STATISTIC_COLUMNS: readonly { label: string; key: keyof OsuScoreStatistics }[] = [
-  { label: 'PERFECT', key: 'perfect' },
-  { label: 'GREAT', key: 'great' },
-  { label: 'GOOD', key: 'good' },
-  { label: 'OK', key: 'ok' },
-  { label: 'MEH', key: 'meh' },
-  { label: 'MISS', key: 'miss' },
+/** 判定矩阵两行（前三种/后三种），各判定带固定色；PP 独立右块（正常文字色）。 */
+const OSU_JUDGEMENT_ROWS: readonly (readonly {
+  key: keyof OsuScoreStatistics;
+  label: string;
+  color: string;
+}[])[] = [
+  [
+    { key: 'perfect', label: 'PERFECT', color: '#66CCFF' },
+    { key: 'great', label: 'GREAT', color: '#47B4EB' },
+    { key: 'good', label: 'GOOD', color: '#66FF73' },
+  ],
+  [
+    { key: 'ok', label: 'OK', color: '#99EB47' },
+    { key: 'meh', label: 'MEH', color: '#FFD966' },
+    { key: 'miss', label: 'MISS', color: '#FF6666' },
+  ],
 ];
 
-function StatisticsTable({
-  score,
-  borderColor,
-  labelColor,
-  valueColor,
-}: {
-  score?: OsuBestScore;
-  borderColor?: string;
-  labelColor?: string;
-  valueColor?: string;
-}) {
+function JudgementMatrix({ score }: { score?: OsuBestScore }) {
   const theme = useAppTheme();
   const statistics = score?.statistics ?? null;
-  const values: readonly GameNoteValue[] = STATISTIC_COLUMNS.map((column) => {
-    const count = statistics?.[column.key] ?? null;
-    return {
-      key: column.key,
-      label: column.label,
-      value: count != null ? count.toLocaleString('en-US') : '—',
-    };
-  });
   return (
-    <GameNoteTable
-      accessibilityLabel="osu 判定统计"
-      containerStyle={[styles.notesTable, { borderColor: borderColor ?? theme.border }]}
-      group={{
-        key: 'statistics',
-        values: [...values, { key: 'pp', label: 'PP', value: score ? formatOsuPp(score.pp) : '—' }],
-      }}
-      itemStyle={styles.notesCell}
-      labelStyle={[styles.notesLabel, { color: labelColor ?? theme.textMuted }]}
-      mode="cells"
-      valueStyle={[styles.notesValue, { color: valueColor ?? theme.text }]}
-    />
+    <View accessibilityLabel="osu 判定统计" style={styles.judgementPanel}>
+      <View style={styles.judgementMatrix}>
+        {OSU_JUDGEMENT_ROWS.map((row, rowIndex) => (
+          <View key={rowIndex} style={styles.judgementRow}>
+            {row.map((item) => (
+              <View key={item.key} style={styles.judgementCell} testID={`osu-judgement-${item.key}`}>
+                <Text numberOfLines={1} style={[styles.judgementLabel, { color: theme.textMuted }]}>
+                  {item.label}
+                </Text>
+                <Text style={[styles.judgementValue, { color: item.color }]}>
+                  {statistics?.[item.key] != null
+                    ? statistics[item.key]!.toLocaleString('en-US')
+                    : '—'}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+      <View
+        style={[
+          styles.ppCell,
+          { borderLeftColor: theme.dark ? 'rgba(255,255,255,0.12)' : theme.border },
+        ]}
+      >
+        <Text style={[styles.ppLabel, { color: theme.textMuted }]}>PP</Text>
+        <Text adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}
+          style={[styles.ppValue, { color: theme.text }]}>
+          {score ? formatOsuPp(score.pp) : '—'}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -494,16 +541,6 @@ function formatOsuDuration(seconds: number | null): string {
 /** BPM：整数显示；缺失显示 '—'。 */
 function formatOsuBpm(bpm: number | null): string {
   return bpm == null || !Number.isFinite(bpm) ? '—' : String(Math.round(bpm));
-}
-
-/** 物件计数：千分位整数；缺失显示 '—'。 */
-function formatOsuCount(value: number | null): string {
-  return value == null || !Number.isFinite(value) ? '—' : value.toLocaleString('en-US');
-}
-
-/** 一位小数（键数/HP/OD 等）；缺失显示 '—'。 */
-function formatOsuDecimal(value: number | null): string {
-  return value == null || !Number.isFinite(value) ? '—' : value.toFixed(1);
 }
 
 const styles = StyleSheet.create({
@@ -554,41 +591,50 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
-  chartIdentity: { alignItems: 'flex-start', gap: 7 },
-  version: { fontSize: 16, lineHeight: 21, fontWeight: '800' },
-  resultBlock: { alignItems: 'flex-start', gap: 2, marginTop: 22 },
-  scoreLabel: { fontSize: 12, fontWeight: '700', marginBottom: 2 },
-  score: { fontSize: 34, lineHeight: 42, fontWeight: '900', letterSpacing: -0.5 },
-  statRow: { flexDirection: 'row', gap: 24, marginTop: 6 },
-  statValue: { fontSize: 13, lineHeight: 18, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 24, marginTop: 7 },
+  version: { flexShrink: 1, fontSize: 17, lineHeight: 22, fontWeight: '800' },
+  levelBlock: { flexDirection: 'row', alignItems: 'baseline', gap: 1, paddingTop: 3 },
+  levelNumber: { fontSize: 32, lineHeight: 34, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  levelStar: { fontSize: 16, lineHeight: 20, fontWeight: '900' },
+  resultBlock: { alignItems: 'flex-start', gap: 3, marginTop: 22 },
+  scoreLabel: { fontSize: 12, fontWeight: '700' },
+  score: { fontSize: 34, lineHeight: 42, fontWeight: '900', letterSpacing: -0.6, fontVariant: ['tabular-nums'] },
+  badgeRow: { minHeight: 24, marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  statRow: { flexDirection: 'row', marginTop: 16, gap: 14 },
+  statCell: { gap: 2 },
+  statLabel: { fontSize: 11, fontWeight: '700' },
+  statValue: { fontSize: 18, lineHeight: 23, fontWeight: '900', fontVariant: ['tabular-nums'] },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
-  charter: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
-  chartMeta: { fontSize: 12, lineHeight: 18, marginTop: 3 },
-  notesTable: {
-    marginTop: 9,
-    flexDirection: 'row',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 9,
-    overflow: 'hidden',
-    paddingVertical: 8,
-  },
-  notesCell: { flex: 1, alignItems: 'center', gap: 3 },
-  notesLabel: { fontSize: 8, fontWeight: '900' },
-  notesValue: { fontSize: 11, fontWeight: '900' },
+  charterBlock: { gap: 4 },
+  charterLabel: { fontSize: 10, lineHeight: 14, fontWeight: '800', letterSpacing: 0.25 },
+  charterValue: { fontSize: 13, lineHeight: 19, fontWeight: '700' },
+  judgementPanel: { minHeight: 104, marginTop: 13, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },
+  judgementRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
+  judgementCell: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 2 },
+  judgementLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  judgementValue: { fontSize: 18, lineHeight: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  ppCell: { width: 78, flexShrink: 0, borderLeftWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 5, paddingLeft: 8 },
+  ppLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  ppValue: { width: '100%', fontSize: 21, lineHeight: 27, fontWeight: '900', fontVariant: ['tabular-nums'], textAlign: 'center' },
+  chartMeta: { fontSize: 12, lineHeight: 18, marginTop: 10 },
   noCharts: { padding: 24, alignItems: 'center' },
   details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
   sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 7 },
   body: { fontSize: 13, lineHeight: 19 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 7 },
-  infoLabel: { fontSize: 12, lineHeight: 18, fontWeight: '700' },
-  creatorPill: {
-    borderWidth: 1,
+  infoLabel: { fontSize: 11, lineHeight: 18, fontWeight: '800' },
+  tagsBlock: { marginBottom: 7, gap: 6 },
+  mapperTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  mapperTag: {
+    maxWidth: '100%',
+    minHeight: 24,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  creatorPillText: { fontSize: 12, lineHeight: 16, fontWeight: '700' },
+  mapperTagText: { flexShrink: 1, fontSize: 10, lineHeight: 14, fontWeight: '800' },
+  emptyInline: { fontSize: 12, fontWeight: '700' },
   pressed: { opacity: 0.72 },
   disabled: { opacity: 0.52 },
 });

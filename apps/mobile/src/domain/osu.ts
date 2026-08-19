@@ -179,6 +179,8 @@ export const OsuBeatmapsetLookupSchema = z.object({
   rating: z.number().nullable().optional(),
   favourite_count: z.number().nullable().optional(),
   play_count: z.number().nullable().optional(),
+  /** 谱师自打的标签（空格分隔字符串），展示层拆分为胶囊。 */
+  tags: z.string().nullable().optional(),
   beatmaps: z.array(OsuBeatmapSchema).optional(),
 }).passthrough();
 export type OsuBeatmapsetLookupRaw = z.infer<typeof OsuBeatmapsetLookupSchema>;
@@ -282,6 +284,8 @@ export type OsuBeatmapsetDetail = {
   languageName: string | null;
   rating: number | null;
   favouriteCount: number | null;
+  /** 谱师自打的标签（上游 tags 空格分隔 → 数组；无标签为空数组）。 */
+  tags: string[];
   beatmaps: OsuBeatmapDetail[];
 };
 
@@ -479,6 +483,7 @@ export function normalizeOsuBeatmapsetDetail(
     languageName: raw.language?.name ?? null,
     rating: optionalNumber(raw.rating),
     favouriteCount: optionalNumber(raw.favourite_count),
+    tags: raw.tags == null ? [] : raw.tags.split(/\s+/).filter(Boolean),
     beatmaps,
   };
 }
