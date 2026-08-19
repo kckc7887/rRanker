@@ -1,6 +1,6 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import { OsuSongDetail } from '@/components/osu/OsuSongDetail';
 import { OsuSongRow } from '@/components/osu/OsuSongRow';
@@ -27,10 +27,11 @@ const hardScore: OsuBestScore = {
   beatmap: { id: 22423, beatmapSetId: 3720, difficultyRating: 5.5, version: 'Hard' },
   beatmapset: { id: 3720, title: '鳥の詩', artist: 'Lia', creator: 'James', listCover: null },
   statistics: { perfect: 520, great: 12, good: 3, ok: 1, meh: null, miss: null },
+  mods: ['HD', 'DT'],
   achievedAt: '2026-01-01T00:00:00.000Z',
 };
 
-/** Normal（4.3★）：旧缓存成绩（无 statistics / 达成时间）。 */
+/** Normal（4.3★）：旧缓存成绩（无 statistics / 达成时间 / 模组）。 */
 const legacyScore: OsuBestScore = {
   id: 166715064,
   score: 1111111,
@@ -41,6 +42,7 @@ const legacyScore: OsuBestScore = {
   beatmap: { id: 22427, beatmapSetId: 3720, difficultyRating: 4.3, version: 'Normal' },
   beatmapset: { id: 3720, title: '鳥の詩', artist: 'Lia', creator: 'James', listCover: null },
   statistics: null,
+  mods: [],
   achievedAt: null,
 };
 
@@ -140,6 +142,16 @@ jest.mock('expo-image', () => {
 });
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+// 模组徽章测试固定走文字回退形态：图标根路径置空（hook 短路不发请求、不触碰文件系统）
+jest.mock('@/providers/osu-config', () => ({
+  ...jest.requireActual<typeof import('@/providers/osu-config')>('@/providers/osu-config'),
+  OSU_MOD_ICONS_ROOT: '',
+}));
+jest.mock('expo-file-system', () => ({
+  Directory: class {},
+  File: class {},
+  Paths: { document: 'mock' },
+}));
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -364,6 +376,28 @@ describe('OsuSongDetail 歌曲详情页', () => {
     expect(notes.getByText('PP')).toBeTruthy();
     expect(notes.getByText('55')).toBeTruthy();
     expect(normal.getByTestId('osu-detail-rank-S')).toBeTruthy();
+  });
+
+  it('难度卡模组徽章：有成绩的难度渲染评价标签后的模组圆徽（文字回退形态）', async () => {
+    const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
+    // Hard（HD/DT 增难红）与 Normal（旧缓存空 mods）
+    const hard = within(screen.getByTestId('osu-detail-difficulty-22423'));
+    const hd = hard.getByTestId('osu-mod-badge-HD');
+    const hdStyle = StyleSheet.flatten(hd.props.style);
+    expect(hdStyle.backgroundColor).toBe('#FF6666');
+    expect(hdStyle.borderRadius).toBe(11);
+    expect(hard.getByTestId('osu-mod-badge-DT')).toBeTruthy();
+    // badgeRow 顺序：评价标签在前、模组徽章在后
+    const badgeRow = hd.parent;
+    expect(badgeRow).toBeTruthy();
+    const badgeRowChildren = badgeRow?.children ?? [];
+    expect(badgeRowChildren.indexOf(hard.getByTestId('osu-detail-rank-X')))
+      .toBeLessThan(badgeRowChildren.indexOf(hd));
+    // 旧缓存（mods 空）与未游玩难度不渲染模组徽章
+    const normal = within(screen.getByTestId('osu-detail-difficulty-22427'));
+    expect(normal.queryAllByTestId(/osu-mod-badge-/)).toHaveLength(0);
+    const easy = within(screen.getByTestId('osu-detail-difficulty-22425'));
+    expect(easy.queryAllByTestId(/osu-mod-badge-/)).toHaveLength(0);
   });
 
   it('beatmapset 不存在（404 → no_data）渲染找不到这首歌曲', async () => {
