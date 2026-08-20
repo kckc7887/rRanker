@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import {
   ScrollView,
@@ -46,11 +45,6 @@ import { OsuRankTag } from './OsuRankTag';
 const CARD_GAP = 12;
 /** osu 谱面级曲库键的 type 段（无 SD/DX 之分，统一占位 'SD'，levelIndex = beatmap id）。 */
 const OSU_CHART_TYPE = 'SD' as const;
-/** 难度卡下半部暗遮罩（同 Hero 底部压暗方向）：上半保持卡面，往下渐暗衬托判定表彩字。 */
-const CHART_SHADE = {
-  colors: ['rgba(13,17,23,0)', 'rgba(13,17,23,0)', 'rgba(13,17,23,0.82)'] as const,
-  locations: [0, 0.5, 0.72] as const,
-};
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 type OsuGameDataPayload = Extract<GamePayload, { kind: 'osu' }>;
@@ -374,25 +368,17 @@ function DifficultyCard({
   width: number;
 }) {
   const theme = useAppTheme();
-  // 星级色即难度卡主题色：描边 + 从星色到卡面的纵向渐变，下半叠暗遮罩衬托判定表彩字（同 TUF 难度卡）。
+  // 星级色即难度卡主题色：描边 + 从星色到卡面的对角渐变（透明后缀随深浅色，同 TUF 难度卡）。
   const starTheme = resolveOsuStarTheme(beatmap.difficultyRating);
   const chartKey = library.chartKey(String(song.beatmapSetId), OSU_CHART_TYPE, beatmap.id);
   const chartItem = library.data?.find((item) => item.key === chartKey);
   return (
     <GameChartResultCard
       accessibilityLabel={`${song.title} ${beatmap.version} 难度卡片`}
-      beforeContent={(
-        <LinearGradient
-          colors={CHART_SHADE.colors}
-          locations={CHART_SHADE.locations}
-          pointerEvents="none"
-          style={StyleSheet.absoluteFill}
-        />
-      )}
       gradient={{
         colors: [`${starTheme.background}${theme.dark ? '66' : '38'}`, theme.surface],
         start: { x: 0, y: 0 },
-        end: { x: 0, y: 1 },
+        end: { x: 1, y: 1 },
       }}
       style={[
         styles.difficultyCard,
@@ -459,14 +445,12 @@ function DifficultyCard({
         </Text>
       </View>
       <JudgementMatrix score={score} />
-      <Text style={[styles.chartMeta, { color: '#C9D1D9' }]}>
+      <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         达成时间：{score?.achievedAt?.slice(0, 10) ?? '—'}
       </Text>
       <TagEditor
         disabled={library.isUpdating}
-        emptyStyle={{ color: '#8B949E' }}
         historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
-        labelStyle={{ color: '#C9D1D9' }}
         onChange={(tags) => library.setTags({
           kind: 'chart',
           songId: String(song.beatmapSetId),
@@ -503,7 +487,6 @@ const OSU_JUDGEMENT_ROWS: readonly (readonly {
 function JudgementMatrix({ score }: { score?: OsuBestScore }) {
   const theme = useAppTheme();
   const statistics = score?.statistics ?? null;
-  // 判定面板自带深底（不随全局主题）：彩字与固定浅色文字在深浅模式下都保持可读。
   return (
     <View accessibilityLabel="osu 判定统计" style={styles.judgementPanel}>
       <View style={styles.judgementMatrix}>
@@ -511,7 +494,7 @@ function JudgementMatrix({ score }: { score?: OsuBestScore }) {
           <View key={rowIndex} style={styles.judgementRow}>
             {row.map((item) => (
               <View key={item.key} style={styles.judgementCell} testID={`osu-judgement-${item.key}`}>
-                <Text numberOfLines={1} style={[styles.judgementLabel, { color: '#8B949E' }]}>
+                <Text numberOfLines={1} style={[styles.judgementLabel, { color: theme.textMuted }]}>
                   {item.label}
                 </Text>
                 <Text style={[styles.judgementValue, { color: item.color }]}>
@@ -530,9 +513,9 @@ function JudgementMatrix({ score }: { score?: OsuBestScore }) {
           { borderLeftColor: theme.dark ? 'rgba(255,255,255,0.12)' : theme.border },
         ]}
       >
-        <Text style={[styles.ppLabel, { color: '#8B949E' }]}>PP</Text>
+        <Text style={[styles.ppLabel, { color: theme.textMuted }]}>PP</Text>
         <Text adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}
-          style={[styles.ppValue, { color: '#F0F3F6' }]}>
+          style={[styles.ppValue, { color: theme.text }]}>
           {score ? formatOsuPp(score.pp) : '—'}
         </Text>
       </View>
@@ -635,7 +618,9 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     gap: 8,
     borderRadius: 12,
-    backgroundColor: 'rgba(13,17,23,0.5)',
+    padding: 12,
+    // 判定表淡灰遮罩：彩字区域与卡面轻微区分，深浅模式同色。
+    backgroundColor: 'rgba(128,128,128,0.14)',
   },
   judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },
   judgementRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
