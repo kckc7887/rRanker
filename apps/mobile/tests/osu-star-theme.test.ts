@@ -49,11 +49,11 @@ describe('osu! 星数 osu-web 官方连续色阶', () => {
     expect(resolveOsuStarTheme(100).background).toBe('#000000');
   });
 
-  it('文字色官方规则：<6.5 黑字、6.5–9 黄字、>=9 黄→紫谱段（>=12.4 钳制）', () => {
-    expect(resolveOsuStarTheme(0.1).text).toBe('#000000');
-    expect(resolveOsuStarTheme(3.56).text).toBe('#000000');
-    expect(resolveOsuStarTheme(5.8).text).toBe('#000000');
-    expect(resolveOsuStarTheme(6.49).text).toBe('#000000');
+  it('文字色规则：<6.5 白字（用户指定）、6.5–9 黄字、>=9 黄→紫谱段（>=12.4 钳制）', () => {
+    expect(resolveOsuStarTheme(0.1).text).toBe('#FFFFFF');
+    expect(resolveOsuStarTheme(3.56).text).toBe('#FFFFFF');
+    expect(resolveOsuStarTheme(5.8).text).toBe('#FFFFFF');
+    expect(resolveOsuStarTheme(6.49).text).toBe('#FFFFFF');
     expect(resolveOsuStarTheme(6.5).text).toBe('#F6F05C');
     expect(resolveOsuStarTheme(7.34).text).toBe('#F6F05C');
     expect(resolveOsuStarTheme(8.99).text).toBe('#F6F05C');

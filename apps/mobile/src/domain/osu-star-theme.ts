@@ -4,12 +4,12 @@
  * difficultyColourSpectrum / difficultyTextColourSpectrum / getDiffColour / getDiffTextColour）。
  *
  * - 背景色：星数 <0.1 灰 #AAAAAA；>=9 黑 #000000；其间按 11 个停靠点连续插值；
- * - 文字色：<6.5 黑 #000000；6.5<=星数<9 黄 #F6F05C；>=9 按文字谱段插值（>=12.4 钳制 #6563DE）；
+ * - 文字色：<6.5 白 #FFFFFF（用户指定，偏离官方黑字）；6.5<=星数<9 黄 #F6F05C；>=9 按文字谱段插值（>=12.4 钳制 #6563DE）；
  * - 插值逐句复刻 d3（d3-interpolate exponential + d3-color formatRgb + d3-scale polymap）：
  *   逐通道 (a^2.2 + t·(b^2.2−a^2.2))^(1/2.2) 后 round；段定位按 bisectRight（恰好等于停靠点时
  *   命中该停靠点 t=0）；文字谱段 range 第 6 个色 #18158E 按 polymap j=min(domain,range)−1
  *   规则不参与插值，保留与上游源一致；
- * - 非有限星数归一为 0（→灰底黑字）。
+ * - 非有限星数归一为 0（→灰底白字）。
  */
 export type OsuStarTheme = {
   background: string;
@@ -84,9 +84,9 @@ function osuDiffColour(rating: number): string {
   return spectrumColour(STAR_STOPS, rating);
 }
 
-/** osu-web getDiffTextColour。 */
+/** osu-web getDiffTextColour（<6.5 分支按用户指定改白字）。 */
 function osuDiffTextColour(rating: number): string {
-  if (rating < 6.5) return '#000000';
+  if (rating < 6.5) return '#FFFFFF';
   if (rating < 9) return '#F6F05C';
   return spectrumColour(STAR_TEXT_STOPS, rating);
 }
