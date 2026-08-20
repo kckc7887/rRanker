@@ -37,10 +37,10 @@ export function resetPhigrosKyouAliasesCache(): void {
   aliasesLoadedAt = 0;
 }
 
-export function usePhigrosKyouChartTags() {
+export function usePhigrosKyouChartTags(enabled = true) {
   const activeGameId = useSession((state) => state.activeGameId);
   return useQuery({
-    enabled: activeGameId === 'phigros',
+    enabled: enabled && activeGameId === 'phigros',
     queryKey: [PHIGROS_KYOU_TAGS_RESOURCE_KEY],
     queryFn: () => new ResourceService(repository).load(
       PHIGROS_KYOU_TAGS_RESOURCE_KEY,

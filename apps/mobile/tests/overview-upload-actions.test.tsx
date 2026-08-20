@@ -102,6 +102,10 @@ jest.mock('@/domain/maimai-maintenance', () => ({
   isMaimaiMaintenanceWindow: () => false,
 }));
 jest.mock('@/components/SourceStatus', () => ({ SourceStatus: () => null }));
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
+jest.mock('@/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
 jest.mock('@/components/DxRatingCard', () => ({ DxRatingCard: () => null }));
 jest.mock('@/components/QueryStateView', () => ({
   QueryStateView: ({ data, renderData }: { data: unknown; renderData: (value: unknown) => unknown }) => (

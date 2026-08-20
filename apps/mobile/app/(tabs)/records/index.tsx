@@ -5,7 +5,6 @@ import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
@@ -22,7 +21,7 @@ import {
   compareChunithmScores,
   type ChunithmScoreCardData,
 } from '@/domain/chunithm-score-presentation';
-import type { DataSource, ScoreRecord } from '@/domain/models';
+import type { ScoreRecord } from '@/domain/models';
 import { canReadChunithmScores, canReadPhigrosScores } from '@/domain/provider-capabilities';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -205,18 +204,7 @@ export function RecordsScreen() {
           scrollIndicatorInsets: { bottom: tabBottomInset },
           keyExtractor: recordKey,
           ...TAB_LIST_CACHE_PROPS,
-          ListHeaderComponent: data ? <View style={styles.header}><SourceStatus items={[
-            { key: 'scores', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
-            { key: 'catalog', label: data.catalogSource.label, updatedAt: data.catalogSource.updatedAt, state: data.catalogSource.isStale ? 'cache' : 'live' },
-            ...(dxRatingChartTags.data ? [{
-              key: 'dxrating-tags' as const,
-              label: dxRatingChartTags.data.source.label,
-              updatedAt: dxRatingChartTags.data.source.updatedAt,
-              state: dxRatingChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
-            }] : dxRatingChartTags.isError ? [{
-              key: 'dxrating-tags' as const, label: 'DXRating 标签不可用', state: 'unavailable' as const,
-            }] : []),
-          ]} /><Text style={styles.note}>共 {filtered.length} 条成绩</Text></View> : null,
+          ListHeaderComponent: data ? <View style={styles.header}><Text style={styles.note}>共 {filtered.length} 条成绩</Text></View> : null,
           renderItem: renderRecord,
         }}
       />
@@ -369,20 +357,6 @@ function ChunithmRecordsScreen() {
           contentInsetAdjustmentBehavior: 'automatic',
           keyExtractor: (item) => item.key,
           ListHeaderComponent: <View style={styles.header}>
-            <SourceStatus items={[
-              ...(payload?.source ? [{
-                key: 'scores' as const,
-                label: payload.source.label,
-                updatedAt: payload.source.updatedAt,
-                state: payload.source.isStale ? 'cache' as const : 'live' as const,
-              }] : []),
-              ...(catalogQuery.data?.source ? [{
-                key: 'catalog' as const,
-                label: catalogQuery.data.source.label,
-                updatedAt: catalogQuery.data.source.updatedAt,
-                state: catalogQuery.data.source.isStale ? 'cache' as const : 'live' as const,
-              }] : []),
-            ]} />
             <Text style={styles.note}>共 {filtered.length} 条成绩</Text>
           </View>,
           renderItem: ({ item }) => <ChunithmScoreCard record={item} />,
@@ -518,20 +492,6 @@ function PhigrosRecordsScreen() {
   const refetchAll = () => {
     void Promise.all([gameData.refetch(), catalogQuery.refetch(), kyouChartTags.refetch()]);
   };
-  const source: DataSource = phigrosPayload?.source ?? {
-    kind: 'generated',
-    label: 'TapTap云存档',
-    updatedAt: new Date().toISOString(),
-    isStale: false,
-  };
-  const catalogSource: DataSource = phigrosPayload?.catalogSource
-    ?? catalogQuery.data?.snapshot.source
-    ?? {
-      kind: 'generated',
-      label: 'Phigros',
-      updatedAt: new Date().toISOString(),
-      isStale: false,
-    };
   const hasActiveFilters = !!(
     keyword.trim()
     || level !== 'all'
@@ -595,20 +555,6 @@ function PhigrosRecordsScreen() {
           keyExtractor: (item) => recordKey(item.record),
           ...TAB_LIST_CACHE_PROPS,
           ListHeaderComponent: <View style={styles.header}>
-            <SourceStatus items={[
-              { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
-              { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
-              ...(kyouChartTags.data ? [{
-                key: 'phigros-kyou-tags' as const,
-                label: kyouChartTags.data.source.label,
-                updatedAt: kyouChartTags.data.source.updatedAt,
-                state: kyouChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
-              }] : kyouChartTags.isError ? [{
-                key: 'phigros-kyou-tags' as const,
-                label: 'Kyou 谱面标签不可用',
-                state: 'unavailable' as const,
-              }] : []),
-            ]} />
             <Text style={styles.note}>共 {filtered.length} 条成绩</Text>
           </View>,
           renderItem: ({ item }) => (

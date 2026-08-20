@@ -360,7 +360,7 @@ describe('M2 song query screens', () => {
     mockDxRatingTagCount = 14;
     const live = await render(<SongDetailScreen />);
     expect(live.getByLabelText('查看全部14个谱面标签，另有10个')).toBeTruthy();
-    expect(live.getByText(/DXRating 谱面标签/)).toBeTruthy();
+    expect(live.queryByText(/DXRating 谱面标签/)).toBeNull();
 
     await fireEvent.press(live.getAllByLabelText('切换为SD谱面')[0]);
     expect(live.queryByTestId('dxrating-config-tags')).toBeNull();
@@ -370,20 +370,20 @@ describe('M2 song query screens', () => {
     mockDxRatingTagState = 'error';
     const failed = await render(<SongDetailScreen />);
     expect(failed.queryByTestId('dxrating-config-tags')).toBeNull();
-    expect(failed.getByText('DXRating 谱面标签不可用')).toBeTruthy();
+    expect(failed.queryByText('DXRating 谱面标签不可用')).toBeNull();
   });
 
-  it('reports a cached DXRating source', async () => {
+  it('does not render cached DXRating source status in song detail', async () => {
     mockDxRatingTagState = 'cache';
     const cached = await render(<SongDetailScreen />);
-    expect(cached.getByText(/DXRating 谱面标签缓存/)).toBeTruthy();
+    expect(cached.queryByText(/DXRating 谱面标签缓存/)).toBeNull();
   });
 
-  it('reports a cached DXRating source without blocking the catalog', async () => {
+  it('does not render cached DXRating source status without blocking the catalog', async () => {
     mockDxRatingTagCount = 1;
     mockDxRatingTagState = 'cache';
     const screen = await render(<SearchScreen />);
-    expect(screen.getByText(/DXRating 谱面标签缓存/)).toBeTruthy();
+    expect(screen.queryByText(/DXRating 谱面标签缓存/)).toBeNull();
     expect(screen.getByTestId('catalog-results-list')).toBeTruthy();
   });
 
@@ -497,8 +497,6 @@ describe('M2 song query screens', () => {
     }];
     const screen = await render(<SearchScreen />);
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
-    expect(screen.getByText(/DXRating 谱面标签/)).toBeTruthy();
-
     await fireEvent.press(screen.getByLabelText('谱面标签筛选，当前 全部'));
     expect(screen.getAllByTestId(/dxrating-tag-filter-group-/).map((node) => node.props.testID))
       .toEqual(['dxrating-tag-filter-group-1', 'dxrating-tag-filter-group-2', 'dxrating-tag-filter-group-3']);
@@ -550,14 +548,14 @@ describe('M2 song query screens', () => {
     expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]);
   });
 
-  it('keeps the tag entry disabled and reports an unavailable DXRating source', async () => {
+  it('keeps the tag entry disabled without rendering an unavailable source bar', async () => {
     mockDxRatingTagState = 'error';
     useCatalogFilter.getState().setSelectedDxRatingTagIds([1]);
     const unavailable = await render(<SearchScreen />);
     await fireEvent.press(unavailable.getByLabelText(/展开筛选/));
     expect(unavailable.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
-    expect(unavailable.getByText('DXRating 标签不可用')).toBeTruthy();
+    expect(unavailable.queryByText('DXRating 标签不可用')).toBeNull();
     await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([]));
   });
 
@@ -596,7 +594,7 @@ describe('M2 song query screens', () => {
     await fireEvent.press(screen.getByLabelText('切换版本名称'));
     expect(screen.getByTestId('metadata-value-版本').props.children).toBe('maimai でらっくす PRiSM PLUS');
     expect(screen.getByLabelText('切换版本名称')).toBeTruthy();
-    expect(screen.getByLabelText('数据来源状态')).toBeTruthy();
+    expect(screen.queryByLabelText('数据来源状态')).toBeNull();
     expect(screen.getByTestId('song-detail-scroll').props.directionalLockEnabled).toBeUndefined();
     // 默认 true：从底部卡片上滑时 ScrollView 可接手触摸；勿锁死为 false。
     expect(screen.getByTestId('song-detail-scroll').props.canCancelContentTouches).not.toBe(false);

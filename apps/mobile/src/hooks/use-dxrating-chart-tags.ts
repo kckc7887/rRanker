@@ -11,11 +11,11 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 const repository = new SqliteSnapshotRepository();
 const provider = new DxRatingChartTagsProvider();
 
-export function useDxRatingChartTags() {
+export function useDxRatingChartTags(enabled = true) {
   const activeGameId = useSession((state) => state.activeGameId);
   const activeAccountId = useSession((state) => state.activeAccountId);
   return useQuery({
-    enabled: activeGameId === 'maimai' && activeAccountId !== UNBOUND_ACCOUNT_ID,
+    enabled: enabled && activeGameId === 'maimai' && activeAccountId !== UNBOUND_ACCOUNT_ID,
     queryKey: [DXRATING_CHART_TAGS_RESOURCE_KEY],
     queryFn: () => new ResourceService(repository).load(
       DXRATING_CHART_TAGS_RESOURCE_KEY,

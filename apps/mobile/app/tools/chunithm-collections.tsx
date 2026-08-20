@@ -6,7 +6,6 @@ import { ChunithmDifficultyBadge } from '@/components/chunithm/ChunithmDifficult
 import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { QueryStateView } from '@/components/QueryStateView';
-import { SourceStatus } from '@/components/SourceStatus';
 import { useNotification } from '@/components/AppNotification';
 import {
   calculateChunithmCollectionProgress,
@@ -292,27 +291,6 @@ export default function ChunithmCollectionsToolScreen() {
         renderData={(snapshot) => (
           <View style={styles.body}>
             <View style={styles.header}>
-              <SourceStatus items={[
-                {
-                  key: 'collections',
-                  label: snapshot.source.label,
-                  updatedAt: snapshot.source.updatedAt,
-                  state: snapshot.source.isStale ? 'cache' : 'live',
-                },
-                {
-                  key: 'scores',
-                  label: gameData.data?.payload.kind === 'chunithm'
-                    ? gameData.data.payload.source.label
-                    : '成绩不可用',
-                  updatedAt: gameData.data?.payload.kind === 'chunithm'
-                    ? gameData.data.payload.source.updatedAt
-                    : undefined,
-                  state: gameData.data?.payload.kind === 'chunithm'
-                    ? (gameData.data.payload.source.isStale ? 'cache' : 'live')
-                    : 'unavailable',
-                },
-              ]} />
-
               <View style={styles.kindBar}>
                 {CHUNITHM_PROGRESS_TRACKED_KINDS.map((candidate) => (
                   <Pressable

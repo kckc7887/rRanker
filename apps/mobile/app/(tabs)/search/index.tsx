@@ -8,7 +8,6 @@ import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
@@ -218,19 +217,6 @@ export function SearchScreen() {
           ...TAB_LIST_CACHE_PROPS,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
           scrollIndicatorInsets: { bottom: tabBottomInset },
-          ListHeaderComponent: query.data ? <SourceStatus items={[{
-            key: 'catalog',
-            label: query.data.source.label,
-            updatedAt: query.data.source.updatedAt,
-            state: query.data.source.isStale ? 'cache' : 'live',
-          }, ...(dxRatingChartTags.data ? [{
-            key: 'dxrating-tags' as const,
-            label: dxRatingChartTags.data.source.label,
-            updatedAt: dxRatingChartTags.data.source.updatedAt,
-            state: dxRatingChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
-          }] : dxRatingChartTags.isError ? [{
-            key: 'dxrating-tags' as const, label: 'DXRating 标签不可用', state: 'unavailable' as const,
-          }] : [])]} /> : null,
           renderItem: renderCatalogItem,
         }}
       />
@@ -443,12 +429,6 @@ function ChunithmSearchScreen() {
           ...TAB_LIST_CACHE_PROPS,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
           scrollIndicatorInsets: { bottom: tabBottomInset },
-          ListHeaderComponent: query.data ? <SourceStatus items={[{
-            key: 'catalog',
-            label: query.data.source.label,
-            updatedAt: query.data.source.updatedAt,
-            state: query.data.source.isStale ? 'cache' : 'live',
-          }]} /> : null,
           renderItem: ({ item }) => (
             <ChunithmSongRow
               displayedDifficulties={item.difficulties}
@@ -539,7 +519,6 @@ function PhigrosSearchScreen() {
     return map;
   }, [filtered, provider]);
 
-  const source = useMemo(() => query.data?.snapshot.source, [query.data?.snapshot.source]);
   const setSongFavorite = library.setSongFavorite;
   const toggleFavorite = useCallback((songId: string, favorite: boolean) => {
     void setSongFavorite(songId, favorite);
@@ -595,21 +574,6 @@ function PhigrosSearchScreen() {
           ...TAB_LIST_CACHE_PROPS,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
           scrollIndicatorInsets: { bottom: tabBottomInset },
-          ListHeaderComponent: source ? <SourceStatus items={[{
-            key: 'catalog',
-            label: source.label,
-            updatedAt: source.updatedAt,
-            state: source.isStale ? 'cache' : 'live',
-          }, ...(kyouChartTags.data ? [{
-            key: 'phigros-kyou-tags' as const,
-            label: kyouChartTags.data.source.label,
-            updatedAt: kyouChartTags.data.source.updatedAt,
-            state: kyouChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
-          }] : kyouChartTags.isError ? [{
-            key: 'phigros-kyou-tags' as const,
-            label: 'Kyou 谱面标签不可用',
-            state: 'unavailable' as const,
-          }] : [])]} /> : null,
           renderItem: renderPhigrosItem,
         }}
       />

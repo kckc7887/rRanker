@@ -16,12 +16,12 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const repository = new SqliteSnapshotRepository();
 
-export function useChunithmCollections(kind: ChunithmCollectionKind) {
+export function useChunithmCollections(kind: ChunithmCollectionKind, enabled = true) {
   const activeGameId = useSession((state) => state.activeGameId);
   const activeAccountId = useSession((state) => state.activeAccountId);
   const queryKey = ['chunithm-collections', CHUNITHM_COLLECTION_LIST_SCHEMA_VERSION, kind, activeAccountId];
   return useQuery({
-    enabled: activeGameId === 'chunithm',
+    enabled: enabled && activeGameId === 'chunithm',
     queryKey,
     queryFn: (): Promise<ChunithmCollectionListSnapshot> => {
       const service = new ResourceService(repository);

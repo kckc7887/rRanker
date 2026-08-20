@@ -45,11 +45,16 @@ import { calculatePlateProgress } from '@/domain/plates';
 import type { ScoreRecord } from '@/domain/models';
 import {
   calculateChunithmCollectionProgress,
+  CHUNITHM_COLLECTION_KIND_LABELS,
   isChunithmCollectionComputable,
   type ChunithmCollection,
   type ChunithmCollectionKind,
 } from '@/domain/chunithm-collections';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
+import {
+  buildOverviewSourceStatus,
+  type OverviewCachedSource,
+} from '@/features/overview/overview-source-status';
 import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
@@ -59,8 +64,11 @@ import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
 import { useGameData } from '@/hooks/use-game-data';
+import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
+import { useMuseDashAlbums } from '@/hooks/use-muse-dash';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePlates } from '@/hooks/use-plates';
+import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
 import { switchBoundAccount } from '@/services/switch-bound-account';
 import { refreshDivingFishAccounts } from '@/services/refresh-diving-fish-accounts';
@@ -107,6 +115,14 @@ function PublicOverviewScreen() {
   const library = useUserLibrary();
   const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useDetailedCatalog();
   const chunithmCatalog = useChunithmCatalog();
+  const cachedDxRatingTags = useDxRatingChartTags(false);
+  const cachedPhigrosKyouTags = usePhigrosKyouChartTags(false);
+  const cachedPlates = usePlates(false);
+  const cachedMuseDashAlbums = useMuseDashAlbums(false);
+  const cachedChunithmTrophies = useChunithmCollections('trophy', false);
+  const cachedChunithmCharacters = useChunithmCollections('character', false);
+  const cachedChunithmPlates = useChunithmCollections('plate', false);
+  const cachedChunithmIcons = useChunithmCollections('icon', false);
   const tabBottomInset = useNativeTabBottomInset();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const activeAccountId = useSession((s) => s.activeAccountId);
@@ -132,6 +148,59 @@ function PublicOverviewScreen() {
   const renderableData = data?.payload && typeof data.payload === 'object' ? data : undefined;
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
+  const cachedSourceInputs = useMemo<OverviewCachedSource[]>(() => {
+    if (activeGameId === 'maimai') {
+      return [
+        {
+          key: 'dxrating-tags', label: 'DXRating 标签',
+          source: cachedDxRatingTags.data?.source, error: cachedDxRatingTags.error,
+        },
+        {
+          key: 'plates', label: '舞萌姓名框',
+          source: cachedPlates.data?.source, error: cachedPlates.error,
+        },
+      ];
+    }
+    if (activeGameId === 'phigros') {
+      return [{
+        key: 'phigros-kyou-tags', label: 'Kyou 标签',
+        source: cachedPhigrosKyouTags.data?.source, error: cachedPhigrosKyouTags.error,
+      }];
+    }
+    if (activeGameId === 'musedash') {
+      return [{
+        key: 'musedash-albums', label: '曲库',
+        source: cachedMuseDashAlbums.source, error: cachedMuseDashAlbums.error,
+      }];
+    }
+    if (activeGameId === 'chunithm') {
+      return [
+        { key: 'collection-trophy', label: `收藏品/${CHUNITHM_COLLECTION_KIND_LABELS.trophy}`, source: cachedChunithmTrophies.data?.source, error: cachedChunithmTrophies.error },
+        { key: 'collection-character', label: `收藏品/${CHUNITHM_COLLECTION_KIND_LABELS.character}`, source: cachedChunithmCharacters.data?.source, error: cachedChunithmCharacters.error },
+        { key: 'collection-plate', label: `收藏品/${CHUNITHM_COLLECTION_KIND_LABELS.plate}`, source: cachedChunithmPlates.data?.source, error: cachedChunithmPlates.error },
+        { key: 'collection-icon', label: `收藏品/${CHUNITHM_COLLECTION_KIND_LABELS.icon}`, source: cachedChunithmIcons.data?.source, error: cachedChunithmIcons.error },
+      ];
+    }
+    return [];
+  }, [
+    activeGameId,
+    cachedChunithmCharacters.data?.source,
+    cachedChunithmCharacters.error,
+    cachedChunithmIcons.data?.source,
+    cachedChunithmIcons.error,
+    cachedChunithmPlates.data?.source,
+    cachedChunithmPlates.error,
+    cachedChunithmTrophies.data?.source,
+    cachedChunithmTrophies.error,
+    cachedDxRatingTags.data?.source,
+    cachedDxRatingTags.error,
+    cachedMuseDashAlbums.error,
+    cachedMuseDashAlbums.source,
+    cachedPhigrosKyouTags.data?.source,
+    cachedPhigrosKyouTags.error,
+    cachedPlates.data?.source,
+    cachedPlates.error,
+  ]);
   const syncBusy = syncing;
   const maimaiLxnsSources = useMemo(
     () => boundAccounts.filter((account) => (
@@ -464,50 +533,6 @@ function PublicOverviewScreen() {
               <Text style={styles.switchHint}>·点击切换·</Text>
             </Pressable>
 
-            {bundle.payload.kind === 'adofai' || bundle.payload.kind === 'musedash' || bundle.payload.kind === 'phira' || bundle.payload.kind === 'osu' ? (
-              <SourceStatus items={[{
-                key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt,
-                state: bundle.payload.source.isStale ? 'cache' : 'live',
-              }]} />
-            ) : bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
-              <SourceStatus items={[
-                { key: 'scores', label: bundle.payload.source.label, updatedAt: bundle.payload.source.updatedAt, state: bundle.payload.source.isStale ? 'cache' : 'live' },
-                { key: 'catalog', label: bundle.payload.catalogSource.label, updatedAt: bundle.payload.catalogSource.updatedAt, state: bundle.payload.catalogSource.isStale ? 'cache' : 'live' },
-              ]} />
-            ) : bundle.payload.kind === 'chunithm' ? (
-              <SourceStatus items={[
-                {
-                  key: 'scores',
-                  label: bundle.payload.hasSyncedData
-                    ? bundle.payload.source.label
-                    : '落雪账号尚未同步中二数据',
-                  updatedAt: bundle.payload.source.updatedAt,
-                  state: bundle.payload.hasSyncedData
-                    ? (bundle.payload.source.isStale ? 'cache' : 'live')
-                    : 'unavailable',
-                },
-                {
-                  key: 'catalog',
-                  label: chunithmCatalog.data?.source.label
-                    ?? (chunithmCatalog.isLoading
-                      ? 'LXNS 中二节奏公共曲库加载中'
-                      : 'LXNS 中二节奏公共曲库暂不可用'),
-                  updatedAt: chunithmCatalog.data?.source.updatedAt,
-                  state: chunithmCatalog.data
-                    ? (chunithmCatalog.data.source.isStale ? 'cache' : 'live')
-                    : 'unavailable',
-                },
-              ]} />
-            ) : (
-              <SourceStatus items={[
-                {
-                  key: 'scores',
-                  label: bundle.gameId === 'chunithm' ? '成绩暂未接入' : '空',
-                  state: 'unavailable',
-                },
-              ]} />
-            )}
-
             {bundle.payload.kind === 'maimai'
               || bundle.payload.kind === 'phigros'
               || bundle.payload.kind === 'chunithm'
@@ -694,6 +719,7 @@ function PublicOverviewScreen() {
                     || bundle.payload.kind === 'adofai'
                     || bundle.payload.kind === 'musedash'
                     || bundle.payload.kind === 'phira'
+                    || bundle.payload.kind === 'osu'
                     ? (library.isError
                         ? '个人数据暂不可用'
                         : bundle.payload.kind === 'adofai' || bundle.payload.kind === 'phira'
@@ -707,46 +733,18 @@ function PublicOverviewScreen() {
 
             <View style={[styles.card, { backgroundColor: theme.surface }]}>
               <Text style={[styles.cardTitle, { color: theme.text }]}>数据状态</Text>
-              {bundle.payload.kind === 'adofai' ? (
-                <>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
-                </>
-              ) : bundle.payload.kind === 'musedash' || bundle.payload.kind === 'phira' || bundle.payload.kind === 'osu' ? (
-                <>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
-                </>
-              ) : bundle.payload.kind === 'maimai' || bundle.payload.kind === 'phigros' ? (
-                <>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>来源：{bundle.payload.source.label}</Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>曲库：{bundle.payload.catalogSource.label}</Text>
-                  {bundle.payload.kind === 'maimai' ? (
-                    <Text style={[styles.body, { color: theme.textSecondary }]}>当前版本：{bundle.payload.currentVersionTitle}</Text>
-                  ) : null}
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}</Text>
-                </>
+              <SourceStatus items={buildOverviewSourceStatus(
+                bundle,
+                { source: chunithmCatalog.data?.source, error: chunithmCatalog.error },
+                cachedSourceInputs,
+              )} />
+              {bundle.payload.kind === 'maimai' ? (
+                <Text style={[styles.body, { color: theme.textSecondary }]}>当前版本：{bundle.payload.currentVersionTitle}</Text>
               ) : bundle.payload.kind === 'chunithm' ? (
-                <>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>
-                    来源：{bundle.payload.source.label}
-                  </Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>
-                    曲库：{chunithmCatalog.data?.source.label
-                      ?? (chunithmCatalog.isLoading
-                        ? 'LXNS 中二节奏公共曲库加载中'
-                        : 'LXNS 中二节奏公共曲库暂不可用')}
-                  </Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>
-                    当前版本：{chunithmCatalog.data?.currentVersion.title ?? '—'}
-                  </Text>
-                  <Text style={[styles.body, { color: theme.textSecondary }]}>
-                    更新时间：{new Date(bundle.payload.source.updatedAt).toLocaleString()}
-                  </Text>
-                </>
-              ) : (
-                <Text style={[styles.body, { color: theme.textSecondary }]}>当前游戏暂未接入数据</Text>
-              )}
+                <Text style={[styles.body, { color: theme.textSecondary }]}>
+                  当前版本：{chunithmCatalog.data?.currentVersion.title ?? '—'}
+                </Text>
+              ) : null}
             </View>
           </ScrollView>
         )}

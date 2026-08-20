@@ -9,7 +9,6 @@ import { PlateImage } from '@/components/PlateImage';
 import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { DifficultyBadge } from '@/components/ScoreVisuals';
-import { SourceStatus } from '@/components/SourceStatus';
 import { difficultyFromIndex } from '@/domain/catalog';
 import {
   calculatePlateProgress,
@@ -17,7 +16,7 @@ import {
   parseVersionPlateName,
   type VersionPlateGroup,
 } from '@/domain/plates';
-import type { DataSource, Plate } from '@/domain/models';
+import type { Plate } from '@/domain/models';
 import { usePlates } from '@/hooks/use-plates';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useSongs } from '@/hooks/use-songs';
@@ -95,7 +94,7 @@ export default function PlatesToolScreen() {
   }, [songs.data]);
   const activeGroup = groups.find((group) => group.prefix === openPrefix) ?? null;
   const viewData = plateSnapshot && groups.length
-    ? { groups, source: plateSnapshot.source }
+    ? { groups }
     : undefined;
 
   const closePicker = () => {
@@ -132,25 +131,20 @@ export default function PlatesToolScreen() {
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: '牌子进度' }} />
-      <QueryStateView<{ groups: VersionPlateGroup[]; source: DataSource }>
+      <QueryStateView<{ groups: VersionPlateGroup[] }>
         isLoading={plates.isLoading || scores.isLoading}
         isError={plates.isError || scores.isError}
         isEmpty={!!plateSnapshot && groups.length === 0}
         error={plates.error ?? scores.error}
         onRetry={() => { void plates.refetch(); void scores.refetch(); }}
         data={viewData}
-        renderData={({ groups: pickerGroups, source }) => (
+        renderData={({ groups: pickerGroups }) => (
           <FlatList
             data={progress?.missingSongs ?? []}
             keyExtractor={(item) => item.songId}
             contentContainerStyle={styles.content}
             ListHeaderComponent={(
               <View style={styles.header}>
-                <SourceStatus items={[
-                  { key: 'plates', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
-                  { key: 'scores', label: scores.data?.source?.label ?? '成绩不可用', updatedAt: scores.data?.source?.updatedAt, state: !scores.data ? 'unavailable' : scores.data.source?.isStale ? 'cache' : 'live' },
-                ]} />
-
                 <Card style={styles.pickerCard}>
                   <Pressable
                     accessibilityRole="button"

@@ -44,6 +44,25 @@ describe('user library domain', () => {
     expect(inferGameIdFromKey('song:phira:66661')).toBe('phira');
   });
 
+  it('keeps osu beatmap ids intact and scopes identical ids by four independent modes', () => {
+    const modes = ['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'] as const;
+    expect(modes.map((gameId) => chartLibraryKey(gameId, 3720, 'SD', 22423))).toEqual([
+      'chart:osu-standard:3720:SD:22423',
+      'chart:osu-mania:3720:SD:22423',
+      'chart:osu-catch:3720:SD:22423',
+      'chart:osu-taiko:3720:SD:22423',
+    ]);
+    for (const gameId of modes) {
+      expect(normalizeLibraryItem({
+        ...chart,
+        gameId,
+        songId: '3720',
+        type: 'SD',
+        levelIndex: 22423,
+      })).toMatchObject({ levelIndex: 22423 });
+    }
+  });
+
   it('round-trips phira song items through backups without truncation', () => {
     const phiraSong: SongLibraryItem = {
       ...song, gameId: 'phira', songId: '66661', key: songLibraryKey('phira', 66661),

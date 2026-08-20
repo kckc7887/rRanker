@@ -9,7 +9,7 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 const repository = new SqliteSnapshotRepository();
 
 /** 仅舞萌姓名框（账号无关的全局公开资源，示例账号也命中缓存优先）。 */
-export function usePlates() {
+export function usePlates(enabled = true) {
   const activeAccountId = useSession((state) => state.activeAccountId);
   const activeGameId = useSession((state) => state.activeGameId);
   const provider = useSession((state) => state.catalogProvider);
@@ -17,7 +17,7 @@ export function usePlates() {
   const resourceKey = 'plates';
   const schemaVersion = 2;
   return useQuery({
-    enabled: activeGameId === 'maimai',
+    enabled: enabled && activeGameId === 'maimai',
     queryKey,
     queryFn: async () => {
       const service = new ResourceService(repository);

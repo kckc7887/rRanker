@@ -5,6 +5,7 @@ import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import { OsuSongDetail } from '@/components/osu/OsuSongDetail';
 import { OsuSongRow } from '@/components/osu/OsuSongRow';
 import type { OsuBeatmapsetDetail, OsuBestScore } from '@/domain/osu';
+import type { UserLibraryItem } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
 
 const mockBack = jest.fn();
@@ -12,6 +13,7 @@ const mockCanGoBack = jest.fn(() => true);
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockSetSongFavorite = jest.fn(async () => undefined);
+const mockSetChartPractice = jest.fn(async () => undefined);
 const mockSetTags = jest.fn(async () => undefined);
 const mockSetTagPresets = jest.fn(async () => undefined);
 const mockDetailRefetch = jest.fn(async () => undefined);
@@ -121,6 +123,7 @@ let mockDetailState: {
   error: unknown;
 } = { data: detail, isLoading: false, isError: false, error: null };
 let mockGameData: { data?: ReturnType<typeof osuGameData> } = { data: osuGameData(5000) };
+let mockLibraryItems: UserLibraryItem[] = [];
 
 jest.mock('expo-router', () => ({
   router: {
@@ -159,7 +162,7 @@ jest.mock('react-native-gesture-handler', () => {
     GestureHandlerRootView: RN.View,
     Pressable: (props: React.ComponentProps<typeof RN.Pressable>) => React.createElement(
       RN.Pressable,
-      { ...props, testID: props.testID ?? 'gesture-handler-pressable' },
+      { ...props, accessibilityHint: 'gesture-handler', testID: props.testID ?? 'gesture-handler-pressable' },
     ),
     ScrollView: RN.ScrollView,
   };
@@ -206,7 +209,7 @@ jest.mock('@/hooks/use-game-data', () => ({
 }));
 jest.mock('@/hooks/use-user-library', () => ({
   useUserLibrary: () => ({
-    data: [],
+    data: mockLibraryItems,
     isLoading: false,
     isUpdating: false,
     songKey: (songId: string) => `song:osu:${songId}`,
@@ -214,6 +217,7 @@ jest.mock('@/hooks/use-user-library', () => ({
       `chart:osu:${songId}:${type}:${levelIndex}`
     ),
     setSongFavorite: mockSetSongFavorite,
+    setChartPractice: mockSetChartPractice,
     setTags: mockSetTags,
     setTagPresets: mockSetTagPresets,
     tagPresets: [],
@@ -226,6 +230,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
     mockCanGoBack.mockReturnValue(true);
     mockDetailState = { data: detail, isLoading: false, isError: false, error: null };
     mockGameData = { data: osuGameData(5000) };
+    mockLibraryItems = [];
   });
 
   it('渲染 Hero/简要信息栏/歌曲信息卡与 Hard 难度卡完整内容', async () => {
@@ -441,6 +446,45 @@ describe('OsuSongDetail 歌曲详情页', () => {
       .toBeGreaterThanOrEqual(addButtons.length);
   });
 
+  it('判定表和达成时间后、标签编辑前渲染练习按钮，并按 beatmap id 加入清单', async () => {
+    const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
+    const card = within(screen.getByTestId('osu-detail-difficulty-22423'));
+    const judgement = card.getByLabelText('osu 判定统计');
+    const achievedAt = card.getByText('达成时间：2026-01-01');
+    const practice = card.getByTestId('osu-detail-practice-22423');
+    const tagEditor = card.getByTestId('osu-detail-chart-tags-22423');
+    const children = screen.getByTestId('osu-detail-difficulty-22423').children;
+
+    expect(children.indexOf(judgement)).toBeLessThan(children.indexOf(achievedAt));
+    expect(children.indexOf(achievedAt)).toBeLessThan(children.indexOf(practice));
+    expect(children.indexOf(practice)).toBeLessThan(children.indexOf(tagEditor));
+    expect(practice.props.testID).toBe('osu-detail-practice-22423');
+    expect(practice.props.accessibilityHint).toBe('gesture-handler');
+
+    fireEvent.press(practice);
+    expect(mockSetChartPractice).toHaveBeenCalledWith('3720', 'SD', 22423, true);
+  });
+
+  it('已加入的谱面显示移出状态，并按原参数移除', async () => {
+    mockLibraryItems = [{
+      kind: 'chart',
+      key: 'chart:osu:3720:SD:22423',
+      gameId: 'osu-standard',
+      songId: '3720',
+      type: 'SD',
+      levelIndex: 22423,
+      practice: true,
+      tags: [],
+      createdAt: '2026-08-20T00:00:00.000Z',
+      updatedAt: '2026-08-20T00:00:00.000Z',
+    }];
+    const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
+    const button = screen.getByLabelText('移出练习清单');
+
+    fireEvent.press(button);
+    expect(mockSetChartPractice).toHaveBeenCalledWith('3720', 'SD', 22423, false);
+  });
+
   it('Android：滚动区 TagEditor 按钮走原生 Pressable（无 gesture-handler 按压）', async () => {
     const originalOS = Platform.OS;
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
@@ -454,6 +498,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
       for (const button of addButtons) {
         expect(button.props.testID).not.toBe('gesture-handler-pressable');
       }
+      expect(screen.getByTestId('osu-detail-practice-22423').props.accessibilityHint).toBeUndefined();
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
     }

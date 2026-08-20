@@ -102,7 +102,6 @@ export function TufRandomChartsScreen() {
       onRetryPool={failedOffsets.length > 0 ? () => setRetryVersion((value) => value + 1) : undefined}
       resultCount={results?.length ?? 0}
       results={results?.map((pass) => <TufScoreCard key={`${lastSeed}-${pass.id}`} pass={pass} />)}
-      sourceItems={[{ key: 'scores', label: 'TUF 公开成绩', state: 'live' }]}
     />}
   />;
 }

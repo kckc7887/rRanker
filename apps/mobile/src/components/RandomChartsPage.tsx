@@ -8,9 +8,7 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { Card } from '@/components/Card';
-import { SourceStatus } from '@/components/SourceStatus';
 import type { RandomChartsCount } from '@/domain/random-charts';
-import type { SourceStatusItem } from '@/domain/models';
 import { useAppTheme } from '@/theme/app-theme';
 
 const COUNTS: readonly RandomChartsCount[] = [1, 2, 3, 4];
@@ -19,7 +17,6 @@ export type RandomChartsPageProps = {
   count: RandomChartsCount;
   onCountChange: (count: RandomChartsCount) => void;
   filter: ReactNode;
-  sourceItems: readonly SourceStatusItem[];
   poolSize: number;
   onDraw: () => void;
   hasDrawn: boolean;
@@ -69,7 +66,6 @@ export function RandomChartsPage({
   count,
   onCountChange,
   filter,
-  sourceItems,
   poolSize,
   onDraw,
   hasDrawn,
@@ -90,7 +86,6 @@ export function RandomChartsPage({
         keyboardShouldPersistTaps="handled"
         testID="random-charts-scroll"
       >
-        <SourceStatus items={[...sourceItems]} />
         <Card>
           <Text style={[styles.heading, { color: theme.text }]}>抽取数量</Text>
           <View style={styles.chipRow}>

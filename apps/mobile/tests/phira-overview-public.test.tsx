@@ -28,6 +28,11 @@ jest.mock('@/components/maimai/MaimaiUploadTabs', () => ({ MaimaiUploadTabs: () 
 jest.mock('@/components/maimai/MaimaiSyncGuideSheet', () => ({ MaimaiSyncGuideContent: () => null }));
 jest.mock('@/components/chunithm/ChunithmSyncGuideSheet', () => ({ ChunithmSyncGuideSheet: () => null }));
 jest.mock('@/components/SourceStatus', () => ({ SourceStatus: ({ items }: { items: { label: string }[] }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{items.map((item) => item.label).join(' · ')}</RN.Text>; } }));
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
+jest.mock('@/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
 jest.mock('@/components/DxRatingCard', () => ({ DxRatingCard: ({ label, display, meta, sideBadge }: { label: string; display: string; meta: string; sideBadge?: { title: string; value: string } }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{`${label} ${display} · ${meta} · ${sideBadge?.title} ${sideBadge?.value}`}</RN.Text>; } }));
 jest.mock('@/components/QueryStateView', () => ({ QueryStateView: ({ data, renderData }: { data: unknown; renderData: (value: unknown) => ReactNode }) => renderData(data) }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ data: mockBundle, isLoading: false, isError: false, error: null, refetch: mockRefetch, profile: mockBundle.profile }) }));
@@ -49,7 +54,7 @@ test('Phira overview shows the three requested public metrics and no practice co
   const screen = await render(<OverviewScreen />);
   expect(screen.getByText('Phira · 玩家概览')).toBeTruthy();
   expect(screen.getByText('Ranking Score 5.33 · 总游玩次数 217 · 平均准确率 99.12%')).toBeTruthy();
-  expect(screen.getAllByText(/Phira 社区公开数据/)).toHaveLength(2);
+  expect(screen.getAllByText(/Phira 社区公开数据/)).toHaveLength(1);
   expect(screen.getByText('收藏 0 首')).toBeTruthy();
   expect(screen.queryByText(/练习 0 张/)).toBeNull();
   await screen.unmount();

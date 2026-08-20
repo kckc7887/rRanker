@@ -17,6 +17,7 @@ import { SongMetadataTable, type SongMetadataItem } from '@/components/game-cont
 import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
 import { SongDetailHero } from '@/components/game-content/SongDetailHero';
+import { DetailPressable } from '@/components/game-content/DetailPressable';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
 import type { GamePayload } from '@/domain/game-data';
@@ -448,6 +449,33 @@ function DifficultyCard({
       <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>
         达成时间：{score?.achievedAt?.slice(0, 10) ?? '—'}
       </Text>
+      <DetailPressable
+        accessibilityLabel={chartItem?.kind === 'chart' && chartItem.practice ? '移出练习清单' : '加入练习清单'}
+        accessibilityRole="button"
+        disabled={library.isUpdating}
+        onPress={() => void library.setChartPractice(
+          String(song.beatmapSetId),
+          OSU_CHART_TYPE,
+          beatmap.id,
+          !(chartItem?.kind === 'chart' && chartItem.practice),
+        )}
+        style={({ pressed }) => [
+          styles.practiceButton,
+          chartItem?.kind === 'chart' && chartItem.practice
+            ? { backgroundColor: starTheme.background, borderColor: starTheme.background }
+            : { backgroundColor: 'transparent', borderColor: starTheme.background },
+          pressed && styles.pressed,
+          library.isUpdating && styles.disabled,
+        ]}
+        testID={`osu-detail-practice-${beatmap.id}`}
+      >
+        <Text style={[
+          styles.practiceButtonText,
+          { color: chartItem?.kind === 'chart' && chartItem.practice ? '#FFFFFF' : starTheme.background },
+        ]}>
+          {chartItem?.kind === 'chart' && chartItem.practice ? '移出练习清单' : '加入练习清单'}
+        </Text>
+      </DetailPressable>
       <TagEditor
         disabled={library.isUpdating}
         historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
@@ -631,6 +659,16 @@ const styles = StyleSheet.create({
   ppLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
   ppValue: { width: '100%', fontSize: 21, lineHeight: 27, fontWeight: '900', fontVariant: ['tabular-nums'], textAlign: 'center' },
   chartMeta: { fontSize: 12, lineHeight: 18, marginTop: 10 },
+  practiceButton: {
+    minHeight: 40,
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  practiceButtonText: { fontSize: 13, lineHeight: 18, fontWeight: '800' },
   noCharts: { padding: 24, alignItems: 'center' },
   details: { paddingHorizontal: 16, paddingTop: 16, gap: 12 },
   sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 7 },

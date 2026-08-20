@@ -113,10 +113,6 @@ export function MuseDashRandomChartsScreen() {
           key={`${lastSeed}-${chart.key}`}
           onPress={() => openDetail(chart)}
           title={museDashSongTitle(chart.song)} />)}
-      sourceItems={[
-        { key: 'catalog', label: albums.source?.label ?? 'MuseDash.moe 曲库', updatedAt: albums.source?.updatedAt, state: albums.source?.isStale ? 'cache' : 'live' },
-        { key: 'scores', label: player.source?.label ?? (userId ? 'MuseDash.moe 成绩' : '未绑定成绩'), updatedAt: player.source?.updatedAt, state: !player.data ? 'unavailable' : player.source?.isStale ? 'cache' : 'live' },
-      ]}
     />}
   />;
 }

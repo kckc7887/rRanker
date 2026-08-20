@@ -57,6 +57,11 @@ jest.mock('@/components/SourceStatus', () => ({
     return <RN.Text>{items.map((item) => item.label).join(' · ')}</RN.Text>;
   },
 }));
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
+jest.mock('@/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
 jest.mock('@/components/DxRatingCard', () => ({
   DxRatingCard: ({ label, display, meta, sideBadge }: {
     label: string; display: string; meta: string; sideBadge?: { title: string; value: string };
@@ -131,7 +136,8 @@ describe('TUF public overview', () => {
     expect(screen.getByText(/世界排名 #12$/)).toBeTruthy();
     expect(screen.queryByText(/TUF PLAYER/)).toBeNull();
     expect(screen.queryByText('公开资料')).toBeNull();
-    expect(screen.getByText('TUF 社区公开数据')).toBeTruthy();
+    expect(screen.getByText(/成绩\/玩家 · TUF 社区公开数据/)).toBeTruthy();
+    expect(screen.getAllByText('数据状态')).toHaveLength(1);
     expect(screen.getByText('我的曲库')).toBeTruthy();
     expect(screen.getByText('收藏 0 首')).toBeTruthy();
     expect(screen.queryByText('当前游戏暂未开放个人曲库')).toBeNull();

@@ -292,7 +292,7 @@ describe('Muse Dash screens', () => {
     expect(screen.getByText('DLC 来源')).toBeTruthy();
     expect(screen.getByTestId('musedash-song-metadata-value-DLC 来源').props.children).toBe('Default Music');
     expect(screen.getByText('BPM')).toBeTruthy();
-    expect(screen.getByText('MuseDash.moe', { exact: false })).toBeTruthy();
+    expect(screen.queryByText('MuseDash.moe', { exact: false })).toBeNull();
     expect(screen.getAllByText('95.48%').length).toBeGreaterThan(0);
     expect(screen.getAllByText('HIDDEN').length).toBeGreaterThan(0);
     expect(screen.getAllByText('谱师：Mapper A').length).toBeGreaterThan(0);

@@ -7,7 +7,6 @@ import { BestListPage } from '@/components/game-content/GameListPages';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import {
   buildChunithmScoreCards,
@@ -15,7 +14,7 @@ import {
   type ChunithmScoreCardData,
 } from '@/domain/chunithm-score-presentation';
 import type { BestListSection, ChunithmBestListSection } from '@/domain/game-data';
-import type { DataSource, ScoreRecord } from '@/domain/models';
+import type { ScoreRecord } from '@/domain/models';
 import { canReadChunithmScores, canReadPhigrosScores } from '@/domain/provider-capabilities';
 import { phigrosChartNoteKey } from '@/domain/phigros-xing';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
@@ -134,20 +133,6 @@ function ChunithmBestScreen() {
           keyExtractor: (record, index) => `${record.songId}-${record.levelIndex}-${index}`,
           ListHeaderComponent: <View style={styles.header}>
               <BestImageEntryButton label="生成B50图片" />
-              <SourceStatus items={payload ? [
-              {
-                key: 'scores',
-                label: payload.source.label,
-                updatedAt: payload.source.updatedAt,
-                state: payload.source.isStale ? 'cache' : 'live',
-              },
-              {
-                key: 'catalog',
-                label: catalogQuery.data?.source.label ?? 'LXNS 中二节奏公共曲库',
-                updatedAt: catalogQuery.data?.source.updatedAt,
-                state: catalogQuery.data?.source.isStale ? 'cache' : 'live',
-              },
-            ] : []} />
             </View>,
           renderSectionHeader: ({ section }) => (
             <View style={styles.sectionHeader}>
@@ -203,10 +188,6 @@ function MaimaiBest50Screen() {
           keyExtractor: (record) => `${record.songId}-${record.type}-${record.levelIndex}-${record.version}`,
           ListHeaderComponent: <View style={styles.header}>
               <BestImageEntryButton label="生成B50图片" />
-              <SourceStatus items={maimai ? [
-                { key: 'scores', label: maimai.source.label, updatedAt: maimai.source.updatedAt, state: maimai.source.isStale ? 'cache' : 'live' },
-                { key: 'catalog', label: maimai.catalogSource.label, updatedAt: maimai.catalogSource.updatedAt, state: maimai.catalogSource.isStale ? 'cache' : 'live' },
-              ] : []} />
             </View>,
           renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
@@ -260,27 +241,9 @@ function PhigrosBestScreen() {
     void Promise.all([gameData.refetch(), catalogQuery.refetch()]);
   };
 
-  const source: DataSource = phigrosPayload?.source ?? {
-    kind: 'generated',
-    label: 'TapTap云存档',
-    updatedAt: new Date().toISOString(),
-    isStale: false,
-  };
-  const catalogSource: DataSource = phigrosPayload?.catalogSource
-    ?? catalogQuery.data?.snapshot.source
-    ?? {
-      kind: 'generated',
-      label: 'Phigros',
-      updatedAt: new Date().toISOString(),
-      isStale: false,
-    };
   const listHeader = (
     <View style={styles.header}>
       <BestImageEntryButton label="生成B30图片" />
-      <SourceStatus items={[
-        { key: 'scores', label: source.label, updatedAt: source.updatedAt, state: source.isStale ? 'cache' : 'live' },
-        { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
-      ]} />
     </View>
   );
   const renderSectionHeader = useCallback(({ section }: { section: BestSection }) => (

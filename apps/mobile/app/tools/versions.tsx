@@ -3,7 +3,6 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack, type Href } from 'expo-router';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
-import { SourceStatus } from '@/components/SourceStatus';
 import { VersionLogo } from '@/components/VersionLogo';
 import type { CatalogSnapshot, GameVersion } from '@/domain/models';
 import { versionLogoSource } from '@/domain/version-logo-assets';
@@ -36,10 +35,6 @@ export default function VersionsToolScreen() {
       isEmpty={false}
       error={catalog.error} onRetry={() => { void catalog.refetch(); void scores.refetch(); }} data={catalog.data}
       renderData={(data) => <ScrollView contentContainerStyle={styles.content}>
-        <SourceStatus items={[
-          { key: 'catalog', label: data.source.label, updatedAt: data.source.updatedAt, state: data.source.isStale ? 'cache' : 'live' },
-          { key: 'scores', label: scores.data?.source?.label ?? '成绩不可用，仅展示曲库统计', updatedAt: scores.data?.source?.updatedAt, state: !scores.data ? 'unavailable' : scores.data.source?.isStale ? 'cache' : 'live' },
-        ]} />
         <Text style={[styles.heading, { color: theme.text }]}>版本名称对照</Text>
         <Card style={styles.table}>
           <View style={[styles.tableRow, styles.tableHeader, { backgroundColor: theme.surfaceMuted, borderBottomColor: theme.border }]}>
