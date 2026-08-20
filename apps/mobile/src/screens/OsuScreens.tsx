@@ -9,8 +9,10 @@ import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { OsuCatalogFilterBar } from '@/components/osu/OsuCatalogFilterBar';
+import { OsuRecordsFilterBar } from '@/components/osu/OsuRecordsFilterBar';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import { OsuSongRow } from '@/components/osu/OsuSongRow';
+import { filterOsuBestScores } from '@/domain/osu-filters';
 import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
 import {
   type OsuBestScore,
@@ -23,6 +25,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
+import { useOsuRecordsFilter } from '@/state/osu-records-filter';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -95,33 +98,79 @@ export function OsuBestScreen() {
   );
 }
 
-/** osu! 成绩页：上游无「全部成绩」端点，平铺展示同一份 Top 100。 */
+/** osu! 成绩页：上游无「全部成绩」端点，平铺展示同一份 Top 100，支持关键词与模组/达成率/星数/PP 区间本地筛选。 */
 export function OsuRecordsScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const gameId = useActiveOsuGameId();
   const { data, isLoading, isError, error, refetch } = useGameData();
   const payload = data?.payload.kind === 'osu' ? data.payload : null;
-  const scores = useMemo(() => payload?.bestScores ?? [], [payload]);
+  const allScores = useMemo(() => payload?.bestScores ?? [], [payload]);
+  const filter = useOsuRecordsFilter();
+  const debouncedKeyword = useDebouncedValue(filter.keyword, 350);
+  const scores = useMemo(() => filterOsuBestScores(allScores, {
+    keyword: debouncedKeyword,
+    mods: filter.mods,
+    accuracyMin: filter.accuracyMin,
+    accuracyMax: filter.accuracyMax,
+    starMin: filter.starMin,
+    starMax: filter.starMax,
+    ppMin: filter.ppMin,
+    ppMax: filter.ppMax,
+  }), [allScores, debouncedKeyword, filter.mods, filter.accuracyMin, filter.accuracyMax,
+    filter.starMin, filter.starMax, filter.ppMin, filter.ppMax]);
+  const hasActiveFilter = debouncedKeyword.trim() !== '' || filter.mods.length > 0
+    || filter.accuracyMin !== '' || filter.accuracyMax !== ''
+    || filter.starMin !== '' || filter.starMax !== ''
+    || filter.ppMin !== '' || filter.ppMax !== '';
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <RecordsListPage<OsuBestScore>
         beforeList={
-          <View style={styles.header}>
-            <SourceStatus items={payload ? [{
-              key: 'scores',
-              label: payload.source.label,
-              updatedAt: payload.source.updatedAt,
-              state: payload.source.isStale ? 'cache' : 'live',
-            }] : []} />
-          </View>
+          <>
+            <View style={styles.header}>
+              <SourceStatus items={payload ? [{
+                key: 'scores',
+                label: payload.source.label,
+                updatedAt: payload.source.updatedAt,
+                state: payload.source.isStale ? 'cache' : 'live',
+              }] : []} />
+            </View>
+            <GameSearchHeader
+              accessibilityLabel="搜索 osu! 成绩"
+              placeholder="搜索歌名、艺术家或谱面名"
+              value={filter.keyword}
+              onChangeText={filter.setKeyword}
+              loaded={scores.length}
+              total={allScores.length}
+            />
+            <OsuRecordsFilterBar
+              collapsed={filter.collapsed}
+              mods={filter.mods}
+              starMin={filter.starMin}
+              starMax={filter.starMax}
+              accuracyMin={filter.accuracyMin}
+              accuracyMax={filter.accuracyMax}
+              ppMin={filter.ppMin}
+              ppMax={filter.ppMax}
+              onCollapsedChange={filter.setCollapsed}
+              onModsChange={filter.setMods}
+              onStarMinChange={filter.setStarMin}
+              onStarMaxChange={filter.setStarMax}
+              onAccuracyMinChange={filter.setAccuracyMin}
+              onAccuracyMaxChange={filter.setAccuracyMax}
+              onPpMinChange={filter.setPpMin}
+              onPpMaxChange={filter.setPpMax}
+              onReset={filter.clearFilters}
+            />
+          </>
         }
         isLoading={isLoading}
         isError={isError}
         isEmpty={!isLoading && scores.length === 0}
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
-        emptyText="当前账号暂无成绩"
+        emptyText={hasActiveFilter ? '没有找到符合条件的成绩' : '当前账号暂无成绩'}
         data={scores.length ? scores : undefined}
         flatListProps={{
           testID: 'osu-records-results-list',

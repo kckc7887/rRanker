@@ -619,8 +619,8 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 12,
     padding: 12,
-    // 判定表淡灰遮罩：彩字区域与卡面轻微区分，深浅模式同色。
-    backgroundColor: 'rgba(128,128,128,0.14)',
+    // 判定表淡灰遮罩：彩字区域与卡面区分（2026-08-20 应要求自 0.14 加暗），深浅模式同色。
+    backgroundColor: 'rgba(128,128,128,0.18)',
   },
   judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },
   judgementRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },

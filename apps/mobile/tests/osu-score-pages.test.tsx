@@ -3,7 +3,8 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import { OsuSongRow } from '@/components/osu/OsuSongRow';
-import { OsuBestScreen, OsuCatalogScreen } from '@/screens/OsuScreens';
+import { OsuBestScreen, OsuCatalogScreen, OsuRecordsScreen } from '@/screens/OsuScreens';
+import { useOsuRecordsFilter } from '@/state/osu-records-filter';
 import type { OsuBestScore } from '@/domain/osu';
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
@@ -278,6 +279,44 @@ describe('OsuBestScreen 最佳页', () => {
     expect(screen.getByText('Top 100')).toBeTruthy();
     expect(screen.getByText('1 条成绩')).toBeTruthy();
     expect(screen.getByText('1. Tori no Uta')).toBeTruthy();
+  });
+});
+
+describe('OsuRecordsScreen 成绩页', () => {
+  beforeEach(() => {
+    // 筛选 store 为模块级单例，用例间恢复默认，避免状态泄漏。
+    useOsuRecordsFilter.getState().reset();
+  });
+
+  it('渲染搜索框、收起态筛选栏与全部成绩', async () => {
+    const screen = await render(<OsuRecordsScreen />);
+    expect(screen.getByLabelText('搜索 osu! 成绩')).toBeTruthy();
+    expect(screen.getByPlaceholderText('搜索歌名、艺术家或谱面名')).toBeTruthy();
+    expect(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部')).toBeTruthy();
+    expect(screen.getByText('已加载 1 / 1 条')).toBeTruthy();
+    expect(screen.getByText('Tori no Uta')).toBeTruthy();
+  });
+
+  it('筛选为空结果时切换空态文案，重置后恢复', async () => {
+    const screen = await render(<OsuRecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部'));
+    // 勾「无模组」：唯一成绩为 HD+DT，被排除 → 筛选空态文案。
+    await fireEvent.press(screen.getByLabelText('osu! 成绩模组筛选，当前 全部'));
+    const noneOption = await screen.findByLabelText('选择模组 无模组');
+    await fireEvent.press(noneOption);
+    expect(screen.getByText('没有找到符合条件的成绩')).toBeTruthy();
+    // 重置清空筛选（clearFilters 不含 collapsed，保持展开态）。
+    await fireEvent.press(screen.getByLabelText('重置 osu! 成绩筛选'));
+    expect(screen.getByText('Tori no Uta')).toBeTruthy();
+  });
+
+  it('PP 下限筛选收窄列表', async () => {
+    const screen = await render(<OsuRecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部'));
+    await fireEvent.changeText(screen.getByLabelText('最低 PP'), '100');
+    expect(screen.getByText('没有找到符合条件的成绩')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('最低 PP'), '50');
+    expect(screen.getByText('Tori no Uta')).toBeTruthy();
   });
 });
 
