@@ -10,8 +10,6 @@ import {
   TextInput,
   View,
   type LayoutRectangle,
-  type StyleProp,
-  type TextStyle,
 } from 'react-native';
 import { GestureHandlerRootView, Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,8 +28,6 @@ export function TagEditor({
   presetsEditable = true,
   disabled,
   testID,
-  labelStyle,
-  emptyStyle,
   onChange,
   onPresetsChange,
 }: {
@@ -41,10 +37,6 @@ export function TagEditor({
   presetsEditable?: boolean;
   disabled?: boolean;
   testID?: string;
-  /** 「本地标签」标题样式插槽：卡面为深底时由调用方传入浅色（默认跟随主题） */
-  labelStyle?: StyleProp<TextStyle>;
-  /** 「暂无标签」占位样式插槽：卡面为深底时由调用方传入浅色（默认跟随主题） */
-  emptyStyle?: StyleProp<TextStyle>;
   onChange: (tags: string[]) => Promise<unknown>;
   onPresetsChange?: (tags: string[]) => Promise<unknown>;
 }) {
@@ -71,14 +63,14 @@ export function TagEditor({
 
   return <>
     <GestureRoot testID={testID} style={styles.wrap}>
-      <Text style={[styles.label, { color: theme.textSecondary }, labelStyle]}>本地标签</Text>
+      <Text style={[styles.label, { color: theme.textSecondary }]}>本地标签</Text>
       <View style={styles.tags}>
         {tags.map((tag) => <TagPressable key={tag} disabled={disabled} accessibilityRole="button"
           accessibilityLabel={`删除标签 ${tag}`} onPress={() => void commit(tags.filter((item) => item !== tag))}
           style={[styles.tag, { backgroundColor: theme.accentSoft }]}>
           <Text style={[styles.tagText, { color: theme.accent }]}>{tag} ×</Text>
         </TagPressable>)}
-        {!tags.length ? <Text style={[styles.empty, { color: theme.textMuted }, emptyStyle]}>暂无标签</Text> : null}
+        {!tags.length ? <Text style={[styles.empty, { color: theme.textMuted }]}>暂无标签</Text> : null}
       </View>
       <View style={styles.inputRow}>
         <TextInput accessibilityLabel="新标签" editable={!disabled} placeholder="输入标签" placeholderTextColor={theme.textMuted}
