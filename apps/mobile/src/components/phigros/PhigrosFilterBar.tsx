@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { PhigrosKyouTagFilterSheet } from '@/components/phigros/PhigrosKyouTagFilterSheet';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
@@ -51,6 +52,8 @@ export interface PhigrosFilterBarProps {
   constantMax: string;
   accuracyMin?: string;
   accuracyMax?: string;
+  constantBounds?: RangeBounds;
+  accuracyBounds?: RangeBounds;
   rank?: PhigrosRankFilter | null;
   xing?: PhigrosXingKind | null;
   chapter?: string | 'all';
@@ -120,6 +123,8 @@ export function PhigrosFilterBar({
   constantMax,
   accuracyMin = '',
   accuracyMax = '',
+  constantBounds = { minimum: 0, maximum: 20 },
+  accuracyBounds = { minimum: 0, maximum: 100 },
   rank = null,
   xing = null,
   chapter = 'all',
@@ -249,29 +254,19 @@ export function PhigrosFilterBar({
 
       <View style={filterShellStyles.filterRow}>
         <Text style={[filterShellStyles.filterLabel, showAccuracyRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <View style={filterShellStyles.rangeRow}>
-          <TextInput accessibilityLabel="最低定数" autoCorrect={false} keyboardType="decimal-pad"
-            placeholder="下限" placeholderTextColor={theme.textMuted} value={constantMin} onChangeText={onConstantMinChange}
-            style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          <Text style={filterShellStyles.rangeSeparator}>~</Text>
-          <TextInput accessibilityLabel="最高定数" autoCorrect={false} keyboardType="decimal-pad"
-            placeholder="上限" placeholderTextColor={theme.textMuted} value={constantMax} onChangeText={onConstantMaxChange}
-            style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-        </View>
+        <RangeSelector accessibilityLabel="Phigros 定数范围" minimum={constantBounds.minimum} maximum={constantBounds.maximum}
+          step={0.1} lowerValue={constantMin} upperValue={constantMax}
+          onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
+          formatValue={(value) => value.toFixed(1)} testID="phigros-filter-constant" />
       </View>
 
       {showAccuracyRange ? (
         <View style={[filterShellStyles.filterRow, styles.accuracyRow]}>
           <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>Acc</Text>
-          <View style={filterShellStyles.rangeRow}>
-            <TextInput accessibilityLabel="最低 Acc" autoCorrect={false} keyboardType="decimal-pad"
-              placeholder="下限" placeholderTextColor={theme.textMuted} value={accuracyMin} onChangeText={onAccuracyMinChange}
-              style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-            <Text style={filterShellStyles.rangeSeparator}>~</Text>
-            <TextInput accessibilityLabel="最高 Acc" autoCorrect={false} keyboardType="decimal-pad"
-              placeholder="上限" placeholderTextColor={theme.textMuted} value={accuracyMax} onChangeText={onAccuracyMaxChange}
-              style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          </View>
+          <RangeSelector accessibilityLabel="Phigros Acc 范围" minimum={accuracyBounds.minimum} maximum={accuracyBounds.maximum}
+            step={0.01} lowerValue={accuracyMin} upperValue={accuracyMax}
+            onLowerValueChange={onAccuracyMinChange} onUpperValueChange={onAccuracyMaxChange}
+            formatValue={(value) => `${value.toFixed(2)}%`} testID="phigros-filter-accuracy" />
         </View>
       ) : null}
 

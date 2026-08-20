@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet, View } from 'react-native';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
@@ -221,7 +221,7 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 Second Album'));
     await fireEvent.press(screen.getByLabelText('选择DLC 全部'));
-    await fireEvent.changeText(screen.getByLabelText('最低定数'), '9');
+    await act(() => useMuseDashRecordsFilter.getState().setConstantMin('9'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
     expect(screen.queryAllByTestId('musedash-score-0-47-1')).toHaveLength(0);
@@ -232,7 +232,7 @@ describe('Muse Dash screens', () => {
   it('filters records by ACC range and keeps Rating order', async () => {
     const screen = await render(<MuseDashRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
-    await fireEvent.changeText(screen.getByLabelText('最低达成率'), '97');
+    await act(() => useMuseDashRecordsFilter.getState().setAccMin('97'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     expect(screen.getAllByTestId('musedash-score-0-47-1').length).toBe(1);
   });
@@ -277,9 +277,9 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 Second Album'));
     await fireEvent.press(screen.getByLabelText('选择DLC 全部'));
-    await fireEvent.changeText(screen.getByLabelText('最低定数'), '12');
+    await act(() => useMuseDashCatalogFilter.getState().setConstantMin('12'));
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
-    await fireEvent.changeText(screen.getByLabelText('最低定数'), '');
+    await act(() => useMuseDashCatalogFilter.getState().setConstantMin(''));
     await fireEvent.changeText(screen.getByLabelText('搜索喵斯快跑歌曲'), 'Another');
     expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
   });

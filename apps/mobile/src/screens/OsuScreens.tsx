@@ -6,6 +6,7 @@ import {
   RecordsListPage,
 } from '@/components/game-content/GameListPages';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
+import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { OsuCatalogFilterBar } from '@/components/osu/OsuCatalogFilterBar';
 import { OsuRecordsFilterBar } from '@/components/osu/OsuRecordsFilterBar';
@@ -24,6 +25,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
+import { useOsuRecentScores } from '@/hooks/use-osu-recent-scores';
 import { useOsuRecordsFilter } from '@/state/osu-records-filter';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -87,15 +89,23 @@ export function OsuBestScreen() {
   );
 }
 
-/** osu! 成绩页：上游无「全部成绩」端点，平铺展示同一份 Top 100，支持关键词与模组/达成率/星数/PP 区间本地筛选。 */
+/** osu! 成绩页：官方 recent 最近通过成绩（最多 100 条），筛选在当前结果上本地执行。 */
 export function OsuRecordsScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const gameId = useActiveOsuGameId();
-  const { data, isLoading, isError, error, refetch } = useGameData();
-  const payload = data?.payload.kind === 'osu' ? data.payload : null;
-  const allScores = useMemo(() => payload?.bestScores ?? [], [payload]);
+  const activeAccountId = useSession((state) => state.activeAccountId);
+  const recent = useOsuRecentScores(gameId);
+  const allScores = useMemo(() => recent.data ?? [], [recent.data]);
+  const starValues = useMemo(() => allScores.map((score) => score.beatmap.difficultyRating), [allScores]);
   const filter = useOsuRecordsFilter();
+  const starBounds = useStableRangeBounds(
+    starValues,
+    { minimum: 0, maximum: 10 },
+    filter.starMin,
+    filter.starMax,
+    `${gameId ?? 'none'}:${activeAccountId ?? 'none'}`,
+  );
   const debouncedKeyword = useDebouncedValue(filter.keyword, 350);
   const scores = useMemo(() => filterOsuBestScores(allScores, {
     keyword: debouncedKeyword,
@@ -117,6 +127,10 @@ export function OsuRecordsScreen() {
       <RecordsListPage<OsuBestScore>
         beforeList={
           <>
+            <View style={styles.recordsHeading}>
+              <Text style={[styles.recordsTitle, { color: theme.text }]}>最近成绩</Text>
+              <Text style={[styles.recordsHint, { color: theme.textMuted }]}>官方最近通过成绩，最多 100 条</Text>
+            </View>
             <GameSearchHeader
               accessibilityLabel="搜索 osu! 成绩"
               placeholder="搜索歌名、艺术家或谱面名"
@@ -126,6 +140,7 @@ export function OsuRecordsScreen() {
               total={allScores.length}
             />
             <OsuRecordsFilterBar
+              gameId={gameId}
               collapsed={filter.collapsed}
               mods={filter.mods}
               starMin={filter.starMin}
@@ -134,6 +149,7 @@ export function OsuRecordsScreen() {
               accuracyMax={filter.accuracyMax}
               ppMin={filter.ppMin}
               ppMax={filter.ppMax}
+              starBounds={starBounds}
               onCollapsedChange={filter.setCollapsed}
               onModsChange={filter.setMods}
               onStarMinChange={filter.setStarMin}
@@ -146,12 +162,13 @@ export function OsuRecordsScreen() {
             />
           </>
         }
-        isLoading={isLoading}
-        isError={isError}
-        isEmpty={!isLoading && scores.length === 0}
-        error={error}
-        onRetry={refetch ? () => void refetch() : undefined}
-        emptyText={hasActiveFilter ? '没有找到符合条件的成绩' : '当前账号暂无成绩'}
+        isLoading={recent.bound && recent.isLoading}
+        isError={recent.isError}
+        isEmpty={!recent.bound || (!recent.isLoading && scores.length === 0)}
+        error={recent.error}
+        onRetry={() => void recent.refetch()}
+        emptyText={!recent.bound ? '请先在游戏管理中绑定 osu! 账号'
+          : hasActiveFilter ? '没有找到符合条件的最近成绩' : '当前账号暂无最近成绩'}
         data={scores.length ? scores : undefined}
         flatListProps={{
           testID: 'osu-records-results-list',
@@ -160,9 +177,11 @@ export function OsuRecordsScreen() {
           contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
           scrollIndicatorInsets: { bottom: inset },
           ...TAB_LIST_CACHE_PROPS,
+          refreshing: recent.isRefetching,
+          onRefresh: () => void recent.refetch(),
           keyExtractor: (item) => String(item.id),
           renderItem: ({ item }) => (
-            gameId ? <OsuScoreCard gameId={gameId} score={item} /> : null
+            gameId ? <OsuScoreCard gameId={gameId} score={item} detailScoreId={item.id} /> : null
           ),
         }}
       />
@@ -281,4 +300,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 18, fontWeight: '800' },
   sectionCount: { fontSize: 11 },
+  recordsHeading: { paddingHorizontal: 16, paddingTop: 12, gap: 2 },
+  recordsTitle: { fontSize: 20, fontWeight: '900' },
+  recordsHint: { fontSize: 12, lineHeight: 17 },
 });

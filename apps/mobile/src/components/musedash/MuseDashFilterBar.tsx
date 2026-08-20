@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { RangeSelector } from '@/components/game-content/RangeSelector';
 import { MuseDashAchievementBadge } from '@/components/musedash/MuseDashBadges';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
 import { MUSE_DASH_DIFFICULTY_LABELS, museDashAchievementFilterLabel } from '@/domain/muse-dash';
@@ -48,25 +49,21 @@ function FilterRow({ label, wide = false, children }: { label: string; wide?: bo
 }
 
 function RangeInputs({
-  minLabel, maxLabel, min, max, onMinChange, onMaxChange,
+  accessibilityLabel, minimum, maximum, step, min, max, onMinChange, onMaxChange, formatValue,
 }: {
-  minLabel: string;
-  maxLabel: string;
+  accessibilityLabel: string;
+  minimum: number;
+  maximum: number;
+  step: number;
   min: string;
   max: string;
   onMinChange: (value: string) => void;
   onMaxChange: (value: string) => void;
+  formatValue: (value: number) => string;
 }) {
-  const theme = useAppTheme();
-  return <View style={styles.rangeRow}>
-    <TextInput accessibilityLabel={minLabel} autoCorrect={false} keyboardType="decimal-pad"
-      placeholder="下限" placeholderTextColor={theme.textMuted} value={min} onChangeText={onMinChange}
-      style={[filterShellStyles.rangeInputPlain, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-    <Text style={filterShellStyles.rangeSeparator}>~</Text>
-    <TextInput accessibilityLabel={maxLabel} autoCorrect={false} keyboardType="decimal-pad"
-      placeholder="上限" placeholderTextColor={theme.textMuted} value={max} onChangeText={onMaxChange}
-      style={[filterShellStyles.rangeInputPlain, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-  </View>;
+  return <RangeSelector accessibilityLabel={accessibilityLabel} minimum={minimum} maximum={maximum} step={step}
+    lowerValue={min} upperValue={max} onLowerValueChange={onMinChange} onUpperValueChange={onMaxChange}
+    formatValue={formatValue} />;
 }
 
 export function MuseDashCatalogFilterBar({
@@ -129,7 +126,8 @@ export function MuseDashCatalogFilterBar({
         />
       </FilterRow>
       <FilterRow label="定数" wide>
-        <RangeInputs minLabel="最低定数" maxLabel="最高定数" min={constantMin} max={constantMax}
+        <RangeInputs accessibilityLabel="Muse Dash 定数范围" minimum={0} maximum={20} step={0.01}
+          min={constantMin} max={constantMax} formatValue={(value) => value.toFixed(2)}
           onMinChange={onConstantMinChange} onMaxChange={onConstantMaxChange} />
       </FilterRow>
     </FilterShell>
@@ -202,11 +200,13 @@ export function MuseDashRecordsFilterBar({
         />
       </FilterRow>
       <FilterRow label="定数" wide>
-        <RangeInputs minLabel="最低定数" maxLabel="最高定数" min={constantMin} max={constantMax}
+        <RangeInputs accessibilityLabel="Muse Dash 定数范围" minimum={0} maximum={20} step={0.01}
+          min={constantMin} max={constantMax} formatValue={(value) => value.toFixed(2)}
           onMinChange={onConstantMinChange} onMaxChange={onConstantMaxChange} />
       </FilterRow>
       <FilterRow label="达成率" wide>
-        <RangeInputs minLabel="最低达成率" maxLabel="最高达成率" min={accMin} max={accMax}
+        <RangeInputs accessibilityLabel="Muse Dash 达成率范围" minimum={0} maximum={100} step={0.01}
+          min={accMin} max={accMax} formatValue={(value) => `${value.toFixed(2)}%`}
           onMinChange={onAccMinChange} onMaxChange={onAccMaxChange} />
       </FilterRow>
       <FilterRow label="成就">
@@ -229,5 +229,4 @@ export function MuseDashRecordsFilterBar({
 // MuseDash 游戏差异样式保留本地：芯片行作为水平 ScrollView 内容容器（无 flexDirection）；区间行带 minWidth 收缩。
 const styles = StyleSheet.create({
   chipRow: { gap: 6, alignItems: 'center' },
-  rangeRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
 });

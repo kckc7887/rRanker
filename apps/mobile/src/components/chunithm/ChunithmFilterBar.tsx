@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
   type ChunithmLevelIndex,
@@ -26,6 +27,7 @@ export interface ChunithmFilterBarProps {
   version: string | 'all';
   constantMin: string;
   constantMax: string;
+  constantBounds?: RangeBounds;
   rankMin?: ChunithmRank | null;
   rankMax?: ChunithmRank | null;
   versions: readonly GameVersion[];
@@ -64,6 +66,7 @@ export function ChunithmFilterBar({
   version,
   constantMin,
   constantMax,
+  constantBounds = { minimum: 0, maximum: 16 },
   rankMin = null,
   rankMax = null,
   versions,
@@ -149,29 +152,10 @@ export function ChunithmFilterBar({
 
       <View style={filterShellStyles.filterRow}>
         <Text style={[filterShellStyles.filterLabelPlain, showRankRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <View style={filterShellStyles.rangeRow}>
-          <TextInput
-            accessibilityLabel="中二最低定数"
-            autoCorrect={false}
-            keyboardType="decimal-pad"
-            onChangeText={onConstantMinChange}
-            placeholder="下限"
-            placeholderTextColor={theme.textMuted}
-            style={[filterShellStyles.rangeInputPlain, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-            value={constantMin}
-          />
-          <Text style={[filterShellStyles.rangeSeparatorPlain, { color: theme.textMuted }]}>~</Text>
-          <TextInput
-            accessibilityLabel="中二最高定数"
-            autoCorrect={false}
-            keyboardType="decimal-pad"
-            onChangeText={onConstantMaxChange}
-            placeholder="上限"
-            placeholderTextColor={theme.textMuted}
-            style={[filterShellStyles.rangeInputPlain, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
-            value={constantMax}
-          />
-        </View>
+        <RangeSelector accessibilityLabel="中二定数范围" minimum={constantBounds.minimum} maximum={constantBounds.maximum}
+          step={0.1} lowerValue={constantMin} upperValue={constantMax}
+          onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
+          formatValue={(value) => value.toFixed(1)} testID="chunithm-filter-constant" />
       </View>
 
       {showRankRange ? (

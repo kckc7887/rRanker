@@ -397,13 +397,8 @@ describe('M2 song query screens', () => {
       windowSize: 3,
     }));
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
-    expect(StyleSheet.flatten(screen.getByLabelText('最低定数').props.style)).toEqual(expect.objectContaining({
-      minHeight: 44,
-      paddingVertical: 0,
-      lineHeight: 20,
-      textAlignVertical: 'center',
-      includeFontPadding: false,
-    }));
+    expect(screen.getByTestId('maimai-filter-constant-lower-thumb').props.accessibilityRole).toBe('adjustable');
+    expect(screen.getByTestId('maimai-filter-constant-upper-thumb').props.accessibilityRole).toBe('adjustable');
     for (const selectedAll of screen.getAllByLabelText('筛选 全部')) {
       expect(StyleSheet.flatten(selectedAll.props.style)).toEqual(expect.objectContaining({
         borderWidth: 2,

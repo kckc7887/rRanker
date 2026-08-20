@@ -255,8 +255,8 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByLabelText('自定义数量')).toBeTruthy();
     expect(screen.getByLabelText('最低分数')).toBeTruthy();
     expect(screen.getByLabelText('最高分数')).toBeTruthy();
-    expect(screen.getByLabelText('最低 Acc')).toBeTruthy();
-    expect(screen.getByLabelText('最高 Acc')).toBeTruthy();
+    expect(screen.getByTestId('phigros-best-image-accuracy-range-lower-thumb')).toBeTruthy();
+    expect(screen.getByTestId('phigros-best-image-accuracy-range-upper-thumb')).toBeTruthy();
     expect(screen.getByLabelText('筛选难度 IN')).toBeTruthy();
     expect(screen.getByLabelText('筛选评价 φ')).toBeTruthy();
     expect(screen.getByLabelText('XING 筛选 关闭')).toBeTruthy();

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { DxRatingTagFilterSheet } from '@/components/maimai/DxRatingTagFilterSheet';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
@@ -11,6 +11,7 @@ import {
   filterShellStyles,
   joinFilterSummary,
 } from '@/components/game-content/FilterShell';
+import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
 import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import {
   MAIMAI_FC_ACHIEVEMENTS,
@@ -53,6 +54,8 @@ export interface MaimaiFilterBarProps {
   constantMax: string;
   achievementMin?: string;
   achievementMax?: string;
+  constantBounds?: RangeBounds;
+  achievementBounds?: RangeBounds;
   soloAchievement?: MaimaiFcAchievement | null;
   multiAchievement?: MaimaiFsAchievement | null;
   versionLocale: VersionNameLocale;
@@ -141,6 +144,8 @@ export function MaimaiFilterBar({
   constantMax,
   achievementMin = '',
   achievementMax = '',
+  constantBounds = { minimum: 1, maximum: 15.5 },
+  achievementBounds = { minimum: 0, maximum: 101 },
   soloAchievement = null,
   multiAchievement = null,
   versionLocale,
@@ -349,29 +354,19 @@ export function MaimaiFilterBar({
 
       <View style={filterShellStyles.filterRow}>
         <Text style={[filterShellStyles.filterLabel, showAchievementRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <View style={filterShellStyles.rangeRow}>
-          <TextInput accessibilityLabel="最低定数" autoCorrect={false} keyboardType="decimal-pad"
-            placeholder="下限" placeholderTextColor={theme.textMuted} value={constantMin} onChangeText={onConstantMinChange}
-            style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          <Text style={filterShellStyles.rangeSeparator}>~</Text>
-          <TextInput accessibilityLabel="最高定数" autoCorrect={false} keyboardType="decimal-pad"
-            placeholder="上限" placeholderTextColor={theme.textMuted} value={constantMax} onChangeText={onConstantMaxChange}
-            style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-        </View>
+        <RangeSelector accessibilityLabel="舞萌定数范围" minimum={constantBounds.minimum} maximum={constantBounds.maximum}
+          step={0.1} lowerValue={constantMin} upperValue={constantMax}
+          onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
+          formatValue={(value) => value.toFixed(1)} testID="maimai-filter-constant" />
       </View>
 
       {showAchievementRange ? (
         <View style={filterShellStyles.filterRow}>
           <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>达成率</Text>
-          <View style={filterShellStyles.rangeRow}>
-            <TextInput accessibilityLabel="最低达成率" autoCorrect={false} keyboardType="decimal-pad"
-              placeholder="下限" placeholderTextColor={theme.textMuted} value={achievementMin} onChangeText={onAchievementMinChange}
-              style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-            <Text style={filterShellStyles.rangeSeparator}>~</Text>
-            <TextInput accessibilityLabel="最高达成率" autoCorrect={false} keyboardType="decimal-pad"
-              placeholder="上限" placeholderTextColor={theme.textMuted} value={achievementMax} onChangeText={onAchievementMaxChange}
-              style={[filterShellStyles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-          </View>
+          <RangeSelector accessibilityLabel="舞萌达成率范围" minimum={achievementBounds.minimum} maximum={achievementBounds.maximum}
+            step={0.0001} lowerValue={achievementMin} upperValue={achievementMax}
+            onLowerValueChange={onAchievementMinChange} onUpperValueChange={onAchievementMaxChange}
+            formatValue={(value) => `${value.toFixed(4)}%`} testID="maimai-filter-achievement" />
         </View>
       ) : null}
 

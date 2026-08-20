@@ -7,9 +7,13 @@ import { OsuBestScreen, OsuCatalogScreen, OsuRecordsScreen } from '@/screens/Osu
 import { useOsuRecordsFilter } from '@/state/osu-records-filter';
 import type { OsuBestScore } from '@/domain/osu';
 
+const mockRouterPush = jest.fn();
+
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
-jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-router', () => ({
+  router: { push: (...args: unknown[]) => mockRouterPush(...args) },
+}));
 // 模组徽章测试固定走文字回退形态：图标根路径置空（hook 短路不发请求、不触碰文件系统）
 jest.mock('@/providers/osu-config', () => ({
   ...jest.requireActual<typeof import('@/providers/osu-config')>('@/providers/osu-config'),
@@ -36,6 +40,13 @@ jest.mock('@/theme/app-theme', () => ({
   }),
 }));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
+jest.mock('react-native-gesture-handler', () => {
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable };
+});
 
 const score: OsuBestScore = {
   id: 166715063,
@@ -61,6 +72,20 @@ const score: OsuBestScore = {
   mods: ['HD', 'DT'],
   achievedAt: '2026-01-01T00:00:00.000Z',
 };
+
+jest.mock('@/hooks/use-osu-recent-scores', () => ({ useOsuRecentScores: jest.fn() }));
+const { useOsuRecentScores } = jest.requireMock<typeof import('@/hooks/use-osu-recent-scores')>(
+  '@/hooks/use-osu-recent-scores',
+);
+(useOsuRecentScores as jest.Mock).mockReturnValue({
+  bound: true,
+  data: [score],
+  isLoading: false,
+  isError: false,
+  isRefetching: false,
+  error: null,
+  refetch: jest.fn(),
+});
 
 describe('OsuScoreCard 最佳成绩卡', () => {
   it('标题歌名、主信息得分、下方 N★ 难度标签、右侧准确率与 PP', async () => {
@@ -146,6 +171,25 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, rank: 'G' }} />);
     expect(screen.queryByLabelText(/评价/)).toBeNull();
     expect(screen.getByLabelText('难度 7.34★')).toBeTruthy();
+  });
+
+  it('recent 成绩卡进入详情时附加 scoreId，最佳页旧入口保持无该参数', async () => {
+    const recent = await render(
+      <OsuScoreCard gameId="osu-standard" score={score} detailScoreId={score.id} />,
+    );
+    await fireEvent.press(recent.getByTestId(`osu-score-card-${score.id}`));
+    expect(mockRouterPush).toHaveBeenLastCalledWith({
+      pathname: '/songs/[songId]',
+      params: { songId: '3720', levelIndex: '22423', scoreId: String(score.id) },
+    });
+    await recent.unmount();
+
+    const best = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
+    await fireEvent.press(best.getByTestId(`osu-score-card-${score.id}`));
+    expect(mockRouterPush).toHaveBeenLastCalledWith({
+      pathname: '/songs/[songId]',
+      params: { songId: '3720', levelIndex: '22423' },
+    });
   });
 });
 
@@ -293,6 +337,8 @@ describe('OsuRecordsScreen 成绩页', () => {
     expect(screen.getByLabelText('搜索 osu! 成绩')).toBeTruthy();
     expect(screen.getByPlaceholderText('搜索歌名、艺术家或谱面名')).toBeTruthy();
     expect(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部')).toBeTruthy();
+    expect(screen.getByText('最近成绩')).toBeTruthy();
+    expect(screen.getByText('官方最近通过成绩，最多 100 条')).toBeTruthy();
     expect(screen.getByText('已加载 1 / 1 条')).toBeTruthy();
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
   });
@@ -302,9 +348,10 @@ describe('OsuRecordsScreen 成绩页', () => {
     await fireEvent.press(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部'));
     // 勾「无模组」：唯一成绩为 HD+DT，被排除 → 筛选空态文案。
     await fireEvent.press(screen.getByLabelText('osu! 成绩模组筛选，当前 全部'));
-    const noneOption = await screen.findByLabelText('选择模组 无模组');
+    const noneOption = await screen.findByLabelText('NM 无模组，未选中');
     await fireEvent.press(noneOption);
-    expect(screen.getByText('没有找到符合条件的成绩')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('完成 osu! 模组筛选'));
+    expect(screen.getByText('没有找到符合条件的最近成绩')).toBeTruthy();
     // 重置清空筛选（clearFilters 不含 collapsed，保持展开态）。
     await fireEvent.press(screen.getByLabelText('重置 osu! 成绩筛选'));
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
@@ -314,7 +361,7 @@ describe('OsuRecordsScreen 成绩页', () => {
     const screen = await render(<OsuRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部'));
     await fireEvent.changeText(screen.getByLabelText('最低 PP'), '100');
-    expect(screen.getByText('没有找到符合条件的成绩')).toBeTruthy();
+    expect(screen.getByText('没有找到符合条件的最近成绩')).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('最低 PP'), '50');
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
   });

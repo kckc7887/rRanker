@@ -9,6 +9,7 @@ import { fetch as expoFetch } from 'expo/fetch';
 import { Directory, File, Paths } from 'expo-file-system';
 import { StyleSheet, Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
+import { DetailPressable } from '@/components/game-content/DetailPressable';
 import { osuModIconFileName, resolveOsuModTheme } from '@/domain/osu-mods';
 import { OSU_MOD_ICONS_ROOT } from '@/providers/osu-config';
 
@@ -94,26 +95,35 @@ type OsuModBadgeProps = {
   /** 圆形直径，默认 22（对齐标签行胶囊高度）。 */
   size?: number;
   testID?: string;
+  onPress?: () => void;
+  accessibilityLabel?: string;
 };
 
 /** 单个模组徽章：未知 acronym 静默不渲染。 */
-export function OsuModBadge({ acronym, size = DEFAULT_SIZE, testID }: OsuModBadgeProps) {
+export function OsuModBadge({
+  acronym,
+  size = DEFAULT_SIZE,
+  testID,
+  onPress,
+  accessibilityLabel = `模组 ${acronym}`,
+}: OsuModBadgeProps) {
   const theme = resolveOsuModTheme(acronym);
   const xml = useOsuModIconXml(acronym);
   if (!theme) return null;
   // 图标源为单色（white fill/stroke），渲染前替换为该类型前景色。
   const tintedXml = xml ? xml.replaceAll('white', theme.foreground) : null;
   const iconBox = Math.round(size * 0.72);
-  return (
+  const badge = (
     <View
-      accessibilityLabel={`模组 ${acronym}`}
+      accessibilityLabel={onPress ? undefined : accessibilityLabel}
+      pointerEvents={onPress ? 'none' : undefined}
       style={[styles.badge, {
         width: size,
         height: size,
         borderRadius: size / 2,
         backgroundColor: theme.background,
       }]}
-      testID={testID ?? `osu-mod-badge-${acronym}`}
+      testID={onPress ? undefined : testID ?? `osu-mod-badge-${acronym}`}
     >
       {tintedXml ? (
         <SvgXml height={iconBox} width={iconBox} xml={tintedXml} />
@@ -124,9 +134,22 @@ export function OsuModBadge({ acronym, size = DEFAULT_SIZE, testID }: OsuModBadg
       )}
     </View>
   );
+  if (!onPress) return badge;
+  return (
+    <DetailPressable
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => pressed && styles.pressed}
+      testID={testID ?? `osu-mod-badge-${acronym}`}
+    >
+      {badge}
+    </DetailPressable>
+  );
 }
 
 const styles = StyleSheet.create({
   badge: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   fallback: { fontWeight: '900', letterSpacing: 0.2 },
+  pressed: { opacity: 0.58 },
 });

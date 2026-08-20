@@ -267,8 +267,8 @@ describe('Chunithm catalog screen', () => {
     await fireEvent.press(screen.getByLabelText('展开中二筛选，当前 全部'));
 
     expect(screen.getByLabelText('中二版本筛选，当前 全部')).toBeTruthy();
-    expect(screen.getByLabelText('中二最低定数')).toBeTruthy();
-    expect(screen.getByLabelText('中二最高定数')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-filter-constant-lower-thumb')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-filter-constant-upper-thumb')).toBeTruthy();
 
     await act(() => {
       useChunithmCatalogFilter.getState().setDifficulty(4);

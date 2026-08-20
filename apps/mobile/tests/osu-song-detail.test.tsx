@@ -2,7 +2,7 @@ import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Platform, StyleSheet } from 'react-native';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
-import { OsuSongDetail } from '@/components/osu/OsuSongDetail';
+import { buildOsuBeatmapMetricRows, OsuSongDetail } from '@/components/osu/OsuSongDetail';
 import { OsuSongRow } from '@/components/osu/OsuSongRow';
 import type { OsuBeatmapsetDetail, OsuBestScore } from '@/domain/osu';
 import type { UserLibraryItem } from '@/domain/user-library';
@@ -17,6 +17,8 @@ const mockSetChartPractice = jest.fn(async () => undefined);
 const mockSetTags = jest.fn(async () => undefined);
 const mockSetTagPresets = jest.fn(async () => undefined);
 const mockDetailRefetch = jest.fn(async () => undefined);
+const mockShowActionNotification = jest.fn();
+let mockRecentScores: OsuBestScore[] = [];
 
 /** Hard（5.5★）：完整新版成绩（statistics 部分键为 null，验证逐键容错）。 */
 const hardScore: OsuBestScore = {
@@ -198,6 +200,13 @@ jest.mock('@/hooks/use-osu-beatmapset-detail', () => ({
     refetch: mockDetailRefetch,
   }),
 }));
+jest.mock('@/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'),
+  useNotification: () => ({ showActionNotification: mockShowActionNotification }),
+}));
+jest.mock('@/hooks/use-osu-recent-scores', () => ({
+  useOsuRecentScores: () => ({ data: mockRecentScores, bound: true, isLoading: false }),
+}));
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: mockGameData.data,
@@ -228,6 +237,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCanGoBack.mockReturnValue(true);
+    mockRecentScores = [];
     mockDetailState = { data: detail, isLoading: false, isError: false, error: null };
     mockGameData = { data: osuGameData(5000) };
     mockLibraryItems = [];
@@ -278,12 +288,14 @@ describe('OsuSongDetail 歌曲详情页', () => {
     expect(hard.getByText('谱师')).toBeTruthy();
     expect(hard.getByText('James')).toBeTruthy();
     expect(hard.getByText('达成时间：2026-01-01')).toBeTruthy();
-    // 不再渲染物件/键数/HP/OD 属性行与等级/定数块
-    expect(hard.queryByText(/圆圈数量/)).toBeNull();
-    expect(hard.queryByText(/滑条数量/)).toBeNull();
+    // 谱面指标改为谱师上方两行，成绩统计区不再承载时长/BPM。
+    expect(hard.getByText('圆圈总数')).toBeTruthy();
+    expect(hard.getByText('滑条总数')).toBeTruthy();
     expect(hard.queryByText(/按键数量/)).toBeNull();
-    expect(hard.queryByText(/掉血速度/)).toBeNull();
-    expect(hard.queryByText(/准度要求/)).toBeNull();
+    expect(hard.getByText('掉血速度')).toBeTruthy();
+    expect(hard.getByText('准度要求')).toBeTruthy();
+    expect(hard.getByText('圆圈大小')).toBeTruthy();
+    expect(hard.getByText('缩圈速度')).toBeTruthy();
     expect(hard.queryByText(/^LV \d/)).toBeNull();
     expect(hard.queryByText(/定数/)).toBeNull();
 
@@ -388,7 +400,8 @@ describe('OsuSongDetail 歌曲详情页', () => {
     // Hard（HD/DT 增难红）与 Normal（旧缓存空 mods）
     const hard = within(screen.getByTestId('osu-detail-difficulty-22423'));
     const hd = hard.getByTestId('osu-mod-badge-HD');
-    const hdStyle = StyleSheet.flatten(hd.props.style);
+    const hdVisual = within(hd).getByText('HD').parent;
+    const hdStyle = StyleSheet.flatten(hdVisual?.props.style);
     expect(hdStyle.backgroundColor).toBe('#FF6666');
     expect(hdStyle.borderRadius).toBe(11);
     expect(hard.getByTestId('osu-mod-badge-DT')).toBeTruthy();
@@ -403,6 +416,44 @@ describe('OsuSongDetail 歌曲详情页', () => {
     expect(normal.queryAllByTestId(/osu-mod-badge-/)).toHaveLength(0);
     const easy = within(screen.getByTestId('osu-detail-difficulty-22425'));
     expect(easy.queryAllByTestId(/osu-mod-badge-/)).toHaveLength(0);
+  });
+
+  it('难度卡模组徽章可点击并使用当前模式的官方 Wiki 中文摘要', async () => {
+    const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
+    const hard = within(screen.getByTestId('osu-detail-difficulty-22423'));
+    const hidden = hard.getByLabelText('模组 HD，点击查看说明');
+    expect(hidden.props.accessibilityHint).toBe('gesture-handler');
+    await fireEvent.press(hidden);
+    expect(mockShowActionNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Hidden (HD) · 隐藏',
+      message: '移除缩圈并让物件在命中前提前消失。',
+      variant: 'info',
+    }));
+  });
+
+  it('scoreId 精确显示 recent 成绩，找不到时回退同谱面 Best', async () => {
+    mockRecentScores = [{
+      ...hardScore,
+      id: 987654321,
+      score: 765432,
+      accuracy: 0.9123,
+      mods: ['HR'],
+    }];
+    const exact = await render(
+      <OsuSongDetail beatmapsetId="3720" initialBeatmapId={22423} initialScoreId={987654321} />,
+    );
+    const exactHard = within(exact.getByTestId('osu-detail-difficulty-22423'));
+    expect(exactHard.getByText('765,432')).toBeTruthy();
+    expect(exactHard.getByText('91.23%')).toBeTruthy();
+    expect(exactHard.getByTestId('osu-mod-badge-HR')).toBeTruthy();
+    await exact.unmount();
+
+    const fallback = await render(
+      <OsuSongDetail beatmapsetId="3720" initialBeatmapId={22423} initialScoreId={1} />,
+    );
+    const fallbackHard = within(fallback.getByTestId('osu-detail-difficulty-22423'));
+    expect(fallbackHard.getByText('985,754')).toBeTruthy();
+    expect(fallbackHard.getByTestId('osu-mod-badge-HD')).toBeTruthy();
   });
 
   it('beatmapset 不存在（404 → no_data）渲染找不到这首歌曲', async () => {
@@ -463,6 +514,41 @@ describe('OsuSongDetail 歌曲详情页', () => {
 
     fireEvent.press(practice);
     expect(mockSetChartPractice).toHaveBeenCalledWith('3720', 'SD', 22423, true);
+  });
+
+  it('四模式指标数组遵循各自字段集合，缺失值统一为破折号', () => {
+    const beatmap = detail.beatmaps[1];
+    const standard = buildOsuBeatmapMetricRows('osu-standard', beatmap);
+    const catchRows = buildOsuBeatmapMetricRows('osu-catch', beatmap);
+    const taiko = buildOsuBeatmapMetricRows('osu-taiko', beatmap);
+    const mania = buildOsuBeatmapMetricRows('osu-mania', beatmap);
+
+    expect(standard.map((row) => row.map((metric) => metric.label))).toEqual([
+      ['时长', 'BPM', '圆圈总数', '滑条总数'],
+      ['圆圈大小', '掉血速度', '准度要求', '缩圈速度'],
+    ]);
+    expect(catchRows.map((row) => row.map((metric) => metric.label))).toEqual(
+      standard.map((row) => row.map((metric) => metric.label)),
+    );
+    expect(taiko.map((row) => row.map((metric) => metric.label))).toEqual([
+      ['时长', 'BPM', '圆圈总数'],
+      ['掉血速度', '准度要求'],
+    ]);
+    expect(mania.map((row) => row.map((metric) => metric.label))).toEqual([
+      ['时长', 'BPM', '圆圈总数', '滑条总数'],
+      ['按键数量', '掉血速度', '准度要求'],
+    ]);
+    expect(buildOsuBeatmapMetricRows('osu-standard', {
+      ...beatmap,
+      totalLength: null,
+      bpm: null,
+      countCircles: null,
+      countSliders: null,
+      cs: null,
+      drain: null,
+      accuracy: null,
+      ar: null,
+    }).flat().every((metric) => metric.value === '—')).toBe(true);
   });
 
   it('已加入的谱面显示移出状态，并按原参数移除', async () => {

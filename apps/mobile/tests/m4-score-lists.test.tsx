@@ -1,5 +1,5 @@
 import { Animated } from 'react-native';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
@@ -241,10 +241,10 @@ describe('M4 score list cards', () => {
       expect(screen.getByText(label)).toBeTruthy();
     }
 
-    await fireEvent.changeText(screen.getByLabelText('最低定数'), '14.8');
+    await act(() => useRecordsFilter.getState().setConstantMin('14.8'));
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
     expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull();
-    await fireEvent.changeText(screen.getByLabelText('最高定数'), '14.8');
+    await act(() => useRecordsFilter.getState().setConstantMax('14.8'));
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('版本筛选，当前 全部'));
@@ -262,7 +262,7 @@ describe('M4 score list cards', () => {
     expect(screen.getByLabelText(/展开筛选，当前.*PRiSM PLUS.*定数 14.8~14.8/)).toBeTruthy();
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
 
-    await fireEvent.changeText(screen.getByLabelText('最低定数'), '15');
+    await act(() => useRecordsFilter.getState().setConstantMin('15'));
     expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
   });
 
@@ -270,12 +270,12 @@ describe('M4 score list cards', () => {
     const screen = await render(<RecordsScreen />);
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
 
-    await fireEvent.changeText(screen.getByLabelText('最低达成率'), '100');
+    await act(() => useRecordsFilter.getState().setAchievementMin('100'));
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
     expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
     expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
 
-    await fireEvent.changeText(screen.getByLabelText('最高达成率'), '100.5');
+    await act(() => useRecordsFilter.getState().setAchievementMax('100.5'));
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
     expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
   });
@@ -355,15 +355,17 @@ describe('M4 score list cards', () => {
   it('resets records filters from the shared filter bar', async () => {
     const screen = await render(<RecordsScreen />);
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
-    await fireEvent.changeText(screen.getByLabelText('最低定数'), '14.8');
-    await fireEvent.changeText(screen.getByLabelText('最高定数'), '14.8');
+    await act(() => {
+      useRecordsFilter.getState().setConstantMin('14.8');
+      useRecordsFilter.getState().setConstantMax('14.8');
+    });
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
     expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('重置筛选'));
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
-    expect(screen.getByLabelText('最低定数').props.value).toBe('');
-    expect(screen.getByLabelText('最高定数').props.value).toBe('');
+    expect(useRecordsFilter.getState().constantMin).toBe('');
+    expect(useRecordsFilter.getState().constantMax).toBe('');
   });
 });

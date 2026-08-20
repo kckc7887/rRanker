@@ -76,6 +76,7 @@ export function GameScoreCard({
       ...(presentation.route.levelIndex === undefined
         ? {}
         : { levelIndex: String(presentation.route.levelIndex) }),
+      ...presentation.route.params,
     },
   } as Href);
   const sideNode = side !== undefined

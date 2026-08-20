@@ -14,10 +14,11 @@ import { OsuRankTag } from './OsuRankTag';
  * osu! 最佳成绩卡：标题歌名、主信息得分、下方难度标签（N★）+ 评价标签、
  * 右侧上下居中小字准确率 + 大字 PP。点击进入歌曲详情页（songId = beatmapset id）。
  */
-export function OsuScoreCard({ gameId, score, position }: {
+export function OsuScoreCard({ gameId, score, position, detailScoreId }: {
   gameId: OsuGameId;
   score: OsuBestScore;
   position?: number;
+  detailScoreId?: number;
 }) {
   const theme = useAppTheme();
   const ppText = score.pp == null ? '—' : formatOsuPp(score.pp);
@@ -26,7 +27,11 @@ export function OsuScoreCard({ gameId, score, position }: {
       presentation={{
         key: String(score.id),
         gameId,
-        route: { songId: String(score.beatmapset.id), levelIndex: score.beatmap.id },
+        route: {
+          songId: String(score.beatmapset.id),
+          levelIndex: score.beatmap.id,
+          ...(detailScoreId === undefined ? {} : { params: { scoreId: String(detailScoreId) } }),
+        },
         position,
         title: score.beatmapset.title,
         accessibilityLabel: `成绩 ${score.beatmapset.title}，得分 ${score.score.toLocaleString('en-US')}，准确率 ${formatOsuAccuracy(score.accuracy)}，PP ${ppText}`,
@@ -82,6 +87,6 @@ const styles = StyleSheet.create({
   scoreBlock: { gap: 1 },
   scoreLabel: { fontSize: 11, fontWeight: '700' },
   score: { fontSize: 24, fontWeight: '900', letterSpacing: 0.2 },
-  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 },
   pressed: { opacity: 0.7 },
 });
