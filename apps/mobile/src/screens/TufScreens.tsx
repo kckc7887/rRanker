@@ -282,6 +282,12 @@ const TUF_JUDGEMENT_ROWS = [
   ],
 ] as const satisfies readonly (readonly { key: keyof TufJudgements; label: string; color: string }[])[];
 
+/** 难度卡下半部暗遮罩（同 Hero 底部压暗方向）：上半保持卡面，往下渐暗衬托判定表彩字。 */
+const TUF_CHART_SHADE = {
+  colors: ['rgba(13,17,23,0)', 'rgba(13,17,23,0)', 'rgba(13,17,23,0.82)'] as const,
+  locations: [0, 0.5, 0.72] as const,
+};
+
 function TufUpstreamTag({ name }: { name: string }) {
   const theme = useAppTheme();
   const icon = tufTagIconUrl(name);
@@ -297,19 +303,20 @@ function TufUpstreamTag({ name }: { name: string }) {
 
 function TufJudgementTable({ judgements, total }: { judgements: TufJudgements | null | undefined; total: number | null }) {
   const theme = useAppTheme();
+  // 判定面板自带深底（不随全局主题）：彩字与固定浅色文字在深浅模式下都保持可读。
   return <View accessibilityLabel="TUF 判定详情" style={styles.judgementPanel}>
     <View style={styles.judgementMatrix}>{TUF_JUDGEMENT_ROWS.map((row, rowIndex) => (
       <View key={rowIndex} style={styles.judgementRow}>{row.map((item) => (
         <View key={item.key} style={styles.judgementCell} testID={`tuf-judgement-${item.key}`}>
-          <Text numberOfLines={1} style={[styles.judgementLabel, { color: theme.dark ? '#9B98B7' : theme.textMuted }]}>{item.label}</Text>
+          <Text numberOfLines={1} style={[styles.judgementLabel, { color: '#9B98B7' }]}>{item.label}</Text>
           <Text style={[styles.judgementValue, { color: item.color }]}>{judgements?.[item.key] ?? '—'}</Text>
         </View>
       ))}</View>
     ))}</View>
     <View style={[styles.totalCell, { borderLeftColor: theme.dark ? 'rgba(255,255,255,0.12)' : theme.border }]}>
-      <Text style={[styles.totalLabel, { color: theme.dark ? '#9B98B7' : theme.textMuted }]}>总物量</Text>
+      <Text style={[styles.totalLabel, { color: '#9B98B7' }]}>总物量</Text>
       <Text adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}
-        style={[styles.totalValue, { color: theme.text }]}>{total ?? '—'}</Text>
+        style={[styles.totalValue, { color: '#F0F3F6' }]}>{total ?? '—'}</Text>
     </View>
   </View>;
 }
@@ -392,9 +399,13 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
             backgroundColor: theme.surface,
             borderColor: difficultyVisual?.border ?? theme.border,
           }]}
+            beforeContent={(
+              <LinearGradient colors={TUF_CHART_SHADE.colors} locations={TUF_CHART_SHADE.locations}
+                pointerEvents="none" style={StyleSheet.absoluteFill} />
+            )}
             gradient={difficultyVisual ? {
               colors: [`${difficultyVisual.background}${theme.dark ? '66' : '38'}`, theme.surface],
-              start: { x: 0, y: 0 }, end: { x: 1, y: 1 },
+              start: { x: 0, y: 0 }, end: { x: 0, y: 1 },
             } : undefined}
             testID="tuf-level-chart" accessibilityLabel={`难度 ${chart!.difficulty.label}`}>
             <View style={styles.chartHeader}>
@@ -560,7 +571,15 @@ const styles = StyleSheet.create({
   upstreamTagIcon: { width: 18, height: 18 },
   upstreamTagText: { flexShrink: 1, fontSize: 10, lineHeight: 14, fontWeight: '800' },
   emptyInline: { fontSize: 12, fontWeight: '700' },
-  judgementPanel: { minHeight: 104, marginTop: 13, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  judgementPanel: {
+    minHeight: 104,
+    marginTop: 13,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(13,17,23,0.5)',
+  },
   judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },
   judgementRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
   judgementCell: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 2 },
