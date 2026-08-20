@@ -599,23 +599,9 @@ function normalizeOsuScoreMods(mods: OsuBestScoreRaw['mods']): string[] {
   });
 }
 
-/** 原始响应 → 游戏自有快照（纯函数，成绩缺 beatmap/beatmapset 的条目不可展示，剔除）。 */
-export function normalizeOsuSnapshot(
-  user: OsuUserResponseRaw,
-  scores: readonly OsuBestScoreRaw[],
-): OsuSnapshotData {
-  return {
-    player: {
-      userId: user.id,
-      username: user.username,
-      avatarUrl: user.avatar_url ?? null,
-      pp: optionalNumber(user.statistics.pp) ?? 0,
-      accuracy: optionalNumber(user.statistics.accuracy),
-      playTimeSeconds: optionalNumber(user.statistics.play_time),
-      playCount: optionalNumber(user.statistics.play_count),
-      globalRank: optionalNumber(user.statistics.global_rank),
-    },
-    bestScores: scores.flatMap((raw) => {
+/** best/recent 共用的原始成绩规范化；缺 beatmap/beatmapset 的条目不可展示。 */
+export function normalizeOsuScores(scores: readonly OsuBestScoreRaw[]): OsuBestScore[] {
+  return scores.flatMap((raw) => {
       if (!raw.beatmap || !raw.beatmapset) return [];
       const covers = raw.beatmapset.covers as Record<string, string | undefined>;
       return [{
@@ -656,7 +642,26 @@ export function normalizeOsuSnapshot(
         // 模组 acronym：legacy 字符串/新版对象统一提取；缺失为空数组。
         mods: normalizeOsuScoreMods(raw.mods),
       }];
-    }),
+    });
+}
+
+/** 原始响应 → 游戏自有快照。 */
+export function normalizeOsuSnapshot(
+  user: OsuUserResponseRaw,
+  scores: readonly OsuBestScoreRaw[],
+): OsuSnapshotData {
+  return {
+    player: {
+      userId: user.id,
+      username: user.username,
+      avatarUrl: user.avatar_url ?? null,
+      pp: optionalNumber(user.statistics.pp) ?? 0,
+      accuracy: optionalNumber(user.statistics.accuracy),
+      playTimeSeconds: optionalNumber(user.statistics.play_time),
+      playCount: optionalNumber(user.statistics.play_count),
+      globalRank: optionalNumber(user.statistics.global_rank),
+    },
+    bestScores: normalizeOsuScores(scores),
   };
 }
 

@@ -34,7 +34,7 @@ import {
   buildCustomPhigrosBestImageSections, buildPhigrosNoteTotalByKey,
   DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS,
   isCustomPhigrosBestImageFiltersValid, parseBestImageQuantity,
-  parsePhigrosBestImageAccuracyBound, parsePhigrosBestImageScoreBound,
+  parsePhigrosBestImageScoreBound,
   type CustomPhigrosBestImageFilters,
 } from '@/features/phigros-best-image/phigros-best-image-custom';
 import {
@@ -66,6 +66,7 @@ import {
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useAppTheme } from '@/theme/app-theme';
+import { RangeSelector } from '@/components/game-content/RangeSelector';
 
 const WIDTHS = [1080, 1440, 2160] as const;
 const OVERFLOW_COUNTS: readonly PhigrosBestImageOverflowCount[] = [0, 3, 6, 9];
@@ -204,8 +205,6 @@ export function PhigrosBestImageScreen() {
   const quantityError = parseBestImageQuantity(quantityText) === null ? '数量必须是非负整数，0 表示不限制' : null;
   const scoreMinError = parsePhigrosBestImageScoreBound(scoreMinText) === null ? '分数须在 0–1000000' : null;
   const scoreMaxError = parsePhigrosBestImageScoreBound(scoreMaxText) === null ? '分数须在 0–1000000' : null;
-  const accuracyMinError = parsePhigrosBestImageAccuracyBound(accuracyMinText) === null ? 'Acc 须在 0–100' : null;
-  const accuracyMaxError = parsePhigrosBestImageAccuracyBound(accuracyMaxText) === null ? 'Acc 须在 0–100' : null;
   const customInputValid = isCustomPhigrosBestImageFiltersValid({
     quantityText,
     scoreMin: scoreMinText,
@@ -463,18 +462,17 @@ export function PhigrosBestImageScreen() {
         </View>
         <View style={styles.textFieldWrap}>
           <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Acc</Text>
-          <View style={styles.rangeRow}>
-            <TextInput accessibilityLabel="最低 Acc" autoCorrect={false} keyboardType="decimal-pad" value={accuracyMinText} onChangeText={(value) => {
+          <RangeSelector accessibilityLabel="Phigros 成绩图 Acc 范围" minimum={0} maximum={100} step={0.01}
+            lowerValue={accuracyMinText} upperValue={accuracyMaxText}
+            onLowerValueChange={(value) => {
               setAccuracyMinText(value);
-              if (parsePhigrosBestImageAccuracyBound(value) !== null) setCustomFilters((current) => ({ ...current, accuracyMin: value }));
-            }} placeholder="下限" placeholderTextColor={theme.textMuted} style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, accuracyMinError && styles.textInputError]} />
-            <Text style={[styles.rangeSeparator, { color: theme.textMuted }]}>~</Text>
-            <TextInput accessibilityLabel="最高 Acc" autoCorrect={false} keyboardType="decimal-pad" value={accuracyMaxText} onChangeText={(value) => {
+              setCustomFilters((current) => ({ ...current, accuracyMin: value }));
+            }}
+            onUpperValueChange={(value) => {
               setAccuracyMaxText(value);
-              if (parsePhigrosBestImageAccuracyBound(value) !== null) setCustomFilters((current) => ({ ...current, accuracyMax: value }));
-            }} placeholder="上限" placeholderTextColor={theme.textMuted} style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, accuracyMaxError && styles.textInputError]} />
-          </View>
-          {accuracyMinError || accuracyMaxError ? <Text style={[styles.errorText, { color: theme.danger }]}>{accuracyMinError ?? accuracyMaxError}</Text> : null}
+              setCustomFilters((current) => ({ ...current, accuracyMax: value }));
+            }}
+            formatValue={(value) => `${value.toFixed(2)}%`} testID="phigros-best-image-accuracy-range" />
         </View>
       </View>
       <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>评价</Text>

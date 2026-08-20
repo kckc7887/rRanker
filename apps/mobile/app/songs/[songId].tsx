@@ -82,11 +82,13 @@ type LibraryHook = ReturnType<typeof useUserLibrary>;
 export default function SongDetailScreen() {
   const theme = useAppTheme();
   const activeGameId = useSession((s) => s.activeGameId);
-  const { songId, chartType, levelIndex } = useLocalSearchParams<{
-    songId: string; chartType?: string; levelIndex?: string;
+  const { songId, chartType, levelIndex, scoreId } = useLocalSearchParams<{
+    songId: string; chartType?: string; levelIndex?: string; scoreId?: string;
   }>();
   const parsedLevelIndex = levelIndex === undefined ? undefined : Number(levelIndex);
   const initialLevelIndex = Number.isInteger(parsedLevelIndex) && parsedLevelIndex! >= 0 ? parsedLevelIndex : undefined;
+  const parsedScoreId = scoreId === undefined ? undefined : Number(scoreId);
+  const initialScoreId = Number.isInteger(parsedScoreId) && parsedScoreId! >= 0 ? parsedScoreId : undefined;
 
   if (activeGameId === 'phigros') {
     return <PhigrosSongDetail songId={songId} levelIndex={initialLevelIndex} />;
@@ -103,7 +105,7 @@ export default function SongDetailScreen() {
   }
   // osu! 四模式共用歌曲详情页，songId = beatmapset id；levelIndex = 成绩卡带入的 beatmap id（优先定位该难度）。
   if (activeGameId && isOsuGameId(activeGameId)) {
-    return <OsuSongDetail beatmapsetId={songId} initialBeatmapId={initialLevelIndex} />;
+    return <OsuSongDetail beatmapsetId={songId} initialBeatmapId={initialLevelIndex} initialScoreId={initialScoreId} />;
   }
 
   return <MaimaiSongDetailScreen

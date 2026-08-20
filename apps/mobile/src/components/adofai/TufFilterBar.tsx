@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { TufDifficultyBadge } from './TufDifficultyBadge';
 import { TufWorldAchievementBadge } from './TufScoreCard';
 import { FilterAnchoredDropdown } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { joinFilterSummary } from '@/components/game-content/FilterShell';
+import { RangeSelector } from '@/components/game-content/RangeSelector';
 import type {
   TufDifficultyBand, TufLevelSort, TufPassAchievementFilter, TufPassSort, TufSortOrder,
 } from '@/domain/tuf';
@@ -90,16 +91,9 @@ function DifficultyRangeInputs({
   onMinChange: (value: string) => void;
   onMaxChange: (value: string) => void;
 }) {
-  const theme = useAppTheme();
-  return <View style={styles.rangeRow}>
-    <TextInput accessibilityLabel="最低难度" autoCorrect={false} keyboardType="number-pad" maxLength={2}
-      placeholder="1" placeholderTextColor={theme.textMuted} value={min} onChangeText={onMinChange}
-      style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-    <Text style={[styles.rangeSeparator, { color: theme.textMuted }]}>~</Text>
-    <TextInput accessibilityLabel="最高难度" autoCorrect={false} keyboardType="number-pad" maxLength={2}
-      placeholder="20" placeholderTextColor={theme.textMuted} value={max} onChangeText={onMaxChange}
-      style={[styles.rangeInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-  </View>;
+  return <RangeSelector accessibilityLabel="TUF 难度范围" minimum={1} maximum={20} step={1}
+    lowerValue={min} upperValue={max} onLowerValueChange={onMinChange} onUpperValueChange={onMaxChange}
+    formatValue={(value) => String(value)} testID="tuf-filter-difficulty-range" />;
 }
 
 function DifficultyFilters({
@@ -302,9 +296,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   label: { width: 36, fontSize: 12, fontWeight: '700' },
   wrap: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 4 },
-  rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  rangeInput: { width: 72, height: 36, borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, fontSize: 13, fontWeight: '700', textAlign: 'center' },
-  rangeSeparator: { fontSize: 12, fontWeight: '800' },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   switchCopy: { flex: 1, gap: 2 },
   switchTitle: { fontSize: 13, fontWeight: '700' },

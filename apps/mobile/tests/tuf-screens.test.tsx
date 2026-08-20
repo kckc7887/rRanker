@@ -24,6 +24,21 @@ let mockProfile: TufPlayer | undefined;
 let mockVideoDetails: TufVideoDetails | undefined;
 let mockDark = false;
 
+async function dragTufRangeThumb(
+  screen: Awaited<ReturnType<typeof render>>,
+  kind: 'lower' | 'upper',
+  delta: number,
+) {
+  const actionName = delta > 0 ? 'increment' : 'decrement';
+  for (let index = 0; index < Math.abs(delta); index += 1) {
+    await fireEvent(
+      screen.getByTestId(`tuf-filter-difficulty-range-${kind}-thumb`),
+      'accessibilityAction',
+      { nativeEvent: { actionName } },
+    );
+  }
+}
+
 jest.mock('expo-router', () => ({
   router: {
     push: (value: unknown) => mockPush(value),
@@ -206,11 +221,11 @@ describe('TUF screens', () => {
 
     const screen = await render(<TufRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开筛选器'));
-    expect(screen.getByLabelText('最低难度')).toBeTruthy();
-    expect(screen.getByLabelText('最高难度')).toBeTruthy();
+    expect(screen.getByTestId('tuf-filter-difficulty-range-lower-thumb')).toBeTruthy();
+    expect(screen.getByTestId('tuf-filter-difficulty-range-upper-thumb')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('筛选难度 G'));
-    await fireEvent.changeText(screen.getByLabelText('最低难度'), '10');
-    await fireEvent.changeText(screen.getByLabelText('最高难度'), '15');
+    await dragTufRangeThumb(screen, 'lower', 9);
+    await dragTufRangeThumb(screen, 'upper', -5);
     await fireEvent.press(screen.getByLabelText('筛选成就 PP'));
     expect(screen.getByTestId('tuf-filter-pp-gradient').props.colors)
       .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
@@ -241,8 +256,8 @@ describe('TUF screens', () => {
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
       sort: 'DIFF', pguRange: 'G1,G20', specialDifficulties: ['Unranked', 'Marathon'],
     }));
-    await fireEvent.changeText(screen.getByLabelText('最低难度'), '5');
-    await fireEvent.changeText(screen.getByLabelText('最高难度'), '14');
+    await dragTufRangeThumb(screen, 'lower', 4);
+    await dragTufRangeThumb(screen, 'upper', -6);
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
       pguRange: 'G5,G14', specialDifficulties: ['Unranked', 'Marathon'],
     }));

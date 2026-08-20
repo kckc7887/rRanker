@@ -1,13 +1,37 @@
 import {
   OSU_MOD_THEME_BY_TYPE,
+  OSU_MOD_METADATA,
   OSU_MOD_TYPE_BY_ACRONYM,
+  OSU_USER_PLAYABLE_MODS_BY_GAME_ID,
+  osuModDescription,
   osuModIconFileName,
+  osuUserPlayableMods,
   resolveOsuModTheme,
 } from '@/domain/osu-mods';
 
 describe('osu! 模组元数据映射', () => {
   it('覆盖 67 个模组（66 个 UserPlayable + SV2）', () => {
     expect(Object.keys(OSU_MOD_TYPE_BY_ACRONYM)).toHaveLength(67);
+    expect(OSU_MOD_METADATA).toHaveLength(67);
+    expect(OSU_MOD_METADATA.every((item) => item.englishName && item.chineseName
+      && item.description && item.wikiPath)).toBe(true);
+    expect(OSU_USER_PLAYABLE_MODS_BY_GAME_ID['osu-standard']).toHaveLength(45);
+    expect(OSU_USER_PLAYABLE_MODS_BY_GAME_ID['osu-taiko']).toHaveLength(24);
+    expect(OSU_USER_PLAYABLE_MODS_BY_GAME_ID['osu-catch']).toHaveLength(23);
+    expect(OSU_USER_PLAYABLE_MODS_BY_GAME_ID['osu-mania']).toHaveLength(37);
+    expect(osuModDescription('HD', 'osu-standard')).toContain('缩圈');
+    for (const [gameId, acronyms] of Object.entries(OSU_USER_PLAYABLE_MODS_BY_GAME_ID)) {
+      const metadata = osuUserPlayableMods(gameId as keyof typeof OSU_USER_PLAYABLE_MODS_BY_GAME_ID);
+      expect(metadata.map((item) => item.acronym)).toEqual(acronyms);
+      expect(metadata.every((item) => item.applicableGameIds.includes(
+        gameId as keyof typeof OSU_USER_PLAYABLE_MODS_BY_GAME_ID,
+      ) && osuModDescription(item.acronym, gameId as keyof typeof OSU_USER_PLAYABLE_MODS_BY_GAME_ID)))
+        .toBe(true);
+    }
+    expect(OSU_MOD_METADATA.find((item) => item.acronym === 'SV2')).toMatchObject({
+      applicableGameIds: [],
+      userPlayable: false,
+    });
   });
 
   it('acronym → 类型分组与 mods.json（四规则集 UserPlayable + SV2）一致', () => {

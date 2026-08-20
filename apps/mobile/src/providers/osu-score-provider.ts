@@ -125,6 +125,15 @@ export class OsuScoreProvider {
     );
   }
 
+  /** 最近通过成绩（官方上限 100；明确排除失败成绩）。 */
+  getRecentScores(userId: number, gameId: OsuGameId): Promise<OsuBestScoreRaw[]> {
+    const ruleset = OSU_RULESET_BY_GAME_ID[gameId];
+    return this.request(
+      `/users/${userId}/scores/recent?mode=${ruleset}&limit=100&offset=0&include_fails=0`,
+      z.array(OsuBestScoreSchema),
+    );
+  }
+
   /** 谱面搜索（曲库页）：每页 50 份 beatmapset（上游固定），cursor_string 翻页；m 恒为当前模式。 */
   searchBeatmapsets(params: OsuBeatmapsetSearchParams): Promise<OsuBeatmapsetSearchRaw> {
     const query = new URLSearchParams(buildOsuBeatmapsetSearchQuery(params)).toString();

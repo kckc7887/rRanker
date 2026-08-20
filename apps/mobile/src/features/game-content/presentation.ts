@@ -22,6 +22,8 @@ export type SongDetailRoute = {
   songId: string;
   chartType?: string;
   levelIndex?: number;
+  /** 游戏侧可选的详情定位参数；共享卡片只负责透传，不解释具体语义。 */
+  params?: Readonly<Record<string, string>>;
 };
 
 export type ScoreCardPresentation<TGameId extends string = string> = {

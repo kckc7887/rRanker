@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
+import { useNotification } from '@/components/AppNotification';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
@@ -33,10 +34,12 @@ import {
   type OsuScoreStatistics,
 } from '@/domain/osu';
 import { resolveOsuStarTheme } from '@/domain/osu-star-theme';
+import { osuModDescription, resolveOsuModMetadata } from '@/domain/osu-mods';
 import { buildTagHistory } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
 import { useGameData } from '@/hooks/use-game-data';
 import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
+import { useOsuRecentScores } from '@/hooks/use-osu-recent-scores';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -59,9 +62,11 @@ type OsuGameDataPayload = Extract<GamePayload, { kind: 'osu' }>;
 export function OsuSongDetail({
   beatmapsetId,
   initialBeatmapId,
+  initialScoreId,
 }: {
   beatmapsetId?: string;
   initialBeatmapId?: number;
+  initialScoreId?: number;
 }) {
   const activeGameId = useSession((s) => s.activeGameId);
   // 路由层已按 isOsuGameId 分发；此处收窄类型并防御非 osu 游戏误入。
@@ -71,6 +76,7 @@ export function OsuSongDetail({
       gameId={activeGameId}
       beatmapsetId={beatmapsetId}
       initialBeatmapId={initialBeatmapId}
+      initialScoreId={initialScoreId}
     />
   );
 }
@@ -79,14 +85,17 @@ function OsuSongDetailContent({
   gameId,
   beatmapsetId,
   initialBeatmapId,
+  initialScoreId,
 }: {
   gameId: OsuGameId;
   beatmapsetId?: string;
   initialBeatmapId?: number;
+  initialScoreId?: number;
 }) {
   const theme = useAppTheme();
   const detail = useOsuBeatmapsetDetail(gameId, beatmapsetId ?? null);
   const gameData = useGameData();
+  const recent = useOsuRecentScores(gameId, initialScoreId !== undefined);
   const library = useUserLibrary();
   const song = detail.data;
   const payload = gameData.data?.payload.kind === 'osu'
@@ -123,8 +132,10 @@ function OsuSongDetailContent({
             <OsuDetailBody
               gameId={gameId}
               initialBeatmapId={initialBeatmapId}
+              initialScoreId={initialScoreId}
               library={library}
               payload={payload}
+              recentScores={recent.data}
               song={item}
             />
           )}
@@ -187,12 +198,16 @@ function OsuDetailBody({
   payload,
   library,
   initialBeatmapId,
+  initialScoreId,
+  recentScores,
 }: {
   gameId: OsuGameId;
   song: OsuBeatmapsetDetail;
   payload?: OsuGameDataPayload;
   library: LibraryHook;
   initialBeatmapId?: number;
+  initialScoreId?: number;
+  recentScores?: readonly OsuBestScore[];
 }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
@@ -227,8 +242,14 @@ function OsuDetailBody({
       const existing = map.get(score.beatmap.id);
       if (!existing || score.score > existing.score) map.set(score.beatmap.id, score);
     }
+    if (initialScoreId !== undefined) {
+      const exact = recentScores?.find((score) => score.id === initialScoreId);
+      if (exact && exact.beatmap.beatmapSetId === song.beatmapSetId) {
+        map.set(exact.beatmap.id, exact);
+      }
+    }
     return map;
-  }, [payload, song.beatmapSetId]);
+  }, [initialScoreId, payload, recentScores, song.beatmapSetId]);
 
   return (
     <ScrollView
@@ -263,6 +284,7 @@ function OsuDetailBody({
         renderItem={(beatmap) => (
           <DifficultyCard
             beatmap={beatmap}
+            gameId={gameId}
             library={library}
             score={scoresByBeatmapId.get(beatmap.id)}
             song={song}
@@ -357,18 +379,21 @@ function Hero({ song, width }: { song: OsuBeatmapsetDetail; width: number }) {
 
 function DifficultyCard({
   beatmap,
+  gameId,
   song,
   score,
   library,
   width,
 }: {
   beatmap: OsuBeatmapDetail;
+  gameId: OsuGameId;
   song: OsuBeatmapsetDetail;
   score?: OsuBestScore;
   library: LibraryHook;
   width: number;
 }) {
   const theme = useAppTheme();
+  const { showActionNotification } = useNotification();
   // 星级色即难度卡主题色：描边 + 从星色到卡面的对角渐变（透明后缀随深浅色，同 TUF 难度卡）。
   const starTheme = resolveOsuStarTheme(beatmap.difficultyRating);
   const chartKey = library.chartKey(String(song.beatmapSetId), OSU_CHART_TYPE, beatmap.id);
@@ -407,7 +432,19 @@ function DifficultyCard({
           <View style={styles.badgeRow}>
             <OsuRankTag rank={score.rank} testID={`osu-detail-rank-${score.rank}`} />
             {(score.mods ?? []).map((acronym) => (
-              <OsuModBadge key={acronym} acronym={acronym} />
+              <OsuModBadge key={acronym} acronym={acronym}
+                accessibilityLabel={`模组 ${acronym}，点击查看说明`}
+                onPress={() => {
+                  const metadata = resolveOsuModMetadata(acronym);
+                  showActionNotification({
+                    title: metadata
+                      ? `${metadata.englishName} (${metadata.acronym}) · ${metadata.chineseName}`
+                      : `模组 ${acronym}`,
+                    message: osuModDescription(acronym, gameId) ?? '暂无该模组的说明。',
+                    variant: 'info',
+                    actions: [{ label: '知道了', tone: 'cancel' }],
+                  });
+                }} />
             ))}
           </View>
         ) : null}
@@ -425,20 +462,21 @@ function DifficultyCard({
             {score?.maxCombo != null ? `${score.maxCombo}x` : '—'}
           </Text>
         </View>
-        <View style={styles.statCell}>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>时长</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>
-            {formatOsuDuration(beatmap.totalLength)}
-          </Text>
-        </View>
-        <View style={styles.statCell}>
-          <Text style={[styles.statLabel, { color: theme.textMuted }]}>BPM</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>
-            {formatOsuBpm(beatmap.bpm)}
-          </Text>
-        </View>
       </View>
       <View style={[styles.divider, { backgroundColor: theme.border }]} />
+      <View style={styles.metricRows}>
+        {buildOsuBeatmapMetricRows(gameId, beatmap).map((row, rowIndex) => (
+          <View key={rowIndex} style={styles.metricRow} testID={`osu-detail-metrics-row-${rowIndex + 1}`}>
+            {row.map((metric) => (
+              <View key={metric.key} style={styles.metricCell}>
+                <Text style={[styles.metricLabel, { color: theme.textMuted }]}>{metric.label}</Text>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}
+                  style={[styles.metricValue, { color: theme.text }]}>{metric.value}</Text>
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
       <View style={styles.charterBlock}>
         <Text style={[styles.charterLabel, { color: theme.textMuted }]}>谱师</Text>
         <Text style={[styles.charterValue, { color: theme.text }]}>
@@ -575,6 +613,45 @@ function formatOsuBpm(bpm: number | null): string {
   return bpm == null || !Number.isFinite(bpm) ? '—' : String(Math.round(bpm));
 }
 
+type OsuBeatmapMetric = { key: string; label: string; value: string };
+
+function formatOsuMetric(value: number | null, digits = 1): string {
+  return value == null || !Number.isFinite(value) ? '—' : value.toFixed(digits).replace(/\.0$/u, '');
+}
+
+/** 模式化指标数组：共享卡片只渲染行列，osu! 规则集差异留在游戏侧。 */
+export function buildOsuBeatmapMetricRows(
+  gameId: OsuGameId,
+  beatmap: OsuBeatmapDetail,
+): readonly (readonly OsuBeatmapMetric[])[] {
+  const first: OsuBeatmapMetric[] = [
+    { key: 'duration', label: '时长', value: formatOsuDuration(beatmap.totalLength) },
+    { key: 'bpm', label: 'BPM', value: formatOsuBpm(beatmap.bpm) },
+    { key: 'circles', label: '圆圈总数', value: formatOsuMetric(beatmap.countCircles, 0) },
+  ];
+  if (gameId !== 'osu-taiko') {
+    first.push({ key: 'sliders', label: '滑条总数', value: formatOsuMetric(beatmap.countSliders, 0) });
+  }
+  const second = gameId === 'osu-mania'
+    ? [
+        { key: 'keys', label: '按键数量', value: formatOsuMetric(beatmap.cs, 0) },
+        { key: 'drain', label: '掉血速度', value: formatOsuMetric(beatmap.drain) },
+        { key: 'accuracy', label: '准度要求', value: formatOsuMetric(beatmap.accuracy) },
+      ]
+    : gameId === 'osu-taiko'
+      ? [
+          { key: 'drain', label: '掉血速度', value: formatOsuMetric(beatmap.drain) },
+          { key: 'accuracy', label: '准度要求', value: formatOsuMetric(beatmap.accuracy) },
+        ]
+      : [
+          { key: 'size', label: '圆圈大小', value: formatOsuMetric(beatmap.cs) },
+          { key: 'drain', label: '掉血速度', value: formatOsuMetric(beatmap.drain) },
+          { key: 'accuracy', label: '准度要求', value: formatOsuMetric(beatmap.accuracy) },
+          { key: 'approach', label: '缩圈速度', value: formatOsuMetric(beatmap.ar) },
+        ];
+  return [first, second];
+}
+
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { paddingBottom: 32 },
@@ -636,6 +713,11 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, fontWeight: '700' },
   statValue: { fontSize: 18, lineHeight: 23, fontWeight: '900', fontVariant: ['tabular-nums'] },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
+  metricRows: { gap: 11, marginBottom: 15 },
+  metricRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  metricCell: { flex: 1, minWidth: 0, gap: 2 },
+  metricLabel: { fontSize: 9, lineHeight: 13, fontWeight: '800' },
+  metricValue: { fontSize: 15, lineHeight: 20, fontWeight: '900', fontVariant: ['tabular-nums'] },
   charterBlock: { gap: 4 },
   charterLabel: { fontSize: 10, lineHeight: 14, fontWeight: '800', letterSpacing: 0.25 },
   charterValue: { fontSize: 13, lineHeight: 19, fontWeight: '700' },
