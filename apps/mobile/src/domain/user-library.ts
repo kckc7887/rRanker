@@ -115,7 +115,7 @@ const ChartItemSchema = z.object({
   ...CommonItemShape,
   kind: z.literal('chart'),
   type: z.enum(['SD', 'DX', 'UTAGE']),
-  levelIndex: z.number().int().min(0).max(255),
+  levelIndex: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   practice: z.boolean(),
 }).strict();
 
@@ -213,7 +213,8 @@ export function normalizeLibraryItem(item: UserLibraryItem): UserLibraryItem {
   if (item.kind === 'song') {
     return { ...item, gameId, key: songLibraryKey(gameId, songId), songId, tags };
   }
-  if (!Number.isInteger(item.levelIndex) || item.levelIndex < 0 || item.levelIndex > 255) {
+  const maxLevelIndex = isOsuGameId(gameId) ? Number.MAX_SAFE_INTEGER : 255;
+  if (!Number.isInteger(item.levelIndex) || item.levelIndex < 0 || item.levelIndex > maxLevelIndex) {
     throw new Error('谱面难度序号无效');
   }
   return { ...item, gameId, key: chartLibraryKey(gameId, songId, item.type, item.levelIndex), songId, tags };

@@ -182,22 +182,6 @@ export function MaimaiRandomChartsScreen() {
               record={toScoreCardData(pick, bestByChart)}
             />
           ))}
-          sourceItems={[
-            {
-              key: 'catalog',
-              label: data.source.label,
-              updatedAt: data.source.updatedAt,
-              state: data.source.isStale ? 'cache' : 'live',
-            },
-            {
-              key: 'scores',
-              label: scores.data?.source?.label ?? '成绩不可用',
-              updatedAt: scores.data?.source?.updatedAt,
-              state: !scores.data
-                ? 'unavailable'
-                : scores.data.source?.isStale ? 'cache' : 'live',
-            },
-          ]}
         />
       )}
     />

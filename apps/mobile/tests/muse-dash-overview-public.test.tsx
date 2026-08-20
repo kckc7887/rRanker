@@ -69,6 +69,11 @@ jest.mock('@/components/SourceStatus', () => ({
     return <RN.Text>{items.map((item) => item.label).join(' · ')}</RN.Text>;
   },
 }));
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
+jest.mock('@/hooks/use-chunithm-collections', () => ({ useChunithmCollections: () => ({ data: undefined, error: null }) }));
 jest.mock('@/components/DxRatingCard', () => ({
   DxRatingCard: ({ label, display, meta, sideBadge }: {
     label: string; display: string; meta: string; sideBadge?: { title: string; value: string };
@@ -169,7 +174,7 @@ describe('Muse Dash public overview', () => {
 
     await fireEvent.press(screen.getByLabelText('同步数据，当前 MuseDash.moe'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
-    expect(screen.getByText('来源：MuseDash.moe')).toBeTruthy();
+    expect(screen.getByText('成绩/玩家 · MuseDash.moe')).toBeTruthy();
     expect(screen.queryByText(/读取方式/)).toBeNull();
   });
 

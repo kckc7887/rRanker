@@ -6,7 +6,6 @@ import {
   RecordsListPage,
 } from '@/components/game-content/GameListPages';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { OsuCatalogFilterBar } from '@/components/osu/OsuCatalogFilterBar';
 import { OsuRecordsFilterBar } from '@/components/osu/OsuRecordsFilterBar';
@@ -73,16 +72,6 @@ export function OsuBestScreen() {
           scrollIndicatorInsets: { bottom: inset },
           ...TAB_LIST_CACHE_PROPS,
           keyExtractor: (item) => String(item.id),
-          ListHeaderComponent: (
-            <View style={styles.header}>
-              <SourceStatus items={payload ? [{
-                key: 'scores',
-                label: payload.source.label,
-                updatedAt: payload.source.updatedAt,
-                state: payload.source.isStale ? 'cache' : 'live',
-              }] : []} />
-            </View>
-          ),
           renderSectionHeader: ({ section }) => (
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
@@ -128,14 +117,6 @@ export function OsuRecordsScreen() {
       <RecordsListPage<OsuBestScore>
         beforeList={
           <>
-            <View style={styles.header}>
-              <SourceStatus items={payload ? [{
-                key: 'scores',
-                label: payload.source.label,
-                updatedAt: payload.source.updatedAt,
-                state: payload.source.isStale ? 'cache' : 'live',
-              }] : []} />
-            </View>
             <GameSearchHeader
               accessibilityLabel="搜索 osu! 成绩"
               placeholder="搜索歌名、艺术家或谱面名"

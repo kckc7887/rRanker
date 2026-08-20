@@ -169,30 +169,6 @@ export function PhigrosRandomChartsScreen() {
               />
             );
           })}
-          sourceItems={[
-            {
-              key: 'catalog',
-              label: data.source.label,
-              updatedAt: data.source.updatedAt,
-              state: data.source.isStale ? 'cache' : 'live',
-            },
-            {
-              key: 'scores',
-              label: payload?.source.label ?? '成绩不可用',
-              updatedAt: payload?.source.updatedAt,
-              state: !payload ? 'unavailable' : payload.source.isStale ? 'cache' : 'live',
-            },
-            ...(kyouChartTags.data ? [{
-              key: 'phigros-kyou-tags' as const,
-              label: kyouChartTags.data.source.label,
-              updatedAt: kyouChartTags.data.source.updatedAt,
-              state: kyouChartTags.data.source.isStale ? 'cache' as const : 'live' as const,
-            }] : kyouChartTags.isError ? [{
-              key: 'phigros-kyou-tags' as const,
-              label: 'Kyou 谱面标签不可用',
-              state: 'unavailable' as const,
-            }] : []),
-          ]}
         />
       )}
     />

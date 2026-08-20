@@ -127,20 +127,6 @@ export function ChunithmRandomChartsScreen() {
               />
             );
           })}
-          sourceItems={[
-            {
-              key: 'catalog',
-              label: data.source.label,
-              updatedAt: data.source.updatedAt,
-              state: data.source.isStale ? 'cache' : 'live',
-            },
-            {
-              key: 'scores',
-              label: payload?.source.label ?? '成绩不可用',
-              updatedAt: payload?.source.updatedAt,
-              state: !payload ? 'unavailable' : payload.source.isStale ? 'cache' : 'live',
-            },
-          ]}
         />
       )}
     />

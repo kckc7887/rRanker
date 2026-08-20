@@ -2,7 +2,6 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet, Text } from 'react-native';
 import { RandomChartsPage } from '@/components/RandomChartsPage';
-import { fixtureSource } from '@/fixtures/sanitized';
 
 const onCountChange = jest.fn();
 const onDraw = jest.fn();
@@ -16,7 +15,7 @@ describe('RandomChartsPage host contract', () => {
     jest.clearAllMocks();
   });
 
-  it('keeps source, count, filter, draw and result regions in the shared shell', async () => {
+  it('keeps count, filter, draw and result regions in the shared shell', async () => {
     const screen = await render(
       <RandomChartsPage
         count={2}
@@ -28,12 +27,6 @@ describe('RandomChartsPage host contract', () => {
         poolSize={3}
         resultCount={1}
         results={<Text>结果卡片</Text>}
-        sourceItems={[{
-          key: 'catalog',
-          label: fixtureSource.label,
-          updatedAt: fixtureSource.updatedAt,
-          state: 'live',
-        }]}
       />,
     );
 
@@ -66,7 +59,6 @@ describe('RandomChartsPage host contract', () => {
       poolStatus="正在加载完整随机池 · 已加载 30/90"
       resultCount={0}
       results={null}
-      sourceItems={[]}
     />);
     expect(screen.getByText('正在加载完整随机池 · 已加载 30/90')).toBeTruthy();
     expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toEqual({ disabled: true });

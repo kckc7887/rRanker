@@ -28,7 +28,6 @@ import { PhigrosScoreValue } from './PhigrosScoreValue';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosXingBadge } from './PhigrosXingBadge';
 import { QueryStateView } from '@/components/QueryStateView';
-import { SourceStatus } from '@/components/SourceStatus';
 import { useNotification } from '@/components/AppNotification';
 import type { Chart, PhigrosChartNotes, ScoreRecord, Song } from '@/domain/models';
 import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
@@ -81,13 +80,6 @@ export function PhigrosSongDetail({
     return [] as ScoreRecord[];
   }, [gameData.data?.payload]);
 
-  const catalogSource = catalog.data?.snapshot.source;
-  const scoreSource = useMemo(() => {
-    const payload = gameData.data?.payload;
-    if (payload?.kind === 'phigros') return payload.source;
-    return undefined;
-  }, [gameData.data?.payload]);
-
   const provider = catalog.data?.provider ?? null;
   const kyouTagIndex = useMemo(() => buildPhigrosKyouChartTagIndex(
     kyouChartTags.data,
@@ -116,10 +108,6 @@ export function PhigrosSongDetail({
           <Detail
             song={item}
             records={records}
-            catalogSource={catalogSource}
-            scoreSource={scoreSource}
-            kyouTagSource={kyouChartTags.data?.source}
-            kyouTagsUnavailable={kyouChartTags.isError}
             kyouTagIndex={kyouTagIndex}
             illustrationUrl={illustrationUrl}
             blurUrl={blurUrl}
@@ -182,10 +170,6 @@ export function PhigrosDetailChrome({
 function Detail({
   song,
   records,
-  catalogSource,
-  scoreSource,
-  kyouTagSource,
-  kyouTagsUnavailable,
   kyouTagIndex,
   illustrationUrl,
   blurUrl,
@@ -197,10 +181,6 @@ function Detail({
 }: {
   song: Song;
   records: ScoreRecord[];
-  catalogSource?: import('@/domain/models').DataSource;
-  scoreSource?: import('@/domain/models').DataSource;
-  kyouTagSource?: import('@/domain/models').DataSource;
-  kyouTagsUnavailable: boolean;
   kyouTagIndex: PhigrosKyouChartTagIndex;
   illustrationUrl: string | null;
   blurUrl: string | null;
@@ -327,30 +307,6 @@ function Detail({
           kyouTagIndex={kyouTagIndex}
         />
         <View style={styles.details}>
-          <SourceStatus items={[
-            {
-              key: 'catalog',
-              label: catalogSource?.label ?? '曲库未加载',
-              updatedAt: catalogSource?.updatedAt,
-              state: !catalogSource ? 'unavailable' : catalogSource.isStale ? 'cache' : 'live',
-            },
-            {
-              key: 'scores',
-              label: scoreSource?.label ?? '成绩未绑定',
-              updatedAt: scoreSource?.updatedAt,
-              state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live',
-            },
-            ...(kyouTagSource ? [{
-              key: 'phigros-kyou-tags' as const,
-              label: kyouTagSource.label,
-              updatedAt: kyouTagSource.updatedAt,
-              state: kyouTagSource.isStale ? 'cache' as const : 'live' as const,
-            }] : kyouTagsUnavailable ? [{
-              key: 'phigros-kyou-tags' as const,
-              label: 'Kyou 谱面标签不可用',
-              state: 'unavailable' as const,
-            }] : []),
-          ]} />
           <Card>
             <PhigrosSongInformation aliases={song.aliases ?? []} />
           </Card>

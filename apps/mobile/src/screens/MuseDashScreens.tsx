@@ -23,7 +23,6 @@ import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { QueryStateView } from '@/components/QueryStateView';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
 import { MuseDashAchievementBadge, MuseDashGradeBadge, MuseDashNeutralBadge } from '@/components/musedash/MuseDashBadges';
@@ -486,12 +485,6 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
         scrollStyle={styles.carouselScroll}
         testID="musedash-chart-carousel"
       />
-      <View style={styles.details}>
-        <SourceStatus items={[{
-          key: 'scores', label: 'MuseDash.moe', updatedAt: player.source?.updatedAt,
-          state: player.source ? (player.source.isStale ? 'cache' : 'live') : 'unavailable',
-        }]} />
-      </View>
     </ScrollView>} />
   </>;
 }

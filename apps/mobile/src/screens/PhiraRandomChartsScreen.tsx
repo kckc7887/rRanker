@@ -25,7 +25,6 @@ export function PhiraRandomChartsScreen() {
       onConstantMaxChange={filter.setConstantMax} onAccuracyMinChange={filter.setAccuracyMin}
       onAccuracyMaxChange={filter.setAccuracyMax} onRankChange={filter.setRank}
       onXingChange={filter.setXing} onReset={filter.clearFilters} />}
-    sourceItems={[{ key: 'scores', label: 'Phira 已查询最佳成绩', updatedAt: query.data?.source.updatedAt, state: query.isError ? 'unavailable' : query.data?.source.isStale ? 'cache' : 'live' }]}
     poolSize={pool.length} onDraw={draw} hasDrawn={drawn} resultCount={results.length} results={results.map((item) => <PhiraScoreCard key={item.chart.id} item={item} />)}
     emptyMessage="成绩页缓存中没有可抽取的歌曲" drawDisabled={!pool.length} poolError={query.error instanceof Error ? query.error.message : null} onRetryPool={() => void query.refetch()} />;
 }

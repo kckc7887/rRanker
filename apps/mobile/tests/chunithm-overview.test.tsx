@@ -91,6 +91,10 @@ jest.mock('@/components/SourceStatus', () => ({
     return <>{items.map((item) => <Text key={item.key}>{`${item.key}:${item.label}`}</Text>)}</>;
   },
 }));
+jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
+jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
 jest.mock('@/components/DxRatingCard', () => ({
   DxRatingCard: ({ meta }: { meta: string }) => {
     const { Text } = jest.requireActual<typeof import('react-native')>('react-native');
@@ -227,11 +231,10 @@ describe('Chunithm overview', () => {
     const screen = await render(<OverviewScreen />);
 
     expect(screen.getByText('Best30 15.50 · New20 14.00')).toBeTruthy();
-    expect(screen.getByText('scores:落雪咖啡屋')).toBeTruthy();
-    expect(screen.getByText('catalog:LXNS 中二节奏公共曲库')).toBeTruthy();
+    expect(screen.getByText('scores:成绩/玩家 · 落雪咖啡屋')).toBeTruthy();
+    expect(screen.getByText('catalog:曲库 · LXNS 中二节奏公共曲库')).toBeTruthy();
     expect(screen.queryByText(/成绩：/)).toBeNull();
     expect(screen.getByText('当前版本：CHUNITHM VERSE')).toBeTruthy();
-    expect(screen.getByText(/^更新时间：/)).toBeTruthy();
     expect(screen.getByText('收藏 0 首 · 练习 0 张')).toBeTruthy();
     expect(screen.getByText('Rating 计算器 · 收藏品进度 · 随机歌曲 · 机厅查找 · 成绩图片')).toBeTruthy();
     const upload = screen.getByLabelText('上传数据，打开同步引导');

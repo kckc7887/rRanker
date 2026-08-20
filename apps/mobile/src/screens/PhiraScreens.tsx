@@ -13,7 +13,6 @@ import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { Card } from '@/components/Card';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
@@ -237,7 +236,7 @@ function PhiraSongDetailContent({
           </DetailPressable>
         </DetailGestureRoot>
       </GameChartResultCard></View>
-      <View style={detailStyles.details}><SourceStatus items={[{ key: 'detail', label: 'Phira 谱面详情', updatedAt: chart.updated ?? undefined, state: chartUnavailable ? 'unavailable' : 'live' }, { key: 'scores', label: playerId === null ? '未绑定玩家' : 'Phira 最佳成绩', state: playerId === null ? 'unavailable' : score.isError ? 'unavailable' : 'live' }, { key: 'notes', label: notes.data?.counts ? '谱面物量' : '谱面物量不可用', state: notes.data?.counts ? 'live' : notes.isLoading ? 'cache' : 'unavailable' }]} />
+      <View style={detailStyles.details}>
         <Card><View style={detailStyles.songInformation}><Text style={[detailStyles.informationTitle, { color: theme.text }]}>歌曲信息</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>标签：{chart.tags.join('、') || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>更新于：{chart.updated ? new Date(chart.updated).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>上传于：{chart.created ? new Date(chart.created).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>简介：{chart.description || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>评分：{formatPhiraRating(chart.rating)}（{chart.ratingCount} 票）</Text></View></Card>
         <Card><TagEditor tags={item?.kind === 'song' ? item.tags : []} presets={library.tagPresets ?? []} historyTags={buildTagHistory(library.data ?? [], library.songKey(String(chart.id)), library.tagPresets ?? [])} disabled={library.isUpdating} onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: String(chart.id) }, tags)} /></Card>
       </View>

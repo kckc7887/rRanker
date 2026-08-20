@@ -160,7 +160,9 @@ export interface CollectionSnapshot {
 }
 
 export interface SourceStatusItem {
-  key: 'scores' | 'catalog' | 'detail' | 'aliases' | 'plates' | 'collections' | 'dxrating-tags' | 'phigros-kyou-tags' | 'notes';
+  key: 'scores' | 'catalog' | 'detail' | 'aliases' | 'plates' | 'collections'
+    | 'collection-trophy' | 'collection-character' | 'collection-plate' | 'collection-icon'
+    | 'dxrating-tags' | 'phigros-kyou-tags' | 'notes' | 'bests' | 'musedash-albums';
   label: string;
   updatedAt?: string;
   state: 'live' | 'cache' | 'unavailable';

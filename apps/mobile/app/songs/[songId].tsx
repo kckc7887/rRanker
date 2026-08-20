@@ -34,7 +34,6 @@ import { PhigrosSongDetail } from '@/components/phigros/PhigrosSongDetail';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
-import { SourceStatus } from '@/components/SourceStatus';
 import { TagEditor } from '@/components/TagEditor';
 import { useNotification } from '@/components/AppNotification';
 import { normalizeSongId } from '@/domain/catalog';
@@ -51,12 +50,10 @@ import type {
   ChartNotes,
   ChartType,
   CollectionItem,
-  DataSource,
   Difficulty,
   GameVersion,
   ScoreRecord,
   Song,
-  SourceStatusItem,
 } from '@/domain/models';
 import { buildTagHistory } from '@/domain/user-library';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
@@ -145,29 +142,19 @@ function MaimaiSongDetailScreen({
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
   const detailData = song && catalog.data
-    ? { song, versions: catalog.data.versions, catalogSource: catalog.data.source }
+    ? { song, versions: catalog.data.versions }
     : undefined;
-  const dxratingSource: SourceStatusItem | undefined = dxratingTags.data
-    ? {
-        key: 'dxrating-tags',
-        label: dxratingTags.data.source.label,
-        updatedAt: dxratingTags.data.source.updatedAt,
-        state: dxratingTags.data.source.isStale ? 'cache' : 'live',
-      }
-    : dxratingTags.isError
-      ? { key: 'dxrating-tags', label: 'DXRating 谱面标签不可用', state: 'unavailable' }
-      : undefined;
   return <>
     <StatusBar style="light" />
     <View style={[styles.page, { backgroundColor: themeBackground }]}>
-      <QueryStateView<{ song: Song; versions: GameVersion[]; catalogSource: DataSource }>
+      <QueryStateView<{ song: Song; versions: GameVersion[] }>
         isLoading={catalog.isLoading}
         isError={catalog.isError}
         isEmpty={!!catalog.data && !song}
         error={catalog.error} onRetry={() => void catalog.refetch()}
         emptyText="找不到这首歌曲" data={detailData} renderData={(item) => <Detail song={item.song} records={scores.data?.records ?? []}
-          versions={item.versions} catalogSource={item.catalogSource} scoreSource={scores.data?.source} library={library}
-          dxratingTags={dxratingTags.data} dxratingSource={dxratingSource}
+          versions={item.versions} library={library}
+          dxratingTags={dxratingTags.data}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
       <SongDetailChrome
         song={song} favorite={favorite}
@@ -204,14 +191,11 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
   );
 }
 
-function Detail({ song, versions, records, catalogSource, scoreSource, dxratingTags, dxratingSource, library, initialChartType, initialLevelIndex }: {
+function Detail({ song, versions, records, dxratingTags, library, initialChartType, initialLevelIndex }: {
   song: Song;
   versions: GameVersion[];
   records: ScoreRecord[];
-  catalogSource: import('@/domain/models').DataSource;
-  scoreSource?: import('@/domain/models').DataSource;
   dxratingTags?: DxRatingChartTagsSnapshot;
-  dxratingSource?: SourceStatusItem;
   library: LibraryHook;
   initialChartType?: ChartType;
   initialLevelIndex?: number;
@@ -333,11 +317,6 @@ function Detail({ song, versions, records, catalogSource, scoreSource, dxratingT
         onToggleChartType={() => nextChartType && setSelectedChartType(nextChartType)} />
 
       <View style={styles.details}>
-        <SourceStatus items={[
-          { key: 'catalog', label: catalogSource.label, updatedAt: catalogSource.updatedAt, state: catalogSource.isStale ? 'cache' : 'live' },
-          { key: 'scores', label: scoreSource?.label ?? '成绩未加载', updatedAt: scoreSource?.updatedAt, state: !scoreSource ? 'unavailable' : scoreSource.isStale ? 'cache' : 'live' },
-          ...(dxratingSource ? [dxratingSource] : []),
-        ]} />
         <SongCollectionsCard songId={song.id} />
         <Card><Text style={[styles.section, { color: theme.text }]}>歌曲信息</Text><AliasLine aliases={song.aliases} />
           <Text style={[styles.body, { color: theme.textSecondary }]}>版权：{song.rights || '未提供'}</Text>

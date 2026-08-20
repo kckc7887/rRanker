@@ -15,11 +15,14 @@ import {
   museDashSongAuthor,
   museDashSongTitle,
 } from '@/domain/muse-dash';
+import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
+import type { OsuBeatmapsetDetail } from '@/domain/osu';
 import type { TufLevel } from '@/domain/tuf';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useMuseDashAlbums } from '@/hooks/use-muse-dash';
+import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhiraChartsByIds } from '@/hooks/use-phira';
 import { useTufLevelSearch } from '@/hooks/use-tuf';
@@ -30,7 +33,7 @@ import { useAppTheme } from '@/theme/app-theme';
 type Mode = 'all' | 'favorite' | 'practice';
 type MuseDashLibrarySong = { id: string; title: string; artist?: string; cover?: string };
 type PhiraLibrarySong = { id: string; title: string; illustration: string | null };
-type LibrarySong = Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong;
+type LibrarySong = Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong | OsuBeatmapsetDetail;
 
 function isChunithmSong(song: LibrarySong): song is ChunithmSong {
   return 'difficulties' in song;
@@ -41,7 +44,11 @@ function isTufLevel(song: LibrarySong): song is TufLevel {
 }
 
 function isMuseDashSong(song: LibrarySong): song is MuseDashLibrarySong {
-  return 'cover' in song;
+  return 'cover' in song && !('beatmapSetId' in song);
+}
+
+function isOsuLibrarySong(song: LibrarySong): song is OsuBeatmapsetDetail {
+  return 'beatmapSetId' in song;
 }
 
 function isPhiraLibrarySong(song: LibrarySong): song is PhiraLibrarySong {
@@ -53,6 +60,7 @@ export default function UserLibraryScreen() {
   if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
   if (activeGameId === 'musedash') return <MuseDashLibraryScreen />;
   if (activeGameId === 'phira') return <PhiraLibraryScreen />;
+  if (isOsuGameId(activeGameId)) return <OsuLibraryScreen gameId={activeGameId} />;
   return <SharedLibraryScreen />;
 }
 
@@ -188,6 +196,17 @@ function PhiraLibraryScreen() {
   return <LibraryList items={items} songsById={songsById} />;
 }
 
+function OsuLibraryScreen({ gameId }: { gameId: OsuGameId }) {
+  const library = useUserLibrary();
+  const items = useMemo(() => library.data ?? [], [library.data]);
+  const beatmapsetIds = useMemo(
+    () => [...new Set(items.map((item) => item.songId))],
+    [items],
+  );
+  const beatmapsets = useOsuBeatmapsetsByIds(gameId, beatmapsetIds);
+  return <LibraryList items={items} songsById={beatmapsets.data} />;
+}
+
 function LibraryRow({
   item,
   song,
@@ -199,9 +218,13 @@ function LibraryRow({
 }) {
   const theme = useAppTheme();
   const chunithmSong = song && isChunithmSong(song) ? song : undefined;
-  const standardSong = song && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) ? song : undefined;
+  const osuSong = song && isOsuLibrarySong(song) ? song : undefined;
+  const standardSong = song && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) && !isOsuLibrarySong(song) ? song : undefined;
   const tufLevel = song && isTufLevel(song) ? song : undefined;
   const museDashSong = song && isMuseDashSong(song) ? song : undefined;
+  const osuBeatmap = item.kind === 'chart'
+    ? osuSong?.beatmaps.find((value) => value.id === item.levelIndex)
+    : undefined;
   const chart = item.kind === 'chart'
     ? standardSong?.charts.find((value) => value.type === item.type && value.levelIndex === item.levelIndex)
     : undefined;
@@ -220,6 +243,8 @@ function LibraryRow({
         : `${item.type} ${chart.difficulty.toUpperCase()}`)
       : museDashSong
         ? MUSE_DASH_DIFFICULTY_LABELS[item.levelIndex]
+        : osuBeatmap
+          ? `${osuBeatmap.version} · ${osuBeatmap.difficultyRating.toFixed(2)}★`
         : chunithmSong
           ? `难度 ${item.levelIndex}`
           : `${item.type} 难度 ${item.levelIndex}`
@@ -229,7 +254,7 @@ function LibraryRow({
     params: item.kind === 'chart'
       ? {
           songId: item.songId,
-          ...(chunithmSong ? {} : { chartType: item.type }),
+          ...(chunithmSong || osuSong ? {} : { chartType: item.type }),
           levelIndex: String(item.levelIndex),
         }
       : { songId: item.songId },
@@ -254,6 +279,12 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
     return url
       ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={url}
         style={[styles.cover, styles.museDashCover]} transition={120} />
+      : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
+  }
+  if (isOsuLibrarySong(song)) {
+    return song.cover
+      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={song.cover}
+        style={styles.cover} transition={120} />
       : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   if (blurUrl) {

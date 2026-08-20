@@ -181,7 +181,7 @@ export function useMuseDashPlayDetails(
   }, [items, queries]);
 }
 
-export function useMuseDashAlbums() {
+export function useMuseDashAlbums(enabled = true) {
   const queryKey = ['musedash', 'albums'] as const;
   return useMuseDashCacheFirst<MuseDashAlbumsResponse>(queryKey, async () => {
     const snapshot = await cacheFirstLoad({
@@ -197,7 +197,7 @@ export function useMuseDashAlbums() {
       },
     });
     return snapshot;
-  });
+  }, enabled);
 }
 
 export function useMuseDashCe() {

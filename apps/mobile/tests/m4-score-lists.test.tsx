@@ -321,10 +321,10 @@ describe('M4 score list cards', () => {
     expect(screen.getByLabelText('谱面标签筛选，当前 全部')).toBeTruthy();
   });
 
-  it('reports a cached DXRating source without blocking records', async () => {
+  it('does not render a cached DXRating source bar and keeps records available', async () => {
     mockRecordsDxRatingState = 'cache';
     const screen = await render(<RecordsScreen />);
-    expect(screen.getByText(/DXRating 谱面标签缓存/)).toBeTruthy();
+    expect(screen.queryByText(/DXRating 谱面标签缓存/)).toBeNull();
     expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
   });
 
@@ -347,7 +347,7 @@ describe('M4 score list cards', () => {
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     expect(screen.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
-    expect(screen.getByText('DXRating 标签不可用')).toBeTruthy();
+    expect(screen.queryByText('DXRating 标签不可用')).toBeNull();
     await waitFor(() => expect(useRecordsFilter.getState().selectedDxRatingTagIds).toEqual([]));
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
   });
