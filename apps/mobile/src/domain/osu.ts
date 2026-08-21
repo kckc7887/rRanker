@@ -112,6 +112,12 @@ export const OsuBestScoreSchema = z.object({
 }).passthrough();
 export type OsuBestScoreRaw = z.infer<typeof OsuBestScoreSchema>;
 
+/** GET /beatmaps/{beatmap}/scores/users/{user}：指定玩家在单张谱面的最佳成绩。 */
+export const OsuBeatmapUserScoreResponseSchema = z.object({
+  score: OsuBestScoreSchema,
+}).passthrough();
+export type OsuBeatmapUserScoreResponseRaw = z.infer<typeof OsuBeatmapUserScoreResponseSchema>;
+
 const OsuUserStatisticsSchema = z.object({
   pp: z.number().optional(),
   accuracy: z.number().nullable().optional(),
@@ -254,6 +260,12 @@ export type OsuPlayer = {
 export type OsuSnapshotData = {
   player: OsuPlayer;
   bestScores: OsuBestScore[];
+};
+
+/** 已知成绩集合：以谱面 ID 去重，打开歌曲详情后可持续补充。 */
+export type OsuKnownScoresSnapshot = {
+  items: Record<string, OsuBestScore>;
+  source: DataSource;
 };
 
 /** 曲库页条目：一首歌 = 一个 beatmapset；难度标签为该 set 下当前模式全部 beatmaps 星数升序。 */
@@ -507,9 +519,14 @@ export type OsuSnapshot = {
 };
 
 export const OSU_SNAPSHOT_SCHEMA_VERSION = 1;
+export const OSU_KNOWN_SCORES_SCHEMA_VERSION = 1;
 
 export function osuSnapshotCacheKey(gameId: OsuGameId, userId: number): string {
   return `osu:${gameId}:${userId}`;
+}
+
+export function osuKnownScoresCacheKey(gameId: OsuGameId, userId: number): string {
+  return `osu-known-scores:${gameId}:${userId}`;
 }
 
 // ---- 缓存快照校验 Schema ----
@@ -572,6 +589,11 @@ const OsuDataSourceSchema = z.object({
   isStale: z.boolean(),
 }).passthrough();
 
+export const OsuKnownScoresSnapshotSchema = z.object({
+  items: z.record(z.string(), OsuBestScoreSnapshotSchema),
+  source: OsuDataSourceSchema,
+}).passthrough();
+
 export const OsuSnapshotSchema = z.object({
   data: z.object({
     player: OsuPlayerSnapshotSchema,
@@ -599,7 +621,7 @@ function normalizeOsuScoreMods(mods: OsuBestScoreRaw['mods']): string[] {
   });
 }
 
-/** best/recent 共用的原始成绩规范化；缺 beatmap/beatmapset 的条目不可展示。 */
+/** osu! 成绩端点共用的原始成绩规范化；缺 beatmap/beatmapset 的条目不可展示。 */
 export function normalizeOsuScores(scores: readonly OsuBestScoreRaw[]): OsuBestScore[] {
   return scores.flatMap((raw) => {
       if (!raw.beatmap || !raw.beatmapset) return [];
@@ -643,6 +665,36 @@ export function normalizeOsuScores(scores: readonly OsuBestScoreRaw[]): OsuBestS
         mods: normalizeOsuScoreMods(raw.mods),
       }];
     });
+}
+
+/**
+ * 单谱成绩端点不保证内嵌 beatmap/beatmapset；用当前详情或既有成绩补齐展示元数据，
+ * 再走成绩端点共用规范化函数，避免产生第三套成绩映射。
+ */
+export function normalizeOsuBeatmapUserScore(
+  raw: OsuBestScoreRaw,
+  gameId: OsuGameId,
+  beatmap: OsuBeatmapInfo,
+  beatmapset: OsuBeatmapsetInfo,
+): OsuBestScore | null {
+  const enriched: OsuBestScoreRaw = {
+    ...raw,
+    beatmap: raw.beatmap ?? {
+      id: beatmap.id,
+      beatmapset_id: beatmap.beatmapSetId,
+      difficulty_rating: beatmap.difficultyRating,
+      version: beatmap.version,
+      mode: OSU_RULESET_BY_GAME_ID[gameId],
+    },
+    beatmapset: raw.beatmapset ?? {
+      id: beatmapset.id,
+      title: beatmapset.title,
+      artist: beatmapset.artist,
+      creator: beatmapset.creator,
+      covers: beatmapset.listCover ? { list: beatmapset.listCover } : {},
+    },
+  };
+  return normalizeOsuScores([enriched])[0] ?? null;
 }
 
 /** 原始响应 → 游戏自有快照。 */

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   PanResponder,
   Pressable,
@@ -117,54 +117,130 @@ export function RangeSelector({
   const theme = useAppTheme();
   const [trackWidth, setTrackWidth] = useState(0);
   const range = Math.max(maximum - minimum, Number.EPSILON);
-  const lower = clamp(finiteInput(lowerValue) ?? minimum, minimum, maximum);
-  const upper = clamp(finiteInput(upperValue) ?? maximum, lower, maximum);
+  const controlledLower = clamp(finiteInput(lowerValue) ?? minimum, minimum, maximum);
+  const controlledUpper = clamp(finiteInput(upperValue) ?? maximum, controlledLower, maximum);
+  const [draft, setDraft] = useState({ lower: controlledLower, upper: controlledUpper });
+  const draftRef = useRef(draft);
+  const draggingRef = useRef<'lower' | 'upper' | null>(null);
+  const configRef = useRef({ minimum, maximum, step, trackWidth });
+  const callbacksRef = useRef({ onLowerValueChange, onUpperValueChange });
+  configRef.current = { minimum, maximum, step, trackWidth };
+  callbacksRef.current = { onLowerValueChange, onUpperValueChange };
+
+  const setDraftValues = useCallback((next: { lower: number; upper: number }) => {
+    draftRef.current = next;
+    setDraft(next);
+  }, []);
+
+  useEffect(() => {
+    if (draggingRef.current !== null) return;
+    setDraftValues({ lower: controlledLower, upper: controlledUpper });
+  }, [controlledLower, controlledUpper, setDraftValues]);
+
+  const lower = clamp(draft.lower, minimum, maximum);
+  const upper = clamp(draft.upper, lower, maximum);
   const lowerRatio = (lower - minimum) / range;
   const upperRatio = (upper - minimum) / range;
 
-  const writeLower = useCallback((value: number) => {
-    const next = Math.min(snapRangeValue(value, minimum, maximum, step), upper);
-    onLowerValueChange(serializeRangeValue(next, minimum, step, 'lower'));
-  }, [maximum, minimum, onLowerValueChange, step, upper]);
-  const writeUpper = useCallback((value: number) => {
-    const next = Math.max(snapRangeValue(value, minimum, maximum, step), lower);
-    onUpperValueChange(serializeRangeValue(next, maximum, step, 'upper'));
-  }, [lower, maximum, minimum, onUpperValueChange, step]);
+  const updateDraft = useCallback((kind: 'lower' | 'upper', value: number) => {
+    const config = configRef.current;
+    const current = draftRef.current;
+    if (kind === 'lower') {
+      const next = Math.min(
+        snapRangeValue(value, config.minimum, config.maximum, config.step),
+        current.upper,
+      );
+      setDraftValues({ ...current, lower: next });
+      return;
+    }
+    const next = Math.max(
+      snapRangeValue(value, config.minimum, config.maximum, config.step),
+      current.lower,
+    );
+    setDraftValues({ ...current, upper: next });
+  }, [setDraftValues]);
+
+  const commitDraft = useCallback((kind: 'lower' | 'upper') => {
+    const config = configRef.current;
+    const current = draftRef.current;
+    draggingRef.current = null;
+    if (kind === 'lower') {
+      callbacksRef.current.onLowerValueChange(
+        serializeRangeValue(current.lower, config.minimum, config.step, 'lower'),
+      );
+      return;
+    }
+    callbacksRef.current.onUpperValueChange(
+      serializeRangeValue(current.upper, config.maximum, config.step, 'upper'),
+    );
+  }, []);
 
   const lowerStart = useRef(lower);
   const upperStart = useRef(upper);
   const lowerResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-    onPanResponderGrant: () => { lowerStart.current = lower; },
-    onPanResponderMove: (_, gesture) => {
-      writeLower(rangeValueForDrag(lowerStart.current, gesture.dx, trackWidth, minimum, maximum));
+    onPanResponderGrant: () => {
+      draggingRef.current = 'lower';
+      lowerStart.current = draftRef.current.lower;
     },
-  // Controlled values must rebuild responders so crossing constraints always use the latest endpoint.
-  }), [lower, maximum, minimum, trackWidth, writeLower]);
+    onPanResponderMove: (_, gesture) => {
+      const config = configRef.current;
+      updateDraft('lower', rangeValueForDrag(
+        lowerStart.current,
+        gesture.dx,
+        config.trackWidth,
+        config.minimum,
+        config.maximum,
+      ));
+    },
+    onPanResponderRelease: () => commitDraft('lower'),
+    onPanResponderTerminate: () => commitDraft('lower'),
+  }), [commitDraft, updateDraft]);
   const upperResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-    onPanResponderGrant: () => { upperStart.current = upper; },
-    onPanResponderMove: (_, gesture) => {
-      writeUpper(rangeValueForDrag(upperStart.current, gesture.dx, trackWidth, minimum, maximum));
+    onPanResponderGrant: () => {
+      draggingRef.current = 'upper';
+      upperStart.current = draftRef.current.upper;
     },
-  }), [maximum, minimum, trackWidth, upper, writeUpper]);
+    onPanResponderMove: (_, gesture) => {
+      const config = configRef.current;
+      updateDraft('upper', rangeValueForDrag(
+        upperStart.current,
+        gesture.dx,
+        config.trackWidth,
+        config.minimum,
+        config.maximum,
+      ));
+    },
+    onPanResponderRelease: () => commitDraft('upper'),
+    onPanResponderTerminate: () => commitDraft('upper'),
+  }), [commitDraft, updateDraft]);
+
+  const commitValue = (kind: 'lower' | 'upper', value: number) => {
+    updateDraft(kind, value);
+    commitDraft(kind);
+  };
 
   const handleTrackPress = (locationX: number) => {
     if (trackWidth <= 0) return;
     const next = snapRangeValue(minimum + (locationX / trackWidth) * range, minimum, maximum, step);
-    if (Math.abs(next - lower) <= Math.abs(next - upper)) writeLower(next);
-    else writeUpper(next);
+    if (Math.abs(next - lower) <= Math.abs(next - upper)) commitValue('lower', next);
+    else commitValue('upper', next);
   };
   const handleAccessibility = (kind: 'lower' | 'upper') => (event: AccessibilityActionEvent) => {
     const delta = event.nativeEvent.actionName === 'increment' ? step
       : event.nativeEvent.actionName === 'decrement' ? -step : 0;
     if (delta === 0) return;
-    if (kind === 'lower') writeLower(lower + delta);
-    else writeUpper(upper + delta);
+    if (kind === 'lower') commitValue('lower', lower + delta);
+    else commitValue('upper', upper + delta);
   };
-  const onLayout = (event: LayoutChangeEvent) => setTrackWidth(event.nativeEvent.layout.width);
+  const onLayout = (event: LayoutChangeEvent) => {
+    const width = event.nativeEvent.layout.width;
+    configRef.current = { ...configRef.current, trackWidth: width };
+    setTrackWidth(width);
+  };
 
   return (
     <View accessibilityLabel={accessibilityLabel} style={styles.root} testID={testID}>

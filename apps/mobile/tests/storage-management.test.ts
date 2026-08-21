@@ -234,6 +234,7 @@ describe('osu storage segment', () => {
       listAccountScoreSizes: vi.fn(async () => []),
       listResourceSizes: vi.fn(async () => [
         { key: 'osu:osu-standard:2', bytes: 100 },
+        { key: 'osu-known-scores:osu-standard:2', bytes: 50 },
         { key: 'osu:osu-mania:2', bytes: 200 },
         { key: 'osu:osu-catch:3', bytes: 300 },
         { key: 'account-thumbnail:osu-standard:osu:2', bytes: 10 },
@@ -245,11 +246,12 @@ describe('osu storage segment', () => {
     };
     const adapter = getGameStorageAdapter('osu-standard');
     // 仅 osu-standard 自身的快照 + 该模式账号的头像/缩略图（accountId 前缀归属）
-    await expect(adapter?.measure(snapshots as never)).resolves.toBe(130);
+    await expect(adapter?.measure(snapshots as never)).resolves.toBe(180);
     await adapter?.clear(snapshots as never);
     expect(clearAccountScores).toHaveBeenCalledWith([]);
     expect(clearResources).toHaveBeenCalledWith([
       'osu:osu-standard:2',
+      'osu-known-scores:osu-standard:2',
       'account-thumbnail:osu-standard:osu:2',
       'account-avatar:osu-standard:osu:2',
     ]);

@@ -204,8 +204,13 @@ jest.mock('@/components/AppNotification', () => ({
   ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'),
   useNotification: () => ({ showActionNotification: mockShowActionNotification }),
 }));
-jest.mock('@/hooks/use-osu-recent-scores', () => ({
-  useOsuRecentScores: () => ({ data: mockRecentScores, bound: true, isLoading: false }),
+jest.mock('@/hooks/use-osu-known-scores', () => ({
+  useOsuKnownScores: (_gameId: unknown, seedScores: OsuBestScore[] = []) => ({
+    data: mockRecentScores.length > 0 ? mockRecentScores : seedScores,
+    bound: true,
+    isLoading: false,
+  }),
+  useOsuBeatmapsetUserScores: () => ({ data: [], isLoading: false }),
 }));
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: () => ({
@@ -431,8 +436,8 @@ describe('OsuSongDetail 歌曲详情页', () => {
     }));
   });
 
-  it('scoreId 精确显示 recent 成绩，找不到时回退同谱面 Best', async () => {
-    mockRecentScores = [{
+  it('scoreId 精确显示已知成绩，找不到时回退同谱面最高分', async () => {
+    mockRecentScores = [hardScore, {
       ...hardScore,
       id: 987654321,
       score: 765432,

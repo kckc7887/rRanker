@@ -13,6 +13,8 @@ const ACCOUNT_SCOPED_QUERY_KEYS = [
   ['plates'],
   ['collections'],
   ['songs'],
+  ['osu-known-scores'],
+  ['osu-beatmapset-user-scores'],
 ] as const;
 
 /** 全局资源查询：与账号无关（如中二曲库）。 */

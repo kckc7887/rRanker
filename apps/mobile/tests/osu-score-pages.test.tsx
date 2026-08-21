@@ -73,11 +73,11 @@ const score: OsuBestScore = {
   achievedAt: '2026-01-01T00:00:00.000Z',
 };
 
-jest.mock('@/hooks/use-osu-recent-scores', () => ({ useOsuRecentScores: jest.fn() }));
-const { useOsuRecentScores } = jest.requireMock<typeof import('@/hooks/use-osu-recent-scores')>(
-  '@/hooks/use-osu-recent-scores',
+jest.mock('@/hooks/use-osu-known-scores', () => ({ useOsuKnownScores: jest.fn() }));
+const { useOsuKnownScores } = jest.requireMock<typeof import('@/hooks/use-osu-known-scores')>(
+  '@/hooks/use-osu-known-scores',
 );
-(useOsuRecentScores as jest.Mock).mockReturnValue({
+(useOsuKnownScores as jest.Mock).mockReturnValue({
   bound: true,
   data: [score],
   isLoading: false,
@@ -173,16 +173,16 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     expect(screen.getByLabelText('难度 7.34★')).toBeTruthy();
   });
 
-  it('recent 成绩卡进入详情时附加 scoreId，最佳页旧入口保持无该参数', async () => {
-    const recent = await render(
+  it('成绩页成绩卡进入详情时附加 scoreId，最佳页旧入口保持无该参数', async () => {
+    const records = await render(
       <OsuScoreCard gameId="osu-standard" score={score} detailScoreId={score.id} />,
     );
-    await fireEvent.press(recent.getByTestId(`osu-score-card-${score.id}`));
+    await fireEvent.press(records.getByTestId(`osu-score-card-${score.id}`));
     expect(mockRouterPush).toHaveBeenLastCalledWith({
       pathname: '/songs/[songId]',
       params: { songId: '3720', levelIndex: '22423', scoreId: String(score.id) },
     });
-    await recent.unmount();
+    await records.unmount();
 
     const best = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
     await fireEvent.press(best.getByTestId(`osu-score-card-${score.id}`));
@@ -337,8 +337,8 @@ describe('OsuRecordsScreen 成绩页', () => {
     expect(screen.getByLabelText('搜索 osu! 成绩')).toBeTruthy();
     expect(screen.getByPlaceholderText('搜索歌名、艺术家或谱面名')).toBeTruthy();
     expect(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部')).toBeTruthy();
-    expect(screen.getByText('最近成绩')).toBeTruthy();
-    expect(screen.getByText('官方最近通过成绩，最多 100 条')).toBeTruthy();
+    expect(screen.getByText('已知成绩')).toBeTruthy();
+    expect(screen.getByText('打开曲库歌曲后，会自动补充查询到的成绩')).toBeTruthy();
     expect(screen.getByText('已加载 1 / 1 条')).toBeTruthy();
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
   });
@@ -351,7 +351,7 @@ describe('OsuRecordsScreen 成绩页', () => {
     const noneOption = await screen.findByLabelText('NM 无模组，未选中');
     await fireEvent.press(noneOption);
     await fireEvent.press(screen.getByLabelText('完成 osu! 模组筛选'));
-    expect(screen.getByText('没有找到符合条件的最近成绩')).toBeTruthy();
+    expect(screen.getByText('没有找到符合条件的已知成绩')).toBeTruthy();
     // 重置清空筛选（clearFilters 不含 collapsed，保持展开态）。
     await fireEvent.press(screen.getByLabelText('重置 osu! 成绩筛选'));
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
@@ -361,7 +361,7 @@ describe('OsuRecordsScreen 成绩页', () => {
     const screen = await render(<OsuRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部'));
     await fireEvent.changeText(screen.getByLabelText('最低 PP'), '100');
-    expect(screen.getByText('没有找到符合条件的最近成绩')).toBeTruthy();
+    expect(screen.getByText('没有找到符合条件的已知成绩')).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('最低 PP'), '50');
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
   });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import {
   OSU_RULESET_BY_GAME_ID,
+  OsuBeatmapUserScoreResponseSchema,
   OsuBeatmapsetLookupSchema,
   OsuBeatmapsetSearchResponseSchema,
   OsuBestScoreSchema,
@@ -125,13 +126,23 @@ export class OsuScoreProvider {
     );
   }
 
-  /** 最近通过成绩（官方上限 100；明确排除失败成绩）。 */
-  getRecentScores(userId: number, gameId: OsuGameId): Promise<OsuBestScoreRaw[]> {
+  /** 指定玩家在单张谱面的最佳成绩；未游玩时官方返回 404，归一化为 null。 */
+  async getUserBeatmapScore(
+    userId: number,
+    beatmapId: number,
+    gameId: OsuGameId,
+  ): Promise<OsuBestScoreRaw | null> {
     const ruleset = OSU_RULESET_BY_GAME_ID[gameId];
-    return this.request(
-      `/users/${userId}/scores/recent?mode=${ruleset}&limit=100&offset=0&include_fails=0`,
-      z.array(OsuBestScoreSchema),
-    );
+    try {
+      const response = await this.request(
+        `/beatmaps/${beatmapId}/scores/users/${userId}?mode=${ruleset}`,
+        OsuBeatmapUserScoreResponseSchema,
+      );
+      return response.score;
+    } catch (error) {
+      if (error instanceof ProviderError && error.code === 'no_data') return null;
+      throw error;
+    }
   }
 
   /** 谱面搜索（曲库页）：每页 50 份 beatmapset（上游固定），cursor_string 翻页；m 恒为当前模式。 */

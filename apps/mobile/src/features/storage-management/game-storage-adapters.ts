@@ -98,8 +98,9 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   if (gameId === 'phira' && key.startsWith('phira:')) {
     return true;
   }
-  // osu! 分模式玩家快照（资源 key：osu:{modeGameId}:{userId}，四模式各自归属）
-  if (isOsuGameId(gameId) && key.startsWith(`osu:${gameId}:`)) {
+  // osu! 分模式玩家快照与已知成绩集合，四模式各自归属。
+  if (isOsuGameId(gameId)
+    && (key.startsWith(`osu:${gameId}:`) || key.startsWith(`osu-known-scores:${gameId}:`))) {
     return true;
   }
   const accountId = accountIdFromResourceKey(key);

@@ -1,15 +1,25 @@
 import type { OsuGameId } from '@/domain/game-mode-family';
 import {
   OSU_SNAPSHOT_SCHEMA_VERSION,
+  OSU_KNOWN_SCORES_SCHEMA_VERSION,
+  OsuKnownScoresSnapshotSchema,
   OsuSnapshotSchema,
   normalizeOsuSnapshot,
+  osuKnownScoresCacheKey,
   osuSnapshotCacheKey,
+  type OsuBestScore,
+  type OsuKnownScoresSnapshot,
   type OsuSnapshot,
   type OsuSnapshotData,
 } from '@/domain/osu';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { clearResourcesByPrefix, createInflightGuard, makeSnapshot } from '@/services/snapshot-cache-utils';
+import {
+  clearResourcesByPrefix,
+  createInflightGuard,
+  makeSnapshot,
+  snapshotSource,
+} from '@/services/snapshot-cache-utils';
 
 /** 构造 osu! 缓存快照；source 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeOsuSnapshot(
@@ -63,10 +73,54 @@ export class OsuCache {
     );
   }
 
+  async loadKnownScores(gameId: OsuGameId, userId: number): Promise<OsuKnownScoresSnapshot | null> {
+    const raw = await this.repository.getResource<unknown>(
+      osuKnownScoresCacheKey(gameId, userId),
+      OSU_KNOWN_SCORES_SCHEMA_VERSION,
+    );
+    if (!raw) return null;
+    const parsed = OsuKnownScoresSnapshotSchema.safeParse(raw);
+    return parsed.success ? (parsed.data as OsuKnownScoresSnapshot) : null;
+  }
+
+  async saveKnownScores(
+    gameId: OsuGameId,
+    userId: number,
+    snapshot: OsuKnownScoresSnapshot,
+  ): Promise<void> {
+    await this.repository.saveResource(
+      osuKnownScoresCacheKey(gameId, userId),
+      OSU_KNOWN_SCORES_SCHEMA_VERSION,
+      snapshot.source.updatedAt,
+      snapshot,
+    );
+  }
+
+  /** 按谱面 ID 合并已知成绩；同谱面保留总分更高的一条。 */
+  async mergeKnownScores(
+    gameId: OsuGameId,
+    userId: number,
+    scores: readonly OsuBestScore[],
+  ): Promise<OsuKnownScoresSnapshot> {
+    const previous = await this.loadKnownScores(gameId, userId);
+    const items = { ...(previous?.items ?? {}) };
+    for (const score of scores) {
+      const key = String(score.beatmap.id);
+      const existing = items[key];
+      if (!existing || score.score >= existing.score) items[key] = score;
+    }
+    const snapshot: OsuKnownScoresSnapshot = {
+      items,
+      source: snapshotSource({ kind: 'osu', label: 'osu.ppy.sh' }),
+    };
+    await this.saveKnownScores(gameId, userId, snapshot);
+    return snapshot;
+  }
+
   /** 解绑模式账号时清理该玩家该模式缓存。 */
   async clear(gameId: OsuGameId, userId: number): Promise<void> {
     await clearResourcesByPrefix(this.repository, {
-      keys: [osuSnapshotCacheKey(gameId, userId)],
+      keys: [osuSnapshotCacheKey(gameId, userId), osuKnownScoresCacheKey(gameId, userId)],
     });
   }
 }
