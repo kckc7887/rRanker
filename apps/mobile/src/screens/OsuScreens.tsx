@@ -25,7 +25,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
-import { useOsuRecentScores } from '@/hooks/use-osu-recent-scores';
+import { useOsuKnownScores } from '@/hooks/use-osu-known-scores';
 import { useOsuRecordsFilter } from '@/state/osu-records-filter';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -89,14 +89,16 @@ export function OsuBestScreen() {
   );
 }
 
-/** osu! 成绩页：官方 recent 最近通过成绩（最多 100 条），筛选在当前结果上本地执行。 */
+/** osu! 成绩页：展示已知成绩集合；打开曲库歌曲后持续补充。 */
 export function OsuRecordsScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const gameId = useActiveOsuGameId();
   const activeAccountId = useSession((state) => state.activeAccountId);
-  const recent = useOsuRecentScores(gameId);
-  const allScores = useMemo(() => recent.data ?? [], [recent.data]);
+  const gameData = useGameData();
+  const payload = gameData.data?.payload.kind === 'osu' ? gameData.data.payload : null;
+  const known = useOsuKnownScores(gameId, payload?.bestScores);
+  const allScores = useMemo(() => known.data ?? [], [known.data]);
   const starValues = useMemo(() => allScores.map((score) => score.beatmap.difficultyRating), [allScores]);
   const filter = useOsuRecordsFilter();
   const starBounds = useStableRangeBounds(
@@ -128,8 +130,8 @@ export function OsuRecordsScreen() {
         beforeList={
           <>
             <View style={styles.recordsHeading}>
-              <Text style={[styles.recordsTitle, { color: theme.text }]}>最近成绩</Text>
-              <Text style={[styles.recordsHint, { color: theme.textMuted }]}>官方最近通过成绩，最多 100 条</Text>
+              <Text style={[styles.recordsTitle, { color: theme.text }]}>已知成绩</Text>
+              <Text style={[styles.recordsHint, { color: theme.textMuted }]}>打开曲库歌曲后，会自动补充查询到的成绩</Text>
             </View>
             <GameSearchHeader
               accessibilityLabel="搜索 osu! 成绩"
@@ -162,13 +164,16 @@ export function OsuRecordsScreen() {
             />
           </>
         }
-        isLoading={recent.bound && recent.isLoading}
-        isError={recent.isError}
-        isEmpty={!recent.bound || (!recent.isLoading && scores.length === 0)}
-        error={recent.error}
-        onRetry={() => void recent.refetch()}
-        emptyText={!recent.bound ? '请先在游戏管理中绑定 osu! 账号'
-          : hasActiveFilter ? '没有找到符合条件的最近成绩' : '当前账号暂无最近成绩'}
+        isLoading={(gameData.isLoading || known.isLoading) && known.bound}
+        isError={gameData.isError || known.isError}
+        isEmpty={!known.bound || (!gameData.isLoading && !known.isLoading && scores.length === 0)}
+        error={gameData.error ?? known.error}
+        onRetry={() => {
+          void gameData.refetch();
+          void known.refetch();
+        }}
+        emptyText={!known.bound ? '请先在游戏管理中绑定 osu! 账号'
+          : hasActiveFilter ? '没有找到符合条件的已知成绩' : '打开曲库歌曲后，成绩会显示在这里'}
         data={scores.length ? scores : undefined}
         flatListProps={{
           testID: 'osu-records-results-list',
@@ -177,8 +182,11 @@ export function OsuRecordsScreen() {
           contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
           scrollIndicatorInsets: { bottom: inset },
           ...TAB_LIST_CACHE_PROPS,
-          refreshing: recent.isRefetching,
-          onRefresh: () => void recent.refetch(),
+          refreshing: gameData.isRefetching || known.isRefetching,
+          onRefresh: () => {
+            void gameData.refetch();
+            void known.refetch();
+          },
           keyExtractor: (item) => String(item.id),
           renderItem: ({ item }) => (
             gameId ? <OsuScoreCard gameId={gameId} score={item} detailScoreId={item.id} /> : null

@@ -46,6 +46,26 @@ const user = {
   statistics: { pp: 100, accuracy: 0.9, play_time: 60, play_count: 5, global_rank: null },
 };
 const snapshot = makeOsuSnapshot(normalizeOsuSnapshot(user, []));
+const knownScore = normalizeOsuSnapshot(user, [{
+  id: 9,
+  accuracy: 0.98,
+  total_score: 123456,
+  rank: 'S',
+  beatmap: {
+    id: 22423,
+    beatmapset_id: 3720,
+    difficulty_rating: 5.5,
+    version: 'Hard',
+    mode: 'osu',
+  },
+  beatmapset: {
+    id: 3720,
+    title: 'Tori no Uta',
+    artist: 'Lix',
+    creator: 'James',
+    covers: {},
+  },
+}]).bestScores[0];
 
 describe('osu! 分模式快照缓存', () => {
   it('保存后可加载，缺版本号返回 null', async () => {
@@ -76,5 +96,19 @@ describe('osu! 分模式快照缓存', () => {
     await cache.clear('osu-standard', 2);
     expect(await cache.load('osu-standard', 2)).toBeNull();
     expect(await cache.load('osu-mania', 2)).not.toBeNull();
+  });
+
+  it('已知成绩按谱面持久化合并，同谱面保留更高总分', async () => {
+    const repository = new FakeRepository();
+    const cache = new OsuCache(repository as never);
+    await cache.mergeKnownScores('osu-standard', 2, [knownScore]);
+    await cache.mergeKnownScores('osu-standard', 2, [{ ...knownScore, id: 10, score: 100 }]);
+
+    const loaded = await cache.loadKnownScores('osu-standard', 2);
+    expect(Object.keys(loaded?.items ?? {})).toEqual(['22423']);
+    expect(loaded?.items['22423'].id).toBe(9);
+
+    await cache.clear('osu-standard', 2);
+    expect(await cache.loadKnownScores('osu-standard', 2)).toBeNull();
   });
 });

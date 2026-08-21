@@ -40,6 +40,18 @@ describe('RangeSelector', () => {
     expect(rangeValueForDrag(4, 10, 0, 0, 10)).toBe(4);
   });
 
+  it('受控值回写重渲染时保持同一手势响应器，避免拖动起点被重置后回闪', async () => {
+    const onLower = jest.fn();
+    const onUpper = jest.fn();
+    const screen = await render(<RangeSelector accessibilityLabel="测试范围" minimum={0} maximum={10} step={1}
+      lowerValue="" upperValue="" onLowerValueChange={onLower} onUpperValueChange={onUpper} testID="range" />);
+    const moveHandler = screen.getByTestId('range-lower-thumb').props.onResponderMove;
+
+    await screen.rerender(<RangeSelector accessibilityLabel="测试范围" minimum={0} maximum={10} step={1}
+      lowerValue="2" upperValue="" onLowerValueChange={onLower} onUpperValueChange={onUpper} testID="range" />);
+    expect(screen.getByTestId('range-lower-thumb').props.onResponderMove).toBe(moveHandler);
+  });
+
   it('双端不可交叉，且支持无障碍增减', async () => {
     const onLower = jest.fn();
     const onUpper = jest.fn();

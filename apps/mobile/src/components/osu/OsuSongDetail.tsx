@@ -39,7 +39,10 @@ import { buildTagHistory } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
 import { useGameData } from '@/hooks/use-game-data';
 import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
-import { useOsuRecentScores } from '@/hooks/use-osu-recent-scores';
+import {
+  useOsuBeatmapsetUserScores,
+  useOsuKnownScores,
+} from '@/hooks/use-osu-known-scores';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -95,12 +98,13 @@ function OsuSongDetailContent({
   const theme = useAppTheme();
   const detail = useOsuBeatmapsetDetail(gameId, beatmapsetId ?? null);
   const gameData = useGameData();
-  const recent = useOsuRecentScores(gameId, initialScoreId !== undefined);
   const library = useUserLibrary();
   const song = detail.data;
   const payload = gameData.data?.payload.kind === 'osu'
     ? gameData.data.payload
     : undefined;
+  const known = useOsuKnownScores(gameId, payload?.bestScores);
+  useOsuBeatmapsetUserScores(gameId, song ?? null);
   const songItem = song
     ? library.data?.find((item) => item.key === library.songKey(String(song.beatmapSetId)))
     : undefined;
@@ -135,7 +139,7 @@ function OsuSongDetailContent({
               initialScoreId={initialScoreId}
               library={library}
               payload={payload}
-              recentScores={recent.data}
+              knownScores={known.data}
               song={item}
             />
           )}
@@ -199,7 +203,7 @@ function OsuDetailBody({
   library,
   initialBeatmapId,
   initialScoreId,
-  recentScores,
+  knownScores,
 }: {
   gameId: OsuGameId;
   song: OsuBeatmapsetDetail;
@@ -207,7 +211,7 @@ function OsuDetailBody({
   library: LibraryHook;
   initialBeatmapId?: number;
   initialScoreId?: number;
-  recentScores?: readonly OsuBestScore[];
+  knownScores?: readonly OsuBestScore[];
 }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
@@ -234,22 +238,22 @@ function OsuDetailBody({
     }
   }
   const initialIndex = requestedIndex >= 0 ? requestedIndex : recommendedIndex;
-  // 本 beatmapset 内按 beatmap id 匹配 Top 100 成绩（同谱多条时取最高分一条）。
+  // 本 beatmapset 内按 beatmap id 匹配已知成绩；打开详情后的查询结果会写回同一集合。
   const scoresByBeatmapId = useMemo(() => {
     const map = new Map<number, OsuBestScore>();
-    for (const score of payload?.bestScores ?? []) {
+    for (const score of knownScores ?? []) {
       if (score.beatmap.beatmapSetId !== song.beatmapSetId) continue;
       const existing = map.get(score.beatmap.id);
       if (!existing || score.score > existing.score) map.set(score.beatmap.id, score);
     }
     if (initialScoreId !== undefined) {
-      const exact = recentScores?.find((score) => score.id === initialScoreId);
+      const exact = knownScores?.find((score) => score.id === initialScoreId);
       if (exact && exact.beatmap.beatmapSetId === song.beatmapSetId) {
         map.set(exact.beatmap.id, exact);
       }
     }
     return map;
-  }, [initialScoreId, payload, recentScores, song.beatmapSetId]);
+  }, [initialScoreId, knownScores, song.beatmapSetId]);
 
   return (
     <ScrollView
