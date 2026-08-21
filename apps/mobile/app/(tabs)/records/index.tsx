@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-na
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
+import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
@@ -71,6 +72,16 @@ export function RecordsScreen() {
     dxRatingChartTags.data,
     catalog.data?.songs ?? [],
   ), [catalog.data?.songs, dxRatingChartTags.data]);
+  const maimaiConstantValues = useMemo(() => catalog.data?.songs.flatMap((song) =>
+    song.charts.filter((chart) => chart.type !== 'UTAGE').map((chart) => chart.difficultyConstant)) ?? [],
+  [catalog.data?.songs]);
+  const maimaiConstantBounds = useStableRangeBounds(
+    maimaiConstantValues,
+    { minimum: 1, maximum: 15.5 },
+    constantMin ?? '',
+    constantMax ?? '',
+    `${activeAccountId}:${catalog.data?.source.updatedAt ?? 'loading'}`,
+  );
 
   useEffect(() => {
     if (activeGameId !== 'maimai' || selectedDxRatingTagIds.length === 0) return;
@@ -176,6 +187,7 @@ export function RecordsScreen() {
       <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
         difficulty={difficulty} version={version} type={type}
         constantMin={constantMin} constantMax={constantMax}
+        constantBounds={maimaiConstantBounds}
         achievementMin={achievementMin} achievementMax={achievementMax}
         soloAchievement={soloAchievement} multiAchievement={multiAchievement}
         versionLocale={versionLocale} versions={versions}
@@ -221,6 +233,7 @@ function ChunithmRecordsScreen() {
   const gameData = useGameData();
   const catalogQuery = useChunithmCatalog();
   const activeProviderId = useSession((state) => state.activeProviderId);
+  const activeAccountId = useSession((state) => state.activeAccountId);
   const session = useSession((state) => state.session);
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
@@ -239,6 +252,18 @@ function ChunithmRecordsScreen() {
       catalogQuery.data,
     ).sort(compareChunithmScores),
     [catalogQuery.data, payload?.scores],
+  );
+  const constantValues = useMemo(() => catalogQuery.data?.songs.flatMap((song) =>
+    song.difficulties
+      .filter((item) => item.difficulty !== 5)
+      .map((item) => item.levelValue)) ?? [],
+  [catalogQuery.data?.songs]);
+  const constantBounds = useStableRangeBounds(
+    constantValues,
+    { minimum: 0, maximum: 16 },
+    constantMin,
+    constantMax,
+    `${activeAccountId}:${catalogQuery.data?.source.updatedAt ?? 'loading'}`,
   );
   const searchDocuments = useMemo(() => new Map(
     cards.map((card) => [
@@ -327,6 +352,7 @@ function ChunithmRecordsScreen() {
       </View>
       <ChunithmFilterBar
         collapsed={collapsed}
+        constantBounds={constantBounds}
         constantMax={constantMax}
         constantMin={constantMin}
         difficulty={difficulty}
@@ -372,6 +398,7 @@ function ChunithmRecordsScreen() {
 function PhigrosRecordsScreen() {
   const session = useSession((s) => s.session);
   const activeProviderId = useSession((s) => s.activeProviderId);
+  const activeAccountId = useSession((s) => s.activeAccountId);
   const gameData = useGameData();
   const catalogQuery = usePhigrosCatalog();
   const kyouChartTags = usePhigrosKyouChartTags();
@@ -395,6 +422,18 @@ function PhigrosRecordsScreen() {
   const catalogSongs = useMemo(
     () => catalogQuery.data?.snapshot.songs ?? [],
     [catalogQuery.data?.snapshot.songs],
+  );
+  const constantValues = useMemo(() => [
+    ...catalogSongs.flatMap((song) =>
+      (song.charts ?? []).map((chart) => chart.difficultyConstant)),
+    ...records.map((record) => record.difficultyConstant),
+  ], [catalogSongs, records]);
+  const constantBounds = useStableRangeBounds(
+    constantValues,
+    { minimum: 0, maximum: 20 },
+    constantMin,
+    constantMax,
+    `${activeAccountId}:${catalogQuery.data?.snapshot.source.updatedAt ?? 'loading'}`,
   );
   const kyouTagIndex = useMemo(() => buildPhigrosKyouChartTagIndex(
     kyouChartTags.data,
@@ -527,6 +566,7 @@ function PhigrosRecordsScreen() {
       <PhigrosFilterBar
         collapsed={collapsed} onCollapsedChange={setCollapsed}
         level={level} constantMin={constantMin} constantMax={constantMax}
+        constantBounds={constantBounds}
         accuracyMin={accuracyMin} accuracyMax={accuracyMax} rank={rank} xing={xing}
         chapter={chapter} versions={catalogQuery.data?.snapshot.versions ?? []} onChapterChange={setChapter}
         kyouTags={kyouChartTags.data?.tags ?? []}

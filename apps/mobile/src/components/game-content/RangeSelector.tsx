@@ -93,12 +93,6 @@ export function useStableRangeBounds(
     minimum: Math.min(ref.current.bounds.minimum, current.minimum),
     maximum: Math.max(ref.current.bounds.maximum, current.maximum),
   };
-  if (ref.current.bounds.minimum === ref.current.bounds.maximum) {
-    ref.current.bounds = {
-      minimum: ref.current.bounds.minimum,
-      maximum: ref.current.bounds.maximum + 1,
-    };
-  }
   return ref.current.bounds;
 }
 

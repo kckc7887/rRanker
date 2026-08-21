@@ -212,6 +212,8 @@ describe('Muse Dash screens', () => {
     const screen = await render(<MuseDashRecordsScreen />);
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
+    expect(screen.getByLabelText('Muse Dash 定数范围下限 11.50')).toBeTruthy();
+    expect(screen.getByLabelText('Muse Dash 定数范围上限 12.50')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('筛选难度 HIDDEN'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);

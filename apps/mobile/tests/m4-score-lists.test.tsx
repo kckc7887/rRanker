@@ -236,6 +236,8 @@ describe('M4 score list cards', () => {
   it('filters records by inclusive constants and localizes the expandable version picker', async () => {
     const screen = await render(<RecordsScreen />);
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
+    expect(screen.getByLabelText('舞萌定数范围下限 5.0')).toBeTruthy();
+    expect(screen.getByLabelText('舞萌定数范围上限 14.8')).toBeTruthy();
 
     for (const label of ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'Re:MASTER']) {
       expect(screen.getByText(label)).toBeTruthy();

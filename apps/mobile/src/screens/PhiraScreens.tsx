@@ -11,6 +11,7 @@ import { DetailGestureRoot, DetailPressable } from '@/components/game-content/De
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
+import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { Card } from '@/components/Card';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
@@ -72,13 +73,23 @@ export function PhiraRecordsScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const player = usePhiraPlayer(id); const query = usePhiraBests(id);
   const refreshAll = useRefreshAllPhiraBests(id);
   const filter = usePhiraRecordsFilter();
-  const items = useMemo(() => filterPhiraBests(actualBests(query.data?.items), filter), [filter, query.data?.items]);
+  const unfilteredItems = useMemo(() => actualBests(query.data?.items), [query.data?.items]);
+  const constantValues = useMemo(() => unfilteredItems.map((item) => item.chart.difficulty), [unfilteredItems]);
+  const constantBounds = useStableRangeBounds(
+    constantValues,
+    { minimum: 0, maximum: 20 },
+    filter.constantMin,
+    filter.constantMax,
+    `${id ?? 'none'}:${query.data?.source.updatedAt ?? 'loading'}`,
+  );
+  const items = useMemo(() => filterPhiraBests(unfilteredItems, filter), [filter, unfilteredItems]);
   const retry = async () => { await refreshAll(); await query.refetch(); };
   const controls = <><GameSearchHeader value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索已查询歌曲"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhigrosFilterBar showLevel={false} level="all" onLevelChange={() => undefined}
       collapsed={filter.collapsed} onCollapsedChange={filter.setCollapsed}
       constantMin={filter.constantMin} constantMax={filter.constantMax}
+      constantBounds={constantBounds}
       accuracyMin={filter.accuracyMin} accuracyMax={filter.accuracyMax}
       rank={filter.rank} xing={filter.xing} onConstantMinChange={filter.setConstantMin}
       onConstantMaxChange={filter.setConstantMax} onAccuracyMinChange={filter.setAccuracyMin}
