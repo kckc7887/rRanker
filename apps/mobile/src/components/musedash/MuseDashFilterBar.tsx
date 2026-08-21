@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
-import { RangeSelector } from '@/components/game-content/RangeSelector';
+import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
 import { MuseDashAchievementBadge } from '@/components/musedash/MuseDashBadges';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
 import { MUSE_DASH_DIFFICULTY_LABELS, museDashAchievementFilterLabel } from '@/domain/muse-dash';
@@ -135,7 +135,8 @@ export function MuseDashCatalogFilterBar({
 }
 
 export function MuseDashRecordsFilterBar({
-  collapsed, difficultySlot, dlc, constantMin, constantMax, accMin, accMax, achievement, dlcOptions,
+  collapsed, difficultySlot, dlc, constantMin, constantMax, constantBounds = { minimum: 0, maximum: 20 },
+  accMin, accMax, achievement, dlcOptions,
   onCollapsedChange, onDifficultySlotChange, onDlcChange,
   onConstantMinChange, onConstantMaxChange, onAccMinChange, onAccMaxChange, onAchievementChange, onReset,
 }: {
@@ -144,6 +145,7 @@ export function MuseDashRecordsFilterBar({
   dlc: MuseDashDlcFilter;
   constantMin: string;
   constantMax: string;
+  constantBounds?: RangeBounds;
   accMin: string;
   accMax: string;
   achievement: MuseDashAchievementFilter;
@@ -200,7 +202,7 @@ export function MuseDashRecordsFilterBar({
         />
       </FilterRow>
       <FilterRow label="定数" wide>
-        <RangeInputs accessibilityLabel="Muse Dash 定数范围" minimum={0} maximum={20} step={0.01}
+        <RangeInputs accessibilityLabel="Muse Dash 定数范围" minimum={constantBounds.minimum} maximum={constantBounds.maximum} step={0.01}
           min={constantMin} max={constantMax} formatValue={(value) => value.toFixed(2)}
           onMinChange={onConstantMinChange} onMaxChange={onConstantMaxChange} />
       </FilterRow>

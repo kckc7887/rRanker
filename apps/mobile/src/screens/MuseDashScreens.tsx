@@ -20,6 +20,7 @@ import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
+import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -144,6 +145,14 @@ export function MuseDashRecordsScreen() {
     () => player.data ? buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data) : [],
     [player.data, albums.data, ce.data, diffdiff.data],
   );
+  const constantValues = useMemo(() => diffdiff.data?.map((entry) => entry[4]) ?? [], [diffdiff.data]);
+  const constantBounds = useStableRangeBounds(
+    constantValues,
+    { minimum: 0, maximum: 20 },
+    constantMin,
+    constantMax,
+    `${userId ?? 'none'}:${diffdiff.source?.updatedAt ?? 'loading'}`,
+  );
   const dlcOptions = useMemo(() => albums.data
     ? [...new Set(museDashSongsFromAlbums(albums.data).map((item) => item.albumTitle))]
     : [], [albums.data]);
@@ -187,6 +196,7 @@ export function MuseDashRecordsScreen() {
       onChangeText={setKeyword} loaded={records.length} />
     <MuseDashRecordsFilterBar collapsed={collapsed} difficultySlot={difficultySlot} dlc={dlc}
       constantMin={constantMin} constantMax={constantMax} accMin={accMin} accMax={accMax}
+      constantBounds={constantBounds}
       achievement={achievement} dlcOptions={dlcOptions}
       onCollapsedChange={setCollapsed} onDifficultySlotChange={setDifficultySlot}
       onDlcChange={setDlc} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}

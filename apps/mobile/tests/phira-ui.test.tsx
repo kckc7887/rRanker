@@ -107,10 +107,12 @@ describe('Phira page contracts', () => {
   });
 
   it('puts records sorting and catalog category/sorting into expanded filter dropdowns', async () => {
+    mockBests = { '38294': mockBest };
     const records = await render(<PhiraRecordsScreen />);
-    expect(records.getByText('查询过歌曲后，最佳成绩会显示在这里')).toBeTruthy();
     expect(records.getByLabelText('展开筛选，当前 全部')).toBeTruthy();
     await fireEvent.press(records.getByLabelText(/展开筛选/));
+    expect(records.getByLabelText('Phigros 定数范围下限 16.2')).toBeTruthy();
+    expect(records.getByLabelText('Phigros 定数范围上限 16.2')).toBeTruthy();
     await fireEvent.press(records.getByLabelText('选择成绩排序，当前 Score'));
     await fireEvent.press(records.getByLabelText('选择成绩排序 ACC'));
     expect(records.getByLabelText('选择成绩排序，当前 ACC')).toBeTruthy();

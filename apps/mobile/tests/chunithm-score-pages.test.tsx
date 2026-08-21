@@ -254,6 +254,8 @@ describe('Chunithm records and B50 screens', () => {
   it('shows two evaluation dropdowns containing every rank label', async () => {
     const screen = await render(<RecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开中二筛选，当前 全部'));
+    expect(screen.getByLabelText('中二定数范围下限 13.4')).toBeTruthy();
+    expect(screen.getByLabelText('中二定数范围上限 14.8')).toBeTruthy();
 
     expect(screen.getByLabelText('中二评价下限，当前 不限')).toBeTruthy();
     expect(screen.getByLabelText('中二评价上限，当前 不限')).toBeTruthy();

@@ -122,6 +122,8 @@ describe('Phigros records screen', () => {
     expect(screen.getByTestId('phigros-records-list')).toBeTruthy();
     expect(screen.getByText('测试曲')).toBeTruthy();
     expect(screen.getByText('共 1 条成绩')).toBeTruthy();
+    expect(screen.getByLabelText('Phigros 定数范围下限 15.2')).toBeTruthy();
+    expect(screen.getByLabelText('Phigros 定数范围上限 15.2')).toBeTruthy();
     expect(screen.queryByText('尚未绑定 TapTap 账号')).toBeNull();
   });
 

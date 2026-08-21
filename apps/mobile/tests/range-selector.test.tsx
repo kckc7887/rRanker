@@ -84,5 +84,7 @@ describe('RangeSelector', () => {
     expect(screen.getByTestId('bounds').props.children.join('')).toBe('1:9');
     await screen.rerender(<Probe values={[4, 6]} resetKey="b" />);
     expect(screen.getByTestId('bounds').props.children.join('')).toBe('4:6');
+    await screen.rerender(<Probe values={[5]} resetKey="c" />);
+    expect(screen.getByTestId('bounds').props.children.join('')).toBe('5:5');
   });
 });
