@@ -337,8 +337,8 @@ describe('OsuRecordsScreen 成绩页', () => {
     expect(screen.getByLabelText('搜索 osu! 成绩')).toBeTruthy();
     expect(screen.getByPlaceholderText('搜索歌名、艺术家或谱面名')).toBeTruthy();
     expect(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部')).toBeTruthy();
-    expect(screen.getByText('已知成绩')).toBeTruthy();
-    expect(screen.getByText('打开曲库歌曲后，会自动补充查询到的成绩')).toBeTruthy();
+    expect(screen.queryByText('已知成绩')).toBeNull();
+    expect(screen.queryByText('打开曲库歌曲后，会自动补充查询到的成绩')).toBeNull();
     expect(screen.getByText('已加载 1 / 1 条')).toBeTruthy();
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
   });

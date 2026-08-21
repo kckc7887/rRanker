@@ -129,10 +129,6 @@ export function OsuRecordsScreen() {
       <RecordsListPage<OsuBestScore>
         beforeList={
           <>
-            <View style={styles.recordsHeading}>
-              <Text style={[styles.recordsTitle, { color: theme.text }]}>已知成绩</Text>
-              <Text style={[styles.recordsHint, { color: theme.textMuted }]}>打开曲库歌曲后，会自动补充查询到的成绩</Text>
-            </View>
             <GameSearchHeader
               accessibilityLabel="搜索 osu! 成绩"
               placeholder="搜索歌名、艺术家或谱面名"
@@ -308,7 +304,4 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 18, fontWeight: '800' },
   sectionCount: { fontSize: 11 },
-  recordsHeading: { paddingHorizontal: 16, paddingTop: 12, gap: 2 },
-  recordsTitle: { fontSize: 20, fontWeight: '900' },
-  recordsHint: { fontSize: 12, lineHeight: 17 },
 });
