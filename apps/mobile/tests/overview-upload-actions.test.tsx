@@ -268,7 +268,7 @@ describe('总览上传和同步操作', () => {
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('上传数据')).toBeTruthy();
     expect(screen.getByText('好友码')).toBeTruthy();
-    expect(screen.getByLabelText('同步数据')).toBeTruthy();
+    expect(screen.getByLabelText('同步数据，当前 水鱼查分器')).toBeTruthy();
     await fireEvent.press(screen.getByText('上传数据'));
     expect(screen.getByText('好友码上传界面')).toBeTruthy();
     expect(screen.getByText('上传顶部选择栏')).toBeTruthy();
@@ -328,7 +328,7 @@ describe('总览上传和同步操作', () => {
   it('同步失败时改用全局错误通知', async () => {
     mockProviderId = 'diving-fish';
     const screen = await render(<OverviewScreen />);
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 水鱼查分器'));
     await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
       title: '同步失败',
       message: '暂时无法同步成绩，请稍后重试。',
@@ -366,7 +366,7 @@ describe('总览上传和同步操作', () => {
     };
     const screen = await render(<OverviewScreen />);
 
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
@@ -386,7 +386,7 @@ describe('总览上传和同步操作', () => {
     mockSettledBundle = staleBundle;
     const screen = await render(<OverviewScreen />);
 
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
     await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
       title: '尚未读取到新数据',
       message: '本次仅读取到缓存，请关闭代理并检查网络后重试。',

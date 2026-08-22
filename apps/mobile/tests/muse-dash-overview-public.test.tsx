@@ -154,7 +154,7 @@ describe('Muse Dash public overview', () => {
     expect(screen.getByText(/Rating 3.45/)).toBeTruthy();
     expect(screen.getByText(/谱面 1 首/)).toBeTruthy();
     expect(screen.queryByText('公开资料')).toBeNull();
-    expect(screen.queryByText('MuseDash.moe')).toBeNull();
+    expect(screen.getAllByText('MuseDash.moe').length).toBeGreaterThan(0);
     expect(screen.getByText('我的曲库')).toBeTruthy();
     expect(screen.getByText('收藏 0 首 · 练习 0 张')).toBeTruthy();
 
@@ -166,7 +166,7 @@ describe('Muse Dash public overview', () => {
     await act(async () => { pendingInteraction?.(); });
     expect(mockSwitchBoundAccount).toHaveBeenCalledWith(mockSecondAccount.id, { navigateToOverview: false });
 
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 MuseDash.moe'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('数据状态')).toBeNull();
     expect(screen.queryByText(/读取方式/)).toBeNull();
