@@ -44,7 +44,7 @@ export default function SettingsScreen() {
   const refreshStorageLabel = useCallback(async () => {
     try {
       const usage = await collectStorageUsage();
-      setStorageLabel(`已用 ${formatStorageBytes(usage.totalBytes)}`);
+      setStorageLabel(`可清理约 ${formatStorageBytes(usage.clearableBytes)}`);
     } catch {
       setStorageLabel('统计各类缓存占用');
     }
@@ -73,15 +73,21 @@ export default function SettingsScreen() {
       const result = await clearStorageByCategories(prefs.selectedIds);
       await refreshStorageLabel();
       if (result.failures.length > 0) {
+        const reclaimed = result.reclaimedBytes === null
+          ? ''
+          : `，实际释放 ${formatStorageBytes(result.reclaimedBytes)}`;
         showNotification({
           title: '部分清除失败',
-          message: `已清除 ${result.clearedIds.length} 项；失败：${result.failures.join('、')}`,
+          message: `已清除 ${result.clearedIds.length} 项${reclaimed}；失败：${result.failures.join('、')}`,
           variant: 'warning',
         });
       } else {
+        const reclaimed = result.reclaimedBytes === null
+          ? '实际释放量暂时无法可靠测量。'
+          : `实际释放 ${formatStorageBytes(result.reclaimedBytes)}。`;
         showNotification({
           title: '清除完成',
-          message: `已按勾选清除 ${result.clearedIds.length} 类缓存。`,
+          message: `已按勾选清除 ${result.clearedIds.length} 类缓存，${reclaimed}`,
           variant: 'success',
         });
       }

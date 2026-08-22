@@ -1,24 +1,16 @@
 import {
-  CHUNITHM_ALIAS_RESOURCE_KEY,
-  CHUNITHM_CATALOG_RESOURCE_KEY,
   chunithmAliasesForSong,
   type ChunithmAliasSnapshot,
   type ChunithmCatalogSnapshot,
 } from '@/domain/chunithm';
 import {
-  CHUNITHM_ALIAS_SCHEMA_VERSION,
-  CHUNITHM_CATALOG_SCHEMA_VERSION,
   CHUNITHM_CATALOG_QUERY_KEY,
   loadChunithmAliases,
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
 import { aliasedCatalogSource, useAliasedCatalog } from '@/hooks/use-aliased-catalog';
-import { ResourceService } from '@/services/resource-service';
 import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-
-const repository = new SqliteSnapshotRepository();
 
 /** 中二曲库。别名随曲库一并合并，供搜索与详情展示。曲库是账号无关的公开资源：缓存优先，先渲染本地快照，后台刷新成功静默回写。 */
 export function useChunithmCatalog() {
@@ -39,21 +31,7 @@ export function useChunithmCatalog() {
   return useAliasedCatalog<ChunithmCatalogSnapshot, ChunithmAliasSnapshot>({
     enabled: activeGameId === 'chunithm',
     queryKey: CHUNITHM_CATALOG_QUERY_KEY,
-    loadCached: async (): Promise<ChunithmCatalogSnapshot | null> => {
-      const service = new ResourceService(repository);
-      const [catalog, aliasSnapshot] = await Promise.all([
-        service.getCached<ChunithmCatalogSnapshot>(
-          CHUNITHM_CATALOG_RESOURCE_KEY,
-          CHUNITHM_CATALOG_SCHEMA_VERSION,
-        ),
-        service.getCached<ChunithmAliasSnapshot>(
-          CHUNITHM_ALIAS_RESOURCE_KEY,
-          CHUNITHM_ALIAS_SCHEMA_VERSION,
-        ),
-      ]);
-      if (!catalog) return null;
-      return mergeAliases(catalog, aliasSnapshot);
-    },
+    loadCached: async (): Promise<ChunithmCatalogSnapshot | null> => null,
     loadCatalog: loadChunithmCatalog,
     loadAliases: loadChunithmAliases,
     mergeAliases,

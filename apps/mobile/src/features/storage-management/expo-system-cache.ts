@@ -4,6 +4,12 @@ export function isExpoSystemCacheEntry(name: string): boolean {
 }
 
 /** 应用自己写入 Paths.cache 的临时文件前缀（共享缓存只清这些）。 */
-export function isAppOwnedCacheEntry(name: string): boolean {
-  return name.startsWith('rranker-') || name.startsWith('rRanker-');
+export { isTemporaryCacheEntry as isAppOwnedCacheEntry } from './cache-policy';
+
+/** 可由共享清理器回收并纳入测量的缓存根；Image 为 expo-image 原生磁盘缓存。 */
+export function isManagedClearableCacheEntry(name: string): boolean {
+  return name === 'Image'
+    || name === 'expo-image'
+    || name.startsWith('rranker-')
+    || name.startsWith('rRanker-');
 }

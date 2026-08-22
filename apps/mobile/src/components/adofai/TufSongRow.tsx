@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import { StyleSheet } from 'react-native';
 import { TufDifficultyBadge } from './TufDifficultyBadge';
 import { GameSongRow } from '@/components/game-content/GameSongRow';

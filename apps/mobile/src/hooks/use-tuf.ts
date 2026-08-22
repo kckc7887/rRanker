@@ -25,10 +25,6 @@ const TUF_QUERY_OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
 
 const cache = new TufCache();
 
-function pageIndexFromOffset(offset: number): number {
-  return Math.floor(offset / TUF_PAGE_SIZE);
-}
-
 export function useTufPlayerSearch(query: string) {
   const normalized = query.trim();
   return useQuery({
@@ -89,19 +85,9 @@ async function loadTufPassPage(
   options: Omit<TufPassQuery, 'offset' | 'limit'>,
   offset: number,
 ): Promise<TufPassPage> {
-  const snapshot = await cacheFirstLoad({
-    loadCached: () => cache.loadPassPage(playerId, options, offset),
-    loadFresh: async () => {
-      const page = await tufProvider.getPasses(playerId, {
-        ...options, offset, limit: TUF_PAGE_SIZE,
-      });
-      const fresh = makeTufSnapshot(page);
-      void cache.savePassPage(playerId, options, offset, fresh).catch(() => undefined);
-      return fresh;
-    },
-    onFresh: (fresh) => mergeTufPassPage(playerId, options, fresh.data),
+  return tufProvider.getPasses(playerId, {
+    ...options, offset, limit: TUF_PAGE_SIZE,
   });
-  return snapshot.data;
 }
 
 export async function prefetchTufPassPage(
@@ -135,29 +121,9 @@ export function useTufLevelSearch(
   const queryKey = ['tuf', 'levels', normalized, options] as const;
   return useInfiniteQuery({
     queryKey,
-    queryFn: async ({ pageParam }): Promise<TufLevelPage> => {
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => cache.loadLevelPage({ ...options, query: normalized || undefined }, pageParam),
-        loadFresh: async () => {
-          const page = await tufProvider.searchLevels({
-            ...options, query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
-          });
-          const fresh = makeTufSnapshot(page);
-          void cache.saveLevelPage({ ...options, query: normalized || undefined }, pageParam, fresh)
-            .catch(() => undefined);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          const pageIndex = pageIndexFromOffset(pageParam);
-          queryClient.setQueryData<InfiniteData<TufLevelPage>>(queryKey, (old) => {
-            if (!old) return undefined;
-            const pages = old.pages.map((page, index) => (index === pageIndex ? fresh.data : page));
-            return { ...old, pages };
-          });
-        },
-      });
-      return snapshot.data;
-    },
+    queryFn: ({ pageParam }): Promise<TufLevelPage> => tufProvider.searchLevels({
+      ...options, query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
+    }),
     initialPageParam: 0,
     getNextPageParam: (last) => last.hasMore ? last.offset + last.limit : undefined,
     ...TUF_QUERY_OPTIONS,
@@ -168,21 +134,7 @@ export function useTufDifficulties() {
   const queryKey = ['tuf', 'difficulties'] as const;
   return useQuery({
     queryKey,
-    queryFn: async () => {
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => cache.loadDifficulties(),
-        loadFresh: async () => {
-          const list = await tufProvider.getDifficulties();
-          const fresh = makeTufSnapshot(list);
-          void cache.saveDifficulties(fresh).catch(() => undefined);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          queryClient.setQueryData(queryKey, fresh.data);
-        },
-      });
-      return snapshot.data;
-    },
+    queryFn: () => tufProvider.getDifficulties(),
     ...TUF_QUERY_OPTIONS,
   });
 }
@@ -216,21 +168,7 @@ export function useTufLevel(levelId: number | null) {
   const queryKey = ['tuf', 'level', levelId] as const;
   return useQuery({
     queryKey,
-    queryFn: async (): Promise<TufLevelDetailResponse> => {
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => cache.loadLevel(levelId!),
-        loadFresh: async () => {
-          const detail = await tufProvider.getLevel(levelId!);
-          const fresh = makeTufSnapshot(detail);
-          void cache.saveLevel(levelId!, fresh).catch(() => undefined);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          queryClient.setQueryData(queryKey, fresh.data);
-        },
-      });
-      return snapshot.data;
-    },
+    queryFn: (): Promise<TufLevelDetailResponse> => tufProvider.getLevel(levelId!),
     enabled: levelId !== null,
     ...TUF_QUERY_OPTIONS,
   });

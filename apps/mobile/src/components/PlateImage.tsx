@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import { StyleSheet, View } from 'react-native';
 
 /** 落雪游戏资源根；姓名框为 /plate/{id}.png（约 720×116）。 */
@@ -22,8 +22,8 @@ export function PlateImage({
   }
   return (
     <Image
-      accessibilityLabel="姓名框预览"
       cachePolicy="disk"
+      accessibilityLabel="姓名框预览"
       contentFit="contain"
       onError={() => setFailed(true)}
       source={`${LXNS_PLATE_ROOT}/${plateId}.png`}

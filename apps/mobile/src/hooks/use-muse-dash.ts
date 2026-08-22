@@ -120,19 +120,8 @@ export function useMuseDashPlayDetail(
     if (userId !== null && isMuseDashTestUserId(userId)) {
       return maxedMuseDashPlayDetailSnapshot();
     }
-    const snapshot = await cacheFirstLoad({
-      loadCached: () => cache.loadPlayDetail(userId!, uid!, difficulty!, platform!),
-      loadFresh: async () => {
-        const detail = await loadMuseDashPlayDetailFresh(uid!, difficulty!, platform!, userId!);
-        const fresh = makeMuseDashSnapshot(detail);
-        void cache.savePlayDetail(userId!, uid!, difficulty!, platform!, fresh).catch(() => undefined);
-        return fresh;
-      },
-      onFresh: (fresh) => {
-        queryClient.setQueryData(queryKey, fresh);
-      },
-    });
-    return snapshot;
+    const detail = await loadMuseDashPlayDetailFresh(uid!, difficulty!, platform!, userId!);
+    return makeMuseDashSnapshot(detail);
   }, enabled);
 }
 
@@ -150,20 +139,8 @@ export function useMuseDashPlayDetails(
       if (userId !== null && isMuseDashTestUserId(userId)) {
         return maxedMuseDashPlayDetailSnapshot();
       }
-      const queryKey = ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const;
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => cache.loadPlayDetail(userId!, item.uid, item.difficulty, item.platform),
-        loadFresh: async () => {
-          const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!);
-          const fresh = makeMuseDashSnapshot(detail);
-          void cache.savePlayDetail(userId!, item.uid, item.difficulty, item.platform, fresh).catch(() => undefined);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          queryClient.setQueryData(queryKey, fresh);
-        },
-      });
-      return snapshot;
+      const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!);
+      return makeMuseDashSnapshot(detail);
     },
     enabled: enabled && userId !== null,
     ...MUSE_DASH_QUERY_OPTIONS,
@@ -184,56 +161,20 @@ export function useMuseDashPlayDetails(
 export function useMuseDashAlbums(enabled = true) {
   const queryKey = ['musedash', 'albums'] as const;
   return useMuseDashCacheFirst<MuseDashAlbumsResponse>(queryKey, async () => {
-    const snapshot = await cacheFirstLoad({
-      loadCached: () => cache.loadAlbums(),
-      loadFresh: async () => {
-        const albums = await loadMuseDashAlbumsFresh();
-        const fresh = makeMuseDashSnapshot(albums);
-        void cache.saveAlbums(fresh).catch(() => undefined);
-        return fresh;
-      },
-      onFresh: (fresh) => {
-        queryClient.setQueryData(queryKey, fresh);
-      },
-    });
-    return snapshot;
+    return makeMuseDashSnapshot(await loadMuseDashAlbumsFresh());
   }, enabled);
 }
 
 export function useMuseDashCe() {
   const queryKey = ['musedash', 'ce'] as const;
   return useMuseDashCacheFirst<MuseDashCeResponse>(queryKey, async () => {
-    const snapshot = await cacheFirstLoad({
-      loadCached: () => cache.loadCe(),
-      loadFresh: async () => {
-        const ce = await loadMuseDashCeFresh();
-        const fresh = makeMuseDashSnapshot(ce);
-        void cache.saveCe(fresh).catch(() => undefined);
-        return fresh;
-      },
-      onFresh: (fresh) => {
-        queryClient.setQueryData(queryKey, fresh);
-      },
-    });
-    return snapshot;
+    return makeMuseDashSnapshot(await loadMuseDashCeFresh());
   });
 }
 
 export function useMuseDashDiffdiff() {
   const queryKey = ['musedash', 'diffdiff'] as const;
   return useMuseDashCacheFirst<MuseDashDiffdiffEntry[]>(queryKey, async () => {
-    const snapshot = await cacheFirstLoad({
-      loadCached: () => cache.loadDiffdiff(),
-      loadFresh: async () => {
-        const entries = await loadMuseDashDiffdiffFresh();
-        const fresh = makeMuseDashSnapshot(entries);
-        void cache.saveDiffdiff(fresh).catch(() => undefined);
-        return fresh;
-      },
-      onFresh: (fresh) => {
-        queryClient.setQueryData(queryKey, fresh);
-      },
-    });
-    return snapshot;
+    return makeMuseDashSnapshot(await loadMuseDashDiffdiffFresh());
   });
 }

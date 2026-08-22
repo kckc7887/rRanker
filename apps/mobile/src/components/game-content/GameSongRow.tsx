@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import { router, type Href } from 'expo-router';
 import {
   Pressable,

@@ -7,9 +7,9 @@ import { NotificationProvider } from '@/components/AppNotification';
 
 const mockPush = jest.fn();
 const mockSaveTheme = jest.fn(async (_value?: unknown) => undefined);
-const mockClear = jest.fn(async (_ids?: unknown) => ({ clearedIds: ['shared'], failures: [] as string[] }));
+const mockClear = jest.fn(async (_ids?: unknown) => ({ clearedIds: ['shared'], failures: [] as string[], reclaimedBytes: 4096 }));
 const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: ['shared' as const] }));
-const mockCollect = jest.fn(async () => ({ segments: [], totalBytes: 12 * 1024 }));
+const mockCollect = jest.fn(async () => ({ segments: [], totalBytes: 12 * 1024, clearableBytes: 12 * 1024 }));
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-router', () => {
@@ -112,7 +112,7 @@ describe('settings navigation', () => {
     const screen = await renderSettings();
     await waitFor(() => {
       expect(screen.getByText('存储管理')).toBeTruthy();
-      expect(screen.getByText('已用 12.0 KB')).toBeTruthy();
+      expect(screen.getByText('可清理约 12.0 KB')).toBeTruthy();
     });
     await fireEvent.press(screen.getByLabelText('存储管理'));
     expect(mockPush).toHaveBeenCalledWith('/storage-management');

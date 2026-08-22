@@ -41,6 +41,7 @@ const ANSWER_MODULE = require('../../../assets/maimai-chart-preview/answer.wav')
 export type ChartPreviewWebViewSource = {
   uri: string;
   allowingReadAccessToURL: string;
+  dispose: () => void;
 };
 
 export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Directory {

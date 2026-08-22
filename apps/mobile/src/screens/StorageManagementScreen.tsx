@@ -69,15 +69,21 @@ export function StorageManagementScreen() {
       const result = await clearStorageByCategories(selectedIds);
       await refresh();
       if (result.failures.length > 0) {
+        const reclaimed = result.reclaimedBytes === null
+          ? ''
+          : `，实际释放 ${formatStorageBytes(result.reclaimedBytes)}`;
         showNotification({
           title: '部分清除失败',
-          message: `已清除 ${result.clearedIds.length} 项；失败：${result.failures.join('、')}`,
+          message: `已清除 ${result.clearedIds.length} 项${reclaimed}；失败：${result.failures.join('、')}`,
           variant: 'warning',
         });
       } else {
+        const reclaimed = result.reclaimedBytes === null
+          ? '实际释放量暂时无法可靠测量。'
+          : `实际释放 ${formatStorageBytes(result.reclaimedBytes)}。`;
         showNotification({
           title: '清除完成',
-          message: `已清除 ${result.clearedIds.length} 类缓存。`,
+          message: `已清除 ${result.clearedIds.length} 类缓存，${reclaimed}`,
           variant: 'success',
         });
       }
@@ -100,6 +106,14 @@ export function StorageManagementScreen() {
       contentContainerStyle={styles.content}
     >
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
+        <View style={styles.summaryRow}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>可清理约</Text>
+          <Text style={[styles.summaryBytes, { color: theme.accent }]}>{formatStorageBytes(report?.clearableBytes ?? 0)}</Text>
+        </View>
+        <Text style={[styles.sectionDetail, { color: theme.textMuted }]}>
+          SQLite 分项按逻辑内容及物理页估算；当前数据库分配页约 {formatStorageBytes(report?.sqliteAllocatedBytes ?? 0)}，
+          其中可回收空闲页约 {formatStorageBytes(report?.sqliteReclaimableBytes ?? 0)}。
+        </Text>
         {loading && !report ? (
           <ActivityIndicator color={theme.accent} style={styles.chartLoading} />
         ) : (
@@ -151,7 +165,7 @@ export function StorageManagementScreen() {
               <View style={styles.checkText}>
                 <Text style={[styles.checkTitle, { color: theme.text }]}>{segment.title}</Text>
                 <Text style={[styles.checkDetail, { color: theme.textMuted }]}>
-                  {formatStorageBytes(segment.bytes)}
+                  约 {formatStorageBytes(segment.bytes)}
                   {segment.note ? ` · ${segment.note}` : ''}
                 </Text>
               </View>
@@ -193,6 +207,8 @@ const styles = StyleSheet.create({
   legendNote: { fontSize: 12 },
   legendBytes: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   sectionTitle: { fontSize: 16, fontWeight: '800' },
+  summaryRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  summaryBytes: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   sectionDetail: { fontSize: 13, marginTop: -6 },
   checkRow: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import { StyleSheet, View } from 'react-native';
 
 /**
@@ -37,8 +37,8 @@ export function ChunithmCollectionImage({
   }
   return (
     <Image
-      accessibilityLabel={`${kind === 'trophy-image' ? '称号' : kind} 预览`}
       cachePolicy="disk"
+      accessibilityLabel={`${kind === 'trophy-image' ? '称号' : kind} 预览`}
       contentFit="contain"
       onError={() => setFailed(true)}
       source={`${CHUNITHM_ASSET_ROOT}/${kind === 'trophy-image' ? 'trophy' : kind}/${collectionId}.png`}

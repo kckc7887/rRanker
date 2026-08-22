@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Image as ExpoImage } from 'expo-image';
+import { RemoteImage as ExpoImage } from '@/components/RemoteImage';
 import { Image, StyleSheet, View, type ImageStyle } from 'react-native';
 import { findGame, findProvider, type GameId, type ProviderId } from '@/domain/game-bind-options';
 import { useSession } from '@/state/session-store';

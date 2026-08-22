@@ -5,16 +5,9 @@ import {
   type ChunithmCollectionListSnapshot,
 } from '@/domain/chunithm-collections';
 import {
-  chunithmCollectionListResourceKey,
   loadChunithmCollections,
 } from '@/services/chunithm-collection-loader';
-import { cacheFirstLoad } from '@/services/cache-first';
-import { ResourceService } from '@/services/resource-service';
 import { useSession } from '@/state/session-store';
-import { queryClient } from '@/state/query-client';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-
-const repository = new SqliteSnapshotRepository();
 
 export function useChunithmCollections(kind: ChunithmCollectionKind, enabled = true) {
   const activeGameId = useSession((state) => state.activeGameId);
@@ -23,20 +16,7 @@ export function useChunithmCollections(kind: ChunithmCollectionKind, enabled = t
   return useQuery({
     enabled: enabled && activeGameId === 'chunithm',
     queryKey,
-    queryFn: (): Promise<ChunithmCollectionListSnapshot> => {
-      const service = new ResourceService(repository);
-      const resourceKey = chunithmCollectionListResourceKey(kind);
-      return cacheFirstLoad({
-        loadCached: () => service.getCached<ChunithmCollectionListSnapshot>(
-          resourceKey,
-          CHUNITHM_COLLECTION_LIST_SCHEMA_VERSION,
-        ),
-        loadFresh: () => loadChunithmCollections(kind),
-        onFresh: (fresh) => {
-          queryClient.setQueryData(queryKey, fresh);
-        },
-      });
-    },
+    queryFn: (): Promise<ChunithmCollectionListSnapshot> => loadChunithmCollections(kind),
     staleTime: 30 * 60_000,
   });
 }

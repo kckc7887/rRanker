@@ -38,6 +38,7 @@ const HIT_SOUND_ASSETS: readonly { kind: 'click' | 'drag' | 'flick'; fileName: s
 export type PhigrosChartPreviewWebViewSource = {
   uri: string;
   allowingReadAccessToURL: string;
+  dispose: () => void;
 };
 
 const STAGE_DIRECTORY_NAME = 'rranker-phigros-chart-preview';
@@ -50,9 +51,11 @@ const STAGE_DIRECTORY_NAME = 'rranker-phigros-chart-preview';
 export async function preparePhigrosChartPreviewWebViewSource(
   config: PhigrosChartPreviewConfig,
   musicDataBase64: string | null = null,
+  directory?: Directory,
 ): Promise<PhigrosChartPreviewWebViewSource> {
   return prepareChartPreviewWebviewFromPlan({
     directoryName: STAGE_DIRECTORY_NAME,
+    directory,
     stagedAssets: [
       { fileName: 'player.js', moduleId: PLAYER_MODULE },
       ...SKIN_ASSETS.map(({ fileName, url, bytes }) => ({ fileName: `skin/${fileName}`, url, bytes })),
@@ -79,8 +82,11 @@ export async function preparePhigrosChartPreviewWebViewSource(
 }
 
 /** Phira 谱面音乐落盘到预览 stage 目录，并返回其 base64 供 WebView 解码。 */
-export async function stagePhiraChartMusic(bytes: Uint8Array, fileName: string): Promise<{ uri: string; base64: string }> {
-  const directory = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME);
+export async function stagePhiraChartMusic(
+  bytes: Uint8Array,
+  fileName: string,
+  directory = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME),
+): Promise<{ uri: string; base64: string }> {
   const file = new File(directory, fileName);
   if (file.exists) file.delete();
   file.create();
@@ -96,8 +102,8 @@ export async function stagePhiraChartMusic(bytes: Uint8Array, fileName: string):
 export async function stagePhiraRpeBundle(
   chartId: number,
   files: readonly { name: string; bytes: Uint8Array }[],
+  root = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME),
 ): Promise<{ basePath: string }> {
-  const root = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME);
   const directory = new Directory(root, `rpe/${chartId}`);
   directory.create({ intermediates: true, idempotent: true });
   for (const file of files) {

@@ -158,6 +158,8 @@ jest.mock('@/domain/phigros-avatar-resolver', () => ({
   loadPhigrosAvatarCatalog: jest.fn(async () => ['avatar.test']),
 }));
 jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => ({
+  createPhigrosIllustrationSessionDirectory: () => ({ uri: 'file:///illustration-session/' }),
+  disposePhigrosIllustrationSession: jest.fn(),
   phigrosReadableRootDirectory: () => ({ uri: 'file:///reference/' }),
   loadPhigrosIllustrations: jest.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `data:image/png;base64,${id}`]))),
   loadRemoteImageDataUri: jest.fn(async () => 'data:image/png;base64,style'),

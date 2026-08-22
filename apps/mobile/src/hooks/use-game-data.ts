@@ -35,16 +35,11 @@ import { gameDataQueryKey } from '@/services/game-data-query';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
-import { ResourceService } from '@/services/resource-service';
 import { isOsuGameId } from '@/domain/game-mode-family';
 import { loadOsuSnapshotFresh, OsuCache } from '@/services/osu-cache';
 import type { OsuSnapshot } from '@/domain/osu';
+import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
 import {
-  CHUNITHM_CATALOG_RESOURCE_KEY,
-  type ChunithmCatalogSnapshot,
-} from '@/domain/chunithm';
-import {
-  CHUNITHM_CATALOG_SCHEMA_VERSION,
   loadChunithmCatalog,
 } from '@/services/chunithm-catalog-loader';
 import {
@@ -254,18 +249,8 @@ export function useGameData() {
               },
             };
           };
-          // 曲库缓存优先：中二曲库是全局公开资源，示例账号首屏不再等待网络拉取。
-          return cacheFirstLoad({
-            loadCached: () => new ResourceService(repository)
-              .getCached<ChunithmCatalogSnapshot>(
-                CHUNITHM_CATALOG_RESOURCE_KEY,
-                CHUNITHM_CATALOG_SCHEMA_VERSION,
-              ),
-            loadFresh: () => loadChunithmCatalog(),
-            onFresh: (fresh) => {
-              queryClient.setQueryData(queryKey, toBundle(fresh));
-            },
-          }).then(toBundle);
+          // 示例账号仍由真实公开曲库生成，但公开曲库只保留在本次 React Query 会话。
+          return loadChunithmCatalog().then(toBundle);
         }
         if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {
           const provider = new ChunithmScoreProvider(

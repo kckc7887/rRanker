@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import { StyleSheet, View } from 'react-native';
 import type { CollectionKind } from '@/domain/models';
 
@@ -26,8 +26,8 @@ export function CollectionImage({
   }
   return (
     <Image
-      accessibilityLabel={`${kind} 预览`}
       cachePolicy="disk"
+      accessibilityLabel={`${kind} 预览`}
       contentFit="contain"
       onError={() => setFailed(true)}
       source={`${ASSET_ROOT}/${kind}/${collectionId}.png`}

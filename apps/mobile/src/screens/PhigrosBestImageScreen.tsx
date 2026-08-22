@@ -42,6 +42,7 @@ import {
   type PhigrosBestImageOverflowCount, type PhigrosBestImageType,
 } from '@/features/phigros-best-image/phigros-best-image';
 import {
+  createPhigrosIllustrationSessionDirectory, disposePhigrosIllustrationSession,
   loadPhigrosIllustrations, loadRemoteImageDataUri, phigrosReadableRootDirectory,
 } from '@/features/phigros-best-image/load-phigros-image-assets';
 import { partitionPhigrosIllustrationCache } from '@/features/phigros-best-image/phigros-illustration-cache';
@@ -124,6 +125,15 @@ function fontProgressLabel(progress: PhigrosFontProgress): string {
 }
 
 export function PhigrosBestImageScreen() {
+  const illustrationStageRef = useRef<Directory | null>(null);
+  if (illustrationStageRef.current === null) {
+    illustrationStageRef.current = createPhigrosIllustrationSessionDirectory();
+  }
+  const illustrationStage = illustrationStageRef.current;
+
+  useEffect(() => () => {
+    disposePhigrosIllustrationSession(illustrationStage);
+  }, [illustrationStage]);
   const theme = useAppTheme();
   const gameData = useGameData();
   const catalog = usePhigrosCatalog();
@@ -320,7 +330,7 @@ export function PhigrosBestImageScreen() {
     if (!missing.length) return;
     void loadPhigrosIllustrations(missing, (id) => provider.getIllustrationLowresUrl(id), (done) => {
       if (!cancelled) setAssetProgress({ done: uniqueIds.length - missing.length + done, total: uniqueIds.length });
-    }).then((loaded) => {
+    }, illustrationStage).then((loaded) => {
       if (cancelled) return;
       const merged = Object.fromEntries(uniqueIds.map((id) => [id, loaded[id] ?? illustrationCacheRef.current[id] ?? null]));
       illustrationCacheRef.current = merged;
@@ -331,7 +341,7 @@ export function PhigrosBestImageScreen() {
     // selectedSongKey 是 selectedSongIds.join('|') 的派生签名：ids 内容任何变化必然
     // 改变 key 并触发本 effect 重跑，此处闭包取到的 ids 与 key 属同一次渲染。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider, selectedSongKey]);
+  }, [illustrationStage, provider, selectedSongKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -339,12 +349,12 @@ export function PhigrosBestImageScreen() {
     if (styleAssetKeyRef.current === styleAssetKey) return;
     void Promise.all([
       stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl)
-        ?? await loadRemoteImageDataUri(payload?.avatarUrl)
+        await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl, illustrationStage)
+        ?? await loadRemoteImageDataUri(payload?.avatarUrl, illustrationStage)
       ))(),
       stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageDataUri(backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null)
-        ?? await loadRemoteImageDataUri(backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null)
+        await loadRemoteImageDataUri(backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null, illustrationStage)
+        ?? await loadRemoteImageDataUri(backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null, illustrationStage)
       ))(),
     ]).then(([nextAvatar, nextBackground]) => {
       if (cancelled) return;
@@ -354,7 +364,7 @@ export function PhigrosBestImageScreen() {
     });
     return () => { cancelled = true; };
   }, [
-    avatarKey, backgroundFallbackSongId, backgroundKey, payload?.avatarUrl, provider,
+    avatarKey, backgroundFallbackSongId, backgroundKey, illustrationStage, payload?.avatarUrl, provider,
     styleAssetKey, stylePrefs.avatar.mode, stylePrefs.background.mode,
   ]);
 

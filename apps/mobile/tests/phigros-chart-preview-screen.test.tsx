@@ -69,23 +69,28 @@ jest.mock('@/theme/app-theme', () => ({
 jest.mock('@/features/phigros-chart-preview/prepare-phigros-chart-preview-webview', () => ({
   phigrosChartPreviewAllowsFileAccess: () => true,
   preparePhigrosChartPreviewWebViewSource: (...args: unknown[]) => {
-    mockPrepare(...args);
+    mockPrepare(args[0], args[1]);
     return Promise.resolve({
       uri: 'file:///phigros-chart-preview/index.html',
       allowingReadAccessToURL: 'file:///phigros-chart-preview/',
     });
   },
   stagePhiraChartMusic: (...args: unknown[]) => {
-    mockStageMusic(...args);
+    mockStageMusic(args[0], args[1]);
     return Promise.resolve({
       uri: 'file:///phigros-chart-preview/song.mp3',
       base64: 'QUJDRA==',
     });
   },
   stagePhiraRpeBundle: (...args: unknown[]) => {
-    mockStageRpeBundle(...args);
+    mockStageRpeBundle(args[0], args[1]);
     return Promise.resolve({ basePath: './rpe/38294/' });
   },
+}));
+
+jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
+  createChartPreviewSessionDirectory: () => ({ uri: 'file:///phigros-chart-preview/session/' }),
+  disposeChartPreviewSessionDirectory: jest.fn(),
 }));
 
 jest.mock('@/domain/phigros-chart-preview', () => ({

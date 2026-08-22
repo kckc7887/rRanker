@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -9,6 +8,7 @@ import {
 import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
 import { useAppTheme } from '@/theme/app-theme';
 import { BestImagePickerShell } from '@/features/best-image/best-image-picker-shell';
+import { RemoteNativeImage as Image } from '@/components/RemoteNativeImage';
 import type { ChunithmBestImageCollectionItem } from './load-chunithm-best-image-collections';
 import type {
   ChunithmBestImageStyleChoice,

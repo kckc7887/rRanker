@@ -11,7 +11,8 @@
 
 import { Directory, File } from 'expo-file-system';
 import {
-  chartPreviewStageDirectory,
+  createChartPreviewSessionDirectory,
+  disposeChartPreviewSessionDirectory,
   loadAssetFileUri,
   readAssetText,
   stageAsset,
@@ -28,6 +29,8 @@ export type ChartPreviewDataUrlAsset =
 export type ChartPreviewWebviewPlan = {
   /** stage 目录名（舞萌默认 'rranker-chart-preview'，其它游戏自定义）。 */
   directoryName: string;
+  /** 由调用方提前创建的同一会话目录；用于先写音乐/RPE 再准备播放器。 */
+  directory?: Directory;
   /** 按序落盘的资产，fileName 支持 'skin/Tap2.png' 形式的相对路径。 */
   stagedAssets: readonly ChartPreviewStagedAsset[];
   /** 生成 data:audio/wav data URL 的资产，结果以 key 汇入传给 buildHtml 的 Record。 */
@@ -43,6 +46,7 @@ export type ChartPreviewWebviewPlan = {
 export type ChartPreviewWebviewPlanResult = {
   uri: string;
   allowingReadAccessToURL: string;
+  dispose: () => void;
 };
 
 /** 远程资产下载到 stage 目录：已存在且大小匹配则跳过；否则经 .part 下载、校验后替换。 */
@@ -83,41 +87,47 @@ function ensureParentDirectory(directory: Directory, fileName: string): void {
 export async function prepareChartPreviewWebviewFromPlan(
   plan: ChartPreviewWebviewPlan,
 ): Promise<ChartPreviewWebviewPlanResult> {
-  const directory = chartPreviewStageDirectory(plan.directoryName);
+  const directory = plan.directory ?? createChartPreviewSessionDirectory(plan.directoryName);
 
-  for (const asset of plan.stagedAssets) {
-    ensureParentDirectory(directory, asset.fileName);
-    if ('moduleId' in asset) {
-      await stageAsset(asset.moduleId, asset.fileName, directory);
-    } else {
-      await stageRemoteAsset(asset.url, asset.bytes, directory, asset.fileName);
-    }
-  }
-
-  const dataUrls: Record<string, string> = {};
-  for (const asset of plan.dataUrlAssets ?? []) {
-    if ('moduleId' in asset) {
-      const sourceUri = await loadAssetFileUri(asset.moduleId, asset.fileName);
-      dataUrls[asset.key] = `data:audio/wav;base64,${await new File(sourceUri).base64()}`;
-    } else {
+  try {
+    for (const asset of plan.stagedAssets) {
       ensureParentDirectory(directory, asset.fileName);
-      const staged = await stageRemoteAsset(asset.url, asset.bytes, directory, asset.fileName);
-      dataUrls[asset.key] = `data:audio/wav;base64,${await staged.base64()}`;
+      if ('moduleId' in asset) {
+        await stageAsset(asset.moduleId, asset.fileName, directory);
+      } else {
+        await stageRemoteAsset(asset.url, asset.bytes, directory, asset.fileName);
+      }
     }
+
+    const dataUrls: Record<string, string> = {};
+    for (const asset of plan.dataUrlAssets ?? []) {
+      if ('moduleId' in asset) {
+        const sourceUri = await loadAssetFileUri(asset.moduleId, asset.fileName);
+        dataUrls[asset.key] = `data:audio/wav;base64,${await new File(sourceUri).base64()}`;
+      } else {
+        ensureParentDirectory(directory, asset.fileName);
+        const staged = await stageRemoteAsset(asset.url, asset.bytes, directory, asset.fileName);
+        dataUrls[asset.key] = `data:audio/wav;base64,${await staged.base64()}`;
+      }
+    }
+
+    for (const writer of plan.writers ?? []) {
+      await writer(directory);
+    }
+
+    const template = await readAssetText(plan.htmlModuleId);
+    const html = plan.buildHtml(template, dataUrls, directory);
+    const htmlFile = new File(directory, 'index.html');
+    htmlFile.create({ overwrite: true });
+    htmlFile.write(html);
+
+    return {
+      uri: htmlFile.uri,
+      allowingReadAccessToURL: directory.uri,
+      dispose: () => disposeChartPreviewSessionDirectory(directory),
+    };
+  } catch (error) {
+    disposeChartPreviewSessionDirectory(directory);
+    throw error;
   }
-
-  for (const writer of plan.writers ?? []) {
-    await writer(directory);
-  }
-
-  const template = await readAssetText(plan.htmlModuleId);
-  const html = plan.buildHtml(template, dataUrls, directory);
-  const htmlFile = new File(directory, 'index.html');
-  htmlFile.create({ overwrite: true });
-  htmlFile.write(html);
-
-  return {
-    uri: htmlFile.uri,
-    allowingReadAccessToURL: directory.uri,
-  };
 }

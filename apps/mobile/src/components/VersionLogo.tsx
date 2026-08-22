@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import type { ImageSourcePropType } from 'react-native';
 import { StyleSheet, View } from 'react-native';
 

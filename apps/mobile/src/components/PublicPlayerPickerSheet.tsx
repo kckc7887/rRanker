@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
+import { ActivityIndicator, Image as NativeImage, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/app-theme';
+import { RemoteNativeImage } from '@/components/RemoteNativeImage';
 
 export type PublicPlayerOption<T> = {
   key: string; name: string; meta: string; avatarUrl?: string | null; value: T;
@@ -31,7 +32,7 @@ export function PublicPlayerPickerSheet<T>({
       </View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.identity}>
-          <Image source={icon} style={styles.icon} /><Text style={[styles.providerName, { color: theme.text }]}>{providerTitle}</Text>
+          <NativeImage source={icon} style={styles.icon} /><Text style={[styles.providerName, { color: theme.text }]}>{providerTitle}</Text>
           <Text style={[styles.gameLine, { color: theme.textMuted }]}>用于绑定 {gameTitle}</Text>
         </View>
         <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -45,7 +46,7 @@ export function PublicPlayerPickerSheet<T>({
           {options.map((item) => <Pressable key={item.key} accessibilityRole="button" accessibilityLabel={`${optionAccessibilityPrefix} ${item.name}`}
             disabled={busyId !== null} onPress={async () => { setBusyId(item.key); try { await onSelect(item.value); } finally { setBusyId(null); } }}
             style={({ pressed }) => [styles.row, { backgroundColor: theme.surfaceMuted }, pressed && styles.pressed]}>
-            {item.avatarUrl ? <Image source={{ uri: item.avatarUrl }} style={styles.avatar} />
+            {item.avatarUrl ? <RemoteNativeImage source={{ uri: item.avatarUrl }} style={styles.avatar} />
               : <View style={[styles.avatar, styles.avatarFallback]}><Text style={styles.avatarText}>{fallbackLetter}</Text></View>}
             <View style={styles.main}><Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
               <Text style={[styles.meta, { color: theme.textMuted }]}>{item.meta}</Text></View>

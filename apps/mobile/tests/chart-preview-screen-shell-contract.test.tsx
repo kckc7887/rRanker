@@ -5,7 +5,7 @@
  * 证明接入全新游戏只需向壳提供配置项、无需修改共享层任何代码。
  * 共享层不得枚举游戏 ID，也不得出现任何游戏专属分支。
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import {
   ChartPreviewScreenShell,
@@ -177,5 +177,18 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
       fictionalSettingsKey,
       JSON.stringify({ speed: 2 }),
     ));
+  });
+
+  it('页面卸载时由公共壳统一释放会话 stage', async () => {
+    const dispose = jest.fn();
+    const view = await renderFictionalShell({
+      kind: 'ready',
+      payload: { chartName: '虚构谱面' },
+      prepare: async () => ({ ...fictionalSource, dispose }),
+    });
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+
+    await act(async () => view.unmount());
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 });

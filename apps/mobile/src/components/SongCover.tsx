@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import { StyleSheet, Text, View } from 'react-native';
 import { maimaiJacketUrl } from '@/domain/maimai-assets';
 
@@ -8,8 +8,8 @@ export function SongCover({ songId, size = 58, borderRadius = 9 }: { songId: str
   if (failed) return <View style={[styles.placeholder, { width: size, height: size, borderRadius }]}><Text style={styles.note}>♪</Text></View>;
   return (
     <Image
-      accessibilityLabel="歌曲封面"
       cachePolicy="disk"
+      accessibilityLabel="歌曲封面"
       contentFit="cover"
       onError={() => setFailed(true)}
       source={maimaiJacketUrl(songId)}
