@@ -24,10 +24,7 @@ export type SongRowCoverImage = {
   noteStyle: StyleProp<TextStyle>;
 };
 
-/**
- * 固定外框封面行样式组。
- * 源自 Phigros 布局，Phigros/Phira 共用；收敛到公共层以消除 Phira 对 Phigros 文件的跨游戏样式依赖。
- */
+/** 固定外框封面行样式组。 */
 export const WRAPPED_COVER_ROW_STYLES = StyleSheet.create({
   row: { borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   openSong: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },

@@ -328,7 +328,7 @@ export function museDashAccTone(acc: number): string {
   return 'acc-purple';
 }
 
-/** 评价：90 以上 S、80 以上 A、70 B、60 C、更低 D；S 按 ACC 分金银红，其余沿用同档色。 */
+/** 评价：90 以上 S、80 以上 A、70 B、60 C、更低 D；S 按 ACC 分金银红。 */
 export function museDashGrade(acc: number): 'S' | 'A' | 'B' | 'C' | 'D' {
   if (acc >= 90) return 'S';
   if (acc >= 80) return 'A';

@@ -14,7 +14,6 @@ const MUSE_DASH_API_BASE = 'https://api.musedash.moe';
 const MUSE_DASH_LABEL = 'MuseDash.moe';
 type FetchLike = typeof fetch;
 
-/** MuseDash.moe 状态码分支文案：401 并入 permission、无 authentication 分支，逐字保留原实现。 */
 const MUSE_DASH_STATUS_TEXTS: ProviderStatusTexts = {
   permission: `${MUSE_DASH_LABEL}公开接口策略已变化，暂时无法读取数据`,
   noData: `${MUSE_DASH_LABEL}未找到对应数据`,

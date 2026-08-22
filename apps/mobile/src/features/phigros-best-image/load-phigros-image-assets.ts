@@ -51,7 +51,7 @@ async function stageFileName(url: string): Promise<string> {
 
 /**
  * 预取远程图到磁盘，再复制到可读舞台目录，返回 file:// URI。
- * 不再读成 base64，避免成绩图曲绘在 JS 堆中膨胀。
+ * 使用文件 URI，避免大型图片占用 JS 堆。
  */
 export async function loadRemoteImageDataUri(
   url: string | null | undefined,

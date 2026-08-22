@@ -26,13 +26,13 @@ export function SongDetailHero({
   cover?: ReactNode;
   /** 占位符容器样式（含各家底色来源） */
   placeholderStyle: StyleProp<ViewStyle>;
-  /** 占位符音符文字样式（♪ 颜色与字号各家原值） */
+  /** 占位符音符文字样式。 */
   placeholderNoteStyle: StyleProp<TextStyle>;
   /** 底部渐变颜色（各家遮罩浓度不同） */
   shadeColors: LinearGradientProps['colors'];
   /** 渐变样式（整幅 absoluteFill 或仅底部 48% 等布局差异） */
   shadeStyle: StyleProp<ViewStyle>;
-  /** 左下角文案容器样式（边距与行距各家原值） */
+  /** 左下角文案容器样式。 */
   copyStyle: StyleProp<ViewStyle>;
   /** 文案内容插槽（编号/标题/艺术家等行，滚屏与 numberOfLines 策略由调用方决定） */
   children?: ReactNode;

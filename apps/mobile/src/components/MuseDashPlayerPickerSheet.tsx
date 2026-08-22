@@ -73,19 +73,19 @@ export function MuseDashPlayerPickerSheet({
           </View>
 
           <View style={[styles.card, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.body, { color: theme.textSecondary }]}>支持直接输入 32 位 user_id</Text>
+            <Text style={[styles.body, { color: theme.textSecondary }]}>可输入昵称或玩家 ID</Text>
             <TextInput
               accessibilityLabel="搜索喵斯快跑玩家"
               autoCapitalize="none"
               autoCorrect={false}
-              placeholder="昵称或 user_id"
+              placeholder="昵称或玩家 ID"
               placeholderTextColor={theme.textMuted}
               value={query}
               onChangeText={setQuery}
               style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]}
             />
             {loading ? <ActivityIndicator style={styles.state} color={theme.accent} /> : null}
-            {error ? <Text style={styles.error}>{error instanceof Error ? error.message : '玩家搜索失败'}</Text> : null}
+            {error ? <Text style={styles.error}>玩家搜索失败，请重试。</Text> : null}
             {!loading && !error && debounced && players.length === 0
               ? <Text style={[styles.stateText, { color: theme.textMuted }]}>没有找到公开玩家</Text>
               : null}

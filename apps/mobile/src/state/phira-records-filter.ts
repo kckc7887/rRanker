@@ -15,7 +15,7 @@ export const usePhiraRecordsFilter = createFilterStore({
     xing: null as PhigrosXingKind | null,
     sort: 'score' as PhiraScoreSort,
   },
-  // 原实现 clearFilters === set(DEFAULTS)：含 collapsed 与 sort 全量恢复
+  // 清除筛选时同时恢复折叠状态和排序。
   clearKeys: [
     'keyword', 'collapsed', 'constantMin', 'constantMax', 'accuracyMin', 'accuracyMax',
     'rank', 'xing', 'sort',

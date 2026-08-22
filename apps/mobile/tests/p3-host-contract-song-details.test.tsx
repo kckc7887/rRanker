@@ -1,11 +1,10 @@
 /**
- * P3 回归基线，采集自改造前现状，禁止更新哈希接受差异。
+ * 宿主树回归基线，禁止更新哈希接受差异。
  * 覆盖：PhigrosSongDetail / ChunithmSongDetail 全页 Host Tree（Chrome + Hero + 轮播 + 信息卡）。
- * mock 手法沿用既有 phigros-song-detail.test.tsx / chunithm-song-detail.test.tsx：
+ * mock 使用 phigros-song-detail.test.tsx / chunithm-song-detail.test.tsx 的固定数据：
  * 固定 catalog/detail/scores/library 数据、固定 insets 与窗口尺寸、
  * InteractionManager 同步执行、Animated.loop 静态 mock、
  * useFlowingProgress 固定静态首帧（progress=0 → outputRange[0]）。
- * P2 刚收敛过别名展开，本基线以改造前现状采集。
  */
 import { createHash } from 'node:crypto';
 import { Animated, Dimensions, InteractionManager } from 'react-native';

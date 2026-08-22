@@ -170,14 +170,14 @@ describe('Phigros 生成图片页', () => {
       insets: { top: 0, left: 0, right: 0, bottom: 0 },
     }}><PhigrosBestImageScreen /></SafeAreaProvider>);
     await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
-    await waitFor(() => expect(screen.getByText('扩展字体准备失败：network down')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('无法准备成绩图片，请重试。')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
     fireEvent.press(screen.getByLabelText('重试字体下载'));
     await waitFor(() => expect(preparePhigrosFonts).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
   });
 
-  it('沿用舞萌板块的页面顺序、控件样式和预览导出布局', async () => {
+  it('keeps the page controls and preview export layout', async () => {
     const { captureRef } = jest.requireMock('react-native-view-shot') as { captureRef: jest.Mock };
     const { requestBestImageExportPermission } = jest.requireMock('@/features/best-image/best-image-export') as { requestBestImageExportPermission: jest.Mock };
     captureRef.mockClear();
@@ -204,7 +204,7 @@ describe('Phigros 生成图片页', () => {
     expect(preview.props.source.baseUrl).toBe('file:///reference/');
     expect(preview.props.allowingReadAccessToURL).toBe('file:///reference/');
     expect(screen.getByLabelText('导出成绩图片')).toBeTruthy();
-    expect(screen.getByTestId('phigros-best-image-webview-status')).toBeTruthy();
+    expect(screen.queryByTestId('phigros-best-image-webview-status')).toBeNull();
 
     fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({
       type: 'best-image-height', width: 1080, height: 1215,

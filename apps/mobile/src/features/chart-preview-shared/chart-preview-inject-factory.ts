@@ -2,7 +2,7 @@
  * 谱面确认 WebView 配置注入四件套泛型工厂（公共路径）：
  * 各游戏注入模块以全局变量名、HTML 占位注释与配置序列化器参数化，
  * 产出 config JSON、config script、injectedJavaScript 与 applyConfigToHtml，
- * 保证各游戏产物字符串与各自原实现逐字节一致。
+ * 各游戏通过配置注入资源和主题。
  */
 
 export type ChartPreviewInjectSpec<TConfig> = {

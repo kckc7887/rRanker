@@ -10,6 +10,7 @@ import {
 import { useSession } from '@/state/session-store';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { CollectionImage } from '@/components/CollectionImage';
 import type { ChartType, Difficulty, Player } from '@/domain/models';
 import { MaimaiFilterBar, formatDxRatingTagFilterValue, type VersionFilterOption } from '@/components/MaimaiFilterBar';
@@ -31,7 +32,7 @@ import {
   type BestImageScoreSection,
   type BestImageType,
 } from '@/features/best-image/build-best-image-html';
-import { BEST_IMAGE_WEBVIEW_PHASE_LABELS, useBestImageWebViewTimeout } from '@/features/best-image/best-image-webview-state';
+import { useBestImageWebViewTimeout } from '@/features/best-image/best-image-webview-state';
 import {
   buildCustomBestImageSections,
   DEFAULT_CUSTOM_BEST_IMAGE_FILTERS,
@@ -121,7 +122,6 @@ const FONT_PROGRESS_LABELS: Record<MaimaiFontProgress['phase'], string> = {
   error: '导出字体准备失败',
 };
 
-/** 控制器偏好对象与舞萌 P2 store 的适配（save 保持原 .catch 吞错语义）。 */
 type MaimaiBestImagePrefs = { selections: BestImageStyleSelections; ratingStyle: BestImageRatingStyle };
 const maimaiPreferencesAdapter = {
   load: (accountId: string) => bestImageStylePreferencesStore.load(accountId).then((preferences) => ({
@@ -275,7 +275,7 @@ export function MaimaiBestImageScreen() {
         setAssetsReady(true);
       }
     })().catch((error) => {
-      if (!cancelled) setExportAssetError(error instanceof Error ? error.message : '无法加载导出素材');
+      if (!cancelled) setExportAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
     });
     return () => { cancelled = true; };
   }, [fontAttempt]);
@@ -467,16 +467,11 @@ export function MaimaiBestImageScreen() {
       setWebViewSources(prepared.sources);
       return prepared.dispose;
     } catch {
-      setWebViewSourceError('WebView 本地页面准备失败');
+      setWebViewSourceError('无法准备成绩图片，请重试。');
     }
   }, [coverUrls, embeddedAssets, assetsDirectory, htmlGenerationKey]);
   const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
   const currentWebViewState = webViewStates[pages[Math.min(currentPageIndex, pages.length - 1)]!.id];
-  const webViewStatusText = webViewSourceError
-    ? 'WebView 版本未知 · 本地页面准备失败'
-    : webViewSources
-    ? `WebView ${currentWebViewState?.version ?? '版本未知'} · ${BEST_IMAGE_WEBVIEW_PHASE_LABELS[currentWebViewState?.phase ?? 'loading']}`
-    : 'WebView 版本未知 · 等待预览素材';
   const assetStatusText = fontProgress.phase === 'checking' || fontProgress.phase === 'downloading'
     ? `${FONT_PROGRESS_LABELS[fontProgress.phase]}${fontProgress.currentFont ? ` ${fontProgress.currentFont}` : ''}`
     : uiProgress.phase === 'checking' || uiProgress.phase === 'downloading' || uiProgress.phase === 'unpacking'
@@ -643,7 +638,7 @@ export function MaimaiBestImageScreen() {
       </Pressable> : null}
     </View> : <View style={styles.loadingContent}>
       <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
-      <Text style={[styles.loadingText, { color: theme.textMuted }]}>{!assetsDirectory ? assetStatusText : coverProgress.total > 0 && coverUrls === null ? `正在逐张缓存歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在加载预览素材'}</Text>
+      <Text style={[styles.loadingText, { color: theme.textMuted }]}>{!assetsDirectory ? assetStatusText : coverProgress.total > 0 && coverUrls === null ? `正在准备歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在准备预览'}</Text>
     </View>}
     fontStatus={webViewSources && !assetsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: exportAssetError ? theme.danger : theme.border }]}>
       {exportAssetError ? <>
@@ -662,8 +657,6 @@ export function MaimaiBestImageScreen() {
     exportIdleLabel={assetsReady ? '导出到相册' : '所需素材准备完成后可导出'}
     exportStatus={exportStatus}
     onExport={() => void exportImages()}
-    statusTestId="best-image-webview-status"
-    statusText={webViewStatusText}
     exportIndex={exportPageIndex}
     exportHeight={exportHeight}
     exportSource={exportPageIndex !== null && htmlPages?.[exportPageIndex] && webViewSources?.[exportPageIndex] ? webViewSources[exportPageIndex]! : null}

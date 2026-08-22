@@ -70,7 +70,6 @@ jest.mock('@/hooks/use-phira', () => ({
   usePhiraNotes: (_chart: unknown, enabled = true) => { mockNotesEnabled.push(enabled); return { data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false }; },
   usePhiraUploader: () => ({ data: undefined, isLoading: false, isError: true }),
 }));
-jest.mock('@/components/SourceStatus', () => ({ SourceStatus: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>数据状态</RN.Text>; } }));
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
 }));

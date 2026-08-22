@@ -920,7 +920,7 @@ export class MainRenderer {
     layeredHeads.reverse();
     approachGroups.sort((a, b) => a.timingMs - b.timingMs);
     fireworkTouches.sort((a, b) => fireworkTriggerMs(a) - fireworkTriggerMs(b));
-    // holds 此前仅用于 layeredHeads / approachGroups（已构建完），此处转升序供波纹窗口索引。
+    // layeredHeads 和 approachGroups 构建完成后，按时间排序供波纹窗口索引。
     holds.sort((a, b) => a.timingMs - b.timingMs);
     // touches 已升序，filter 保持顺序，供 touch-hold 波纹窗口索引。
     const touchHolds = touches.filter(isTouchHoldStartNote);

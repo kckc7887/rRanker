@@ -465,7 +465,7 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
       onRefreshing: (account) => {
         input.onPhase({
           kind: 'syncing',
-          message: `成绩已上传，正在同步应用内的 ${account.displayName}…`,
+          message: `成绩已上传，正在更新 ${account.displayName}…`,
           providerTitle: account.providerTitle,
         });
       },
@@ -484,7 +484,7 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
   if (targetResults.every((item) => item.status === 'failed')) {
     input.onPhase({
       kind: 'error',
-      message: `写入失败：${failedTargets.map((item) => `${item.account.displayName}（${item.errorMessage}）`).join('、')}`,
+      message: `写入失败：${failedTargets.map((item) => item.account.displayName).join('、')}，请重试。`,
     });
     return {
       uploaded: uploadedTotal,
@@ -682,7 +682,7 @@ export async function bindScoreHubCabinetByQr(input: {
     input.onPhase({
       kind: 'done',
       message: bind.alreadyBound
-        ? '玩家二维码此前已绑定，之后将复用会话快速拉分'
+        ? '正在读取玩家成绩'
         : '玩家二维码已绑定，之后将复用会话快速拉分',
       uploaded: 0,
       skipped: 0,

@@ -17,11 +17,11 @@ export function joinFilterSummary(parts: readonly (string | null | undefined)[])
   return parts.filter(Boolean).join(' · ') || '全部';
 }
 
-/** 公共样式：键名沿用各 FilterBar 原名；变体（Plain/Padded）对应原先各家的游戏差异。 */
+/** 筛选栏的公共样式与布局变体。 */
 export const filterShellStyles = StyleSheet.create({
-  /** 展开态根容器（含静态底色，Maimai / Phigros / Arcade 原值） */
+  /** 带静态底色的展开态根容器。 */
   filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  /** 展开态根容器（底色由主题内联注入，Chunithm / MuseDash 原值） */
+  /** 由主题注入底色的展开态根容器。 */
   filterBarPlain: { padding: 16, gap: 10, borderBottomWidth: 1 },
   collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
   collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -38,11 +38,11 @@ export const filterShellStyles = StyleSheet.create({
   resetButtonText: { fontSize: 12, fontWeight: '800' },
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
-  /** 无静态色标签（颜色由主题内联注入，Chunithm 原值） */
+  /** 由主题注入颜色的标签。 */
   filterLabelPlain: { fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
   wideFilterLabel: { width: 44 },
   chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  /** 带纵向留白的芯片行（Chunithm / Phigros 原值） */
+  /** 带纵向留白的芯片行。 */
   chipRowPadded: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 1 },
   chipFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 999, padding: 2, alignItems: 'center', justifyContent: 'center' },
   roundedChipFrame: { borderRadius: 10 },
@@ -50,7 +50,7 @@ export const filterShellStyles = StyleSheet.create({
   neutralChipText: { color: '#374151', fontSize: 12 },
   neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
   rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  /** 区间输入框（含静态底色，Maimai / Phigros 原值） */
+  /** 带静态底色的区间输入框。 */
   rangeInput: {
     flex: 1,
     minWidth: 0,
@@ -67,7 +67,7 @@ export const filterShellStyles = StyleSheet.create({
     textAlignVertical: 'center',
     includeFontPadding: false,
   },
-  /** 区间输入框（底色由主题内联注入，Chunithm / MuseDash 原值） */
+  /** 由主题注入底色的区间输入框。 */
   rangeInputPlain: {
     flex: 1,
     minWidth: 0,
@@ -82,7 +82,7 @@ export const filterShellStyles = StyleSheet.create({
     includeFontPadding: false,
   },
   rangeSeparator: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
-  /** 无静态色的分隔符（颜色由主题内联注入，Chunithm 原值） */
+  /** 由主题注入颜色的分隔符。 */
   rangeSeparatorPlain: { fontSize: 13, fontWeight: '700' },
 });
 
@@ -187,7 +187,7 @@ export function FilterShell({
   );
 }
 
-/** 中性筛选芯片（「全部」等文本项），样式与原 MaimaiFilterBar 实现逐字一致。 */
+/** 中性筛选芯片。 */
 export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   label: string; active: boolean; onPress: () => void; accessibilityLabel?: string;
 }) {
@@ -201,7 +201,7 @@ export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   );
 }
 
-/** 筛选芯片外框（选中态描边），样式与原 MaimaiFilterBar 实现逐字一致。 */
+/** 带选中态描边的筛选芯片外框。 */
 export function FilterChipFrame({
   active,
   accessibilityLabel,

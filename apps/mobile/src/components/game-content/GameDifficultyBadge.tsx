@@ -1,5 +1,5 @@
 /**
- * 公共难度胶囊骨架（P3 收敛，宿主树合同见 tests/p3-host-contract-visuals.test.tsx）：
+ * 公共难度胶囊骨架：
  * - 容器：32×24 圆角胶囊（minWidth 32 / height 24 / borderRadius 999 / paddingHorizontal 8）；
  * - 主题插槽：各游戏自留颜色表，仅以 { background, border, text } 三元组注入，公共层不枚举游戏；
  * - 特殊难度插槽：提供 special 即渲染 LinearGradient 胶囊 + 遮罩，渐变色组由游戏侧传入；
@@ -19,7 +19,7 @@ export interface GameDifficultyBadgeTheme {
 export interface GameDifficultyBadgeSpecial {
   /** 特殊难度渐变色组（如 SPECIAL_DIFFICULTY_GRADIENT） */
   gradient: readonly [string, string, ...string[]];
-  /** 特殊难度文字色；未提供时沿用基础文本样式自带的颜色（TUF 白字兜底语义） */
+  /** 特殊难度文字色；未提供时使用基础文本颜色。 */
   textColor?: string;
 }
 

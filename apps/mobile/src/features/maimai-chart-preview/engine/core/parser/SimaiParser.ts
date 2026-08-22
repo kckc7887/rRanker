@@ -773,7 +773,7 @@ function parseNoteString(
 
         if (customLengthSeconds !== null) {
           durationMsValue = customLengthSeconds * 1000;
-          // [D##L] 走显式 delay；[#X] 无 delay，沿用 [N:M] 的 1 拍预览延迟使星头对齐。
+          // [D##L] 使用显式 delay；[#X] 使用 1 拍预览延迟使星头对齐。
           delayMsValue = customDelay !== null ? customDelay * 1000 : 60000 / bpm;
         } else {
           durationMsValue =

@@ -124,11 +124,11 @@ export function ChartPreviewScreenShell<TPayload>({
         preparedSource = prepared;
         if (cancelled) prepared.dispose?.();
         else setSource(prepared);
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setStageError(localController.signal.aborted
             ? '准备谱面确认资源超时，请返回重试'
-            : error instanceof Error ? error.message : prepareErrorFallback);
+            : prepareErrorFallback);
         }
       } finally {
         if (timeout) clearTimeout(timeout);
@@ -227,7 +227,7 @@ export function ChartPreviewScreenShell<TPayload>({
               }
               if (data.type === 'error') {
                 setIsFullscreen(false);
-                setPlayerError(data.message ?? '谱面播放失败');
+              setPlayerError('谱面播放失败，请返回重试。');
               }
               if (data.type === 'settings') {
                 const { type: _type, message: _message, active: _active, ...settings } = data;
@@ -236,11 +236,11 @@ export function ChartPreviewScreenShell<TPayload>({
             }}
             onError={() => {
               setIsFullscreen(false);
-              setPlayerError('WebView 加载失败');
+              setPlayerError('播放器加载失败，请返回重试。');
             }}
             onHttpError={() => {
               setIsFullscreen(false);
-              setPlayerError('WebView 资源加载失败');
+              setPlayerError('播放器加载失败，请返回重试。');
             }}
           />
         </View>

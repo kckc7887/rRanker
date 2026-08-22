@@ -46,10 +46,10 @@ export function parsePhigrosBestImageStylePreferences(value: unknown): PhigrosBe
 
 const { Store } = createPreferencesStore<PhigrosBestImageStylePreferences, string>({
   storeKey: (accountId) => `${PREFIX}${accountId}`,
-  // 历史行为：defaults 为共享对象引用（load 回退时原样返回，不做拷贝）。
+  // 回退时返回共享的默认对象。
   defaults: () => defaults,
   parse: parsePhigrosBestImageStylePreferences,
-  // 历史行为：读到坏数据仅回退默认值，不清理对应 key。
+  // 坏数据回退默认值，不清理对应 key。
   clearOnError: false,
 });
 

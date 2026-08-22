@@ -175,7 +175,7 @@ export function useGameData() {
               source,
             },
           });
-          // 曲库/定数表缓存优先：示例账号首屏不再等待网络拉取。
+          // 示例账号首屏优先读取曲库和定数表缓存。
           const [albums, diffdiff] = await Promise.all([
             loadMuseDashAlbumsCacheFirst(museDashCache),
             loadMuseDashDiffdiffCacheFirst(museDashCache),
@@ -503,7 +503,7 @@ export function useGameData() {
       });
       // 缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
       // 与 useScoreSnapshot 并发时由 ScoreService 的 in-flight 去重共享一次网络请求。
-      // local/maimai-test 账号同样启用：首屏不再等待曲库网络拉取。
+      // 本地账号和示例账号首屏优先读取曲库缓存。
       if (persistScores) {
         const cached = await repository.getLatest(activeAccountId);
         if (cached) {

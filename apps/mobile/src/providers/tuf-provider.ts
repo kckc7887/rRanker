@@ -11,7 +11,6 @@ import { requestJson } from './http-json';
 const TUF_API_BASE = 'https://api.tuforums.com';
 type FetchLike = typeof fetch;
 
-/** TUF 状态码分支文案：401 并入 permission、无 authentication 分支，逐字保留原实现。 */
 const TUF_STATUS_TEXTS: ProviderStatusTexts = {
   permission: 'TUF 公开接口策略已变化，暂时无法读取社区数据',
   noData: 'TUF 未找到对应数据',
@@ -27,7 +26,6 @@ function statusError(status: number): ProviderError {
 export class TufProvider {
   constructor(private readonly fetcher: FetchLike = fetch, private readonly baseUrl = TUF_API_BASE) {}
 
-  /** 统一走 http-json 公共层；超时/重试/退避语义与默认一致，文案经 messages 逐字保留 TUF 现状。 */
   private request<T>(path: string, schema: z.ZodType<T>): Promise<T> {
     return requestJson({
       path,

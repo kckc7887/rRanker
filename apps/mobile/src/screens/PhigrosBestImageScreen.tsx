@@ -13,7 +13,6 @@ import type { PhigrosLevel } from '@/domain/phigros';
 import type { PhigrosXingKind } from '@/domain/phigros-xing';
 import { phigrosLevelColors } from '@/domain/phigros-level-theme';
 import { loadPhigrosAvatarCatalog } from '@/domain/phigros-avatar-resolver';
-import { BEST_IMAGE_WEBVIEW_PHASE_LABELS } from '@/features/best-image/best-image-webview-state';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   BestImageChoiceChip,
@@ -67,6 +66,7 @@ import {
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useAppTheme } from '@/theme/app-theme';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { RangeSelector } from '@/components/game-content/RangeSelector';
 
 const WIDTHS = [1080, 1440, 2160] as const;
@@ -75,7 +75,6 @@ const DEFAULT_STYLES: PhigrosBestImageStylePreferences = {
   version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
 };
 
-/** 控制器偏好对象与 Phigros P2 store 的适配。 */
 const phigrosPreferencesAdapter = {
   load: (accountId: string) => phigrosBestImagePreferencesStore.load(accountId),
   save: (accountId: string, prefs: PhigrosBestImageStylePreferences) => phigrosBestImagePreferencesStore.save(accountId, prefs),
@@ -188,7 +187,6 @@ export function PhigrosBestImageScreen() {
     setPageHeights,
     pageIndex,
     setPageIndex,
-    previewStates,
     setPreviewStates,
     exportIndex,
     exportHeight,
@@ -277,7 +275,7 @@ export function PhigrosBestImageScreen() {
         setTemplateAssets({ ...trimmedAssets });
       }
     })().catch((error) => {
-      if (!cancelled) setTemplateAssetError(error instanceof Error ? error.message : '无法加载 Phigros 参考模板素材');
+      if (!cancelled) setTemplateAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
     });
     return () => { cancelled = true; };
   }, [fontAttempt, neededFontKey, provider]);
@@ -339,7 +337,7 @@ export function PhigrosBestImageScreen() {
     });
     return () => { cancelled = true; };
     // selectedSongKey 是 selectedSongIds.join('|') 的派生签名：ids 内容任何变化必然
-    // 改变 key 并触发本 effect 重跑，此处闭包取到的 ids 与 key 属同一次渲染。
+    // ids 与 key 来自同一次渲染，避免写入错误的素材会话。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [illustrationStage, provider, selectedSongKey]);
 
@@ -397,10 +395,6 @@ export function PhigrosBestImageScreen() {
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);
-  const currentPreviewState = previewStates[currentPage.id];
-  const previewStatus = currentPreviewState
-    ? `${BEST_IMAGE_WEBVIEW_PHASE_LABELS[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
-    : 'WebView 版本未知 · 等待预览素材';
   const avatarPickerItems = useMemo<PhigrosBestImagePickerItem[]>(() => avatarItems.flatMap((key) => {
     const remoteUrl = provider?.getAvatarUrl(key);
     return remoteUrl ? [{ key, label: key, meta: '头像', source: { uri: remoteUrl } }] : [];
@@ -550,7 +544,7 @@ export function PhigrosBestImageScreen() {
     onPreviewMessage={handlePreviewMessage}
     fileAccessFromFileURLs
     allowingReadAccessToUrl={templateAssets?.allowingReadAccessToUrl}
-    loadingPreview={templateAssetError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在加载预览素材'}</Text></View>}
+    loadingPreview={templateAssetError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在准备预览" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在准备预览'}</Text></View>}
     fontStatus={sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；所需字体完成后可导出</Text></>}</View> : null}
     fontStatusAboveDots
     exportDisabled={!sources || !fontsReady || !formValid || !!exportStatus}
@@ -558,8 +552,6 @@ export function PhigrosBestImageScreen() {
     exportIdleLabel={fontsReady ? '导出到相册' : '所需字体准备完成后可导出'}
     exportStatus={exportStatus}
     onExport={() => void exportImages()}
-    statusTestId="phigros-best-image-webview-status"
-    statusText={previewStatus}
     exportIndex={exportIndex}
     exportHeight={exportHeight}
     exportSource={exportIndex !== null && sources?.[exportIndex] ? sources[exportIndex]! : null}

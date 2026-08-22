@@ -49,12 +49,11 @@ describe('StorageManagementScreen', () => {
     mockLoad.mockClear();
   });
 
-  it('shows clearable estimate and explicitly labels SQLite estimates', async () => {
+  it('shows clearable sizes without storage implementation details', async () => {
     render(<StorageManagementScreen />);
     await waitFor(() => expect(screen.getByText('可清理约')).toBeTruthy());
     expect(screen.getByText('3.0 KB')).toBeTruthy();
-    expect(screen.getByText(/当前数据库分配页约 4.0 KB/u)).toBeTruthy();
-    expect(screen.getByText(/其中可回收空闲页约 1.0 KB/u)).toBeTruthy();
+    expect(screen.queryByText(/SQLite|数据库|逻辑估算|自动保存/u)).toBeNull();
   });
 
   it('reports measured reclaimed bytes after a successful clear', async () => {
@@ -63,7 +62,7 @@ describe('StorageManagementScreen', () => {
     fireEvent.press(screen.getByLabelText('清除缓存'));
     await waitFor(() => expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({
       title: '清除完成',
-      message: expect.stringContaining('实际释放 2.0 KB'),
+      message: expect.stringContaining('已释放 2.0 KB'),
       variant: 'success',
     })));
     expect(mockClear).toHaveBeenCalledWith(['shared']);
@@ -76,7 +75,7 @@ describe('StorageManagementScreen', () => {
     fireEvent.press(screen.getByLabelText('清除缓存'));
     await waitFor(() => expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({
       title: '部分清除失败',
-      message: expect.stringContaining('失败：舞萌 DX'),
+      message: expect.stringContaining('部分项目未能清除，请重试'),
       variant: 'warning',
     })));
   });

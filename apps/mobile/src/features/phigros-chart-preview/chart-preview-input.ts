@@ -114,7 +114,7 @@ export async function buildPhiraChartPreviewInput(
   const chartText = new TextDecoder('utf-8', { fatal: true }).decode(chartBytes);
   const format = classifyPhiraChartFormat(plan.chartEntryName, formatHint, chartText);
   if (format !== 'pgr' && format !== 'rpe') throw new Error(PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE);
-  // RPE 社区谱面普遍比 PGR 大（66661 谱面 JSON 约 24MB），上限单独放宽；PGR 维持原值不变。
+  // RPE 社区谱面可超过 24 MB，因此使用独立上限。
   const chartTextLimit = format === 'rpe' ? RPE_CHART_TEXT_LIMIT : CHART_TEXT_LIMIT;
   if (chartText.length > chartTextLimit) throw new Error('谱面过大，暂不支持预览');
 

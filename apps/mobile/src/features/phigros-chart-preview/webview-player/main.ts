@@ -604,7 +604,7 @@ function start(): void {
       musicBuffer = await context.decodeAudioData(bytes);
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
-      setStatus(`${error instanceof Error ? error.message : '谱面音乐不可用'}（仍可静音看谱）`);
+      setStatus('谱面音乐不可用，仍可静音看谱。');
       musicBuffer = null;
     }
   }
@@ -972,8 +972,8 @@ function start(): void {
       postStatus('ready', {});
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-      setStatus(error instanceof Error ? error.message : '无法打开谱面');
-      postStatus('error', { message: error instanceof Error ? error.message : '谱面播放失败' });
+      setStatus('无法打开谱面，请返回重试。');
+      postStatus('error', { message: '无法打开谱面，请返回重试。' });
     }
   }
 
@@ -1073,8 +1073,8 @@ function start(): void {
       } catch {
         /* 打击音解码失败不影响播放 */
       }
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : '没有开始播放音乐');
+    } catch {
+      setStatus('无法播放音乐，请重试。');
       return;
     }
     if (currentChartTime >= chartDuration - 0.05) currentChartTime = 0;
@@ -1128,7 +1128,7 @@ function start(): void {
     postStatus('fullscreen', { active });
   }
 
-  // HUD 随播放窗（16:9 舞台）宽度缩放，比例沿用 demo 的 clamp 视觉范围。
+  // HUD 随 16:9 播放窗宽度缩放，并限制极端尺寸下的比例。
   function applyStageMetrics(): void {
     const width = elements.stage.getBoundingClientRect().width;
     if (width <= 0) return;

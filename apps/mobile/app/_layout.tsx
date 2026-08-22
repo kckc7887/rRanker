@@ -71,7 +71,7 @@ const snapshots = new SqliteSnapshotRepository();
 
 async function loadLocalBoundAccounts() {
   let stored = await localAccounts.load();
-  // 旧版会强制注入默认本地玩家但不一定写入 KV；若本机已有该账号快照则迁移一次。
+  // 已有默认本地玩家数据时迁移一次账号记录。
   if (stored.length === 0) {
     const snapshot = await snapshots.getLatest(LOCAL_MAIMAI_ACCOUNT_ID);
     if (snapshot) {
@@ -83,7 +83,7 @@ async function loadLocalBoundAccounts() {
     }
   }
   // 首帧只建账号档案（rating 先为 0）；真实 Rating 由 hydrateLocalAccountRatings
-  // 在首帧后懒读快照补齐，避免启动时逐账号解析整份成绩快照阻塞首帧。
+  // 首帧后再读取完整成绩，避免启动时阻塞界面。
   return stored.map((profile) => createLocalMaimaiAccount(profile.displayName, 0, profile.id));
 }
 

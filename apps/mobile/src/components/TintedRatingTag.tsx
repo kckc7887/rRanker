@@ -20,7 +20,7 @@ export function TintedRatingTag({
   display: string;
   accessibilityLabel: string;
   testID?: string;
-  /** 内层填充渐变的 testID；缺省沿用 `${testID}-fill`。 */
+  /** 内层填充渐变的 testID；缺省为 `${testID}-fill`。 */
   fillTestID?: string;
   /** 追加在公共边框样式之后的覆盖项。 */
   borderStyle?: StyleProp<ViewStyle>;

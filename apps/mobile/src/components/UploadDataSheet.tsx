@@ -17,11 +17,10 @@ import { findGame, findProvider } from '@/domain/game-bind-options';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
 import type { ScoreHubAbortSignal, ScoreHubDxnetJobStats } from '@/services/score-hub-client';
-import { fetchMe, fetchScoreHubStatistics, ScoreHubError } from '@/services/score-hub-client';
+import { fetchMe, fetchScoreHubStatistics } from '@/services/score-hub-client';
 import {
   decodeMaimaiQrFromImageUri,
   extractMaimaiQrPayload,
-  QrDecodeError,
 } from '@/services/maimai-qr-decode';
 import {
   FRIEND_REQUEST_REFRESH_HINT,
@@ -40,7 +39,7 @@ import {
   scoreHubAccountStore,
   type ScoreHubAccountEntry,
 } from '@/storage/score-hub-account-store';
-import { ProviderError } from '@/providers/errors';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 import { useNotification } from '@/components/AppNotification';
 import { AppModal } from '@/components/AppModal';
@@ -239,7 +238,7 @@ export function UploadDataSheet({
         if (seq !== bindLookupSeqRef.current) return;
         // JWT 过期：保留本地绑定缓存与 token，上传时会话失败再回退好友码
         if (!isScoreHubAuthExpired(error)) {
-          // 网络错误等：沿用本地缓存
+          // 网络不可用时保留本地数据。
         }
       }
     } finally {
@@ -466,11 +465,8 @@ export function UploadDataSheet({
         message: '绑定用字符串已填入，可点「绑定二维码」。',
         variant: 'success',
       });
-    } catch (error) {
-      const message = error instanceof QrDecodeError || error instanceof Error
-        ? error.message
-        : '识别二维码失败';
-      showNotification({ title: '识别失败', message, variant: 'error' });
+    } catch {
+      showNotification({ title: '识别失败', message: '无法识别二维码，请换一张图片重试。', variant: 'error' });
     } finally {
       setDecodingQr(false);
     }
@@ -576,12 +572,10 @@ export function UploadDataSheet({
       await refreshBindStatus(friendCode.trim());
       try {
         await onFinished?.(result);
-      } catch (refreshError) {
+      } catch {
         showNotification({
           title: '页面刷新失败',
-          message: `成绩已上传并完成账号同步，但当前页面刷新失败：${
-            refreshError instanceof Error ? refreshError.message : '请稍后手动同步。'
-          }`,
+          message: '成绩已上传，请稍后手动同步页面。',
           variant: 'error',
         });
       }
@@ -589,11 +583,7 @@ export function UploadDataSheet({
       if (abortRef.current.aborted) {
         applyPhase({ kind: 'idle' });
       } else {
-        const message = error instanceof ScoreHubError || error instanceof ProviderError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : '上传失败';
+        const message = providerErrorToUserMessage(error, '上传失败，请稍后重试。');
         applyPhase({ kind: 'error', message });
       }
     } finally {
@@ -641,7 +631,7 @@ export function UploadDataSheet({
       });
       showNotification({
         title: '绑定成功',
-        message: '已绑定。开始上传将优先使用已登录会话拉分。',
+        message: '已绑定，可以开始上传。',
         variant: 'success',
       });
       await refreshStoredList();
@@ -649,9 +639,7 @@ export function UploadDataSheet({
       if (abortRef.current.aborted) {
         applyPhase({ kind: 'idle' });
       } else {
-        const message = error instanceof ScoreHubError || error instanceof Error
-          ? error.message
-          : '绑定失败';
+        const message = providerErrorToUserMessage(error, '绑定失败，请稍后重试。');
         applyPhase({ kind: 'error', message });
         showNotification({ title: '绑定失败', message, variant: 'error' });
       }
@@ -1041,8 +1029,8 @@ export function UploadDataSheet({
                   </Text>
                   <Text style={[styles.resultDetail, { color: theme.textMuted }]}>
                     {result.status === 'success'
-                      ? `写入 ${result.written} 条${result.skipped ? `，跳过 ${result.skipped} 条` : ''}${result.refreshFailed ? '，应用内刷新失败' : ''}`
-                      : result.errorMessage ?? '写入失败'}
+                      ? `写入 ${result.written} 条${result.skipped ? `，跳过 ${result.skipped} 条` : ''}${result.refreshFailed ? '，页面未能更新' : ''}`
+                      : '写入失败，请重试。'}
                   </Text>
                 </View>
               ))}

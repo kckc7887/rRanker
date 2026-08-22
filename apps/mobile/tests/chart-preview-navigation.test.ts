@@ -135,7 +135,7 @@ describe('openChartPreviewNavigation（跳转静默失败的兜底提示）', ()
       push, topRouteName: () => 'songs/[songId]', onFail,
     });
 
-    expect(onFail).toHaveBeenCalledWith('测试跳转失败');
+    expect(onFail).toHaveBeenCalledWith('无法打开谱面，请重试。');
     expect(capturedHref).not.toBeNull();
     expect(resolveChartPreviewNavigation(capturedHref!.params.requestId)).toBeNull();
   });

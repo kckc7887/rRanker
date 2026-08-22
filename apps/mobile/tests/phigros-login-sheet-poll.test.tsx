@@ -94,7 +94,7 @@ describe('ProviderLoginSheet Phigros polling', () => {
   });
 
   const startLogin = async (screen: Screen) => {
-    const button = screen.getByText('打开 TapTap 授权页');
+    const button = screen.getByText('前往 TapTap 授权');
     await act(async () => {
       fireEvent.press(button);
     });
@@ -175,7 +175,8 @@ describe('ProviderLoginSheet Phigros polling', () => {
     await startLogin(screen);
 
     await act(async () => { appStateListener?.('active'); });
-    expect(screen.getAllByText('授权失败：access_denied').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('授权失败，请重新尝试。').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/access_denied/)).toBeNull();
 
     await act(async () => { jest.advanceTimersByTime(20_000); });
     expect(pollLoginMock).toHaveBeenCalledTimes(1);

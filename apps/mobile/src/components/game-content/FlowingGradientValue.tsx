@@ -102,7 +102,7 @@ function FlowingGradientTrack({
 /**
  * MaskedView 流光渐变文本公共骨架（ChunithmGradientScore / GradientAchievement /
  * PhigrosScoreValue→FlowingGradientText / MuseDashAccValue / DxRatingCard→RatingValue）。
- * 各游戏渐变色组、轨道倍数、字号字重、周期与挂法差异经 props 原值传入，不做统一。
+ * 各游戏通过 props 提供渐变色、轨道倍数、字号、周期和布局。
  */
 export function FlowingGradientValue({
   maskElement,
@@ -141,12 +141,12 @@ export function FlowingGradientValue({
   accessibilityLabel?: string;
   /** 作为可聚焦节点暴露（maimai/Phigros 挂法） */
   accessible?: boolean;
-  /** DxRatingCard 描边遮罩的软件渲染需求，原值透传 */
+  /** DxRatingCard 描边遮罩的软件渲染开关。 */
   androidRenderingMode?: 'software' | 'hardware';
   pointerEvents?: 'auto' | 'none' | 'box-none' | 'box-only';
   /** 宽度测量挂法：mask-layout=MaskedView onLayout（中二/maimai）；hidden-text=隐形测量文本（Phigros）；none=静态不测 */
   measure?: 'mask-layout' | 'hidden-text' | 'none';
-  /** 内容宽度初值（各游戏原值：中二 180、maimai 170/260、Phigros 120） */
+  /** 内容宽度初值。 */
   initialWidth?: number;
   /** hidden-text 挂法的外层容器样式（Phigros scoreMeasureWrap） */
   measureWrapStyle?: StyleProp<ViewStyle>;

@@ -21,11 +21,11 @@ export type CreatePreferencesStoreOptions<P, S> = {
   defaults: (scope: S) => P;
   /** 解析并校验存储 JSON（含 schemaVersion 迁移），坏结构返回默认值。 */
   parse: (value: unknown, scope: S) => P;
-  /** 写入前的序列化值构造（含版本字段包装与归一化）；缺省原样存储。 */
+  /** 写入前构造序列化值；缺省直接存储。 */
   toStored?: (value: P, scope: S) => unknown;
   /** 读到坏 JSON 时是否清理对应 key；缺省清理。 */
   clearOnError?: boolean;
-  /** 主 key 无数据时的一次性迁移钩子（如旧共享 key 迁移）；返回 null 表示无迁移。 */
+  /** 主 key 无数据时执行一次迁移；返回 null 表示无迁移。 */
   onMissing?: (context: {
     storage: KeyValueStore;
     scope: S;
@@ -33,10 +33,7 @@ export type CreatePreferencesStoreOptions<P, S> = {
   }) => Promise<P | null>;
 };
 
-/**
- * 偏好持久化 store 公共工厂：收敛「load 解析 + 坏数据静默回退（可选清 key）+ save 序列化」同构骨架。
- * 各份的字段校验与 schemaVersion 迁移语义由 defaults / parse / toStored 注入，逐份保持不变。
- */
+/** 创建带解析、回退和序列化能力的偏好存储。 */
 export function createPreferencesStore<P, S = void>(options: CreatePreferencesStoreOptions<P, S>) {
   const clearOnError = options.clearOnError ?? true;
 

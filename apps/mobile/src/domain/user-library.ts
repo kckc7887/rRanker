@@ -19,7 +19,7 @@ const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'phira', 'adofai',
  * musedash 歌曲 uid 是「专辑-歌曲」格式（如 "0-48"），
  * phira 谱面 id 是 5 位完整数字（如 66661），
  * osu 歌曲 id 是完整 beatmapset id（如 3720），
- * 都不适用 maimai 的 U·TA·GE 截断语义，原样保留；其余游戏沿用 normalizeSongId。
+ * 都不适用 maimai 的 U·TA·GE 截断语义；其余游戏使用 normalizeSongId。
  */
 export function normalizeLibrarySongId(gameId: GameId, songId: string | number): string {
   return gameId === 'adofai' || gameId === 'musedash' || gameId === 'phira' || isOsuGameId(gameId)

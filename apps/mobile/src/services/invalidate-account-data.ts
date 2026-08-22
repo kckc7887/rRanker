@@ -3,7 +3,7 @@ import type { GameDataBundle } from '@/domain/game-data';
 import { queryClient } from '@/state/query-client';
 
 /**
- * 账号维度查询：key 内含 activeAccountId，切换账号后旧账号缓存不再被消费。
+ * 查询 key 包含账号 ID，防止账号之间共用缓存。
  * 清缓存只针对这些 key，避免切号时白清全局资源。
  */
 const ACCOUNT_SCOPED_QUERY_KEYS = [

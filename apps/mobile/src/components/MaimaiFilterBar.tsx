@@ -32,7 +32,6 @@ type VersionSheetValue = string | 'all';
 type SoloSheetValue = MaimaiFcAchievement | 'all';
 type MultiSheetValue = MaimaiFsAchievement | 'all';
 
-// 薄兼容导出：公共筛选芯片已收敛至 game-content/FilterShell，保留本模块历史导出符号供既有调用方使用。
 export { FilterChipFrame, NeutralChip };
 
 export type DxRatingTagFilterState = 'ready' | 'loading' | 'unavailable';

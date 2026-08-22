@@ -8,7 +8,6 @@ import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from
 export const PHIRA_API_BASE = 'https://phira.5wyxi.com';
 type FetchLike = typeof fetch;
 
-/** Phira 状态码分支文案：无 401/403 分支（落入兜底），逐字保留原实现。 */
 const PHIRA_STATUS_TEXTS: ProviderStatusTexts = {
   noData: 'Phira 未找到对应数据',
   rateLimit: 'Phira 请求过于频繁，请稍后重试',

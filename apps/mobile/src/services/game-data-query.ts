@@ -2,7 +2,7 @@ import type { GameDataBundle } from '@/domain/game-data';
 import { queryClient } from '@/state/query-client';
 
 /**
- * game-data 查询 key 的版本号：缓存结构或字段语义变化时递增，确保旧缓存不再被消费。
+ * 缓存结构或字段语义变化时递增查询 key 版本号。
  * 与 useGameData 共享同一常量，避免 key 构造分叉。
  */
 export const GAME_DATA_QUERY_VERSION = 18;

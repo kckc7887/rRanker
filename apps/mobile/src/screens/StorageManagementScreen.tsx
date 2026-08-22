@@ -21,6 +21,7 @@ import {
   storageClearPreferencesStore,
   type StorageClearCategoryId,
 } from '@/storage/storage-clear-prefs-store';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { useAppTheme } from '@/theme/app-theme';
 
 export function StorageManagementScreen() {
@@ -71,26 +72,26 @@ export function StorageManagementScreen() {
       if (result.failures.length > 0) {
         const reclaimed = result.reclaimedBytes === null
           ? ''
-          : `，实际释放 ${formatStorageBytes(result.reclaimedBytes)}`;
+          : `，已释放 ${formatStorageBytes(result.reclaimedBytes)}`;
         showNotification({
           title: '部分清除失败',
-          message: `已清除 ${result.clearedIds.length} 项${reclaimed}；失败：${result.failures.join('、')}`,
+          message: `已清除 ${result.clearedIds.length} 项${reclaimed}，部分项目未能清除，请重试。`,
           variant: 'warning',
         });
       } else {
         const reclaimed = result.reclaimedBytes === null
-          ? '实际释放量暂时无法可靠测量。'
-          : `实际释放 ${formatStorageBytes(result.reclaimedBytes)}。`;
+          ? ''
+          : `，已释放 ${formatStorageBytes(result.reclaimedBytes)}`;
         showNotification({
           title: '清除完成',
-          message: `已清除 ${result.clearedIds.length} 类缓存，${reclaimed}`,
+          message: `已清除 ${result.clearedIds.length} 类缓存${reclaimed}。`,
           variant: 'success',
         });
       }
     } catch (error) {
       showNotification({
         title: '清除失败',
-        message: error instanceof Error ? error.message : '无法清除缓存',
+        message: providerErrorToUserMessage(error, '无法清除缓存，请稍后重试。'),
         variant: 'error',
       });
     } finally {
@@ -110,10 +111,6 @@ export function StorageManagementScreen() {
           <Text style={[styles.sectionTitle, { color: theme.text }]}>可清理约</Text>
           <Text style={[styles.summaryBytes, { color: theme.accent }]}>{formatStorageBytes(report?.clearableBytes ?? 0)}</Text>
         </View>
-        <Text style={[styles.sectionDetail, { color: theme.textMuted }]}>
-          SQLite 分项按逻辑内容及物理页估算；当前数据库分配页约 {formatStorageBytes(report?.sqliteAllocatedBytes ?? 0)}，
-          其中可回收空闲页约 {formatStorageBytes(report?.sqliteReclaimableBytes ?? 0)}。
-        </Text>
         {loading && !report ? (
           <ActivityIndicator color={theme.accent} style={styles.chartLoading} />
         ) : (
@@ -128,9 +125,6 @@ export function StorageManagementScreen() {
               <View style={[styles.dot, { backgroundColor: segment.color }]} />
               <View style={styles.legendText}>
                 <Text style={[styles.legendTitle, { color: theme.text }]}>{segment.title}</Text>
-                {segment.note ? (
-                  <Text style={[styles.legendNote, { color: theme.textMuted }]}>{segment.note}</Text>
-                ) : null}
               </View>
               <Text style={[styles.legendBytes, { color: theme.textSecondary }]}>
                 {formatStorageBytes(segment.bytes)}
@@ -142,9 +136,6 @@ export function StorageManagementScreen() {
 
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>清除缓存</Text>
-        <Text style={[styles.sectionDetail, { color: theme.textMuted }]}>
-          勾选设置会自动保存，设置页快捷清除将使用相同勾选。
-        </Text>
         {clearableSegments.map((segment) => {
           const id = segment.clearCategoryId!;
           const selected = selectedIds.includes(id);
@@ -166,7 +157,6 @@ export function StorageManagementScreen() {
                 <Text style={[styles.checkTitle, { color: theme.text }]}>{segment.title}</Text>
                 <Text style={[styles.checkDetail, { color: theme.textMuted }]}>
                   约 {formatStorageBytes(segment.bytes)}
-                  {segment.note ? ` · ${segment.note}` : ''}
                 </Text>
               </View>
             </Pressable>
@@ -204,12 +194,10 @@ const styles = StyleSheet.create({
   dot: { width: 10, height: 10, borderRadius: 5 },
   legendText: { flex: 1, gap: 2 },
   legendTitle: { fontSize: 15, fontWeight: '700' },
-  legendNote: { fontSize: 12 },
   legendBytes: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   sectionTitle: { fontSize: 16, fontWeight: '800' },
   summaryRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   summaryBytes: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  sectionDetail: { fontSize: 13, marginTop: -6 },
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -22,6 +22,7 @@ import { APP_ACCENTS, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 import type { AppAppearance } from '@/storage/theme-preferences-store';
 import { storageClearPreferencesStore } from '@/storage/storage-clear-prefs-store';
+import { providerErrorToUserMessage } from '@/providers/errors';
 
 const APPEARANCES: { id: AppAppearance; label: string }[] = [
   { id: 'system', label: '跟随系统' }, { id: 'light', label: '浅色' }, { id: 'dark', label: '深色' },
@@ -75,26 +76,26 @@ export default function SettingsScreen() {
       if (result.failures.length > 0) {
         const reclaimed = result.reclaimedBytes === null
           ? ''
-          : `，实际释放 ${formatStorageBytes(result.reclaimedBytes)}`;
+          : `，已释放 ${formatStorageBytes(result.reclaimedBytes)}`;
         showNotification({
           title: '部分清除失败',
-          message: `已清除 ${result.clearedIds.length} 项${reclaimed}；失败：${result.failures.join('、')}`,
+          message: `已清除 ${result.clearedIds.length} 项${reclaimed}，部分项目未能清除，请重试。`,
           variant: 'warning',
         });
       } else {
         const reclaimed = result.reclaimedBytes === null
-          ? '实际释放量暂时无法可靠测量。'
-          : `实际释放 ${formatStorageBytes(result.reclaimedBytes)}。`;
+          ? ''
+          : `，已释放 ${formatStorageBytes(result.reclaimedBytes)}`;
         showNotification({
           title: '清除完成',
-          message: `已按勾选清除 ${result.clearedIds.length} 类缓存，${reclaimed}`,
+          message: `已清除 ${result.clearedIds.length} 类缓存${reclaimed}。`,
           variant: 'success',
         });
       }
     } catch (error) {
       showNotification({
         title: '清除失败',
-        message: error instanceof Error ? error.message : '无法清除缓存',
+        message: providerErrorToUserMessage(error, '无法清除缓存，请稍后重试。'),
         variant: 'error',
       });
     } finally {

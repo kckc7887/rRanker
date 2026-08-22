@@ -1,10 +1,3 @@
-/**
- * 舞萌谱面确认注入配置（兼容层）：
- * 桥接消息解析与停止/退出全屏脚本已下沉到 chart-preview-shared 公共层，
- * 本文件保留舞萌专属的注入配置类型、序列化规则与全部原导出名，
- * 调用方零改动；纯函数，不拉取 react-native。
- */
-
 import {
   parseChartPreviewBridgeMessage as parseChartPreviewBridgeMessageBase,
 } from '@/features/chart-preview-shared/chart-preview-bridge';
@@ -35,7 +28,7 @@ export type ChartPreviewInjectConfig = {
   settings?: ChartPreviewSettings;
   answerSoundUrl?: string;
   buddySide?: BuddyPreviewSide;
-  /** 播放器界面主题：跟随应用深浅色模式，缺省深色（与历史产物一致）。 */
+  /** 播放器界面主题跟随应用，缺省为深色。 */
   theme?: 'light' | 'dark';
 };
 

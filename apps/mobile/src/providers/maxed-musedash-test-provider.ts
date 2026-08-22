@@ -77,7 +77,7 @@ export function buildMaxedMuseDashRecords(
   ));
 }
 
-/** 转换层：统一 ScoreRecord → 旧 MuseDashPlay 兼容模型（字段值与迁移前直构完全一致；定数表常量均为正数，0 即无定数、sum 省略）。 */
+/** 将 ScoreRecord 转为 MuseDashPlay。 */
 function museDashPlayFromRecord(record: ScoreRecord): MuseDashPlay {
   return {
     uid: record.songId,

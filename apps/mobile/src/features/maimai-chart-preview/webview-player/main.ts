@@ -354,9 +354,9 @@ async function main(): Promise<void> {
     const response = await fetch(chartUrl);
     if (!response.ok) throw new Error(`谱面文件不可用（${response.status}）`);
     simaiText = await response.text();
-  } catch (error) {
-    statusEl.textContent = error instanceof Error ? error.message : '谱面加载失败';
-    postStatus('error', { message: String(error) });
+  } catch {
+    statusEl.textContent = '谱面加载失败，请返回重试。';
+    postStatus('error', { message: '谱面加载失败，请返回重试。' });
     return;
   }
 
@@ -377,9 +377,9 @@ async function main(): Promise<void> {
       }
       charts = [parseSimaiChart(simaiText, difficulty)];
     }
-  } catch (error) {
-    statusEl.textContent = error instanceof Error ? error.message : '谱面解析失败';
-    postStatus('error', { message: String(error) });
+  } catch {
+    statusEl.textContent = '无法打开谱面，请返回重试。';
+    postStatus('error', { message: '无法打开谱面，请返回重试。' });
     return;
   }
   const chart = charts[0]!;
@@ -558,8 +558,8 @@ async function main(): Promise<void> {
     if (!musicResponse.ok) throw new Error(`预览曲不可用（${musicResponse.status}）`);
     const arrayBuffer = await musicResponse.arrayBuffer();
     audioBuffer = await (await ensureAudio()).decodeAudioData(arrayBuffer);
-  } catch (error) {
-    statusEl.textContent = error instanceof Error ? `${error.message}（仍可静音看谱）` : '预览曲加载失败';
+  } catch {
+    statusEl.textContent = '预览曲加载失败，仍可静音看谱。';
     audioBuffer = null;
   }
 
@@ -1340,8 +1340,8 @@ async function main(): Promise<void> {
   renderAt(0);
 }
 
-void main().catch((error) => {
+void main().catch(() => {
   const status = document.getElementById('status');
-  if (status) status.textContent = error instanceof Error ? error.message : String(error);
-  postStatus('error', { message: String(error) });
+  if (status) status.textContent = '无法打开谱面，请返回重试。';
+  postStatus('error', { message: '无法打开谱面，请返回重试。' });
 });

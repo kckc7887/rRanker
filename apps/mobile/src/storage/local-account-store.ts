@@ -49,7 +49,6 @@ const { Store } = createAccountListStore<LocalAccountProfile>({
   },
 });
 
-/** 本地账号 store：基于公共工厂实例化，薄包装保持 upsert/remove 返回 void 的原方法签名。 */
 export class LocalAccountStore {
   private readonly store: InstanceType<typeof Store>;
 

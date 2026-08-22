@@ -1,11 +1,11 @@
 /**
- * P3 回归基线，采集自改造前现状，禁止更新哈希接受差异。
+ * 宿主树回归基线，禁止更新哈希接受差异。
  * 覆盖：5 个 DifficultyBadge（adofai/musedash/chunithm/phigros/ScoreVisuals）、
  * 流光渐变文本 4 入口（ChunithmGradientScore、AchievementValue→GradientAchievement、
  * PhigrosScoreValue→FlowingGradientText、MuseDashAccValue）与 DxRatingCard 整卡。
  * 哈希确定性：Animated.loop 静态 mock；useFlowingProgress 固定为静态首帧
  * （progress=0 → interpolate 取 outputRange[0]），流光动画值不进入运行时抖动。
- * 数据构造均沿用既有 jest 测试 fixture（tuf-screens / muse-dash-screens /
+ * 数据使用 jest 测试 fixture（tuf-screens / muse-dash-screens /
  * game-content-host-contract / dx-rating-components），不造新数据语义。
  */
 import { createHash } from 'node:crypto';

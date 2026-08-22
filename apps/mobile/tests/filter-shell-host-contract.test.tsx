@@ -214,7 +214,7 @@ test('exports the stable filter bar host tree contract', async () => {
   const canonicalTrees = canonicalize(trees) as unknown[];
   const hash = createHash('sha256').update(JSON.stringify(canonicalTrees)).digest('hex');
   expect(trees).toHaveLength(18);
-  // 基线包含本次已授权的公共双端 Range Selector：
-  // MuseDash/TUF/舞萌/中二/Phigros 的有界连续范围改造后，其余 FilterShell 结构继续受同一合同保护。
+  // 基线包含公共双端 Range Selector：
+  // 其余 FilterShell 结构继续受同一合同保护。
   expect(hash).toBe('f69d9201cf74d143e0045b9dcd978814630b745aa05b8bd53616c42f91177ebc');
 });

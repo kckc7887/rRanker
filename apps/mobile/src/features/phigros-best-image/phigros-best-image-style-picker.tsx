@@ -88,7 +88,7 @@ export function PhigrosBestImageStylePicker({
               style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, styles.currentItem, pressed && styles.pressed]}
             >
               <View style={[styles.currentBadge, { backgroundColor: theme.accentSoft }]}><Text style={[styles.currentBadgeText, { color: theme.accent }]}>当前</Text></View>
-              <View style={styles.itemCopy}><Text style={[styles.itemName, { color: theme.text }]}>使用玩家当前{label}</Text><Text style={[styles.itemMeta, { color: theme.textMuted }]}>恢复账号同步的素材</Text></View>
+              <View style={styles.itemCopy}><Text style={[styles.itemName, { color: theme.text }]}>使用玩家当前{label}</Text></View>
               {selection?.mode === 'current' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
             </Pressable>
             <View style={styles.quickChoiceRow}>

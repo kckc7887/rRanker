@@ -66,8 +66,8 @@ export default function MaimaiChartPreviewScreen() {
           buddySide,
           title: typeof params.title === 'string' ? params.title : undefined,
         };
-      } catch (error) {
-        return { error: error instanceof Error ? error.message : '谱面参数无效' };
+      } catch {
+        return { error: '无法打开该谱面，请返回歌曲详情重试。' };
       }
     },
     [params.buddySide, params.chartType, params.levelIndex, params.songId, params.title],
@@ -79,7 +79,6 @@ export default function MaimaiChartPreviewScreen() {
       : {
           kind: 'ready' as const,
           payload: mapped,
-          // 舞萌 prepare 无超时中止（与现状一致），signal 保留接口位不使用。
           prepare: (signal: AbortSignal, settings: unknown) =>
             prepareChartPreviewWebViewSource({
               ...mapped,

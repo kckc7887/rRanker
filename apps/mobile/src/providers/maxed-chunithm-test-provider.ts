@@ -79,7 +79,7 @@ export function buildMaxedChunithmRecords(catalog: ChunithmCatalogSnapshot): Sco
   });
 }
 
-/** 转换层：统一 ScoreRecord → 旧 ChunithmScore 兼容模型（存储/展示边界，字段值与迁移前直构完全一致）。 */
+/** 将 ScoreRecord 转为 ChunithmScore。 */
 function chunithmScoreFromRecord(record: ScoreRecord): ChunithmScore {
   return {
     id: Number(record.songId),

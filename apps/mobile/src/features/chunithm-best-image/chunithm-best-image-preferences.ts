@@ -114,7 +114,7 @@ const { Store } = createPreferencesStore<ChunithmBestImageStylePreferences, stri
   storeKey: (accountId) => `${PREFIX}${accountId}`,
   defaults: () => ({ ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES }),
   parse: parseChunithmBestImageStylePreferences,
-  // 历史行为：读到坏数据仅回退默认值，不清理对应 key。
+  // 坏数据回退默认值，不清理对应 key。
   clearOnError: false,
 });
 
