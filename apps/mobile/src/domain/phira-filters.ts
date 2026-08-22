@@ -84,7 +84,7 @@ export function dedupePhiraCharts(values: readonly PhiraChart[]): PhiraChart[] {
 /**
  * Phira /chart 分页下一页参数：
  * 服务端 page 从 1 开始且 page<1 会钳制为 1（实测所有 type：page=1 与 page=0 返回完全相同的首页），
- * 因此首页用 0（沿用既有缓存键），后续翻页跳过 1：0 → 2 → 3 → …。
+ * 因此首页使用 0，后续翻页跳过 1：0 → 2 → 3 → …。
  */
 export function phiraCatalogNextPage(
   pages: readonly PhiraChartPage[],

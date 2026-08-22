@@ -319,7 +319,6 @@ export function PhigrosFilterBar({
   );
 }
 
-// 薄兼容导出：筛选芯片已收敛至公共 FilterShell（经 MaimaiFilterBar 兼容层），保留本模块原有导出符号。
 export { NeutralChip };
 
 export function LevelChip({ level, active, onPress }: {

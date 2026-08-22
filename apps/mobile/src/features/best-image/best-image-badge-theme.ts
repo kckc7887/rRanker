@@ -13,7 +13,7 @@ export const BADGE_GOLD_BORDER_COLORS: BadgeRainbowColors = [
   '#84530A', '#A46E12', '#765006', '#A46E12', '#84530A',
 ];
 export const BADGE_LAYER_OVERLAY = 'rgba(75,78,85,0.16)';
-// 达成率彩虹字沿用原配色；胶囊标签使用上方独立的浅/深双层色组。
+// 达成率彩虹字与胶囊标签使用不同色组。
 export const BEST_IMAGE_RAINBOW_COLORS: BadgeRainbowColors = [
   '#FF8A96', '#78E8A0', '#78C8FF', '#A89CF8', '#F08ADE',
 ];

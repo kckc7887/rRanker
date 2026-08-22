@@ -274,12 +274,11 @@ beforeEach(() => {
 test('maimai best image screen contract', async () => {
   const screen = await render(<BestImageScreen />);
   await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
-  const hash = await screenHash(screen, [
-    { label: /^导出成绩图片$/ },
-    { testId: 'best-image-webview-status' },
-    { label: /^宽度 1080 像素$/ },
-  ]);
-  expect(hash).toBe('b0a7380c22a503d892667329cf35cff841651deaa0ebf4a6f387b9bebb836e55');
+  expect(screen.queryByTestId('best-image-webview-status')).toBeNull();
+  expect(await screenHash(screen, [{ label: /^导出成绩图片$/ }]))
+    .toBe('7a04172054dc34caf983669471f3fac1dea85f272a46b744f6262c6930ec09c0');
+  expect(await screenHash(screen, [{ label: /^宽度 1080 像素$/ }]))
+    .toBe('c042ab6b91749cb3e1d4097be5c6ec7f9afa139691d541ccfc1715bd8bdd670c');
 });
 
 test('chunithm best image screen contract', async () => {
@@ -293,12 +292,11 @@ test('chunithm best image screen contract', async () => {
   };
   const screen = await render(<ChunithmBestImageScreen />);
   await waitFor(() => expect(screen.getByTestId('chunithm-best-image-html-preview-0')).toBeTruthy());
-  const hash = await screenHash(screen, [
-    { label: /^导出成绩图片$/ },
-    { testId: 'chunithm-best-image-webview-status' },
-    { label: /^Best50$/ },
-  ]);
-  expect(hash).toBe('7c1d73de5d8925ba19ffcbe6b6d815ddcf7aad0e06833efb86d239e9d7efa3f0');
+  expect(screen.queryByTestId('chunithm-best-image-webview-status')).toBeNull();
+  expect(await screenHash(screen, [{ label: /^导出成绩图片$/ }]))
+    .toBe('7a04172054dc34caf983669471f3fac1dea85f272a46b744f6262c6930ec09c0');
+  expect(await screenHash(screen, [{ label: /^Best50$/ }]))
+    .toBe('498bc8cbad5d53ac9604325cb39a095e0c9e5b546b9e932b75e34897fc5e093b');
 });
 
 test('phigros best image screen contract', async () => {
@@ -321,10 +319,9 @@ test('phigros best image screen contract', async () => {
   };
   const screen = await render(<PhigrosBestImageScreen />);
   await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
-  const hash = await screenHash(screen, [
-    { label: /^导出成绩图片$/ },
-    { testId: 'phigros-best-image-webview-status' },
-    { label: /^Best30$/ },
-  ]);
-  expect(hash).toBe('4b6b351b11c439c366b0f996bd2bf4987c8f52f35efd0228240899aa7f8271ea');
+  expect(screen.queryByTestId('phigros-best-image-webview-status')).toBeNull();
+  expect(await screenHash(screen, [{ label: /^导出成绩图片$/ }]))
+    .toBe('7a04172054dc34caf983669471f3fac1dea85f272a46b744f6262c6930ec09c0');
+  expect(await screenHash(screen, [{ label: /^Best30$/ }]))
+    .toBe('f01139c9e8b46e1d5ea885ea099864f97565cfab574fb16ddedf0af881b14ab4');
 });

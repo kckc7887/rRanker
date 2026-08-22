@@ -121,7 +121,7 @@ export function usePhiraNotes(chart: PhiraChart | undefined, enabled = true) {
       } catch (error) {
         if (signal.aborted) throw error;
         const value: import('@/domain/phira').PhiraNoteSnapshot = { chartUpdated: chart!.chartUpdated ?? null, counts: null,
-          unavailableReason: error instanceof Error ? error.message : '谱面不可用', source: phiraSource() };
+          unavailableReason: '请稍后重试', source: phiraSource() };
         return value;
       }
     }, ...OPTIONS,

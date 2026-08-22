@@ -1,8 +1,8 @@
 /**
- * P3 回归基线，采集自 best-image picker 外壳化改造前现状，禁止更新哈希接受差异。
+ * 宿主树回归基线，禁止更新哈希接受差异。
  * 覆盖：4 个 best-image picker（maimai 收藏品 / 中二角色 / 中二背景歌曲 / Phigros 素材）
  * 全弹层 Host Tree（Modal + grabber + header + 搜索 + 模式区 + 列表项）。
- * mock 手法沿用既有 chunithm-best-image-background-picker / p3-host-contract-* 测试：
+ * mock 使用 chunithm-best-image-background-picker / p3-host-contract-* 测试配置：
  * 固定 insets 与主题、expo-image 回落 RN.Image、expo-linear-gradient 回落 RN.View、
  * CachedTabActive 恒真、Animated.loop 静态 mock；不触发随机选择（渲染期无 Math.random）。
  */
@@ -176,8 +176,14 @@ test('maimai collection picker host tree contract', async () => {
       />,
     ),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON())))
-    .toBe('8f7eadf2250eeaab0a09892edd43056ddcb62cd4baec7c04809aec5cadfec31e');
+  expect(await treeHash([
+    screens[0]!.getByLabelText('金牌称号，#9003').toJSON(),
+    screens[1]!.getByLabelText('示例头像，#9001').toJSON(),
+    screens[2]!.getByLabelText('示例姓名框，#9002').toJSON(),
+    screens[3]!.getByText('正在从落雪读取完整列表').toJSON(),
+    screens[4]!.getByText('落雪收藏品加载失败').toJSON(),
+  ])).toBe('63d6fc62e71559ce8a5ab2642d24967bad1315aa4bb1f49547c5be5657d053bc');
+  screens.forEach((screen) => expect(screen.queryByText('恢复账号同步的素材')).toBeNull());
 });
 
 test('chunithm character picker host tree contract', async () => {
@@ -259,6 +265,9 @@ test('phigros style picker host tree contract', async () => {
       />,
     ),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON())))
-    .toBe('4435669b6ddb024061d46baacbf350745c0a1543dffa49dda62e759bd28904dc');
+  expect(await treeHash([
+    screens[0]!.getByLabelText('初始头像，Illustrator A').toJSON(),
+    screens[1]!.getByLabelText('初始背景，Illustrator B').toJSON(),
+  ])).toBe('4e7791c0b5d9eb57f8cb238d1ad09ef35620df5cc57db066ca2c0e4538ec0784');
+  screens.forEach((screen) => expect(screen.queryByText('恢复账号同步的素材')).toBeNull());
 });

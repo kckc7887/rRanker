@@ -12,18 +12,6 @@ export type BestImageWebViewPhase =
 
 export type BestImageWebViewState = { phase: BestImageWebViewPhase; version: string | null };
 
-/** 各成绩图片板块共用的 WebView 渲染状态文案（与各板块原文案逐字一致）。 */
-export const BEST_IMAGE_WEBVIEW_PHASE_LABELS: Record<BestImageWebViewPhase, string> = {
-  loading: '正在加载',
-  loaded: '页面已载入，等待渲染',
-  rendering: '正在渲染',
-  ready: '渲染就绪',
-  timeout: '响应超时',
-  error: '加载失败',
-  crashed: '渲染进程崩溃',
-  terminated: '渲染进程已终止',
-};
-
 const TERMINAL_PHASES: ReadonlySet<BestImageWebViewPhase> = new Set([
   'ready',
   'error',
@@ -32,12 +20,12 @@ const TERMINAL_PHASES: ReadonlySet<BestImageWebViewPhase> = new Set([
   'timeout',
 ]);
 
-/** 终态判定：到达后不再被后续渲染事件覆盖（ready/error/crashed/terminated/timeout）。 */
+/** 完成或失败后忽略迟到事件，避免页面状态倒退。 */
 export function isBestImageWebViewTerminal(phase: BestImageWebViewPhase): boolean {
   return TERMINAL_PHASES.has(phase);
 }
 
-/** 设置某页 WebView 状态；version 缺省时沿用上一状态的值（与原各板块实现一致）。 */
+/** 设置页面状态；未提供版本时保留当前值。 */
 export function updateBestImageWebViewState(
   setStates: Dispatch<SetStateAction<Record<string, BestImageWebViewState>>>,
   pageId: string,
@@ -53,7 +41,7 @@ export function updateBestImageWebViewState(
   }));
 }
 
-/** 渲染中状态：终态时保持原阶段不覆盖（舞萌板块的既有保护语义）。 */
+/** 终态不会被渲染中状态覆盖。 */
 export function updateBestImageWebViewRenderingState(
   setStates: Dispatch<SetStateAction<Record<string, BestImageWebViewState>>>,
   pageId: string,

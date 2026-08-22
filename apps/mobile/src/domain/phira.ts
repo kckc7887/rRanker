@@ -91,7 +91,7 @@ const pagedCharts = z.object({
   pageNum: z.number().int().positive().optional(),
 }).passthrough();
 
-/** OpenAPI 历史版本曾直接返回数组；边界统一成分页对象。 */
+/** 将数组和分页响应统一为分页对象。 */
 export const PhiraChartPageSchema = z.union([pagedCharts, z.array(PhiraChartSchema)]).transform((value) =>
   Array.isArray(value) ? { results: value, total: value.length } : { ...value, total: value.total ?? value.count },
 );

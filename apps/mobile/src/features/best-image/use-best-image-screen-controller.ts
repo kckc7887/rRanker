@@ -22,37 +22,18 @@ import {
 } from './best-image-webview-state';
 import type { BestImageWebViewSource } from './prepare-best-image-webview-sources';
 
-/** 导出渲染超时（30 秒）与就绪后 resolve 延迟（320ms），三屏原值。 */
+/** 导出渲染超时与原生视图稳定等待时间。 */
 const EXPORT_RENDER_TIMEOUT_MS = 30_000;
 const EXPORT_RESOLVE_DELAY_MS = 320;
 
-/**
- * best-image 三屏（舞萌/中二/Phigros）共用的屏幕控制器。
- *
- * 承载三屏 1:1 同构的骨架状态与逻辑：
- * - 通用选择状态：输出宽度 / 图片类型 / 数量文本 / 偏好对象 / picker 打开项；
- * - 预览分页状态：pageHeights / pageIndex / previewStates；
- * - 导出三件套：waitForExportPage + handleExportMessage + exportImages
- *   （权限申请 → 逐页等待就绪 → captureRef（含 DrawViewHierarchy fallback）→
- *   保存到相册 → 通知，参数为三屏原值）。
- *
- * 三屏的真实差异全部经 config 参数表达，不枚举游戏 ID：
- * - defaultExportHeight：舞萌 minimumBestImageHeight(width)，其余 Math.ceil(width * 0.75)；
- * - messageScale：高度/就绪消息的 DPR 基准，舞萌不传（默认 4:3 最小高），中二/Phigros 传 1；
- * - wrapExportPageError：舞萌的「第 N/M 页渲染失败/保存失败」逐页错误包装；
- * - exportBusyIncludesIndex：舞萌忙态含 exportIndex，其余仅看 exportStatus；
- * - previewRenderingGuard：舞萌预览渲染消息走终态保护（updateBestImageWebViewRenderingState）。
- *
- * 偏好 load/save 走 P2 工厂 store 的适配层（load/save 由各屏注入），
- * 行为与各屏原 effect 逐字一致（load 前 setPrefsReady(false)，save 仅在 ready 后触发）。
- */
+/** 成绩图屏幕的分页、偏好和导出控制器。 */
 export type BestImageScreenControllerConfig<TType extends string, TPrefs> = {
   accountId: string;
   defaultType: TType;
   defaultWidth: number;
   defaultQuantityText: string;
   defaultPreferences: TPrefs;
-  /** 偏好读写适配层：包住各游戏 P2 工厂 store（舞萌 save 的 .catch(() => undefined) 吞错语义在此保留）。 */
+  /** 偏好读写入口。 */
   preferences: {
     load: (accountId: string) => Promise<TPrefs>;
     save: (accountId: string, prefs: TPrefs) => Promise<void>;
@@ -75,7 +56,7 @@ export type BestImageScreenControllerConfig<TType extends string, TPrefs> = {
 export type BestImageScreenControllerRuntime = {
   /** 当前分页结果（导出等待页高的查找表）。 */
   pages: readonly { id: string }[];
-  /** 当前 HTML 页（导出循环页数来源，舞萌原值）。 */
+  /** 当前 HTML 页。 */
   htmlPages: readonly string[] | null;
   /** 导出使用的 WebView 页面源（中二为平台分支计算值，非 state）。 */
   sources: readonly BestImageWebViewSource[] | null;
@@ -106,8 +87,7 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
   const exportReject = useRef<((error: Error) => void) | null>(null);
   const exportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // config 每渲染均可能携带新引用（各屏内联构造），统一走 ref 读取，
-  // 保证下方 effect 依赖与原屏逐字一致（仅随 accountId / prefs / prefsReady 触发）。
+  // 配置可能在每次渲染时产生新引用，用 ref 避免无关 effect 重跑。
   const configRef = useRef(config);
   configRef.current = config;
 
@@ -142,10 +122,7 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
       : parseBestImageReadyMessage(data, width, scale);
   };
 
-  /**
-   * 预览 WebView 的 onMessage 统一入口：runtime 版本上报 → 高度测量 → 就绪。
-   * 舞萌（previewRenderingGuard）走终态保护变体，其余直接置 rendering，均为各屏原语义。
-   */
+  /** 处理页面版本、高度和就绪消息。 */
   const handlePreviewMessage = (dataValue: string, pageId: string) => {
     const guard = configRef.current.previewRenderingGuard;
     const runtimeMessage = parseBestImageRuntimeMessage(dataValue, width);
@@ -163,7 +140,7 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
     if (readyHeight !== null) updateBestImageWebViewState(setPreviewStates, pageId, 'ready');
   };
 
-  /** 挂载导出画布并等待该页 WebView 上报就绪高度；30 秒超时（三屏原值）。 */
+  /** 挂载导出画布并等待页面上报就绪高度。 */
   const waitForExportPage = (
     waitForIndex: number,
     pages: readonly { id: string }[],
@@ -184,7 +161,7 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
     }, EXPORT_RENDER_TIMEOUT_MS);
   });
 
-  /** 导出 WebView 的 onMessage：测量高度 + 就绪 resolve（320ms 延迟等待原生捕获视图定型）。 */
+  /** 测量页面高度，并等待原生捕获视图稳定。 */
   const handleExportMessage = (dataValue: string) => {
     const measured = parseHeightMessage(dataValue);
     if (measured !== null) setExportHeight(measured);
@@ -196,11 +173,11 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
     exportReject.current = null;
     if (exportTimer.current) clearTimeout(exportTimer.current);
     exportTimer.current = null;
-    // 允许原生捕获视图采用最终高度、WebView 以 scale 1 重新适配后再 resolve。
+    // 等待原生捕获视图采用最终高度。
     setTimeout(() => resolve(readyHeight), EXPORT_RESOLVE_DELAY_MS);
   };
 
-  /** 单页截图：iOS 上 DrawViewHierarchy 失败时回落 useRenderInContext（三屏原值）。 */
+  /** iOS 截图失败时改用 useRenderInContext。 */
   const captureExportPage = async (index: number, pages: readonly { id: string }[]): Promise<string> => {
     const height = await waitForExportPage(index, pages);
     const dimensions = bestImageCaptureDimensions(width, height, PixelRatio.get(), Platform.OS);
@@ -220,7 +197,6 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
     }
   };
 
-  /** 导出全流程：权限 → 逐页渲染截图 → 逐张保存 → 通知；失败/成功均清理临时文件。 */
   const exportImages = async (runtime: BestImageScreenControllerRuntime) => {
     const { canExport, htmlPages, sources, buildExportFilename, pages } = runtime;
     const { wrapExportPageError, exportBusyIncludesIndex } = configRef.current;
@@ -237,8 +213,7 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
           try {
             uri = await captureExportPage(index, pages);
           } catch (error) {
-            const reason = error instanceof Error ? error.message : '未知错误';
-            throw new Error(`第 ${index + 1}/${pageCount} 页渲染失败：${reason}`);
+            throw new Error(`第 ${index + 1}/${pageCount} 页生成失败`, { cause: error });
           }
         } else {
           uri = await captureExportPage(index, pages);
@@ -252,8 +227,7 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
           try {
             await saveBestImageCapture(captures[index]!.uri, captures[index]!.filename);
           } catch (error) {
-            const reason = error instanceof Error ? error.message : '未知错误';
-            throw new Error(`第 ${index + 1}/${captures.length} 页保存失败：${reason}`);
+            throw new Error(`第 ${index + 1}/${captures.length} 页保存失败`, { cause: error });
           }
         } else {
           await saveBestImageCapture(captures[index]!.uri, captures[index]!.filename);
@@ -264,10 +238,10 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
         message: `已保存 ${captures.length} 张成绩图片到相册`,
         variant: 'success',
       });
-    } catch (error) {
+    } catch {
       showNotification({
         title: '导出失败',
-        message: error instanceof Error ? error.message : '无法导出成绩图片',
+        message: '无法导出成绩图片，请重试。',
         variant: 'error',
       });
     } finally {
@@ -281,7 +255,6 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
     }
   };
 
-  /** 导出 Modal 的 onRequestClose：以取消错误结束当前等待（三屏原值文案）。 */
   const cancelExportRequest = () => {
     exportReject.current?.(new Error('导出已取消'));
   };

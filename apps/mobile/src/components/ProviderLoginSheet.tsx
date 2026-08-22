@@ -32,7 +32,7 @@ import { reusablePartiallyBoundAccounts } from '@/domain/shared-credential-accou
 import { OsuModeSelectSheet } from '@/components/osu/OsuModeSelectSheet';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
-import { ProviderError } from '@/providers/errors';
+import { ProviderError, providerErrorToUserMessage } from '@/providers/errors';
 import type { ProviderSession } from '@/providers/contracts';
 import {
   beginLxnsAuthorize,
@@ -168,7 +168,7 @@ export function ProviderLoginSheet({
     onClose();
   };
 
-  const messageFor = (error: unknown) => error instanceof ProviderError ? error.message : '验证失败，请稍后重试';
+  const messageFor = (error: unknown) => providerErrorToUserMessage(error, '验证失败，请稍后重试。');
 
   const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
@@ -211,7 +211,7 @@ export function ProviderLoginSheet({
       });
     } catch (error) {
       if (newSession.mode === 'cookie-jar' && error instanceof ProviderError && error.code === 'authentication') {
-        throw new ProviderError('authentication', '账号密码正确，但 iOS 未能携带登录 Cookie', false, { cause: error });
+        throw new ProviderError('authentication', 'iOS login session missing', false, { cause: error });
       }
       throw error;
     }
@@ -374,7 +374,7 @@ export function ProviderLoginSheet({
     if (phiPollingRef.current) return;
     const now = Date.now();
     if (now < phiNextAllowedAtRef.current) {
-      setMessage('TapTap 请求过于频繁，已自动放慢轮询…');
+      setMessage('操作太频繁，请稍后再试。');
       return;
     }
     const remaining = Math.max(0, Math.floor((phiExpiresAt - now) / 1000));
@@ -385,7 +385,7 @@ export function ProviderLoginSheet({
       if (result === 'pending' || result === 'waiting') return;
       if (result === 'slowdown') {
         phiNextAllowedAtRef.current = Date.now() + 5_000;
-        setMessage('TapTap 请求过于频繁，已自动放慢轮询…');
+        setMessage('操作太频繁，请稍后再试。');
         return;
       }
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
@@ -415,8 +415,7 @@ export function ProviderLoginSheet({
         return;
       }
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
-      const detail = error instanceof Error ? error.message : String(error);
-      setMessage(`授权失败：${detail}`);
+      setMessage(providerErrorToUserMessage(error, '授权失败，请重新尝试。'));
     } finally {
       phiPollingRef.current = false;
     }
@@ -544,7 +543,7 @@ export function ProviderLoginSheet({
                       onPress={() => void beginPhigrosLogin()}
                       style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
                     >
-                      <Text style={styles.primaryText}>打开 TapTap 授权页</Text>
+                      <Text style={styles.primaryText}>前往 TapTap 授权</Text>
                     </Pressable>
                     <Text style={styles.hint}>
                       点击后将跳转 TapTap 完成授权，授权成功后自动绑定。
@@ -564,9 +563,6 @@ export function ProviderLoginSheet({
                     </Pressable>
                   </>
                 )}
-                <Text style={styles.security}>
-                  Session Token 仅保存在系统 SecureStore，不进入 SQLite 或日志。
-                </Text>
               </>
             ) : isOsu ? (
               <>
@@ -575,13 +571,10 @@ export function ProviderLoginSheet({
                   onPress={() => void openOsuAuthorize()}
                   style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
                 >
-                  <Text style={styles.primaryText}>打开 osu! 授权页</Text>
+                  <Text style={styles.primaryText}>前往 osu! 授权</Text>
                 </Pressable>
                 <Text style={styles.hint}>
                   点击后跳转浏览器完成授权，同意后返回并选择要绑定的模式。
-                </Text>
-                <Text style={styles.security}>
-                  Access Token 约 24 小时过期；刷新令牌保存在系统 SecureStore，不进入 SQLite 或日志。
                 </Text>
                 {osuReusableAccounts.length > 0 ? (
                   <View style={[styles.reuseSection, { borderTopColor: theme.border }]}>
@@ -643,13 +636,10 @@ export function ProviderLoginSheet({
                   onPress={() => void openLxnsAuthorize()}
                   style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
                 >
-                  <Text style={styles.primaryText}>打开落雪授权页</Text>
+                  <Text style={styles.primaryText}>前往落雪授权</Text>
                 </Pressable>
                 <Text style={styles.hint}>
-                  点击后跳转浏览器完成授权，同意后将自动返回并绑定。本 App 使用 PKCE，不保存应用秘钥。
-                </Text>
-                <Text style={styles.security}>
-                  Access Token 约 15 分钟过期；刷新令牌保存在系统 SecureStore，不进入 SQLite 或日志。
+                  同意授权后将自动返回并绑定。
                 </Text>
                 {reusableAccounts.length > 0 ? (
                   <View style={[styles.reuseSection, { borderTopColor: theme.border }]}>
@@ -718,7 +708,7 @@ export function ProviderLoginSheet({
                   autoComplete="one-time-code"
                   importantForAutofill="no"
                   editable={!busy}
-                  placeholder="密码（不会保存）"
+                  placeholder="密码"
                   secureTextEntry
                   value={password}
                   onChangeText={setPassword}
@@ -753,9 +743,6 @@ export function ProviderLoginSheet({
                 >
                   <Text style={[styles.secondaryText, { color: theme.accent }]}>验证并保存凭证</Text>
                 </Pressable>
-                <Text style={styles.security}>
-                  密码仅用于当次登录；上传凭证写入系统 SecureStore，不进入 SQLite 或日志。
-                </Text>
               </>
             )}
           </View>
@@ -812,7 +799,6 @@ const styles = StyleSheet.create({
   secondaryText: { color: '#246BFD', fontWeight: '700' },
   or: { color: '#9CA3AF', textAlign: 'center' },
   hint: { color: '#6B7280', fontSize: 12, lineHeight: 16 },
-  security: { color: '#6B7280', fontSize: 12, lineHeight: 18, marginTop: 4 },
   phiStatus: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
   reuseSection: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 4, paddingTop: 14, gap: 10 },
   reuseList: { gap: 8 },

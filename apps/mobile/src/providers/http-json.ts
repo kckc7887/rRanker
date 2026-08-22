@@ -26,11 +26,7 @@ export type JsonRequestOptions<T> = {
   label: string;
   timeoutMs?: number;
   retries?: number;
-  /**
-   * 三段错误文案逐字覆盖（结构不一致/读取超时/无法连接）。
-   * 缺省按 label 生成，保持既有调用方行为不变；
-   * 供文案与 label 模板存在空格或措辞差异的存量 Provider（如 TUF）零变化收敛使用。
-   */
+  /** 覆盖结构、超时和网络错误文案。 */
   messages?: { schema?: string; timeout?: string; network?: string };
 };
 

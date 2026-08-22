@@ -30,10 +30,7 @@ export type ScoreCardTagRows = {
   testID?: string;
 };
 
-/**
- * 紧凑指标侧栏成绩卡样式组。
- * 源自 Phigros 布局，Phigros/Phira 共用；收敛到公共层以消除 Phira 对 Phigros 文件的跨游戏样式依赖。
- */
+/** 紧凑指标侧栏成绩卡样式组。 */
 export const COMPACT_METRIC_CARD_STYLES = StyleSheet.create({
   card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   main: { flex: 1, minWidth: 0, gap: 4 },

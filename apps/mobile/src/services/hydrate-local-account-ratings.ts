@@ -6,8 +6,7 @@ import { useSession } from '@/state/session-store';
 
 /**
  * 启动后后台补齐本地玩家账号的真实 Rating。
- * 首帧不再为每个本地账号读取并解析整份成绩快照（只为拿 best50.rating 一个数字），
- * 改为首帧后懒读并推送；无快照的账号保持初始 0，展示值最终与旧行为一致。
+ * 首帧后再读取完整成绩，避免启动时为每个账号解析大型数据。
  */
 export async function hydrateLocalAccountRatings(
   repository: SnapshotRepository = new SqliteSnapshotRepository(),

@@ -14,17 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/app-theme';
 
-/**
- * best-image 族选择器共享 Modal 外壳。
- *
- * 只承载四份 picker 完全同构的骨架：pageSheet Modal + grabber + header（标题/计数/完成）
- * + 搜索框 + 列表容器；主题色/insets 的注入顺序与各 picker 原实现逐字一致。
- * 样式值不在此统一：各家把自有 StyleSheet 的对应键经 `styles` 注入
- * （A 派 maimai/phigros 与 B 派 chunithm 的字号、间距、圆角存在原值差异，必须原样保留）。
- * 结构差异经插槽表达：`aboveList`（称号等级筛选 / 模式 chip 行 / 默认背景卡）、
- * `listHeaderComponent`/`listEmptyComponent`（快捷选择区 / 空态文案）、
- * `listNode`（maimai 加载/错误占位整块替换列表）。
- */
+/** 成绩图素材选择器的弹层外壳。 */
 export type BestImagePickerShellStyles = {
   root: ViewStyle;
   grabber: ViewStyle;
@@ -66,9 +56,9 @@ export function BestImagePickerShell<TItem>({
 }: {
   visible: boolean;
   onClose: () => void;
-  /** 标题子节点：传各家原有 JSX 子节点结构（如 ['选择', label]），避免改变 Text children 形态。 */
+  /** 标题子节点。 */
   title: ReactNode;
-  /** 计数子节点：同上，保留 [n, ' 项'] 与整体模板字符串等原始结构差异。 */
+  /** 计数子节点。 */
   countText: ReactNode;
   closeLabel: string;
   searchLabel: string;

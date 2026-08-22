@@ -192,7 +192,7 @@ export class UploadPrefsStore {
     await this.write(viewFor(friendCode, map));
   }
 
-  /** 删除某好友码的勾选记录（例如历史 JWT 删除时同步清理）。 */
+  /** 删除好友码时同步清理勾选记录。 */
   async removeSelection(friendCode: string): Promise<void> {
     const code = friendCode.trim();
     if (!code) return;

@@ -1,8 +1,8 @@
 /**
- * P3 回归基线，采集自改造前现状，禁止更新哈希接受差异。
+ * 宿主树回归基线，禁止更新哈希接受差异。
  * 覆盖：5 个 ScoreCard（Tuf/MuseDash/Phigros/Phira/Chunithm）与
  * 6 个 SongRow（adofai/musedash/chunithm/phigros/phira + cover 成功与失败回退两态）。
- * 数据构造沿用既有 jest 测试 fixture（tuf-screens / muse-dash-screens /
+ * 数据使用 jest 测试 fixture（tuf-screens / muse-dash-screens /
  * game-content-host-contract / phira-ui / chunithm-song-detail），不造新数据语义。
  * 哈希确定性：Animated.loop 静态 mock；useFlowingProgress 固定静态首帧；
  * cover 失败态通过 fireEvent 触发 onError（♪ 占位），expo-image mock 为 RN.Image。

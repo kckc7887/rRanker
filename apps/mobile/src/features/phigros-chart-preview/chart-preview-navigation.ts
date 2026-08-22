@@ -38,12 +38,7 @@ function pruneHandoffs(now: number): void {
   }
 }
 
-/**
- * 详情页到谱面确认页的进程内交接。
- *
- * 路由只携带短 ASCII requestId，歌曲 ID、标题和 Phira 谱面元数据不再经过
- * Expo Router 查询串；目标页再从同一公共交接表读取完整请求。
- */
+/** 路由仅携带短标识，避免大型谱面数据进入查询串。 */
 export function stageChartPreviewNavigation(
   request: ChartPreviewNavigationRequest,
 ): ChartPreviewNavigationHref {

@@ -282,7 +282,8 @@ describe('M3A personal library screens', () => {
     });
 
     const screen = await render(<OverviewScreen />);
-    await fireEvent.press(screen.getByLabelText('同步数据，当前 水鱼查分器'));
+    await fireEvent.press(screen.getByLabelText('同步数据'));
+    expect(screen.queryByLabelText(/水鱼查分器/)).toBeNull();
 
     await waitFor(() => expect(mockCancelQueries).toHaveBeenCalledWith({ queryKey: ['game-data'] }));
     await waitFor(() => expect(mockRefreshDivingFishAccounts).toHaveBeenCalledWith({

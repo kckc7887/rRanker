@@ -13,6 +13,7 @@ import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store'
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { providerErrorToUserMessage } from '@/providers/errors';
 
 const chunithmTempAccount = new ChunithmTempAccountStore();
 
@@ -22,10 +23,10 @@ type CallbackStatus =
   | { kind: 'error'; message: string };
 
 function messageFor(error: unknown): string {
-  return error instanceof Error ? error.message : '授权失败，请重试';
+  return providerErrorToUserMessage(error, '授权失败，请重试。');
 }
 
-/** 落雪 OAuth 回调页：承接 rranker://oauth/lxns?code=…&state=…，自动完成换取与绑定。 */
+/** 完成落雪授权并绑定对应游戏账号。 */
 export default function LxnsOAuthCallbackScreen() {
   const theme = useAppTheme();
   const params = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();

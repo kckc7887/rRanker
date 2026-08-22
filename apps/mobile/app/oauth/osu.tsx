@@ -12,6 +12,7 @@ import {
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { providerErrorToUserMessage } from '@/providers/errors';
 
 type CallbackStatus =
   | { kind: 'processing' }
@@ -21,7 +22,7 @@ type CallbackStatus =
   | { kind: 'error'; message: string };
 
 function messageFor(error: unknown): string {
-  return error instanceof Error ? error.message : '授权失败，请重试';
+  return providerErrorToUserMessage(error, '授权失败，请重试。');
 }
 
 function invalidateAll() {
@@ -30,7 +31,7 @@ function invalidateAll() {
   void queryClient.invalidateQueries({ queryKey: ['songs'] });
 }
 
-/** osu! OAuth 回调页：承接 rranker://oauth/osu?code=…&state=…，换取令牌后进入模式选择并绑定。 */
+/** 完成 osu! 授权并绑定所选模式。 */
 export default function OsuOAuthCallbackScreen() {
   const theme = useAppTheme();
   const params = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();

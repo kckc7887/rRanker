@@ -57,8 +57,8 @@ export function RenameLocalAccountSheet({
     try {
       await onSave(displayName);
       onClose();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : '保存失败，请重试');
+    } catch {
+      setError('保存失败，请重试。');
     } finally {
       setSaving(false);
     }

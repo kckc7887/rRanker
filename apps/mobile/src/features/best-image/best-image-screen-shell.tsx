@@ -71,7 +71,6 @@ export type BestImageScreenShellStyles = {
   exportButton: ViewStyle;
   exportButtonDisabled: ViewStyle;
   exportButtonText: TextStyle;
-  webViewStatusText: TextStyle;
   exportRoot: ViewStyle;
   exportOverlay: ViewStyle;
   exportOverlayText: TextStyle;
@@ -139,8 +138,6 @@ export const bestImageScreenSharedStyles: BestImageScreenSharedStyles = StyleShe
   exportButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, borderRadius: 14 },
   exportButtonDisabled: { opacity: 0.55 },
   exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  webViewStatusText: { marginTop: 7, fontSize: 11, lineHeight: 16, textAlign: 'center' },
-  // 中二/Phigros 原值；舞萌（浅色 #E7EDF5）由本屏覆盖注入。
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#111111' },
   exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12 },
   exportOverlayText: { fontSize: 14, fontWeight: '700' },
@@ -153,13 +150,6 @@ export type BestImageChoiceChipStyles = {
   chipTextDisabled?: TextStyle;
 };
 
-/**
- * 三屏内联 ChoiceChip 的共享版。
- *
- * 舞萌版带 disabled 支持（accessibilityState 含 disabled + chipDisabled 样式追加），
- * 中二/Phigros 版无；reportDisabledState 区分两派，保证两派 Host Tree
- * 与各自原实现逐一致（false 样式元素不追加、disabled 状态键不写入）。
- */
 export function BestImageChoiceChip({
   label,
   selected,
@@ -218,8 +208,6 @@ export function BestImageScreenShell<TType extends string>({
   exportIdleLabel,
   exportStatus,
   onExport,
-  statusTestId,
-  statusText,
   exportIndex,
   exportHeight,
   exportSource,
@@ -269,11 +257,9 @@ export function BestImageScreenShell<TType extends string>({
   exportIdleLabel: string;
   exportStatus: string | null;
   onExport: () => void;
-  statusTestId: string;
-  statusText: string;
   exportIndex: number | null;
   exportHeight: number;
-  /** 导出画布当前页源；null 时画布不渲染（各屏保留自己的就绪条件）。 */
+  /** 导出画布当前页源；null 时不渲染画布。 */
   exportSource: BestImageWebViewSource | null;
   exportWebViewKeyPrefix: string;
   captureRef: BestImageCaptureRef;
@@ -340,11 +326,7 @@ export function BestImageScreenShell<TType extends string>({
           renderItem={({ item, index }) => {
             const pageId = pages[index]!.id;
             return <View style={{ width: previewWidth, height: previewHeight }}>
-              {/* 内存修复（2026-08-16）：任意时刻只挂载当前页 WebView。
-                  成绩图 HTML 内联全部封面 base64（B50 单页可达数十 MB），旧实现
-                  initialNumToRender=2 使多页 WebView 常驻并存，翻页时 WKWebView
-                  内存叠加导致 iOS jetsam 闪退；改为非当前页渲染轻量占位，
-                  翻页到位后再挂载目标页（loadingStates 状态机照常工作）。 */}
+              {/* 单页可能包含数十 MB 的封面数据，同时挂载多个 WebView 会触发 iOS 内存终止。 */}
               {index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
                 {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
                 {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
@@ -373,7 +355,6 @@ export function BestImageScreenShell<TType extends string>({
         {exportSpinner ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
         <Text style={styles.exportButtonText}>{exportStatus ?? exportIdleLabel}</Text>
       </Pressable>
-      <Text accessibilityLiveRegion="polite" style={[styles.webViewStatusText, { color: theme.textMuted }]} testID={statusTestId}>{statusText}</Text>
     </ScrollView>
 
     {pickers}

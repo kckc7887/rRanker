@@ -48,7 +48,6 @@ import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
-import { BEST_IMAGE_WEBVIEW_PHASE_LABELS } from '@/features/best-image/best-image-webview-state';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   BestImageChoiceChip,
@@ -71,7 +70,6 @@ const IMAGE_TYPES: readonly { id: ChunithmBestImageType; label: string }[] = [
 /** 自定义模式每页最多 50 行，每行 5 张。 */
 const CUSTOM_MAX_ROWS_PER_PAGE = 50;
 
-/** 控制器偏好对象与中二 P2 store 的适配。 */
 const chunithmPreferencesAdapter = {
   load: (accountId: string) => chunithmBestImagePreferencesStore.load(accountId),
   save: (accountId: string, prefs: typeof DEFAULT_CHUNITHM_BEST_IMAGE_STYLES) => chunithmBestImagePreferencesStore.save(accountId, prefs),
@@ -119,7 +117,6 @@ export function ChunithmBestImageScreen() {
     setPageHeights,
     pageIndex,
     setPageIndex,
-    previewStates,
     setPreviewStates,
     exportIndex,
     exportHeight,
@@ -365,10 +362,6 @@ export function ChunithmBestImageScreen() {
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * 0.75);
-  const currentPreviewState = previewStates[currentPage.id];
-  const previewStatus = currentPreviewState
-    ? `${BEST_IMAGE_WEBVIEW_PHASE_LABELS[currentPreviewState.phase]}${currentPreviewState.version ? ` · WebView ${currentPreviewState.version}` : ''}`
-    : 'WebView 版本未知 · 等待预览素材';
   const webViewSources = Platform.OS === 'android' ? androidSources : inlineSources;
 
   const chooseStyle = (choice: ChunithmBestImageStyleChoice) => {
@@ -576,8 +569,8 @@ export function ChunithmBestImageScreen() {
           <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
           <Text style={[styles.loadingText, { color: theme.textMuted }]}>
             {assetProgress.total > 0
-              ? `正在逐张缓存歌曲封面 ${assetProgress.done}/${assetProgress.total}`
-              : '正在加载预览素材'}
+              ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}`
+              : '正在准备预览'}
           </Text>
         </View>
       )}
@@ -588,8 +581,6 @@ export function ChunithmBestImageScreen() {
       exportIdleLabel="导出到相册"
       exportStatus={exportStatus}
       onExport={() => void exportImages()}
-      statusTestId="chunithm-best-image-webview-status"
-      statusText={previewStatus}
       exportIndex={exportIndex}
       exportHeight={exportHeight}
       exportSource={exportIndex !== null && webViewSources?.[exportIndex] ? webViewSources[exportIndex]! : null}

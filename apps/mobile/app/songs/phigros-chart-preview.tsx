@@ -23,9 +23,9 @@ import {
 } from '@/features/chart-preview-shared/chart-preview-assets';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** Phigros 仅需读取 OSS 的三个 JSON 指针文件，超时给得短。 */
+/** Phigros 资源较小，使用较短等待时间。 */
 const PHIGROS_PREPARE_TIMEOUT_MS = 20_000;
-/** Phira 需要下载并解包谱面 ZIP，社区文件可能较大，超时放宽。 */
+/** Phira 谱面包较大，使用较长等待时间。 */
 const PHIRA_PREPARE_TIMEOUT_MS = 60_000;
 
 type MappedPreview =
@@ -86,7 +86,7 @@ export default function PhigrosChartPreviewScreen() {
       }
       return mapParams(params.game, params.songId, params.levelIndex, params.chartId, params.title);
     },
-    // useLocalSearchParams 每次渲染都返回新对象，必须依赖字符串字段而不是 params 本身。
+    // 字段级依赖避免路由对象引用变化触发重复准备。
     [params.requestId, handedRequest, params.game, params.songId, params.levelIndex, params.chartId, params.title],
   );
   const phiraChartId = !('error' in mapped) && mapped.game === 'phira' && !mapped.chart ? mapped.chartId : null;
@@ -123,9 +123,8 @@ export default function PhigrosChartPreviewScreen() {
     };
   }, [mapped, phiraChart.data, phiraChart.isError, isDark]);
 
-  // externalError 仅参与渲染层错误组合；request 仍为 ready，prepare 照常执行。
   const externalError = phiraChartId !== null && phiraChart.isError
-    ? (phiraChart.error instanceof Error ? phiraChart.error.message : '无法读取 Phira 谱面信息')
+    ? '无法读取 Phira 谱面，请重试。'
     : null;
 
   return (

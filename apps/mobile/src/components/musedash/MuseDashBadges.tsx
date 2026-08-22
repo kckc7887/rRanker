@@ -37,7 +37,7 @@ function MetalBadge({ label, kind, testID }: { label: string; kind: 'gold' | 'si
   );
 }
 
-/** 评价胶囊：S 按 ACC 分金银红（金/银为渐变胶囊），A 蓝、B 绿、C 灰、D 紫（沿用 ACC 同档色）。 */
+/** 评价胶囊：S 按 ACC 分金银红，A 蓝、B 绿、C 灰、D 紫。 */
 export function MuseDashGradeBadge({ label, tone, testID }: { label: string; tone: string; testID?: string }) {
   if (tone === 'acc-gold') return <MetalBadge kind="gold" label={label} testID={testID} />;
   if (tone === 'acc-silver') return <MetalBadge kind="silver" label={label} testID={testID} />;

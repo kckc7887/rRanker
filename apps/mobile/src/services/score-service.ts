@@ -193,7 +193,7 @@ export class ScoreService {
           source: {
             ...sanitized.source,
             kind: 'cache',
-            label: `${needsLogin ? '登录已失效，请重新登录；' : ''}最近有效成绩快照（原：${sanitized.source.label}）`,
+        label: `${needsLogin ? '登录已失效，请重新登录；' : ''}最近有效成绩`,
             isStale: true,
           },
         };

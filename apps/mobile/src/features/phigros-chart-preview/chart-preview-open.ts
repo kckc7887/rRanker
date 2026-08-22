@@ -1,12 +1,4 @@
-/**
- * 详情页“查看谱面确认”统一入口（公共路径）：
- * 交接请求 → 跳转 → 兜底提示。expo-router 对无法生成导航状态的 href
- * 会静默丢弃（不抛错也不跳转，表现为“点击无反应”），这里在短暂等待后
- * 校验顶层路由是否真的离开详情页，未离开则显式提示失败。
- *
- * 本模块保持纯函数（仅类型依赖 expo-router），跳转与路由读取由调用方注入，
- * 便于在 node 环境用假定时器验证全部失败分支。
- */
+/** 打开谱面页并检查导航是否生效。 */
 
 import type { Href } from 'expo-router';
 import {
@@ -38,14 +30,14 @@ export function openChartPreviewNavigation(
   try {
     href = stageChartPreviewNavigation(request);
     deps.push(href as Href);
-  } catch (error) {
+  } catch {
     if (href) discardChartPreviewNavigation(href.params.requestId);
-    deps.onFail(error instanceof Error ? error.message : '谱面确认请求传递失败，请重试');
+    deps.onFail('无法打开谱面，请重试。');
     return () => undefined;
   }
 
   const timer = setTimeout(() => {
-    // 跳转成功后顶层路由是谱面确认页；仍停留在详情页说明跳转被静默丢弃。
+    // 路由仍停留在详情页时视为跳转失败。
     if (deps.topRouteName() === CHART_PREVIEW_DETAIL_ROUTE) {
       deps.onFail('页面跳转未生效，请重试');
     }

@@ -1,7 +1,7 @@
 import { StyleSheet, Text, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { useAppTheme } from '@/theme/app-theme';
 
-// 内置样式与 MuseDash / TUF 列表页原值一致；Phira 等差异屏通过 wrapStyle / inputStyle 整体替换注入。
+// 差异页面通过 wrapStyle 和 inputStyle 覆盖布局。
 const styles = StyleSheet.create({
   wrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   input: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 },
@@ -9,7 +9,7 @@ const styles = StyleSheet.create({
 });
 
 type GameSearchHeaderProps = {
-  // 缺省时回落到 placeholder，与 Phira 原实现（accessibilityLabel = placeholder）保持一致
+  // 缺省时使用 placeholder 作为无障碍标签。
   accessibilityLabel?: string;
   placeholder: string;
   value: string;

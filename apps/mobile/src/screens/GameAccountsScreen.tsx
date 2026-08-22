@@ -58,6 +58,7 @@ import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store'
 import { PhigrosDemoAccountStore } from '@/storage/phigros-demo-account-store';
 import { MuseDashDemoAccountStore } from '@/storage/musedash-demo-account-store';
 import { patchMaimaiPlayerDisplayName } from '@/services/invalidate-account-data';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { switchBoundAccount } from '@/services/switch-bound-account';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
@@ -246,7 +247,7 @@ export function GameAccountsScreen() {
     } catch (error) {
       showNotification({
         title: '添加失败',
-        message: error instanceof Error ? error.message : '无法添加本地玩家，请重试。',
+        message: providerErrorToUserMessage(error, '无法添加本地玩家，请重试。'),
         variant: 'error',
       });
     } finally {
@@ -278,7 +279,7 @@ export function GameAccountsScreen() {
     } catch (error) {
       showNotification({
         title: '添加失败',
-        message: error instanceof Error ? error.message : '无法添加示例账号，请重试。',
+        message: providerErrorToUserMessage(error, '无法添加示例账号，请重试。'),
         variant: 'error',
       });
     } finally {
@@ -310,7 +311,7 @@ export function GameAccountsScreen() {
     } catch (error) {
       showNotification({
         title: '添加失败',
-        message: error instanceof Error ? error.message : '无法添加中二节奏示例账号，请重试。',
+        message: providerErrorToUserMessage(error, '无法添加中二节奏示例账号，请重试。'),
         variant: 'error',
       });
     } finally {
@@ -442,7 +443,7 @@ export function GameAccountsScreen() {
     } catch (error) {
       showNotification({
         title: '添加失败',
-        message: error instanceof Error ? error.message : '无法添加 Phigros 示例账号，请重试。',
+        message: providerErrorToUserMessage(error, '无法添加 Phigros 示例账号，请重试。'),
         variant: 'error',
       });
     } finally {
@@ -474,7 +475,7 @@ export function GameAccountsScreen() {
     } catch (error) {
       showNotification({
         title: '添加失败',
-        message: error instanceof Error ? error.message : '无法添加喵斯快跑示例账号，请重试。',
+        message: providerErrorToUserMessage(error, '无法添加喵斯快跑示例账号，请重试。'),
         variant: 'error',
       });
     } finally {
@@ -597,7 +598,7 @@ export function GameAccountsScreen() {
 
   const promptRemoveChunithmTemp = (account: BoundAccount) => showActionNotification({
     title: '删除临时账号',
-    message: '将移除中二节奏临时账号；当前账号不含成绩数据，之后可重新添加。',
+    message: '将移除中二节奏临时账号，之后可重新添加。',
     variant: 'warning',
     actions: [
       { label: '取消', tone: 'cancel' },

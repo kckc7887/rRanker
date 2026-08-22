@@ -99,7 +99,7 @@ export default function ToleranceToolScreen() {
         break: { great1: Number(values.breakGreat) },
       });
       return { achievement, error: null };
-    } catch (error) { return { achievement: null, error: error instanceof Error ? error.message : '输入无效' }; }
+    } catch { return { achievement: null, error: '输入无效，请检查各项数值。' }; }
   }, [notes, values]);
   const set = (key: string) => (value: string) => setValues((current) => ({ ...current, [key]: value }));
   return <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><Stack.Screen options={{ title: '达成率与容错' }} />

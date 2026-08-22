@@ -36,12 +36,12 @@ export function PublicPlayerPickerSheet<T>({
           <Text style={[styles.gameLine, { color: theme.textMuted }]}>用于绑定 {gameTitle}</Text>
         </View>
         <View style={[styles.card, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.body, { color: theme.textSecondary }]}>仅搜索公开资料，不需要账号或 Token</Text>
+          <Text style={[styles.body, { color: theme.textSecondary }]}>搜索公开玩家</Text>
           <TextInput accessibilityLabel={accessibilityLabel} autoCapitalize="none" autoCorrect={false} placeholder={placeholder}
             placeholderTextColor={theme.textMuted} value={query} onChangeText={onQueryChange}
             style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
           {loading ? <ActivityIndicator style={styles.state} color={theme.accent} /> : null}
-          {error ? <Text style={styles.error}>{error instanceof Error ? error.message : '玩家搜索失败'}</Text> : null}
+          {error ? <Text style={styles.error}>玩家搜索失败，请重试。</Text> : null}
           {!loading && !error && query.trim() && options.length === 0 ? <Text style={[styles.stateText, { color: theme.textMuted }]}>{emptyText}</Text> : null}
           {options.map((item) => <Pressable key={item.key} accessibilityRole="button" accessibilityLabel={`${optionAccessibilityPrefix} ${item.name}`}
             disabled={busyId !== null} onPress={async () => { setBusyId(item.key); try { await onSelect(item.value); } finally { setBusyId(null); } }}

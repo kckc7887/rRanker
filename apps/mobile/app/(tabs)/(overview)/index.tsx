@@ -15,7 +15,6 @@ import { DxRatingCard } from '@/components/DxRatingCard';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
-import { SourceStatus } from '@/components/SourceStatus';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { ChunithmSyncGuideSheet } from '@/components/chunithm/ChunithmSyncGuideSheet';
 import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
@@ -37,7 +36,6 @@ import {
 } from '@/domain/chunithm-rating-theme';
 import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
-import type { ProviderId } from '@/domain/game-bind-options';
 import { resolveMaimaiCourseRank } from '@/domain/maimai-course-rank';
 import { formatPhigrosChallengeBadge, resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 import { selectGameTools, summarizeGameTools } from '@/domain/game-toolbox';
@@ -45,30 +43,21 @@ import { calculatePlateProgress } from '@/domain/plates';
 import type { ScoreRecord } from '@/domain/models';
 import {
   calculateChunithmCollectionProgress,
-  CHUNITHM_COLLECTION_KIND_LABELS,
   isChunithmCollectionComputable,
   type ChunithmCollection,
   type ChunithmCollectionKind,
 } from '@/domain/chunithm-collections';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
 import {
-  buildOverviewSourceStatus,
-  type OverviewCachedSource,
-} from '@/features/overview/overview-source-status';
-import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
 import type { PinnedChunithmCollection } from '@/features/toolbox/pinned-tool-preferences';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
-import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
 import { useGameData } from '@/hooks/use-game-data';
-import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
-import { useMuseDashAlbums } from '@/hooks/use-muse-dash';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePlates } from '@/hooks/use-plates';
-import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
 import { switchBoundAccount } from '@/services/switch-bound-account';
 import { refreshDivingFishAccounts } from '@/services/refresh-diving-fish-accounts';
@@ -88,6 +77,7 @@ import { queryClient } from '@/state/query-client';
 import { readSettledGameDataBundle } from '@/services/game-data-query';
 import { awaitChunithmFresh } from '@/services/chunithm-personal-service';
 import { awaitScoreFresh } from '@/services/score-service';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { applyLxnsTokenRotation, UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
@@ -114,15 +104,6 @@ function PublicOverviewScreen() {
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
   const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useDetailedCatalog();
-  const chunithmCatalog = useChunithmCatalog();
-  const cachedDxRatingTags = useDxRatingChartTags(false);
-  const cachedPhigrosKyouTags = usePhigrosKyouChartTags(false);
-  const cachedPlates = usePlates(false);
-  const cachedMuseDashAlbums = useMuseDashAlbums(false);
-  const cachedChunithmTrophies = useChunithmCollections('trophy', false);
-  const cachedChunithmCharacters = useChunithmCollections('character', false);
-  const cachedChunithmPlates = useChunithmCollections('plate', false);
-  const cachedChunithmIcons = useChunithmCollections('icon', false);
   const tabBottomInset = useNativeTabBottomInset();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const activeAccountId = useSession((s) => s.activeAccountId);
@@ -148,59 +129,6 @@ function PublicOverviewScreen() {
   const renderableData = data?.payload && typeof data.payload === 'object' ? data : undefined;
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
-  const cachedSourceInputs = useMemo<OverviewCachedSource[]>(() => {
-    if (activeGameId === 'maimai') {
-      return [
-        {
-          key: 'dxrating-tags', label: 'DXRating 标签',
-          source: cachedDxRatingTags.data?.source, error: cachedDxRatingTags.error,
-        },
-        {
-          key: 'plates', label: '舞萌姓名框',
-          source: cachedPlates.data?.source, error: cachedPlates.error,
-        },
-      ];
-    }
-    if (activeGameId === 'phigros') {
-      return [{
-        key: 'phigros-kyou-tags', label: 'Kyou 标签',
-        source: cachedPhigrosKyouTags.data?.source, error: cachedPhigrosKyouTags.error,
-      }];
-    }
-    if (activeGameId === 'musedash') {
-      return [{
-        key: 'musedash-albums', label: '曲库',
-        source: cachedMuseDashAlbums.source, error: cachedMuseDashAlbums.error,
-      }];
-    }
-    if (activeGameId === 'chunithm') {
-      return [
-        { key: 'collection-trophy', label: `收藏品/${CHUNITHM_COLLECTION_KIND_LABELS.trophy}`, source: cachedChunithmTrophies.data?.source, error: cachedChunithmTrophies.error },
-        { key: 'collection-character', label: `收藏品/${CHUNITHM_COLLECTION_KIND_LABELS.character}`, source: cachedChunithmCharacters.data?.source, error: cachedChunithmCharacters.error },
-        { key: 'collection-plate', label: `收藏品/${CHUNITHM_COLLECTION_KIND_LABELS.plate}`, source: cachedChunithmPlates.data?.source, error: cachedChunithmPlates.error },
-        { key: 'collection-icon', label: `收藏品/${CHUNITHM_COLLECTION_KIND_LABELS.icon}`, source: cachedChunithmIcons.data?.source, error: cachedChunithmIcons.error },
-      ];
-    }
-    return [];
-  }, [
-    activeGameId,
-    cachedChunithmCharacters.data?.source,
-    cachedChunithmCharacters.error,
-    cachedChunithmIcons.data?.source,
-    cachedChunithmIcons.error,
-    cachedChunithmPlates.data?.source,
-    cachedChunithmPlates.error,
-    cachedChunithmTrophies.data?.source,
-    cachedChunithmTrophies.error,
-    cachedDxRatingTags.data?.source,
-    cachedDxRatingTags.error,
-    cachedMuseDashAlbums.error,
-    cachedMuseDashAlbums.source,
-    cachedPhigrosKyouTags.data?.source,
-    cachedPhigrosKyouTags.error,
-    cachedPlates.data?.source,
-    cachedPlates.error,
-  ]);
   const syncBusy = syncing;
   const maimaiLxnsSources = useMemo(
     () => boundAccounts.filter((account) => (
@@ -306,7 +234,7 @@ function PublicOverviewScreen() {
     } catch (syncError) {
       showNotification({
         title: '同步失败',
-        message: syncError instanceof Error ? syncError.message : '暂时无法同步成绩，请稍后重试。',
+        message: providerErrorToUserMessage(syncError, '暂时无法同步成绩，请稍后重试。'),
         variant: 'error',
       });
       return false;
@@ -343,7 +271,7 @@ function PublicOverviewScreen() {
     ));
     if (!sourceAccount || sourceSession?.mode !== 'lxns-oauth') {
       showNotification({
-        title: '请选择数据来源',
+        title: '请选择读取账号',
         message: '需要选择一个已授权的舞萌落雪账号。',
         variant: 'warning',
       });
@@ -388,7 +316,7 @@ function PublicOverviewScreen() {
         showNotification({
           title: failed.length === result.targetResults.length ? '传输失败' : '部分传输完成',
           message: failed.map((target) => (
-            `${target.account.displayName}：${target.errorMessage ?? '写入失败'}`
+            `${target.account.displayName}：写入失败，请重试。`
           )).join('；'),
           variant: failed.length === result.targetResults.length ? 'error' : 'warning',
         });
@@ -402,7 +330,7 @@ function PublicOverviewScreen() {
       }
 
       const refreshWarning = result.failedAccountNames.length > 0
-        ? `；${result.failedAccountNames.join('、')}的应用内快照刷新失败`
+        ? `；${result.failedAccountNames.join('、')}的页面未能更新`
         : '';
       showNotification({
         title: '传输完成',
@@ -417,9 +345,10 @@ function PublicOverviewScreen() {
       });
       return true;
     } catch (transferError) {
-      const message = transferError instanceof Error
-        ? transferError.message
-        : '暂时无法传输成绩，请稍后重试。';
+      const message = providerErrorToUserMessage(
+        transferError,
+        '暂时无法传输成绩，请稍后重试。',
+      );
       setUploadPhase({ kind: 'error', message });
       showNotification({ title: '传输失败', message, variant: 'error' });
       return false;
@@ -586,7 +515,7 @@ function PublicOverviewScreen() {
                 label={profile.ratingLabel}
                 display="—"
                 rating={null}
-                meta={bundle.gameId === 'chunithm' ? '临时账号不含成绩' : '当前游戏暂未提供评分'}
+                meta={bundle.gameId === 'chunithm' ? '请绑定落雪账号' : '当前游戏暂未提供评分'}
               />
             )}
 
@@ -614,7 +543,7 @@ function PublicOverviewScreen() {
                 <View style={styles.actionDivider} />
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
+                  accessibilityLabel="同步数据"
                   disabled={syncBusy}
                   onPress={() => void syncData()}
                   style={({ pressed }) => [
@@ -624,7 +553,6 @@ function PublicOverviewScreen() {
                   ]}
                 >
                   <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                  <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
             ) : bundle.payload.kind === 'chunithm' ? (
@@ -641,7 +569,7 @@ function PublicOverviewScreen() {
                 <View style={styles.actionDivider} />
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
+                  accessibilityLabel="同步数据"
                   disabled={syncBusy}
                   onPress={() => void syncData()}
                   style={({ pressed }) => [
@@ -651,24 +579,22 @@ function PublicOverviewScreen() {
                   ]}
                 >
                   <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                  <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
             ) : bundle.gameId === 'chunithm' ? (
               <View style={[styles.card, { backgroundColor: theme.surface }]}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>临时账号不含成绩</Text>
-                <Text style={[styles.body, { color: theme.textSecondary }]}>请在游戏管理中绑定落雪账号以同步中二节奏数据。</Text>
+                <Text style={[styles.cardTitle, { color: theme.text }]}>请绑定落雪账号</Text>
+                <Text style={[styles.body, { color: theme.textSecondary }]}>前往游戏管理绑定后，即可同步中二节奏成绩。</Text>
               </View>
             ) : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
+                accessibilityLabel="同步数据"
                 disabled={syncBusy}
                 onPress={() => void syncData()}
                 style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
               >
                 <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
               </Pressable>
             )}
 
@@ -731,21 +657,6 @@ function PublicOverviewScreen() {
               </View>
             </Pressable>
 
-            <View style={[styles.card, { backgroundColor: theme.surface }]}>
-              <Text style={[styles.cardTitle, { color: theme.text }]}>数据状态</Text>
-              <SourceStatus items={buildOverviewSourceStatus(
-                bundle,
-                { source: chunithmCatalog.data?.source, error: chunithmCatalog.error },
-                cachedSourceInputs,
-              )} />
-              {bundle.payload.kind === 'maimai' ? (
-                <Text style={[styles.body, { color: theme.textSecondary }]}>当前版本：{bundle.payload.currentVersionTitle}</Text>
-              ) : bundle.payload.kind === 'chunithm' ? (
-                <Text style={[styles.body, { color: theme.textSecondary }]}>
-                  当前版本：{chunithmCatalog.data?.currentVersion.title ?? '—'}
-                </Text>
-              ) : null}
-            </View>
           </ScrollView>
         )}
       />
@@ -1010,23 +921,6 @@ function formatBestSectionMeta(sections: BestListSection[], gameId: GameDataBund
     const total = section.records.reduce((sum, record) => sum + record.rating, 0);
     return `${label} ${total}`;
   }).join(' · ');
-}
-
-/** 总览同步按钮副文案：当前成绩来源查分器。 */
-function syncProviderHint(providerId: ProviderId | null): string {
-  if (providerId === 'lxns') return '落雪咖啡屋';
-  if (providerId === 'diving-fish') return '水鱼查分器';
-  if (providerId === 'phi-taptap') return 'TapTap 云存档';
-  if (providerId === 'phigros-test') return '示例查分器';
-  if (providerId === 'local') return '本地查分器';
-  if (providerId === 'maimai-test') return '示例查分器';
-  if (providerId === 'chunithm-test') return '示例查分器';
-  if (providerId === 'chunithm-temp') return '无成绩临时账号';
-  if (providerId === 'tuf') return 'TUF 社区';
-  if (providerId === 'musedash-moe') return 'MuseDash.moe';
-  if (providerId === 'phira-community') return 'Phira社区';
-  if (providerId === 'osu') return 'osu! 官方';
-  return '本地';
 }
 
 function formatChunithmBestMeta(

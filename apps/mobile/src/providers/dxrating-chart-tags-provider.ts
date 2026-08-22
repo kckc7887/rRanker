@@ -59,7 +59,6 @@ function richDescription(value: Record<string, string>) {
   return { text: segments.map((segment) => segment.text).join(''), segments };
 }
 
-/** DXRating 状态码分支文案：无 401/403/404 分支且兜底 code 为 network，逐字保留原实现。 */
 const DXRATING_STATUS_TEXTS: ProviderStatusTexts = {
   rateLimit: 'DXRating 请求过于频繁，请稍后重试',
   server: 'DXRating 服务暂时不可用',

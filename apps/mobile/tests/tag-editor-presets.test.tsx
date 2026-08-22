@@ -98,7 +98,7 @@ describe('标签预设编辑器', () => {
     expect(screen.getByLabelText('选择标签 错位').props.accessibilityState).toEqual({ checked: true });
     await fireEvent.press(screen.getByLabelText('完成标签选择'));
 
-    await waitFor(() => expect(within(screen.getByTestId('tag-preset-message')).getByText('本地标签写入失败')).toBeTruthy());
+    await waitFor(() => expect(within(screen.getByTestId('tag-preset-message')).getByText('标签保存失败，请重试。')).toBeTruthy());
     expect(screen.getByTestId('tag-preset-sheet')).toBeTruthy();
   });
 });

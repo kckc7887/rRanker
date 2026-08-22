@@ -49,8 +49,8 @@ export function TagEditor({
 
   const commit = async (values: string[]): Promise<TagCommitResult> => {
     try { setError(''); await onChange(normalizeTags(values)); return { ok: true }; }
-    catch (reason) {
-      const message = reason instanceof Error ? reason.message : '标签保存失败';
+    catch {
+      const message = '标签保存失败，请重试。';
       setError(message);
       return { ok: false, error: message };
     }
@@ -132,7 +132,7 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
       setDraftPresets(normalized);
       await onPresetsChange?.(normalized);
       setMessage('');
-    } catch (error) { setMessage(error instanceof Error ? error.message : '预设保存失败'); }
+    } catch { setMessage('预设保存失败，请重试。'); }
   };
   const addPreset = async (tag: string) => {
     if (!tag.trim()) { setMessage('请输入预设标签'); return; }

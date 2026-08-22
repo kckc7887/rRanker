@@ -106,7 +106,7 @@ export function MaimaiSyncGuideContent({
       syncButtonLabel={hasTransferPicker ? '同步并上传' : '同步数据'}
       syncBusyLabel={hasTransferPicker ? '传输中…' : '同步中…'}
       syncHint={hasTransferPicker
-        ? (selectionReady ? '读取所选落雪账号并写入目标' : '请选择数据来源和上传目标')
+        ? (selectionReady ? '读取所选落雪账号并写入目标' : '请选择读取账号和上传目标')
         : '落雪咖啡屋'}
       onClose={onClose}
       onSync={onSync}
@@ -137,7 +137,7 @@ function MaimaiTransferPicker({
 
   return (
     <View style={styles.picker}>
-      <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>数据来源</Text>
+          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>读取账号</Text>
       {sourceAccounts.length === 0 ? (
         <View style={[styles.emptyCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>没有可用的舞萌落雪账号</Text>
@@ -149,7 +149,7 @@ function MaimaiTransferPicker({
         <View style={[styles.listCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="展开数据来源列表"
+              accessibilityLabel="展开读取账号列表"
             accessibilityState={{ expanded: sourceListOpen, disabled: syncing }}
             disabled={syncing}
             onPress={() => setSourceListOpen((open) => !open)}
@@ -173,7 +173,7 @@ function MaimaiTransferPicker({
               <Pressable
                 key={account.id}
                 accessibilityRole="radio"
-                accessibilityLabel={`数据来源 ${account.displayName}`}
+                    accessibilityLabel={`读取账号 ${account.displayName}`}
                 accessibilityState={{ selected, disabled: syncing }}
                 disabled={syncing}
                 onPress={() => {

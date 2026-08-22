@@ -257,10 +257,10 @@ describe('best image preview', () => {
     expect(StyleSheet.flatten(screen.getByLabelText('HTML图片预览窗').props.style).height).toBe(initialPreviewHeight);
   });
 
-  it('shows the WebView version and rendering status below the export button', async () => {
+  it('keeps runtime details out of the screen while processing preview messages', async () => {
     const screen = await render(<BestImageScreen />);
     const preview = await screen.findByTestId('best-image-html-preview-0');
-    expect(screen.getByTestId('best-image-webview-status').props.children).toBe('WebView 版本未知 · 正在加载');
+    expect(screen.queryByTestId('best-image-webview-status')).toBeNull();
 
     await act(async () => {
       fireEvent(preview, 'message', {
@@ -277,11 +277,11 @@ describe('best image preview', () => {
       });
     });
 
-    expect(screen.getByTestId('best-image-webview-status').props.children).toBe('WebView 132.0.6834.79 · 渲染就绪');
+    expect(screen.queryByTestId('best-image-webview-status')).toBeNull();
     await act(async () => {
       fireEvent(preview, 'renderProcessGone', { nativeEvent: { didCrash: true } });
     });
-    expect(screen.getByTestId('best-image-webview-status').props.children).toBe('WebView 132.0.6834.79 · 渲染进程崩溃');
+    expect(screen.queryByTestId('best-image-webview-status')).toBeNull();
   });
 
   it('selects LXNS icon, plate, trophy and frame and applies them to the HTML preview', async () => {
@@ -418,7 +418,7 @@ describe('best image preview', () => {
       fullReady: Promise.reject(new Error('字体准备失败：字体校验失败')),
     }));
     const screen = await render(<BestImageScreen />);
-    await waitFor(() => expect(screen.getByText('字体准备失败：字体校验失败')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('无法准备成绩图片，请重试。')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
     fireEvent.press(screen.getByLabelText('重试字体下载'));
     await waitFor(() => expect(prepareMaimaiFonts).toHaveBeenCalledTimes(2));

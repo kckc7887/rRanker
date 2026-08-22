@@ -18,7 +18,6 @@ export function parsePhiraAccounts(value: unknown): PhiraAccountProfile[] {
   });
 }
 
-// Phira 的 upsert 原实现不做任何清洗校验，故不传 normalize。
 export const PhiraAccountStore = createAccountListStore<PhiraAccountProfile>({
   storeKey: 'rranker.phira-accounts.v1',
   parse: parsePhiraAccounts,

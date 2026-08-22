@@ -197,13 +197,13 @@ describe('Maimai sync guide', () => {
       />,
     );
 
-    expect(screen.getByText('数据来源')).toBeTruthy();
+    expect(screen.getByText('读取账号')).toBeTruthy();
     expect(screen.getByText('上传到')).toBeTruthy();
     expect(screen.queryByLabelText(`上传到 ${sourceA.displayName}（${sourceA.providerTitle}）`)).toBeNull();
     expect(screen.getByLabelText('从同步引导同步舞萌数据').props.accessibilityState.disabled).toBe(true);
 
-    await fireEvent.press(screen.getByLabelText('展开数据来源列表'));
-    await fireEvent.press(screen.getByLabelText('数据来源 落雪乙'));
+    await fireEvent.press(screen.getByLabelText('展开读取账号列表'));
+    await fireEvent.press(screen.getByLabelText('读取账号 落雪乙'));
     expect(onSelectSource).toHaveBeenCalledWith(sourceB.id);
 
     await fireEvent.press(screen.getByLabelText(`上传到 ${local.displayName}（${local.providerTitle}）`));

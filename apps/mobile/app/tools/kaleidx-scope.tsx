@@ -79,11 +79,12 @@ export default function KaleidxScopeToolScreen() {
     setPending(true);
     try {
       await operation();
-    } catch (error) {
+    } catch {
+      const limit = runMode === 'solo' ? 3 : 4;
       showNotification({
         title: '保存失败',
-        message: error instanceof Error && error.message.startsWith('本局最多')
-          ? error.message
+        message: gate.trackerKind === 'run' && selectedSongIds.length >= limit
+          ? `本局最多选择 ${limit} 首不重复曲目。`
           : '无法保存万花筒进度，请稍后重试。',
         variant: 'error',
       });

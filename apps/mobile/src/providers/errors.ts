@@ -14,28 +14,34 @@ export class ProviderError extends Error {
   }
 }
 
-/**
- * providerErrorFromStatus 的各分支文案：传入后接管全部状态码分支，
- * 未列出的分支不生效（对应状态码落入兜底），用于表达各游戏不同的分支结构
- * （如 phira/dxrating 无 401/403 分支、dxrating 兜底 code 为 network）。
- * 完全不传 texts 时逐字回退水鱼缺省版。
- */
+export type ProviderUserMessages = Partial<Record<ProviderErrorCode, string>>;
+
+const DEFAULT_PROVIDER_USER_MESSAGES: ProviderUserMessages = {
+  authentication: '登录已失效，请重新绑定账号。',
+  permission: '当前账号无法完成此操作。',
+  rate_limit: '操作太频繁，请稍后再试。',
+  timeout: '连接超时，请检查网络后重试。',
+  network: '网络连接失败，请检查网络后重试。',
+};
+
+export function providerErrorToUserMessage(
+  error: unknown,
+  fallback: string,
+  overrides?: ProviderUserMessages,
+): string {
+  if (!(error instanceof ProviderError)) return fallback;
+  return overrides?.[error.code] ?? DEFAULT_PROVIDER_USER_MESSAGES[error.code] ?? fallback;
+}
+
 export type ProviderStatusTexts = {
-  /** 400/401 → authentication（不可重试） */
   authentication?: string;
-  /** 401/403 → permission（不可重试）；401 在提供 authentication 时优先走 authentication */
   permission?: string;
-  /** 404 → no_data（不可重试） */
   noData?: string;
-  /** 429 → rate_limit（可重试） */
   rateLimit?: string;
-  /** ≥500 → network（可重试） */
   server?: string;
-  /** 其余状态码兜底；code 缺省 'unknown'，retryable 与水鱼版一致（≥500 已被 server 捕获，实际恒 false） */
   fallback: { message: (status: number) => string; code?: ProviderErrorCode };
 };
 
-/** 水鱼缺省文案：不传 texts 时逐字等于参数化前的原实现。 */
 const DIVING_FISH_STATUS_TEXTS: Required<ProviderStatusTexts> = {
   authentication: '登录信息或 Token 无效',
   permission: '当前账号无权读取该数据',

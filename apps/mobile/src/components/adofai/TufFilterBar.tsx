@@ -33,8 +33,6 @@ const BAND_BADGES: Record<Exclude<TufDifficultyBand, 'all'>, BadgePresentation> 
   U: { key: 'U', label: 'U', tone: 'tuf-u' },
 };
 
-// Tuf 本地外壳与公共 FilterShell 存在结构性差异（收起态为单个 Pressable 且无重置按钮、
-// 标题为「筛选与排序」、hairlineWidth 边框、按钮无按压态、区间输入定宽居中），无法零视觉变化收敛，保守保留。
 function FilterShell({
   expanded, summary, onExpandedChange, onReset, children,
 }: {

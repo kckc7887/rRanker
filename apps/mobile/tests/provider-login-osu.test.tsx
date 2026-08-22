@@ -84,7 +84,7 @@ describe('ProviderLoginSheet osu! OAuth', () => {
       );
     });
 
-    expect(screen.getByText('打开 osu! 授权页')).toBeTruthy();
+    expect(screen.getByText('前往 osu! 授权')).toBeTruthy();
     expect(screen.getByLabelText('使用已有osu账号')).toBeTruthy();
 
     await act(async () => { oauthListener?.({ status: 'awaiting-mode-selection' }); });

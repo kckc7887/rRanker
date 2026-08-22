@@ -379,7 +379,7 @@ async function initializeUserLibrarySchema(): Promise<void> {
     await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
     await writeTagPresets(db, DEFAULT_TAG_PRESETS);
   } else if (row.schema_version < USER_LIBRARY_SCHEMA_VERSION) {
-    // 按游戏隔离后不再迁移旧收藏：升级时直接清空，避免跨游戏混用与错误归属。
+    // 升级时清空跨游戏收藏，避免错误归属。
     await ensureGameIdColumn(db);
     if (row.schema_version === 1) await writeTagPresets(db, DEFAULT_TAG_PRESETS);
     // 使用同连接事务，避免 withExclusiveTransactionAsync 另开连接锁死单例连接。
