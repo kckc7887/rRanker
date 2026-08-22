@@ -141,7 +141,7 @@ describe('TUF public overview', () => {
     await fireEvent.press(screen.getByLabelText('选择 TUF 二号'));
     expect(mockSwitchBoundAccount).toHaveBeenCalledWith(mockSecondAccount.id, { navigateToOverview: false });
 
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 TUF 社区'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(screen.queryByText(/读取方式/)).toBeNull();
   });

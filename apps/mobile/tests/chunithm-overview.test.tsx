@@ -237,7 +237,7 @@ describe('Chunithm overview', () => {
     expect(screen.getByText('中二同步引导已打开')).toBeTruthy();
     expect(mockRefetch).not.toHaveBeenCalled();
 
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
@@ -254,7 +254,7 @@ describe('Chunithm overview', () => {
       variant: 'warning',
     });
 
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
   });
 
@@ -263,7 +263,7 @@ describe('Chunithm overview', () => {
     const screen = await render(<OverviewScreen />);
 
     expect(screen.getByLabelText('上传数据，打开同步引导')).toBeTruthy();
-    expect(screen.getByLabelText('同步数据')).toBeTruthy();
+    expect(screen.getByLabelText('同步数据，当前 示例查分器')).toBeTruthy();
   });
 
   it('does not warn when the cache-first refetch resolves stale but the background refresh already settled fresh', async () => {
@@ -280,7 +280,7 @@ describe('Chunithm overview', () => {
     mockSettledBundle = mockBundle;
     const screen = await render(<OverviewScreen />);
 
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));
     expect(mockShowNotification).not.toHaveBeenCalled();
   });
@@ -297,7 +297,7 @@ describe('Chunithm overview', () => {
     mockSettledBundle = staleBundle;
     const screen = await render(<OverviewScreen />);
 
-    await fireEvent.press(screen.getByLabelText('同步数据'));
+    await fireEvent.press(screen.getByLabelText('同步数据，当前 落雪咖啡屋'));
     await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({
       title: '尚未读取到新数据',
       message: '本次仅读取到缓存，请关闭代理并检查网络后重试。',

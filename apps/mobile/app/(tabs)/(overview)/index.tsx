@@ -36,6 +36,7 @@ import {
 } from '@/domain/chunithm-rating-theme';
 import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
 import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
+import type { ProviderId } from '@/domain/game-bind-options';
 import { resolveMaimaiCourseRank } from '@/domain/maimai-course-rank';
 import { formatPhigrosChallengeBadge, resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 import { selectGameTools, summarizeGameTools } from '@/domain/game-toolbox';
@@ -543,7 +544,7 @@ function PublicOverviewScreen() {
                 <View style={styles.actionDivider} />
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="同步数据"
+                  accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
                   disabled={syncBusy}
                   onPress={() => void syncData()}
                   style={({ pressed }) => [
@@ -553,6 +554,7 @@ function PublicOverviewScreen() {
                   ]}
                 >
                   <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
+                  <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
             ) : bundle.payload.kind === 'chunithm' ? (
@@ -569,7 +571,7 @@ function PublicOverviewScreen() {
                 <View style={styles.actionDivider} />
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="同步数据"
+                  accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
                   disabled={syncBusy}
                   onPress={() => void syncData()}
                   style={({ pressed }) => [
@@ -579,6 +581,7 @@ function PublicOverviewScreen() {
                   ]}
                 >
                   <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
+                  <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
             ) : bundle.gameId === 'chunithm' ? (
@@ -589,12 +592,13 @@ function PublicOverviewScreen() {
             ) : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="同步数据"
+                accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
                 disabled={syncBusy}
                 onPress={() => void syncData()}
                 style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
               >
                 <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
+                <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
               </Pressable>
             )}
 
@@ -929,6 +933,22 @@ function formatChunithmBestMeta(
   const best30 = sections.find((section) => section.id === 'b30');
   const new20 = sections.find((section) => section.id === 'new20');
   return `Best30 ${averageChunithmRating(best30?.scores ?? [])} · New20 ${averageChunithmRating(new20?.scores ?? [])}`;
+}
+
+function syncProviderHint(providerId: ProviderId | null): string {
+  if (providerId === 'lxns') return '落雪咖啡屋';
+  if (providerId === 'diving-fish') return '水鱼查分器';
+  if (providerId === 'phi-taptap') return 'TapTap 云存档';
+  if (providerId === 'phigros-test') return '示例查分器';
+  if (providerId === 'local') return '本地查分器';
+  if (providerId === 'maimai-test') return '示例查分器';
+  if (providerId === 'chunithm-test') return '示例查分器';
+  if (providerId === 'chunithm-temp') return '无成绩临时账号';
+  if (providerId === 'tuf') return 'TUF 社区';
+  if (providerId === 'musedash-moe') return 'MuseDash.moe';
+  if (providerId === 'phira-community') return 'Phira社区';
+  if (providerId === 'osu') return 'osu! 官方';
+  return '本地';
 }
 
 const styles = StyleSheet.create({
