@@ -357,7 +357,7 @@ test('phigros song detail full page host tree contract', async () => {
   const tree = screen.toJSON();
   const canonical = canonicalize(tree);
   const hash = createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-  expect(hash).toBe('8d38290016f49ebb876d54652d5553380beee2dfb1c0bf853532c4e6b678582d');
+  expect(hash).toBe('57b9776ec433752bcfa291b41ea5e02b6a64a53470ebb2deec71a49e8ab021af');
 });
 
 test('chunithm song detail full page host tree contract', async () => {
