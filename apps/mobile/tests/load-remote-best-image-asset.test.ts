@@ -1,56 +1,61 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  getCachePathAsync: vi.fn(),
-  prefetch: vi.fn(),
-  base64: vi.fn(async () => 'YWJj'),
+  files: new Set<string>(),
+  download: vi.fn(),
+  base64: vi.fn(async (_uri: string) => 'YWJj'),
+  deleted: [] as string[],
 }));
 
-vi.mock('expo-image', () => ({ Image: {
-  getCachePathAsync: mocks.getCachePathAsync,
-  prefetch: mocks.prefetch,
-} }));
-vi.mock('expo-file-system', () => ({ File: class {
-  base64 = mocks.base64;
-} }));
-vi.mock('@/features/best-image/load-best-image-jackets', () => ({
-  imageCachePathToFileUri: (path: string) => `file://${path}`,
-}));
+vi.mock('expo-file-system', () => {
+  class File {
+    readonly uri: string;
+    constructor(base: { uri: string }, name: string) { this.uri = `${base.uri}/${name}`; }
+    get exists() { return mocks.files.has(this.uri); }
+    get size() { return this.exists ? 3 : 0; }
+    base64() { return mocks.base64(this.uri); }
+    delete() { mocks.deleted.push(this.uri); mocks.files.delete(this.uri); }
+    static async downloadFileAsync(url: string, file: File) {
+      await mocks.download(url, file.uri);
+      mocks.files.add(file.uri);
+      return file;
+    }
+  }
+  return { File, Paths: { cache: { uri: 'file://cache' } } };
+});
 
 // Mocked native modules must be registered before the module under test is imported.
 // eslint-disable-next-line import/first
-import {
-  loadRemoteBestImageAssetDataUri,
-} from '@/features/best-image/load-remote-best-image-asset';
+import { loadRemoteBestImageAssetDataUri } from '@/features/best-image/load-remote-best-image-asset';
 
 describe('remote best image asset localization', () => {
   beforeEach(() => {
-    mocks.getCachePathAsync.mockReset();
-    mocks.prefetch.mockReset();
-    mocks.base64.mockReset();
-    mocks.getCachePathAsync.mockResolvedValue('/cache/image.png');
-    mocks.prefetch.mockResolvedValue(true);
-    mocks.base64.mockResolvedValue('YWJj');
+    mocks.files.clear();
+    mocks.deleted.length = 0;
+    mocks.download.mockReset().mockResolvedValue(undefined);
+    mocks.base64.mockReset().mockResolvedValue('YWJj');
   });
 
-  it('uses the existing image disk cache and returns a data URI', async () => {
+  it('downloads through a unique temporary file and deletes it after reading', async () => {
     await expect(loadRemoteBestImageAssetDataUri('https://example.test/cached.png'))
       .resolves.toBe('data:image/png;base64,YWJj');
-    expect(mocks.prefetch).not.toHaveBeenCalled();
+    expect(mocks.download).toHaveBeenCalledWith(
+      'https://example.test/cached.png',
+      expect.stringContaining('rranker-best-image-session-'),
+    );
+    expect(mocks.deleted).toHaveLength(1);
+    expect(mocks.files.size).toBe(0);
   });
 
-  it('prefetches a cache miss', async () => {
-    mocks.getCachePathAsync
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce('/cache/original.png');
-    mocks.prefetch.mockResolvedValueOnce(true);
-    await expect(loadRemoteBestImageAssetDataUri('https://example.test/original.png'))
-      .resolves.toBe('data:image/png;base64,YWJj');
-    expect(mocks.prefetch).toHaveBeenCalledWith('https://example.test/original.png', 'disk');
+  it('deletes the temporary file when base64 reading fails', async () => {
+    mocks.base64.mockRejectedValueOnce(new Error('read failed'));
+    await expect(loadRemoteBestImageAssetDataUri('https://example.test/failed.png')).resolves.toBeNull();
+    expect(mocks.deleted).toHaveLength(1);
+    expect(mocks.files.size).toBe(0);
   });
 
-  it('treats missing and failed items as a per-item null fallback', async () => {
-    mocks.getCachePathAsync.mockRejectedValue(new Error('download failed'));
+  it('treats missing input and download failures as null', async () => {
+    mocks.download.mockRejectedValueOnce(new Error('download failed'));
     await expect(loadRemoteBestImageAssetDataUri(null)).resolves.toBeNull();
     await expect(loadRemoteBestImageAssetDataUri('https://example.test/failed.png')).resolves.toBeNull();
   });

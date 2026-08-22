@@ -20,6 +20,11 @@ vi.mock('expo-file-system', () => {
     constructor(base: string | { uri: string }, ...parts: string[]) { this.uri = joinUri(base, parts); }
     create() { /* in-memory directories always exist */ }
     get exists() { return true; }
+    delete() {
+      for (const key of [...mockFs.files.keys()]) {
+        if (key.startsWith(`${this.uri}/`)) mockFs.files.delete(key);
+      }
+    }
   }
   class File {
     uri: string;
@@ -54,6 +59,8 @@ vi.mock('expo-file-system', () => {
 
 vi.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
   chartPreviewStageDirectory: (name: string) => mockFs.makeStageDirectory(name),
+  createChartPreviewSessionDirectory: (name: string) => mockFs.makeStageDirectory(name),
+  disposeChartPreviewSessionDirectory: (directory: { delete: () => void }) => directory.delete(),
   loadAssetFileUri: async (moduleId: number) => `file://asset/${moduleId}`,
   readAssetText: async (moduleId: number) => mockFs.readAssetTexts.get(moduleId) ?? '',
   stageAsset: async (moduleId: number, fileName: string) => {
@@ -132,6 +139,8 @@ describe('chart preview plan executor remote assets', () => {
 
     expect(mockFs.stagedLocalAssets).toEqual(['7:player.js']);
     expect(result.uri).toBe(stageUri('index.html'));
+    result.dispose();
+    expect(mockFs.files.has(stageUri('index.html'))).toBe(false);
   });
 
   it('feeds remote data url assets to buildHtml after staging them', async () => {

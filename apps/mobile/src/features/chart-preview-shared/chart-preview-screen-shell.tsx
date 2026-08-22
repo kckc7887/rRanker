@@ -21,7 +21,11 @@ import {
 import { chartPreviewNativeScreenOptions } from './chart-preview-native-screen-options';
 import { useAppTheme } from '@/theme/app-theme';
 
-export type ChartPreviewShellSource = { uri: string; allowingReadAccessToURL: string };
+export type ChartPreviewShellSource = {
+  uri: string;
+  allowingReadAccessToURL: string;
+  dispose?: () => void;
+};
 
 export type ChartPreviewShellRequest<TPayload> =
   | { kind: 'error'; message: string }
@@ -93,6 +97,7 @@ export function ChartPreviewScreenShell<TPayload>({
     let cancelled = false;
     let controller: AbortController | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let preparedSource: ChartPreviewShellSource | undefined;
 
     if (request.kind !== 'ready') {
       setSource(null);
@@ -116,7 +121,9 @@ export function ChartPreviewScreenShell<TPayload>({
       try {
         const settings = await loadSettings(settingsKey);
         const prepared = await request.prepare(localController.signal, settings);
-        if (!cancelled) setSource(prepared);
+        preparedSource = prepared;
+        if (cancelled) prepared.dispose?.();
+        else setSource(prepared);
       } catch (error) {
         if (!cancelled) {
           setStageError(localController.signal.aborted
@@ -135,6 +142,7 @@ export function ChartPreviewScreenShell<TPayload>({
       // 卸载时停止播放；cleanup 必须读最新 webRef。
       // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional latest ref
       webRef.current?.injectJavaScript(chartPreviewStopScript());
+      preparedSource?.dispose?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deps 定稿为 request
   }, [request]);

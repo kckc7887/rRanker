@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Image,
   type ImageSourcePropType,
   Pressable,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
 } from 'react-native';
 import { useAppTheme } from '@/theme/app-theme';
 import { BestImagePickerShell } from '@/features/best-image/best-image-picker-shell';
+import { RemoteNativeImage as Image } from '@/components/RemoteNativeImage';
 import type { PhigrosImageStyleChoice } from './phigros-best-image-preferences';
 
 export type PhigrosBestImagePickerKind = 'avatar' | 'background';

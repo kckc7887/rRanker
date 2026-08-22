@@ -40,6 +40,8 @@ jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => {
   return {
     ...actual,
     phigrosReadableRootDirectory: () => ({ uri: 'file:///reference/' }),
+    createPhigrosIllustrationSessionDirectory: () => ({ uri: 'file:///illustration-session/' }),
+    disposePhigrosIllustrationSession: jest.fn(),
     loadPhigrosIllustrations: jest.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `data:image/png;base64,${id}`]))),
     loadRemoteImageDataUri: jest.fn(async () => 'data:image/png;base64,style'),
   };

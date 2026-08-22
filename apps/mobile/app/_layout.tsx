@@ -48,6 +48,7 @@ import { songDetailScreenOptions } from '@/components/game-content/SongDetailScr
 import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
+import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
 import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
 import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
@@ -193,6 +194,11 @@ export default function RootLayout() {
     void hydrateTheme().finally(stop);
   }, [hydrateTheme]);
   useEffect(() => { Appearance.setColorScheme(appearance === 'system' ? null : appearance); }, [appearance]);
+
+  useEffect(() => {
+    if (restoreStatus !== 'ready' || !themeHydrated || !iconFontsReady) return;
+    void runStorageCacheMaintenance().catch(() => undefined);
+  }, [restoreStatus, themeHydrated, iconFontsReady]);
 
   if (restoreStatus === 'restoring' || !themeHydrated || !iconFontsReady) {
     return <View style={styles.loading}><ActivityIndicator color="#246BFD" /></View>;

@@ -17,6 +17,10 @@ import { usePhiraChart } from '@/hooks/use-phira';
 import type { PhiraChart } from '@/domain/phira';
 import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
+import {
+  createChartPreviewSessionDirectory,
+  disposeChartPreviewSessionDirectory,
+} from '@/features/chart-preview-shared/chart-preview-assets';
 import { useAppTheme } from '@/theme/app-theme';
 
 /** Phigros 仅需读取 OSS 的三个 JSON 指针文件，超时给得短。 */
@@ -98,16 +102,23 @@ export default function PhigrosChartPreviewScreen() {
       payload: mapped,
       timeoutMs: mapped.game === 'phigros' ? PHIGROS_PREPARE_TIMEOUT_MS : PHIRA_PREPARE_TIMEOUT_MS,
       prepare: async (signal: AbortSignal, settings: unknown) => {
-        const prepared = mapped.game === 'phigros'
-          ? await buildPhigrosChartPreviewInput(mapped, settings as PhigrosChartPreviewSettings, signal)
-          : await buildPhiraChartPreviewInput(mapped, settings as PhigrosChartPreviewSettings, signal, {
-              stageMusic: stagePhiraChartMusic,
-              stageRpeBundle: stagePhiraRpeBundle,
-            });
-        return preparePhigrosChartPreviewWebViewSource(
-          { ...prepared.config, theme: isDark ? 'dark' : 'light' },
-          prepared.musicDataBase64 ?? null,
-        );
+        const directory = createChartPreviewSessionDirectory('rranker-phigros-chart-preview');
+        try {
+          const prepared = mapped.game === 'phigros'
+            ? await buildPhigrosChartPreviewInput(mapped, settings as PhigrosChartPreviewSettings, signal)
+            : await buildPhiraChartPreviewInput(mapped, settings as PhigrosChartPreviewSettings, signal, {
+                stageMusic: (bytes, fileName) => stagePhiraChartMusic(bytes, fileName, directory),
+                stageRpeBundle: (chartId, files) => stagePhiraRpeBundle(chartId, files, directory),
+              });
+          return await preparePhigrosChartPreviewWebViewSource(
+            { ...prepared.config, theme: isDark ? 'dark' : 'light' },
+            prepared.musicDataBase64 ?? null,
+            directory,
+          );
+        } catch (error) {
+          disposeChartPreviewSessionDirectory(directory);
+          throw error;
+        }
       },
     };
   }, [mapped, phiraChart.data, phiraChart.isError, isDark]);

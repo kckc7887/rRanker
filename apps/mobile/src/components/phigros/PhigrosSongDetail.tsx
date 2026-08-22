@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {

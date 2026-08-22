@@ -17,9 +17,11 @@ import {
 import {
   listClearableCategoryIds,
 } from '@/features/storage-management/storage-usage';
+import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
 
 const mocks = vi.hoisted(() => ({
   execAsync: vi.fn(async () => undefined),
+  getFirstAsync: vi.fn(async (_sql: string) => null as Record<string, number> | null),
   measureDirectoryBytes: vi.fn(() => 0),
   clearMaimaiUiCache: vi.fn(),
   resetPhigrosKyouAliasesCache: vi.fn(),
@@ -28,7 +30,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('expo-sqlite', () => ({
   openDatabaseAsync: vi.fn(async () => ({
     execAsync: mocks.execAsync,
-    getFirstAsync: vi.fn(async () => null),
+    getFirstAsync: mocks.getFirstAsync,
     getAllAsync: vi.fn(async () => []),
     runAsync: vi.fn(async () => undefined),
   })),
@@ -55,10 +57,14 @@ vi.mock('@/domain/game-bind-options', () => {
 
 vi.mock('@/features/storage-management/fs-storage', () => ({
   measureDirectoryBytes: mocks.measureDirectoryBytes,
+  measureDirectoryBytesStrict: mocks.measureDirectoryBytes,
   clearAppOwnedCacheContents: () => undefined,
+  clearAppOwnedCacheContentsStrict: () => undefined,
   APP_CACHE_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,
+  PHIGROS_ILLUSTRATION_ROOT: () => null,
   MAIMAI_ASSETS_ROOT: () => null,
+  OSU_MOD_ICONS_ROOT: () => null,
 }));
 
 vi.mock('@/features/storage-management/ui-icon-fonts', () => ({
@@ -210,8 +216,11 @@ describe('phira storage segment', () => {
     await expect(clearStorageByCategories(['phira'], client as never)).resolves.toEqual({
       clearedIds: ['phira'],
       failures: [],
+      reclaimedBytes: 0,
     });
-    expect(client.removeQueries).toHaveBeenCalledWith({ queryKey: ['phira'] });
+    const predicate = client.removeQueries.mock.calls[0]?.[0]?.predicate as (query: { queryKey: unknown[] }) => boolean;
+    expect(predicate({ queryKey: ['phira', 'charts'] })).toBe(true);
+    expect(predicate({ queryKey: ['musedash', 'albums'] })).toBe(false);
   });
 });
 
@@ -260,7 +269,7 @@ describe('osu storage segment', () => {
 
 describe('shared cache note wording', () => {
   it('uses the unified include/exclude wording', () => {
-    expect(sharedCacheNote()).toBe('临时文件与图片缓存；不含系统图标字体');
+    expect(sharedCacheNote()).toBe('会话临时文件；远程图片仅使用内存，不含系统图标字体');
   });
 });
 
@@ -380,21 +389,33 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     expect(mocks.resetPhigrosKyouAliasesCache).not.toHaveBeenCalled();
   });
 
-  it('removes queries for every game cache namespace', async () => {
+  it('does not evict unrelated game queries when only shared files are cleared', async () => {
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
     };
     await clearStorageByCategories(['shared'], client as never);
-    for (const key of [
-      'tuf',
-      'musedash',
-      'phigros-catalog',
-      'phigros-kyou-chart-tags',
-      'chunithm-collections',
-      'best-image-collections',
-    ]) {
-      expect(client.removeQueries).toHaveBeenCalledWith({ queryKey: [key] });
-    }
+    expect(client.removeQueries).not.toHaveBeenCalled();
+  });
+});
+
+describe('SQLite physical allocation estimate', () => {
+  it('reports allocated pages and excludes freelist pages from live bytes', async () => {
+    mocks.getFirstAsync.mockImplementation(async (sql: string): Promise<Record<string, number> | null> => {
+      if (sql.includes('page_size')) return { page_size: 4096 };
+      if (sql.includes('page_count')) return { page_count: 10 };
+      if (sql.includes('freelist_count')) return { freelist_count: 2 };
+      return null;
+    });
+
+    await expect(measureRrankerDatabaseAllocation()).resolves.toEqual({
+      pageSize: 4096,
+      pageCount: 10,
+      freePages: 2,
+      allocatedBytes: 40960,
+      liveBytesEstimate: 32768,
+    });
+    expect(mocks.execAsync).toHaveBeenCalledWith('PRAGMA wal_checkpoint(PASSIVE);');
+    mocks.getFirstAsync.mockImplementation(async (_sql: string) => null);
   });
 });

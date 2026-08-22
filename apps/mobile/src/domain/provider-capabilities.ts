@@ -23,5 +23,6 @@ export function shouldPersistScoreSnapshot(providerId: ProviderId | null): boole
 }
 
 export function shouldPersistMaimaiCatalog(providerId: ProviderId | null): boolean {
-  return providerId !== null;
+  void providerId;
+  return false;
 }

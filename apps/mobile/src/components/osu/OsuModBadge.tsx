@@ -6,7 +6,6 @@
  */
 import { useEffect, useState } from 'react';
 import { fetch as expoFetch } from 'expo/fetch';
-import { Directory, File, Paths } from 'expo-file-system';
 import { StyleSheet, Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { DetailPressable } from '@/components/game-content/DetailPressable';
@@ -16,14 +15,10 @@ import { OSU_MOD_ICONS_ROOT } from '@/providers/osu-config';
 /** 默认直径：对齐标签行胶囊高度（GameDifficultyBadge 高 24）。 */
 const DEFAULT_SIZE = 22;
 
-// ---- 图标三级缓存（内存 → 磁盘 → 远程），inflight 防重共享同一下载 Promise ----
+// ---- 图标会话缓存（内存 → 远程），inflight 防重共享同一下载 Promise ----
 
 const memoryXmlCache = new Map<string, string>();
 const inFlightIcons = new Map<string, Promise<string | null>>();
-
-function osuModIconDirectory(): Directory {
-  return new Directory(Paths.document, 'rranker', 'osu-mod-icons');
-}
 
 /** 远程图标文本（原始单色 SVG）；非 SVG 响应/网络失败/未配置根路径均返回 null（静默）。 */
 async function fetchOsuModIconXml(acronym: string): Promise<string | null> {
@@ -41,7 +36,7 @@ async function fetchOsuModIconXml(acronym: string): Promise<string | null> {
   }
 }
 
-/** 确保图标文本可用：内存 → 磁盘 → 远程下载后落盘；任一环节失败静默返回 null。 */
+/** 确保图标文本可用：内存 → 远程；任一环节失败静默返回 null。 */
 async function ensureOsuModIconXml(acronym: string): Promise<string | null> {
   const cached = memoryXmlCache.get(acronym);
   if (cached) return cached;
@@ -49,20 +44,8 @@ async function ensureOsuModIconXml(acronym: string): Promise<string | null> {
   if (existing) return existing;
   const pending = (async () => {
     try {
-      const directory = osuModIconDirectory();
-      const file = new File(directory, osuModIconFileName(acronym));
-      if (file.exists) {
-        const xml = await file.text();
-        if (xml.includes('<svg')) {
-          memoryXmlCache.set(acronym, xml);
-          return xml;
-        }
-        file.delete();
-      }
       const xml = await fetchOsuModIconXml(acronym);
       if (xml == null) return null;
-      directory.create({ intermediates: true, idempotent: true });
-      file.write(xml);
       memoryXmlCache.set(acronym, xml);
       return xml;
     } catch {

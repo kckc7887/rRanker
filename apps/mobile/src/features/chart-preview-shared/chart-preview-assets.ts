@@ -10,10 +10,24 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { resolveChartPreviewAssetUri } from './chart-preview-asset-uri';
 
+let sessionCounter = 0;
+
 export function chartPreviewStageDirectory(name: string): Directory {
   const directory = new Directory(Paths.cache, name);
   directory.create({ intermediates: true, idempotent: true });
   return directory;
+}
+
+/** 每次预览独占 stage，避免切谱和并发准备互相覆盖。 */
+export function createChartPreviewSessionDirectory(name: string): Directory {
+  sessionCounter += 1;
+  const directory = new Directory(Paths.cache, `${name}-session-${Date.now()}-${sessionCounter}`);
+  directory.create({ intermediates: true, idempotent: true });
+  return directory;
+}
+
+export function disposeChartPreviewSessionDirectory(directory: Directory): void {
+  if (directory.exists) directory.delete();
 }
 
 export async function stageAsset(moduleId: number, fileName: string, directory: Directory): Promise<File> {

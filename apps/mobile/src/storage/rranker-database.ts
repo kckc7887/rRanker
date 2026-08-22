@@ -37,6 +37,35 @@ export async function compactRrankerDatabase(): Promise<void> {
   await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE); VACUUM;');
 }
 
+export type RrankerDatabaseAllocation = {
+  pageSize: number;
+  pageCount: number;
+  freePages: number;
+  allocatedBytes: number;
+  liveBytesEstimate: number;
+};
+
+/** 读取 SQLite 物理页占用；WAL 在统计前先被动 checkpoint，失败仍可读取主库估算。 */
+export async function measureRrankerDatabaseAllocation(): Promise<RrankerDatabaseAllocation> {
+  const db = await getRrankerDatabase();
+  await db.execAsync('PRAGMA wal_checkpoint(PASSIVE);').catch(() => undefined);
+  const [pageSizeRow, pageCountRow, freePagesRow] = await Promise.all([
+    db.getFirstAsync<{ page_size: number }>('PRAGMA page_size'),
+    db.getFirstAsync<{ page_count: number }>('PRAGMA page_count'),
+    db.getFirstAsync<{ freelist_count: number }>('PRAGMA freelist_count'),
+  ]);
+  const pageSize = pageSizeRow?.page_size ?? 0;
+  const pageCount = pageCountRow?.page_count ?? 0;
+  const freePages = freePagesRow?.freelist_count ?? 0;
+  return {
+    pageSize,
+    pageCount,
+    freePages,
+    allocatedBytes: pageSize * pageCount,
+    liveBytesEstimate: pageSize * Math.max(0, pageCount - freePages),
+  };
+}
+
 /** 测试用：重置单例与 schema 串行链。 */
 export function resetRrankerDatabaseForTests(): void {
   databasePromise = null;

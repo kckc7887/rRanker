@@ -6,82 +6,70 @@ import {
 } from '@/features/best-image/load-best-image-jackets';
 
 const mocks = vi.hoisted(() => ({
-  getCachePathAsync: vi.fn(),
-  prefetch: vi.fn(),
-  base64: vi.fn(),
+  files: new Set<string>(),
+  urls: [] as string[],
+  base64: vi.fn(async (uri: string) => `encoded-${uri}`),
+  failUrls: new Set<string>(),
+  deleted: [] as string[],
 }));
 
-vi.mock('expo-image', () => ({
-  Image: {
-    getCachePathAsync: mocks.getCachePathAsync,
-    prefetch: mocks.prefetch,
-  },
-}));
-vi.mock('expo-file-system', () => ({
-  File: class MockFile {
-    constructor(public readonly uri: string) {}
+vi.mock('expo-file-system', () => {
+  class File {
+    readonly uri: string;
+    constructor(base: { uri: string }, name: string) { this.uri = `${base.uri}/${name}`; }
+    get exists() { return mocks.files.has(this.uri); }
+    get size() { return this.exists ? 3 : 0; }
     base64() { return mocks.base64(this.uri); }
-  },
-}));
+    delete() { mocks.deleted.push(this.uri); mocks.files.delete(this.uri); }
+    static async downloadFileAsync(url: string, file: File) {
+      mocks.urls.push(url);
+      if (mocks.failUrls.has(url)) throw new Error('download failed');
+      mocks.files.add(file.uri);
+      return file;
+    }
+  }
+  return { File, Paths: { cache: { uri: 'file://cache' } } };
+});
 
-describe('best image jacket cache', () => {
+describe('best image jacket temporary loading', () => {
   beforeEach(() => {
-    mocks.getCachePathAsync.mockReset();
-    mocks.prefetch.mockReset();
-    mocks.base64.mockReset();
+    mocks.files.clear();
+    mocks.urls.length = 0;
+    mocks.deleted.length = 0;
+    mocks.failUrls.clear();
+    mocks.base64.mockClear();
   });
 
-  it('reuses Expo Image disk cache and returns WebView-safe data URIs', async () => {
-    mocks.getCachePathAsync.mockImplementation(async (url: string) => `file:///cache/${url.split('/').at(-1)}`);
-    mocks.base64.mockImplementation(async (uri: string) => `encoded-${uri.split('/').at(-1)}`);
-
-    await expect(loadBestImageJackets(['cache-11447', 'cache-11448', 'cache-11447'])).resolves.toEqual({
-      'cache-11447': 'data:image/png;base64,encoded-cache-11447.png',
-      'cache-11448': 'data:image/png;base64,encoded-cache-11448.png',
-    });
-    expect(mocks.prefetch).not.toHaveBeenCalled();
-  });
-
-  it('normalizes the absolute cache path returned by Android before reading it', async () => {
-    mocks.getCachePathAsync.mockResolvedValue('/data/user/0/app/cache/1449.png');
-    mocks.base64.mockResolvedValue('encoded-android');
-
-    await expect(loadBestImageJackets(['android-11449'])).resolves.toEqual({
-      'android-11449': 'data:image/png;base64,encoded-android',
-    });
-    expect(imageCachePathToFileUri('/data/user/0/app/cache/1449.png'))
-      .toBe('file:///data/user/0/app/cache/1449.png');
-    expect(mocks.base64).toHaveBeenCalledWith('file:///data/user/0/app/cache/1449.png');
-  });
-
-  it('prefetches missing jackets serially and marks failures for placeholders', async () => {
-    mocks.getCachePathAsync
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce('file:///cache/fetch-11447.png')
-      .mockResolvedValueOnce(null);
-    mocks.prefetch.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
-    mocks.base64.mockResolvedValue('encoded-fetched');
-
+  it('downloads serially, reports progress and deletes every temporary file', async () => {
     const progress: string[] = [];
-    await expect(loadBestImageJackets(['fetch-11447', 'fetch-missing'], (completed, total) => {
+    const result = await loadBestImageJackets(['11447', '11448'], (completed, total) => {
       progress.push(`${completed}/${total}`);
-    })).resolves.toEqual({
-      'fetch-11447': 'data:image/png;base64,encoded-fetched',
-      'fetch-missing': null,
     });
+    expect(Object.keys(result)).toEqual(['11447', '11448']);
+    expect(Object.values(result).every((value) => value?.startsWith('data:image/png;base64,'))).toBe(true);
     expect(progress).toEqual(['0/2', '1/2', '2/2']);
+    expect(mocks.deleted).toHaveLength(2);
+    expect(mocks.files.size).toBe(0);
+  });
+
+  it('marks a failed jacket as null without retaining a file', async () => {
+    mocks.failUrls.add(bestImageJacketUrl('11449'));
+    await expect(loadBestImageJackets(['11449'])).resolves.toEqual({ '11449': null });
+    expect(mocks.files.size).toBe(0);
+  });
+
+  it('deduplicates normalized SD and DX URLs while preserving both output keys', async () => {
+    await expect(loadBestImageJackets(['1447', '11447'])).resolves.toMatchObject({
+      '1447': expect.stringContaining('data:image/png;base64,'),
+      '11447': expect.stringContaining('data:image/png;base64,'),
+    });
+    expect(mocks.urls).toHaveLength(1);
+  });
+
+  it('keeps compatibility URL helpers', () => {
     expect(bestImageJacketUrl('11447')).toBe('https://assets2.lxns.net/maimai/jacket/1447.png');
     expect(bestImageJacketUrl('110123')).toBe('https://assets2.lxns.net/maimai/jacket/123.png');
-  });
-
-  it('uses one normalized CDN resource for SD and offset DX ids while preserving both output keys', async () => {
-    mocks.getCachePathAsync.mockResolvedValue('file:///cache/1447.png');
-    mocks.base64.mockResolvedValue('encoded-1447');
-
-    await expect(loadBestImageJackets(['1447', '11447'])).resolves.toEqual({
-      '1447': 'data:image/png;base64,encoded-1447',
-      '11447': 'data:image/png;base64,encoded-1447',
-    });
-    expect(mocks.getCachePathAsync).toHaveBeenCalledTimes(1);
+    expect(imageCachePathToFileUri('/data/user/0/app/cache/1449.png'))
+      .toBe('file:///data/user/0/app/cache/1449.png');
   });
 });

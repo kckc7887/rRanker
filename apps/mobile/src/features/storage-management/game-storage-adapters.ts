@@ -1,4 +1,5 @@
 import type { GameId } from '@/domain/game-bind-options';
+import type { Directory } from 'expo-file-system';
 import { findGame } from '@/domain/game-bind-options';
 import { isOsuGameId } from '@/domain/game-mode-family';
 import { DXRATING_CHART_TAGS_RESOURCE_KEY } from '@/domain/dxrating-chart-tags';
@@ -17,15 +18,16 @@ import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-fon
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { isAppOwnedCacheEntry } from '@/features/storage-management/expo-system-cache';
+import { isManagedClearableCacheEntry } from '@/features/storage-management/expo-system-cache';
 import {
-  clearAppOwnedCacheContents,
+  clearAppOwnedCacheContentsStrict,
   measureDirectoryBytes,
   APP_CACHE_ROOT,
   MAIMAI_ASSETS_ROOT,
   PHIGROS_FONT_ROOT,
 } from '@/features/storage-management/fs-storage';
 import { reloadUiIconFonts } from '@/features/storage-management/ui-icon-fonts';
+import { resetPhigrosKyouAliasesCache } from '@/hooks/use-phigros-kyou';
 
 export { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 
@@ -51,9 +53,25 @@ export type GameStorageAdapter = {
   title: string;
   color: string;
   note: string;
+  /** 该游戏拥有的 React Query 前缀；清理器按前缀选择性移除。 */
+  queryKeys: readonly (readonly unknown[])[];
+  resetMemory?: () => void;
+  fileResources: readonly {
+    persistence: 'temporary' | 'versioned-asset';
+    root: () => Directory;
+    clear: () => void;
+  }[];
   measure: (snapshots: SqliteSnapshotRepository) => Promise<number>;
   clear: (snapshots: SqliteSnapshotRepository) => Promise<void>;
 };
+
+function measureFileResources(adapter: Pick<GameStorageAdapter, 'fileResources'>): number {
+  return adapter.fileResources.reduce((sum, resource) => sum + measureDirectoryBytes(resource.root()), 0);
+}
+
+function clearFileResources(adapter: Pick<GameStorageAdapter, 'fileResources'>): void {
+  for (const resource of adapter.fileResources) resource.clear();
+}
 
 function accountIdBelongsToGame(accountId: string, gameId: GameId): boolean {
   return accountId === gameId || accountId.startsWith(`${gameId}:`);
@@ -197,36 +215,48 @@ export async function measureDurableLocalMaimaiBytes(
   return total;
 }
 
+const maimaiFileResources: GameStorageAdapter['fileResources'] = [{
+  persistence: 'versioned-asset', root: MAIMAI_ASSETS_ROOT, clear: clearMaimaiUiCache,
+}];
 const maimaiAdapter: GameStorageAdapter = {
   gameId: 'maimai',
   title: findGame('maimai')?.title ?? '舞萌 DX',
   color: '#F43F5E',
-  note: '成绩、曲库与导出图素材缓存；不含本地账号成绩',
+  note: '账号成绩快照与当前版本导出素材；SQLite 为估算值',
+  queryKeys: [
+    ['score-snapshot'], ['game-data'], ['songs'], ['detailed-catalog'], ['plates'],
+    ['collections'], ['dxrating-chart-tags'], ['best-image-collections'],
+  ],
+  fileResources: maimaiFileResources,
   async measure(snapshots) {
     const sqlite = await measureGameSqliteBytes(snapshots, 'maimai', true);
-    return sqlite + measureDirectoryBytes(MAIMAI_ASSETS_ROOT());
+    return sqlite + measureFileResources(maimaiAdapter);
   },
   async clear(snapshots) {
     await clearGameSqlite(snapshots, 'maimai', true);
-    clearMaimaiUiCache();
+    clearFileResources(maimaiAdapter);
   },
 };
 
+const phigrosFileResources: GameStorageAdapter['fileResources'] = [
+  { persistence: 'versioned-asset', root: PHIGROS_FONT_ROOT, clear: clearPhigrosFontCache },
+  { persistence: 'temporary', root: phigrosIllustrationStageDirectory, clear: clearPhigrosIllustrationStage },
+];
 const phigrosAdapter: GameStorageAdapter = {
   gameId: 'phigros',
   title: findGame('phigros')?.title ?? 'Phigros',
   color: '#8B5CF6',
-  note: '存档、曲库与图片缓存',
+  note: '账号存档与当前版本字体；SQLite 为估算值',
+  queryKeys: [['score-snapshot'], ['game-data'], ['phigros-catalog'], ['phigros-kyou-chart-tags']],
+  resetMemory: resetPhigrosKyouAliasesCache,
+  fileResources: phigrosFileResources,
   async measure(snapshots) {
     const sqlite = await measureGameSqliteBytes(snapshots, 'phigros', false);
-    return sqlite
-      + measureDirectoryBytes(PHIGROS_FONT_ROOT())
-      + measureDirectoryBytes(phigrosIllustrationStageDirectory());
+    return sqlite + measureFileResources(phigrosAdapter);
   },
   async clear(snapshots) {
     await clearGameSqlite(snapshots, 'phigros', false);
-    clearPhigrosFontCache();
-    clearPhigrosIllustrationStage();
+    clearFileResources(phigrosAdapter);
   },
 };
 
@@ -234,7 +264,9 @@ const chunithmAdapter: GameStorageAdapter = {
   gameId: 'chunithm',
   title: findGame('chunithm')?.title ?? '中二节奏',
   color: '#27A7E7',
-  note: '成绩与曲库缓存',
+  note: '账号成绩快照；公开曲库仅保留在会话内，SQLite 为估算值',
+  queryKeys: [['score-snapshot'], ['game-data'], ['chunithm-catalog'], ['chunithm-song-detail'], ['chunithm-collections']],
+  fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'chunithm', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'chunithm', false),
 };
@@ -243,7 +275,9 @@ const adofaiAdapter: GameStorageAdapter = {
   gameId: 'adofai',
   title: findGame('adofai')?.title ?? '冰与火之舞',
   color: '#F15B55',
-  note: '玩家资料、成绩与曲库缓存',
+  note: '玩家资料与核心成绩快照；公开结果仅保留在会话内，SQLite 为估算值',
+  queryKeys: [['tuf']],
+  fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'adofai', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'adofai', false),
 };
@@ -252,7 +286,9 @@ const musedashAdapter: GameStorageAdapter = {
   gameId: 'musedash',
   title: findGame('musedash')?.title ?? '喵斯快跑',
   color: '#EC4899',
-  note: '曲库、定数表、名称表与玩家成绩缓存',
+  note: '玩家与核心成绩快照；曲库及单曲明细仅保留在会话内，SQLite 为估算值',
+  queryKeys: [['musedash']],
+  fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'musedash', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'musedash', false),
 };
@@ -261,20 +297,24 @@ const phiraAdapter: GameStorageAdapter = {
   gameId: 'phira',
   title: findGame('phira')?.title ?? 'Phira',
   color: '#8D5BD6',
-  note: '玩家资料、最佳成绩、曲库、谱面与物量缓存',
+  note: '玩家与核心成绩快照；曲库、谱面及物量仅保留在会话内，SQLite 为估算值',
+  queryKeys: [['phira']],
+  fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'phira', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'phira', false),
 };
 
 /** osu! 四模式：后台各注册为独立游戏，按模式统计/清除各自的快照缓存。 */
 const OSU_STORAGE_COLOR = '#FF66AA';
-const OSU_STORAGE_NOTE = '玩家资料与 Top 100 成绩快照缓存';
+const OSU_STORAGE_NOTE = '玩家资料、Top 100 与已知成绩快照；SQLite 为估算值';
 
 const osuStandardAdapter: GameStorageAdapter = {
   gameId: 'osu-standard',
   title: findGame('osu-standard')?.title ?? 'osu!standard',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-standard', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-standard', false),
 };
@@ -284,6 +324,8 @@ const osuManiaAdapter: GameStorageAdapter = {
   title: findGame('osu-mania')?.title ?? 'osu!mania',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-mania', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-mania', false),
 };
@@ -293,6 +335,8 @@ const osuCatchAdapter: GameStorageAdapter = {
   title: findGame('osu-catch')?.title ?? 'osu!catch',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-catch', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-catch', false),
 };
@@ -302,6 +346,8 @@ const osuTaikoAdapter: GameStorageAdapter = {
   title: findGame('osu-taiko')?.title ?? 'osu!taiko',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-taiko', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-taiko', false),
 };
@@ -325,30 +371,26 @@ export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | unde
 }
 
 export async function measureSharedCacheBytes(): Promise<number> {
-  // 只统计应用自有临时文件；ExponentAsset-* 等系统资源既不可清也不计入。
+  // 统计应用临时文件与 expo-image 原生缓存；ExponentAsset-* 系统资源不计入。
   return measureDirectoryBytes(APP_CACHE_ROOT(), {
-    skip: (name) => !isAppOwnedCacheEntry(name),
+    skip: (name) => !isManagedClearableCacheEntry(name),
   });
 }
 
 export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }> {
   // 禁止整目录清空 Paths.cache：会删掉 Ionicons 等 ExponentAsset 字体，导致全站图标空白。
-  clearAppOwnedCacheContents(APP_CACHE_ROOT());
-  let imageCacheCleared = false;
-  try {
-    const { Image } = await import('expo-image');
-    const [disk, memory] = await Promise.all([
-      Image.clearDiskCache(),
-      Image.clearMemoryCache(),
-    ]);
-    imageCacheCleared = disk === true || memory === true;
-  } catch {
-    imageCacheCleared = false;
-  }
+  clearAppOwnedCacheContentsStrict(APP_CACHE_ROOT());
+  const { Image } = await import('expo-image');
+  const [disk, memory] = await Promise.all([
+    Image.clearDiskCache(),
+    Image.clearMemoryCache(),
+  ]);
+  if (disk !== true) throw new Error('原生图片磁盘缓存清理失败');
+  const imageCacheCleared = disk === true || memory === true;
   await reloadUiIconFonts();
   return { imageCacheCleared };
 }
 
 export function sharedCacheNote(): string {
-  return '临时文件与图片缓存；不含系统图标字体';
+  return '会话临时文件；远程图片仅使用内存，不含系统图标字体';
 }

@@ -73,7 +73,7 @@ export function StorageDonutChart({ segments, totalBytes, size = 200 }: Props) {
         </G>
       </Svg>
       <View style={styles.center} pointerEvents="none">
-        <Text style={[styles.totalLabel, { color: theme.textMuted }]}>已用空间</Text>
+        <Text style={[styles.totalLabel, { color: theme.textMuted }]}>受管存储约</Text>
         <Text style={[styles.totalValue, { color: theme.text }]}>{formatStorageBytes(totalBytes)}</Text>
       </View>
     </View>

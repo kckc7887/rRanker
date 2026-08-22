@@ -31,7 +31,7 @@ export function useScoreSnapshot() {
         persistCatalog ? repository : undefined,
       );
       // 缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
-      // local/maimai-test 账号同样启用：首屏不再等待曲库网络拉取。
+      // 仅账号成绩快照可离线命中；公开曲库按省空间策略每次会话联网获取。
       if (persistScores) {
         return service.loadCacheFirst((fresh) => {
           queryClient.setQueryData(queryKey, fresh);

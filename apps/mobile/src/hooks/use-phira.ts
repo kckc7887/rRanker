@@ -60,18 +60,10 @@ export function usePhiraCharts(status: PhiraChartStatus, search: string) {
   const normalized = search.trim();
   return useInfiniteQuery({
     queryKey: ['phira', 'charts', status, normalized], initialPageParam: 0,
-    queryFn: async ({ pageParam, signal }): Promise<PhiraChartPage> => {
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => phiraCache.loadPage(status, pageParam, normalized),
-        loadFresh: async () => {
-          const data = await phiraProvider.getCharts({ status, page: pageParam, search: normalized || undefined }, signal);
-          const fresh = { data, source: phiraSource() };
-          void phiraCache.savePage(status, pageParam, normalized, fresh); return fresh;
-        },
-        onFresh: () => undefined,
-      });
-      return snapshot.data;
-    },
+    queryFn: ({ pageParam, signal }): Promise<PhiraChartPage> => phiraProvider.getCharts(
+      { status, page: pageParam, search: normalized || undefined },
+      signal,
+    ),
     // Phira /chart 的 page=1 返回与 page=0 相同的首页，翻页须跳过 1（0 → 2 → 3 → …）。
     getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
     ...OPTIONS,
@@ -91,17 +83,7 @@ export function usePhiraChartsByIds(ids: readonly number[]) {
 export function usePhiraChart(chartId: number | null) {
   return useQuery({
     queryKey: ['phira', 'chart', chartId], enabled: chartId !== null,
-    queryFn: async ({ signal }): Promise<PhiraChart> => {
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => phiraCache.loadChart(chartId!),
-        loadFresh: async () => {
-          const chart = await phiraProvider.getChart(chartId!, signal);
-          const fresh = { chart, source: phiraSource() }; void phiraCache.saveChart(chartId!, fresh); return fresh;
-        },
-        onFresh: () => undefined,
-      });
-      return snapshot.chart;
-    }, ...OPTIONS,
+    queryFn: ({ signal }): Promise<PhiraChart> => phiraProvider.getChart(chartId!, signal), ...OPTIONS,
   });
 }
 
@@ -129,20 +111,18 @@ export function usePhiraNotes(chart: PhiraChart | undefined, enabled = true) {
   return useQuery({
     queryKey: ['phira', 'notes', chart?.id, chart?.chartUpdated], enabled: enabled && !!chart?.file,
     queryFn: async ({ signal }) => {
-      const cached = await phiraCache.loadNotes(chart!.id);
-      if (cached && cached.chartUpdated === (chart!.chartUpdated ?? null)) return cached;
       try {
         const data = await phiraProvider.downloadChart(chart!.file!, signal);
         const value: import('@/domain/phira').PhiraNoteSnapshot = { chartUpdated: chart!.chartUpdated ?? null, counts: await countPhiraChartZip(data, signal), source: phiraSource() };
         if (signal.aborted) {
           const aborted = new Error('Phira 谱面读取已取消'); aborted.name = 'AbortError'; throw aborted;
         }
-        await phiraCache.saveNotes(chart!.id, value); return value;
+        return value;
       } catch (error) {
         if (signal.aborted) throw error;
         const value: import('@/domain/phira').PhiraNoteSnapshot = { chartUpdated: chart!.chartUpdated ?? null, counts: null,
           unavailableReason: error instanceof Error ? error.message : '谱面不可用', source: phiraSource() };
-        await phiraCache.saveNotes(chart!.id, value); return value;
+        return value;
       }
     }, ...OPTIONS,
   });

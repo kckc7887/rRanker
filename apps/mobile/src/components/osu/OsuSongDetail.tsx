@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image } from 'expo-image';
+import { RemoteImage as Image } from '@/components/RemoteImage';
 import { StatusBar } from 'expo-status-bar';
 import {
   ScrollView,
@@ -359,8 +359,8 @@ function Hero({ song, width }: { song: OsuBeatmapsetDetail; width: number }) {
       style={styles.hero}
       cover={failed || !song.cover ? undefined : (
         <Image
-          accessibilityLabel={`歌曲封面 ${song.title}`}
           cachePolicy="disk"
+          accessibilityLabel={`歌曲封面 ${song.title}`}
           contentFit="cover"
           onError={() => setFailed(true)}
           source={song.cover}
