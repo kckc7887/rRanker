@@ -7,7 +7,7 @@
  * 壳不感知具体游戏，不出现游戏 ID / Storage key 字面量分支。
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +15,7 @@ import { WebView } from 'react-native-webview';
 import Storage from 'expo-sqlite/kv-store';
 import {
   chartPreviewExitFullscreenScript,
+  chartPreviewPlayerMessageScript,
   chartPreviewStopScript,
   parseChartPreviewBridgeMessage,
 } from './chart-preview-bridge';
@@ -48,26 +49,20 @@ export type ChartPreviewScreenShellProps<TPayload> = {
   allowFileAccess: boolean;
   buildInjectedJavaScript?: (payload: TPayload) => string;
   reInjectOnLoadEnd?: boolean;
+  blockOnHttpError?: boolean;
+  onBridgeMessage?: (
+    message: ReturnType<typeof parseChartPreviewBridgeMessage> & Record<string, unknown>,
+    bridge: { postMessage: (message: Record<string, unknown>) => void },
+  ) => void;
 };
 
-async function loadSettings(settingsKey: string): Promise<unknown> {
+async function loadSettings(settingsKey: string): Promise<Record<string, unknown>> {
   try {
     const raw = await Storage.getItem(settingsKey);
     if (!raw) return {};
     return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return {};
-  }
-}
-
-async function saveSettings(settingsKey: string, partial: Record<string, unknown>): Promise<void> {
-  try {
-    const raw = await Storage.getItem(settingsKey);
-    const current: Record<string, unknown> = raw ? JSON.parse(raw) as Record<string, unknown> : {};
-    const merged = { ...current, ...partial };
-    await Storage.setItem(settingsKey, JSON.stringify(merged));
-  } catch {
-    /* ignore */
   }
 }
 
@@ -82,9 +77,13 @@ export function ChartPreviewScreenShell<TPayload>({
   allowFileAccess,
   buildInjectedJavaScript,
   reInjectOnLoadEnd,
+  blockOnHttpError = true,
+  onBridgeMessage,
 }: ChartPreviewScreenShellProps<TPayload>) {
   const theme = useAppTheme();
   const webRef = useRef<WebView>(null);
+  const settingsRef = useRef<Record<string, unknown>>({});
+  const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   const [source, setSource] = useState<ChartPreviewShellSource | null>(null);
   const [stageError, setStageError] = useState<string | null>(null);
@@ -111,6 +110,7 @@ export function ChartPreviewScreenShell<TPayload>({
     setIsFullscreen(false);
     setPlayerError(null);
     setStageError(null);
+    settingsRef.current = {};
 
     void (async () => {
       const localController = new AbortController();
@@ -120,6 +120,7 @@ export function ChartPreviewScreenShell<TPayload>({
       }
       try {
         const settings = await loadSettings(settingsKey);
+        settingsRef.current = settings;
         const prepared = await request.prepare(localController.signal, settings);
         preparedSource = prepared;
         if (cancelled) prepared.dispose?.();
@@ -155,6 +156,21 @@ export function ChartPreviewScreenShell<TPayload>({
     });
     return () => subscription.remove();
   }, [isFullscreen]);
+
+  const persistSettings = useCallback((partial: Record<string, unknown>) => {
+    settingsRef.current = { ...settingsRef.current, ...partial };
+    const serialized = JSON.stringify(settingsRef.current);
+    settingsWriteQueueRef.current = settingsWriteQueueRef.current
+      .catch(() => undefined)
+      .then(() => Storage.setItem(settingsKey, serialized))
+      .catch(() => undefined);
+  }, [settingsKey]);
+
+  const bridge = useMemo(() => ({
+    postMessage: (message: Record<string, unknown>) => {
+      webRef.current?.injectJavaScript(chartPreviewPlayerMessageScript(message));
+    },
+  }), []);
 
   // 与两屏现状一致：injected 随 request 稳定，不随注入构建器的渲染期引用变化。
   const injected = useMemo(() => {
@@ -227,18 +243,20 @@ export function ChartPreviewScreenShell<TPayload>({
               }
               if (data.type === 'error') {
                 setIsFullscreen(false);
-              setPlayerError('谱面播放失败，请返回重试。');
+                setPlayerError('谱面播放失败，请返回重试。');
               }
               if (data.type === 'settings') {
                 const { type: _type, message: _message, active: _active, ...settings } = data;
-                void saveSettings(settingsKey, settings);
+                persistSettings(settings);
               }
+              onBridgeMessage?.(data, bridge);
             }}
             onError={() => {
               setIsFullscreen(false);
               setPlayerError('播放器加载失败，请返回重试。');
             }}
             onHttpError={() => {
+              if (!blockOnHttpError) return;
               setIsFullscreen(false);
               setPlayerError('播放器加载失败，请返回重试。');
             }}

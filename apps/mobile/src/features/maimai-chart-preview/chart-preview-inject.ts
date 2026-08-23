@@ -17,6 +17,7 @@ export type ChartPreviewSettings = {
   showHitEffect?: boolean;
   showFireworks?: boolean;
   backgroundMode?: 'none' | 'image' | 'video';
+  videoBackgroundPrompted?: boolean;
   videoBackgroundConfirmed?: boolean;
 };
 

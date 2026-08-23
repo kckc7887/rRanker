@@ -24,6 +24,15 @@ const BUDDY_1P_ONLY = [
   '&inote_2=1,2h[4:1]',
 ].join('\n');
 
+const MASTER_WITHOUT_REMASTER = [
+  '&title=没有 Re:MASTER 的歌曲',
+  '&bpm=150',
+  '&inote_2=(150){4}1,',
+  '&inote_3=(150){4}2,',
+  '&inote_4=(150){4}3,',
+  '&inote_5=(150){4}4,',
+].join('\n');
+
 describe('maimai buddy chart parser', () => {
   it('parses both sides with identical lead-in timing', () => {
     const { side1, side2 } = parseSimaiBuddyCharts(BUDDY_SIMAI);
@@ -101,5 +110,17 @@ describe('maimai buddy chart parser', () => {
     const summarize = (chart: typeof viaDifficulty) =>
       chart.notes.map((n) => [n.type, n.timing, n.timingMs]);
     expect(summarize(viaDifficulty)).toEqual(summarize(viaBuddy));
+  });
+
+  it('plays MASTER from inote_5 when Re:MASTER is absent', () => {
+    expect(getAvailableDifficulties(MASTER_WITHOUT_REMASTER)).toEqual({
+      2: true,
+      3: true,
+      4: true,
+      5: true,
+    });
+    const chart = parseSimaiChart(MASTER_WITHOUT_REMASTER, 5);
+    expect(chart.difficulty).toBe(5);
+    expect(chart.notes.some((note) => 'position' in note && note.position === 4)).toBe(true);
   });
 });

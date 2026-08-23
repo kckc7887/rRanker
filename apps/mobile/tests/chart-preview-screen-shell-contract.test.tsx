@@ -179,6 +179,21 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     ));
   });
 
+  it('缺省仍把主播放器 HTTP 错误作为阻断错误', async () => {
+    await renderFictionalShell({
+      kind: 'ready',
+      payload: { chartName: '虚构谱面' },
+      prepare: async () => fictionalSource,
+    });
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+
+    await act(async () => {
+      (latestWebViewProps.onHttpError as (() => void) | undefined)?.();
+    });
+
+    expect(screen.getByText('播放器加载失败，请返回重试。')).toBeTruthy();
+  });
+
   it('页面卸载时由公共壳统一释放会话 stage', async () => {
     const dispose = jest.fn();
     const view = await renderFictionalShell({

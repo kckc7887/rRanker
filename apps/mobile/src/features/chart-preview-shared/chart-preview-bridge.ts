@@ -29,3 +29,8 @@ export function chartPreviewStopScript(): string {
 export function chartPreviewExitFullscreenScript(): string {
   return `window.postMessage({type:'exit-fullscreen'}, '*');true;`;
 }
+
+export function chartPreviewPlayerMessageScript(message: Record<string, unknown>): string {
+  const serialized = JSON.stringify(message).replace(/</g, '\\u003c');
+  return `window.postMessage(${serialized}, '*');true;`;
+}
