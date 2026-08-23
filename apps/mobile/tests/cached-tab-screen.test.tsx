@@ -29,12 +29,15 @@ describe('cached native-tab content', () => {
   beforeEach(() => mockHeavyPageRender.mockClear());
   afterEach(() => jest.restoreAllMocks());
 
-  it('keeps the mounted page state while the tab is inactive', async () => {
-    let pendingActivation: (() => void) | null = null;
-    const cancel = jest.fn();
+  it('keeps mounted state and resumes activity only after every focus transition', async () => {
+    const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
     jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      pendingActivation = callback as () => void;
-      return { cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      const task = {
+        callback: callback as () => void,
+        cancel: jest.fn(),
+      };
+      pendingTasks.push(task);
+      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
     });
 
     const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
@@ -42,21 +45,40 @@ describe('cached native-tab content', () => {
 
     let cleanup: void | (() => void);
     await act(() => { cleanup = mockFocusEffect?.(); });
-    await act(() => { pendingActivation?.(); });
+    expect(pendingTasks).toHaveLength(1);
+    expect(screen.queryByText('前台')).toBeNull();
+    await act(() => { pendingTasks[0]?.callback(); });
     await fireEvent.press(screen.getByLabelText('修改页面状态'));
     expect(screen.getByText('页面状态 1')).toBeTruthy();
     expect(screen.getByText('前台')).toBeTruthy();
     const rendersAfterStateChange = mockHeavyPageRender.mock.calls.length;
 
     await act(() => { cleanup?.(); });
-    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(pendingTasks[0]?.cancel).toHaveBeenCalledTimes(1);
     expect(screen.getByText('页面状态 1')).toBeTruthy();
     expect(screen.getByText('后台')).toBeTruthy();
 
-    await act(() => { mockFocusEffect?.(); });
+    let secondCleanup: void | (() => void);
+    await act(() => { secondCleanup = mockFocusEffect?.(); });
+    expect(pendingTasks).toHaveLength(2);
     expect(screen.getByText('页面状态 1')).toBeTruthy();
-    expect(screen.getByText('前台')).toBeTruthy();
-    expect(InteractionManager.runAfterInteractions).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('后台')).toBeTruthy();
     expect(mockHeavyPageRender).toHaveBeenCalledTimes(rendersAfterStateChange);
+
+    await act(() => { secondCleanup?.(); });
+    expect(pendingTasks[1]?.cancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('后台')).toBeTruthy();
+    expect(mockHeavyPageRender).toHaveBeenCalledTimes(rendersAfterStateChange);
+
+    let thirdCleanup: void | (() => void);
+    await act(() => { thirdCleanup = mockFocusEffect?.(); });
+    expect(pendingTasks).toHaveLength(3);
+    await act(() => { pendingTasks[2]?.callback(); });
+    expect(screen.getByText('前台')).toBeTruthy();
+    expect(screen.getByText('页面状态 1')).toBeTruthy();
+    expect(mockHeavyPageRender).toHaveBeenCalledTimes(rendersAfterStateChange);
+
+    await act(() => { thirdCleanup?.(); });
+    expect(pendingTasks[2]?.cancel).toHaveBeenCalledTimes(1);
   });
 });

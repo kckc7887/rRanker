@@ -1,17 +1,15 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect, type Href } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { AccentColorPicker } from '@/components/AccentColorPicker';
 import { useNotification } from '@/components/AppNotification';
+import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { clearStorageByCategories } from '@/features/storage-management/clear-storage-cache';
 import { formatStorageBytes } from '@/features/storage-management/fs-storage';
-import {
-  collectStorageUsage,
-  listClearableCategoryIds,
-} from '@/features/storage-management/storage-usage';
+import { listClearableCategoryIds } from '@/features/storage-management/storage-usage';
 import {
   BADGE_LAYER_OVERLAY,
   BADGE_RAINBOW_BORDER_COLORS,
@@ -28,7 +26,11 @@ const APPEARANCES: { id: AppAppearance; label: string }[] = [
   { id: 'system', label: '跟随系统' }, { id: 'light', label: '浅色' }, { id: 'dark', label: '深色' },
 ];
 
-export default function SettingsScreen() {
+export default function SettingsTabScreen() {
+  return <CachedTabScreen><SettingsScreen /></CachedTabScreen>;
+}
+
+export function SettingsScreen() {
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
   const { showNotification } = useNotification();
@@ -39,23 +41,7 @@ export default function SettingsScreen() {
   const setAccent = useThemeStore((state) => state.setAccent);
   const setCustomAccent = useThemeStore((state) => state.setCustomAccent);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [storageLabel, setStorageLabel] = useState('统计各类缓存占用');
   const [quickClearing, setQuickClearing] = useState(false);
-
-  const refreshStorageLabel = useCallback(async () => {
-    try {
-      const usage = await collectStorageUsage();
-      setStorageLabel(`可清理约 ${formatStorageBytes(usage.clearableBytes)}`);
-    } catch {
-      setStorageLabel('统计各类缓存占用');
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void refreshStorageLabel();
-    }, [refreshStorageLabel]),
-  );
 
   const handleQuickClear = async () => {
     if (quickClearing) return;
@@ -72,7 +58,6 @@ export default function SettingsScreen() {
         return;
       }
       const result = await clearStorageByCategories(prefs.selectedIds);
-      await refreshStorageLabel();
       if (result.failures.length > 0) {
         const reclaimed = result.reclaimedBytes === null
           ? ''
@@ -177,7 +162,7 @@ export default function SettingsScreen() {
         >
           <View style={styles.rowText}>
             <Text style={[styles.title, { color: theme.text }]}>存储管理</Text>
-            <Text style={[styles.detail, { color: theme.textMuted }]}>{storageLabel}</Text>
+            <Text style={[styles.detail, { color: theme.textMuted }]}>查看占用并清理缓存</Text>
           </View>
         </Pressable>
         <Pressable
