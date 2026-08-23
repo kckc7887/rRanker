@@ -24,13 +24,12 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
   const [active, setActive] = useState(false);
 
   useFocusEffect(useCallback(() => {
-    setActive(true);
-
-    if (activatedRef.current) return () => setActive(false);
-
     const task = InteractionManager.runAfterInteractions(() => {
-      activatedRef.current = true;
-      setActivated(true);
+      if (!activatedRef.current) {
+        activatedRef.current = true;
+        setActivated(true);
+      }
+      setActive(true);
     });
     return () => {
       task.cancel();

@@ -1,7 +1,8 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { InteractionManager } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import SettingsScreen from '../app/(tabs)/settings';
+import SettingsTabScreen, { SettingsScreen } from '../app/(tabs)/settings';
 import { useThemeStore } from '@/state/theme-store';
 import { NotificationProvider } from '@/components/AppNotification';
 
@@ -9,7 +10,6 @@ const mockPush = jest.fn();
 const mockSaveTheme = jest.fn(async (_value?: unknown) => undefined);
 const mockClear = jest.fn(async (_ids?: unknown) => ({ clearedIds: ['shared'], failures: [] as string[], reclaimedBytes: 4096 }));
 const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: ['shared' as const] }));
-const mockCollect = jest.fn(async () => ({ segments: [], totalBytes: 12 * 1024, clearableBytes: 12 * 1024 }));
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-router', () => {
@@ -33,7 +33,6 @@ jest.mock('@/storage/theme-preferences-store', () => ({
   },
 }));
 jest.mock('@/features/storage-management/storage-usage', () => ({
-  collectStorageUsage: () => mockCollect(),
   listClearableCategoryIds: () => ['maimai', 'phigros', 'shared'],
 }));
 jest.mock('@/features/storage-management/clear-storage-cache', () => ({
@@ -77,7 +76,7 @@ jest.mock('@/components/AccentColorPicker', () => {
   };
 });
 
-function renderSettings() {
+function renderSettings(screen = <SettingsScreen />) {
   return render(
     <SafeAreaProvider initialMetrics={{
       frame: { x: 0, y: 0, width: 390, height: 844 },
@@ -85,7 +84,7 @@ function renderSettings() {
     }}
     >
       <NotificationProvider>
-        <SettingsScreen />
+        {screen}
       </NotificationProvider>
     </SafeAreaProvider>,
   );
@@ -96,10 +95,23 @@ describe('settings navigation', () => {
     mockPush.mockClear();
     mockClear.mockClear();
     mockLoadPrefs.mockClear();
-    mockCollect.mockClear();
     useThemeStore.setState({
       appearance: 'system', accent: 'blue', customHex: '#246BFD', hydrated: true,
     });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('uses the shared cached-tab lifecycle for the settings route', async () => {
+    let resume: (() => void) | null = null;
+    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+      resume = callback as () => void;
+      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+    });
+
+    const screen = await renderSettings(<SettingsTabScreen />);
+    expect(screen.getByTestId('cached-tab-placeholder')).toBeTruthy();
+    await act(() => { resume?.(); });
+    expect(screen.getByText('查看占用并清理缓存')).toBeTruthy();
   });
 
   it('opens game management outside the native-tab route tree', async () => {
@@ -110,10 +122,8 @@ describe('settings navigation', () => {
 
   it('shows storage management and opens detail route', async () => {
     const screen = await renderSettings();
-    await waitFor(() => {
-      expect(screen.getByText('存储管理')).toBeTruthy();
-      expect(screen.getByText('可清理约 12.0 KB')).toBeTruthy();
-    });
+    expect(screen.getByText('存储管理')).toBeTruthy();
+    expect(screen.getByText('查看占用并清理缓存')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('存储管理'));
     expect(mockPush).toHaveBeenCalledWith('/storage-management');
   });

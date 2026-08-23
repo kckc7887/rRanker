@@ -15,11 +15,12 @@ jest.mock('expo-router', () => ({
 describe('cached tab animation lifecycle', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('stops native looping animations on blur and restarts them only on refocus', async () => {
-    let pendingActivation: (() => void) | null = null;
+  it('stops native looping animations on blur and restarts them after refocus settles', async () => {
+    const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
     jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      pendingActivation = callback as () => void;
-      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      const task = { callback: callback as () => void, cancel: jest.fn() };
+      pendingTasks.push(task);
+      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
     });
 
     const animations: { start: jest.Mock; stop: jest.Mock }[] = [];
@@ -40,7 +41,8 @@ describe('cached tab animation lifecycle', () => {
 
     let cleanup: void | (() => void);
     await act(() => { cleanup = mockFocusEffect?.(); });
-    await act(() => { pendingActivation?.(); });
+    expect(animations).toHaveLength(0);
+    await act(() => { pendingTasks[0]?.callback(); });
     const foregroundAnimations = [...animations];
     expect(foregroundAnimations.length).toBeGreaterThan(0);
     expect(foregroundAnimations.every((animation) => animation.start.mock.calls.length === 1)).toBe(true);
@@ -51,12 +53,23 @@ describe('cached tab animation lifecycle', () => {
 
     let secondCleanup: void | (() => void);
     await act(() => { secondCleanup = mockFocusEffect?.(); });
+    expect(pendingTasks).toHaveLength(2);
+    expect(animations).toHaveLength(foregroundAnimations.length);
+    await act(() => { pendingTasks[1]?.callback(); });
     const resumedAnimations = animations.slice(foregroundAnimations.length);
     expect(resumedAnimations).toHaveLength(foregroundAnimations.length);
     expect(resumedAnimations.every((animation) => animation.start.mock.calls.length === 1)).toBe(true);
 
     await act(() => { secondCleanup?.(); });
     expect(resumedAnimations.every((animation) => animation.stop.mock.calls.length === 1)).toBe(true);
+    expect(animations).toHaveLength(foregroundAnimations.length * 2);
+
+    let thirdCleanup: void | (() => void);
+    await act(() => { thirdCleanup = mockFocusEffect?.(); });
+    expect(pendingTasks).toHaveLength(3);
+    expect(animations).toHaveLength(foregroundAnimations.length * 2);
+    await act(() => { thirdCleanup?.(); });
+    expect(pendingTasks[2]?.cancel).toHaveBeenCalledTimes(1);
     expect(animations).toHaveLength(foregroundAnimations.length * 2);
   });
 
