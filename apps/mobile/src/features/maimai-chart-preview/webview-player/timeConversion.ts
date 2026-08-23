@@ -62,3 +62,34 @@ export function musicTimeToBeats(
   const chartTimeMs = musicTimeSec * 1000 + leadInMs + musicOffset - firstMs;
   return msToBeats(chartTimeMs, bpmEvents, bpm);
 }
+
+export type BackgroundVideoFrame = {
+  active: boolean;
+  targetSeconds: number;
+};
+
+export function resolveBackgroundVideoFrame(input: {
+  currentBeats: number;
+  totalBeats: number;
+  isPlaying: boolean;
+  durationSeconds: number;
+  bpmEvents: readonly BpmEvent[] | null;
+  bpm: number;
+  musicOffset: number;
+  firstMs?: number;
+}): BackgroundVideoFrame {
+  const targetSeconds = calculateMusicTime(
+    input.currentBeats,
+    input.bpmEvents,
+    input.bpm,
+    input.musicOffset,
+    input.firstMs,
+  );
+  const stoppedAtEnd = !input.isPlaying && input.currentBeats >= input.totalBeats;
+  const beforeVideoEnd = !Number.isFinite(input.durationSeconds)
+    || targetSeconds < input.durationSeconds;
+  return {
+    active: targetSeconds > 0 && !stoppedAtEnd && beforeVideoEnd,
+    targetSeconds,
+  };
+}

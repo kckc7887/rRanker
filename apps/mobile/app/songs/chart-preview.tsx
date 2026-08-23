@@ -5,7 +5,9 @@ import {
   maimaiChartPreviewBuddyEngineDifficulty,
   maimaiChartPreviewChartId,
   maimaiChartPreviewEngineDifficulty,
+  maimaiChartPreviewVideoUrl,
 } from '@/domain/maimai-chart-preview';
+import { maimaiJacketUrl } from '@/domain/maimai-assets';
 import {
   buildChartPreviewInjectedJavaScript,
   chartPreviewAllowsFileAccess,
@@ -27,6 +29,8 @@ type MappedPreview =
       difficulty: number;
       buddySide: BuddyPreviewSide | undefined;
       title: string | undefined;
+      backgroundImageUrl: string;
+      backgroundVideoUrl: string;
     };
 
 export default function MaimaiChartPreviewScreen() {
@@ -65,6 +69,8 @@ export default function MaimaiChartPreviewScreen() {
           difficulty,
           buddySide,
           title: typeof params.title === 'string' ? params.title : undefined,
+          backgroundImageUrl: maimaiJacketUrl(songId),
+          backgroundVideoUrl: maimaiChartPreviewVideoUrl(chartId),
         };
       } catch {
         return { error: '无法打开该谱面，请返回歌曲详情重试。' };

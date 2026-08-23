@@ -19,10 +19,17 @@ describe('chart preview webview helpers', () => {
       chartId: 10834,
       difficulty: 5,
       title: '测试曲 DX MASTER',
+      backgroundImageUrl: 'https://assets2.lxns.net/maimai/jacket/834.png',
+      backgroundVideoUrl: 'https://maimai-video.lxns.net/834.mp4',
+      settings: { backgroundMode: 'video', videoBackgroundConfirmed: true },
     });
     expect(script).toContain('window.__CHART_PREVIEW__=');
     expect(script).toContain('"chartId":10834');
     expect(script).toContain('"difficulty":5');
+    expect(script).toContain('"backgroundMode":"video"');
+    expect(script).toContain('"videoBackgroundConfirmed":true');
+    expect(script).toContain('"backgroundImageUrl":"https://assets2.lxns.net/maimai/jacket/834.png"');
+    expect(script).toContain('"backgroundVideoUrl":"https://maimai-video.lxns.net/834.mp4"');
     expect(script).toContain('true;');
   });
 
@@ -207,6 +214,39 @@ describe('chart preview webview helpers', () => {
     const playerScriptIndex = html.indexOf('<!--PLAYER_SCRIPT-->');
     expect(themeScriptIndex).toBeGreaterThan(configIndex);
     expect(themeScriptIndex).toBeLessThan(playerScriptIndex);
+  });
+
+  it('scrolls overflowing portrait controls but keeps fullscreen fixed', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    expect(html).toContain('overflow-y: auto;');
+    expect(html).toContain('overscroll-behavior-y: contain;');
+    expect(html).toContain('body.fullscreen #app {');
+    expect(html).toContain('justify-content: center;\n      overflow: hidden;');
+  });
+
+  it('offers the three persisted background choices and stages image/video media', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    const player = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/main.ts'),
+      'utf8',
+    );
+    const renderer = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/engine/renderers/MainRenderer.ts'),
+      'utf8',
+    );
+    expect(html).toContain('id="background-image"');
+    expect(html).toContain('id="background-video"');
+    expect(html).toContain('id="background-wheel"');
+    expect(player).toContain("const BACKGROUND_LABELS = ['无背景', '图片背景', '视频背景']");
+    expect(player).toContain("saveSettings({ backgroundMode: nextMode })");
+    expect(player).toContain('视频背景会使用网络流量，是否继续？');
+    expect(renderer).toContain('setBackgroundImage(image: HTMLImageElement | null)');
   });
 
   it('adapts the fullscreen lock button to light mode with an outline', () => {

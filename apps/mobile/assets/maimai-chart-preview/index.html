@@ -64,6 +64,9 @@
       flex-direction: column;
       padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
       gap: 8px;
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
     }
     #header {
       display: flex;
@@ -254,6 +257,7 @@
       gap: 0;
       align-items: center;
       justify-content: center;
+      overflow: hidden;
     }
     body.fullscreen #canvas-wrap {
       border: 0;
@@ -549,6 +553,10 @@
       flex-shrink: 0;
       font-variant-numeric: normal;
     }
+    .wheel-trigger.text.wide {
+      width: 68px;
+      min-width: 68px;
+    }
     .wheel-trigger:active { opacity: 0.7; }
     .wheel-popup {
       position: fixed;
@@ -656,6 +664,8 @@
         <canvas id="chart-canvas-2"></canvas>
       </div>
     </div>
+    <img id="background-image" alt="" hidden />
+    <video id="background-video" muted playsinline preload="metadata" hidden></video>
     <div id="controls">
       <div class="row">
         <div id="timeline-host">
@@ -782,6 +792,20 @@
             <div class="wheel" aria-label="款式选项">
               <div class="wheel-viewport" id="style-wheel">
                 <div class="wheel-list" id="style-list"></div>
+              </div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field wheel-field" id="background-field">
+          背景
+          <button class="wheel-trigger text wide" id="background-trigger" type="button">
+            <span id="background-val">无背景</span>
+          </button>
+          <div class="wheel-popup" id="background-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel" aria-label="背景选项">
+              <div class="wheel-viewport" id="background-wheel">
+                <div class="wheel-list" id="background-list"></div>
               </div>
               <div class="wheel-highlight"></div>
             </div>

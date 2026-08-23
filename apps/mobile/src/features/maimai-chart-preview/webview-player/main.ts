@@ -24,6 +24,7 @@ import {
   calculateMusicTime,
   msToBeats,
   musicTimeToBeats,
+  resolveBackgroundVideoFrame,
 } from './timeConversion';
 
 declare global {
@@ -46,7 +47,11 @@ export interface ChartPreviewSettings {
   normalColorBreakSlide?: boolean;
   showHitEffect?: boolean;
   showFireworks?: boolean;
+  backgroundMode?: BackgroundMode;
+  videoBackgroundConfirmed?: boolean;
 }
+
+type BackgroundMode = 'none' | 'image' | 'video';
 
 export interface ChartPreviewConfig {
   chartId: number;
@@ -54,6 +59,8 @@ export interface ChartPreviewConfig {
   title?: string;
   settings?: ChartPreviewSettings | null;
   answerSoundUrl?: string;
+  backgroundImageUrl?: string;
+  backgroundVideoUrl?: string;
   /** Buddy 宴谱预览侧：'0'=1P，'1'=2P，'dual'=1P+2P 同屏。 */
   buddySide?: '0' | '1' | 'dual';
   /** 播放器界面主题：由 RN 侧按应用深浅色注入。 */
@@ -69,6 +76,10 @@ const MUSIC_END_EPSILON_S = 0.05;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function isBackgroundMode(value: unknown): value is BackgroundMode {
+  return value === 'none' || value === 'image' || value === 'video';
 }
 
 let activePopupClose: (() => void) | null = null;
@@ -117,7 +128,7 @@ function createWheel(
   step: number,
   initial: number,
   labels?: readonly string[],
-): { getValue: () => number; scrollTo: (v: number) => void } {
+): { getValue: () => number; setValue: (v: number, notify?: boolean) => void } {
   const values = buildWheelValues(min, max, step);
   let current = values.includes(initial) ? initial : values[0] ?? min;
   let settleTimer = 0;
@@ -168,6 +179,12 @@ function createWheel(
     return values[index]!;
   };
 
+  const setValue = (value: number, notify = false) => {
+    const next = values[indexOf(value)] ?? values[0] ?? min;
+    applySelection(next, notify);
+    scrollToValue(next);
+  };
+
   viewport.addEventListener('scroll', () => {
     const next = valueFromScroll();
     if (Math.abs(next - current) > 1e-9) applySelection(next, true);
@@ -180,7 +197,7 @@ function createWheel(
   scrollToValue(current);
   applySelection(current, false);
 
-  return { getValue: () => current, scrollTo: scrollToValue };
+  return { getValue: () => current, setValue };
 }
 
 function setupWheelPopup(
@@ -195,7 +212,7 @@ function setupWheelPopup(
   step: number,
   initial: number,
   labels?: readonly string[],
-): { getValue: () => number } {
+): { getValue: () => number; setValue: (v: number, notify?: boolean) => void } {
   const wheel = createWheel(viewport, list, (value) => {
     valSpan.textContent = labels ? (labels[value] ?? String(value)) : value.toFixed(1);
     onChange(value);
@@ -212,7 +229,7 @@ function setupWheelPopup(
     popup.style.bottom = `${window.innerHeight - triggerRect.top + 4}px`;
     popup.style.left = `${triggerRect.left + triggerRect.width / 2}px`;
     popup.style.transform = 'translateX(-50%)';
-    wheel.scrollTo(wheel.getValue());
+    wheel.setValue(wheel.getValue());
     activePopupClose = closePopup;
   };
 
@@ -242,10 +259,17 @@ function setupWheelPopup(
 
   valSpan.textContent = labels ? (labels[Math.round(initial)] ?? String(initial)) : initial.toFixed(1);
 
-  return wheel;
+  return {
+    getValue: wheel.getValue,
+    setValue: (value, notify = false) => {
+      valSpan.textContent = labels ? (labels[Math.round(value)] ?? String(value)) : value.toFixed(1);
+      wheel.setValue(value, notify);
+    },
+  };
 }
 
 async function main(): Promise<void> {
+  const app = $('app');
   const statusEl = $('status');
   const titleEl = $('title');
   const canvas = $('chart-canvas') as HTMLCanvasElement;
@@ -307,6 +331,13 @@ async function main(): Promise<void> {
   const styleTrigger = $('style-trigger');
   const stylePopup = $('style-popup');
   const styleVal = $('style-val');
+  const backgroundWheel = $('background-wheel');
+  const backgroundList = $('background-list');
+  const backgroundTrigger = $('background-trigger');
+  const backgroundPopup = $('background-popup');
+  const backgroundVal = $('background-val');
+  const backgroundImage = $('background-image') as HTMLImageElement;
+  const backgroundVideo = $('background-video') as HTMLVideoElement;
   const togglePink = $('toggle-pink') as HTMLButtonElement;
   const toggleStarRot = $('toggle-star-rot') as HTMLButtonElement;
   const toggleEx = $('toggle-ex') as HTMLButtonElement;
@@ -321,6 +352,8 @@ async function main(): Promise<void> {
   const infoBreakWrap = $('info-break-wrap');
   const infoBreakNoexWrap = $('info-break-noex-wrap');
   const infoFps = $('info-fps');
+
+  app.addEventListener('scroll', () => activePopupClose?.(), { passive: true });
 
   const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
@@ -345,6 +378,14 @@ async function main(): Promise<void> {
   statusEl.textContent = '正在加载谱面…';
 
   const saved = config.settings ?? {};
+  const savedBackgroundMode = isBackgroundMode(saved.backgroundMode)
+    ? saved.backgroundMode
+    : 'none';
+  let backgroundMode: BackgroundMode = savedBackgroundMode === 'video'
+    && !saved.videoBackgroundConfirmed
+    ? 'none'
+    : savedBackgroundMode;
+  let videoBackgroundConfirmed = saved.videoBackgroundConfirmed ?? false;
 
   const chartUrl = `${CHART_BASE}/${config.chartId}.txt`;
   const musicUrl = `${MUSIC_BASE}/${config.chartId % 10000}.mp3`;
@@ -444,6 +485,14 @@ async function main(): Promise<void> {
   let fsLocked = false;
   let fsControlsVisible = false;
   let fsHideTimer: number | undefined;
+  let backgroundImageReady = false;
+  let backgroundImageFailed = false;
+  let backgroundImageLoading = false;
+  let backgroundVideoReady = false;
+  let backgroundVideoFailed = false;
+  let backgroundVideoLoading = false;
+  let backgroundVideoPlayPending = false;
+  let backgroundStatusMessage = '';
 
   const syncPlayButtons = () => {
     const icon = isPlaying ? PAUSE_ICON : PLAY_ICON;
@@ -576,11 +625,182 @@ async function main(): Promise<void> {
     measurePercents.push(Math.min(100, (beatsToMs(m * 4, chart.bpmEvents, chart.bpm) / totalDurationMs) * 100));
   }
 
-  // 同屏时把所有 chart 渲染到各自画布；单谱面等价于原 renderer.renderFrame。
+  const setBackgroundStatus = (message: string) => {
+    if (!statusEl.textContent || statusEl.textContent === backgroundStatusMessage) {
+      statusEl.textContent = message;
+    }
+    backgroundStatusMessage = message;
+  };
+
+  const clearBackgroundStatus = () => {
+    if (statusEl.textContent === backgroundStatusMessage) statusEl.textContent = '';
+    backgroundStatusMessage = '';
+  };
+
+  const releaseBackgroundVideo = () => {
+    backgroundVideo.pause();
+    backgroundVideo.removeAttribute('src');
+    backgroundVideo.load();
+    backgroundVideoReady = false;
+    backgroundVideoFailed = false;
+    backgroundVideoLoading = false;
+    backgroundVideoPlayPending = false;
+    for (const renderer of renderers) renderer.setBackgroundVideo(null);
+  };
+
+  const syncBackgroundMedia = () => {
+    const fallbackImage = backgroundMode !== 'none' && backgroundImageReady
+      ? backgroundImage
+      : null;
+    for (const renderer of renderers) renderer.setBackgroundImage(fallbackImage);
+
+    if (backgroundMode !== 'video' || !backgroundVideoReady || backgroundVideoFailed) {
+      backgroundVideo.pause();
+      for (const renderer of renderers) renderer.setBackgroundVideo(null);
+      return;
+    }
+
+    const frame = resolveBackgroundVideoFrame({
+      currentBeats: preciseBeats,
+      totalBeats,
+      isPlaying,
+      durationSeconds: backgroundVideo.duration,
+      bpmEvents: chart.bpmEvents,
+      bpm: chart.bpm,
+      musicOffset,
+      firstMs: chart.firstMs ?? 0,
+    });
+    if (!frame.active) {
+      backgroundVideo.pause();
+      if (frame.targetSeconds <= 0 && backgroundVideo.currentTime > 0) {
+        backgroundVideo.currentTime = 0;
+      }
+      for (const renderer of renderers) renderer.setBackgroundVideo(null);
+      return;
+    }
+
+    for (const renderer of renderers) renderer.setBackgroundVideo(backgroundVideo);
+    if (isPlaying) {
+      const drift = backgroundVideo.currentTime - frame.targetSeconds;
+      if (Math.abs(drift) > 0.3) backgroundVideo.currentTime = frame.targetSeconds;
+      backgroundVideo.playbackRate = drift < -0.02
+        ? playbackSpeed + 0.1
+        : drift > 0.02
+          ? Math.max(0.1, playbackSpeed - 0.1)
+          : playbackSpeed;
+      if (backgroundVideo.paused && !backgroundVideoPlayPending) {
+        backgroundVideoPlayPending = true;
+        void backgroundVideo.play()
+          .then(() => {
+            backgroundVideoPlayPending = false;
+          })
+          .catch(() => {
+            backgroundVideoPlayPending = false;
+            backgroundVideoReady = false;
+            backgroundVideoFailed = true;
+            setBackgroundStatus(backgroundImageReady
+              ? '视频背景不可用，已显示图片背景。'
+              : '背景暂时不可用。');
+          });
+      }
+      return;
+    }
+
+    backgroundVideo.pause();
+    if (Math.abs(backgroundVideo.currentTime - frame.targetSeconds) > 0.04) {
+      backgroundVideo.currentTime = frame.targetSeconds;
+    }
+  };
+
   const renderFrameAll = () => {
+    syncBackgroundMedia();
     for (let i = 0; i < charts.length; i++) {
       renderers[i]!.renderFrame(charts[i]!, preciseBeats, 4);
     }
+  };
+
+  const ensureBackgroundImage = () => {
+    if (backgroundImageReady || backgroundImageLoading) return;
+    if (!config.backgroundImageUrl) {
+      backgroundImageFailed = true;
+      if (backgroundMode === 'image') setBackgroundStatus('图片背景暂时不可用。');
+      return;
+    }
+    backgroundImageFailed = false;
+    backgroundImageLoading = true;
+    backgroundImage.src = config.backgroundImageUrl;
+  };
+
+  const ensureBackgroundVideo = () => {
+    if (backgroundVideoReady || backgroundVideoLoading) return;
+    if (!config.backgroundVideoUrl) {
+      backgroundVideoFailed = true;
+      setBackgroundStatus(backgroundImageReady
+        ? '视频背景不可用，已显示图片背景。'
+        : '背景暂时不可用。');
+      return;
+    }
+    backgroundVideoFailed = false;
+    backgroundVideoLoading = true;
+    backgroundVideo.src = config.backgroundVideoUrl;
+    backgroundVideo.load();
+  };
+
+  backgroundImage.addEventListener('load', () => {
+    backgroundImageLoading = false;
+    backgroundImageReady = true;
+    backgroundImageFailed = false;
+    if (backgroundMode === 'image') clearBackgroundStatus();
+    renderFrameAll();
+  });
+  backgroundImage.addEventListener('error', () => {
+    backgroundImageLoading = false;
+    backgroundImageReady = false;
+    backgroundImageFailed = true;
+    if (backgroundMode === 'image') setBackgroundStatus('图片背景暂时不可用。');
+    if (backgroundMode === 'video' && backgroundVideoFailed) {
+      setBackgroundStatus('背景暂时不可用。');
+    }
+    renderFrameAll();
+  });
+  backgroundVideo.addEventListener('loadeddata', () => {
+    backgroundVideoLoading = false;
+    backgroundVideoReady = true;
+    backgroundVideoFailed = false;
+    clearBackgroundStatus();
+    renderFrameAll();
+  });
+  backgroundVideo.addEventListener('seeked', () => {
+    if (!isPlaying && backgroundMode === 'video') renderFrameAll();
+  });
+  backgroundVideo.addEventListener('error', () => {
+    if (backgroundMode !== 'video') return;
+    backgroundVideoLoading = false;
+    backgroundVideoReady = false;
+    backgroundVideoFailed = true;
+    ensureBackgroundImage();
+    setBackgroundStatus(backgroundImageReady
+      ? '视频背景不可用，已显示图片背景。'
+      : backgroundImageFailed
+        ? '背景暂时不可用。'
+        : '视频背景不可用，正在加载图片背景…');
+    renderFrameAll();
+  });
+
+  const applyBackgroundMode = (mode: BackgroundMode) => {
+    backgroundMode = mode;
+    clearBackgroundStatus();
+    if (mode === 'none') {
+      releaseBackgroundVideo();
+      for (const renderer of renderers) renderer.setBackgroundImage(null);
+    } else if (mode === 'image') {
+      releaseBackgroundVideo();
+      ensureBackgroundImage();
+    } else {
+      ensureBackgroundImage();
+      ensureBackgroundVideo();
+    }
+    renderFrameAll();
   };
 
   const buildTimeline = () => {
@@ -886,6 +1106,39 @@ async function main(): Promise<void> {
     },
     0, 3, 1, styleIdx, STYLE_LABELS,
   );
+
+  const BACKGROUND_LABELS = ['无背景', '图片背景', '视频背景'] as const;
+  const BACKGROUND_VALUES = ['none', 'image', 'video'] as const;
+  const backgroundIdx = Math.max(0, BACKGROUND_VALUES.indexOf(backgroundMode));
+  let backgroundControl: ReturnType<typeof setupWheelPopup>;
+  backgroundControl = setupWheelPopup(
+    backgroundTrigger,
+    backgroundPopup,
+    backgroundWheel,
+    backgroundList,
+    backgroundVal,
+    (idx) => {
+      const nextMode = BACKGROUND_VALUES[idx] ?? 'none';
+      const previousMode = backgroundMode;
+      if (nextMode === 'video' && !videoBackgroundConfirmed) {
+        const accepted = window.confirm('视频背景会使用网络流量，是否继续？');
+        if (!accepted) {
+          backgroundControl.setValue(BACKGROUND_VALUES.indexOf(previousMode));
+          return;
+        }
+        videoBackgroundConfirmed = true;
+        saveSettings({ videoBackgroundConfirmed: true });
+      }
+      saveSettings({ backgroundMode: nextMode });
+      applyBackgroundMode(nextMode);
+    },
+    0,
+    2,
+    1,
+    backgroundIdx,
+    BACKGROUND_LABELS,
+  );
+  applyBackgroundMode(backgroundMode);
 
   const setupToggle = (btn: HTMLButtonElement, initial: boolean, onChange: (v: boolean) => void) => {
     let active = initial;
@@ -1329,7 +1582,10 @@ async function main(): Promise<void> {
 
   window.addEventListener('message', (event) => {
     const data = event.data;
-    if (data === 'stop' || (typeof data === 'object' && data?.type === 'stop')) pausePlayback();
+    if (data === 'stop' || (typeof data === 'object' && data?.type === 'stop')) {
+      pausePlayback();
+      releaseBackgroundVideo();
+    }
     if (typeof data === 'object' && data?.type === 'exit-fullscreen') exitFullscreen();
   });
 
