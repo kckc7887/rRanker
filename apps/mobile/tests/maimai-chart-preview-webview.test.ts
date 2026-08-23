@@ -12,6 +12,11 @@ import {
 import { chartPreviewCanvasSize } from '@/features/maimai-chart-preview/webview-player/fullscreenLayout';
 import { toggleFullscreenLockUiState } from '@/features/chart-preview-shared/webview-player/fullscreenLock';
 import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
+import {
+  createLatestFrameScheduler,
+  resolveInitialBackgroundState,
+} from '@/features/maimai-chart-preview/webview-player/interactionScheduler';
+import { chartPreviewPlayerMessageScript } from '@/features/chart-preview-shared/chart-preview-bridge';
 
 describe('chart preview webview helpers', () => {
   it('injects chart preview config before content loads', () => {
@@ -21,13 +26,13 @@ describe('chart preview webview helpers', () => {
       title: '测试曲 DX MASTER',
       backgroundImageUrl: 'https://assets2.lxns.net/maimai/jacket/834.png',
       backgroundVideoUrl: 'https://maimai-video.lxns.net/834.mp4',
-      settings: { backgroundMode: 'video', videoBackgroundConfirmed: true },
+      settings: { backgroundMode: 'video', videoBackgroundPrompted: true },
     });
     expect(script).toContain('window.__CHART_PREVIEW__=');
     expect(script).toContain('"chartId":10834');
     expect(script).toContain('"difficulty":5');
     expect(script).toContain('"backgroundMode":"video"');
-    expect(script).toContain('"videoBackgroundConfirmed":true');
+    expect(script).toContain('"videoBackgroundPrompted":true');
     expect(script).toContain('"backgroundImageUrl":"https://assets2.lxns.net/maimai/jacket/834.png"');
     expect(script).toContain('"backgroundVideoUrl":"https://maimai-video.lxns.net/834.mp4"');
     expect(script).toContain('true;');
@@ -245,8 +250,58 @@ describe('chart preview webview helpers', () => {
     expect(html).toContain('id="background-wheel"');
     expect(player).toContain("const BACKGROUND_LABELS = ['无背景', '图片背景', '视频背景']");
     expect(player).toContain("saveSettings({ backgroundMode: nextMode })");
-    expect(player).toContain('视频背景会使用网络流量，是否继续？');
+    expect(player).toContain("postStatus('background-video-confirmation')");
+    expect(player).not.toContain('window.confirm');
+    expect(resolveInitialBackgroundState({})).toEqual({ mode: 'image', prompted: false });
+    expect(resolveInitialBackgroundState({ backgroundMode: 'none' })).toEqual({
+      mode: 'none',
+      prompted: false,
+    });
+    expect(resolveInitialBackgroundState({
+      backgroundMode: 'video',
+      videoBackgroundConfirmed: true,
+    })).toEqual({ mode: 'video', prompted: true });
     expect(renderer).toContain('setBackgroundImage(image: HTMLImageElement | null)');
+    expect(renderer).toContain('getBackgroundImageCache(image: HTMLImageElement)');
+    expect(renderer).not.toContain('cacheBackgroundVideoFrame');
+  });
+
+  it('coalesces repeated interaction work into the latest animation frame', () => {
+    let nextHandle = 1;
+    const callbacks = new Map<number, FrameRequestCallback>();
+    const values: number[] = [];
+    const scheduler = createLatestFrameScheduler<number>(
+      (callback) => {
+        const handle = nextHandle++;
+        callbacks.set(handle, callback);
+        return handle;
+      },
+      (handle) => callbacks.delete(handle),
+      (value) => values.push(value),
+    );
+
+    scheduler.schedule(1);
+    scheduler.schedule(2);
+    expect(callbacks.size).toBe(1);
+    callbacks.values().next().value?.(0);
+    expect(values).toEqual([2]);
+
+    scheduler.schedule(3);
+    scheduler.flush();
+    expect(values).toEqual([2, 3]);
+    expect(scheduler.pending()).toBe(false);
+  });
+
+  it('serializes native-to-player bridge messages without executable markup', () => {
+    const script = chartPreviewPlayerMessageScript({
+      type: 'background-video-confirmation-result',
+      accepted: true,
+      text: '</script>',
+    });
+    expect(script).toContain('background-video-confirmation-result');
+    expect(script).toContain('"accepted":true');
+    expect(script).toContain('\\u003c/script>');
+    expect(script).not.toContain('</script>');
   });
 
   it('adapts the fullscreen lock button to light mode with an outline', () => {

@@ -252,10 +252,10 @@ export class MainRenderer {
   private sensorImagePath: string;
 
   private backgroundVideo: HTMLVideoElement | null = null;
-  private backgroundVideoCache: HTMLCanvasElement | null = null;
-  private backgroundVideoCacheReady = false;
   private backgroundVideoSrc = "";
   private backgroundImage: HTMLImageElement | null = null;
+  private backgroundImageCache: HTMLCanvasElement | null = null;
+  private backgroundImageCacheSize = 0;
   private timingTimelineChart: Chart | null = null;
   private timingTimeline: TimingTimeline | null = null;
 
@@ -373,6 +373,10 @@ export class MainRenderer {
   }
 
   private applySize(logicalSize: number, dpr: number): void {
+    if (this.logicalSize !== logicalSize) {
+      this.backgroundImageCache = null;
+      this.backgroundImageCacheSize = 0;
+    }
     this.logicalSize = logicalSize;
 
     this.canvas.width = Math.round(logicalSize * dpr);
@@ -496,34 +500,18 @@ export class MainRenderer {
   }
 
   setBackgroundVideo(video: HTMLVideoElement | null): void {
+    if (this.backgroundVideo === video) return;
     if (video && video.src !== this.backgroundVideoSrc) {
       this.backgroundVideoSrc = video.src;
-      this.backgroundVideoCacheReady = false;
     }
     this.backgroundVideo = video;
   }
 
   setBackgroundImage(image: HTMLImageElement | null): void {
+    if (this.backgroundImage === image) return;
     this.backgroundImage = image;
-  }
-
-  private cacheBackgroundVideoFrame(video: HTMLVideoElement): void {
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if (w === 0 || h === 0) return;
-    let cache = this.backgroundVideoCache;
-    if (!cache) {
-      cache = document.createElement("canvas");
-      this.backgroundVideoCache = cache;
-    }
-    if (cache.width !== w || cache.height !== h) {
-      cache.width = w;
-      cache.height = h;
-    }
-    const cctx = cache.getContext("2d");
-    if (!cctx) return;
-    cctx.drawImage(video, 0, 0, w, h);
-    this.backgroundVideoCacheReady = true;
+    this.backgroundImageCache = null;
+    this.backgroundImageCacheSize = 0;
   }
 
   private drawBackgroundSource(
@@ -545,6 +533,34 @@ export class MainRenderer {
     this.ctx.restore();
   }
 
+  private getBackgroundImageCache(image: HTMLImageElement): HTMLCanvasElement | null {
+    const size = Math.max(1, Math.round(this.logicalSize));
+    if (this.backgroundImageCache && this.backgroundImageCacheSize === size) {
+      return this.backgroundImageCache;
+    }
+    const cache = document.createElement("canvas");
+    cache.width = size;
+    cache.height = size;
+    const context = cache.getContext("2d", { alpha: false });
+    if (!context) return null;
+    context.fillStyle = COLORS.BLACK;
+    context.fillRect(0, 0, size, size);
+    context.save();
+    context.beginPath();
+    context.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+    context.clip();
+    const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+    context.fillStyle = "rgba(0, 0, 0, 0.6)";
+    context.fillRect(0, 0, size, size);
+    context.restore();
+    this.backgroundImageCache = cache;
+    this.backgroundImageCacheSize = size;
+    return cache;
+  }
+
   // fillRect 保证导出的背景不透明。
   // clearRect 依赖 alpha:false，移动端 Safari 不可靠，会导致导出图透明。
   clear(): void {
@@ -553,23 +569,15 @@ export class MainRenderer {
     this.ctx.fillRect(0, 0, s, s);
 
     const video = this.backgroundVideo;
-    if (video && video.videoWidth > 0) {
-      let source: CanvasImageSource | null = null;
-      if (video.readyState >= 2) {
-        this.cacheBackgroundVideoFrame(video);
-        source = video;
-      } else if (this.backgroundVideoCacheReady) {
-        source = this.backgroundVideoCache;
-      }
-      if (source) {
-        this.drawBackgroundSource(source, video.videoWidth, video.videoHeight);
-        return;
-      }
+    if (video && video.videoWidth > 0 && video.readyState >= 2) {
+      this.drawBackgroundSource(video, video.videoWidth, video.videoHeight);
+      return;
     }
 
     const image = this.backgroundImage;
     if (image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
-      this.drawBackgroundSource(image, image.naturalWidth, image.naturalHeight);
+      const cache = this.getBackgroundImageCache(image);
+      if (cache) this.ctx.drawImage(cache, 0, 0, s, s);
     }
   }
 

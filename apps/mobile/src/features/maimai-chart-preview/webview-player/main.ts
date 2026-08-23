@@ -26,6 +26,11 @@ import {
   musicTimeToBeats,
   resolveBackgroundVideoFrame,
 } from './timeConversion';
+import {
+  createLatestFrameScheduler,
+  resolveInitialBackgroundState,
+  type ChartPreviewBackgroundMode,
+} from './interactionScheduler';
 
 declare global {
   interface Window {
@@ -48,10 +53,11 @@ export interface ChartPreviewSettings {
   showHitEffect?: boolean;
   showFireworks?: boolean;
   backgroundMode?: BackgroundMode;
+  videoBackgroundPrompted?: boolean;
   videoBackgroundConfirmed?: boolean;
 }
 
-type BackgroundMode = 'none' | 'image' | 'video';
+type BackgroundMode = ChartPreviewBackgroundMode;
 
 export interface ChartPreviewConfig {
   chartId: number;
@@ -76,10 +82,6 @@ const MUSIC_END_EPSILON_S = 0.05;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function isBackgroundMode(value: unknown): value is BackgroundMode {
-  return value === 'none' || value === 'image' || value === 'video';
 }
 
 let activePopupClose: (() => void) | null = null;
@@ -122,7 +124,8 @@ function buildWheelValues(min: number, max: number, step: number): number[] {
 function createWheel(
   viewport: HTMLElement,
   list: HTMLElement,
-  onChange: (value: number) => void,
+  onPreview: (value: number) => void,
+  onCommit: (value: number) => void,
   min: number,
   max: number,
   step: number,
@@ -132,6 +135,12 @@ function createWheel(
   const values = buildWheelValues(min, max, step);
   let current = values.includes(initial) ? initial : values[0] ?? min;
   let settleTimer = 0;
+  let selectedItem: HTMLElement | null = null;
+  const previewScheduler = createLatestFrameScheduler(
+    requestAnimationFrame,
+    cancelAnimationFrame,
+    onPreview,
+  );
 
   const itemLabel = (v: number) => {
     if (labels) {
@@ -142,17 +151,17 @@ function createWheel(
   };
 
   const refreshList = () => {
-    list.replaceChildren(
-      ...values.map((value) => {
+    const items = values.map((value) => {
         const item = document.createElement('div');
         item.className = 'wheel-item';
         item.dataset.value = String(value);
         item.textContent = itemLabel(value);
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', value === current ? 'true' : 'false');
+        if (value === current) selectedItem = item;
         return item;
-      }),
-    );
+      });
+    list.replaceChildren(...items);
   };
 
   refreshList();
@@ -162,11 +171,10 @@ function createWheel(
 
   const applySelection = (value: number, notify: boolean) => {
     current = value;
-    for (const child of list.children) {
-      const el = child as HTMLElement;
-      el.setAttribute('aria-selected', el.dataset.value === String(value) ? 'true' : 'false');
-    }
-    if (notify) onChange(value);
+    selectedItem?.setAttribute('aria-selected', 'false');
+    selectedItem = list.children[indexOf(value)] as HTMLElement | null;
+    selectedItem?.setAttribute('aria-selected', 'true');
+    if (notify) previewScheduler.schedule(value);
   };
 
   const scrollToValue = (value: number, behavior: ScrollBehavior = 'auto') => {
@@ -190,8 +198,11 @@ function createWheel(
     if (Math.abs(next - current) > 1e-9) applySelection(next, true);
     window.clearTimeout(settleTimer);
     settleTimer = window.setTimeout(() => {
-      scrollToValue(valueFromScroll(), 'smooth');
-    }, 80);
+      const settled = valueFromScroll();
+      previewScheduler.flush();
+      scrollToValue(settled, 'smooth');
+      onCommit(settled);
+    }, 120);
   }, { passive: true });
 
   scrollToValue(current);
@@ -206,7 +217,8 @@ function setupWheelPopup(
   viewport: HTMLElement,
   list: HTMLElement,
   valSpan: HTMLElement,
-  onChange: (value: number) => void,
+  onPreview: (value: number) => void,
+  onCommit: (value: number) => void,
   min: number,
   max: number,
   step: number,
@@ -215,8 +227,8 @@ function setupWheelPopup(
 ): { getValue: () => number; setValue: (v: number, notify?: boolean) => void } {
   const wheel = createWheel(viewport, list, (value) => {
     valSpan.textContent = labels ? (labels[value] ?? String(value)) : value.toFixed(1);
-    onChange(value);
-  }, min, max, step, initial, labels);
+    onPreview(value);
+  }, onCommit, min, max, step, initial, labels);
 
   let open = false;
 
@@ -378,14 +390,9 @@ async function main(): Promise<void> {
   statusEl.textContent = '正在加载谱面…';
 
   const saved = config.settings ?? {};
-  const savedBackgroundMode = isBackgroundMode(saved.backgroundMode)
-    ? saved.backgroundMode
-    : 'none';
-  let backgroundMode: BackgroundMode = savedBackgroundMode === 'video'
-    && !saved.videoBackgroundConfirmed
-    ? 'none'
-    : savedBackgroundMode;
-  let videoBackgroundConfirmed = saved.videoBackgroundConfirmed ?? false;
+  const initialBackground = resolveInitialBackgroundState(saved);
+  let videoBackgroundPrompted = initialBackground.prompted;
+  let backgroundMode: BackgroundMode = initialBackground.mode;
 
   const chartUrl = `${CHART_BASE}/${config.chartId}.txt`;
   const musicUrl = `${MUSIC_BASE}/${config.chartId % 10000}.mp3`;
@@ -637,26 +644,30 @@ async function main(): Promise<void> {
     backgroundStatusMessage = '';
   };
 
+  let backgroundVideoAttached = false;
+  const attachBackgroundVideo = (attached: boolean) => {
+    if (backgroundVideoAttached === attached) return;
+    backgroundVideoAttached = attached;
+    for (const renderer of renderers) {
+      renderer.setBackgroundVideo(attached ? backgroundVideo : null);
+    }
+  };
+
   const releaseBackgroundVideo = () => {
-    backgroundVideo.pause();
-    backgroundVideo.removeAttribute('src');
-    backgroundVideo.load();
+    if (!backgroundVideo.paused) backgroundVideo.pause();
+    if (backgroundVideo.hasAttribute('src')) {
+      backgroundVideo.removeAttribute('src');
+      backgroundVideo.load();
+    }
     backgroundVideoReady = false;
     backgroundVideoFailed = false;
     backgroundVideoLoading = false;
     backgroundVideoPlayPending = false;
-    for (const renderer of renderers) renderer.setBackgroundVideo(null);
+    attachBackgroundVideo(false);
   };
 
   const syncBackgroundMedia = () => {
-    const fallbackImage = backgroundMode !== 'none' && backgroundImageReady
-      ? backgroundImage
-      : null;
-    for (const renderer of renderers) renderer.setBackgroundImage(fallbackImage);
-
     if (backgroundMode !== 'video' || !backgroundVideoReady || backgroundVideoFailed) {
-      backgroundVideo.pause();
-      for (const renderer of renderers) renderer.setBackgroundVideo(null);
       return;
     }
 
@@ -671,23 +682,26 @@ async function main(): Promise<void> {
       firstMs: chart.firstMs ?? 0,
     });
     if (!frame.active) {
-      backgroundVideo.pause();
+      if (!backgroundVideo.paused) backgroundVideo.pause();
       if (frame.targetSeconds <= 0 && backgroundVideo.currentTime > 0) {
         backgroundVideo.currentTime = 0;
       }
-      for (const renderer of renderers) renderer.setBackgroundVideo(null);
+      attachBackgroundVideo(false);
       return;
     }
 
-    for (const renderer of renderers) renderer.setBackgroundVideo(backgroundVideo);
+    attachBackgroundVideo(true);
     if (isPlaying) {
       const drift = backgroundVideo.currentTime - frame.targetSeconds;
       if (Math.abs(drift) > 0.3) backgroundVideo.currentTime = frame.targetSeconds;
-      backgroundVideo.playbackRate = drift < -0.02
+      const nextRate = drift < -0.02
         ? playbackSpeed + 0.1
         : drift > 0.02
           ? Math.max(0.1, playbackSpeed - 0.1)
           : playbackSpeed;
+      if (Math.abs(backgroundVideo.playbackRate - nextRate) > 0.01) {
+        backgroundVideo.playbackRate = nextRate;
+      }
       if (backgroundVideo.paused && !backgroundVideoPlayPending) {
         backgroundVideoPlayPending = true;
         void backgroundVideo.play()
@@ -698,6 +712,7 @@ async function main(): Promise<void> {
             backgroundVideoPlayPending = false;
             backgroundVideoReady = false;
             backgroundVideoFailed = true;
+            attachBackgroundVideo(false);
             setBackgroundStatus(backgroundImageReady
               ? '视频背景不可用，已显示图片背景。'
               : '背景暂时不可用。');
@@ -706,7 +721,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    backgroundVideo.pause();
+    if (!backgroundVideo.paused) backgroundVideo.pause();
     if (Math.abs(backgroundVideo.currentTime - frame.targetSeconds) > 0.04) {
       backgroundVideo.currentTime = frame.targetSeconds;
     }
@@ -750,6 +765,9 @@ async function main(): Promise<void> {
     backgroundImageLoading = false;
     backgroundImageReady = true;
     backgroundImageFailed = false;
+    if (backgroundMode !== 'none') {
+      for (const renderer of renderers) renderer.setBackgroundImage(backgroundImage);
+    }
     if (backgroundMode === 'image') clearBackgroundStatus();
     renderFrameAll();
   });
@@ -757,6 +775,7 @@ async function main(): Promise<void> {
     backgroundImageLoading = false;
     backgroundImageReady = false;
     backgroundImageFailed = true;
+    for (const renderer of renderers) renderer.setBackgroundImage(null);
     if (backgroundMode === 'image') setBackgroundStatus('图片背景暂时不可用。');
     if (backgroundMode === 'video' && backgroundVideoFailed) {
       setBackgroundStatus('背景暂时不可用。');
@@ -778,6 +797,7 @@ async function main(): Promise<void> {
     backgroundVideoLoading = false;
     backgroundVideoReady = false;
     backgroundVideoFailed = true;
+    attachBackgroundVideo(false);
     ensureBackgroundImage();
     setBackgroundStatus(backgroundImageReady
       ? '视频背景不可用，已显示图片背景。'
@@ -795,8 +815,14 @@ async function main(): Promise<void> {
       for (const renderer of renderers) renderer.setBackgroundImage(null);
     } else if (mode === 'image') {
       releaseBackgroundVideo();
+      for (const renderer of renderers) {
+        renderer.setBackgroundImage(backgroundImageReady ? backgroundImage : null);
+      }
       ensureBackgroundImage();
     } else {
+      for (const renderer of renderers) {
+        renderer.setBackgroundImage(backgroundImageReady ? backgroundImage : null);
+      }
       ensureBackgroundImage();
       ensureBackgroundVideo();
     }
@@ -874,8 +900,13 @@ async function main(): Promise<void> {
     }
   };
   buildTimeline();
-  window.addEventListener('resize', buildTimeline);
-  new ResizeObserver(buildTimeline).observe(timelineHost);
+  const timelineLayoutScheduler = createLatestFrameScheduler(
+    requestAnimationFrame,
+    cancelAnimationFrame,
+    buildTimeline,
+  );
+  window.addEventListener('resize', () => timelineLayoutScheduler.schedule(undefined));
+  new ResizeObserver(() => timelineLayoutScheduler.schedule(undefined)).observe(timelineHost);
 
   const updatePlayhead = (percent: number, measure: number) => {
     timelinePlayhead.style.left = `${percent}%`;
@@ -901,6 +932,11 @@ async function main(): Promise<void> {
     renderFrameAll();
     updateOverlayDom();
   };
+  const seekScheduler = createLatestFrameScheduler(
+    requestAnimationFrame,
+    cancelAnimationFrame,
+    seekToPosition,
+  );
 
   timelineHost.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -917,12 +953,13 @@ async function main(): Promise<void> {
     const host = isFullscreen ? fsTimelineHost : timelineHost;
     const rect = host.getBoundingClientRect();
     const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekToPosition(pct);
+    seekScheduler.schedule(pct);
   });
 
   document.addEventListener('pointerup', () => {
     if (!isDragging) return;
     isDragging = false;
+    seekScheduler.flush();
     renderAt(preciseBeats);
     if (wasPlaying) void startPlayback();
   });
@@ -933,6 +970,7 @@ async function main(): Promise<void> {
   document.addEventListener('pointercancel', () => {
     if (!isDragging) return;
     isDragging = false;
+    seekScheduler.flush();
     renderAt(preciseBeats);
   });
 
@@ -944,8 +982,18 @@ async function main(): Promise<void> {
       updatePlayhead(pct, measure);
       if (isFullscreen) updateFsPlayhead(pct, measure);
     }
-    timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
-    if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
+    const nextTimeLabel = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
+    if (timeLabel.textContent !== nextTimeLabel) timeLabel.textContent = nextTimeLabel;
+    if (isFullscreen && fsTimeLabel.textContent !== nextTimeLabel) {
+      fsTimeLabel.textContent = nextTimeLabel;
+    }
+  };
+
+  const setText = (element: HTMLElement, value: string) => {
+    if (element.textContent !== value) element.textContent = value;
+  };
+  const setDisplay = (element: HTMLElement, value: string) => {
+    if (element.style.display !== value) element.style.display = value;
   };
 
   const updateOverlayDom = () => {
@@ -974,27 +1022,32 @@ async function main(): Promise<void> {
       if (ov.fps > fps) fps = ov.fps;
     }
     if (!found) return;
-    infoBpm.textContent = `${Math.floor(bpm)}`;
-    infoBeat.textContent = beatText;
-    infoCombo.textContent = `${completedNotes} / ${totalNotes}`;
+    setText(infoBpm, `${Math.floor(bpm)}`);
+    setText(infoBeat, beatText);
+    setText(infoCombo, `${completedNotes} / ${totalNotes}`);
     if (totalBreaks > 0) {
-      infoBreakWrap.style.display = '';
-      infoBreak.textContent = `${completedBreaks} / ${totalBreaks}`;
+      setDisplay(infoBreakWrap, '');
+      setText(infoBreak, `${completedBreaks} / ${totalBreaks}`);
     } else {
-      infoBreakWrap.style.display = 'none';
+      setDisplay(infoBreakWrap, 'none');
     }
     if (totalBreaksNoEx > 0) {
-      infoBreakNoexWrap.style.display = '';
-      infoBreakNoex.textContent = `${completedBreaksNoEx} / ${totalBreaksNoEx}`;
+      setDisplay(infoBreakNoexWrap, '');
+      setText(infoBreakNoex, `${completedBreaksNoEx} / ${totalBreaksNoEx}`);
     } else {
-      infoBreakNoexWrap.style.display = 'none';
+      setDisplay(infoBreakNoexWrap, 'none');
     }
     if (fps > 0) {
-      infoFps.textContent = `FPS: ${fps}`;
-      infoFps.className = fps >= 55 ? 'info-val info-fps-green' : fps >= 30 ? 'info-val info-fps-yellow' : 'info-val info-fps-red';
+      setText(infoFps, `FPS: ${fps}`);
+      const nextClass = fps >= 55
+        ? 'info-val info-fps-green'
+        : fps >= 30
+          ? 'info-val info-fps-yellow'
+          : 'info-val info-fps-red';
+      if (infoFps.className !== nextClass) infoFps.className = nextClass;
     } else {
-      infoFps.textContent = '';
-      infoFps.className = 'info-val';
+      setText(infoFps, '');
+      if (infoFps.className !== 'info-val') infoFps.className = 'info-val';
     }
   };
 
@@ -1013,9 +1066,9 @@ async function main(): Promise<void> {
     hiSpeedVal,
     (hiSpeed) => {
       for (const r of renderers) r.setHiSpeed(hiSpeed);
-      saveSettings({ hiSpeed });
       renderAt(preciseBeats);
     },
+    (hiSpeed) => saveSettings({ hiSpeed }),
     HI_SPEED_MIN,
     HI_SPEED_MAX,
     HI_SPEED_STEP,
@@ -1031,7 +1084,6 @@ async function main(): Promise<void> {
     (speed) => {
       playbackSpeed = clamp(speed, 0.1, 5);
       for (const r of renderers) r.setPlaybackSpeed(playbackSpeed);
-      saveSettings({ playbackSpeed });
       if (sourceNode && isSourcePlaying && audioContext) {
         const startTime = audioContext.currentTime;
         const outputTime = getAudioContextOutputTime(audioContext);
@@ -1039,6 +1091,7 @@ async function main(): Promise<void> {
         playbackClock.appendSegment(startTime, playbackSpeed, outputTime);
       }
     },
+    (speed) => saveSettings({ playbackSpeed: clamp(speed, 0.1, 5) }),
     SPEED_MIN,
     SPEED_MAX,
     SPEED_STEP,
@@ -1053,9 +1106,9 @@ async function main(): Promise<void> {
     musicVolumeVal,
     (vol) => {
       musicVolume = clamp(vol, 0, 10);
-      saveSettings({ musicVolume });
       if (musicGain) musicGain.gain.value = musicVolume / 10;
     },
+    (vol) => saveSettings({ musicVolume: clamp(vol, 0, 10) }),
     0,
     10,
     0.1,
@@ -1070,9 +1123,9 @@ async function main(): Promise<void> {
     soundVolumeVal,
     (vol) => {
       soundVolume = clamp(vol, 0, 10);
-      saveSettings({ soundVolume });
       answerManager?.setVolume(soundVolume / 10);
     },
+    (vol) => saveSettings({ soundVolume: clamp(vol, 0, 10) }),
     0,
     10,
     0.1,
@@ -1086,10 +1139,10 @@ async function main(): Promise<void> {
     mirrorTrigger, mirrorPopup, mirrorWheel, mirrorList, mirrorVal,
     (idx) => {
       const mode = MIRROR_VALUES[idx] ?? 'none';
-      saveSettings({ mirrorMode: mode });
       for (const r of renderers) r.setMirrorMode(mode);
       renderAt(preciseBeats);
     },
+    (idx) => saveSettings({ mirrorMode: MIRROR_VALUES[idx] ?? 'none' }),
     0, 3, 1, mirrorIdx, MIRROR_LABELS,
   );
 
@@ -1100,16 +1153,17 @@ async function main(): Promise<void> {
     styleTrigger, stylePopup, styleWheel, styleList, styleVal,
     (idx) => {
       const design = STYLE_VALUES[idx] ?? 'sensor';
-      saveSettings({ judgmentLineDesign: design });
       for (const r of renderers) r.setJudgmentLineDesign(design);
       renderAt(preciseBeats);
     },
+    (idx) => saveSettings({ judgmentLineDesign: STYLE_VALUES[idx] ?? 'sensor' }),
     0, 3, 1, styleIdx, STYLE_LABELS,
   );
 
   const BACKGROUND_LABELS = ['无背景', '图片背景', '视频背景'] as const;
   const BACKGROUND_VALUES = ['none', 'image', 'video'] as const;
   const backgroundIdx = Math.max(0, BACKGROUND_VALUES.indexOf(backgroundMode));
+  let pendingBackgroundPreviousMode: BackgroundMode | null = null;
   let backgroundControl: ReturnType<typeof setupWheelPopup>;
   backgroundControl = setupWheelPopup(
     backgroundTrigger,
@@ -1117,17 +1171,17 @@ async function main(): Promise<void> {
     backgroundWheel,
     backgroundList,
     backgroundVal,
+    () => undefined,
     (idx) => {
       const nextMode = BACKGROUND_VALUES[idx] ?? 'none';
       const previousMode = backgroundMode;
-      if (nextMode === 'video' && !videoBackgroundConfirmed) {
-        const accepted = window.confirm('视频背景会使用网络流量，是否继续？');
-        if (!accepted) {
-          backgroundControl.setValue(BACKGROUND_VALUES.indexOf(previousMode));
-          return;
-        }
-        videoBackgroundConfirmed = true;
-        saveSettings({ videoBackgroundConfirmed: true });
+      if (nextMode === 'video' && !videoBackgroundPrompted) {
+        videoBackgroundPrompted = true;
+        pendingBackgroundPreviousMode = previousMode;
+        backgroundControl.setValue(BACKGROUND_VALUES.indexOf(previousMode));
+        saveSettings({ videoBackgroundPrompted: true });
+        postStatus('background-video-confirmation');
+        return;
       }
       saveSettings({ backgroundMode: nextMode });
       applyBackgroundMode(nextMode);
@@ -1158,6 +1212,7 @@ async function main(): Promise<void> {
   setupToggle(toggleHit, saved.showHitEffect ?? true, (v) => { for (const r of renderers) r.setShowHitEffect(v); saveSettings({ showHitEffect: v }); });
   setupToggle(toggleFirework, saved.showFireworks ?? true, (v) => { for (const r of renderers) r.setShowFireworks(v); saveSettings({ showFireworks: v }); });
 
+  let lastResizeKey = '';
   const resize = () => {
     if (!isFullscreen) canvasWrap.style.width = '';
     const rect = canvasWrap.getBoundingClientRect();
@@ -1171,6 +1226,9 @@ async function main(): Promise<void> {
       viewportHeight,
       chartCount,
     });
+    const resizeKey = `${isFullscreen}:${size}:${window.devicePixelRatio || 1}`;
+    if (resizeKey === lastResizeKey) return;
+    lastResizeKey = resizeKey;
     canvasWrap.style.width = isFullscreen
       ? `${size * chartCount + CHART_PREVIEW_DUAL_GAP * (chartCount - 1)}px`
       : '';
@@ -1182,9 +1240,15 @@ async function main(): Promise<void> {
     for (const r of renderers) r.resize(false);
     renderAt(preciseBeats);
   };
-  window.addEventListener('resize', resize);
-  window.visualViewport?.addEventListener('resize', resize);
-  new ResizeObserver(resize).observe(canvasWrap);
+  const resizeScheduler = createLatestFrameScheduler(
+    requestAnimationFrame,
+    cancelAnimationFrame,
+    resize,
+  );
+  const scheduleResize = () => resizeScheduler.schedule(undefined);
+  window.addEventListener('resize', scheduleResize);
+  window.visualViewport?.addEventListener('resize', scheduleResize);
+  new ResizeObserver(scheduleResize).observe(canvasWrap);
   resize();
 
   const scheduleAnswers = (currentMs: number) => {
@@ -1446,7 +1510,7 @@ async function main(): Promise<void> {
     fsControlsVisible = false;
     syncFsControlsVisibility();
     postStatus('fullscreen', { active: false });
-    requestAnimationFrame(() => { resize(); renderAt(preciseBeats); });
+    requestAnimationFrame(resize);
   }
 
   function enterFullscreen() {
@@ -1587,6 +1651,18 @@ async function main(): Promise<void> {
       releaseBackgroundVideo();
     }
     if (typeof data === 'object' && data?.type === 'exit-fullscreen') exitFullscreen();
+    if (typeof data === 'object' && data?.type === 'background-video-confirmation-result'
+      && pendingBackgroundPreviousMode !== null) {
+      const previousMode = pendingBackgroundPreviousMode;
+      pendingBackgroundPreviousMode = null;
+      if (data.accepted === true) {
+        backgroundControl.setValue(BACKGROUND_VALUES.indexOf('video'));
+        saveSettings({ backgroundMode: 'video' });
+        applyBackgroundMode('video');
+      } else {
+        backgroundControl.setValue(BACKGROUND_VALUES.indexOf(previousMode));
+      }
+    }
   });
 
   document.addEventListener('visibilitychange', () => {

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import type { ChartType } from '@/domain/models';
 import {
@@ -15,6 +15,8 @@ import {
 } from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
 import type { BuddyPreviewSide, ChartPreviewSettings } from '@/features/maimai-chart-preview/chart-preview-inject';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
+import type { ChartPreviewBridgeMessage } from '@/features/chart-preview-shared/chart-preview-bridge';
+import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
 
 function parseChartType(value: string | undefined): ChartType | null {
@@ -35,6 +37,7 @@ type MappedPreview =
 
 export default function MaimaiChartPreviewScreen() {
   const theme = useAppTheme();
+  const { showActionNotification } = useNotification();
   const isDark = theme.dark;
   const params = useLocalSearchParams<{
     songId?: string;
@@ -95,6 +98,35 @@ export default function MaimaiChartPreviewScreen() {
     [mapped, isDark],
   );
 
+  const handleBridgeMessage = useCallback((
+    message: ChartPreviewBridgeMessage,
+    bridge: { postMessage: (message: Record<string, unknown>) => void },
+  ) => {
+    if (message.type !== 'background-video-confirmation') return;
+    showActionNotification({
+      title: '启用视频背景？',
+      message: '视频背景会使用网络流量。',
+      variant: 'warning',
+      actions: [
+        {
+          label: '暂不启用',
+          tone: 'cancel',
+          onPress: () => bridge.postMessage({
+            type: 'background-video-confirmation-result',
+            accepted: false,
+          }),
+        },
+        {
+          label: '启用',
+          onPress: () => bridge.postMessage({
+            type: 'background-video-confirmation-result',
+            accepted: true,
+          }),
+        },
+      ],
+    });
+  }, [showActionNotification]);
+
   return (
     <ChartPreviewScreenShell
       request={request}
@@ -105,7 +137,9 @@ export default function MaimaiChartPreviewScreen() {
       prepareErrorFallback="无法准备谱面预览资源"
       allowFileAccess={chartPreviewAllowsFileAccess()}
       buildInjectedJavaScript={(m) => buildChartPreviewInjectedJavaScript(m)}
+      blockOnHttpError={false}
       reInjectOnLoadEnd
+      onBridgeMessage={handleBridgeMessage}
     />
   );
 }
