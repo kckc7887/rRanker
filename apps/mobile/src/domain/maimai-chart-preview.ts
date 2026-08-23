@@ -47,3 +47,7 @@ export function maimaiChartPreviewSimaiUrl(chartId: number): string {
 export function maimaiChartPreviewMusicUrl(chartId: number): string {
   return `https://assets2.lxns.net/maimai/music/${maimaiChartPreviewMusicId(chartId)}.mp3`;
 }
+
+export function maimaiChartPreviewVideoUrl(chartId: number): string {
+  return `https://maimai-video.lxns.net/${maimaiChartPreviewMusicId(chartId)}.mp4`;
+}

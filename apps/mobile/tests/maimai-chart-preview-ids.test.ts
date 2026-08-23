@@ -6,6 +6,7 @@ import {
   maimaiChartPreviewMusicId,
   maimaiChartPreviewMusicUrl,
   maimaiChartPreviewSimaiUrl,
+  maimaiChartPreviewVideoUrl,
 } from '@/domain/maimai-chart-preview';
 
 describe('maimai chart preview ids', () => {
@@ -35,5 +36,7 @@ describe('maimai chart preview ids', () => {
   it('builds asset urls', () => {
     expect(maimaiChartPreviewSimaiUrl(10834)).toBe('https://assets2.lxns.net/maimai/chart/10834.txt');
     expect(maimaiChartPreviewMusicUrl(10834)).toBe('https://assets2.lxns.net/maimai/music/834.mp3');
+    expect(maimaiChartPreviewVideoUrl(10834)).toBe('https://maimai-video.lxns.net/834.mp4');
+    expect(maimaiChartPreviewVideoUrl(100834)).toBe('https://maimai-video.lxns.net/834.mp4');
   });
 });

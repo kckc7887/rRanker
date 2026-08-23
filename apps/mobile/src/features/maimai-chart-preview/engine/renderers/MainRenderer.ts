@@ -255,6 +255,7 @@ export class MainRenderer {
   private backgroundVideoCache: HTMLCanvasElement | null = null;
   private backgroundVideoCacheReady = false;
   private backgroundVideoSrc = "";
+  private backgroundImage: HTMLImageElement | null = null;
   private timingTimelineChart: Chart | null = null;
   private timingTimeline: TimingTimeline | null = null;
 
@@ -502,6 +503,10 @@ export class MainRenderer {
     this.backgroundVideo = video;
   }
 
+  setBackgroundImage(image: HTMLImageElement | null): void {
+    this.backgroundImage = image;
+  }
+
   private cacheBackgroundVideoFrame(video: HTMLVideoElement): void {
     const w = video.videoWidth;
     const h = video.videoHeight;
@@ -521,10 +526,32 @@ export class MainRenderer {
     this.backgroundVideoCacheReady = true;
   }
 
+  private drawBackgroundSource(
+    source: CanvasImageSource,
+    sourceWidth: number,
+    sourceHeight: number,
+  ): void {
+    const s = this.logicalSize;
+    this.ctx.save();
+    this.ctx.beginPath();
+    this.ctx.arc(this.centerX, this.centerY, s / 2, 0, Math.PI * 2);
+    this.ctx.clip();
+    const scale = Math.min(s / sourceWidth, s / sourceHeight);
+    const dw = sourceWidth * scale;
+    const dh = sourceHeight * scale;
+    this.ctx.drawImage(source, (s - dw) / 2, (s - dh) / 2, dw, dh);
+    this.ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    this.ctx.fillRect(0, 0, s, s);
+    this.ctx.restore();
+  }
+
   // fillRect 保证导出的背景不透明。
   // clearRect 依赖 alpha:false，移动端 Safari 不可靠，会导致导出图透明。
   clear(): void {
     const s = this.logicalSize;
+    this.ctx.fillStyle = COLORS.BLACK;
+    this.ctx.fillRect(0, 0, s, s);
+
     const video = this.backgroundVideo;
     if (video && video.videoWidth > 0) {
       let source: CanvasImageSource | null = null;
@@ -535,24 +562,15 @@ export class MainRenderer {
         source = this.backgroundVideoCache;
       }
       if (source) {
-        this.ctx.fillStyle = COLORS.BLACK;
-        this.ctx.fillRect(0, 0, s, s);
-        this.ctx.save();
-        this.ctx.beginPath();
-        this.ctx.arc(this.centerX, this.centerY, s / 2, 0, Math.PI * 2);
-        this.ctx.clip();
-        const scale = Math.min(s / video.videoWidth, s / video.videoHeight);
-        const dw = video.videoWidth * scale;
-        const dh = video.videoHeight * scale;
-        this.ctx.drawImage(source, (s - dw) / 2, (s - dh) / 2, dw, dh);
-        this.ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-        this.ctx.fillRect(0, 0, s, s);
-        this.ctx.restore();
+        this.drawBackgroundSource(source, video.videoWidth, video.videoHeight);
         return;
       }
     }
-    this.ctx.fillStyle = COLORS.BLACK;
-    this.ctx.fillRect(0, 0, s, s);
+
+    const image = this.backgroundImage;
+    if (image?.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+      this.drawBackgroundSource(image, image.naturalWidth, image.naturalHeight);
+    }
   }
 
   renderJudgmentLine(): void {

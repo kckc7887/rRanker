@@ -16,6 +16,8 @@ export type ChartPreviewSettings = {
   normalColorBreakSlide?: boolean;
   showHitEffect?: boolean;
   showFireworks?: boolean;
+  backgroundMode?: 'none' | 'image' | 'video';
+  videoBackgroundConfirmed?: boolean;
 };
 
 /** Buddy 宴谱预览侧：'0'=1P，'1'=2P，'dual'=1P+2P 同屏。 */
@@ -27,6 +29,8 @@ export type ChartPreviewInjectConfig = {
   title?: string;
   settings?: ChartPreviewSettings;
   answerSoundUrl?: string;
+  backgroundImageUrl?: string;
+  backgroundVideoUrl?: string;
   buddySide?: BuddyPreviewSide;
   /** 播放器界面主题跟随应用，缺省为深色。 */
   theme?: 'light' | 'dark';
@@ -51,6 +55,8 @@ const chartPreviewInjectors = createChartPreviewInjectors<ChartPreviewInjectConf
     title: config.title ?? '',
     settings: config.settings ?? null,
     answerSoundUrl: config.answerSoundUrl,
+    backgroundImageUrl: config.backgroundImageUrl,
+    backgroundVideoUrl: config.backgroundVideoUrl,
     buddySide: config.buddySide ?? null,
     theme: config.theme ?? 'dark',
   }),

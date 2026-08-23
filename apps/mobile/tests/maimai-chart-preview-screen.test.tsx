@@ -5,6 +5,10 @@ import MaimaiChartPreviewScreen from '../app/songs/chart-preview';
 
 const mockInjectJavaScript = jest.fn();
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
+const mockPrepareChartPreview = jest.fn(async (_input: unknown) => ({
+  uri: 'file:///chart-preview/index.html',
+  allowingReadAccessToURL: 'file:///chart-preview/',
+}));
 let latestScreenOptions: Record<string, unknown> | undefined;
 let hardwareBackHandler: (() => boolean | null | undefined) | undefined;
 
@@ -64,10 +68,7 @@ jest.mock('@/features/maimai-chart-preview/prepare-chart-preview-webview', () =>
       return null;
     }
   },
-  prepareChartPreviewWebViewSource: async () => ({
-    uri: 'file:///chart-preview/index.html',
-    allowingReadAccessToURL: 'file:///chart-preview/',
-  }),
+  prepareChartPreviewWebViewSource: (input: unknown) => mockPrepareChartPreview(input),
 }));
 
 describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
@@ -76,6 +77,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     hardwareBackHandler = undefined;
     mockInjectJavaScript.mockClear();
     mockSaveSettings.mockClear();
+    mockPrepareChartPreview.mockClear();
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
       hardwareBackHandler = handler;
       return { remove: jest.fn() };
@@ -133,13 +135,23 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
 
     fireEvent(webview, 'message', {
       nativeEvent: {
-        data: '{"type":"settings","active":false,"message":"ignored","hiSpeed":7.5}',
+        data: '{"type":"settings","active":false,"message":"ignored","hiSpeed":7.5,"backgroundMode":"video","videoBackgroundConfirmed":true}',
       },
     });
 
     await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(
       'maimai-chart-preview-settings',
-      JSON.stringify({ hiSpeed: 7.5 }),
+      JSON.stringify({ hiSpeed: 7.5, backgroundMode: 'video', videoBackgroundConfirmed: true }),
     ));
+  });
+
+  it('passes the current jacket and reference video source into the player config', async () => {
+    render(<MaimaiChartPreviewScreen />);
+    await waitFor(() => expect(mockPrepareChartPreview).toHaveBeenCalled());
+
+    expect(mockPrepareChartPreview).toHaveBeenCalledWith(expect.objectContaining({
+      backgroundImageUrl: 'https://assets2.lxns.net/maimai/jacket/834.png',
+      backgroundVideoUrl: 'https://maimai-video.lxns.net/834.mp4',
+    }));
   });
 });
