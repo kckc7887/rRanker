@@ -64,6 +64,12 @@ import {
 import { useCollections } from '@/hooks/use-collections';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
+import { maimaiChartPreviewChartId } from '@/domain/maimai-chart-preview';
+import {
+  checkMaimaiChartVideoAvailable,
+  downloadMaimaiChartPackage,
+} from '@/features/maimai-chart-download/maimai-chart-download';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
@@ -483,7 +489,8 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   onToggleChartType: () => void;
 }) {
   const theme = useAppTheme();
-  const { showActionNotification } = useNotification();
+  const { showActionNotification, showNotification } = useNotification();
+  const [downloading, setDownloading] = useState(false);
   const visual = DIFFICULTY_VISUAL[chart.difficulty];
   const chartItem = library.data?.find((item) => item.key === library.chartKey(song.id, chart.type, chart.levelIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
@@ -536,6 +543,78 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       variant: 'info',
       actions: [{ label: '知道了', tone: 'cancel' }],
     });
+  };
+
+  const downloadLevelLabel = chart.type === 'UTAGE'
+    ? chart.utage?.kanji ?? 'U·TA·GE'
+    : chart.level;
+
+  const notifyDownloadFailure = (error: unknown) => {
+    showNotification({
+      title: '下载失败',
+      message: providerErrorToUserMessage(error, '该谱面暂时无法下载，请稍后重试。'),
+      variant: 'error',
+    });
+  };
+
+  const runChartDownload = async (includeVideo: boolean) => {
+    setDownloading(true);
+    try {
+      const saved = await downloadMaimaiChartPackage({
+        songId: song.id,
+        chartType: chart.type,
+        levelIndex: chart.levelIndex,
+        levelLabel: downloadLevelLabel,
+        title: song.title,
+        includeVideo,
+      });
+      if (saved) {
+        showNotification({
+          title: '谱面已保存',
+          message: '可将 .adx.zip 文件导入 AstroDX 游玩。',
+          variant: 'success',
+        });
+      }
+    } catch (error) {
+      notifyDownloadFailure(error);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleDownloadChart = async () => {
+    if (downloading) return;
+    if (Platform.OS === 'web') {
+      showNotification({
+        title: '无法下载',
+        message: '当前设备不支持下载谱面，请使用手机端。',
+        variant: 'info',
+      });
+      return;
+    }
+    setDownloading(true);
+    try {
+      const chartId = maimaiChartPreviewChartId(song.id, chart.type);
+      const hasVideo = await checkMaimaiChartVideoAvailable(chartId);
+      if (hasVideo) {
+        setDownloading(false);
+        showActionNotification({
+          title: '下载谱面',
+          message: '该谱面带有背景视频，视频文件较大、会消耗流量，是否一并下载？',
+          variant: 'info',
+          actions: [
+            { label: '包含背景视频', onPress: () => void runChartDownload(true) },
+            { label: '仅封面图片', onPress: () => void runChartDownload(false) },
+            { label: '取消', tone: 'cancel' },
+          ],
+        });
+        return;
+      }
+      await runChartDownload(false);
+    } catch (error) {
+      setDownloading(false);
+      notifyDownloadFailure(error);
+    }
   };
 
   return <GameChartResultCard
@@ -602,6 +681,14 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       onPress={handleViewChartPreview}
       style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
       <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>查看谱面确认</Text>
+    </DetailPressable>
+    <DetailPressable accessibilityRole="button" accessibilityLabel={`下载谱面：${previewTitle}`}
+      accessibilityState={{ disabled: downloading }} disabled={downloading}
+      onPress={() => void handleDownloadChart()}
+      style={[styles.action, styles.chartSearchAction, chartActionStyle(theme.dark, chart.difficulty, visual, false)]}>
+      <Text style={[styles.actionText, chartActionTextStyle(theme.dark, chart.difficulty, visual, false)]}>
+        {downloading ? '正在下载…' : '下载谱面'}
+      </Text>
     </DetailPressable>
     <TagEditor tags={chartItem?.tags ?? []} presets={chartTagPresets} presetsEditable={false}
       historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), chartTagPresets)}

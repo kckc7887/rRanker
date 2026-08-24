@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, InteractionManager, Platform, processColor, StyleSheet } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
@@ -24,6 +24,10 @@ const mockCanGoBack = jest.fn(() => true);
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockShowActionNotification = jest.fn();
+const mockShowNotification = jest.fn();
+const mockCheckVideo = jest.fn<(chartId: number) => Promise<boolean>>();
+const mockDownloadPackage = jest.fn<(request: Record<string, unknown>) => Promise<boolean>>();
+let mockVideoAvailable = false;
 let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
 let mockDetailedCatalogAvailable = true;
 const mockDxRatingTags = Array.from({ length: 14 }, (_, index) => ({
@@ -47,10 +51,15 @@ jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/components/AppNotification', () => ({
   NotificationOutlet: () => null,
   useNotification: () => ({
-    showNotification: jest.fn(),
+    showNotification: mockShowNotification,
     showActionNotification: mockShowActionNotification,
   }),
   useNotificationModalRequestClose: () => () => false,
+}));
+jest.mock('@/features/maimai-chart-download/maimai-chart-download', () => ({
+  MaimaiChartDownloadError: class MaimaiChartDownloadError extends Error {},
+  checkMaimaiChartVideoAvailable: (chartId: number) => mockCheckVideo(chartId),
+  downloadMaimaiChartPackage: (request: Record<string, unknown>) => mockDownloadPackage(request),
 }));
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -229,6 +238,9 @@ describe('M2 song query screens', () => {
     mockDxRatingTagState = 'live';
     mockUserLibraryData = [];
     mockCanGoBack.mockReturnValue(true);
+    mockVideoAvailable = false;
+    mockCheckVideo.mockImplementation(async () => mockVideoAvailable);
+    mockDownloadPackage.mockResolvedValue(true);
     useCatalogFilter.getState().reset();
     jest.clearAllMocks();
   });
@@ -661,6 +673,23 @@ describe('M2 song query screens', () => {
       params: { tap: '500', hold: '100', slide: '120', touch: '80', break: '20' },
     }));
 
+    expect(screen.getByLabelText('下载谱面：正常曲目 A DX MASTER')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('下载谱面：正常曲目 A DX MASTER'));
+    });
+    await waitFor(() => expect(mockDownloadPackage).toHaveBeenCalledWith(expect.objectContaining({
+      songId: '1',
+      chartType: 'DX',
+      levelIndex: 3,
+      levelLabel: '13+',
+      title: '正常曲目 A',
+      includeVideo: false,
+    })));
+    expect(mockShowActionNotification).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: '谱面已保存',
+    })));
+
     expect(screen.getAllByText('·点击切换·')).toHaveLength(5);
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
     expect(screen.queryByText('谱师：DX主谱师')).toBeNull();
@@ -679,6 +708,42 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('song-alias-text').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起别名'));
     expect(screen.getByTestId('song-alias-text').props.numberOfLines).toBe(1);
+  });
+
+  it('asks whether to include the background video before downloading', async () => {
+    mockVideoAvailable = true;
+    const screen = await render(<SongDetailScreen />);
+
+    expect(screen.getByLabelText('下载谱面：正常曲目 A DX MASTER')).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('下载谱面：正常曲目 A DX MASTER'));
+    });
+    await waitFor(() => expect(mockCheckVideo).toHaveBeenCalledWith(10001));
+    await waitFor(() => expect(mockShowActionNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: '下载谱面',
+      message: expect.stringContaining('背景视频'),
+    })));
+    expect(mockDownloadPackage).not.toHaveBeenCalled();
+
+    const input = mockShowActionNotification.mock.calls.at(-1)![0] as {
+      actions: { label: string; onPress?: () => void | Promise<void> }[];
+    };
+    expect(input.actions.map((action) => action.label)).toEqual(['包含背景视频', '仅封面图片', '取消']);
+    const withVideo = input.actions.find((action) => action.label === '包含背景视频');
+    await act(async () => {
+      await withVideo!.onPress?.();
+    });
+    await waitFor(() => expect(mockDownloadPackage).toHaveBeenCalledWith(expect.objectContaining({
+      songId: '1',
+      chartType: 'DX',
+      levelIndex: 3,
+      includeVideo: true,
+    })));
+
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: '谱面已保存',
+      variant: 'success',
+    })));
   });
 
   it('renders U·TA·GE without Rating calculation and shows separate 1P/2P notes', async () => {
