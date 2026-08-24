@@ -139,13 +139,19 @@ export function resolvePhigrosChartPreviewAssetBundle({
 
   const manifestUrl = new URL(manifestPath, ossBase);
   const releaseBase = new URL('./', manifestUrl);
-  const toPublicAsset = (asset: AssetRecord): PhigrosChartPreviewAsset => ({
-    path: String(asset.path),
-    url: new URL(String(asset.path), releaseBase).href,
-    size: Number(asset.size) || 0,
-    sha256: typeof asset.sha256 === 'string' ? asset.sha256 : '',
-    contentType: typeof asset.contentType === 'string' ? asset.contentType : '',
-  });
+  // 谱面/音乐/曲绘路径随发布覆盖且声明 immutable 长缓存，URL 必须带 resourceVersion
+  // 区分发布版本，否则 WebView 与各层 HTTP 缓存会命中旧发布内容。
+  const toPublicAsset = (asset: AssetRecord): PhigrosChartPreviewAsset => {
+    const url = new URL(String(asset.path), releaseBase);
+    url.searchParams.set('v', resourceVersion);
+    return {
+      path: String(asset.path),
+      url: url.href,
+      size: Number(asset.size) || 0,
+      sha256: typeof asset.sha256 === 'string' ? asset.sha256 : '',
+      contentType: typeof asset.contentType === 'string' ? asset.contentType : '',
+    };
+  };
 
   return {
     target: { ...target },
@@ -177,10 +183,19 @@ export async function loadPhigrosChartPreviewBundle(
   const currentObject = assertObject(current, 'current.json');
   const catalogPath = requiredString(currentObject.catalog, 'catalog 路径');
   const manifestPath = requiredString(currentObject.manifest, 'manifest 路径');
+  const resourceVersion = requiredString(currentObject.resourceVersion, 'resourceVersion');
+
+  // catalog/manifest 在对象存储声明 immutable 长缓存但同一路径随发布覆盖，
+  // 请求 URL 带 resourceVersion 才能绕开各层缓存拿到与 current 一致的版本。
+  const withVersion = (path: string): string => {
+    const url = new URL(path, ossBase);
+    url.searchParams.set('v', resourceVersion);
+    return url.href;
+  };
 
   const [catalog, manifest] = await Promise.all([
-    fetchPhigrosPreviewJson<CatalogDocument>(new URL(catalogPath, ossBase).href, signal, 'catalog.json'),
-    fetchPhigrosPreviewJson<ManifestDocument>(new URL(manifestPath, ossBase).href, signal, 'manifest.json'),
+    fetchPhigrosPreviewJson<CatalogDocument>(withVersion(catalogPath), signal, 'catalog.json'),
+    fetchPhigrosPreviewJson<ManifestDocument>(withVersion(manifestPath), signal, 'manifest.json'),
   ]);
   return resolvePhigrosChartPreviewAssetBundle({ current, catalog, manifest, target, ossBase });
 }

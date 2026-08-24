@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  loadPhigrosChartPreviewBundle,
   phigrosChartPreviewLevelLabel,
   resolvePhigrosChartPreviewAssetBundle,
 } from '@/domain/phigros-chart-preview';
@@ -8,6 +9,7 @@ const current = {
   gameVersion: '9.9.9',
   resourceVersion: '9.9.9-test',
   manifest: 'phigros/releases/9.9.9/manifest.json',
+  catalog: 'phigros/releases/9.9.9/catalog.json',
 };
 const catalog = {
   songs: [{
@@ -29,9 +31,9 @@ describe('phigros chart preview resource resolution（移植 demo resource-loade
       current, catalog, manifest, target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
       ossBase: 'https://assets.example/',
     });
-    expect(result.chart.url).toBe('https://assets.example/phigros/releases/9.9.9/charts/DistortedFate.Sakuzyo.7/AT.json');
-    expect(result.music.url).toBe('https://assets.example/phigros/releases/9.9.9/music/DistortedFate.Sakuzyo.ogg');
-    expect(result.illustration.url).toBe('https://assets.example/phigros/releases/9.9.9/illustrations/DistortedFate.Sakuzyo.png');
+    expect(result.chart.url).toBe('https://assets.example/phigros/releases/9.9.9/charts/DistortedFate.Sakuzyo.7/AT.json?v=9.9.9-test');
+    expect(result.music.url).toBe('https://assets.example/phigros/releases/9.9.9/music/DistortedFate.Sakuzyo.ogg?v=9.9.9-test');
+    expect(result.illustration.url).toBe('https://assets.example/phigros/releases/9.9.9/illustrations/DistortedFate.Sakuzyo.png?v=9.9.9-test');
     expect(result.song.difficultyConstant).toBe(17.4);
     expect(result.song.charter).toBe('AT charter');
   });
@@ -62,7 +64,7 @@ describe('phigros chart preview resource resolution（移植 demo resource-loade
       target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
       ossBase: 'https://assets.example/',
     });
-    expect(result.illustration.url).toBe('https://assets.example/phigros/releases/9.9.9/illustrations-lowres/DistortedFate.Sakuzyo.png');
+    expect(result.illustration.url).toBe('https://assets.example/phigros/releases/9.9.9/illustrations-lowres/DistortedFate.Sakuzyo.png?v=9.9.9-test');
   });
 
   it('曲目缺失、难度缺失与音乐缺失给出明确错误', () => {
@@ -92,4 +94,33 @@ describe('phigros chart preview resource resolution（移植 demo resource-loade
     expect(phigrosChartPreviewLevelLabel(3)).toBe('AT');
     expect(() => phigrosChartPreviewLevelLabel(4)).toThrow(/不支持的难度下标/);
   });
+
+  it('catalog/manifest 请求 URL 携带发布版本参数绕开缓存', async () => {
+    const requests: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      requests.push(url);
+      const body = url.includes('current.json') ? JSON.stringify(current)
+        : url.includes('catalog.json') ? JSON.stringify(catalog)
+          : JSON.stringify(manifest);
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    try {
+      const bundle = await loadPhigrosChartPreviewBundle(
+        { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
+        new AbortController().signal,
+        'https://assets.example/',
+      );
+      expect(requests[0]).toBe('https://assets.example/phigros/current.json');
+      expect(requests[1]).toBe('https://assets.example/phigros/releases/9.9.9/catalog.json?v=9.9.9-test');
+      expect(requests[2]).toBe('https://assets.example/phigros/releases/9.9.9/manifest.json?v=9.9.9-test');
+      expect(bundle.chart.url).toContain('?v=9.9.9-test');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });

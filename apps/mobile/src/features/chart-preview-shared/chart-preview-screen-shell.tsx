@@ -125,7 +125,9 @@ export function ChartPreviewScreenShell<TPayload>({
         preparedSource = prepared;
         if (cancelled) prepared.dispose?.();
         else setSource(prepared);
-      } catch {
+      } catch (error) {
+        // 诊断日志：底层原因只进日志，不进用户界面。
+        console.log('[chart-preview] prepare error', error);
         if (!cancelled) {
           setStageError(localController.signal.aborted
             ? '准备谱面确认资源超时，请返回重试'
