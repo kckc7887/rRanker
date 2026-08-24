@@ -402,9 +402,10 @@ async function main(): Promise<void> {
     const response = await fetch(chartUrl);
     if (!response.ok) throw new Error(`谱面文件不可用（${response.status}）`);
     simaiText = await response.text();
-  } catch {
+  } catch (error) {
+    const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '谱面加载失败，请返回重试。';
-    postStatus('error', { message: '谱面加载失败，请返回重试。' });
+    postStatus('error', { message: '谱面加载失败，请返回重试。', diagnostic: `fetch ${chartUrl}: ${diagnostic}` });
     return;
   }
 
@@ -425,9 +426,14 @@ async function main(): Promise<void> {
       }
       charts = [parseSimaiChart(simaiText, difficulty)];
     }
-  } catch {
+  } catch (error) {
+    const diagnostic = error instanceof Error ? error.message : String(error);
+    const availableText = JSON.stringify(getAvailableDifficulties(simaiText));
     statusEl.textContent = '无法打开谱面，请返回重试。';
-    postStatus('error', { message: '无法打开谱面，请返回重试。' });
+    postStatus('error', {
+      message: '无法打开谱面，请返回重试。',
+      diagnostic: `parse chartId=${config.chartId} difficulty=${config.difficulty} available=${availableText}: ${diagnostic}`,
+    });
     return;
   }
   const chart = charts[0]!;
@@ -1672,8 +1678,11 @@ async function main(): Promise<void> {
   renderAt(0);
 }
 
-void main().catch(() => {
+void main().catch((error) => {
+  const diagnostic = error instanceof Error
+    ? `${error.message}\n${error.stack ?? ''}`
+    : String(error);
   const status = document.getElementById('status');
   if (status) status.textContent = '无法打开谱面，请返回重试。';
-  postStatus('error', { message: '无法打开谱面，请返回重试。' });
+  postStatus('error', { message: '无法打开谱面，请返回重试。', diagnostic: `unhandled: ${diagnostic}` });
 });
