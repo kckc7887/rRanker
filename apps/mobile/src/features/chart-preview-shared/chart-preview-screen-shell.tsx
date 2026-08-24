@@ -242,6 +242,11 @@ export function ChartPreviewScreenShell<TPayload>({
                 setIsFullscreen(data.active);
               }
               if (data.type === 'error') {
+                // 诊断日志：底层原因只进日志，不进用户界面。
+                console.log('[chart-preview] player error', {
+                  diagnostic: typeof data.diagnostic === 'string' ? data.diagnostic : undefined,
+                  message: typeof data.message === 'string' ? data.message : undefined,
+                });
                 setIsFullscreen(false);
                 setPlayerError('谱面播放失败，请返回重试。');
               }
@@ -251,11 +256,13 @@ export function ChartPreviewScreenShell<TPayload>({
               }
               onBridgeMessage?.(data, bridge);
             }}
-            onError={() => {
+            onError={(event) => {
+              console.log('[chart-preview] webview error', event?.nativeEvent);
               setIsFullscreen(false);
               setPlayerError('播放器加载失败，请返回重试。');
             }}
-            onHttpError={() => {
+            onHttpError={(event) => {
+              console.log('[chart-preview] webview http error', event?.nativeEvent);
               if (!blockOnHttpError) return;
               setIsFullscreen(false);
               setPlayerError('播放器加载失败，请返回重试。');

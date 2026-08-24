@@ -186,6 +186,9 @@ export class TouchRenderer extends BaseRenderer {
   /** 预热精灵与 scratch：烘焙、光栅化并上传纹理，避免首个烟花触发帧掉帧。 */
   warmFireworkResources(): void {
     const backingScale = this.getBackingScale();
+    // 布局未就绪（centerX=0）时 backingScale 为 NaN/Infinity，烘出的精灵尺寸归零，
+    // iOS WebKit 的 drawImage 会抛 InvalidStateError 中断整帧渲染；推迟到布局完成后预热。
+    if (!Number.isFinite(backingScale) || backingScale <= 0) return;
     const basis = `${this.context.radius}|${backingScale}`;
     if (this.fireworkSpriteBasis === basis && this.fireworkScratch) return;
     const sprite = this.getWedgeSprite();
