@@ -8,6 +8,7 @@ const native = vi.hoisted(() => ({
   createFileCalls: [] as { name: string; mime: string | null }[],
   deleted: [] as string[],
   createdDirs: [] as string[],
+  cancelDownload: vi.fn(),
 }));
 
 vi.mock('expo-file-system', () => {
@@ -42,6 +43,24 @@ vi.mock('expo-file-system', () => {
   return { Paths: { cache: 'file:///cache' }, File: MockFile, Directory: MockDirectory };
 });
 
+vi.mock('expo-file-system/legacy', () => ({
+  createDownloadResumable: (
+    url: string,
+    uri: string,
+    _options: unknown,
+    onProgress?: (progress: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => void,
+  ) => ({
+    downloadAsync: async () => {
+      await native.downloadFileAsync(url, uri);
+      native.texts.set(uri, `${url}\n谱面内容`);
+      native.bytes.set(uri, new TextEncoder().encode(`${url}\n谱面内容`));
+      onProgress?.({ totalBytesWritten: 100, totalBytesExpectedToWrite: 100 });
+      return { uri, status: 200, headers: {} };
+    },
+    cancelAsync: () => native.cancelDownload(),
+  }),
+}));
+
 // Native Expo modules must be mocked before importing the download module.
 // eslint-disable-next-line import/first
 import JSZip from 'jszip';
@@ -49,6 +68,7 @@ import JSZip from 'jszip';
 import {
   checkMaimaiChartVideoAvailable,
   downloadMaimaiChartPackage,
+  MaimaiChartDownloadCancelledError,
   MaimaiChartDownloadError,
   maimaiChartPackageName,
 } from '@/features/maimai-chart-download/maimai-chart-download';
@@ -79,6 +99,7 @@ describe('maimai chart download', () => {
       native.downloaded.push({ url, uri });
     });
     native.pickDirectoryAsync.mockResolvedValue(pickedDirectoryMock());
+    native.cancelDownload.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -160,6 +181,60 @@ describe('maimai chart download', () => {
       '测试曲目 SD 5/maidata.txt',
       '测试曲目 SD 5/track.mp3',
     ]);
+  });
+
+  it('reports download and organizing progress before opening the save location', async () => {
+    const events: string[] = [];
+    native.pickDirectoryAsync.mockImplementationOnce(async () => {
+      events.push('picker');
+      return pickedDirectoryMock();
+    });
+
+    await downloadMaimaiChartPackage({
+      songId: '123',
+      chartType: 'DX',
+      levelIndex: 3,
+      levelLabel: '12+',
+      title: '测试曲目',
+      includeVideo: false,
+    }, {
+      onProgress: ({ phase, progress }) => events.push(`${phase}:${Math.round(progress * 100)}`),
+      onReadyToSave: () => {
+        events.push('ready');
+      },
+    });
+
+    expect(events).toContain('downloading:100');
+    expect(events).toContain('organizing:100');
+    expect(events.indexOf('ready')).toBeLessThan(events.indexOf('picker'));
+  });
+
+  it('cancels the active download and does not open the save location', async () => {
+    const controller = new AbortController();
+    let rejectDownload!: (error: Error) => void;
+    native.downloadFileAsync.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => {
+      rejectDownload = reject;
+    }));
+    native.cancelDownload.mockImplementationOnce(async () => {
+      rejectDownload(new Error('cancelled'));
+    });
+
+    const result = downloadMaimaiChartPackage({
+      songId: '123',
+      chartType: 'DX',
+      levelIndex: 3,
+      levelLabel: '12+',
+      title: '测试曲目',
+      includeVideo: false,
+    }, { signal: controller.signal });
+    await vi.waitFor(() => expect(native.downloadFileAsync).toHaveBeenCalledTimes(1));
+    controller.abort();
+
+    await expect(result).rejects.toBeInstanceOf(MaimaiChartDownloadCancelledError);
+    expect(native.cancelDownload).toHaveBeenCalledTimes(1);
+    expect(native.pickDirectoryAsync).not.toHaveBeenCalled();
+    const staging = native.createdDirs.find((uri) => uri.includes('rranker-chart-download-'));
+    expect(native.deleted).toContain(staging);
   });
 
   it('returns false without writing when the save dialog is cancelled', async () => {

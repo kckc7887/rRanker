@@ -6,6 +6,10 @@
 
 import JSZip from 'jszip';
 import { Directory, File, Paths } from 'expo-file-system';
+import {
+  createDownloadResumable,
+  type DownloadProgressData,
+} from 'expo-file-system/legacy';
 import { maimaiJacketUrl } from '@/domain/maimai-assets';
 import {
   maimaiChartPreviewChartId,
@@ -16,6 +20,18 @@ import {
 import type { ChartType } from '@/domain/models';
 
 export class MaimaiChartDownloadError extends Error {}
+export class MaimaiChartDownloadCancelledError extends Error {}
+
+export type MaimaiChartDownloadProgress = {
+  phase: 'downloading' | 'organizing';
+  progress: number;
+};
+
+export type MaimaiChartDownloadOptions = {
+  signal?: AbortSignal;
+  onProgress?: (progress: MaimaiChartDownloadProgress) => void;
+  onReadyToSave?: () => void | Promise<void>;
+};
 
 export type MaimaiChartDownloadRequest = {
   songId: string;
@@ -65,16 +81,39 @@ function isDirectoryPickerCancellation(error: unknown): boolean {
   return typeof candidate.message === 'string' && /cancell?ed by the user/iu.test(candidate.message);
 }
 
-async function downloadTo(directory: Directory, fileName: string, url: string): Promise<File> {
+function throwIfCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new MaimaiChartDownloadCancelledError('谱面下载已取消');
+}
+
+async function downloadTo(
+  directory: Directory,
+  fileName: string,
+  url: string,
+  signal?: AbortSignal,
+  onProgress?: (progress: DownloadProgressData) => void,
+): Promise<File> {
   const file = new File(directory, fileName);
+  throwIfCancelled(signal);
+  const task = createDownloadResumable(url, file.uri, {}, onProgress);
+  const cancelDownload = () => {
+    void task.cancelAsync().catch(() => undefined);
+  };
+  signal?.addEventListener('abort', cancelDownload, { once: true });
   try {
-    await File.downloadFileAsync(url, file, { idempotent: true });
+    const result = await task.downloadAsync();
+    throwIfCancelled(signal);
+    if (!result) throw new MaimaiChartDownloadCancelledError('谱面下载已取消');
     if (!file.exists || file.size <= 0) {
       throw new MaimaiChartDownloadError(`下载内容为空：${fileName}`);
     }
     return file;
   } catch (error) {
+    if (signal?.aborted || error instanceof MaimaiChartDownloadCancelledError) {
+      throw new MaimaiChartDownloadCancelledError('谱面下载已取消', { cause: error });
+    }
     throw new MaimaiChartDownloadError(`无法下载谱面资源：${fileName}`, { cause: error });
+  } finally {
+    signal?.removeEventListener('abort', cancelDownload);
   }
 }
 
@@ -85,6 +124,7 @@ async function downloadTo(directory: Directory, fileName: string, url: string): 
  */
 export async function downloadMaimaiChartPackage(
   request: MaimaiChartDownloadRequest,
+  options: MaimaiChartDownloadOptions = {},
 ): Promise<boolean> {
   const chartId = maimaiChartPreviewChartId(request.songId, request.chartType);
   const packageName = maimaiChartPackageName(request.title, request.chartType, request.levelLabel);
@@ -93,13 +133,44 @@ export async function downloadMaimaiChartPackage(
   const staging = new Directory(Paths.cache, `rranker-chart-download-${Date.now()}-${sessionSequence}`);
   staging.create({ intermediates: true, idempotent: true });
   try {
-    const chartFile = await downloadTo(staging, 'maidata.txt', maimaiChartPreviewSimaiUrl(chartId));
-    const musicFile = await downloadTo(staging, 'track.mp3', maimaiChartPreviewMusicUrl(chartId));
-    const jacketFile = await downloadTo(staging, 'bg.png', maimaiJacketUrl(request.songId));
-    const videoFile = request.includeVideo
-      ? await downloadTo(staging, 'pv.mp4', maimaiChartPreviewVideoUrl(chartId))
-      : undefined;
+    const resources = [
+      { fileName: 'maidata.txt', url: maimaiChartPreviewSimaiUrl(chartId) },
+      { fileName: 'track.mp3', url: maimaiChartPreviewMusicUrl(chartId) },
+      { fileName: 'bg.png', url: maimaiJacketUrl(request.songId) },
+      ...(request.includeVideo
+        ? [{ fileName: 'pv.mp4', url: maimaiChartPreviewVideoUrl(chartId) }]
+        : []),
+    ];
+    const downloadedFiles = new Map<string, File>();
+    for (const [index, resource] of resources.entries()) {
+      throwIfCancelled(options.signal);
+      options.onProgress?.({ phase: 'downloading', progress: index / resources.length });
+      const file = await downloadTo(
+        staging,
+        resource.fileName,
+        resource.url,
+        options.signal,
+        ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+          const fileProgress = totalBytesExpectedToWrite > 0
+            ? Math.min(1, totalBytesWritten / totalBytesExpectedToWrite)
+            : 0;
+          options.onProgress?.({
+            phase: 'downloading',
+            progress: (index + fileProgress) / resources.length,
+          });
+        },
+      );
+      downloadedFiles.set(resource.fileName, file);
+      options.onProgress?.({ phase: 'downloading', progress: (index + 1) / resources.length });
+    }
 
+    const chartFile = downloadedFiles.get('maidata.txt')!;
+    const musicFile = downloadedFiles.get('track.mp3')!;
+    const jacketFile = downloadedFiles.get('bg.png')!;
+    const videoFile = downloadedFiles.get('pv.mp4');
+
+    options.onProgress?.({ phase: 'organizing', progress: 0 });
+    throwIfCancelled(options.signal);
     const zip = new JSZip();
     const folder = zip.folder(packageName);
     if (!folder) throw new MaimaiChartDownloadError('无法创建谱面压缩包目录');
@@ -108,7 +179,17 @@ export async function downloadMaimaiChartPackage(
     folder.file('bg.png', await jacketFile.bytes());
     if (videoFile) folder.file('pv.mp4', await videoFile.bytes());
     // 谱面媒体已是压缩格式，STORE 免去压缩峰值内存。
-    const zipBytes = await zip.generateAsync({ type: 'uint8array', compression: 'STORE' });
+    const zipBytes = await zip.generateAsync(
+      { type: 'uint8array', compression: 'STORE' },
+      ({ percent }) => options.onProgress?.({
+        phase: 'organizing',
+        progress: Math.min(1, Math.max(0, percent / 100)),
+      }),
+    );
+    throwIfCancelled(options.signal);
+    options.onProgress?.({ phase: 'organizing', progress: 1 });
+    await options.onReadyToSave?.();
+    throwIfCancelled(options.signal);
 
     try {
       const picked = await Directory.pickDirectoryAsync();
