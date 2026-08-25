@@ -8,12 +8,23 @@ import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/
 
 const mockRefetch = jest.fn(async () => ({ data: undefined }));
 const mockRefreshAll = jest.fn(async () => null);
+const mockDismissNotification = jest.fn();
+const mockShowActionNotification = jest.fn(() => 42);
+const mockShowNotification = jest.fn();
+const mockUpdateNotification = jest.fn();
+const mockDownloadPhiraPackage = jest.fn<(
+  chart: unknown,
+  options: unknown,
+) => Promise<boolean>>(async () => true);
+const mockStartChartDownload = jest.fn(async (
+  runner: (options: { signal: AbortSignal }) => Promise<boolean>,
+) => runner({ signal: new AbortController().signal }));
 const mockChart = {
   id: 38294, name: '初音未来的消失', level: 'AT Lv.16', difficulty: 16.2,
   charter: '谱师', composer: 'CosMo@暴走P', illustrator: '', description: '简介',
   ranked: false, stable: false, uploader: 1252389, tags: ['regular'], rating: .9, ratingCount: 10,
   created: '2025-05-18T06:02:48.727Z', updated: '2025-05-20T22:46:26.729Z', chartUpdated: null,
-  illustration: null, preview: null, file: null,
+  illustration: null, preview: null, file: 'https://phira.example/chart.zip',
 };
 const mockBest = {
   chart: mockChart, poolRks: null, queriedAt: '2026-08-13T00:00:00.000Z',
@@ -71,7 +82,19 @@ jest.mock('@/hooks/use-phira', () => ({
   usePhiraUploader: () => ({ data: undefined, isLoading: false, isError: true }),
 }));
 jest.mock('@/components/AppNotification', () => ({
-  useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
+  useNotification: () => ({
+    dismissNotification: mockDismissNotification,
+    showNotification: mockShowNotification,
+    showActionNotification: mockShowActionNotification,
+    updateNotification: mockUpdateNotification,
+  }),
+}));
+jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+  downloadPhiraChartPackage: (chart: unknown, options: unknown) =>
+    mockDownloadPhiraPackage(chart, options),
+}));
+jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+  useChartPackageDownload: () => ({ isRunning: false, start: mockStartChartDownload }),
 }));
 jest.mock('@/components/TagEditor', () => ({ TagEditor: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>本地标签</RN.Text>; } }));
 jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: (props: typeof mockChromeProps) => { mockChromeProps = props; return null; } }));
@@ -155,7 +178,12 @@ describe('Phira page contracts', () => {
     expect(screen.queryByText(/练习清单/)).toBeNull();
     expect(screen.queryByText(/难度标签/)).toBeNull();
     const previewButton = screen.getByLabelText('查看谱面确认：初音未来的消失');
+    const downloadButton = screen.getByLabelText('下载谱面文件：初音未来的消失');
     expect(previewButton.props.testID).toBe('gesture-handler-pressable');
+    expect(downloadButton.props.testID).toBe('gesture-handler-pressable');
+    const detailActions = screen.getAllByRole('button').map((button) => button.props.accessibilityLabel);
+    expect(detailActions.indexOf('下载谱面文件：初音未来的消失'))
+      .toBe(detailActions.indexOf('查看谱面确认：初音未来的消失') + 1);
     await fireEvent.press(previewButton);
     expect(jest.mocked(mockRouter.push)).toHaveBeenCalledWith(expect.objectContaining({
       pathname: '/songs/phigros-chart-preview',
@@ -163,6 +191,11 @@ describe('Phira page contracts', () => {
     }));
     const href = jest.mocked(mockRouter.push).mock.calls.at(-1)?.[0] as unknown as { params: { requestId: string } };
     expect(resolveChartPreviewNavigation(href.params.requestId)).toEqual({ game: 'phira', chart: mockChart });
+    await fireEvent.press(downloadButton);
+    expect(mockDownloadPhiraPackage).toHaveBeenCalledWith(
+      mockChart,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     await screen.unmount();
   });
 
@@ -172,6 +205,7 @@ describe('Phira page contracts', () => {
     try {
       const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
       expect(screen.getByLabelText('查看谱面确认：初音未来的消失').props.testID).toBeUndefined();
+      expect(screen.getByLabelText('下载谱面文件：初音未来的消失').props.testID).toBeUndefined();
       await screen.unmount();
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });

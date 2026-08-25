@@ -5,11 +5,6 @@
  */
 
 import JSZip from 'jszip';
-import { Directory, File, Paths } from 'expo-file-system';
-import {
-  createDownloadResumable,
-  type DownloadProgressData,
-} from 'expo-file-system/legacy';
 import { maimaiJacketUrl } from '@/domain/maimai-assets';
 import {
   maimaiChartPreviewChartId,
@@ -18,20 +13,22 @@ import {
   maimaiChartPreviewVideoUrl,
 } from '@/domain/maimai-chart-preview';
 import type { ChartType } from '@/domain/models';
+import {
+  ChartPackageDownloadCancelledError as MaimaiChartDownloadCancelledError,
+  ChartPackageDownloadError as MaimaiChartDownloadError,
+  chartPackageNameWithSuffix,
+  cleanupChartDownloadSessionDirectory,
+  createChartDownloadSessionDirectory,
+  downloadChartResource,
+  saveChartPackage,
+  throwIfChartDownloadCancelled,
+  type ChartPackageDownloadOptions,
+  type ChartPackageDownloadProgress,
+} from '@/features/chart-download-shared/chart-download-shared';
 
-export class MaimaiChartDownloadError extends Error {}
-export class MaimaiChartDownloadCancelledError extends Error {}
-
-export type MaimaiChartDownloadProgress = {
-  phase: 'downloading' | 'organizing';
-  progress: number;
-};
-
-export type MaimaiChartDownloadOptions = {
-  signal?: AbortSignal;
-  onProgress?: (progress: MaimaiChartDownloadProgress) => void;
-  onReadyToSave?: () => void | Promise<void>;
-};
+export { MaimaiChartDownloadCancelledError, MaimaiChartDownloadError };
+export type MaimaiChartDownloadProgress = ChartPackageDownloadProgress;
+export type MaimaiChartDownloadOptions = ChartPackageDownloadOptions;
 
 export type MaimaiChartDownloadRequest = {
   songId: string;
@@ -43,25 +40,12 @@ export type MaimaiChartDownloadRequest = {
   includeVideo: boolean;
 };
 
-const SAFE_NAME_MAX_LENGTH = 40;
-let sessionSequence = 0;
-
-/** AstroDX 只认 zip 内的关卡文件夹；文件/文件夹名任意，仅需合法字符。 */
-function safeNamePart(value: string): string {
-  const normalized = value.normalize('NFKC').trim().replace(/[<>:"/\\|?*\u0000-\u001F]/gu, '_');
-  return normalized.slice(0, SAFE_NAME_MAX_LENGTH) || 'chart';
-}
-
 export function maimaiChartPackageName(
   title: string,
   chartType: ChartType,
   levelLabel: string,
 ): string {
-  const suffix = ` ${chartType} ${levelLabel}`;
-  const titleBudget = Math.max(0, SAFE_NAME_MAX_LENGTH - suffix.length);
-  const normalizedTitle = title.normalize('NFKC').trim()
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/gu, '_');
-  return safeNamePart(`${normalizedTitle.slice(0, titleBudget)}${suffix}`);
+  return chartPackageNameWithSuffix(title, `${chartType} ${levelLabel}`);
 }
 
 /** LXNS 背景视频按曲提供；HEAD 探测 200 视为可用，网络异常按不可用处理。 */
@@ -71,49 +55,6 @@ export async function checkMaimaiChartVideoAvailable(chartId: number): Promise<b
     return response.ok;
   } catch {
     return false;
-  }
-}
-
-function isDirectoryPickerCancellation(error: unknown): boolean {
-  const candidate = error as { code?: unknown; message?: unknown } | null;
-  if (!candidate || typeof candidate !== 'object') return false;
-  if (typeof candidate.code === 'string' && /cancell/iu.test(candidate.code)) return true;
-  return typeof candidate.message === 'string' && /cancell?ed by the user/iu.test(candidate.message);
-}
-
-function throwIfCancelled(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new MaimaiChartDownloadCancelledError('谱面下载已取消');
-}
-
-async function downloadTo(
-  directory: Directory,
-  fileName: string,
-  url: string,
-  signal?: AbortSignal,
-  onProgress?: (progress: DownloadProgressData) => void,
-): Promise<File> {
-  const file = new File(directory, fileName);
-  throwIfCancelled(signal);
-  const task = createDownloadResumable(url, file.uri, {}, onProgress);
-  const cancelDownload = () => {
-    void task.cancelAsync().catch(() => undefined);
-  };
-  signal?.addEventListener('abort', cancelDownload, { once: true });
-  try {
-    const result = await task.downloadAsync();
-    throwIfCancelled(signal);
-    if (!result) throw new MaimaiChartDownloadCancelledError('谱面下载已取消');
-    if (!file.exists || file.size <= 0) {
-      throw new MaimaiChartDownloadError(`下载内容为空：${fileName}`);
-    }
-    return file;
-  } catch (error) {
-    if (signal?.aborted || error instanceof MaimaiChartDownloadCancelledError) {
-      throw new MaimaiChartDownloadCancelledError('谱面下载已取消', { cause: error });
-    }
-    throw new MaimaiChartDownloadError(`无法下载谱面资源：${fileName}`, { cause: error });
-  } finally {
-    signal?.removeEventListener('abort', cancelDownload);
   }
 }
 
@@ -129,9 +70,7 @@ export async function downloadMaimaiChartPackage(
   const chartId = maimaiChartPreviewChartId(request.songId, request.chartType);
   const packageName = maimaiChartPackageName(request.title, request.chartType, request.levelLabel);
 
-  sessionSequence += 1;
-  const staging = new Directory(Paths.cache, `rranker-chart-download-${Date.now()}-${sessionSequence}`);
-  staging.create({ intermediates: true, idempotent: true });
+  const staging = createChartDownloadSessionDirectory();
   try {
     const resources = [
       { fileName: 'maidata.txt', url: maimaiChartPreviewSimaiUrl(chartId) },
@@ -141,11 +80,11 @@ export async function downloadMaimaiChartPackage(
         ? [{ fileName: 'pv.mp4', url: maimaiChartPreviewVideoUrl(chartId) }]
         : []),
     ];
-    const downloadedFiles = new Map<string, File>();
+    const downloadedFiles = new Map<string, Awaited<ReturnType<typeof downloadChartResource>>>();
     for (const [index, resource] of resources.entries()) {
-      throwIfCancelled(options.signal);
+      throwIfChartDownloadCancelled(options.signal);
       options.onProgress?.({ phase: 'downloading', progress: index / resources.length });
-      const file = await downloadTo(
+      const file = await downloadChartResource(
         staging,
         resource.fileName,
         resource.url,
@@ -170,7 +109,7 @@ export async function downloadMaimaiChartPackage(
     const videoFile = downloadedFiles.get('pv.mp4');
 
     options.onProgress?.({ phase: 'organizing', progress: 0 });
-    throwIfCancelled(options.signal);
+    throwIfChartDownloadCancelled(options.signal);
     const zip = new JSZip();
     const folder = zip.folder(packageName);
     if (!folder) throw new MaimaiChartDownloadError('无法创建谱面压缩包目录');
@@ -186,21 +125,12 @@ export async function downloadMaimaiChartPackage(
         progress: Math.min(1, Math.max(0, percent / 100)),
       }),
     );
-    throwIfCancelled(options.signal);
+    throwIfChartDownloadCancelled(options.signal);
     options.onProgress?.({ phase: 'organizing', progress: 1 });
     await options.onReadyToSave?.();
-    throwIfCancelled(options.signal);
-
-    try {
-      const picked = await Directory.pickDirectoryAsync();
-      const output = picked.createFile(`${packageName}.adx.zip`, 'application/zip');
-      output.write(zipBytes);
-      return true;
-    } catch (error) {
-      if (isDirectoryPickerCancellation(error)) return false;
-      throw new MaimaiChartDownloadError('无法打开保存位置选择', { cause: error });
-    }
+    throwIfChartDownloadCancelled(options.signal);
+    return saveChartPackage(`${packageName}.adx.zip`, { kind: 'bytes', bytes: zipBytes });
   } finally {
-    if (staging.exists) staging.delete();
+    cleanupChartDownloadSessionDirectory(staging);
   }
 }

@@ -46,6 +46,8 @@ import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useAppTheme } from '@/theme/app-theme';
 import { openChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-open';
+import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
+import { downloadPhigrosChartAsPhiraPackage } from '@/features/phira-compatible-chart-download/phira-compatible-chart-download';
 
 const PHIGROS_CHART_TYPE = 'SD' as const;
 
@@ -220,6 +222,9 @@ function Detail({
   const [deferredReady, setDeferredReady] = useState(false);
   const [coverFailed, setCoverFailed] = useState(false);
   const [coverStage, setCoverStage] = useState<'full' | 'lowres' | 'blur'>('full');
+  const { isRunning: downloadRunning, start: startChartDownload } = useChartPackageDownload({
+    successMessage: '可将 ZIP 文件导入 Phira 游玩。',
+  });
 
   useEffect(() => {
     setDeferredReady(false);
@@ -305,6 +310,14 @@ function Detail({
           initialIndex={initialIndex}
           notesPending={notesPending}
           kyouTagIndex={kyouTagIndex}
+          downloadRunning={downloadRunning}
+          onDownloadChart={(chart) => {
+            void startChartDownload((options) => downloadPhigrosChartAsPhiraPackage({
+              songId: song.id,
+              levelIndex: chart.levelIndex,
+              title: song.title,
+            }, options));
+          }}
         />
         <View style={styles.details}>
           <Card>
@@ -335,6 +348,8 @@ function ChartCarousel({
   initialIndex,
   notesPending,
   kyouTagIndex,
+  downloadRunning,
+  onDownloadChart,
 }: {
   charts: Chart[];
   records: ScoreRecord[];
@@ -344,6 +359,8 @@ function ChartCarousel({
   initialIndex: number;
   notesPending: boolean;
   kyouTagIndex: PhigrosKyouChartTagIndex;
+  downloadRunning: boolean;
+  onDownloadChart: (chart: Chart) => void;
 }) {
   const [expandedTags, setExpandedTags] = useState<ReturnType<typeof phigrosKyouPresentedTagsForChart>>([]);
   return (
@@ -375,6 +392,8 @@ function ChartCarousel({
               notesPending={notesPending}
               kyouTags={phigrosKyouPresentedTagsForChart(kyouTagIndex, song.id, chart.levelIndex)}
               onShowAllKyouTags={setExpandedTags}
+              downloadRunning={downloadRunning}
+              onDownloadChart={onDownloadChart}
             />
           );
         }}
@@ -400,6 +419,8 @@ function ChartCard({
   notesPending,
   kyouTags,
   onShowAllKyouTags,
+  downloadRunning,
+  onDownloadChart,
 }: {
   chart: Chart;
   best?: ScoreRecord;
@@ -409,6 +430,8 @@ function ChartCard({
   notesPending: boolean;
   kyouTags: ReturnType<typeof phigrosKyouPresentedTagsForChart>;
   onShowAllKyouTags: (tags: readonly PhigrosKyouResolvedTag[]) => void;
+  downloadRunning: boolean;
+  onDownloadChart: (chart: Chart) => void;
 }) {
   const theme = useAppTheme();
   const { showNotification } = useNotification();
@@ -553,6 +576,22 @@ function ChartCard({
       >
         <Text style={[styles.actionText, practiceTextStyle(colors.fg, false)]}>
           查看谱面确认
+        </Text>
+      </DetailPressable>
+      <DetailPressable
+        accessibilityRole="button"
+        accessibilityLabel={`下载谱面文件：${song.title} ${label}`}
+        accessibilityState={{ disabled: downloadRunning }}
+        disabled={downloadRunning}
+        onPress={() => onDownloadChart(chart)}
+        style={[
+          styles.action,
+          styles.chartSearchAction,
+          practiceActionStyle(colors.fg, false),
+        ]}
+      >
+        <Text style={[styles.actionText, practiceTextStyle(colors.fg, false)]}>
+          下载谱面文件
         </Text>
       </DetailPressable>
       <TagEditor

@@ -16,6 +16,17 @@ const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
+const mockDismissNotification = jest.fn();
+const mockShowActionNotification = jest.fn(() => 41);
+const mockShowNotification = jest.fn();
+const mockUpdateNotification = jest.fn();
+const mockDownloadPhigrosPackage = jest.fn<(
+  request: unknown,
+  options: unknown,
+) => Promise<boolean>>(async () => true);
+const mockStartChartDownload = jest.fn(async (
+  runner: (options: { signal: AbortSignal }) => Promise<boolean>,
+) => runner({ signal: new AbortController().signal }));
 let mockSongRouteParams: { songId: string; levelIndex?: string } = { songId: 'Song.A' };
 
 function buildSampleSong(): Song {
@@ -86,8 +97,20 @@ jest.mock('@/state/session-store', () => ({
 }));
 jest.mock('@/components/AppNotification', () => ({
   NotificationOutlet: () => null,
-  useNotification: () => ({ showActionNotification: jest.fn(), showNotification: jest.fn() }),
+  useNotification: () => ({
+    dismissNotification: mockDismissNotification,
+    showActionNotification: mockShowActionNotification,
+    showNotification: mockShowNotification,
+    updateNotification: mockUpdateNotification,
+  }),
   useNotificationModalRequestClose: () => () => false,
+}));
+jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+  downloadPhigrosChartAsPhiraPackage: (request: unknown, options: unknown) =>
+    mockDownloadPhigrosPackage(request, options),
+}));
+jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+  useChartPackageDownload: () => ({ isRunning: false, start: mockStartChartDownload }),
 }));
 let mockCatalogSongVersion = '3.8.0';
 let mockAliases = ['测试别名一', '测试别名二'];
@@ -464,7 +487,12 @@ describe('Phigros song detail', () => {
     // iOS（jest-expo 默认平台）：滚动区内的练习/谱面确认按钮必须走 gesture-handler 按压体系，
     // 否则 iOS 滚动手势竞争会取消原生 Pressable 的点击，表现为按钮完全无反应。
     expect(screen.getAllByLabelText(/查看谱面确认：/)[0]!.props.testID).toBe('gesture-handler-pressable');
+    expect(screen.getAllByLabelText(/下载谱面文件：/)[0]!.props.testID).toBe('gesture-handler-pressable');
     expect(screen.getAllByLabelText('加入练习清单')[0]!.props.testID).toBe('gesture-handler-pressable');
+    const atActions = within(screen.getByLabelText('AT 难度卡片')).getAllByRole('button')
+      .map((button) => button.props.accessibilityLabel);
+    expect(atActions.indexOf('下载谱面文件：测试曲 AT'))
+      .toBe(atActions.indexOf('查看谱面确认：测试曲 AT') + 1);
 
     await fireEvent.press(screen.getAllByLabelText(/查看谱面确认：/)[0]!);
     expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({
@@ -475,5 +503,12 @@ describe('Phigros song detail', () => {
     expect(resolveChartPreviewNavigation(href.params.requestId)).toEqual({
       game: 'phigros', songId: 'Song.A', levelIndex: 3, title: '测试曲 AT',
     });
+
+    await fireEvent.press(screen.getAllByLabelText(/下载谱面文件：/)[0]!);
+    await waitFor(() => expect(mockDownloadPhigrosPackage).toHaveBeenCalledWith({
+      songId: 'Song.A',
+      levelIndex: 3,
+      title: '测试曲',
+    }, expect.objectContaining({ signal: expect.any(AbortSignal) })));
   });
 });

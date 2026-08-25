@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
@@ -69,6 +69,7 @@ import {
   checkMaimaiChartVideoAvailable,
   downloadMaimaiChartPackage,
 } from '@/features/maimai-chart-download/maimai-chart-download';
+import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -489,16 +490,11 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   onToggleChartType: () => void;
 }) {
   const theme = useAppTheme();
-  const {
-    dismissNotification,
-    showActionNotification,
-    showNotification,
-    updateNotification,
-  } = useNotification();
+  const { showActionNotification, showNotification } = useNotification();
   const [checkingDownload, setCheckingDownload] = useState(false);
-  const [downloadRunning, setDownloadRunning] = useState(false);
-  const downloadControllerRef = useRef<AbortController | null>(null);
-  const downloadNotificationIdRef = useRef<number | null>(null);
+  const { isRunning: downloadRunning, start: startChartDownload } = useChartPackageDownload({
+    successMessage: '可将 .adx.zip 文件导入 AstroDX 游玩。',
+  });
   const visual = DIFFICULTY_VISUAL[chart.difficulty];
   const chartItem = library.data?.find((item) => item.key === library.chartKey(song.id, chart.type, chart.levelIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
@@ -509,12 +505,6 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     ? `U·TA·GE · ${chart.level}`
     : `${chart.type} · ${visual.label} · ${chart.level}`;
   const chartTagPresets = dxratingTags.map((tag) => tag.name);
-
-  useEffect(() => () => {
-    downloadControllerRef.current?.abort();
-    const notificationId = downloadNotificationIdRef.current;
-    if (notificationId !== null) dismissNotification(notificationId);
-  }, [dismissNotification]);
 
   const openChartPreview = (buddySide?: 0 | 1 | 'dual') => {
     router.push({
@@ -571,70 +561,19 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     });
   };
 
-  const cancelChartDownload = () => {
-    downloadNotificationIdRef.current = null;
-    downloadControllerRef.current?.abort();
-  };
-
-  const runChartDownload = async (includeVideo: boolean) => {
-    if (downloadControllerRef.current) return;
-    const controller = new AbortController();
-    downloadControllerRef.current = controller;
-    setDownloadRunning(true);
-    downloadNotificationIdRef.current = showActionNotification({
-      title: '下载谱面文件',
-      variant: 'info',
-      progress: { label: '下载进度', value: 0 },
-      actions: [{ label: '取消', tone: 'cancel', onPress: cancelChartDownload }],
-    });
-    try {
-      const saved = await downloadMaimaiChartPackage({
-        songId: song.id,
-        chartType: chart.type,
-        levelIndex: chart.levelIndex,
-        levelLabel: downloadLevelLabel,
-        title: song.title,
-        includeVideo,
-      }, {
-        signal: controller.signal,
-        onProgress: (progress) => {
-          const notificationId = downloadNotificationIdRef.current;
-          if (controller.signal.aborted || notificationId === null) return;
-          updateNotification(notificationId, {
-            progress: {
-              label: progress.phase === 'organizing' ? '整理进度' : '下载进度',
-              value: progress.progress,
-            },
-          });
-        },
-        onReadyToSave: async () => {
-          if (controller.signal.aborted) return;
-          const notificationId = downloadNotificationIdRef.current;
-          downloadNotificationIdRef.current = null;
-          if (notificationId !== null) dismissNotification(notificationId);
-          await new Promise<void>((resolve) => setTimeout(resolve, 0));
-        },
-      });
-      if (saved) {
-        showNotification({
-          title: '谱面已保存',
-          message: '可将 .adx.zip 文件导入 AstroDX 游玩。',
-          variant: 'success',
-        });
-      }
-    } catch (error) {
-      if (!controller.signal.aborted) notifyDownloadFailure(error);
-    } finally {
-      if (downloadControllerRef.current === controller) downloadControllerRef.current = null;
-      const notificationId = downloadNotificationIdRef.current;
-      downloadNotificationIdRef.current = null;
-      if (notificationId !== null) dismissNotification(notificationId);
-      setDownloadRunning(false);
-    }
+  const runChartDownload = (includeVideo: boolean) => {
+    void startChartDownload((options) => downloadMaimaiChartPackage({
+      songId: song.id,
+      chartType: chart.type,
+      levelIndex: chart.levelIndex,
+      levelLabel: downloadLevelLabel,
+      title: song.title,
+      includeVideo,
+    }, options));
   };
 
   const handleDownloadChart = async () => {
-    if (checkingDownload || downloadControllerRef.current) return;
+    if (checkingDownload || downloadRunning) return;
     if (Platform.OS === 'web') {
       showNotification({
         title: '无法下载',
@@ -660,7 +599,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
         });
         return;
       }
-      await runChartDownload(false);
+      runChartDownload(false);
     } catch (error) {
       notifyDownloadFailure(error);
     } finally {

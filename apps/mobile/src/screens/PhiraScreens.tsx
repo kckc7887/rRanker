@@ -22,6 +22,8 @@ import { PhigrosScoreValue } from '@/components/phigros/PhigrosScoreValue';
 import { PhigrosDetailChrome, PHIGROS_SONG_DETAIL_STYLES as detailStyles } from '@/components/phigros/PhigrosSongDetail';
 import { useNotification } from '@/components/AppNotification';
 import { openChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-open';
+import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
+import { downloadPhiraChartPackage } from '@/features/phira-compatible-chart-download/phira-compatible-chart-download';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
 import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
 import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
@@ -184,6 +186,9 @@ function PhiraSongDetailContent({
 }) {
   const theme = useAppTheme(); const { width } = useWindowDimensions();
   const { showNotification } = useNotification();
+  const { isRunning: downloadRunning, start: startChartDownload } = useChartPackageDownload({
+    successMessage: '可将 ZIP 文件导入 Phira 游玩。',
+  });
   const navigation = useNavigation();
   const cancelPreviewNavigation = useRef<(() => void) | null>(null);
   useEffect(() => () => cancelPreviewNavigation.current?.(), []);
@@ -244,6 +249,22 @@ function PhiraSongDetailContent({
             style={[detailStyles.action, { backgroundColor: 'transparent', borderColor: colors.fg }]}
           >
             <Text style={[detailStyles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
+          </DetailPressable>
+          <DetailPressable
+            accessibilityRole="button"
+            accessibilityLabel={`下载谱面文件：${chart.name}`}
+            accessibilityState={{ disabled: downloadRunning }}
+            disabled={downloadRunning}
+            onPress={() => {
+              void startChartDownload((options) => downloadPhiraChartPackage(chart, options));
+            }}
+            style={[
+              detailStyles.action,
+              detailStyles.chartSearchAction,
+              { backgroundColor: 'transparent', borderColor: colors.fg },
+            ]}
+          >
+            <Text style={[detailStyles.actionText, { color: colors.fg }]}>下载谱面文件</Text>
           </DetailPressable>
         </DetailGestureRoot>
       </GameChartResultCard></View>
