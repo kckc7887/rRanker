@@ -1,6 +1,7 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRef } from 'react';
 import {
   NotificationProvider,
   useNotification,
@@ -16,7 +17,13 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 function Harness() {
-  const { showActionNotification, showNotification } = useNotification();
+  const {
+    dismissNotification,
+    showActionNotification,
+    showNotification,
+    updateNotification,
+  } = useNotification();
+  const progressNotificationIdRef = useRef<number | null>(null);
   return (
     <View>
       <Pressable onPress={() => showNotification({ title: '第一条', variant: 'success' })}>
@@ -51,6 +58,27 @@ function Harness() {
         ],
       })}>
         <Text>显示确认</Text>
+      </Pressable>
+      <Pressable onPress={() => {
+        progressNotificationIdRef.current = showActionNotification({
+          title: '正在准备文件',
+          progress: { label: '下载进度', value: 0 },
+          actions: [{ label: '取消', tone: 'cancel', onPress: mockCancel }],
+        });
+      }}>
+        <Text>显示进度</Text>
+      </Pressable>
+      <Pressable onPress={() => {
+        const id = progressNotificationIdRef.current;
+        if (id !== null) updateNotification(id, { progress: { label: '整理进度', value: 0.64 } });
+      }}>
+        <Text>更新进度</Text>
+      </Pressable>
+      <Pressable onPress={() => {
+        const id = progressNotificationIdRef.current;
+        if (id !== null) dismissNotification(id);
+      }}>
+        <Text>关闭进度</Text>
       </Pressable>
     </View>
   );
@@ -156,5 +184,25 @@ describe('全局顶部通知', () => {
     expect(mockCancel).toHaveBeenCalledTimes(1);
     expect(mockDelete).not.toHaveBeenCalled();
     expect(screen.queryByText('删除本地玩家')).toBeNull();
+  });
+
+  it('公共操作弹窗显示并原位更新进度，且只保留传入的取消按钮', async () => {
+    const screen = await renderNotifications();
+    await fireEvent.press(screen.getByText('显示进度'));
+
+    const card = screen.getByTestId('app-notification-card');
+    expect(within(card).getByText('下载进度')).toBeTruthy();
+    expect(within(card).getByText('0%')).toBeTruthy();
+    expect(within(card).getAllByRole('button')).toHaveLength(1);
+    expect(within(card).getByRole('button', { name: '取消' })).toBeTruthy();
+
+    await fireEvent.press(screen.getByText('更新进度'));
+    expect(within(card).getByText('整理进度')).toBeTruthy();
+    expect(within(card).getByText('64%')).toBeTruthy();
+    expect(StyleSheet.flatten(within(card).getByTestId('app-notification-progress').props.style))
+      .toMatchObject({ marginTop: 8 });
+
+    await fireEvent.press(screen.getByText('关闭进度'));
+    expect(screen.queryByText('正在准备文件')).toBeNull();
   });
 });

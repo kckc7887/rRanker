@@ -31,12 +31,18 @@ export type NotificationAction = {
   onPress?: () => void | Promise<void>;
 };
 
+export type NotificationProgress = {
+  label: string;
+  value: number;
+};
+
 export type NotificationInput = {
   title: string;
   message?: string;
   messageSegments?: readonly { text: string; strikethrough?: boolean }[];
   variant?: NotificationVariant;
   duration?: number | null;
+  progress?: NotificationProgress;
 };
 
 export type ActionNotificationInput = Omit<NotificationInput, 'duration'> & {
@@ -49,8 +55,10 @@ type QueuedNotification = NotificationInput & {
 };
 
 type NotificationContextValue = {
+  dismissNotification: (id: number) => void;
   showNotification: (input: NotificationInput) => number;
   showActionNotification: (input: ActionNotificationInput) => number;
+  updateNotification: (id: number, input: Partial<NotificationInput>) => void;
 };
 
 type NotificationRenderContextValue = {
@@ -109,6 +117,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       ? current.slice(1)
       : current.filter((item) => item.id !== id));
   }, []);
+  const updateNotification = useCallback((id: number, input: Partial<NotificationInput>) => {
+    setNotifications((current) => current.map((item) => item.id === id
+      ? { ...item, ...input }
+      : item));
+  }, []);
   const claimAction = useCallback((id: number) => {
     if (handledActionIdsRef.current.has(id)) return false;
     handledActionIdsRef.current.add(id);
@@ -135,8 +148,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   }, [claimAction, notifications, removeNotification]);
 
   const value = useMemo(
-    () => ({ showNotification, showActionNotification }),
-    [showActionNotification, showNotification],
+    () => ({
+      dismissNotification: removeNotification,
+      showNotification,
+      showActionNotification,
+      updateNotification,
+    }),
+    [removeNotification, showActionNotification, showNotification, updateNotification],
   );
   const activeOutletId = outletIds.at(-1) ?? null;
   const renderValue = useMemo<NotificationRenderContextValue>(() => ({
@@ -215,6 +233,9 @@ function NotificationHost({
   const variant = notification.variant ?? 'info';
   const actions = notification.actions;
   const isAction = Boolean(actions?.length);
+  const progressPercent = notification.progress
+    ? Math.round(Math.min(1, Math.max(0, notification.progress.value)) * 100)
+    : 0;
 
   const dismiss = useCallback(() => {
     if (exitingRef.current) return;
@@ -323,6 +344,26 @@ function NotificationHost({
                   >{segment.text}</Text>)
                 : notification.message}
             </Text> : null}
+            {notification.progress ? (
+              <View
+                accessibilityLabel={`${notification.progress.label} ${progressPercent}%`}
+                style={styles.progress}
+                testID="app-notification-progress"
+              >
+                <View style={styles.progressHeader}>
+                  <Text style={[styles.progressLabel, { color: theme.textSecondary }]}>
+                    {notification.progress.label}
+                  </Text>
+                  <Text style={[styles.progressValue, { color: theme.text }]}>{progressPercent}%</Text>
+                </View>
+                <View style={[styles.progressTrack, { backgroundColor: theme.surfaceMuted }]}>
+                  <View style={[styles.progressFill, {
+                    backgroundColor: theme.accent,
+                    width: `${progressPercent}%` as `${number}%`,
+                  }]} />
+                </View>
+              </View>
+            ) : null}
             {actions?.length ? (
               <View style={styles.actions}>
                 {actions.map((action, index) => (
@@ -406,6 +447,12 @@ const styles = StyleSheet.create({
   title: { color: '#101828', fontSize: 16, fontWeight: '700', lineHeight: 22 },
   message: { color: '#475467', fontSize: 14, lineHeight: 20 },
   strikethrough: { textDecorationLine: 'line-through' },
+  progress: { marginTop: 8, gap: 7 },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  progressLabel: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  progressValue: { fontSize: 13, lineHeight: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  progressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 999 },
   close: { padding: 2 },
   actions: { marginTop: 10, gap: 8 },
   action: {

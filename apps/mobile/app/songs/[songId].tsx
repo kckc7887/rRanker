@@ -16,7 +16,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
-import { AppModal } from '@/components/AppModal';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
@@ -69,7 +68,6 @@ import { maimaiChartPreviewChartId } from '@/domain/maimai-chart-preview';
 import {
   checkMaimaiChartVideoAvailable,
   downloadMaimaiChartPackage,
-  type MaimaiChartDownloadProgress,
 } from '@/features/maimai-chart-download/maimai-chart-download';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
@@ -491,11 +489,16 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   onToggleChartType: () => void;
 }) {
   const theme = useAppTheme();
-  const { showActionNotification, showNotification } = useNotification();
+  const {
+    dismissNotification,
+    showActionNotification,
+    showNotification,
+    updateNotification,
+  } = useNotification();
   const [checkingDownload, setCheckingDownload] = useState(false);
   const [downloadRunning, setDownloadRunning] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<MaimaiChartDownloadProgress | null>(null);
   const downloadControllerRef = useRef<AbortController | null>(null);
+  const downloadNotificationIdRef = useRef<number | null>(null);
   const visual = DIFFICULTY_VISUAL[chart.difficulty];
   const chartItem = library.data?.find((item) => item.key === library.chartKey(song.id, chart.type, chart.levelIndex));
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
@@ -507,7 +510,11 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     : `${chart.type} · ${visual.label} · ${chart.level}`;
   const chartTagPresets = dxratingTags.map((tag) => tag.name);
 
-  useEffect(() => () => downloadControllerRef.current?.abort(), []);
+  useEffect(() => () => {
+    downloadControllerRef.current?.abort();
+    const notificationId = downloadNotificationIdRef.current;
+    if (notificationId !== null) dismissNotification(notificationId);
+  }, [dismissNotification]);
 
   const openChartPreview = (buddySide?: 0 | 1 | 'dual') => {
     router.push({
@@ -564,12 +571,22 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     });
   };
 
+  const cancelChartDownload = () => {
+    downloadNotificationIdRef.current = null;
+    downloadControllerRef.current?.abort();
+  };
+
   const runChartDownload = async (includeVideo: boolean) => {
     if (downloadControllerRef.current) return;
     const controller = new AbortController();
     downloadControllerRef.current = controller;
     setDownloadRunning(true);
-    setDownloadProgress({ phase: 'downloading', progress: 0 });
+    downloadNotificationIdRef.current = showActionNotification({
+      title: '下载谱面文件',
+      variant: 'info',
+      progress: { label: '下载进度', value: 0 },
+      actions: [{ label: '取消', tone: 'cancel', onPress: cancelChartDownload }],
+    });
     try {
       const saved = await downloadMaimaiChartPackage({
         songId: song.id,
@@ -581,11 +598,20 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       }, {
         signal: controller.signal,
         onProgress: (progress) => {
-          if (!controller.signal.aborted) setDownloadProgress(progress);
+          const notificationId = downloadNotificationIdRef.current;
+          if (controller.signal.aborted || notificationId === null) return;
+          updateNotification(notificationId, {
+            progress: {
+              label: progress.phase === 'organizing' ? '整理进度' : '下载进度',
+              value: progress.progress,
+            },
+          });
         },
         onReadyToSave: async () => {
           if (controller.signal.aborted) return;
-          setDownloadProgress(null);
+          const notificationId = downloadNotificationIdRef.current;
+          downloadNotificationIdRef.current = null;
+          if (notificationId !== null) dismissNotification(notificationId);
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
         },
       });
@@ -600,7 +626,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       if (!controller.signal.aborted) notifyDownloadFailure(error);
     } finally {
       if (downloadControllerRef.current === controller) downloadControllerRef.current = null;
-      setDownloadProgress(null);
+      const notificationId = downloadNotificationIdRef.current;
+      downloadNotificationIdRef.current = null;
+      if (notificationId !== null) dismissNotification(notificationId);
       setDownloadRunning(false);
     }
   };
@@ -640,17 +668,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     }
   };
 
-  const cancelChartDownload = () => {
-    downloadControllerRef.current?.abort();
-    setDownloadProgress(null);
-  };
-
-  const downloadPercent = downloadProgress
-    ? Math.round(Math.min(1, Math.max(0, downloadProgress.progress)) * 100)
-    : 0;
-  const downloadPhaseLabel = downloadProgress?.phase === 'organizing' ? '整理进度' : '下载进度';
-
-  return <><GameChartResultCard
+  return <GameChartResultCard
     testID={chart.type === 'UTAGE' ? 'maimai-utage-chart-card' : undefined}
     style={[styles.chartCard, {
       width,
@@ -727,29 +745,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
       historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), chartTagPresets)}
       disabled={library.isUpdating} testID={`maimai-chart-local-tags-${chart.type}-${chart.levelIndex}`}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
-  </GameChartResultCard>
-  <AppModal visible={downloadProgress !== null} transparent animationType="fade" onRequestClose={cancelChartDownload}>
-    <View style={[styles.downloadModalBackdrop, { backgroundColor: theme.overlay }]}>
-      <View style={[styles.downloadModalCard, { backgroundColor: theme.surface }]}>
-        <Text style={[styles.downloadModalTitle, { color: theme.text }]}>下载谱面文件</Text>
-        <View style={styles.downloadProgressHeader} accessibilityLabel={`${downloadPhaseLabel} ${downloadPercent}%`}>
-          <Text style={[styles.downloadProgressLabel, { color: theme.textSecondary }]}>{downloadPhaseLabel}</Text>
-          <Text style={[styles.downloadProgressValue, { color: theme.text }]}>{downloadPercent}%</Text>
-        </View>
-        <View style={[styles.downloadProgressTrack, { backgroundColor: theme.surfaceMuted }]}>
-          <View style={[styles.downloadProgressFill, {
-            backgroundColor: theme.accent,
-            width: `${downloadPercent}%` as `${number}%`,
-          }]} />
-        </View>
-        <DetailPressable accessibilityRole="button" accessibilityLabel="取消下载谱面文件"
-          onPress={cancelChartDownload}
-          style={({ pressed }) => [styles.downloadCancelButton, { borderColor: theme.border }, pressed && styles.switchPressed]}>
-          <Text style={[styles.downloadCancelText, { color: theme.textSecondary }]}>取消</Text>
-        </DetailPressable>
-      </View>
-    </View>
-  </AppModal></>;
+  </GameChartResultCard>;
 }
 
 function DxRatingTags({ tags, onTagPress, onShowAll }: {
@@ -969,14 +965,4 @@ const styles = StyleSheet.create({
   action: { marginTop: 13, marginBottom: 10, borderWidth: 1, borderColor: '#667085', borderRadius: 11, padding: 10, alignItems: 'center', backgroundColor: 'transparent' },
   chartSearchAction: { marginTop: 0 },
   actionText: { fontWeight: '700' },
-  downloadModalBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-  downloadModalCard: { width: '100%', maxWidth: 420, borderRadius: 22, padding: 22, gap: 16 },
-  downloadModalTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800' },
-  downloadProgressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  downloadProgressLabel: { fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  downloadProgressValue: { fontSize: 14, lineHeight: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  downloadProgressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
-  downloadProgressFill: { height: '100%', borderRadius: 999 },
-  downloadCancelButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderRadius: 12 },
-  downloadCancelText: { fontSize: 15, lineHeight: 20, fontWeight: '700' },
 });
