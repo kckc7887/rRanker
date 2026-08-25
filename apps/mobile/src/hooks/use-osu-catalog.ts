@@ -13,6 +13,7 @@ import {
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 /** 曲库搜索筛选状态（不含 gameId/cursor，由 hook 内部按当前游戏与翻页补齐）。 */
 export type OsuCatalogSearchInput = {
@@ -40,7 +41,8 @@ export type OsuCatalogPage = {
  * - cursor_string 无限滚动，跨页按 beatmapSetId 去重（防翻页重叠）；
  * - token 轮换与 use-game-data 的 osu 分支同构（applyOsuTokenRotation 广播到共享凭据账号）。
  */
-export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogSearchInput) {
+export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogSearchInput, enabled = true) {
+  const tabActive = useCachedTabActive();
   const session = useSession((s) => s.session);
   const activeProviderId = useSession((s) => s.activeProviderId);
   const activeAccountId = useSession((s) => s.activeAccountId);
@@ -73,7 +75,7 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.cursor ?? undefined,
-    enabled: bound && params !== null,
+    enabled: enabled && tabActive && bound && params !== null,
     staleTime: 60_000,
   });
 

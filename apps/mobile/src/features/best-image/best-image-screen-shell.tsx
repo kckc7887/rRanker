@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Modal,
   PixelRatio,
@@ -274,10 +275,25 @@ export function BestImageScreenShell<TType extends string>({
   styles: BestImageScreenShellStyles;
 }) {
   const theme = useAppTheme();
+  const appStateRef = useRef(AppState.currentState);
+  const [foreground, setForeground] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
+  const [webViewGeneration, setWebViewGeneration] = useState(0);
   const window = useWindowDimensions();
   const screenWidth = window.width > 0 ? window.width : 390;
   const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
   const previewHeight = previewWidth * 4 / 3;
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      const wasForeground = appStateRef.current !== 'background' && appStateRef.current !== 'inactive';
+      appStateRef.current = state;
+      const nextForeground = state === 'active';
+      setForeground(nextForeground);
+      if (!nextForeground) onRequestCloseExport();
+      else if (!wasForeground) setWebViewGeneration((value) => value + 1);
+    });
+    return () => subscription.remove();
+  }, [onRequestCloseExport]);
 
   return <>
     <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -327,14 +343,24 @@ export function BestImageScreenShell<TType extends string>({
             const pageId = pages[index]!.id;
             return <View style={{ width: previewWidth, height: previewHeight }}>
               {/* 单页可能包含数十 MB 的封面数据，同时挂载多个 WebView 会触发 iOS 内存终止。 */}
-              {index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['*']} scrollEnabled={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
+              {foreground && index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
                 {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
                 {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
+                onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
+                  || request.url === 'about:blank'
+                  || ('uri' in item ? request.url === item.uri : request.url === item.baseUrl)}
                 onError={() => updateBestImageWebViewState(onPreviewStatesChange, pageId, 'error')}
                 onLoadEnd={() => markBestImageWebViewLoaded(onPreviewStatesChange, pageId)}
                 onLoadStart={() => updateBestImageWebViewState(onPreviewStatesChange, pageId, 'loading')}
                 onMessage={(event) => onPreviewMessage(event.nativeEvent.data, pageId)}
-                onRenderProcessGone={(event) => updateBestImageWebViewState(onPreviewStatesChange, pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated')}
+                onContentProcessDidTerminate={() => {
+                  updateBestImageWebViewState(onPreviewStatesChange, pageId, 'terminated');
+                  setWebViewGeneration((value) => value + 1);
+                }}
+                onRenderProcessGone={(event) => {
+                  updateBestImageWebViewState(onPreviewStatesChange, pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated');
+                  setWebViewGeneration((value) => value + 1);
+                }}
               /> : <View accessibilityLabel={`HTML图片预览 第${index + 1}页`} style={styles.loadingPreview}>
                 <ActivityIndicator color={theme.accent} size="small" />
               </View>}
@@ -359,8 +385,8 @@ export function BestImageScreenShell<TType extends string>({
 
     {pickers}
 
-    <Modal visible={exportIndex !== null} animationType="none" transparent={false} onRequestClose={onRequestCloseExport}>
-      {exportIndex !== null && exportSource ? <View style={styles.exportRoot}>
+    <Modal visible={foreground && exportIndex !== null} animationType="none" transparent={false} onRequestClose={onRequestCloseExport}>
+      {foreground && exportIndex !== null && exportSource ? <View style={styles.exportRoot}>
         <View
           ref={captureRef}
           collapsable={false}
@@ -379,8 +405,13 @@ export function BestImageScreenShell<TType extends string>({
             bounces={false}
             javaScriptEnabled
             mixedContentMode="never"
-            originWhitelist={['*']}
+            originWhitelist={['about:blank', 'file://*', 'https://*']}
             onMessage={(event) => onExportMessage(event.nativeEvent.data)}
+            onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
+              || request.url === 'about:blank'
+              || ('uri' in exportSource ? request.url === exportSource.uri : request.url === exportSource.baseUrl)}
+            onContentProcessDidTerminate={onRequestCloseExport}
+            onRenderProcessGone={onRequestCloseExport}
             scrollEnabled={false}
             source={exportSource}
             style={styles.webview}

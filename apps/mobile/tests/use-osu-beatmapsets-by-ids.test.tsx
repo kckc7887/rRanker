@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
-import { jest } from '@jest/globals';
+import { afterEach, jest } from '@jest/globals';
 import type { OsuBeatmapsetLookupRaw } from '@/domain/osu';
 import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
 
@@ -53,8 +53,13 @@ describe('useOsuBeatmapsetsByIds', () => {
     jest.clearAllMocks();
     mockProviderId = 'osu';
     mockSession = { mode: 'osu-oauth' };
-    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
     mockGetBeatmapset.mockImplementation(async (id) => rawBeatmapset(Number(id)));
+  });
+
+  afterEach(() => {
+    cleanup();
+    queryClient.clear();
   });
 
   it('去重多个 ID，并把成功详情按 beatmapset id 返回', async () => {

@@ -10,6 +10,7 @@ import {
   loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraSeedBests,
 } from '@/services/phira-service';
 import { queryClient } from '@/state/query-client';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 const OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
 
@@ -23,10 +24,11 @@ export function usePhiraPlayerSearch(value: string) {
   });
 }
 
-export function usePhiraPlayer(playerId: number | null) {
+export function usePhiraPlayer(playerId: number | null, enabled = true) {
+  const tabActive = useCachedTabActive();
   const key = ['phira', 'player', playerId] as const;
   return useQuery({
-    queryKey: key, enabled: playerId !== null,
+    queryKey: key, enabled: enabled && tabActive && playerId !== null,
     queryFn: async ({ signal }): Promise<PhiraPlayerSnapshot> => cacheFirstLoad({
       loadCached: () => phiraCache.loadPlayer(playerId!),
       loadFresh: async () => {
@@ -42,9 +44,10 @@ export function usePhiraPlayer(playerId: number | null) {
   });
 }
 
-export function usePhiraBests(playerId: number | null) {
+export function usePhiraBests(playerId: number | null, enabled = true) {
+  const tabActive = useCachedTabActive();
   return useQuery({
-    queryKey: ['phira', 'bests', playerId], enabled: playerId !== null,
+    queryKey: ['phira', 'bests', playerId], enabled: enabled && tabActive && playerId !== null,
     queryFn: () => phiraCache.loadBests(playerId!), ...OPTIONS,
   });
 }
@@ -56,7 +59,8 @@ export function useRefreshAllPhiraBests(playerId: number | null) {
   });
 }
 
-export function usePhiraCharts(status: PhiraChartStatus, search: string) {
+export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled = true) {
+  const tabActive = useCachedTabActive();
   const normalized = search.trim();
   return useInfiniteQuery({
     queryKey: ['phira', 'charts', status, normalized], initialPageParam: 0,
@@ -66,6 +70,7 @@ export function usePhiraCharts(status: PhiraChartStatus, search: string) {
     ),
     // Phira /chart 的 page=1 返回与 page=0 相同的首页，翻页须跳过 1（0 → 2 → 3 → …）。
     getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
+    enabled: enabled && tabActive,
     ...OPTIONS,
   });
 }

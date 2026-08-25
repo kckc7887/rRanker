@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Appearance, AppState, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Appearance, AppState, InteractionManager, StyleSheet, View } from 'react-native';
 
 import { queryClient } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
@@ -158,6 +158,7 @@ export default function RootLayout() {
   const hydrateTheme = useThemeStore((state) => state.hydrate);
   const appearance = useThemeStore((state) => state.appearance);
   const [iconFontsReady, setIconFontsReady] = useState(false);
+  const queryFocusTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,8 +186,28 @@ export default function RootLayout() {
   }, [restoreStatus]);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => focusManager.setFocused(state === 'active'));
-    return () => subscription.remove();
+    const cancelPendingFocus = () => {
+      queryFocusTaskRef.current?.cancel();
+      queryFocusTaskRef.current = null;
+    };
+    const applyState = (state: typeof AppState.currentState) => {
+      cancelPendingFocus();
+      if (state === 'background' || state === 'inactive') {
+        focusManager.setFocused(false);
+        return;
+      }
+      queryFocusTaskRef.current = InteractionManager.runAfterInteractions(() => {
+        queryFocusTaskRef.current = null;
+        focusManager.setFocused(true);
+      });
+    };
+    applyState(AppState.currentState);
+    const subscription = AppState.addEventListener('change', applyState);
+    return () => {
+      subscription.remove();
+      cancelPendingFocus();
+      focusManager.setFocused(undefined);
+    };
   }, []);
 
   useEffect(() => {

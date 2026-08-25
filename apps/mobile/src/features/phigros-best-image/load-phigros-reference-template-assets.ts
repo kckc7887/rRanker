@@ -43,7 +43,7 @@ const RATING_SOURCES: Readonly<Record<string, number>> = {
 };
 
 const DATA_ICON_SOURCE = require('../../../assets/phigros-b30-reference/otherimg/data.png') as number;
-const BACKGROUND_SOURCE = require('../../../assets/phigros-b30-reference/otherimg/phigros.png') as number;
+const BACKGROUND_SOURCE = require('../../../assets/phigros-b30-reference/otherimg/phigros.webp') as number;
 const assetUriCache = new Map<number, Promise<string>>();
 const assetDataUriCache = new Map<string, Promise<string>>();
 let templatePromise: Promise<PhigrosReferenceTemplateAssets> | null = null;
@@ -113,7 +113,7 @@ export async function loadPhigrosReferenceTemplateAssets(
       Promise.all(CHALLENGE_SOURCES.map((source) => loadPhigrosReferenceAssetDataUri(source, 'image/png'))),
       Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetDataUri(source, 'image/png')] as const)),
       loadPhigrosReferenceAssetDataUri(DATA_ICON_SOURCE, 'image/png'),
-      loadPhigrosReferenceAssetDataUri(BACKGROUND_SOURCE, 'image/png'),
+      loadPhigrosReferenceAssetDataUri(BACKGROUND_SOURCE, 'image/webp'),
     ]);
 
     let commonCss = withoutImport(commonCssSource, './theme/snow/snow.css');

@@ -16,6 +16,7 @@ import {
 } from '@/providers/maxed-musedash-test-provider';
 import { cacheFirstLoad } from '@/services/cache-first';
 import { queryClient } from '@/state/query-client';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 import {
   loadMuseDashAlbumsCacheFirst,
   loadMuseDashAlbumsFresh,
@@ -50,10 +51,11 @@ function useMuseDashCacheFirst<T>(
   load: () => Promise<MuseDashSnapshot<T>>,
   enabled = true,
 ): MuseDashQuery<T> {
+  const tabActive = useCachedTabActive();
   const query = useQuery({
     queryKey,
     queryFn: load,
-    enabled,
+    enabled: enabled && tabActive,
     ...MUSE_DASH_QUERY_OPTIONS,
   });
   const snapshot = query.data as MuseDashSnapshot<T> | undefined;
@@ -79,7 +81,7 @@ export function useMuseDashSearch(query: string) {
   });
 }
 
-export function useMuseDashPlayer(userId: string | null) {
+export function useMuseDashPlayer(userId: string | null, enabled = true) {
   const queryKey = ['musedash', 'player', userId] as const;
   return useMuseDashCacheFirst<MuseDashPlayer>(queryKey, async () => {
     // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
@@ -103,7 +105,7 @@ export function useMuseDashPlayer(userId: string | null) {
       },
     });
     return snapshot;
-  }, userId !== null);
+  }, enabled && userId !== null);
 }
 
 /** 单曲原始成绩明细（成就判定需要 miss 数）；按玩家+歌曲+难度+平台缓存优先，列表卡片懒加载。 */
@@ -165,16 +167,16 @@ export function useMuseDashAlbums(enabled = true) {
   }, enabled);
 }
 
-export function useMuseDashCe() {
+export function useMuseDashCe(enabled = true) {
   const queryKey = ['musedash', 'ce'] as const;
   return useMuseDashCacheFirst<MuseDashCeResponse>(queryKey, async () => {
     return makeMuseDashSnapshot(await loadMuseDashCeFresh());
-  });
+  }, enabled);
 }
 
-export function useMuseDashDiffdiff() {
+export function useMuseDashDiffdiff(enabled = true) {
   const queryKey = ['musedash', 'diffdiff'] as const;
   return useMuseDashCacheFirst<MuseDashDiffdiffEntry[]>(queryKey, async () => {
     return makeMuseDashSnapshot(await loadMuseDashDiffdiffFresh());
-  });
+  }, enabled);
 }
