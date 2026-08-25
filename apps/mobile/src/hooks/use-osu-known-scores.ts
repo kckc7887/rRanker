@@ -13,6 +13,7 @@ import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { OsuCache } from '@/services/osu-cache';
 import { queryClient } from '@/state/query-client';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 const osuCache = new OsuCache();
 const EMPTY_SCORES: readonly OsuBestScore[] = [];
@@ -34,6 +35,7 @@ export function useOsuKnownScores(
   seedScores: readonly OsuBestScore[] = EMPTY_SCORES,
   enabled = true,
 ) {
+  const tabActive = useCachedTabActive();
   const session = useSession((state) => state.session);
   const activeProviderId = useSession((state) => state.activeProviderId);
   const activeAccountId = useSession((state) => state.activeAccountId);
@@ -47,18 +49,18 @@ export function useOsuKnownScores(
   const query = useQuery({
     queryKey: key,
     queryFn: () => osuCache.loadKnownScores(gameId as OsuGameId, userId as number),
-    enabled: enabled && bound,
+    enabled: enabled && tabActive && bound,
     staleTime: 60_000,
   });
 
   useEffect(() => {
-    if (!enabled || !bound || gameId === null || userId === null || seedScores.length === 0) return;
+    if (!enabled || !tabActive || !bound || gameId === null || userId === null || seedScores.length === 0) return;
     let cancelled = false;
     void osuCache.mergeKnownScores(gameId, userId, seedScores).then((snapshot) => {
       if (!cancelled) queryClient.setQueryData(key, snapshot);
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [bound, enabled, gameId, key, seedScores, userId]);
+  }, [bound, enabled, gameId, key, seedScores, tabActive, userId]);
 
   const scores = useMemo(
     () => Object.values(query.data?.items ?? {}),

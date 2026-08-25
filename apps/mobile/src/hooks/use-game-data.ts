@@ -72,13 +72,15 @@ import {
 import { maxedMuseDashPlayerSnapshot } from '@/providers/maxed-musedash-test-provider';
 import { phiraCache } from '@/services/phira-cache';
 import { loadPhiraPlayerFresh, refreshPhiraSeedBests } from '@/services/phira-service';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
 const museDashCache = new MuseDashCache();
 const osuCache = new OsuCache();
 
-export function useGameData() {
+export function useGameData(enabled = true) {
+  const tabActive = useCachedTabActive();
   const session = useSession((s) => s.session);
   const activeGameId = useSession((s) => s.activeGameId);
   const activeProviderId = useSession((s) => s.activeProviderId);
@@ -100,6 +102,7 @@ export function useGameData() {
 
   const query = useQuery({
     queryKey,
+    enabled: enabled && tabActive,
     ...(activeGameId === 'adofai' || activeGameId === 'musedash' || activeGameId === 'phira'
       ? { staleTime: 60_000, gcTime: 10 * 60_000 }
       : {}),

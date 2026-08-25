@@ -11,9 +11,11 @@ import {
 import { aliasedCatalogSource, useAliasedCatalog } from '@/hooks/use-aliased-catalog';
 import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 /** 中二曲库。别名随曲库一并合并，供搜索与详情展示。曲库是账号无关的公开资源：缓存优先，先渲染本地快照，后台刷新成功静默回写。 */
-export function useChunithmCatalog() {
+export function useChunithmCatalog(enabled = true) {
+  const tabActive = useCachedTabActive();
   const activeGameId = useSession((state) => state.activeGameId);
   const mergeAliases = (
     catalog: ChunithmCatalogSnapshot,
@@ -29,7 +31,7 @@ export function useChunithmCatalog() {
     };
   };
   return useAliasedCatalog<ChunithmCatalogSnapshot, ChunithmAliasSnapshot>({
-    enabled: activeGameId === 'chunithm',
+    enabled: enabled && tabActive && activeGameId === 'chunithm',
     queryKey: CHUNITHM_CATALOG_QUERY_KEY,
     loadCached: async (): Promise<ChunithmCatalogSnapshot | null> => null,
     loadCatalog: loadChunithmCatalog,

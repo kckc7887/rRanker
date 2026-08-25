@@ -81,8 +81,14 @@ export function TufBestScreen() {
   const playerId = useActiveTufPlayerId();
   const profile = useTufProfile(playerId);
   const passes = useTufPasses(playerId, { sortBy: 'impact', order: 'DESC', bestPerLevel: true });
-  const allPasses = passes.data?.pages.flatMap((page) => page.passes) ?? [];
-  const top = selectTufTopPasses(profile.data?.topScores ?? [], allPasses);
+  const allPasses = useMemo(
+    () => passes.data?.pages.flatMap((page) => page.passes) ?? [],
+    [passes.data?.pages],
+  );
+  const top = useMemo(
+    () => selectTufTopPasses(profile.data?.topScores ?? [], allPasses),
+    [allPasses, profile.data?.topScores],
+  );
   const ordered = top.passes;
   const missing = top.missing;
   const sections: TufBestSection[] = [{ id: 'top20', title: 'Top 20 Impact', data: ordered }];
@@ -127,8 +133,15 @@ export function TufRecordsScreen() {
   const [keyword, setKeyword] = useState('');
   const [filterExpanded, setFilterExpanded] = useState(false);
   const debounced = useDebouncedValue(keyword, 350);
-  const query = useTufPasses(playerId, { sortBy, order, bestPerLevel, query: debounced.trim() || undefined });
-  const difficultyBounds = tufDifficultyBounds(difficultyMin, difficultyMax);
+  const queryOptions = useMemo(
+    () => ({ sortBy, order, bestPerLevel, query: debounced.trim() || undefined }),
+    [bestPerLevel, debounced, order, sortBy],
+  );
+  const query = useTufPasses(playerId, queryOptions);
+  const difficultyBounds = useMemo(
+    () => tufDifficultyBounds(difficultyMin, difficultyMax),
+    [difficultyMax, difficultyMin],
+  );
   const localFilterActive = difficultyBand !== 'all' || difficultyMin !== '' || difficultyMax !== ''
     || !includeSpecial || achievement !== 'all';
   const fetchNextRecordsPage = query.fetchNextPage;
@@ -140,12 +153,13 @@ export function TufRecordsScreen() {
       void fetchNextRecordsPage();
     }
   }, [fetchNextRecordsPage, localFilterActive, recordsFetchingNextPage, recordsHaveNextPage, recordsNextPageFailed]);
-  const loadedRecords = uniqueById(query.data?.pages.flatMap((page) => page.passes) ?? []);
-  const records = filterTufPasses(loadedRecords, {
-    band: difficultyBand,
-    ...difficultyBounds,
-    includeSpecial,
-  }, achievement);
+  const loadedRecords = useMemo(
+    () => uniqueById(query.data?.pages.flatMap((page) => page.passes) ?? []),
+    [query.data?.pages],
+  );
+  const records = useMemo(() => filterTufPasses(loadedRecords, {
+    band: difficultyBand, ...difficultyBounds, includeSpecial,
+  }, achievement), [achievement, difficultyBand, difficultyBounds, includeSpecial, loadedRecords]);
   const total = localFilterActive && !query.hasNextPage ? records.length : query.data?.pages[0]?.total;
   const controls = <>
     <GameSearchHeader accessibilityLabel="筛选 TUF 成绩" placeholder="搜索关卡、歌曲或作者" value={keyword}
@@ -189,16 +203,29 @@ export function TufSearchScreen() {
   const [includeSpecial, setIncludeSpecial] = useState(true);
   const debounced = useDebouncedValue(keyword, 350);
   const difficulties = useTufDifficulties();
-  const specialDifficulties = difficulties.data?.filter((item) => item.type !== 'PGU').map((item) => item.name) ?? [];
-  const difficultyBounds = tufDifficultyBounds(difficultyMin, difficultyMax);
-  const pguRange = tufPguRange({ band: difficultyBand, ...difficultyBounds });
-  const query = useTufLevelSearch(debounced, {
+  const specialDifficulties = useMemo(
+    () => difficulties.data?.filter((item) => item.type !== 'PGU').map((item) => item.name) ?? [],
+    [difficulties.data],
+  );
+  const difficultyBounds = useMemo(
+    () => tufDifficultyBounds(difficultyMin, difficultyMax),
+    [difficultyMax, difficultyMin],
+  );
+  const pguRange = useMemo(
+    () => tufPguRange({ band: difficultyBand, ...difficultyBounds }),
+    [difficultyBand, difficultyBounds],
+  );
+  const queryOptions = useMemo(() => ({
     sort: sortBy, order, pguRange,
     specialDifficulties: includeSpecial && specialDifficulties.length
       ? specialDifficulties
       : undefined,
-  });
-  const levels = uniqueById(query.data?.pages.flatMap((page) => page.results) ?? []);
+  }), [includeSpecial, order, pguRange, sortBy, specialDifficulties]);
+  const query = useTufLevelSearch(debounced, queryOptions);
+  const levels = useMemo(
+    () => uniqueById(query.data?.pages.flatMap((page) => page.results) ?? []),
+    [query.data?.pages],
+  );
   const total = query.data?.pages[0]?.total;
   const search = <>
     <GameSearchHeader accessibilityLabel="搜索 TUF 关卡" placeholder="搜索关卡、歌曲或作者" value={keyword}

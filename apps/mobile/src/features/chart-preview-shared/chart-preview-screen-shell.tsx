@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
@@ -84,12 +84,32 @@ export function ChartPreviewScreenShell<TPayload>({
   const webRef = useRef<WebView>(null);
   const settingsRef = useRef<Record<string, unknown>>({});
   const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const appStateRef = useRef(AppState.currentState);
 
   const [source, setSource] = useState<ChartPreviewShellSource | null>(null);
   const [stageError, setStageError] = useState<string | null>(null);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [foreground, setForeground] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
+  const [webViewGeneration, setWebViewGeneration] = useState(0);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      const wasForeground = appStateRef.current !== 'background' && appStateRef.current !== 'inactive';
+      appStateRef.current = state;
+      const nextForeground = state === 'active';
+      if (!nextForeground) {
+        webRef.current?.injectJavaScript(chartPreviewStopScript());
+        setReady(false);
+        setIsFullscreen(false);
+      } else if (!wasForeground) {
+        setWebViewGeneration((value) => value + 1);
+      }
+      setForeground(nextForeground);
+    });
+    return () => subscription.remove();
+  }, []);
 
   // deps 定稿为 request；settingsKey / prepareErrorFallback 为屏幕级恒定值。
   useEffect(() => {
@@ -207,6 +227,8 @@ export function ChartPreviewScreenShell<TPayload>({
           <ActivityIndicator color={theme.accent} />
           <Text style={[styles.hint, { color: theme.textMuted }]}>正在准备播放器…</Text>
         </View>
+      ) : !foreground ? (
+        <View style={styles.center} />
       ) : (
         <View style={styles.webviewWrap}>
           {!ready ? (
@@ -215,6 +237,7 @@ export function ChartPreviewScreenShell<TPayload>({
             </View>
           ) : null}
           <WebView
+            key={`chart-preview-${webViewGeneration}`}
             ref={webRef}
             testID={testID}
             accessibilityLabel={accessibilityLabel}
@@ -225,10 +248,12 @@ export function ChartPreviewScreenShell<TPayload>({
             mediaPlaybackRequiresUserAction={false}
             javaScriptEnabled
             domStorageEnabled
-            originWhitelist={['*']}
+            originWhitelist={['file://*']}
             mixedContentMode="always"
             setSupportMultipleWindows={false}
             source={{ uri: source.uri }}
+            onShouldStartLoadWithRequest={(navigation) => navigation.isTopFrame === false
+              || navigation.url === source.uri}
             injectedJavaScriptBeforeContentLoaded={injected}
             style={[styles.webview, { backgroundColor: webviewBackground }]}
             onLoadEnd={() => {
@@ -262,6 +287,16 @@ export function ChartPreviewScreenShell<TPayload>({
               console.log('[chart-preview] webview error', event?.nativeEvent);
               setIsFullscreen(false);
               setPlayerError('播放器加载失败，请返回重试。');
+            }}
+            onContentProcessDidTerminate={() => {
+              setReady(false);
+              setIsFullscreen(false);
+              setWebViewGeneration((value) => value + 1);
+            }}
+            onRenderProcessGone={() => {
+              setReady(false);
+              setIsFullscreen(false);
+              setWebViewGeneration((value) => value + 1);
             }}
             onHttpError={(event) => {
               console.log('[chart-preview] webview http error', event?.nativeEvent);

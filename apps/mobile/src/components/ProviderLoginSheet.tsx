@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   AppState,
   Image,
+  InteractionManager,
   Linking,
   Modal,
   Pressable,
@@ -104,6 +105,7 @@ export function ProviderLoginSheet({
   const [showReusableAccounts, setShowReusableAccounts] = useState(false);
   const [osuModeAccount, setOsuModeAccount] = useState<BoundAccount | null>(null);
   const phiTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const phiResumeTask = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
   const phiPollingRef = useRef(false);
   const phiNextAllowedAtRef = useRef(0);
 
@@ -158,6 +160,8 @@ export function ProviderLoginSheet({
     setPhiExpiresAt(0);
     setShowReusableAccounts(false);
     setOsuModeAccount(null);
+    phiResumeTask.current?.cancel();
+    phiResumeTask.current = null;
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
     phiPollingRef.current = false;
     phiNextAllowedAtRef.current = 0;
@@ -422,30 +426,37 @@ export function ProviderLoginSheet({
   };
 
   useEffect(() => {
-    if (!phiDevice) return;
+    if (!phiDevice || !visible) return;
     const interval = phiDevice.interval * 1000;
-    const startTimer = () => {
+    const stopPolling = () => {
+      phiResumeTask.current?.cancel();
+      phiResumeTask.current = null;
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
-      phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
+    };
+    const startTimer = (pollImmediately: boolean) => {
+      stopPolling();
+      phiResumeTask.current = InteractionManager.runAfterInteractions(() => {
+        phiResumeTask.current = null;
+        if (AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
+        if (pollImmediately) void pollPhigros();
+        phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
+      });
     };
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        startTimer();
-        void pollPhigros();
-      } else if (phiTimer.current) {
-        clearInterval(phiTimer.current);
-        phiTimer.current = null;
-      }
+      if (state === 'active') startTimer(true);
+      else stopPolling();
     });
-    startTimer();
+    if (AppState.currentState !== 'background' && AppState.currentState !== 'inactive') startTimer(false);
     return () => {
       subscription.remove();
-      if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
+      stopPolling();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phiDevice]);
+  }, [phiDevice, visible]);
 
   const cancelPhigrosLogin = () => {
+    phiResumeTask.current?.cancel();
+    phiResumeTask.current = null;
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
     phiPollingRef.current = false;
     phiNextAllowedAtRef.current = 0;

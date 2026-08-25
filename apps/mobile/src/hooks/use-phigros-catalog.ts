@@ -5,6 +5,7 @@ import { loadPhigrosKyouAliases } from '@/hooks/use-phigros-kyou';
 import { aliasedCatalogSource, useAliasedCatalog } from '@/hooks/use-aliased-catalog';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { normalizeSearchText } from '@/utils/search';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 function mergeAliasLists(existing: readonly string[] | undefined, incoming: readonly string[] | undefined): string[] {
   const result: string[] = [];
@@ -18,13 +19,15 @@ function mergeAliasLists(existing: readonly string[] | undefined, incoming: read
   return result;
 }
 
-export function usePhigrosCatalog() {
+export function usePhigrosCatalog(enabled = true) {
+  const tabActive = useCachedTabActive();
   const provider = useMemo(() => new PhigrosCatalogProvider(), []);
   return useAliasedCatalog<
     CatalogSnapshot,
     PhigrosKyouAliasesSnapshot,
     { snapshot: CatalogSnapshot; provider: PhigrosCatalogProvider }
   >({
+    enabled: enabled && tabActive,
     queryKey: ['phigros-catalog'],
     // Phigros 曲库由 provider 内存缓存承载（resetCatalogCache 后重拉 OSS），无本地持久化快照。
     loadCached: async () => null,

@@ -1,7 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { useState } from 'react';
-import { InteractionManager, Pressable, Text } from 'react-native';
+import { AppState, InteractionManager, Pressable, Text } from 'react-native';
 import { CachedTabScreen, useCachedTabActive } from '@/components/CachedTabScreen';
 
 let mockFocusEffect: (() => void | (() => void)) | null = null;
@@ -80,5 +80,35 @@ describe('cached native-tab content', () => {
 
     await act(() => { thirdCleanup?.(); });
     expect(pendingTasks[2]?.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('pauses in background and cancels a superseded resume task', async () => {
+    const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
+    let appStateListener: ((state: 'active' | 'background') => void) | null = null;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_type, listener) => {
+      appStateListener = listener;
+      return { remove: jest.fn() };
+    }) as typeof AppState.addEventListener);
+    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+      const task = { callback: callback as () => void, cancel: jest.fn() };
+      pendingTasks.push(task);
+      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+    });
+
+    const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
+    await act(() => { mockFocusEffect?.(); });
+    await act(() => { pendingTasks[0]?.callback(); });
+    expect(screen.getByText('前台')).toBeTruthy();
+
+    await act(() => { appStateListener?.('background'); });
+    expect(screen.getByText('后台')).toBeTruthy();
+    await act(() => { appStateListener?.('active'); });
+    expect(pendingTasks).toHaveLength(2);
+    expect(screen.getByText('后台')).toBeTruthy();
+
+    await act(() => { appStateListener?.('background'); });
+    expect(pendingTasks[1]?.cancel).toHaveBeenCalledTimes(1);
+    await act(() => { pendingTasks[1]?.callback(); });
+    expect(screen.getByText('后台')).toBeTruthy();
   });
 });

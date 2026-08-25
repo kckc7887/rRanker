@@ -54,9 +54,9 @@ const PHIRA_CATALOG_SORT_OPTIONS = [
 
 export function PhiraBestScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const player = usePhiraPlayer(id);
-  const ordered = (player.data?.pool.bestPool ?? []).map((pool) => ({
+  const ordered = useMemo(() => (player.data?.pool.bestPool ?? []).map((pool) => ({
     chart: pool.chart, record: pool.record, poolRks: pool.rks, queriedAt: player.data?.source?.updatedAt ?? '',
-  })).slice(0, 20);
+  })).slice(0, 20), [player.data?.pool.bestPool, player.data?.source?.updatedAt]);
   const presented = presentPhiraBestSection(ordered); const sections = [{ id: presented.id, title: presented.title, data: ordered }];
   return <View style={[styles.page, { backgroundColor: theme.background }]}><BestListPage<PhiraQueriedBest, typeof sections[number]>
     isLoading={player.isLoading} isError={player.isError} error={player.error}

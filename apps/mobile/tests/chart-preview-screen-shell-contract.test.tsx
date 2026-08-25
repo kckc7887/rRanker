@@ -7,6 +7,7 @@
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { AppState } from 'react-native';
 import {
   ChartPreviewScreenShell,
   type ChartPreviewShellRequest,
@@ -205,5 +206,40 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
 
     await act(async () => view.unmount());
     expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('后台卸载播放器，回前台只重建当前资源并恢复内容进程', async () => {
+    let appStateListener: ((state: 'active' | 'background') => void) | null = null;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_type, listener) => {
+      appStateListener = listener;
+      return { remove: jest.fn() };
+    }) as typeof AppState.addEventListener);
+    await renderFictionalShell({
+      kind: 'ready',
+      payload: { chartName: '虚构谱面' },
+      prepare: async () => fictionalSource,
+    });
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    expect(latestWebViewProps.originWhitelist).toEqual(['file://*']);
+    expect((latestWebViewProps.onShouldStartLoadWithRequest as (request: Record<string, unknown>) => boolean)({
+      isTopFrame: true,
+      url: fictionalSource.uri,
+    })).toBe(true);
+    expect((latestWebViewProps.onShouldStartLoadWithRequest as (request: Record<string, unknown>) => boolean)({
+      isTopFrame: true,
+      url: 'https://example.invalid/',
+    })).toBe(false);
+
+    await act(() => { appStateListener?.('background'); });
+    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining("type:'stop'"));
+    expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+
+    await act(() => { appStateListener?.('active'); });
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    await act(() => {
+      (latestWebViewProps.onContentProcessDidTerminate as (() => void) | undefined)?.();
+      (latestWebViewProps.onRenderProcessGone as (() => void) | undefined)?.();
+    });
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
   });
 });

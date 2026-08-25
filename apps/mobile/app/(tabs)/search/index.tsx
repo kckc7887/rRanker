@@ -506,7 +506,7 @@ function PhigrosSearchScreen() {
   }, [debouncedKeyword, filtered]);
   const hasActiveFilters = !!(keyword.trim() || level !== 'all' || constantMin || constantMax
     || chapter !== 'all' || selectedKyouTagIds.length);
-  const versions = query.data?.snapshot.versions ?? [];
+  const versions = useMemo(() => query.data?.snapshot.versions ?? [], [query.data?.snapshot.versions]);
 
   const provider = query.data?.provider ?? null;
   const blurUrls = useMemo(() => {

@@ -17,6 +17,7 @@ import { UserLibraryService } from '@/services/user-library-service';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repository';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 export const USER_LIBRARY_QUERY_KEY = ['user-library'] as const;
 export const TAG_PRESETS_QUERY_KEY = ['user-library-tag-presets'] as const;
@@ -38,15 +39,17 @@ function syncLibraryCache(gameId: GameId, allItems: UserLibraryItem[]) {
   queryClient.setQueryData(userLibraryQueryKey(gameId), allItems.filter((item) => item.gameId === gameId));
 }
 
-export function useUserLibrary() {
+export function useUserLibrary(enabled = true) {
+  const tabActive = useCachedTabActive();
   const activeGameId = useSession((state) => state.activeGameId);
   const queryKey = userLibraryQueryKey(activeGameId);
   const query = useQuery({
     queryKey,
     queryFn: () => service.list(activeGameId),
+    enabled: enabled && tabActive,
     staleTime: Infinity,
   });
-  const presets = useQuery({ queryKey: TAG_PRESETS_QUERY_KEY, queryFn: () => service.listTagPresets(), staleTime: Infinity });
+  const presets = useQuery({ queryKey: TAG_PRESETS_QUERY_KEY, queryFn: () => service.listTagPresets(), enabled: enabled && tabActive, staleTime: Infinity });
   const mutation = useMutation<UserLibraryItem[], Error, Operation>({
     mutationFn: async (operation) => {
       switch (operation.type) {

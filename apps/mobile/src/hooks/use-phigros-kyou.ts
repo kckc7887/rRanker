@@ -4,6 +4,7 @@ import {
 } from '@/domain/phigros-kyou';
 import { PhigrosKyouProvider } from '@/providers/phigros-kyou-provider';
 import { useSession } from '@/state/session-store';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 const provider = new PhigrosKyouProvider();
 const KYOU_STALE_TIME_MS = 60 * 60 * 1000;
@@ -28,9 +29,10 @@ export function resetPhigrosKyouAliasesCache(): void {
 }
 
 export function usePhigrosKyouChartTags(enabled = true) {
+  const tabActive = useCachedTabActive();
   const activeGameId = useSession((state) => state.activeGameId);
   return useQuery({
-    enabled: enabled && activeGameId === 'phigros',
+    enabled: enabled && tabActive && activeGameId === 'phigros',
     queryKey: [PHIGROS_KYOU_TAGS_RESOURCE_KEY],
     queryFn: () => provider.getChartTags(),
     staleTime: KYOU_STALE_TIME_MS,

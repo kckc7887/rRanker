@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState, Linking } from 'react-native';
+import { AppState, InteractionManager, Linking } from 'react-native';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import { findGame } from '@/domain/game-bind-options';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
@@ -82,6 +82,10 @@ describe('ProviderLoginSheet Phigros polling', () => {
       return { remove: jest.fn() };
     }) as never);
     jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as never);
+    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+      (callback as () => void)();
+      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+    });
     beginLoginMock.mockClear();
     pollLoginMock.mockClear();
     beginLoginMock.mockResolvedValue(mockDevice);

@@ -15,6 +15,7 @@ import {
 import { tufProvider } from '@/providers/tuf-provider';
 import { cacheFirstLoad } from '@/services/cache-first';
 import { queryClient } from '@/state/query-client';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 import {
   loadTufPlayerFresh,
   makeTufSnapshot,
@@ -35,7 +36,8 @@ export function useTufPlayerSearch(query: string) {
   });
 }
 
-export function useTufProfile(playerId: number | null) {
+export function useTufProfile(playerId: number | null, enabled = true) {
+  const tabActive = useCachedTabActive();
   const queryKey = ['tuf', 'player', playerId, 'profile'] as const;
   return useQuery({
     queryKey,
@@ -54,7 +56,7 @@ export function useTufProfile(playerId: number | null) {
       });
       return snapshot.data;
     },
-    enabled: playerId !== null,
+    enabled: enabled && tabActive && playerId !== null,
     ...TUF_QUERY_OPTIONS,
   });
 }
@@ -100,7 +102,8 @@ export async function prefetchTufPassPage(
   return page;
 }
 
-export function useTufPasses(playerId: number | null, options: Omit<TufPassQuery, 'offset' | 'limit'>) {
+export function useTufPasses(playerId: number | null, options: Omit<TufPassQuery, 'offset' | 'limit'>, enabled = true) {
+  const tabActive = useCachedTabActive();
   return useInfiniteQuery({
     queryKey: ['tuf', 'player', playerId, 'passes', options] as const,
     queryFn: ({ pageParam }): Promise<TufPassPage> => loadTufPassPage(playerId!, options, pageParam),
@@ -108,7 +111,7 @@ export function useTufPasses(playerId: number | null, options: Omit<TufPassQuery
     getNextPageParam: (last) => last.offset + last.passes.length < last.total
       ? last.offset + last.limit
       : undefined,
-    enabled: playerId !== null,
+    enabled: enabled && tabActive && playerId !== null,
     ...TUF_QUERY_OPTIONS,
   });
 }
@@ -116,7 +119,9 @@ export function useTufPasses(playerId: number | null, options: Omit<TufPassQuery
 export function useTufLevelSearch(
   query: string,
   options: Omit<TufLevelQuery, 'query' | 'offset' | 'limit'> = {},
+  enabled = true,
 ) {
+  const tabActive = useCachedTabActive();
   const normalized = query.trim();
   const queryKey = ['tuf', 'levels', normalized, options] as const;
   return useInfiniteQuery({
@@ -126,15 +131,18 @@ export function useTufLevelSearch(
     }),
     initialPageParam: 0,
     getNextPageParam: (last) => last.hasMore ? last.offset + last.limit : undefined,
+    enabled: enabled && tabActive,
     ...TUF_QUERY_OPTIONS,
   });
 }
 
-export function useTufDifficulties() {
+export function useTufDifficulties(enabled = true) {
+  const tabActive = useCachedTabActive();
   const queryKey = ['tuf', 'difficulties'] as const;
   return useQuery({
     queryKey,
     queryFn: () => tufProvider.getDifficulties(),
+    enabled: enabled && tabActive,
     ...TUF_QUERY_OPTIONS,
   });
 }
