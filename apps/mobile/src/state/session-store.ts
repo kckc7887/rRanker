@@ -44,9 +44,21 @@ export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthS
   for (const linkedAccountId of linkedAccountIds) {
     sessionsByAccountId[linkedAccountId] = next;
   }
+  const activeAccount = state.boundAccounts.find((account) => account.id === state.activeAccountId);
+  const activeScoreProvider = linkedAccountIds.includes(state.activeAccountId)
+    && activeAccount?.gameId === 'maimai'
+    && activeAccount.providerId === 'lxns'
+    ? maimaiProviders(
+      activeAccount.providerId,
+      next,
+      activeAccount.id,
+      activeAccount.displayName,
+    ).scoreProvider
+    : state.scoreProvider;
   useSession.setState({
     sessionsByAccountId,
     session: linkedAccountIds.includes(state.activeAccountId) ? next : state.session,
+    scoreProvider: activeScoreProvider,
   });
   const { SecureSessionStore } = await import('@/storage/secure-session-store');
   await new SecureSessionStore().updateAccountSession(accountId, next);

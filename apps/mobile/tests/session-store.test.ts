@@ -32,6 +32,14 @@ import {
   useSession,
 } from '@/state/session-store';
 
+const updateAccountSession = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock('@/storage/secure-session-store', () => ({
+  SecureSessionStore: class {
+    updateAccountSession = updateAccountSession;
+  },
+}));
+
 vi.mock('expo-secure-store', () => ({
   getItemAsync: vi.fn(async () => null),
   setItemAsync: vi.fn(async () => undefined),
@@ -60,6 +68,8 @@ const lxnsSession: ProviderSession = {
 
 describe('useSession store', () => {
   beforeEach(() => {
+    updateAccountSession.mockReset();
+    updateAccountSession.mockResolvedValue(undefined);
     useSession.setState({
       sessionsByAccountId: {},
       boundAccounts: [
@@ -402,6 +412,68 @@ describe('useSession store', () => {
       (account) => account.id === 'chunithm:lxns:2',
     )?.ratingPossession).toBe('rainbow');
     expect(useSession.getState().session).toEqual(rotated);
+  });
+
+  it('replaces the active maimai provider when a linked account rotates LXNS tokens', async () => {
+    const initial = {
+      mode: 'lxns-oauth',
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      expiresAt: Date.now() + 60_000,
+      persistable: true,
+    } as const;
+    useSession.getState().finishRestore({
+      version: 3,
+      activeAccountId: 'maimai:lxns:1',
+      credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: initial }],
+      accounts: [
+        {
+          id: 'maimai:lxns:1', gameId: 'maimai', providerId: 'lxns',
+          credentialId: 'lxns:shared', displayName: '舞萌玩家', scoreDisplay: '15000',
+        },
+        {
+          id: 'chunithm:lxns:2', gameId: 'chunithm', providerId: 'lxns',
+          credentialId: 'lxns:shared', displayName: '中二玩家', scoreDisplay: '17.25',
+        },
+      ],
+    });
+    const previousProvider = useSession.getState().scoreProvider;
+    const rotated = {
+      ...initial,
+      accessToken: 'access-b',
+      refreshToken: 'refresh-b',
+    };
+
+    await applyLxnsTokenRotation('chunithm:lxns:2', rotated);
+
+    const state = useSession.getState();
+    expect(state.scoreProvider).toBeInstanceOf(LxnsScoreProvider);
+    expect(state.scoreProvider).not.toBe(previousProvider);
+    expect((state.scoreProvider as LxnsScoreProvider).getSession()).toEqual(rotated);
+    expect(state.sessionsByAccountId).toMatchObject({
+      'maimai:lxns:1': rotated,
+      'chunithm:lxns:2': rotated,
+    });
+  });
+
+  it('keeps the latest in-memory LXNS session when persistence fails', async () => {
+    useSession.getState().setSession(lxnsSession, {
+      displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
+    });
+    const accountId = useSession.getState().activeAccountId;
+    const rotated = {
+      ...lxnsSession,
+      accessToken: 'access-b',
+      refreshToken: 'refresh-b',
+    };
+    updateAccountSession.mockRejectedValueOnce(new Error('write failed'));
+
+    await expect(applyLxnsTokenRotation(accountId, rotated)).rejects.toThrow('write failed');
+
+    const state = useSession.getState();
+    expect(state.session).toEqual(rotated);
+    expect(state.sessionsByAccountId[accountId]).toEqual(rotated);
+    expect((state.scoreProvider as LxnsScoreProvider).getSession()).toEqual(rotated);
   });
 
   it('propagates the final session when reusing one credential for another game', () => {

@@ -83,6 +83,10 @@ async function loadLxnsOAuthModule(options: {
 }
 
 describe('rotateLxnsTokens', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('deduplicates concurrent refreshes for the same refresh token', async () => {
     const fetchMock = tokenResponse({
       access_token: 'a1',
@@ -113,6 +117,91 @@ describe('rotateLxnsTokens', () => {
     const second = await rotateLxnsTokens('r1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(second).toEqual(first);
+  });
+
+  it('resolves an old refresh token through every expired rotation', async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const responses = [
+      {
+        access_token: 'a2', token_type: 'Bearer', expires_in: 900, refresh_token: 'r2',
+      },
+      {
+        access_token: 'a3', token_type: 'Bearer', expires_in: 900, refresh_token: 'r3',
+      },
+    ];
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => responses.shift(),
+    }));
+    const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+
+    await rotateLxnsTokens('r1');
+    now += 901_000;
+    const latest = await rotateLxnsTokens('r2');
+    const recovered = await rotateLxnsTokens('r1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(latest.refreshToken).toBe('r3');
+    expect(recovered).toEqual(latest);
+  });
+
+  it('deduplicates the next refresh for callers holding different token generations', async () => {
+    let now = 2_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const responses = [
+      {
+        access_token: 'a2', token_type: 'Bearer', expires_in: 900, refresh_token: 'r2',
+      },
+      {
+        access_token: 'a3', token_type: 'Bearer', expires_in: 900, refresh_token: 'r3',
+      },
+    ];
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => responses.shift(),
+    }));
+    const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+
+    await rotateLxnsTokens('r1');
+    now += 901_000;
+    const [fromCurrent, fromOld] = await Promise.all([
+      rotateLxnsTokens('r2'),
+      rotateLxnsTokens('r1'),
+    ]);
+    const recoveredAgain = await rotateLxnsTokens('r1');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fromOld).toEqual(fromCurrent);
+    expect(fromOld.refreshToken).toBe('r3');
+    expect(recoveredAgain).toEqual(fromCurrent);
+  });
+
+  it('propagates a later authentication failure without returning an expired intermediate session', async () => {
+    let now = 3_000_000;
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          access_token: 'a2', token_type: 'Bearer', expires_in: 900, refresh_token: 'r2',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'invalid_grant' }),
+      });
+    const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+
+    await rotateLxnsTokens('r1');
+    now += 901_000;
+
+    await expect(rotateLxnsTokens('r1')).rejects.toMatchObject({ code: 'authentication' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

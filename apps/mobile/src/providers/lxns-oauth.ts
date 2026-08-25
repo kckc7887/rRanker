@@ -206,32 +206,73 @@ export async function refreshLxnsAccessToken(refreshToken: string): Promise<Lxns
 }
 
 /**
- * 公共令牌轮换：按 refreshToken 去重并发刷新，并缓存最近的轮换结果。
- * 落雪 refresh_token 单次有效：同一旧 token 的并发刷新只有一个真实请求；
- * 持有旧 token 的实例可从缓存直接拿到本进程内最新会话，避免 invalid_grant。
+ * 落雪 refresh_token 刷新后立即失效：轮换链必须解析到最新一代，
+ * 否则长驻实例会把过期的中间会话重新落盘。
  */
 const inFlightRefreshes = new Map<string, Promise<LxnsOAuthSession>>();
 const recentRotations = new Map<string, LxnsOAuthSession>();
 const RECENT_ROTATIONS_LIMIT = 64;
 
+function rememberLxnsRotation(refreshToken: string, next: LxnsOAuthSession): void {
+  recentRotations.set(refreshToken, next);
+  for (const [previousToken, previousNext] of recentRotations) {
+    if (previousNext.refreshToken === refreshToken) {
+      recentRotations.set(previousToken, next);
+    }
+  }
+  while (recentRotations.size > RECENT_ROTATIONS_LIMIT) {
+    const oldest = recentRotations.keys().next().value;
+    if (typeof oldest !== 'string') break;
+    recentRotations.delete(oldest);
+  }
+}
+
 export async function rotateLxnsTokens(refreshToken: string): Promise<LxnsOAuthSession> {
-  const rotated = recentRotations.get(refreshToken);
-  if (rotated) return rotated;
-  const existing = inFlightRefreshes.get(refreshToken);
-  if (existing) return existing;
-  const promise = refreshLxnsAccessToken(refreshToken)
+  const aliases: string[] = [];
+  const visited = new Set<string>();
+  let currentToken = refreshToken;
+  let cycleDetected = false;
+
+  while (true) {
+    if (visited.has(currentToken)) {
+      cycleDetected = true;
+      break;
+    }
+    visited.add(currentToken);
+    const rotated = recentRotations.get(currentToken);
+    if (!rotated) break;
+    aliases.push(currentToken);
+    if (!lxnsAccessTokenExpired(rotated)) {
+      for (const alias of aliases) rememberLxnsRotation(alias, rotated);
+      return rotated;
+    }
+    if (rotated.refreshToken === currentToken) {
+      recentRotations.delete(currentToken);
+      break;
+    }
+    currentToken = rotated.refreshToken;
+  }
+
+  if (cycleDetected) {
+    for (const alias of aliases) recentRotations.delete(alias);
+  }
+
+  const existing = inFlightRefreshes.get(currentToken);
+  if (existing) {
+    const next = await existing;
+    for (const alias of aliases) rememberLxnsRotation(alias, next);
+    return next;
+  }
+  const promise = refreshLxnsAccessToken(currentToken)
     .then((next) => {
-      recentRotations.set(refreshToken, next);
-      if (recentRotations.size > RECENT_ROTATIONS_LIMIT) {
-        const oldest = recentRotations.keys().next().value;
-        if (typeof oldest === 'string') recentRotations.delete(oldest);
-      }
+      rememberLxnsRotation(currentToken, next);
+      for (const alias of aliases) rememberLxnsRotation(alias, next);
       return next;
     })
     .finally(() => {
-      inFlightRefreshes.delete(refreshToken);
+      inFlightRefreshes.delete(currentToken);
     });
-  inFlightRefreshes.set(refreshToken, promise);
+  inFlightRefreshes.set(currentToken, promise);
   return promise;
 }
 
