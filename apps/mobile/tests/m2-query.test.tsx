@@ -23,8 +23,17 @@ const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
-const mockShowActionNotification = jest.fn();
+const mockDismissNotification = jest.fn();
+type MockActionNotificationInput = {
+  title: string;
+  message?: string;
+  variant?: string;
+  progress?: { label: string; value: number };
+  actions: { label: string; tone?: string; onPress?: () => void | Promise<void> }[];
+};
+const mockShowActionNotification = jest.fn<(input: MockActionNotificationInput) => number>();
 const mockShowNotification = jest.fn();
+const mockUpdateNotification = jest.fn();
 const mockCheckVideo = jest.fn<(chartId: number) => Promise<boolean>>();
 type MockDownloadOptions = {
   signal?: AbortSignal;
@@ -59,8 +68,10 @@ jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/components/AppNotification', () => ({
   NotificationOutlet: () => null,
   useNotification: () => ({
+    dismissNotification: mockDismissNotification,
     showNotification: mockShowNotification,
     showActionNotification: mockShowActionNotification,
+    updateNotification: mockUpdateNotification,
   }),
   useNotificationModalRequestClose: () => () => false,
 }));
@@ -252,6 +263,7 @@ describe('M2 song query screens', () => {
     mockDownloadPackage.mockResolvedValue(true);
     useCatalogFilter.getState().reset();
     jest.clearAllMocks();
+    mockShowActionNotification.mockReturnValue(77);
   });
 
   it('goes back from the song detail chrome button', async () => {
@@ -698,7 +710,9 @@ describe('M2 song query screens', () => {
       onProgress: expect.any(Function),
       onReadyToSave: expect.any(Function),
     })));
-    expect(mockShowActionNotification).not.toHaveBeenCalled();
+    expect(mockShowActionNotification).not.toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringContaining('背景视频'),
+    }));
     await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: '谱面已保存',
     })));
@@ -778,25 +792,33 @@ describe('M2 song query screens', () => {
       fireEvent.press(screen.getByLabelText('下载谱面文件：正常曲目 A DX MASTER'));
     });
     await waitFor(() => expect(options).toBeDefined());
-    expect(screen.getByText('下载进度')).toBeTruthy();
-    expect(screen.getByLabelText('取消下载谱面文件')).toBeTruthy();
+    const progressInput = mockShowActionNotification.mock.calls.find(([input]) => input.progress)?.[0] as {
+      progress: { label: string; value: number };
+      actions: { label: string; tone?: string; onPress?: () => void | Promise<void> }[];
+    };
+    expect(progressInput.progress).toEqual({ label: '下载进度', value: 0 });
+    expect(progressInput.actions).toHaveLength(1);
+    expect(progressInput.actions[0]).toMatchObject({ label: '取消', tone: 'cancel' });
     expect(within(screen.getByLabelText('下载谱面文件：正常曲目 A DX MASTER'))
       .getByText('下载谱面文件')).toBeTruthy();
 
     await act(async () => {
       options!.onProgress?.({ phase: 'downloading', progress: 0.42 });
     });
-    expect(screen.getByText('42%')).toBeTruthy();
+    expect(mockUpdateNotification).toHaveBeenLastCalledWith(77, {
+      progress: { label: '下载进度', value: 0.42 },
+    });
     await act(async () => {
       options!.onProgress?.({ phase: 'organizing', progress: 0.68 });
     });
-    expect(screen.getByText('整理进度')).toBeTruthy();
-    expect(screen.getByText('68%')).toBeTruthy();
+    expect(mockUpdateNotification).toHaveBeenLastCalledWith(77, {
+      progress: { label: '整理进度', value: 0.68 },
+    });
 
     await act(async () => {
       await options!.onReadyToSave?.();
     });
-    expect(screen.queryByText('整理进度')).toBeNull();
+    expect(mockDismissNotification).toHaveBeenCalledWith(77);
     await act(async () => finishDownload(true));
     await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: '谱面已保存',
@@ -816,13 +838,15 @@ describe('M2 song query screens', () => {
     await act(async () => {
       fireEvent.press(screen.getByLabelText('下载谱面文件：正常曲目 A DX MASTER'));
     });
-    await waitFor(() => expect(screen.getByLabelText('取消下载谱面文件')).toBeTruthy());
+    await waitFor(() => expect(options).toBeDefined());
+    const progressInput = mockShowActionNotification.mock.calls.find(([input]) => input.progress)?.[0] as {
+      actions: { onPress?: () => void | Promise<void> }[];
+    };
     await act(async () => {
-      fireEvent.press(screen.getByLabelText('取消下载谱面文件'));
+      await progressInput.actions[0]!.onPress?.();
     });
 
     await waitFor(() => expect(options?.signal?.aborted).toBe(true));
-    expect(screen.queryByLabelText('取消下载谱面文件')).toBeNull();
     expect(mockShowNotification).not.toHaveBeenCalledWith(expect.objectContaining({ title: '下载失败' }));
   });
 
