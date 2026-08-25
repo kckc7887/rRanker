@@ -81,6 +81,10 @@ jest.mock('@/features/maimai-chart-download/maimai-chart-download', () => ({
   downloadMaimaiChartPackage: (request: Record<string, unknown>, options?: MockDownloadOptions) =>
     mockDownloadPackage(request, options),
 }));
+jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+  downloadPhigrosChartAsPhiraPackage: jest.fn(),
+  downloadPhiraChartPackage: jest.fn(),
+}));
 jest.mock('react-native-gesture-handler', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');

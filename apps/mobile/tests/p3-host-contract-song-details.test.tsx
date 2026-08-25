@@ -91,8 +91,19 @@ jest.mock('@/state/session-store', () => ({
 }));
 jest.mock('@/components/AppNotification', () => ({
   NotificationOutlet: () => null,
-  useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
+  useNotification: () => ({
+    dismissNotification: jest.fn(),
+    showNotification: jest.fn(),
+    showActionNotification: jest.fn(),
+    updateNotification: jest.fn(),
+  }),
   useNotificationModalRequestClose: () => () => false,
+}));
+jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+  downloadPhigrosChartAsPhiraPackage: jest.fn(),
+}));
+jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+  useChartPackageDownload: () => ({ isRunning: false, start: jest.fn() }),
 }));
 jest.mock('@/components/CachedTabScreen', () => ({
   useCachedTabActive: () => true,
@@ -357,7 +368,7 @@ test('phigros song detail full page host tree contract', async () => {
   const tree = screen.toJSON();
   const canonical = canonicalize(tree);
   const hash = createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-  expect(hash).toBe('57b9776ec433752bcfa291b41ea5e02b6a64a53470ebb2deec71a49e8ab021af');
+  expect(hash).toBe('6eea38ec8ab6be157d242d93e44a7436146088c7a7311a050b7f2f49fe0ec3af');
 });
 
 test('chunithm song detail full page host tree contract', async () => {
