@@ -89,6 +89,7 @@ export function UploadDataSheet({
   onLxnsTokensRotated,
   headerAccessory,
   contentOverride,
+  uploadMethod = 'friend_code',
   externalBusy = false,
 }: {
   visible: boolean;
@@ -105,6 +106,7 @@ export function UploadDataSheet({
   headerAccessory?: ReactNode;
   /** 替换好友码页面内容，但保留同一个原生上传弹层与顶部导航。 */
   contentOverride?: ReactNode;
+  uploadMethod?: 'friend_code' | 'qr';
   externalBusy?: boolean;
 }) {
   const theme = useAppTheme();
@@ -116,7 +118,6 @@ export function UploadDataSheet({
   const [hasStoredToken, setHasStoredToken] = useState(false);
   const [storedAccounts, setStoredAccounts] = useState<ScoreHubAccountEntry[]>([]);
   const [historyVisible, setHistoryVisible] = useState(false);
-  const [bindPanelOpen, setBindPanelOpen] = useState(false);
   const [bindingLookup, setBindingLookup] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [prefsReady, setPrefsReady] = useState(false);
@@ -265,7 +266,6 @@ export function UploadDataSheet({
     const inFlight = uploadInFlightRef.current;
     setDecodingQr(false);
     setPrefsReady(false);
-    setBindPanelOpen(false);
     if (inFlight) {
       setRunning(true);
     } else {
@@ -321,7 +321,7 @@ export function UploadDataSheet({
   }, [visible, running, accounts, sessionsByAccountId]);
 
   useEffect(() => {
-    if (!visible || running) return;
+    if (!visible || running || uploadMethod !== 'friend_code') return;
     let active = true;
     setStatsStatus('loading');
     setStats(null);
@@ -339,7 +339,11 @@ export function UploadDataSheet({
     return () => {
       active = false;
     };
-  }, [visible, running]);
+  }, [visible, running, uploadMethod]);
+
+  useEffect(() => {
+    if (uploadMethod !== 'qr' && !running) setBindQrText('');
+  }, [uploadMethod, running]);
 
   useEffect(() => () => {
     abortRef.current.aborted = true;
@@ -426,7 +430,6 @@ export function UploadDataSheet({
     if (friendCode.trim() === code.trim()) {
       setHasStoredToken(false);
       setHasCabinetBound(false);
-      setBindPanelOpen(false);
     }
   };
 
@@ -436,7 +439,7 @@ export function UploadDataSheet({
   };
 
   const pickQrImage = async () => {
-    if (running || decodingQr || !bindPanelOpen) return;
+    if (running || decodingQr || uploadMethod !== 'qr') return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       showNotification({
@@ -475,7 +478,7 @@ export function UploadDataSheet({
   };
 
   const pasteQrText = async () => {
-    if (running || decodingQr || !bindPanelOpen) return;
+    if (running || decodingQr || uploadMethod !== 'qr') return;
     const text = (await Clipboard.getStringAsync()).trim();
     if (!text) {
       showNotification({
@@ -599,7 +602,7 @@ export function UploadDataSheet({
   };
 
   const startQrUpload = async () => {
-    if (running || decodingQr) return;
+    if (running || decodingQr || uploadMethod !== 'qr') return;
     if (isMaimaiMaintenanceWindow()) {
       showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
       return;
@@ -706,6 +709,8 @@ export function UploadDataSheet({
         {headerAccessory}
         {contentOverride ?? (
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {uploadMethod === 'friend_code' ? (
+            <>
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>好友码</Text>
           <View style={styles.friendCodeBlock}>
             <View style={styles.friendCodeRow}>
@@ -773,7 +778,7 @@ export function UploadDataSheet({
                     >
                       <Text style={[styles.historyCode, { color: theme.text }]}>{entry.friendCode}</Text>
                       <Text style={[styles.historyMeta, { color: theme.textMuted }]}>
-                        {entry.hasCabinetBound ? '已绑定二维码' : '未绑定二维码'}
+                        {entry.hasCabinetBound ? '可直接获取成绩' : '需要确认好友码'}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -801,16 +806,16 @@ export function UploadDataSheet({
           {bindingLookup ? (
             <Text style={[styles.hint, { color: theme.textMuted }]}>正在检查账号信息…</Text>
           ) : hasCabinetBound ? (
-            <Text accessibilityLabel="玩家二维码已绑定" style={[styles.hint, { color: theme.success }]}>
+            <Text accessibilityLabel="已保存舞萌账号" style={[styles.hint, { color: theme.success }]}>
               已保存此账号。好友码上传会优先直接获取成绩，登录失效时再重新确认好友码。
             </Text>
           ) : hasStoredToken ? (
             <Text style={[styles.hint, { color: theme.textMuted }]}>
-              也可以在下方粘贴玩家二维码，直接同步最新成绩。
+              已保存此账号。开始上传时会继续确认好友码。
             </Text>
           ) : (
             <Text style={[styles.hint, { color: theme.textMuted }]}>
-              可以使用好友码，或在下方粘贴玩家二维码同步成绩。
+              完成一次上传后会保存此好友码，之后可以更快获取成绩。
             </Text>
           )}
 
@@ -828,75 +833,12 @@ export function UploadDataSheet({
               </Text>
             ) : null}
           </View>
-
-          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>上传到</Text>
-          <View style={[styles.listCard, { backgroundColor: theme.surface }]}>
-            {targets.length === 0 ? (
-              <Text style={[styles.empty, { color: theme.textMuted }]}>当前游戏没有已绑定查分器</Text>
-            ) : (
-              targets.map((target, index) => {
-                const checked = selectedIds.includes(target.account.id);
-                const icon = accountIcon(target.account);
-                return (
-                  <Pressable
-                    key={target.account.id}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel={`上传到 ${target.account.displayName}（${target.account.providerTitle}）`}
-                    accessibilityState={{ checked, disabled: !target.writable || busy }}
-                    disabled={!target.writable || busy}
-                    onPress={() => toggleAccount(target.account.id, target.writable)}
-                    style={({ pressed }) => [
-                      styles.row,
-                      index > 0 && [styles.rowBorder, { borderTopColor: theme.border }],
-                      pressed && target.writable && styles.softPressed,
-                      !target.writable && styles.rowDisabled,
-                    ]}
-                  >
-                    <View style={[
-                      styles.box,
-                      { borderColor: theme.border, backgroundColor: theme.input },
-                      checked && target.writable && { backgroundColor: theme.accent, borderColor: theme.accent },
-                    ]}
-                    >
-                      {checked && target.writable ? <Text style={styles.boxMark}>✓</Text> : null}
-                    </View>
-                    {icon ? <Image source={icon} style={styles.icon} /> : (
-                      <View style={[styles.iconPlaceholder, { backgroundColor: theme.surfaceMuted }]} />
-                    )}
-                    <View style={styles.rowBody}>
-                      <Text style={[styles.rowTitle, { color: theme.text }]}>{target.account.displayName}</Text>
-                      <Text style={[styles.rowSub, { color: theme.textMuted }]}>{target.account.providerTitle}</Text>
-                      {target.disableReason ? (
-                        <Text style={[styles.rowWarn, { color: theme.warning }]}>{target.disableReason}</Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })
-            )}
-          </View>
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="使用玩家二维码同步"
-            accessibilityState={{ expanded: bindPanelOpen }}
-            disabled={busy || !prefsReady}
-            onPress={() => setBindPanelOpen((open) => !open)}
-            style={({ pressed }) => [
-              styles.secondary,
-              { borderColor: theme.border, backgroundColor: theme.surface, flex: 0 },
-              (busy || !prefsReady) && styles.primaryDisabled,
-              pressed && !busy && styles.softPressed,
-            ]}
-          >
-            <Text style={[styles.secondaryText, { color: theme.accent }]}>
-              {bindPanelOpen ? '收起玩家二维码' : '使用玩家二维码同步'}
-            </Text>
-          </Pressable>
-          {bindPanelOpen ? (
+            </>
+          ) : (
             <>
               <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>玩家二维码</Text>
               <Text style={[styles.hint, { color: theme.textMuted }]}>舞萌-中二公众号 → 玩家二维码</Text>
+              <Text style={[styles.hint, { color: theme.textMuted }]}>粘贴二维码内容或从相册选择二维码图片，即可同步最新成绩。</Text>
               <TextInput
                 accessibilityLabel="玩家二维码字符串"
                 value={bindQrText}
@@ -955,32 +897,67 @@ export function UploadDataSheet({
                   )}
                 </Pressable>
               </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="用二维码同步成绩"
-                disabled={busy || !prefsReady}
-                onPress={() => void startQrUpload()}
-                style={({ pressed }) => [
-                  styles.secondary,
-                  { borderColor: theme.accent, backgroundColor: theme.surface, flex: 0 },
-                  (busy || !prefsReady) && styles.primaryDisabled,
-                  pressed && !busy && styles.softPressed,
-                ]}
-              >
-                {running && phase.kind === 'logging_in' && phase.authMode === 'qr' ? (
-                  <ActivityIndicator color={theme.accent} />
-                ) : (
-                  <Text style={[styles.secondaryText, { color: theme.accent }]}>用二维码同步成绩</Text>
-                )}
-              </Pressable>
             </>
-          ) : null}
+          )}
+
+          <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>上传到</Text>
+          <View style={[styles.listCard, { backgroundColor: theme.surface }]}>
+            {targets.length === 0 ? (
+              <Text style={[styles.empty, { color: theme.textMuted }]}>当前游戏没有已绑定查分器</Text>
+            ) : (
+              targets.map((target, index) => {
+                const checked = selectedIds.includes(target.account.id);
+                const icon = accountIcon(target.account);
+                return (
+                  <Pressable
+                    key={target.account.id}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={`上传到 ${target.account.displayName}（${target.account.providerTitle}）`}
+                    accessibilityState={{ checked, disabled: !target.writable || busy }}
+                    disabled={!target.writable || busy}
+                    onPress={() => toggleAccount(target.account.id, target.writable)}
+                    style={({ pressed }) => [
+                      styles.row,
+                      index > 0 && [styles.rowBorder, { borderTopColor: theme.border }],
+                      pressed && target.writable && styles.softPressed,
+                      !target.writable && styles.rowDisabled,
+                    ]}
+                  >
+                    <View style={[
+                      styles.box,
+                      { borderColor: theme.border, backgroundColor: theme.input },
+                      checked && target.writable && { backgroundColor: theme.accent, borderColor: theme.accent },
+                    ]}
+                    >
+                      {checked && target.writable ? <Text style={styles.boxMark}>✓</Text> : null}
+                    </View>
+                    {icon ? <Image source={icon} style={styles.icon} /> : (
+                      <View style={[styles.iconPlaceholder, { backgroundColor: theme.surfaceMuted }]} />
+                    )}
+                    <View style={styles.rowBody}>
+                      <Text style={[styles.rowTitle, { color: theme.text }]}>{target.account.displayName}</Text>
+                      <Text style={[styles.rowSub, { color: theme.textMuted }]}>{target.account.providerTitle}</Text>
+                      {target.disableReason ? (
+                        <Text style={[styles.rowWarn, { color: theme.warning }]}>{target.disableReason}</Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="开始上传"
+            accessibilityLabel={uploadMethod === 'qr' ? '用二维码同步成绩' : '开始上传'}
             disabled={busy || !prefsReady}
-            onPress={() => void startUpload()}
+            onPress={() => {
+              if (uploadMethod === 'qr') {
+                void startQrUpload();
+              } else {
+                void startUpload();
+              }
+            }}
             style={({ pressed }) => [
               styles.primary, { backgroundColor: theme.accent },
               (busy || !prefsReady) && styles.primaryDisabled,
@@ -990,7 +967,9 @@ export function UploadDataSheet({
             {running ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.primaryText}>开始上传</Text>
+              <Text style={styles.primaryText}>
+                {uploadMethod === 'qr' ? '用二维码同步成绩' : '开始上传'}
+              </Text>
             )}
           </Pressable>
 

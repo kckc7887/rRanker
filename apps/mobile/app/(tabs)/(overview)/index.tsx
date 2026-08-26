@@ -401,13 +401,13 @@ function PublicOverviewScreen() {
     ));
     setMaimaiSourceAccountId(sourceId);
     setMaimaiTransferTargetIds(activeTarget ? [activeTarget.account.id] : []);
-    setMaimaiUploadPage('friend_code');
+    if (!friendCodeUploadBusy && !syncBusy) setMaimaiUploadPage('friend_code');
     setUploadVisible(true);
   };
 
   const closeUpload = () => {
     setUploadVisible(false);
-    setMaimaiUploadPage('friend_code');
+    if (!friendCodeUploadBusy && !syncBusy) setMaimaiUploadPage('friend_code');
   };
   const openChunithmUpload = () => {
     if (isChunithmMaintenanceWindow()) {
@@ -714,6 +714,7 @@ function PublicOverviewScreen() {
             onSync={syncMaimaiFromLxns}
           />
         ) : undefined}
+        uploadMethod={maimaiLxnsGuideAvailable && maimaiUploadPage === 'qr' ? 'qr' : 'friend_code'}
         externalBusy={showingMaimaiSyncGuide && syncBusy}
       />
       <ChunithmSyncGuideSheet

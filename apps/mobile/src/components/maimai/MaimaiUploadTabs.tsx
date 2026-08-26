@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAppTheme } from '@/theme/app-theme';
 
-export type MaimaiUploadPage = 'friend_code' | 'lxns_guide';
+export type MaimaiUploadPage = 'friend_code' | 'qr' | 'lxns_guide';
 
 export function MaimaiUploadTabs({
   value,
@@ -24,6 +24,12 @@ export function MaimaiUploadTabs({
         selected={value === 'friend_code'}
         disabled={disabled}
         onPress={() => onChange('friend_code')}
+      />
+      <Tab
+        label="玩家二维码"
+        selected={value === 'qr'}
+        disabled={disabled}
+        onPress={() => onChange('qr')}
       />
       <Tab
         label="同步引导"
