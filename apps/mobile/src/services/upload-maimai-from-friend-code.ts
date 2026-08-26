@@ -4,16 +4,20 @@ import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
 import {
   bindCabinetByQr,
+  createCabinetScoreJob,
   createFriendLoginJob,
   createUpdateScoreJob,
+  fetchActiveCabinetScoreJob,
   fetchLatestSync,
   fetchMe,
   loginByQrUntilToken,
+  pollCabinetScoreJobUntilDone,
   pollLoginUntilToken,
   pollUpdateScoreUntilDone,
   ScoreHubError,
   type QrLoginCredential,
   type ScoreHubAbortSignal,
+  type ScoreHubCabinetScoreJob,
   type ScoreHubScoreProgress,
 } from '@/services/score-hub-client';
 import { uploadRecordsToDivingFish } from '@/services/diving-fish-upload';
@@ -101,8 +105,8 @@ export function scoreProgressMessage(progress: ScoreHubScoreProgress | null): st
 export function compactUploadPhaseLabel(phase: UploadPhase): string {
   switch (phase.kind) {
     case 'logging_in':
-      if (phase.authMode === 'qr') return '二维码登录中';
-      if (phase.authMode === 'session') return '会话拉分中';
+      if (phase.authMode === 'qr') return '确认二维码中';
+      if (phase.authMode === 'session') return '获取成绩中';
       return '创建任务中';
     case 'sending_friend':
       return '发送申请中';
@@ -300,28 +304,12 @@ export function isScoreHubAuthExpired(error: unknown): boolean {
     && (error.status === 401 || error.status === 403);
 }
 
-async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
+async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
   token: string;
-  friendshipJobId: string | null;
   playerIdForLocal: string;
   selected: UploadTarget[];
   persistFriendCode?: string | null;
 }): Promise<UploadResult> {
-  input.onPhase({ kind: 'fetching_scores', message: '获取各难度成绩中…' });
-  const scoreJobId = await createUpdateScoreJob(input.token, input.friendshipJobId, input.signal);
-  await pollUpdateScoreUntilDone({
-    token: input.token,
-    jobId: scoreJobId,
-    signal: input.signal,
-    onProgress: ({ progress, stage }) => {
-      if (typeof stage === 'string' && stage.includes('重试')) {
-        input.onPhase({ kind: 'fetching_scores', message: stage });
-        return;
-      }
-      input.onPhase({ kind: 'fetching_scores', message: scoreProgressMessage(progress) });
-    },
-  });
-
   const sync = await fetchLatestSync(input.token, input.signal);
   const scores = sync?.scores ?? [];
   if (scores.length === 0) {
@@ -516,6 +504,30 @@ async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
   };
 }
 
+async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
+  token: string;
+  friendshipJobId: string | null;
+  playerIdForLocal: string;
+  selected: UploadTarget[];
+  persistFriendCode?: string | null;
+}): Promise<UploadResult> {
+  input.onPhase({ kind: 'fetching_scores', message: '获取各难度成绩中…' });
+  const scoreJobId = await createUpdateScoreJob(input.token, input.friendshipJobId, input.signal);
+  await pollUpdateScoreUntilDone({
+    token: input.token,
+    jobId: scoreJobId,
+    signal: input.signal,
+    onProgress: ({ progress, stage }) => {
+      if (typeof stage === 'string' && stage.includes('重试')) {
+        input.onPhase({ kind: 'fetching_scores', message: stage });
+        return;
+      }
+      input.onPhase({ kind: 'fetching_scores', message: scoreProgressMessage(progress) });
+    },
+  });
+  return uploadLatestScoreHubSyncToTargets(input);
+}
+
 export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
   friendCode: string;
   onNeedFriendAccept: (botFriendCode: string | null) => void;
@@ -705,19 +717,12 @@ export async function bindScoreHubCabinetByQr(input: {
 
 export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
   credential: QrLoginCredential;
-  requireCabinetBound?: boolean;
+  onQrAccepted?: () => void;
 }): Promise<UploadResult> {
-  if (input.requireCabinetBound !== false) {
-    const account = await scoreHubAccountStore.load();
-    if (!account.hasCabinetBound) {
-      throw new ScoreHubError(QR_REQUIRES_BIND_MESSAGE);
-    }
-  }
-
   const selected = resolveSelectedTargets(input);
   input.onPhase({
     kind: 'logging_in',
-    message: '正在提交神秘二维码…',
+    message: '正在确认玩家二维码…',
     authMode: 'qr',
   });
 
@@ -731,44 +736,89 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : '神秘二维码登录失败';
-    if (
-      message.includes('好友列表')
-      || message.includes('候选好友')
-      || message.includes('改用好友码')
-    ) {
-      throw new ScoreHubError(
-        `${message}。请改用好友码上传并绑定玩家二维码后再试。`,
-      );
+    if (error instanceof ScoreHubError
+      && (error.code || error.retryable || error.status === 401 || error.status === 403)) {
+      throw error;
     }
-    throw error;
+    throw new ScoreHubError(
+      'qr login failed',
+      undefined,
+      false,
+      { code: 'QR_LOGIN_FAILED' },
+    );
   }
 
-  try {
-    const me = await fetchMe(login.token, input.signal);
+  const me = await fetchMe(login.token, input.signal);
+  const friendCode = me.friendCode ?? login.friendCode;
+  if (!me.hasCabinetUserId) {
+    throw new ScoreHubError(
+      'cabinet account not bound',
+      409,
+      false,
+      { code: 'CABINET_NOT_BOUND' },
+    );
+  }
+  if (friendCode) {
     await scoreHubAccountStore.upsert({
-      friendCode: me.friendCode ?? login.friendCode ?? '',
-      hasCabinetBound: me.hasCabinetUserId,
+      friendCode,
+      hasCabinetBound: true,
       token: login.token,
     });
-  } catch {
-    if (login.friendCode) {
-      await scoreHubAccountStore.upsert({
-        friendCode: login.friendCode,
-        token: login.token,
-      });
+  }
+
+  let job = await fetchActiveCabinetScoreJob(login.token, input.signal);
+  if (!job) {
+    try {
+      job = await createCabinetScoreJob(login.token, input.credential, input.signal);
+    } catch (error) {
+      const resumableCodes = new Set([
+        'SYNC_IN_PROGRESS',
+        'SESSION_CLEANUP_PENDING',
+        'SESSION_CLEANUP_UNCONFIRMED',
+      ]);
+      if (!(error instanceof ScoreHubError) || !error.code || !resumableCodes.has(error.code)) {
+        throw error;
+      }
+      job = await fetchActiveCabinetScoreJob(login.token, input.signal);
+      if (!job) throw error;
     }
   }
+  input.onQrAccepted?.();
+  input.onPhase({ kind: 'fetching_scores', message: cabinetScoreProgressMessage(job) });
+  await pollCabinetScoreJobUntilDone({
+    token: login.token,
+    job,
+    signal: input.signal,
+    onProgress: (current) => {
+      input.onPhase({ kind: 'fetching_scores', message: cabinetScoreProgressMessage(current) });
+    },
+  });
 
   const fallbackPlayerId = selected.find((target) => target.account.providerId === 'local')?.account.id
     ?? selected[0]!.account.id;
 
-  return uploadMaimaiAfterScoreHubToken({
+  return uploadLatestScoreHubSyncToTargets({
     ...input,
     selected,
     token: login.token,
-    friendshipJobId: null,
-    playerIdForLocal: login.friendCode ?? fallbackPlayerId,
-    persistFriendCode: login.friendCode,
+    playerIdForLocal: friendCode ?? fallbackPlayerId,
+    persistFriendCode: friendCode,
   });
+}
+
+function cabinetScoreProgressMessage(job: ScoreHubCabinetScoreJob): string {
+  if (job.cleanupStatus === 'pending' || job.cleanupStatus === 'unconfirmed') {
+    return '正在结束本次读取，请稍候…';
+  }
+  if (job.stage === 'queued') return '正在等待读取成绩…';
+  if (job.stage === 'qr_auth' || job.stage === 'preview' || job.stage === 'login') {
+    return '正在确认玩家账号…';
+  }
+  if (job.stage === 'get_music') {
+    return job.progress
+      ? `正在读取成绩…（已读取 ${job.progress.detailsFetched} 条）`
+      : '正在读取成绩…';
+  }
+  if (job.stage === 'persist') return '正在整理成绩…';
+  return '正在完成成绩读取…';
 }

@@ -1,5 +1,8 @@
 import {
+  createCabinetScoreJob,
+  createUpdateScoreJob,
   isRetryableScoreHubError,
+  pollCabinetScoreJobUntilDone,
   pollUpdateScoreUntilDone,
   ScoreHubError,
 } from '@/services/score-hub-client';
@@ -30,6 +33,55 @@ describe('score-hub poll resilience', () => {
     expect(isRetryableScoreHubError(new Error('terminated'))).toBe(true);
     expect(isRetryableScoreHubError(new ScoreHubError('已取消'))).toBe(false);
     expect(isRetryableScoreHubError(new ScoreHubError('获取成绩失败'))).toBe(false);
+  });
+
+  it('创建 DXNet 成绩任务时显式提交全部难度', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { jobId: 'job-all-diffs' }));
+
+    await expect(createUpdateScoreJob('tok', 'friendship-job')).resolves.toBe('job-all-diffs');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/me/dxnet-jobs'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          jobType: 'update_score',
+          diffsToScrape: [0, 1, 2, 3, 4, 10],
+          friendshipJobId: 'friendship-job',
+        }),
+      }),
+    );
+  });
+
+  it('创建二维码成绩任务时只提交当前二维码', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(202, {
+      jobId: 'cabinet-job',
+      job: {
+        id: 'cabinet-job',
+        status: 'queued',
+        stage: 'queued',
+        cleanupStatus: 'not_required',
+        progress: null,
+        syncId: null,
+        scoreCount: null,
+        error: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+
+    await expect(createCabinetScoreJob(
+      'tok',
+      { kind: 'text', qrCode: ' SGWCMAIDCURRENT ' },
+    )).resolves.toEqual(expect.objectContaining({ id: 'cabinet-job' }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/me/cabinet-score-jobs'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ qrCode: 'SGWCMAIDCURRENT' }),
+      }),
+    );
   });
 
   it('continues polling after a terminated network error', async () => {
@@ -67,5 +119,34 @@ describe('score-hub poll resilience', () => {
     expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({
       status: 'completed',
     }));
+  });
+
+  it('二维码任务失败后等待收尾完成再结束', async () => {
+    const createdAt = new Date().toISOString();
+    const initial = {
+      id: 'cabinet-cleanup',
+      status: 'failed' as const,
+      stage: 'cleanup' as const,
+      cleanupStatus: 'pending' as const,
+      progress: { detailsFetched: 120 },
+      syncId: null,
+      scoreCount: null,
+      error: { code: 'SESSION_CLEANUP_PENDING', retryAfter: null },
+      createdAt,
+      updatedAt: createdAt,
+    };
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {
+      ...initial,
+      cleanupStatus: 'succeeded',
+      error: { code: 'WORKER_INTERRUPTED_SESSION_CLEANED', retryAfter: null },
+    }));
+
+    const done = pollCabinetScoreJobUntilDone({ token: 'tok', job: initial });
+    const expectation = expect(done).rejects.toMatchObject({
+      code: 'WORKER_INTERRUPTED_SESSION_CLEANED',
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expectation;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

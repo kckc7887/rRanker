@@ -4,6 +4,8 @@ import {
   loginByQrUntilToken,
   parseQrLoginInitBody,
   pollQrLoginUntilToken,
+  scoreHubErrorToUserMessage,
+  ScoreHubError,
 } from '@/services/score-hub-client';
 
 const fetchMock = vi.hoisted(() => vi.fn());
@@ -98,7 +100,7 @@ describe('score-hub qr-login', () => {
       friendCode: '222222222222222',
     });
     expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({
-      message: '正在准备登录…',
+      message: '正在准备读取…',
     }));
   });
 
@@ -111,5 +113,18 @@ describe('score-hub qr-login', () => {
     const expectation = expect(done).rejects.toThrow(/好友码/);
     await vi.advanceTimersByTimeAsync(0);
     await expectation;
+  });
+
+  it('将二维码任务错误映射为可执行提示', () => {
+    expect(scoreHubErrorToUserMessage(
+      new ScoreHubError('upstream detail', 400, false, { code: 'QR_EXPIRED' }),
+      '同步失败',
+    )).toBe('玩家二维码已失效，请在公众号重新打开后重试。');
+    expect(scoreHubErrorToUserMessage(
+      new ScoreHubError('upstream detail', 409, false, { code: 'CABINET_USER_MISMATCH' }),
+      '同步失败',
+    )).toBe('玩家二维码与当前账号不一致，请使用本人的二维码重试。');
+    expect(scoreHubErrorToUserMessage(new Error('raw upstream text'), '同步失败'))
+      .toBe('同步失败');
   });
 });
