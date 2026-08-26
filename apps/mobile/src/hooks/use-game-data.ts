@@ -252,7 +252,7 @@ export function useGameData(enabled = true) {
               },
             };
           };
-          // 示例账号仍由真实公开曲库生成，但公开曲库只保留在本次 React Query 会话。
+          // 示例账号由真实公开曲库生成，并复用曲库首页的本地数据与后台刷新路径。
           return loadChunithmCatalog().then(toBundle);
         }
         if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {

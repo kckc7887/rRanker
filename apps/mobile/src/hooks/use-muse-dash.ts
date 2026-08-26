@@ -19,10 +19,8 @@ import { queryClient } from '@/state/query-client';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import {
   loadMuseDashAlbumsCacheFirst,
-  loadMuseDashAlbumsFresh,
   loadMuseDashCeFresh,
   loadMuseDashDiffdiffCacheFirst,
-  loadMuseDashDiffdiffFresh,
   loadMuseDashPlayDetailFresh,
   loadMuseDashPlayerFresh,
   makeMuseDashSnapshot,
@@ -163,20 +161,34 @@ export function useMuseDashPlayDetails(
 export function useMuseDashAlbums(enabled = true) {
   const queryKey = ['musedash', 'albums'] as const;
   return useMuseDashCacheFirst<MuseDashAlbumsResponse>(queryKey, async () => {
-    return makeMuseDashSnapshot(await loadMuseDashAlbumsFresh());
+    return loadMuseDashAlbumsCacheFirst(cache, (fresh) => {
+      queryClient.setQueryData(queryKey, fresh);
+    });
   }, enabled);
 }
 
 export function useMuseDashCe(enabled = true) {
   const queryKey = ['musedash', 'ce'] as const;
   return useMuseDashCacheFirst<MuseDashCeResponse>(queryKey, async () => {
-    return makeMuseDashSnapshot(await loadMuseDashCeFresh());
+    return cacheFirstLoad({
+      loadCached: () => cache.loadCe(),
+      loadFresh: async () => {
+        const fresh = makeMuseDashSnapshot(await loadMuseDashCeFresh());
+        await cache.saveCe(fresh);
+        return fresh;
+      },
+      onFresh: (fresh) => {
+        queryClient.setQueryData(queryKey, fresh);
+      },
+    });
   }, enabled);
 }
 
 export function useMuseDashDiffdiff(enabled = true) {
   const queryKey = ['musedash', 'diffdiff'] as const;
   return useMuseDashCacheFirst<MuseDashDiffdiffEntry[]>(queryKey, async () => {
-    return makeMuseDashSnapshot(await loadMuseDashDiffdiffFresh());
+    return loadMuseDashDiffdiffCacheFirst(cache, (fresh) => {
+      queryClient.setQueryData(queryKey, fresh);
+    });
   }, enabled);
 }

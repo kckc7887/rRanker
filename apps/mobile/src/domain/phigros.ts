@@ -3,6 +3,9 @@ import { AES, Base64, Hex, WordArray } from '@/utils/crypto-subset';
 import JSZip from 'jszip';
 import type { Difficulty, PhigrosChartNotes, ScoreRecord } from '@/domain/models';
 
+export const PHIGROS_CATALOG_RESOURCE_KEY = 'phigros-catalog';
+export const PHIGROS_CATALOG_SCHEMA_VERSION = 1;
+
 const AES_KEY_B64 = '6Jaa0qVAJZuXkZCLiOa/Ax5tIZVu+taKUN1V1nqwkks=';
 const AES_IV_B64 = 'Kk/wisgNYwcAV8WVGMgyUw==';
 

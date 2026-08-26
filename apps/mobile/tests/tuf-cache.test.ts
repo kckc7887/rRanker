@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TufPassPage, TufPlayer } from '@/domain/tuf';
 import {
   TUF_DIFFICULTIES_CACHE_KEY,
+  TUF_LEVEL_HOME_CACHE_KEY,
   tufLevelCacheKey,
   tufLevelPageCacheKey,
   tufPassPageCacheKey,
@@ -61,6 +62,7 @@ describe('tuf cache keys', () => {
     expect(tufPlayerCacheKey(25)).toBe('tuf:player:25');
     expect(tufLevelCacheKey(11372)).toBe('tuf:level:11372');
     expect(TUF_DIFFICULTIES_CACHE_KEY).toBe('tuf:difficulties');
+    expect(TUF_LEVEL_HOME_CACHE_KEY).toBe('tuf:levels:home');
   });
 
   it('encodes pass query text and offsets', () => {
@@ -108,6 +110,12 @@ describe('tuf cache snapshots', () => {
     await cache.savePassPage(25, options, 0, snapshot);
     expect((await cache.loadPassPage(25, options, 0))?.data.total).toBe(1);
     expect(await cache.loadPassPage(25, options, 30)).toBeNull();
+  });
+
+  it('round-trips the dedicated default catalog page resource', async () => {
+    const snapshot = makeTufSnapshot({ total: 0, results: [], limit: 30, offset: 0, hasMore: false });
+    await cache.saveLevelHome(snapshot);
+    expect((await cache.loadLevelHome())?.data.offset).toBe(0);
   });
 
   it('keeps global resources but clears player-owned caches on unbind', async () => {

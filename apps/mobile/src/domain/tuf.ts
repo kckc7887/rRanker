@@ -423,6 +423,7 @@ export const TUF_PASS_PAGE_SCHEMA_VERSION = 1;
 export const TUF_LEVEL_PAGE_SCHEMA_VERSION = 1;
 export const TUF_LEVEL_SCHEMA_VERSION = 1;
 export const TUF_DIFFICULTIES_SCHEMA_VERSION = 1;
+export const TUF_LEVEL_HOME_CACHE_KEY = 'tuf:levels:home';
 
 export function tufPlayerCacheKey(playerId: number): string {
   return `tuf:player:${playerId}`;

@@ -24,6 +24,7 @@ import {
 } from '@/domain/muse-dash';
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { cacheFirstLoad } from '@/services/cache-first';
 import { clearResourcesByPrefix, createInflightGuard, makeSnapshot } from '@/services/snapshot-cache-utils';
 
 /** 构造 Muse Dash 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
@@ -64,15 +65,33 @@ export function loadMuseDashDiffdiffFresh(): Promise<MuseDashDiffdiffSnapshot['d
  * 网络请求由 inflightLoads 去重，多路并发只发一次。
  */
 export function loadMuseDashAlbumsCacheFirst(
-  _cache: Pick<MuseDashCache, 'loadAlbums' | 'saveAlbums'>,
+  cache: Pick<MuseDashCache, 'loadAlbums' | 'saveAlbums'>,
+  onFresh: (fresh: MuseDashAlbumsSnapshot) => void = () => undefined,
 ): Promise<MuseDashAlbumsSnapshot> {
-  return loadMuseDashAlbumsFresh().then((albums) => makeMuseDashSnapshot(albums));
+  return cacheFirstLoad({
+    loadCached: () => cache.loadAlbums(),
+    loadFresh: async () => {
+      const fresh = makeMuseDashSnapshot(await loadMuseDashAlbumsFresh());
+      await cache.saveAlbums(fresh);
+      return fresh;
+    },
+    onFresh,
+  });
 }
 
 export function loadMuseDashDiffdiffCacheFirst(
-  _cache: Pick<MuseDashCache, 'loadDiffdiff' | 'saveDiffdiff'>,
+  cache: Pick<MuseDashCache, 'loadDiffdiff' | 'saveDiffdiff'>,
+  onFresh: (fresh: MuseDashDiffdiffSnapshot) => void = () => undefined,
 ): Promise<MuseDashDiffdiffSnapshot> {
-  return loadMuseDashDiffdiffFresh().then((entries) => makeMuseDashSnapshot(entries));
+  return cacheFirstLoad({
+    loadCached: () => cache.loadDiffdiff(),
+    loadFresh: async () => {
+      const fresh = makeMuseDashSnapshot(await loadMuseDashDiffdiffFresh());
+      await cache.saveDiffdiff(fresh);
+      return fresh;
+    },
+    onFresh,
+  });
 }
 
 /**

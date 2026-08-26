@@ -1,13 +1,17 @@
 import type { OsuGameId } from '@/domain/game-mode-family';
 import {
+  OSU_CATALOG_HOME_SCHEMA_VERSION,
   OSU_SNAPSHOT_SCHEMA_VERSION,
   OSU_KNOWN_SCORES_SCHEMA_VERSION,
   OsuKnownScoresSnapshotSchema,
   OsuSnapshotSchema,
   normalizeOsuSnapshot,
+  normalizeOsuCatalogSongs,
+  osuCatalogHomeCacheKey,
   osuKnownScoresCacheKey,
   osuSnapshotCacheKey,
   type OsuBestScore,
+  type OsuCatalogHomeSnapshot,
   type OsuKnownScoresSnapshot,
   type OsuSnapshot,
   type OsuSnapshotData,
@@ -43,6 +47,29 @@ export function loadOsuSnapshotFresh(
       provider.getBestScores(userId, gameId),
     ]);
     return makeOsuSnapshot(normalizeOsuSnapshot(user, bestScores));
+  });
+}
+
+export function loadOsuCatalogHomeFresh(
+  provider: OsuScoreProvider,
+  gameId: OsuGameId,
+): Promise<OsuCatalogHomeSnapshot> {
+  return inflightLoads.dedupe(`catalog-home:${gameId}`, async () => {
+    const raw = await provider.searchBeatmapsets({
+      gameId,
+      general: [],
+      status: 'any',
+      genre: 0,
+      language: 0,
+      nsfw: false,
+      extras: [],
+    });
+    return makeSnapshot({
+      songs: normalizeOsuCatalogSongs(raw, gameId),
+      total: raw.total,
+      recommendedDifficulty: raw.recommended_difficulty ?? null,
+      cursor: raw.cursor_string ?? null,
+    }, { kind: 'osu', label: 'osu.ppy.sh' });
   });
 }
 
@@ -91,6 +118,22 @@ export class OsuCache {
     await this.repository.saveResource(
       osuKnownScoresCacheKey(gameId, userId),
       OSU_KNOWN_SCORES_SCHEMA_VERSION,
+      snapshot.source.updatedAt,
+      snapshot,
+    );
+  }
+
+  async loadCatalogHome(gameId: OsuGameId): Promise<OsuCatalogHomeSnapshot | null> {
+    return this.repository.getResource<OsuCatalogHomeSnapshot>(
+      osuCatalogHomeCacheKey(gameId),
+      OSU_CATALOG_HOME_SCHEMA_VERSION,
+    );
+  }
+
+  async saveCatalogHome(gameId: OsuGameId, snapshot: OsuCatalogHomeSnapshot): Promise<void> {
+    await this.repository.saveResource(
+      osuCatalogHomeCacheKey(gameId),
+      OSU_CATALOG_HOME_SCHEMA_VERSION,
       snapshot.source.updatedAt,
       snapshot,
     );

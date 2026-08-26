@@ -46,7 +46,7 @@ describe('快照持久化能力', () => {
 
   it('曲库快照对任意 Provider 均持久化', () => {
     expect(shouldPersistMaimaiCatalog(null)).toBe(false);
-    expect(shouldPersistMaimaiCatalog('diving-fish')).toBe(false);
-    expect(shouldPersistMaimaiCatalog('phigros-test')).toBe(false);
+    expect(shouldPersistMaimaiCatalog('diving-fish')).toBe(true);
+    expect(shouldPersistMaimaiCatalog('phigros-test')).toBe(true);
   });
 });
