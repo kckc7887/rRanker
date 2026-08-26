@@ -210,6 +210,7 @@ function renderSheet(
   temporarySelectedAccountIds?: readonly string[],
   accounts = [local, water],
   visible = true,
+  uploadMethod: 'friend_code' | 'qr' = 'friend_code',
 ) {
   return render(
     <NotificationProvider>
@@ -220,6 +221,7 @@ function renderSheet(
         catalog={catalog}
         onClose={jest.fn()}
         temporarySelectedAccountIds={temporarySelectedAccountIds}
+        uploadMethod={uploadMethod}
       />
     </NotificationProvider>,
   );
@@ -270,14 +272,14 @@ describe('好友码统一上传弹窗', () => {
     expect(screen.getAllByText(/多刷新几次才能看到申请/).length).toBeGreaterThan(0);
   });
 
-  it('无已保存账号时仍展示二维码同步入口且默认收起', async () => {
+  it('好友码页不展示玩家二维码入口', async () => {
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
-    expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy();
     expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
+    expect(screen.queryByLabelText('用二维码同步成绩')).toBeNull();
   });
 
-  it('二维码同步入口展开后可直接校验输入', async () => {
+  it('玩家二维码页直接显示输入与独立同步按钮', async () => {
     setHubEntry({
       friendCode: '111111111111111',
       token: 'tok',
@@ -285,13 +287,40 @@ describe('好友码统一上传弹窗', () => {
       updatedAt: 1,
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
-    const screen = await renderSheet([water.id]);
-    expect(await screen.findByLabelText('使用玩家二维码同步')).toBeTruthy();
-    expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
-    await fireEvent.press(screen.getByLabelText('使用玩家二维码同步'));
+    const screen = await renderSheet([water.id], [local, water], true, 'qr');
     expect(await screen.findByLabelText('玩家二维码字符串')).toBeTruthy();
+    expect(screen.queryByLabelText('舞萌好友码')).toBeNull();
+    expect(screen.queryByLabelText('开始上传')).toBeNull();
+    expect(screen.queryByLabelText('score-hub 近一小时统计')).toBeNull();
     await fireEvent.press(screen.getByLabelText('用二维码同步成绩'));
     expect(await screen.findByText('缺少玩家二维码')).toBeTruthy();
+  });
+
+  it('离开玩家二维码页后清空未提交的二维码内容', async () => {
+    const renderMethod = (uploadMethod: 'friend_code' | 'qr') => (
+      <NotificationProvider>
+        <UploadDataSheet
+          visible
+          accounts={[local, water]}
+          sessionsByAccountId={{ [water.id]: waterSession }}
+          catalog={catalog}
+          onClose={jest.fn()}
+          temporarySelectedAccountIds={[water.id]}
+          uploadMethod={uploadMethod}
+        />
+      </NotificationProvider>
+    );
+    const screen = await render(renderMethod('qr'));
+    await fireEvent.changeText(await screen.findByLabelText('玩家二维码字符串'), 'SGWCMAIDCURRENT');
+
+    await act(async () => {
+      screen.rerender(renderMethod('friend_code'));
+    });
+    expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
+    await act(async () => {
+      screen.rerender(renderMethod('qr'));
+    });
+    expect((await screen.findByLabelText('玩家二维码字符串')).props.value).toBe('');
   });
 
   it('已保存账号时好友码上传直接获取成绩', async () => {
@@ -303,8 +332,8 @@ describe('好友码统一上传弹窗', () => {
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: true });
     const screen = await renderSheet([water.id]);
-    expect(await screen.findByLabelText('玩家二维码已绑定')).toBeTruthy();
-    expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy();
+    expect(await screen.findByLabelText('已保存舞萌账号')).toBeTruthy();
+    expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
     await fireEvent.press(screen.getByLabelText('开始上传'));
     await waitFor(() => expect(mockUploadSession).toHaveBeenCalled());
@@ -320,7 +349,7 @@ describe('好友码统一上传弹窗', () => {
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
     const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
     await fireEvent.press(screen.getByLabelText('开始上传'));
     await waitFor(() => expect(mockUploadFriend).toHaveBeenCalled());
     expect(mockUploadSession).not.toHaveBeenCalled();
@@ -336,7 +365,7 @@ describe('好友码统一上传弹窗', () => {
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: true });
     mockUploadSession.mockRejectedValueOnce(new ScoreHubError('登录已失效', 401));
     const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('玩家二维码已绑定')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('已保存舞萌账号')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('开始上传'));
     await waitFor(() => expect(mockUploadSession).toHaveBeenCalled());
     await waitFor(() => expect(mockUploadFriend).toHaveBeenCalled());
@@ -360,14 +389,14 @@ describe('好友码统一上传弹窗', () => {
       .mockResolvedValueOnce({ friendCode: '222222222222222', hasCabinetUserId: true });
 
     const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
     await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
     expect(await screen.findByLabelText('ScoreHub 好友码历史列表')).toBeTruthy();
     expect(screen.getByLabelText('删除好友码 222222222222222')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('选择好友码 222222222222222'));
     await waitFor(() => expect(screen.getByLabelText('舞萌好友码').props.value).toBe('222222222222222'));
-    await waitFor(() => expect(screen.getByLabelText('玩家二维码已绑定')).toBeTruthy());
-    expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('已保存舞萌账号')).toBeTruthy());
+    expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
     await fireEvent.press(screen.getByLabelText('删除好友码 111111111111111'));
@@ -482,9 +511,7 @@ describe('好友码统一上传弹窗', () => {
       mockResolvedValueOnce: (value: unknown) => void;
     }).mockResolvedValueOnce('SGWCMAIDBIND');
 
-    const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy());
-    await fireEvent.press(screen.getByLabelText('使用玩家二维码同步'));
+    const screen = await renderSheet([water.id], [local, water], true, 'qr');
     await fireEvent.press(screen.getByLabelText('从相册选择玩家二维码图片'));
     await waitFor(() => {
       expect(screen.getByLabelText('玩家二维码字符串').props.value).toBe('SGWCMAIDBIND');
@@ -497,8 +524,8 @@ describe('好友码统一上传弹窗', () => {
       input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
       return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
     });
-    const screen = await renderSheet([water.id]);
-    await fireEvent.press(await screen.findByLabelText('使用玩家二维码同步'));
+    const screen = await renderSheet([water.id], [local, water], true, 'qr');
+    await screen.findByLabelText('玩家二维码字符串');
     await fireEvent.changeText(screen.getByLabelText('玩家二维码字符串'), 'SGWCMAIDCURRENT');
     await fireEvent.press(screen.getByLabelText('用二维码同步成绩'));
 
@@ -538,13 +565,13 @@ describe('好友码统一上传弹窗', () => {
           onClose={onClose}
           onPhaseChange={onPhaseChange}
           temporarySelectedAccountIds={[water.id]}
+          uploadMethod="qr"
         />
       </NotificationProvider>
     );
 
     const view = await render(renderVisible(true));
-    await waitFor(() => expect(view.getByLabelText('使用玩家二维码同步')).toBeTruthy());
-    await fireEvent.press(view.getByLabelText('使用玩家二维码同步'));
+    await waitFor(() => expect(view.getByLabelText('玩家二维码字符串')).toBeTruthy());
     await fireEvent.changeText(view.getByLabelText('玩家二维码字符串'), 'SGWCMAIDBIND');
     await fireEvent.press(view.getByLabelText('用二维码同步成绩'));
     await waitFor(() => expect(mockUploadQr).toHaveBeenCalled());
@@ -598,12 +625,12 @@ describe('好友码统一上传弹窗', () => {
             onClose={jest.fn()}
             onPhaseChange={onPhaseChange}
             temporarySelectedAccountIds={[water.id]}
+            uploadMethod="qr"
           />
         </NotificationProvider>,
       );
 
-      await waitFor(() => expect(view.getByLabelText('使用玩家二维码同步')).toBeTruthy());
-      await fireEvent.press(view.getByLabelText('使用玩家二维码同步'));
+      await waitFor(() => expect(view.getByLabelText('玩家二维码字符串')).toBeTruthy());
       await fireEvent.changeText(view.getByLabelText('玩家二维码字符串'), 'SGWCMAIDBIND');
       await fireEvent.press(view.getByLabelText('用二维码同步成绩'));
       await waitFor(() => {

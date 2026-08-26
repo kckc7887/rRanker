@@ -42,17 +42,21 @@ jest.mock('@/components/UploadDataSheet', () => {
       temporarySelectedAccountIds,
       headerAccessory,
       contentOverride,
+      uploadMethod,
     }: {
       visible: boolean;
       temporarySelectedAccountIds?: readonly string[];
       headerAccessory?: ReactNode;
       contentOverride?: ReactNode;
+      uploadMethod?: 'friend_code' | 'qr';
     }) => {
     mockTemporarySelectedAccountIds = temporarySelectedAccountIds;
       return visible ? (
         <>
           {headerAccessory}
-          {contentOverride ?? <RN.Text>好友码上传界面</RN.Text>}
+          {contentOverride ?? (
+            <RN.Text>{uploadMethod === 'qr' ? '二维码上传界面' : '好友码上传界面'}</RN.Text>
+          )}
         </>
       ) : null;
     },
@@ -66,9 +70,9 @@ jest.mock('@/components/maimai/MaimaiUploadTabs', () => {
       disabled,
       onChange,
     }: {
-      value: 'friend_code' | 'lxns_guide';
+      value: 'friend_code' | 'qr' | 'lxns_guide';
       disabled: boolean;
-      onChange: (value: 'friend_code' | 'lxns_guide') => void;
+      onChange: (value: 'friend_code' | 'qr' | 'lxns_guide') => void;
     }) => (
       <>
         <RN.Text>上传顶部选择栏</RN.Text>
@@ -77,6 +81,12 @@ jest.mock('@/components/maimai/MaimaiUploadTabs', () => {
           accessibilityState={{ selected: value === 'friend_code', disabled }}
           disabled={disabled}
           onPress={() => onChange('friend_code')}
+        />
+        <RN.Pressable
+          accessibilityLabel="测试切换玩家二维码"
+          accessibilityState={{ selected: value === 'qr', disabled }}
+          disabled={disabled}
+          onPress={() => onChange('qr')}
         />
         <RN.Pressable
           accessibilityLabel="测试切换同步引导"
@@ -263,7 +273,7 @@ describe('总览上传和同步操作', () => {
     await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockExtraLocal.id]));
   });
 
-  it('其他舞萌查分器页显示上传与同步双按钮，上传页也可切换同步引导', async () => {
+  it('其他舞萌查分器页显示上传与同步双按钮，上传页可切换独立二维码页和同步引导', async () => {
     mockProviderId = 'diving-fish';
     const screen = await render(<OverviewScreen />);
     expect(screen.getByText('上传数据')).toBeTruthy();
@@ -273,6 +283,10 @@ describe('总览上传和同步操作', () => {
     expect(screen.getByText('好友码上传界面')).toBeTruthy();
     expect(screen.getByText('上传顶部选择栏')).toBeTruthy();
     await waitFor(() => expect(mockTemporarySelectedAccountIds).toEqual([mockExtraWater.id]));
+
+    await fireEvent.press(screen.getByLabelText('测试切换玩家二维码'));
+    expect(screen.getByText('二维码上传界面')).toBeTruthy();
+    expect(screen.queryByText('好友码上传界面')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('测试切换同步引导'));
     expect(screen.getByText('舞萌同步引导界面')).toBeTruthy();

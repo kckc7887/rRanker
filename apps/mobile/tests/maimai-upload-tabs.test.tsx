@@ -13,7 +13,7 @@ jest.mock('@/theme/app-theme', () => ({
 }));
 
 describe('Maimai upload tabs', () => {
-  it('switches between the friend code and sync guide pages', async () => {
+  it('switches among friend code, player QR, and sync guide pages', async () => {
     const onChange = jest.fn();
     const screen = await render(
       <MaimaiUploadTabs value="friend_code" disabled={false} onChange={onChange} />,
@@ -21,9 +21,13 @@ describe('Maimai upload tabs', () => {
 
     expect(screen.getByLabelText('切换到好友码页面').props.accessibilityState)
       .toEqual({ selected: true, disabled: false });
+    expect(screen.getByLabelText('切换到玩家二维码页面').props.accessibilityState)
+      .toEqual({ selected: false, disabled: false });
     expect(screen.getByLabelText('切换到同步引导页面').props.accessibilityState)
       .toEqual({ selected: false, disabled: false });
 
+    await fireEvent.press(screen.getByLabelText('切换到玩家二维码页面'));
+    expect(onChange).toHaveBeenCalledWith('qr');
     await fireEvent.press(screen.getByLabelText('切换到同步引导页面'));
     expect(onChange).toHaveBeenCalledWith('lxns_guide');
   });
@@ -35,6 +39,7 @@ describe('Maimai upload tabs', () => {
     );
 
     await fireEvent.press(screen.getByLabelText('切换到好友码页面'));
+    await fireEvent.press(screen.getByLabelText('切换到玩家二维码页面'));
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByLabelText('切换到同步引导页面').props.accessibilityState)
       .toEqual({ selected: true, disabled: true });
