@@ -17,19 +17,23 @@ import { findGame, findProvider } from '@/domain/game-bind-options';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
 import type { ScoreHubAbortSignal, ScoreHubDxnetJobStats } from '@/services/score-hub-client';
-import { fetchMe, fetchScoreHubStatistics } from '@/services/score-hub-client';
+import {
+  fetchMe,
+  fetchScoreHubStatistics,
+  scoreHubErrorToUserMessage,
+} from '@/services/score-hub-client';
 import {
   decodeMaimaiQrFromImageUri,
   extractMaimaiQrPayload,
 } from '@/services/maimai-qr-decode';
 import {
   FRIEND_REQUEST_REFRESH_HINT,
-  bindScoreHubCabinetByQr,
   formatScoreHubStatsSummary,
   isScoreHubAuthExpired,
   resolveUploadTargets,
   scoreHubSuccessHint,
   uploadMaimaiFromFriendCode,
+  uploadMaimaiFromQrLogin,
   uploadMaimaiWithScoreHubSession,
   type UploadPhase,
   type UploadResult,
@@ -141,7 +145,6 @@ export function UploadDataSheet({
     : statsStatus === 'error'
       ? '无法获取近一小时公开统计，上传仍可继续尝试。'
       : null;
-  const showBindButton = hasStoredToken && !hasCabinetBound;
   const useSessionUpload = hasStoredToken && hasCabinetBound;
 
   const persist = useCallback((nextCode: string, nextIds: string[], writeSelection = true) => {
@@ -194,7 +197,6 @@ export function UploadDataSheet({
   const applyLocalAccountState = useCallback((code: string, entry: ScoreHubAccountEntry | null) => {
     setHasStoredToken(Boolean(entry?.token));
     setHasCabinetBound(entry?.hasCabinetBound === true);
-    if (entry?.hasCabinetBound) setBindPanelOpen(false);
   }, []);
 
   const refreshBindStatus = useCallback(async (code: string) => {
@@ -232,7 +234,6 @@ export function UploadDataSheet({
         if (seq !== bindLookupSeqRef.current) return;
         setHasCabinetBound(bound);
         setHasStoredToken(true);
-        if (bound) setBindPanelOpen(false);
         await refreshStoredList();
       } catch (error) {
         if (seq !== bindLookupSeqRef.current) return;
@@ -252,6 +253,7 @@ export function UploadDataSheet({
       setDecodingQr(false);
       setPrefsReady(false);
       setHistoryVisible(false);
+      setBindQrText('');
       wasVisibleRef.current = false;
       return;
     }
@@ -350,6 +352,7 @@ export function UploadDataSheet({
     if (externalBusy) return;
     setDecodingQr(false);
     setHistoryVisible(false);
+    setBindQrText('');
     onClose();
   };
 
@@ -391,7 +394,6 @@ export function UploadDataSheet({
       void scoreHubAccountStore.getByFriendCode(digits).then((entry) => {
         applyLocalAccountState(digits, entry);
       });
-      setBindPanelOpen(false);
     }
   };
 
@@ -434,7 +436,7 @@ export function UploadDataSheet({
   };
 
   const pickQrImage = async () => {
-    if (running || decodingQr || hasCabinetBound || !bindPanelOpen) return;
+    if (running || decodingQr || !bindPanelOpen) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       showNotification({
@@ -462,7 +464,7 @@ export function UploadDataSheet({
       applyQrText(payload);
       showNotification({
         title: '已识别二维码',
-        message: '绑定用字符串已填入，可点「绑定二维码」。',
+        message: '玩家二维码已填入，可以开始同步成绩。',
         variant: 'success',
       });
     } catch {
@@ -473,7 +475,7 @@ export function UploadDataSheet({
   };
 
   const pasteQrText = async () => {
-    if (running || decodingQr || hasCabinetBound || !bindPanelOpen) return;
+    if (running || decodingQr || !bindPanelOpen) return;
     const text = (await Clipboard.getStringAsync()).trim();
     if (!text) {
       showNotification({
@@ -506,6 +508,10 @@ export function UploadDataSheet({
     },
     onLxnsTokensRotated,
   });
+
+  const uploadErrorMessage = (error: unknown, fallback: string) => (
+    scoreHubErrorToUserMessage(error, providerErrorToUserMessage(error, fallback))
+  );
 
   const startUpload = async () => {
     if (running || decodingQr) return;
@@ -583,7 +589,7 @@ export function UploadDataSheet({
       if (abortRef.current.aborted) {
         applyPhase({ kind: 'idle' });
       } else {
-        const message = providerErrorToUserMessage(error, '上传失败，请稍后重试。');
+        const message = uploadErrorMessage(error, '上传失败，请稍后重试。');
         applyPhase({ kind: 'error', message });
       }
     } finally {
@@ -592,18 +598,26 @@ export function UploadDataSheet({
     }
   };
 
-  const startBindCabinet = async () => {
-    if (running || decodingQr || hasCabinetBound || !hasStoredToken) return;
+  const startQrUpload = async () => {
+    if (running || decodingQr) return;
     if (isMaimaiMaintenanceWindow()) {
       showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
       return;
     }
     if (!bindQrText.trim()) {
       showNotification({
-        title: '缺少绑定二维码',
-        message: '请粘贴或识别公众号玩家二维码后再绑定。',
+        title: '缺少玩家二维码',
+        message: '请粘贴或识别公众号玩家二维码后再同步。',
         variant: 'warning',
       });
+      return;
+    }
+    if (selectedIds.filter((id) => targets.some((t) => t.writable && t.account.id === id)).length === 0) {
+      showNotification({ title: '未选择目标', message: '请勾选至少一个可写入的查分器。', variant: 'warning' });
+      return;
+    }
+    if (!catalog) {
+      showNotification({ title: '曲库未就绪', message: '请先同步曲库后再上传，否则无法匹配曲名。', variant: 'warning' });
       return;
     }
 
@@ -611,37 +625,44 @@ export function UploadDataSheet({
     uploadInFlightRef.current = true;
     setRunning(true);
     setLastResult(null);
-    applyPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
+    applyPhase({ kind: 'logging_in', message: '正在确认玩家二维码…', authMode: 'qr' });
 
     try {
-      await bindScoreHubCabinetByQr({
-        qrCode: bindQrText.trim(),
-        friendCode: friendCode.trim() || null,
+      const result = await uploadMaimaiFromQrLogin({
+        credential: { kind: 'text', qrCode: bindQrText.trim() },
+        selectedAccountIds: selectedIds,
+        targets,
+        sessionsByAccountId,
+        catalog,
         signal: abortRef.current,
         onPhase: applyPhase,
+        onQrAccepted: () => setBindQrText(''),
+        onLxnsTokensRotated,
       });
-      setHasCabinetBound(true);
-      setBindQrText('');
-      setBindPanelOpen(false);
-      applyPhase({
-        kind: 'done',
-        message: '玩家二维码已绑定。之后开始上传将复用登录会话拉分，不会再次发起好友申请。',
-        uploaded: 0,
-        skipped: 0,
-      });
-      showNotification({
-        title: '绑定成功',
-        message: '已绑定，可以开始上传。',
-        variant: 'success',
-      });
+      setLastResult(result);
       await refreshStoredList();
+      const latest = await scoreHubAccountStore.load();
+      if (latest.friendCode) {
+        setFriendCode(latest.friendCode);
+        setHasStoredToken(Boolean(latest.token));
+        setHasCabinetBound(latest.hasCabinetBound);
+      }
+      try {
+        await onFinished?.(result);
+      } catch {
+        showNotification({
+          title: '页面刷新失败',
+          message: '成绩已上传，请稍后手动同步页面。',
+          variant: 'error',
+        });
+      }
     } catch (error) {
       if (abortRef.current.aborted) {
         applyPhase({ kind: 'idle' });
       } else {
-        const message = providerErrorToUserMessage(error, '绑定失败，请稍后重试。');
+        const message = uploadErrorMessage(error, '二维码同步失败，请稍后重试。');
         applyPhase({ kind: 'error', message });
-        showNotification({ title: '绑定失败', message, variant: 'error' });
+        setBindQrText('');
       }
     } finally {
       uploadInFlightRef.current = false;
@@ -778,18 +799,18 @@ export function UploadDataSheet({
           </Text>
           <Text style={[styles.hint, { color: theme.textMuted }]}>{FRIEND_REQUEST_REFRESH_HINT}</Text>
           {bindingLookup ? (
-            <Text style={[styles.hint, { color: theme.textMuted }]}>正在查询绑定状态…</Text>
+            <Text style={[styles.hint, { color: theme.textMuted }]}>正在检查账号信息…</Text>
           ) : hasCabinetBound ? (
             <Text accessibilityLabel="玩家二维码已绑定" style={[styles.hint, { color: theme.success }]}>
-              玩家二维码已绑定。开始上传将优先复用 ScoreHub 会话，过期时自动回退好友码登录。
+              已保存此账号。好友码上传会优先直接获取成绩，登录失效时再重新确认好友码。
             </Text>
           ) : hasStoredToken ? (
             <Text style={[styles.hint, { color: theme.textMuted }]}>
-              已登录但未绑定玩家二维码。可用下方按钮绑定后，下次上传走会话快路径。
+              也可以在下方粘贴玩家二维码，直接同步最新成绩。
             </Text>
           ) : (
             <Text style={[styles.hint, { color: theme.textMuted }]}>
-              完成一次好友码上传后可保存登录态；再绑定玩家二维码后可免好友申请拉分。
+              可以使用好友码，或在下方粘贴玩家二维码同步成绩。
             </Text>
           )}
 
@@ -855,106 +876,103 @@ export function UploadDataSheet({
             )}
           </View>
 
-          {showBindButton ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="使用玩家二维码同步"
+            accessibilityState={{ expanded: bindPanelOpen }}
+            disabled={busy || !prefsReady}
+            onPress={() => setBindPanelOpen((open) => !open)}
+            style={({ pressed }) => [
+              styles.secondary,
+              { borderColor: theme.border, backgroundColor: theme.surface, flex: 0 },
+              (busy || !prefsReady) && styles.primaryDisabled,
+              pressed && !busy && styles.softPressed,
+            ]}
+          >
+            <Text style={[styles.secondaryText, { color: theme.accent }]}>
+              {bindPanelOpen ? '收起玩家二维码' : '使用玩家二维码同步'}
+            </Text>
+          </Pressable>
+          {bindPanelOpen ? (
             <>
+              <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>玩家二维码</Text>
+              <Text style={[styles.hint, { color: theme.textMuted }]}>舞萌-中二公众号 → 玩家二维码</Text>
+              <TextInput
+                accessibilityLabel="玩家二维码字符串"
+                value={bindQrText}
+                onChangeText={setBindQrText}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                textContentType="none"
+                contextMenuHidden={false}
+                multiline
+                placeholder="粘贴 SGWCMAID… 字符串"
+                placeholderTextColor={theme.textMuted}
+                editable={!busy && prefsReady}
+                style={[
+                  styles.input,
+                  styles.qrInput,
+                  {
+                    backgroundColor: theme.input,
+                    borderColor: theme.border,
+                    color: theme.text,
+                    borderWidth: 1,
+                  },
+                ]}
+              />
+              <View style={styles.qrActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="粘贴玩家二维码字符串"
+                  disabled={busy || !prefsReady}
+                  onPress={() => void pasteQrText()}
+                  style={({ pressed }) => [
+                    styles.secondary,
+                    { borderColor: theme.border, backgroundColor: theme.surface },
+                    (busy || !prefsReady) && styles.primaryDisabled,
+                    pressed && !busy && styles.softPressed,
+                  ]}
+                >
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>粘贴</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="从相册选择玩家二维码图片"
+                  disabled={busy || !prefsReady}
+                  onPress={() => void pickQrImage()}
+                  style={({ pressed }) => [
+                    styles.secondary,
+                    { borderColor: theme.border, backgroundColor: theme.surface },
+                    (busy || !prefsReady) && styles.primaryDisabled,
+                    pressed && !busy && styles.softPressed,
+                  ]}
+                >
+                  {decodingQr ? (
+                    <ActivityIndicator color={theme.accent} />
+                  ) : (
+                    <Text style={[styles.secondaryText, { color: theme.accent }]}>从相册选择</Text>
+                  )}
+                </Pressable>
+              </View>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="通过神秘二维码绑定"
-                accessibilityState={{ expanded: bindPanelOpen }}
+                accessibilityLabel="用二维码同步成绩"
                 disabled={busy || !prefsReady}
-                onPress={() => setBindPanelOpen((open) => !open)}
+                onPress={() => void startQrUpload()}
                 style={({ pressed }) => [
                   styles.secondary,
-                  { borderColor: theme.border, backgroundColor: theme.surface, flex: 0 },
+                  { borderColor: theme.accent, backgroundColor: theme.surface, flex: 0 },
                   (busy || !prefsReady) && styles.primaryDisabled,
                   pressed && !busy && styles.softPressed,
                 ]}
               >
-                <Text style={[styles.secondaryText, { color: theme.accent }]}>
-                  {bindPanelOpen ? '收起神秘二维码绑定' : '通过神秘二维码绑定'}
-                </Text>
+                {running && phase.kind === 'logging_in' && phase.authMode === 'qr' ? (
+                  <ActivityIndicator color={theme.accent} />
+                ) : (
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>用二维码同步成绩</Text>
+                )}
               </Pressable>
-              {bindPanelOpen ? (
-                <>
-                  <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>玩家二维码</Text>
-                  <TextInput
-                    accessibilityLabel="绑定用玩家二维码字符串"
-                    value={bindQrText}
-                    onChangeText={setBindQrText}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="off"
-                    textContentType="none"
-                    contextMenuHidden={false}
-                    multiline
-                    placeholder="粘贴 SGWCMAID… 字符串"
-                    placeholderTextColor={theme.textMuted}
-                    editable={!busy && prefsReady}
-                    style={[
-                      styles.input,
-                      styles.qrInput,
-                      {
-                        backgroundColor: theme.input,
-                        borderColor: theme.border,
-                        color: theme.text,
-                        borderWidth: 1,
-                      },
-                    ]}
-                  />
-                  <View style={styles.qrActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="粘贴绑定用二维码字符串"
-                      disabled={busy || !prefsReady}
-                      onPress={() => void pasteQrText()}
-                      style={({ pressed }) => [
-                        styles.secondary,
-                        { borderColor: theme.border, backgroundColor: theme.surface },
-                        (busy || !prefsReady) && styles.primaryDisabled,
-                        pressed && !busy && styles.softPressed,
-                      ]}
-                    >
-                      <Text style={[styles.secondaryText, { color: theme.accent }]}>粘贴</Text>
-                    </Pressable>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="从相册选择绑定用二维码图片"
-                      disabled={busy || !prefsReady}
-                      onPress={() => void pickQrImage()}
-                      style={({ pressed }) => [
-                        styles.secondary,
-                        { borderColor: theme.border, backgroundColor: theme.surface },
-                        (busy || !prefsReady) && styles.primaryDisabled,
-                        pressed && !busy && styles.softPressed,
-                      ]}
-                    >
-                      {decodingQr ? (
-                        <ActivityIndicator color={theme.accent} />
-                      ) : (
-                        <Text style={[styles.secondaryText, { color: theme.accent }]}>从相册选择</Text>
-                      )}
-                    </Pressable>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="绑定玩家二维码"
-                    disabled={busy || !prefsReady}
-                    onPress={() => void startBindCabinet()}
-                    style={({ pressed }) => [
-                      styles.secondary,
-                      { borderColor: theme.accent, backgroundColor: theme.surface, flex: 0 },
-                      (busy || !prefsReady) && styles.primaryDisabled,
-                      pressed && !busy && styles.softPressed,
-                    ]}
-                  >
-                    {running && phase.kind === 'binding' ? (
-                      <ActivityIndicator color={theme.accent} />
-                    ) : (
-                      <Text style={[styles.secondaryText, { color: theme.accent }]}>绑定二维码</Text>
-                    )}
-                  </Pressable>
-                </>
-              ) : null}
             </>
           ) : null}
 
@@ -969,7 +987,7 @@ export function UploadDataSheet({
               pressed && !busy && styles.softPressed,
             ]}
           >
-            {running && phase.kind !== 'binding' ? (
+            {running ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.primaryText}>开始上传</Text>

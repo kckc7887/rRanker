@@ -24,6 +24,10 @@ type TestHubEntry = {
   hasCabinetBound: boolean;
   updatedAt: number;
 };
+type MockQrUploadInput = {
+  onPhase: (phase: { kind: string; message?: string; uploaded?: number; skipped?: number }) => void;
+  onQrAccepted?: () => void;
+};
 const mockLoadPrefs = jest.fn(async (): Promise<TestUploadPrefs> => ({
   friendCode: '', selectedAccountIds: [], selectionsByFriendCode: {},
 }));
@@ -85,6 +89,9 @@ const mockUploadFriend = jest.fn(async () => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
 const mockUploadSession = jest.fn(async () => ({
+  uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
+}));
+const mockUploadQr = jest.fn(async (_input: MockQrUploadInput) => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
 const mockFetchMe = jest.fn(async () => ({ friendCode: '111111111111111', hasCabinetUserId: false }));
@@ -157,6 +164,7 @@ jest.mock('@/services/upload-maimai-from-friend-code', () => {
     ...actual,
     bindScoreHubCabinetByQr: (...args: unknown[]) => (mockBindCabinet as (...a: unknown[]) => unknown)(...args),
     uploadMaimaiFromFriendCode: (...args: unknown[]) => (mockUploadFriend as (...a: unknown[]) => unknown)(...args),
+    uploadMaimaiFromQrLogin: (...args: unknown[]) => (mockUploadQr as (...a: unknown[]) => unknown)(...args),
     uploadMaimaiWithScoreHubSession: (...args: unknown[]) => (mockUploadSession as (...a: unknown[]) => unknown)(...args),
   };
 });
@@ -248,6 +256,9 @@ describe('好友码统一上传弹窗', () => {
     mockUploadSession.mockResolvedValue({
       uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
     });
+    mockUploadQr.mockResolvedValue({
+      uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
+    });
   });
 
   it('打开时展示近一小时统计、分档提示与好友申请刷新说明', async () => {
@@ -259,15 +270,14 @@ describe('好友码统一上传弹窗', () => {
     expect(screen.getAllByText(/多刷新几次才能看到申请/).length).toBeGreaterThan(0);
   });
 
-  it('无 JWT 时不展示绑定按钮与绑定区', async () => {
+  it('无已保存账号时仍展示二维码同步入口且默认收起', async () => {
     const screen = await renderSheet([water.id]);
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
-    expect(screen.queryByLabelText('通过神秘二维码绑定')).toBeNull();
-    expect(screen.queryByLabelText('绑定用玩家二维码字符串')).toBeNull();
-    expect(screen.queryByLabelText('使用神秘二维码上传')).toBeNull();
+    expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy();
+    expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
   });
 
-  it('有 JWT 未绑定时显示绑定按钮，展开后可绑定', async () => {
+  it('二维码同步入口展开后可直接校验输入', async () => {
     setHubEntry({
       friendCode: '111111111111111',
       token: 'tok',
@@ -276,15 +286,15 @@ describe('好友码统一上传弹窗', () => {
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
     const screen = await renderSheet([water.id]);
-    expect(await screen.findByLabelText('通过神秘二维码绑定')).toBeTruthy();
-    expect(screen.queryByLabelText('绑定用玩家二维码字符串')).toBeNull();
-    await fireEvent.press(screen.getByLabelText('通过神秘二维码绑定'));
-    expect(await screen.findByLabelText('绑定用玩家二维码字符串')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('绑定玩家二维码'));
-    expect(await screen.findByText('缺少绑定二维码')).toBeTruthy();
+    expect(await screen.findByLabelText('使用玩家二维码同步')).toBeTruthy();
+    expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('使用玩家二维码同步'));
+    expect(await screen.findByLabelText('玩家二维码字符串')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('用二维码同步成绩'));
+    expect(await screen.findByText('缺少玩家二维码')).toBeTruthy();
   });
 
-  it('已绑定时不显示绑定按钮，开始上传走会话', async () => {
+  it('已保存账号时好友码上传直接获取成绩', async () => {
     setHubEntry({
       friendCode: '111111111111111',
       token: 'tok',
@@ -294,7 +304,7 @@ describe('好友码统一上传弹窗', () => {
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: true });
     const screen = await renderSheet([water.id]);
     expect(await screen.findByLabelText('玩家二维码已绑定')).toBeTruthy();
-    expect(screen.queryByLabelText('通过神秘二维码绑定')).toBeNull();
+    expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy();
     await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState).toEqual({ disabled: false }));
     await fireEvent.press(screen.getByLabelText('开始上传'));
     await waitFor(() => expect(mockUploadSession).toHaveBeenCalled());
@@ -310,7 +320,7 @@ describe('好友码统一上传弹窗', () => {
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
     const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('通过神秘二维码绑定')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('开始上传'));
     await waitFor(() => expect(mockUploadFriend).toHaveBeenCalled());
     expect(mockUploadSession).not.toHaveBeenCalled();
@@ -350,14 +360,14 @@ describe('好友码统一上传弹窗', () => {
       .mockResolvedValueOnce({ friendCode: '222222222222222', hasCabinetUserId: true });
 
     const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('通过神秘二维码绑定')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
     expect(await screen.findByLabelText('ScoreHub 好友码历史列表')).toBeTruthy();
     expect(screen.getByLabelText('删除好友码 222222222222222')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('选择好友码 222222222222222'));
     await waitFor(() => expect(screen.getByLabelText('舞萌好友码').props.value).toBe('222222222222222'));
     await waitFor(() => expect(screen.getByLabelText('玩家二维码已绑定')).toBeTruthy());
-    expect(screen.queryByLabelText('通过神秘二维码绑定')).toBeNull();
+    expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
     await fireEvent.press(screen.getByLabelText('删除好友码 111111111111111'));
@@ -452,7 +462,7 @@ describe('好友码统一上传弹窗', () => {
     expect(screen.getByText('请输入 15 位数字好友码。')).toBeTruthy();
   });
 
-  it('未绑定时相册识码写入绑定框', async () => {
+  it('相册识码写入二维码同步框', async () => {
     setHubEntry({
       friendCode: '111111111111111',
       token: 'tok',
@@ -473,15 +483,33 @@ describe('好友码统一上传弹窗', () => {
     }).mockResolvedValueOnce('SGWCMAIDBIND');
 
     const screen = await renderSheet([water.id]);
-    await waitFor(() => expect(screen.getByLabelText('通过神秘二维码绑定')).toBeTruthy());
-    await fireEvent.press(screen.getByLabelText('通过神秘二维码绑定'));
-    await fireEvent.press(screen.getByLabelText('从相册选择绑定用二维码图片'));
+    await waitFor(() => expect(screen.getByLabelText('使用玩家二维码同步')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('使用玩家二维码同步'));
+    await fireEvent.press(screen.getByLabelText('从相册选择玩家二维码图片'));
     await waitFor(() => {
-      expect(screen.getByLabelText('绑定用玩家二维码字符串').props.value).toBe('SGWCMAIDBIND');
+      expect(screen.getByLabelText('玩家二维码字符串').props.value).toBe('SGWCMAIDBIND');
     });
   });
 
-  it('关闭弹窗不中止绑定，重开仍为进行中', async () => {
+  it('二维码同步不走好友申请并在任务接受后清空输入', async () => {
+    mockUploadQr.mockImplementationOnce(async (input: MockQrUploadInput) => {
+      input.onQrAccepted?.();
+      input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
+      return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+    });
+    const screen = await renderSheet([water.id]);
+    await fireEvent.press(await screen.findByLabelText('使用玩家二维码同步'));
+    await fireEvent.changeText(screen.getByLabelText('玩家二维码字符串'), 'SGWCMAIDCURRENT');
+    await fireEvent.press(screen.getByLabelText('用二维码同步成绩'));
+
+    await waitFor(() => expect(mockUploadQr).toHaveBeenCalledWith(expect.objectContaining({
+      credential: { kind: 'text', qrCode: 'SGWCMAIDCURRENT' },
+    })));
+    await waitFor(() => expect(screen.getByLabelText('玩家二维码字符串').props.value).toBe(''));
+    expect(mockUploadFriend).not.toHaveBeenCalled();
+  });
+
+  it('关闭弹窗不中止二维码同步且会清空二维码', async () => {
     setHubEntry({
       friendCode: '111111111111111',
       token: 'tok',
@@ -489,9 +517,13 @@ describe('好友码统一上传弹窗', () => {
       updatedAt: 1,
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
-    let resolveBind: (() => void) | null = null;
-    mockBindCabinet.mockImplementationOnce(() => new Promise((resolve) => {
-      resolveBind = () => resolve({ friendCode: '111111111111111', alreadyBound: false });
+    let resolveQr: (() => void) | null = null;
+    mockUploadQr.mockImplementationOnce((input: MockQrUploadInput) => new Promise((resolve) => {
+      resolveQr = () => {
+        input.onQrAccepted?.();
+        input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
+        resolve({ uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] });
+      };
     }));
     const onPhaseChange = jest.fn();
     const onClose = jest.fn();
@@ -511,18 +543,18 @@ describe('好友码统一上传弹窗', () => {
     );
 
     const view = await render(renderVisible(true));
-    await waitFor(() => expect(view.getByLabelText('通过神秘二维码绑定')).toBeTruthy());
-    await fireEvent.press(view.getByLabelText('通过神秘二维码绑定'));
-    await fireEvent.changeText(view.getByLabelText('绑定用玩家二维码字符串'), 'SGWCMAIDBIND');
-    await fireEvent.press(view.getByLabelText('绑定玩家二维码'));
-    await waitFor(() => expect(mockBindCabinet).toHaveBeenCalled());
+    await waitFor(() => expect(view.getByLabelText('使用玩家二维码同步')).toBeTruthy());
+    await fireEvent.press(view.getByLabelText('使用玩家二维码同步'));
+    await fireEvent.changeText(view.getByLabelText('玩家二维码字符串'), 'SGWCMAIDBIND');
+    await fireEvent.press(view.getByLabelText('用二维码同步成绩'));
+    await waitFor(() => expect(mockUploadQr).toHaveBeenCalled());
     await waitFor(() => {
-      expect(onPhaseChange).toHaveBeenCalledWith(expect.objectContaining({ kind: 'binding' }));
+      expect(onPhaseChange).toHaveBeenCalledWith(expect.objectContaining({ kind: 'logging_in' }));
     });
 
     await fireEvent.press(view.getByLabelText('关闭上传'));
     expect(onClose).toHaveBeenCalled();
-    expect(onPhaseChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'binding' }));
+    expect(onPhaseChange).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'logging_in' }));
 
     await act(async () => {
       view.rerender(renderVisible(false));
@@ -533,7 +565,7 @@ describe('好友码统一上传弹窗', () => {
 
     await waitFor(() => expect(view.getByLabelText('取消当前操作')).toBeTruthy());
     await act(async () => {
-      resolveBind?.();
+      resolveQr?.();
     });
     await waitFor(() => {
       expect(onPhaseChange).toHaveBeenCalledWith(expect.objectContaining({ kind: 'done' }));
@@ -550,7 +582,11 @@ describe('好友码统一上传弹窗', () => {
         updatedAt: 1,
       });
       mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
-      mockBindCabinet.mockResolvedValueOnce({ friendCode: '111111111111111', alreadyBound: false });
+      mockUploadQr.mockImplementationOnce(async (input: MockQrUploadInput) => {
+        input.onQrAccepted?.();
+        input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
+        return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+      });
       const onPhaseChange = jest.fn();
       const view = await render(
         <NotificationProvider>
@@ -566,10 +602,10 @@ describe('好友码统一上传弹窗', () => {
         </NotificationProvider>,
       );
 
-      await waitFor(() => expect(view.getByLabelText('通过神秘二维码绑定')).toBeTruthy());
-      await fireEvent.press(view.getByLabelText('通过神秘二维码绑定'));
-      await fireEvent.changeText(view.getByLabelText('绑定用玩家二维码字符串'), 'SGWCMAIDBIND');
-      await fireEvent.press(view.getByLabelText('绑定玩家二维码'));
+      await waitFor(() => expect(view.getByLabelText('使用玩家二维码同步')).toBeTruthy());
+      await fireEvent.press(view.getByLabelText('使用玩家二维码同步'));
+      await fireEvent.changeText(view.getByLabelText('玩家二维码字符串'), 'SGWCMAIDBIND');
+      await fireEvent.press(view.getByLabelText('用二维码同步成绩'));
       await waitFor(() => {
         expect(onPhaseChange).toHaveBeenCalledWith(expect.objectContaining({ kind: 'done' }));
       });
