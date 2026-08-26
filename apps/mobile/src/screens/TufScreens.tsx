@@ -221,7 +221,14 @@ export function TufSearchScreen() {
       ? specialDifficulties
       : undefined,
   }), [includeSpecial, order, pguRange, sortBy, specialDifficulties]);
-  const query = useTufLevelSearch(debounced, queryOptions);
+  const cacheHomePage = debounced.trim() === ''
+    && sortBy === 'RECENT'
+    && order === 'DESC'
+    && difficultyBand === 'all'
+    && difficultyMin === ''
+    && difficultyMax === ''
+    && includeSpecial;
+  const query = useTufLevelSearch(debounced, queryOptions, true, cacheHomePage);
   const levels = useMemo(
     () => uniqueById(query.data?.pages.flatMap((page) => page.results) ?? []),
     [query.data?.pages],

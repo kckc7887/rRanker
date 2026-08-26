@@ -58,7 +58,15 @@ describe('cache policy registry', () => {
 
   it('classifies public derived rows without matching durable account snapshots', () => {
     expect(isSessionOnlyResourceKey('detailed-catalog')).toBe(true);
+    expect(resourceCachePersistence('aliases')).toBe('durable');
+    expect(resourceCachePersistence('chunithm-catalog')).toBe('durable');
+    expect(resourceCachePersistence('phira:charts:ranked:0:')).toBe('durable');
+    expect(resourceCachePersistence('tuf:levels:home')).toBe('durable');
+    expect(resourceCachePersistence('tuf:levels::RECENT:DESC:::0')).toBe('session-only');
+    expect(resourceCachePersistence('osu-catalog-home:osu-standard')).toBe('durable');
     expect(resourceCachePersistence('phira:notes:38294')).toBe('session-only');
+    expect(resourceCachePersistence('phira:charts:ranked:1:')).toBe('session-only');
+    expect(resourceCachePersistence('phira:charts:ranked:0:test')).toBe('session-only');
     expect(resourceCachePersistence('phira:player:323528')).toBe('durable');
     expect(resourceCachePersistence('osu:osu-standard:2')).toBe('durable');
     expect(isTemporaryCacheEntry('rranker-chart-preview-session-1')).toBe(true);
@@ -91,7 +99,7 @@ describe('legacy cache migration', () => {
     const snapshots = repository();
     await migrateLegacyStorageCaches(snapshots as never);
     expect(snapshots.clearResources).toHaveBeenCalledWith(['detailed-catalog', 'phira:notes:1']);
-    expect(snapshots.clearCatalog).toHaveBeenCalledTimes(1);
+    expect(snapshots.clearCatalog).not.toHaveBeenCalled();
     expect(mocks.setMarker).toHaveBeenCalledWith('done');
 
     await migrateLegacyStorageCaches(snapshots as never);

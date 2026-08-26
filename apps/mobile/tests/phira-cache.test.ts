@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { isPhiraCatalogHomeRequest } from '@/domain/phira';
 import { PhiraCache } from '@/services/phira-cache';
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
 
@@ -13,6 +14,13 @@ const source = { kind: 'phira' as const, label: 'Phira', updatedAt: '2026-08-13T
 const chart = { id: 38294, name: 'Song', level: 'IN', difficulty: 15, charter: '', composer: '', illustrator: null, ranked: true, stable: true, uploader: 1, tags: [], ratingCount: 0 };
 
 describe('PhiraCache', () => {
+  it('仅将 ranked 空搜索第一页识别为曲库首页', () => {
+    expect(isPhiraCatalogHomeRequest('ranked', 0, '')).toBe(true);
+    expect(isPhiraCatalogHomeRequest('ranked', 0, 'song')).toBe(false);
+    expect(isPhiraCatalogHomeRequest('ranked', 2, '')).toBe(false);
+    expect(isPhiraCatalogHomeRequest('special', 0, '')).toBe(false);
+  });
+
   it('isolates queried-best tombstones by player and expands only that account', async () => {
     const repo = new MemoryRepo(); const cache = new PhiraCache(repo as never);
     const tombstone = { chart, record: null, poolRks: null, queriedAt: source.updatedAt };

@@ -13,6 +13,7 @@ import {
   TUF_DIFFICULTIES_CACHE_KEY,
   TUF_DIFFICULTIES_SCHEMA_VERSION,
   TUF_LEVEL_PAGE_SCHEMA_VERSION,
+  TUF_LEVEL_HOME_CACHE_KEY,
   TUF_LEVEL_SCHEMA_VERSION,
   TUF_PASS_PAGE_SCHEMA_VERSION,
   TUF_PLAYER_SCHEMA_VERSION,
@@ -39,7 +40,7 @@ export function loadTufPlayerFresh(playerId: number): Promise<TufPlayer> {
 
 /**
  * TUF 公开数据的本地持久化快照（缓存优先渲染）。
- * 曲库分页、关卡详情与难度列表是账号无关的全局资源；玩家资料与成绩页按 playerId 归属。
+ * 默认曲库首页、关卡详情与难度列表是账号无关的全局资源；玩家资料与成绩页按 playerId 归属。
  */
 export class TufCache {
   constructor(private readonly repository = new SqliteSnapshotRepository()) {}
@@ -91,6 +92,21 @@ export class TufCache {
   ): Promise<void> {
     await this.repository.saveResource(
       tufLevelPageCacheKey(options, offset),
+      TUF_LEVEL_PAGE_SCHEMA_VERSION,
+      snapshot.source.updatedAt,
+      snapshot,
+    );
+  }
+
+  async loadLevelHome(): Promise<TufLevelPageSnapshot | null> {
+    return this.repository.getResource<TufLevelPageSnapshot>(
+      TUF_LEVEL_HOME_CACHE_KEY,
+      TUF_LEVEL_PAGE_SCHEMA_VERSION,
+    );
+  }
+  async saveLevelHome(snapshot: TufLevelPageSnapshot): Promise<void> {
+    await this.repository.saveResource(
+      TUF_LEVEL_HOME_CACHE_KEY,
       TUF_LEVEL_PAGE_SCHEMA_VERSION,
       snapshot.source.updatedAt,
       snapshot,

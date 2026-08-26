@@ -31,7 +31,7 @@ export function useScoreSnapshot() {
         persistCatalog ? repository : undefined,
       );
       // 缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
-      // 仅账号成绩快照可离线命中；公开曲库按省空间策略每次会话联网获取。
+      // 账号成绩与公开曲库均可先读本地数据，网络结果随后替换当前查询。
       if (persistScores) {
         return service.loadCacheFirst((fresh) => {
           queryClient.setQueryData(queryKey, fresh);

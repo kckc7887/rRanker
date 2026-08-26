@@ -75,6 +75,21 @@ describe('ScoreService', () => {
     expect(repository.value).toEqual(saved);
   });
 
+  it('uses the shared persisted detailed catalog when the catalog network is unavailable', async () => {
+    const repository = new MemoryRepository();
+    repository.catalog = structuredClone(fixtureCatalog);
+    const catalogProvider = new FixtureCatalogProvider();
+    vi.spyOn(catalogProvider, 'getDetailedCatalog').mockRejectedValueOnce(new Error('network'));
+
+    const snapshot = await new ScoreService(
+      new FixtureProvider(), catalogProvider, 'acct-cold-upload', repository, repository,
+    ).load();
+
+    expect(snapshot.records).toHaveLength(54);
+    expect(repository.value?.records).toHaveLength(54);
+    expect(catalogProvider.getDetailedCatalog).toHaveBeenCalledTimes(1);
+  });
+
   it('removes legacy utage records when falling back to a cached snapshot', async () => {
     const repository = new MemoryRepository();
     await new ScoreService(
