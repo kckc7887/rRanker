@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   bindCabinetByQr: vi.fn(),
   fetchMe: vi.fn(),
   uploadDivingFish: vi.fn(),
+  uploadLxns: vi.fn(),
   saveSnapshot: vi.fn(),
   accountLoad: vi.fn(),
   accountPatch: vi.fn(),
@@ -43,6 +44,9 @@ vi.mock('@/services/score-hub-client', async () => {
 });
 vi.mock('@/services/diving-fish-upload', () => ({
   uploadRecordsToDivingFish: mocks.uploadDivingFish,
+}));
+vi.mock('@/services/lxns-upload', () => ({
+  uploadRecordsToLxns: mocks.uploadLxns,
 }));
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({
   SqliteSnapshotRepository: class {
@@ -172,6 +176,77 @@ describe('好友码多目标写入', () => {
       expect.objectContaining({ account: water, status: 'failed', errorMessage: '水鱼暂时不可用' }),
     ]);
     expect(phases.at(-1)).toBe('done');
+  });
+
+  it('仅落雪目标直接写入 Score Hub 成绩且不请求曲库', async () => {
+    const lxns = createMaimaiBoundAccount({
+      providerId: 'lxns', displayName: '落雪玩家', rating: 0, playerId: 'lxns',
+    });
+    const water = createMaimaiBoundAccount({
+      providerId: 'diving-fish', displayName: '未勾选水鱼', rating: 0, playerId: 'water',
+    });
+    const lxnsSession: ProviderSession = {
+      mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
+      expiresAt: Date.now() + 60_000, persistable: true,
+    };
+    const waterSession: ProviderSession = {
+      mode: 'import-token', value: 'import-token', persistable: true,
+    };
+    const resolveCatalog = vi.fn(async () => catalog);
+    mocks.uploadLxns.mockResolvedValue({ uploaded: 1, session: lxnsSession });
+
+    const result = await uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      selectedAccountIds: [lxns.id],
+      targets: resolveUploadTargets([lxns, water], {
+        [lxns.id]: lxnsSession,
+        [water.id]: waterSession,
+      }),
+      sessionsByAccountId: {
+        [lxns.id]: lxnsSession,
+        [water.id]: waterSession,
+      },
+      resolveCatalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    });
+
+    expect(resolveCatalog).not.toHaveBeenCalled();
+    expect(mocks.uploadLxns).toHaveBeenCalledWith(expect.objectContaining({
+      records: [expect.objectContaining({ id: 1696, type: 'dx', level_index: 3 })],
+    }));
+    expect(mocks.uploadDivingFish).not.toHaveBeenCalled();
+    expect(result.targetResults).toEqual([
+      expect.objectContaining({ account: lxns, status: 'success', written: 1 }),
+    ]);
+  });
+
+  it('本地与水鱼混合目标只解析一次轻量曲库', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const water = createMaimaiBoundAccount({
+      providerId: 'diving-fish', displayName: '水鱼玩家', rating: 0, playerId: 'water',
+    });
+    const session: ProviderSession = {
+      mode: 'import-token', value: 'import-token', persistable: true,
+    };
+    const resolveCatalog = vi.fn(async () => catalog);
+    mocks.uploadDivingFish.mockResolvedValue({ uploaded: 1 });
+
+    await uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      selectedAccountIds: [local.id, water.id],
+      targets: resolveUploadTargets([local, water], { [water.id]: session }),
+      sessionsByAccountId: { [water.id]: session },
+      resolveCatalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    });
+
+    expect(resolveCatalog).toHaveBeenCalledTimes(1);
+    expect(mocks.saveSnapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.uploadDivingFish).toHaveBeenCalledTimes(1);
   });
 
   it('严格先取得原始成绩再等待曲库，曲库到达后续接映射和写入', async () => {

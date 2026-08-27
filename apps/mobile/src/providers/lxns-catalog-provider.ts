@@ -133,94 +133,104 @@ function getJson(path: string): Promise<unknown> {
   });
 }
 
+type CatalogVersion = { version: number; title: string };
+
+function mapSong(
+  rawSong: z.infer<typeof SongSchema>,
+  versions: readonly CatalogVersion[],
+  onAvailableChart?: (type: ChartType, levelIndex: number, versionId: number) => void,
+): Song {
+  const standardCharts: Chart[] = [...rawSong.difficulties.standard, ...rawSong.difficulties.dx].map((raw) => {
+    const type = chartType(raw.type);
+    const chartVersion = versionAtOrBefore(versions, raw.version);
+    const chartVersionId = chartVersion?.version ?? raw.version;
+    if (!rawSong.disabled) onAvailableChart?.(type, raw.difficulty, chartVersionId);
+    return {
+      songId: String(rawSong.id), type, levelIndex: raw.difficulty, level: raw.level,
+      difficulty: difficultyFromIndex(raw.difficulty), difficultyConstant: raw.level_value,
+      charter: raw.note_designer ?? undefined, versionId: chartVersionId,
+      notes: raw.notes ? { ...raw.notes } satisfies ChartNotes : undefined,
+    };
+  });
+  const utageCharts: Chart[] = rawSong.difficulties.utage.map((raw) => {
+    const type = chartType(raw.type);
+    const levelIndex = 0;
+    const chartVersion = versionAtOrBefore(versions, raw.version);
+    const chartVersionId = chartVersion?.version ?? raw.version;
+    if (!rawSong.disabled) onAvailableChart?.(type, levelIndex, chartVersionId);
+    const buddyNotes = BuddyNotesSchema.safeParse(raw.notes);
+    const singleNotes = NotesSchema.safeParse(raw.notes);
+    const notes = buddyNotes.success
+      ? {
+          left: { ...buddyNotes.data.left },
+          right: { ...buddyNotes.data.right },
+        } satisfies BuddyChartNotes
+      : singleNotes.success
+        ? { ...singleNotes.data } satisfies ChartNotes
+        : undefined;
+    return {
+      songId: String(rawSong.id),
+      type,
+      // LXNS 固定用 0 标识 U·TA·GE 的接口索引；领域难度仍为 utage，不能映射成 BASIC。
+      levelIndex,
+      level: raw.level,
+      difficulty: 'utage',
+      difficultyConstant: raw.level_value,
+      charter: raw.note_designer ?? undefined,
+      versionId: chartVersionId,
+      notes,
+      utage: {
+        kanji: raw.kanji?.trim() || undefined,
+        description: raw.description?.trim() || undefined,
+        isBuddy: raw.is_buddy,
+      },
+    };
+  });
+  const songVersion = versionAtOrBefore(versions, rawSong.version);
+  return {
+    id: String(rawSong.id), title: rawSong.title, artist: rawSong.artist,
+    bpm: rawSong.bpm, genre: rawSong.genre, region: rawSong.map?.trim() || undefined,
+    rights: rawSong.rights ?? undefined,
+    locked: rawSong.locked, disabled: rawSong.disabled, versionId: songVersion?.version ?? rawSong.version,
+    version: songVersion?.title ?? String(rawSong.version), charts: [...standardCharts, ...utageCharts],
+  };
+}
+
+function mergeUtageMetadata(song: Song, songsById: ReadonlyMap<string, Song>): Song {
+  if (!song.charts.some((chart) => chart.type === 'UTAGE')) return song;
+  const originalSongId = originalSongIdForUtage(song.id);
+  const originalSong = originalSongId
+    ? songsById.get(originalSongId) ?? songsById.get(normalizeSongId(originalSongId))
+    : undefined;
+  return {
+    ...song,
+    title: stripUtageTitlePrefix(song.title),
+    artist: originalSong?.artist ?? song.artist,
+    bpm: originalSong?.bpm ?? song.bpm,
+    genre: originalSong?.genre ?? song.genre,
+    region: originalSong?.region ?? song.region,
+    rights: originalSong?.rights ?? song.rights,
+    versionId: originalSong?.versionId ?? song.versionId,
+    version: originalSong?.version ?? song.version,
+  };
+}
+
 function mapCatalog(input: unknown, label: string): CatalogSnapshot {
   const parsed = CatalogResponseSchema.safeParse(input);
   if (!parsed.success) throw new ProviderError('upstream_schema', 'LXNS 曲库响应结构与已验证契约不一致', true);
   const current = parsed.data.versions.reduce((latest, item) => item.version > latest.version ? item : latest);
   const chartVersionIndex: Record<string, number> = {};
   let currentChartCount = 0;
-  const mappedSongs: Song[] = parsed.data.songs.map((rawSong) => {
-    const standardCharts: Chart[] = [...rawSong.difficulties.standard, ...rawSong.difficulties.dx].map((raw) => {
-      const type = chartType(raw.type);
-      const chartVersion = versionAtOrBefore(parsed.data.versions, raw.version);
-      const chartVersionId = chartVersion?.version ?? raw.version;
-      if (!rawSong.disabled) {
-        chartVersionIndex[chartVersionKey(rawSong.id, type, raw.difficulty)] = chartVersionId;
-        if (chartVersionId === current.version) currentChartCount += 1;
-      }
-      return {
-        songId: String(rawSong.id), type, levelIndex: raw.difficulty, level: raw.level,
-        difficulty: difficultyFromIndex(raw.difficulty), difficultyConstant: raw.level_value,
-        charter: raw.note_designer ?? undefined, versionId: chartVersionId,
-        notes: raw.notes ? { ...raw.notes } satisfies ChartNotes : undefined,
-      };
-    });
-    const utageCharts: Chart[] = rawSong.difficulties.utage.map((raw) => {
-      const type = chartType(raw.type);
-      const levelIndex = 0;
-      const chartVersion = versionAtOrBefore(parsed.data.versions, raw.version);
-      const chartVersionId = chartVersion?.version ?? raw.version;
-      if (!rawSong.disabled) {
-        chartVersionIndex[chartVersionKey(rawSong.id, type, levelIndex)] = chartVersionId;
-        if (chartVersionId === current.version) currentChartCount += 1;
-      }
-      const buddyNotes = BuddyNotesSchema.safeParse(raw.notes);
-      const singleNotes = NotesSchema.safeParse(raw.notes);
-      const notes = buddyNotes.success
-        ? {
-            left: { ...buddyNotes.data.left },
-            right: { ...buddyNotes.data.right },
-          } satisfies BuddyChartNotes
-        : singleNotes.success
-          ? { ...singleNotes.data } satisfies ChartNotes
-          : undefined;
-      return {
-        songId: String(rawSong.id),
-        type,
-        // LXNS 固定用 0 标识 U·TA·GE 的接口索引；领域难度仍为 utage，不能映射成 BASIC。
-        levelIndex,
-        level: raw.level,
-        difficulty: 'utage',
-        difficultyConstant: raw.level_value,
-        charter: raw.note_designer ?? undefined,
-        versionId: chartVersionId,
-        notes,
-        utage: {
-          kanji: raw.kanji?.trim() || undefined,
-          description: raw.description?.trim() || undefined,
-          isBuddy: raw.is_buddy,
-        },
-      };
-    });
-    const charts = [...standardCharts, ...utageCharts];
-    const songVersion = versionAtOrBefore(parsed.data.versions, rawSong.version);
-    return {
-      id: String(rawSong.id), title: rawSong.title, artist: rawSong.artist,
-      bpm: rawSong.bpm, genre: rawSong.genre, region: rawSong.map?.trim() || undefined,
-      rights: rawSong.rights ?? undefined,
-      locked: rawSong.locked, disabled: rawSong.disabled, versionId: songVersion?.version ?? rawSong.version,
-      version: songVersion?.title ?? String(rawSong.version), charts,
-    };
-  });
+  const mappedSongs = parsed.data.songs.map((rawSong) => mapSong(
+    rawSong,
+    parsed.data.versions,
+    (type, levelIndex, versionId) => {
+      chartVersionIndex[chartVersionKey(rawSong.id, type, levelIndex)] = versionId;
+      if (versionId === current.version) currentChartCount += 1;
+    },
+  ));
   const songsById = new Map(mappedSongs.map((song) => [song.id, song]));
-  const songs = mappedSongs.map((song) => {
-    if (!song.charts.some((chart) => chart.type === 'UTAGE')) return song;
-    const originalSongId = originalSongIdForUtage(song.id);
-    const originalSong = originalSongId
-      ? songsById.get(originalSongId) ?? songsById.get(normalizeSongId(originalSongId))
-      : undefined;
-    return {
-      ...song,
-      title: stripUtageTitlePrefix(song.title),
-      artist: originalSong?.artist ?? song.artist,
-      bpm: originalSong?.bpm ?? song.bpm,
-      genre: originalSong?.genre ?? song.genre,
-      region: originalSong?.region ?? song.region,
-      rights: originalSong?.rights ?? song.rights,
-      versionId: originalSong?.versionId ?? song.versionId,
-      version: originalSong?.version ?? song.version,
-    };
-  });
+  const songs = mappedSongs.map((song) => mergeUtageMetadata(song, songsById));
   if (currentChartCount === 0) throw new ProviderError('upstream_schema', 'LXNS 最新版本没有可用谱面，拒绝猜测当前版本', true);
   return {
     currentVersion: { id: current.version, title: current.title },
@@ -229,12 +239,32 @@ function mapCatalog(input: unknown, label: string): CatalogSnapshot {
   };
 }
 
+function mapSongDetail(input: unknown, catalog: CatalogSnapshot): Song {
+  const parsed = SongSchema.safeParse(input);
+  if (!parsed.success) throw new ProviderError('upstream_schema', 'LXNS 单曲详情响应结构与已验证契约不一致', true);
+  const versions = catalog.versions.map((item) => ({ version: item.id, title: item.title }));
+  const mapped = mapSong(parsed.data, versions);
+  const base = catalog.songs.find((song) => normalizeSongId(song.id) === normalizeSongId(mapped.id));
+  const detailed = {
+    ...base,
+    ...mapped,
+    aliases: base?.aliases,
+    charts: mapped.charts,
+  };
+  const songsById = new Map(catalog.songs.map((song) => [song.id, song]));
+  songsById.set(detailed.id, detailed);
+  return mergeUtageMetadata(detailed, songsById);
+}
+
 export class LxnsCatalogProvider implements DetailedCatalogProvider {
   async getCatalog(): Promise<CatalogSnapshot> {
     return mapCatalog(await getJson('/song/list'), 'LXNS 公共曲库');
   }
   async getDetailedCatalog(): Promise<CatalogSnapshot> {
     return mapCatalog(await getJson('/song/list?notes=true'), 'LXNS 详细曲库');
+  }
+  async getSong(songId: string, catalog: CatalogSnapshot): Promise<Song> {
+    return mapSongDetail(await getJson(`/song/${encodeURIComponent(songId)}`), catalog);
   }
   async getAliases(): Promise<AliasSnapshot> {
     const parsed = AliasResponseSchema.safeParse(await getJson('/alias/list'));

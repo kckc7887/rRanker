@@ -250,7 +250,7 @@ function PublicOverviewScreen() {
   }, [activeAccountId, activeGameId, activeSession, boundAccounts, catalogData, catalogError, profile.ratingDigits,
     refetch, refetchCatalog, showNotification, updateBoundAccountScore]);
 
-  const finishUpload = useCallback(async (result: UploadResult) => {
+  const finishUpload = useCallback((result: UploadResult) => {
     for (const refreshed of result.refreshedAccounts) {
       updateBoundAccountScore(
         refreshed.account.id,
@@ -258,8 +258,7 @@ function PublicOverviewScreen() {
         refreshed.snapshot.player.displayName,
       );
     }
-    // 刷新服务已先写入最新分账号快照；即使随后的网络读取失败，也会回退到这份新快照。
-    await invalidateAccountDataQueries();
+    void invalidateAccountDataQueries();
   }, [profile.ratingDigits, updateBoundAccountScore]);
 
   const syncMaimaiFromLxns = useCallback(async (): Promise<boolean> => {

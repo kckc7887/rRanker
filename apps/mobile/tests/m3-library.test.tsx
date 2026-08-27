@@ -105,7 +105,17 @@ jest.mock('@/hooks/use-user-library', () => {
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({
   data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog,
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
-}) }));
+}),
+useMaimaiSongDetail: (songId: string) => {
+  const catalog = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog;
+  return {
+    data: catalog.songs.find((song) => song.id === songId),
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  };
+} }));
 jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
   data: undefined, isLoading: false, isError: false, error: null,
 }) }));

@@ -166,10 +166,8 @@ export function convertHubScoresToLocalRecords(
 
 export function convertHubScoresToLxnsRecords(
   scores: readonly ScoreHubSyncScore[],
-  catalog: CatalogSnapshot,
 ): GenericSyncMapResult<LxnsUploadScore> {
   const records: LxnsUploadScore[] = [];
-  const songs = songsByNormalizedId(catalog);
   let skippedNoSong = 0;
   let skippedBadScore = 0;
   let skippedUnsupportedChart = 0;
@@ -182,15 +180,9 @@ export function convertHubScoresToLxnsRecords(
       continue;
     }
     const normalizedId = normalizeSongId(score.musicId);
-    const song = songs.get(normalizedId);
     const id = Number(normalizedId);
-    if (!song || !Number.isSafeInteger(id) || id < 0) {
+    if (!Number.isSafeInteger(id) || id < 0) {
       skippedNoSong += 1;
-      continue;
-    }
-    const chartType = chartTypeForHub(type);
-    if (!song.charts.some((chart) => chart.type === chartType && chart.levelIndex === levelIndex)) {
-      skippedUnsupportedChart += 1;
       continue;
     }
     const achievements = parseHubAchievement(score.score);

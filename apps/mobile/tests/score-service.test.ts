@@ -154,8 +154,8 @@ describe('ScoreService', () => {
     await new ScoreService(score, catalog, 'acct-a').load();
     expect(getPlayer).toHaveBeenCalledTimes(1);
     expect(getRecords).toHaveBeenCalledTimes(1);
-    expect(getCatalog).not.toHaveBeenCalled();
-    expect(getDetailedCatalog).toHaveBeenCalledTimes(1);
+    expect(getCatalog).toHaveBeenCalledTimes(1);
+    expect(getDetailedCatalog).not.toHaveBeenCalled();
   });
 
   it('deduplicates concurrent loads for the same account', async () => {
@@ -163,13 +163,13 @@ describe('ScoreService', () => {
     const catalog = new FixtureCatalogProvider();
     const getPlayer = vi.spyOn(score, 'getPlayer');
     const getRecords = vi.spyOn(score, 'getRecords');
-    const getDetailedCatalog = vi.spyOn(catalog, 'getDetailedCatalog');
+    const getCatalog = vi.spyOn(catalog, 'getCatalog');
     const service = new ScoreService(score, catalog, 'acct-dedupe');
     const [a, b] = await Promise.all([service.load(), service.load()]);
     expect(a).toEqual(b);
     expect(getPlayer).toHaveBeenCalledTimes(1);
     expect(getRecords).toHaveBeenCalledTimes(1);
-    expect(getDetailedCatalog).toHaveBeenCalledTimes(1);
+    expect(getCatalog).toHaveBeenCalledTimes(1);
   });
 
   it('deduplicates concurrent loads across service instances', async () => {
@@ -303,8 +303,9 @@ describe('ScoreService', () => {
     };
     const catalogProvider = {
       ...new FixtureCatalogProvider(),
-      getCatalog: async () => { throw new Error('普通曲库不应被调用'); },
-      getDetailedCatalog: async () => structuredClone(catalog),
+      getCatalog: async () => structuredClone(catalog),
+      getDetailedCatalog: async () => { throw new Error('详细曲库不应被调用'); },
+      getSong: async () => structuredClone(catalog.songs[0]!),
       getAliases: async () => ({ aliases: [], source: catalog.source }),
       getPlates: async () => ({ plates: [], source: catalog.source }),
       getCollections: async () => ({ items: [], source: catalog.source }),

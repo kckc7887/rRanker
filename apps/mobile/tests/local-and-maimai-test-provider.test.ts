@@ -75,6 +75,12 @@ function catalogProvider(getDetailedCatalog: () => Promise<CatalogSnapshot>) {
   return {
     getCatalog: getDetailedCatalog,
     getDetailedCatalog,
+    getSong: async (songId: string) => {
+      const catalog = await getDetailedCatalog();
+      const song = catalog.songs.find((item) => item.id === songId);
+      if (!song) throw new Error(`Missing test song: ${songId}`);
+      return song;
+    },
     getAliases: async () => ({ aliases: [], source }),
     getPlates: async () => ({ plates: [], source }),
     getCollections: async () => ({ items: [], source }),
@@ -180,24 +186,21 @@ describe('舞萌示例查分器', () => {
     ).load();
     expect(getDetailedCatalog).toHaveBeenCalledTimes(1);
     expect(snapshot.records).toHaveLength(2);
+    expect(snapshot.records.every((record) => record.notes === undefined)).toBe(true);
     expect(snapshot.player.rating).toBe(snapshot.best50.rating);
     expect(snapshot.player.rating).toBeGreaterThan(0);
   });
 
-  it('详细曲库请求失败时使用本地曲库缓存生成测试成绩', async () => {
+  it('详细曲库请求失败时不使用轻量曲库猜测测试成绩', async () => {
     const repository = new MemorySnapshotRepository();
     repository.catalog = structuredClone(catalog);
     const fail = async (): Promise<CatalogSnapshot> => { throw new Error('offline'); };
-    const snapshot = await new ScoreService(
+    await expect(new ScoreService(
       new MaxedMaimaiTestProvider(),
       catalogProvider(fail),
       'maimai:test',
       undefined,
       repository,
-    ).load();
-
-    expect(snapshot.records).toHaveLength(2);
-    expect(snapshot.catalogSource).toMatchObject({ kind: 'cache', isStale: true });
-    expect(snapshot.player.rating).toBeGreaterThan(0);
+    ).load()).rejects.toThrow('offline');
   });
 });

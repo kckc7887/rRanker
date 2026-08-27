@@ -62,7 +62,7 @@ import {
   TROPHY_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
 import { useCollections } from '@/hooks/use-collections';
-import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { useDetailedCatalog, useMaimaiSongDetail } from '@/hooks/use-detailed-catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { maimaiChartPreviewChartId } from '@/domain/maimai-chart-preview';
 import {
@@ -143,15 +143,17 @@ function MaimaiSongDetailScreen({
     return songs?.find((item) => item.id === songId) ??
       (songId ? songs?.find((item) => item.id === normalizeSongId(songId)) : undefined);
   }, [catalog.data?.songs, songId]);
+  const songDetail = useMaimaiSongDetail(song?.id ?? songId, catalog.data, !!song);
+  const resolvedSong = songDetail.data ?? song;
   const initialChartType = chartType === 'SD' || chartType === 'DX' || chartType === 'UTAGE'
     ? chartType
     : undefined;
-  const songItem = song ? library.data?.find((item) => item.key === library.songKey(song.id)) : undefined;
+  const songItem = resolvedSong ? library.data?.find((item) => item.key === library.songKey(resolvedSong.id)) : undefined;
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
-  const onToggleFavorite = song ? () => void library.setSongFavorite(song.id, !favorite) : undefined;
-  const detailData = song && catalog.data
-    ? { song, versions: catalog.data.versions }
+  const onToggleFavorite = resolvedSong ? () => void library.setSongFavorite(resolvedSong.id, !favorite) : undefined;
+  const detailData = resolvedSong && catalog.data
+    ? { song: resolvedSong, versions: catalog.data.versions }
     : undefined;
   return <>
     <StatusBar style="light" />
@@ -164,9 +166,12 @@ function MaimaiSongDetailScreen({
         emptyText="找不到这首歌曲" data={detailData} renderData={(item) => <Detail song={item.song} records={scores.data?.records ?? []}
           versions={item.versions} library={library}
           dxratingTags={dxratingTags.data}
+          notesLoading={songDetail.isLoading}
+          notesError={songDetail.isError}
+          onRetryNotes={() => void songDetail.refetch()}
           initialChartType={initialChartType} initialLevelIndex={initialLevelIndex} />} />
       <SongDetailChrome
-        song={song} favorite={favorite}
+        song={resolvedSong} favorite={favorite}
         favoriteDisabled={favoriteDisabled}
         onToggleFavorite={onToggleFavorite}
       />
@@ -200,12 +205,15 @@ function SongDetailChrome({ song, favorite, favoriteDisabled, onToggleFavorite }
   );
 }
 
-function Detail({ song, versions, records, dxratingTags, library, initialChartType, initialLevelIndex }: {
+function Detail({ song, versions, records, dxratingTags, library, notesLoading, notesError, onRetryNotes, initialChartType, initialLevelIndex }: {
   song: Song;
   versions: GameVersion[];
   records: ScoreRecord[];
   dxratingTags?: DxRatingChartTagsSnapshot;
   library: LibraryHook;
+  notesLoading: boolean;
+  notesError: boolean;
+  onRetryNotes: () => void;
   initialChartType?: ChartType;
   initialLevelIndex?: number;
 }) {
@@ -316,7 +324,8 @@ function Detail({ song, versions, records, dxratingTags, library, initialChartTy
     {deferredReady ? <>
       <ChartCarousel key={`${song.id}:${selectedChartType}:${initialIndex}`} charts={sortedCharts} records={records} song={song}
         library={library} cardWidth={cardWidth} initialIndex={initialIndex} canSwitchChartType={canSwitchChartType}
-        nextChartType={nextChartType} dxratingTags={dxratingTags}
+        nextChartType={nextChartType} dxratingTags={dxratingTags} notesLoading={notesLoading}
+        notesError={notesError} onRetryNotes={onRetryNotes}
         onShowAllDxRatingTags={setTagSheetData}
         onVisibleIndexChange={(index) => setVisibleChartState({
           songId: song.id,
@@ -422,7 +431,7 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
     contentContainerStyle={styles.singleLineContent} />;
 }
 
-function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, dxratingTags, onShowAllDxRatingTags, onVisibleIndexChange, onToggleChartType }: {
+function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex, canSwitchChartType, nextChartType, dxratingTags, notesLoading, notesError, onRetryNotes, onShowAllDxRatingTags, onVisibleIndexChange, onToggleChartType }: {
   charts: Chart[];
   records: ScoreRecord[];
   song: Song;
@@ -432,6 +441,9 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   canSwitchChartType: boolean;
   nextChartType?: ChartType;
   dxratingTags?: DxRatingChartTagsSnapshot;
+  notesLoading: boolean;
+  notesError: boolean;
+  onRetryNotes: () => void;
   onShowAllDxRatingTags: (data: DxRatingChartTagSheetData) => void;
   onVisibleIndexChange: (index: number) => void;
   onToggleChartType: () => void;
@@ -455,6 +467,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
         return <ChartCard chart={chart} best={best} song={song}
           library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
           nextChartType={nextChartType} dxratingTags={chartTags}
+          notesLoading={notesLoading} notesError={notesError} onRetryNotes={onRetryNotes}
           onShowAllDxRatingTags={onShowAllDxRatingTags}
           onToggleChartType={onToggleChartType} />;
     }}
@@ -477,7 +490,7 @@ async function openBilibiliChartSearch(query: string): Promise<void> {
   }
 }
 
-function ChartCard({ chart, best, song, library, width, canSwitchChartType, nextChartType, dxratingTags, onShowAllDxRatingTags, onToggleChartType }: {
+function ChartCard({ chart, best, song, library, width, canSwitchChartType, nextChartType, dxratingTags, notesLoading, notesError, onRetryNotes, onShowAllDxRatingTags, onToggleChartType }: {
   chart: Chart;
   best?: ScoreRecord;
   song: Song;
@@ -486,6 +499,9 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
   canSwitchChartType: boolean;
   nextChartType?: ChartType;
   dxratingTags: DxRatingChartTag[];
+  notesLoading: boolean;
+  notesError: boolean;
+  onRetryNotes: () => void;
   onShowAllDxRatingTags: (data: DxRatingChartTagSheetData) => void;
   onToggleChartType: () => void;
 }) {
@@ -653,7 +669,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     <DxRatingTags tags={dxratingTags}
       onTagPress={showDxRatingTagDescription}
       onShowAll={() => onShowAllDxRatingTags({ songTitle: song.title, chartLabel, tags: dxratingTags })} />
-    <ChartNotesTables chart={chart} />
+    <ChartNotesTables chart={chart} loading={notesLoading} error={notesError} onRetry={onRetryNotes} />
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
       onPress={() => void library.setChartPractice(song.id, chart.type, chart.levelIndex, !practice)}
@@ -776,8 +792,27 @@ function isMaimaiChartNotes(notes: Chart['notes']): notes is ChartNotes {
   return !!notes && 'slide' in notes && 'touch' in notes;
 }
 
-function ChartNotesTables({ chart }: { chart: Chart }) {
+function ChartNotesTables({ chart, loading, error, onRetry }: {
+  chart: Chart;
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+}) {
   const theme = useAppTheme();
+  if (loading && !chart.notes) {
+    return <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>正在加载谱面物量…</Text>;
+  }
+  if (error && !chart.notes) {
+    return <DetailGestureRoot style={styles.scrollActionRoot}>
+      <View style={styles.collectionError}>
+        <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>谱面物量暂不可用</Text>
+        <DetailPressable accessibilityRole="button" accessibilityLabel="重试谱面物量"
+          onPress={onRetry} hitSlop={8} style={styles.aliasAction}>
+          <Text style={[styles.aliasActionText, { color: theme.accent }]}>重试</Text>
+        </DetailPressable>
+      </View>
+    </DetailGestureRoot>;
+  }
   if (chart.utage?.isBuddy) {
     if (!isBuddyChartNotes(chart.notes)) {
       return <Text style={[styles.chartMeta, { color: theme.textSecondary }]}>物量未提供</Text>;

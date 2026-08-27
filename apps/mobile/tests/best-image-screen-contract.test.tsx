@@ -76,6 +76,12 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({
 }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
+  useTransientDetailedMaimaiCatalog: () => ({
+    data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog,
+    error: null,
+    isLoading: false,
+    refetch: jest.fn(),
+  }),
 }));
 jest.mock('@/hooks/use-chunithm-catalog', () => ({
   useChunithmCatalog: () => ({
