@@ -88,6 +88,13 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({
     error: null,
     refetch: jest.fn(),
   }),
+  useMaimaiSongDetail: (_songId: string, catalog: { songs: unknown[] }) => ({
+    data: catalog.songs[0],
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: jest.fn(),
+  }),
 }));
 jest.mock('@/hooks/use-dxrating-chart-tags', () => ({
   useDxRatingChartTags: () => ({ data: undefined, isLoading: false, isError: false, error: null }),

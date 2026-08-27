@@ -166,7 +166,7 @@ describe('score-hub-sync-map', () => {
     expect(local.skippedUnsupportedChart).toBe(0);
     expect(local.skippedNoSong).toBe(1);
 
-    const lxns = convertHubScoresToLxnsRecords(hubScores, catalog);
+    const lxns = convertHubScoresToLxnsRecords(hubScores);
     expect(lxns.records).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 1696, type: 'dx', level_index: 4, achievements: 100.5,
@@ -175,7 +175,7 @@ describe('score-hub-sync-map', () => {
       expect.objectContaining({ id: 1696, type: 'standard', level_index: 3, fs: 'fsd' }),
       expect.objectContaining({ id: 100123, type: 'utage', level_index: 0 }),
     ]));
-    expect(lxns.skippedNoSong).toBe(1);
+    expect(lxns.skippedNoSong).toBe(0);
   });
 
   it('maps LXNS-backed app records to other probers and excludes unsupported entries', () => {

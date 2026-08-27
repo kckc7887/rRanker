@@ -1,5 +1,5 @@
 import type {
-  AliasSnapshot, CatalogSnapshot, CollectionSnapshot, PlateSnapshot, Player, ScoreRecord,
+  AliasSnapshot, CatalogSnapshot, CollectionSnapshot, PlateSnapshot, Player, ScoreRecord, Song,
 } from '@/domain/models';
 
 export type ProviderSession =
@@ -47,6 +47,7 @@ export interface CatalogProvider {
 }
 export interface DetailedCatalogProvider extends CatalogProvider {
   getDetailedCatalog(): Promise<CatalogSnapshot>;
+  getSong(songId: string, catalog: CatalogSnapshot): Promise<Song>;
   getAliases(): Promise<AliasSnapshot>;
   getPlates(): Promise<PlateSnapshot>;
   getCollections(): Promise<CollectionSnapshot>;

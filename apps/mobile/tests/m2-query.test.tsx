@@ -120,7 +120,8 @@ jest.mock('@/state/session-store', () => ({
   }),
 }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
-jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
+jest.mock('@/hooks/use-detailed-catalog', () => {
+  const useDetailedCatalog = () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const utageSong = {
     id: '100123',
@@ -189,7 +190,21 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
     error: null,
     refetch: jest.fn(),
   };
-} }));
+  };
+  return {
+    useDetailedCatalog,
+    useMaimaiSongDetail: (songId: string) => {
+      const catalog = useDetailedCatalog();
+      return {
+        data: catalog.data?.songs.find((song: { id: string }) => song.id === songId),
+        isLoading: catalog.isLoading,
+        isError: false,
+        error: null,
+        refetch: jest.fn(),
+      };
+    },
+  };
+});
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const base = fixtures.fixtureRecords[0];

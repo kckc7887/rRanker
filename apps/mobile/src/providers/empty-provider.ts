@@ -1,7 +1,8 @@
 import type {
-  AliasSnapshot, CatalogSnapshot, CollectionSnapshot, DataSource, PlateSnapshot, Player,
+  AliasSnapshot, CatalogSnapshot, CollectionSnapshot, DataSource, PlateSnapshot, Player, Song,
 } from '@/domain/models';
 import type { DetailedCatalogProvider, ScoreProvider } from './contracts';
+import { ProviderError } from './errors';
 
 const emptySource = (): DataSource => ({
   kind: 'fixture',
@@ -40,6 +41,10 @@ export class EmptyCatalogProvider implements DetailedCatalogProvider {
 
   async getDetailedCatalog() {
     return this.getCatalog();
+  }
+
+  async getSong(): Promise<Song> {
+    throw new ProviderError('no_data', '找不到这首歌曲', false);
   }
 
   async getAliases(): Promise<AliasSnapshot> {

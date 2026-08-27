@@ -68,6 +68,19 @@ function withoutInvalidUtageRecords(snapshot: ScoreSnapshot): ScoreSnapshot {
   };
 }
 
+function withoutChartNotes(snapshot: ScoreSnapshot): ScoreSnapshot {
+  const strip = ({ notes: _notes, ...record }: ScoreRecord): ScoreRecord => record;
+  return {
+    ...snapshot,
+    records: snapshot.records.map(strip),
+    best50: {
+      ...snapshot.best50,
+      b35: snapshot.best50.b35.map(strip),
+      b15: snapshot.best50.b15.map(strip),
+    },
+  };
+}
+
 /** 缓存优先渲染时的来源标记：label 原样保留，仅标记为缓存且过期（后台刷新中）。 */
 export function staleCachedSnapshot(snapshot: ScoreSnapshot): ScoreSnapshot {
   return staleCached(snapshot);
@@ -98,14 +111,19 @@ export class ScoreService {
     private readonly catalogRepository?: CatalogRepository,
   ) {}
 
-  private async loadCatalog(): Promise<CatalogSnapshot> {
+  private async loadCatalog(detailed = false): Promise<CatalogSnapshot> {
     try {
-      const catalog = await this.catalogProvider.getDetailedCatalog();
-      const stopSave = startTimer('score.saveCatalog');
-      await this.catalogRepository?.saveCatalog(catalog);
-      stopSave();
+      const catalog = detailed
+        ? await this.catalogProvider.getDetailedCatalog()
+        : await this.catalogProvider.getCatalog();
+      if (!detailed) {
+        const stopSave = startTimer('score.saveCatalog');
+        await this.catalogRepository?.saveCatalog(catalog);
+        stopSave();
+      }
       return catalog;
     } catch (error) {
+      if (detailed) throw error;
       const cached = await this.catalogRepository?.getLatestCatalog();
       if (!cached) throw error;
       return {
@@ -113,7 +131,7 @@ export class ScoreService {
         source: {
           ...cached.source,
           kind: 'cache',
-          label: `LXNS 详细曲库缓存（原：${cached.source.label}）`,
+          label: `LXNS 曲库缓存（原：${cached.source.label}）`,
           isStale: true,
         },
       };
@@ -159,11 +177,12 @@ export class ScoreService {
       let player: Player;
       let rawRecords: ScoreRecord[];
       let catalog: CatalogSnapshot;
-      if (isCatalogDrivenScoreProvider(this.scoreProvider)) {
+      const catalogDriven = isCatalogDrivenScoreProvider(this.scoreProvider);
+      if (catalogDriven) {
         const scoreProvider = this.scoreProvider;
         [player, catalog] = await Promise.all([
           timed('score.getPlayer', () => scoreProvider.getPlayer()),
-          timed('score.loadCatalog', () => this.loadCatalog()),
+          timed('score.loadCatalog', () => this.loadCatalog(true)),
         ]);
         rawRecords = await timed('score.getRecords', () => scoreProvider.getRecordsFromCatalog(catalog));
       } else {
@@ -175,7 +194,8 @@ export class ScoreService {
         ]);
       }
       const stopBuild = startTimer('score.buildSnapshot');
-      const snapshot = buildScoreSnapshot(player, rawRecords, catalog);
+      const builtSnapshot = buildScoreSnapshot(player, rawRecords, catalog);
+      const snapshot = catalogDriven ? withoutChartNotes(builtSnapshot) : builtSnapshot;
       stopBuild();
       const stopSave = startTimer('score.saveSnapshot');
       await this.snapshotRepository?.save(this.accountId, snapshot);

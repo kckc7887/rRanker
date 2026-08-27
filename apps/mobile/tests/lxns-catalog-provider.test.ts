@@ -95,6 +95,32 @@ describe('LxnsCatalogProvider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it('loads one song detail by id and merges notes with the lightweight song', async () => {
+    const lightPayload = {
+      ...responsePayload,
+      songs: responsePayload.songs.map((song) => ({
+        ...song,
+        difficulties: {
+          ...song.difficulties,
+          dx: song.difficulties.dx.map(({ notes: _notes, ...chart }) => chart),
+        },
+      })),
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(lightPayload), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(responsePayload.songs[0]), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const provider = new LxnsCatalogProvider();
+
+    const catalog = await provider.getCatalog();
+    const song = await provider.getSong('1806', catalog);
+
+    expect(catalog.songs[0].charts[0].notes).toBeUndefined();
+    expect(song).toMatchObject({ id: '1806', title: 'Fraq' });
+    expect(song.charts[0]).toMatchObject({ notes: { total: 1000, break: 20 } });
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('/song/1806');
+  });
+
   it('maps U·TA·GE metadata and BUDDY notes without treating level index 0 as BASIC', async () => {
     const utageSongs = [
       {

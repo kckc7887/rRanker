@@ -320,22 +320,27 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
   if (scores.length === 0) {
     throw new ScoreHubError('未获取到成绩数据');
   }
-  const catalog = await input.resolveCatalog();
+  const needsDivingFish = input.selected.some((target) => target.account.providerId === 'diving-fish');
+  const needsLocal = input.selected.some((target) => target.account.providerId === 'local');
+  const catalog = needsDivingFish || needsLocal
+    ? await input.resolveCatalog()
+    : null;
   if (input.signal.aborted) throw new ScoreHubError('已取消');
 
-  const divingFishMapped = convertHubScoresToDivingFishRecords(
-    scores,
-    buildMusicTitleMap(catalog),
-  );
-  const localMapped = convertHubScoresToLocalRecords(scores, catalog);
-  const lxnsMapped = convertHubScoresToLxnsRecords(scores, catalog);
+  const divingFishMapped = needsDivingFish && catalog
+    ? convertHubScoresToDivingFishRecords(scores, buildMusicTitleMap(catalog))
+    : null;
+  const localMapped = needsLocal && catalog
+    ? convertHubScoresToLocalRecords(scores, catalog)
+    : null;
+  const lxnsMapped = input.selected.some((target) => target.account.providerId === 'lxns')
+    ? convertHubScoresToLxnsRecords(scores)
+    : null;
   let uploadedTotal = 0;
   let skipped = 0;
   const targetResults: UploadTargetResult[] = [];
   const refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[] = [];
   const failedAccountNames: string[] = [];
-  const refreshFailedAccountIds = new Set<string>();
-  const uploadedDivingFishAccounts: BoundAccount[] = [];
 
   for (const target of input.selected) {
     if (input.signal.aborted) throw new ScoreHubError('已取消');
@@ -348,6 +353,9 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
         providerTitle: target.account.providerTitle,
       });
       if (target.account.providerId === 'local') {
+        if (!localMapped || !catalog) {
+          throw new ProviderError('no_data', '未能准备本地成绩', false);
+        }
         targetSkipped = localMapped.skippedNoSong
           + localMapped.skippedBadScore
           + localMapped.skippedUnsupportedChart;
@@ -372,6 +380,9 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
         refreshedAccounts.push({ account: target.account, snapshot });
         written = localMapped.records.length;
       } else if (target.account.providerId === 'diving-fish') {
+        if (!divingFishMapped) {
+          throw new ProviderError('no_data', '未能准备水鱼成绩', false);
+        }
         targetSkipped = divingFishMapped.skippedNoTitle
           + divingFishMapped.skippedBadScore
           + divingFishMapped.skippedUnsupportedChart;
@@ -385,8 +396,10 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
           input.signal,
         );
         written = result.uploaded;
-        uploadedDivingFishAccounts.push(target.account);
       } else if (target.account.providerId === 'lxns') {
+        if (!lxnsMapped) {
+          throw new ProviderError('no_data', '未能准备落雪成绩', false);
+        }
         targetSkipped = lxnsMapped.skippedNoSong
           + lxnsMapped.skippedBadScore
           + lxnsMapped.skippedUnsupportedChart;
@@ -401,30 +414,6 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
           onTokensRotated: (next) => input.onLxnsTokensRotated?.(target.account.id, next),
         });
         written = result.uploaded;
-        try {
-          input.onPhase({
-            kind: 'syncing',
-            message: `成绩已上传，正在同步应用内的 ${target.account.displayName}…`,
-            providerTitle: target.account.providerTitle,
-          });
-          const [{ LxnsScoreProvider }, { SqliteSnapshotRepository }] = await Promise.all([
-            import('@/providers/lxns-score-provider'),
-            import('@/storage/sqlite-snapshot-repository'),
-          ]);
-          const provider = new LxnsScoreProvider(result.session, (next) => (
-            input.onLxnsTokensRotated?.(target.account.id, next)
-          ));
-          const [player, records] = await Promise.all([
-            provider.getPlayer(),
-            provider.getRecords(),
-          ]);
-          const snapshot = buildScoreSnapshot(player, records, catalog);
-          await new SqliteSnapshotRepository().save(target.account.id, snapshot);
-          refreshedAccounts.push({ account: target.account, snapshot });
-        } catch {
-          failedAccountNames.push(target.account.displayName);
-          refreshFailedAccountIds.add(target.account.id);
-        }
       }
       uploadedTotal += written;
       skipped += targetSkipped;
@@ -433,7 +422,6 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
         status: 'success',
         written,
         skipped: targetSkipped,
-        refreshFailed: refreshFailedAccountIds.has(target.account.id),
       });
     } catch (error) {
       if (input.signal.aborted) throw new ScoreHubError('已取消');
@@ -446,31 +434,6 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
         skipped: targetSkipped,
         errorMessage: message,
       });
-    }
-  }
-
-  if (uploadedDivingFishAccounts.length > 0) {
-    const { refreshDivingFishAccounts } = await import('@/services/refresh-diving-fish-accounts');
-    const refreshResult = await refreshDivingFishAccounts({
-      accounts: uploadedDivingFishAccounts,
-      sessionsByAccountId: input.sessionsByAccountId,
-      catalog,
-      expectedRecords: divingFishMapped.records,
-      signal: input.signal,
-      onRefreshing: (account) => {
-        input.onPhase({
-          kind: 'syncing',
-          message: `成绩已上传，正在更新 ${account.displayName}…`,
-          providerTitle: account.providerTitle,
-        });
-      },
-    });
-    refreshedAccounts.push(...refreshResult.refreshed);
-    for (const failed of refreshResult.failed) {
-      failedAccountNames.push(failed.account.displayName);
-      refreshFailedAccountIds.add(failed.account.id);
-      const outcome = targetResults.find((item) => item.account.id === failed.account.id);
-      if (outcome) outcome.refreshFailed = true;
     }
   }
   if (input.signal.aborted) throw new ScoreHubError('已取消');
@@ -494,11 +457,9 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
     kind: 'done',
     message: failedTargets.length > 0
       ? `部分完成：写入 ${uploadedTotal} 条；失败 ${failedTargets.map((item) => item.account.displayName).join('、')}`
-      : failedAccountNames.length > 0
-        ? `写入完成：${uploadedTotal} 条；${failedAccountNames.join('、')}应用内刷新失败`
-        : skipped > 0
-          ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条`
-          : `完成：写入 ${uploadedTotal} 条`,
+      : skipped > 0
+        ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条`
+        : `完成：写入 ${uploadedTotal} 条`,
     uploaded: uploadedTotal,
     skipped,
   });

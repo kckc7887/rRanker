@@ -9,6 +9,11 @@ export class FixtureProvider implements ScoreProvider {
 export class FixtureCatalogProvider implements DetailedCatalogProvider {
   async getCatalog() { return structuredClone(fixtureCatalog); }
   async getDetailedCatalog() { return structuredClone(fixtureCatalog); }
+  async getSong(songId: string) {
+    const song = fixtureCatalog.songs.find((item) => item.id === songId);
+    if (!song) throw new Error(`Missing fixture song: ${songId}`);
+    return structuredClone(song);
+  }
   async getAliases() {
     return {
       aliases: [{ songId: '1', aliases: ['测试别名', 'alias a'] }],

@@ -15,7 +15,11 @@ import { CollectionImage } from '@/components/CollectionImage';
 import type { ChartType, Difficulty, Player } from '@/domain/models';
 import { MaimaiFilterBar, formatDxRatingTagFilterValue, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { buildDxRatingChartTagIndex } from '@/domain/dxrating-chart-tags';
-import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import {
+  useDetailedCatalog,
+  useTransientDetailedMaimaiCatalog,
+} from '@/hooks/use-detailed-catalog';
+import { chartVersionKey } from '@/domain/catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
 import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
 import { DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
@@ -338,6 +342,7 @@ export function MaimaiBestImageScreen() {
 
   const dxRatingChartTags = useDxRatingChartTags();
   const catalog = useDetailedCatalog();
+  const detailedCatalog = useTransientDetailedMaimaiCatalog(!!maimai);
   const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
     dxRatingChartTags.data,
     catalog.data?.songs ?? [],
@@ -406,9 +411,21 @@ export function MaimaiBestImageScreen() {
       versionConditionLabel,
     },
   ), [achievementMax, achievementMin, conditionLabels, constantMax, constantMin, difficulty, dxRatingTagIndex, maimai?.records, multiAchievement, nearMiss, quantity, selectedDxRatingTagIds, soloAchievement, splitVersions, strictAchievement, type, versionConditionLabel, versionLabels, versions]);
-  const scoreSections = useMemo<BestImageScoreSection[]>(() => imageType === 'best50'
+  const rawScoreSections = useMemo<BestImageScoreSection[]>(() => imageType === 'best50'
     ? maimai?.bestSections ?? []
     : customSections, [customSections, imageType, maimai?.bestSections]);
+  const detailedNotes = useMemo(() => new Map(
+    detailedCatalog.data?.songs.flatMap((song) => song.charts.flatMap((chart) => chart.notes
+      ? [[chartVersionKey(song.id, chart.type, chart.levelIndex), chart.notes] as const]
+      : [])) ?? [],
+  ), [detailedCatalog.data?.songs]);
+  const scoreSections = useMemo<BestImageScoreSection[]>(() => rawScoreSections.map((section) => ({
+    ...section,
+    records: section.records.map((record) => {
+      const notes = detailedNotes.get(chartVersionKey(record.songId, record.type, record.levelIndex));
+      return notes ? { ...record, notes } : record;
+    }),
+  })), [detailedNotes, rawScoreSections]);
   const maximumRowsPerPage = maximumBestImageRowsForWidth(outputWidth);
   const pages = useMemo(
     () => paginateBestImageSections(scoreSections, maximumRowsPerPage),
@@ -439,7 +456,7 @@ export function MaimaiBestImageScreen() {
     return () => { cancelled = true; };
   }, [coverRequestKey]);
 
-  const htmlPages = useMemo(() => embeddedAssets && coverUrls ? pages.map((page) => buildBestImageHtml({
+  const htmlPages = useMemo(() => embeddedAssets && coverUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
     type: imageType,
     width: outputWidth,
     player: previewPlayer,
@@ -453,7 +470,7 @@ export function MaimaiBestImageScreen() {
     ...embeddedAssets,
     cnFontUrl: 'maimai-noto.ttf',
     dataSource: player?.source?.label ?? '',
-  })) : null, [coverUrls, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, player?.source?.label]);
+  })) : null, [coverUrls, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, player?.source?.label]);
   const htmlPagesRef = useRef(htmlPages);
   htmlPagesRef.current = htmlPages;
   const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages]);
@@ -631,14 +648,17 @@ export function MaimaiBestImageScreen() {
     onPreviewMessage={handlePreviewMessage}
     fileAccessFromFileURLs
     allowingReadAccessToUrl={assetsDirectory?.uri}
-    loadingPreview={exportAssetError || assetError || webViewSourceError ? <View style={styles.loadingContent}>
-      <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{exportAssetError ?? assetError ?? webViewSourceError}</Text>
+    loadingPreview={exportAssetError || assetError || webViewSourceError || detailedCatalog.error ? <View style={styles.loadingContent}>
+      <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{exportAssetError ?? assetError ?? webViewSourceError ?? '暂时无法读取谱面物量，请重试。'}</Text>
       {exportAssetError ? <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
+        <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
+      </Pressable> : null}
+      {detailedCatalog.error ? <Pressable accessibilityRole="button" accessibilityLabel="重试谱面物量" onPress={detailedCatalog.refetch} style={[styles.retryButton, { borderColor: theme.accent }]}>
         <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
       </Pressable> : null}
     </View> : <View style={styles.loadingContent}>
       <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
-      <Text style={[styles.loadingText, { color: theme.textMuted }]}>{!assetsDirectory ? assetStatusText : coverProgress.total > 0 && coverUrls === null ? `正在准备歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在准备预览'}</Text>
+      <Text style={[styles.loadingText, { color: theme.textMuted }]}>{detailedCatalog.isLoading ? '正在准备谱面物量' : !assetsDirectory ? assetStatusText : coverProgress.total > 0 && coverUrls === null ? `正在准备歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在准备预览'}</Text>
     </View>}
     fontStatus={webViewSources && !assetsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: exportAssetError ? theme.danger : theme.border }]}>
       {exportAssetError ? <>
