@@ -20,6 +20,7 @@ import type { ScoreHubAbortSignal, ScoreHubDxnetJobStats } from '@/services/scor
 import {
   fetchMe,
   fetchScoreHubStatistics,
+  ScoreHubError,
   scoreHubErrorToUserMessage,
 } from '@/services/score-hub-client';
 import {
@@ -65,6 +66,8 @@ function phaseLabel(phase: UploadPhase): string {
     case 'sending_friend':
     case 'awaiting_friend':
     case 'fetching_scores':
+    case 'syncing_catalog':
+    case 'awaiting_catalog':
     case 'binding':
     case 'uploading':
     case 'syncing':
@@ -77,11 +80,18 @@ function phaseLabel(phase: UploadPhase): string {
   }
 }
 
+type CatalogWaiter = {
+  promise: Promise<CatalogSnapshot>;
+  resolve: (catalog: CatalogSnapshot) => void;
+  reject: (error: Error) => void;
+};
+
 export function UploadDataSheet({
   visible,
   accounts,
   sessionsByAccountId,
   catalog,
+  requestCatalog,
   onClose,
   onPhaseChange,
   onFinished,
@@ -96,6 +106,7 @@ export function UploadDataSheet({
   accounts: BoundAccount[];
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
   catalog: CatalogSnapshot | undefined;
+  requestCatalog?: () => Promise<CatalogSnapshot | undefined>;
   onClose: () => void;
   onPhaseChange?: (phase: UploadPhase) => void;
   onFinished?: (result: UploadResult) => void | Promise<void>;
@@ -134,6 +145,13 @@ export function UploadDataSheet({
   const persistedSelectedIdsRef = useRef<string[]>([]);
   const wasVisibleRef = useRef(false);
   const bindLookupSeqRef = useRef(0);
+  const catalogRef = useRef(catalog);
+  const requestCatalogRef = useRef(requestCatalog);
+  const catalogWaiterRef = useRef<CatalogWaiter | null>(null);
+  const catalogRequestRef = useRef<Promise<void> | null>(null);
+
+  catalogRef.current = catalog;
+  requestCatalogRef.current = requestCatalog;
 
   const targets = resolveUploadTargets(accounts, sessionsByAccountId);
   const statsSummary = statsStatus === 'loading'
@@ -188,6 +206,73 @@ export function UploadDataSheet({
       }, 5_000);
     }
   }, [onPhaseChange]);
+
+  const finishCatalogWait = useCallback((nextCatalog: CatalogSnapshot) => {
+    const waiter = catalogWaiterRef.current;
+    if (!waiter) return;
+    catalogWaiterRef.current = null;
+    waiter.resolve(nextCatalog);
+  }, []);
+
+  const cancelCatalogWait = useCallback(() => {
+    const waiter = catalogWaiterRef.current;
+    if (!waiter) return;
+    catalogWaiterRef.current = null;
+    waiter.reject(new ScoreHubError('已取消'));
+  }, []);
+
+  const syncCatalogForUpload = useCallback(() => {
+    const waiter = catalogWaiterRef.current;
+    if (!waiter || catalogRequestRef.current) return;
+    applyPhase({ kind: 'syncing_catalog', message: '成绩已获取，正在同步曲库…' });
+    const attempt = Promise.resolve().then(async () => {
+      try {
+        const nextCatalog = await requestCatalogRef.current?.();
+        if (abortRef.current.aborted) {
+          cancelCatalogWait();
+          return;
+        }
+        const availableCatalog = nextCatalog ?? catalogRef.current;
+        if (availableCatalog) {
+          finishCatalogWait(availableCatalog);
+        } else if (catalogWaiterRef.current === waiter) {
+          applyPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
+        }
+      } catch {
+        if (catalogWaiterRef.current === waiter && !abortRef.current.aborted) {
+          applyPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
+        }
+      } finally {
+        if (catalogRequestRef.current === attempt) catalogRequestRef.current = null;
+        if (catalogWaiterRef.current && catalogWaiterRef.current !== waiter && !abortRef.current.aborted) {
+          applyPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
+        }
+      }
+    });
+    catalogRequestRef.current = attempt;
+  }, [applyPhase, cancelCatalogWait, finishCatalogWait]);
+
+  const resolveCatalogForUpload = useCallback((): Promise<CatalogSnapshot> => {
+    const availableCatalog = catalogRef.current;
+    if (availableCatalog) return Promise.resolve(availableCatalog);
+    if (abortRef.current.aborted) return Promise.reject(new ScoreHubError('已取消'));
+    const existing = catalogWaiterRef.current;
+    if (existing) return existing.promise;
+
+    let resolve!: (nextCatalog: CatalogSnapshot) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<CatalogSnapshot>((promiseResolve, promiseReject) => {
+      resolve = promiseResolve;
+      reject = promiseReject;
+    });
+    catalogWaiterRef.current = { promise, resolve, reject };
+    syncCatalogForUpload();
+    return promise;
+  }, [syncCatalogForUpload]);
+
+  useEffect(() => {
+    if (catalog) finishCatalogWait(catalog);
+  }, [catalog, finishCatalogWait]);
 
   const refreshStoredList = useCallback(async () => {
     const list = await scoreHubAccountStore.listWithToken();
@@ -347,10 +432,11 @@ export function UploadDataSheet({
 
   useEffect(() => () => {
     abortRef.current.aborted = true;
+    cancelCatalogWait();
     uploadInFlightRef.current = false;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
-  }, []);
+  }, [cancelCatalogWait]);
 
   const close = () => {
     if (externalBusy) return;
@@ -363,6 +449,7 @@ export function UploadDataSheet({
   const cancelUpload = () => {
     if (!running || abortRef.current.aborted) return;
     abortRef.current.aborted = true;
+    cancelCatalogWait();
     applyPhase({ kind: 'canceling', message: '正在取消…' });
   };
 
@@ -496,7 +583,7 @@ export function UploadDataSheet({
     selectedAccountIds: selectedIds,
     targets,
     sessionsByAccountId,
-    catalog: catalog!,
+    resolveCatalog: resolveCatalogForUpload,
     signal: abortRef.current,
     onPhase: applyPhase,
     onNeedFriendAccept: (botFriendCode) => {
@@ -530,11 +617,6 @@ export function UploadDataSheet({
       showNotification({ title: '未选择目标', message: '请勾选至少一个可写入的查分器。', variant: 'warning' });
       return;
     }
-    if (!catalog) {
-      showNotification({ title: '曲库未就绪', message: '请先同步曲库后再上传，否则无法匹配曲名。', variant: 'warning' });
-      return;
-    }
-
     abortRef.current = { aborted: false };
     uploadInFlightRef.current = true;
     setRunning(true);
@@ -557,7 +639,7 @@ export function UploadDataSheet({
             selectedAccountIds: selectedIds,
             targets,
             sessionsByAccountId,
-            catalog,
+            resolveCatalog: resolveCatalogForUpload,
             signal: abortRef.current,
             onPhase: applyPhase,
             onLxnsTokensRotated,
@@ -619,11 +701,6 @@ export function UploadDataSheet({
       showNotification({ title: '未选择目标', message: '请勾选至少一个可写入的查分器。', variant: 'warning' });
       return;
     }
-    if (!catalog) {
-      showNotification({ title: '曲库未就绪', message: '请先同步曲库后再上传，否则无法匹配曲名。', variant: 'warning' });
-      return;
-    }
-
     abortRef.current = { aborted: false };
     uploadInFlightRef.current = true;
     setRunning(true);
@@ -636,7 +713,7 @@ export function UploadDataSheet({
         selectedAccountIds: selectedIds,
         targets,
         sessionsByAccountId,
-        catalog,
+        resolveCatalog: resolveCatalogForUpload,
         signal: abortRef.current,
         onPhase: applyPhase,
         onQrAccepted: () => setBindQrText(''),
@@ -973,6 +1050,21 @@ export function UploadDataSheet({
             )}
           </Pressable>
 
+          {running && phase.kind === 'awaiting_catalog' ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="重试同步曲库"
+              onPress={syncCatalogForUpload}
+              style={({ pressed }) => [
+                styles.secondary,
+                { borderColor: theme.border, backgroundColor: theme.surface },
+                pressed && styles.softPressed,
+              ]}
+            >
+              <Text style={[styles.secondaryText, { color: theme.accent }]}>重试同步曲库</Text>
+            </Pressable>
+          ) : null}
+
           {running ? (
             <Pressable
               accessibilityRole="button"
@@ -994,7 +1086,9 @@ export function UploadDataSheet({
 
           {statusText ? (
             <View style={[styles.statusBox, { backgroundColor: theme.surface }]}>
-              {running ? <ActivityIndicator color={theme.accent} style={styles.statusSpinner} /> : null}
+              {running && phase.kind !== 'awaiting_catalog' ? (
+                <ActivityIndicator color={theme.accent} style={styles.statusSpinner} />
+              ) : null}
               <Text style={[
                 styles.statusText,
                 { color: theme.textSecondary },

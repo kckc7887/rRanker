@@ -276,7 +276,7 @@ export function MuseDashCatalogScreen() {
       data={songs.length ? songs : undefined} flatListProps={{
         testID: 'musedash-catalog-results-list', style: styles.list,
         contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-        scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+        scrollIndicatorInsets: { bottom: inset },
         keyExtractor: (item) => item.song.uid,
         renderItem: ({ item }) => <MuseDashSongRow song={item.song} albumTitle={item.albumTitle}
           constants={songConstants(item)} />,

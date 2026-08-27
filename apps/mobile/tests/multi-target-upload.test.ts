@@ -158,7 +158,7 @@ describe('好友码多目标写入', () => {
       selectedAccountIds: [local.id, water.id],
       targets: resolveUploadTargets([local, water], { [water.id]: session }),
       sessionsByAccountId: { [water.id]: session },
-      catalog,
+      resolveCatalog: async () => catalog,
       signal: { aborted: false },
       onPhase: (phase) => phases.push(phase.kind),
       onNeedFriendAccept: vi.fn(),
@@ -172,6 +172,66 @@ describe('好友码多目标写入', () => {
       expect.objectContaining({ account: water, status: 'failed', errorMessage: '水鱼暂时不可用' }),
     ]);
     expect(phases.at(-1)).toBe('done');
+  });
+
+  it('严格先取得原始成绩再等待曲库，曲库到达后续接映射和写入', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const order: string[] = [];
+    let releaseCatalog!: (value: CatalogSnapshot) => void;
+    const resolveCatalog = vi.fn(() => new Promise<CatalogSnapshot>((resolve) => {
+      order.push('catalog');
+      releaseCatalog = resolve;
+    }));
+    mocks.fetchLatestSync.mockImplementationOnce(async () => {
+      order.push('scores');
+      return {
+        id: 'sync',
+        scores: [{
+          musicId: '11696', chartIndex: 3, type: 'dx', dxScore: 1900,
+          score: '100.5%', fc: 'app', fs: 'fdxp',
+        }],
+      };
+    });
+    mocks.saveSnapshot.mockImplementationOnce(async () => {
+      order.push('upload');
+    });
+
+    const upload = uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      resolveCatalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(resolveCatalog).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(['scores', 'catalog']);
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
+    releaseCatalog(catalog);
+    await upload;
+    expect(order).toEqual(['scores', 'catalog', 'upload']);
+    expect(mocks.fetchLatestSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('没有成绩时不请求曲库', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const resolveCatalog = vi.fn(async () => catalog);
+    mocks.fetchLatestSync.mockResolvedValueOnce({ id: 'empty', scores: [] });
+
+    await expect(uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      resolveCatalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    })).rejects.toThrow('未获取到成绩数据');
+    expect(resolveCatalog).not.toHaveBeenCalled();
   });
 
   it('好友码登录先进入发送申请阶段，再进入等待同意并弹通知', async () => {
@@ -196,7 +256,7 @@ describe('好友码多目标写入', () => {
       selectedAccountIds: [local.id],
       targets: resolveUploadTargets([local], {}),
       sessionsByAccountId: {},
-      catalog,
+      resolveCatalog: async () => catalog,
       signal: { aborted: false },
       onPhase: (phase) => phases.push(phase.kind),
       onNeedFriendAccept,
@@ -218,7 +278,7 @@ describe('好友码多目标写入', () => {
       selectedAccountIds: [local.id],
       targets: resolveUploadTargets([local], {}),
       sessionsByAccountId: {},
-      catalog,
+      resolveCatalog: async () => catalog,
       signal: { aborted: false },
       onPhase: (phase) => phases.push(phase.kind),
       onNeedFriendAccept: vi.fn(),
@@ -286,7 +346,7 @@ describe('好友码多目标写入', () => {
       selectedAccountIds: [local.id],
       targets: resolveUploadTargets([local], {}),
       sessionsByAccountId: {},
-      catalog,
+      resolveCatalog: async () => catalog,
       signal: { aborted: false },
       onPhase: (phase) => phases.push(phase.kind),
     });
@@ -316,7 +376,7 @@ describe('好友码多目标写入', () => {
       selectedAccountIds: [local.id],
       targets: resolveUploadTargets([local], {}),
       sessionsByAccountId: {},
-      catalog,
+      resolveCatalog: async () => catalog,
       signal: { aborted: false },
       onPhase: (phase) => {
         phases.push({
@@ -363,7 +423,7 @@ describe('好友码多目标写入', () => {
       selectedAccountIds: [local.id],
       targets: resolveUploadTargets([local], {}),
       sessionsByAccountId: {},
-      catalog,
+      resolveCatalog: async () => catalog,
       signal: { aborted: false },
       onPhase: vi.fn(),
     })).rejects.toMatchObject({ code: 'CABINET_NOT_BOUND' });
@@ -396,7 +456,7 @@ describe('好友码多目标写入', () => {
       selectedAccountIds: [local.id],
       targets: resolveUploadTargets([local], {}),
       sessionsByAccountId: {},
-      catalog,
+      resolveCatalog: async () => catalog,
       signal: { aborted: false },
       onPhase: vi.fn(),
     });
@@ -440,7 +500,7 @@ describe('好友码多目标写入', () => {
       selectedAccountIds: [local.id],
       targets: resolveUploadTargets([local], {}),
       sessionsByAccountId: {},
-      catalog,
+      resolveCatalog: async () => catalog,
       signal: { aborted: false },
       onPhase: vi.fn(),
     });

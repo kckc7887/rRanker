@@ -1,13 +1,6 @@
 import { useMemo } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import type { InfiniteData } from '@tanstack/react-query';
-import {
-  isPhiraCatalogHomeRequest,
-  type PhiraChart,
-  type PhiraChartPage,
-  type PhiraChartStatus,
-  type PhiraPlayerSnapshot,
-} from '@/domain/phira';
+import type { PhiraChart, PhiraChartPage, PhiraChartStatus, PhiraPlayerSnapshot } from '@/domain/phira';
 import { phiraProvider } from '@/providers/phira-provider';
 import { cacheFirstLoad } from '@/services/cache-first';
 import { countPhiraChartZip } from '@/services/phira-chart-notes';
@@ -69,31 +62,12 @@ export function useRefreshAllPhiraBests(playerId: number | null) {
 export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled = true) {
   const tabActive = useCachedTabActive();
   const normalized = search.trim();
-  const queryKey = ['phira', 'charts', status, normalized] as const;
   return useInfiniteQuery({
-    queryKey, initialPageParam: 0,
-    queryFn: async ({ pageParam, signal }): Promise<PhiraChartPage> => {
-      const fetchPage = () => phiraProvider.getCharts(
-        { status, page: pageParam, search: normalized || undefined },
-        signal,
-      );
-      if (!isPhiraCatalogHomeRequest(status, pageParam, normalized)) return fetchPage();
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => phiraCache.loadPage(status, pageParam, normalized),
-        loadFresh: async () => {
-          const fresh = { data: await fetchPage(), source: phiraSource() };
-          await phiraCache.savePage(status, pageParam, normalized, fresh);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          queryClient.setQueryData<InfiniteData<PhiraChartPage>>(queryKey, (old) => {
-            if (!old) return undefined;
-            return { ...old, pages: old.pages.map((page, index) => (index === 0 ? fresh.data : page)) };
-          });
-        },
-      });
-      return snapshot.data;
-    },
+    queryKey: ['phira', 'charts', status, normalized], initialPageParam: 0,
+    queryFn: ({ pageParam, signal }): Promise<PhiraChartPage> => phiraProvider.getCharts(
+      { status, page: pageParam, search: normalized || undefined },
+      signal,
+    ),
     // Phira /chart 的 page=1 返回与 page=0 相同的首页，翻页须跳过 1（0 → 2 → 3 → …）。
     getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
     enabled: enabled && tabActive,

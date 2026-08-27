@@ -24,8 +24,9 @@ type TestHubEntry = {
   hasCabinetBound: boolean;
   updatedAt: number;
 };
-type MockQrUploadInput = {
+type MockUploadInput = {
   onPhase: (phase: { kind: string; message?: string; uploaded?: number; skipped?: number }) => void;
+  resolveCatalog: () => Promise<CatalogSnapshot>;
   onQrAccepted?: () => void;
 };
 const mockLoadPrefs = jest.fn(async (): Promise<TestUploadPrefs> => ({
@@ -85,13 +86,13 @@ const mockUpsert = jest.fn(async (partial: {
   return { ...mockHubState };
 });
 const mockBindCabinet = jest.fn(async () => ({ friendCode: '', alreadyBound: false }));
-const mockUploadFriend = jest.fn(async () => ({
+const mockUploadFriend = jest.fn(async (_input: MockUploadInput) => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
-const mockUploadSession = jest.fn(async () => ({
+const mockUploadSession = jest.fn(async (_input: MockUploadInput) => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
-const mockUploadQr = jest.fn(async (_input: MockQrUploadInput) => ({
+const mockUploadQr = jest.fn(async (_input: MockUploadInput) => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
 const mockFetchMe = jest.fn(async () => ({ friendCode: '111111111111111', hasCabinetUserId: false }));
@@ -211,6 +212,8 @@ function renderSheet(
   accounts = [local, water],
   visible = true,
   uploadMethod: 'friend_code' | 'qr' = 'friend_code',
+  catalogValue: CatalogSnapshot | null | undefined = catalog,
+  requestCatalog?: () => Promise<CatalogSnapshot | undefined>,
 ) {
   return render(
     <NotificationProvider>
@@ -218,7 +221,8 @@ function renderSheet(
         visible={visible}
         accounts={accounts}
         sessionsByAccountId={{ [water.id]: waterSession }}
-        catalog={catalog}
+        catalog={catalogValue ?? undefined}
+        requestCatalog={requestCatalog}
         onClose={jest.fn()}
         temporarySelectedAccountIds={temporarySelectedAccountIds}
         uploadMethod={uploadMethod}
@@ -353,6 +357,169 @@ describe('好友码统一上传弹窗', () => {
     await fireEvent.press(screen.getByLabelText('开始上传'));
     await waitFor(() => expect(mockUploadFriend).toHaveBeenCalled());
     expect(mockUploadSession).not.toHaveBeenCalled();
+  });
+
+  it('曲库为空时仍先读取好友码成绩，失败后只重试曲库并续接原任务', async () => {
+    setHubEntry({
+      friendCode: '111111111111111',
+      token: 'tok',
+      hasCabinetBound: false,
+      updatedAt: 1,
+    });
+    mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
+    const events: string[] = [];
+    const requestCatalog = jest.fn<() => Promise<CatalogSnapshot | undefined>>()
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce(catalog);
+    mockUploadFriend.mockImplementationOnce(async (input: MockUploadInput) => {
+      events.push('scores');
+      input.onPhase({ kind: 'fetching_scores', message: '成绩已获取' });
+      await input.resolveCatalog();
+      events.push('upload');
+      input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
+      return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+    });
+
+    const screen = await renderSheet([water.id], [local, water], true, 'friend_code', null, requestCatalog);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+
+    await waitFor(() => expect(screen.getByLabelText('重试同步曲库')).toBeTruthy());
+    expect(screen.getByText('成绩已获取，曲库暂未同步。请重试。')).toBeTruthy();
+    expect(events).toEqual(['scores']);
+    expect(mockUploadFriend).toHaveBeenCalledTimes(1);
+    expect(requestCatalog).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByLabelText('重试同步曲库'));
+    await waitFor(() => expect(events).toEqual(['scores', 'upload']));
+    expect(mockUploadFriend).toHaveBeenCalledTimes(1);
+    expect(requestCatalog).toHaveBeenCalledTimes(2);
+  });
+
+  it('曲库持续失败时保留重试入口和当前上传任务', async () => {
+    const requestCatalog = jest.fn(async () => {
+      throw new Error('network');
+    });
+    mockUploadFriend.mockImplementationOnce(async (input: MockUploadInput) => {
+      input.onPhase({ kind: 'fetching_scores', message: '成绩已获取' });
+      await input.resolveCatalog();
+      return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+    });
+    const screen = await renderSheet([water.id], [local, water], true, 'friend_code', null, requestCatalog);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    await waitFor(() => expect(screen.getByLabelText('重试同步曲库')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('重试同步曲库'));
+    await waitFor(() => expect(requestCatalog).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText('重试同步曲库')).toBeTruthy();
+    expect(mockUploadFriend).toHaveBeenCalledTimes(1);
+  });
+
+  it('其它查询先取得曲库时自动唤醒等待中的上传', async () => {
+    const requestCatalog = jest.fn(async () => undefined);
+    mockUploadFriend.mockImplementationOnce(async (input: MockUploadInput) => {
+      input.onPhase({ kind: 'fetching_scores', message: '成绩已获取' });
+      await input.resolveCatalog();
+      input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
+      return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+    });
+    const renderCatalog = (catalogValue: CatalogSnapshot | undefined) => (
+      <NotificationProvider>
+        <UploadDataSheet
+          visible
+          accounts={[local, water]}
+          sessionsByAccountId={{ [water.id]: waterSession }}
+          catalog={catalogValue}
+          requestCatalog={requestCatalog}
+          onClose={jest.fn()}
+          temporarySelectedAccountIds={[water.id]}
+        />
+      </NotificationProvider>
+    );
+    const screen = await render(renderCatalog(undefined));
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    await waitFor(() => expect(screen.getByLabelText('重试同步曲库')).toBeTruthy());
+
+    await act(async () => {
+      screen.rerender(renderCatalog(catalog));
+    });
+    await waitFor(() => expect(screen.queryByLabelText('取消当前操作')).toBeNull());
+    expect(mockUploadFriend).toHaveBeenCalledTimes(1);
+    expect(requestCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  it('关闭再打开弹层仍保留等待中的成绩并可继续同步曲库', async () => {
+    const requestCatalog = jest.fn<() => Promise<CatalogSnapshot | undefined>>()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(catalog);
+    mockUploadFriend.mockImplementationOnce(async (input: MockUploadInput) => {
+      input.onPhase({ kind: 'fetching_scores', message: '成绩已获取' });
+      await input.resolveCatalog();
+      input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
+      return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+    });
+    const renderVisible = (visible: boolean) => (
+      <NotificationProvider>
+        <UploadDataSheet
+          visible={visible}
+          accounts={[local, water]}
+          sessionsByAccountId={{ [water.id]: waterSession }}
+          catalog={undefined}
+          requestCatalog={requestCatalog}
+          onClose={jest.fn()}
+          temporarySelectedAccountIds={[water.id]}
+        />
+      </NotificationProvider>
+    );
+    const screen = await render(renderVisible(true));
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    await waitFor(() => expect(screen.getByLabelText('重试同步曲库')).toBeTruthy());
+    await act(async () => screen.rerender(renderVisible(false)));
+    await act(async () => screen.rerender(renderVisible(true)));
+    await waitFor(() => expect(screen.getByLabelText('重试同步曲库')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('重试同步曲库'));
+    await waitFor(() => expect(screen.queryByLabelText('取消当前操作')).toBeNull());
+    expect(mockUploadFriend).toHaveBeenCalledTimes(1);
+    expect(requestCatalog).toHaveBeenCalledTimes(2);
+  });
+
+  it('等待曲库时取消会释放原始成绩并结束当前任务', async () => {
+    const requestCatalog = jest.fn(async () => undefined);
+    mockUploadFriend.mockImplementationOnce(async (input: MockUploadInput) => {
+      input.onPhase({ kind: 'fetching_scores', message: '成绩已获取' });
+      await input.resolveCatalog();
+      return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+    });
+    const screen = await renderSheet([water.id], [local, water], true, 'friend_code', null, requestCatalog);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    await waitFor(() => expect(screen.getByLabelText('重试同步曲库')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('取消当前操作'));
+    await waitFor(() => expect(screen.queryByLabelText('取消当前操作')).toBeNull());
+    expect(mockUploadFriend).toHaveBeenCalledTimes(1);
+  });
+
+  it('组件卸载会释放等待中的成绩', async () => {
+    const requestCatalog = jest.fn(async () => undefined);
+    let released = false;
+    mockUploadFriend.mockImplementationOnce(async (input: MockUploadInput) => {
+      input.onPhase({ kind: 'fetching_scores', message: '成绩已获取' });
+      try {
+        await input.resolveCatalog();
+      } finally {
+        released = true;
+      }
+      return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+    });
+    const screen = await renderSheet([water.id], [local, water], true, 'friend_code', null, requestCatalog);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    await waitFor(() => expect(screen.getByLabelText('重试同步曲库')).toBeTruthy());
+    await act(async () => screen.unmount());
+    await waitFor(() => expect(released).toBe(true));
+    expect(mockUploadFriend).toHaveBeenCalledTimes(1);
   });
 
   it('会话过期时自动回退好友码上传', async () => {
@@ -519,7 +686,7 @@ describe('好友码统一上传弹窗', () => {
   });
 
   it('二维码同步不走好友申请并在任务接受后清空输入', async () => {
-    mockUploadQr.mockImplementationOnce(async (input: MockQrUploadInput) => {
+    mockUploadQr.mockImplementationOnce(async (input: MockUploadInput) => {
       input.onQrAccepted?.();
       input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
       return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
@@ -536,6 +703,36 @@ describe('好友码统一上传弹窗', () => {
     expect(mockUploadFriend).not.toHaveBeenCalled();
   });
 
+  it('二维码上传在曲库为空时也先取得成绩再补曲库', async () => {
+    const order: string[] = [];
+    const requestCatalog = jest.fn(async () => {
+      order.push('catalog');
+      return catalog;
+    });
+    mockUploadQr.mockImplementationOnce(async (input: MockUploadInput) => {
+      order.push('scores');
+      input.onPhase({ kind: 'fetching_scores', message: '成绩已获取' });
+      await input.resolveCatalog();
+      order.push('upload');
+      input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
+      return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };
+    });
+    const screen = await renderSheet(
+      [water.id],
+      [local, water],
+      true,
+      'qr',
+      null,
+      requestCatalog,
+    );
+    await fireEvent.changeText(await screen.findByLabelText('玩家二维码字符串'), 'SGWCMAIDCURRENT');
+    await fireEvent.press(screen.getByLabelText('用二维码同步成绩'));
+    await waitFor(() => expect(order).toEqual(['scores', 'catalog', 'upload']));
+    expect(mockUploadQr).toHaveBeenCalledTimes(1);
+    expect(requestCatalog).toHaveBeenCalledTimes(1);
+    expect(mockUploadFriend).not.toHaveBeenCalled();
+  });
+
   it('关闭弹窗不中止二维码同步且会清空二维码', async () => {
     setHubEntry({
       friendCode: '111111111111111',
@@ -545,7 +742,7 @@ describe('好友码统一上传弹窗', () => {
     });
     mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
     let resolveQr: (() => void) | null = null;
-    mockUploadQr.mockImplementationOnce((input: MockQrUploadInput) => new Promise((resolve) => {
+    mockUploadQr.mockImplementationOnce((input: MockUploadInput) => new Promise((resolve) => {
       resolveQr = () => {
         input.onQrAccepted?.();
         input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
@@ -609,7 +806,7 @@ describe('好友码统一上传弹窗', () => {
         updatedAt: 1,
       });
       mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: false });
-      mockUploadQr.mockImplementationOnce(async (input: MockQrUploadInput) => {
+      mockUploadQr.mockImplementationOnce(async (input: MockUploadInput) => {
         input.onQrAccepted?.();
         input.onPhase({ kind: 'done', message: '完成', uploaded: 1, skipped: 0 });
         return { uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] };

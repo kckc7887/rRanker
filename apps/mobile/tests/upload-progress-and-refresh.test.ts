@@ -25,6 +25,8 @@ describe('好友码上传进度', () => {
     [{ kind: 'sending_friend', message: '', botFriendCode: null }, '发送申请中'],
     [{ kind: 'awaiting_friend', message: '', botFriendCode: null }, '等待同意中'],
     [{ kind: 'fetching_scores', message: '' }, '获取成绩中'],
+    [{ kind: 'syncing_catalog', message: '' }, '同步曲库中'],
+    [{ kind: 'awaiting_catalog', message: '' }, '同步曲库中'],
     [{ kind: 'binding', message: '' }, '绑定二维码中'],
     [{ kind: 'uploading', message: '', providerTitle: '水鱼' }, '上传成绩中'],
     [{ kind: 'syncing', message: '', providerTitle: '水鱼' }, '上传成绩中'],

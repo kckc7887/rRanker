@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
-import { Animated } from 'react-native';
+import { readFileSync } from 'node:fs';
+import { Animated, Platform, Text } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { CatalogListPage } from '@/components/game-content/GameListPages';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { ChunithmSongRow } from '@/components/chunithm/ChunithmSongRow';
@@ -111,4 +113,42 @@ test('exports the stable score-card and song-row host tree contract', async () =
   const hash = createHash('sha256').update(JSON.stringify(canonicalTrees)).digest('hex');
   expect(trees).toHaveLength(5);
   expect(hash).toBe('e45be0e9a3441afcbe9301bb76ec164a1f80d0c40d103603a3329dbb32f51033');
+});
+
+test('catalog lists share one visible-window policy without changing caller list props', async () => {
+  const screen = await render(
+    <CatalogListPage
+      isLoading={false}
+      isError={false}
+      isEmpty={false}
+      emptyText="空"
+      data={[1]}
+      flatListProps={{
+        testID: 'catalog-window-contract',
+        keyExtractor: String,
+        renderItem: ({ item }) => <Text>{item}</Text>,
+      }}
+    />,
+  );
+  expect(screen.getByTestId('catalog-window-contract').props).toEqual(expect.objectContaining({
+    initialNumToRender: 8,
+    maxToRenderPerBatch: 4,
+    updateCellsBatchingPeriod: 50,
+    windowSize: 3,
+    removeClippedSubviews: Platform.OS === 'android',
+  }));
+});
+
+test('every game catalog host routes its list through CatalogListPage', () => {
+  const hosts = [
+    ['app/(tabs)/search/index.tsx', 3],
+    ['src/screens/TufScreens.tsx', 1],
+    ['src/screens/MuseDashScreens.tsx', 1],
+    ['src/screens/PhiraScreens.tsx', 1],
+    ['src/screens/OsuScreens.tsx', 1],
+  ] as const;
+  for (const [path, expectedCount] of hosts) {
+    const source = readFileSync(path, 'utf8');
+    expect(source.match(/<CatalogListPage/g)).toHaveLength(expectedCount);
+  }
 });

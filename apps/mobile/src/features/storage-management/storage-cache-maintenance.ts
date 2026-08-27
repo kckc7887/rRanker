@@ -44,6 +44,8 @@ export async function migrateLegacyStorageCaches(
     .map((row) => row.key)
     .filter(isSessionOnlyResourceKey);
   await snapshots.clearResources(sessionOnlyKeys);
+  await snapshots.clearCatalog();
+
   const osuIcons = OSU_MOD_ICONS_ROOT();
   if (osuIcons.exists) osuIcons.delete();
 

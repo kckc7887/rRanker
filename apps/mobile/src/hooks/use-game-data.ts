@@ -252,7 +252,7 @@ export function useGameData(enabled = true) {
               },
             };
           };
-          // 示例账号由真实公开曲库生成，并复用曲库首页的本地数据与后台刷新路径。
+          // 示例账号仍由真实公开曲库生成，但公开曲库只保留在本次 React Query 会话。
           return loadChunithmCatalog().then(toBundle);
         }
         if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {
@@ -506,7 +506,7 @@ export function useGameData(enabled = true) {
       });
       // 缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
       // 与 useScoreSnapshot 并发时由 ScoreService 的 in-flight 去重共享一次网络请求。
-      // 本地账号和示例账号首屏优先读取曲库缓存。
+      // 本地账号和示例账号仍联网读取公开曲库，只有成绩快照可以离线命中。
       if (persistScores) {
         const cached = await repository.getLatest(activeAccountId);
         if (cached) {
