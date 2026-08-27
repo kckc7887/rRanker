@@ -278,38 +278,6 @@ export type OsuCatalogSong = {
   difficultyRatings: number[];
 };
 
-export type OsuCatalogHomePage = {
-  songs: OsuCatalogSong[];
-  total: number;
-  recommendedDifficulty: number | null;
-  cursor: string | null;
-};
-
-export type OsuCatalogHomeRequest = {
-  q?: string;
-  general: readonly OsuGeneralFlag[];
-  status: OsuSearchStatus;
-  genre: number;
-  language: number;
-  nsfw: boolean;
-  extras: readonly OsuExtraFlag[];
-};
-
-export function isOsuCatalogHomeRequest(input: OsuCatalogHomeRequest): boolean {
-  return !input.q?.trim()
-    && input.general.length === 0
-    && input.status === 'any'
-    && input.genre === 0
-    && input.language === 0
-    && !input.nsfw
-    && input.extras.length === 0;
-}
-
-export type OsuCatalogHomeSnapshot = {
-  data: OsuCatalogHomePage;
-  source: DataSource;
-};
-
 /** 歌曲详情页单张谱面（BeatmapExtended 规范化）：数值属性缺失为 null，展示层负责 '—'。 */
 export type OsuBeatmapDetail = {
   id: number;
@@ -552,7 +520,6 @@ export type OsuSnapshot = {
 
 export const OSU_SNAPSHOT_SCHEMA_VERSION = 1;
 export const OSU_KNOWN_SCORES_SCHEMA_VERSION = 1;
-export const OSU_CATALOG_HOME_SCHEMA_VERSION = 1;
 
 export function osuSnapshotCacheKey(gameId: OsuGameId, userId: number): string {
   return `osu:${gameId}:${userId}`;
@@ -560,10 +527,6 @@ export function osuSnapshotCacheKey(gameId: OsuGameId, userId: number): string {
 
 export function osuKnownScoresCacheKey(gameId: OsuGameId, userId: number): string {
   return `osu-known-scores:${gameId}:${userId}`;
-}
-
-export function osuCatalogHomeCacheKey(gameId: OsuGameId): string {
-  return `osu-catalog-home:${gameId}`;
 }
 
 // ---- 缓存快照校验 Schema ----

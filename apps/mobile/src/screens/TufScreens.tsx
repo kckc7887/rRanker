@@ -221,14 +221,7 @@ export function TufSearchScreen() {
       ? specialDifficulties
       : undefined,
   }), [includeSpecial, order, pguRange, sortBy, specialDifficulties]);
-  const cacheHomePage = debounced.trim() === ''
-    && sortBy === 'RECENT'
-    && order === 'DESC'
-    && difficultyBand === 'all'
-    && difficultyMin === ''
-    && difficultyMax === ''
-    && includeSpecial;
-  const query = useTufLevelSearch(debounced, queryOptions, true, cacheHomePage);
+  const query = useTufLevelSearch(debounced, queryOptions);
   const levels = useMemo(
     () => uniqueById(query.data?.pages.flatMap((page) => page.results) ?? []),
     [query.data?.pages],
@@ -254,7 +247,7 @@ export function TufSearchScreen() {
       emptyText="没有找到 TUF 关卡" data={levels.length ? levels : undefined} flatListProps={{
         testID: 'tuf-catalog-results-list', style: styles.list,
         contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-        scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+        scrollIndicatorInsets: { bottom: inset },
         keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <TufSongRow level={item} />,
         onEndReachedThreshold: 0.35, onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); },
         ListFooterComponent: <LoadingFooter loading={query.isFetchingNextPage} />,

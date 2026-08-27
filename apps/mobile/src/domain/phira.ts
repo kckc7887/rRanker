@@ -155,14 +155,6 @@ export const phiraNoteCacheKey = (chartId: number) => `phira:notes:${chartId}`;
 export const phiraPageCacheKey = (status: PhiraChartStatus, page: number, search = '') =>
   `phira:charts:${status}:${page}:${encodeURIComponent(search.trim())}`;
 
-export function isPhiraCatalogHomeRequest(
-  status: PhiraChartStatus,
-  page: number,
-  search = '',
-): boolean {
-  return status === 'ranked' && page === 0 && search.trim() === '';
-}
-
 export function formatPhiraAccuracy(value: number): string {
   const percent = Math.abs(value) <= 1 ? value * 100 : value;
   return `${percent.toFixed(2)}%`;

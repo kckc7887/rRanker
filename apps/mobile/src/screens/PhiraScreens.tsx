@@ -132,7 +132,7 @@ export function PhiraCatalogScreen() {
   return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage beforeList={controls} isLoading={query.isLoading} isError={query.isError} error={query.error}
     onRetry={() => void query.refetch()} isEmpty={!query.isLoading && charts.length === 0} emptyText="没有找到 Phira 谱面" data={charts.length ? charts : undefined}
     flatListProps={{ testID: 'phira-catalog-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
-      contentContainerStyle: [styles.listContent, { paddingBottom: inset + 20 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+      contentContainerStyle: [styles.listContent, { paddingBottom: inset + 20 }], scrollIndicatorInsets: { bottom: inset },
       keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <PhiraSongRow chart={item} />,
       onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }, ListFooterComponent: query.isFetchingNextPage ? <ActivityIndicator /> : null }} /></View>;
 }

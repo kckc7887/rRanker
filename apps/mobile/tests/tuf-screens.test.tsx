@@ -239,14 +239,9 @@ describe('TUF screens', () => {
 
   it('resets level search by query key and paginates without prefetching', async () => {
     const screen = await render(<TufSearchScreen />);
-    expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith(
-      '', expect.objectContaining({ sort: 'RECENT', order: 'DESC' }), true, true,
-    );
     expect(mockFetchNextPage).not.toHaveBeenCalled();
     await fireEvent.changeText(screen.getByLabelText('搜索 TUF 关卡'), '技术');
-    expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith(
-      '技术', expect.objectContaining({ sort: 'RECENT', order: 'DESC' }), true, false,
-    );
+    expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('技术', expect.objectContaining({ sort: 'RECENT', order: 'DESC' }));
     fireEvent(screen.getByTestId('tuf-catalog-results-list'), 'endReached');
     expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
   });
@@ -256,22 +251,20 @@ describe('TUF screens', () => {
     await fireEvent.press(screen.getByLabelText('展开筛选器'));
     await fireEvent.press(screen.getByLabelText('选择关卡排序'));
     await fireEvent.press(screen.getByLabelText('选择排序 难度'));
-    expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith(
-      '', expect.objectContaining({ sort: 'DIFF' }), true, false,
-    );
+    expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({ sort: 'DIFF' }));
     await fireEvent.press(screen.getByLabelText('筛选难度 G'));
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
       sort: 'DIFF', pguRange: 'G1,G20', specialDifficulties: ['Unranked', 'Marathon'],
-    }), true, false);
+    }));
     await dragTufRangeThumb(screen, 'lower', 4);
     await dragTufRangeThumb(screen, 'upper', -6);
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
       pguRange: 'G5,G14', specialDifficulties: ['Unranked', 'Marathon'],
-    }), true, false);
+    }));
     await fireEvent.press(screen.getByLabelText('包含特殊难度'));
     expect(mockUseTufLevelSearch).toHaveBeenLastCalledWith('', expect.objectContaining({
       pguRange: 'G5,G14', specialDifficulties: undefined,
-    }), true, false);
+    }));
     await fireEvent.press(screen.getByLabelText('收起筛选器'));
     expect(screen.getByText('G 段 · 5~14 · 不含特殊')).toBeTruthy();
   });

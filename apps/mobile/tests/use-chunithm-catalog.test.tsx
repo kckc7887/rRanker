@@ -112,7 +112,7 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
-describe('useChunithmCatalog 缓存优先', () => {
+describe('useChunithmCatalog 会话缓存', () => {
   beforeEach(() => {
     const storage = jest.requireMock('@/storage/sqlite-snapshot-repository') as {
       __snapshotStore: Map<string, unknown>;
@@ -123,7 +123,7 @@ describe('useChunithmCatalog 缓存优先', () => {
     jest.mocked(loadChunithmAliases).mockReset();
   });
 
-  it('有本地缓存时先渲染缓存快照（含缓存别名合并），后台刷新成功后回写新数据', async () => {
+  it('忽略旧磁盘快照，等待网络后只写入当前 React Query 会话', async () => {
     const storage = jest.requireMock('@/storage/sqlite-snapshot-repository') as {
       __snapshotStore: Map<string, unknown>;
     };
@@ -140,10 +140,7 @@ describe('useChunithmCatalog 缓存优先', () => {
 
     const { result } = await renderHook(() => useChunithmCatalog(), { wrapper });
 
-    await waitFor(() => expect(result.current?.data).toBeDefined());
-    expect(result.current?.data?.songs[0].title).toBe('缓存曲目');
-    expect(result.current?.data?.songs[0].aliases).toEqual(['缓存别名']);
-    expect(result.current?.data?.source.isStale).toBe(true);
+    expect(result.current?.data).toBeUndefined();
 
     expect(loadChunithmCatalog).toHaveBeenCalledTimes(1);
 

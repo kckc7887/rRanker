@@ -7,6 +7,7 @@ import {
   type SectionListProps,
 } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
+import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 
 type QueryPageProps<TData> = {
   isLoading: boolean;
@@ -92,5 +93,13 @@ export function RecordsListPage<TItem>(props: FlatListPageProps<TItem>) {
 }
 
 export function CatalogListPage<TItem>(props: FlatListPageProps<TItem>) {
-  return <FlatListPage {...props} />;
+  return (
+    <FlatListPage
+      {...props}
+      flatListProps={{
+        ...props.flatListProps,
+        ...TAB_LIST_CACHE_PROPS,
+      }}
+    />
+  );
 }

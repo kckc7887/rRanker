@@ -120,43 +120,15 @@ export function useTufLevelSearch(
   query: string,
   options: Omit<TufLevelQuery, 'query' | 'offset' | 'limit'> = {},
   enabled = true,
-  cacheHomePage = false,
 ) {
   const tabActive = useCachedTabActive();
   const normalized = query.trim();
   const queryKey = ['tuf', 'levels', normalized, options] as const;
   return useInfiniteQuery({
     queryKey,
-    queryFn: async ({ pageParam }): Promise<TufLevelPage> => {
-      const fetchPage = () => tufProvider.searchLevels({
-        ...options, query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
-      });
-      const loadFresh = async () => {
-        const page = await fetchPage();
-        const fresh = makeTufSnapshot(page);
-        await cache.saveLevelHome(fresh);
-        return fresh;
-      };
-      if (!cacheHomePage || normalized || pageParam !== 0) {
-        return fetchPage();
-      }
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => cache.loadLevelHome(),
-        loadFresh,
-        onFresh: (fresh) => {
-          queryClient.setQueryData<InfiniteData<TufLevelPage>>(queryKey, (old) => {
-            if (!old) return undefined;
-            return {
-              ...old,
-              pages: old.pages.map((page) => (
-                page.offset === fresh.data.offset ? fresh.data : page
-              )),
-            };
-          });
-        },
-      });
-      return snapshot.data;
-    },
+    queryFn: ({ pageParam }): Promise<TufLevelPage> => tufProvider.searchLevels({
+      ...options, query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
+    }),
     initialPageParam: 0,
     getNextPageParam: (last) => last.hasMore ? last.offset + last.limit : undefined,
     enabled: enabled && tabActive,
@@ -169,20 +141,7 @@ export function useTufDifficulties(enabled = true) {
   const queryKey = ['tuf', 'difficulties'] as const;
   return useQuery({
     queryKey,
-    queryFn: async () => {
-      const snapshot = await cacheFirstLoad({
-        loadCached: () => cache.loadDifficulties(),
-        loadFresh: async () => {
-          const fresh = makeTufSnapshot(await tufProvider.getDifficulties());
-          await cache.saveDifficulties(fresh);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          queryClient.setQueryData(queryKey, fresh.data);
-        },
-      });
-      return snapshot.data;
-    },
+    queryFn: () => tufProvider.getDifficulties(),
     enabled: enabled && tabActive,
     ...TUF_QUERY_OPTIONS,
   });

@@ -39,6 +39,8 @@ export type UploadPhase =
   | { kind: 'sending_friend'; message: string; botFriendCode: string | null }
   | { kind: 'awaiting_friend'; message: string; botFriendCode: string | null }
   | { kind: 'fetching_scores'; message: string }
+  | { kind: 'syncing_catalog'; message: string }
+  | { kind: 'awaiting_catalog'; message: string }
   | { kind: 'binding'; message: string }
   | { kind: 'uploading'; message: string; providerTitle: string }
   | { kind: 'syncing'; message: string; providerTitle: string }
@@ -114,6 +116,9 @@ export function compactUploadPhaseLabel(phase: UploadPhase): string {
       return '等待同意中';
     case 'fetching_scores':
       return '获取成绩中';
+    case 'syncing_catalog':
+    case 'awaiting_catalog':
+      return '同步曲库中';
     case 'binding':
       return '绑定二维码中';
     case 'uploading':
@@ -219,7 +224,7 @@ type UploadCommonInput = {
   selectedAccountIds: string[];
   targets: UploadTarget[];
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
-  catalog: CatalogSnapshot;
+  resolveCatalog: () => Promise<CatalogSnapshot>;
   signal: ScoreHubAbortSignal;
   onPhase: (phase: UploadPhase) => void;
   onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
@@ -315,13 +320,15 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
   if (scores.length === 0) {
     throw new ScoreHubError('未获取到成绩数据');
   }
+  const catalog = await input.resolveCatalog();
+  if (input.signal.aborted) throw new ScoreHubError('已取消');
 
   const divingFishMapped = convertHubScoresToDivingFishRecords(
     scores,
-    buildMusicTitleMap(input.catalog),
+    buildMusicTitleMap(catalog),
   );
-  const localMapped = convertHubScoresToLocalRecords(scores, input.catalog);
-  const lxnsMapped = convertHubScoresToLxnsRecords(scores, input.catalog);
+  const localMapped = convertHubScoresToLocalRecords(scores, catalog);
+  const lxnsMapped = convertHubScoresToLxnsRecords(scores, catalog);
   let uploadedTotal = 0;
   let skipped = 0;
   const targetResults: UploadTargetResult[] = [];
@@ -359,7 +366,7 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
           rating: 0,
           additionalRating: 0,
           source,
-        }, localMapped.records, input.catalog);
+        }, localMapped.records, catalog);
         const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
         await new SqliteSnapshotRepository().save(target.account.id, snapshot);
         refreshedAccounts.push({ account: target.account, snapshot });
@@ -411,7 +418,7 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
             provider.getPlayer(),
             provider.getRecords(),
           ]);
-          const snapshot = buildScoreSnapshot(player, records, input.catalog);
+          const snapshot = buildScoreSnapshot(player, records, catalog);
           await new SqliteSnapshotRepository().save(target.account.id, snapshot);
           refreshedAccounts.push({ account: target.account, snapshot });
         } catch {
@@ -447,7 +454,7 @@ async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
     const refreshResult = await refreshDivingFishAccounts({
       accounts: uploadedDivingFishAccounts,
       sessionsByAccountId: input.sessionsByAccountId,
-      catalog: input.catalog,
+      catalog,
       expectedRecords: divingFishMapped.records,
       signal: input.signal,
       onRefreshing: (account) => {

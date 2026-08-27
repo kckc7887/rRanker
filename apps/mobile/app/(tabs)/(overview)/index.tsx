@@ -105,6 +105,9 @@ function PublicOverviewScreen() {
   const { data, isLoading, isError, error, refetch, profile } = useGameData();
   const library = useUserLibrary();
   const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useDetailedCatalog();
+  const requestUploadCatalog = useCallback(async () => (
+    catalogData ?? (await refetchCatalog()).data
+  ), [catalogData, refetchCatalog]);
   const tabBottomInset = useNativeTabBottomInset();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const activeAccountId = useSession((s) => s.activeAccountId);
@@ -680,6 +683,7 @@ function PublicOverviewScreen() {
         accounts={boundAccounts}
         sessionsByAccountId={sessionsByAccountId}
         catalog={catalogData}
+        requestCatalog={requestUploadCatalog}
         onClose={closeUpload}
         onPhaseChange={setUploadPhase}
         onFinished={finishUpload}

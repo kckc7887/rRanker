@@ -8,7 +8,6 @@ import {
 } from '@/domain/muse-dash';
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import {
-  loadMuseDashAlbumsCacheFirst,
   loadMuseDashPlayerFresh,
   makeMuseDashSnapshot,
   MuseDashCache,
@@ -49,9 +48,6 @@ class FakeResourceRepository {
   async listResourceSizes(): Promise<{ key: string; bytes: number }[]> {
     return [...this.store.keys()].map((key) => ({ key, bytes: 0 }));
   }
-  reset(): void {
-    this.store.clear();
-  }
 }
 
 const repo = new FakeResourceRepository();
@@ -74,10 +70,6 @@ describe('muse dash cache keys', () => {
 });
 
 describe('muse dash cache snapshots', () => {
-  beforeEach(() => {
-    repo.reset();
-  });
-
   it('builds source metadata with musedash kind', () => {
     const snapshot = makeMuseDashSnapshot(player, '2026-08-10T00:00:00.000Z');
     expect(snapshot).toEqual({
@@ -114,37 +106,6 @@ describe('muse dash cache snapshots', () => {
     expect(await cache.loadPlayer('a')).toBeNull();
     expect((await cache.loadPlayer('b'))?.data.user.user_id).toBe('b');
     expect(await cache.loadAlbums()).not.toBeNull();
-  });
-});
-
-describe('muse dash catalog cache first', () => {
-  beforeEach(() => {
-    repo.reset();
-    resetMuseDashInflightForTests();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('persists the first response, then returns it immediately and rewrites after refresh', async () => {
-    const getAlbums = vi.spyOn(museDashProvider, 'getAlbums').mockResolvedValueOnce({});
-    const first = await loadMuseDashAlbumsCacheFirst(cache);
-    expect(first.data).toEqual({});
-    expect(await cache.loadAlbums()).not.toBeNull();
-
-    let resolveFresh: (value: Record<string, never>) => void = () => undefined;
-    getAlbums.mockImplementationOnce(() => new Promise((resolve) => {
-      resolveFresh = resolve;
-    }));
-    const onFresh = vi.fn();
-    const cached = await loadMuseDashAlbumsCacheFirst(cache, onFresh);
-    expect(cached.source.kind).toBe('cache');
-    expect(cached.source.isStale).toBe(true);
-    expect(getAlbums).toHaveBeenCalledTimes(2);
-
-    resolveFresh({});
-    await vi.waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
   });
 });
 

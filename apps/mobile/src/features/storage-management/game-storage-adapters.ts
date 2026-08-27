@@ -7,7 +7,6 @@ import {
   isPhigrosKyouResourceKey,
   PHIGROS_KYOU_RESOURCE_KEYS,
 } from '@/domain/phigros-kyou';
-import { PHIGROS_CATALOG_RESOURCE_KEY } from '@/domain/phigros';
 import {
   CHUNITHM_ALIAS_RESOURCE_KEY,
   CHUNITHM_CATALOG_RESOURCE_KEY,
@@ -44,7 +43,6 @@ export const CHUNITHM_CATALOG_RESOURCE_KEYS = [
   CHUNITHM_ALIAS_RESOURCE_KEY,
 ] as const;
 export const PHIGROS_RESOURCE_KEYS = [
-  PHIGROS_CATALOG_RESOURCE_KEY,
   ...PHIGROS_KYOU_RESOURCE_KEYS,
 ] as const;
 
@@ -96,8 +94,7 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
     && (CHUNITHM_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
     return true;
   }
-  if (gameId === 'phigros'
-    && (key === PHIGROS_CATALOG_RESOURCE_KEY || isPhigrosKyouResourceKey(key))) {
+  if (gameId === 'phigros' && isPhigrosKyouResourceKey(key)) {
     return true;
   }
   if (gameId === 'chunithm' && key.startsWith(CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX)) {
@@ -121,9 +118,7 @@ function resourceBelongsToGame(key: string, gameId: GameId): boolean {
   }
   // osu! 分模式玩家快照与已知成绩集合，四模式各自归属。
   if (isOsuGameId(gameId)
-    && (key.startsWith(`osu:${gameId}:`)
-      || key.startsWith(`osu-known-scores:${gameId}:`)
-      || key === `osu-catalog-home:${gameId}`)) {
+    && (key.startsWith(`osu:${gameId}:`) || key.startsWith(`osu-known-scores:${gameId}:`))) {
     return true;
   }
   const accountId = accountIdFromResourceKey(key);
@@ -227,7 +222,7 @@ const maimaiAdapter: GameStorageAdapter = {
   gameId: 'maimai',
   title: findGame('maimai')?.title ?? '舞萌 DX',
   color: '#F43F5E',
-  note: '账号成绩、曲库首页与当前版本导出素材',
+  note: '账号成绩快照与当前版本导出素材；SQLite 为估算值',
   queryKeys: [
     ['score-snapshot'], ['game-data'], ['songs'], ['detailed-catalog'], ['plates'],
     ['collections'], ['dxrating-chart-tags'], ['best-image-collections'],
@@ -251,7 +246,7 @@ const phigrosAdapter: GameStorageAdapter = {
   gameId: 'phigros',
   title: findGame('phigros')?.title ?? 'Phigros',
   color: '#8B5CF6',
-  note: '账号存档、曲库首页与当前版本字体',
+  note: '账号存档与当前版本字体；SQLite 为估算值',
   queryKeys: [['score-snapshot'], ['game-data'], ['phigros-catalog'], ['phigros-kyou-chart-tags']],
   resetMemory: resetPhigrosKyouAliasesCache,
   fileResources: phigrosFileResources,
@@ -269,7 +264,7 @@ const chunithmAdapter: GameStorageAdapter = {
   gameId: 'chunithm',
   title: findGame('chunithm')?.title ?? '中二节奏',
   color: '#27A7E7',
-  note: '账号成绩与曲库首页',
+  note: '账号成绩快照；公开曲库仅保留在会话内，SQLite 为估算值',
   queryKeys: [['score-snapshot'], ['game-data'], ['chunithm-catalog'], ['chunithm-song-detail'], ['chunithm-collections']],
   fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'chunithm', false),
@@ -280,7 +275,7 @@ const adofaiAdapter: GameStorageAdapter = {
   gameId: 'adofai',
   title: findGame('adofai')?.title ?? '冰与火之舞',
   color: '#F15B55',
-  note: '玩家资料、核心成绩与曲库首页',
+  note: '玩家资料与核心成绩快照；公开结果仅保留在会话内，SQLite 为估算值',
   queryKeys: [['tuf']],
   fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'adofai', false),
@@ -291,7 +286,7 @@ const musedashAdapter: GameStorageAdapter = {
   gameId: 'musedash',
   title: findGame('musedash')?.title ?? '喵斯快跑',
   color: '#EC4899',
-  note: '玩家、核心成绩与曲库首页',
+  note: '玩家与核心成绩快照；曲库及单曲明细仅保留在会话内，SQLite 为估算值',
   queryKeys: [['musedash']],
   fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'musedash', false),
@@ -302,7 +297,7 @@ const phiraAdapter: GameStorageAdapter = {
   gameId: 'phira',
   title: findGame('phira')?.title ?? 'Phira',
   color: '#8D5BD6',
-  note: '玩家、核心成绩与曲库首页',
+  note: '玩家与核心成绩快照；曲库、谱面及物量仅保留在会话内，SQLite 为估算值',
   queryKeys: [['phira']],
   fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'phira', false),
@@ -311,14 +306,14 @@ const phiraAdapter: GameStorageAdapter = {
 
 /** osu! 四模式：后台各注册为独立游戏，按模式统计/清除各自的快照缓存。 */
 const OSU_STORAGE_COLOR = '#FF66AA';
-const OSU_STORAGE_NOTE = '玩家资料、Top 100、已知成绩与曲库首页';
+const OSU_STORAGE_NOTE = '玩家资料、Top 100 与已知成绩快照；SQLite 为估算值';
 
 const osuStandardAdapter: GameStorageAdapter = {
   gameId: 'osu-standard',
   title: findGame('osu-standard')?.title ?? 'osu!standard',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
-  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search', 'osu-standard'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-standard', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-standard', false),
@@ -329,7 +324,7 @@ const osuManiaAdapter: GameStorageAdapter = {
   title: findGame('osu-mania')?.title ?? 'osu!mania',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
-  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search', 'osu-mania'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-mania', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-mania', false),
@@ -340,7 +335,7 @@ const osuCatchAdapter: GameStorageAdapter = {
   title: findGame('osu-catch')?.title ?? 'osu!catch',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
-  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search', 'osu-catch'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-catch', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-catch', false),
@@ -351,7 +346,7 @@ const osuTaikoAdapter: GameStorageAdapter = {
   title: findGame('osu-taiko')?.title ?? 'osu!taiko',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
-  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search', 'osu-taiko'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
   measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-taiko', false),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-taiko', false),

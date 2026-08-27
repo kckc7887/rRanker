@@ -1,33 +1,23 @@
 export type CachePersistence = 'durable' | 'session-only' | 'temporary' | 'versioned-asset';
 
-const DURABLE_PUBLIC_RESOURCE_KEYS = new Set([
+/**
+ * 公开数据与查询派生数据只在 React Query 会话内存活。
+ * 这里同时作为升级清理、存储统计与后续持久化审计的唯一键表。
+ */
+const SESSION_ONLY_RESOURCE_KEYS = new Set([
+  'detailed-catalog',
   'aliases',
+  'plates',
+  'collections',
   'dxrating-chart-tags',
   'chunithm-catalog',
-  'chunithm-alias',
-  'phigros-catalog',
+  'chunithm-aliases',
   'phigros-kyou-aliases',
   'phigros-kyou-chart-tags',
   'musedash:albums',
   'musedash:ce',
   'musedash:diffdiff',
   'tuf:difficulties',
-  'tuf:levels:home',
-  'phira:charts:ranked:0:',
-]);
-
-const DURABLE_PUBLIC_RESOURCE_PREFIXES = [
-  'osu-catalog-home:',
-] as const;
-
-/**
- * 搜索、后续分页、详情与查询派生数据只在 React Query 会话内存活。
- * 这里同时作为升级清理、存储统计与后续持久化审计的唯一键表。
- */
-const SESSION_ONLY_RESOURCE_KEYS = new Set([
-  'detailed-catalog',
-  'plates',
-  'collections',
 ]);
 
 const SESSION_ONLY_RESOURCE_PREFIXES = [
@@ -51,17 +41,12 @@ export type CachePolicyRegistration = {
 /** 统计、清理、升级迁移共同使用的四类策略注册表。 */
 export const CACHE_POLICY_REGISTRY: readonly CachePolicyRegistration[] = [
   { id: 'account-snapshots', persistence: 'durable', scope: '账号资料、核心成绩与个人曲库' },
-  { id: 'catalog-home', persistence: 'durable', scope: '曲库首页与列表展示所需资源' },
-  { id: 'public-query-data', persistence: 'session-only', scope: '搜索、后续分页、详情与派生结果' },
+  { id: 'public-query-data', persistence: 'session-only', scope: '公开曲库、别名、详情、分页与派生结果' },
   { id: 'task-files', persistence: 'temporary', scope: '成绩图与谱面确认会话文件' },
   { id: 'runtime-assets', persistence: 'versioned-asset', scope: '当前版本字体与 UI 素材' },
 ] as const;
 
 export function resourceCachePersistence(key: string): CachePersistence {
-  if (DURABLE_PUBLIC_RESOURCE_KEYS.has(key)
-    || DURABLE_PUBLIC_RESOURCE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
-    return 'durable';
-  }
   if (SESSION_ONLY_RESOURCE_KEYS.has(key)) return 'session-only';
   if (SESSION_ONLY_RESOURCE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
     return 'session-only';

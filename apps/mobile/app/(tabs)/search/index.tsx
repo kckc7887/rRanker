@@ -8,7 +8,6 @@ import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
-import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import { ChunithmSongRow } from '@/components/chunithm/ChunithmSongRow';
@@ -214,7 +213,6 @@ export function SearchScreen() {
           testID: 'catalog-results-list',
           contentInsetAdjustmentBehavior: 'automatic',
           keyExtractor: songKey,
-          ...TAB_LIST_CACHE_PROPS,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
           scrollIndicatorInsets: { bottom: tabBottomInset },
           renderItem: renderCatalogItem,
@@ -426,7 +424,6 @@ function ChunithmSearchScreen() {
           testID: 'chunithm-catalog-results-list',
           contentInsetAdjustmentBehavior: 'automatic',
           keyExtractor: (item) => String(item.song.id),
-          ...TAB_LIST_CACHE_PROPS,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
           scrollIndicatorInsets: { bottom: tabBottomInset },
           renderItem: ({ item }) => (
@@ -571,7 +568,6 @@ function PhigrosSearchScreen() {
           testID: 'phigros-catalog-results-list',
           contentInsetAdjustmentBehavior: 'automatic',
           keyExtractor: songKey,
-          ...TAB_LIST_CACHE_PROPS,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
           scrollIndicatorInsets: { bottom: tabBottomInset },
           renderItem: renderPhigrosItem,

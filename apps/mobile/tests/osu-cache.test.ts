@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OsuCache, makeOsuSnapshot } from '@/services/osu-cache';
-import {
-  isOsuCatalogHomeRequest,
-  normalizeOsuSnapshot,
-  osuCatalogHomeCacheKey,
-} from '@/domain/osu';
+import { normalizeOsuSnapshot } from '@/domain/osu';
 
 // 避免加载真实 SQLite 仓库（其依赖链进入 react-native，node 环境不可解析）；
 // 测试注入 FakeRepository 代替。
@@ -72,35 +68,6 @@ const knownScore = normalizeOsuSnapshot(user, [{
 }]).bestScores[0];
 
 describe('osu! 分模式快照缓存', () => {
-  it('仅将空搜索与默认筛选识别为曲库首页', () => {
-    const defaults = {
-      general: [], status: 'any' as const, genre: 0, language: 0, nsfw: false, extras: [],
-    };
-    expect(isOsuCatalogHomeRequest(defaults)).toBe(true);
-    expect(isOsuCatalogHomeRequest({ ...defaults, q: 'test' })).toBe(false);
-    expect(isOsuCatalogHomeRequest({ ...defaults, status: 'ranked' })).toBe(false);
-    expect(isOsuCatalogHomeRequest({ ...defaults, general: ['recommended'] })).toBe(false);
-  });
-
-  it('按模式保存默认曲库首页并用版本号隔离失配数据', async () => {
-    const repository = new FakeRepository();
-    const cache = new OsuCache(repository as never);
-    const home = {
-      data: { songs: [], total: 10, recommendedDifficulty: null, cursor: 'next' },
-      source: {
-        kind: 'osu' as const,
-        label: 'osu.ppy.sh',
-        updatedAt: '2026-08-26T00:00:00.000Z',
-        isStale: false,
-      },
-    };
-    await cache.saveCatalogHome('osu-standard', home);
-    expect((await cache.loadCatalogHome('osu-standard'))?.data.total).toBe(10);
-    expect(await cache.loadCatalogHome('osu-mania')).toBeNull();
-    repository.rows.set(osuCatalogHomeCacheKey('osu-mania'), { version: 999, payload: home });
-    expect(await cache.loadCatalogHome('osu-mania')).toBeNull();
-  });
-
   it('保存后可加载，缺版本号返回 null', async () => {
     const repository = new FakeRepository();
     const cache = new OsuCache(repository as never);

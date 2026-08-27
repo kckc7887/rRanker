@@ -272,7 +272,6 @@ export function OsuCatalogScreen() {
           contentInsetAdjustmentBehavior: 'automatic',
           contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
           scrollIndicatorInsets: { bottom: inset },
-          ...TAB_LIST_CACHE_PROPS,
           keyExtractor: (item) => String(item.beatmapSetId),
           renderItem: ({ item }) => (
             gameId ? <OsuSongRow gameId={gameId} song={item} /> : null
