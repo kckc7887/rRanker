@@ -97,7 +97,7 @@ function OsuSongDetailContent({
 }) {
   const theme = useAppTheme();
   const detail = useOsuBeatmapsetDetail(gameId, beatmapsetId ?? null);
-  const gameData = useGameData();
+  const gameData = useGameData(false);
   const library = useUserLibrary();
   const song = detail.data;
   const payload = gameData.data?.payload.kind === 'osu'

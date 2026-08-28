@@ -9,7 +9,6 @@ import { queryClient } from '@/state/query-client';
 const ACCOUNT_SCOPED_QUERY_KEYS = [
   ['game-data'],
   ['score-snapshot'],
-  ['detailed-catalog'],
   ['plates'],
   ['collections'],
   ['songs'],
@@ -19,6 +18,7 @@ const ACCOUNT_SCOPED_QUERY_KEYS = [
 
 /** 全局资源查询：与账号无关（如中二曲库）。 */
 const GLOBAL_QUERY_KEYS = [
+  ['detailed-catalog'],
   ['chunithm-catalog'],
 ] as const;
 
@@ -27,13 +27,15 @@ const ALL_QUERY_KEYS = [
   ...GLOBAL_QUERY_KEYS,
 ] as const;
 
-/** 切换游戏/查分器账号后，强制让成绩与曲库相关查询重新走对应 provider（含全局资源）。 */
+/** 让当前账号数据重新读取；公开曲库默认保留在当前 App 会话。 */
 export async function invalidateAccountDataQueries(
   client: QueryClient = queryClient,
   refetchType: 'active' | 'inactive' | 'all' | 'none' = 'active',
+  includeGlobalResources = false,
 ): Promise<void> {
+  const queryKeys = includeGlobalResources ? ALL_QUERY_KEYS : ACCOUNT_SCOPED_QUERY_KEYS;
   await Promise.all(
-    ALL_QUERY_KEYS.map((queryKey) => client.invalidateQueries({
+    queryKeys.map((queryKey) => client.invalidateQueries({
       queryKey: [...queryKey],
       refetchType,
     })),
@@ -76,4 +78,8 @@ export function patchMaimaiPlayerDisplayName(
 /** 全量数据查询 key（账号维度 + 全局资源），供存储管理清缓存等全量失效使用。 */
 export function accountDataQueryKeys(): readonly (readonly string[])[] {
   return ALL_QUERY_KEYS;
+}
+
+export function accountScopedDataQueryKeys(): readonly (readonly string[])[] {
+  return ACCOUNT_SCOPED_QUERY_KEYS;
 }

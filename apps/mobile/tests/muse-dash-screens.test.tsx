@@ -69,6 +69,15 @@ jest.mock('@/hooks/use-muse-dash', () => {
     useMuseDashPlayDetails: () => mockMissMap,
   };
 });
+jest.mock('@/hooks/use-game-data', () => ({
+  useGameData: () => ({
+    data: mockPlayer ? { payload: { kind: 'musedash', player: mockPlayer } } : undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: mockRefetch,
+  }),
+}));
 jest.mock('@/hooks/use-user-library', () => {
   const { chartLibraryKey, songLibraryKey } = jest.requireActual<typeof import('../src/domain/user-library')>('../src/domain/user-library');
   const state: { data: unknown[] } = { data: [] };

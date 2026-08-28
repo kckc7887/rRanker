@@ -2,10 +2,19 @@ import { useMemo } from 'react';
 import type { CatalogSnapshot } from '@/domain/models';
 import { mapPhigrosKyouAliases, type PhigrosKyouAliasesSnapshot } from '@/domain/phigros-kyou';
 import { loadPhigrosKyouAliases } from '@/hooks/use-phigros-kyou';
-import { aliasedCatalogSource, useAliasedCatalog } from '@/hooks/use-aliased-catalog';
+import {
+  aliasedCatalogSource,
+  loadAliasedCatalog,
+  useAliasedCatalog,
+  type AliasedCatalogOptions,
+} from '@/hooks/use-aliased-catalog';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { normalizeSearchText } from '@/utils/search';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { queryClient } from '@/state/query-client';
+
+const PHIGROS_CATALOG_QUERY_KEY = ['phigros-catalog'] as const;
+type PhigrosCatalogData = { snapshot: CatalogSnapshot; provider: PhigrosCatalogProvider };
 
 function mergeAliasLists(existing: readonly string[] | undefined, incoming: readonly string[] | undefined): string[] {
   const result: string[] = [];
@@ -19,21 +28,18 @@ function mergeAliasLists(existing: readonly string[] | undefined, incoming: read
   return result;
 }
 
-export function usePhigrosCatalog(enabled = true) {
-  const tabActive = useCachedTabActive();
-  const provider = useMemo(() => new PhigrosCatalogProvider(), []);
-  return useAliasedCatalog<
-    CatalogSnapshot,
-    PhigrosKyouAliasesSnapshot,
-    { snapshot: CatalogSnapshot; provider: PhigrosCatalogProvider }
-  >({
-    enabled: enabled && tabActive,
-    queryKey: ['phigros-catalog'],
+function phigrosCatalogOptions(
+  provider: PhigrosCatalogProvider,
+  enabled?: boolean,
+): AliasedCatalogOptions<CatalogSnapshot, PhigrosKyouAliasesSnapshot, PhigrosCatalogData> {
+  return {
+    enabled,
+    queryKey: PHIGROS_CATALOG_QUERY_KEY,
     // Phigros 曲库由 provider 内存缓存承载（resetCatalogCache 后重拉 OSS），无本地持久化快照。
     loadCached: async () => null,
-    loadCatalog: () => {
+    loadCatalog: (signal) => {
       provider.resetCatalogCache();
-      return provider.getCatalog();
+      return provider.getCatalog(signal);
     },
     loadAliases: loadPhigrosKyouAliases,
     mergeAliases: (catalog, aliasSnapshot) => {
@@ -55,5 +61,24 @@ export function usePhigrosCatalog(enabled = true) {
     wrapData: (catalog) => ({ snapshot: catalog, provider }),
     // 无本地缓存路径，cacheFirstLoad 不会触发后台回写。
     onFresh: () => undefined,
+  };
+}
+
+export function ensurePhigrosCatalog(provider: PhigrosCatalogProvider): Promise<PhigrosCatalogData> {
+  const options = phigrosCatalogOptions(provider);
+  return queryClient.ensureQueryData({
+    queryKey: PHIGROS_CATALOG_QUERY_KEY,
+    queryFn: ({ signal }) => loadAliasedCatalog(options, signal),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    revalidateIfStale: false,
   });
+}
+
+export function usePhigrosCatalog(enabled = true) {
+  const tabActive = useCachedTabActive();
+  const provider = useMemo(() => new PhigrosCatalogProvider(), []);
+  return useAliasedCatalog<CatalogSnapshot, PhigrosKyouAliasesSnapshot, PhigrosCatalogData>(
+    phigrosCatalogOptions(provider, enabled && tabActive),
+  );
 }

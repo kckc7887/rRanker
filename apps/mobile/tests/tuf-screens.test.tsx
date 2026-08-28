@@ -102,6 +102,15 @@ jest.mock('@/hooks/use-tuf', () => ({
   useTufLevelBestPass: () => ({ data: mockLevelBestPass, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
   useTufVideoDetails: () => ({ data: mockVideoDetails, isLoading: !mockVideoDetails, isError: false, error: null, refetch: mockRefetch }),
 }));
+jest.mock('@/hooks/use-game-data', () => ({
+  useGameData: () => ({
+    data: mockProfile ? { payload: { kind: 'adofai', player: mockProfile } } : undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: mockRefetch,
+  }),
+}));
 
 const level = {
   id: 11372, songId: 401, song: '关卡 A', artist: '艺术家', diffId: 8, baseScore: 12.34,

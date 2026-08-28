@@ -162,5 +162,10 @@ describe('useChunithmCatalog 会话缓存', () => {
     expect(result.current?.data?.songs[0].title).toBe('新曲目');
     expect(result.current?.data?.songs[0].aliases).toEqual(['新别名']);
     expect(loadChunithmCatalog).toHaveBeenCalledTimes(1);
+
+    const second = await renderHook(() => useChunithmCatalog(), { wrapper });
+    await waitFor(() => expect(second.result.current?.data).toBeDefined());
+    expect(loadChunithmCatalog).toHaveBeenCalledTimes(1);
+    await second.unmount();
   });
 });

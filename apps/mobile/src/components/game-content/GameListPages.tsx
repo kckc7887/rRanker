@@ -49,7 +49,11 @@ export function BestListPage<
       emptyText={emptyText}
       data={data}
       renderData={(sections) => (
-        <SectionList<TItem, TSection> {...sectionListProps} sections={sections} />
+        <SectionList<TItem, TSection>
+          {...sectionListProps}
+          {...TAB_LIST_CACHE_PROPS}
+          sections={sections}
+        />
       )}
     />
   );
@@ -82,7 +86,13 @@ function FlatListPage<TItem>({
         onRetry={onRetry}
         emptyText={emptyText}
         data={data}
-        renderData={(items) => <FlatList<TItem> {...flatListProps} data={items} />}
+        renderData={(items) => (
+          <FlatList<TItem>
+            {...flatListProps}
+            {...TAB_LIST_CACHE_PROPS}
+            data={items}
+          />
+        )}
       />
     </>
   );
@@ -93,13 +103,5 @@ export function RecordsListPage<TItem>(props: FlatListPageProps<TItem>) {
 }
 
 export function CatalogListPage<TItem>(props: FlatListPageProps<TItem>) {
-  return (
-    <FlatListPage
-      {...props}
-      flatListProps={{
-        ...props.flatListProps,
-        ...TAB_LIST_CACHE_PROPS,
-      }}
-    />
-  );
+  return <FlatListPage {...props} />;
 }

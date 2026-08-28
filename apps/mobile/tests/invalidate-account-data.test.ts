@@ -5,6 +5,7 @@ import { getGameProfile } from '@/domain/game-profile';
 import type { Player, ScoreSnapshot } from '@/domain/models';
 import {
   accountDataQueryKeys,
+  accountScopedDataQueryKeys,
   invalidateAccountDataQueries,
   patchMaimaiPlayerDisplayName,
 } from '@/services/invalidate-account-data';
@@ -60,11 +61,22 @@ function makeBundle(accountId: string, displayName: string): GameDataBundle {
 }
 
 describe('invalidateAccountDataQueries', () => {
-  it('invalidates all account data and global resource queries', async () => {
+  it('invalidates account data without public resources by default', async () => {
     const client = new QueryClient();
     const spy = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
 
     await invalidateAccountDataQueries(client);
+
+    expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
+      accountScopedDataQueryKeys().map((key) => [...key]),
+    );
+  });
+
+  it('can explicitly invalidate account data and public resources', async () => {
+    const client = new QueryClient();
+    const spy = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
+
+    await invalidateAccountDataQueries(client, 'active', true);
 
     expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
       accountDataQueryKeys().map((key) => [...key]),

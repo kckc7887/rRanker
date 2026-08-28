@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { Animated, Platform, Text } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { CatalogListPage } from '@/components/game-content/GameListPages';
+import {
+  BestListPage,
+  CatalogListPage,
+  RecordsListPage,
+} from '@/components/game-content/GameListPages';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { ChunithmSongRow } from '@/components/chunithm/ChunithmSongRow';
@@ -115,8 +119,8 @@ test('exports the stable score-card and song-row host tree contract', async () =
   expect(hash).toBe('e45be0e9a3441afcbe9301bb76ec164a1f80d0c40d103603a3329dbb32f51033');
 });
 
-test('catalog lists share one visible-window policy without changing caller list props', async () => {
-  const screen = await render(
+test('shared score, record and catalog lists use one visible-window policy', async () => {
+  const catalog = await render(
     <CatalogListPage
       isLoading={false}
       isError={false}
@@ -130,13 +134,44 @@ test('catalog lists share one visible-window policy without changing caller list
       }}
     />,
   );
-  expect(screen.getByTestId('catalog-window-contract').props).toEqual(expect.objectContaining({
+  const records = await render(
+    <RecordsListPage
+      isLoading={false}
+      isError={false}
+      isEmpty={false}
+      emptyText="空"
+      data={[1]}
+      flatListProps={{
+        testID: 'records-window-contract',
+        keyExtractor: String,
+        renderItem: ({ item }) => <Text>{item}</Text>,
+      }}
+    />,
+  );
+  const best = await render(
+    <BestListPage<number, { title: string; data: number[] }>
+      isLoading={false}
+      isError={false}
+      isEmpty={false}
+      emptyText="空"
+      data={[{ title: '最佳', data: [1] }]}
+      sectionListProps={{
+        testID: 'best-window-contract',
+        keyExtractor: String,
+        renderItem: ({ item }) => <Text>{item}</Text>,
+      }}
+    />,
+  );
+  const expected = {
     initialNumToRender: 8,
     maxToRenderPerBatch: 4,
     updateCellsBatchingPeriod: 50,
     windowSize: 3,
     removeClippedSubviews: Platform.OS === 'android',
-  }));
+  };
+  expect(catalog.getByTestId('catalog-window-contract').props).toEqual(expect.objectContaining(expected));
+  expect(records.getByTestId('records-window-contract').props).toEqual(expect.objectContaining(expected));
+  expect(best.getByTestId('best-window-contract').props).toEqual(expect.objectContaining(expected));
 });
 
 test('every game catalog host routes its list through CatalogListPage', () => {

@@ -228,7 +228,6 @@ function RootLayoutContent() {
     else uploadTaskController.pause();
     if (!lifecycle.foregroundReady) void queryClient.cancelQueries();
     if (lifecycle.phase === 'background') {
-      queryClient.removeQueries();
       void ExpoImage.clearMemoryCache();
     }
     if (lifecycle.memoryWarningGeneration > releasedMemoryWarningRef.current) {

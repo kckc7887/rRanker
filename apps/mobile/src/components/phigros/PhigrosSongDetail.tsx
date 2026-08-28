@@ -69,7 +69,7 @@ export function PhigrosSongDetail({
   const theme = useAppTheme();
   const catalog = usePhigrosCatalog();
   const kyouChartTags = usePhigrosKyouChartTags();
-  const gameData = useGameData();
+  const gameData = useGameData(false);
   const library = useUserLibrary();
   const song = useMemo(() => {
     const songs = catalog.data?.snapshot.songs;
