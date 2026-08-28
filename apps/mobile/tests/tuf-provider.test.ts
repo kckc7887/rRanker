@@ -53,6 +53,19 @@ describe('TufProvider', () => {
     });
   });
 
+  it.each([
+    ['25', 'pid:25'],
+    ['pid:25', 'pid:25'],
+    ['803785016709873684', '#803785016709873684'],
+    ['#803785016709873684', '#803785016709873684'],
+    ['Jipper', 'Jipper'],
+  ])('normalizes public player search %s to %s', async (query, expected) => {
+    const fetcher = vi.fn().mockResolvedValue(response({ total: 0, results: [], limit: 30, offset: 0 }));
+    await new TufProvider(fetcher as typeof fetch, 'https://tuf.test').searchPlayers(query);
+    const url = new URL(fetcher.mock.calls[0][0]);
+    expect(url.searchParams.get('query')).toBe(expected);
+  });
+
   it('preserves level sorting and difficulty filter semantics', async () => {
     const fetcher = vi.fn().mockResolvedValue(response(levelPage));
     await new TufProvider(fetcher as typeof fetch, 'https://tuf.test').searchLevels({

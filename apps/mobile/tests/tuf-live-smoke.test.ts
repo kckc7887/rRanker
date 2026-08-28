@@ -10,6 +10,8 @@ live('TUF public API live schema smoke', () => {
     const players = await provider.searchPlayers('Jipper', 1, 0);
     expect(players.results.length).toBeGreaterThan(0);
     const playerId = players.results[0].id;
+    const direct = await provider.searchPlayers(String(playerId), 1, 0);
+    expect(direct.results[0].id).toBe(playerId);
     const profile = await provider.getPlayerProfile(playerId);
     expect(profile.id).toBe(playerId);
     const passes = await provider.getPasses(playerId, {

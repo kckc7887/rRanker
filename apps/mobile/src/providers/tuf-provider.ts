@@ -44,7 +44,15 @@ export class TufProvider {
   }
 
   searchPlayers(query: string, limit = 30, offset = 0, signal?: AbortSignal) {
-    const params = new URLSearchParams({ query: query.trim(), limit: String(limit), offset: String(offset) });
+    const normalized = query.trim();
+    const digits = /^\d+$/.test(normalized) ? normalized : null;
+    const numeric = digits === null ? null : Number(digits);
+    const searchQuery = digits === null
+      ? normalized
+      : numeric !== null && Number.isSafeInteger(numeric) && numeric > 0
+        ? `pid:${digits}`
+        : `#${digits}`;
+    const params = new URLSearchParams({ query: searchQuery, limit: String(limit), offset: String(offset) });
     return this.request(`/v3/players/search?${params}`, TufPlayerSearchResponseSchema, signal);
   }
   getPlayer(playerId: number, signal?: AbortSignal) { return this.request(`/v3/players/${playerId}`, TufPlayerSchema, signal); }
