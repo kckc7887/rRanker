@@ -4,6 +4,8 @@ import { Stack } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { AccentColorPicker } from '@/components/AccentColorPicker';
 import { ValueSlider } from '@/components/ValueSlider';
+import { ScoreRecordCard, type ScoreRecordCardData } from '@/components/ScoreRecordCard';
+import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
 import {
   BADGE_LAYER_OVERLAY,
   BADGE_RAINBOW_BORDER_COLORS,
@@ -19,6 +21,22 @@ const APPEARANCES: { id: AppAppearance; label: string }[] = [
   { id: 'light', label: '浅色' },
   { id: 'dark', label: '深色' },
 ];
+
+/** 曲绘预览固定成绩：舞萌 ID 834「PANDORA PARADOXXX」Re:MASTER；101% 达成率对应 SSS+（rate=sssp）、官方单曲 Rating = floor(15.0 + 22.4) = 37。 */
+const SCORE_CARD_ARTWORK_PREVIEW_RECORD = {
+  songId: '834',
+  title: 'PANDORA PARADOXXX',
+  type: 'SD',
+  difficulty: 'remaster',
+  difficultyConstant: 15,
+  levelIndex: 4,
+  achievements: 101,
+  dxScore: null,
+  rating: 37,
+  fc: 'ap',
+  fs: 'fsdp',
+  rate: 'sssp',
+} as const satisfies ScoreRecordCardData;
 
 export default function PersonalizationScreen() {
   const theme = useAppTheme();
@@ -143,6 +161,16 @@ export default function PersonalizationScreen() {
                 step={1}
                 value={artworkBlur}
               />
+              <View style={styles.previewGroup}>
+                <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>曲绘预览</Text>
+                <ScoreCardArtworkScope>
+                  <ScoreRecordCard
+                    artworkCachePolicy="none"
+                    interactive={false}
+                    record={SCORE_CARD_ARTWORK_PREVIEW_RECORD}
+                  />
+                </ScoreCardArtworkScope>
+              </View>
             </View>
           ) : null}
         </View>
@@ -178,6 +206,7 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   switchText: { flex: 1, gap: 4 },
   sliderGroup: { gap: 10, paddingTop: 4 },
+  previewGroup: { gap: 8, paddingTop: 2 },
   sliderLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sliderLabel: { fontSize: 13, fontWeight: '700' },
   sliderValue: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },

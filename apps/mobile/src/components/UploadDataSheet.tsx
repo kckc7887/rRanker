@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BoundAccount } from '@/domain/bound-account';
@@ -584,6 +585,10 @@ export function UploadDataSheet({
       });
     } finally {
       setDecodingQr(false);
+      // 识别完成后删除相册选择产生的本地副本，避免缓存目录持续增长。
+      if (asset.uri.startsWith('file:')) {
+        try { new File(asset.uri).delete(); } catch { /* 副本可能已由系统清理。 */ }
+      }
     }
   };
 

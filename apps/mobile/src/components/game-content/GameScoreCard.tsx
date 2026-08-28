@@ -29,6 +29,8 @@ export function useScoreCardArtworkActive(): boolean {
 export type ScoreCardArtwork = {
   source: string | null | undefined;
   scale?: number;
+  /** 仅允许 "none"：预览等一次性场景完全跳过缓存；缺省仍只进内存。 */
+  cachePolicy?: 'none';
 };
 
 /** 右侧大数字指标块（Rating/RKS 等）：块容器样式 + 若干「文本行」（样式与颜色由调用方给定）。 */
@@ -70,6 +72,7 @@ export function GameScoreCard({
   mainStyle,
   titleStyle,
   pressedStyle,
+  pressable = true,
   artwork,
   testID,
 }: {
@@ -82,6 +85,8 @@ export function GameScoreCard({
   mainStyle: StyleProp<ViewStyle>;
   titleStyle: StyleProp<TextStyle>;
   pressedStyle?: StyleProp<ViewStyle>;
+  /** false 时渲染非交互预览（无按压与详情跳转）；缺省保持可点击。 */
+  pressable?: boolean;
   artwork?: ScoreCardArtwork;
   testID?: string;
 }) {
@@ -126,6 +131,7 @@ export function GameScoreCard({
           <RemoteImage
             accessibilityIgnoresInvertColors
             blurRadius={artworkBlur}
+            cachePolicy={artwork?.cachePolicy}
             contentFit="cover"
             onError={() => setFailedArtworkSource(artworkSource)}
             pointerEvents="none"
@@ -159,6 +165,14 @@ export function GameScoreCard({
       {sideNode}
     </>
   );
+
+  if (pressable === false) {
+    return (
+      <View style={resolvedCardStyle} testID={testID}>
+        {content}
+      </View>
+    );
+  }
 
   if (pressedStyle) {
     return (

@@ -26,17 +26,24 @@ export type ScoreRecordCardData = {
 export const ScoreRecordCard = memo(function ScoreRecordCard({
   record,
   rank,
+  interactive = true,
+  artworkCachePolicy,
 }: {
   record: ScoreRecord | ScoreRecordCardData;
   rank?: number;
+  /** false 时渲染纯预览卡（无按压与详情跳转）；缺省保持可点击。 */
+  interactive?: boolean;
+  /** 预览等一次性场景传 "none" 完全跳过曲绘缓存。 */
+  artworkCachePolicy?: 'none';
 }) {
   const theme = useAppTheme();
   const presentation = presentMaimaiScore(record, rank);
   return <GameScoreCard
-    artwork={{ source: maimaiJacketUrl(record.songId) }}
+    artwork={{ source: maimaiJacketUrl(record.songId), ...(artworkCachePolicy ? { cachePolicy: artworkCachePolicy } : {}) }}
     cardStyle={styles.card}
     mainStyle={styles.main}
     presentation={presentation}
+    pressable={interactive}
     side={record.type === 'UTAGE' ? null : <View style={styles.ratingBlock}>
       <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
       <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>

@@ -13,4 +13,14 @@ describe('RemoteImage', () => {
     expect(element.props.cachePolicy).toBe('memory');
     expect(element.props.source).toEqual({ uri: 'https://example.test/cover.png' });
   });
+
+  it('still forces memory when the caller passes a disk policy', () => {
+    const element = RemoteImage({ source: 'https://example.test/cover.png', cachePolicy: 'disk' });
+    expect(element.props.cachePolicy).toBe('memory');
+  });
+
+  it('lets an explicit none policy through for one-off preview images', () => {
+    const element = RemoteImage({ source: 'https://example.test/cover.png', cachePolicy: 'none' });
+    expect(element.props.cachePolicy).toBe('none');
+  });
 });

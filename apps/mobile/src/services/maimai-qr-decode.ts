@@ -49,35 +49,37 @@ export async function decodeMaimaiQrFromImageUri(uri: string, signal?: AbortSign
       base64: true,
     },
   );
-  if (signal?.aborted) {
-    try { new File(prepared.uri).delete(); } catch { /* 临时文件可能已由系统清理。 */ }
+  try {
     throwIfAborted(signal);
-  }
-  if (!prepared.base64) {
-    throw new QrDecodeError('无法读取所选图片');
-  }
+    if (!prepared.base64) {
+      throw new QrDecodeError('无法读取所选图片');
+    }
 
-  const bytes = base64ToUint8Array(prepared.base64);
-  throwIfAborted(signal);
-  const decoded = jpeg.decode(bytes, { useTArray: true });
-  throwIfAborted(signal);
-  if (!decoded.width || !decoded.height || !decoded.data?.length) {
-    throw new QrDecodeError('图片解码失败');
-  }
+    const bytes = base64ToUint8Array(prepared.base64);
+    throwIfAborted(signal);
+    const decoded = jpeg.decode(bytes, { useTArray: true });
+    throwIfAborted(signal);
+    if (!decoded.width || !decoded.height || !decoded.data?.length) {
+      throw new QrDecodeError('图片解码失败');
+    }
 
-  const code = jsQR(
-    new Uint8ClampedArray(decoded.data),
-    decoded.width,
-    decoded.height,
-    { inversionAttempts: 'attemptBoth' },
-  );
-  if (!code?.data) {
-    throw new QrDecodeError('未识别到二维码，请换一张更清晰的截图');
-  }
+    const code = jsQR(
+      new Uint8ClampedArray(decoded.data),
+      decoded.width,
+      decoded.height,
+      { inversionAttempts: 'attemptBoth' },
+    );
+    if (!code?.data) {
+      throw new QrDecodeError('未识别到二维码，请换一张更清晰的截图');
+    }
 
-  const payload = extractMaimaiQrPayload(code.data);
-  if (!payload) {
-    throw new QrDecodeError('识别到的不是舞萌玩家二维码，请确认截图内容');
+    const payload = extractMaimaiQrPayload(code.data);
+    if (!payload) {
+      throw new QrDecodeError('识别到的不是舞萌玩家二维码，请确认截图内容');
+    }
+    return payload;
+  } finally {
+    // 识别只消费 base64，压图产出的临时 JPEG 立即删除，避免在缓存目录遗留文件。
+    try { new File(prepared.uri).delete(); } catch { /* 临时文件可能已由系统清理。 */ }
   }
-  return payload;
 }
