@@ -156,17 +156,17 @@ export function useTufDifficulties(enabled = true) {
   });
 }
 
-export function useTufVideoDetails(videoLink: string | null | undefined) {
-  return useQuery(tufVideoDetailsQueryOptions(videoLink));
+export function useTufVideoDetails(videoLink: string | null | undefined, enabled = true) {
+  return useQuery(tufVideoDetailsQueryOptions(videoLink, enabled));
 }
 
 /** TufSongRow 与成绩图批量封面共用同一 Provider、缓存键和缓存时长。 */
-export function tufVideoDetailsQueryOptions(videoLink: string | null | undefined) {
+export function tufVideoDetailsQueryOptions(videoLink: string | null | undefined, enabled = true) {
   const normalized = tufHttpsUrl(videoLink);
   return {
     queryKey: ['tuf', 'media', 'video-details', normalized],
     queryFn: ({ signal }: { signal: AbortSignal }) => tufProvider.getVideoDetails(normalized!, signal),
-    enabled: normalized !== null,
+    enabled: enabled && normalized !== null,
     ...TUF_QUERY_OPTIONS,
   } as const;
 }

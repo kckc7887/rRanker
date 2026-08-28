@@ -83,4 +83,16 @@ describe('osu! 模组元数据映射', () => {
     expect(resolveOsuModTheme('XX')).toBeNull();
     expect(resolveOsuModTheme('')).toBeNull();
   });
+
+  it('仅为存在固定玩法影响的模组提供当前模式倍率', () => {
+    const standard = osuUserPlayableMods('osu-standard');
+    const taiko = osuUserPlayableMods('osu-taiko');
+    expect(standard.find((item) => item.acronym === 'EZ')?.gameplayMultipliersByGameId?.['osu-standard'])
+      .toContainEqual({ label: '圆圈大小', value: '0.50×' });
+    expect(taiko.find((item) => item.acronym === 'HR')?.gameplayMultipliersByGameId?.['osu-taiko'])
+      .toContainEqual({ label: '滚动速度', value: '1.87×' });
+    expect(standard.find((item) => item.acronym === 'DT')?.gameplayMultipliersByGameId?.['osu-standard'])
+      .toEqual([{ label: '默认速度', value: '1.50×' }]);
+    expect(standard.find((item) => item.acronym === 'HD')?.gameplayMultipliersByGameId).toBeUndefined();
+  });
 });

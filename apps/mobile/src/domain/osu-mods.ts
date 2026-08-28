@@ -134,8 +134,68 @@ export type OsuModMetadata = {
   applicableGameIds: readonly OsuGameId[];
   description: string;
   descriptionByGameId?: Partial<Record<OsuGameId, string>>;
+  gameplayMultipliersByGameId?: Partial<Record<OsuGameId, readonly OsuModGameplayMultiplier[]>>;
   wikiPath: string;
   userPlayable: boolean;
+};
+
+export type OsuModGameplayMultiplier = {
+  label: string;
+  value: string;
+};
+
+const ALL_MODES_SPEED_075 = Object.fromEntries(
+  (['osu-standard', 'osu-taiko', 'osu-catch', 'osu-mania'] as const).map((gameId) => [
+    gameId,
+    [{ label: '默认速度', value: '0.75×' }],
+  ]),
+) as Partial<Record<OsuGameId, readonly OsuModGameplayMultiplier[]>>;
+
+const ALL_MODES_SPEED_150 = Object.fromEntries(
+  (['osu-standard', 'osu-taiko', 'osu-catch', 'osu-mania'] as const).map((gameId) => [
+    gameId,
+    [{ label: '默认速度', value: '1.50×' }],
+  ]),
+) as Partial<Record<OsuGameId, readonly OsuModGameplayMultiplier[]>>;
+
+const OSU_MOD_GAMEPLAY_MULTIPLIERS: Partial<Record<
+  string,
+  Partial<Record<OsuGameId, readonly OsuModGameplayMultiplier[]>>
+>> = {
+  EZ: {
+    'osu-standard': [
+      { label: '圆圈大小', value: '0.50×' }, { label: '生命值', value: '0.50×' },
+      { label: '判定难度', value: '0.50×' }, { label: '缩圈速度', value: '0.50×' },
+    ],
+    'osu-taiko': [
+      { label: '生命值', value: '0.50×' }, { label: '判定难度', value: '0.50×' },
+      { label: '滚动速度', value: '0.80×' },
+    ],
+    'osu-catch': [
+      { label: '接物宽度', value: '0.50×' }, { label: '生命值', value: '0.50×' },
+      { label: '物件出现速度', value: '0.50×' },
+    ],
+    'osu-mania': [{ label: '生命值', value: '0.50×' }],
+  },
+  HR: {
+    'osu-standard': [
+      { label: '生命值', value: '1.40×' }, { label: '判定难度', value: '1.40×' },
+      { label: '缩圈速度', value: '1.40×' }, { label: '圆圈大小', value: '1.30×' },
+    ],
+    'osu-taiko': [
+      { label: '生命值', value: '1.40×' }, { label: '判定难度', value: '1.40×' },
+      { label: '滚动速度', value: '1.87×' },
+    ],
+    'osu-catch': [
+      { label: '生命值', value: '1.40×' }, { label: '物件出现速度', value: '1.40×' },
+      { label: '接物宽度', value: '1.30×' },
+    ],
+    'osu-mania': [{ label: '生命值', value: '1.40×' }],
+  },
+  HT: ALL_MODES_SPEED_075,
+  DC: ALL_MODES_SPEED_075,
+  DT: ALL_MODES_SPEED_150,
+  NC: ALL_MODES_SPEED_150,
 };
 
 /** osu-web 当前四规则集 UserPlayable 列表；顺序与官方 mods.json 一致。 */
@@ -234,6 +294,7 @@ export const OSU_MOD_METADATA: readonly OsuModMetadata[] = Object.entries(OSU_MO
       descriptionByGameId: Object.fromEntries(
         applicableGameIds.map((gameId) => [gameId, copy[2]]),
       ) as Partial<Record<OsuGameId, string>>,
+      gameplayMultipliersByGameId: OSU_MOD_GAMEPLAY_MULTIPLIERS[acronym],
       wikiPath: `/wiki/zh/Gameplay/Game_modifier/Summary#${acronym.toLowerCase()}`,
       userPlayable: acronym !== 'SV2',
     };

@@ -8,17 +8,23 @@ export type AppAccent =
   | 'custom';
 
 export interface ThemePreferences {
-  version: 2;
+  version: 3;
   appearance: AppAppearance;
   accent: AppAccent;
   customHex: string;
+  scoreCardArtworkEnabled: boolean;
+  scoreCardArtworkTransparency: number;
+  scoreCardArtworkBlur: number;
 }
 
 export const DEFAULT_THEME_PREFERENCES: ThemePreferences = {
-  version: 2,
+  version: 3,
   appearance: 'system',
   accent: 'blue',
   customHex: '#246BFD',
+  scoreCardArtworkEnabled: false,
+  scoreCardArtworkTransparency: 35,
+  scoreCardArtworkBlur: 12,
 };
 
 const STORAGE_KEY = 'rranker.theme-preferences.v1';
@@ -38,10 +44,44 @@ export function parseThemePreferences(value: unknown): ThemePreferences {
   const accent = ACCENTS.has(input.accent as AppAccent)
     ? input.accent as AppAccent
     : DEFAULT_THEME_PREFERENCES.accent;
+  const scoreCardArtworkEnabled = input.scoreCardArtworkEnabled === true;
+  const scoreCardArtworkTransparency = normalizeRange(
+    input.scoreCardArtworkTransparency,
+    0,
+    100,
+    DEFAULT_THEME_PREFERENCES.scoreCardArtworkTransparency,
+  );
+  const scoreCardArtworkBlur = normalizeRange(
+    input.scoreCardArtworkBlur,
+    0,
+    30,
+    DEFAULT_THEME_PREFERENCES.scoreCardArtworkBlur,
+  );
   if (accent === 'custom' && !normalizeAccentHex(input.customHex)) {
-    return { version: 2, appearance, accent: DEFAULT_THEME_PREFERENCES.accent, customHex };
+    return {
+      version: 3,
+      appearance,
+      accent: DEFAULT_THEME_PREFERENCES.accent,
+      customHex,
+      scoreCardArtworkEnabled,
+      scoreCardArtworkTransparency,
+      scoreCardArtworkBlur,
+    };
   }
-  return { version: 2, appearance, accent, customHex };
+  return {
+    version: 3,
+    appearance,
+    accent,
+    customHex,
+    scoreCardArtworkEnabled,
+    scoreCardArtworkTransparency,
+    scoreCardArtworkBlur,
+  };
+}
+
+function normalizeRange(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.round(Math.max(min, Math.min(max, value)));
 }
 
 export class ThemePreferencesStore {

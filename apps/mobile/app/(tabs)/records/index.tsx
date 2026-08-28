@@ -600,6 +600,7 @@ function PhigrosRecordsScreen() {
           renderItem: ({ item }) => (
             <PhigrosScoreCard
               record={item.record}
+              artworkSource={catalogQuery.data?.provider?.getIllustrationUrl(item.record.songId)}
               catalogTitle={item.title}
               totalNotes={noteTotalByKey[
                 phigrosChartNoteKey(item.record.songId, item.record.levelIndex)

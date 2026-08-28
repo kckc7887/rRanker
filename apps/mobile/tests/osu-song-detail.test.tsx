@@ -502,20 +502,24 @@ describe('OsuSongDetail 歌曲详情页', () => {
       .toBeGreaterThanOrEqual(addButtons.length);
   });
 
-  it('判定表和达成时间后、标签编辑前渲染练习按钮，并按 beatmap id 加入清单', async () => {
+  it('在练习按钮下方、标签编辑前渲染整包下载按钮，并按 beatmap id 加入清单', async () => {
     const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
     const card = within(screen.getByTestId('osu-detail-difficulty-22423'));
     const judgement = card.getByLabelText('osu 判定统计');
     const achievedAt = card.getByText('达成时间：2026-01-01');
     const practice = card.getByTestId('osu-detail-practice-22423');
+    const download = card.getByTestId('osu-detail-download-22423');
     const tagEditor = card.getByTestId('osu-detail-chart-tags-22423');
     const children = screen.getByTestId('osu-detail-difficulty-22423').children;
 
     expect(children.indexOf(judgement)).toBeLessThan(children.indexOf(achievedAt));
     expect(children.indexOf(achievedAt)).toBeLessThan(children.indexOf(practice));
-    expect(children.indexOf(practice)).toBeLessThan(children.indexOf(tagEditor));
+    expect(children.indexOf(practice)).toBeLessThan(children.indexOf(download));
+    expect(children.indexOf(download)).toBeLessThan(children.indexOf(tagEditor));
     expect(practice.props.testID).toBe('osu-detail-practice-22423');
     expect(practice.props.accessibilityHint).toBe('gesture-handler');
+    expect(download.props.accessibilityHint).toBe('gesture-handler');
+    expect(download.props.accessibilityLabel).toBe('下载谱面文件：鳥の詩');
 
     fireEvent.press(practice);
     expect(mockSetChartPractice).toHaveBeenCalledWith('3720', 'SD', 22423, true);
@@ -590,6 +594,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
         expect(button.props.testID).not.toBe('gesture-handler-pressable');
       }
       expect(screen.getByTestId('osu-detail-practice-22423').props.accessibilityHint).toBeUndefined();
+      expect(screen.getByTestId('osu-detail-download-22423').props.accessibilityHint).toBeUndefined();
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
     }

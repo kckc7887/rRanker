@@ -209,6 +209,7 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
 
   return (
     <GameScoreCard
+      artwork={{ source: record.jacketUrl }}
       cardStyle={styles.card}
       mainStyle={styles.main}
       presentation={presentation}

@@ -14,16 +14,22 @@ interface ThemeState extends ThemePreferences {
   setAppearance: (appearance: AppAppearance) => Promise<void>;
   setAccent: (accent: Exclude<AppAccent, 'custom'>) => Promise<void>;
   setCustomAccent: (hex: string) => Promise<void>;
+  setScoreCardArtworkEnabled: (enabled: boolean) => Promise<void>;
+  setScoreCardArtworkTransparency: (transparency: number) => Promise<void>;
+  setScoreCardArtworkBlur: (blur: number) => Promise<void>;
 }
 
 let hydrationPromise: Promise<void> | undefined;
 
 function snapshot(state: ThemeState): ThemePreferences {
   return {
-    version: 2,
+    version: 3,
     appearance: state.appearance,
     accent: state.accent,
     customHex: state.customHex,
+    scoreCardArtworkEnabled: state.scoreCardArtworkEnabled,
+    scoreCardArtworkTransparency: state.scoreCardArtworkTransparency,
+    scoreCardArtworkBlur: state.scoreCardArtworkBlur,
   };
 }
 
@@ -55,5 +61,25 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
     set({ accent: 'custom', customHex: normalized });
     try { await themePreferencesStore.save(snapshot(get())); }
     catch { set(previous); }
+  },
+  setScoreCardArtworkEnabled: async (enabled) => {
+    const previous = get().scoreCardArtworkEnabled;
+    set({ scoreCardArtworkEnabled: enabled });
+    try { await themePreferencesStore.save(snapshot(get())); }
+    catch { set({ scoreCardArtworkEnabled: previous }); }
+  },
+  setScoreCardArtworkTransparency: async (transparency) => {
+    const previous = get().scoreCardArtworkTransparency;
+    const next = Math.round(Math.max(0, Math.min(100, transparency)));
+    set({ scoreCardArtworkTransparency: next });
+    try { await themePreferencesStore.save(snapshot(get())); }
+    catch { set({ scoreCardArtworkTransparency: previous }); }
+  },
+  setScoreCardArtworkBlur: async (blur) => {
+    const previous = get().scoreCardArtworkBlur;
+    const next = Math.round(Math.max(0, Math.min(30, blur)));
+    set({ scoreCardArtworkBlur: next });
+    try { await themePreferencesStore.save(snapshot(get())); }
+    catch { set({ scoreCardArtworkBlur: previous }); }
   },
 }));

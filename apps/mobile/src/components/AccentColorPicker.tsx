@@ -5,11 +5,9 @@ import {
   Text,
   TextInput,
   View,
-  type LayoutChangeEvent,
-  type GestureResponderEvent,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { AppModal } from '@/components/AppModal';
+import { ValueSlider } from '@/components/ValueSlider';
 import { useAppTheme } from '@/theme/app-theme';
 import {
   HUE_SPECTRUM,
@@ -23,45 +21,6 @@ interface AccentColorPickerProps {
   initialHex: string;
   onClose: () => void;
   onApply: (hex: string) => void;
-}
-
-function ColorSlider({
-  colors,
-  value,
-  onChange,
-  accessibilityLabel,
-}: {
-  colors: readonly string[];
-  value: number;
-  onChange: (value: number) => void;
-  accessibilityLabel: string;
-}) {
-  const [width, setWidth] = useState(1);
-  const updateFromEvent = (event: GestureResponderEvent) => {
-    const next = Math.max(0, Math.min(1, event.nativeEvent.locationX / Math.max(width, 1)));
-    onChange(next);
-  };
-  return (
-    <View
-      accessibilityRole="adjustable"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityValue={{ min: 0, max: 100, now: Math.round(value * 100) }}
-      onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}
-      onStartShouldSetResponder={() => true}
-      onMoveShouldSetResponder={() => true}
-      onResponderGrant={updateFromEvent}
-      onResponderMove={updateFromEvent}
-      style={styles.sliderTrack}
-    >
-      <LinearGradient
-        colors={colors as [string, string, ...string[]]}
-        start={{ x: 0, y: 0.5 }}
-        end={{ x: 1, y: 0.5 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      <View style={[styles.thumb, { left: Math.max(0, Math.min(width - 18, value * width - 9)) }]} />
-    </View>
-  );
 }
 
 export function AccentColorPicker({ visible, initialHex, onClose, onApply }: AccentColorPickerProps) {
@@ -115,9 +74,13 @@ export function AccentColorPicker({ visible, initialHex, onClose, onApply }: Acc
         <Text style={[styles.subtitle, { color: theme.textMuted }]}>拖动色相、饱和度与明度，或直接输入十六进制颜色。</Text>
         <View style={[styles.preview, { backgroundColor: preview, borderColor: theme.border }]} />
         <Text style={[styles.label, { color: theme.textSecondary }]}>色相</Text>
-        <ColorSlider
+        <ValueSlider
           accessibilityLabel="色相"
+          accessibilityValue={{ min: 0, max: 100, now: Math.round(hue / 3.6) }}
           colors={HUE_SPECTRUM}
+          min={0}
+          max={1}
+          step={0.001}
           value={hue / 360}
           onChange={(value) => {
             const next = value * 360;
@@ -126,9 +89,13 @@ export function AccentColorPicker({ visible, initialHex, onClose, onApply }: Acc
           }}
         />
         <Text style={[styles.label, { color: theme.textSecondary }]}>饱和度</Text>
-        <ColorSlider
+        <ValueSlider
           accessibilityLabel="饱和度"
+          accessibilityValue={{ min: 0, max: 100, now: Math.round(saturation) }}
           colors={saturationColors}
+          min={0}
+          max={1}
+          step={0.001}
           value={saturation / 100}
           onChange={(value) => {
             const next = value * 100;
@@ -137,9 +104,13 @@ export function AccentColorPicker({ visible, initialHex, onClose, onApply }: Acc
           }}
         />
         <Text style={[styles.label, { color: theme.textSecondary }]}>明度</Text>
-        <ColorSlider
+        <ValueSlider
           accessibilityLabel="明度"
+          accessibilityValue={{ min: 0, max: 100, now: Math.round(lightness) }}
           colors={lightnessColors}
+          min={0}
+          max={1}
+          step={0.001}
           value={lightness / 100}
           onChange={(value) => {
             const next = value * 100;
@@ -183,21 +154,6 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, lineHeight: 18, marginBottom: 4 },
   preview: { height: 72, borderRadius: 16, borderWidth: 1, marginVertical: 4 },
   label: { fontSize: 13, fontWeight: '700', marginTop: 4 },
-  sliderTrack: {
-    height: 28,
-    borderRadius: 14,
-    overflow: 'hidden',
-    justifyContent: 'center',
-  },
-  thumb: {
-    position: 'absolute',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#FFF',
-    borderWidth: 2,
-    borderColor: 'rgba(17,24,39,0.35)',
-  },
   hexInput: {
     minHeight: 44,
     borderWidth: 1,

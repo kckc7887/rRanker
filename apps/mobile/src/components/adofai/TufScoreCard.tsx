@@ -1,10 +1,12 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { TufDifficultyBadge } from './TufDifficultyBadge';
-import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { GameScoreCard, useScoreCardArtworkActive } from '@/components/game-content/GameScoreCard';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
-import type { TufPass } from '@/domain/tuf';
+import { tufMediaImageCandidates, type TufPass } from '@/domain/tuf';
 import { formatTufAccuracy, presentTufScore } from '@/features/game-content/adapters';
 import { useAppTheme } from '@/theme/app-theme';
+import { useTufVideoDetails } from '@/hooks/use-tuf';
 
 export function TufWorldAchievementBadge({
   kind, testID, style,
@@ -23,9 +25,15 @@ export function TufWorldAchievementBadge({
 
 export function TufScoreCard({ pass, position }: { pass: TufPass; position?: number }) {
   const theme = useAppTheme();
+  const artworkActive = useScoreCardArtworkActive();
+  const media = useTufVideoDetails(pass.level.videoLink, artworkActive);
+  const artworkSource = useMemo(
+    () => tufMediaImageCandidates(media.data?.image, pass.level.difficulty?.icon)[0] ?? null,
+    [media.data?.image, pass.level.difficulty?.icon],
+  );
   const presentation = presentTufScore(pass, position);
   const impact = presentation.secondaryMetrics.find((metric) => metric.key === 'impact')?.text ?? '—';
-  return <GameScoreCard presentation={presentation} cardStyle={styles.card}
+  return <GameScoreCard artwork={{ source: artworkSource }} presentation={presentation} cardStyle={styles.card}
     mainStyle={styles.main} titleStyle={styles.title} pressedStyle={styles.pressed} testID={`tuf-pass-${pass.id}`}>
     <View style={styles.body}>
       <View style={styles.bodyMain}>

@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import { InteractionManager } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SettingsTabScreen, { SettingsScreen } from '../app/(tabs)/settings';
+import PersonalizationScreen from '../app/personalization';
 import { useThemeStore } from '@/state/theme-store';
 import { NotificationProvider } from '@/components/AppNotification';
 
@@ -17,6 +18,7 @@ jest.mock('expo-router', () => {
   const React = jest.requireActual('react') as typeof import('react');
   return {
     router: { push: (href: unknown) => mockPush(href) },
+    Stack: { Screen: () => null },
     useFocusEffect: (effect: () => void | (() => void)) => {
       React.useEffect(() => {
         const cleanup = effect();
@@ -27,9 +29,15 @@ jest.mock('expo-router', () => {
 });
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/storage/theme-preferences-store', () => ({
-  DEFAULT_THEME_PREFERENCES: { version: 2, appearance: 'system', accent: 'blue', customHex: '#246BFD' },
+  DEFAULT_THEME_PREFERENCES: {
+    version: 3, appearance: 'system', accent: 'blue', customHex: '#246BFD',
+    scoreCardArtworkEnabled: false, scoreCardArtworkTransparency: 35, scoreCardArtworkBlur: 12,
+  },
   themePreferencesStore: {
-    load: async () => ({ version: 2, appearance: 'system', accent: 'blue', customHex: '#246BFD' }),
+    load: async () => ({
+      version: 3, appearance: 'system', accent: 'blue', customHex: '#246BFD',
+      scoreCardArtworkEnabled: false, scoreCardArtworkTransparency: 35, scoreCardArtworkBlur: 12,
+    }),
     save: (value: unknown) => mockSaveTheme(value),
   },
 }));
@@ -103,6 +111,7 @@ describe('settings navigation', () => {
     mockExportDiagnostics.mockResolvedValue(undefined);
     useThemeStore.setState({
       appearance: 'system', accent: 'blue', customHex: '#246BFD', hydrated: true,
+      scoreCardArtworkEnabled: false, scoreCardArtworkTransparency: 35, scoreCardArtworkBlur: 12,
     });
   });
   afterEach(() => jest.restoreAllMocks());
@@ -124,6 +133,14 @@ describe('settings navigation', () => {
     const screen = await renderSettings();
     await fireEvent.press(screen.getByText('游戏管理'));
     expect(mockPush).toHaveBeenCalledWith('/game-management');
+  });
+
+  it('moves appearance controls to personalization and explains diagnostics in user language', async () => {
+    const screen = await renderSettings();
+    expect(screen.queryByLabelText('外观 深色')).toBeNull();
+    expect(screen.getByText('遇到闪退或功能异常时，可导出记录并发送给开发者协助排查')).toBeTruthy();
+    await fireEvent.press(screen.getByText('个性化'));
+    expect(mockPush).toHaveBeenCalledWith('/personalization');
   });
 
   it('shows storage management and opens detail route', async () => {
@@ -153,16 +170,26 @@ describe('settings navigation', () => {
   });
 
   it('changes appearance and accent from theme settings', async () => {
-    const screen = await renderSettings();
+    const screen = await renderSettings(<PersonalizationScreen />);
     await fireEvent.press(screen.getByLabelText('外观 深色'));
     await fireEvent.press(screen.getByLabelText('主题色 紫'));
     expect(useThemeStore.getState()).toMatchObject({ appearance: 'dark', accent: 'violet' });
   });
 
   it('applies a custom accent from the palette entry', async () => {
-    const screen = await renderSettings();
+    const screen = await renderSettings(<PersonalizationScreen />);
     await fireEvent.press(screen.getByLabelText('主题色 自定义'));
     await fireEvent.press(screen.getByLabelText('应用自定义主题色'));
     expect(useThemeStore.getState()).toMatchObject({ accent: 'custom', customHex: '#E11D48' });
+  });
+
+  it('reveals the experimental artwork sliders with configured defaults', async () => {
+    const screen = await renderSettings(<PersonalizationScreen />);
+    expect(screen.queryByLabelText('成绩卡片遮罩透明度')).toBeNull();
+    fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
+    await waitFor(() => expect(screen.getByLabelText('成绩卡片遮罩透明度')).toBeTruthy());
+    expect(screen.getByText('35%')).toBeTruthy();
+    expect(screen.getByText('12px')).toBeTruthy();
+    expect(useThemeStore.getState().scoreCardArtworkEnabled).toBe(true);
   });
 });

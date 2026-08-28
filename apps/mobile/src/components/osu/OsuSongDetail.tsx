@@ -11,6 +11,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { useNotification } from '@/components/AppNotification';
+import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
+import { downloadOsuBeatmapsetPackage } from '@/features/osu-beatmapset-download/osu-beatmapset-download';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
@@ -37,6 +39,8 @@ import { resolveOsuStarTheme } from '@/domain/osu-star-theme';
 import { osuModDescription, resolveOsuModMetadata } from '@/domain/osu-mods';
 import { buildTagHistory } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
+import { OsuScoreProvider } from '@/providers/osu-score-provider';
+import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { useGameData } from '@/hooks/use-game-data';
 import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
 import {
@@ -44,7 +48,7 @@ import {
   useOsuKnownScores,
 } from '@/hooks/use-osu-known-scores';
 import { useUserLibrary } from '@/hooks/use-user-library';
-import { useSession } from '@/state/session-store';
+import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { OsuModBadge } from './OsuModBadge';
 import { OsuRankTag } from './OsuRankTag';
@@ -214,6 +218,21 @@ function OsuDetailBody({
   knownScores?: readonly OsuBestScore[];
 }) {
   const theme = useAppTheme();
+  const session = useSession((state) => state.session);
+  const activeAccountId = useSession((state) => state.activeAccountId);
+  const downloadProvider = useMemo(
+    () => session?.mode === 'osu-oauth'
+      ? new OsuScoreProvider(
+          session as OsuOAuthSession,
+          (next) => applyOsuTokenRotation(activeAccountId, next),
+        )
+      : null,
+    [activeAccountId, session],
+  );
+  const { isRunning: downloadRunning, start: startDownload } = useChartPackageDownload({
+    successMessage: '谱面文件已保存，可使用 osu! 打开。',
+    failureMessage: '该谱面文件暂时无法下载，请稍后重试。',
+  });
   const { width } = useWindowDimensions();
   const cardWidth = Math.max(280, width - 40);
   const songItem = library.data?.find(
@@ -238,6 +257,13 @@ function OsuDetailBody({
     }
   }
   const initialIndex = requestedIndex >= 0 ? requestedIndex : recommendedIndex;
+  const downloadBeatmapset = () => {
+    if (!downloadProvider) return;
+    void startDownload((options) => downloadOsuBeatmapsetPackage(downloadProvider, {
+      beatmapsetId: song.beatmapSetId,
+      title: song.title,
+    }, options));
+  };
   // 本 beatmapset 内按 beatmap id 匹配已知成绩；打开详情后的查询结果会写回同一集合。
   const scoresByBeatmapId = useMemo(() => {
     const map = new Map<number, OsuBestScore>();
@@ -290,6 +316,8 @@ function OsuDetailBody({
             beatmap={beatmap}
             gameId={gameId}
             library={library}
+            downloadRunning={downloadRunning}
+            onDownload={downloadBeatmapset}
             score={scoresByBeatmapId.get(beatmap.id)}
             song={song}
             width={cardWidth}
@@ -387,6 +415,8 @@ function DifficultyCard({
   song,
   score,
   library,
+  downloadRunning,
+  onDownload,
   width,
 }: {
   beatmap: OsuBeatmapDetail;
@@ -394,6 +424,8 @@ function DifficultyCard({
   song: OsuBeatmapsetDetail;
   score?: OsuBestScore;
   library: LibraryHook;
+  downloadRunning: boolean;
+  onDownload: () => void;
   width: number;
 }) {
   const theme = useAppTheme();
@@ -517,6 +549,21 @@ function DifficultyCard({
         ]}>
           {chartItem?.kind === 'chart' && chartItem.practice ? '移出练习清单' : '加入练习清单'}
         </Text>
+      </DetailPressable>
+      <DetailPressable
+        accessibilityLabel={`下载谱面文件：${song.title}`}
+        accessibilityRole="button"
+        disabled={downloadRunning}
+        onPress={onDownload}
+        style={({ pressed }) => [
+          styles.practiceButton,
+          { backgroundColor: 'transparent', borderColor: starTheme.background },
+          pressed && styles.pressed,
+          downloadRunning && styles.disabled,
+        ]}
+        testID={`osu-detail-download-${beatmap.id}`}
+      >
+        <Text style={[styles.practiceButtonText, { color: starTheme.background }]}>下载谱面文件</Text>
       </DetailPressable>
       <TagEditor
         disabled={library.isUpdating}

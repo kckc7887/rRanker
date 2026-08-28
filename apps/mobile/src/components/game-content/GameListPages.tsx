@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
+import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
 
 type QueryPageProps<TData> = {
   isLoading: boolean;
@@ -40,7 +41,8 @@ export function BestListPage<
   sectionListProps,
 }: BestListPageProps<TItem, TSection>) {
   return (
-    <QueryStateView<readonly TSection[]>
+    <ScoreCardArtworkScope>
+      <QueryStateView<readonly TSection[]>
       isLoading={isLoading}
       isError={isError}
       isEmpty={isEmpty}
@@ -55,7 +57,8 @@ export function BestListPage<
           sections={sections}
         />
       )}
-    />
+      />
+    </ScoreCardArtworkScope>
   );
 }
 
@@ -99,7 +102,7 @@ function FlatListPage<TItem>({
 }
 
 export function RecordsListPage<TItem>(props: FlatListPageProps<TItem>) {
-  return <FlatListPage {...props} />;
+  return <ScoreCardArtworkScope><FlatListPage {...props} /></ScoreCardArtworkScope>;
 }
 
 export function CatalogListPage<TItem>(props: FlatListPageProps<TItem>) {
