@@ -33,8 +33,8 @@ export function makeTufSnapshot<T>(data: T, updatedAt = new Date().toISOString()
 /** 同一 TUF 玩家资料并发读取共享一次网络请求（总览与最佳页可能并发）。 */
 const inflightPlayerLoads = createInflightGuard<number>();
 
-export function loadTufPlayerFresh(playerId: number): Promise<TufPlayer> {
-  return inflightPlayerLoads.dedupe(playerId, () => tufProvider.getPlayerProfile(playerId));
+export function loadTufPlayerFresh(playerId: number, signal?: AbortSignal): Promise<TufPlayer> {
+  return inflightPlayerLoads.dedupe(playerId, () => tufProvider.getPlayerProfile(playerId, signal), signal);
 }
 
 /**

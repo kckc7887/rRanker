@@ -25,12 +25,15 @@ export class DivingFishProvider implements ScoreProvider {
 
   constructor(private readonly session: ProviderSession) {}
 
-  private async request(path: string): Promise<unknown> {
+  private async request(path: string, signal?: AbortSignal): Promise<unknown> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (this.session.mode === 'jwt') headers.Cookie = `jwt_token=${this.session.value}`;
     if (this.session.mode === 'import-token') headers['Import-Token'] = this.session.value;
     const credentials = this.session.mode === 'cookie-jar' ? 'include' : 'omit';
     const controller = new AbortController();
+    const onExternalAbort = () => controller.abort(signal?.reason);
+    if (signal?.aborted) controller.abort(signal.reason);
+    else signal?.addEventListener('abort', onExternalAbort, { once: true });
     const timeout = setTimeout(() => controller.abort(), 12_000);
     try {
       const response = await expoFetch(`${BASE_URL}${path}`, {
@@ -42,6 +45,7 @@ export class DivingFishProvider implements ScoreProvider {
       }
       return await response.json();
     } catch (error) {
+      if (signal?.aborted) throw error;
       if (error instanceof ProviderError) throw error;
       if (error instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', '水鱼返回了无效 JSON', true, { cause: error });
@@ -50,16 +54,19 @@ export class DivingFishProvider implements ScoreProvider {
         throw new ProviderError('timeout', '水鱼读取超时', true, { cause: error });
       }
       throw new ProviderError('network', '无法连接水鱼服务', true, { cause: error });
-    } finally { clearTimeout(timeout); }
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener('abort', onExternalAbort);
+    }
   }
 
   private source(): DataSource {
     return { kind: 'diving-fish', label: '水鱼查分器', updatedAt: new Date().toISOString(), isStale: false };
   }
 
-  private getRecordsPayload(): Promise<z.infer<typeof DivingFishRecordsResponseSchema>> {
+  private getRecordsPayload(signal?: AbortSignal): Promise<z.infer<typeof DivingFishRecordsResponseSchema>> {
     if (!this.recordsRequest) {
-      this.recordsRequest = this.request('/player/records')
+      this.recordsRequest = this.request('/player/records', signal)
         .then((payload) => parseContract(DivingFishRecordsResponseSchema, payload));
       void this.recordsRequest.then(
         () => { this.recordsRequest = null; },
@@ -69,9 +76,9 @@ export class DivingFishProvider implements ScoreProvider {
     return this.recordsRequest;
   }
 
-  async getPlayer(): Promise<Player> {
+  async getPlayer(signal?: AbortSignal): Promise<Player> {
     if (this.session.mode === 'import-token') {
-      const records = await this.getRecordsPayload();
+      const records = await this.getRecordsPayload(signal);
       const source = this.source();
       return {
         id: records.username ?? 'diving-fish-user',
@@ -86,7 +93,7 @@ export class DivingFishProvider implements ScoreProvider {
         source,
       };
     }
-    const profile = parseContract(ProfileSchema, await this.request('/player/profile'));
+    const profile = parseContract(ProfileSchema, await this.request('/player/profile', signal));
     const source = this.source();
     return {
       id: profile.username ?? 'diving-fish-user',
@@ -101,9 +108,9 @@ export class DivingFishProvider implements ScoreProvider {
       source,
     };
   }
-  async getRecords() {
-    const raw = await this.getRecordsPayload();
+  async getRecords(signal?: AbortSignal) {
+    const raw = await this.getRecordsPayload(signal);
     return raw.records.map((record) => mapDivingFishRecord(record));
   }
-  async getChartStats() { return this.request('/chart_stats'); }
+  async getChartStats(signal?: AbortSignal) { return this.request('/chart_stats', signal); }
 }

@@ -10,12 +10,13 @@ import { ProviderError } from '@/providers/errors';
 import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { cacheFirstLoad, staleCached } from '@/services/cache-first';
+import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 
 /**
  * 同一账号并发 load 共享一次网络请求：缓存优先后台刷新与用户主动同步等待共用同一 promise，
  * 保证同步判定等到的是与 UI 回写同一次读取的真实结果。
  */
-const inflightChunithmLoads = new Map<string, Promise<ChunithmPersonalSnapshot>>();
+const inflightChunithmLoads = new Map<string, { promise: Promise<ChunithmPersonalSnapshot>; signal: AbortSignal }>();
 
 /**
  * 用户主动同步判定用：等待该账号最近一次网络个人成绩读取（缓存优先后台刷新）落定，吞掉失败兜底。
@@ -23,7 +24,7 @@ const inflightChunithmLoads = new Map<string, Promise<ChunithmPersonalSnapshot>>
  */
 export function awaitChunithmFresh(accountId: string): Promise<void> {
   const inflight = inflightChunithmLoads.get(accountId);
-  return inflight ? inflight.then(() => undefined, () => undefined) : Promise.resolve();
+  return inflight ? inflight.promise.then(() => undefined, () => undefined) : Promise.resolve();
 }
 
 export class ChunithmPersonalService {
@@ -33,26 +34,27 @@ export class ChunithmPersonalService {
     private readonly accountId: string,
   ) {}
 
-  async load(): Promise<ChunithmPersonalSnapshot> {
+  async load(signal: AbortSignal = getForegroundAbortSignal()): Promise<ChunithmPersonalSnapshot> {
     const inflight = inflightChunithmLoads.get(this.accountId);
-    if (inflight) return inflight;
-    const fresh = this.loadFresh();
-    inflightChunithmLoads.set(this.accountId, fresh);
+    if (inflight && !inflight.signal.aborted) return inflight.promise;
+    const fresh = this.loadFresh(signal);
+    inflightChunithmLoads.set(this.accountId, { promise: fresh, signal });
     void fresh.then(() => {
-      if (inflightChunithmLoads.get(this.accountId) === fresh) {
+      if (inflightChunithmLoads.get(this.accountId)?.promise === fresh) {
         inflightChunithmLoads.delete(this.accountId);
       }
     }, () => {
-      if (inflightChunithmLoads.get(this.accountId) === fresh) {
+      if (inflightChunithmLoads.get(this.accountId)?.promise === fresh) {
         inflightChunithmLoads.delete(this.accountId);
       }
     });
     return fresh;
   }
 
-  private async loadFresh(): Promise<ChunithmPersonalSnapshot> {
+  private async loadFresh(signal: AbortSignal): Promise<ChunithmPersonalSnapshot> {
     try {
-      const snapshot = await this.provider.getSnapshot();
+      const snapshot = await this.provider.getSnapshot(signal);
+      if (signal.aborted) throw signal.reason;
       await this.repository.saveResource(
         chunithmPersonalResourceKey(this.accountId),
         CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
@@ -87,16 +89,20 @@ export class ChunithmPersonalService {
    * 刷新成功（非缓存兜底）后通过 onFresh 回写（供 hook 静默替换查询缓存）。
    * 无本地快照时直接走网络加载（含失败兜底）。
    */
-  async loadCacheFirst(onFresh: (fresh: ChunithmPersonalSnapshot) => void): Promise<ChunithmPersonalSnapshot> {
+  async loadCacheFirst(
+    onFresh: (fresh: ChunithmPersonalSnapshot) => void,
+    signal: AbortSignal = getForegroundAbortSignal(),
+  ): Promise<ChunithmPersonalSnapshot> {
     const key = chunithmPersonalResourceKey(this.accountId);
     return cacheFirstLoad({
       loadCached: () => this.repository.getResource<ChunithmPersonalSnapshot>(
         key,
         CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
       ),
-      loadFresh: () => this.load(),
+      loadFresh: () => this.load(signal),
       onFresh,
       markStale: (snapshot) => staleCached(snapshot, { label: '落雪咖啡屋（缓存）' }),
+      signal,
     });
   }
 }

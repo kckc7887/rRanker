@@ -32,6 +32,8 @@ import { uploadRecordsToLxns } from '@/services/lxns-upload';
 import { buildScoreSnapshot } from '@/services/score-service';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
+import { waitForForeground } from '@/state/app-lifecycle-core';
+import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 
 export type UploadPhase =
   | { kind: 'idle' }
@@ -55,6 +57,126 @@ export type UploadResult = {
   failedAccountNames: string[];
   targetResults: UploadTargetResult[];
 };
+
+export type UploadTaskSnapshot = {
+  taskId: string | null;
+  status: 'idle' | 'running' | 'paused' | 'done' | 'canceled' | 'error';
+  phase: UploadPhase;
+  result: UploadResult | null;
+};
+
+export class UploadTaskController {
+  private snapshot: UploadTaskSnapshot = {
+    taskId: null,
+    status: 'idle',
+    phase: { kind: 'idle' },
+    result: null,
+  };
+  private listeners = new Set<(snapshot: UploadTaskSnapshot) => void>();
+  private cancelListeners = new Set<() => void>();
+  private resumeWaiters = new Set<() => void>();
+  private signal: ScoreHubAbortSignal = this.createSignal();
+
+  private createSignal(): ScoreHubAbortSignal {
+    this.cancelListeners = new Set();
+    this.resumeWaiters = new Set();
+    const signal: ScoreHubAbortSignal = {
+      aborted: false,
+      paused: false,
+      waitUntilResumed: async () => {
+        if (signal.aborted) throw new ScoreHubError('已取消');
+        while (signal.paused && !signal.aborted) {
+          await new Promise<void>((resolve) => this.resumeWaiters.add(resolve));
+        }
+        if (signal.aborted) throw new ScoreHubError('已取消');
+        await waitForForeground();
+        if (signal.aborted) throw new ScoreHubError('已取消');
+      },
+      onCancel: (listener) => {
+        this.cancelListeners.add(listener);
+        return () => this.cancelListeners.delete(listener);
+      },
+    };
+    return signal;
+  }
+
+  private publish(next: UploadTaskSnapshot): void {
+    this.snapshot = next;
+    for (const listener of this.listeners) listener(next);
+    void recordRuntimeDiagnostic('task', { taskPhase: next.phase.kind });
+  }
+
+  getSnapshot(): UploadTaskSnapshot {
+    return this.snapshot;
+  }
+
+  getSignal(): ScoreHubAbortSignal {
+    return this.signal;
+  }
+
+  begin(): ScoreHubAbortSignal {
+    if (this.snapshot.status === 'running' || this.snapshot.status === 'paused') return this.signal;
+    this.signal = this.createSignal();
+    this.publish({
+      taskId: `upload-${Date.now().toString(36)}`,
+      status: 'running',
+      phase: { kind: 'logging_in', message: '正在准备上传…' },
+      result: null,
+    });
+    return this.signal;
+  }
+
+  setPhase(phase: UploadPhase): void {
+    const status = phase.kind === 'done' ? 'done' : phase.kind === 'error' ? 'error' : this.snapshot.status;
+    this.publish({ ...this.snapshot, phase, status });
+  }
+
+  pause(): void {
+    if (this.snapshot.status !== 'running') return;
+    this.signal.paused = true;
+    this.publish({ ...this.snapshot, status: 'paused' });
+  }
+
+  resume(): void {
+    if (this.snapshot.status !== 'paused') return;
+    this.signal.paused = false;
+    for (const resolve of this.resumeWaiters) resolve();
+    this.resumeWaiters.clear();
+    this.publish({ ...this.snapshot, status: 'running' });
+  }
+
+  cancel(): void {
+    if (this.snapshot.status !== 'running' && this.snapshot.status !== 'paused') return;
+    this.signal.aborted = true;
+    for (const resolve of this.resumeWaiters) resolve();
+    this.resumeWaiters.clear();
+    for (const listener of this.cancelListeners) listener();
+    this.cancelListeners.clear();
+    this.publish({ ...this.snapshot, status: 'canceled', phase: { kind: 'canceling', message: '正在取消…' } });
+  }
+
+  complete(result: UploadResult): void {
+    this.publish({ ...this.snapshot, status: 'done', result });
+  }
+
+  fail(phase: UploadPhase): void {
+    this.publish({ ...this.snapshot, status: this.signal.aborted ? 'canceled' : 'error', phase });
+  }
+
+  subscribe(listener: (snapshot: UploadTaskSnapshot) => void): () => void {
+    this.listeners.add(listener);
+    listener(this.snapshot);
+    return () => this.listeners.delete(listener);
+  }
+
+  resetForTests(): void {
+    if (this.snapshot.status === 'running' || this.snapshot.status === 'paused') this.cancel();
+    this.signal = this.createSignal();
+    this.snapshot = { taskId: null, status: 'idle', phase: { kind: 'idle' }, result: null };
+  }
+}
+
+export const uploadTaskController = new UploadTaskController();
 
 export type BindCabinetResult = {
   friendCode: string;

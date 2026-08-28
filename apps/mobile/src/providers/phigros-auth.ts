@@ -110,8 +110,15 @@ function randStr(len: number): string {
   return s;
 }
 
-async function postForm(url: string, body: Record<string, string>): Promise<unknown> {
+async function postForm(
+  url: string,
+  body: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<unknown> {
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) controller.abort(signal.reason);
+  else signal?.addEventListener('abort', onExternalAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
     const form = new URLSearchParams(body);
@@ -128,10 +135,11 @@ async function postForm(url: string, body: Record<string, string>): Promise<unkn
     return await res.json();
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', onExternalAbort);
   }
 }
 
-export async function requestDeviceCode(): Promise<DeviceCodeResult> {
+export async function requestDeviceCode(signal?: AbortSignal): Promise<DeviceCodeResult> {
   const deviceId = randStr(32);
   const raw = await postForm('https://accounts.tapapis.cn/oauth2/v1/device/code', {
     client_id: TAPTAP_CLIENT_ID,
@@ -139,7 +147,7 @@ export async function requestDeviceCode(): Promise<DeviceCodeResult> {
     scope: TAPTAP_SCOPE,
     platform: 'unity',
     info: JSON.stringify({ device_id: deviceId }),
-  });
+  }, signal);
 
   const parsed = DeviceCodeResponseSchema.parse(raw);
   return {
@@ -154,13 +162,14 @@ export async function requestDeviceCode(): Promise<DeviceCodeResult> {
 export async function pollForToken(
   deviceCode: string,
   deviceId: string,
+  signal?: AbortSignal,
 ): Promise<TapTapToken | 'pending' | 'waiting' | 'slowdown'> {
   const raw = await postForm('https://accounts.tapapis.cn/oauth2/v1/token', {
     grant_type: 'device_token',
     client_id: TAPTAP_CLIENT_ID,
     code: deviceCode,
     info: JSON.stringify({ device_id: deviceId }),
-  });
+  }, signal);
 
   const success = TokenResponseSchema.safeParse(raw);
   if (success.success) return success.data.data;
@@ -173,7 +182,10 @@ export async function pollForToken(
   throw new Error(error ?? 'TapTap 登录失败');
 }
 
-async function getProfile(token: TapTapToken): Promise<z.infer<typeof ProfileDataSchema>> {
+async function getProfile(
+  token: TapTapToken,
+  signal?: AbortSignal,
+): Promise<z.infer<typeof ProfileDataSchema>> {
   const url = `https://open.tapapis.cn/account/profile/v1?client_id=${TAPTAP_CLIENT_ID}`;
   const parsed = new URL(url);
   const method = 'GET';
@@ -189,6 +201,9 @@ async function getProfile(token: TapTapToken): Promise<z.infer<typeof ProfileDat
   );
 
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) controller.abort(signal.reason);
+  else signal?.addEventListener('abort', onExternalAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
     const res = await fetch(url, {
@@ -199,17 +214,24 @@ async function getProfile(token: TapTapToken): Promise<z.infer<typeof ProfileDat
     return ProfileResponseSchema.parse(json).data;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', onExternalAbort);
   }
 }
 
-export async function exchangeSessionToken(token: TapTapToken): Promise<PhigrosSession> {
-  const profile = await getProfile(token);
+export async function exchangeSessionToken(
+  token: TapTapToken,
+  signal?: AbortSignal,
+): Promise<PhigrosSession> {
+  const profile = await getProfile(token, signal);
   const ts = String(Math.floor(Date.now() / 1000));
 
   const lcHash = MD5(ts + LC_APP_KEY).toString();
   const lcSign = `${lcHash},${ts}`;
 
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) controller.abort(signal.reason);
+  else signal?.addEventListener('abort', onExternalAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
     const res = await fetch(`${LC_SERVER}/1.1/users`, {
@@ -240,11 +262,15 @@ export async function exchangeSessionToken(token: TapTapToken): Promise<PhigrosS
     return { sessionToken, playerId: profile.name };
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', onExternalAbort);
   }
 }
 
-export async function getPlayerId(sessionToken: string): Promise<string> {
+export async function getPlayerId(sessionToken: string, signal?: AbortSignal): Promise<string> {
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort(signal.reason);
+  else signal?.addEventListener('abort', onExternalAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
     const res = await fetch(`${LC_SERVER}/1.1/users/me`, {
@@ -261,11 +287,15 @@ export async function getPlayerId(sessionToken: string): Promise<string> {
     return PlayerIdResponseSchema.parse(json).nickname;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', onExternalAbort);
   }
 }
 
-export async function getGameSave(sessionToken: string): Promise<GameSaveMeta> {
+export async function getGameSave(sessionToken: string, signal?: AbortSignal): Promise<GameSaveMeta> {
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort(signal.reason);
+  else signal?.addEventListener('abort', onExternalAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
     const query = new URL(`${LC_SERVER}/1.1/classes/_GameSave`);
@@ -289,11 +319,15 @@ export async function getGameSave(sessionToken: string): Promise<GameSaveMeta> {
     return pickLatestGameSave(parsed.results);
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', onExternalAbort);
   }
 }
 
-export async function downloadSave(saveUrl: string, cacheBust?: string): Promise<ArrayBuffer> {
+export async function downloadSave(saveUrl: string, cacheBust?: string, signal?: AbortSignal): Promise<ArrayBuffer> {
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (signal?.aborted) controller.abort(signal.reason);
+  else signal?.addEventListener('abort', onExternalAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const url = new URL(saveUrl);
@@ -309,5 +343,6 @@ export async function downloadSave(saveUrl: string, cacheBust?: string): Promise
     return await res.arrayBuffer();
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', onExternalAbort);
   }
 }

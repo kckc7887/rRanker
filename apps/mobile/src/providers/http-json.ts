@@ -3,7 +3,18 @@ import { z } from 'zod';
 import { ProviderError, providerErrorFromStatus } from './errors';
 
 type FetchLike = typeof fetch;
-const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) { reject(signal.reason); return; }
+  const timeout = setTimeout(() => {
+    signal?.removeEventListener('abort', onAbort);
+    resolve();
+  }, ms);
+  const onAbort = () => {
+    clearTimeout(timeout);
+    reject(signal?.reason);
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
+});
 
 /** Retry-After 头解析：秒或 HTTP 日期，上限 5s。 */
 export function retryAfterMs(response: Response): number {
@@ -28,6 +39,7 @@ export type JsonRequestOptions<T> = {
   retries?: number;
   /** 覆盖结构、超时和网络错误文案。 */
   messages?: { schema?: string; timeout?: string; network?: string };
+  signal?: AbortSignal;
 };
 
 /** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
@@ -40,7 +52,10 @@ export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T>
   const networkMessage = options.messages?.network ?? `无法连接${label}服务`;
   let previousError: ProviderError | null = null;
   for (let attempt = 0; attempt < retries; attempt += 1) {
+    if (options.signal?.aborted) throw options.signal.reason;
     const controller = new AbortController();
+    const onExternalAbort = () => controller.abort();
+    options.signal?.addEventListener('abort', onExternalAbort, { once: true });
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetcher(`${baseUrl}${path}`, {
@@ -50,13 +65,14 @@ export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T>
         const mapped = error(response.status);
         if (attempt === 0 && mapped.retryable) {
           previousError = mapped;
-          if (response.status === 429) await pause(retryAfterMs(response));
+          if (response.status === 429) await pause(retryAfterMs(response), options.signal);
           continue;
         }
         throw mapped;
       }
       return schema.parse(await response.json());
     } catch (caught) {
+      if (options.signal?.aborted) throw caught;
       if (caught instanceof z.ZodError || caught instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', schemaMessage, true, { cause: caught });
       }
@@ -68,6 +84,7 @@ export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T>
       throw normalized;
     } finally {
       clearTimeout(timeout);
+      options.signal?.removeEventListener('abort', onExternalAbort);
     }
   }
   throw previousError ?? new ProviderError('network', networkMessage, true);
@@ -80,6 +97,7 @@ export type ProviderJsonOptions = {
   invalidJsonMessage: string;
   timeoutMessage: string;
   networkMessage: string;
+  signal?: AbortSignal;
 };
 
 /**
@@ -88,6 +106,9 @@ export type ProviderJsonOptions = {
  */
 export async function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown> {
   const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (options.signal?.aborted) controller.abort(options.signal.reason);
+  else options.signal?.addEventListener('abort', onExternalAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
     const response = await expoFetch(`${options.baseUrl}${options.path}`, {
@@ -96,6 +117,7 @@ export async function fetchProviderJson(options: ProviderJsonOptions): Promise<u
     if (!response.ok) throw providerErrorFromStatus(response.status);
     return await response.json();
   } catch (error) {
+    if (options.signal?.aborted) throw error;
     if (error instanceof ProviderError) throw error;
     if (error instanceof SyntaxError) {
       throw new ProviderError('upstream_schema', options.invalidJsonMessage, true, { cause: error });
@@ -106,5 +128,6 @@ export async function fetchProviderJson(options: ProviderJsonOptions): Promise<u
     throw new ProviderError('network', options.networkMessage, true, { cause: error });
   } finally {
     clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', onExternalAbort);
   }
 }

@@ -22,7 +22,7 @@ export async function loadPhiraPlayerFresh(playerId: number, signal?: AbortSigna
   });
   const pool = { bestPool: hydrate(rawPool.bestPool), recentPool: hydrate(rawPool.recentPool), rks: rawPool.rks };
   const snapshot = { player, stats, pool, recent, seedCharts: charts, source: phiraSource() };
-  await phiraCache.savePlayer(playerId, snapshot);
+  if (!signal?.aborted) await phiraCache.savePlayer(playerId, snapshot);
   return snapshot;
 }
 
@@ -37,7 +37,7 @@ export async function queryPhiraChartBest(
   playerId: number, chart: PhiraChart, poolRks: number | null, signal?: AbortSignal,
 ): Promise<PhiraQueriedBest> {
   const value = await readPhiraChartBest(playerId, chart, poolRks, signal);
-  await phiraCache.mergeBests(playerId, [value]);
+  if (!signal?.aborted) await phiraCache.mergeBests(playerId, [value]);
   return value;
 }
 
@@ -66,6 +66,7 @@ async function refreshPhiraBestItems(
     load: (item) => readPhiraChartBest(playerId, item.chart, item.poolRks, signal),
     onItem: (value) => values.push(value),
   });
+  if (signal?.aborted) throw signal.reason ?? new Error('phira refresh aborted');
   return phiraCache.mergeBests(playerId, values);
 }
 

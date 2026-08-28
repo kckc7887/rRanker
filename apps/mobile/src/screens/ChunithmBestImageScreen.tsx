@@ -48,6 +48,7 @@ import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
+import { useAppLifecycle } from '@/state/app-lifecycle';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   BestImageChoiceChip,
@@ -77,6 +78,7 @@ const chunithmPreferencesAdapter = {
 
 export function ChunithmBestImageScreen() {
   const theme = useAppTheme();
+  const lifecycle = useAppLifecycle();
   const gameData = useGameData();
   const catalogQuery = useChunithmCatalog();
   const payload = gameData.data?.payload.kind === 'chunithm' ? gameData.data.payload : null;
@@ -263,7 +265,7 @@ export function ChunithmBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!payload) return;
+    if (!payload || !lifecycle.foregroundReady) return;
     setCoverUrls(null);
     setAssetProgress({ done: 0, total: jacketIds.length });
     void loadChunithmBestImageJackets(jacketIds, (done, total) => {
@@ -274,7 +276,7 @@ export function ChunithmBestImageScreen() {
     return () => {
       cancelled = true;
     };
-  }, [jacketKey, jacketIds, payload]);
+  }, [jacketKey, jacketIds, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
 
   const characterId = useMemo(
     () => resolveChunithmBestImageStyleId(stylePrefs.character, payload?.player?.character?.id),
@@ -286,7 +288,7 @@ export function ChunithmBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!payload) return;
+    if (!payload || !lifecycle.foregroundReady) return;
     if (styleAssetKeyRef.current === styleAssetKey) return;
     const pending = hideCharacter || characterId === null
       ? Promise.resolve(null)
@@ -304,6 +306,8 @@ export function ChunithmBestImageScreen() {
     hideCharacter,
     payload,
     styleAssetKey,
+    lifecycle.foregroundGeneration,
+    lifecycle.foregroundReady,
   ]);
 
   const backgroundDataUri = backgroundJacketId
@@ -589,6 +593,13 @@ export function ChunithmBestImageScreen() {
       captureAccessibilityLabel={exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined}
       onExportMessage={handleExportMessage}
       onRequestCloseExport={cancelExportRequest}
+      onReleaseHeavySources={() => {
+        setSources(null);
+        setAndroidSources(null);
+        setCoverUrls(null);
+        setCharacterDataUri(null);
+        styleAssetKeyRef.current = null;
+      }}
       pickers={<>
         <ChunithmBestImageStylePicker
           visible={picker === 'character'}

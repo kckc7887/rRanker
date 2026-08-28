@@ -20,21 +20,21 @@ export function makeSnapshot<T>(
 
 /** in-flight 去重守卫：并发调用同一 key 的加载共享一次网络请求，请求结束（成功或失败）后移除。 */
 export interface InflightGuard<K> {
-  dedupe<T>(key: K, loader: () => Promise<T>): Promise<T>;
+  dedupe<T>(key: K, loader: () => Promise<T>, signal?: AbortSignal): Promise<T>;
   /** 测试用：清空去重表。 */
   resetForTests(): void;
 }
 
 export function createInflightGuard<K>(): InflightGuard<K> {
-  const inflight = new Map<K, Promise<unknown>>();
+  const inflight = new Map<K, { promise: Promise<unknown>; signal?: AbortSignal }>();
   return {
-    dedupe<T>(key: K, loader: () => Promise<T>): Promise<T> {
-      const existing = inflight.get(key) as Promise<T> | undefined;
-      if (existing) return existing;
+    dedupe<T>(key: K, loader: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+      const existing = inflight.get(key) as { promise: Promise<T>; signal?: AbortSignal } | undefined;
+      if (existing && !existing.signal?.aborted) return existing.promise;
       const fresh = loader();
-      inflight.set(key, fresh);
+      inflight.set(key, { promise: fresh, signal });
       const cleanup = () => {
-        if (inflight.get(key) === fresh) inflight.delete(key);
+        if (inflight.get(key)?.promise === fresh) inflight.delete(key);
       };
       void fresh.then(cleanup, cleanup);
       return fresh;

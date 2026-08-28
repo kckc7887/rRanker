@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { Image as ExpoImage } from 'expo-image';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Appearance, AppState, InteractionManager, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Appearance, StyleSheet, View } from 'react-native';
 
 import { queryClient } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
@@ -49,13 +50,22 @@ import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
 import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
-import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
 import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
 import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
 import { startTimer } from '@/utils/startup-timing';
 import { TufAccountStore } from '@/storage/tuf-account-store';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
+import {
+  AppLifecycleProvider,
+  getForegroundAbortSignal,
+  useAppLifecycle,
+} from '@/state/app-lifecycle';
+import {
+  initializeRuntimeDiagnostics,
+  recordRuntimeDiagnostic,
+} from '@/services/runtime-diagnostics';
+import { uploadTaskController } from '@/services/upload-maimai-from-friend-code';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -153,12 +163,42 @@ async function loadOptionalBoundAccounts() {
 
 export const unstable_settings = { anchor: '(tabs)' };
 export default function RootLayout() {
+  return <AppLifecycleProvider><RootLayoutContent /></AppLifecycleProvider>;
+}
+
+function RootLayoutContent() {
   const restoreStatus = useSession((state) => state.restoreStatus);
   const themeHydrated = useThemeStore((state) => state.hydrated);
   const hydrateTheme = useThemeStore((state) => state.hydrate);
   const appearance = useThemeStore((state) => state.appearance);
+  const lifecycle = useAppLifecycle();
   const [iconFontsReady, setIconFontsReady] = useState(false);
-  const queryFocusTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const localHydrationGenerationRef = useRef(-1);
+  const releasedMemoryWarningRef = useRef(0);
+
+  useEffect(() => {
+    void initializeRuntimeDiagnostics();
+  }, []);
+
+  useEffect(() => {
+    const sessionState = useSession.getState();
+    void recordRuntimeDiagnostic('lifecycle', {
+      lifecyclePhase: lifecycle.phase,
+      gameType: sessionState.activeGameId,
+      providerType: sessionState.activeProviderId ?? undefined,
+      accountCount: sessionState.boundAccounts.length,
+      queryCount: queryClient.getQueryCache().getAll().length,
+    });
+  }, [lifecycle.foregroundGeneration, lifecycle.phase]);
+
+  useEffect(() => {
+    if (lifecycle.memoryWarningGeneration === 0) return;
+    void recordRuntimeDiagnostic('memory-warning', {
+      lifecyclePhase: lifecycle.phase,
+      queryCount: queryClient.getQueryCache().getAll().length,
+      memoryWarning: true,
+    });
+  }, [lifecycle.memoryWarningGeneration, lifecycle.phase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -178,37 +218,36 @@ export default function RootLayout() {
       void restoreSession(() => sessions.loadVault(), loadOptionalBoundAccounts)
         .then(() => {
           stop();
-          void hydrateBoundAccountAvatars().catch(() => undefined);
-          void hydrateLocalAccountRatings().catch(() => undefined);
-          void hydrateBoundAccountThumbnails().catch(() => undefined);
         });
     }
   }, [restoreStatus]);
 
   useEffect(() => {
-    const cancelPendingFocus = () => {
-      queryFocusTaskRef.current?.cancel();
-      queryFocusTaskRef.current = null;
-    };
-    const applyState = (state: typeof AppState.currentState) => {
-      cancelPendingFocus();
-      if (state === 'background' || state === 'inactive') {
-        focusManager.setFocused(false);
-        return;
-      }
-      queryFocusTaskRef.current = InteractionManager.runAfterInteractions(() => {
-        queryFocusTaskRef.current = null;
-        focusManager.setFocused(true);
-      });
-    };
-    applyState(AppState.currentState);
-    const subscription = AppState.addEventListener('change', applyState);
-    return () => {
-      subscription.remove();
-      cancelPendingFocus();
-      focusManager.setFocused(undefined);
-    };
-  }, []);
+    focusManager.setFocused(lifecycle.foregroundReady);
+    if (lifecycle.foregroundReady) uploadTaskController.resume();
+    else uploadTaskController.pause();
+    if (!lifecycle.foregroundReady) void queryClient.cancelQueries();
+    if (lifecycle.phase === 'background') {
+      queryClient.removeQueries();
+      void ExpoImage.clearMemoryCache();
+    }
+    if (lifecycle.memoryWarningGeneration > releasedMemoryWarningRef.current) {
+      releasedMemoryWarningRef.current = lifecycle.memoryWarningGeneration;
+      queryClient.removeQueries();
+      void ExpoImage.clearMemoryCache();
+    }
+  }, [lifecycle.foregroundReady, lifecycle.memoryWarningGeneration, lifecycle.phase]);
+
+  useEffect(() => () => focusManager.setFocused(undefined), []);
+
+  useEffect(() => {
+    if (restoreStatus !== 'ready' || !lifecycle.foregroundReady) return;
+    if (localHydrationGenerationRef.current === lifecycle.foregroundGeneration) return;
+    localHydrationGenerationRef.current = lifecycle.foregroundGeneration;
+    const signal = getForegroundAbortSignal();
+    void hydrateLocalAccountRatings(undefined, signal).catch(() => undefined);
+    void hydrateBoundAccountThumbnails(undefined, signal).catch(() => undefined);
+  }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady, restoreStatus]);
 
   useEffect(() => {
     const stop = startTimer('root.themeHydrate');
@@ -217,9 +256,9 @@ export default function RootLayout() {
   useEffect(() => { Appearance.setColorScheme(appearance === 'system' ? null : appearance); }, [appearance]);
 
   useEffect(() => {
-    if (restoreStatus !== 'ready' || !themeHydrated || !iconFontsReady) return;
+    if (restoreStatus !== 'ready' || !themeHydrated || !iconFontsReady || !lifecycle.foregroundReady) return;
     void runStorageCacheMaintenance().catch(() => undefined);
-  }, [restoreStatus, themeHydrated, iconFontsReady]);
+  }, [restoreStatus, themeHydrated, iconFontsReady, lifecycle.foregroundReady]);
 
   if (restoreStatus === 'restoring' || !themeHydrated || !iconFontsReady) {
     return <View style={styles.loading}><ActivityIndicator color="#246BFD" /></View>;

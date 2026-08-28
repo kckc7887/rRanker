@@ -57,7 +57,7 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
 
   const query = useInfiniteQuery({
     queryKey: ['osu-catalog-search', gameId, userId, params] as const,
-    queryFn: async ({ pageParam }): Promise<OsuCatalogPage> => {
+    queryFn: async ({ pageParam, signal }): Promise<OsuCatalogPage> => {
       const provider = new OsuScoreProvider(
         session as OsuOAuthSession,
         (next) => applyOsuTokenRotation(activeAccountId, next),
@@ -65,7 +65,7 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
       const raw = await provider.searchBeatmapsets({
         ...(params as OsuBeatmapsetSearchParams),
         cursor: pageParam,
-      });
+      }, signal);
       return {
         songs: normalizeOsuCatalogSongs(raw, (params as OsuBeatmapsetSearchParams).gameId),
         total: raw.total,

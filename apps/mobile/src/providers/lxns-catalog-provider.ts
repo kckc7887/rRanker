@@ -123,13 +123,14 @@ function versionAtOrBefore<T extends { version: number }>(versions: readonly T[]
     item.version <= rawVersion && (!matched || item.version > matched.version) ? item : matched, undefined);
 }
 
-function getJson(path: string): Promise<unknown> {
+function getJson(path: string, signal?: AbortSignal): Promise<unknown> {
   return fetchProviderJson({
     baseUrl: API_ROOT,
     path,
     invalidJsonMessage: 'LXNS 返回了无效 JSON',
     timeoutMessage: 'LXNS 公共 API 读取超时',
     networkMessage: '无法连接 LXNS 公共 API',
+    signal,
   });
 }
 
@@ -257,17 +258,17 @@ function mapSongDetail(input: unknown, catalog: CatalogSnapshot): Song {
 }
 
 export class LxnsCatalogProvider implements DetailedCatalogProvider {
-  async getCatalog(): Promise<CatalogSnapshot> {
-    return mapCatalog(await getJson('/song/list'), 'LXNS 公共曲库');
+  async getCatalog(signal?: AbortSignal): Promise<CatalogSnapshot> {
+    return mapCatalog(await getJson('/song/list', signal), 'LXNS 公共曲库');
   }
-  async getDetailedCatalog(): Promise<CatalogSnapshot> {
-    return mapCatalog(await getJson('/song/list?notes=true'), 'LXNS 详细曲库');
+  async getDetailedCatalog(signal?: AbortSignal): Promise<CatalogSnapshot> {
+    return mapCatalog(await getJson('/song/list?notes=true', signal), 'LXNS 详细曲库');
   }
-  async getSong(songId: string, catalog: CatalogSnapshot): Promise<Song> {
-    return mapSongDetail(await getJson(`/song/${encodeURIComponent(songId)}`), catalog);
+  async getSong(songId: string, catalog: CatalogSnapshot, signal?: AbortSignal): Promise<Song> {
+    return mapSongDetail(await getJson(`/song/${encodeURIComponent(songId)}`, signal), catalog);
   }
-  async getAliases(): Promise<AliasSnapshot> {
-    const parsed = AliasResponseSchema.safeParse(await getJson('/alias/list'));
+  async getAliases(signal?: AbortSignal): Promise<AliasSnapshot> {
+    const parsed = AliasResponseSchema.safeParse(await getJson('/alias/list', signal));
     if (!parsed.success) throw new ProviderError('upstream_schema', 'LXNS 别名响应结构与已验证契约不一致', true);
     const entries = Array.isArray(parsed.data) ? parsed.data : parsed.data.aliases;
     return {
@@ -275,8 +276,8 @@ export class LxnsCatalogProvider implements DetailedCatalogProvider {
       source: source('LXNS 别名库'),
     };
   }
-  async getPlates(): Promise<PlateSnapshot> {
-    const parsed = PlateResponseSchema.safeParse(await getJson('/plate/list?required=true'));
+  async getPlates(signal?: AbortSignal): Promise<PlateSnapshot> {
+    const parsed = PlateResponseSchema.safeParse(await getJson('/plate/list?required=true', signal));
     if (!parsed.success) throw new ProviderError('upstream_schema', 'LXNS 姓名框响应结构与已验证契约不一致', true);
     const entries = Array.isArray(parsed.data) ? parsed.data : parsed.data.plates;
     return {

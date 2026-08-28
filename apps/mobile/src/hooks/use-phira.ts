@@ -34,11 +34,14 @@ export function usePhiraPlayer(playerId: number | null, enabled = true) {
       loadFresh: async () => {
         const fresh = await loadPhiraPlayerFresh(playerId!, signal);
         void refreshPhiraSeedBests(fresh, signal)
-          .then((bests) => queryClient.setQueryData(['phira', 'bests', playerId], bests))
+          .then((bests) => {
+            if (!signal.aborted) queryClient.setQueryData(['phira', 'bests', playerId], bests);
+          })
           .catch(() => undefined);
         return fresh;
       },
       onFresh: (fresh) => queryClient.setQueryData(key, fresh),
+      signal,
     }),
     ...OPTIONS,
   });

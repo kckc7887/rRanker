@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
@@ -20,6 +20,8 @@ import {
   parseChartPreviewBridgeMessage,
 } from './chart-preview-bridge';
 import { chartPreviewNativeScreenOptions } from './chart-preview-native-screen-options';
+import { useAppLifecycle } from '@/state/app-lifecycle';
+import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
 import { useAppTheme } from '@/theme/app-theme';
 
 export type ChartPreviewShellSource = {
@@ -81,35 +83,38 @@ export function ChartPreviewScreenShell<TPayload>({
   onBridgeMessage,
 }: ChartPreviewScreenShellProps<TPayload>) {
   const theme = useAppTheme();
+  const lifecycle = useAppLifecycle();
+  const foreground = lifecycle.foregroundReady;
   const webRef = useRef<WebView>(null);
   const settingsRef = useRef<Record<string, unknown>>({});
   const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const appStateRef = useRef(AppState.currentState);
 
   const [source, setSource] = useState<ChartPreviewShellSource | null>(null);
   const [stageError, setStageError] = useState<string | null>(null);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [foreground, setForeground] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
-  const [webViewGeneration, setWebViewGeneration] = useState(0);
+  const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
+  const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      const wasForeground = appStateRef.current !== 'background' && appStateRef.current !== 'inactive';
-      appStateRef.current = state;
-      const nextForeground = state === 'active';
-      if (!nextForeground) {
-        webRef.current?.injectJavaScript(chartPreviewStopScript());
-        setReady(false);
-        setIsFullscreen(false);
-      } else if (!wasForeground) {
-        setWebViewGeneration((value) => value + 1);
-      }
-      setForeground(nextForeground);
+    if (foreground) return;
+    webRef.current?.injectJavaScript(chartPreviewStopScript());
+    setReady(false);
+    setIsFullscreen(false);
+    void recordRuntimeDiagnostic('web-content', {
+      lifecyclePhase: lifecycle.phase,
+      webContentState: 'released',
     });
-    return () => subscription.remove();
-  }, []);
+  }, [foreground, lifecycle.memoryWarningGeneration, lifecycle.phase]);
+
+  useEffect(() => {
+    if (!foreground || !source) return;
+    void recordRuntimeDiagnostic('web-content', {
+      lifecyclePhase: lifecycle.phase,
+      webContentState: 'mounted',
+    });
+  }, [foreground, lifecycle.phase, source]);
 
   // deps 定稿为 request；settingsKey / prepareErrorFallback 为屏幕级恒定值。
   useEffect(() => {
@@ -118,7 +123,7 @@ export function ChartPreviewScreenShell<TPayload>({
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let preparedSource: ChartPreviewShellSource | undefined;
 
-    if (request.kind !== 'ready') {
+    if (!foreground || request.kind !== 'ready') {
       setSource(null);
       return () => {
         cancelled = true;
@@ -168,7 +173,7 @@ export function ChartPreviewScreenShell<TPayload>({
       preparedSource?.dispose?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deps 定稿为 request
-  }, [request]);
+  }, [foreground, lifecycle.foregroundGeneration, request]);
 
   useEffect(() => {
     if (!isFullscreen) return;

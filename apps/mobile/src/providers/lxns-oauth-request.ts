@@ -64,9 +64,17 @@ export class LxnsOAuthRequestCore {
     return this.session.accessToken;
   }
 
-  async request(path: string, optional: boolean, texts: LxnsOAuthRequestTexts): Promise<unknown> {
+  async request(
+    path: string,
+    optional: boolean,
+    texts: LxnsOAuthRequestTexts,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    if (signal?.aborted) throw signal.reason;
     const accessToken = await this.ensureFreshAccessToken();
     const controller = new AbortController();
+    const onExternalAbort = () => controller.abort();
+    signal?.addEventListener('abort', onExternalAbort, { once: true });
     const timeout = setTimeout(() => controller.abort(), 12_000);
     try {
       const response = await expoFetch(`${LXNS_API_ROOT}${path}`, {
@@ -97,6 +105,7 @@ export class LxnsOAuthRequestCore {
       if (optional && (envelope.data.data === null || envelope.data.data === undefined)) return null;
       return envelope.data.data;
     } catch (error) {
+      if (signal?.aborted) throw error;
       if (error instanceof ProviderError) throw error;
       if (error instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', '落雪返回了无效 JSON', true, { cause: error });
@@ -107,6 +116,7 @@ export class LxnsOAuthRequestCore {
       throw new ProviderError('network', '无法连接落雪服务', true, { cause: error });
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener('abort', onExternalAbort);
     }
   }
 }

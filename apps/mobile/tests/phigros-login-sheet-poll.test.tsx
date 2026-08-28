@@ -1,9 +1,20 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState, InteractionManager, Linking } from 'react-native';
+import { Linking } from 'react-native';
 import { ProviderLoginSheet } from '@/components/ProviderLoginSheet';
 import { findGame } from '@/domain/game-bind-options';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
+import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+
+let mockLifecycle: AppLifecycleSnapshot = {
+  appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+  foregroundGeneration: 1, memoryWarningGeneration: 0,
+};
+
+jest.mock('@/state/app-lifecycle', () => ({
+  useAppLifecycle: () => mockLifecycle,
+  getForegroundAbortSignal: () => new AbortController().signal,
+}));
 
 const phiProvider = findGame('phigros')?.providers.find((p) => p.id === 'phi-taptap') ?? null;
 
@@ -66,26 +77,23 @@ jest.mock('@/providers/phigros-score-provider', () => ({
 const beginLoginMock = (PhigrosScoreProvider.beginLogin as unknown as jest.Mock<any>);
 const pollLoginMock = (PhigrosScoreProvider.pollLogin as unknown as jest.Mock<any>);
 
-let appStateListener: ((state: string) => void) | null = null;
-
 type Screen = Awaited<ReturnType<typeof render>>;
+
+function LoginSheet({ onSuccess = () => undefined }: { onSuccess?: () => void }) {
+  return <ProviderLoginSheet
+    visible provider={phiProvider} gameId="phigros" gameTitle="Phigros"
+    onClose={() => undefined} onSuccess={onSuccess}
+  />;
+}
 
 describe('ProviderLoginSheet Phigros polling', () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    appStateListener = null;
-    jest.spyOn(AppState, 'addEventListener').mockImplementation(((
-      _type: string,
-      handler: (state: string) => void,
-    ) => {
-      appStateListener = handler;
-      return { remove: jest.fn() };
-    }) as never);
+    mockLifecycle = {
+      appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+      foregroundGeneration: 1, memoryWarningGeneration: 0,
+    };
     jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined as never);
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      (callback as () => void)();
-      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
     beginLoginMock.mockClear();
     pollLoginMock.mockClear();
     beginLoginMock.mockResolvedValue(mockDevice);
@@ -107,26 +115,19 @@ describe('ProviderLoginSheet Phigros polling', () => {
   };
 
   it('stops polling while backgrounded and polls immediately on return', async () => {
-    const screen = await render(
-      <ProviderLoginSheet
-        visible
-        provider={phiProvider}
-        gameId="phigros"
-        gameTitle="Phigros"
-        onClose={() => undefined}
-        onSuccess={() => undefined}
-      />,
-    );
+    const screen = await render(<LoginSheet />);
     await startLogin(screen);
 
     await act(async () => { jest.advanceTimersByTime(5_000); });
     expect(pollLoginMock).toHaveBeenCalledTimes(1);
 
-    appStateListener?.('background');
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await screen.rerender(<LoginSheet />);
     await act(async () => { jest.advanceTimersByTime(20_000); });
     expect(pollLoginMock).toHaveBeenCalledTimes(1);
 
-    await act(async () => { appStateListener?.('active'); });
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await screen.rerender(<LoginSheet />);
     expect(pollLoginMock).toHaveBeenCalledTimes(2);
 
     await act(async () => { jest.advanceTimersByTime(5_000); });
@@ -141,19 +142,13 @@ describe('ProviderLoginSheet Phigros polling', () => {
       .mockResolvedValueOnce(mockSession);
 
     const onSuccess = jest.fn();
-    const screen = await render(
-      <ProviderLoginSheet
-        visible
-        provider={phiProvider}
-        gameId="phigros"
-        gameTitle="Phigros"
-        onClose={() => undefined}
-        onSuccess={onSuccess}
-      />,
-    );
+    const screen = await render(<LoginSheet onSuccess={onSuccess} />);
     await startLogin(screen);
 
-    await act(async () => { appStateListener?.('active'); });
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await screen.rerender(<LoginSheet onSuccess={onSuccess} />);
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await screen.rerender(<LoginSheet onSuccess={onSuccess} />);
     expect(screen.getAllByText('网络波动，自动重试中…').length).toBeGreaterThan(0);
 
     await act(async () => { jest.advanceTimersByTime(5_000); });
@@ -166,19 +161,13 @@ describe('ProviderLoginSheet Phigros polling', () => {
   it('stops polling on fatal protocol errors', async () => {
     pollLoginMock.mockRejectedValueOnce(new Error('access_denied'));
 
-    const screen = await render(
-      <ProviderLoginSheet
-        visible
-        provider={phiProvider}
-        gameId="phigros"
-        gameTitle="Phigros"
-        onClose={() => undefined}
-        onSuccess={() => undefined}
-      />,
-    );
+    const screen = await render(<LoginSheet />);
     await startLogin(screen);
 
-    await act(async () => { appStateListener?.('active'); });
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await screen.rerender(<LoginSheet />);
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await screen.rerender(<LoginSheet />);
     expect(screen.getAllByText('授权失败，请重新尝试。').length).toBeGreaterThan(0);
     expect(screen.queryByText(/access_denied/)).toBeNull();
 

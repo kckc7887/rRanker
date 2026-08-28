@@ -1,7 +1,6 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  AppState,
   FlatList,
   Modal,
   PixelRatio,
@@ -16,6 +15,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { useAppLifecycle } from '@/state/app-lifecycle';
+import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
 import { useAppTheme } from '@/theme/app-theme';
 import type { BestImageWebViewSource } from './prepare-best-image-webview-sources';
 import {
@@ -218,6 +219,7 @@ export function BestImageScreenShell<TType extends string>({
   captureBackgroundColor,
   onExportMessage,
   onRequestCloseExport,
+  onReleaseHeavySources,
   pickers,
   styles,
 }: {
@@ -270,30 +272,41 @@ export function BestImageScreenShell<TType extends string>({
   captureBackgroundColor?: string;
   onExportMessage: (data: string) => void;
   onRequestCloseExport: () => void;
+  onReleaseHeavySources?: () => void;
   /** 各游戏的 picker Modal（骨架内置于 ScrollView 之后）。 */
   pickers: ReactNode;
   styles: BestImageScreenShellStyles;
 }) {
   const theme = useAppTheme();
-  const appStateRef = useRef(AppState.currentState);
-  const [foreground, setForeground] = useState(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
-  const [webViewGeneration, setWebViewGeneration] = useState(0);
+  const lifecycle = useAppLifecycle();
+  const foreground = lifecycle.foregroundReady;
+  const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
+  const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
+  const releasedMarkerRef = useRef('');
   const window = useWindowDimensions();
   const screenWidth = window.width > 0 ? window.width : 390;
   const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
   const previewHeight = previewWidth * 4 / 3;
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      const wasForeground = appStateRef.current !== 'background' && appStateRef.current !== 'inactive';
-      appStateRef.current = state;
-      const nextForeground = state === 'active';
-      setForeground(nextForeground);
-      if (!nextForeground) onRequestCloseExport();
-      else if (!wasForeground) setWebViewGeneration((value) => value + 1);
+    const marker = `${lifecycle.phase}:${lifecycle.memoryWarningGeneration}`;
+    if (foreground || releasedMarkerRef.current === marker) return;
+    releasedMarkerRef.current = marker;
+    onRequestCloseExport();
+    onReleaseHeavySources?.();
+    void recordRuntimeDiagnostic('web-content', {
+      lifecyclePhase: lifecycle.phase,
+      webContentState: 'released',
     });
-    return () => subscription.remove();
-  }, [onRequestCloseExport]);
+  }, [foreground, lifecycle.memoryWarningGeneration, lifecycle.phase, onReleaseHeavySources, onRequestCloseExport]);
+
+  useEffect(() => {
+    if (!foreground || !sources) return;
+    void recordRuntimeDiagnostic('web-content', {
+      lifecyclePhase: lifecycle.phase,
+      webContentState: 'mounted',
+    });
+  }, [foreground, lifecycle.phase, sources]);
 
   return <>
     <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">

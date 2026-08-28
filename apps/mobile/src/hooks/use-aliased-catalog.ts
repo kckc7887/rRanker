@@ -38,9 +38,9 @@ export function useAliasedCatalog<TCatalog extends Sourced, TAlias extends Sourc
   /** 本地缓存读取（可含别名缓存合并）；返回 null 时直接走网络。 */
   loadCached: () => Promise<TCatalog | null>;
   /** 主曲库新鲜加载（含持久化回写与网络失败兜底，由各游戏自行组合）。 */
-  loadCatalog: () => Promise<TCatalog>;
+  loadCatalog: (signal?: AbortSignal) => Promise<TCatalog>;
   /** 别名资源新鲜加载；失败时主曲库照常返回并打「别名暂不可用」标。 */
-  loadAliases: () => Promise<TAlias>;
+  loadAliases: (signal?: AbortSignal) => Promise<TAlias>;
   /** 把别名合并进曲库（缓存与新鲜两条路径共用）。 */
   mergeAliases: (catalog: TCatalog, aliasSnapshot: TAlias | undefined) => TCatalog;
   /** source 组装（缓存兜底/别名缺失打标文案由各游戏传入）。 */
@@ -53,10 +53,10 @@ export function useAliasedCatalog<TCatalog extends Sourced, TAlias extends Sourc
   return useQuery({
     enabled: options.enabled,
     queryKey: options.queryKey,
-    queryFn: async (): Promise<TData> => {
+    queryFn: async ({ signal }): Promise<TData> => {
       const loadFresh = async (): Promise<TCatalog> => {
-        const catalog = await options.loadCatalog();
-        const aliasResult = await Promise.allSettled([options.loadAliases()]);
+        const catalog = await options.loadCatalog(signal);
+        const aliasResult = await Promise.allSettled([options.loadAliases(signal)]);
         const aliasSnapshot = aliasResult[0].status === 'fulfilled' ? aliasResult[0].value : undefined;
         const merged = options.mergeAliases(catalog, aliasSnapshot);
         return { ...merged, source: options.composeSource(catalog, aliasSnapshot) };
@@ -67,6 +67,7 @@ export function useAliasedCatalog<TCatalog extends Sourced, TAlias extends Sourc
         loadCached: options.loadCached,
         loadFresh,
         onFresh: (fresh) => options.onFresh(wrapData(fresh)),
+        signal,
       });
       return wrapData(catalog);
     },

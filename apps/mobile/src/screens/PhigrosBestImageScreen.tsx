@@ -66,6 +66,7 @@ import {
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useAppTheme } from '@/theme/app-theme';
+import { useAppLifecycle } from '@/state/app-lifecycle';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { RangeSelector } from '@/components/game-content/RangeSelector';
 
@@ -134,6 +135,7 @@ export function PhigrosBestImageScreen() {
     disposePhigrosIllustrationSession(illustrationStage);
   }, [illustrationStage]);
   const theme = useAppTheme();
+  const lifecycle = useAppLifecycle();
   const gameData = useGameData();
   const catalog = usePhigrosCatalog();
   const payload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
@@ -246,6 +248,7 @@ export function PhigrosBestImageScreen() {
     let cancelled = false;
     setTemplateAssetError(null);
     setFontsReady(false);
+    if (!lifecycle.foregroundReady) return;
     const neededNames = neededFontKey ? neededFontKey.split('|').filter(Boolean) : [];
     void (async () => {
       const prepared = await preparePhigrosFonts((progress) => {
@@ -278,7 +281,7 @@ export function PhigrosBestImageScreen() {
       if (!cancelled) setTemplateAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
     });
     return () => { cancelled = true; };
-  }, [fontAttempt, neededFontKey, provider]);
+  }, [fontAttempt, lifecycle.foregroundGeneration, lifecycle.foregroundReady, neededFontKey, provider]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
   const selectedSongKey = selectedSongIds.join('|');
   const averageRecords = useMemo(() => type === 'best30'
@@ -293,12 +296,12 @@ export function PhigrosBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!payload) return;
+    if (!payload || !lifecycle.foregroundReady) return;
     void loadPhigrosAccAverages(averageRecords, averageReferenceRks).then((averages) => {
       if (!cancelled) setAccAverages(averages);
     });
     return () => { cancelled = true; };
-  }, [averageRecords, averageReferenceRks, payload]);
+  }, [averageRecords, averageReferenceRks, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
 
   const selectStyleKey = (kind: PhigrosBestImagePickerKind, choice: PhigrosImageStyleChoice): string | null => {
     const available = kind === 'avatar' ? avatarItems : songs.map((song) => song.id);
@@ -317,7 +320,7 @@ export function PhigrosBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!provider) return;
+    if (!provider || !lifecycle.foregroundReady) return;
     const uniqueIds = [...new Set(selectedSongIds)];
     const { next, missing } = partitionPhigrosIllustrationCache(uniqueIds, illustrationCacheRef.current);
     // 先用缓存命中结果立刻出预览，缺失曲目先回退占位，避免切换时整页清空。
@@ -339,11 +342,11 @@ export function PhigrosBestImageScreen() {
     // selectedSongKey 是 selectedSongIds.join('|') 的派生签名：ids 内容任何变化必然
     // ids 与 key 来自同一次渲染，避免写入错误的素材会话。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [illustrationStage, provider, selectedSongKey]);
+  }, [illustrationStage, lifecycle.foregroundGeneration, lifecycle.foregroundReady, provider, selectedSongKey]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!provider) return;
+    if (!provider || !lifecycle.foregroundReady) return;
     if (styleAssetKeyRef.current === styleAssetKey) return;
     void Promise.all([
       stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
@@ -362,7 +365,8 @@ export function PhigrosBestImageScreen() {
     });
     return () => { cancelled = true; };
   }, [
-    avatarKey, backgroundFallbackSongId, backgroundKey, illustrationStage, payload?.avatarUrl, provider,
+    avatarKey, backgroundFallbackSongId, backgroundKey, illustrationStage, lifecycle.foregroundGeneration,
+    lifecycle.foregroundReady, payload?.avatarUrl, provider,
     styleAssetKey, stylePrefs.avatar.mode, stylePrefs.background.mode,
   ]);
 
@@ -560,6 +564,16 @@ export function PhigrosBestImageScreen() {
     captureAccessibilityLabel={exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined}
     onExportMessage={handleExportMessage}
     onRequestCloseExport={cancelExportRequest}
+    onReleaseHeavySources={() => {
+      setSources(null);
+      setIllustrations(null);
+      setAccAverages(null);
+      setAvatarData(null);
+      setBackgroundData(null);
+      setTemplateAssets(null);
+      illustrationCacheRef.current = {};
+      styleAssetKeyRef.current = null;
+    }}
     pickers={<PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />}
     styles={styles}
   />;

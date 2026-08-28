@@ -74,9 +74,12 @@ export class OsuScoreProvider {
     return this.session.accessToken;
   }
 
-  private async request<T>(path: string, schema: z.ZodType<T>): Promise<T> {
+  private async request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
     const accessToken = await this.ensureFreshAccessToken();
+    if (signal?.aborted) throw signal.reason;
     const controller = new AbortController();
+    const onExternalAbort = () => controller.abort(signal?.reason);
+    signal?.addEventListener('abort', onExternalAbort, { once: true });
     const timeout = setTimeout(() => controller.abort(), 12_000);
     try {
       const response = await expoFetch(`${OSU_API_ROOT}${path}`, {
@@ -94,6 +97,7 @@ export class OsuScoreProvider {
       const payload: unknown = await response.json();
       return schema.parse(payload);
     } catch (error) {
+      if (signal?.aborted) throw error;
       if (error instanceof ProviderError) throw error;
       if (error instanceof z.ZodError || error instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', 'osu! 数据结构与已验证契约不一致', true, { cause: error });
@@ -104,25 +108,32 @@ export class OsuScoreProvider {
       throw new ProviderError('network', '无法连接 osu! 服务', true, { cause: error });
     } finally {
       clearTimeout(timeout);
+      signal?.removeEventListener('abort', onExternalAbort);
     }
   }
 
   /** 当前授权用户（identify scope）；绑定阶段用于取 userId/username。 */
-  getOwnUser(gameId: OsuGameId): Promise<OsuUserResponseRaw> {
-    return this.request(`/me/${OSU_RULESET_BY_GAME_ID[gameId]}`, OsuUserResponseSchema);
+  getOwnUser(gameId: OsuGameId, signal?: AbortSignal): Promise<OsuUserResponseRaw> {
+    return this.request(`/me/${OSU_RULESET_BY_GAME_ID[gameId]}`, OsuUserResponseSchema, signal);
   }
 
   /** 玩家资料与模式统计（public scope）。 */
-  getUser(userId: number, gameId: OsuGameId): Promise<OsuUserResponseRaw> {
-    return this.request(`/users/${userId}/${OSU_RULESET_BY_GAME_ID[gameId]}`, OsuUserResponseSchema);
+  getUser(userId: number, gameId: OsuGameId, signal?: AbortSignal): Promise<OsuUserResponseRaw> {
+    return this.request(`/users/${userId}/${OSU_RULESET_BY_GAME_ID[gameId]}`, OsuUserResponseSchema, signal);
   }
 
   /** 个人最佳成绩（Top 100，含 beatmap/beatmapset 内嵌信息）。 */
-  getBestScores(userId: number, gameId: OsuGameId, limit = 100): Promise<OsuBestScoreRaw[]> {
+  getBestScores(
+    userId: number,
+    gameId: OsuGameId,
+    limit = 100,
+    signal?: AbortSignal,
+  ): Promise<OsuBestScoreRaw[]> {
     const ruleset = OSU_RULESET_BY_GAME_ID[gameId];
     return this.request(
       `/users/${userId}/scores/best?mode=${ruleset}&limit=${limit}&offset=0`,
       z.array(OsuBestScoreSchema),
+      signal,
     );
   }
 
@@ -131,12 +142,14 @@ export class OsuScoreProvider {
     userId: number,
     beatmapId: number,
     gameId: OsuGameId,
+    signal?: AbortSignal,
   ): Promise<OsuBestScoreRaw | null> {
     const ruleset = OSU_RULESET_BY_GAME_ID[gameId];
     try {
       const response = await this.request(
         `/beatmaps/${beatmapId}/scores/users/${userId}?mode=${ruleset}`,
         OsuBeatmapUserScoreResponseSchema,
+        signal,
       );
       return response.score;
     } catch (error) {
@@ -146,13 +159,20 @@ export class OsuScoreProvider {
   }
 
   /** 谱面搜索（曲库页）：每页 50 份 beatmapset（上游固定），cursor_string 翻页；m 恒为当前模式。 */
-  searchBeatmapsets(params: OsuBeatmapsetSearchParams): Promise<OsuBeatmapsetSearchRaw> {
+  searchBeatmapsets(
+    params: OsuBeatmapsetSearchParams,
+    signal?: AbortSignal,
+  ): Promise<OsuBeatmapsetSearchRaw> {
     const query = new URLSearchParams(buildOsuBeatmapsetSearchQuery(params)).toString();
-    return this.request(`/beatmapsets/search?${query}`, OsuBeatmapsetSearchResponseSchema);
+    return this.request(`/beatmapsets/search?${query}`, OsuBeatmapsetSearchResponseSchema, signal);
   }
 
   /** 谱面集详情（歌曲详情页）：返回 BeatmapsetExtended 原始数据，模式过滤在规范化层做。 */
-  getBeatmapset(beatmapsetId: number | string): Promise<OsuBeatmapsetLookupRaw> {
-    return this.request(`/beatmapsets/${encodeURIComponent(String(beatmapsetId))}`, OsuBeatmapsetLookupSchema);
+  getBeatmapset(beatmapsetId: number | string, signal?: AbortSignal): Promise<OsuBeatmapsetLookupRaw> {
+    return this.request(
+      `/beatmapsets/${encodeURIComponent(String(beatmapsetId))}`,
+      OsuBeatmapsetLookupSchema,
+      signal,
+    );
   }
 }
