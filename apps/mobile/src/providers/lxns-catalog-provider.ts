@@ -13,6 +13,7 @@ import type {
 import type { DetailedCatalogProvider } from './contracts';
 import { ProviderError } from './errors';
 import { fetchProviderJson } from './http-json';
+import { VERSION_NAME_MAPPINGS } from '@/domain/version-names';
 
 const API_ROOT = 'https://maimai.lxns.net/api/v0/maimai';
 
@@ -240,19 +241,26 @@ function mapCatalog(input: unknown, label: string): CatalogSnapshot {
   };
 }
 
-function mapSongDetail(input: unknown, catalog: CatalogSnapshot): Song {
+function mapSongDetail(
+  input: unknown,
+  catalog?: CatalogSnapshot,
+  relatedSongs: readonly Song[] = [],
+): Song {
   const parsed = SongSchema.safeParse(input);
   if (!parsed.success) throw new ProviderError('upstream_schema', 'LXNS 单曲详情响应结构与已验证契约不一致', true);
-  const versions = catalog.versions.map((item) => ({ version: item.id, title: item.title }));
+  const versions = catalog
+    ? catalog.versions.map((item) => ({ version: item.id, title: item.title }))
+    : VERSION_NAME_MAPPINGS.map((item) => ({ version: item.versionId, title: item.china }));
   const mapped = mapSong(parsed.data, versions);
-  const base = catalog.songs.find((song) => normalizeSongId(song.id) === normalizeSongId(mapped.id));
+  const base = catalog?.songs.find((song) => normalizeSongId(song.id) === normalizeSongId(mapped.id));
   const detailed = {
     ...base,
     ...mapped,
     aliases: base?.aliases,
     charts: mapped.charts,
   };
-  const songsById = new Map(catalog.songs.map((song) => [song.id, song]));
+  const songsById = new Map(catalog?.songs.map((song) => [song.id, song]) ?? []);
+  relatedSongs.forEach((song) => songsById.set(song.id, song));
   songsById.set(detailed.id, detailed);
   return mergeUtageMetadata(detailed, songsById);
 }
@@ -264,8 +272,15 @@ export class LxnsCatalogProvider implements DetailedCatalogProvider {
   async getDetailedCatalog(signal?: AbortSignal): Promise<CatalogSnapshot> {
     return mapCatalog(await getJson('/song/list?notes=true', signal), 'LXNS 详细曲库');
   }
-  async getSong(songId: string, catalog: CatalogSnapshot, signal?: AbortSignal): Promise<Song> {
-    return mapSongDetail(await getJson(`/song/${encodeURIComponent(songId)}`, signal), catalog);
+  async getSong(songId: string, catalog?: CatalogSnapshot, signal?: AbortSignal): Promise<Song> {
+    const input = await getJson(`/song/${encodeURIComponent(songId)}`, signal);
+    const mapped = mapSongDetail(input, catalog);
+    const originalSongId = catalog ? undefined : originalSongIdForUtage(mapped.id);
+    if (!originalSongId) return mapped;
+    const original = mapSongDetail(
+      await getJson(`/song/${encodeURIComponent(originalSongId)}`, signal),
+    );
+    return mapSongDetail(input, undefined, [original]);
   }
   async getAliases(signal?: AbortSignal): Promise<AliasSnapshot> {
     const parsed = AliasResponseSchema.safeParse(await getJson('/alias/list', signal));

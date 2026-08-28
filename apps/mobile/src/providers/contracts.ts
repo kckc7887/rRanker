@@ -47,7 +47,7 @@ export interface CatalogProvider {
 }
 export interface DetailedCatalogProvider extends CatalogProvider {
   getDetailedCatalog(signal?: AbortSignal): Promise<CatalogSnapshot>;
-  getSong(songId: string, catalog: CatalogSnapshot, signal?: AbortSignal): Promise<Song>;
+  getSong(songId: string, catalog?: CatalogSnapshot, signal?: AbortSignal): Promise<Song>;
   getAliases(signal?: AbortSignal): Promise<AliasSnapshot>;
   getPlates(signal?: AbortSignal): Promise<PlateSnapshot>;
   getCollections(): Promise<CollectionSnapshot>;

@@ -93,14 +93,21 @@ function mergeSong(
   };
 }
 
-function bestScoreForDifficulty(
+function indexBestScoresByDifficulty(
   scores: readonly ChunithmScore[],
   songId: number,
-  difficulty: number,
-): ChunithmScore | undefined {
-  return scores
-    .filter((score) => String(score.id) === String(songId) && score.level_index === difficulty)
-    .sort((left, right) => right.score - left.score || (right.rating ?? 0) - (left.rating ?? 0))[0];
+): ReadonlyMap<number, ChunithmScore> {
+  const indexed = new Map<number, ChunithmScore>();
+  for (const score of scores) {
+    if (String(score.id) !== String(songId)) continue;
+    const current = indexed.get(score.level_index);
+    if (!current || score.score > current.score || (
+      score.score === current.score && (score.rating ?? 0) > (current.rating ?? 0)
+    )) {
+      indexed.set(score.level_index, score);
+    }
+  }
+  return indexed;
 }
 
 export function ChunithmSongDetail({
@@ -111,9 +118,9 @@ export function ChunithmSongDetail({
   initialLevelIndex?: number;
 }) {
   const theme = useAppTheme();
-  const catalog = useChunithmCatalog();
+  const catalog = useChunithmCatalog(false);
   const detail = useChunithmSongDetail(songId);
-  const gameData = useGameData();
+  const gameData = useGameData(false);
   const library = useUserLibrary();
   const catalogSong = useMemo(
     () => catalog.data?.songs.find((song) => String(song.id) === songId),
@@ -132,11 +139,11 @@ export function ChunithmSongDetail({
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const isNoData = detail.error instanceof ProviderError && detail.error.code === 'no_data';
-  const isLoading = !song && (catalog.isLoading || detail.isLoading);
+  const isLoading = !song && detail.isLoading;
   const isError = !song && detail.isError && !isNoData;
-  const isEmpty = !song && !isLoading && (isNoData || !!catalog.data);
+  const isEmpty = !song && !isLoading && (isNoData || !detail.isError);
   const retry = () => {
-    void Promise.all([catalog.refetch(), detail.refetch()]);
+    void detail.refetch();
   };
 
   return (
@@ -236,6 +243,10 @@ function ChunithmDetailBody({
     () => [...song.difficulties].sort((left, right) => right.difficulty - left.difficulty),
     [song.difficulties],
   );
+  const scoresByDifficulty = useMemo(
+    () => indexBestScoresByDifficulty(scores, song.id),
+    [scores, song.id],
+  );
   const requestedIndex = initialLevelIndex === undefined
     ? -1
     : difficulties.findIndex((difficulty) => difficulty.difficulty === initialLevelIndex);
@@ -278,7 +289,7 @@ function ChunithmDetailBody({
         initialIndex={initialIndex}
         library={library}
         onRetryDetail={onRetryDetail}
-        scores={scores}
+        scoresByDifficulty={scoresByDifficulty}
         song={song}
       />
 
@@ -360,7 +371,7 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
 function DifficultyCarousel({
   difficulties,
   song,
-  scores,
+  scoresByDifficulty,
   library,
   cardWidth,
   initialIndex,
@@ -369,7 +380,7 @@ function DifficultyCarousel({
 }: {
   difficulties: ChunithmDifficulty[];
   song: ChunithmSong;
-  scores: readonly ChunithmScore[];
+  scoresByDifficulty: ReadonlyMap<number, ChunithmScore>;
   library: LibraryHook;
   cardWidth: number;
   initialIndex: number;
@@ -392,7 +403,7 @@ function DifficultyCarousel({
           difficulty={difficulty}
           library={library}
           onRetryDetail={onRetryDetail}
-          score={bestScoreForDifficulty(scores, song.id, difficulty.difficulty)}
+          score={scoresByDifficulty.get(difficulty.difficulty)}
           song={song}
           width={cardWidth}
         />

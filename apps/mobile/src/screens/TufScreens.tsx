@@ -51,9 +51,9 @@ import {
   useTufLevelBestPass,
   useTufLevelSearch,
   useTufPasses,
-  useTufProfile,
   useTufVideoDetails,
 } from '@/hooks/use-tuf';
+import { useGameData } from '@/hooks/use-game-data';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -79,25 +79,26 @@ export function TufBestScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const playerId = useActiveTufPlayerId();
-  const profile = useTufProfile(playerId);
+  const gameData = useGameData();
+  const player = gameData.data?.payload?.kind === 'adofai' ? gameData.data.payload.player : undefined;
   const passes = useTufPasses(playerId, { sortBy: 'impact', order: 'DESC', bestPerLevel: true });
   const allPasses = useMemo(
     () => passes.data?.pages.flatMap((page) => page.passes) ?? [],
     [passes.data?.pages],
   );
   const top = useMemo(
-    () => selectTufTopPasses(profile.data?.topScores ?? [], allPasses),
-    [allPasses, profile.data?.topScores],
+    () => selectTufTopPasses(player?.topScores ?? [], allPasses),
+    [allPasses, player?.topScores],
   );
   const ordered = top.passes;
   const missing = top.missing;
   const sections: TufBestSection[] = [{ id: 'top20', title: 'Top 20 Impact', data: ordered }];
-  const loading = profile.isLoading || passes.isLoading;
-  const error = profile.error ?? passes.error;
+  const loading = gameData.isLoading || passes.isLoading;
+  const error = gameData.error ?? passes.error;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <BestListPage<TufPass, TufBestSection>
       isLoading={loading} isError={!!error} isEmpty={!loading && ordered.length === 0}
-      error={error} onRetry={() => { void profile.refetch(); void passes.refetch(); }}
+      error={error} onRetry={() => { void gameData.refetch(); void passes.refetch(); }}
       emptyText={playerId === null ? '请先在游戏管理中绑定 TUF 玩家' : '当前公开资料没有 Top 20 成绩'}
       data={!loading && ordered.length ? sections : undefined}
       sectionListProps={{

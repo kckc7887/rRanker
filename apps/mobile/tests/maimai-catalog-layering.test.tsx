@@ -11,11 +11,13 @@ import {
   useMaimaiSongDetail,
   useTransientDetailedMaimaiCatalog,
 } from '@/hooks/use-detailed-catalog';
+import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 
 const mockGetCatalog = jest.fn<() => Promise<CatalogSnapshot>>();
 const mockGetDetailedCatalog = jest.fn<() => Promise<CatalogSnapshot>>();
 const mockGetAliases = jest.fn<() => Promise<AliasSnapshot>>();
-const mockGetSong = jest.fn<(songId: string, catalog: CatalogSnapshot) => Promise<Song>>();
+const mockGetSong = jest.fn<(songId: string, catalog?: CatalogSnapshot) => Promise<Song>>();
+const mockUseGameData = jest.fn();
 const mockCatalogProvider = {
   getCatalog: mockGetCatalog,
   getDetailedCatalog: mockGetDetailedCatalog,
@@ -26,6 +28,9 @@ let mockActiveAccountId = 'maimai:lxns:first';
 
 jest.mock('@/components/CachedTabScreen', () => ({
   useCachedTabActive: () => true,
+}));
+jest.mock('@/hooks/use-game-data', () => ({
+  useGameData: (enabled?: boolean) => mockUseGameData(enabled),
 }));
 jest.mock('@/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
@@ -58,6 +63,13 @@ describe('舞萌曲库分层', () => {
     mockGetDetailedCatalog.mockResolvedValue(structuredClone(fixtureCatalog));
     mockGetAliases.mockResolvedValue({ aliases: [], source: fixtureCatalog.source });
     mockGetSong.mockResolvedValue(structuredClone(fixtureCatalog.songs[0]));
+    mockUseGameData.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: jest.fn(),
+    });
   });
 
   afterEach(async () => {
@@ -78,6 +90,32 @@ describe('舞萌曲库分层', () => {
 
     expect(mockGetCatalog).toHaveBeenCalledTimes(1);
     expect(queryClient.getQueryCache().findAll({ queryKey: MAIMAI_CATALOG_QUERY_KEY })).toHaveLength(1);
+    await hook.unmount();
+
+    const second = await renderHook(() => useDetailedCatalog(), { wrapper });
+    await waitFor(() => expect(second.result.current.data).toBeDefined());
+    expect(mockGetCatalog).toHaveBeenCalledTimes(1);
+    await second.unmount();
+  });
+
+  it('成绩页直接读取账号级 game-data 快照', async () => {
+    const snapshot = {
+      source: fixtureCatalog.source,
+      catalogSource: fixtureCatalog.source,
+      records: [],
+    };
+    mockUseGameData.mockReturnValue({
+      data: { payload: { kind: 'maimai', snapshot } },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+
+    const hook = await renderHook(() => useScoreSnapshot(), { wrapper });
+
+    expect(mockUseGameData).toHaveBeenCalledWith(true);
+    expect(hook.result.current.data).toBe(snapshot);
     await hook.unmount();
   });
 
@@ -115,6 +153,18 @@ describe('舞萌曲库分层', () => {
     await waitFor(() => expect(retry.result.current.data).toBeDefined());
     expect(mockGetSong).toHaveBeenCalledTimes(3);
     await retry.unmount();
+  });
+
+  it('没有完整曲库也会直接请求单曲详情', async () => {
+    const detail = await renderHook(
+      () => useMaimaiSongDetail('1', undefined),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(detail.result.current.data).toBeDefined());
+    expect(mockGetCatalog).not.toHaveBeenCalled();
+    expect(mockGetSong).toHaveBeenCalledWith('1', undefined, expect.any(AbortSignal));
+    await detail.unmount();
   });
 
   it('详细整库只保存在功能局部状态', async () => {

@@ -23,6 +23,12 @@ import {
 } from '@/services/tuf-cache';
 
 const TUF_QUERY_OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
+const TUF_SESSION_RESOURCE_QUERY_OPTIONS = {
+  staleTime: Infinity,
+  gcTime: Infinity,
+  refetchOnMount: false,
+  refetchOnReconnect: false,
+} as const;
 
 const cache = new TufCache();
 
@@ -146,7 +152,7 @@ export function useTufDifficulties(enabled = true) {
     queryKey,
     queryFn: ({ signal }) => tufProvider.getDifficulties(signal),
     enabled: enabled && tabActive,
-    ...TUF_QUERY_OPTIONS,
+    ...TUF_SESSION_RESOURCE_QUERY_OPTIONS,
   });
 }
 

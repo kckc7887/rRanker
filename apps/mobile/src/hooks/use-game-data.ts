@@ -30,7 +30,7 @@ import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
 import { PhigrosSaveCache, stalePhigrosPayload, type PhigrosGameDataPayload } from '@/services/phigros-save-cache';
-import { cacheFirstLoad, isCacheFallback } from '@/services/cache-first';
+import { staleCached } from '@/services/cache-first';
 import { gameDataQueryKey } from '@/services/game-data-query';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
@@ -39,9 +39,6 @@ import { isOsuGameId } from '@/domain/game-mode-family';
 import { loadOsuSnapshotFresh, OsuCache } from '@/services/osu-cache';
 import type { OsuSnapshot } from '@/domain/osu';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import {
-  loadChunithmCatalog,
-} from '@/services/chunithm-catalog-loader';
 import {
   osuUserIdFromAccountId,
   tufPlayerIdFromAccountId,
@@ -57,8 +54,6 @@ import {
 import {
   loadMuseDashPlayerFresh,
   makeMuseDashSnapshot,
-  loadMuseDashAlbumsCacheFirst,
-  loadMuseDashDiffdiffCacheFirst,
   MuseDashCache,
 } from '@/services/muse-dash-cache';
 import { resolveTufAvatarUrl, type TufPlayer } from '@/domain/tuf';
@@ -73,6 +68,10 @@ import { maxedMuseDashPlayerSnapshot } from '@/providers/maxed-musedash-test-pro
 import { phiraCache } from '@/services/phira-cache';
 import { loadPhiraPlayerFresh, refreshPhiraSeedBests } from '@/services/phira-service';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { ensureMaimaiCatalog } from '@/hooks/use-detailed-catalog';
+import { ensureChunithmCatalog } from '@/hooks/use-chunithm-catalog';
+import { ensureMuseDashAlbums, ensureMuseDashDiffdiff } from '@/hooks/use-muse-dash';
+import { ensurePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
@@ -103,10 +102,12 @@ export function useGameData(enabled = true) {
   const query = useQuery({
     queryKey,
     enabled: enabled && tabActive,
-    ...(activeGameId === 'adofai' || activeGameId === 'musedash' || activeGameId === 'phira'
-      ? { staleTime: 60_000, gcTime: 10 * 60_000 }
-      : {}),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
     queryFn: async ({ signal }): Promise<GameDataBundle> => {
+      const hasSessionData = queryClient.getQueryData<GameDataBundle>(queryKey) !== undefined;
       if (activeGameId === 'phira') {
         const playerId = phiraPlayerIdFromAccountId(activeAccountId);
         if (activeProviderId !== 'phira-community' || playerId === null) {
@@ -118,19 +119,16 @@ export function useGameData(enabled = true) {
           payload: { kind: 'phira', snapshot, bests: await phiraCache.loadBests(playerId),
             playerScore: { label: 'Ranking Score', value: snapshot.player.rks, display: snapshot.player.rks.toFixed(phiraProfile.ratingDigits) }, source: snapshot.source },
         });
-        const snapshot = await cacheFirstLoad({
-          loadCached: () => phiraCache.loadPlayer(playerId),
-          loadFresh: async () => {
-            const fresh = await loadPhiraPlayerFresh(playerId, signal);
-            void refreshPhiraSeedBests(fresh, signal).then(() => toBundle(fresh))
-              .then((bundle) => {
-                if (!signal.aborted) queryClient.setQueryData(queryKey, bundle);
-              }).catch(() => undefined);
-            return fresh;
-          },
-          onFresh: (fresh) => { void toBundle(fresh).then((bundle) => queryClient.setQueryData(queryKey, bundle)); },
-          signal,
-        });
+        const stored = hasSessionData ? null : await phiraCache.loadPlayer(playerId);
+        const snapshot = stored
+          ? staleCached(stored)
+          : await loadPhiraPlayerFresh(playerId, signal);
+        if (!stored) {
+          void refreshPhiraSeedBests(snapshot, signal).then(() => toBundle(snapshot))
+            .then((bundle) => {
+              if (!signal.aborted) queryClient.setQueryData(queryKey, bundle);
+            }).catch(() => undefined);
+        }
         return toBundle(snapshot);
       }
       if (activeGameId === 'adofai') {
@@ -152,20 +150,11 @@ export function useGameData(enabled = true) {
             source,
           },
         });
-        // 缓存优先：先渲染本地玩家资料快照（打「数据可能过期」标），后台刷新成功后静默回写。
-        const snapshot = await cacheFirstLoad({
-          loadCached: () => tufCache.loadPlayer(playerId),
-          loadFresh: async () => {
-            const player = await loadTufPlayerFresh(playerId, signal);
-            const fresh = makeTufSnapshot(player);
-            if (!signal.aborted) void tufCache.savePlayer(playerId, fresh).catch(() => undefined);
-            return fresh;
-          },
-          onFresh: (fresh) => {
-            queryClient.setQueryData(queryKey, toBundle(fresh.data, fresh.source));
-          },
-          signal,
-        });
+        const stored = hasSessionData ? null : await tufCache.loadPlayer(playerId);
+        const snapshot = stored
+          ? staleCached(stored)
+          : makeTufSnapshot(await loadTufPlayerFresh(playerId, signal));
+        if (!stored && !signal.aborted) void tufCache.savePlayer(playerId, snapshot).catch(() => undefined);
         return toBundle(snapshot.data, snapshot.source);
       }
       if (activeGameId === 'musedash') {
@@ -184,8 +173,8 @@ export function useGameData(enabled = true) {
           });
           // 示例账号首屏优先读取曲库和定数表缓存。
           const [albums, diffdiff] = await Promise.all([
-            loadMuseDashAlbumsCacheFirst(museDashCache, signal),
-            loadMuseDashDiffdiffCacheFirst(museDashCache, signal),
+            ensureMuseDashAlbums(),
+            ensureMuseDashDiffdiff(),
           ]);
           const snapshot = maxedMuseDashPlayerSnapshot(
             albums.data,
@@ -211,20 +200,11 @@ export function useGameData(enabled = true) {
             source,
           },
         });
-        // 缓存优先：先渲染本地玩家资料快照（打「数据可能过期」标），后台刷新成功后静默回写。
-        const snapshot = await cacheFirstLoad({
-          loadCached: () => museDashCache.loadPlayer(userId),
-          loadFresh: async () => {
-            const player = await loadMuseDashPlayerFresh(userId, signal);
-            const fresh = makeMuseDashSnapshot(player);
-            if (!signal.aborted) void museDashCache.savePlayer(userId, fresh).catch(() => undefined);
-            return fresh;
-          },
-          onFresh: (fresh) => {
-            queryClient.setQueryData(queryKey, toBundle(fresh.data, fresh.source));
-          },
-          signal,
-        });
+        const stored = hasSessionData ? null : await museDashCache.loadPlayer(userId);
+        const snapshot = stored
+          ? staleCached(stored)
+          : makeMuseDashSnapshot(await loadMuseDashPlayerFresh(userId, signal));
+        if (!stored && !signal.aborted) void museDashCache.savePlayer(userId, snapshot).catch(() => undefined);
         return toBundle(snapshot.data, snapshot.source);
       }
       if (activeGameId === 'chunithm') {
@@ -258,7 +238,7 @@ export function useGameData(enabled = true) {
             };
           };
           // 示例账号仍由真实公开曲库生成，但公开曲库只保留在本次 React Query 会话。
-          return loadChunithmCatalog().then(toBundle);
+          return ensureChunithmCatalog().then(toBundle);
         }
         if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {
           const provider = new ChunithmScoreProvider(
@@ -292,10 +272,8 @@ export function useGameData(enabled = true) {
               hasSyncedData: snapshot.player !== null,
             },
           });
-          // 缓存优先：先渲染本地快照，后台刷新成功后静默回写。
-          const snapshot = await service.loadCacheFirst((fresh) => {
-            queryClient.setQueryData(queryKey, toBundle(fresh));
-          }, signal);
+          const cached = hasSessionData ? null : await service.loadCached();
+          const snapshot = cached ?? await service.load(signal);
           return toBundle(snapshot);
         }
         return {
@@ -318,19 +296,11 @@ export function useGameData(enabled = true) {
             profile: getGameProfile(activeGameId),
             payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)),
           });
-          // 缓存优先：先渲染本地快照，后台刷新成功后静默回写。
-          const snapshot = await cacheFirstLoad({
-            loadCached: () => osuCache.load(activeGameId, userId),
-            loadFresh: async () => {
-              const fresh = await loadOsuSnapshotFresh(provider, activeGameId, userId, signal);
-              if (!signal.aborted) void osuCache.save(activeGameId, userId, fresh).catch(() => undefined);
-              return fresh;
-            },
-            onFresh: (fresh) => {
-              queryClient.setQueryData(queryKey, toBundle(fresh));
-            },
-            signal,
-          });
+          const stored = hasSessionData ? null : await osuCache.load(activeGameId, userId);
+          const snapshot = stored
+            ? staleCached(stored)
+            : await loadOsuSnapshotFresh(provider, activeGameId, userId, signal);
+          if (!stored && !signal.aborted) void osuCache.save(activeGameId, userId, snapshot).catch(() => undefined);
           return toBundle(snapshot);
         }
         return {
@@ -353,7 +323,7 @@ export function useGameData(enabled = true) {
           const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
             ? catalogProvider
             : new PhigrosCatalogProvider();
-          const catalog = await phiCatalog.getCatalog();
+          const catalog = (await ensurePhigrosCatalog(phiCatalog)).snapshot;
           const snapshot = buildMaxedPhigrosSnapshot(
             catalog,
             activeAccount?.displayName ?? '示例账号',
@@ -448,21 +418,9 @@ export function useGameData(enabled = true) {
             payload,
           });
           const cache = new PhigrosSaveCache(repository);
-          // 缓存优先：先渲染上次成功同步的存档，后台刷新成功后持久化并静默回写。
-          const payload = await cacheFirstLoad({
-            loadCached: () => cache.load(activeAccountId),
-            loadFresh,
-            onFresh: (fresh) => {
-              if (!signal.aborted) {
-                void cache.save(activeAccountId, fresh).catch(() => undefined);
-                queryClient.setQueryData(queryKey, toBundle(fresh));
-              }
-            },
-            markStale: stalePhigrosPayload,
-            signal,
-          });
-          // 打标缓存（来自命中）不落库；网络新数据（非兜底）首次同步后持久化。
-          if (!signal.aborted && !isCacheFallback(payload)) {
+          const stored = hasSessionData ? null : await cache.load(activeAccountId);
+          const payload = stored ? stalePhigrosPayload(stored) : await loadFresh();
+          if (!stored && !signal.aborted) {
             void cache.save(activeAccountId, payload).catch(() => undefined);
           }
           return toBundle(payload);
@@ -506,6 +464,9 @@ export function useGameData(enabled = true) {
         activeAccountId,
         persistScores ? repository : undefined,
         persistCatalog ? repository : undefined,
+        (detailed, catalogSignal) => detailed
+          ? catalogProvider.getDetailedCatalog(catalogSignal)
+          : ensureMaimaiCatalog(catalogProvider),
       );
       const toBundle = (snapshot: ScoreSnapshot): GameDataBundle => ({
         gameId: 'maimai',
@@ -513,16 +474,10 @@ export function useGameData(enabled = true) {
         profile: getGameProfile('maimai'),
         payload: maimaiPayloadFromSnapshot(snapshot, getGameProfile('maimai')),
       });
-      // 缓存优先：先渲染 SQLite 快照，后台刷新成功后静默回写。
-      // 与 useScoreSnapshot 并发时由 ScoreService 的 in-flight 去重共享一次网络请求。
-      // 本地账号和示例账号仍联网读取公开曲库，只有成绩快照可以离线命中。
-      if (persistScores) {
+      // 首次进入优先复用本地快照；已有会话数据后的显式 refetch 才读取网络。
+      if (persistScores && !hasSessionData) {
         const cached = await repository.getLatest(activeAccountId);
         if (cached) {
-          void service.load(signal).then((fresh) => {
-            if (!signal.aborted && fresh.source.kind !== 'cache') queryClient.setQueryData(queryKey, toBundle(fresh));
-          }).catch(() => undefined);
-          // 本地账号数据本身来自本地快照，不打过期标。
           return toBundle(activeProviderId === 'local' ? cached : staleCachedSnapshot(cached));
         }
       }

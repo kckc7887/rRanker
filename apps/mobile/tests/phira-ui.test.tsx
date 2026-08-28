@@ -89,6 +89,28 @@ jest.mock('@/components/AppNotification', () => ({
     updateNotification: mockUpdateNotification,
   }),
 }));
+jest.mock('@/hooks/use-game-data', () => ({
+  useGameData: () => ({
+    data: {
+      payload: {
+        kind: 'phira',
+        snapshot: {
+          pool: {
+            bestPool: mockBests['38294']
+              ? [{ chart: mockChart, record: mockBest.record, rks: 12 }]
+              : [],
+            recentPool: [],
+          },
+          source: { updatedAt: 'now' },
+        },
+      },
+    },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: mockRefetch,
+  }),
+}));
 jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
   downloadPhiraChartPackage: (chart: unknown, options: unknown) =>
     mockDownloadPhiraPackage(chart, options),

@@ -32,7 +32,7 @@ export function aliasedCatalogSource<TCatalog extends Sourced, TAlias extends So
  * 后台拉取主曲库与别名并合并；别名失败仅降级打标，主曲库失败照常抛错。
  * 各游戏差异（资源 key/版本、queryKey、别名形态与合并函数、source 文案）全部由参数表达。
  */
-export function useAliasedCatalog<TCatalog extends Sourced, TAlias extends Sourced, TData = TCatalog>(options: {
+export type AliasedCatalogOptions<TCatalog extends Sourced, TAlias extends Sourced, TData> = {
   queryKey: readonly unknown[];
   enabled?: boolean;
   /** 本地缓存读取（可含别名缓存合并）；返回 null 时直接走网络。 */
@@ -49,27 +49,44 @@ export function useAliasedCatalog<TCatalog extends Sourced, TAlias extends Sourc
   wrapData?: (catalog: TCatalog) => TData;
   /** 后台刷新成功后的静默回写。 */
   onFresh: (data: TData) => void;
-}) {
+};
+
+export async function loadAliasedCatalog<
+  TCatalog extends Sourced,
+  TAlias extends Sourced,
+  TData = TCatalog,
+>(
+  options: AliasedCatalogOptions<TCatalog, TAlias, TData>,
+  signal?: AbortSignal,
+): Promise<TData> {
+  const loadFresh = async (): Promise<TCatalog> => {
+    const catalog = await options.loadCatalog(signal);
+    const aliasResult = await Promise.allSettled([options.loadAliases(signal)]);
+    const aliasSnapshot = aliasResult[0].status === 'fulfilled' ? aliasResult[0].value : undefined;
+    const merged = options.mergeAliases(catalog, aliasSnapshot);
+    return { ...merged, source: options.composeSource(catalog, aliasSnapshot) };
+  };
+  // 缺省 wrapData 时调用方未包装，TData 恒为 TCatalog 本身，此断言运行时为恒等。
+  const wrapData = options.wrapData ?? ((catalog: TCatalog) => catalog as unknown as TData);
+  const catalog = await cacheFirstLoad({
+    loadCached: options.loadCached,
+    loadFresh,
+    onFresh: (fresh) => options.onFresh(wrapData(fresh)),
+    signal,
+  });
+  return wrapData(catalog);
+}
+
+export function useAliasedCatalog<TCatalog extends Sourced, TAlias extends Sourced, TData = TCatalog>(
+  options: AliasedCatalogOptions<TCatalog, TAlias, TData>,
+) {
   return useQuery({
     enabled: options.enabled,
     queryKey: options.queryKey,
-    queryFn: async ({ signal }): Promise<TData> => {
-      const loadFresh = async (): Promise<TCatalog> => {
-        const catalog = await options.loadCatalog(signal);
-        const aliasResult = await Promise.allSettled([options.loadAliases(signal)]);
-        const aliasSnapshot = aliasResult[0].status === 'fulfilled' ? aliasResult[0].value : undefined;
-        const merged = options.mergeAliases(catalog, aliasSnapshot);
-        return { ...merged, source: options.composeSource(catalog, aliasSnapshot) };
-      };
-      // 缺省 wrapData 时调用方未包装，TData 恒为 TCatalog 本身，此断言运行时为恒等。
-      const wrapData = options.wrapData ?? ((catalog: TCatalog) => catalog as unknown as TData);
-      const catalog = await cacheFirstLoad({
-        loadCached: options.loadCached,
-        loadFresh,
-        onFresh: (fresh) => options.onFresh(wrapData(fresh)),
-        signal,
-      });
-      return wrapData(catalog);
-    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    queryFn: ({ signal }) => loadAliasedCatalog(options, signal),
   });
 }

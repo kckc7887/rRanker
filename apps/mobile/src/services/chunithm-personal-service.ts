@@ -51,6 +51,18 @@ export class ChunithmPersonalService {
     return fresh;
   }
 
+  async loadCached(): Promise<ChunithmPersonalSnapshot | null> {
+    const key = chunithmPersonalResourceKey(this.accountId);
+    const cached = await this.repository.getResource<ChunithmPersonalSnapshot>(
+      key,
+      CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+    );
+    return cached ?? this.repository.getResource<LegacyChunithmPersonalSnapshot>(
+      key,
+      CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION,
+    ).then((legacy) => legacy ? { ...legacy, bests: emptyChunithmBests() } : null);
+  }
+
   private async loadFresh(signal: AbortSignal): Promise<ChunithmPersonalSnapshot> {
     try {
       const snapshot = await this.provider.getSnapshot(signal);
@@ -64,14 +76,7 @@ export class ChunithmPersonalService {
       return snapshot;
     } catch (error) {
       if (error instanceof ProviderError && error.code === 'authentication') throw error;
-      const cached = await this.repository.getResource<ChunithmPersonalSnapshot>(
-        chunithmPersonalResourceKey(this.accountId),
-        CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
-      );
-      const compatible = cached ?? await this.repository.getResource<LegacyChunithmPersonalSnapshot>(
-        chunithmPersonalResourceKey(this.accountId),
-        CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION,
-      ).then((legacy) => legacy ? { ...legacy, bests: emptyChunithmBests() } : null);
+      const compatible = await this.loadCached();
       if (!compatible) throw error;
       return {
         ...compatible,
@@ -93,12 +98,8 @@ export class ChunithmPersonalService {
     onFresh: (fresh: ChunithmPersonalSnapshot) => void,
     signal: AbortSignal = getForegroundAbortSignal(),
   ): Promise<ChunithmPersonalSnapshot> {
-    const key = chunithmPersonalResourceKey(this.accountId);
     return cacheFirstLoad({
-      loadCached: () => this.repository.getResource<ChunithmPersonalSnapshot>(
-        key,
-        CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
-      ),
+      loadCached: () => this.loadCached(),
       loadFresh: () => this.load(signal),
       onFresh,
       markStale: (snapshot) => staleCached(snapshot, { label: '落雪咖啡屋（缓存）' }),

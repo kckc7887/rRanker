@@ -34,7 +34,8 @@ import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraNotes, usePhiraPlayer, usePhiraUploader, useRefreshAllPhiraBests } from '@/hooks/use-phira';
+import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraNotes, usePhiraUploader, useRefreshAllPhiraBests } from '@/hooks/use-phira';
+import { useGameData } from '@/hooks/use-game-data';
 import { usePhiraRecordsFilter } from '@/state/phira-records-filter';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
@@ -55,14 +56,15 @@ const PHIRA_CATALOG_SORT_OPTIONS = [
 ] as const;
 
 export function PhiraBestScreen() {
-  const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const player = usePhiraPlayer(id);
-  const ordered = useMemo(() => (player.data?.pool.bestPool ?? []).map((pool) => ({
-    chart: pool.chart, record: pool.record, poolRks: pool.rks, queriedAt: player.data?.source?.updatedAt ?? '',
-  })).slice(0, 20), [player.data?.pool.bestPool, player.data?.source?.updatedAt]);
+  const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const gameData = useGameData();
+  const player = gameData.data?.payload?.kind === 'phira' ? gameData.data.payload.snapshot : undefined;
+  const ordered = useMemo(() => (player?.pool.bestPool ?? []).map((pool) => ({
+    chart: pool.chart, record: pool.record, poolRks: pool.rks, queriedAt: player?.source?.updatedAt ?? '',
+  })).slice(0, 20), [player?.pool.bestPool, player?.source?.updatedAt]);
   const presented = presentPhiraBestSection(ordered); const sections = [{ id: presented.id, title: presented.title, data: ordered }];
   return <View style={[styles.page, { backgroundColor: theme.background }]}><BestListPage<PhiraQueriedBest, typeof sections[number]>
-    isLoading={player.isLoading} isError={player.isError} error={player.error}
-    onRetry={() => { void player.refetch(); }} isEmpty={!player.isLoading && ordered.length === 0}
+    isLoading={gameData.isLoading} isError={gameData.isError} error={gameData.error}
+    onRetry={() => { void gameData.refetch(); }} isEmpty={!gameData.isLoading && ordered.length === 0}
     emptyText={id === null ? '请先绑定 Phira 玩家' : '当前官方池没有 Best 成绩'} data={ordered.length ? sections : undefined}
     sectionListProps={{ testID: 'phira-best-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
@@ -72,7 +74,7 @@ export function PhiraBestScreen() {
 }
 
 export function PhiraRecordsScreen() {
-  const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const player = usePhiraPlayer(id); const query = usePhiraBests(id);
+  const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const query = usePhiraBests(id);
   const refreshAll = useRefreshAllPhiraBests(id);
   const filter = usePhiraRecordsFilter();
   const unfilteredItems = useMemo(() => actualBests(query.data?.items), [query.data?.items]);
@@ -102,11 +104,11 @@ export function PhiraRecordsScreen() {
         onChange: (value) => filter.setSort(value as PhiraScoreSort),
       }]} onReset={filter.clearFilters} /></>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}><RecordsListPage beforeList={controls}
-    isLoading={player.isLoading || query.isLoading} isError={player.isError || query.isError} error={player.error ?? query.error} onRetry={() => void retry()} isEmpty={!player.isLoading && !query.isLoading && items.length === 0}
+    isLoading={query.isLoading} isError={query.isError} error={query.error} onRetry={() => void retry()} isEmpty={!query.isLoading && items.length === 0}
     emptyText="查询过歌曲后，最佳成绩会显示在这里" data={items.length ? items : undefined}
     flatListProps={{ testID: 'phira-records-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
-      refreshing: player.isFetching || query.isFetching, onRefresh: () => void retry(), keyExtractor: (item) => String(item.record!.id), renderItem: ({ item }) => <PhiraScoreCard item={item} /> }} /></View>;
+      refreshing: query.isFetching, onRefresh: () => void retry(), keyExtractor: (item) => String(item.record!.id), renderItem: ({ item }) => <PhiraScoreCard item={item} /> }} /></View>;
 }
 
 export function PhiraCatalogScreen() {

@@ -87,11 +87,7 @@ export function staleCachedSnapshot(snapshot: ScoreSnapshot): ScoreSnapshot {
   return staleCached(snapshot);
 }
 
-/**
- * 同一账号并发 load 共享一次网络请求：
- * 总览（useGameData）与成绩/最佳页（useScoreSnapshot）会同时触发同一份成绩加载，
- * 去重后只向 provider 拉取一次，两侧分别回写各自查询缓存。
- */
+/** 同一账号并发 load 共享一次网络请求。 */
 const inflightScoreLoads = new Map<string, { promise: Promise<ScoreSnapshot>; signal: AbortSignal }>();
 
 /**
@@ -110,13 +106,19 @@ export class ScoreService {
     private readonly accountId: string,
     private readonly snapshotRepository?: SnapshotRepository,
     private readonly catalogRepository?: CatalogRepository,
+    private readonly catalogLoader?: (
+      detailed: boolean,
+      signal: AbortSignal,
+    ) => Promise<CatalogSnapshot>,
   ) {}
 
   private async loadCatalog(detailed = false, signal: AbortSignal): Promise<CatalogSnapshot> {
     try {
-      const catalog = detailed
-        ? await this.catalogProvider.getDetailedCatalog(signal)
-        : await this.catalogProvider.getCatalog(signal);
+      const catalog = this.catalogLoader
+        ? await this.catalogLoader(detailed, signal)
+        : detailed
+          ? await this.catalogProvider.getDetailedCatalog(signal)
+          : await this.catalogProvider.getCatalog(signal);
       if (signal.aborted) throw signal.reason;
       if (!detailed) {
         const stopSave = startTimer('score.saveCatalog');

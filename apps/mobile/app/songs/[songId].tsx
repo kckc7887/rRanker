@@ -56,7 +56,11 @@ import type {
   Song,
 } from '@/domain/models';
 import { buildTagHistory } from '@/domain/user-library';
-import { localizedVersionName, type VersionNameLocale } from '@/domain/version-names';
+import {
+  localizedVersionName,
+  VERSION_NAME_MAPPINGS,
+  type VersionNameLocale,
+} from '@/domain/version-names';
 import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
@@ -70,7 +74,7 @@ import {
   downloadMaimaiChartPackage,
 } from '@/features/maimai-chart-download/maimai-chart-download';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
-import { providerErrorToUserMessage } from '@/providers/errors';
+import { ProviderError, providerErrorToUserMessage } from '@/providers/errors';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
@@ -134,16 +138,16 @@ function MaimaiSongDetailScreen({
   initialLevelIndex?: number;
   themeBackground: string;
 }) {
-  const catalog = useDetailedCatalog();
+  const catalog = useDetailedCatalog(false);
   const dxratingTags = useDxRatingChartTags();
-  const scores = useScoreSnapshot();
+  const scores = useScoreSnapshot(false);
   const library = useUserLibrary();
   const song = useMemo(() => {
     const songs = catalog.data?.songs;
     return songs?.find((item) => item.id === songId) ??
       (songId ? songs?.find((item) => item.id === normalizeSongId(songId)) : undefined);
   }, [catalog.data?.songs, songId]);
-  const songDetail = useMaimaiSongDetail(song?.id ?? songId, catalog.data, !!song);
+  const songDetail = useMaimaiSongDetail(song?.id ?? songId, catalog.data, !!songId);
   const resolvedSong = songDetail.data ?? song;
   const initialChartType = chartType === 'SD' || chartType === 'DX' || chartType === 'UTAGE'
     ? chartType
@@ -152,17 +156,28 @@ function MaimaiSongDetailScreen({
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const onToggleFavorite = resolvedSong ? () => void library.setSongFavorite(resolvedSong.id, !favorite) : undefined;
-  const detailData = resolvedSong && catalog.data
-    ? { song: resolvedSong, versions: catalog.data.versions }
-    : undefined;
+  const versions = useMemo<GameVersion[]>(() => {
+    if (catalog.data) return catalog.data.versions;
+    const mapped = VERSION_NAME_MAPPINGS.map((version) => ({
+      id: version.versionId,
+      title: version.china,
+    }));
+    if (resolvedSong?.versionId !== undefined &&
+      !mapped.some((version) => version.id === resolvedSong.versionId)) {
+      mapped.push({ id: resolvedSong.versionId, title: resolvedSong.version });
+    }
+    return mapped;
+  }, [catalog.data, resolvedSong]);
+  const detailData = resolvedSong ? { song: resolvedSong, versions } : undefined;
+  const isNoData = songDetail.error instanceof ProviderError && songDetail.error.code === 'no_data';
   return <>
     <StatusBar style="light" />
     <View style={[styles.page, { backgroundColor: themeBackground }]}>
       <QueryStateView<{ song: Song; versions: GameVersion[] }>
-        isLoading={catalog.isLoading}
-        isError={catalog.isError}
-        isEmpty={!!catalog.data && !song}
-        error={catalog.error} onRetry={() => void catalog.refetch()}
+        isLoading={!resolvedSong && songDetail.isLoading}
+        isError={!resolvedSong && songDetail.isError && !isNoData}
+        isEmpty={!resolvedSong && !songDetail.isLoading && (isNoData || !songDetail.isError)}
+        error={songDetail.error} onRetry={() => void songDetail.refetch()}
         emptyText="找不到这首歌曲" data={detailData} renderData={(item) => <Detail song={item.song} records={scores.data?.records ?? []}
           versions={item.versions} library={library}
           dxratingTags={dxratingTags.data}
@@ -448,6 +463,16 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
   onVisibleIndexChange: (index: number) => void;
   onToggleChartType: () => void;
 }) {
+  const recordsByChart = useMemo(() => {
+    const indexed = new Map<string, ScoreRecord>();
+    for (const record of records) {
+      if (String(record.songId) !== song.id && normalizeSongId(record.songId) !== song.id) continue;
+      const key = `${record.type}:${record.levelIndex}`;
+      const current = indexed.get(key);
+      if (!current || record.achievements > current.achievements) indexed.set(key, record);
+    }
+    return indexed;
+  }, [records, song.id]);
   return <SharedChartCarousel
     accessibilityLabel="难度卡片"
     cardWidth={cardWidth}
@@ -459,10 +484,7 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
     keyExtractor={(chart) => `${chart.type}:${chart.levelIndex}`}
     onIndexChange={onVisibleIndexChange}
     renderItem={(chart) => {
-        const best = records.filter((record) =>
-          (String(record.songId) === song.id || normalizeSongId(record.songId) === song.id) &&
-          record.type === chart.type && record.levelIndex === chart.levelIndex)
-          .sort((left, right) => right.achievements - left.achievements)[0];
+        const best = recordsByChart.get(`${chart.type}:${chart.levelIndex}`);
         const chartTags = dxRatingTagsForChart(dxratingTags, song, chart);
         return <ChartCard chart={chart} best={best} song={song}
           library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}

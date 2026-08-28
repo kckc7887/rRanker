@@ -61,9 +61,9 @@ import {
   useMuseDashDiffdiff,
   useMuseDashPlayDetail,
   useMuseDashPlayDetails,
-  useMuseDashPlayer,
 } from '@/hooks/use-muse-dash';
 import { useUserLibrary } from '@/hooks/use-user-library';
+import { useGameData } from '@/hooks/use-game-data';
 import { useMuseDashCatalogFilter } from '@/state/musedash-catalog-filter';
 import { useMuseDashRecordsFilter } from '@/state/musedash-records-filter';
 import { useSession } from '@/state/session-store';
@@ -84,13 +84,16 @@ export function MuseDashBestScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const userId = useActiveMuseDashUserId();
-  const player = useMuseDashPlayer(userId);
+  const gameData = useGameData();
+  const player = gameData.data?.payload?.kind === 'musedash'
+    ? gameData.data.payload.player
+    : undefined;
   const albums = useMuseDashAlbums();
   const ce = useMuseDashCe();
   const diffdiff = useMuseDashDiffdiff();
   const rawScores = useMemo(
-    () => player.data ? buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data) : [],
-    [player.data, albums.data, ce.data, diffdiff.data],
+    () => player ? buildMuseDashRawScores(player, albums.data, ce.data, diffdiff.data) : [],
+    [player, albums.data, ce.data, diffdiff.data],
   );
   const ordered = useMemo(() => [...rawScores]
     .sort((left, right) => {
@@ -100,12 +103,12 @@ export function MuseDashBestScreen() {
     })
     .slice(0, 30), [rawScores]);
   const sections: MuseDashBestSection[] = [{ id: 'best30', title: 'Best 30', data: ordered }];
-  const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
-  const error = player.error ?? albums.error ?? ce.error ?? diffdiff.error;
+  const loading = gameData.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
+  const error = gameData.error ?? albums.error ?? ce.error ?? diffdiff.error;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <BestListPage<MuseDashRawScore, MuseDashBestSection>
       isLoading={loading} isError={!!error} isEmpty={!loading && ordered.length === 0}
-      error={error} onRetry={() => { void player.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
+      error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
       emptyText={userId === null ? '请先在游戏管理中绑定喵斯快跑玩家' : '当前没有成绩'}
       data={!loading && ordered.length ? sections : undefined}
       sectionListProps={{
@@ -132,7 +135,10 @@ export function MuseDashRecordsScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const userId = useActiveMuseDashUserId();
-  const player = useMuseDashPlayer(userId);
+  const gameData = useGameData();
+  const player = gameData.data?.payload?.kind === 'musedash'
+    ? gameData.data.payload.player
+    : undefined;
   const albums = useMuseDashAlbums();
   const ce = useMuseDashCe();
   const diffdiff = useMuseDashDiffdiff();
@@ -142,8 +148,8 @@ export function MuseDashRecordsScreen() {
     setConstantMin, setConstantMax, setAccMin, setAccMax, setAchievement, clearFilters,
   } = useMuseDashRecordsFilter();
   const rawScores = useMemo(
-    () => player.data ? buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data) : [],
-    [player.data, albums.data, ce.data, diffdiff.data],
+    () => player ? buildMuseDashRawScores(player, albums.data, ce.data, diffdiff.data) : [],
+    [player, albums.data, ce.data, diffdiff.data],
   );
   const constantValues = useMemo(() => diffdiff.data?.map((entry) => entry[4]) ?? [], [diffdiff.data]);
   const constantBounds = useStableRangeBounds(
@@ -189,8 +195,8 @@ export function MuseDashRecordsScreen() {
         ));
     return sortRawScores(filtered);
   }, [baseFiltered, achievement, missMap]);
-  const loading = player.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
-  const error = player.error ?? albums.error ?? ce.error ?? diffdiff.error;
+  const loading = gameData.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
+  const error = gameData.error ?? albums.error ?? ce.error ?? diffdiff.error;
   const controls = <>
     <GameSearchHeader accessibilityLabel="筛选喵斯快跑成绩" placeholder="搜索歌曲、作者或 uid" value={keyword}
       onChangeText={setKeyword} loaded={records.length} />
@@ -205,7 +211,7 @@ export function MuseDashRecordsScreen() {
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <RecordsListPage beforeList={controls} isLoading={loading} isError={!!error}
-      isEmpty={!loading && records.length === 0} error={error} onRetry={() => { void player.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
+      isEmpty={!loading && records.length === 0} error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
       emptyText={userId === null ? '请先绑定喵斯快跑玩家' : '没有公开成绩'} data={records.length ? records : undefined} flatListProps={{
         testID: 'musedash-records-results-list', style: styles.list,
         contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
@@ -392,8 +398,10 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   const albums = useMuseDashAlbums();
   const diffdiff = useMuseDashDiffdiff();
   const ce = useMuseDashCe();
-  const userId = useActiveMuseDashUserId();
-  const player = useMuseDashPlayer(userId);
+  const gameData = useGameData(false);
+  const player = gameData.data?.payload?.kind === 'musedash'
+    ? gameData.data.payload.player
+    : undefined;
   const library = useUserLibrary();
   const joined = useMemo(() => {
     if (!albums.data) return null;
@@ -401,15 +409,15 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
   }, [albums.data, songId]);
   const constants = useMemo(() => diffdiff.data ? museDashDiffdiffMap(diffdiff.data) : null, [diffdiff.data]);
   const scoreByDifficulty = useMemo(() => {
-    if (!player.data) return new Map<number, MuseDashRawScore>();
+    if (!player) return new Map<number, MuseDashRawScore>();
     const map = new Map<number, MuseDashRawScore>();
-    for (const raw of buildMuseDashRawScores(player.data, albums.data, ce.data, diffdiff.data)) {
+    for (const raw of buildMuseDashRawScores(player, albums.data, ce.data, diffdiff.data)) {
       if (raw.play.uid !== songId) continue;
       const previous = map.get(raw.play.difficulty);
       if (!previous || (raw.play.sum ?? 0) > (previous.play.sum ?? 0)) map.set(raw.play.difficulty, raw);
     }
     return map;
-  }, [player.data, albums.data, ce.data, diffdiff.data, songId]);
+  }, [player, albums.data, ce.data, diffdiff.data, songId]);
   const chartSlots = useMemo(() => joined
     ? joined.song.difficulty.flatMap((level, difficultyIndex) =>
       level === '0' ? [] : [{ difficultyIndex, level }]).reverse()
@@ -429,8 +437,8 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
     { key: 'bpm', label: 'BPM', value: joined.song.bpm || '—', flex: 1 },
     { key: 'album', label: 'DLC 来源', value: joined.albumTitle, flex: 2 },
   ] : [];
-  const loading = albums.isLoading || player.isLoading;
-  const error = albums.error ?? player.error;
+  const loading = albums.isLoading;
+  const error = albums.error;
   const cardWidth = Math.max(280, width - 40);
   const songItem = joined ? library.data?.find((item) => item.key === library.songKey(songId)) : undefined;
   const favorite = songItem?.kind === 'song' && songItem.favorite;
@@ -459,7 +467,7 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
       ]}
     />
     <QueryStateView isLoading={loading} isError={!!error} isEmpty={!joined}
-    error={error} onRetry={() => { void albums.refetch(); void player.refetch(); }}
+    error={error} onRetry={() => { void albums.refetch(); }}
     emptyText="未找到该喵斯快跑歌曲" data={joined}
     renderData={() => <ScrollView keyboardShouldPersistTaps="handled" style={[styles.page, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.detail}>

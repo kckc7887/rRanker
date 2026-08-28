@@ -121,6 +121,19 @@ describe('LxnsCatalogProvider', () => {
     expect(fetchMock.mock.calls[1]?.[0]).toContain('/song/1806');
   });
 
+  it('loads one song detail without requesting the full catalog first', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(responsePayload.songs[0]), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const song = await new LxnsCatalogProvider().getSong('1806');
+
+    expect(song).toMatchObject({ id: '1806', title: 'Fraq', version: '舞萌DX 2026' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain('/song/1806');
+  });
+
   it('maps U·TA·GE metadata and BUDDY notes without treating level index 0 as BASIC', async () => {
     const utageSongs = [
       {
