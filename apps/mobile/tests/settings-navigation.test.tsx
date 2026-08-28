@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager } from 'react-native';
+import { Animated, InteractionManager } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SettingsTabScreen, { SettingsScreen } from '../app/(tabs)/settings';
 import PersonalizationScreen from '../app/personalization';
@@ -14,6 +14,13 @@ const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: [
 const mockExportDiagnostics = jest.fn(async () => undefined);
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('expo-image', () => {
+  const React = jest.requireActual('react') as typeof import('react');
+  const RN = jest.requireActual('react-native') as typeof import('react-native');
+  return {
+    Image: (props: React.ComponentProps<typeof RN.Image>) => React.createElement(RN.Image, props),
+  };
+});
 jest.mock('expo-router', () => {
   const React = jest.requireActual('react') as typeof import('react');
   return {
@@ -109,6 +116,12 @@ describe('settings navigation', () => {
     mockLoadPrefs.mockClear();
     mockExportDiagnostics.mockReset();
     mockExportDiagnostics.mockResolvedValue(undefined);
+    // 预览卡流光徽章会启动循环动画，测试环境替换为无操作桩避免原生驱动报错。
+    jest.spyOn(Animated, 'loop').mockReturnValue({
+      start: jest.fn(),
+      stop: jest.fn(),
+      reset: jest.fn(),
+    } as unknown as ReturnType<typeof Animated.loop>);
     useThemeStore.setState({
       appearance: 'system', accent: 'blue', customHex: '#246BFD', hydrated: true,
       scoreCardArtworkEnabled: false, scoreCardArtworkTransparency: 35, scoreCardArtworkBlur: 12,
@@ -186,10 +199,24 @@ describe('settings navigation', () => {
   it('reveals the experimental artwork sliders with configured defaults', async () => {
     const screen = await renderSettings(<PersonalizationScreen />);
     expect(screen.queryByLabelText('成绩卡片遮罩透明度')).toBeNull();
+    expect(screen.queryByText('PANDORA PARADOXXX')).toBeNull();
     fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
     await waitFor(() => expect(screen.getByLabelText('成绩卡片遮罩透明度')).toBeTruthy());
     expect(screen.getByText('35%')).toBeTruthy();
     expect(screen.getByText('12px')).toBeTruthy();
     expect(useThemeStore.getState().scoreCardArtworkEnabled).toBe(true);
+  });
+
+  it('shows a non-interactive fixed-data score card preview under the artwork switch', async () => {
+    const screen = await renderSettings(<PersonalizationScreen />);
+    fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
+    await waitFor(() => expect(screen.getByText('PANDORA PARADOXXX')).toBeTruthy());
+    expect(screen.getByText('101.0000%')).toBeTruthy();
+    expect(screen.getByTestId('status-AP')).toBeTruthy();
+    expect(screen.getByTestId('flowing-status-FDX+')).toBeTruthy();
+    expect(screen.getByTestId('flowing-rate-SSS+')).toBeTruthy();
+    expect(screen.queryByLabelText('查看谱面 PANDORA PARADOXXX SD remaster')).toBeNull();
+    fireEvent.press(screen.getByText('PANDORA PARADOXXX'));
+    expect(mockPush).not.toHaveBeenCalled();
   });
 });
