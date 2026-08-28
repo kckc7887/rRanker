@@ -14,7 +14,7 @@ export const PhiraScoreCard = memo(function PhiraScoreCard({ item, rank }: { ite
   const score = record?.score ?? 0; const rate = resolvePhigrosRate({ dxScore: score, fc: record?.fullCombo ? 'ap' : null });
   const xingTone = presentation.achievementRows.flat().find((badge) => badge.key === 'xing')?.tone;
   const xing = xingTone === 'xing-good' ? 'good' : xingTone === 'xing-miss' ? 'miss' : null;
-  return <GameScoreCard cardStyle={styles.card} mainStyle={styles.main} presentation={presentation} titleStyle={styles.title}
+  return <GameScoreCard artwork={{ source: item.chart.illustration }} cardStyle={styles.card} mainStyle={styles.main} presentation={presentation} titleStyle={styles.title}
     metricSide={{ blockStyle: styles.stats, lines: [
       { text: presentation.secondaryMetrics[0]?.text, style: styles.acc, color: theme.text },
       { text: presentation.secondaryMetrics[1]?.text, style: styles.rks, color: item.poolRks == null ? theme.textMuted : theme.accent },

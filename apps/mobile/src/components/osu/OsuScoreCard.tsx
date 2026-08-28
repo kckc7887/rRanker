@@ -24,6 +24,7 @@ export function OsuScoreCard({ gameId, score, position, detailScoreId }: {
   const ppText = score.pp == null ? '—' : formatOsuPp(score.pp);
   return (
     <GameScoreCard
+      artwork={{ source: score.beatmapset.listCover }}
       presentation={{
         key: String(score.id),
         gameId,

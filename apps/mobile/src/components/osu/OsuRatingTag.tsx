@@ -2,7 +2,7 @@ import { TintedRatingTag } from '@/components/TintedRatingTag';
 import type { DxRatingTheme } from '@/domain/dx-rating-theme';
 
 /** osu! 账号行 PP 标签主题（DxRatingTheme 形状，TintedRatingTag 公共骨架渲染）。 */
-const OSU_PP_TAG_THEME: DxRatingTheme = {
+export const OSU_PP_RATING_THEME: DxRatingTheme = {
   id: 'osu-pp',
   label: 'PP',
   fillColors: ['#F57FA0', '#F05785'],
@@ -21,7 +21,7 @@ export function OsuRatingTag({ display }: { display: string }) {
       accessibilityLabel={`PP ${display}`}
       display={display}
       testID="osu-pp-tag"
-      theme={OSU_PP_TAG_THEME}
+      theme={OSU_PP_RATING_THEME}
     />
   );
 }

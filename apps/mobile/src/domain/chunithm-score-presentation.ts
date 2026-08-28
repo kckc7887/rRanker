@@ -4,6 +4,7 @@ import type {
   ChunithmSong,
 } from './chunithm';
 import type { ChunithmScore } from './chunithm-personal';
+import { chunithmJacketUrl } from './chunithm-assets';
 
 export type ChunithmRank =
   | 'SSS+' | 'SSS' | 'SS+' | 'SS' | 'S+' | 'S'
@@ -29,6 +30,7 @@ export type ChunithmScoreCardData = {
   versionId?: number;
   versionTitle?: string;
   worldsEndLabel?: string;
+  jacketUrl?: string;
   score: number;
   rating?: number;
   rank: ChunithmRank;
@@ -146,6 +148,7 @@ export function buildChunithmScoreCards(
           scoreLevel: score.level,
         })
         : undefined,
+      jacketUrl: song ? chunithmJacketUrl(song) : undefined,
       score: score.score,
       rating: score.rating,
       rank: chunithmRankFromScore(score.score),

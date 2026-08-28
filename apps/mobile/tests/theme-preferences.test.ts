@@ -5,14 +5,15 @@ import { hslToHex, normalizeAccentHex } from '@/theme/accent-color';
 describe('theme preferences', () => {
   it('parses supported values and falls back per field', () => {
     expect(parseThemePreferences({ appearance: 'dark', accent: 'violet' })).toMatchObject({
-      version: 2, appearance: 'dark', accent: 'violet', customHex: '#246BFD',
+      version: 3, appearance: 'dark', accent: 'violet', customHex: '#246BFD',
+      scoreCardArtworkEnabled: false, scoreCardArtworkTransparency: 35, scoreCardArtworkBlur: 12,
     });
     expect(parseThemePreferences({ appearance: 'sepia', accent: 'unknown' })).toEqual(DEFAULT_THEME_PREFERENCES);
   });
 
   it('migrates v1 presets and accepts custom hex accents', () => {
     expect(parseThemePreferences({ version: 1, appearance: 'light', accent: 'teal' })).toMatchObject({
-      version: 2, appearance: 'light', accent: 'teal',
+      version: 3, appearance: 'light', accent: 'teal',
     });
     expect(parseThemePreferences({
       appearance: 'system', accent: 'custom', customHex: '#abc',
@@ -20,6 +21,23 @@ describe('theme preferences', () => {
     expect(parseThemePreferences({
       appearance: 'system', accent: 'custom', customHex: 'not-a-color',
     })).toMatchObject({ accent: 'blue', customHex: '#246BFD' });
+  });
+
+  it('migrates artwork defaults and clamps persisted slider values', () => {
+    expect(parseThemePreferences({ version: 2, appearance: 'system', accent: 'blue' })).toMatchObject({
+      scoreCardArtworkEnabled: false,
+      scoreCardArtworkTransparency: 35,
+      scoreCardArtworkBlur: 12,
+    });
+    expect(parseThemePreferences({
+      scoreCardArtworkEnabled: true,
+      scoreCardArtworkTransparency: 140.4,
+      scoreCardArtworkBlur: -3,
+    })).toMatchObject({
+      scoreCardArtworkEnabled: true,
+      scoreCardArtworkTransparency: 100,
+      scoreCardArtworkBlur: 0,
+    });
   });
 
   it('resolves system mode and creates distinct semantic palettes', () => {

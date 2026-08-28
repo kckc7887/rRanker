@@ -5,6 +5,7 @@ import { AchievementValue, ChartTypeBadge, DifficultyBadge, ScoreStatusBadges } 
 import { useAppTheme } from '@/theme/app-theme';
 import { GameScoreCard } from '@/components/game-content/GameScoreCard';
 import { presentMaimaiScore } from '@/features/game-content/adapters';
+import { maimaiJacketUrl } from '@/domain/maimai-assets';
 
 /** 成绩页卡片数据；未游玩谱面可省略达成率/Rating/成就字段。 */
 export type ScoreRecordCardData = {
@@ -32,6 +33,7 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({
   const theme = useAppTheme();
   const presentation = presentMaimaiScore(record, rank);
   return <GameScoreCard
+    artwork={{ source: maimaiJacketUrl(record.songId) }}
     cardStyle={styles.card}
     mainStyle={styles.main}
     presentation={presentation}

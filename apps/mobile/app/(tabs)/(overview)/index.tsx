@@ -12,6 +12,7 @@ import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { DxRatingCard } from '@/components/DxRatingCard';
+import { OSU_PP_RATING_THEME } from '@/components/osu/OsuRatingTag';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -501,6 +502,8 @@ function PublicOverviewScreen() {
                         bundle.payload.hasSyncedData ? bundle.payload.playerScore.value : null,
                         bundle.payload.player?.rating_possession,
                       )
+                      : bundle.payload.kind === 'osu'
+                        ? OSU_PP_RATING_THEME
                       : undefined}
                 valueTheme={bundle.payload.kind === 'chunithm' && bundle.payload.hasSyncedData
                   ? resolveChunithmRatingTier(bundle.payload.playerScore.value)

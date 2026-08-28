@@ -13,6 +13,23 @@ export type GameToolbox = {
   emptyDetail: string;
 };
 
+const OSU_TOOLS: readonly GameToolDefinition[] = [
+  {
+    id: 'arcade-finder',
+    href: '/tools/arcade-finder',
+    title: '机厅查找',
+    detail: '按定位查看附近机厅，搜索店名与跳转导航',
+    summaryLabel: '机厅查找',
+  },
+  {
+    id: 'osu-mods',
+    href: '/tools/osu-mods',
+    title: '模组百科',
+    detail: '查看当前模式可用模组、玩法说明与难度影响',
+    summaryLabel: '模组百科',
+  },
+];
+
 /**
  * 游戏级工具注册表。工具箱页面和总览入口只消费此处配置，
  * 新游戏不需要在页面组件里增加 gameId 分支。
@@ -215,19 +232,19 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     emptyDetail: '喵斯快跑首版暂无可用工具。',
   },
   'osu-standard': {
-    tools: [],
+    tools: OSU_TOOLS,
     emptyDetail: 'osu!standard 暂无可用工具。',
   },
   'osu-mania': {
-    tools: [],
+    tools: OSU_TOOLS,
     emptyDetail: 'osu!mania 暂无可用工具。',
   },
   'osu-catch': {
-    tools: [],
+    tools: OSU_TOOLS,
     emptyDetail: 'osu!catch 暂无可用工具。',
   },
   'osu-taiko': {
-    tools: [],
+    tools: OSU_TOOLS,
     emptyDetail: 'osu!taiko 暂无可用工具。',
   },
 };

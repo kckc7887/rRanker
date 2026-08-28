@@ -60,7 +60,7 @@ import {
   ChunithmGradientScore,
   RankBadge,
 } from './ChunithmScoreCard';
-import { chunithmJacketUrl } from './ChunithmSongRow';
+import { chunithmJacketUrl } from '@/domain/chunithm-assets';
 
 const CARD_GAP = 12;
 const CHUNITHM_CHART_TYPE = 'SD' as const;

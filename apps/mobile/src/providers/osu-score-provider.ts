@@ -1,4 +1,5 @@
 import { fetch as expoFetch } from 'expo/fetch';
+import { File } from 'expo-file-system';
 import { z } from 'zod';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import {
@@ -74,17 +75,23 @@ export class OsuScoreProvider {
     return this.session.accessToken;
   }
 
-  private async request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+  private async withAuthorizedResponse<T>(
+    path: string,
+    accept: string,
+    signal: AbortSignal | undefined,
+    consume: (response: Response) => Promise<T>,
+    timeoutMs: number | null,
+  ): Promise<T> {
     const accessToken = await this.ensureFreshAccessToken();
     if (signal?.aborted) throw signal.reason;
     const controller = new AbortController();
     const onExternalAbort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', onExternalAbort, { once: true });
-    const timeout = setTimeout(() => controller.abort(), 12_000);
+    const timeout = timeoutMs === null ? null : setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await expoFetch(`${OSU_API_ROOT}${path}`, {
         headers: {
-          Accept: 'application/json',
+          Accept: accept,
           Authorization: `Bearer ${accessToken}`,
           'x-api-version': '20220705',
         },
@@ -94,22 +101,32 @@ export class OsuScoreProvider {
         const mapped = providerErrorFromStatus(response.status, OSU_STATUS_TEXTS);
         throw new ProviderError(mapped.code, `${mapped.message}（${path}）`, mapped.retryable, { cause: mapped });
       }
-      const payload: unknown = await response.json();
-      return schema.parse(payload);
+      return await consume(response);
     } catch (error) {
       if (signal?.aborted) throw error;
       if (error instanceof ProviderError) throw error;
-      if (error instanceof z.ZodError || error instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', 'osu! 数据结构与已验证契约不一致', true, { cause: error });
-      }
       if (error instanceof Error && error.name === 'AbortError') {
         throw new ProviderError('timeout', 'osu! 数据读取超时', true, { cause: error });
       }
       throw new ProviderError('network', '无法连接 osu! 服务', true, { cause: error });
     } finally {
-      clearTimeout(timeout);
+      if (timeout !== null) clearTimeout(timeout);
       signal?.removeEventListener('abort', onExternalAbort);
     }
+  }
+
+  private async request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+    return this.withAuthorizedResponse(path, 'application/json', signal, async (response) => {
+      try {
+        const payload: unknown = await response.json();
+        return schema.parse(payload);
+      } catch (error) {
+        if (error instanceof z.ZodError || error instanceof SyntaxError) {
+          throw new ProviderError('upstream_schema', 'osu! 数据结构与已验证契约不一致', true, { cause: error });
+        }
+        throw error;
+      }
+    }, 12_000);
   }
 
   /** 当前授权用户（identify scope）；绑定阶段用于取 userId/username。 */
@@ -174,5 +191,45 @@ export class OsuScoreProvider {
       OsuBeatmapsetLookupSchema,
       signal,
     );
+  }
+
+  /** 下载完整谱面集归档；直接流式写入调用方提供的临时文件。 */
+  downloadBeatmapsetArchive(
+    beatmapsetId: number | string,
+    destination: File,
+    signal?: AbortSignal,
+    onProgress?: (progress: number) => void,
+  ): Promise<File> {
+    const path = `/beatmapsets/${encodeURIComponent(String(beatmapsetId))}/download`;
+    return this.withAuthorizedResponse(path, 'application/octet-stream', signal, async (response) => {
+      if (!response.body) {
+        throw new ProviderError('network', 'osu! 未返回谱面文件', true);
+      }
+      destination.create({ intermediates: true, overwrite: true });
+      const reader = response.body.getReader();
+      const writer = destination.writableStream().getWriter();
+      const total = Number(response.headers.get('content-length'));
+      let received = 0;
+      try {
+        while (true) {
+          if (signal?.aborted) throw signal.reason;
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          await writer.write(chunk.value);
+          received += chunk.value.byteLength;
+          onProgress?.(Number.isFinite(total) && total > 0 ? Math.min(1, received / total) : 0);
+        }
+        await writer.close();
+      } catch (error) {
+        await reader.cancel(error).catch(() => undefined);
+        await writer.abort(error).catch(() => undefined);
+        throw error;
+      }
+      if (!destination.exists || destination.size <= 0) {
+        throw new ProviderError('network', 'osu! 返回的谱面文件为空', true);
+      }
+      onProgress?.(1);
+      return destination;
+    }, null);
   }
 }

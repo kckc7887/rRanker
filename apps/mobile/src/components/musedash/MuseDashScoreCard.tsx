@@ -5,7 +5,7 @@ import { MuseDashAccValue } from './MuseDashAccValue';
 import { MuseDashAchievementBadge, MuseDashGradeBadge, MuseDashNeutralBadge, MuseDashRankBadge } from './MuseDashBadges';
 import { MuseDashDifficultyBadge } from './MuseDashDifficultyBadge';
 import { museDashUserIdFromAccountId } from '@/domain/bound-account';
-import { museDashRankBadge, type MuseDashRawScore } from '@/domain/muse-dash';
+import { museDashCoverUrl, museDashRankBadge, type MuseDashRawScore } from '@/domain/muse-dash';
 import { useMuseDashPlayDetail } from '@/hooks/use-muse-dash';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -30,6 +30,7 @@ export const MuseDashScoreCard = memo(function MuseDashScoreCard({
   const ratingText = presentation.secondaryMetrics.find((metric) => metric.key === 'rating')?.text ?? '—';
   return (
     <GameScoreCard
+      artwork={{ source: museDashCoverUrl(score.song?.cover), scale: 1.08 }}
       cardStyle={styles.card}
       mainStyle={styles.main}
       presentation={presentation}

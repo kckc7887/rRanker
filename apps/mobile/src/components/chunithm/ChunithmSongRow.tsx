@@ -4,19 +4,13 @@ import {
   type ChunithmDifficulty,
   type ChunithmSong,
 } from '@/domain/chunithm';
+import { chunithmJacketUrl } from '@/domain/chunithm-assets';
 import { formatChunithmWorldsEndLabel } from '@/domain/chunithm-score-presentation';
 import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { presentChunithmSong } from '@/features/game-content/adapters';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
 
-export const CHUNITHM_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
-
-export function chunithmJacketUrl(song: ChunithmSong): string {
-  const worldsEndOriginId = song.difficulties.find(
-    (difficulty) => difficulty.difficulty === 5,
-  )?.originId;
-  return `${CHUNITHM_JACKET_ROOT}/${worldsEndOriginId ?? song.id}.png`;
-}
+export { chunithmJacketUrl } from '@/domain/chunithm-assets';
 
 export const ChunithmSongRow = memo(function ChunithmSongRow({
   song,

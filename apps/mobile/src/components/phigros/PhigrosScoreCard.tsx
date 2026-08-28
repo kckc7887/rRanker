@@ -24,6 +24,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   rank,
   pushHint,
   totalNotes,
+  artworkSource,
 }: {
   record: ScoreRecord;
   catalogTitle?: string;
@@ -32,6 +33,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   pushHint?: PhigrosPushHint;
   /** 谱面物量；缺省时不判定 XING */
   totalNotes?: number;
+  artworkSource?: string | null;
 }) {
   const theme = useAppTheme();
   const score = record.dxScore ?? 0;
@@ -47,6 +49,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
 
   return (
     <GameScoreCard
+      artwork={{ source: artworkSource }}
       cardStyle={styles.card}
       mainStyle={styles.main}
       metricSide={{

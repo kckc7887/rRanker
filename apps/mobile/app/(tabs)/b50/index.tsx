@@ -256,12 +256,13 @@ function PhigrosBestScreen() {
     ({ item, index }) => (
       <PhigrosScoreCard
         record={item}
+        artworkSource={catalogQuery.data?.provider?.getIllustrationUrl(item.songId)}
         catalogTitle={titleMap.get(item.songId) ?? item.songId}
         rank={index + 1}
         totalNotes={noteTotalByKey[phigrosChartNoteKey(item.songId, item.levelIndex)]}
       />
     ),
-    [noteTotalByKey, titleMap],
+    [catalogQuery.data?.provider, noteTotalByKey, titleMap],
   );
 
   if (!canReadScores && !isGameLoading) {
