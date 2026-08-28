@@ -34,29 +34,31 @@ export function makeMuseDashSnapshot<T>(data: T, updatedAt = new Date().toISOStr
 /** 并发读取共享一次网络请求（总览、成绩、曲库可能并发）。 */
 const inflightLoads = createInflightGuard<string>();
 
-export function loadMuseDashPlayerFresh(userId: string): Promise<MuseDashPlayer> {
-  return inflightLoads.dedupe(`player:${userId}`, () => museDashProvider.getPlayer(userId));
+export function loadMuseDashPlayerFresh(userId: string, signal?: AbortSignal): Promise<MuseDashPlayer> {
+  return inflightLoads.dedupe(`player:${userId}`, () => museDashProvider.getPlayer(userId, signal), signal);
 }
 
 export function loadMuseDashPlayDetailFresh(
   uid: string, difficulty: number, platform: string, userId: string,
+  signal?: AbortSignal,
 ): Promise<MuseDashPlayDetail> {
   return inflightLoads.dedupe(
     `detail:${userId}:${uid}:${difficulty}:${platform}`,
-    () => museDashProvider.getPlayDetail(uid, difficulty, platform, userId),
+    () => museDashProvider.getPlayDetail(uid, difficulty, platform, userId, signal),
+    signal,
   );
 }
 
-export function loadMuseDashAlbumsFresh(): Promise<MuseDashAlbumsResponse> {
-  return inflightLoads.dedupe('albums', () => museDashProvider.getAlbums());
+export function loadMuseDashAlbumsFresh(signal?: AbortSignal): Promise<MuseDashAlbumsResponse> {
+  return inflightLoads.dedupe('albums', () => museDashProvider.getAlbums(signal), signal);
 }
 
-export function loadMuseDashCeFresh(): Promise<MuseDashCeResponse> {
-  return inflightLoads.dedupe('ce', () => museDashProvider.getCe());
+export function loadMuseDashCeFresh(signal?: AbortSignal): Promise<MuseDashCeResponse> {
+  return inflightLoads.dedupe('ce', () => museDashProvider.getCe(signal), signal);
 }
 
-export function loadMuseDashDiffdiffFresh(): Promise<MuseDashDiffdiffSnapshot['data']> {
-  return inflightLoads.dedupe('diffdiff', () => museDashProvider.getDiffdiff());
+export function loadMuseDashDiffdiffFresh(signal?: AbortSignal): Promise<MuseDashDiffdiffSnapshot['data']> {
+  return inflightLoads.dedupe('diffdiff', () => museDashProvider.getDiffdiff(signal), signal);
 }
 
 /**
@@ -65,14 +67,16 @@ export function loadMuseDashDiffdiffFresh(): Promise<MuseDashDiffdiffSnapshot['d
  */
 export function loadMuseDashAlbumsCacheFirst(
   _cache: Pick<MuseDashCache, 'loadAlbums' | 'saveAlbums'>,
+  signal?: AbortSignal,
 ): Promise<MuseDashAlbumsSnapshot> {
-  return loadMuseDashAlbumsFresh().then((albums) => makeMuseDashSnapshot(albums));
+  return loadMuseDashAlbumsFresh(signal).then((albums) => makeMuseDashSnapshot(albums));
 }
 
 export function loadMuseDashDiffdiffCacheFirst(
   _cache: Pick<MuseDashCache, 'loadDiffdiff' | 'saveDiffdiff'>,
+  signal?: AbortSignal,
 ): Promise<MuseDashDiffdiffSnapshot> {
-  return loadMuseDashDiffdiffFresh().then((entries) => makeMuseDashSnapshot(entries));
+  return loadMuseDashDiffdiffFresh(signal).then((entries) => makeMuseDashSnapshot(entries));
 }
 
 /**

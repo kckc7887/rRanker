@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createMaimaiBoundAccount, createTufBoundAccount } from '@/domain/bound-account';
-import { resolveAccountAvatarUrl } from '@/services/resolve-account-avatar';
+import { resolveAccountAvatarUrl, syncAllAccountAvatars } from '@/services/resolve-account-avatar';
 import { tufProvider } from '@/providers/tuf-provider';
 
 const sqlite = vi.hoisted(() => ({
@@ -11,6 +11,10 @@ const sqlite = vi.hoisted(() => ({
 
 vi.mock('@/state/session-store', () => ({
   applyLxnsTokenRotation: vi.fn(),
+}));
+
+vi.mock('@/state/app-lifecycle-core', () => ({
+  getForegroundAbortSignal: () => new AbortController().signal,
 }));
 
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({
@@ -32,6 +36,7 @@ const tufAccount = createTufBoundAccount({ playerId: 25, displayName: 'TUF 玩�
 
 describe('resolveAccountAvatarUrl', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     sqlite.getLatest.mockReset();
     sqlite.getLatest.mockResolvedValue(null);
     sqlite.getResource.mockReset();
@@ -94,5 +99,51 @@ describe('resolveAccountAvatarUrl', () => {
     });
     await expect(resolveAccountAvatarUrl(tufAccount, undefined))
       .resolves.toBe('https://example.test/tuf-live.png');
+  });
+
+  it('deduplicates concurrent hydration for the same account', async () => {
+    let resolvePlayer!: (value: Awaited<ReturnType<typeof tufProvider.getPlayerProfile>>) => void;
+    const pendingPlayer = new Promise<Awaited<ReturnType<typeof tufProvider.getPlayerProfile>>>((resolve) => {
+      resolvePlayer = resolve;
+    });
+    const request = vi.spyOn(tufProvider, 'getPlayerProfile').mockReturnValue(pendingPlayer);
+
+    const first = resolveAccountAvatarUrl(tufAccount, undefined);
+    const second = resolveAccountAvatarUrl(tufAccount, undefined);
+    resolvePlayer({
+      id: 25, name: 'TUF 玩家', rankedScore: 1, generalScore: 0, ppScore: 0,
+      totalPasses: 0, universalPassCount: 0, worldFirstCount: 0, topScores: [],
+      avatarUrl: 'https://example.test/tuf-live.png', globalRank: null,
+    });
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      'https://example.test/tuf-live.png',
+      'https://example.test/tuf-live.png',
+    ]);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('limits account hydration to three concurrent requests', async () => {
+    let active = 0;
+    let maximum = 0;
+    vi.spyOn(tufProvider, 'getPlayerProfile').mockImplementation(async (playerId) => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      active -= 1;
+      return {
+        id: playerId, name: `TUF ${playerId}`, rankedScore: 1, generalScore: 0, ppScore: 0,
+        totalPasses: 0, universalPassCount: 0, worldFirstCount: 0, topScores: [],
+        avatarUrl: `https://example.test/${playerId}.png`, globalRank: null,
+      };
+    });
+    const accounts = Array.from({ length: 8 }, (_, index) => createTufBoundAccount({
+      playerId: 100 + index,
+      displayName: `TUF ${index}`,
+    }));
+
+    await syncAllAccountAvatars(accounts, {}, () => undefined, new AbortController().signal);
+
+    expect(maximum).toBe(3);
   });
 });

@@ -1,6 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import jpeg from 'jpeg-js';
 import jsQR from 'jsqr';
+import { File } from 'expo-file-system';
 import { extractMaimaiQrPayload } from '@/services/maimai-qr-payload';
 
 export { extractMaimaiQrPayload } from '@/services/maimai-qr-payload';
@@ -30,7 +31,15 @@ function base64ToUint8Array(base64: string): Uint8Array {
  * 将相册图片本地解码为舞萌玩家二维码字符串。
  * 先压成 JPEG 再交给 jsQR，避免把大图原文件直接塞给解码器。
  */
-export async function decodeMaimaiQrFromImageUri(uri: string): Promise<string> {
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  const error = new Error('二维码识别已取消');
+  error.name = 'AbortError';
+  throw error;
+}
+
+export async function decodeMaimaiQrFromImageUri(uri: string, signal?: AbortSignal): Promise<string> {
+  throwIfAborted(signal);
   const prepared = await ImageManipulator.manipulateAsync(
     uri,
     [{ resize: { width: 1600 } }],
@@ -40,12 +49,18 @@ export async function decodeMaimaiQrFromImageUri(uri: string): Promise<string> {
       base64: true,
     },
   );
+  if (signal?.aborted) {
+    try { new File(prepared.uri).delete(); } catch { /* 临时文件可能已由系统清理。 */ }
+    throwIfAborted(signal);
+  }
   if (!prepared.base64) {
     throw new QrDecodeError('无法读取所选图片');
   }
 
   const bytes = base64ToUint8Array(prepared.base64);
+  throwIfAborted(signal);
   const decoded = jpeg.decode(bytes, { useTArray: true });
+  throwIfAborted(signal);
   if (!decoded.width || !decoded.height || !decoded.data?.length) {
     throw new QrDecodeError('图片解码失败');
   }

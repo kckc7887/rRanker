@@ -10,6 +10,7 @@ import {
 import { useSession } from '@/state/session-store';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
+import { useAppLifecycle } from '@/state/app-lifecycle';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { CollectionImage } from '@/components/CollectionImage';
 import type { ChartType, Difficulty, Player } from '@/domain/models';
@@ -170,6 +171,7 @@ export default function BestImageScreen() {
 
 export function MaimaiBestImageScreen() {
   const theme = useAppTheme();
+  const lifecycle = useAppLifecycle();
   const { data, activeAccountId } = useGameData();
   const [embeddedAssets, setEmbeddedAssets] = useState<BestImageEmbeddedAssets | null>(null);
   const [assetError, setAssetError] = useState<string | null>(null);
@@ -253,13 +255,14 @@ export function MaimaiBestImageScreen() {
   useEffect(() => {
     let cancelled = false;
     setEmbeddedAssets(null);
+    if (!lifecycle.foregroundReady) return;
     setExportAssetError(null);
     loadBestImageAssets(FONT_SOURCE, frameSource).then(
       (assets) => { if (!cancelled) setEmbeddedAssets(assets); },
       () => { if (!cancelled) setAssetError('字体或 Rating 框加载失败'); },
     );
     return () => { cancelled = true; };
-  }, [frameSource]);
+  }, [frameSource, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -447,6 +450,7 @@ export function MaimaiBestImageScreen() {
     let cancelled = false;
     setCoverUrls(null);
     setCoverProgress({ completed: 0, total: 0 });
+    if (!lifecycle.foregroundReady) return;
     const songIds = JSON.parse(coverRequestKey) as string[];
     loadBestImageJackets(songIds, (completed, total) => {
       if (!cancelled) setCoverProgress({ completed, total });
@@ -454,7 +458,7 @@ export function MaimaiBestImageScreen() {
       if (!cancelled) setCoverUrls(nextCoverUrls);
     });
     return () => { cancelled = true; };
-  }, [coverRequestKey]);
+  }, [coverRequestKey, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
   const htmlPages = useMemo(() => embeddedAssets && coverUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
     type: imageType,
@@ -685,6 +689,11 @@ export function MaimaiBestImageScreen() {
     captureBackgroundColor="#E7EDF5"
     onExportMessage={handleExportMessage}
     onRequestCloseExport={cancelExportRequest}
+    onReleaseHeavySources={() => {
+      setWebViewSources(null);
+      setEmbeddedAssets(null);
+      setCoverUrls(null);
+    }}
     pickers={<BestImageCollectionPicker visible={activePicker !== null} kind={activePicker} items={collections.data?.items ?? []} selectedId={activePicker && (styleSelections[activePicker]?.mode === 'item' || styleSelections[activePicker]?.mode === 'random') ? styleSelections[activePicker].item.id : null} selectedMode={activePicker ? styleSelections[activePicker]?.mode ?? 'current' : 'current'} isLoading={collections.isLoading} isError={collections.isError} onRetry={() => { void collections.refetch(); }} onClose={() => setActivePicker(null)} onSelect={selectCollection} />}
     styles={styles}
   />;

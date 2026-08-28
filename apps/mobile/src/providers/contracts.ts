@@ -27,13 +27,13 @@ export interface AuthProvider {
   useImportToken(token: string): ProviderSession;
 }
 export interface ScoreProvider {
-  getPlayer(): Promise<Player>;
-  getRecords(): Promise<ScoreRecord[]>;
+  getPlayer(signal?: AbortSignal): Promise<Player>;
+  getRecords(signal?: AbortSignal): Promise<ScoreRecord[]>;
 }
 /** 曲库驱动的查分器：各游戏保留自己的曲库模型（默认为统一 CatalogSnapshot），成绩统一产出 ScoreRecord[]。 */
 export interface CatalogDrivenScoreProvider<TCatalog = CatalogSnapshot> {
-  getPlayer(): Promise<Player>;
-  getRecordsFromCatalog(catalog: TCatalog): Promise<ScoreRecord[]>;
+  getPlayer(signal?: AbortSignal): Promise<Player>;
+  getRecordsFromCatalog(catalog: TCatalog, signal?: AbortSignal): Promise<ScoreRecord[]>;
 }
 export type AnyScoreProvider = ScoreProvider | CatalogDrivenScoreProvider;
 
@@ -43,12 +43,12 @@ export function isCatalogDrivenScoreProvider<TCatalog = CatalogSnapshot>(
   return 'getRecordsFromCatalog' in provider;
 }
 export interface CatalogProvider {
-  getCatalog(): Promise<CatalogSnapshot>;
+  getCatalog(signal?: AbortSignal): Promise<CatalogSnapshot>;
 }
 export interface DetailedCatalogProvider extends CatalogProvider {
-  getDetailedCatalog(): Promise<CatalogSnapshot>;
-  getSong(songId: string, catalog: CatalogSnapshot): Promise<Song>;
-  getAliases(): Promise<AliasSnapshot>;
-  getPlates(): Promise<PlateSnapshot>;
+  getDetailedCatalog(signal?: AbortSignal): Promise<CatalogSnapshot>;
+  getSong(songId: string, catalog: CatalogSnapshot, signal?: AbortSignal): Promise<Song>;
+  getAliases(signal?: AbortSignal): Promise<AliasSnapshot>;
+  getPlates(signal?: AbortSignal): Promise<PlateSnapshot>;
   getCollections(): Promise<CollectionSnapshot>;
 }

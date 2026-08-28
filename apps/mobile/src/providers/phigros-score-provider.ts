@@ -55,9 +55,10 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private playerNameCache: string | null = null;
   private playerNamePromise: Promise<string> | null = null;
 
-  private async ensureSaveMeta(): Promise<GameSaveMeta> {
+  private async ensureSaveMeta(signal?: AbortSignal): Promise<GameSaveMeta> {
     if (this.saveMeta) return this.saveMeta;
-    const meta = await getGameSave(this.sessionToken);
+    const meta = await getGameSave(this.sessionToken, signal);
+    if (signal?.aborted) throw signal.reason;
     this.saveMeta = meta;
     this.summaryCache = parseSummary(meta.summaryBase64);
     return meta;
@@ -76,16 +77,17 @@ export class PhigrosScoreProvider implements ScoreProvider {
     this.playerId = session.playerId;
   }
 
-  static async beginLogin(): Promise<DeviceCodeResult> {
-    return await requestDeviceCode();
+  static async beginLogin(signal?: AbortSignal): Promise<DeviceCodeResult> {
+    return await requestDeviceCode(signal);
   }
 
   static async pollLogin(
     device: DeviceCodeResult,
+    signal?: AbortSignal,
   ): Promise<ProviderSession | 'pending' | 'waiting' | 'slowdown'> {
-    const result = await pollForToken(device.deviceCode, device.deviceId);
+    const result = await pollForToken(device.deviceCode, device.deviceId, signal);
     if (result === 'pending' || result === 'waiting' || result === 'slowdown') return result;
-    const session = await exchangeSessionToken(result);
+    const session = await exchangeSessionToken(result, signal);
     return {
       mode: 'phi-session',
       sessionToken: session.sessionToken,
@@ -121,8 +123,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
     };
   }
 
-  async getPlayer(): Promise<Player> {
-    const [, displayName] = await Promise.all([this.ensureSaveMeta(), this.getCloudPlayerName()]);
+  async getPlayer(signal?: AbortSignal): Promise<Player> {
+    const [, displayName] = await Promise.all([this.ensureSaveMeta(signal), this.getCloudPlayerName(signal)]);
     return {
       id: this.playerId,
       displayName,
@@ -131,10 +133,10 @@ export class PhigrosScoreProvider implements ScoreProvider {
     };
   }
 
-  private async getCloudPlayerName(): Promise<string> {
+  private async getCloudPlayerName(signal?: AbortSignal): Promise<string> {
     if (this.playerNameCache) return this.playerNameCache;
     if (!this.playerNamePromise) {
-      this.playerNamePromise = getCloudPlayerId(this.sessionToken)
+      this.playerNamePromise = getCloudPlayerId(this.sessionToken, signal)
         .catch(() => this.playerId)
         .finally(() => { this.playerNamePromise = null; });
     }
@@ -142,27 +144,29 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return this.playerNameCache;
   }
 
-  getSummary(): Promise<PhigrosSummary> {
+  getSummary(signal?: AbortSignal): Promise<PhigrosSummary> {
     if (this.summaryCache) return Promise.resolve(this.summaryCache);
-    return this.ensureSaveMeta().then(() => this.summaryCache!);
+    return this.ensureSaveMeta(signal).then(() => this.summaryCache!);
   }
 
-  private async fetchDifficultyTable(gameVersion: number): Promise<string> {
+  private async fetchDifficultyTable(gameVersion: number, signal?: AbortSignal): Promise<string> {
     const res = await fetch(
       `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${gameVersion}/metadata/difficulty.tsv`,
+      { signal },
     );
     if (!res.ok) throw new ProviderError('network', `无法加载定数表（版本 ${gameVersion}）`, true);
     return await res.text();
   }
 
-  private async loadMergedDifficultyTable(gameVersion: number): Promise<PhigrosDifficultyTable> {
+  private async loadMergedDifficultyTable(gameVersion: number, signal?: AbortSignal): Promise<PhigrosDifficultyTable> {
     const current = await fetch(
       'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/current.json',
+      { signal },
     ).then((r) => r.json()) as { gameVersion: number };
 
     const [saveVerRaw, currentRaw] = await Promise.all([
-      this.fetchDifficultyTable(gameVersion).catch(() => null),
-      this.fetchDifficultyTable(current.gameVersion).catch(() => null),
+      this.fetchDifficultyTable(gameVersion, signal).catch(() => null),
+      this.fetchDifficultyTable(current.gameVersion, signal).catch(() => null),
     ]);
 
     const tables = [saveVerRaw, currentRaw]
@@ -187,31 +191,34 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return { songCount: Object.keys(gameRecord).length, chartCount };
   }
 
-  private async loadSaveInternal(): Promise<LoadedSave> {
-    const { saveUrl, updatedAt } = await this.ensureSaveMeta();
-    const zipBuf = await downloadSave(saveUrl, updatedAt);
+  private async loadSaveInternal(signal?: AbortSignal): Promise<LoadedSave> {
+    const { saveUrl, updatedAt } = await this.ensureSaveMeta(signal);
+    const zipBuf = await downloadSave(saveUrl, updatedAt, signal);
     const { gameRecord, user, gameProgress } = await decodeSaveZip(zipBuf);
 
     const gameVersion = this.summaryCache?.gameVersion ?? 0;
-    const diffTable = await this.loadMergedDifficultyTable(gameVersion);
+    const diffTable = await this.loadMergedDifficultyTable(gameVersion, signal);
+    if (signal?.aborted) throw signal.reason;
     const { songCount, chartCount } = this.countGameRecord(gameRecord);
 
     return { gameRecord, diffTable, gameVersion, songCount, chartCount, user, gameProgress };
   }
 
-  private async loadSave(): Promise<LoadedSave> {
+  private async loadSave(signal?: AbortSignal): Promise<LoadedSave> {
     if (this.saveCache) return this.saveCache;
     if (!this.saveLoadPromise) {
-      this.saveLoadPromise = this.loadSaveInternal().finally(() => {
+      this.saveLoadPromise = this.loadSaveInternal(signal).finally(() => {
         this.saveLoadPromise = null;
       });
     }
-    this.saveCache = await this.saveLoadPromise;
+    const loaded = await this.saveLoadPromise;
+    if (signal?.aborted) throw signal.reason;
+    this.saveCache = loaded;
     return this.saveCache;
   }
 
-  async getRecords(): Promise<ScoreRecord[]> {
-    const { gameRecord, diffTable } = await this.loadSave();
+  async getRecords(signal?: AbortSignal): Promise<ScoreRecord[]> {
+    const { gameRecord, diffTable } = await this.loadSave(signal);
     return gameRecordToScoreRecords(gameRecord, diffTable);
   }
 

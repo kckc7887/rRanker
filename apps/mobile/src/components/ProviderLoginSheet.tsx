@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   ActivityIndicator,
-  AppState,
   Image,
-  InteractionManager,
   Linking,
   Modal,
   Pressable,
@@ -34,6 +32,7 @@ import { OsuModeSelectSheet } from '@/components/osu/OsuModeSelectSheet';
 import { DivingFishAuthProvider } from '@/providers/diving-fish-auth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { ProviderError, providerErrorToUserMessage } from '@/providers/errors';
+import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
 import type { ProviderSession } from '@/providers/contracts';
 import {
   beginLxnsAuthorize,
@@ -104,10 +103,15 @@ export function ProviderLoginSheet({
   const [phiExpiresAt, setPhiExpiresAt] = useState(0);
   const [showReusableAccounts, setShowReusableAccounts] = useState(false);
   const [osuModeAccount, setOsuModeAccount] = useState<BoundAccount | null>(null);
+  const lifecycle = useAppLifecycle();
   const phiTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const phiResumeTask = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const phiPollingGenerationRef = useRef<number | null>(null);
   const phiPollingRef = useRef(false);
   const phiNextAllowedAtRef = useRef(0);
+
+  useEffect(() => {
+    if (lifecycle.foregroundReady) setBusy(false);
+  }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
   const isLxns = provider?.id === 'lxns';
   const isOsu = provider?.id === 'osu';
@@ -160,8 +164,6 @@ export function ProviderLoginSheet({
     setPhiExpiresAt(0);
     setShowReusableAccounts(false);
     setOsuModeAccount(null);
-    phiResumeTask.current?.cancel();
-    phiResumeTask.current = null;
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
     phiPollingRef.current = false;
     phiNextAllowedAtRef.current = 0;
@@ -353,8 +355,10 @@ export function ProviderLoginSheet({
   const beginPhigrosLogin = async () => {
     setBusy(true);
     setMessage('正在请求 TapTap 授权…');
+    const signal = getForegroundAbortSignal();
     try {
-      const device = await PhigrosScoreProvider.beginLogin();
+      const device = await PhigrosScoreProvider.beginLogin(signal);
+      if (signal.aborted) return;
       setPhiDevice(device);
       setPhiExpiresAt(Date.now() + device.expiresIn * 1000);
       setMessage('请在 TapTap 完成授权。');
@@ -367,9 +371,10 @@ export function ProviderLoginSheet({
         await Linking.openURL(device.qrcodeUrl);
       }
     } catch (error) {
+      if (signal.aborted) return;
       setMessage(messageFor(error));
     } finally {
-      setBusy(false);
+      if (!signal.aborted) setBusy(false);
     }
   };
 
@@ -384,8 +389,10 @@ export function ProviderLoginSheet({
     const remaining = Math.max(0, Math.floor((phiExpiresAt - now) / 1000));
     setMessage(`等待授权中…（${remaining} 秒后过期）`);
     phiPollingRef.current = true;
+    const signal = getForegroundAbortSignal();
     try {
-      const result = await PhigrosScoreProvider.pollLogin(phiDevice);
+      const result = await PhigrosScoreProvider.pollLogin(phiDevice, signal);
+      if (signal.aborted) return;
       if (result === 'pending' || result === 'waiting') return;
       if (result === 'slowdown') {
         phiNextAllowedAtRef.current = Date.now() + 5_000;
@@ -408,11 +415,13 @@ export function ProviderLoginSheet({
         scoreDisplay: account.scoreDisplay,
         session: newSession,
       });
+      if (signal.aborted) return;
       setSession(newSession);
       invalidateAll();
       reset();
       onSuccess();
     } catch (error) {
+      if (signal.aborted) return;
       const expired = Date.now() >= phiExpiresAt;
       if (!expired && isTransientNetworkError(error)) {
         setMessage('网络波动，自动重试中…');
@@ -429,34 +438,27 @@ export function ProviderLoginSheet({
     if (!phiDevice || !visible) return;
     const interval = phiDevice.interval * 1000;
     const stopPolling = () => {
-      phiResumeTask.current?.cancel();
-      phiResumeTask.current = null;
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
     };
     const startTimer = (pollImmediately: boolean) => {
       stopPolling();
-      phiResumeTask.current = InteractionManager.runAfterInteractions(() => {
-        phiResumeTask.current = null;
-        if (AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
-        if (pollImmediately) void pollPhigros();
-        phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
-      });
+      if (pollImmediately) void pollPhigros();
+      phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
     };
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') startTimer(true);
-      else stopPolling();
-    });
-    if (AppState.currentState !== 'background' && AppState.currentState !== 'inactive') startTimer(false);
+    if (!lifecycle.foregroundReady) {
+      stopPolling();
+      return stopPolling;
+    }
+    const previousGeneration = phiPollingGenerationRef.current;
+    phiPollingGenerationRef.current = lifecycle.foregroundGeneration;
+    startTimer(previousGeneration !== null && previousGeneration !== lifecycle.foregroundGeneration);
     return () => {
-      subscription.remove();
       stopPolling();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phiDevice, visible]);
+  }, [phiDevice, lifecycle.foregroundGeneration, lifecycle.foregroundReady, visible]);
 
   const cancelPhigrosLogin = () => {
-    phiResumeTask.current?.cancel();
-    phiResumeTask.current = null;
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
     phiPollingRef.current = false;
     phiNextAllowedAtRef.current = 0;

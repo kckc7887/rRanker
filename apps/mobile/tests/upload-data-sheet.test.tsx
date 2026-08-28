@@ -6,6 +6,7 @@ import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
 import { NotificationProvider } from '@/components/AppNotification';
 import { ScoreHubError } from '@/services/score-hub-client';
+import { uploadTaskController } from '@/services/upload-maimai-from-friend-code';
 
 type TestUploadPrefs = {
   friendCode: string;
@@ -233,6 +234,7 @@ function renderSheet(
 
 describe('好友码统一上传弹窗', () => {
   beforeEach(() => {
+    uploadTaskController.resetForTests();
     jest.clearAllMocks();
     mockHubAccounts.clear();
     mockHubState = { friendCode: '', hasCabinetBound: false };
@@ -265,6 +267,36 @@ describe('好友码统一上传弹窗', () => {
     mockUploadQr.mockResolvedValue({
       uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
     });
+  });
+
+  it('上传任务暂停后等待恢复，并复用同一个进行中任务', async () => {
+    const signal = uploadTaskController.begin();
+    const taskId = uploadTaskController.getSnapshot().taskId;
+    expect(uploadTaskController.begin()).toBe(signal);
+    expect(uploadTaskController.getSnapshot().taskId).toBe(taskId);
+
+    uploadTaskController.pause();
+    let resumed = false;
+    const waiting = signal.waitUntilResumed?.().then(() => { resumed = true; });
+    await Promise.resolve();
+    expect(resumed).toBe(false);
+
+    uploadTaskController.resume();
+    await waiting;
+    expect(resumed).toBe(true);
+    expect(uploadTaskController.getSnapshot().status).toBe('running');
+  });
+
+  it('显式取消会永久结束暂停中的上传任务', async () => {
+    const signal = uploadTaskController.begin();
+    uploadTaskController.pause();
+    const waiting = signal.waitUntilResumed?.();
+
+    uploadTaskController.cancel();
+
+    await expect(waiting).rejects.toThrow('已取消');
+    expect(signal.aborted).toBe(true);
+    expect(uploadTaskController.getSnapshot().status).toBe('canceled');
   });
 
   it('打开时展示近一小时统计、分档提示与好友申请刷新说明', async () => {
@@ -501,7 +533,7 @@ describe('好友码统一上传弹窗', () => {
     expect(mockUploadFriend).toHaveBeenCalledTimes(1);
   });
 
-  it('组件卸载会释放等待中的成绩', async () => {
+  it('组件卸载后任务保持，显式取消才释放等待中的成绩', async () => {
     const requestCatalog = jest.fn(async () => undefined);
     let released = false;
     mockUploadFriend.mockImplementationOnce(async (input: MockUploadInput) => {
@@ -518,6 +550,8 @@ describe('好友码统一上传弹窗', () => {
     await fireEvent.press(screen.getByLabelText('开始上传'));
     await waitFor(() => expect(screen.getByLabelText('重试同步曲库')).toBeTruthy());
     await act(async () => screen.unmount());
+    expect(released).toBe(false);
+    uploadTaskController.cancel();
     await waitFor(() => expect(released).toBe(true));
     expect(mockUploadFriend).toHaveBeenCalledTimes(1);
   });

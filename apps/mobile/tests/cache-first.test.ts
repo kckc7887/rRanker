@@ -1,5 +1,10 @@
+import { vi } from 'vitest';
 import { fixtureSource } from '@/fixtures/sanitized';
 import { cacheFirstLoad, isCacheFallback, staleCached } from '@/services/cache-first';
+
+vi.mock('@/state/app-lifecycle-core', () => ({
+  getForegroundAbortSignal: () => new AbortController().signal,
+}));
 
 type Sample = { value: number; source: typeof fixtureSource };
 
@@ -40,6 +45,43 @@ describe('cacheFirstLoad', () => {
     expect(result.value).toBe(1);
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(onFreshCalled).toBe(false);
+  });
+
+  it('does not rewrite the query after the foreground signal is aborted', async () => {
+    const controller = new AbortController();
+    let resolveFresh!: (value: Sample) => void;
+    const fresh = new Promise<Sample>((resolve) => { resolveFresh = resolve; });
+    let onFreshCalled = false;
+
+    const result = await cacheFirstLoad({
+      loadCached: async () => makeSample(1),
+      loadFresh: async () => fresh,
+      onFresh: () => { onFreshCalled = true; },
+      signal: controller.signal,
+    });
+    controller.abort();
+    resolveFresh(makeSample(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result.value).toBe(1);
+    expect(onFreshCalled).toBe(false);
+  });
+
+  it('rejects a cache miss whose request finishes after cancellation', async () => {
+    const controller = new AbortController();
+    let resolveFresh!: (value: Sample) => void;
+    const fresh = new Promise<Sample>((resolve) => { resolveFresh = resolve; });
+    const pending = cacheFirstLoad({
+      loadCached: async () => null,
+      loadFresh: async () => fresh,
+      onFresh: () => undefined,
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort();
+    resolveFresh(makeSample(2));
+
+    await expect(pending).rejects.toThrow('cache first load aborted');
   });
 
   it('does not rewrite the query when the refresh returns a fallback cache', async () => {

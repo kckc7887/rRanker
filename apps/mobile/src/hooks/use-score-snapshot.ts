@@ -22,7 +22,7 @@ export function useScoreSnapshot() {
   const query = useQuery({
     enabled,
     queryKey,
-    queryFn: () => {
+    queryFn: ({ signal }) => {
       const service = new ScoreService(
         scoreProvider,
         catalogProvider,
@@ -35,9 +35,9 @@ export function useScoreSnapshot() {
       if (persistScores) {
         return service.loadCacheFirst((fresh) => {
           queryClient.setQueryData(queryKey, fresh);
-        }, activeProviderId !== 'local');
+        }, activeProviderId !== 'local', signal);
       }
-      return service.load();
+      return service.load(signal);
     },
   });
   return {

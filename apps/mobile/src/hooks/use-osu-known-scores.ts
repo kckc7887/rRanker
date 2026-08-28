@@ -88,7 +88,7 @@ export function useOsuBeatmapsetUserScores(
       userId,
       song?.beatmapSetId ?? null,
     ] as const,
-    queryFn: async (): Promise<OsuBestScore[]> => {
+    queryFn: async ({ signal }): Promise<OsuBestScore[]> => {
       const currentSong = song as OsuBeatmapsetDetail;
       const provider = new OsuScoreProvider(
         session as OsuOAuthSession,
@@ -96,7 +96,7 @@ export function useOsuBeatmapsetUserScores(
       );
       const settled = await Promise.allSettled(currentSong.beatmaps.map(
         async (beatmap): Promise<OsuBestScore | null> => {
-          const raw = await provider.getUserBeatmapScore(userId as number, beatmap.id, gameId);
+          const raw = await provider.getUserBeatmapScore(userId as number, beatmap.id, gameId, signal);
           if (!raw) return null;
           return normalizeOsuBeatmapUserScore(
             raw,
@@ -120,8 +120,9 @@ export function useOsuBeatmapsetUserScores(
       const scores = settled.flatMap((result) => (
         result.status === 'fulfilled' && result.value ? [result.value] : []
       ));
-      if (scores.length > 0) {
+      if (scores.length > 0 && !signal.aborted) {
         const snapshot = await osuCache.mergeKnownScores(gameId, userId as number, scores);
+        if (signal.aborted) return scores;
         queryClient.setQueryData<OsuKnownScoresSnapshot>(
           osuKnownScoresQueryKey(activeAccountId, gameId, userId),
           snapshot,

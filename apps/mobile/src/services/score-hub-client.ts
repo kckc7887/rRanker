@@ -165,7 +165,12 @@ export function scoreHubErrorToUserMessage(
   }
 }
 
-export type ScoreHubAbortSignal = { aborted: boolean };
+export type ScoreHubAbortSignal = {
+  aborted: boolean;
+  paused?: boolean;
+  waitUntilResumed?: () => Promise<void>;
+  onCancel?: (listener: () => void) => () => void;
+};
 
 function normalizeNetworkErrorMessage(raw: string): string {
   const lower = raw.toLowerCase();
@@ -215,6 +220,7 @@ async function requestRaw(
     timeoutMs?: number;
   },
 ): Promise<{ status: number; body: unknown }> {
+  await options?.signal?.waitUntilResumed?.();
   if (options?.signal?.aborted) {
     throw new ScoreHubError('已取消');
   }
@@ -363,6 +369,7 @@ function sleep(ms: number, signal?: ScoreHubAbortSignal): Promise<void> {
     }
     const timer = setTimeout(() => {
       if (signal?.aborted) reject(new ScoreHubError('已取消'));
+      else if (signal?.waitUntilResumed) void signal.waitUntilResumed().then(resolve, reject);
       else resolve();
     }, ms);
     if (signal) {

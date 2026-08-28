@@ -11,7 +11,7 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 const repository = new SqliteSnapshotRepository();
 
 /** 从分账号缓存补齐中二账号列表所需的 Rating、领域与头像摘要。 */
-export async function hydrateChunithmAccountSummaries(): Promise<void> {
+export async function hydrateChunithmAccountSummaries(signal?: AbortSignal): Promise<void> {
   const accounts = useSession.getState().boundAccounts.filter(
     (account) => account.gameId === 'chunithm' && account.providerId === 'lxns',
   );
@@ -24,7 +24,7 @@ export async function hydrateChunithmAccountSummaries(): Promise<void> {
         CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
       );
       const player = snapshot?.player;
-      if (!player) return;
+      if (!player || signal?.aborted) return;
 
       const scoreDisplay = player.rating.toFixed(2);
       const avatarUrl = buildChunithmMapIconUrl(player.map_icon?.id);
@@ -36,6 +36,7 @@ export async function hydrateChunithmAccountSummaries(): Promise<void> {
         undefined,
         player.rating_possession ?? null,
       );
+      if (signal?.aborted) return;
       await secureStore.updateAccountMetadata(account.id, {
         displayName: player.name,
         scoreDisplay,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { useNotification } from '@/components/AppNotification';
 import { providerErrorToUserMessage } from '@/providers/errors';
+import { useAppLifecycle } from '@/state/app-lifecycle';
 import {
   type ChartPackageDownloadOptions,
 } from './chart-download-shared';
@@ -23,10 +24,12 @@ export function useChartPackageDownload({
     showNotification,
     updateNotification,
   } = useNotification();
+  const lifecycle = useAppLifecycle();
   const [isRunning, setIsRunning] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const notificationIdRef = useRef<number | null>(null);
+  const backgroundCanceledRef = useRef(false);
 
   const cancel = useCallback(() => {
     notificationIdRef.current = null;
@@ -43,6 +46,28 @@ export function useChartPackageDownload({
     };
   }, [dismissNotification]);
 
+  useEffect(() => {
+    if (!lifecycle.foregroundReady) {
+      if (controllerRef.current) {
+        backgroundCanceledRef.current = true;
+        controllerRef.current.abort();
+        const notificationId = notificationIdRef.current;
+        notificationIdRef.current = null;
+        if (notificationId !== null) dismissNotification(notificationId);
+      }
+      return;
+    }
+    if (backgroundCanceledRef.current) {
+      backgroundCanceledRef.current = false;
+      setIsRunning(false);
+      showNotification({
+        title: '下载已停止',
+        message: '应用回到前台后，请重新下载谱面文件。',
+        variant: 'info',
+      });
+    }
+  }, [dismissNotification, lifecycle.foregroundGeneration, lifecycle.foregroundReady, showNotification]);
+
   const start = useCallback(async (runner: ChartPackageDownloadRunner) => {
     if (controllerRef.current) return;
     if (Platform.OS === 'web') {
@@ -55,6 +80,7 @@ export function useChartPackageDownload({
     }
 
     const controller = new AbortController();
+    backgroundCanceledRef.current = false;
     controllerRef.current = controller;
     setIsRunning(true);
     notificationIdRef.current = showActionNotification({
@@ -104,7 +130,7 @@ export function useChartPackageDownload({
       const notificationId = notificationIdRef.current;
       notificationIdRef.current = null;
       if (notificationId !== null) dismissNotification(notificationId);
-      if (mountedRef.current) setIsRunning(false);
+      if (mountedRef.current && !backgroundCanceledRef.current) setIsRunning(false);
     }
   }, [cancel, dismissNotification, failureMessage, showActionNotification, showNotification, successMessage, updateNotification]);
 

@@ -21,12 +21,12 @@ export function useOsuBeatmapsetDetail(gameId: OsuGameId | null, beatmapsetId: s
 
   const query = useQuery({
     queryKey: ['osu-beatmapset-detail', gameId, userId, beatmapsetId] as const,
-    queryFn: async (): Promise<OsuBeatmapsetDetail> => {
+    queryFn: async ({ signal }): Promise<OsuBeatmapsetDetail> => {
       const provider = new OsuScoreProvider(
         session as OsuOAuthSession,
         (next) => applyOsuTokenRotation(activeAccountId, next),
       );
-      const raw = await provider.getBeatmapset(beatmapsetId as string);
+      const raw = await provider.getBeatmapset(beatmapsetId as string, signal);
       return normalizeOsuBeatmapsetDetail(raw, gameId as OsuGameId);
     },
     enabled: bound && beatmapsetId !== null,

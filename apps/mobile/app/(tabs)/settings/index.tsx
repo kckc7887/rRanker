@@ -21,6 +21,7 @@ import { useThemeStore } from '@/state/theme-store';
 import type { AppAppearance } from '@/storage/theme-preferences-store';
 import { storageClearPreferencesStore } from '@/storage/storage-clear-prefs-store';
 import { providerErrorToUserMessage } from '@/providers/errors';
+import { exportRuntimeDiagnostics } from '@/services/runtime-diagnostics';
 
 const APPEARANCES: { id: AppAppearance; label: string }[] = [
   { id: 'system', label: '跟随系统' }, { id: 'light', label: '浅色' }, { id: 'dark', label: '深色' },
@@ -42,6 +43,23 @@ export function SettingsScreen() {
   const setCustomAccent = useThemeStore((state) => state.setCustomAccent);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [quickClearing, setQuickClearing] = useState(false);
+  const [exportingDiagnostics, setExportingDiagnostics] = useState(false);
+
+  const handleExportDiagnostics = async () => {
+    if (exportingDiagnostics) return;
+    setExportingDiagnostics(true);
+    try {
+      await exportRuntimeDiagnostics();
+    } catch {
+      showNotification({
+        title: '导出失败',
+        message: '暂时无法导出诊断记录，请稍后重试。',
+        variant: 'error',
+      });
+    } finally {
+      setExportingDiagnostics(false);
+    }
+  };
 
   const handleQuickClear = async () => {
     if (quickClearing) return;
@@ -186,6 +204,21 @@ export function SettingsScreen() {
           <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
         </Pressable>
       </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="导出诊断记录"
+        disabled={exportingDiagnostics}
+        onPress={() => void handleExportDiagnostics()}
+        style={[styles.row, { backgroundColor: theme.surface }]}
+      >
+        <View style={styles.rowText}>
+          <Text style={[styles.title, { color: theme.text }]}>导出诊断记录</Text>
+          <Text style={[styles.detail, { color: theme.textMuted }]}>用于排查意外退出，由你选择是否分享</Text>
+        </View>
+        {exportingDiagnostics
+          ? <ActivityIndicator color={theme.accent} size="small" />
+          : <Ionicons name="share-outline" size={21} color={theme.accent} />}
+      </Pressable>
       <AccentColorPicker
         visible={pickerOpen}
         initialHex={accent === 'custom' ? customHex : theme.accent}

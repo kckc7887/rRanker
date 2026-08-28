@@ -30,7 +30,7 @@ export function useTufPlayerSearch(query: string) {
   const normalized = query.trim();
   return useQuery({
     queryKey: ['tuf', 'players', 'search', normalized],
-    queryFn: () => tufProvider.searchPlayers(normalized, TUF_PAGE_SIZE, 0),
+    queryFn: ({ signal }) => tufProvider.searchPlayers(normalized, TUF_PAGE_SIZE, 0, signal),
     enabled: normalized.length > 0,
     ...TUF_QUERY_OPTIONS,
   });
@@ -41,18 +41,19 @@ export function useTufProfile(playerId: number | null, enabled = true) {
   const queryKey = ['tuf', 'player', playerId, 'profile'] as const;
   return useQuery({
     queryKey,
-    queryFn: async (): Promise<TufPlayer> => {
+    queryFn: async ({ signal }): Promise<TufPlayer> => {
       const snapshot = await cacheFirstLoad({
         loadCached: () => cache.loadPlayer(playerId!),
         loadFresh: async () => {
-          const player = await loadTufPlayerFresh(playerId!);
+          const player = await loadTufPlayerFresh(playerId!, signal);
           const fresh = makeTufSnapshot(player);
-          void cache.savePlayer(playerId!, fresh).catch(() => undefined);
+          if (!signal.aborted) void cache.savePlayer(playerId!, fresh).catch(() => undefined);
           return fresh;
         },
         onFresh: (fresh) => {
           queryClient.setQueryData(queryKey, fresh.data);
         },
+        signal,
       });
       return snapshot.data;
     },
@@ -86,19 +87,21 @@ async function loadTufPassPage(
   playerId: number,
   options: Omit<TufPassQuery, 'offset' | 'limit'>,
   offset: number,
+  signal?: AbortSignal,
 ): Promise<TufPassPage> {
   return tufProvider.getPasses(playerId, {
     ...options, offset, limit: TUF_PAGE_SIZE,
-  });
+  }, signal);
 }
 
 export async function prefetchTufPassPage(
   playerId: number,
   options: Omit<TufPassQuery, 'offset' | 'limit'>,
   offset: number,
+  signal?: AbortSignal,
 ): Promise<TufPassPage> {
-  const page = await loadTufPassPage(playerId, options, offset);
-  mergeTufPassPage(playerId, options, page);
+  const page = await loadTufPassPage(playerId, options, offset, signal);
+  if (!signal?.aborted) mergeTufPassPage(playerId, options, page);
   return page;
 }
 
@@ -106,7 +109,7 @@ export function useTufPasses(playerId: number | null, options: Omit<TufPassQuery
   const tabActive = useCachedTabActive();
   return useInfiniteQuery({
     queryKey: ['tuf', 'player', playerId, 'passes', options] as const,
-    queryFn: ({ pageParam }): Promise<TufPassPage> => loadTufPassPage(playerId!, options, pageParam),
+    queryFn: ({ pageParam, signal }): Promise<TufPassPage> => loadTufPassPage(playerId!, options, pageParam, signal),
     initialPageParam: 0,
     getNextPageParam: (last) => last.offset + last.passes.length < last.total
       ? last.offset + last.limit
@@ -126,9 +129,9 @@ export function useTufLevelSearch(
   const queryKey = ['tuf', 'levels', normalized, options] as const;
   return useInfiniteQuery({
     queryKey,
-    queryFn: ({ pageParam }): Promise<TufLevelPage> => tufProvider.searchLevels({
+    queryFn: ({ pageParam, signal }): Promise<TufLevelPage> => tufProvider.searchLevels({
       ...options, query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
-    }),
+    }, signal),
     initialPageParam: 0,
     getNextPageParam: (last) => last.hasMore ? last.offset + last.limit : undefined,
     enabled: enabled && tabActive,
@@ -141,7 +144,7 @@ export function useTufDifficulties(enabled = true) {
   const queryKey = ['tuf', 'difficulties'] as const;
   return useQuery({
     queryKey,
-    queryFn: () => tufProvider.getDifficulties(),
+    queryFn: ({ signal }) => tufProvider.getDifficulties(signal),
     enabled: enabled && tabActive,
     ...TUF_QUERY_OPTIONS,
   });
@@ -156,7 +159,7 @@ export function tufVideoDetailsQueryOptions(videoLink: string | null | undefined
   const normalized = tufHttpsUrl(videoLink);
   return {
     queryKey: ['tuf', 'media', 'video-details', normalized],
-    queryFn: () => tufProvider.getVideoDetails(normalized!),
+    queryFn: ({ signal }: { signal: AbortSignal }) => tufProvider.getVideoDetails(normalized!, signal),
     enabled: normalized !== null,
     ...TUF_QUERY_OPTIONS,
   } as const;
@@ -165,7 +168,7 @@ export function tufVideoDetailsQueryOptions(videoLink: string | null | undefined
 export function useTufLevelBestPass(levelId: number | null, playerId: number | null) {
   const query = useQuery({
     queryKey: ['tuf', 'level', levelId, 'passes'],
-    queryFn: (): Promise<TufLevelPass[]> => tufProvider.getLevelPasses(levelId!),
+    queryFn: ({ signal }): Promise<TufLevelPass[]> => tufProvider.getLevelPasses(levelId!, signal),
     enabled: levelId !== null && playerId !== null,
     ...TUF_QUERY_OPTIONS,
   });
@@ -176,7 +179,7 @@ export function useTufLevel(levelId: number | null) {
   const queryKey = ['tuf', 'level', levelId] as const;
   return useQuery({
     queryKey,
-    queryFn: (): Promise<TufLevelDetailResponse> => tufProvider.getLevel(levelId!),
+    queryFn: ({ signal }): Promise<TufLevelDetailResponse> => tufProvider.getLevel(levelId!, signal),
     enabled: levelId !== null,
     ...TUF_QUERY_OPTIONS,
   });

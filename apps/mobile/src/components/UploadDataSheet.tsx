@@ -36,6 +36,7 @@ import {
   uploadMaimaiFromFriendCode,
   uploadMaimaiFromQrLogin,
   uploadMaimaiWithScoreHubSession,
+  uploadTaskController,
   type UploadPhase,
   type UploadResult,
 } from '@/services/upload-maimai-from-friend-code';
@@ -50,6 +51,7 @@ import { useNotification } from '@/components/AppNotification';
 import { AppModal } from '@/components/AppModal';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
+import { getForegroundAbortSignal } from '@/state/app-lifecycle';
 
 function accountIcon(account: BoundAccount) {
   if (account.providerId) {
@@ -84,6 +86,7 @@ type CatalogWaiter = {
   promise: Promise<CatalogSnapshot>;
   resolve: (catalog: CatalogSnapshot) => void;
   reject: (error: Error) => void;
+  unsubscribeCancel?: () => void;
 };
 
 export function UploadDataSheet({
@@ -132,14 +135,15 @@ export function UploadDataSheet({
   const [bindingLookup, setBindingLookup] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [prefsReady, setPrefsReady] = useState(false);
-  const [phase, setPhase] = useState<UploadPhase>({ kind: 'idle' });
-  const [running, setRunning] = useState(false);
+  const initialTask = uploadTaskController.getSnapshot();
+  const [phase, setPhase] = useState<UploadPhase>(initialTask.phase);
+  const [running, setRunning] = useState(initialTask.status === 'running' || initialTask.status === 'paused');
   const [decodingQr, setDecodingQr] = useState(false);
-  const [lastResult, setLastResult] = useState<UploadResult | null>(null);
+  const [lastResult, setLastResult] = useState<UploadResult | null>(initialTask.result);
   const [stats, setStats] = useState<ScoreHubDxnetJobStats | null>(null);
   const [statsStatus, setStatsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  const abortRef = useRef<ScoreHubAbortSignal>({ aborted: false });
-  const uploadInFlightRef = useRef(false);
+  const abortRef = useRef<ScoreHubAbortSignal>(uploadTaskController.getSignal());
+  const uploadInFlightRef = useRef(initialTask.status === 'running' || initialTask.status === 'paused');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idleResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistedSelectedIdsRef = useRef<string[]>([]);
@@ -193,6 +197,7 @@ export function UploadDataSheet({
 
   const applyPhase = useCallback((next: UploadPhase) => {
     setPhase(next);
+    uploadTaskController.setPhase(next);
     onPhaseChange?.(next);
     if (idleResetTimerRef.current) {
       clearTimeout(idleResetTimerRef.current);
@@ -207,10 +212,21 @@ export function UploadDataSheet({
     }
   }, [onPhaseChange]);
 
+  useEffect(() => uploadTaskController.subscribe((snapshot) => {
+    abortRef.current = uploadTaskController.getSignal();
+    const active = snapshot.status === 'running' || snapshot.status === 'paused';
+    uploadInFlightRef.current = active;
+    setRunning(active);
+    setPhase(snapshot.phase);
+    setLastResult(snapshot.result);
+    onPhaseChange?.(snapshot.phase);
+  }), [onPhaseChange]);
+
   const finishCatalogWait = useCallback((nextCatalog: CatalogSnapshot) => {
     const waiter = catalogWaiterRef.current;
     if (!waiter) return;
     catalogWaiterRef.current = null;
+    waiter.unsubscribeCancel?.();
     waiter.resolve(nextCatalog);
   }, []);
 
@@ -218,6 +234,7 @@ export function UploadDataSheet({
     const waiter = catalogWaiterRef.current;
     if (!waiter) return;
     catalogWaiterRef.current = null;
+    waiter.unsubscribeCancel?.();
     waiter.reject(new ScoreHubError('已取消'));
   }, []);
 
@@ -265,10 +282,14 @@ export function UploadDataSheet({
       resolve = promiseResolve;
       reject = promiseReject;
     });
-    catalogWaiterRef.current = { promise, resolve, reject };
+    const waiter: CatalogWaiter = { promise, resolve, reject };
+    waiter.unsubscribeCancel = abortRef.current.onCancel?.(() => {
+      if (catalogWaiterRef.current === waiter) cancelCatalogWait();
+    });
+    catalogWaiterRef.current = waiter;
     syncCatalogForUpload();
     return promise;
-  }, [syncCatalogForUpload]);
+  }, [cancelCatalogWait, syncCatalogForUpload]);
 
   useEffect(() => {
     if (catalog) finishCatalogWait(catalog);
@@ -354,7 +375,7 @@ export function UploadDataSheet({
     if (inFlight) {
       setRunning(true);
     } else {
-      abortRef.current = { aborted: false };
+      abortRef.current = uploadTaskController.getSignal();
       setRunning(false);
       setLastResult(null);
       setBindQrText('');
@@ -431,12 +452,9 @@ export function UploadDataSheet({
   }, [uploadMethod, running]);
 
   useEffect(() => () => {
-    abortRef.current.aborted = true;
-    cancelCatalogWait();
-    uploadInFlightRef.current = false;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
-  }, [cancelCatalogWait]);
+  }, []);
 
   const close = () => {
     if (externalBusy) return;
@@ -448,7 +466,7 @@ export function UploadDataSheet({
 
   const cancelUpload = () => {
     if (!running || abortRef.current.aborted) return;
-    abortRef.current.aborted = true;
+    uploadTaskController.cancel();
     cancelCatalogWait();
     applyPhase({ kind: 'canceling', message: '正在取消…' });
   };
@@ -549,8 +567,9 @@ export function UploadDataSheet({
     }
 
     setDecodingQr(true);
+    const decodeSignal = getForegroundAbortSignal();
     try {
-      const payload = await decodeMaimaiQrFromImageUri(asset.uri);
+      const payload = await decodeMaimaiQrFromImageUri(asset.uri, decodeSignal);
       applyQrText(payload);
       showNotification({
         title: '已识别二维码',
@@ -558,7 +577,11 @@ export function UploadDataSheet({
         variant: 'success',
       });
     } catch {
-      showNotification({ title: '识别失败', message: '无法识别二维码，请换一张图片重试。', variant: 'error' });
+      showNotification({
+        title: decodeSignal.aborted ? '识别已停止' : '识别失败',
+        message: decodeSignal.aborted ? '回到应用后请重新选择二维码图片。' : '无法识别二维码，请换一张图片重试。',
+        variant: decodeSignal.aborted ? 'warning' : 'error',
+      });
     } finally {
       setDecodingQr(false);
     }
@@ -617,7 +640,7 @@ export function UploadDataSheet({
       showNotification({ title: '未选择目标', message: '请勾选至少一个可写入的查分器。', variant: 'warning' });
       return;
     }
-    abortRef.current = { aborted: false };
+    abortRef.current = uploadTaskController.begin();
     uploadInFlightRef.current = true;
     setRunning(true);
     setLastResult(null);
@@ -659,6 +682,7 @@ export function UploadDataSheet({
       }
 
       setLastResult(result);
+      uploadTaskController.complete(result);
       await refreshStoredList();
       await refreshBindStatus(friendCode.trim());
       try {
@@ -679,7 +703,6 @@ export function UploadDataSheet({
       }
     } finally {
       uploadInFlightRef.current = false;
-      setRunning(false);
     }
   };
 
@@ -701,7 +724,7 @@ export function UploadDataSheet({
       showNotification({ title: '未选择目标', message: '请勾选至少一个可写入的查分器。', variant: 'warning' });
       return;
     }
-    abortRef.current = { aborted: false };
+    abortRef.current = uploadTaskController.begin();
     uploadInFlightRef.current = true;
     setRunning(true);
     setLastResult(null);
@@ -720,6 +743,7 @@ export function UploadDataSheet({
         onLxnsTokensRotated,
       });
       setLastResult(result);
+      uploadTaskController.complete(result);
       await refreshStoredList();
       const latest = await scoreHubAccountStore.load();
       if (latest.friendCode) {
@@ -746,7 +770,6 @@ export function UploadDataSheet({
       }
     } finally {
       uploadInFlightRef.current = false;
-      setRunning(false);
     }
   };
 

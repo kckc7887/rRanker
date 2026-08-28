@@ -10,12 +10,13 @@ import { useSession } from '@/state/session-store';
  */
 export async function hydrateLocalAccountRatings(
   repository: SnapshotRepository = new SqliteSnapshotRepository(),
+  signal?: AbortSignal,
 ): Promise<void> {
   const { boundAccounts, updateBoundAccountScore } = useSession.getState();
   await Promise.all(boundAccounts.map(async (account) => {
     if (account.gameId !== 'maimai' || account.providerId !== 'local') return;
     const snapshot = await repository.getLatest(account.id);
-    if (!snapshot) return;
+    if (!snapshot || signal?.aborted) return;
     updateBoundAccountScore(
       account.id,
       formatPlayerScore(snapshot.best50.rating ?? 0, getGameProfile('maimai').ratingDigits),

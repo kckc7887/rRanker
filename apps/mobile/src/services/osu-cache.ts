@@ -36,14 +36,15 @@ export function loadOsuSnapshotFresh(
   provider: OsuScoreProvider,
   gameId: OsuGameId,
   userId: number,
+  signal?: AbortSignal,
 ): Promise<OsuSnapshot> {
   return inflightLoads.dedupe(`${gameId}:${userId}`, async () => {
     const [user, bestScores] = await Promise.all([
-      provider.getUser(userId, gameId),
-      provider.getBestScores(userId, gameId),
+      provider.getUser(userId, gameId, signal),
+      provider.getBestScores(userId, gameId, 100, signal),
     ]);
     return makeOsuSnapshot(normalizeOsuSnapshot(user, bestScores));
-  });
+  }, signal);
 }
 
 /** osu! 分模式玩家快照的本地持久化（缓存优先渲染）。 */

@@ -1,4 +1,5 @@
 import type { DataSource } from '@/domain/models';
+import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 
 type Sourced = { source: DataSource };
 
@@ -42,17 +43,23 @@ export function isCacheFallback<T extends Sourced>(value: T): boolean {
  */
 export async function cacheFirstLoad<T extends Sourced>(options: {
   loadCached: () => Promise<T | null>;
-  loadFresh: () => Promise<T>;
+  loadFresh: (signal: AbortSignal) => Promise<T>;
   onFresh: (fresh: T) => void;
   markStale?: (value: T) => T;
+  signal?: AbortSignal;
 }): Promise<T> {
+  const signal = options.signal ?? getForegroundAbortSignal();
+  if (signal.aborted) throw new Error('cache first load aborted');
   const cached = await options.loadCached();
+  if (signal.aborted) throw new Error('cache first load aborted');
   if (cached) {
-    void options.loadFresh().then((fresh) => {
-      if (!isCacheFallback(fresh)) options.onFresh(fresh);
+    void options.loadFresh(signal).then((fresh) => {
+      if (!signal.aborted && !isCacheFallback(fresh)) options.onFresh(fresh);
     }).catch(() => undefined);
     const mark = options.markStale ?? ((value: T) => staleCached(value));
     return mark(cached);
   }
-  return options.loadFresh();
+  const fresh = await options.loadFresh(signal);
+  if (signal.aborted) throw new Error('cache first load aborted');
+  return fresh;
 }

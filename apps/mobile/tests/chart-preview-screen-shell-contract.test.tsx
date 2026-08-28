@@ -7,12 +7,21 @@
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState } from 'react-native';
 import {
   ChartPreviewScreenShell,
   type ChartPreviewShellRequest,
   type ChartPreviewShellSource,
 } from '@/features/chart-preview-shared/chart-preview-screen-shell';
+import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+
+let mockLifecycle: AppLifecycleSnapshot = {
+  appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+  foregroundGeneration: 1, memoryWarningGeneration: 0,
+};
+
+jest.mock('@/state/app-lifecycle', () => ({
+  useAppLifecycle: () => mockLifecycle,
+}));
 
 const mockInjectJavaScript = jest.fn();
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
@@ -79,7 +88,11 @@ const fictionalSource: ChartPreviewShellSource = {
 
 /** 虚构游戏的接入方式：仅提供配置项与注入构建器，不触碰共享层。 */
 async function renderFictionalShell(request: ChartPreviewShellRequest<FictionalPayload>) {
-  return render(
+  return render(<FictionalShell request={request} />);
+}
+
+function FictionalShell({ request }: { request: ChartPreviewShellRequest<FictionalPayload> }) {
+  return (
     <ChartPreviewScreenShell<FictionalPayload>
       request={request}
       settingsKey={fictionalSettingsKey}
@@ -90,7 +103,7 @@ async function renderFictionalShell(request: ChartPreviewShellRequest<FictionalP
       allowFileAccess
       buildInjectedJavaScript={(payload) =>
         `window.__FICTIONAL__=${JSON.stringify(payload.chartName)};true;`}
-    />,
+    />
   );
 }
 
@@ -111,6 +124,10 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     mockInjectJavaScript.mockClear();
     mockSaveSettings.mockClear();
     latestWebViewProps = {};
+    mockLifecycle = {
+      appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+      foregroundGeneration: 1, memoryWarningGeneration: 0,
+    };
   });
 
   it('prepare 挂起时渲染加载分支，虚构 WebView 尚未出现', async () => {
@@ -209,16 +226,12 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
   });
 
   it('后台卸载播放器，回前台只重建当前资源并恢复内容进程', async () => {
-    let appStateListener: ((state: 'active' | 'background') => void) | null = null;
-    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_type, listener) => {
-      appStateListener = listener;
-      return { remove: jest.fn() };
-    }) as typeof AppState.addEventListener);
-    await renderFictionalShell({
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
       kind: 'ready',
       payload: { chartName: '虚构谱面' },
       prepare: async () => fictionalSource,
-    });
+    };
+    const view = await renderFictionalShell(request);
     await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
     expect(latestWebViewProps.originWhitelist).toEqual(['file://*']);
     expect((latestWebViewProps.onShouldStartLoadWithRequest as (request: Record<string, unknown>) => boolean)({
@@ -230,11 +243,17 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
       url: 'https://example.invalid/',
     })).toBe(false);
 
-    await act(() => { appStateListener?.('background'); });
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining("type:'stop'"));
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false,
+    };
+    await view.rerender(<FictionalShell request={request} />);
     expect(screen.queryByTestId(fictionalTestID)).toBeNull();
 
-    await act(() => { appStateListener?.('active'); });
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+      foregroundGeneration: 2,
+    };
+    await view.rerender(<FictionalShell request={request} />);
     await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
     await act(() => {
       (latestWebViewProps.onContentProcessDidTerminate as (() => void) | undefined)?.();

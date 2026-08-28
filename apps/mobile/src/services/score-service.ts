@@ -11,6 +11,7 @@ import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { ProviderError } from '@/providers/errors';
 import { startTimer, timed } from '@/utils/startup-timing';
 import { cacheFirstLoad, staleCached } from '@/services/cache-first';
+import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 
 export function buildScoreSnapshot(
   player: Player,
@@ -91,7 +92,7 @@ export function staleCachedSnapshot(snapshot: ScoreSnapshot): ScoreSnapshot {
  * 总览（useGameData）与成绩/最佳页（useScoreSnapshot）会同时触发同一份成绩加载，
  * 去重后只向 provider 拉取一次，两侧分别回写各自查询缓存。
  */
-const inflightScoreLoads = new Map<string, Promise<ScoreSnapshot>>();
+const inflightScoreLoads = new Map<string, { promise: Promise<ScoreSnapshot>; signal: AbortSignal }>();
 
 /**
  * 用户主动同步判定用：等待该账号最近一次网络成绩读取（缓存优先后台刷新）落定，吞掉失败兜底。
@@ -99,7 +100,7 @@ const inflightScoreLoads = new Map<string, Promise<ScoreSnapshot>>();
  */
 export function awaitScoreFresh(accountId: string): Promise<void> {
   const inflight = inflightScoreLoads.get(accountId);
-  return inflight ? inflight.then(() => undefined, () => undefined) : Promise.resolve();
+  return inflight ? inflight.promise.then(() => undefined, () => undefined) : Promise.resolve();
 }
 
 export class ScoreService {
@@ -111,11 +112,12 @@ export class ScoreService {
     private readonly catalogRepository?: CatalogRepository,
   ) {}
 
-  private async loadCatalog(detailed = false): Promise<CatalogSnapshot> {
+  private async loadCatalog(detailed = false, signal: AbortSignal): Promise<CatalogSnapshot> {
     try {
       const catalog = detailed
-        ? await this.catalogProvider.getDetailedCatalog()
-        : await this.catalogProvider.getCatalog();
+        ? await this.catalogProvider.getDetailedCatalog(signal)
+        : await this.catalogProvider.getCatalog(signal);
+      if (signal.aborted) throw signal.reason;
       if (!detailed) {
         const stopSave = startTimer('score.saveCatalog');
         await this.catalogRepository?.saveCatalog(catalog);
@@ -138,17 +140,17 @@ export class ScoreService {
     }
   }
 
-  async load(): Promise<ScoreSnapshot> {
+  async load(signal: AbortSignal = getForegroundAbortSignal()): Promise<ScoreSnapshot> {
     const inflight = inflightScoreLoads.get(this.accountId);
-    if (inflight) return inflight;
-    const fresh = this.loadFresh();
-    inflightScoreLoads.set(this.accountId, fresh);
+    if (inflight && !inflight.signal.aborted) return inflight.promise;
+    const fresh = this.loadFresh(signal);
+    inflightScoreLoads.set(this.accountId, { promise: fresh, signal });
     void fresh.then(() => {
-      if (inflightScoreLoads.get(this.accountId) === fresh) {
+      if (inflightScoreLoads.get(this.accountId)?.promise === fresh) {
         inflightScoreLoads.delete(this.accountId);
       }
     }, () => {
-      if (inflightScoreLoads.get(this.accountId) === fresh) {
+      if (inflightScoreLoads.get(this.accountId)?.promise === fresh) {
         inflightScoreLoads.delete(this.accountId);
       }
     });
@@ -161,17 +163,22 @@ export class ScoreService {
    * 无本地快照时直接走网络加载（含失败兜底）。
    * markStale=false 时返回原始快照（不标记过期），用于数据本身来自本地快照的账号（local）。
    */
-  async loadCacheFirst(onFresh: (fresh: ScoreSnapshot) => void, markStale = true): Promise<ScoreSnapshot> {
-    if (!this.snapshotRepository) return this.load();
+  async loadCacheFirst(
+    onFresh: (fresh: ScoreSnapshot) => void,
+    markStale = true,
+    signal: AbortSignal = getForegroundAbortSignal(),
+  ): Promise<ScoreSnapshot> {
+    if (!this.snapshotRepository) return this.load(signal);
     return cacheFirstLoad({
       loadCached: () => this.snapshotRepository!.getLatest(this.accountId),
-      loadFresh: () => this.load(),
+      loadFresh: () => this.load(signal),
       onFresh,
       markStale: markStale ? staleCachedSnapshot : (snapshot) => snapshot,
+      signal,
     });
   }
 
-  private async loadFresh(): Promise<ScoreSnapshot> {
+  private async loadFresh(signal: AbortSignal): Promise<ScoreSnapshot> {
     const stopLoad = startTimer('score.load');
     try {
       let player: Player;
@@ -181,24 +188,25 @@ export class ScoreService {
       if (catalogDriven) {
         const scoreProvider = this.scoreProvider;
         [player, catalog] = await Promise.all([
-          timed('score.getPlayer', () => scoreProvider.getPlayer()),
-          timed('score.loadCatalog', () => this.loadCatalog(true)),
+          timed('score.getPlayer', () => scoreProvider.getPlayer(signal)),
+          timed('score.loadCatalog', () => this.loadCatalog(true, signal)),
         ]);
-        rawRecords = await timed('score.getRecords', () => scoreProvider.getRecordsFromCatalog(catalog));
+        rawRecords = await timed('score.getRecords', () => scoreProvider.getRecordsFromCatalog(catalog, signal));
       } else {
         const scoreProvider = this.scoreProvider;
         [player, rawRecords, catalog] = await Promise.all([
-          timed('score.getPlayer', () => scoreProvider.getPlayer()),
-          timed('score.getRecords', () => scoreProvider.getRecords()),
-          timed('score.loadCatalog', () => this.loadCatalog()),
+          timed('score.getPlayer', () => scoreProvider.getPlayer(signal)),
+          timed('score.getRecords', () => scoreProvider.getRecords(signal)),
+          timed('score.loadCatalog', () => this.loadCatalog(false, signal)),
         ]);
       }
+      if (signal.aborted) throw signal.reason;
       const stopBuild = startTimer('score.buildSnapshot');
       const builtSnapshot = buildScoreSnapshot(player, rawRecords, catalog);
       const snapshot = catalogDriven ? withoutChartNotes(builtSnapshot) : builtSnapshot;
       stopBuild();
       const stopSave = startTimer('score.saveSnapshot');
-      await this.snapshotRepository?.save(this.accountId, snapshot);
+      if (!signal.aborted) await this.snapshotRepository?.save(this.accountId, snapshot);
       stopSave();
       stopLoad();
       return snapshot;

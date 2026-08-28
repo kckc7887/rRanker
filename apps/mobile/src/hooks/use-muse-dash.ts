@@ -48,13 +48,13 @@ type MuseDashSnapshot<T> = { data: T; source: DataSource };
 
 function useMuseDashCacheFirst<T>(
   queryKey: readonly unknown[],
-  load: () => Promise<MuseDashSnapshot<T>>,
+  load: (signal: AbortSignal) => Promise<MuseDashSnapshot<T>>,
   enabled = true,
 ): MuseDashQuery<T> {
   const tabActive = useCachedTabActive();
   const query = useQuery({
     queryKey,
-    queryFn: load,
+    queryFn: ({ signal }) => load(signal),
     enabled: enabled && tabActive,
     ...MUSE_DASH_QUERY_OPTIONS,
   });
@@ -75,7 +75,7 @@ export function useMuseDashSearch(query: string) {
   const normalized = query.trim();
   return useQuery({
     queryKey: ['musedash', 'players', 'search', normalized],
-    queryFn: () => museDashProvider.searchPlayers(normalized),
+    queryFn: ({ signal }) => museDashProvider.searchPlayers(normalized, signal),
     enabled: normalized.length > 0,
     ...MUSE_DASH_QUERY_OPTIONS,
   });
@@ -83,26 +83,27 @@ export function useMuseDashSearch(query: string) {
 
 export function useMuseDashPlayer(userId: string | null, enabled = true) {
   const queryKey = ['musedash', 'player', userId] as const;
-  return useMuseDashCacheFirst<MuseDashPlayer>(queryKey, async () => {
+  return useMuseDashCacheFirst<MuseDashPlayer>(queryKey, async (signal) => {
     // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
     if (userId !== null && isMuseDashTestUserId(userId)) {
       const [albums, diffdiff] = await Promise.all([
-        loadMuseDashAlbumsCacheFirst(cache),
-        loadMuseDashDiffdiffCacheFirst(cache),
+        loadMuseDashAlbumsCacheFirst(cache, signal),
+        loadMuseDashDiffdiffCacheFirst(cache, signal),
       ]);
       return maxedMuseDashPlayerSnapshot(albums.data, diffdiff.data);
     }
     const snapshot = await cacheFirstLoad({
       loadCached: () => cache.loadPlayer(userId!),
       loadFresh: async () => {
-        const player = await loadMuseDashPlayerFresh(userId!);
+        const player = await loadMuseDashPlayerFresh(userId!, signal);
         const fresh = makeMuseDashSnapshot(player);
-        void cache.savePlayer(userId!, fresh).catch(() => undefined);
+        if (!signal.aborted) void cache.savePlayer(userId!, fresh).catch(() => undefined);
         return fresh;
       },
       onFresh: (fresh) => {
         queryClient.setQueryData(queryKey, fresh);
       },
+      signal,
     });
     return snapshot;
   }, enabled && userId !== null);
@@ -117,12 +118,12 @@ export function useMuseDashPlayDetail(
 ) {
   const enabled = uid !== null && difficulty !== null && platform !== null && userId !== null;
   const queryKey = ['musedash', 'play-detail', userId, uid, difficulty, platform] as const;
-  return useMuseDashCacheFirst<MuseDashPlayDetail>(queryKey, async () => {
+  return useMuseDashCacheFirst<MuseDashPlayDetail>(queryKey, async (signal) => {
     // 示例账号：全 AP（miss 0）直接生成，不请求 /rank 明细。
     if (userId !== null && isMuseDashTestUserId(userId)) {
       return maxedMuseDashPlayDetailSnapshot();
     }
-    const detail = await loadMuseDashPlayDetailFresh(uid!, difficulty!, platform!, userId!);
+    const detail = await loadMuseDashPlayDetailFresh(uid!, difficulty!, platform!, userId!, signal);
     return makeMuseDashSnapshot(detail);
   }, enabled);
 }
@@ -137,11 +138,11 @@ export function useMuseDashPlayDetails(
 ): ReadonlyMap<string, number | undefined> {
   const queryDefs = useMemo(() => items.map((item) => ({
     queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
-    queryFn: async (): Promise<MuseDashSnapshot<MuseDashPlayDetail>> => {
+    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<MuseDashPlayDetail>> => {
       if (userId !== null && isMuseDashTestUserId(userId)) {
         return maxedMuseDashPlayDetailSnapshot();
       }
-      const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!);
+      const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!, signal);
       return makeMuseDashSnapshot(detail);
     },
     enabled: enabled && userId !== null,
@@ -162,21 +163,21 @@ export function useMuseDashPlayDetails(
 
 export function useMuseDashAlbums(enabled = true) {
   const queryKey = ['musedash', 'albums'] as const;
-  return useMuseDashCacheFirst<MuseDashAlbumsResponse>(queryKey, async () => {
-    return makeMuseDashSnapshot(await loadMuseDashAlbumsFresh());
+  return useMuseDashCacheFirst<MuseDashAlbumsResponse>(queryKey, async (signal) => {
+    return makeMuseDashSnapshot(await loadMuseDashAlbumsFresh(signal));
   }, enabled);
 }
 
 export function useMuseDashCe(enabled = true) {
   const queryKey = ['musedash', 'ce'] as const;
-  return useMuseDashCacheFirst<MuseDashCeResponse>(queryKey, async () => {
-    return makeMuseDashSnapshot(await loadMuseDashCeFresh());
+  return useMuseDashCacheFirst<MuseDashCeResponse>(queryKey, async (signal) => {
+    return makeMuseDashSnapshot(await loadMuseDashCeFresh(signal));
   }, enabled);
 }
 
 export function useMuseDashDiffdiff(enabled = true) {
   const queryKey = ['musedash', 'diffdiff'] as const;
-  return useMuseDashCacheFirst<MuseDashDiffdiffEntry[]>(queryKey, async () => {
-    return makeMuseDashSnapshot(await loadMuseDashDiffdiffFresh());
+  return useMuseDashCacheFirst<MuseDashDiffdiffEntry[]>(queryKey, async (signal) => {
+    return makeMuseDashSnapshot(await loadMuseDashDiffdiffFresh(signal));
   }, enabled);
 }

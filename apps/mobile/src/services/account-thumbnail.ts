@@ -47,6 +47,7 @@ export async function persistBoundAccountThumbnail(
  */
 export async function hydrateBoundAccountThumbnails(
   repo: ThumbnailResourceRepository = repository,
+  signal?: AbortSignal,
 ): Promise<void> {
   const { boundAccounts, updateBoundAccountScore } = useSession.getState();
   await Promise.all(boundAccounts.map(async (account) => {
@@ -55,7 +56,7 @@ export async function hydrateBoundAccountThumbnails(
         accountThumbnailResourceKey(account.id),
         ACCOUNT_THUMBNAIL_SCHEMA_VERSION,
       );
-      if (!thumbnail) return;
+      if (!thumbnail || signal?.aborted) return;
       updateBoundAccountScore(
         account.id,
         thumbnail.scoreDisplay ?? account.scoreDisplay,

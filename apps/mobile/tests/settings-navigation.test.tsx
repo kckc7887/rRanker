@@ -10,6 +10,7 @@ const mockPush = jest.fn();
 const mockSaveTheme = jest.fn(async (_value?: unknown) => undefined);
 const mockClear = jest.fn(async (_ids?: unknown) => ({ clearedIds: ['shared'], failures: [] as string[], reclaimedBytes: 4096 }));
 const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: ['shared' as const] }));
+const mockExportDiagnostics = jest.fn(async () => undefined);
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-router', () => {
@@ -43,6 +44,9 @@ jest.mock('@/storage/storage-clear-prefs-store', () => ({
     load: () => mockLoadPrefs(),
     save: jest.fn(async () => undefined),
   },
+}));
+jest.mock('@/services/runtime-diagnostics', () => ({
+  exportRuntimeDiagnostics: () => mockExportDiagnostics(),
 }));
 jest.mock('@/components/AccentColorPicker', () => {
   const React = jest.requireActual('react') as typeof import('react');
@@ -95,6 +99,8 @@ describe('settings navigation', () => {
     mockPush.mockClear();
     mockClear.mockClear();
     mockLoadPrefs.mockClear();
+    mockExportDiagnostics.mockReset();
+    mockExportDiagnostics.mockResolvedValue(undefined);
     useThemeStore.setState({
       appearance: 'system', accent: 'blue', customHex: '#246BFD', hydrated: true,
     });
@@ -134,6 +140,16 @@ describe('settings navigation', () => {
     await fireEvent.press(screen.getByLabelText('快捷清除缓存'));
     await waitFor(() => expect(mockClear).toHaveBeenCalledWith(['shared']));
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('shows a user-actionable message when diagnostic export fails', async () => {
+    mockExportDiagnostics.mockRejectedValueOnce(new Error('sharing unavailable'));
+    const screen = await renderSettings();
+
+    await fireEvent.press(screen.getByLabelText('导出诊断记录'));
+
+    expect(await screen.findByText('导出失败')).toBeTruthy();
+    expect(screen.getByText('暂时无法导出诊断记录，请稍后重试。')).toBeTruthy();
   });
 
   it('changes appearance and accent from theme settings', async () => {

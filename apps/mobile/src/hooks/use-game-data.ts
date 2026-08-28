@@ -123,10 +123,13 @@ export function useGameData(enabled = true) {
           loadFresh: async () => {
             const fresh = await loadPhiraPlayerFresh(playerId, signal);
             void refreshPhiraSeedBests(fresh, signal).then(() => toBundle(fresh))
-              .then((bundle) => queryClient.setQueryData(queryKey, bundle)).catch(() => undefined);
+              .then((bundle) => {
+                if (!signal.aborted) queryClient.setQueryData(queryKey, bundle);
+              }).catch(() => undefined);
             return fresh;
           },
           onFresh: (fresh) => { void toBundle(fresh).then((bundle) => queryClient.setQueryData(queryKey, bundle)); },
+          signal,
         });
         return toBundle(snapshot);
       }
@@ -153,14 +156,15 @@ export function useGameData(enabled = true) {
         const snapshot = await cacheFirstLoad({
           loadCached: () => tufCache.loadPlayer(playerId),
           loadFresh: async () => {
-            const player = await loadTufPlayerFresh(playerId);
+            const player = await loadTufPlayerFresh(playerId, signal);
             const fresh = makeTufSnapshot(player);
-            void tufCache.savePlayer(playerId, fresh).catch(() => undefined);
+            if (!signal.aborted) void tufCache.savePlayer(playerId, fresh).catch(() => undefined);
             return fresh;
           },
           onFresh: (fresh) => {
             queryClient.setQueryData(queryKey, toBundle(fresh.data, fresh.source));
           },
+          signal,
         });
         return toBundle(snapshot.data, snapshot.source);
       }
@@ -180,8 +184,8 @@ export function useGameData(enabled = true) {
           });
           // 示例账号首屏优先读取曲库和定数表缓存。
           const [albums, diffdiff] = await Promise.all([
-            loadMuseDashAlbumsCacheFirst(museDashCache),
-            loadMuseDashDiffdiffCacheFirst(museDashCache),
+            loadMuseDashAlbumsCacheFirst(museDashCache, signal),
+            loadMuseDashDiffdiffCacheFirst(museDashCache, signal),
           ]);
           const snapshot = maxedMuseDashPlayerSnapshot(
             albums.data,
@@ -211,14 +215,15 @@ export function useGameData(enabled = true) {
         const snapshot = await cacheFirstLoad({
           loadCached: () => museDashCache.loadPlayer(userId),
           loadFresh: async () => {
-            const player = await loadMuseDashPlayerFresh(userId);
+            const player = await loadMuseDashPlayerFresh(userId, signal);
             const fresh = makeMuseDashSnapshot(player);
-            void museDashCache.savePlayer(userId, fresh).catch(() => undefined);
+            if (!signal.aborted) void museDashCache.savePlayer(userId, fresh).catch(() => undefined);
             return fresh;
           },
           onFresh: (fresh) => {
             queryClient.setQueryData(queryKey, toBundle(fresh.data, fresh.source));
           },
+          signal,
         });
         return toBundle(snapshot.data, snapshot.source);
       }
@@ -290,7 +295,7 @@ export function useGameData(enabled = true) {
           // 缓存优先：先渲染本地快照，后台刷新成功后静默回写。
           const snapshot = await service.loadCacheFirst((fresh) => {
             queryClient.setQueryData(queryKey, toBundle(fresh));
-          });
+          }, signal);
           return toBundle(snapshot);
         }
         return {
@@ -317,13 +322,14 @@ export function useGameData(enabled = true) {
           const snapshot = await cacheFirstLoad({
             loadCached: () => osuCache.load(activeGameId, userId),
             loadFresh: async () => {
-              const fresh = await loadOsuSnapshotFresh(provider, activeGameId, userId);
-              void osuCache.save(activeGameId, userId, fresh).catch(() => undefined);
+              const fresh = await loadOsuSnapshotFresh(provider, activeGameId, userId, signal);
+              if (!signal.aborted) void osuCache.save(activeGameId, userId, fresh).catch(() => undefined);
               return fresh;
             },
             onFresh: (fresh) => {
               queryClient.setQueryData(queryKey, toBundle(fresh));
             },
+            signal,
           });
           return toBundle(snapshot);
         }
@@ -447,13 +453,16 @@ export function useGameData(enabled = true) {
             loadCached: () => cache.load(activeAccountId),
             loadFresh,
             onFresh: (fresh) => {
-              void cache.save(activeAccountId, fresh).catch(() => undefined);
-              queryClient.setQueryData(queryKey, toBundle(fresh));
+              if (!signal.aborted) {
+                void cache.save(activeAccountId, fresh).catch(() => undefined);
+                queryClient.setQueryData(queryKey, toBundle(fresh));
+              }
             },
             markStale: stalePhigrosPayload,
+            signal,
           });
           // 打标缓存（来自命中）不落库；网络新数据（非兜底）首次同步后持久化。
-          if (!isCacheFallback(payload)) {
+          if (!signal.aborted && !isCacheFallback(payload)) {
             void cache.save(activeAccountId, payload).catch(() => undefined);
           }
           return toBundle(payload);
@@ -510,14 +519,14 @@ export function useGameData(enabled = true) {
       if (persistScores) {
         const cached = await repository.getLatest(activeAccountId);
         if (cached) {
-          void service.load().then((fresh) => {
-            if (fresh.source.kind !== 'cache') queryClient.setQueryData(queryKey, toBundle(fresh));
+          void service.load(signal).then((fresh) => {
+            if (!signal.aborted && fresh.source.kind !== 'cache') queryClient.setQueryData(queryKey, toBundle(fresh));
           }).catch(() => undefined);
           // 本地账号数据本身来自本地快照，不打过期标。
           return toBundle(activeProviderId === 'local' ? cached : staleCachedSnapshot(cached));
         }
       }
-      const snapshot = await service.load();
+      const snapshot = await service.load(signal);
       return toBundle(snapshot);
     },
   });

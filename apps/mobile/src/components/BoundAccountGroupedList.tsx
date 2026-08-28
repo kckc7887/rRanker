@@ -25,18 +25,22 @@ import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-ava
 import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
 import { hydrateChunithmAccountSummaries } from '@/services/hydrate-chunithm-account-summaries';
 import { hydratePhigrosAccountSummaries } from '@/services/hydrate-phigros-account-summaries';
+import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
 
-function useHydrateAccountSummaries(accountIds: string): void {
+function useHydrateAccountSummaries(accountIds: string, enabled: boolean): void {
+  const lifecycle = useAppLifecycle();
   const ranFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!accountIds) return;
-    if (ranFor.current === accountIds) return;
-    ranFor.current = accountIds;
-    void hydrateBoundAccountAvatars();
-    void hydrateBoundAccountThumbnails();
-    void hydrateChunithmAccountSummaries();
-    void hydratePhigrosAccountSummaries();
-  }, [accountIds]);
+    if (!enabled || !lifecycle.foregroundReady || !accountIds) return;
+    const hydrationKey = `${lifecycle.foregroundGeneration}:${accountIds}`;
+    if (ranFor.current === hydrationKey) return;
+    ranFor.current = hydrationKey;
+    const signal = getForegroundAbortSignal();
+    void hydrateBoundAccountAvatars(signal);
+    void hydrateBoundAccountThumbnails(undefined, signal);
+    void hydrateChunithmAccountSummaries(signal);
+    void hydratePhigrosAccountSummaries(signal);
+  }, [accountIds, enabled, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 }
 
 function ratingNumber(display: string): number | null {
@@ -65,7 +69,7 @@ type GameGroup = {
   accounts: BoundAccount[];
 };
 
-export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpanded, activeAccountId, onToggleGame, onSelectAccount, renderActions, renderRatingTag, emptyText }: {
+export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpanded, activeAccountId, onToggleGame, onSelectAccount, renderActions, renderRatingTag, emptyText, hydrationEnabled = true }: {
   accounts: BoundAccount[];
   expandedGameId: GameId | null;
   isGameExpanded?: (gameId: GameId) => boolean;
@@ -76,13 +80,14 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   /** 账号行 Rating 标签槽位：提供时替换内置各游戏标签（如 osu PP 标签）。 */
   renderRatingTag?: (account: BoundAccount) => ReactNode;
   emptyText?: string;
+  hydrationEnabled?: boolean;
 }) {
   const theme = useAppTheme();
   const avatarHydrateKey = accounts
     .filter((account) => account.providerId === 'lxns' || account.providerId === 'phi-taptap' || account.providerId === 'tuf' || account.providerId === 'osu')
     .map((account) => account.id)
     .join('|');
-  useHydrateAccountSummaries(avatarHydrateKey);
+  useHydrateAccountSummaries(avatarHydrateKey, hydrationEnabled);
 
   /** 家族分组：osu! 板块 → 模式子组（仅显示有绑定账号的模式）→ 账号；非家族游戏保持原样。 */
   const { gameGroups, familyGroups } = useMemo(() => {

@@ -1,8 +1,21 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { useState } from 'react';
-import { AppState, InteractionManager, Pressable, Text } from 'react-native';
+import { InteractionManager, Pressable, Text } from 'react-native';
 import { CachedTabScreen, useCachedTabActive } from '@/components/CachedTabScreen';
+import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+
+let mockLifecycle: AppLifecycleSnapshot = {
+  appState: 'active',
+  phase: 'foreground-ready',
+  foregroundReady: true,
+  foregroundGeneration: 1,
+  memoryWarningGeneration: 0,
+};
+
+jest.mock('@/state/app-lifecycle', () => ({
+  useAppLifecycle: () => mockLifecycle,
+}));
 
 let mockFocusEffect: (() => void | (() => void)) | null = null;
 const mockHeavyPageRender = jest.fn();
@@ -26,7 +39,13 @@ function StatefulHeavyPage() {
 }
 
 describe('cached native-tab content', () => {
-  beforeEach(() => mockHeavyPageRender.mockClear());
+  beforeEach(() => {
+    mockHeavyPageRender.mockClear();
+    mockLifecycle = {
+      appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+      foregroundGeneration: 1, memoryWarningGeneration: 0,
+    };
+  });
   afterEach(() => jest.restoreAllMocks());
 
   it('keeps mounted state and resumes activity only after every focus transition', async () => {
@@ -82,13 +101,8 @@ describe('cached native-tab content', () => {
     expect(pendingTasks[2]?.cancel).toHaveBeenCalledTimes(1);
   });
 
-  it('pauses in background and cancels a superseded resume task', async () => {
+  it('unmounts in background and cancels a superseded resume task', async () => {
     const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    let appStateListener: ((state: 'active' | 'background') => void) | null = null;
-    jest.spyOn(AppState, 'addEventListener').mockImplementation(((_type, listener) => {
-      appStateListener = listener;
-      return { remove: jest.fn() };
-    }) as typeof AppState.addEventListener);
     jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
       const task = { callback: callback as () => void, cancel: jest.fn() };
       pendingTasks.push(task);
@@ -100,15 +114,25 @@ describe('cached native-tab content', () => {
     await act(() => { pendingTasks[0]?.callback(); });
     expect(screen.getByText('前台')).toBeTruthy();
 
-    await act(() => { appStateListener?.('background'); });
-    expect(screen.getByText('后台')).toBeTruthy();
-    await act(() => { appStateListener?.('active'); });
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false,
+    };
+    await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
+    expect(screen.getByTestId('cached-tab-placeholder')).toBeTruthy();
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+      foregroundGeneration: 2,
+    };
+    await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
     expect(pendingTasks).toHaveLength(2);
-    expect(screen.getByText('后台')).toBeTruthy();
+    expect(screen.getByTestId('cached-tab-placeholder')).toBeTruthy();
 
-    await act(() => { appStateListener?.('background'); });
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false,
+    };
+    await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
     expect(pendingTasks[1]?.cancel).toHaveBeenCalledTimes(1);
     await act(() => { pendingTasks[1]?.callback(); });
-    expect(screen.getByText('后台')).toBeTruthy();
+    expect(screen.getByTestId('cached-tab-placeholder')).toBeTruthy();
   });
 });

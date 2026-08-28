@@ -51,14 +51,14 @@ export class ChunithmScoreProvider {
     };
   }
 
-  private async request(path: string, optional = false): Promise<OptionalResponse> {
-    const data = await this.oauth.request(path, optional, CHUNITHM_REQUEST_TEXTS);
+  private async request(path: string, optional = false, signal?: AbortSignal): Promise<OptionalResponse> {
+    const data = await this.oauth.request(path, optional, CHUNITHM_REQUEST_TEXTS, signal);
     if (!optional) return { found: true, data };
     return data === null ? { found: false } : { found: true, data };
   }
 
-  async getPlayer(): Promise<ChunithmPlayer | null> {
-    const result = await this.request('/user/chunithm/player', true);
+  async getPlayer(signal?: AbortSignal): Promise<ChunithmPlayer | null> {
+    const result = await this.request('/user/chunithm/player', true, signal);
     if (!result.found) return null;
     const parsed = ChunithmPlayerSchema.safeParse(result.data);
     if (!parsed.success) {
@@ -67,8 +67,8 @@ export class ChunithmScoreProvider {
     return parsed.data;
   }
 
-  async getScores(): Promise<ChunithmScore[]> {
-    const result = await this.request('/user/chunithm/player/scores', true);
+  async getScores(signal?: AbortSignal): Promise<ChunithmScore[]> {
+    const result = await this.request('/user/chunithm/player/scores', true, signal);
     if (!result.found) return [];
     if (!Array.isArray(result.data)) {
       throw new ProviderError('upstream_schema', '落雪中二成绩响应结构与已验证契约不一致', true);
@@ -82,8 +82,8 @@ export class ChunithmScoreProvider {
     });
   }
 
-  async getBests(): Promise<ChunithmBests> {
-    const result = await this.request('/user/chunithm/player/bests', true);
+  async getBests(signal?: AbortSignal): Promise<ChunithmBests> {
+    const result = await this.request('/user/chunithm/player/bests', true, signal);
     if (!result.found) return emptyChunithmBests();
     const parsed = ChunithmBestsSchema.safeParse(result.data);
     if (!parsed.success) {
@@ -96,11 +96,11 @@ export class ChunithmScoreProvider {
     };
   }
 
-  async getSnapshot(): Promise<ChunithmPersonalSnapshot> {
+  async getSnapshot(signal?: AbortSignal): Promise<ChunithmPersonalSnapshot> {
     const [player, scores, bests] = await Promise.all([
-      this.getPlayer(),
-      this.getScores(),
-      this.getBests(),
+      this.getPlayer(signal),
+      this.getScores(signal),
+      this.getBests(signal),
     ]);
     return {
       player,
