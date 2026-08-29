@@ -897,7 +897,8 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
 }
 
 function cabinetScoreProgressMessage(job: ScoreHubCabinetScoreJob): string {
-  if (job.cleanupStatus === 'pending' || job.cleanupStatus === 'unconfirmed') {
+  if (job.status === 'failed'
+    && (job.cleanupStatus === 'pending' || job.cleanupStatus === 'unconfirmed')) {
     return '正在结束本次读取，请稍候…';
   }
   if (job.stage === 'queued') return '正在等待读取成绩…';
@@ -908,6 +909,9 @@ function cabinetScoreProgressMessage(job: ScoreHubCabinetScoreJob): string {
     return job.progress
       ? `正在读取成绩…（已读取 ${job.progress.detailsFetched} 条）`
       : '正在读取成绩…';
+  }
+  if (job.stage === 'logout' || job.stage === 'cleanup') {
+    return '正在结束本次读取，请稍候…';
   }
   if (job.stage === 'persist') return '正在整理成绩…';
   return '正在完成成绩读取…';
