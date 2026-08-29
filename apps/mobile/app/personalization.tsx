@@ -141,12 +141,12 @@ export default function PersonalizationScreen() {
           {artworkEnabled ? (
             <View style={styles.sliderGroup}>
               <View style={styles.sliderLabelRow}>
-                <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>遮罩透明度</Text>
+                <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>曲绘透明度</Text>
                 <Text style={[styles.sliderValue, { color: theme.text }]}>{artworkTransparencyDraft}%</Text>
               </View>
               <ValueSlider
-                accessibilityLabel="成绩卡片遮罩透明度"
-                colors={[theme.surface, theme.accentSoft, theme.accent]}
+                accessibilityLabel="成绩卡片曲绘透明度"
+                inverted
                 max={100}
                 min={0}
                 onChange={setArtworkTransparencyDraft}
@@ -160,7 +160,6 @@ export default function PersonalizationScreen() {
               </View>
               <ValueSlider
                 accessibilityLabel="成绩卡片曲绘模糊度"
-                colors={[theme.surfaceMuted, theme.accentSoft]}
                 max={30}
                 min={0}
                 onChange={setArtworkBlurDraft}
