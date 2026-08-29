@@ -1,5 +1,4 @@
 import { fetch as expoFetch } from 'expo/fetch';
-import { File } from 'expo-file-system';
 import { z } from 'zod';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import {
@@ -193,43 +192,4 @@ export class OsuScoreProvider {
     );
   }
 
-  /** 下载完整谱面集归档；直接流式写入调用方提供的临时文件。 */
-  downloadBeatmapsetArchive(
-    beatmapsetId: number | string,
-    destination: File,
-    signal?: AbortSignal,
-    onProgress?: (progress: number) => void,
-  ): Promise<File> {
-    const path = `/beatmapsets/${encodeURIComponent(String(beatmapsetId))}/download`;
-    return this.withAuthorizedResponse(path, 'application/octet-stream', signal, async (response) => {
-      if (!response.body) {
-        throw new ProviderError('network', 'osu! 未返回谱面文件', true);
-      }
-      destination.create({ intermediates: true, overwrite: true });
-      const reader = response.body.getReader();
-      const writer = destination.writableStream().getWriter();
-      const total = Number(response.headers.get('content-length'));
-      let received = 0;
-      try {
-        while (true) {
-          if (signal?.aborted) throw signal.reason;
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          await writer.write(chunk.value);
-          received += chunk.value.byteLength;
-          onProgress?.(Number.isFinite(total) && total > 0 ? Math.min(1, received / total) : 0);
-        }
-        await writer.close();
-      } catch (error) {
-        await reader.cancel(error).catch(() => undefined);
-        await writer.abort(error).catch(() => undefined);
-        throw error;
-      }
-      if (!destination.exists || destination.size <= 0) {
-        throw new ProviderError('network', 'osu! 返回的谱面文件为空', true);
-      }
-      onProgress?.(1);
-      return destination;
-    }, null);
-  }
 }

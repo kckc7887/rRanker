@@ -1,4 +1,4 @@
-import { fireEvent, render, within } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Platform, StyleSheet } from 'react-native';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
@@ -18,6 +18,10 @@ const mockSetTags = jest.fn(async () => undefined);
 const mockSetTagPresets = jest.fn(async () => undefined);
 const mockDetailRefetch = jest.fn(async () => undefined);
 const mockShowActionNotification = jest.fn();
+const mockDownloadOsuBeatmapsetPackage = jest.fn(async (_request: unknown, _options: unknown) => true);
+const mockStartDownload = jest.fn(async (
+  runner: (options: Record<string, unknown>) => Promise<boolean>,
+) => runner({}));
 let mockRecentScores: OsuBestScore[] = [];
 
 /** Hard（5.5★）：完整新版成绩（statistics 部分键为 null，验证逐键容错）。 */
@@ -203,6 +207,14 @@ jest.mock('@/hooks/use-osu-beatmapset-detail', () => ({
 jest.mock('@/components/AppNotification', () => ({
   ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'),
   useNotification: () => ({ showActionNotification: mockShowActionNotification }),
+}));
+jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
+  useChartPackageDownload: () => ({ isRunning: false, start: mockStartDownload }),
+}));
+jest.mock('@/features/osu-beatmapset-download/osu-beatmapset-download', () => ({
+  downloadOsuBeatmapsetPackage: (request: unknown, options: unknown) => (
+    mockDownloadOsuBeatmapsetPackage(request, options)
+  ),
 }));
 jest.mock('@/hooks/use-osu-known-scores', () => ({
   useOsuKnownScores: (_gameId: unknown, seedScores: OsuBestScore[] = []) => ({
@@ -502,7 +514,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
       .toBeGreaterThanOrEqual(addButtons.length);
   });
 
-  it('在练习按钮下方、标签编辑前渲染整包下载按钮，并按 beatmap id 加入清单', async () => {
+  it('下载按钮位于练习与标签之间，并提供带视频、仅游玩内容和取消三项选择', async () => {
     const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
     const card = within(screen.getByTestId('osu-detail-difficulty-22423'));
     const judgement = card.getByLabelText('osu 判定统计');
@@ -520,6 +532,33 @@ describe('OsuSongDetail 歌曲详情页', () => {
     expect(practice.props.accessibilityHint).toBe('gesture-handler');
     expect(download.props.accessibilityHint).toBe('gesture-handler');
     expect(download.props.accessibilityLabel).toBe('下载谱面文件：鳥の詩');
+
+    fireEvent.press(download);
+    expect(mockShowActionNotification).toHaveBeenCalledWith({
+      title: '下载谱面文件',
+      message: '谱面文件由 Sayobot 提供。背景视频会增加文件大小和流量消耗，请选择下载内容。',
+      variant: 'info',
+      actions: [
+        expect.objectContaining({ label: '包含背景视频' }),
+        expect.objectContaining({ label: '仅游玩内容' }),
+        { label: '取消', tone: 'cancel' },
+      ],
+    });
+    const selection = mockShowActionNotification.mock.calls.at(-1)?.[0] as {
+      actions: { onPress?: () => void }[];
+    };
+    selection.actions[0].onPress?.();
+    await waitFor(() => expect(mockDownloadOsuBeatmapsetPackage).toHaveBeenCalledWith({
+      beatmapsetId: 3720,
+      title: '鳥の詩',
+      includeVideo: true,
+    }, {}));
+    selection.actions[1].onPress?.();
+    await waitFor(() => expect(mockDownloadOsuBeatmapsetPackage).toHaveBeenLastCalledWith({
+      beatmapsetId: 3720,
+      title: '鳥の詩',
+      includeVideo: false,
+    }, {}));
 
     fireEvent.press(practice);
     expect(mockSetChartPractice).toHaveBeenCalledWith('3720', 'SD', 22423, true);

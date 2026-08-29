@@ -267,11 +267,6 @@ describe('C 端文案与注释门禁', () => {
       '读取失败，请重试。',
       { network: '暂时无法同步，请稍后重试。' },
     )).toBe('暂时无法同步，请稍后重试。');
-    expect(providerErrorToUserMessage(
-      new ProviderError('permission', 'missing lazer scope', false),
-      '下载失败，请重试。',
-      { permission: '请在游戏管理中重新绑定 osu! 账号后再下载谱面文件。' },
-    )).toBe('请在游戏管理中重新绑定 osu! 账号后再下载谱面文件。');
     expect(providerErrorToUserMessage(new Error('raw error'), '读取失败，请重试。'))
       .toBe('读取失败，请重试。');
     expect(providerErrorToUserMessage(

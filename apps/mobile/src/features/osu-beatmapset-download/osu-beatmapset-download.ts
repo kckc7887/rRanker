@@ -1,33 +1,41 @@
-import { File } from 'expo-file-system';
 import {
   chartPackageNameWithSuffix,
   cleanupChartDownloadSessionDirectory,
   createChartDownloadSessionDirectory,
+  downloadChartResource,
   saveChartPackage,
   throwIfChartDownloadCancelled,
   type ChartPackageDownloadOptions,
 } from '@/features/chart-download-shared/chart-download-shared';
-import type { OsuScoreProvider } from '@/providers/osu-score-provider';
+import { OSU_BEATMAPSET_DOWNLOAD_ROOT } from '@/providers/osu-config';
 
 export function osuBeatmapsetPackageName(title: string, beatmapsetId: number): string {
   return `${chartPackageNameWithSuffix(title, String(beatmapsetId))}.osz`;
 }
 
+export function osuBeatmapsetDownloadUrl(beatmapsetId: number, includeVideo: boolean): string {
+  return `${OSU_BEATMAPSET_DOWNLOAD_ROOT}/${includeVideo ? 'full' : 'novideo'}/${beatmapsetId}`;
+}
+
 export async function downloadOsuBeatmapsetPackage(
-  provider: OsuScoreProvider,
-  request: { beatmapsetId: number; title: string },
+  request: { beatmapsetId: number; title: string; includeVideo: boolean },
   options: ChartPackageDownloadOptions = {},
 ): Promise<boolean> {
   const signal = options.signal ?? new AbortController().signal;
   const staging = createChartDownloadSessionDirectory();
   try {
     throwIfChartDownloadCancelled(signal);
-    const archive = new File(staging, 'beatmapset.osz');
-    await provider.downloadBeatmapsetArchive(
-      request.beatmapsetId,
-      archive,
+    const archive = await downloadChartResource(
+      staging,
+      'beatmapset.osz',
+      osuBeatmapsetDownloadUrl(request.beatmapsetId, request.includeVideo),
       signal,
-      (progress) => options.onProgress?.({ phase: 'downloading', progress }),
+      ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+        const progress = totalBytesExpectedToWrite > 0
+          ? Math.min(1, totalBytesWritten / totalBytesExpectedToWrite)
+          : 0;
+        options.onProgress?.({ phase: 'downloading', progress });
+      },
     );
     throwIfChartDownloadCancelled(signal);
     options.onProgress?.({ phase: 'organizing', progress: 1 });
