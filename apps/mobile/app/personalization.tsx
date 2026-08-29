@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
@@ -52,7 +52,12 @@ export default function PersonalizationScreen() {
   const setArtworkEnabled = useThemeStore((state) => state.setScoreCardArtworkEnabled);
   const setArtworkTransparency = useThemeStore((state) => state.setScoreCardArtworkTransparency);
   const setArtworkBlur = useThemeStore((state) => state.setScoreCardArtworkBlur);
+  const [artworkTransparencyDraft, setArtworkTransparencyDraft] = useState(artworkTransparency);
+  const [artworkBlurDraft, setArtworkBlurDraft] = useState(artworkBlur);
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  useEffect(() => setArtworkTransparencyDraft(artworkTransparency), [artworkTransparency]);
+  useEffect(() => setArtworkBlurDraft(artworkBlur), [artworkBlur]);
 
   return (
     <>
@@ -137,33 +142,38 @@ export default function PersonalizationScreen() {
             <View style={styles.sliderGroup}>
               <View style={styles.sliderLabelRow}>
                 <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>遮罩透明度</Text>
-                <Text style={[styles.sliderValue, { color: theme.text }]}>{artworkTransparency}%</Text>
+                <Text style={[styles.sliderValue, { color: theme.text }]}>{artworkTransparencyDraft}%</Text>
               </View>
               <ValueSlider
                 accessibilityLabel="成绩卡片遮罩透明度"
                 colors={[theme.surface, theme.accentSoft, theme.accent]}
                 max={100}
                 min={0}
-                onChange={(value) => void setArtworkTransparency(value)}
+                onChange={setArtworkTransparencyDraft}
+                onChangeComplete={(value) => void setArtworkTransparency(value)}
                 step={1}
-                value={artworkTransparency}
+                value={artworkTransparencyDraft}
               />
               <View style={styles.sliderLabelRow}>
                 <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>曲绘模糊度</Text>
-                <Text style={[styles.sliderValue, { color: theme.text }]}>{artworkBlur}px</Text>
+                <Text style={[styles.sliderValue, { color: theme.text }]}>{artworkBlurDraft}px</Text>
               </View>
               <ValueSlider
                 accessibilityLabel="成绩卡片曲绘模糊度"
                 colors={[theme.surfaceMuted, theme.accentSoft]}
                 max={30}
                 min={0}
-                onChange={(value) => void setArtworkBlur(value)}
+                onChange={setArtworkBlurDraft}
+                onChangeComplete={(value) => void setArtworkBlur(value)}
                 step={1}
-                value={artworkBlur}
+                value={artworkBlurDraft}
               />
               <View style={styles.previewGroup}>
                 <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>曲绘预览</Text>
-                <ScoreCardArtworkScope>
+                <ScoreCardArtworkScope
+                  artworkBlur={artworkBlurDraft}
+                  artworkTransparency={artworkTransparencyDraft}
+                >
                   <ScoreRecordCard
                     artworkCachePolicy="none"
                     interactive={false}
