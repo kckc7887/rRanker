@@ -444,8 +444,33 @@ describe('好友码多目标写入', () => {
       friendCode: '987654321098765',
       hasCabinetUserId: true,
     });
+    mocks.pollCabinetScoreJobUntilDone.mockImplementationOnce(async ({ job, onProgress }) => {
+      onProgress?.({
+        ...job,
+        status: 'processing',
+        stage: 'get_music',
+        cleanupStatus: 'pending',
+        progress: { detailsFetched: 120 },
+      });
+      onProgress?.({
+        ...job,
+        status: 'processing',
+        stage: 'logout',
+        cleanupStatus: 'pending',
+        progress: { detailsFetched: 120 },
+      });
+      return {
+        ...job,
+        status: 'completed',
+        stage: 'persist',
+        cleanupStatus: 'succeeded',
+        progress: { detailsFetched: 120 },
+        syncId: 'sync',
+        scoreCount: 1,
+      };
+    });
     const onQrAccepted = vi.fn();
-    const phases: { kind: string; authMode?: string }[] = [];
+    const phases: { kind: string; message?: string; authMode?: string }[] = [];
     const result = await uploadMaimaiFromQrLogin({
       credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
       selectedAccountIds: [local.id],
@@ -456,6 +481,7 @@ describe('好友码多目标写入', () => {
       onPhase: (phase) => {
         phases.push({
           kind: phase.kind,
+          message: 'message' in phase ? phase.message : undefined,
           authMode: phase.kind === 'logging_in' ? phase.authMode : undefined,
         });
       },
@@ -479,6 +505,14 @@ describe('好友码多目标写入', () => {
     expect(mocks.saveSnapshot.mock.calls[0]?.[1]?.player?.id).toBe('987654321098765');
     expect(result.uploaded).toBe(1);
     expect(phases.some((phase) => phase.kind === 'logging_in' && phase.authMode === 'qr')).toBe(true);
+    expect(phases).toContainEqual(expect.objectContaining({
+      kind: 'fetching_scores',
+      message: '正在读取成绩…（已读取 120 条）',
+    }));
+    expect(phases).toContainEqual(expect.objectContaining({
+      kind: 'fetching_scores',
+      message: '正在结束本次读取，请稍候…',
+    }));
     expect(phases.at(-1)?.kind).toBe('done');
   });
 
