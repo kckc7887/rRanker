@@ -199,17 +199,25 @@ describe('settings navigation', () => {
 
   it('reveals the experimental artwork sliders with configured defaults', async () => {
     const screen = await renderSettings(<PersonalizationScreen />);
-    expect(screen.queryByLabelText('成绩卡片遮罩透明度')).toBeNull();
+    expect(screen.queryByLabelText('成绩卡片曲绘透明度')).toBeNull();
     expect(screen.queryByText('PANDORA PARADOXXX')).toBeNull();
     fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
-    await waitFor(() => expect(screen.getByLabelText('成绩卡片遮罩透明度')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('成绩卡片曲绘透明度')).toBeTruthy());
+    expect(screen.getByText('曲绘透明度')).toBeTruthy();
     expect(screen.getByText('35%')).toBeTruthy();
     expect(screen.getByText('12px')).toBeTruthy();
     expect(useThemeStore.getState().scoreCardArtworkEnabled).toBe(true);
-    const slider = screen.getByLabelText('成绩卡片遮罩透明度');
+    const slider = screen.getByLabelText('成绩卡片曲绘透明度');
     expect(StyleSheet.flatten(slider.props.style)).toMatchObject({ height: 36, marginHorizontal: 10 });
-    const [track, thumb] = slider.props.children;
+    const [track, activeTrack, thumb] = slider.props.children;
     expect(StyleSheet.flatten(track.props.style)).toMatchObject({ height: 4, borderRadius: 2 });
+    expect(StyleSheet.flatten(activeTrack.props.style)).toMatchObject({
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: '#246BFD',
+      left: '65%',
+      right: 0,
+    });
     expect(StyleSheet.flatten(thumb.props.style)).toMatchObject({
       width: 22,
       height: 22,
@@ -219,6 +227,7 @@ describe('settings navigation', () => {
       shadowOpacity: 0.16,
       shadowRadius: 2,
       elevation: 2,
+      left: '65%',
     });
   });
 
@@ -241,28 +250,38 @@ describe('settings navigation', () => {
     await waitFor(() => expect(screen.getByText('PANDORA PARADOXXX')).toBeTruthy());
     mockSaveTheme.mockClear();
 
-    const transparencySlider = screen.getByLabelText('成绩卡片遮罩透明度');
+    const transparencySlider = screen.getByLabelText('成绩卡片曲绘透明度');
     await act(() => transparencySlider.props.onLayout({ nativeEvent: { layout: { width: 100 } } }));
-    await act(() => transparencySlider.props.onResponderMove({ nativeEvent: { locationX: 70 } }));
+    await act(() => transparencySlider.props.onResponderGrant({ nativeEvent: { locationX: 65, pageX: 165 } }));
+    await act(() => transparencySlider.props.onResponderMove({
+      nativeEvent: { locationX: Number.NaN, pageX: 130, pageY: 400 },
+    }));
     expect(screen.getByText('70%')).toBeTruthy();
     expect(screen.getByTestId('score-card-artwork-overlay').props.style).toContainEqual({
       backgroundColor: 'rgba(255,255,255,0.30000000000000004)',
     });
     expect(useThemeStore.getState().scoreCardArtworkTransparency).toBe(35);
     expect(mockSaveTheme).not.toHaveBeenCalled();
-    await act(() => transparencySlider.props.onResponderRelease({ nativeEvent: { locationX: 70 } }));
+    await act(() => transparencySlider.props.onResponderRelease({
+      nativeEvent: { locationX: Number.NaN, pageX: 130, pageY: 400 },
+    }));
     await waitFor(() => expect(mockSaveTheme).toHaveBeenCalledTimes(1));
     expect(useThemeStore.getState().scoreCardArtworkTransparency).toBe(70);
 
     mockSaveTheme.mockClear();
     const blurSlider = screen.getByLabelText('成绩卡片曲绘模糊度');
     await act(() => blurSlider.props.onLayout({ nativeEvent: { layout: { width: 100 } } }));
-    await act(() => blurSlider.props.onResponderMove({ nativeEvent: { locationX: 20 } }));
+    await act(() => blurSlider.props.onResponderGrant({ nativeEvent: { locationX: 40, pageX: 140 } }));
+    await act(() => blurSlider.props.onResponderMove({
+      nativeEvent: { locationX: Number.NaN, pageX: 120, pageY: 400 },
+    }));
     expect(screen.getByText('6px')).toBeTruthy();
     expect(screen.getByTestId('score-card-artwork').props.blurRadius).toBe(6);
     expect(useThemeStore.getState().scoreCardArtworkBlur).toBe(12);
     expect(mockSaveTheme).not.toHaveBeenCalled();
-    await act(() => blurSlider.props.onResponderRelease({ nativeEvent: { locationX: 20 } }));
+    await act(() => blurSlider.props.onResponderRelease({
+      nativeEvent: { locationX: Number.NaN, pageX: 120, pageY: 400 },
+    }));
     await waitFor(() => expect(mockSaveTheme).toHaveBeenCalledTimes(1));
     expect(useThemeStore.getState().scoreCardArtworkBlur).toBe(6);
   });

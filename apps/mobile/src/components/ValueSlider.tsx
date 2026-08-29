@@ -33,6 +33,7 @@ export function ValueSlider({
   accessibilityLabel,
   accessibilityValue,
   colors,
+  inverted = false,
   min,
   max,
   step,
@@ -42,7 +43,8 @@ export function ValueSlider({
 }: {
   accessibilityLabel: string;
   accessibilityValue?: AccessibilityValue;
-  colors: readonly string[];
+  colors?: readonly string[];
+  inverted?: boolean;
   min: number;
   max: number;
   step: number;
@@ -52,11 +54,15 @@ export function ValueSlider({
 }) {
   const theme = useAppTheme();
   const [width, setWidth] = useState(1);
-  const latestValue = useRef(value);
-  latestValue.current = value;
+  const controlledValue = Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : min;
+  const latestValue = useRef(controlledValue);
+  const dragStart = useRef({ pageX: null as number | null, value: controlledValue });
+  latestValue.current = controlledValue;
   const range = Math.max(max - min, step);
-  const normalized = Math.max(0, Math.min(1, (value - min) / range));
+  const normalized = Math.max(0, Math.min(1, (controlledValue - min) / range));
+  const position = inverted ? 1 - normalized : normalized;
   const commit = (raw: number) => {
+    if (!Number.isFinite(raw)) return latestValue.current;
     const stepped = min + Math.round((raw - min) / step) * step;
     const next = Math.max(min, Math.min(max, stepped));
     if (next !== latestValue.current) {
@@ -65,13 +71,30 @@ export function ValueSlider({
     }
     return next;
   };
+  const updateFromPosition = (locationX: number) => {
+    if (!Number.isFinite(locationX)) return latestValue.current;
+    const ratio = Math.max(0, Math.min(1, locationX / Math.max(width, 1)));
+    return commit(inverted ? max - ratio * range : min + ratio * range);
+  };
+  const begin = (event: GestureResponderEvent) => {
+    const next = updateFromPosition(event.nativeEvent.locationX);
+    dragStart.current = {
+      pageX: Number.isFinite(event.nativeEvent.pageX) ? event.nativeEvent.pageX : null,
+      value: next,
+    };
+  };
   const updateFromEvent = (event: GestureResponderEvent) => {
-    const position = Math.max(0, Math.min(1, event.nativeEvent.locationX / Math.max(width, 1)));
-    commit(min + position * range);
+    const pageX = event.nativeEvent.pageX;
+    if (dragStart.current.pageX !== null && Number.isFinite(pageX)) {
+      const delta = (pageX - dragStart.current.pageX) / Math.max(width, 1) * range;
+      commit(dragStart.current.value + (inverted ? -delta : delta));
+      return;
+    }
+    updateFromPosition(event.nativeEvent.locationX);
   };
   const adjust = (event: AccessibilityActionEvent) => {
-    if (event.nativeEvent.actionName === 'increment') onChangeComplete?.(commit(value + step));
-    if (event.nativeEvent.actionName === 'decrement') onChangeComplete?.(commit(value - step));
+    if (event.nativeEvent.actionName === 'increment') onChangeComplete?.(commit(controlledValue + step));
+    if (event.nativeEvent.actionName === 'decrement') onChangeComplete?.(commit(controlledValue - step));
   };
   const complete = (event: GestureResponderEvent) => {
     updateFromEvent(event);
@@ -83,11 +106,14 @@ export function ValueSlider({
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="adjustable"
-      accessibilityValue={accessibilityValue ?? { min, max, now: value }}
+      accessibilityValue={accessibilityValue ?? { min, max, now: controlledValue }}
       onAccessibilityAction={adjust}
-      onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}
+      onLayout={(event: LayoutChangeEvent) => {
+        const nextWidth = event.nativeEvent.layout.width;
+        if (Number.isFinite(nextWidth) && nextWidth > 0) setWidth(nextWidth);
+      }}
       onMoveShouldSetResponder={() => true}
-      onResponderGrant={updateFromEvent}
+      onResponderGrant={begin}
       onResponderMove={updateFromEvent}
       onResponderRelease={complete}
       onResponderTerminate={complete}
@@ -95,19 +121,32 @@ export function ValueSlider({
       style={SLIDER_VISUAL_STYLES.hitTrack}
     >
       <View pointerEvents="none" style={[SLIDER_VISUAL_STYLES.track, { backgroundColor: theme.border }]}>
-        <LinearGradient
-          colors={colors as [string, string, ...string[]]}
-          end={{ x: 1, y: 0.5 }}
-          pointerEvents="none"
-          start={{ x: 0, y: 0.5 }}
-          style={StyleSheet.absoluteFillObject}
-        />
+        {colors ? (
+          <LinearGradient
+            colors={colors as [string, string, ...string[]]}
+            end={{ x: 1, y: 0.5 }}
+            pointerEvents="none"
+            start={{ x: 0, y: 0.5 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+        ) : null}
       </View>
+      {colors ? null : (
+        <View
+          pointerEvents="none"
+          style={[
+            SLIDER_VISUAL_STYLES.activeTrack,
+            inverted
+              ? { backgroundColor: theme.accent, left: `${position * 100}%`, right: 0 }
+              : { backgroundColor: theme.accent, left: 0, right: `${(1 - position) * 100}%` },
+          ]}
+        />
+      )}
       <View
         pointerEvents="none"
         style={[
           SLIDER_VISUAL_STYLES.thumb,
-          { backgroundColor: theme.surface, borderColor: theme.accent, left: `${normalized * 100}%` },
+          { backgroundColor: theme.surface, borderColor: theme.accent, left: `${position * 100}%` },
         ]}
       />
     </View>
