@@ -112,6 +112,7 @@ function renderSettings(screen = <SettingsScreen />) {
 describe('settings navigation', () => {
   beforeEach(() => {
     mockPush.mockClear();
+    mockSaveTheme.mockClear();
     mockClear.mockClear();
     mockLoadPrefs.mockClear();
     mockExportDiagnostics.mockReset();
@@ -218,5 +219,37 @@ describe('settings navigation', () => {
     expect(screen.queryByLabelText('查看谱面 PANDORA PARADOXXX SD remaster')).toBeNull();
     fireEvent.press(screen.getByText('PANDORA PARADOXXX'));
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('previews artwork slider movement locally and persists once when dragging ends', async () => {
+    const screen = await renderSettings(<PersonalizationScreen />);
+    fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
+    await waitFor(() => expect(screen.getByText('PANDORA PARADOXXX')).toBeTruthy());
+    mockSaveTheme.mockClear();
+
+    const transparencySlider = screen.getByLabelText('成绩卡片遮罩透明度');
+    await act(() => transparencySlider.props.onLayout({ nativeEvent: { layout: { width: 100 } } }));
+    await act(() => transparencySlider.props.onResponderMove({ nativeEvent: { locationX: 70 } }));
+    expect(screen.getByText('70%')).toBeTruthy();
+    expect(screen.getByTestId('score-card-artwork-overlay').props.style).toContainEqual({
+      backgroundColor: 'rgba(255,255,255,0.30000000000000004)',
+    });
+    expect(useThemeStore.getState().scoreCardArtworkTransparency).toBe(35);
+    expect(mockSaveTheme).not.toHaveBeenCalled();
+    await act(() => transparencySlider.props.onResponderRelease({ nativeEvent: { locationX: 70 } }));
+    await waitFor(() => expect(mockSaveTheme).toHaveBeenCalledTimes(1));
+    expect(useThemeStore.getState().scoreCardArtworkTransparency).toBe(70);
+
+    mockSaveTheme.mockClear();
+    const blurSlider = screen.getByLabelText('成绩卡片曲绘模糊度');
+    await act(() => blurSlider.props.onLayout({ nativeEvent: { layout: { width: 100 } } }));
+    await act(() => blurSlider.props.onResponderMove({ nativeEvent: { locationX: 20 } }));
+    expect(screen.getByText('6px')).toBeTruthy();
+    expect(screen.getByTestId('score-card-artwork').props.blurRadius).toBe(6);
+    expect(useThemeStore.getState().scoreCardArtworkBlur).toBe(12);
+    expect(mockSaveTheme).not.toHaveBeenCalled();
+    await act(() => blurSlider.props.onResponderRelease({ nativeEvent: { locationX: 20 } }));
+    await waitFor(() => expect(mockSaveTheme).toHaveBeenCalledTimes(1));
+    expect(useThemeStore.getState().scoreCardArtworkBlur).toBe(6);
   });
 });

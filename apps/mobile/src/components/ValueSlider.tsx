@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   StyleSheet,
@@ -18,6 +18,7 @@ export function ValueSlider({
   step,
   value,
   onChange,
+  onChangeComplete,
 }: {
   accessibilityLabel: string;
   accessibilityValue?: AccessibilityValue;
@@ -27,21 +28,33 @@ export function ValueSlider({
   step: number;
   value: number;
   onChange: (value: number) => void;
+  onChangeComplete?: (value: number) => void;
 }) {
   const [width, setWidth] = useState(1);
+  const latestValue = useRef(value);
+  latestValue.current = value;
   const range = Math.max(max - min, step);
   const normalized = Math.max(0, Math.min(1, (value - min) / range));
   const commit = (raw: number) => {
     const stepped = min + Math.round((raw - min) / step) * step;
-    onChange(Math.max(min, Math.min(max, stepped)));
+    const next = Math.max(min, Math.min(max, stepped));
+    if (next !== latestValue.current) {
+      latestValue.current = next;
+      onChange(next);
+    }
+    return next;
   };
   const updateFromEvent = (event: GestureResponderEvent) => {
     const position = Math.max(0, Math.min(1, event.nativeEvent.locationX / Math.max(width, 1)));
     commit(min + position * range);
   };
   const adjust = (event: AccessibilityActionEvent) => {
-    if (event.nativeEvent.actionName === 'increment') commit(value + step);
-    if (event.nativeEvent.actionName === 'decrement') commit(value - step);
+    if (event.nativeEvent.actionName === 'increment') onChangeComplete?.(commit(value + step));
+    if (event.nativeEvent.actionName === 'decrement') onChangeComplete?.(commit(value - step));
+  };
+  const complete = (event: GestureResponderEvent) => {
+    updateFromEvent(event);
+    onChangeComplete?.(latestValue.current);
   };
 
   return (
@@ -55,16 +68,19 @@ export function ValueSlider({
       onMoveShouldSetResponder={() => true}
       onResponderGrant={updateFromEvent}
       onResponderMove={updateFromEvent}
+      onResponderRelease={complete}
+      onResponderTerminate={complete}
       onStartShouldSetResponder={() => true}
       style={styles.track}
     >
       <LinearGradient
         colors={colors as [string, string, ...string[]]}
         end={{ x: 1, y: 0.5 }}
+        pointerEvents="none"
         start={{ x: 0, y: 0.5 }}
         style={StyleSheet.absoluteFillObject}
       />
-      <View style={[styles.thumb, { left: Math.max(0, Math.min(width - 18, normalized * width - 9)) }]} />
+      <View pointerEvents="none" style={[styles.thumb, { left: Math.max(0, Math.min(width - 18, normalized * width - 9)) }]} />
     </View>
   );
 }

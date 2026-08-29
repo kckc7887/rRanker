@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { router, type Href } from 'expo-router';
 import {
   Pressable,
@@ -14,16 +14,33 @@ import { RemoteImage } from '@/components/RemoteImage';
 import { useThemeStore } from '@/state/theme-store';
 import { useAppTheme } from '@/theme/app-theme';
 
-const ScoreCardArtworkScopeContext = createContext(false);
+type ScoreCardArtworkScopeValue = {
+  artworkBlur?: number;
+  artworkTransparency?: number;
+};
 
-export function ScoreCardArtworkScope({ children }: { children: ReactNode }) {
-  return <ScoreCardArtworkScopeContext.Provider value>{children}</ScoreCardArtworkScopeContext.Provider>;
+const ScoreCardArtworkScopeContext = createContext<ScoreCardArtworkScopeValue | null>(null);
+
+export function ScoreCardArtworkScope({
+  artworkBlur,
+  artworkTransparency,
+  children,
+}: ScoreCardArtworkScopeValue & { children: ReactNode }) {
+  const value = useMemo(
+    () => ({ artworkBlur, artworkTransparency }),
+    [artworkBlur, artworkTransparency],
+  );
+  return (
+    <ScoreCardArtworkScopeContext.Provider value={value}>
+      {children}
+    </ScoreCardArtworkScopeContext.Provider>
+  );
 }
 
 export function useScoreCardArtworkActive(): boolean {
   const inScope = useContext(ScoreCardArtworkScopeContext);
   const enabled = useThemeStore((state) => state.scoreCardArtworkEnabled);
-  return inScope && enabled;
+  return inScope !== null && enabled;
 }
 
 export type ScoreCardArtwork = {
@@ -91,9 +108,12 @@ export function GameScoreCard({
   testID?: string;
 }) {
   const theme = useAppTheme();
+  const artworkScope = useContext(ScoreCardArtworkScopeContext);
   const artworkActive = useScoreCardArtworkActive();
-  const artworkBlur = useThemeStore((state) => state.scoreCardArtworkBlur);
-  const artworkTransparency = useThemeStore((state) => state.scoreCardArtworkTransparency);
+  const storedArtworkBlur = useThemeStore((state) => state.scoreCardArtworkBlur);
+  const storedArtworkTransparency = useThemeStore((state) => state.scoreCardArtworkTransparency);
+  const artworkBlur = artworkScope?.artworkBlur ?? storedArtworkBlur;
+  const artworkTransparency = artworkScope?.artworkTransparency ?? storedArtworkTransparency;
   const [failedArtworkSource, setFailedArtworkSource] = useState<string | null>(null);
   const artworkSource = artwork?.source?.trim() || null;
   const showArtwork = artworkActive && artworkSource !== null && failedArtworkSource !== artworkSource;
