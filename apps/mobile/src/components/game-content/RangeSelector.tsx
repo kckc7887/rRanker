@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { normalizeNumericInput } from '@/utils/numeric-input';
 import { useAppTheme } from '@/theme/app-theme';
+import { SLIDER_VISUAL_STYLES } from '@/components/ValueSlider';
 
 export type RangeBounds = { minimum: number; maximum: number };
 
@@ -247,11 +248,11 @@ export function RangeSelector({
         accessible={false}
         onLayout={onLayout}
         onPress={(event) => handleTrackPress(event.nativeEvent.locationX)}
-        style={styles.hitTrack}
+        style={SLIDER_VISUAL_STYLES.hitTrack}
         testID={testID ? `${testID}-track` : undefined}
       >
-        <View style={[styles.track, { backgroundColor: theme.border }]} />
-        <View style={[styles.activeTrack, {
+        <View style={[SLIDER_VISUAL_STYLES.track, { backgroundColor: theme.border }]} />
+        <View style={[SLIDER_VISUAL_STYLES.activeTrack, {
           backgroundColor: theme.accent,
           left: `${lowerRatio * 100}%`,
           right: `${(1 - upperRatio) * 100}%`,
@@ -263,7 +264,7 @@ export function RangeSelector({
           accessibilityRole="adjustable"
           accessibilityValue={{ min: minimum, max: upper, now: lower, text: formatValue(lower) }}
           onAccessibilityAction={handleAccessibility('lower')}
-          style={[styles.thumb, { backgroundColor: theme.surface, borderColor: theme.accent, left: `${lowerRatio * 100}%` }]}
+          style={[SLIDER_VISUAL_STYLES.thumb, { backgroundColor: theme.surface, borderColor: theme.accent, left: `${lowerRatio * 100}%` }]}
           testID={testID ? `${testID}-lower-thumb` : undefined}
           {...lowerResponder.panHandlers}
         />
@@ -274,7 +275,7 @@ export function RangeSelector({
           accessibilityRole="adjustable"
           accessibilityValue={{ min: lower, max: maximum, now: upper, text: formatValue(upper) }}
           onAccessibilityAction={handleAccessibility('upper')}
-          style={[styles.thumb, { backgroundColor: theme.surface, borderColor: theme.accent, left: `${upperRatio * 100}%` }]}
+          style={[SLIDER_VISUAL_STYLES.thumb, { backgroundColor: theme.surface, borderColor: theme.accent, left: `${upperRatio * 100}%` }]}
           testID={testID ? `${testID}-upper-thumb` : undefined}
           {...upperResponder.panHandlers}
         />
@@ -288,20 +289,4 @@ const styles = StyleSheet.create({
   values: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   value: { minWidth: 52, fontSize: 12, lineHeight: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
   separator: { fontSize: 11 },
-  hitTrack: { height: 36, justifyContent: 'center', marginHorizontal: 10 },
-  track: { height: 4, borderRadius: 2 },
-  activeTrack: { position: 'absolute', height: 4, borderRadius: 2 },
-  thumb: {
-    position: 'absolute',
-    width: 22,
-    height: 22,
-    marginLeft: -11,
-    borderRadius: 11,
-    borderWidth: 2,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.16,
-    shadowRadius: 2,
-    elevation: 2,
-  },
 });

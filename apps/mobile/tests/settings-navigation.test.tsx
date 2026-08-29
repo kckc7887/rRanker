@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, InteractionManager } from 'react-native';
+import { Animated, InteractionManager, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SettingsTabScreen, { SettingsScreen } from '../app/(tabs)/settings';
 import PersonalizationScreen from '../app/personalization';
@@ -206,6 +206,20 @@ describe('settings navigation', () => {
     expect(screen.getByText('35%')).toBeTruthy();
     expect(screen.getByText('12px')).toBeTruthy();
     expect(useThemeStore.getState().scoreCardArtworkEnabled).toBe(true);
+    const slider = screen.getByLabelText('成绩卡片遮罩透明度');
+    expect(StyleSheet.flatten(slider.props.style)).toMatchObject({ height: 36, marginHorizontal: 10 });
+    const [track, thumb] = slider.props.children;
+    expect(StyleSheet.flatten(track.props.style)).toMatchObject({ height: 4, borderRadius: 2 });
+    expect(StyleSheet.flatten(thumb.props.style)).toMatchObject({
+      width: 22,
+      height: 22,
+      marginLeft: -11,
+      borderRadius: 11,
+      borderWidth: 2,
+      shadowOpacity: 0.16,
+      shadowRadius: 2,
+      elevation: 2,
+    });
   });
 
   it('shows a non-interactive fixed-data score card preview under the artwork switch', async () => {
