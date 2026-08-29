@@ -53,6 +53,10 @@ import { useAppTheme } from '@/theme/app-theme';
 import { OsuModBadge } from './OsuModBadge';
 import { OsuRankTag } from './OsuRankTag';
 
+const OSU_DOWNLOAD_USER_MESSAGES = {
+  permission: '请在游戏管理中重新绑定 osu! 账号后再下载谱面文件。',
+} as const;
+
 const CARD_GAP = 12;
 /** osu 谱面级曲库键的 type 段（无 SD/DX 之分，统一占位 'SD'，levelIndex = beatmap id）。 */
 const OSU_CHART_TYPE = 'SD' as const;
@@ -232,6 +236,7 @@ function OsuDetailBody({
   const { isRunning: downloadRunning, start: startDownload } = useChartPackageDownload({
     successMessage: '谱面文件已保存，可使用 osu! 打开。',
     failureMessage: '该谱面文件暂时无法下载，请稍后重试。',
+    userMessages: OSU_DOWNLOAD_USER_MESSAGES,
   });
   const { width } = useWindowDimensions();
   const cardWidth = Math.max(280, width - 40);
