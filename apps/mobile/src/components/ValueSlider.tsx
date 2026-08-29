@@ -8,6 +8,26 @@ import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
+import { useAppTheme } from '@/theme/app-theme';
+
+export const SLIDER_VISUAL_STYLES = StyleSheet.create({
+  hitTrack: { height: 36, justifyContent: 'center', marginHorizontal: 10 },
+  track: { height: 4, borderRadius: 2 },
+  activeTrack: { position: 'absolute', height: 4, borderRadius: 2 },
+  thumb: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    marginLeft: -11,
+    borderRadius: 11,
+    borderWidth: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.16,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+});
 
 export function ValueSlider({
   accessibilityLabel,
@@ -30,6 +50,7 @@ export function ValueSlider({
   onChange: (value: number) => void;
   onChangeComplete?: (value: number) => void;
 }) {
+  const theme = useAppTheme();
   const [width, setWidth] = useState(1);
   const latestValue = useRef(value);
   latestValue.current = value;
@@ -71,34 +92,24 @@ export function ValueSlider({
       onResponderRelease={complete}
       onResponderTerminate={complete}
       onStartShouldSetResponder={() => true}
-      style={styles.track}
+      style={SLIDER_VISUAL_STYLES.hitTrack}
     >
-      <LinearGradient
-        colors={colors as [string, string, ...string[]]}
-        end={{ x: 1, y: 0.5 }}
+      <View pointerEvents="none" style={[SLIDER_VISUAL_STYLES.track, { backgroundColor: theme.border }]}>
+        <LinearGradient
+          colors={colors as [string, string, ...string[]]}
+          end={{ x: 1, y: 0.5 }}
+          pointerEvents="none"
+          start={{ x: 0, y: 0.5 }}
+          style={StyleSheet.absoluteFillObject}
+        />
+      </View>
+      <View
         pointerEvents="none"
-        start={{ x: 0, y: 0.5 }}
-        style={StyleSheet.absoluteFillObject}
+        style={[
+          SLIDER_VISUAL_STYLES.thumb,
+          { backgroundColor: theme.surface, borderColor: theme.accent, left: `${normalized * 100}%` },
+        ]}
       />
-      <View pointerEvents="none" style={[styles.thumb, { left: Math.max(0, Math.min(width - 18, normalized * width - 9)) }]} />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  track: {
-    height: 28,
-    borderRadius: 14,
-    overflow: 'hidden',
-    justifyContent: 'center',
-  },
-  thumb: {
-    position: 'absolute',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#FFF',
-    borderWidth: 2,
-    borderColor: 'rgba(17,24,39,0.35)',
-  },
-});
