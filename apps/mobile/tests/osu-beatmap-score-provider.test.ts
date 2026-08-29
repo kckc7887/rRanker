@@ -79,4 +79,12 @@ describe('OsuScoreProvider 单谱玩家成绩', () => {
       headers: expect.objectContaining({ Authorization: 'Bearer access' }),
     });
   });
+
+  it('下载权限不足时保留 permission 错误供界面提示重新绑定', async () => {
+    mocks.fetch.mockResolvedValueOnce({ ok: false, status: 403 });
+    const destination = {} as import('expo-file-system').File;
+
+    await expect(new OsuScoreProvider(session).downloadBeatmapsetArchive(3720, destination))
+      .rejects.toMatchObject({ code: 'permission' });
+  });
 });

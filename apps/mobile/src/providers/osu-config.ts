@@ -5,7 +5,7 @@
 export const OSU_OAUTH_CLIENT_ID = '65933';
 export const OSU_OAUTH_CLIENT_SECRET = 'sReah02QEDvoCeQxzObA7HLw968zbsZWDPYk38RS';
 export const OSU_OAUTH_REDIRECT_URI = 'rranker://oauth/osu';
-export const OSU_OAUTH_SCOPE = 'identify public';
+export const OSU_OAUTH_SCOPE = 'identify public lazer';
 export const OSU_OAUTH_AUTHORIZE_URL = 'https://osu.ppy.sh/oauth/authorize';
 export const OSU_OAUTH_TOKEN_URL = 'https://osu.ppy.sh/oauth/token';
 export const OSU_API_ROOT = 'https://osu.ppy.sh/api/v2';
