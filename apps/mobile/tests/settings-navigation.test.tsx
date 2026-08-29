@@ -204,7 +204,7 @@ describe('settings navigation', () => {
     fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
     await waitFor(() => expect(screen.getByLabelText('成绩卡片曲绘透明度')).toBeTruthy());
     expect(screen.getByText('曲绘透明度')).toBeTruthy();
-    expect(screen.getByText('35%')).toBeTruthy();
+    expect(screen.getByText('65%')).toBeTruthy();
     expect(screen.getByText('12px')).toBeTruthy();
     expect(useThemeStore.getState().scoreCardArtworkEnabled).toBe(true);
     const slider = screen.getByLabelText('成绩卡片曲绘透明度');
@@ -215,8 +215,8 @@ describe('settings navigation', () => {
       height: 4,
       borderRadius: 2,
       backgroundColor: '#246BFD',
-      left: '65%',
-      right: 0,
+      left: 0,
+      right: '35%',
     });
     expect(StyleSheet.flatten(thumb.props.style)).toMatchObject({
       width: 22,
@@ -251,12 +251,15 @@ describe('settings navigation', () => {
     mockSaveTheme.mockClear();
 
     const transparencySlider = screen.getByLabelText('成绩卡片曲绘透明度');
+    expect(screen.getByTestId('personalization-scroll').props.scrollEnabled).toBe(true);
+    expect(transparencySlider.props.onResponderTerminationRequest()).toBe(false);
     await act(() => transparencySlider.props.onLayout({ nativeEvent: { layout: { width: 100 } } }));
     await act(() => transparencySlider.props.onResponderGrant({ nativeEvent: { locationX: 65, pageX: 165 } }));
+    expect(screen.getByTestId('personalization-scroll').props.scrollEnabled).toBe(false);
     await act(() => transparencySlider.props.onResponderMove({
       nativeEvent: { locationX: Number.NaN, pageX: 130, pageY: 400 },
     }));
-    expect(screen.getByText('70%')).toBeTruthy();
+    expect(screen.getByText('30%')).toBeTruthy();
     expect(screen.getByTestId('score-card-artwork-overlay').props.style).toContainEqual({
       backgroundColor: 'rgba(255,255,255,0.30000000000000004)',
     });
@@ -267,11 +270,14 @@ describe('settings navigation', () => {
     }));
     await waitFor(() => expect(mockSaveTheme).toHaveBeenCalledTimes(1));
     expect(useThemeStore.getState().scoreCardArtworkTransparency).toBe(70);
+    expect(screen.getByTestId('personalization-scroll').props.scrollEnabled).toBe(true);
 
     mockSaveTheme.mockClear();
     const blurSlider = screen.getByLabelText('成绩卡片曲绘模糊度');
+    expect(blurSlider.props.onResponderTerminationRequest()).toBe(false);
     await act(() => blurSlider.props.onLayout({ nativeEvent: { layout: { width: 100 } } }));
     await act(() => blurSlider.props.onResponderGrant({ nativeEvent: { locationX: 40, pageX: 140 } }));
+    expect(screen.getByTestId('personalization-scroll').props.scrollEnabled).toBe(false);
     await act(() => blurSlider.props.onResponderMove({
       nativeEvent: { locationX: Number.NaN, pageX: 120, pageY: 400 },
     }));
@@ -284,5 +290,6 @@ describe('settings navigation', () => {
     }));
     await waitFor(() => expect(mockSaveTheme).toHaveBeenCalledTimes(1));
     expect(useThemeStore.getState().scoreCardArtworkBlur).toBe(6);
+    expect(screen.getByTestId('personalization-scroll').props.scrollEnabled).toBe(true);
   });
 });
