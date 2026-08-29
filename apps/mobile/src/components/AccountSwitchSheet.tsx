@@ -33,9 +33,9 @@ export function AccountSwitchSheet({
       visible={visible}
       animationType="slide"
       presentationStyle="formSheet"
+      backdropColor={theme.background}
       onRequestClose={onClose}
     >
-      {visible ? (
       <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
         <View style={[styles.grabber, { backgroundColor: theme.border }]} />
         <View style={styles.header}>
@@ -64,7 +64,6 @@ export function AccountSwitchSheet({
             emptyText="暂无已绑定账号，请先在设置 → 游戏管理中绑定。" />
         </ScrollView>
       </View>
-      ) : null}
     </Modal>
   );
 }

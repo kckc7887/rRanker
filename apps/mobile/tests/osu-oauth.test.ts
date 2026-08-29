@@ -37,7 +37,7 @@ describe('osu! OAuth 授权与轮换', () => {
     expect(query.get('response_type')).toBe('code');
     expect(query.get('client_id')).toBe('65933');
     expect(query.get('redirect_uri')).toBe('rranker://oauth/osu');
-    expect(query.get('scope')).toBe('identify public lazer');
+    expect(query.get('scope')).toBe('identify public');
     expect(query.get('state')).toBe('state-1');
     expect(query.has('code_challenge')).toBe(false);
   });

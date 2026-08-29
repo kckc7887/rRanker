@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { useNotification } from '@/components/AppNotification';
-import { providerErrorToUserMessage, type ProviderUserMessages } from '@/providers/errors';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import {
   type ChartPackageDownloadOptions,
@@ -14,11 +14,9 @@ export type ChartPackageDownloadRunner = (
 export function useChartPackageDownload({
   successMessage,
   failureMessage = '该谱面暂时无法下载，请稍后重试。',
-  userMessages,
 }: {
   successMessage: string;
   failureMessage?: string;
-  userMessages?: ProviderUserMessages;
 }) {
   const {
     dismissNotification,
@@ -123,7 +121,7 @@ export function useChartPackageDownload({
       if (!controller.signal.aborted) {
         showNotification({
           title: '下载失败',
-          message: providerErrorToUserMessage(error, failureMessage, userMessages),
+          message: providerErrorToUserMessage(error, failureMessage),
           variant: 'error',
         });
       }
@@ -134,7 +132,7 @@ export function useChartPackageDownload({
       if (notificationId !== null) dismissNotification(notificationId);
       if (mountedRef.current && !backgroundCanceledRef.current) setIsRunning(false);
     }
-  }, [cancel, dismissNotification, failureMessage, showActionNotification, showNotification, successMessage, updateNotification, userMessages]);
+  }, [cancel, dismissNotification, failureMessage, showActionNotification, showNotification, successMessage, updateNotification]);
 
   return { cancel, isRunning, start };
 }

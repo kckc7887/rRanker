@@ -39,8 +39,6 @@ import { resolveOsuStarTheme } from '@/domain/osu-star-theme';
 import { osuModDescription, resolveOsuModMetadata } from '@/domain/osu-mods';
 import { buildTagHistory } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
-import { OsuScoreProvider } from '@/providers/osu-score-provider';
-import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { useGameData } from '@/hooks/use-game-data';
 import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
 import {
@@ -48,14 +46,10 @@ import {
   useOsuKnownScores,
 } from '@/hooks/use-osu-known-scores';
 import { useUserLibrary } from '@/hooks/use-user-library';
-import { applyOsuTokenRotation, useSession } from '@/state/session-store';
+import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { OsuModBadge } from './OsuModBadge';
 import { OsuRankTag } from './OsuRankTag';
-
-const OSU_DOWNLOAD_USER_MESSAGES = {
-  permission: '请在游戏管理中重新绑定 osu! 账号后再下载谱面文件。',
-} as const;
 
 const CARD_GAP = 12;
 /** osu 谱面级曲库键的 type 段（无 SD/DX 之分，统一占位 'SD'，levelIndex = beatmap id）。 */
@@ -222,21 +216,10 @@ function OsuDetailBody({
   knownScores?: readonly OsuBestScore[];
 }) {
   const theme = useAppTheme();
-  const session = useSession((state) => state.session);
-  const activeAccountId = useSession((state) => state.activeAccountId);
-  const downloadProvider = useMemo(
-    () => session?.mode === 'osu-oauth'
-      ? new OsuScoreProvider(
-          session as OsuOAuthSession,
-          (next) => applyOsuTokenRotation(activeAccountId, next),
-        )
-      : null,
-    [activeAccountId, session],
-  );
+  const { showActionNotification } = useNotification();
   const { isRunning: downloadRunning, start: startDownload } = useChartPackageDownload({
     successMessage: '谱面文件已保存，可使用 osu! 打开。',
     failureMessage: '该谱面文件暂时无法下载，请稍后重试。',
-    userMessages: OSU_DOWNLOAD_USER_MESSAGES,
   });
   const { width } = useWindowDimensions();
   const cardWidth = Math.max(280, width - 40);
@@ -262,12 +245,24 @@ function OsuDetailBody({
     }
   }
   const initialIndex = requestedIndex >= 0 ? requestedIndex : recommendedIndex;
-  const downloadBeatmapset = () => {
-    if (!downloadProvider) return;
-    void startDownload((options) => downloadOsuBeatmapsetPackage(downloadProvider, {
+  const runDownload = (includeVideo: boolean) => {
+    void startDownload((options) => downloadOsuBeatmapsetPackage({
       beatmapsetId: song.beatmapSetId,
       title: song.title,
+      includeVideo,
     }, options));
+  };
+  const downloadBeatmapset = () => {
+    showActionNotification({
+      title: '下载谱面文件',
+      message: '谱面文件由 Sayobot 提供。背景视频会增加文件大小和流量消耗，请选择下载内容。',
+      variant: 'info',
+      actions: [
+        { label: '包含背景视频', onPress: () => runDownload(true) },
+        { label: '仅游玩内容', onPress: () => runDownload(false) },
+        { label: '取消', tone: 'cancel' },
+      ],
+    });
   };
   // 本 beatmapset 内按 beatmap id 匹配已知成绩；打开详情后的查询结果会写回同一集合。
   const scoresByBeatmapId = useMemo(() => {

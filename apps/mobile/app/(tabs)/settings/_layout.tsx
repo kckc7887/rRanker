@@ -1,5 +1,14 @@
-import { MainTabStack } from '@/components/MainTabStack';
+import { Stack } from 'expo-router';
 
 export default function SettingsLayout() {
-  return <MainTabStack title="设置" />;
+  return (
+    <Stack
+      screenOptions={{
+        headerBackButtonDisplayMode: 'minimal',
+        headerBackButtonMenuEnabled: false,
+      }}
+    >
+      <Stack.Screen name="index" options={{ title: '设置' }} />
+    </Stack>
+  );
 }
