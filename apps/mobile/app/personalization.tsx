@@ -54,7 +54,9 @@ export default function PersonalizationScreen() {
   const setArtworkBlur = useThemeStore((state) => state.setScoreCardArtworkBlur);
   const [artworkTransparencyDraft, setArtworkTransparencyDraft] = useState(artworkTransparency);
   const [artworkBlurDraft, setArtworkBlurDraft] = useState(artworkBlur);
+  const [sliderActive, setSliderActive] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const displayedArtworkTransparency = 100 - artworkTransparencyDraft;
 
   useEffect(() => setArtworkTransparencyDraft(artworkTransparency), [artworkTransparency]);
   useEffect(() => setArtworkBlurDraft(artworkBlur), [artworkBlur]);
@@ -65,7 +67,9 @@ export default function PersonalizationScreen() {
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
+        scrollEnabled={!sliderActive}
         style={[styles.page, { backgroundColor: theme.background }]}
+        testID="personalization-scroll"
       >
         <View style={[styles.section, { backgroundColor: theme.surface }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>外观</Text>
@@ -142,17 +146,17 @@ export default function PersonalizationScreen() {
             <View style={styles.sliderGroup}>
               <View style={styles.sliderLabelRow}>
                 <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>曲绘透明度</Text>
-                <Text style={[styles.sliderValue, { color: theme.text }]}>{artworkTransparencyDraft}%</Text>
+                <Text style={[styles.sliderValue, { color: theme.text }]}>{displayedArtworkTransparency}%</Text>
               </View>
               <ValueSlider
                 accessibilityLabel="成绩卡片曲绘透明度"
-                inverted
                 max={100}
                 min={0}
-                onChange={setArtworkTransparencyDraft}
-                onChangeComplete={(value) => void setArtworkTransparency(value)}
+                onChange={(value) => setArtworkTransparencyDraft(100 - value)}
+                onChangeComplete={(value) => void setArtworkTransparency(100 - value)}
+                onSlidingStateChange={setSliderActive}
                 step={1}
-                value={artworkTransparencyDraft}
+                value={displayedArtworkTransparency}
               />
               <View style={styles.sliderLabelRow}>
                 <Text style={[styles.sliderLabel, { color: theme.textSecondary }]}>曲绘模糊度</Text>
@@ -164,6 +168,7 @@ export default function PersonalizationScreen() {
                 min={0}
                 onChange={setArtworkBlurDraft}
                 onChangeComplete={(value) => void setArtworkBlur(value)}
+                onSlidingStateChange={setSliderActive}
                 step={1}
                 value={artworkBlurDraft}
               />

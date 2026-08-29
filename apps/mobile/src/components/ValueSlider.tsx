@@ -33,24 +33,24 @@ export function ValueSlider({
   accessibilityLabel,
   accessibilityValue,
   colors,
-  inverted = false,
   min,
   max,
   step,
   value,
   onChange,
   onChangeComplete,
+  onSlidingStateChange,
 }: {
   accessibilityLabel: string;
   accessibilityValue?: AccessibilityValue;
   colors?: readonly string[];
-  inverted?: boolean;
   min: number;
   max: number;
   step: number;
   value: number;
   onChange: (value: number) => void;
   onChangeComplete?: (value: number) => void;
+  onSlidingStateChange?: (sliding: boolean) => void;
 }) {
   const theme = useAppTheme();
   const [width, setWidth] = useState(1);
@@ -60,7 +60,6 @@ export function ValueSlider({
   latestValue.current = controlledValue;
   const range = Math.max(max - min, step);
   const normalized = Math.max(0, Math.min(1, (controlledValue - min) / range));
-  const position = inverted ? 1 - normalized : normalized;
   const commit = (raw: number) => {
     if (!Number.isFinite(raw)) return latestValue.current;
     const stepped = min + Math.round((raw - min) / step) * step;
@@ -74,9 +73,10 @@ export function ValueSlider({
   const updateFromPosition = (locationX: number) => {
     if (!Number.isFinite(locationX)) return latestValue.current;
     const ratio = Math.max(0, Math.min(1, locationX / Math.max(width, 1)));
-    return commit(inverted ? max - ratio * range : min + ratio * range);
+    return commit(min + ratio * range);
   };
   const begin = (event: GestureResponderEvent) => {
+    onSlidingStateChange?.(true);
     const next = updateFromPosition(event.nativeEvent.locationX);
     dragStart.current = {
       pageX: Number.isFinite(event.nativeEvent.pageX) ? event.nativeEvent.pageX : null,
@@ -87,7 +87,7 @@ export function ValueSlider({
     const pageX = event.nativeEvent.pageX;
     if (dragStart.current.pageX !== null && Number.isFinite(pageX)) {
       const delta = (pageX - dragStart.current.pageX) / Math.max(width, 1) * range;
-      commit(dragStart.current.value + (inverted ? -delta : delta));
+      commit(dragStart.current.value + delta);
       return;
     }
     updateFromPosition(event.nativeEvent.locationX);
@@ -99,6 +99,7 @@ export function ValueSlider({
   const complete = (event: GestureResponderEvent) => {
     updateFromEvent(event);
     onChangeComplete?.(latestValue.current);
+    onSlidingStateChange?.(false);
   };
 
   return (
@@ -117,6 +118,7 @@ export function ValueSlider({
       onResponderMove={updateFromEvent}
       onResponderRelease={complete}
       onResponderTerminate={complete}
+      onResponderTerminationRequest={() => false}
       onStartShouldSetResponder={() => true}
       style={SLIDER_VISUAL_STYLES.hitTrack}
     >
@@ -136,9 +138,7 @@ export function ValueSlider({
           pointerEvents="none"
           style={[
             SLIDER_VISUAL_STYLES.activeTrack,
-            inverted
-              ? { backgroundColor: theme.accent, left: `${position * 100}%`, right: 0 }
-              : { backgroundColor: theme.accent, left: 0, right: `${(1 - position) * 100}%` },
+            { backgroundColor: theme.accent, left: 0, right: `${(1 - normalized) * 100}%` },
           ]}
         />
       )}
@@ -146,7 +146,7 @@ export function ValueSlider({
         pointerEvents="none"
         style={[
           SLIDER_VISUAL_STYLES.thumb,
-          { backgroundColor: theme.surface, borderColor: theme.accent, left: `${position * 100}%` },
+          { backgroundColor: theme.surface, borderColor: theme.accent, left: `${normalized * 100}%` },
         ]}
       />
     </View>
