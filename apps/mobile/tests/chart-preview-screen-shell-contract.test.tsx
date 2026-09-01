@@ -261,4 +261,29 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     });
     expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
   });
+
+  it('短暂 inactive 只暂停播放器，不卸载或重新准备资源', async () => {
+    const prepare = jest.fn(async () => fictionalSource);
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready',
+      payload: { chartName: '虚构谱面' },
+      prepare,
+    };
+    const view = await renderFictionalShell(request);
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    expect(prepare).toHaveBeenCalledTimes(1);
+
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'inactive', phase: 'inactive', foregroundReady: false,
+    };
+    await view.rerender(<FictionalShell request={request} />);
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+    };
+    await view.rerender(<FictionalShell request={request} />);
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+    expect(prepare).toHaveBeenCalledTimes(1);
+  });
 });

@@ -46,7 +46,7 @@ export function useScoreCardArtworkActive(): boolean {
 export type ScoreCardArtwork = {
   source: string | null | undefined;
   scale?: number;
-  /** 仅允许 "none"：预览等一次性场景完全跳过缓存；缺省仍只进内存。 */
+  /** 仅允许 "none"：预览等一次性场景完全跳过缓存。 */
   cachePolicy?: 'none';
 };
 
@@ -151,7 +151,7 @@ export function GameScoreCard({
           <RemoteImage
             accessibilityIgnoresInvertColors
             blurRadius={artworkBlur}
-            cachePolicy={artwork?.cachePolicy}
+            cacheProfile={artwork?.cachePolicy === 'none' ? 'none' : 'thumbnail'}
             contentFit="cover"
             onError={() => setFailedArtworkSource(artworkSource)}
             pointerEvents="none"

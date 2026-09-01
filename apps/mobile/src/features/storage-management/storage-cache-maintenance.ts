@@ -16,6 +16,7 @@ import {
   pruneVersionedAssetRoot,
 } from './fs-storage';
 import { isExpoSystemCacheEntry } from './expo-system-cache';
+import { pruneRemoteImageCache } from '@/services/remote-image-cache';
 
 const STORAGE_CACHE_MIGRATION_KEY = 'rranker.storage-cache-policy.v1';
 let maintenancePromise: Promise<void> | null = null;
@@ -63,6 +64,7 @@ export function runStorageCacheMaintenance(): Promise<void> {
     maintenancePromise = (async () => {
       cleanupOrphanedTemporaryStorage();
       await migrateLegacyStorageCaches();
+      await pruneRemoteImageCache();
     })().finally(() => { maintenancePromise = null; });
   }
   return maintenancePromise;

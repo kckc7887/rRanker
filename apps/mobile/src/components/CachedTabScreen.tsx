@@ -63,17 +63,16 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
     foregroundReadyRef.current = lifecycle.foregroundReady;
     const memoryWarning = lifecycle.memoryWarningGeneration > memoryWarningRef.current;
     memoryWarningRef.current = lifecycle.memoryWarningGeneration;
-    if (memoryWarning) {
+    if (memoryWarning && !focusedRef.current) {
       activatedRef.current = false;
       setActivated(false);
       stopActivation();
+      return undefined;
     }
     if (lifecycle.foregroundReady) {
       scheduleActivation();
       return stopActivation;
     }
-    activatedRef.current = false;
-    setActivated(false);
     stopActivation();
     return undefined;
   }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady, lifecycle.memoryWarningGeneration, scheduleActivation, stopActivation]);

@@ -517,7 +517,7 @@ function MuseDashHeroCover({ song, width }: { song: MuseDashSong; width: number 
   }
   return (
     <>
-      <Image source={url} style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.45 }] }]}
+      <Image cacheProfile="thumbnail" source={url} style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.45 }] }]}
         contentFit="cover" blurRadius={40} transition={120}
         onError={() => setFailed(true)} />
       <Svg width={width} height={width} style={styles.heroSvg}>

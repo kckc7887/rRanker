@@ -275,11 +275,11 @@ function TufLevelHero({ level }: { level: TufLevel }) {
 
   return <View testID="tuf-level-hero" style={[styles.hero, { width, height: width }]}>
     {mediaActive && candidate ? <Image accessibilityLabel={`关卡头图 ${level.song}`}
-      cachePolicy="disk" contentFit="cover" onError={() => setCandidateIndex((index) => index + 1)}
+      cachePolicy="disk" cacheProfile="artwork" contentFit="cover" onError={() => setCandidateIndex((index) => index + 1)}
       source={candidate} style={StyleSheet.absoluteFillObject} transition={120} /> : (
       <LinearGradient colors={theme.dark ? ['#173346', '#3C416A', '#532A2C'] : ['#DDF6FF', '#E5E7F7', '#FFE2DF']}
         end={{ x: 1, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFillObject}>
-        <Image accessibilityLabel={`关卡备用图 ${level.song}`} cachePolicy="disk" contentFit="contain"
+        <Image accessibilityLabel={`关卡备用图 ${level.song}`} cachePolicy="disk" cacheProfile="artwork" contentFit="contain"
           onError={candidate ? () => setCandidateIndex((index) => index + 1) : undefined}
           source={candidate ?? ADOFAI_ICON} style={styles.heroFallbackImage} transition={120} />
       </LinearGradient>
@@ -317,7 +317,7 @@ function TufUpstreamTag({ name }: { name: string }) {
   useEffect(() => setIconFailed(false), [icon]);
   return <View accessibilityLabel={`标签 ${name}`}
     style={[styles.upstreamTag, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-    {icon && !iconFailed ? <Image accessibilityLabel={`${name} 标签图标`} cachePolicy="disk" contentFit="contain"
+    {icon && !iconFailed ? <Image accessibilityLabel={`${name} 标签图标`} cachePolicy="disk" cacheProfile="thumbnail" contentFit="contain"
       onError={() => setIconFailed(true)} source={icon} style={styles.upstreamTagIcon} /> : null}
     <Text numberOfLines={1} style={[styles.upstreamTagText, { color: theme.textSecondary }]}>{name}</Text>
   </View>;

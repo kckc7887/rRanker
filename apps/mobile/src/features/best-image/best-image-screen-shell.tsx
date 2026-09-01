@@ -279,34 +279,44 @@ export function BestImageScreenShell<TType extends string>({
 }) {
   const theme = useAppTheme();
   const lifecycle = useAppLifecycle();
-  const foreground = lifecycle.foregroundReady;
+  const [heavyContentBlocked, setHeavyContentBlocked] = useState(!lifecycle.foregroundReady);
+  const heavyContentMounted = !heavyContentBlocked;
   const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
   const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
   const releasedMarkerRef = useRef('');
+  const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
   const window = useWindowDimensions();
   const screenWidth = window.width > 0 ? window.width : 390;
   const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
   const previewHeight = previewWidth * 4 / 3;
 
   useEffect(() => {
+    const memoryWarning = lifecycle.memoryWarningGeneration > memoryWarningRef.current;
+    memoryWarningRef.current = lifecycle.memoryWarningGeneration;
     const marker = `${lifecycle.phase}:${lifecycle.memoryWarningGeneration}`;
-    if (foreground || releasedMarkerRef.current === marker) return;
+    if ((lifecycle.phase !== 'background' && !memoryWarning) || releasedMarkerRef.current === marker) return;
     releasedMarkerRef.current = marker;
+    setHeavyContentBlocked(true);
     onRequestCloseExport();
     onReleaseHeavySources?.();
     void recordRuntimeDiagnostic('web-content', {
       lifecyclePhase: lifecycle.phase,
       webContentState: 'released',
     });
-  }, [foreground, lifecycle.memoryWarningGeneration, lifecycle.phase, onReleaseHeavySources, onRequestCloseExport]);
+  }, [lifecycle.memoryWarningGeneration, lifecycle.phase, onReleaseHeavySources, onRequestCloseExport]);
 
   useEffect(() => {
-    if (!foreground || !sources) return;
+    if (!lifecycle.foregroundReady) return;
+    setHeavyContentBlocked(false);
+  }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
+
+  useEffect(() => {
+    if (!heavyContentMounted || !sources) return;
     void recordRuntimeDiagnostic('web-content', {
       lifecyclePhase: lifecycle.phase,
       webContentState: 'mounted',
     });
-  }, [foreground, lifecycle.phase, sources]);
+  }, [heavyContentMounted, lifecycle.phase, sources]);
 
   return <>
     <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -356,7 +366,7 @@ export function BestImageScreenShell<TType extends string>({
             const pageId = pages[index]!.id;
             return <View style={{ width: previewWidth, height: previewHeight }}>
               {/* 单页可能包含数十 MB 的封面数据，同时挂载多个 WebView 会触发 iOS 内存终止。 */}
-              {foreground && index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
+              {heavyContentMounted && index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
                 {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
                 {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
                 onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
@@ -398,8 +408,8 @@ export function BestImageScreenShell<TType extends string>({
 
     {pickers}
 
-    <Modal visible={foreground && exportIndex !== null} animationType="none" transparent={false} onRequestClose={onRequestCloseExport}>
-      {foreground && exportIndex !== null && exportSource ? <View style={styles.exportRoot}>
+    <Modal visible={heavyContentMounted && exportIndex !== null} animationType="none" transparent={false} onRequestClose={onRequestCloseExport}>
+      {heavyContentMounted && exportIndex !== null && exportSource ? <View style={styles.exportRoot}>
         <View
           ref={captureRef}
           collapsable={false}

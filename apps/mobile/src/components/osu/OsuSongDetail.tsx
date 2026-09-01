@@ -388,6 +388,7 @@ function Hero({ song, width }: { song: OsuBeatmapsetDetail; width: number }) {
       cover={failed || !song.cover ? undefined : (
         <Image
           cachePolicy="disk"
+          cacheProfile="artwork"
           accessibilityLabel={`歌曲封面 ${song.title}`}
           contentFit="cover"
           onError={() => setFailed(true)}

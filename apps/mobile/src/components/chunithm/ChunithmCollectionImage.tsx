@@ -38,6 +38,7 @@ export function ChunithmCollectionImage({
   return (
     <Image
       cachePolicy="disk"
+      cacheProfile="thumbnail"
       accessibilityLabel={`${kind === 'trophy-image' ? '称号' : kind} 预览`}
       contentFit="contain"
       onError={() => setFailed(true)}

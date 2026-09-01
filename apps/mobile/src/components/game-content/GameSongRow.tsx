@@ -99,6 +99,7 @@ export function GameSongRow({
     <Image
       accessibilityLabel={coverImage.accessibilityLabel}
       cachePolicy="disk"
+      cacheProfile="thumbnail"
       contentFit="cover"
       onError={() => setCoverFailed(true)}
       source={coverImage.source}

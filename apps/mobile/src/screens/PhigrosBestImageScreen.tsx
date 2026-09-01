@@ -246,9 +246,9 @@ export function PhigrosBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    if (!lifecycle.foregroundReady) return;
     setTemplateAssetError(null);
     setFontsReady(false);
-    if (!lifecycle.foregroundReady) return;
     const neededNames = neededFontKey ? neededFontKey.split('|').filter(Boolean) : [];
     void (async () => {
       const prepared = await preparePhigrosFonts((progress) => {

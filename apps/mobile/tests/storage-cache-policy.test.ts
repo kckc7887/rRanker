@@ -41,6 +41,7 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
 }));
 vi.mock('@/features/storage-management/expo-system-cache', () => ({ isExpoSystemCacheEntry: () => false }));
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
+vi.mock('@/services/remote-image-cache', () => ({ pruneRemoteImageCache: vi.fn(async () => undefined) }));
 
 // 原生依赖 mock 完成后再导入迁移入口。
 // eslint-disable-next-line import/first
@@ -52,7 +53,7 @@ import {
 describe('cache policy registry', () => {
   it('contains all four persistence classes', () => {
     expect(new Set(CACHE_POLICY_REGISTRY.map((item) => item.persistence))).toEqual(new Set([
-      'durable', 'session-only', 'temporary', 'versioned-asset',
+      'durable', 'session-only', 'temporary', 'bounded-cache', 'versioned-asset',
     ]));
   });
 
@@ -62,6 +63,7 @@ describe('cache policy registry', () => {
     expect(resourceCachePersistence('phira:player:323528')).toBe('durable');
     expect(resourceCachePersistence('osu:osu-standard:2')).toBe('durable');
     expect(isTemporaryCacheEntry('rranker-chart-preview-session-1')).toBe(true);
+    expect(isTemporaryCacheEntry('rranker-remote-image-cache-v1')).toBe(false);
     expect(isTemporaryCacheEntry('ExponentAsset-font.ttf')).toBe(false);
   });
 });
@@ -119,6 +121,7 @@ describe('startup orphan cleanup', () => {
     };
     expect(options.skip('rranker-chart-preview-session-1')).toBe(false);
     expect(options.skip('rRanker-backup-session.json')).toBe(false);
+    expect(options.skip('rranker-remote-image-cache-v1')).toBe(true);
     expect(options.skip('Image')).toBe(true);
     expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
   });

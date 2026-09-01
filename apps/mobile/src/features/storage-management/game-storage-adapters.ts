@@ -380,10 +380,14 @@ export async function measureSharedCacheBytes(): Promise<number> {
 export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }> {
   // 禁止整目录清空 Paths.cache：会删掉 Ionicons 等 ExponentAsset 字体，导致全站图标空白。
   clearAppOwnedCacheContentsStrict(APP_CACHE_ROOT());
-  const { Image } = await import('expo-image');
+  const [{ Image }, { clearCompressedRemoteImageCache }] = await Promise.all([
+    import('expo-image'),
+    import('@/services/remote-image-cache'),
+  ]);
   const [disk, memory] = await Promise.all([
     Image.clearDiskCache(),
     Image.clearMemoryCache(),
+    clearCompressedRemoteImageCache(),
   ]);
   if (disk !== true) throw new Error('原生图片磁盘缓存清理失败');
   const imageCacheCleared = disk === true || memory === true;
@@ -392,5 +396,5 @@ export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }
 }
 
 export function sharedCacheNote(): string {
-  return '会话临时文件；远程图片仅使用内存，不含系统图标字体';
+  return '会话临时文件和已压缩的常用图片；不含系统图标字体';
 }

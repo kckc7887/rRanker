@@ -269,7 +269,7 @@ describe('osu storage segment', () => {
 
 describe('shared cache note wording', () => {
   it('uses the unified include/exclude wording', () => {
-    expect(sharedCacheNote()).toBe('会话临时文件；远程图片仅使用内存，不含系统图标字体');
+    expect(sharedCacheNote()).toBe('会话临时文件和已压缩的常用图片；不含系统图标字体');
   });
 });
 

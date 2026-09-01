@@ -277,24 +277,25 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
   if (isMuseDashSong(song)) {
     const url = museDashCoverUrl(song.cover);
     return url
-      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={url}
+      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" cacheProfile="thumbnail" contentFit="cover" source={url}
         style={[styles.cover, styles.museDashCover]} transition={120} />
       : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   if (isOsuLibrarySong(song)) {
     return song.cover
-      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={song.cover}
+      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" cacheProfile="thumbnail" contentFit="cover" source={song.cover}
         style={styles.cover} transition={120} />
       : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   if (blurUrl) {
-    return <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={blurUrl} style={styles.cover} transition={120} />;
+    return <Image accessibilityLabel="曲绘" cachePolicy="disk" cacheProfile="thumbnail" contentFit="cover" source={blurUrl} style={styles.cover} transition={120} />;
   }
   if (isChunithmSong(song)) {
     return (
       <Image
         accessibilityLabel="曲绘"
         cachePolicy="disk"
+        cacheProfile="thumbnail"
         contentFit="cover"
         source={chunithmJacketUrl(song)}
         style={styles.cover}
@@ -304,7 +305,7 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
   }
   if (isPhiraLibrarySong(song)) {
     return song.illustration
-      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" contentFit="cover" source={song.illustration}
+      ? <Image accessibilityLabel="曲绘" cachePolicy="disk" cacheProfile="thumbnail" contentFit="cover" source={song.illustration}
         style={styles.cover} transition={120} />
       : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }

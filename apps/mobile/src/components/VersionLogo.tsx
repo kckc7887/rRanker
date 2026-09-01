@@ -20,6 +20,7 @@ export function VersionLogo({
   return (
     <Image
       accessibilityLabel={accessibilityLabel}
+      cacheProfile="thumbnail"
       contentFit="contain"
       onError={() => setFailed(true)}
       source={source}
