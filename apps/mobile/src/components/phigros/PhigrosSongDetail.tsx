@@ -253,6 +253,7 @@ function Detail({
           <Image
             accessibilityLabel="曲绘"
             cachePolicy="disk"
+            cacheProfile="artwork"
             contentFit="cover"
             onError={() => {
               if (coverStage === 'full' && lowresUrl) {

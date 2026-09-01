@@ -95,10 +95,18 @@ export function ChartPreviewScreenShell<TPayload>({
   const [ready, setReady] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
+  const [heavyContentBlocked, setHeavyContentBlocked] = useState(!lifecycle.foregroundReady);
   const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
+  const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
+  const backgrounded = lifecycle.phase === 'background';
+  const heavyContentMounted = !heavyContentBlocked;
+  const prepareGeneration = heavyContentMounted ? lifecycle.foregroundGeneration : null;
 
   useEffect(() => {
-    if (foreground) return;
+    const memoryWarning = lifecycle.memoryWarningGeneration > memoryWarningRef.current;
+    memoryWarningRef.current = lifecycle.memoryWarningGeneration;
+    if (!backgrounded && !memoryWarning) return;
+    setHeavyContentBlocked(true);
     webRef.current?.injectJavaScript(chartPreviewStopScript());
     setReady(false);
     setIsFullscreen(false);
@@ -106,30 +114,40 @@ export function ChartPreviewScreenShell<TPayload>({
       lifecyclePhase: lifecycle.phase,
       webContentState: 'released',
     });
-  }, [foreground, lifecycle.memoryWarningGeneration, lifecycle.phase]);
+  }, [backgrounded, lifecycle.memoryWarningGeneration, lifecycle.phase]);
 
   useEffect(() => {
-    if (!foreground || !source) return;
+    if (lifecycle.phase !== 'inactive') return;
+    webRef.current?.injectJavaScript(chartPreviewStopScript());
+    setIsFullscreen(false);
+  }, [lifecycle.phase]);
+
+  useEffect(() => {
+    if (!foreground) return;
+    setHeavyContentBlocked(false);
+  }, [foreground, lifecycle.foregroundGeneration]);
+
+  useEffect(() => {
+    if (!heavyContentMounted || !source) return;
     void recordRuntimeDiagnostic('web-content', {
       lifecyclePhase: lifecycle.phase,
       webContentState: 'mounted',
     });
-  }, [foreground, lifecycle.phase, source]);
+  }, [heavyContentMounted, lifecycle.phase, source]);
 
-  // deps 定稿为 request；settingsKey / prepareErrorFallback 为屏幕级恒定值。
+  // settingsKey / prepareErrorFallback 为屏幕级恒定值；prepareGeneration 只在真实后台恢复时变化。
   useEffect(() => {
     let cancelled = false;
     let controller: AbortController | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let preparedSource: ChartPreviewShellSource | undefined;
 
-    if (!foreground || request.kind !== 'ready') {
+    if (prepareGeneration === null || request.kind !== 'ready') {
       setSource(null);
       return () => {
         cancelled = true;
       };
     }
-
     setSource(null);
     setReady(false);
     setIsFullscreen(false);
@@ -172,8 +190,8 @@ export function ChartPreviewScreenShell<TPayload>({
       webRef.current?.injectJavaScript(chartPreviewStopScript());
       preparedSource?.dispose?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps 定稿为 request
-  }, [foreground, lifecycle.foregroundGeneration, request]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 屏幕级配置引用恒定
+  }, [prepareGeneration, request]);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -232,7 +250,7 @@ export function ChartPreviewScreenShell<TPayload>({
           <ActivityIndicator color={theme.accent} />
           <Text style={[styles.hint, { color: theme.textMuted }]}>正在准备播放器…</Text>
         </View>
-      ) : !foreground ? (
+      ) : !heavyContentMounted ? (
         <View style={styles.center} />
       ) : (
         <View style={styles.webviewWrap}>

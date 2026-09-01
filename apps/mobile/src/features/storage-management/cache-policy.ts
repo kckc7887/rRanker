@@ -1,4 +1,6 @@
-export type CachePersistence = 'durable' | 'session-only' | 'temporary' | 'versioned-asset';
+export type CachePersistence = 'durable' | 'session-only' | 'temporary' | 'bounded-cache' | 'versioned-asset';
+
+export const COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME = 'rranker-remote-image-cache-v1';
 
 /**
  * 公开数据与查询派生数据只在 React Query 会话内存活。
@@ -38,11 +40,12 @@ export type CachePolicyRegistration = {
   scope: string;
 };
 
-/** 统计、清理、升级迁移共同使用的四类策略注册表。 */
+/** 统计、清理、升级迁移共同使用的缓存策略注册表。 */
 export const CACHE_POLICY_REGISTRY: readonly CachePolicyRegistration[] = [
   { id: 'account-snapshots', persistence: 'durable', scope: '账号资料、核心成绩与个人曲库' },
   { id: 'public-query-data', persistence: 'session-only', scope: '公开曲库、别名、详情、分页与派生结果' },
   { id: 'task-files', persistence: 'temporary', scope: '成绩图与谱面确认会话文件' },
+  { id: 'remote-images', persistence: 'bounded-cache', scope: '压缩后的歌曲封面与常用图片' },
   { id: 'runtime-assets', persistence: 'versioned-asset', scope: '当前版本字体与 UI 素材' },
 ] as const;
 
@@ -60,5 +63,9 @@ export function isSessionOnlyResourceKey(key: string): boolean {
 
 /** rRanker 自有的会话文件；异常退出时允许下次启动直接回收。 */
 export function isTemporaryCacheEntry(name: string): boolean {
-  return name.startsWith('rranker-') || name.startsWith('rRanker-');
+  return !isBoundedCacheEntry(name) && (name.startsWith('rranker-') || name.startsWith('rRanker-'));
+}
+
+export function isBoundedCacheEntry(name: string): boolean {
+  return name === COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME;
 }

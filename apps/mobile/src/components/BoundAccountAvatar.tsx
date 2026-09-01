@@ -61,7 +61,7 @@ export function BoundAccountAvatar({
     return (
       <ExpoImage
         accessibilityIgnoresInvertColors
-        cachePolicy="disk"
+        cacheProfile="native"
         contentFit="cover"
         source={account.avatarUrl}
         style={[styles.avatar, style]}

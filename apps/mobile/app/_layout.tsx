@@ -6,7 +6,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Appearance, StyleSheet, View } from 'react-native';
 
-import { queryClient } from '@/state/query-client';
+import { queryClient, releaseInactiveQueries } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import {
@@ -175,6 +175,7 @@ function RootLayoutContent() {
   const [iconFontsReady, setIconFontsReady] = useState(false);
   const localHydrationGenerationRef = useRef(-1);
   const releasedMemoryWarningRef = useRef(0);
+  const storageMaintenanceStartedRef = useRef(false);
 
   useEffect(() => {
     void initializeRuntimeDiagnostics();
@@ -225,14 +226,13 @@ function RootLayoutContent() {
   useEffect(() => {
     focusManager.setFocused(lifecycle.foregroundReady);
     if (lifecycle.foregroundReady) uploadTaskController.resume();
-    else uploadTaskController.pause();
-    if (!lifecycle.foregroundReady) void queryClient.cancelQueries();
+    else if (lifecycle.phase === 'background') uploadTaskController.pause();
     if (lifecycle.phase === 'background') {
-      void ExpoImage.clearMemoryCache();
+      void queryClient.cancelQueries();
     }
     if (lifecycle.memoryWarningGeneration > releasedMemoryWarningRef.current) {
       releasedMemoryWarningRef.current = lifecycle.memoryWarningGeneration;
-      queryClient.removeQueries();
+      releaseInactiveQueries(queryClient);
       void ExpoImage.clearMemoryCache();
     }
   }, [lifecycle.foregroundReady, lifecycle.memoryWarningGeneration, lifecycle.phase]);
@@ -256,6 +256,8 @@ function RootLayoutContent() {
 
   useEffect(() => {
     if (restoreStatus !== 'ready' || !themeHydrated || !iconFontsReady || !lifecycle.foregroundReady) return;
+    if (storageMaintenanceStartedRef.current) return;
+    storageMaintenanceStartedRef.current = true;
     void runStorageCacheMaintenance().catch(() => undefined);
   }, [restoreStatus, themeHydrated, iconFontsReady, lifecycle.foregroundReady]);
 

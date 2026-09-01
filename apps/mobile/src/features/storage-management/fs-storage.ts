@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import { isAppOwnedCacheEntry } from '@/features/storage-management/expo-system-cache';
+import { COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME } from '@/features/storage-management/cache-policy';
 
 export { formatStorageBytes } from '@/features/storage-management/format-storage-bytes';
 export {
@@ -124,4 +125,5 @@ export const PHIGROS_FONT_ROOT = () => new Directory(Paths.document, 'rranker', 
 export const MAIMAI_ASSETS_ROOT = () => new Directory(Paths.document, 'rranker', 'maimai-assets');
 export const PHIGROS_ILLUSTRATION_ROOT = () => new Directory(Paths.document, 'rranker', 'phigros-illustration-stage');
 export const OSU_MOD_ICONS_ROOT = () => new Directory(Paths.document, 'rranker', 'osu-mod-icons');
+export const COMPRESSED_IMAGE_CACHE_ROOT = () => new Directory(Paths.cache, COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME);
 export const APP_CACHE_ROOT = () => new Directory(Paths.cache);

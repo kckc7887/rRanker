@@ -46,10 +46,16 @@ describe('AppLifecycleProvider', () => {
     expect(firstSignal.aborted).toBe(false);
 
     await act(() => { changeListener?.('inactive'); });
-    expect(firstSignal.aborted).toBe(true);
-    expect(screen.getByText('foreground-waiting|1|0')).toBeTruthy();
+    expect(firstSignal.aborted).toBe(false);
+    expect(screen.getByText('inactive|1|0')).toBeTruthy();
+
+    await act(() => { changeListener?.('active'); });
+    await act(() => { tasks.at(-1)?.callback(); });
+    expect(screen.getByText('foreground-ready|1|0')).toBeTruthy();
+    expect(getForegroundAbortSignal()).toBe(firstSignal);
 
     await act(() => { changeListener?.('background'); });
+    expect(firstSignal.aborted).toBe(true);
     expect(screen.getByText('background|1|0')).toBeTruthy();
     await act(() => { changeListener?.('active'); });
     const expiredTask = tasks.at(-1)!;

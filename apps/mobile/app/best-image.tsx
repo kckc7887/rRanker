@@ -254,8 +254,8 @@ export function MaimaiBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setEmbeddedAssets(null);
     if (!lifecycle.foregroundReady) return;
+    setEmbeddedAssets(null);
     setExportAssetError(null);
     loadBestImageAssets(FONT_SOURCE, frameSource).then(
       (assets) => { if (!cancelled) setEmbeddedAssets(assets); },
@@ -448,9 +448,9 @@ export function MaimaiBestImageScreen() {
   const coverRequestKey = JSON.stringify(scoreSections.flatMap((section) => section.records.map((record) => record.songId)));
   useEffect(() => {
     let cancelled = false;
+    if (!lifecycle.foregroundReady) return;
     setCoverUrls(null);
     setCoverProgress({ completed: 0, total: 0 });
-    if (!lifecycle.foregroundReady) return;
     const songIds = JSON.parse(coverRequestKey) as string[];
     loadBestImageJackets(songIds, (completed, total) => {
       if (!cancelled) setCoverProgress({ completed, total });

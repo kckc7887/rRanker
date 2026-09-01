@@ -9,6 +9,7 @@ export function SongCover({ songId, size = 58, borderRadius = 9 }: { songId: str
   return (
     <Image
       cachePolicy="disk"
+      cacheProfile="thumbnail"
       accessibilityLabel="歌曲封面"
       contentFit="cover"
       onError={() => setFailed(true)}

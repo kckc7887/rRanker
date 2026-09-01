@@ -23,6 +23,7 @@ export function PlateImage({
   return (
     <Image
       cachePolicy="disk"
+      cacheProfile="thumbnail"
       accessibilityLabel="姓名框预览"
       contentFit="contain"
       onError={() => setFailed(true)}

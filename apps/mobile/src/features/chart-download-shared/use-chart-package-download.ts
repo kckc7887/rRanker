@@ -47,7 +47,7 @@ export function useChartPackageDownload({
   }, [dismissNotification]);
 
   useEffect(() => {
-    if (!lifecycle.foregroundReady) {
+    if (lifecycle.phase === 'background') {
       if (controllerRef.current) {
         backgroundCanceledRef.current = true;
         controllerRef.current.abort();
@@ -66,7 +66,7 @@ export function useChartPackageDownload({
         variant: 'info',
       });
     }
-  }, [dismissNotification, lifecycle.foregroundGeneration, lifecycle.foregroundReady, showNotification]);
+  }, [dismissNotification, lifecycle.foregroundGeneration, lifecycle.foregroundReady, lifecycle.phase, showNotification]);
 
   const start = useCallback(async (runner: ChartPackageDownloadRunner) => {
     if (controllerRef.current) return;

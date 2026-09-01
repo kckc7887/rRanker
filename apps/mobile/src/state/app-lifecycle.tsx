@@ -37,9 +37,10 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
   const initialStateRef = useRef(AppState.currentState);
   const initialState = initialStateRef.current;
   const initialBackground = initialState === 'background';
+  const initialInactive = initialState === 'inactive';
   const [snapshot, setSnapshot] = useState<AppLifecycleSnapshot>(() => ({
     appState: initialState,
-    phase: initialBackground ? 'background' : 'foreground-waiting',
+    phase: initialBackground ? 'background' : initialInactive ? 'inactive' : 'foreground-waiting',
     foregroundReady: false,
     foregroundGeneration: 0,
     memoryWarningGeneration: 0,
@@ -57,23 +58,44 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
       readyTaskRef.current?.cancel();
       readyTaskRef.current = null;
     };
-    const enterWaiting = (appState: AppStateStatus | null | undefined) => {
+    const enterInactive = (appState: AppStateStatus | null | undefined) => {
+      cancelReadyTask();
+      update({
+        ...snapshotRef.current,
+        appState,
+        phase: 'inactive',
+        foregroundReady: false,
+      });
+    };
+    const enterBackground = (appState: AppStateStatus | null | undefined) => {
       cancelReadyTask();
       abortForegroundWork();
       update({
         ...snapshotRef.current,
         appState,
-        phase: appState === 'background' ? 'background' : 'foreground-waiting',
+        phase: 'background',
         foregroundReady: false,
       });
     };
     const scheduleReady = (appState: AppStateStatus | null | undefined) => {
-      enterWaiting(appState);
-      const expectedGeneration = snapshotRef.current.foregroundGeneration + 1;
+      if (snapshotRef.current.phase === 'foreground-ready' && snapshotRef.current.appState === appState) {
+        return;
+      }
+      const previous = snapshotRef.current;
+      const startsForegroundGeneration = previous.phase === 'background'
+        || previous.foregroundGeneration === 0;
+      cancelReadyTask();
+      update({
+        ...previous,
+        appState,
+        phase: 'foreground-waiting',
+        foregroundReady: false,
+      });
+      const expectedGeneration = previous.foregroundGeneration + (startsForegroundGeneration ? 1 : 0);
       readyTaskRef.current = InteractionManager.runAfterInteractions(() => {
         readyTaskRef.current = null;
         if (snapshotRef.current.appState === 'background' || snapshotRef.current.appState === 'inactive') return;
-        beginForegroundWork();
+        if (startsForegroundGeneration) beginForegroundWork();
         update({
           ...snapshotRef.current,
           appState,
@@ -84,12 +106,14 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
       });
     };
     const applyState = (appState: AppStateStatus) => {
-      if (appState === 'background' || appState === 'inactive') enterWaiting(appState);
+      if (appState === 'background') enterBackground(appState);
+      else if (appState === 'inactive') enterInactive(appState);
       else scheduleReady(appState);
     };
 
     publishAppLifecycleSnapshot(snapshotRef.current);
-    if (initialBackground) enterWaiting(initialState);
+    if (initialBackground) enterBackground(initialState);
+    else if (initialInactive) enterInactive(initialState);
     else scheduleReady(initialState);
 
     const changeSubscription = AppState.addEventListener('change', applyState);
@@ -105,7 +129,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
       cancelReadyTask();
       abortForegroundWork();
     };
-  }, [initialBackground, initialState]);
+  }, [initialBackground, initialInactive, initialState]);
 
   const value = useMemo(() => snapshot, [snapshot]);
   return <AppLifecycleContext.Provider value={value}>{children}</AppLifecycleContext.Provider>;

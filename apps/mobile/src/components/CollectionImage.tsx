@@ -27,6 +27,7 @@ export function CollectionImage({
   return (
     <Image
       cachePolicy="disk"
+      cacheProfile="thumbnail"
       accessibilityLabel={`${kind} 预览`}
       contentFit="contain"
       onError={() => setFailed(true)}

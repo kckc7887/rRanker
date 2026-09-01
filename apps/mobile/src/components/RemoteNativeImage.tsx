@@ -1,15 +1,20 @@
 import { Image as NativeImage, type ImageProps as NativeImageProps } from 'react-native';
 import { Image as ExpoImage, type ImageProps as ExpoImageProps } from 'expo-image';
+import { RemoteImage, type RemoteImageCacheMode } from '@/components/RemoteImage';
 
 const supportsNativeCachePolicy = typeof ExpoImage.clearDiskCache === 'function';
 
-/** 兼容原 RN.Image Host Tree 的远程图片入口；原生运行时切到 expo-image 内存策略。 */
-export function RemoteNativeImage({ resizeMode, ...props }: NativeImageProps) {
+export type RemoteNativeImageProps = NativeImageProps & {
+  cacheProfile?: RemoteImageCacheMode;
+};
+
+/** 保留 RN.Image 调用形态；原生运行时统一走共享远程图片入口。 */
+export function RemoteNativeImage({ cacheProfile, resizeMode, ...props }: RemoteNativeImageProps) {
   if (!supportsNativeCachePolicy) return <NativeImage {...props} resizeMode={resizeMode} />;
   return (
-    <ExpoImage
+    <RemoteImage
       {...(props as unknown as ExpoImageProps)}
-      cachePolicy="memory"
+      cacheProfile={cacheProfile}
       contentFit={resizeMode === 'stretch'
         ? 'fill'
         : resizeMode === 'center'

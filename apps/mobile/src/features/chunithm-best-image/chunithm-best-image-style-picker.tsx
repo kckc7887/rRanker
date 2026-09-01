@@ -105,7 +105,7 @@ export function ChunithmBestImageStylePicker({
             >
               <View style={styles.preview}>
                 {uri ? (
-                  <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
+                  <Image cacheProfile="thumbnail" source={{ uri }} style={styles.previewImage} resizeMode="contain" />
                 ) : (
                   <Text style={[styles.noPreview, { color: theme.textMuted }]}>无预览</Text>
                 )}

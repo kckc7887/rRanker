@@ -1,5 +1,6 @@
 export type AppLifecyclePhase =
   | 'background'
+  | 'inactive'
   | 'foreground-waiting'
   | 'foreground-ready';
 
