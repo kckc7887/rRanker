@@ -33,7 +33,6 @@ import { ChunithmBestImageStylePicker } from '@/features/chunithm-best-image/chu
 import type { ChunithmBestImageCollectionItem } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
 import { loadChunithmBestImageCharacters } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
 import {
-  chunithmBestImageJacketUrl,
   loadChunithmBestImageJackets,
   loadChunithmRemoteImageDataUri,
   resolveChunithmBestImageJacketId,
@@ -405,8 +404,7 @@ export function ChunithmBestImageScreen() {
     : stylePrefs.background.mode === 'song'
       ? '歌曲已不可用 · 使用默认背景'
       : '默认浅色渐变';
-  const backgroundPreviewUri = backgroundDataUri
-    ?? (backgroundSong ? chunithmBestImageJacketUrl(String(backgroundSong.id)) : null);
+  const backgroundPreviewUri = backgroundDataUri;
 
   const quantityError = parseBestImageQuantity(quantityText) === null
     ? '数量必须是非负整数，0 表示不限制'

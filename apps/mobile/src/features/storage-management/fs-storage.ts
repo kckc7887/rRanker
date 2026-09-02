@@ -127,3 +127,4 @@ export const PHIGROS_ILLUSTRATION_ROOT = () => new Directory(Paths.document, 'rr
 export const OSU_MOD_ICONS_ROOT = () => new Directory(Paths.document, 'rranker', 'osu-mod-icons');
 export const COMPRESSED_IMAGE_CACHE_ROOT = () => new Directory(Paths.cache, COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME);
 export const APP_CACHE_ROOT = () => new Directory(Paths.cache);
+export const APP_DOCUMENT_ROOT = () => new Directory(Paths.document);

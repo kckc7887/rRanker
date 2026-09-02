@@ -100,6 +100,7 @@ export function GameSongRow({
       accessibilityLabel={coverImage.accessibilityLabel}
       cachePolicy="disk"
       cacheProfile="thumbnail"
+      gameId={presentation.gameId}
       contentFit="cover"
       onError={() => setCoverFailed(true)}
       source={coverImage.source}

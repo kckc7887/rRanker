@@ -287,7 +287,7 @@ function OsuDetailBody({
       keyboardShouldPersistTaps="handled"
       testID="osu-song-detail-scroll"
     >
-      <Hero song={song} width={width} />
+      <Hero gameId={gameId} song={song} width={width} />
       <SongMetadataTable
         accessibilityLabel="osu 歌曲详情数据"
         cellRootStyle={styles.metadataCellRoot}
@@ -378,7 +378,7 @@ function OsuDetailBody({
   );
 }
 
-function Hero({ song, width }: { song: OsuBeatmapsetDetail; width: number }) {
+function Hero({ gameId, song, width }: { gameId: OsuGameId; song: OsuBeatmapsetDetail; width: number }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [song.beatmapSetId]);
   return (
@@ -389,6 +389,7 @@ function Hero({ song, width }: { song: OsuBeatmapsetDetail; width: number }) {
         <Image
           cachePolicy="disk"
           cacheProfile="artwork"
+          gameId={gameId}
           accessibilityLabel={`歌曲封面 ${song.title}`}
           contentFit="cover"
           onError={() => setFailed(true)}

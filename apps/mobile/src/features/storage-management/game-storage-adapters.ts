@@ -18,9 +18,10 @@ import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-fon
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { isBoundedCacheEntry } from '@/features/storage-management/cache-policy';
 import { isManagedClearableCacheEntry } from '@/features/storage-management/expo-system-cache';
 import {
-  clearAppOwnedCacheContentsStrict,
+  clearDirectoryContentsStrict,
   measureDirectoryBytes,
   APP_CACHE_ROOT,
   MAIMAI_ASSETS_ROOT,
@@ -373,21 +374,19 @@ export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | unde
 export async function measureSharedCacheBytes(): Promise<number> {
   // 统计应用临时文件与 expo-image 原生缓存；ExponentAsset-* 系统资源不计入。
   return measureDirectoryBytes(APP_CACHE_ROOT(), {
-    skip: (name) => !isManagedClearableCacheEntry(name),
+    skip: (name) => !isManagedClearableCacheEntry(name) || isBoundedCacheEntry(name),
   });
 }
 
 export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }> {
   // 禁止整目录清空 Paths.cache：会删掉 Ionicons 等 ExponentAsset 字体，导致全站图标空白。
-  clearAppOwnedCacheContentsStrict(APP_CACHE_ROOT());
-  const [{ Image }, { clearCompressedRemoteImageCache }] = await Promise.all([
-    import('expo-image'),
-    import('@/services/remote-image-cache'),
-  ]);
+  clearDirectoryContentsStrict(APP_CACHE_ROOT(), {
+    skip: (name) => !isManagedClearableCacheEntry(name) || isBoundedCacheEntry(name),
+  });
+  const { Image } = await import('expo-image');
   const [disk, memory] = await Promise.all([
     Image.clearDiskCache(),
     Image.clearMemoryCache(),
-    clearCompressedRemoteImageCache(),
   ]);
   if (disk !== true) throw new Error('原生图片磁盘缓存清理失败');
   const imageCacheCleared = disk === true || memory === true;
@@ -396,5 +395,5 @@ export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }
 }
 
 export function sharedCacheNote(): string {
-  return '会话临时文件和已压缩的常用图片；不含系统图标字体';
+  return '临时文件与其它可重新下载的内容';
 }

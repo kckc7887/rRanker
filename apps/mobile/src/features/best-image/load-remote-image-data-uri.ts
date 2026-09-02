@@ -1,4 +1,8 @@
 import { File, Paths } from 'expo-file-system';
+import {
+  loadCompressedRemoteImage,
+  type RemoteImageCacheOptions,
+} from '@/services/remote-image-cache';
 
 let temporaryImageSequence = 0;
 const inFlight = new Map<string, Promise<string | null>>();
@@ -12,24 +16,48 @@ function imageMimeType(url: string): string {
   return 'image/png';
 }
 
-/** 远程成绩图素材只经临时文件读取；无论成功或失败都立即删除，不进入原生图片磁盘缓存。 */
-export function loadRemoteImageAsDataUri(url: string | null | undefined): Promise<string | null> {
+async function loadTemporaryImageAsDataUri(url: string): Promise<string | null> {
+  temporaryImageSequence += 1;
+  const file = new File(Paths.cache, `rranker-best-image-session-${Date.now()}-${temporaryImageSequence}.tmp`);
+  try {
+    await File.downloadFileAsync(url, file, { idempotent: true });
+    if (!file.exists || (file.size ?? 0) <= 0) return null;
+    return `data:${imageMimeType(url)};base64,${await file.base64()}`;
+  } catch {
+    return null;
+  } finally {
+    if (file.exists) file.delete();
+  }
+}
+
+/** 歌曲封面复用公共压缩文件；其它远程素材只经任务临时文件读取。 */
+export function loadRemoteImageAsDataUri(
+  url: string | null | undefined,
+  cacheOptions?: RemoteImageCacheOptions,
+): Promise<string | null> {
   if (!url) return Promise.resolve(null);
-  const existing = inFlight.get(url);
+  const requestKey = cacheOptions
+    ? `${cacheOptions.gameId}|${cacheOptions.profile}|${url}`
+    : url;
+  const existing = inFlight.get(requestKey);
   if (existing) return existing;
   const pending = (async () => {
-    temporaryImageSequence += 1;
-    const file = new File(Paths.cache, `rranker-best-image-session-${Date.now()}-${temporaryImageSequence}.tmp`);
-    try {
-      await File.downloadFileAsync(url, file, { idempotent: true });
-      if (!file.exists || (file.size ?? 0) <= 0) return null;
-      return `data:${imageMimeType(url)};base64,${await file.base64()}`;
-    } catch {
+    if (cacheOptions) {
+      try {
+        const cached = await loadCompressedRemoteImage(url, cacheOptions);
+        if (cached) {
+          const file = new File(cached.fileUri);
+          if (file.exists && (file.size ?? 0) > 0) {
+            return `data:image/webp;base64,${await file.base64()}`;
+          }
+        }
+      } catch {
+        return null;
+      }
       return null;
-    } finally {
-      if (file.exists) file.delete();
     }
-  })().finally(() => inFlight.delete(url));
-  inFlight.set(url, pending);
+    return loadTemporaryImageAsDataUri(url);
+  })().finally(() => inFlight.delete(requestKey));
+  inFlight.set(requestKey, pending);
   return pending;
 }

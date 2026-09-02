@@ -9,6 +9,7 @@ import {
   type GameStorageAdapter,
 } from '@/features/storage-management/game-storage-adapters';
 import { measureManagedStorageBytes } from '@/features/storage-management/storage-usage';
+import { clearGameRemoteImageCache } from '@/services/remote-image-cache';
 
 const snapshots = new SqliteSnapshotRepository();
 
@@ -53,7 +54,10 @@ export async function clearStorageByCategories(
         failures.push(String(id));
         continue;
       }
-      await adapter.clear(snapshots);
+      await Promise.all([
+        adapter.clear(snapshots),
+        clearGameRemoteImageCache(id),
+      ]);
       clearedIds.push(id);
     } catch {
       failures.push(id === 'shared' ? '共享缓存' : String(id));

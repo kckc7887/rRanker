@@ -10,6 +10,7 @@ export function SongCover({ songId, size = 58, borderRadius = 9 }: { songId: str
     <Image
       cachePolicy="disk"
       cacheProfile="thumbnail"
+      gameId="maimai"
       accessibilityLabel="歌曲封面"
       contentFit="cover"
       onError={() => setFailed(true)}

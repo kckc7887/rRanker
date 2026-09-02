@@ -354,8 +354,8 @@ export function PhigrosBestImageScreen() {
         ?? await loadRemoteImageDataUri(payload?.avatarUrl, illustrationStage)
       ))(),
       stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageDataUri(backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null, illustrationStage)
-        ?? await loadRemoteImageDataUri(backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null, illustrationStage)
+        await loadRemoteImageDataUri(backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null, illustrationStage, { gameId: 'phigros', profile: 'artwork' })
+        ?? await loadRemoteImageDataUri(backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null, illustrationStage, { gameId: 'phigros', profile: 'artwork' })
       ))(),
     ]).then(([nextAvatar, nextBackground]) => {
       if (cancelled) return;

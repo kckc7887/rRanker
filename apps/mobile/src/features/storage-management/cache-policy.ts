@@ -1,6 +1,6 @@
 export type CachePersistence = 'durable' | 'session-only' | 'temporary' | 'bounded-cache' | 'versioned-asset';
 
-export const COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME = 'rranker-remote-image-cache-v1';
+export const COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME = 'rranker-remote-image-cache-v2';
 
 /**
  * 公开数据与查询派生数据只在 React Query 会话内存活。

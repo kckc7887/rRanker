@@ -1,5 +1,9 @@
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
+import {
+  loadCompressedRemoteImage,
+  type RemoteImageCacheOptions,
+} from '@/services/remote-image-cache';
 
 /** 模块级只缓存短 file URI，禁止再持有 base64 data URI。 */
 const cache = new Map<string, Promise<string | null>>();
@@ -42,10 +46,10 @@ export function clearPhigrosIllustrationStage(): void {
   cache.clear();
 }
 
-async function stageFileName(url: string): Promise<string> {
+async function stageFileName(url: string, extensionOverride?: string): Promise<string> {
   const hash = (await digestStringAsync(CryptoDigestAlgorithm.SHA256, url)).slice(0, 32);
   const extensionMatch = /\.([a-zA-Z0-9]{2,5})(?:\?|$)/.exec(url);
-  const extension = extensionMatch?.[1]?.toLowerCase() ?? 'png';
+  const extension = extensionOverride ?? extensionMatch?.[1]?.toLowerCase() ?? 'png';
   return `${hash}.${extension}`;
 }
 
@@ -56,14 +60,22 @@ async function stageFileName(url: string): Promise<string> {
 export async function loadRemoteImageDataUri(
   url: string | null | undefined,
   directory: Directory = phigrosIllustrationStageDirectory(),
+  cacheOptions?: RemoteImageCacheOptions,
 ): Promise<string | null> {
   if (!url) return null;
-  const cacheKey = `${directory.uri}|${url}`;
+  const cacheKey = `${directory.uri}|${cacheOptions?.gameId ?? 'temporary'}|${cacheOptions?.profile ?? 'source'}|${url}`;
   const existing = cache.get(cacheKey);
   if (existing) return existing;
   const pending = (async () => {
-    const staged = new File(directory, await stageFileName(url));
-    if (!staged.exists) await File.downloadFileAsync(url, staged, { idempotent: true });
+    const staged = new File(directory, await stageFileName(url, cacheOptions ? 'webp' : undefined));
+    if (!staged.exists) {
+      const cached = cacheOptions
+        ? await loadCompressedRemoteImage(url, cacheOptions).catch(() => null)
+        : null;
+      if (cached) new File(cached.fileUri).copy(staged);
+      else if (!cacheOptions) await File.downloadFileAsync(url, staged, { idempotent: true });
+      else return null;
+    }
     return staged.uri;
   })();
   cache.set(cacheKey, pending);
@@ -85,7 +97,11 @@ export async function loadPhigrosIllustrations(
   const result: Record<string, string | null> = {};
   onProgress?.(0, unique.length);
   for (const [index, id] of unique.entries()) {
-    result[id] = await loadRemoteImageDataUri(urlFor(id), directory);
+    result[id] = await loadRemoteImageDataUri(
+      urlFor(id),
+      directory,
+      { gameId: 'phigros', profile: 'artwork' },
+    );
     onProgress?.(index + 1, unique.length);
   }
   return result;

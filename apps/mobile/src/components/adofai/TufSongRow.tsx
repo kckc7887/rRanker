@@ -24,7 +24,7 @@ export const TufSongRow = memo(function TufSongRow({ level }: { level: TufLevel 
 
   return <GameSongRow presentation={presentation} wholeRowPressable rowStyle={styles.row}
     mainStyle={styles.main} titleStyle={styles.title} subtitleStyle={styles.subtitle} pressedStyle={styles.pressed}
-    cover={<Image accessibilityLabel={`关卡封面 ${level.song}`} cachePolicy="disk" cacheProfile="thumbnail" contentFit="cover"
+    cover={<Image accessibilityLabel={`关卡封面 ${level.song}`} cachePolicy="disk" cacheProfile="thumbnail" gameId="adofai" contentFit="cover"
       onError={candidate ? () => setCandidateIndex((index) => index + 1) : undefined}
       source={candidate ?? ADOFAI_ICON} style={styles.cover} transition={120} />}
     badges={badge ? <TufDifficultyBadge difficulty={badge} source={level.difficulty} /> : null} />;
