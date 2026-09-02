@@ -63,7 +63,8 @@ describe('cache policy registry', () => {
     expect(resourceCachePersistence('phira:player:323528')).toBe('durable');
     expect(resourceCachePersistence('osu:osu-standard:2')).toBe('durable');
     expect(isTemporaryCacheEntry('rranker-chart-preview-session-1')).toBe(true);
-    expect(isTemporaryCacheEntry('rranker-remote-image-cache-v1')).toBe(false);
+    expect(isTemporaryCacheEntry('rranker-remote-image-cache-v1')).toBe(true);
+    expect(isTemporaryCacheEntry('rranker-remote-image-cache-v2')).toBe(false);
     expect(isTemporaryCacheEntry('ExponentAsset-font.ttf')).toBe(false);
   });
 });
@@ -121,7 +122,8 @@ describe('startup orphan cleanup', () => {
     };
     expect(options.skip('rranker-chart-preview-session-1')).toBe(false);
     expect(options.skip('rRanker-backup-session.json')).toBe(false);
-    expect(options.skip('rranker-remote-image-cache-v1')).toBe(true);
+    expect(options.skip('rranker-remote-image-cache-v1')).toBe(false);
+    expect(options.skip('rranker-remote-image-cache-v2')).toBe(true);
     expect(options.skip('Image')).toBe(true);
     expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
   });

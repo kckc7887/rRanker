@@ -11,11 +11,15 @@ import {
 
 export type RemoteImageCacheMode = RemoteImageCacheProfile | 'native' | 'none';
 
-export type RemoteImageProps = Omit<ImageProps, 'cachePolicy'> & {
-  cacheProfile?: RemoteImageCacheMode;
+type RemoteImageBaseProps = Omit<ImageProps, 'cachePolicy'> & {
   /** 兼容既有一次性预览；其它值统一映射到 native。 */
   cachePolicy?: ImageProps['cachePolicy'];
 };
+
+export type RemoteImageProps = RemoteImageBaseProps & (
+  | { cacheProfile: RemoteImageCacheProfile; gameId: string }
+  | { cacheProfile?: 'native' | 'none'; gameId?: never }
+);
 
 const supportsNativeCachePolicy = typeof Image.clearDiskCache === 'function';
 const supportsCompressedCache = supportsNativeCachePolicy && supportsCompressedRemoteImageCache();
@@ -30,14 +34,15 @@ export function resolveRemoteImageCacheMode(
 export function RemoteImage({
   cacheProfile,
   cachePolicy,
+  gameId,
   onError,
   source,
   ...props
 }: RemoteImageProps) {
   const mode = resolveRemoteImageCacheMode(cacheProfile, cachePolicy);
   const normalized = useMemo(() => normalizeRemoteImageSource(source), [source]);
-  const requestKey = normalized && (mode === 'thumbnail' || mode === 'artwork')
-    ? `${mode}|${normalized.stableIdentity}`
+  const requestKey = normalized && gameId && (mode === 'thumbnail' || mode === 'artwork')
+    ? `${gameId}|${mode}|${normalized.stableIdentity}`
     : null;
   const releaseRef = useRef<(() => void) | undefined>(undefined);
   const [resolved, setResolved] = useState<CompressedRemoteImageResult | null>(null);
@@ -50,7 +55,7 @@ export function RemoteImage({
     setFallback(false);
     if (!requestKey || (mode !== 'thumbnail' && mode !== 'artwork')) return undefined;
     let cancelled = false;
-    void loadCompressedRemoteImage(source, mode)
+    void loadCompressedRemoteImage(source, { gameId: gameId!, profile: mode })
       .then((result) => {
         if (cancelled) {
           result?.release?.();
@@ -71,7 +76,7 @@ export function RemoteImage({
       releaseRef.current?.();
       releaseRef.current = undefined;
     };
-  }, [mode, requestKey, source]);
+  }, [gameId, mode, requestKey, source]);
 
   if (!supportsNativeCachePolicy) {
     return (
@@ -92,7 +97,7 @@ export function RemoteImage({
     return (
       <Image
         {...props}
-        cachePolicy={mode === 'none' ? 'none' : 'memory-disk'}
+        cachePolicy={mode === 'none' ? 'none' : fallback ? 'memory' : 'memory-disk'}
         onError={onError}
         source={source}
       />

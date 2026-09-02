@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => {
   class MockFile {
     uri: string;
     constructor(...parts: unknown[]) { this.uri = normalizePath(parts); }
+    static async downloadFileAsync(_url: string, destination: MockFile) {
+      files.set(destination.uri, { content: '', size: 128, modified: Date.now() });
+      return destination;
+    }
     get name() { return this.uri.split('/').at(-1) ?? ''; }
     get exists() { return files.has(this.uri); }
     get size() { return files.get(this.uri)?.size ?? 0; }
@@ -65,6 +69,7 @@ const mocks = vi.hoisted(() => {
     animated: false,
     loadAsync: vi.fn(),
     manipulate: vi.fn(),
+    saveAsync: vi.fn(),
   };
 });
 
@@ -95,9 +100,14 @@ vi.mock('expo-image-manipulator', () => ({
 // eslint-disable-next-line import/first
 import {
   REMOTE_IMAGE_CACHE_BUDGET_BYTES,
+  calculateRemoteImageCacheQuotas,
+  clearGameRemoteImageCache,
   clearCompressedRemoteImageCache,
   flushRemoteImageCacheManifest,
   loadCompressedRemoteImage,
+  listRemoteImageCacheUsage,
+  markRemoteImageCacheGameActive,
+  measureGameRemoteImageCacheBytes,
   normalizeRemoteImageSource,
   pruneRemoteImageCache,
   remoteImageCacheKey,
@@ -116,15 +126,16 @@ describe('remote image cache', () => {
       isAnimated: mocks.animated,
       release: vi.fn(),
     }));
+    mocks.saveAsync.mockReset().mockImplementation(async () => {
+      const uri = `/cache/manipulated-${mocks.imageSequence += 1}.webp`;
+      mocks.files.set(uri, { content: '', size: mocks.imageBytes, modified: Date.now() });
+      return { uri, width: 100, height: 100 };
+    });
     mocks.manipulate.mockReset().mockImplementation(() => ({
       release: vi.fn(),
       renderAsync: async () => ({
         release: vi.fn(),
-        saveAsync: async () => {
-          const uri = `/cache/manipulated-${mocks.imageSequence += 1}.webp`;
-          mocks.files.set(uri, { content: '', size: mocks.imageBytes, modified: Date.now() });
-          return { uri, width: 100, height: 100 };
-        },
+        saveAsync: mocks.saveAsync,
       }),
     }));
     resetRemoteImageCacheForTests();
@@ -157,28 +168,32 @@ describe('remote image cache', () => {
     });
     expect(left).not.toBeNull();
     expect(right).not.toBeNull();
-    await expect(remoteImageCacheKey(left!, 'thumbnail')).resolves.toBe(
-      await remoteImageCacheKey(right!, 'thumbnail'),
+    await expect(remoteImageCacheKey(left!, { gameId: 'maimai', profile: 'thumbnail' })).resolves.toBe(
+      await remoteImageCacheKey(right!, { gameId: 'maimai', profile: 'thumbnail' }),
     );
-    await expect(remoteImageCacheKey(left!, 'artwork')).resolves.not.toBe(
-      await remoteImageCacheKey(left!, 'thumbnail'),
+    await expect(remoteImageCacheKey(left!, { gameId: 'maimai', profile: 'artwork' })).resolves.not.toBe(
+      await remoteImageCacheKey(left!, { gameId: 'maimai', profile: 'thumbnail' }),
+    );
+    await expect(remoteImageCacheKey(left!, { gameId: 'phigros', profile: 'thumbnail' })).resolves.not.toBe(
+      await remoteImageCacheKey(left!, { gameId: 'maimai', profile: 'thumbnail' }),
     );
   });
 
   it('deduplicates a cold transform and reuses the compressed file', async () => {
     const source = { uri: 'https://example.test/cover.png', headers: { A: '1' } };
     const [first, second] = await Promise.all([
-      loadCompressedRemoteImage(source, 'thumbnail'),
-      loadCompressedRemoteImage(source, 'thumbnail'),
+      loadCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' }),
+      loadCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' }),
     ]);
     expect(first?.source).toEqual(second?.source);
     expect(mocks.loadAsync).toHaveBeenCalledTimes(1);
     expect(mocks.loadAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ uri: source.uri }),
-      { maxWidth: 512, maxHeight: 512 },
+      expect.objectContaining({ uri: expect.stringContaining('.source.part') }),
+      { maxWidth: 384, maxHeight: 384 },
     );
+    expect(mocks.saveAsync).toHaveBeenCalledWith({ format: 'webp', compress: 0.65 });
 
-    const cached = await loadCompressedRemoteImage(source, 'thumbnail');
+    const cached = await loadCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' });
     expect(cached?.source).toEqual(first?.source);
     expect(mocks.loadAsync).toHaveBeenCalledTimes(1);
   });
@@ -187,7 +202,10 @@ describe('remote image cache', () => {
     mocks.animated = true;
     const release = vi.fn();
     mocks.loadAsync.mockResolvedValueOnce({ isAnimated: true, release });
-    const result = await loadCompressedRemoteImage('https://example.test/animated.webp', 'thumbnail');
+    const result = await loadCompressedRemoteImage(
+      'https://example.test/animated.webp',
+      { gameId: 'maimai', profile: 'thumbnail' },
+    );
     expect(result).toBeNull();
     expect(mocks.manipulate).not.toHaveBeenCalled();
     expect(Array.from(mocks.files.keys()).some((path) => path.endsWith('.webp'))).toBe(false);
@@ -195,16 +213,20 @@ describe('remote image cache', () => {
   });
 
   it('uses the artwork bounds and leaves no atomic temporary file behind', async () => {
-    await loadCompressedRemoteImage('https://example.test/artwork.png', 'artwork');
-    expect(mocks.loadAsync).toHaveBeenCalledWith(
-      { uri: 'https://example.test/artwork.png' },
-      { maxWidth: 1280, maxHeight: 1280 },
+    await loadCompressedRemoteImage(
+      'https://example.test/artwork.png',
+      { gameId: 'phigros', profile: 'artwork' },
     );
+    expect(mocks.loadAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ uri: expect.stringContaining('.source.part') }),
+      { maxWidth: 960, maxHeight: 960 },
+    );
+    expect(mocks.saveAsync).toHaveBeenCalledWith({ format: 'webp', compress: 0.72 });
     expect(Array.from(mocks.files.keys()).some((path) => path.endsWith('.part'))).toBe(false);
   });
 
   it('rebuilds a damaged index from cache files', async () => {
-    const root = '/cache/rranker-remote-image-cache-v1';
+    const root = '/cache/rranker-remote-image-cache-v2';
     mocks.directories.add(root);
     mocks.files.set(`${root}/index.json`, { content: '{broken', size: 7, modified: 1 });
     mocks.files.set(`${root}/orphan.webp`, { content: '', size: 80, modified: 2 });
@@ -217,21 +239,87 @@ describe('remote image cache', () => {
   it('does not leave a failed transform in the in-flight registry', async () => {
     mocks.manipulate.mockImplementationOnce(() => { throw new Error('unsupported image'); });
     const source = 'https://example.test/unknown.bin';
-    await expect(loadCompressedRemoteImage(source, 'thumbnail')).rejects.toThrow('unsupported image');
-    await expect(loadCompressedRemoteImage(source, 'thumbnail')).resolves.not.toBeNull();
+    await expect(loadCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' })).rejects.toThrow('unsupported image');
+    await expect(loadCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' })).resolves.not.toBeNull();
     expect(mocks.loadAsync).toHaveBeenCalledTimes(2);
   });
 
   it('prunes least recently used files to the requested budget and clears the cache', async () => {
     expect(REMOTE_IMAGE_CACHE_BUDGET_BYTES).toBe(256 * 1024 * 1024);
-    await loadCompressedRemoteImage('https://example.test/1.png', 'thumbnail');
-    await loadCompressedRemoteImage('https://example.test/2.png', 'thumbnail');
-    await loadCompressedRemoteImage('https://example.test/3.png', 'thumbnail');
+    await loadCompressedRemoteImage('https://example.test/1.png', { gameId: 'maimai', profile: 'thumbnail' });
+    await loadCompressedRemoteImage('https://example.test/2.png', { gameId: 'maimai', profile: 'thumbnail' });
+    await loadCompressedRemoteImage('https://example.test/3.png', { gameId: 'maimai', profile: 'thumbnail' });
     await pruneRemoteImageCache(100);
-    const cachedWebps = Array.from(mocks.files.keys()).filter((path) => path.includes('rranker-remote-image-cache-v1') && path.endsWith('.webp'));
+    const cachedWebps = Array.from(mocks.files.keys()).filter((path) => path.includes('rranker-remote-image-cache-v2') && path.endsWith('.webp'));
     expect(cachedWebps).toHaveLength(1);
 
     await clearCompressedRemoteImageCache();
-    expect(Array.from(mocks.files.keys()).some((path) => path.includes('rranker-remote-image-cache-v1'))).toBe(false);
+    expect(Array.from(mocks.files.keys()).some((path) => path.includes('rranker-remote-image-cache-v2'))).toBe(false);
+  });
+
+  it('allocates 70 percent to the active game and linearly weights the remainder', () => {
+    const budget = 1000;
+    const quotas = calculateRemoteImageCacheQuotas([
+      { gameId: 'maimai', bytes: 700, lastUsed: 30 },
+      { gameId: 'phigros', bytes: 200, lastUsed: 20 },
+      { gameId: 'chunithm', bytes: 100, lastUsed: 10 },
+    ], 'maimai', budget);
+    expect(quotas.get('maimai')).toBeCloseTo(700);
+    expect(quotas.get('phigros')).toBeCloseTo(200);
+    expect(quotas.get('chunithm')).toBeCloseTo(100);
+  });
+
+  it('lets over-budget games borrow unused soft quotas', () => {
+    const quotas = calculateRemoteImageCacheQuotas([
+      { gameId: 'maimai', bytes: 100, lastUsed: 30 },
+      { gameId: 'phigros', bytes: 900, lastUsed: 20 },
+    ], 'maimai', 1000);
+    expect(quotas.get('maimai')).toBeCloseTo(700);
+    expect(quotas.get('phigros')).toBeCloseTo(900);
+  });
+
+  it('measures and clears one game without deleting another game cover', async () => {
+    mocks.imageBytes = 80;
+    await loadCompressedRemoteImage('https://example.test/shared.png', { gameId: 'maimai', profile: 'thumbnail' });
+    await loadCompressedRemoteImage('https://example.test/shared.png', { gameId: 'phigros', profile: 'thumbnail' });
+    await expect(measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(80);
+    await expect(measureGameRemoteImageCacheBytes('phigros')).resolves.toBe(80);
+
+    await clearGameRemoteImageCache('maimai');
+    await expect(measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(0);
+    await expect(measureGameRemoteImageCacheBytes('phigros')).resolves.toBe(80);
+  });
+
+  it('restores game ownership and active-game recency from the manifest', async () => {
+    await loadCompressedRemoteImage('https://example.test/restart.png', { gameId: 'maimai', profile: 'thumbnail' });
+    await markRemoteImageCacheGameActive('maimai');
+    await flushRemoteImageCacheManifest();
+    resetRemoteImageCacheForTests();
+
+    await expect(measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(64);
+    await expect(listRemoteImageCacheUsage()).resolves.toEqual([
+      expect.objectContaining({ gameId: 'maimai', bytes: 64, active: true }),
+    ]);
+  });
+
+  it('does not interrupt another game transform when one game is cleared', async () => {
+    let finishRender: (() => void) | undefined;
+    const renderGate = new Promise<void>((resolve) => { finishRender = resolve; });
+    mocks.manipulate.mockImplementationOnce(() => ({
+      release: vi.fn(),
+      renderAsync: async () => {
+        await renderGate;
+        return { release: vi.fn(), saveAsync: mocks.saveAsync };
+      },
+    }));
+    const pending = loadCompressedRemoteImage(
+      'https://example.test/phigros.png',
+      { gameId: 'phigros', profile: 'thumbnail' },
+    );
+    await vi.waitFor(() => expect(mocks.manipulate).toHaveBeenCalledTimes(1));
+    await clearGameRemoteImageCache('maimai');
+    finishRender?.();
+    await expect(pending).resolves.not.toBeNull();
+    await expect(measureGameRemoteImageCacheBytes('phigros')).resolves.toBe(64);
   });
 });

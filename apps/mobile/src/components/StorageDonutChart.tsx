@@ -1,11 +1,11 @@
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 import { formatStorageBytes } from '@/features/storage-management/fs-storage';
-import type { StorageUsageSegment } from '@/features/storage-management/storage-usage';
+import type { StorageUsageGroup } from '@/features/storage-management/storage-usage';
 import { useAppTheme } from '@/theme/app-theme';
 
 type Props = {
-  segments: readonly StorageUsageSegment[];
+  segments: readonly StorageUsageGroup[];
   totalBytes: number;
   size?: number;
 };
@@ -73,7 +73,7 @@ export function StorageDonutChart({ segments, totalBytes, size = 200 }: Props) {
         </G>
       </Svg>
       <View style={styles.center} pointerEvents="none">
-        <Text style={[styles.totalLabel, { color: theme.textMuted }]}>受管存储约</Text>
+        <Text style={[styles.totalLabel, { color: theme.textMuted }]}>应用数据</Text>
         <Text style={[styles.totalValue, { color: theme.text }]}>{formatStorageBytes(totalBytes)}</Text>
       </View>
     </View>

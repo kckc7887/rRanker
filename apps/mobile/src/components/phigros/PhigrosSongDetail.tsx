@@ -254,6 +254,7 @@ function Detail({
             accessibilityLabel="曲绘"
             cachePolicy="disk"
             cacheProfile="artwork"
+            gameId="phigros"
             contentFit="cover"
             onError={() => {
               if (coverStage === 'full' && lowresUrl) {

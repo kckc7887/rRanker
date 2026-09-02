@@ -349,6 +349,7 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
           accessibilityLabel={`歌曲封面 ${song.title}`}
           cachePolicy="disk"
           cacheProfile="artwork"
+          gameId="chunithm"
           contentFit="cover"
           onError={() => setFailed(true)}
           source={chunithmJacketUrl(song)}

@@ -151,7 +151,9 @@ export function GameScoreCard({
           <RemoteImage
             accessibilityIgnoresInvertColors
             blurRadius={artworkBlur}
-            cacheProfile={artwork?.cachePolicy === 'none' ? 'none' : 'thumbnail'}
+            {...(artwork?.cachePolicy === 'none'
+              ? { cacheProfile: 'none' as const }
+              : { cacheProfile: 'thumbnail' as const, gameId: presentation.gameId })}
             contentFit="cover"
             onError={() => setFailedArtworkSource(artworkSource)}
             pointerEvents="none"

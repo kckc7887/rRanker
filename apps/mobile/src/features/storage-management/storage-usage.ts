@@ -1,4 +1,3 @@
-import type { GameId } from '@/domain/game-bind-options';
 import type { StorageClearCategoryId } from '@/storage/storage-clear-prefs-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repository';
@@ -7,33 +6,42 @@ import {
   GAME_STORAGE_ADAPTERS,
   measureDurableLocalMaimaiBytes,
   measureSharedCacheBytes,
-  sharedCacheNote,
   type StorageSegmentId,
 } from '@/features/storage-management/game-storage-adapters';
 import {
   APP_CACHE_ROOT,
+  APP_DOCUMENT_ROOT,
   MAIMAI_ASSETS_ROOT,
   OSU_MOD_ICONS_ROOT,
   PHIGROS_FONT_ROOT,
   PHIGROS_ILLUSTRATION_ROOT,
+  measureDirectoryBytes,
   measureDirectoryBytesStrict,
 } from '@/features/storage-management/fs-storage';
 import { isManagedClearableCacheEntry } from '@/features/storage-management/expo-system-cache';
+import { measureGameRemoteImageCacheBytes } from '@/services/remote-image-cache';
 
-export type StorageUsageSegment = {
-  id: StorageSegmentId;
+export type StorageUsageItem = {
+  id: StorageSegmentId | 'basic-other';
   title: string;
   bytes: number;
+  clearableBytes: number;
   precision: 'exact' | 'estimated';
   clearable: boolean;
-  /** 勾选清除用的 id；个人数据不可清除时为 null */
   clearCategoryId: StorageClearCategoryId | null;
-  note?: string;
   color: string;
 };
 
+export type StorageUsageGroup = {
+  id: 'basic' | 'cache';
+  title: string;
+  bytes: number;
+  color: string;
+  items: StorageUsageItem[];
+};
+
 export type StorageUsageReport = {
-  segments: StorageUsageSegment[];
+  groups: StorageUsageGroup[];
   totalBytes: number;
   clearableBytes: number;
   precision: 'estimated';
@@ -41,11 +49,10 @@ export type StorageUsageReport = {
   sqliteReclaimableBytes: number;
 };
 
-const SEGMENT_COLORS: Record<string, string> = {
-  app: '#94A3B8',
-  shared: '#0EA5E9',
-  test: '#64748B',
-};
+const GROUP_COLORS = {
+  basic: '#94A3B8',
+  cache: '#0EA5E9',
+} as const;
 
 const snapshots = new SqliteSnapshotRepository();
 const library = new SqliteUserLibraryRepository();
@@ -57,69 +64,147 @@ export function listClearableCategoryIds(): StorageClearCategoryId[] {
   ];
 }
 
-export async function collectStorageUsage(): Promise<StorageUsageReport> {
-  const [libraryBytes, localMaimaiBytes, sharedBytes, sqliteAllocation, ...gameBytes] = await Promise.all([
-    library.measureBytes(),
-    measureDurableLocalMaimaiBytes(snapshots),
-    measureSharedCacheBytes(),
-    measureRrankerDatabaseAllocation(),
-    ...GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(snapshots)),
-  ]);
-  const appBytes = libraryBytes + localMaimaiBytes;
-  const sqliteReclaimableBytes = Math.max(
-    0,
-    sqliteAllocation.allocatedBytes - sqliteAllocation.liveBytesEstimate,
-  );
+export type StorageUsageMeasurements = {
+  libraryBytes: number;
+  localMaimaiBytes: number;
+  sharedClearableBytes: number;
+  sqliteAllocatedBytes: number;
+  sqliteLiveBytes: number;
+  documentBytes: number;
+  cacheRootBytes: number;
+  gameBaseBytes: readonly number[];
+  gameCoverBytes: readonly number[];
+};
 
-  const segments: StorageUsageSegment[] = [
+export function buildStorageUsageReport(
+  measurements: StorageUsageMeasurements,
+): StorageUsageReport {
+  const {
+    libraryBytes,
+    localMaimaiBytes,
+    sharedClearableBytes,
+    sqliteAllocatedBytes,
+    sqliteLiveBytes,
+    documentBytes,
+    cacheRootBytes,
+    gameBaseBytes,
+    gameCoverBytes,
+  } = measurements;
+  const sqliteReclaimableBytes = Math.max(0, sqliteAllocatedBytes - sqliteLiveBytes);
+  const appBytes = libraryBytes + localMaimaiBytes;
+  const measuredGameItems: StorageUsageItem[] = GAME_STORAGE_ADAPTERS.map((adapter, index) => {
+    const bytes = (gameBaseBytes[index] ?? 0) + (gameCoverBytes[index] ?? 0);
+    return {
+      id: adapter.gameId,
+      title: adapter.title,
+      bytes,
+      clearableBytes: bytes,
+      precision: 'estimated',
+      clearable: true,
+      clearCategoryId: adapter.gameId,
+      color: adapter.color,
+    };
+  });
+  const measuredGameCacheBytes = measuredGameItems.reduce((sum, item) => sum + item.bytes, 0);
+  const knownCacheBytes = cacheRootBytes
+    + gameBaseBytes.reduce((sum, bytes) => sum + bytes, 0)
+    + sqliteReclaimableBytes;
+  const totalBytes = documentBytes + cacheRootBytes + sqliteAllocatedBytes;
+  const cacheBytes = Math.min(totalBytes, Math.max(measuredGameCacheBytes, knownCacheBytes));
+  const gameScale = measuredGameCacheBytes > cacheBytes && measuredGameCacheBytes > 0
+    ? cacheBytes / measuredGameCacheBytes
+    : 1;
+  const gameItems = measuredGameItems.map((item) => ({
+    ...item,
+    bytes: item.bytes * gameScale,
+    clearableBytes: item.clearableBytes * gameScale,
+  }));
+  const gameCacheBytes = gameItems.reduce((sum, item) => sum + item.bytes, 0);
+  const basicBytes = Math.max(0, totalBytes - cacheBytes);
+  const personalBytes = Math.min(appBytes, basicBytes);
+  const sharedBytes = Math.max(0, cacheBytes - gameCacheBytes);
+  const sharedItem: StorageUsageItem = {
+    id: 'shared',
+    title: '其它缓存',
+    bytes: sharedBytes,
+    clearableBytes: Math.min(sharedBytes, sharedClearableBytes + sqliteReclaimableBytes),
+    precision: 'estimated',
+    clearable: true,
+    clearCategoryId: 'shared',
+    color: GROUP_COLORS.cache,
+  };
+  const basicItems: StorageUsageItem[] = [
     {
       id: 'app',
-      title: '个人数据',
-      bytes: appBytes,
+      title: '账号与个人内容',
+      bytes: personalBytes,
+      clearableBytes: 0,
       precision: 'estimated',
       clearable: false,
       clearCategoryId: null,
-      note: '用户收藏、本地账号成绩与头像等；不含安装包与游戏缓存',
-      color: SEGMENT_COLORS.app,
+      color: GROUP_COLORS.basic,
     },
-    ...GAME_STORAGE_ADAPTERS.map((adapter, index) => ({
-      id: adapter.gameId as StorageSegmentId,
-      title: adapter.title,
-      bytes: gameBytes[index] ?? 0,
-      precision: 'estimated' as const,
-      clearable: true,
-      clearCategoryId: adapter.gameId as GameId,
-      color: adapter.color,
-      note: adapter.note,
-    })),
     {
-      id: 'shared',
-      title: '共享缓存',
-      bytes: sharedBytes + sqliteReclaimableBytes,
+      id: 'basic-other',
+      title: '设置和其它数据',
+      bytes: Math.max(0, basicBytes - personalBytes),
+      clearableBytes: 0,
       precision: 'estimated',
-      clearable: true,
-      clearCategoryId: 'shared',
-      note: `${sharedCacheNote()}；含 SQLite 可回收空闲页估算`,
-      color: SEGMENT_COLORS.shared,
+      clearable: false,
+      clearCategoryId: null,
+      color: '#CBD5E1',
     },
   ];
+  const cacheItems = [...gameItems, sharedItem];
+  const clearableBytes = cacheItems.reduce((sum, item) => sum + item.clearableBytes, 0);
 
-  const totalBytes = segments.reduce((sum, segment) => sum + segment.bytes, 0);
-  const clearableBytes = segments.reduce(
-    (sum, segment) => sum + (segment.clearable ? segment.bytes : 0),
-    0,
-  );
   return {
-    segments,
+    groups: [
+      { id: 'basic', title: '基本数据', bytes: basicBytes, color: GROUP_COLORS.basic, items: basicItems },
+      { id: 'cache', title: '缓存数据', bytes: cacheBytes, color: GROUP_COLORS.cache, items: cacheItems },
+    ],
     totalBytes,
     clearableBytes,
     precision: 'estimated',
-    sqliteAllocatedBytes: sqliteAllocation.allocatedBytes,
+    sqliteAllocatedBytes,
     sqliteReclaimableBytes,
   };
 }
 
-/** 清理前后使用同一物理口径：SQLite 分配页 + 受管文件目录。 */
+export async function collectStorageUsage(): Promise<StorageUsageReport> {
+  const [
+    libraryBytes,
+    localMaimaiBytes,
+    sharedClearableBytes,
+    sqliteAllocation,
+    documentBytes,
+    cacheRootBytes,
+    gameBaseBytes,
+    gameCoverBytes,
+  ] = await Promise.all([
+    library.measureBytes(),
+    measureDurableLocalMaimaiBytes(snapshots),
+    measureSharedCacheBytes(),
+    measureRrankerDatabaseAllocation(),
+    Promise.resolve(measureDirectoryBytes(APP_DOCUMENT_ROOT())),
+    Promise.resolve(measureDirectoryBytes(APP_CACHE_ROOT())),
+    Promise.all(GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(snapshots))),
+    Promise.all(GAME_STORAGE_ADAPTERS.map((adapter) => measureGameRemoteImageCacheBytes(adapter.gameId))),
+  ]);
+  return buildStorageUsageReport({
+    libraryBytes,
+    localMaimaiBytes,
+    sharedClearableBytes,
+    sqliteAllocatedBytes: sqliteAllocation.allocatedBytes,
+    sqliteLiveBytes: sqliteAllocation.liveBytesEstimate,
+    documentBytes,
+    cacheRootBytes,
+    gameBaseBytes,
+    gameCoverBytes,
+  });
+}
+
+/** 清理前后使用同一物理口径：SQLite 分配页 + 可管理文件目录。 */
 export async function measureManagedStorageBytes(): Promise<number> {
   const sqlite = await measureRrankerDatabaseAllocation();
   return sqlite.allocatedBytes

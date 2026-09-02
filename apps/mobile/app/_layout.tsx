@@ -50,6 +50,7 @@ import { AppThemeProvider, useAppTheme } from '@/theme/app-theme';
 import { useThemeStore } from '@/state/theme-store';
 import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
 import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
+import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
 import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
 import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
 import { startTimer } from '@/utils/startup-timing';
@@ -168,6 +169,8 @@ export default function RootLayout() {
 
 function RootLayoutContent() {
   const restoreStatus = useSession((state) => state.restoreStatus);
+  const activeAccountId = useSession((state) => state.activeAccountId);
+  const activeGameId = useSession((state) => state.activeGameId);
   const themeHydrated = useThemeStore((state) => state.hydrated);
   const hydrateTheme = useThemeStore((state) => state.hydrate);
   const appearance = useThemeStore((state) => state.appearance);
@@ -180,6 +183,11 @@ function RootLayoutContent() {
   useEffect(() => {
     void initializeRuntimeDiagnostics();
   }, []);
+
+  useEffect(() => {
+    if (restoreStatus !== 'ready') return;
+    void markRemoteImageCacheGameActive(activeGameId).catch(() => undefined);
+  }, [activeAccountId, activeGameId, restoreStatus]);
 
   useEffect(() => {
     const sessionState = useSession.getState();

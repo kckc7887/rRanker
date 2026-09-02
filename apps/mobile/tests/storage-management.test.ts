@@ -11,10 +11,12 @@ import {
   isExpoSystemCacheEntry,
 } from '@/features/storage-management/expo-system-cache';
 import {
+  GAME_STORAGE_ADAPTERS,
   getGameStorageAdapter,
   sharedCacheNote,
 } from '@/features/storage-management/game-storage-adapters';
 import {
+  buildStorageUsageReport,
   listClearableCategoryIds,
 } from '@/features/storage-management/storage-usage';
 import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
@@ -25,6 +27,11 @@ const mocks = vi.hoisted(() => ({
   measureDirectoryBytes: vi.fn(() => 0),
   clearMaimaiUiCache: vi.fn(),
   resetPhigrosKyouAliasesCache: vi.fn(),
+  clearGameRemoteImageCache: vi.fn(async () => undefined),
+  measureGameRemoteImageCacheBytes: vi.fn(async () => 0),
+  clearDirectoryContentsStrict: vi.fn(),
+  clearDiskCache: vi.fn(async () => true),
+  clearMemoryCache: vi.fn(async () => true),
 }));
 
 vi.mock('expo-sqlite', () => ({
@@ -35,6 +42,11 @@ vi.mock('expo-sqlite', () => ({
     runAsync: vi.fn(async () => undefined),
   })),
 }));
+
+vi.mock('expo-image', () => ({ Image: {
+  clearDiskCache: mocks.clearDiskCache,
+  clearMemoryCache: mocks.clearMemoryCache,
+} }));
 
 vi.mock('@/domain/game-bind-options', () => {
   const titles: Record<string, string> = {
@@ -58,13 +70,20 @@ vi.mock('@/domain/game-bind-options', () => {
 vi.mock('@/features/storage-management/fs-storage', () => ({
   measureDirectoryBytes: mocks.measureDirectoryBytes,
   measureDirectoryBytesStrict: mocks.measureDirectoryBytes,
+  clearDirectoryContentsStrict: mocks.clearDirectoryContentsStrict,
   clearAppOwnedCacheContents: () => undefined,
   clearAppOwnedCacheContentsStrict: () => undefined,
   APP_CACHE_ROOT: () => null,
+  APP_DOCUMENT_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,
   PHIGROS_ILLUSTRATION_ROOT: () => null,
   MAIMAI_ASSETS_ROOT: () => null,
   OSU_MOD_ICONS_ROOT: () => null,
+}));
+
+vi.mock('@/services/remote-image-cache', () => ({
+  clearGameRemoteImageCache: mocks.clearGameRemoteImageCache,
+  measureGameRemoteImageCacheBytes: mocks.measureGameRemoteImageCacheBytes,
 }));
 
 vi.mock('@/features/storage-management/ui-icon-fonts', () => ({
@@ -209,6 +228,7 @@ describe('phira storage segment', () => {
   });
 
   it('removes Phira in-memory queries after clearing persistent cache', async () => {
+    mocks.clearGameRemoteImageCache.mockClear();
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
@@ -221,6 +241,7 @@ describe('phira storage segment', () => {
     const predicate = client.removeQueries.mock.calls[0]?.[0]?.predicate as (query: { queryKey: unknown[] }) => boolean;
     expect(predicate({ queryKey: ['phira', 'charts'] })).toBe(true);
     expect(predicate({ queryKey: ['musedash', 'albums'] })).toBe(false);
+    expect(mocks.clearGameRemoteImageCache).toHaveBeenCalledWith('phira');
   });
 });
 
@@ -269,7 +290,64 @@ describe('osu storage segment', () => {
 
 describe('shared cache note wording', () => {
   it('uses the unified include/exclude wording', () => {
-    expect(sharedCacheNote()).toBe('会话临时文件和已压缩的常用图片；不含系统图标字体');
+    expect(sharedCacheNote()).toBe('临时文件与其它可重新下载的内容');
+  });
+});
+
+describe('storage usage report', () => {
+  it('counts all accessible data and keeps group and item totals aligned', () => {
+    const gameBaseBytes = Array<number>(GAME_STORAGE_ADAPTERS.length).fill(0);
+    const gameCoverBytes = Array<number>(GAME_STORAGE_ADAPTERS.length).fill(0);
+    const maimaiIndex = GAME_STORAGE_ADAPTERS.findIndex((adapter) => adapter.gameId === 'maimai');
+    gameBaseBytes[maimaiIndex] = 200;
+    gameCoverBytes[maimaiIndex] = 300;
+
+    const report = buildStorageUsageReport({
+      libraryBytes: 400,
+      localMaimaiBytes: 100,
+      sharedClearableBytes: 600,
+      sqliteAllocatedBytes: 2000,
+      sqliteLiveBytes: 1500,
+      documentBytes: 5000,
+      cacheRootBytes: 3000,
+      gameBaseBytes,
+      gameCoverBytes,
+    });
+
+    expect(report.totalBytes).toBe(10000);
+    expect(report.groups.reduce((sum, group) => sum + group.bytes, 0)).toBe(report.totalBytes);
+    for (const group of report.groups) {
+      expect(group.items.reduce((sum, item) => sum + item.bytes, 0)).toBe(group.bytes);
+    }
+    expect(report.groups.find((group) => group.id === 'basic')?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: '账号与个人内容', bytes: 500 }),
+      expect.objectContaining({ title: '设置和其它数据', bytes: 5800 }),
+    ]));
+    expect(report.groups.find((group) => group.id === 'cache')?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'maimai', bytes: 500, clearableBytes: 500 }),
+      expect.objectContaining({ id: 'shared', bytes: 3200, clearableBytes: 1100 }),
+    ]));
+    expect(report.clearableBytes).toBe(1600);
+  });
+
+  it('clamps estimated cache rows without breaking the physical total', () => {
+    const gameBaseBytes = Array<number>(GAME_STORAGE_ADAPTERS.length).fill(1000);
+    const report = buildStorageUsageReport({
+      libraryBytes: 0,
+      localMaimaiBytes: 0,
+      sharedClearableBytes: 0,
+      sqliteAllocatedBytes: 100,
+      sqliteLiveBytes: 100,
+      documentBytes: 100,
+      cacheRootBytes: 100,
+      gameBaseBytes,
+      gameCoverBytes: Array<number>(GAME_STORAGE_ADAPTERS.length).fill(0),
+    });
+    expect(report.totalBytes).toBe(300);
+    expect(report.groups.reduce((sum, group) => sum + group.bytes, 0)).toBe(300);
+    for (const group of report.groups) {
+      expect(group.items.reduce((sum, item) => sum + item.bytes, 0)).toBeCloseTo(group.bytes);
+    }
   });
 });
 
@@ -390,12 +468,18 @@ describe('clearing storage compacts the database and resets in-memory caches', (
   });
 
   it('does not evict unrelated game queries when only shared files are cleared', async () => {
+    mocks.clearDirectoryContentsStrict.mockClear();
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
     };
     await clearStorageByCategories(['shared'], client as never);
     expect(client.removeQueries).not.toHaveBeenCalled();
+    const options = mocks.clearDirectoryContentsStrict.mock.calls[0]?.[1] as {
+      skip: (name: string) => boolean;
+    };
+    expect(options.skip('rranker-remote-image-cache-v2')).toBe(true);
+    expect(options.skip('rranker-best-image-session-1.tmp')).toBe(false);
   });
 });
 

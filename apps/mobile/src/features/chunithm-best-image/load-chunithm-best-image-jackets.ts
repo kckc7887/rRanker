@@ -30,7 +30,7 @@ async function loadJacketDataUri(jacketId: string): Promise<string | null> {
   const cached = jacketDataUriCache.get(url);
   if (cached) return cached;
 
-  const pending = loadRemoteBestImageAssetDataUri(url);
+  const pending = loadRemoteBestImageAssetDataUri(url, { gameId: 'chunithm', profile: 'thumbnail' });
   jacketDataUriCache.set(url, pending);
 
   try {
