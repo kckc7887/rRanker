@@ -13,6 +13,7 @@ import {
 import {
   GAME_STORAGE_ADAPTERS,
   getGameStorageAdapter,
+  measureSharedCacheBytes,
   sharedCacheNote,
 } from '@/features/storage-management/game-storage-adapters';
 import {
@@ -292,6 +293,18 @@ describe('shared cache note wording', () => {
   it('uses the unified include/exclude wording', () => {
     expect(sharedCacheNote()).toBe('临时文件与其它可重新下载的内容');
   });
+
+  it('counts every removable cache entry while excluding system fonts and game covers', async () => {
+    mocks.measureDirectoryBytes.mockClear();
+    await measureSharedCacheBytes();
+    const calls = mocks.measureDirectoryBytes.mock.calls as unknown[][];
+    const options = calls[0]?.[1] as {
+      skip: (name: string) => boolean;
+    };
+    expect(options.skip('third-party-cache')).toBe(false);
+    expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
+    expect(options.skip('rranker-remote-image-cache-v2')).toBe(true);
+  });
 });
 
 describe('storage usage report', () => {
@@ -321,11 +334,11 @@ describe('storage usage report', () => {
     }
     expect(report.groups.find((group) => group.id === 'basic')?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ title: '账号与个人内容', bytes: 500 }),
-      expect.objectContaining({ title: '设置和其它数据', bytes: 5800 }),
+      expect.objectContaining({ title: '设置和其它数据', bytes: 7900 }),
     ]));
     expect(report.groups.find((group) => group.id === 'cache')?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'maimai', bytes: 500, clearableBytes: 500 }),
-      expect.objectContaining({ id: 'shared', bytes: 3200, clearableBytes: 1100 }),
+      expect.objectContaining({ id: 'shared', bytes: 1100, clearableBytes: 1100 }),
     ]));
     expect(report.clearableBytes).toBe(1600);
   });
@@ -480,6 +493,21 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     };
     expect(options.skip('rranker-remote-image-cache-v2')).toBe(true);
     expect(options.skip('rranker-best-image-session-1.tmp')).toBe(false);
+    expect(options.skip('third-party-cache')).toBe(false);
+    expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
+  });
+
+  it('finishes clearing measured files when the native image cache reports no change', async () => {
+    mocks.clearDiskCache.mockResolvedValueOnce(false);
+    mocks.clearMemoryCache.mockResolvedValueOnce(false);
+    const client = {
+      invalidateQueries: vi.fn(async () => undefined),
+      removeQueries: vi.fn(),
+    };
+    await expect(clearStorageByCategories(['shared'], client as never)).resolves.toMatchObject({
+      clearedIds: ['shared'],
+      failures: [],
+    });
   });
 });
 

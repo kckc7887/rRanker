@@ -19,7 +19,7 @@ import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { isBoundedCacheEntry } from '@/features/storage-management/cache-policy';
-import { isManagedClearableCacheEntry } from '@/features/storage-management/expo-system-cache';
+import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
 import {
   clearDirectoryContentsStrict,
   measureDirectoryBytes,
@@ -372,23 +372,22 @@ export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | unde
 }
 
 export async function measureSharedCacheBytes(): Promise<number> {
-  // 统计应用临时文件与 expo-image 原生缓存；ExponentAsset-* 系统资源不计入。
+  // Paths.cache 中除系统字体与游戏封面外均可由系统随时回收，统计和清理必须使用同一边界。
   return measureDirectoryBytes(APP_CACHE_ROOT(), {
-    skip: (name) => !isManagedClearableCacheEntry(name) || isBoundedCacheEntry(name),
+    skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name),
   });
 }
 
 export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }> {
   // 禁止整目录清空 Paths.cache：会删掉 Ionicons 等 ExponentAsset 字体，导致全站图标空白。
   clearDirectoryContentsStrict(APP_CACHE_ROOT(), {
-    skip: (name) => !isManagedClearableCacheEntry(name) || isBoundedCacheEntry(name),
+    skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name),
   });
   const { Image } = await import('expo-image');
   const [disk, memory] = await Promise.all([
-    Image.clearDiskCache(),
-    Image.clearMemoryCache(),
+    Image.clearDiskCache().catch(() => false),
+    Image.clearMemoryCache().catch(() => false),
   ]);
-  if (disk !== true) throw new Error('原生图片磁盘缓存清理失败');
   const imageCacheCleared = disk === true || memory === true;
   await reloadUiIconFonts();
   return { imageCacheCleared };

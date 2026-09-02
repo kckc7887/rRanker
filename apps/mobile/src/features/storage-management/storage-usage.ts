@@ -18,7 +18,7 @@ import {
   measureDirectoryBytes,
   measureDirectoryBytesStrict,
 } from '@/features/storage-management/fs-storage';
-import { isManagedClearableCacheEntry } from '@/features/storage-management/expo-system-cache';
+import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
 import { measureGameRemoteImageCacheBytes } from '@/services/remote-image-cache';
 
 export type StorageUsageItem = {
@@ -106,9 +106,7 @@ export function buildStorageUsageReport(
     };
   });
   const measuredGameCacheBytes = measuredGameItems.reduce((sum, item) => sum + item.bytes, 0);
-  const knownCacheBytes = cacheRootBytes
-    + gameBaseBytes.reduce((sum, bytes) => sum + bytes, 0)
-    + sqliteReclaimableBytes;
+  const knownCacheBytes = sharedClearableBytes + measuredGameCacheBytes + sqliteReclaimableBytes;
   const totalBytes = documentBytes + cacheRootBytes + sqliteAllocatedBytes;
   const cacheBytes = Math.min(totalBytes, Math.max(measuredGameCacheBytes, knownCacheBytes));
   const gameScale = measuredGameCacheBytes > cacheBytes && measuredGameCacheBytes > 0
@@ -127,7 +125,7 @@ export function buildStorageUsageReport(
     id: 'shared',
     title: '其它缓存',
     bytes: sharedBytes,
-    clearableBytes: Math.min(sharedBytes, sharedClearableBytes + sqliteReclaimableBytes),
+    clearableBytes: sharedBytes,
     precision: 'estimated',
     clearable: true,
     clearCategoryId: 'shared',
@@ -208,7 +206,7 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
 export async function measureManagedStorageBytes(): Promise<number> {
   const sqlite = await measureRrankerDatabaseAllocation();
   return sqlite.allocatedBytes
-    + measureDirectoryBytesStrict(APP_CACHE_ROOT(), { skip: (name) => !isManagedClearableCacheEntry(name) })
+    + measureDirectoryBytesStrict(APP_CACHE_ROOT(), { skip: isExpoSystemCacheEntry })
     + measureDirectoryBytesStrict(MAIMAI_ASSETS_ROOT())
     + measureDirectoryBytesStrict(PHIGROS_FONT_ROOT())
     + measureDirectoryBytesStrict(PHIGROS_ILLUSTRATION_ROOT())
