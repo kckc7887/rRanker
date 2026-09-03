@@ -128,9 +128,7 @@ export function PhigrosBestImageStylePicker({
               style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
             >
               <View style={styles.imagePreview}>
-                <Image {...(kind === 'avatar'
-                  ? { cacheProfile: 'native' as const }
-                  : { cacheProfile: 'thumbnail' as const, gameId: 'phigros' })}
+                <Image cacheProfile={kind === 'avatar' ? 'native' : 'none'}
                   source={item.source} resizeMode="cover" style={kind === 'avatar' ? styles.avatarImage : styles.backgroundImage} />
               </View>
               <View style={styles.itemCopy}><Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.label}</Text><Text numberOfLines={1} style={[styles.itemMeta, { color: theme.textMuted }]}>{item.meta}</Text></View>

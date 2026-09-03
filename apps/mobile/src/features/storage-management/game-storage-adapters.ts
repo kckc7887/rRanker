@@ -22,7 +22,7 @@ import { isBoundedCacheEntry } from '@/features/storage-management/cache-policy'
 import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
 import {
   clearDirectoryContentsStrict,
-  measureDirectoryBytes,
+  measureDirectoryBytesAsync,
   APP_CACHE_ROOT,
   MAIMAI_ASSETS_ROOT,
   PHIGROS_FONT_ROOT,
@@ -62,12 +62,37 @@ export type GameStorageAdapter = {
     root: () => Directory;
     clear: () => void;
   }[];
-  measure: (snapshots: SqliteSnapshotRepository) => Promise<number>;
+  measure: (
+    snapshots: SqliteSnapshotRepository,
+    inventory?: StorageMeasurementInventory,
+  ) => Promise<number>;
   clear: (snapshots: SqliteSnapshotRepository) => Promise<void>;
 };
 
-function measureFileResources(adapter: Pick<GameStorageAdapter, 'fileResources'>): number {
-  return adapter.fileResources.reduce((sum, resource) => sum + measureDirectoryBytes(resource.root()), 0);
+export type StorageMeasurementInventory = {
+  scores: Awaited<ReturnType<SqliteSnapshotRepository['listAccountScoreSizes']>>;
+  resources: Awaited<ReturnType<SqliteSnapshotRepository['listResourceSizes']>>;
+  catalogBytes: number;
+  legacyScoreBytes: number;
+};
+
+export async function collectStorageMeasurementInventory(
+  snapshots: SqliteSnapshotRepository,
+): Promise<StorageMeasurementInventory> {
+  const [scores, resources, catalogBytes, legacyScoreBytes] = await Promise.all([
+    snapshots.listAccountScoreSizes(),
+    snapshots.listResourceSizes(),
+    snapshots.measureCatalogBytes(),
+    snapshots.measureLegacyScoreBytes(),
+  ]);
+  return { scores, resources, catalogBytes, legacyScoreBytes };
+}
+
+async function measureFileResources(adapter: Pick<GameStorageAdapter, 'fileResources'>): Promise<number> {
+  const sizes = await Promise.all(
+    adapter.fileResources.map((resource) => measureDirectoryBytesAsync(resource.root())),
+  );
+  return sizes.reduce((sum, bytes) => sum + bytes, 0);
 }
 
 function clearFileResources(adapter: Pick<GameStorageAdapter, 'fileResources'>): void {
@@ -143,29 +168,35 @@ async function measureGameSqliteBytes(
   snapshots: SqliteSnapshotRepository,
   gameId: GameId,
   includeCatalog: boolean,
+  inventory?: StorageMeasurementInventory,
 ): Promise<number> {
-  const [scores, resources, catalog, legacy] = await Promise.all([
-    snapshots.listAccountScoreSizes(),
-    snapshots.listResourceSizes(),
-    includeCatalog ? snapshots.measureCatalogBytes() : Promise.resolve(0),
-    includeCatalog ? snapshots.measureLegacyScoreBytes() : Promise.resolve(0),
-  ]);
+  const measured = inventory ?? await (async () => {
+    const [scores, resources, catalogBytes, legacyScoreBytes] = await Promise.all([
+      snapshots.listAccountScoreSizes(),
+      snapshots.listResourceSizes(),
+      includeCatalog ? snapshots.measureCatalogBytes() : Promise.resolve(0),
+      includeCatalog ? snapshots.measureLegacyScoreBytes() : Promise.resolve(0),
+    ]);
+    return { scores, resources, catalogBytes, legacyScoreBytes };
+  })();
   let total = 0;
-  for (const row of scores) {
+  for (const row of measured.scores) {
     if (gameId === 'maimai') {
       if (isClearableMaimaiAccountData(row.accountId)) total += row.bytes;
       continue;
     }
     if (accountIdBelongsToGame(row.accountId, gameId)) total += row.bytes;
   }
-  for (const row of resources) {
+  for (const row of measured.resources) {
     if (gameId === 'maimai') {
       if (isClearableMaimaiResource(row.key)) total += row.bytes;
       continue;
     }
     if (resourceBelongsToGame(row.key, gameId)) total += row.bytes;
   }
-  return total + catalog + legacy;
+  return total
+    + (includeCatalog ? measured.catalogBytes : 0)
+    + (includeCatalog ? measured.legacyScoreBytes : 0);
 }
 
 async function clearGameSqlite(
@@ -200,16 +231,20 @@ async function clearGameSqlite(
 /** 本地舞萌账号成绩快照计入个人数据（不可清除）。 */
 export async function measureDurableLocalMaimaiBytes(
   snapshots: SqliteSnapshotRepository,
+  inventory?: StorageMeasurementInventory,
 ): Promise<number> {
-  const [scores, resources] = await Promise.all([
-    snapshots.listAccountScoreSizes(),
-    snapshots.listResourceSizes(),
-  ]);
+  const measured = inventory ?? await (async () => {
+    const [scores, resources] = await Promise.all([
+      snapshots.listAccountScoreSizes(),
+      snapshots.listResourceSizes(),
+    ]);
+    return { scores, resources };
+  })();
   let total = 0;
-  for (const row of scores) {
+  for (const row of measured.scores) {
     if (isDurableMaimaiAccountId(row.accountId)) total += row.bytes;
   }
-  for (const row of resources) {
+  for (const row of measured.resources) {
     const accountId = accountIdFromResourceKey(row.key);
     if (accountId && isDurableMaimaiAccountId(accountId)) total += row.bytes;
   }
@@ -229,9 +264,12 @@ const maimaiAdapter: GameStorageAdapter = {
     ['collections'], ['dxrating-chart-tags'], ['best-image-collections'],
   ],
   fileResources: maimaiFileResources,
-  async measure(snapshots) {
-    const sqlite = await measureGameSqliteBytes(snapshots, 'maimai', true);
-    return sqlite + measureFileResources(maimaiAdapter);
+  async measure(snapshots, inventory) {
+    const [sqlite, files] = await Promise.all([
+      measureGameSqliteBytes(snapshots, 'maimai', true, inventory),
+      measureFileResources(maimaiAdapter),
+    ]);
+    return sqlite + files;
   },
   async clear(snapshots) {
     await clearGameSqlite(snapshots, 'maimai', true);
@@ -251,9 +289,12 @@ const phigrosAdapter: GameStorageAdapter = {
   queryKeys: [['score-snapshot'], ['game-data'], ['phigros-catalog'], ['phigros-kyou-chart-tags']],
   resetMemory: resetPhigrosKyouAliasesCache,
   fileResources: phigrosFileResources,
-  async measure(snapshots) {
-    const sqlite = await measureGameSqliteBytes(snapshots, 'phigros', false);
-    return sqlite + measureFileResources(phigrosAdapter);
+  async measure(snapshots, inventory) {
+    const [sqlite, files] = await Promise.all([
+      measureGameSqliteBytes(snapshots, 'phigros', false, inventory),
+      measureFileResources(phigrosAdapter),
+    ]);
+    return sqlite + files;
   },
   async clear(snapshots) {
     await clearGameSqlite(snapshots, 'phigros', false);
@@ -268,7 +309,7 @@ const chunithmAdapter: GameStorageAdapter = {
   note: '账号成绩快照；公开曲库仅保留在会话内，SQLite 为估算值',
   queryKeys: [['score-snapshot'], ['game-data'], ['chunithm-catalog'], ['chunithm-song-detail'], ['chunithm-collections']],
   fileResources: [],
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'chunithm', false),
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'chunithm', false, inventory),
   clear: (snapshots) => clearGameSqlite(snapshots, 'chunithm', false),
 };
 
@@ -279,7 +320,7 @@ const adofaiAdapter: GameStorageAdapter = {
   note: '玩家资料与核心成绩快照；公开结果仅保留在会话内，SQLite 为估算值',
   queryKeys: [['tuf']],
   fileResources: [],
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'adofai', false),
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'adofai', false, inventory),
   clear: (snapshots) => clearGameSqlite(snapshots, 'adofai', false),
 };
 
@@ -290,7 +331,7 @@ const musedashAdapter: GameStorageAdapter = {
   note: '玩家与核心成绩快照；曲库及单曲明细仅保留在会话内，SQLite 为估算值',
   queryKeys: [['musedash']],
   fileResources: [],
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'musedash', false),
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'musedash', false, inventory),
   clear: (snapshots) => clearGameSqlite(snapshots, 'musedash', false),
 };
 
@@ -301,7 +342,7 @@ const phiraAdapter: GameStorageAdapter = {
   note: '玩家与核心成绩快照；曲库、谱面及物量仅保留在会话内，SQLite 为估算值',
   queryKeys: [['phira']],
   fileResources: [],
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'phira', false),
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'phira', false, inventory),
   clear: (snapshots) => clearGameSqlite(snapshots, 'phira', false),
 };
 
@@ -316,7 +357,7 @@ const osuStandardAdapter: GameStorageAdapter = {
   note: OSU_STORAGE_NOTE,
   queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-standard', false),
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'osu-standard', false, inventory),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-standard', false),
 };
 
@@ -327,7 +368,7 @@ const osuManiaAdapter: GameStorageAdapter = {
   note: OSU_STORAGE_NOTE,
   queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-mania', false),
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'osu-mania', false, inventory),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-mania', false),
 };
 
@@ -338,7 +379,7 @@ const osuCatchAdapter: GameStorageAdapter = {
   note: OSU_STORAGE_NOTE,
   queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-catch', false),
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'osu-catch', false, inventory),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-catch', false),
 };
 
@@ -349,7 +390,7 @@ const osuTaikoAdapter: GameStorageAdapter = {
   note: OSU_STORAGE_NOTE,
   queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
-  measure: (snapshots) => measureGameSqliteBytes(snapshots, 'osu-taiko', false),
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'osu-taiko', false, inventory),
   clear: (snapshots) => clearGameSqlite(snapshots, 'osu-taiko', false),
 };
 
@@ -373,7 +414,7 @@ export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | unde
 
 export async function measureSharedCacheBytes(): Promise<number> {
   // Paths.cache 中除系统字体与游戏封面外均可由系统随时回收，统计和清理必须使用同一边界。
-  return measureDirectoryBytes(APP_CACHE_ROOT(), {
+  return measureDirectoryBytesAsync(APP_CACHE_ROOT(), {
     skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name),
   });
 }

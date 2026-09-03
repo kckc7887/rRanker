@@ -175,6 +175,7 @@ export function useMuseDashPlayDetails(
   userId: string | null,
   enabled: boolean,
 ): ReadonlyMap<string, number | undefined> {
+  const tabActive = useCachedTabActive();
   const queryDefs = useMemo(() => items.map((item) => ({
     queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
     queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<MuseDashPlayDetail>> => {
@@ -184,9 +185,9 @@ export function useMuseDashPlayDetails(
       const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!, signal);
       return makeMuseDashSnapshot(detail);
     },
-    enabled: enabled && userId !== null,
+    enabled: enabled && tabActive && userId !== null,
     ...MUSE_DASH_QUERY_OPTIONS,
-  })), [items, userId, enabled]);
+  })), [items, userId, enabled, tabActive]);
   const queries = useQueries({ queries: queryDefs });
   return useMemo(() => {
     const map = new Map<string, number | undefined>();

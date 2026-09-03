@@ -6,6 +6,7 @@ import { normalizeOsuBeatmapsetDetail, type OsuBeatmapsetDetail } from '@/domain
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 /**
  * 按个人曲库中的 beatmapset id 批量补齐 osu! 详情。
@@ -15,6 +16,7 @@ export function useOsuBeatmapsetsByIds(
   gameId: OsuGameId,
   beatmapsetIds: readonly string[],
 ) {
+  const tabActive = useCachedTabActive();
   const session = useSession((state) => state.session);
   const activeProviderId = useSession((state) => state.activeProviderId);
   const activeAccountId = useSession((state) => state.activeAccountId);
@@ -36,7 +38,7 @@ export function useOsuBeatmapsetsByIds(
         const raw = await provider.getBeatmapset(beatmapsetId, signal);
         return normalizeOsuBeatmapsetDetail(raw, gameId);
       },
-      enabled: bound,
+      enabled: bound && tabActive,
       staleTime: 60_000,
     })),
   });

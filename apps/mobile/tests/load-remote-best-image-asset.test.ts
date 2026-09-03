@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   download: vi.fn(),
   base64: vi.fn(async (_uri: string) => 'YWJj'),
   deleted: [] as string[],
-  compressed: vi.fn(),
 }));
 
 vi.mock('expo-file-system', () => {
@@ -27,10 +26,6 @@ vi.mock('expo-file-system', () => {
   return { File, Paths: { cache: { uri: 'file://cache' } } };
 });
 
-vi.mock('@/services/remote-image-cache', () => ({
-  loadCompressedRemoteImage: (...args: unknown[]) => mocks.compressed(...args),
-}));
-
 // Mocked native modules must be registered before the module under test is imported.
 // eslint-disable-next-line import/first
 import { loadRemoteBestImageAssetDataUri } from '@/features/best-image/load-remote-best-image-asset';
@@ -41,7 +36,6 @@ describe('remote best image asset localization', () => {
     mocks.deleted.length = 0;
     mocks.download.mockReset().mockResolvedValue(undefined);
     mocks.base64.mockReset().mockResolvedValue('YWJj');
-    mocks.compressed.mockReset().mockResolvedValue(null);
   });
 
   it('downloads through a unique temporary file and deletes it after reading', async () => {
@@ -68,19 +62,11 @@ describe('remote best image asset localization', () => {
     await expect(loadRemoteBestImageAssetDataUri('https://example.test/failed.png')).resolves.toBeNull();
   });
 
-  it('reads song covers from the shared compressed file without a second download', async () => {
-    const fileUri = 'file://cache/shared-cover.webp';
-    mocks.files.add(fileUri);
-    mocks.compressed.mockResolvedValueOnce({ cacheKey: 'cover', fileUri, source: { uri: fileUri } });
-    await expect(loadRemoteBestImageAssetDataUri(
-      'https://example.test/cover.png',
-      { gameId: 'phigros', profile: 'artwork' },
-    )).resolves.toBe('data:image/webp;base64,YWJj');
-    expect(mocks.compressed).toHaveBeenCalledWith(
-      'https://example.test/cover.png',
-      { gameId: 'phigros', profile: 'artwork' },
-    );
-    expect(mocks.download).not.toHaveBeenCalled();
-    expect(mocks.files.has(fileUri)).toBe(true);
+  it('does not retain song covers after converting them', async () => {
+    await expect(loadRemoteBestImageAssetDataUri('https://example.test/cover.png'))
+      .resolves.toBe('data:image/png;base64,YWJj');
+    expect(mocks.download).toHaveBeenCalledTimes(1);
+    expect(mocks.deleted).toHaveLength(1);
+    expect(mocks.files.size).toBe(0);
   });
 });

@@ -12,6 +12,7 @@ import {
 } from '@/features/storage-management/expo-system-cache';
 import {
   GAME_STORAGE_ADAPTERS,
+  collectStorageMeasurementInventory,
   getGameStorageAdapter,
   measureSharedCacheBytes,
   sharedCacheNote,
@@ -25,11 +26,11 @@ import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
 const mocks = vi.hoisted(() => ({
   execAsync: vi.fn(async () => undefined),
   getFirstAsync: vi.fn(async (_sql: string) => null as Record<string, number> | null),
-  measureDirectoryBytes: vi.fn(() => 0),
+  measureDirectoryBytes: vi.fn(async () => 0),
   clearMaimaiUiCache: vi.fn(),
   resetPhigrosKyouAliasesCache: vi.fn(),
   clearGameRemoteImageCache: vi.fn(async () => undefined),
-  measureGameRemoteImageCacheBytes: vi.fn(async () => 0),
+  listRemoteImageCacheUsage: vi.fn(async () => []),
   clearDirectoryContentsStrict: vi.fn(),
   clearDiskCache: vi.fn(async () => true),
   clearMemoryCache: vi.fn(async () => true),
@@ -69,8 +70,8 @@ vi.mock('@/domain/game-bind-options', () => {
 });
 
 vi.mock('@/features/storage-management/fs-storage', () => ({
-  measureDirectoryBytes: mocks.measureDirectoryBytes,
-  measureDirectoryBytesStrict: mocks.measureDirectoryBytes,
+  measureDirectoryBytesAsync: mocks.measureDirectoryBytes,
+  measureDirectoryBytesStrictAsync: mocks.measureDirectoryBytes,
   clearDirectoryContentsStrict: mocks.clearDirectoryContentsStrict,
   clearAppOwnedCacheContents: () => undefined,
   clearAppOwnedCacheContentsStrict: () => undefined,
@@ -84,7 +85,7 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
 
 vi.mock('@/services/remote-image-cache', () => ({
   clearGameRemoteImageCache: mocks.clearGameRemoteImageCache,
-  measureGameRemoteImageCacheBytes: mocks.measureGameRemoteImageCacheBytes,
+  listRemoteImageCacheUsage: mocks.listRemoteImageCacheUsage,
 }));
 
 vi.mock('@/features/storage-management/ui-icon-fonts', () => ({
@@ -307,6 +308,23 @@ describe('shared cache note wording', () => {
   });
 });
 
+describe('storage measurement inventory', () => {
+  it('reads shared SQLite rows once before partitioning every game', async () => {
+    const snapshots = {
+      listAccountScoreSizes: vi.fn(async () => []),
+      listResourceSizes: vi.fn(async () => []),
+      measureCatalogBytes: vi.fn(async () => 10),
+      measureLegacyScoreBytes: vi.fn(async () => 20),
+    };
+    const inventory = await collectStorageMeasurementInventory(snapshots as never);
+    await Promise.all(GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(snapshots as never, inventory)));
+    expect(snapshots.listAccountScoreSizes).toHaveBeenCalledTimes(1);
+    expect(snapshots.listResourceSizes).toHaveBeenCalledTimes(1);
+    expect(snapshots.measureCatalogBytes).toHaveBeenCalledTimes(1);
+    expect(snapshots.measureLegacyScoreBytes).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('storage usage report', () => {
   it('counts all accessible data and keeps group and item totals aligned', () => {
     const gameBaseBytes = Array<number>(GAME_STORAGE_ADAPTERS.length).fill(0);
@@ -422,7 +440,7 @@ describe('maimai resource coverage', () => {
   it('keeps durable local account thumbnails and clears the maimai-assets directory', async () => {
     const clearAccountScores = vi.fn(async () => undefined);
     const clearResources = vi.fn(async () => undefined);
-    mocks.measureDirectoryBytes.mockReturnValueOnce(1000);
+    mocks.measureDirectoryBytes.mockResolvedValueOnce(1000);
     const snapshots = {
       listAccountScoreSizes: vi.fn(async () => [
         { accountId: 'maimai:lxns:u1', bytes: 100 },

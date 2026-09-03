@@ -1,4 +1,4 @@
-import { Directory, File, Paths } from 'expo-file-system';
+import { Directory, Paths } from 'expo-file-system';
 import { isAppOwnedCacheEntry } from '@/features/storage-management/expo-system-cache';
 import { COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME } from '@/features/storage-management/cache-policy';
 
@@ -13,49 +13,42 @@ type DirectoryListOptions = {
   skip?: (name: string) => boolean;
 };
 
-/** 递归统计目录占用；目录不存在或无法读取时返回 0。 */
-export function measureDirectoryBytes(
+async function measureDirectoryBytesInternal(
   directory: Directory,
   options?: DirectoryListOptions,
-): number {
+): Promise<number> {
+  const { getInfoAsync } = await import('expo-file-system/legacy');
+  const skip = options?.skip;
+  if (!skip) {
+    const info = await getInfoAsync(directory.uri);
+    return info.exists && typeof info.size === 'number' && info.size >= 0 ? info.size : 0;
+  }
+  const entries = directory.list().filter((item) => !skip(item.name));
+  const sizes = await Promise.all(entries.map(async (item) => {
+    const info = await getInfoAsync(item.uri);
+    return info.exists && typeof info.size === 'number' && info.size >= 0 ? info.size : 0;
+  }));
+  return sizes.reduce((sum, bytes) => sum + bytes, 0);
+}
+
+/** 异步统计物理占用；目录不存在或无法读取时返回 0。 */
+export async function measureDirectoryBytesAsync(
+  directory: Directory,
+  options?: DirectoryListOptions,
+): Promise<number> {
   try {
-    if (!directory.exists) return 0;
-    const skip = options?.skip;
-    if (!skip) {
-      const info = directory.info();
-      if (typeof info.size === 'number' && info.size >= 0) return info.size;
-    }
-    let total = 0;
-    for (const item of directory.list()) {
-      if (skip?.(item.name)) continue;
-      if (item instanceof Directory) total += measureDirectoryBytes(item, options);
-      else if (item instanceof File) total += item.size ?? 0;
-    }
-    return total;
+    return await measureDirectoryBytesInternal(directory, options);
   } catch {
     return 0;
   }
 }
 
-/** 清理前后实际释放量使用：读取失败向上抛出，调用方据此返回 null 而不是伪造 0。 */
-export function measureDirectoryBytesStrict(
+/** 清理前后实际释放量使用：读取失败向上抛出，避免伪造 0。 */
+export function measureDirectoryBytesStrictAsync(
   directory: Directory,
   options?: DirectoryListOptions,
-): number {
-  if (!directory.exists) return 0;
-  const skip = options?.skip;
-  if (!skip) {
-    const info = directory.info();
-    if (typeof info.size === 'number' && info.size >= 0) return info.size;
-  }
-  let total = 0;
-  for (const item of directory.list()) {
-    if (skip?.(item.name)) continue;
-    total += item instanceof Directory
-      ? measureDirectoryBytesStrict(item, options)
-      : item.size ?? 0;
-  }
-  return total;
+): Promise<number> {
+  return measureDirectoryBytesInternal(directory, options);
 }
 
 /** 删除目录内内容（保留目录本身）；可通过 skip 保留系统资源。 */

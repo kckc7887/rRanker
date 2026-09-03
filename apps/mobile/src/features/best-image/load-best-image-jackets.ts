@@ -18,7 +18,7 @@ export function bestImageJacketUrl(songId: string): string {
 
 async function loadJacketDataUri(songId: string): Promise<string | null> {
   const url = bestImageJacketUrl(songId);
-  return loadRemoteImageAsDataUri(url, { gameId: 'maimai', profile: 'thumbnail' });
+  return loadRemoteImageAsDataUri(url);
 }
 
 export async function loadBestImageJackets(

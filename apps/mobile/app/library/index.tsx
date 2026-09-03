@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
+import { RemoteImageFlatList } from '@/components/game-content/GameListPages';
 import { router, type Href } from 'expo-router';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SongCover } from '@/components/SongCover';
 import { chunithmJacketUrl } from '@/components/chunithm/ChunithmSongRow';
 import {
@@ -98,7 +99,7 @@ function LibraryList({
     </View>
     {library.isLoading ? <ActivityIndicator style={styles.center} color={theme.accent} /> : library.isError ?
       <View style={styles.center}><Text style={[styles.error, { color: theme.danger }]}>个人数据加载失败</Text><Pressable onPress={() => void library.refetch()}><Text style={[styles.link, { color: theme.accent }]}>重试</Text></Pressable></View> :
-      <FlatList data={filtered} keyExtractor={(item) => item.key} contentContainerStyle={styles.list}
+      <RemoteImageFlatList data={filtered} keyExtractor={(item) => item.key} contentContainerStyle={styles.list}
         ListEmptyComponent={<Text style={[styles.empty, { color: theme.textMuted }]}>{library.data?.length ? '当前筛选没有项目' : '还没有收藏、练习谱面或本地标签'}</Text>}
         renderItem={({ item }) => (
           <LibraryRow

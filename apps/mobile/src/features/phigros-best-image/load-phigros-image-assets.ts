@@ -1,16 +1,14 @@
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
-import {
-  loadCompressedRemoteImage,
-  type RemoteImageCacheOptions,
-} from '@/services/remote-image-cache';
 
 /** 模块级只缓存短 file URI，禁止再持有 base64 data URI。 */
 const cache = new Map<string, Promise<string | null>>();
+const disposedDirectories = new Set<string>();
 
 export function phigrosIllustrationStageDirectory(): Directory {
   const directory = new Directory(Paths.document, 'rranker', 'phigros-illustration-stage');
   directory.create({ intermediates: true, idempotent: true });
+  disposedDirectories.delete(directory.uri);
   return directory;
 }
 
@@ -23,10 +21,12 @@ export function createPhigrosIllustrationSessionDirectory(): Directory {
     `session-${Date.now()}-${illustrationSession}`,
   );
   directory.create({ intermediates: true, idempotent: true });
+  disposedDirectories.delete(directory.uri);
   return directory;
 }
 
 export function disposePhigrosIllustrationSession(directory: Directory): void {
+  disposedDirectories.add(directory.uri);
   if (directory.exists) directory.delete();
   for (const key of cache.keys()) {
     if (key.startsWith(`${directory.uri}|`)) cache.delete(key);
@@ -42,6 +42,8 @@ export function phigrosReadableRootDirectory(): Directory {
 
 export function clearPhigrosIllustrationStage(): void {
   const directory = new Directory(Paths.document, 'rranker', 'phigros-illustration-stage');
+  disposedDirectories.add(directory.uri);
+  for (const key of cache.keys()) disposedDirectories.add(key.slice(0, key.indexOf('|')));
   if (directory.exists) directory.delete();
   cache.clear();
 }
@@ -60,23 +62,23 @@ async function stageFileName(url: string, extensionOverride?: string): Promise<s
 export async function loadRemoteImageDataUri(
   url: string | null | undefined,
   directory: Directory = phigrosIllustrationStageDirectory(),
-  cacheOptions?: RemoteImageCacheOptions,
 ): Promise<string | null> {
   if (!url) return null;
-  const cacheKey = `${directory.uri}|${cacheOptions?.gameId ?? 'temporary'}|${cacheOptions?.profile ?? 'source'}|${url}`;
+  const cacheKey = `${directory.uri}|${url}`;
+  if (disposedDirectories.has(directory.uri)) return null;
   const existing = cache.get(cacheKey);
   if (existing) return existing;
   const pending = (async () => {
-    const staged = new File(directory, await stageFileName(url, cacheOptions ? 'webp' : undefined));
-    if (!staged.exists) {
-      const cached = cacheOptions
-        ? await loadCompressedRemoteImage(url, cacheOptions).catch(() => null)
-        : null;
-      if (cached) new File(cached.fileUri).copy(staged);
-      else if (!cacheOptions) await File.downloadFileAsync(url, staged, { idempotent: true });
-      else return null;
+    const staged = new File(directory, await stageFileName(url));
+    try {
+      if (!staged.exists) {
+        await File.downloadFileAsync(url, staged, { idempotent: true });
+      }
+      if (disposedDirectories.has(directory.uri)) return null;
+      return staged.uri;
+    } finally {
+      if (disposedDirectories.has(directory.uri) && staged.exists) staged.delete();
     }
-    return staged.uri;
   })();
   cache.set(cacheKey, pending);
   try {
@@ -97,11 +99,7 @@ export async function loadPhigrosIllustrations(
   const result: Record<string, string | null> = {};
   onProgress?.(0, unique.length);
   for (const [index, id] of unique.entries()) {
-    result[id] = await loadRemoteImageDataUri(
-      urlFor(id),
-      directory,
-      { gameId: 'phigros', profile: 'artwork' },
-    );
+    result[id] = await loadRemoteImageDataUri(urlFor(id), directory);
     onProgress?.(index + 1, unique.length);
   }
   return result;

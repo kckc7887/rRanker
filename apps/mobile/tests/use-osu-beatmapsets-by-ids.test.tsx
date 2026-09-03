@@ -8,6 +8,7 @@ import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
 const mockGetBeatmapset = jest.fn<(id: string) => Promise<OsuBeatmapsetLookupRaw>>();
 let mockProviderId: string | null = 'osu';
 let mockSession: Record<string, unknown> | null = { mode: 'osu-oauth' };
+let mockTabActive = true;
 
 jest.mock('@/providers/osu-score-provider', () => ({
   OsuScoreProvider: class {
@@ -21,6 +22,9 @@ jest.mock('@/state/session-store', () => ({
     activeProviderId: mockProviderId,
     activeAccountId: 'osu-standard:osu:2',
   }),
+}));
+jest.mock('@/components/CachedTabScreen', () => ({
+  useCachedTabActive: () => mockTabActive,
 }));
 
 function rawBeatmapset(id: number): OsuBeatmapsetLookupRaw {
@@ -53,6 +57,7 @@ describe('useOsuBeatmapsetsByIds', () => {
     jest.clearAllMocks();
     mockProviderId = 'osu';
     mockSession = { mode: 'osu-oauth' };
+    mockTabActive = true;
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
     mockGetBeatmapset.mockImplementation(async (id) => rawBeatmapset(Number(id)));
   });
@@ -84,6 +89,17 @@ describe('useOsuBeatmapsetsByIds', () => {
     );
 
     expect(result.current.bound).toBe(false);
+    expect(mockGetBeatmapset).not.toHaveBeenCalled();
+  });
+
+  it('标签失焦时保留绑定状态但不发请求', async () => {
+    mockTabActive = false;
+    const { result } = await renderHook(
+      () => useOsuBeatmapsetsByIds('osu-standard', ['3720']),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    expect(result.current.bound).toBe(true);
     expect(mockGetBeatmapset).not.toHaveBeenCalled();
   });
 
