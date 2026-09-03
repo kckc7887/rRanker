@@ -4,6 +4,7 @@ import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repos
 import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
 import {
   GAME_STORAGE_ADAPTERS,
+  collectStorageMeasurementInventory,
   measureDurableLocalMaimaiBytes,
   measureSharedCacheBytes,
   type StorageSegmentId,
@@ -15,11 +16,11 @@ import {
   OSU_MOD_ICONS_ROOT,
   PHIGROS_FONT_ROOT,
   PHIGROS_ILLUSTRATION_ROOT,
-  measureDirectoryBytes,
-  measureDirectoryBytesStrict,
+  measureDirectoryBytesAsync,
+  measureDirectoryBytesStrictAsync,
 } from '@/features/storage-management/fs-storage';
 import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
-import { measureGameRemoteImageCacheBytes } from '@/services/remote-image-cache';
+import { listRemoteImageCacheUsage } from '@/services/remote-image-cache';
 
 export type StorageUsageItem = {
   id: StorageSegmentId | 'basic-other';
@@ -170,6 +171,7 @@ export function buildStorageUsageReport(
 }
 
 export async function collectStorageUsage(): Promise<StorageUsageReport> {
+  const inventoryPromise = collectStorageMeasurementInventory(snapshots);
   const [
     libraryBytes,
     localMaimaiBytes,
@@ -178,17 +180,20 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
     documentBytes,
     cacheRootBytes,
     gameBaseBytes,
-    gameCoverBytes,
+    coverUsage,
   ] = await Promise.all([
     library.measureBytes(),
-    measureDurableLocalMaimaiBytes(snapshots),
+    inventoryPromise.then((inventory) => measureDurableLocalMaimaiBytes(snapshots, inventory)),
     measureSharedCacheBytes(),
     measureRrankerDatabaseAllocation(),
-    Promise.resolve(measureDirectoryBytes(APP_DOCUMENT_ROOT())),
-    Promise.resolve(measureDirectoryBytes(APP_CACHE_ROOT())),
-    Promise.all(GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(snapshots))),
-    Promise.all(GAME_STORAGE_ADAPTERS.map((adapter) => measureGameRemoteImageCacheBytes(adapter.gameId))),
+    measureDirectoryBytesAsync(APP_DOCUMENT_ROOT()),
+    measureDirectoryBytesAsync(APP_CACHE_ROOT()),
+    inventoryPromise.then((inventory) => Promise.all(
+      GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(snapshots, inventory)),
+    )),
+    listRemoteImageCacheUsage(),
   ]);
+  const coverBytesByGame = new Map(coverUsage.map((usage) => [usage.gameId, usage.bytes]));
   return buildStorageUsageReport({
     libraryBytes,
     localMaimaiBytes,
@@ -198,17 +203,19 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
     documentBytes,
     cacheRootBytes,
     gameBaseBytes,
-    gameCoverBytes,
+    gameCoverBytes: GAME_STORAGE_ADAPTERS.map((adapter) => coverBytesByGame.get(adapter.gameId) ?? 0),
   });
 }
 
 /** 清理前后使用同一物理口径：SQLite 分配页 + 可管理文件目录。 */
 export async function measureManagedStorageBytes(): Promise<number> {
-  const sqlite = await measureRrankerDatabaseAllocation();
-  return sqlite.allocatedBytes
-    + measureDirectoryBytesStrict(APP_CACHE_ROOT(), { skip: isExpoSystemCacheEntry })
-    + measureDirectoryBytesStrict(MAIMAI_ASSETS_ROOT())
-    + measureDirectoryBytesStrict(PHIGROS_FONT_ROOT())
-    + measureDirectoryBytesStrict(PHIGROS_ILLUSTRATION_ROOT())
-    + measureDirectoryBytesStrict(OSU_MOD_ICONS_ROOT());
+  const [sqlite, ...directoryBytes] = await Promise.all([
+    measureRrankerDatabaseAllocation(),
+    measureDirectoryBytesStrictAsync(APP_CACHE_ROOT(), { skip: isExpoSystemCacheEntry }),
+    measureDirectoryBytesStrictAsync(MAIMAI_ASSETS_ROOT()),
+    measureDirectoryBytesStrictAsync(PHIGROS_FONT_ROOT()),
+    measureDirectoryBytesStrictAsync(PHIGROS_ILLUSTRATION_ROOT()),
+    measureDirectoryBytesStrictAsync(OSU_MOD_ICONS_ROOT()),
+  ]);
+  return sqlite.allocatedBytes + directoryBytes.reduce((sum, bytes) => sum + bytes, 0);
 }

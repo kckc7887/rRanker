@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -8,8 +9,6 @@ import {
 } from 'react-native';
 import {
   Defs,
-  Image as SvgImage,
-  Mask,
   RadialGradient,
   Rect,
   Stop,
@@ -520,19 +519,23 @@ function MuseDashHeroCover({ song, width }: { song: MuseDashSong; width: number 
       <Image cacheProfile="thumbnail" gameId="musedash" source={url} style={[StyleSheet.absoluteFill, { transform: [{ scale: 1.45 }] }]}
         contentFit="cover" blurRadius={40} transition={120}
         onError={() => setFailed(true)} />
-      <Svg width={width} height={width} style={styles.heroSvg}>
-        <Defs>
-          <RadialGradient id="musedash-cover-feather" cx="50%" cy="50%" r="50%">
-            <Stop offset="85%" stopColor="#FFFFFF" stopOpacity={1} />
-            <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
-          </RadialGradient>
-          <Mask id="musedash-cover-mask" maskUnits="userSpaceOnUse" x={0} y={0} width={width} height={width}>
+      <MaskedView
+        style={styles.heroSvg}
+        maskElement={(
+          <Svg width={width} height={width}>
+            <Defs>
+              <RadialGradient id="musedash-cover-feather" cx="50%" cy="50%" r="50%">
+                <Stop offset="85%" stopColor="#FFFFFF" stopOpacity={1} />
+                <Stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
             <Rect x={0} y={0} width={width} height={width} fill="url(#musedash-cover-feather)" />
-          </Mask>
-        </Defs>
-        <SvgImage x={0} y={0} width={width} height={width} href={url}
-          preserveAspectRatio="xMidYMid slice" mask="url(#musedash-cover-mask)" />
-      </Svg>
+          </Svg>
+        )}
+      >
+        <Image cacheProfile="thumbnail" gameId="musedash" source={url}
+          contentFit="cover" onError={() => setFailed(true)} style={{ width, height: width }} />
+      </MaskedView>
     </>
   );
 }

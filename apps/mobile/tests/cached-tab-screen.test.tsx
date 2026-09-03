@@ -137,6 +137,27 @@ describe('cached native-tab content', () => {
     expect(screen.getByText('后台')).toBeTruthy();
   });
 
+  it('retains page state and closes every interaction handle across 30 focus cycles', async () => {
+    const tasks: { callback: () => void; cancel: jest.Mock }[] = [];
+    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+      const task = { callback: callback as () => void, cancel: jest.fn() };
+      tasks.push(task);
+      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+    });
+    const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
+    for (let index = 0; index < 30; index += 1) {
+      let cleanup: void | (() => void);
+      await act(() => { cleanup = mockFocusEffect?.(); });
+      await act(() => { tasks[index]?.callback(); });
+      if (index === 0) await fireEvent.press(screen.getByLabelText('修改页面状态'));
+      expect(screen.getByText('页面状态 1')).toBeTruthy();
+      await act(() => { cleanup?.(); });
+      expect(tasks[index]?.cancel).toHaveBeenCalledTimes(1);
+    }
+    expect(tasks).toHaveLength(30);
+    expect(screen.getByText('页面状态 1')).toBeTruthy();
+  });
+
   it('evicts only an unfocused page after a memory warning', async () => {
     jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
       (callback as () => void)();

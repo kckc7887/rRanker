@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   SectionList,
@@ -9,6 +9,102 @@ import {
 import { QueryStateView } from '@/components/QueryStateView';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
+import { RemoteImagePersistenceScope } from '@/components/RemoteImage';
+
+const REMOTE_IMAGE_VIEWABILITY_CONFIG = {
+  itemVisiblePercentThreshold: 50,
+  minimumViewTime: 250,
+  waitForInteraction: false,
+} as const;
+
+type ViewabilityChange<TItem> = Parameters<
+  NonNullable<FlatListProps<TItem>['onViewableItemsChanged']>
+>[0];
+
+function useRemoteImageViewability<TItem>(
+  onViewableItemsChanged: FlatListProps<TItem>['onViewableItemsChanged'],
+) {
+  const [visibleItems, setVisibleItems] = useState<ReadonlySet<TItem>>(() => new Set());
+  const handleViewableItemsChanged = useCallback((info: ViewabilityChange<TItem>) => {
+    const next = new Set(info.viewableItems.map((token) => token.item));
+    setVisibleItems((current) => (
+      current.size === next.size && [...current].every((item) => next.has(item)) ? current : next
+    ));
+    onViewableItemsChanged?.(info);
+  }, [onViewableItemsChanged]);
+  return { visibleItems, handleViewableItemsChanged };
+}
+
+export function RemoteImageFlatList<TItem>({
+  extraData,
+  onViewableItemsChanged,
+  renderItem,
+  viewabilityConfig,
+  ...props
+}: FlatListProps<TItem>) {
+  const { visibleItems, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged);
+  const scopedExtraData = useMemo(() => [extraData, visibleItems] as const, [extraData, visibleItems]);
+  const scopedRenderItem = useCallback<NonNullable<FlatListProps<TItem>['renderItem']>>((info) => {
+    const content = renderItem?.(info) ?? null;
+    return (
+      <RemoteImagePersistenceScope enabled={visibleItems.has(info.item)}>
+        {content}
+      </RemoteImagePersistenceScope>
+    );
+  }, [renderItem, visibleItems]);
+  const mergedViewabilityConfig = useMemo(() => ({
+    ...viewabilityConfig,
+    ...REMOTE_IMAGE_VIEWABILITY_CONFIG,
+  }), [viewabilityConfig]);
+
+  return (
+    <FlatList<TItem>
+      {...props}
+      {...TAB_LIST_CACHE_PROPS}
+      extraData={scopedExtraData}
+      onViewableItemsChanged={handleViewableItemsChanged}
+      renderItem={scopedRenderItem}
+      viewabilityConfig={mergedViewabilityConfig}
+    />
+  );
+}
+
+function RemoteImageSectionList<
+  TItem,
+  TSection extends SectionListData<TItem>,
+>({
+  extraData,
+  onViewableItemsChanged,
+  renderItem,
+  viewabilityConfig,
+  ...props
+}: SectionListProps<TItem, TSection>) {
+  const { visibleItems, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged);
+  const scopedExtraData = useMemo(() => [extraData, visibleItems] as const, [extraData, visibleItems]);
+  const scopedRenderItem = useCallback<NonNullable<SectionListProps<TItem, TSection>['renderItem']>>((info) => {
+    const content = renderItem?.(info) ?? null;
+    return (
+      <RemoteImagePersistenceScope enabled={visibleItems.has(info.item)}>
+        {content}
+      </RemoteImagePersistenceScope>
+    );
+  }, [renderItem, visibleItems]);
+  const mergedViewabilityConfig = useMemo(() => ({
+    ...viewabilityConfig,
+    ...REMOTE_IMAGE_VIEWABILITY_CONFIG,
+  }), [viewabilityConfig]);
+
+  return (
+    <SectionList<TItem, TSection>
+      {...props}
+      {...TAB_LIST_CACHE_PROPS}
+      extraData={scopedExtraData}
+      onViewableItemsChanged={handleViewableItemsChanged}
+      renderItem={scopedRenderItem}
+      viewabilityConfig={mergedViewabilityConfig}
+    />
+  );
+}
 
 type QueryPageProps<TData> = {
   isLoading: boolean;
@@ -51,9 +147,8 @@ export function BestListPage<
       emptyText={emptyText}
       data={data}
       renderData={(sections) => (
-        <SectionList<TItem, TSection>
+        <RemoteImageSectionList<TItem, TSection>
           {...sectionListProps}
-          {...TAB_LIST_CACHE_PROPS}
           sections={sections}
         />
       )}
@@ -90,9 +185,8 @@ function FlatListPage<TItem>({
         emptyText={emptyText}
         data={data}
         renderData={(items) => (
-          <FlatList<TItem>
+          <RemoteImageFlatList<TItem>
             {...flatListProps}
-            {...TAB_LIST_CACHE_PROPS}
             data={items}
           />
         )}

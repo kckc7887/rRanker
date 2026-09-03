@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   base64: vi.fn(async (uri: string) => `encoded-${uri}`),
   failUrls: new Set<string>(),
   deleted: [] as string[],
-  compressed: vi.fn(),
 }));
 
 vi.mock('expo-file-system', () => {
@@ -34,10 +33,6 @@ vi.mock('expo-file-system', () => {
   return { File, Paths: { cache: { uri: 'file://cache' } } };
 });
 
-vi.mock('@/services/remote-image-cache', () => ({
-  loadCompressedRemoteImage: (...args: unknown[]) => mocks.compressed(...args),
-}));
-
 describe('best image jacket temporary loading', () => {
   beforeEach(() => {
     mocks.files.clear();
@@ -45,29 +40,18 @@ describe('best image jacket temporary loading', () => {
     mocks.deleted.length = 0;
     mocks.failUrls.clear();
     mocks.base64.mockClear();
-    mocks.compressed.mockReset().mockImplementation(async (url: string) => {
-      mocks.urls.push(url);
-      if (mocks.failUrls.has(url)) return null;
-      const fileUri = `file://cache/compressed-${encodeURIComponent(url)}.webp`;
-      mocks.files.add(fileUri);
-      return { cacheKey: fileUri, fileUri, source: { uri: fileUri } };
-    });
   });
 
-  it('loads compressed jackets serially and reports progress', async () => {
+  it('loads jackets serially through temporary files and reports progress', async () => {
     const progress: string[] = [];
     const result = await loadBestImageJackets(['11447', '11448'], (completed, total) => {
       progress.push(`${completed}/${total}`);
     });
     expect(Object.keys(result)).toEqual(['11447', '11448']);
-    expect(Object.values(result).every((value) => value?.startsWith('data:image/webp;base64,'))).toBe(true);
+    expect(Object.values(result).every((value) => value?.startsWith('data:image/png;base64,'))).toBe(true);
     expect(progress).toEqual(['0/2', '1/2', '2/2']);
-    expect(mocks.deleted).toHaveLength(0);
-    expect(mocks.files.size).toBe(2);
-    expect(mocks.compressed).toHaveBeenCalledWith(
-      expect.any(String),
-      { gameId: 'maimai', profile: 'thumbnail' },
-    );
+    expect(mocks.deleted).toHaveLength(2);
+    expect(mocks.files.size).toBe(0);
   });
 
   it('marks a failed jacket as null without retaining a file', async () => {
@@ -78,8 +62,8 @@ describe('best image jacket temporary loading', () => {
 
   it('deduplicates normalized SD and DX URLs while preserving both output keys', async () => {
     await expect(loadBestImageJackets(['1447', '11447'])).resolves.toMatchObject({
-      '1447': expect.stringContaining('data:image/webp;base64,'),
-      '11447': expect.stringContaining('data:image/webp;base64,'),
+      '1447': expect.stringContaining('data:image/png;base64,'),
+      '11447': expect.stringContaining('data:image/png;base64,'),
     });
     expect(mocks.urls).toHaveLength(1);
   });

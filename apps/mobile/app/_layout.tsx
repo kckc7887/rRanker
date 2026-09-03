@@ -4,7 +4,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Image as ExpoImage } from 'expo-image';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Appearance, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Appearance, InteractionManager, StyleSheet, View } from 'react-native';
 
 import { queryClient, releaseInactiveQueries } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
@@ -51,6 +51,7 @@ import { useThemeStore } from '@/state/theme-store';
 import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-fonts';
 import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
 import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
+import { RemoteImageActivityScope } from '@/components/RemoteImage';
 import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
 import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
 import { startTimer } from '@/utils/startup-timing';
@@ -186,7 +187,10 @@ function RootLayoutContent() {
 
   useEffect(() => {
     if (restoreStatus !== 'ready') return;
-    void markRemoteImageCacheGameActive(activeGameId).catch(() => undefined);
+    const task = InteractionManager.runAfterInteractions(() => {
+      void markRemoteImageCacheGameActive(activeGameId).catch(() => undefined);
+    });
+    return () => task.cancel();
   }, [activeAccountId, activeGameId, restoreStatus]);
 
   useEffect(() => {
@@ -265,8 +269,12 @@ function RootLayoutContent() {
   useEffect(() => {
     if (restoreStatus !== 'ready' || !themeHydrated || !iconFontsReady || !lifecycle.foregroundReady) return;
     if (storageMaintenanceStartedRef.current) return;
-    storageMaintenanceStartedRef.current = true;
-    void runStorageCacheMaintenance().catch(() => undefined);
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (storageMaintenanceStartedRef.current) return;
+      storageMaintenanceStartedRef.current = true;
+      void runStorageCacheMaintenance().catch(() => undefined);
+    });
+    return () => task.cancel();
   }, [restoreStatus, themeHydrated, iconFontsReady, lifecycle.foregroundReady]);
 
   if (restoreStatus === 'restoring' || !themeHydrated || !iconFontsReady) {
@@ -274,9 +282,11 @@ function RootLayoutContent() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppThemeProvider><ThemedNavigation /></AppThemeProvider>
-    </QueryClientProvider>
+    <RemoteImageActivityScope active={lifecycle.phase !== 'background'}>
+      <QueryClientProvider client={queryClient}>
+        <AppThemeProvider><ThemedNavigation /></AppThemeProvider>
+      </QueryClientProvider>
+    </RemoteImageActivityScope>
   );
 }
 

@@ -1,8 +1,4 @@
 import { File, Paths } from 'expo-file-system';
-import {
-  loadCompressedRemoteImage,
-  type RemoteImageCacheOptions,
-} from '@/services/remote-image-cache';
 
 let temporaryImageSequence = 0;
 const inFlight = new Map<string, Promise<string | null>>();
@@ -30,34 +26,13 @@ async function loadTemporaryImageAsDataUri(url: string): Promise<string | null> 
   }
 }
 
-/** 歌曲封面复用公共压缩文件；其它远程素材只经任务临时文件读取。 */
 export function loadRemoteImageAsDataUri(
   url: string | null | undefined,
-  cacheOptions?: RemoteImageCacheOptions,
 ): Promise<string | null> {
   if (!url) return Promise.resolve(null);
-  const requestKey = cacheOptions
-    ? `${cacheOptions.gameId}|${cacheOptions.profile}|${url}`
-    : url;
-  const existing = inFlight.get(requestKey);
+  const existing = inFlight.get(url);
   if (existing) return existing;
-  const pending = (async () => {
-    if (cacheOptions) {
-      try {
-        const cached = await loadCompressedRemoteImage(url, cacheOptions);
-        if (cached) {
-          const file = new File(cached.fileUri);
-          if (file.exists && (file.size ?? 0) > 0) {
-            return `data:image/webp;base64,${await file.base64()}`;
-          }
-        }
-      } catch {
-        return null;
-      }
-      return null;
-    }
-    return loadTemporaryImageAsDataUri(url);
-  })().finally(() => inFlight.delete(requestKey));
-  inFlight.set(requestKey, pending);
+  const pending = loadTemporaryImageAsDataUri(url).finally(() => inFlight.delete(url));
+  inFlight.set(url, pending);
   return pending;
 }

@@ -11,6 +11,7 @@ import { useFocusEffect } from 'expo-router';
 import { InteractionManager, StyleSheet, View } from 'react-native';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';
+import { RemoteImageActivityScope } from '@/components/RemoteImage';
 
 const CachedTabActiveContext = createContext(true);
 
@@ -82,9 +83,11 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
   }
 
   return (
-    <CachedTabActiveContext.Provider value={active}>
-      {cachedChildrenRef.current}
-    </CachedTabActiveContext.Provider>
+    <RemoteImageActivityScope active={active}>
+      <CachedTabActiveContext.Provider value={active}>
+        {cachedChildrenRef.current}
+      </CachedTabActiveContext.Provider>
+    </RemoteImageActivityScope>
   );
 }
 

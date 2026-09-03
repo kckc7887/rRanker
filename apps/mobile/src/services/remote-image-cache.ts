@@ -11,16 +11,30 @@ export type RemoteImageCacheOptions = {
   profile: RemoteImageCacheProfile;
 };
 
-export const REMOTE_IMAGE_CACHE_BUDGET_BYTES = 256 * 1024 * 1024;
+export const REMOTE_IMAGE_CACHE_BUDGET_BYTES = 10 * 1024 * 1024;
+export const REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES = 10 * 1024;
 export const REMOTE_IMAGE_CACHE_ACTIVE_SHARE = 0.7;
-export const REMOTE_IMAGE_CACHE_VERSION = 2;
+export const REMOTE_IMAGE_CACHE_VERSION = 3;
 
 const PROFILE_OPTIONS = {
-  thumbnail: { maxWidth: 384, maxHeight: 384, compress: 0.65 },
-  artwork: { maxWidth: 960, maxHeight: 960, compress: 0.72 },
+  thumbnail: [
+    { maxSize: 160, compress: 0.5 },
+    { maxSize: 144, compress: 0.4 },
+    { maxSize: 128, compress: 0.3 },
+    { maxSize: 96, compress: 0.2 },
+    { maxSize: 64, compress: 0.1 },
+  ],
+  artwork: [
+    { maxSize: 320, compress: 0.5 },
+    { maxSize: 256, compress: 0.4 },
+    { maxSize: 192, compress: 0.3 },
+    { maxSize: 128, compress: 0.2 },
+    { maxSize: 96, compress: 0.1 },
+    { maxSize: 64, compress: 0.1 },
+  ],
 } as const;
 const MANIFEST_FILE_NAME = 'index.json';
-const MAX_CONCURRENT_TRANSFORMS = 4;
+const MAX_CONCURRENT_TRANSFORMS = 1;
 
 type CacheEntry = {
   bytes: number;
@@ -72,7 +86,12 @@ let manifestWriteQueue: Promise<void> = Promise.resolve();
 let activeTransforms = 0;
 let cacheGeneration = 0;
 const gameGenerations = new Map<string, number>();
-const transformWaiters: (() => void)[] = [];
+type TransformWaiter = {
+  resolve: (acquired: boolean) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+};
+const transformWaiters: TransformWaiter[] = [];
 const inflight = new Map<string, Promise<CompressedRemoteImageResult | null>>();
 
 export function supportsCompressedRemoteImageCache(): boolean {
@@ -181,12 +200,16 @@ async function loadManifest(): Promise<CacheState> {
       item.delete();
       continue;
     }
-    reconciled.set(cacheKey, {
-      ...stored,
-      bytes: item.size ?? stored.bytes,
-    });
+    const bytes = item.size ?? stored.bytes;
+    if (bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
+      item.delete();
+      continue;
+    }
+    reconciled.set(cacheKey, { ...stored, bytes });
   }
-  return { activeGameId, gameLastUsed, entries: reconciled };
+  const state = { activeGameId, gameLastUsed, entries: reconciled };
+  pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, root);
+  return state;
 }
 
 function manifest(): Promise<CacheState> {
@@ -228,16 +251,46 @@ export async function flushRemoteImageCacheManifest(): Promise<void> {
   await manifestWriteQueue;
 }
 
-async function withTransformSlot<T>(task: () => Promise<T>): Promise<T> {
+function wakeNextTransformWaiter(): void {
+  while (transformWaiters.length > 0) {
+    const waiter = transformWaiters.shift()!;
+    waiter.signal?.removeEventListener('abort', waiter.onAbort!);
+    if (waiter.signal?.aborted) {
+      waiter.resolve(false);
+      continue;
+    }
+    activeTransforms += 1;
+    waiter.resolve(true);
+    return;
+  }
+}
+
+async function acquireTransformSlot(signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return false;
   if (activeTransforms >= MAX_CONCURRENT_TRANSFORMS) {
-    await new Promise<void>((resolve) => transformWaiters.push(resolve));
+    const acquired = await new Promise<boolean>((resolve) => {
+      const waiter: TransformWaiter = { resolve, signal };
+      waiter.onAbort = () => {
+        const index = transformWaiters.indexOf(waiter);
+        if (index >= 0) transformWaiters.splice(index, 1);
+        resolve(false);
+      };
+      signal?.addEventListener('abort', waiter.onAbort, { once: true });
+      transformWaiters.push(waiter);
+    });
+    return acquired;
   }
   activeTransforms += 1;
+  return true;
+}
+
+async function withTransformSlot<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T | null> {
+  if (!await acquireTransformSlot(signal)) return null;
   try {
     return await task();
   } finally {
     activeTransforms -= 1;
-    transformWaiters.shift()?.();
+    wakeNextTransformWaiter();
   }
 }
 
@@ -302,15 +355,12 @@ function usageByGame(state: CacheState): RemoteImageCacheQuotaInput[] {
   }));
 }
 
-export async function pruneRemoteImageCache(
-  budgetBytes = REMOTE_IMAGE_CACHE_BUDGET_BYTES,
-): Promise<void> {
-  const state = await manifest();
+function pruneCacheState(state: CacheState, budgetBytes: number, root: Directory): boolean {
   const usages = usageByGame(state);
   const total = usages.reduce((sum, usage) => sum + usage.bytes, 0);
-  if (total <= budgetBytes) return;
+  if (total <= budgetBytes) return false;
   const quotas = calculateRemoteImageCacheQuotas(usages, state.activeGameId, budgetBytes);
-  const root = ensureCacheRoot();
+  let changed = false;
   for (const usage of usages) {
     let gameBytes = usage.bytes;
     const quota = quotas.get(usage.gameId) ?? 0;
@@ -323,9 +373,18 @@ export async function pruneRemoteImageCache(
       if (file.exists) file.delete();
       state.entries.delete(cacheKey);
       gameBytes -= entry.bytes;
+      changed = true;
     }
   }
-  await persistManifest();
+  return changed;
+}
+
+export async function pruneRemoteImageCache(
+  budgetBytes = REMOTE_IMAGE_CACHE_BUDGET_BYTES,
+): Promise<void> {
+  const state = await manifest();
+  const root = ensureCacheRoot();
+  if (pruneCacheState(state, budgetBytes, root)) await persistManifest();
 }
 
 export async function markRemoteImageCacheGameActive(gameId: string): Promise<void> {
@@ -378,9 +437,16 @@ async function findCached(cacheKey: string): Promise<CompressedRemoteImageResult
   }
   const stored = state.entries.get(cacheKey);
   if (!stored) return null;
+  const bytes = file.size ?? stored.bytes;
+  if (bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
+    file.delete();
+    state.entries.delete(cacheKey);
+    queueManifestWrite();
+    return null;
+  }
   state.entries.set(cacheKey, {
     ...stored,
-    bytes: file.size ?? stored.bytes,
+    bytes,
     lastAccess: Date.now(),
   });
   queueManifestWrite();
@@ -401,43 +467,74 @@ async function createCompressed(
   cacheKey: string,
   generation: number,
   gameGeneration: number,
+  signal?: AbortSignal,
 ): Promise<CompressedRemoteImageResult | null> {
-  const profile = PROFILE_OPTIONS[options.profile];
+  const candidates = PROFILE_OPTIONS[options.profile];
   const root = ensureCacheRoot();
   const sourceFile = new File(root, `${cacheKey}.source.part`);
   let loaded: Awaited<ReturnType<typeof Image.loadAsync>> | null = null;
   let context: ReturnType<typeof ImageManipulator.manipulate> | null = null;
   let rendered: Awaited<ReturnType<ReturnType<typeof ImageManipulator.manipulate>['renderAsync']>> | null = null;
   let part: File | null = null;
+  let selected: File | null = null;
+  const current = () => !signal?.aborted
+    && generation === cacheGeneration
+    && gameGeneration === (gameGenerations.get(options.gameId) ?? 0);
   try {
+    if (!current()) return null;
     if (sourceFile.exists) sourceFile.delete();
     await File.downloadFileAsync(normalized.source.uri!, sourceFile, {
       headers: normalized.source.headers,
       idempotent: true,
     });
+    if (!current()) return null;
+    const largest = candidates[0].maxSize;
     loaded = await Image.loadAsync({ uri: sourceFile.uri }, {
-      maxWidth: profile.maxWidth,
-      maxHeight: profile.maxHeight,
+      maxWidth: largest,
+      maxHeight: largest,
     });
     if (loaded.isAnimated) return null;
 
-    context = ImageManipulator.manipulate(loaded);
-    rendered = await context.renderAsync();
-    const saved = await rendered.saveAsync({ format: SaveFormat.WEBP, compress: profile.compress });
-    if (generation !== cacheGeneration || gameGeneration !== (gameGenerations.get(options.gameId) ?? 0)) {
-      throw new Error('remote image cache cleared');
+    for (const candidate of candidates) {
+      if (!current()) return null;
+      context = ImageManipulator.manipulate(loaded);
+      const width = loaded.width ?? candidate.maxSize;
+      const height = loaded.height ?? candidate.maxSize;
+      const largestEdge = Math.max(width, height);
+      if (largestEdge > candidate.maxSize) {
+        const scale = candidate.maxSize / largestEdge;
+        context.resize({
+          width: Math.max(1, Math.round(width * scale)),
+          height: Math.max(1, Math.round(height * scale)),
+        });
+      }
+      rendered = await context.renderAsync();
+      const saved = await rendered.saveAsync({ format: SaveFormat.WEBP, compress: candidate.compress });
+      const savedFile = new File(saved.uri);
+      if ((savedFile.size ?? Number.POSITIVE_INFINITY) <= REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
+        selected = savedFile;
+      } else if (savedFile.exists) {
+        savedFile.delete();
+      }
+      releaseSharedObject(rendered);
+      releaseSharedObject(context);
+      rendered = null;
+      context = null;
+      if (selected) break;
     }
+    if (!selected || !current()) return null;
     const finalFile = entryFile(root, cacheKey);
     part = new File(root, `${cacheKey}.part`);
     if (part.exists) part.delete();
-    new File(saved.uri).move(part);
+    selected.move(part);
+    selected = null;
     if (finalFile.exists) finalFile.delete();
     part.move(finalFile);
     part = null;
     const state = await manifest();
     const now = Date.now();
     state.entries.set(cacheKey, {
-      bytes: finalFile.size ?? 0,
+      bytes: finalFile.size ?? REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES,
       gameId: options.gameId,
       lastAccess: now,
     });
@@ -449,21 +546,33 @@ async function createCompressed(
   } finally {
     if (sourceFile.exists) sourceFile.delete();
     if (part?.exists) part.delete();
+    if (selected?.exists) selected.delete();
     releaseSharedObject(rendered);
     releaseSharedObject(context);
     releaseSharedObject(loaded);
   }
 }
 
-export async function loadCompressedRemoteImage(
+export async function findCompressedRemoteImage(
   source: unknown,
   options: RemoteImageCacheOptions,
 ): Promise<CompressedRemoteImageResult | null> {
   const normalized = normalizeRemoteImageSource(source);
-  if (!normalized || !options.gameId || !supportsCompressedRemoteImageCache()) return null;
+  if (!normalized || !options.gameId) return null;
+  const cacheKey = await remoteImageCacheKey(normalized, options);
+  return findCached(cacheKey);
+}
+
+export async function cacheCompressedRemoteImage(
+  source: unknown,
+  options: RemoteImageCacheOptions,
+  signal?: AbortSignal,
+): Promise<CompressedRemoteImageResult | null> {
+  const normalized = normalizeRemoteImageSource(source);
+  if (!normalized || !options.gameId || signal?.aborted || !supportsCompressedRemoteImageCache()) return null;
   const cacheKey = await remoteImageCacheKey(normalized, options);
   const cached = await findCached(cacheKey);
-  if (cached) return cached;
+  if (cached || signal?.aborted) return cached;
   const existing = inflight.get(cacheKey);
   if (existing) return existing;
   const generation = cacheGeneration;
@@ -474,7 +583,8 @@ export async function loadCompressedRemoteImage(
     cacheKey,
     generation,
     gameGeneration,
-  ));
+    signal,
+  ), signal);
   inflight.set(cacheKey, pending);
   void pending.finally(() => {
     if (inflight.get(cacheKey) === pending) inflight.delete(cacheKey);

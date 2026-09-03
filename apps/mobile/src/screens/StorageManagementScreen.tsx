@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  InteractionManager,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,10 +28,39 @@ import { useAppTheme } from '@/theme/app-theme';
 
 type ExpandedGroups = Record<StorageUsageGroup['id'], boolean>;
 
+type StorageScreenData = {
+  report: StorageUsageReport;
+  selectedIds: StorageClearCategoryId[];
+};
+
+let lastStorageReport: StorageUsageReport | null = null;
+let storageScreenDataPromise: Promise<StorageScreenData> | null = null;
+
+export function resetStorageManagementScreenCacheForTests(): void {
+  lastStorageReport = null;
+  storageScreenDataPromise = null;
+}
+
+function requestStorageScreenData(): Promise<StorageScreenData> {
+  if (storageScreenDataPromise) return storageScreenDataPromise;
+  const allowed = listClearableCategoryIds();
+  storageScreenDataPromise = Promise.all([
+    collectStorageUsage(),
+    storageClearPreferencesStore.load(allowed),
+  ]).then(([report, prefs]) => {
+    lastStorageReport = report;
+    return { report, selectedIds: prefs.selectedIds };
+  }).finally(() => {
+    storageScreenDataPromise = null;
+  });
+  return storageScreenDataPromise;
+}
+
 export function StorageManagementScreen() {
   const theme = useAppTheme();
   const { showNotification } = useNotification();
-  const [report, setReport] = useState<StorageUsageReport | null>(null);
+  const mountedRef = useRef(true);
+  const [report, setReport] = useState<StorageUsageReport | null>(lastStorageReport);
   const [selectedIds, setSelectedIds] = useState<StorageClearCategoryId[]>([]);
   const [expanded, setExpanded] = useState<ExpandedGroups>({ basic: false, cache: false });
   const [loading, setLoading] = useState(true);
@@ -38,25 +68,31 @@ export function StorageManagementScreen() {
   const [clearing, setClearing] = useState(false);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setLoadFailed(false);
+    if (mountedRef.current) {
+      setLoading(true);
+      setLoadFailed(false);
+    }
     try {
-      const allowed = listClearableCategoryIds();
-      const [usage, prefs] = await Promise.all([
-        collectStorageUsage(),
-        storageClearPreferencesStore.load(allowed),
-      ]);
-      setReport(usage);
-      setSelectedIds(prefs.selectedIds);
+      const data = await requestStorageScreenData();
+      if (!mountedRef.current) return;
+      setReport(data.report);
+      setSelectedIds(data.selectedIds);
     } catch {
-      setLoadFailed(true);
+      if (mountedRef.current) setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void refresh();
+    mountedRef.current = true;
+    const task = InteractionManager.runAfterInteractions(() => {
+      void refresh();
+    });
+    return () => {
+      mountedRef.current = false;
+      task.cancel();
+    };
   }, [refresh]);
 
   const saveSelectedIds = useCallback(async (next: StorageClearCategoryId[]) => {
@@ -117,7 +153,7 @@ export function StorageManagementScreen() {
         variant: 'error',
       });
     } finally {
-      setClearing(false);
+      if (mountedRef.current) setClearing(false);
     }
   };
 

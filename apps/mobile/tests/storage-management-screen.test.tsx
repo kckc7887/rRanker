@@ -1,6 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StorageManagementScreen } from '@/screens/StorageManagementScreen';
+import { InteractionManager } from 'react-native';
+import {
+  resetStorageManagementScreenCacheForTests,
+  StorageManagementScreen,
+} from '@/screens/StorageManagementScreen';
 import type { StorageUsageReport } from '@/features/storage-management/storage-usage';
 
 const mockNotify = jest.fn();
@@ -10,6 +14,7 @@ const mockClear = jest.fn(async (_ids: unknown) => ({
 const mockSave = jest.fn(async (_value: unknown) => undefined);
 const mockLoad = jest.fn(async () => ({ version: 1 as const, selectedIds: ['shared' as const] }));
 const mockCollect = jest.fn<() => Promise<StorageUsageReport>>();
+let pendingInteraction: (() => void) | null = null;
 
 const usage: StorageUsageReport = {
   totalBytes: 4096,
@@ -62,16 +67,54 @@ jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
 
 describe('StorageManagementScreen', () => {
   beforeEach(() => {
+    resetStorageManagementScreenCacheForTests();
     mockNotify.mockClear();
     mockClear.mockReset().mockResolvedValue({ clearedIds: ['shared'], failures: [], reclaimedBytes: 2048 });
     mockSave.mockClear();
     mockLoad.mockClear();
     mockCollect.mockReset().mockResolvedValue(usage);
+    pendingInteraction = null;
+    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((task) => {
+      pendingInteraction = task as () => void;
+      return { cancel: jest.fn(), then: jest.fn() } as never;
+    });
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  async function renderStorageScreen() {
+    const view = await render(<StorageManagementScreen />);
+    await act(async () => {
+      pendingInteraction?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    return view;
+  }
+
+  it('starts the exact scan only after navigation interactions finish', async () => {
+    await render(<StorageManagementScreen />);
+    expect(mockCollect).not.toHaveBeenCalled();
+    await act(async () => {
+      pendingInteraction?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockCollect).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the previous exact report immediately when the screen is reopened', async () => {
+    const first = await renderStorageScreen();
+    await first.unmount();
+    mockCollect.mockClear();
+    await render(<StorageManagementScreen />);
+    expect(screen.getByLabelText('缓存数据，3.0 KB')).toBeTruthy();
+    expect(mockCollect).not.toHaveBeenCalled();
   });
 
   it('shows two collapsed groups without storage implementation details', async () => {
-    render(<StorageManagementScreen />);
-    await waitFor(() => expect(screen.getByText('可清理约')).toBeTruthy());
+    await renderStorageScreen();
+    await waitFor(() => expect(screen.getByLabelText('缓存数据，3.0 KB')).toBeTruthy());
     expect(screen.getAllByText('3.0 KB').length).toBeGreaterThan(0);
     expect(screen.getByLabelText('基本数据，1.0 KB').props.accessibilityState).toEqual({ expanded: false });
     expect(screen.getByLabelText('缓存数据，3.0 KB').props.accessibilityState).toEqual({ expanded: false });
@@ -82,11 +125,15 @@ describe('StorageManagementScreen', () => {
   });
 
   it('reports measured reclaimed bytes after a successful clear', async () => {
-    render(<StorageManagementScreen />);
-    await waitFor(() => expect(screen.getByText('缓存数据')).toBeTruthy());
+    await renderStorageScreen();
+    await waitFor(() => expect(screen.getByLabelText('缓存数据，3.0 KB')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('缓存数据，3.0 KB'));
     await waitFor(() => expect(screen.getByLabelText('清除已选缓存')).toBeTruthy());
-    fireEvent.press(screen.getByLabelText('清除已选缓存'));
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('清除已选缓存'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     await waitFor(() => expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({
       title: '清除完成',
       message: expect.stringContaining('已释放 2.0 KB'),
@@ -97,11 +144,15 @@ describe('StorageManagementScreen', () => {
 
   it('keeps partial success and lists failed categories', async () => {
     mockClear.mockResolvedValueOnce({ clearedIds: ['shared'], failures: ['舞萌 DX'], reclaimedBytes: 1024 });
-    render(<StorageManagementScreen />);
-    await waitFor(() => expect(screen.getByText('缓存数据')).toBeTruthy());
+    await renderStorageScreen();
+    await waitFor(() => expect(screen.getByLabelText('缓存数据，3.0 KB')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('缓存数据，3.0 KB'));
     await waitFor(() => expect(screen.getByLabelText('清除已选缓存')).toBeTruthy());
-    fireEvent.press(screen.getByLabelText('清除已选缓存'));
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('清除已选缓存'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     await waitFor(() => expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({
       title: '部分清除失败',
       message: expect.stringContaining('部分项目未能清除，请重试'),
@@ -110,8 +161,8 @@ describe('StorageManagementScreen', () => {
   });
 
   it('persists the same checkbox configuration used by quick clear', async () => {
-    render(<StorageManagementScreen />);
-    await waitFor(() => expect(screen.getByText('缓存数据')).toBeTruthy());
+    await renderStorageScreen();
+    await waitFor(() => expect(screen.getByLabelText('缓存数据，3.0 KB')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('缓存数据，3.0 KB'));
     await waitFor(() => expect(screen.getByLabelText('舞萌 DX缓存')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('舞萌 DX缓存'));
@@ -119,8 +170,8 @@ describe('StorageManagementScreen', () => {
   });
 
   it('supports select all and cancel all in the expanded cache group', async () => {
-    render(<StorageManagementScreen />);
-    await waitFor(() => expect(screen.getByText('缓存数据')).toBeTruthy());
+    await renderStorageScreen();
+    await waitFor(() => expect(screen.getByLabelText('缓存数据，3.0 KB')).toBeTruthy());
     fireEvent.press(screen.getByLabelText('缓存数据，3.0 KB'));
     await waitFor(() => expect(screen.getByText('全选')).toBeTruthy());
     fireEvent.press(screen.getByText('全选'));
@@ -131,10 +182,14 @@ describe('StorageManagementScreen', () => {
 
   it('shows a retry action when storage statistics fail', async () => {
     mockCollect.mockRejectedValueOnce(new Error('failed')).mockResolvedValueOnce(usage);
-    render(<StorageManagementScreen />);
+    await renderStorageScreen();
     await waitFor(() => expect(screen.getByText('暂时无法统计占用')).toBeTruthy());
-    fireEvent.press(screen.getByText('重新统计'));
-    await waitFor(() => expect(screen.getByText('缓存数据')).toBeTruthy());
+    await act(async () => {
+      fireEvent.press(screen.getByText('重新统计'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByLabelText('缓存数据，3.0 KB')).toBeTruthy());
     expect(mockCollect).toHaveBeenCalledTimes(2);
   });
 
@@ -145,7 +200,7 @@ describe('StorageManagementScreen', () => {
       clearableBytes: 0,
       groups: usage.groups.map((group) => ({ ...group, bytes: 0, items: [] })),
     });
-    render(<StorageManagementScreen />);
+    await renderStorageScreen();
     await waitFor(() => expect(screen.getByText('暂无可显示的存储数据')).toBeTruthy());
   });
 });
