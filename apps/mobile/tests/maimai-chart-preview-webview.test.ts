@@ -221,6 +221,17 @@ describe('chart preview webview helpers', () => {
     expect(themeScriptIndex).toBeLessThan(playerScriptIndex);
   });
 
+  it('loads skin-data.js before player.js in the packaged file:// html', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'assets/maimai-chart-preview/index.html'),
+      'utf8',
+    );
+    const skinDataIndex = html.indexOf('src="./skin-data.js"');
+    const playerIndex = html.indexOf('src="./player.js"');
+    expect(skinDataIndex).toBeGreaterThan(0);
+    expect(playerIndex).toBeGreaterThan(skinDataIndex);
+  });
+
   it('scrolls overflowing portrait controls but keeps fullscreen fixed', () => {
     const html = readFileSync(
       resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),

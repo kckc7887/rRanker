@@ -82,7 +82,7 @@ app 路由 / 游戏容器
 
 | 功能族 | 公共入口 | 游戏侧职责 | 主要验证 |
 |---|---|---|---|
-| 谱面确认 | `src/features/chart-preview-shared/`：`ChartPreviewScreenShell`、资源暂存、URI 解析、桥接、注入工厂、计划执行器、播放时钟与全屏锁。`prepareChartPreviewWebviewFromPlan` 按清单落盘；`fileName` 支持 `skin/Tap2.png` 相对路径；远程 `url+bytes` 有限并发下载，可选 `remoteCacheDirectory` 先按大小跳过下载再复制到本次 session | 提供图表解析、资源清单、HTML/脚本配置和场景文案；舞萌皮肤写入 `rranker-chart-preview-remote` 缓存目录 | `chart-preview-screen-shell-contract.test.tsx` 及各游戏预览测试 |
+| 谱面确认 | `src/features/chart-preview-shared/`：`ChartPreviewScreenShell`、资源暂存、URI 解析、桥接、注入工厂、计划执行器、播放时钟与全屏锁。`prepareChartPreviewWebviewFromPlan` 按清单落盘；`fileName` 支持 `skin/Tap2.png` 相对路径；远程 `url+bytes` 有限并发下载，可选 `remoteCacheDirectory` 先按大小跳过下载再写入本次 session | 提供图表解析、资源清单、HTML/脚本配置和场景文案。舞萌皮肤 PNG 缓存到 `rranker-chart-preview-remote` 后由 writer 写成 `skin-data.js` data URL（对齐 Phigros `music-data.js`）；Phigros 皮肤仍用 `./skin/` 相对路径 | `chart-preview-screen-shell-contract.test.tsx` 及各游戏预览测试 |
 | 谱面下载 | `src/features/chart-download-shared/`：下载会话目录、取消错误、命名、保存与 `useChartPackageDownload` | 组装具体资源、压缩包结构和成功文案 | `chart-package-download-lifecycle.test.tsx` 及各游戏下载测试 |
 | 成绩图 | `src/features/best-image/`：桥接、状态机、偏好、资源加载、HTML 运行时、选择器、控制器、屏幕壳和导出 | 构建游戏卡片/HTML、素材清单、样式选项和分区语义 | `best-image-screen-contract.test.tsx`、HTML 金样和游戏成绩图测试 |
 | 存储管理 | `src/features/storage-management/`：缓存策略、文件边界、游戏适配器、统计、清理、维护和图标字体恢复 | 在注册适配器中声明本游戏查询键、资源和清理动作 | `storage-management.test.ts`、`storage-cache-policy.test.ts` |

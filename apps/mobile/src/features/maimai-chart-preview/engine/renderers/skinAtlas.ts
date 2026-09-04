@@ -1,10 +1,20 @@
 import {
   maimaiChartPreviewRuntimeSkinAssets,
-  maimaiChartPreviewSkinStagePath,
+  MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL,
 } from '../../maimai-chart-preview-skin-files';
 import { canvasSizeFromNativePx } from '../utils/arcadeMotion';
 
 const IMAGE_LOAD_CONCURRENCY = 4;
+
+type SkinDataGlobal = Record<string, string>;
+
+function readInjectedSkinDataUrls(): SkinDataGlobal {
+  const injected = (globalThis as unknown as Record<string, unknown>)[MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL];
+  if (!injected || typeof injected !== 'object') {
+    throw new Error('皮肤数据未注入');
+  }
+  return injected as SkinDataGlobal;
+}
 
 export class ChartPreviewSkin {
   private readonly images = new Map<string, HTMLImageElement>();
@@ -16,15 +26,16 @@ export class ChartPreviewSkin {
     return image;
   }
 
-  async load(base = './'): Promise<void> {
-    const prefix = base.endsWith('/') ? base : `${base}/`;
+  async load(_base = './'): Promise<void> {
+    const dataUrls = readInjectedSkinDataUrls();
     const assets = maimaiChartPreviewRuntimeSkinAssets();
     for (let index = 0; index < assets.length; index += IMAGE_LOAD_CONCURRENCY) {
       const batch = assets.slice(index, index + IMAGE_LOAD_CONCURRENCY);
-      await Promise.all(batch.map((asset) => this.loadOne(
-        `${prefix}${maimaiChartPreviewSkinStagePath(asset.path)}`,
-        asset.path,
-      )));
+      await Promise.all(batch.map((asset) => {
+        const url = dataUrls[asset.path];
+        if (!url) return Promise.reject(new Error(`皮肤缺失：${asset.path}`));
+        return this.loadOne(url, asset.path);
+      }));
     }
     this.ready = true;
   }
