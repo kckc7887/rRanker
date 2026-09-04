@@ -157,13 +157,14 @@ function GradientBadge({
   );
 }
 
-export function RankBadge({ rank }: { rank: ChunithmRank }) {
+export function RankBadge({ rank, flowing }: { rank: ChunithmRank; flowing?: boolean }) {
   if (chunithmRankUsesGradient(rank)) {
+    const badgeFlowing = flowing ?? rank === 'SSS+';
     return (
       <GradientBadge
-        flowing={rank === 'SSS+'}
+        flowing={badgeFlowing}
         label={rank}
-        testID={rank === 'SSS+' ? 'flowing-chunithm-rank' : `chunithm-rank-${rank}`}
+        testID={badgeFlowing ? 'flowing-chunithm-rank' : `chunithm-rank-${rank}`}
         tone="rank"
       />
     );
@@ -239,7 +240,7 @@ export const ChunithmScoreCard = memo(function ChunithmScoreCard({
                 levelIndex={record.levelIndex}
                 worldsEndLabel={record.worldsEndLabel}
               />
-              <RankBadge rank={record.rank} />
+              <RankBadge flowing={false} rank={record.rank} />
             </>,
           },
           {

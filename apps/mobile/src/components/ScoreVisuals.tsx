@@ -154,22 +154,23 @@ export function AchievementValue({ value, compact = false }: { value?: number; c
   return <Text accessibilityLabel={text} style={[...textStyle, { color: theme.dark && value < 99.4999 ? theme.text : color }]}>{text}</Text>;
 }
 
-export function ScoreStatusBadges({ rate, achievements, fc, fs, nearMissFirst = false }: {
+export function ScoreStatusBadges({ rate, achievements, fc, fs, nearMissFirst = false, flowing = false }: {
   rate?: string | null;
   achievements?: number;
   fc?: string | null;
   fs?: string | null;
   nearMissFirst?: boolean;
+  flowing?: boolean;
 }) {
   const nearMiss = achievements !== undefined && isNearMissAchievement(achievements);
   const normalizedFc = normalizeMaimaiFc(fc);
   const normalizedFs = normalizeMaimaiFs(fs);
   return <>
     {nearMissFirst && nearMiss ? <NearMissBadge /> : null}
-    {rate ? <RateBadge value={rate} /> : null}
+    {rate ? <RateBadge flowing={flowing} value={rate} /> : null}
     {!nearMissFirst && nearMiss ? <NearMissBadge /> : null}
-    {normalizedFc ? <StatusBadge kind="fc" value={normalizedFc} /> : null}
-    {normalizedFs ? <StatusBadge kind="fs" value={normalizedFs} /> : null}
+    {normalizedFc ? <StatusBadge flowing={flowing} kind="fc" value={normalizedFc} /> : null}
+    {normalizedFs ? <StatusBadge flowing={flowing} kind="fs" value={normalizedFs} /> : null}
   </>;
 }
 
@@ -194,12 +195,12 @@ function GradientAchievement({ text, flowing = false, compact = false }: {
     staticTestID="rainbow-achievement-gradient" />;
 }
 
-function RateBadge({ value }: { value: string }) {
+function RateBadge({ value, flowing = false }: { value: string; flowing?: boolean }) {
   const label = scoreRateLabel(value);
   switch (scoreRateEffect(value)) {
-    case 'flowing-rainbow': return <RateGradientBadge label={label} tone="rainbow" flowing testID={`flowing-rate-${label}`} />;
+    case 'flowing-rainbow': return <RateGradientBadge label={label} tone="rainbow" flowing={flowing} testID={flowing ? `flowing-rate-${label}` : `rainbow-rate-${label}`} />;
     case 'rainbow': return <RateGradientBadge label={label} tone="rainbow" testID={`rainbow-rate-${label}`} />;
-    case 'flowing-gold': return <RateGradientBadge label={label} tone="gold" flowing testID={`flowing-rate-${label}`} />;
+    case 'flowing-gold': return <RateGradientBadge label={label} tone="gold" flowing={flowing} testID={flowing ? `flowing-rate-${label}` : `rate-${label}`} />;
     case 'gold': return <RateGradientBadge label={label} tone="gold" testID={`rate-${label}`} />;
     default: return <View style={[styles.statusBadge, styles.normalBadge]}><Text style={[styles.statusText, styles.normalText]}>{label}</Text></View>;
   }
@@ -228,10 +229,11 @@ function NearMissBadge() {
   return <BlurBadge label="寸" spec={NEUTRAL_BLUR} testID="near-miss-badge" />;
 }
 
-function StatusBadge({ kind, value }: { kind: 'fc' | 'fs'; value: string }) {
+function StatusBadge({ kind, value, flowing = false }: { kind: 'fc' | 'fs'; value: string; flowing?: boolean }) {
   const spec = getStatusSpec(kind, value);
-  return <BlurBadge label={spec.label} spec={blurSpec(spec.color)} flowing={spec.flowing}
-    testID={spec.flowing ? `flowing-status-${spec.label}` : `status-${spec.label}`} />;
+  const badgeFlowing = flowing && spec.flowing;
+  return <BlurBadge label={spec.label} spec={blurSpec(spec.color)} flowing={badgeFlowing}
+    testID={badgeFlowing ? `flowing-status-${spec.label}` : `status-${spec.label}`} />;
 }
 
 function BlurBadge({ label, spec, flowing = false, testID }: {

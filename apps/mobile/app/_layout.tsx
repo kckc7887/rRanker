@@ -256,8 +256,11 @@ function RootLayoutContent() {
     if (localHydrationGenerationRef.current === lifecycle.foregroundGeneration) return;
     localHydrationGenerationRef.current = lifecycle.foregroundGeneration;
     const signal = getForegroundAbortSignal();
-    void hydrateLocalAccountRatings(undefined, signal).catch(() => undefined);
-    void hydrateBoundAccountThumbnails(undefined, signal).catch(() => undefined);
+    const task = InteractionManager.runAfterInteractions(() => {
+      void hydrateLocalAccountRatings(undefined, signal).catch(() => undefined);
+      void hydrateBoundAccountThumbnails(undefined, signal).catch(() => undefined);
+    });
+    return () => task.cancel();
   }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady, restoreStatus]);
 
   useEffect(() => {

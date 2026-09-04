@@ -29,6 +29,7 @@ describe('cached tab animation lifecycle', () => {
       animations.push(animation);
       return animation as unknown as ReturnType<typeof Animated.loop>;
     });
+    const timing = jest.spyOn(Animated, 'timing');
 
     const record = {
       ...fixtureRecords[0],
@@ -46,6 +47,9 @@ describe('cached tab animation lifecycle', () => {
     const foregroundAnimations = [...animations];
     expect(foregroundAnimations.length).toBeGreaterThan(0);
     expect(foregroundAnimations.every((animation) => animation.start.mock.calls.length === 1)).toBe(true);
+    expect(timing.mock.calls.every(([, config]) => (
+      config as { isInteraction?: boolean }
+    ).isInteraction === false)).toBe(true);
 
     await act(() => { cleanup?.(); });
     expect(foregroundAnimations.every((animation) => animation.stop.mock.calls.length === 1)).toBe(true);

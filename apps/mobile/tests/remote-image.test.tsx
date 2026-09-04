@@ -133,4 +133,15 @@ describe('RemoteImage 压缩垫图', () => {
     expect(taskSignal?.aborted).toBe(true);
     await screen.unmount();
   });
+
+  it('失活时放下图片 source', async () => {
+    mockFind.mockResolvedValue(cachedResult);
+    const screen = await render(
+      <RemoteImageActivityScope active={false}>
+        <RemoteImage cacheProfile="thumbnail" gameId="maimai" source={remoteSource} testID="cover" />
+      </RemoteImageActivityScope>,
+    );
+    expect(screen.getByTestId('cover').props.source).toBeNull();
+    await screen.unmount();
+  });
 });

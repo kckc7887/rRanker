@@ -671,7 +671,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
         <Text style={[styles.achievementLabel, { color: theme.textMuted }]}>达成率</Text>
         <AchievementValue value={best?.achievements} />
         <View style={styles.statusRow}>
-          <ScoreStatusBadges rate={best?.rate} achievements={best?.achievements} fc={best?.fc} fs={best?.fs} />
+          <ScoreStatusBadges flowing rate={best?.rate} achievements={best?.achievements} fc={best?.fc} fs={best?.fs} />
         </View>
         {chart.type === 'UTAGE' ? null
           : <DetailPressable accessibilityRole="link" accessibilityLabel={`使用定数 ${chart.difficultyConstant.toFixed(1)} 打开 Rating 计算器`}

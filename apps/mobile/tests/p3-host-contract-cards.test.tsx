@@ -296,7 +296,7 @@ test('chunithm score card host tree contract', async () => {
       worldsEndLabel: '止☆1',
     }} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('ee1711d2ceb57eb6fe20b443a8fde2feed3ed0821dbd6c8b44c0efc3d88e48dd');
+  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('fc6143da761bf51b85580506fc4707379398aae9f3109309d4c82e6d8b8740d1');
 });
 
 test('tuf song row host tree contract', async () => {
