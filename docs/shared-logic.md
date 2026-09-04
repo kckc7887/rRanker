@@ -104,6 +104,8 @@ app 路由 / 游戏容器
 
 ### WebView 与内存
 
+- 舞萌播放器复用 `chart-preview-shared/webview-player/playbackClock.ts` 的 `PlaybackClock`。播放器入口被应用 `tsconfig.json` 排除，`maimai-chart-preview-webview.test.ts` 单独检查入口及其依赖的未定义名称；该检查不替代完整播放器类型检查。修改播放器后必须执行 `npm run build:chart-preview`，验证生成的 `player.js` 与应用加载的 `player.bundle` 一致，并完成运行时验收。
+
 - 成绩图预览只挂载当前页 WebView，其余页使用轻量占位；不得让多份大 HTML 常驻。
 - 谱面确认和下载任务必须响应卸载、后台与 AbortSignal，不得在取消后继续写缓存或显示成功。
 - 作为下游 memo 依赖的数组或对象必须保持稳定引用，避免无意义重算和重渲染。

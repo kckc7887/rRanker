@@ -102,7 +102,8 @@ npm test
 
 `npm run test:unit` 使用 Vitest 运行 `tests/**/*.test.ts`；`npm run test:ui` 使用 Jest Expo 串行运行 `tests/**/*.test.tsx`。公共 UI 还由 Host Tree/Style 哈希、HTML/脚本字符串金样和虚构游戏合同保护，禁止仅更新基线来接受未解释差异。
 
+应用 `tsconfig.json` 排除了舞萌播放器入口及引擎目录；`maimai-chart-preview-webview.test.ts` 使用 TypeScript 独立检查播放器入口及其依赖中的未定义名称。播放器源码改动后运行 `npm run build:chart-preview`，生成 `assets/maimai-chart-preview/index.html`、`player.js` 和供 Metro 加载的 `player.bundle`；两个脚本产物必须一致。打包成功不代表类型检查或手机 WebView 播放验收通过。
+
 本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
 
 `.github/workflows/build-ios.yml` 是手动触发的 iOS 流程：Ubuntu 质量任务运行 lint、typecheck 和全部测试；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA、上传构建产物并提交 TestFlight。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
-

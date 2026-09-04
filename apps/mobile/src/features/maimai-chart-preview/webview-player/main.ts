@@ -16,6 +16,7 @@ import {
   type ChartDifficulty,
   type PreparedAudioEvent,
 } from '../engine';
+import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
 import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
 import { ChartPreviewSkin } from '../engine/renderers/skinAtlas';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';

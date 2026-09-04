@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import ts from 'typescript';
 import {
   applyChartPreviewConfigToHtml,
   buildChartPreviewConfigJson,
@@ -19,6 +20,25 @@ import {
 import { chartPreviewPlayerMessageScript } from '@/features/chart-preview-shared/chart-preview-bridge';
 
 describe('chart preview webview helpers', () => {
+  it('resolves player identifiers that the app typecheck excludes', () => {
+    const entry = resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/main.ts');
+    const program = ts.createProgram([entry], {
+      noEmit: true,
+      target: ts.ScriptTarget.ES2020,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      strict: true,
+      skipLibCheck: true,
+      lib: ['lib.es2020.d.ts', 'lib.dom.d.ts'],
+      types: [],
+    });
+    // 此入口不在应用类型检查中；2304/2552 分别覆盖普通和带建议的未定义名称。
+    const unresolved = ts.getPreEmitDiagnostics(program)
+      .filter((diagnostic) => diagnostic.code === 2304 || diagnostic.code === 2552)
+      .map((diagnostic) => `${diagnostic.file?.fileName}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')}`);
+    expect(unresolved).toEqual([]);
+  }, 20_000);
+
   it('injects chart preview config before content loads', () => {
     const script = buildChartPreviewInjectedJavaScript({
       chartId: 10834,
