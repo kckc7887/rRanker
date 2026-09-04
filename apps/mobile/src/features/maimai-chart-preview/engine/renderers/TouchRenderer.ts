@@ -1,12 +1,12 @@
+/**
+ * TOUCH / TOUCH HOLD 花瓣贴图与时长对照 MajdataViewX（GPL-3.0）。
+ * 公式见 arcadeMotion.ts；未复制 C# 或 HLSL。烟花仍为既有矢量实现。
+ */
 import { BaseRenderer } from "./BaseRenderer";
 import { TouchNote, TouchHoldStartNote, Point2D, TouchPosition } from "../types";
 import {
   TOUCH_SENSOR_RADII,
-  TOUCH_APPROACH_MULTIPLIER,
-  TOUCH_CENTER_DOT_RATIO,
-  TOUCH_PETAL_OPEN_RATIO,
   TOUCH_PETAL_CLOSED_RATIO,
-  NOTE_SIZE_RATIO,
   NOTE_STROKE_WIDTH_RATIO,
   COLORS,
   BASE_ANGLE,
@@ -14,6 +14,8 @@ import {
   BUTTON_ANGLE_STEP,
 } from "../utils/constants";
 import { fireworkCoveragePeakRadius } from "./fireworkLayout";
+import { arcadeTouchPose, canvasDistanceFromArcade } from "../utils/arcadeMotion";
+import { drawSkinSprite, touchBorderSkinPath, touchPointSkinPath, touchSkinPath } from "./skinAtlas";
 
 const FIREWORK_DURATION_MS = 1333;
 // 星爆最大可见半径：baseRadius(radius/4.5) × scale 峰值 5.0，留 5% 边距。
@@ -485,344 +487,61 @@ export class TouchRenderer extends BaseRenderer {
   ): void {
     const isHold = note.type === "touch-hold-start";
     const timeDiff = note.timingMs - currentTimeMs;
-    const approachTime = this.getNoteApproachTimeMs(note) * TOUCH_APPROACH_MULTIPLIER;
-
-    let visibilityWindow = 50;
-    if (isHold && "durationMs" in note && note.durationMs !== undefined) {
-      visibilityWindow = note.durationMs + 50;
-    }
-    if (timeDiff > approachTime || timeDiff < -visibilityWindow) return;
-
-    let alpha = 1;
-    if (timeDiff > approachTime * 0.95) {
-      alpha = 1 - (timeDiff - approachTime * 0.95) / (approachTime * 0.05);
-    }
-
-    // 淡出期：剩余 < 150ms 时花瓣线性淡出。
-    let petalAlpha = 1;
-    if (timeDiff > 0 && timeDiff < approachTime) {
-      const remaining = approachTime - timeDiff;
-      if (remaining < 150) {
-        petalAlpha = remaining / 150;
-      }
-    }
-
-    // 花瓣距离：approach 中 openDist → closedDist（ease-quartic），命中后保持 closedDist。
-    const openDist = this.scaleByRadius(TOUCH_PETAL_OPEN_RATIO) * 1.1;
-    const closedDist = this.scaleByRadius(TOUCH_PETAL_CLOSED_RATIO) * 1.3;
-    let petalDist = openDist;
-
-    if (timeDiff > 0 && timeDiff <= approachTime) {
-      const progress = 1 - timeDiff / approachTime;
-      const eased = progress * progress * progress * progress;
-      petalDist = openDist - (openDist - closedDist) * eased;
-    } else if (timeDiff <= 0) {
-      petalDist = closedDist;
-    }
+    const holdMs = isHold && "durationMs" in note ? note.durationMs : 0;
+    const holdActive = isHold && timeDiff <= 0 && timeDiff > -holdMs;
+    const pose = arcadeTouchPose(timeDiff, this.getNoteTouchSpeed(note));
+    if (!pose.visible && !holdActive) return;
 
     const position = this.getTouchPosition(note.position);
-    const isHoldActive = isHold && timeDiff < 0;
+    const isBreak = false;
+    const skin = this.context.skin;
+    const petal = skin?.get(isHold
+      ? `TouchHoldSkins/touchhold_${isBreak ? 'break_' : ''}${0}.png`
+      : touchSkinPath(isBreak, isSimultaneous));
+    const point = skin?.get(touchPointSkinPath(isBreak, isSimultaneous));
+    const fanDist = holdActive ? 0.4 : pose.fanDist;
+    const alpha = holdActive ? 1 : pose.fanAlpha;
+    const offset = canvasDistanceFromArcade(0.226 + fanDist, this.context.radius);
+    const petalAngles = isHold
+      ? [Math.PI / 4, (3 * Math.PI) / 4, (-3 * Math.PI) / 4, -Math.PI / 4]
+      : [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+
+    if (holdActive && holdMs > 0) {
+      this.drawTouchHoldMask(position.x, position.y, offset * 2, 1 - (-timeDiff) / holdMs);
+    }
+    if (petal) {
+      for (let i = 0; i < 4; i++) {
+        const holdPetal = isHold
+          ? skin?.get(`TouchHoldSkins/touchhold_${isBreak ? 'break_' : ''}${i}.png`) ?? petal
+          : petal;
+        const angle = petalAngles[i];
+        drawSkinSprite(this.context.ctx, holdPetal, position.x + Math.cos(angle) * offset, position.y + Math.sin(angle) * offset, this.context.radius, {
+          rotation: angle + Math.PI / 2,
+          alpha,
+        });
+      }
+    }
+    if (point) {
+      drawSkinSprite(this.context.ctx, point, position.x, position.y, this.context.radius, { alpha });
+    }
+  }
+
+  private drawTouchHoldMask(x: number, y: number, size: number, cutoff: number): void {
     const ctx = this.context.ctx;
-
-    const cornerRadius = this.scaleByRadius(8 / 300);
-    const innerCornerRadius = cornerRadius * 0.4;
-    const strokeWidth = this.scaleByRadius(NOTE_STROKE_WIDTH_RATIO);
-    const ddrColor = this.getDdrColor(note.timing);
-    const petalBaseAngles = [-Math.PI / 4, Math.PI / 4, (3 * Math.PI) / 4, (-3 * Math.PI) / 4];
-    const angleOffset = isHold ? 0 : -Math.PI / 4;
-    const petalColors = [
-      COLORS.TOUCH_HOLD_RED,
-      COLORS.TOUCH_HOLD_YELLOW,
-      COLORS.TOUCH_HOLD_GREEN,
-      COLORS.TOUCH_HOLD_BLUE,
-    ];
-    const combinedAlpha = alpha * petalAlpha;
-
-    interface PetalGeometry {
-      tipX: number;
-      tipY: number;
-      leftX: number;
-      leftY: number;
-      rightX: number;
-      rightY: number;
-      petalX: number;
-      petalY: number;
-      innerTipX?: number;
-      innerTipY?: number;
-      innerLeftX?: number;
-      innerLeftY?: number;
-      innerRightX?: number;
-      innerRightY?: number;
+    const border = this.context.skin?.get('TouchHoldSkins/touchhold_border.png');
+    if (border) {
+      drawSkinSprite(ctx, border, x, y, this.context.radius);
     }
-    const petals: PetalGeometry[] = [];
-
-    for (let i = 0; i < 4; i++) {
-      const petalAngle = petalBaseAngles[i] + angleOffset;
-      const petalX = position.x + Math.cos(petalAngle) * petalDist;
-      const petalY = position.y + Math.sin(petalAngle) * petalDist;
-      const tipAngle = petalAngle + Math.PI;
-      const leftAngle = petalAngle + Math.PI / 2;
-      const rightAngle = petalAngle - Math.PI / 2;
-      const petalSize = closedDist;
-
-      const tipX = petalX + Math.cos(tipAngle) * petalSize;
-      const tipY = petalY + Math.sin(tipAngle) * petalSize;
-      const leftX = petalX + Math.cos(leftAngle) * petalSize;
-      const leftY = petalY + Math.sin(leftAngle) * petalSize;
-      const rightX = petalX + Math.cos(rightAngle) * petalSize;
-      const rightY = petalY + Math.sin(rightAngle) * petalSize;
-
-      const petal: PetalGeometry = { tipX, tipY, leftX, leftY, rightX, rightY, petalX, petalY };
-
-      if (!isHold) {
-        const innerRatio = 0.4;
-        const cx = (tipX + leftX + rightX) / 3;
-        const cy = (tipY + leftY + rightY) / 3;
-        petal.innerTipX = cx + (tipX - cx) * innerRatio;
-        petal.innerTipY = cy + (tipY - cy) * innerRatio;
-        petal.innerLeftX = cx + (leftX - cx) * innerRatio;
-        petal.innerLeftY = cy + (leftY - cy) * innerRatio;
-        petal.innerRightX = cx + (rightX - cx) * innerRatio;
-        petal.innerRightY = cy + (rightY - cy) * innerRatio;
-      }
-
-      petals.push(petal);
-    }
-
     ctx.save();
-    ctx.globalAlpha = alpha;
-
-    // Hold 进度指示器
-    if (isHoldActive && "durationMs" in note && note.durationMs !== undefined) {
-      const elapsed = -timeDiff;
-      const progress = Math.min(elapsed / note.durationMs, 1);
-
-      const progressScale = 1.35;
-      // 花瓣外侧黑边宽度，进度框/弧同步外扩保持视觉间距；跟随 strokeWidth 缩放。
-      const progressBandPad = strokeWidth;
-      const progressRadius = closedDist * progressScale * 1.8 + progressBandPad;
-      const squareSize = closedDist * progressScale * 1.5 + progressBandPad;
-      const r = Math.min(this.scaleByRadius(25 / 300), squareSize * 0.707); // 0.707 = sqrt(2)/2
-      const endAngle = -Math.PI / 2 + progress * Math.PI * 2;
-
-      ctx.save();
-
-      // 圆角菱形 clip：上 → 右 → 下 → 左 角，每角用 quadratic 圆弧。
-      const offset = r * 0.707;
-      ctx.beginPath();
-      ctx.moveTo(position.x - offset, position.y - squareSize + offset);
-      ctx.quadraticCurveTo(
-        position.x,
-        position.y - squareSize,
-        position.x + offset,
-        position.y - squareSize + offset,
-      );
-      ctx.lineTo(position.x + squareSize - offset, position.y - offset);
-      ctx.quadraticCurveTo(
-        position.x + squareSize,
-        position.y,
-        position.x + squareSize - offset,
-        position.y + offset,
-      );
-      ctx.lineTo(position.x + offset, position.y + squareSize - offset);
-      ctx.quadraticCurveTo(
-        position.x,
-        position.y + squareSize,
-        position.x - offset,
-        position.y + squareSize - offset,
-      );
-      ctx.lineTo(position.x - squareSize + offset, position.y + offset);
-      ctx.quadraticCurveTo(
-        position.x - squareSize,
-        position.y,
-        position.x - squareSize + offset,
-        position.y - offset,
-      );
-      ctx.closePath();
-      ctx.clip();
-
-      // 进度弧 clip：从顶部按 progress 顺时针扇形。
-      ctx.beginPath();
-      ctx.moveTo(position.x, position.y);
-      ctx.arc(position.x, position.y, progressRadius, -Math.PI / 2, endAngle, false);
-      ctx.closePath();
-      ctx.clip();
-
-      // 放大花瓣：scale 后再径向外推 progressBandPad，贴到放大后的裁剪边界。
-      const px = position.x,
-        py = position.y;
-      const scaleOut = (vx: number, vy: number) => {
-        const sx = (vx - px) * progressScale;
-        const sy = (vy - py) * progressScale;
-        const len = Math.hypot(sx, sy);
-        if (len === 0) return { x: px, y: py };
-        const k = (len + progressBandPad) / len;
-        return { x: px + sx * k, y: py + sy * k };
-      };
-      for (let i = 0; i < 4; i++) {
-        const p = petals[i];
-        const tip = scaleOut(p.tipX, p.tipY);
-        const lf = scaleOut(p.leftX, p.leftY);
-        const rt = scaleOut(p.rightX, p.rightY);
-        ctx.beginPath();
-        ctx.moveTo(tip.x, tip.y);
-        ctx.lineTo(lf.x, lf.y);
-        ctx.lineTo(rt.x, rt.y);
-        ctx.closePath();
-        ctx.fillStyle = petalColors[i];
-        ctx.fill();
-      }
-
-      ctx.restore();
-    }
-
-    ctx.globalAlpha = combinedAlpha;
-    if (ddrColor) {
-      // DDR 配色动态，走原矢量路径。
-      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-      ctx.shadowBlur = this.scaleByRadius(8 / 300);
-      ctx.shadowOffsetX = this.scaleByRadius(2 / 300);
-      ctx.shadowOffsetY = this.scaleByRadius(2 / 300);
-      ctx.fillStyle = "rgba(0, 0, 0, 0.01)"; // 透明填充，只为阴影
-
-      ctx.beginPath();
-      for (let i = 0; i < 4; i++) {
-        const p = petals[i];
-        this.drawRoundedTriangle(
-          p.tipX,
-          p.tipY,
-          p.leftX,
-          p.leftY,
-          p.rightX,
-          p.rightY,
-          cornerRadius,
-        );
-      }
-      ctx.fill();
-
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-
-      // 外三角 + 内三角洞各做 wider black，逐花瓣 fill 覆盖内侧 halo 只剩外缘 + 空心。
-      // wider = strokeWidth*3 让可见黑边跟随画布缩放，避免小屏下显得过粗。
-      ctx.beginPath();
-      for (let i = 0; i < 4; i++) {
-        const p = petals[i];
-        this.drawRoundedTriangle(
-          p.tipX,
-          p.tipY,
-          p.leftX,
-          p.leftY,
-          p.rightX,
-          p.rightY,
-          cornerRadius,
-        );
-      }
-      this.stroke(COLORS.BLACK, strokeWidth * 3);
-      if (!isHold) {
-        ctx.beginPath();
-        for (let i = 0; i < 4; i++) {
-          const p = petals[i];
-          this.drawRoundedTriangle(
-            p.innerTipX!,
-            p.innerTipY!,
-            p.innerLeftX!,
-            p.innerLeftY!,
-            p.innerRightX!,
-            p.innerRightY!,
-            innerCornerRadius,
-          );
-        }
-        this.stroke(COLORS.BLACK, strokeWidth * 3);
-      }
-
-      for (let i = 0; i < 4; i++) {
-        const p = petals[i];
-        ctx.beginPath();
-        this.drawRoundedTriangle(
-          p.tipX,
-          p.tipY,
-          p.leftX,
-          p.leftY,
-          p.rightX,
-          p.rightY,
-          cornerRadius,
-        );
-        if (!isHold) {
-          this.drawRoundedTriangle(
-            p.innerTipX!,
-            p.innerTipY!,
-            p.innerRightX!,
-            p.innerRightY!,
-            p.innerLeftX!,
-            p.innerLeftY!,
-            innerCornerRadius,
-          );
-        }
-        ctx.fillStyle = ddrColor;
-        ctx.fill();
-      }
-
-      ctx.beginPath();
-      for (let i = 0; i < 4; i++) {
-        const p = petals[i];
-        this.drawRoundedTriangle(
-          p.tipX,
-          p.tipY,
-          p.leftX,
-          p.leftY,
-          p.rightX,
-          p.rightY,
-          cornerRadius,
-        );
-        if (!isHold) {
-          this.drawRoundedTriangle(
-            p.innerTipX!,
-            p.innerTipY!,
-            p.innerLeftX!,
-            p.innerLeftY!,
-            p.innerRightX!,
-            p.innerRightY!,
-            innerCornerRadius,
-          );
-        }
-      }
-      this.stroke(COLORS.WHITE, strokeWidth);
-    } else {
-      // 精灵路径：阴影+黑边 → 填充 → 白边三层依次整组绘制，保持原图层顺序。
-      const spriteKind = isHold ? "h" : isSimultaneous ? "s" : "n";
-      const spriteHalf = this.getTouchSpriteHalf();
-      for (const layer of ["sb", "f", "w"] as const) {
-        for (let i = 0; i < 4; i++) {
-          const sprite = this.getTouchPetalSprite(layer, spriteKind, i);
-          const p = petals[i];
-          ctx.drawImage(
-            sprite,
-            p.petalX - spriteHalf,
-            p.petalY - spriteHalf,
-            spriteHalf * 2,
-            spriteHalf * 2,
-          );
-        }
-      }
-    }
-
-    // 中心点：wider black → fill → white，fill 覆盖内侧 halo。
-    ctx.globalAlpha = alpha;
-    const centerSize = this.scaleByRadius(TOUCH_CENTER_DOT_RATIO) * 0.8;
     ctx.beginPath();
-    ctx.arc(position.x, position.y, centerSize, 0, Math.PI * 2);
-    this.stroke(COLORS.BLACK, strokeWidth * 3);
-    ctx.fillStyle = isSimultaneous ? "#FFFF00" : "#00BFFF";
-    ctx.fill();
-    this.stroke(COLORS.WHITE, strokeWidth);
-
+    ctx.arc(x, y, size * 0.45, -Math.PI / 2, -Math.PI / 2 + cutoff * Math.PI * 2, false);
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.lineWidth = Math.max(2, size * 0.06);
+    ctx.stroke();
     ctx.restore();
   }
 
-  /** 烟花单例：touches 须已按 hasFirework 过滤并按 fireworkTriggerMs 升序，二分取最近已触发者。 */
+
   renderTouchFireworks(
     touches: readonly (TouchNote | TouchHoldStartNote)[],
     currentTimeMs: number,
@@ -919,21 +638,10 @@ export class TouchRenderer extends BaseRenderer {
 
   /** 同位置多 touch 时围一圈带 gap 的圆角框。 */
   renderTouchBorder(position: Point2D, isSimultaneous: boolean, visibleTouchCount: number): void {
-    if (visibleTouchCount < 2) {
-      return;
-    }
-
-    const boxSize = this.scaleByRadius(1 / 4.46) * 1.1 * 1.2;
-    const cornerRadius = this.scaleByRadius(NOTE_SIZE_RATIO);
-    const color = isSimultaneous ? COLORS.SIMULTANEOUS_GOLD : COLORS.TOUCH_CYAN;
-
-    // 绘制更大的边框用于 3+ 触摸
-    if (visibleTouchCount >= 3) {
-      const largerSize = boxSize * 1.2;
-      this.drawTouchBorderBox(position.x, position.y, largerSize, cornerRadius, color, 3);
-    }
-
-    this.drawTouchBorderBox(position.x, position.y, boxSize, cornerRadius, color, 3);
+    const path = touchBorderSkinPath(visibleTouchCount, false, isSimultaneous);
+    const image = path ? this.context.skin?.get(path) : undefined;
+    if (!image) return;
+    drawSkinSprite(this.context.ctx, image, position.x, position.y, this.context.radius);
   }
 
   private drawTouchBorderBox(

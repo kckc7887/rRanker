@@ -15,6 +15,8 @@ export type ChartPreviewSettings = {
   highlightExNotes?: boolean;
   normalColorBreakSlide?: boolean;
   showHitEffect?: boolean;
+  /** 判定提示：区分 / 不区分 / 不显示。缺省 distinguish。 */
+  judgeHint?: 'distinguish' | 'unified' | 'hidden';
   showFireworks?: boolean;
   backgroundMode?: 'none' | 'image' | 'video';
   videoBackgroundPrompted?: boolean;

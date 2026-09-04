@@ -6,6 +6,10 @@ import {
   applyChartPreviewConfigToHtml,
   type ChartPreviewInjectConfig,
 } from './chart-preview-inject';
+import {
+  MAIMAI_CHART_PREVIEW_ANSWER_SOUND,
+  MAIMAI_CHART_PREVIEW_SKIN_ASSETS,
+} from './maimai-chart-preview-skin-manifest.generated';
 
 export {
   applyChartPreviewConfigToHtml,
@@ -26,8 +30,6 @@ export {
 const HTML_MODULE = require('../../../assets/maimai-chart-preview/index.html') as number;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PLAYER_MODULE = require('../../../assets/maimai-chart-preview/player.bundle') as number;
-const SENSOR_MODULE = require('../../../assets/maimai-chart-preview/sensor.webp') as number;
-const ANSWER_MODULE = require('../../../assets/maimai-chart-preview/answer.wav') as number;
 
 export type ChartPreviewWebViewSource = {
   uri: string;
@@ -39,7 +41,7 @@ export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Dire
   return chartPreviewStageDirectoryBase(name);
 }
 
-/** 将播放器资源写入同一目录，保证 file URL 可以互相访问。 */
+/** 将播放器脚本、远程皮肤与正解音写入同一目录，保证 file URL 可以互相访问。 */
 export async function prepareChartPreviewWebViewSource(
   config: ChartPreviewInjectConfig,
 ): Promise<ChartPreviewWebViewSource> {
@@ -47,11 +49,19 @@ export async function prepareChartPreviewWebViewSource(
     directoryName: 'rranker-chart-preview',
     stagedAssets: [
       { fileName: 'player.js', moduleId: PLAYER_MODULE },
-      { fileName: 'sensor.webp', moduleId: SENSOR_MODULE },
-      { fileName: 'answer.wav', moduleId: ANSWER_MODULE },
+      ...MAIMAI_CHART_PREVIEW_SKIN_ASSETS.map(({ path, url, bytes }) => ({
+        fileName: path,
+        url,
+        bytes,
+      })),
     ],
     dataUrlAssets: [
-      { key: 'answerSoundUrl', moduleId: ANSWER_MODULE, fileName: 'answer.wav' },
+      {
+        key: 'answerSoundUrl',
+        fileName: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.path,
+        url: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.url,
+        bytes: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.bytes,
+      },
     ],
     htmlModuleId: HTML_MODULE,
     buildHtml: (template, dataUrls) => applyChartPreviewConfigToHtml(template, {

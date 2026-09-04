@@ -1,9 +1,11 @@
+/**
+ * TAP 贴图与官机进场距离对照 MajdataViewX（GPL-3.0）。公式见 arcadeMotion.ts；未复制 C# 或 HLSL。
+ */
 import { BaseRenderer, getGradientColors } from "./BaseRenderer";
 import { Note, Point2D, NoteRenderPosition, ButtonPosition, HoldStartNote } from "../types";
 import {
   NOTE_SIZE_RATIO,
   TAP_INNER_RING_RATIO,
-  APPROACH_START_SCALE,
   NOTE_STROKE_WIDTH_RATIO,
   COLORS,
   NOTE_VISIBILITY_AFTER_MS,
@@ -13,6 +15,8 @@ import {
   HOLD_RIPPLE_EXPAND_MS,
   HOLD_RIPPLE_MAX_RADIUS_RATIO,
 } from "../utils/constants";
+import { arcadeTravel, breakPulseBrightness, canvasDistanceFromArcade } from "../utils/arcadeMotion";
+import { drawSkinSprite, tapSkinPath } from "./skinAtlas";
 
 export const INVISIBLE_NOTE_POSITION: NoteRenderPosition = Object.freeze({
   x: 0,
@@ -89,43 +93,20 @@ export class NoteRenderer extends BaseRenderer {
     const position = note.position as ButtonPosition;
     const angle = this.getButtonAngle(position);
     const timeDiff = note.timingMs - currentTimeMs;
-    const approachTime = this.getNoteApproachTimeMs(note);
-
-    // Hold 起点在 hold duration 内一直可见；普通 note 只有 NOTE_VISIBILITY_AFTER_MS。
     let holdWindow = NOTE_VISIBILITY_AFTER_MS;
     if ("isHoldStart" in note && note.isHoldStart && "duration" in note) {
       holdWindow = this.durationToMs(note.duration, note.bpm);
     }
-    if (timeDiff > approachTime || timeDiff < -holdWindow) {
-      return INVISIBLE_NOTE_POSITION;
-    }
-
-    // 上半段起点淡入、下半段推进判定线；dir=-1 时路径关于判定圈镜像（自圈外 1.75R 向内）。
-    const dir = this.getNoteApproachDir(note);
-    const halfApproach = approachTime / 2;
-    let distance: number;
-    let scale: number;
-    if (timeDiff > halfApproach) {
-      distance = this.context.radius * (1 + dir * (APPROACH_START_SCALE - 1));
-      scale = 1 - (timeDiff - halfApproach) / halfApproach;
-    } else if (timeDiff >= 0) {
-      const progress = 1 - timeDiff / halfApproach;
-      distance = this.context.radius * (1 + dir * (APPROACH_START_SCALE - 1 + 0.75 * progress));
-      scale = 1;
-    } else if ("isHoldStart" in note && note.isHoldStart) {
-      distance = this.context.radius;
-      scale = 1;
-    } else {
-      const fadeProgress = 1 + -timeDiff / halfApproach;
-      distance = this.context.radius * (1 + dir * (APPROACH_START_SCALE - 1 + 0.75 * fadeProgress));
-      scale = 1;
-    }
-
+    const travel = arcadeTravel(timeDiff, this.getNoteTravelSpeed(note), { holdWindowMs: holdWindow });
+    if (!travel.visible) return INVISIBLE_NOTE_POSITION;
+    const distance = canvasDistanceFromArcade(travel.distance, this.context.radius);
     return {
       x: this.context.centerX + Math.cos(angle) * distance,
       y: this.context.centerY + Math.sin(angle) * distance,
-      scale,
+      scale: travel.scale,
       visible: true,
+      showGuide: travel.showGuide,
+      guideScale: travel.guideScale,
     };
   }
 
@@ -497,22 +478,27 @@ export class NoteRenderer extends BaseRenderer {
     isBreak: boolean,
     isSimultaneous: boolean,
     isEx: boolean,
-    timing: number,
+    currentTimeMs: number,
     highlightExScale: number = 1,
   ): void {
-    // DDR 配色随 timing 变化，无法 sprite 化，走矢量路径。
-    if (this.context.config.ddrColorMode) {
-      this.drawTapNoteVector(
-        x,
-        y,
-        noteScale,
-        position,
-        isBreak,
-        isSimultaneous,
-        isEx,
-        timing,
-        highlightExScale,
-      );
+    const skin = this.context.skin;
+    const tap = skin?.get(tapSkinPath(isBreak, isSimultaneous));
+    if (tap) {
+      const angle = this.getButtonAngle(position) + Math.PI / 2;
+      drawSkinSprite(this.context.ctx, tap, x, y, this.context.radius, {
+        scale: noteScale,
+        rotation: angle,
+        alpha: isBreak ? breakPulseBrightness(currentTimeMs) : 1,
+      });
+      if (isEx && this.context.config.highlightExNotes) {
+        const ex = skin?.get('TapSkins/tap_ex.png');
+        if (ex) {
+          drawSkinSprite(this.context.ctx, ex, x, y, this.context.radius, {
+            scale: noteScale * highlightExScale,
+            rotation: angle,
+          });
+        }
+      }
       return;
     }
     const sprite = this.getTapSprite(position, isBreak, isSimultaneous, isEx, highlightExScale);
