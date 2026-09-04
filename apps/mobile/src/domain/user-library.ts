@@ -203,7 +203,7 @@ export function buildTagHistory(
     }
   }
   return [...latest.values()].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)
-    || left.displayName.localeCompare(right.displayName)).map((item) => item.displayName);
+    || left.displayName.localeCompare(right.displayName, 'zh-CN')).map((item) => item.displayName);
 }
 
 export function normalizeLibraryItem(item: UserLibraryItem): UserLibraryItem {
