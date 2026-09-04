@@ -95,7 +95,7 @@ export function RemoteImage({
   const [remoteDisplayed, setRemoteDisplayed] = useState(false);
 
   useEffect(() => {
-    if (!requestKey || (mode !== 'thumbnail' && mode !== 'artwork') || !active) return undefined;
+    if (!requestKey || (mode !== 'thumbnail' && mode !== 'artwork')) return undefined;
     activeRequestKeyRef.current = requestKey;
     releaseRef.current?.();
     releaseRef.current = undefined;
@@ -125,7 +125,7 @@ export function RemoteImage({
       releaseRef.current?.();
       releaseRef.current = undefined;
     };
-  }, [active, gameId, mode, requestKey, source]);
+  }, [gameId, mode, requestKey, source]);
 
   useEffect(() => {
     if (!requestKey
@@ -152,13 +152,13 @@ export function RemoteImage({
         cachePolicy={cachePolicy}
         onDisplay={onDisplay}
         onError={onError}
-        source={active ? source : null}
+        source={source}
       />
     );
   }
 
   if (!supportsCompressedCache && (mode === 'thumbnail' || mode === 'artwork')) {
-    return <Image {...props} cachePolicy="memory" onDisplay={onDisplay} onError={onError} source={active ? source : null} />;
+    return <Image {...props} cachePolicy="memory" onDisplay={onDisplay} onError={onError} source={source} />;
   }
 
   if (mode === 'none' || mode === 'native' || !requestKey) {
@@ -168,7 +168,7 @@ export function RemoteImage({
         cachePolicy={mode === 'none' ? 'none' : 'memory-disk'}
         onDisplay={onDisplay}
         onError={onError}
-        source={active ? source : null}
+        source={source}
       />
     );
   }
@@ -206,7 +206,7 @@ export function RemoteImage({
         }
         onError?.(event);
       }}
-      source={!active || !requestReady || phase === 'checking'
+      source={!requestReady || phase === 'checking'
         ? null
         : showingCached
           ? resolved?.source ?? null

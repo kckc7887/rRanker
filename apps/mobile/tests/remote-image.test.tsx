@@ -134,14 +134,21 @@ describe('RemoteImage 压缩垫图', () => {
     await screen.unmount();
   });
 
-  it('失活时放下图片 source', async () => {
+  it('失活时保留已显示的图片且不启动新落盘', async () => {
     mockFind.mockResolvedValue(cachedResult);
-    const screen = await render(
-      <RemoteImageActivityScope active={false}>
+    const tree = (active: boolean) => (
+      <RemoteImageActivityScope active={active}>
         <RemoteImage cacheProfile="thumbnail" gameId="maimai" source={remoteSource} testID="cover" />
-      </RemoteImageActivityScope>,
+      </RemoteImageActivityScope>
     );
-    expect(screen.getByTestId('cover').props.source).toBeNull();
+    const screen = await render(tree(true));
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
+    mockFind.mockClear();
+    mockCache.mockClear();
+    await screen.rerender(tree(false));
+    expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    expect(mockFind).not.toHaveBeenCalled();
+    expect(mockCache).not.toHaveBeenCalled();
     await screen.unmount();
   });
 });
