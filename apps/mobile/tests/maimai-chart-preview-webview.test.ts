@@ -232,6 +232,30 @@ describe('chart preview webview helpers', () => {
     expect(html).toContain('justify-content: center;\n      overflow: hidden;');
   });
 
+  it('offers three judge hint modes next to 款式 and keeps hit effects independent', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    const player = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/main.ts'),
+      'utf8',
+    );
+    const inject = readFileSync(
+      resolve(process.cwd(), 'src/features/maimai-chart-preview/chart-preview-inject.ts'),
+      'utf8',
+    );
+    expect(html).toContain('判定提示');
+    expect(html).toContain('id="judge-hint-wheel"');
+    expect(html).toContain('id="judge-hint-val">区分');
+    expect(player).toContain("const JUDGE_HINT_LABELS = ['区分', '不区分', '不显示']");
+    expect(player).toContain("['distinguish', 'unified', 'hidden']");
+    expect(player).toContain('parseJudgeHint(saved.judgeHint)');
+    expect(player).toContain('r.setJudgeHint(parseJudgeHint(saved.judgeHint))');
+    expect(player).toContain('r.setShowHitEffect(saved.showHitEffect ?? true)');
+    expect(inject).toContain("judgeHint?: 'distinguish' | 'unified' | 'hidden'");
+  });
+
   it('offers the three persisted background choices and stages image/video media', () => {
     const html = readFileSync(
       resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),

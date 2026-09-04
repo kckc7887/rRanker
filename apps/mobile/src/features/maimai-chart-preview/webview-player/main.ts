@@ -16,7 +16,7 @@ import {
   type ChartDifficulty,
   type PreparedAudioEvent,
 } from '../engine';
-import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
+import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 import {
@@ -51,6 +51,7 @@ export interface ChartPreviewSettings {
   highlightExNotes?: boolean;
   normalColorBreakSlide?: boolean;
   showHitEffect?: boolean;
+  judgeHint?: 'distinguish' | 'unified' | 'hidden';
   showFireworks?: boolean;
   backgroundMode?: BackgroundMode;
   videoBackgroundPrompted?: boolean;
@@ -343,6 +344,11 @@ async function main(): Promise<void> {
   const styleTrigger = $('style-trigger');
   const stylePopup = $('style-popup');
   const styleVal = $('style-val');
+  const judgeHintWheel = $('judge-hint-wheel');
+  const judgeHintList = $('judge-hint-list');
+  const judgeHintTrigger = $('judge-hint-trigger');
+  const judgeHintPopup = $('judge-hint-popup');
+  const judgeHintVal = $('judge-hint-val');
   const backgroundWheel = $('background-wheel');
   const backgroundList = $('background-list');
   const backgroundTrigger = $('background-trigger');
@@ -458,7 +464,16 @@ async function main(): Promise<void> {
     canvasWrap.classList.add('dual');
     document.body.classList.add('dual');
   }
-  const renderers = canvases.map((c) => new MainRenderer(c, { sensorImagePath: './sensor.webp' }));
+  const renderers = canvases.map((c) => new MainRenderer(c));
+  statusEl.textContent = '正在加载皮肤…';
+  try {
+    await Promise.all(renderers.map((r) => r.loadSkin()));
+  } catch (error) {
+    const diagnostic = error instanceof Error ? error.message : String(error);
+    statusEl.textContent = '皮肤加载失败，请返回重试。';
+    postStatus('error', { message: '皮肤加载失败，请返回重试。', diagnostic });
+    return;
+  }
   const applyRendererSettings = (r: MainRenderer) => {
     r.setJudgmentLineDesign((saved.judgmentLineDesign as string) || 'sensor');
     r.setPlaybackSpeed(saved.playbackSpeed ?? 1);
@@ -472,6 +487,7 @@ async function main(): Promise<void> {
     r.setHighlightExNotes(saved.highlightExNotes ?? false);
     r.setNormalColorBreakSlide(!!saved.normalColorBreakSlide);
     r.setShowHitEffect(saved.showHitEffect ?? true);
+    r.setJudgeHint(parseJudgeHint(saved.judgeHint));
     r.setShowFireworks(saved.showFireworks ?? true);
   };
   for (const r of renderers) applyRendererSettings(r);
@@ -1164,6 +1180,20 @@ async function main(): Promise<void> {
     },
     (idx) => saveSettings({ judgmentLineDesign: STYLE_VALUES[idx] ?? 'sensor' }),
     0, 3, 1, styleIdx, STYLE_LABELS,
+  );
+
+  const JUDGE_HINT_LABELS = ['区分', '不区分', '不显示'] as const;
+  const JUDGE_HINT_VALUES = ['distinguish', 'unified', 'hidden'] as const;
+  const judgeHintIdx = Math.max(0, JUDGE_HINT_VALUES.indexOf(parseJudgeHint(saved.judgeHint)));
+  setupWheelPopup(
+    judgeHintTrigger, judgeHintPopup, judgeHintWheel, judgeHintList, judgeHintVal,
+    (idx) => {
+      const mode = JUDGE_HINT_VALUES[idx] ?? DEFAULT_JUDGE_HINT;
+      for (const r of renderers) r.setJudgeHint(mode);
+      renderAt(preciseBeats);
+    },
+    (idx) => saveSettings({ judgeHint: JUDGE_HINT_VALUES[idx] ?? DEFAULT_JUDGE_HINT }),
+    0, 2, 1, judgeHintIdx, JUDGE_HINT_LABELS,
   );
 
   const BACKGROUND_LABELS = ['无背景', '图片背景', '视频背景'] as const;

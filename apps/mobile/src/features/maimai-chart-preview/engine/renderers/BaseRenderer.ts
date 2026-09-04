@@ -7,6 +7,8 @@ import {
   COLORS,
   DDR_DARKEN_RATIO,
 } from "../utils/constants";
+import { arcadeTapTravelSpeed } from "../utils/arcadeMotion";
+import type { ChartPreviewSkin } from "./skinAtlas";
 
 export function mixHexColor(color: string, target: string, amount: number): string {
   const parse = (value: string) => Number.parseInt(value, 16);
@@ -47,6 +49,7 @@ export interface RenderContext {
   hiSpeed: number;
   baseApproachTimeMs: number;
   config: RendererConfig;
+  skin: ChartPreviewSkin | null;
 }
 
 export abstract class BaseRenderer {
@@ -148,6 +151,26 @@ export abstract class BaseRenderer {
   /** note 自带流速倍率（simai `<HS*x>`）叠加在全局流速上；负流速时长取幅值，方向另取。 */
   protected getNoteApproachTimeMs(note: { hiSpeed?: number }): number {
     return this.getApproachTimeMs() / (Math.abs(note.hiSpeed ?? 1) || 1);
+  }
+
+  /** 官机 TapSpeed × 谱面 HS，供进场距离公式使用。 */
+  protected getNoteTravelSpeed(note: { hiSpeed?: number }): number {
+    const noteHs = Math.abs(note.hiSpeed ?? 1) || 1;
+    const sign = (note.hiSpeed ?? 1) < 0 ? -1 : 1;
+    let speed = arcadeTapTravelSpeed(this.context.hiSpeed) * noteHs * sign;
+    if (this.context.config.alwaysKeepHiSpeed) {
+      speed /= this.context.config.playbackSpeed || 1;
+    }
+    return speed;
+  }
+
+  protected getNoteTouchSpeed(note: { hiSpeed?: number }): number {
+    const noteHs = Math.abs(note.hiSpeed ?? 1) || 1;
+    let speed = this.context.hiSpeed * noteHs;
+    if (this.context.config.alwaysKeepHiSpeed) {
+      speed /= this.context.config.playbackSpeed || 1;
+    }
+    return speed;
   }
 
   /** 径向进场方向：+1 常规由内向外，-1（负流速）由判定圈外向内。 */

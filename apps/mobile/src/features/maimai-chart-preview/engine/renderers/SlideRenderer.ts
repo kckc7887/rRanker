@@ -1,3 +1,7 @@
+/**
+ * 滑条箭头/WIFI 贴图与淡入时序对照 MajdataViewX（GPL-3.0）。
+ * 公式见 arcadeMotion.ts；未复制 C# 或 HLSL。
+ */
 import { BaseRenderer, RenderContext } from "./BaseRenderer";
 import {
   SlideNote,
@@ -18,11 +22,17 @@ import {
   SLIDE_STAR_SIZE_RATIO,
   SLIDE_STAR_WAITING_MIN_SCALE,
   COLORS,
-  APPROACH_START_SCALE,
-  NOTE_VISIBILITY_AFTER_MS,
 } from "../utils/constants";
 import { detectSlideShape, SLIDE_AREA_STEP_MAP } from "../utils/slideAreaSteps";
 import { SLIDE_BARS } from "../utils/slideBars";
+import {
+  arcadeSlideFadeAlpha,
+  arcadeSlideFadeInStartMs,
+  arcadeTravel,
+  canvasDistanceFromArcade,
+  shouldOmitSlideLastArrow,
+} from "../utils/arcadeMotion";
+import { drawSkinSprite, slideSkinPath, wifiSkinPath } from "./skinAtlas";
 
 export type SlideRenderMode = "tracks" | "stars";
 
@@ -217,35 +227,16 @@ export class SlideRenderer extends BaseRenderer {
   ): NoteRenderPosition {
     const angle = this.getButtonAngle(note.position);
     const timeDiff = note.timingMs - currentTimeMs;
-    const approachTime = this.getNoteApproachTimeMs(note);
-
-    if (timeDiff > approachTime || timeDiff < -NOTE_VISIBILITY_AFTER_MS) {
-      return INVISIBLE_NOTE_POSITION;
-    }
-
-    const dir = this.getNoteApproachDir(note);
-    const halfApproach = approachTime / 2;
-    let distance: number;
-    let scale: number;
-
-    if (timeDiff > halfApproach) {
-      distance = this.context.radius * (1 + dir * (APPROACH_START_SCALE - 1));
-      scale = 1 - (timeDiff - halfApproach) / halfApproach;
-    } else if (timeDiff >= 0) {
-      const progress = 1 - timeDiff / halfApproach;
-      distance = this.context.radius * (1 + dir * (APPROACH_START_SCALE - 1 + 0.75 * progress));
-      scale = 1;
-    } else {
-      const fadeProgress = 1 + -timeDiff / halfApproach;
-      distance = this.context.radius * (1 + dir * (APPROACH_START_SCALE - 1 + 0.75 * fadeProgress));
-      scale = 1;
-    }
-
+    const travel = arcadeTravel(timeDiff, this.getNoteTravelSpeed(note));
+    if (!travel.visible) return INVISIBLE_NOTE_POSITION;
+    const distance = canvasDistanceFromArcade(travel.distance, this.context.radius);
     return {
       x: this.context.centerX + Math.cos(angle) * distance,
       y: this.context.centerY + Math.sin(angle) * distance,
-      scale,
+      scale: travel.scale,
       visible: true,
+      showGuide: travel.showGuide,
+      guideScale: travel.guideScale,
     };
   }
 
@@ -310,24 +301,18 @@ export class SlideRenderer extends BaseRenderer {
     mode: SlideRenderMode = "tracks",
     hasSimultaneousSlide: boolean,
   ): void {
-    const approachHalf = this.getNoteApproachTimeMs(note) / 2;
-    const visibilityStart = note.timingMs - approachHalf;
-
     const durationMs = note.allDurationMs ? note.allDurationMs[pathIndex] : note.durationMs;
     const delayMs = note.allDelayMs
       ? note.allDelayMs[pathIndex]
       : (note.delayMs ?? 60000 / note.bpm);
     const slideStart = note.timingMs + delayMs;
+    const fadeStart = arcadeSlideFadeInStartMs(note.timingMs, this.getNoteTravelSpeed(note));
 
-    if (currentTimeMs < visibilityStart || currentTimeMs > slideStart + durationMs) {
+    if (currentTimeMs < fadeStart || currentTimeMs > slideStart + durationMs) {
       return;
     }
 
-    let alpha = 1;
-    if (currentTimeMs < note.timingMs) {
-      const fadeProgress = (currentTimeMs - visibilityStart) / approachHalf;
-      alpha = Math.max(0, Math.min(1, fadeProgress));
-    }
+    const alpha = arcadeSlideFadeAlpha(currentTimeMs, fadeStart);
 
     this.withContext(() => {
       this.context.ctx.globalAlpha = alpha;
@@ -432,12 +417,11 @@ export class SlideRenderer extends BaseRenderer {
       ctx.lineJoin = "round";
 
       if (segment.type === "w") {
-        this.renderWifiBars(segment, progress);
+        this.renderWifiBars(segment, progress, isBreak, isSimultaneous, normalBreakColor);
         return;
       }
 
-      // 其他形状：模板 bar 位置 + 合并箭头路径（缓存）。无 chain（非法/退化段）不画箭头。
-      this.drawSegmentArrows(segment, progress, isJunctionEnd);
+      this.drawSegmentArrows(segment, progress, isJunctionEnd, isBreak, isSimultaneous, normalBreakColor);
     });
 
     return true;
@@ -446,7 +430,13 @@ export class SlideRenderer extends BaseRenderer {
   /**
    * Wifi 渲染：N 个对称 chevron，corner 朝 endPos、两臂朝 startPos 方向张开。
    */
-  private renderWifiBars(segment: SlideSegment, progress: number): void {
+  private renderWifiBars(
+    segment: SlideSegment,
+    progress: number,
+    isBreak: boolean,
+    isSimultaneous: boolean,
+    normalBreakColor: boolean,
+  ): void {
     const steps = SLIDE_AREA_STEP_MAP["wifi"];
     const N = steps[steps.length - 1]; // 箭头总数 = 11
 
@@ -464,12 +454,29 @@ export class SlideRenderer extends BaseRenderer {
     const axisUy = (endPivot.y - pivot.y) / axisLen;
     const fanAngle = Math.atan2(axisUy, axisUx);
 
+    const dFirst = 0.075 * axisLen;
+    const dLast = 0.975 * axisLen;
+    const firstWifi = this.context.skin?.get(wifiSkinPath(0, isBreak, isSimultaneous, normalBreakColor));
+    if (firstWifi) {
+      for (let i = N - 1; i >= hiddenCount; i--) {
+        const img = this.context.skin?.get(wifiSkinPath(i, isBreak, isSimultaneous, normalBreakColor));
+        if (!img) continue;
+        const d = dFirst + (dLast - dFirst) * SLIDE_WIFI_CORNER_FRACS[i];
+        const x = pivot.x + axisUx * d;
+        const y = pivot.y + axisUy * d;
+        if (shouldOmitSlideLastArrow(Math.hypot(x - endPivot.x, y - endPivot.y), this.context.radius)) {
+          continue;
+        }
+        drawSkinSprite(this.context.ctx, img, x, y, this.context.radius, {
+          rotation: fanAngle + Math.PI / 2,
+        });
+      }
+      return;
+    }
+
     const ARM_HALF_ANGLE = (67.4 * Math.PI) / 180;
     const cosA = Math.cos(ARM_HALF_ANGLE);
     const sinA = Math.sin(ARM_HALF_ANGLE);
-
-    const dFirst = 0.075 * axisLen;
-    const dLast = 0.975 * axisLen;
     const startExtra = this.scaleByRadius(0.075);
 
     const chevrons: {
@@ -651,8 +658,32 @@ export class SlideRenderer extends BaseRenderer {
       : 0;
   }
 
-  private drawSegmentArrows(segment: SlideSegment, progress: number, isJunctionEnd: boolean): void {
+  private drawSegmentArrows(
+    segment: SlideSegment,
+    progress: number,
+    isJunctionEnd: boolean,
+    isBreak: boolean,
+    isSimultaneous: boolean,
+    normalBreakColor: boolean,
+  ): void {
+    const hiddenCount = this.getHiddenCount(segment, progress);
+    const bars = this.getVisibleBarsForSegment(segment, hiddenCount, isJunctionEnd);
+    const arrowImg = this.context.skin?.get(slideSkinPath(isBreak, isSimultaneous, normalBreakColor));
     const chain = this.getBarChain(segment);
+    if (arrowImg && bars && bars.length > 0 && chain && chain.length > 0) {
+      const end = chain[chain.length - 1];
+      for (let i = 0; i < bars.length; i++) {
+        const bar = bars[i];
+        if (i === 0 && shouldOmitSlideLastArrow(Math.hypot(bar.x - end.x, bar.y - end.y), this.context.radius)) {
+          continue;
+        }
+        drawSkinSprite(this.context.ctx, arrowImg, bar.x, bar.y, this.context.radius, {
+          rotation: bar.angle + Math.PI / 2,
+        });
+      }
+      return;
+    }
+
     if (!chain) return;
 
     const basis = `${this.context.radius}|${this.context.config.mirrorMode}`;
@@ -662,21 +693,18 @@ export class SlideRenderer extends BaseRenderer {
       this.arrowPathsCache.set(segment, cache);
     }
 
-    const hiddenCount = this.getHiddenCount(segment, progress);
-    const key = `${hiddenCount}|${isJunctionEnd ? 1 : 0}`;
+    const vectorHiddenCount = this.getHiddenCount(segment, progress);
+    const key = `${vectorHiddenCount}|${isJunctionEnd ? 1 : 0}`;
     let paths = cache.byKey.get(key);
     if (!paths) {
-      const bars = this.getVisibleBarsForSegment(segment, hiddenCount, isJunctionEnd);
-      if (!bars || bars.length === 0) return;
-      paths = this.buildArrowPaths(bars);
+      const vectorBars = this.getVisibleBarsForSegment(segment, vectorHiddenCount, isJunctionEnd);
+      if (!vectorBars || vectorBars.length === 0) return;
+      paths = this.buildArrowPaths(vectorBars);
       cache.byKey.set(key, paths);
     }
 
     const ctx = this.context.ctx;
     const mainStroke = ctx.strokeStyle;
-    const isBreak =
-      typeof mainStroke === "string" &&
-      mainStroke.toLowerCase() === COLORS.BREAK_ORANGE.toLowerCase();
     const leftColor = isBreak ? COLORS.SLIDE_SIMULTANEOUS : mainStroke;
     const rightColor = isBreak ? COLORS.SLIDE_ARROW_RIGHT : mainStroke;
 

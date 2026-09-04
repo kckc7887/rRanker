@@ -1,3 +1,8 @@
+/**
+ * 舞萌谱面确认主渲染：贴图进场环 / Each 线 / 判定提示的运动与选图
+ * 对照 MajdataViewX（GPL-3.0，https://github.com/re-poem/MajdataViewX），
+ * 由 TypeScript 重写为 Canvas 2D；未复制 C# 或 HLSL。
+ */
 import { RenderContext, getGradientColors } from "./BaseRenderer";
 import { NoteRenderer, holdRipplePhase } from "./NoteRenderer";
 import { SlideRenderer } from "./SlideRenderer";
@@ -26,7 +31,6 @@ import {
 import {
   BASE_APPROACH_TIME_MS,
   HI_SPEED_DEFAULT,
-  HI_SPEED_CONVERSION_FACTOR,
   BUTTON_MARKER_RATIO,
   JUDGMENT_LINE_WIDTH_RATIO,
   COLORS,
@@ -36,13 +40,32 @@ import {
   HOLD_RIPPLE_EXPAND_MS,
   TOUCH_HIT_EFFECT_DURATION_MS,
 } from "../utils/constants";
+import {
+  arcadeAppearLookaheadMs,
+  arcadeTapTravelSpeed,
+  arcadeTouchDurations,
+  breakPulseBrightness,
+  JUDGE_HINT_DURATION_MS,
+} from "../utils/arcadeMotion";
+import {
+  DEFAULT_JUDGE_HINT,
+  eachLineSpan,
+  judgeHintBreakScore,
+  judgeHintSlideOk,
+  judgeHintTapHoldTouchText,
+  judgeTextSkinPath,
+  parseJudgeHint,
+  slideOkShape,
+  slideOkSkinPath,
+} from "../utils/judgeHint";
+import { ChartPreviewSkin, drawSkinSprite, eachLineSkinPath, guideSkinPath, starSkinPath } from "./skinAtlas";
 
 const MAX_DPR = 2;
 const FULLSCREEN_MIN_DPR = 1;
 const STAR_TAP_ROTATION_SPEED_RAD_PER_MS = (2 * Math.PI) / 1000;
 
 export interface MainRendererConfig {
-  sensorImagePath?: string;
+  skinBase?: string;
 }
 
 // tap / hold / slide 星星头同层、按时间分层（早的在上）的合并列表，按 timingMs 降序（晚的先画/在底）。
@@ -208,7 +231,7 @@ export class MainRenderer {
   private fullscreenMaxPixels: number = 2_500_000;
 
   private config: RendererConfig = {
-    hiSpeed: HI_SPEED_DEFAULT * HI_SPEED_CONVERSION_FACTOR,
+    hiSpeed: HI_SPEED_DEFAULT,
     alwaysKeepHiSpeed: false,
     playbackSpeed: 1.0,
     mirrorMode: "none",
@@ -226,6 +249,7 @@ export class MainRenderer {
     ddrColorExtended: false,
     showFireworks: true,
     showHitEffect: true,
+    judgeHint: DEFAULT_JUDGE_HINT,
   };
 
   private fps: number = 0;
@@ -248,8 +272,8 @@ export class MainRenderer {
   private holdRenderer!: HoldRenderer;
   private touchRenderer!: TouchRenderer;
 
-  private sensorImage: HTMLImageElement | null = null;
-  private sensorImagePath: string;
+  private skin = new ChartPreviewSkin();
+  private skinBase: string;
 
   private backgroundVideo: HTMLVideoElement | null = null;
   private backgroundVideoSrc = "";
@@ -291,7 +315,7 @@ export class MainRenderer {
 
   constructor(canvas: HTMLCanvasElement, config: MainRendererConfig = {}) {
     this.canvas = canvas;
-    this.sensorImagePath = config.sensorImagePath ?? "/assets/maimai/chart/sensor.webp";
+    this.skinBase = config.skinBase ?? "./";
 
     // alpha: false 让浏览器知道 canvas 不透明（CSS 已经把 background 设成 #000），
     // 合成时走 RGB 路径而不是 RGBA，省一次 alpha blend pass。
@@ -305,8 +329,6 @@ export class MainRenderer {
     this.resize();
 
     this.initRenderers();
-
-    this.loadAssets();
   }
 
   private initRenderers(): void {
@@ -328,6 +350,7 @@ export class MainRenderer {
       hiSpeed: this.config.hiSpeed,
       baseApproachTimeMs: BASE_APPROACH_TIME_MS,
       config: this.config,
+      skin: this.skin,
     };
   }
 
@@ -339,9 +362,9 @@ export class MainRenderer {
     this.touchRenderer.updateContext(context);
   }
 
-  private loadAssets(): void {
-    this.sensorImage = new Image();
-    this.sensorImage.src = this.sensorImagePath;
+  async loadSkin(): Promise<void> {
+    await this.skin.load(this.skinBase);
+    this.updateRenderersContext();
   }
 
   resize(isFullscreen: boolean = false): void {
@@ -416,7 +439,7 @@ export class MainRenderer {
 
   setHiSpeed(hiSpeed: number): void {
     if (hiSpeed >= 0.1 && hiSpeed <= 20) {
-      this.config.hiSpeed = hiSpeed * HI_SPEED_CONVERSION_FACTOR;
+      this.config.hiSpeed = hiSpeed;
       this.updateRenderersContext();
     }
   }
@@ -481,6 +504,10 @@ export class MainRenderer {
 
   setShowHitEffect(enabled: boolean): void {
     this.config.showHitEffect = enabled;
+  }
+
+  setJudgeHint(mode: string): void {
+    this.config.judgeHint = parseJudgeHint(mode);
   }
 
   setShowBpm(enabled: boolean): void {
@@ -588,15 +615,14 @@ export class MainRenderer {
 
     this.ctx.save();
 
-    if (
-      this.config.judgmentLineDesign === "sensor" &&
-      this.sensorImage &&
-      this.sensorImage.complete
-    ) {
-      const imgSize = this.logicalSize - 10;
-      const imgX = this.centerX - imgSize / 2;
-      const imgY = this.centerY - imgSize / 2 + 8;
-      this.ctx.drawImage(this.sensorImage, imgX, imgY, imgSize, imgSize);
+    if (this.config.judgmentLineDesign === "sensor") {
+      const outline = this.skin.get("outline.png");
+      if (outline) {
+        const imgSize = this.logicalSize - 10;
+        const imgX = this.centerX - imgSize / 2;
+        const imgY = this.centerY - imgSize / 2 + 8;
+        this.ctx.drawImage(outline, imgX, imgY, imgSize, imgSize);
+      }
     }
 
     if (
@@ -683,7 +709,11 @@ export class MainRenderer {
     }
 
     // HS<1 的 note 接近时间更长,粗筛提前量按谱面最小倍率放大
-    const lookAheadMs = BASE_APPROACH_TIME_MS / this.config.hiSpeed / prepared.minHiSpeed;
+    let travelSpeed = arcadeTapTravelSpeed(this.config.hiSpeed) * prepared.minHiSpeed;
+    if (this.config.alwaysKeepHiSpeed) {
+      travelSpeed /= this.config.playbackSpeed || 1;
+    }
+    const lookAheadMs = arcadeAppearLookaheadMs(travelSpeed);
 
     const [slideLo, slideHi] = windowRange(prepared.slideIndex, nowMs, lookAheadMs);
     const layerTracks = this.pendingStableTracks;
@@ -695,6 +725,11 @@ export class MainRenderer {
         isSimultaneous: this.getNoteMeta(noteMeta, slides[i]).simultaneousSlideCount >= 2,
       });
     }
+
+    const [groupLo, groupHi] = windowRange(prepared.approachIndex, nowMs, lookAheadMs);
+    const [headLo, headHi] = windowRange(prepared.layeredIndex, nowMs, lookAheadMs);
+    this.renderGuidesAndEachLines(layeredHeads, headLo, headHi, approachGroups, groupLo, groupHi, noteMeta, timing);
+
     this.slideRenderer.renderStableTracks(layerTracks, timing.currentBeat, timing.currentTimeMs);
 
     for (let i = slideHi - 1; i >= slideLo; i--) {
@@ -707,15 +742,8 @@ export class MainRenderer {
       );
     }
 
-    const [groupLo, groupHi] = windowRange(prepared.approachIndex, nowMs, lookAheadMs);
-    this.renderApproachIndicators(approachGroups, groupLo, groupHi, noteMeta, timing);
-
-    // tap / hold / slide 星星头同层、按时间分层（早的在上）；列表在 prepareRenderNotes 预排序。
-    const [headLo, headHi] = windowRange(prepared.layeredIndex, nowMs, lookAheadMs);
-    this.renderTapApproachArcs(layeredHeads, headLo, headHi, noteMeta, timing);
     this.renderLayeredHeads(layeredHeads, headLo, headHi, holdEndMap, noteMeta, timing);
 
-    // touch 最上层，覆盖普通 note。
     const [touchLo, touchHi] = windowRange(prepared.touchIndex, nowMs, lookAheadMs);
     this.renderTouchBorders(touches, touchLo, touchHi, noteMeta, timing.currentTimeMs);
 
@@ -727,6 +755,8 @@ export class MainRenderer {
         this.getNoteMeta(noteMeta, touches[i]).simultaneousNoteCount >= 2,
       );
     }
+
+    this.renderJudgeHints(prepared, timing.currentTimeMs);
 
     this.ctx.restore();
   }
@@ -1027,6 +1057,136 @@ export class MainRenderer {
     return groups;
   }
 
+  private guideKindForTap(tap: TapNote, isEach: boolean): "normal" | "each" | "break" | "slide" {
+    if (tap.type === "break") return "break";
+    if (isEach) return "each";
+    if (tap.isStar) return "slide";
+    return "normal";
+  }
+
+  private drawGuideRing(kind: "normal" | "each" | "break" | "slide", guideScale: number): void {
+    const img = this.skin.get(guideSkinPath(kind));
+    if (!img || guideScale <= 0) return;
+    const size = 2 * guideScale * this.radius;
+    drawSkinSprite(this.ctx, img, this.centerX, this.centerY, this.radius, {
+      displayWidth: size,
+      displayHeight: size,
+    });
+  }
+
+  private renderGuidesAndEachLines(
+    layered: LayeredNote[],
+    headLo: number,
+    headHi: number,
+    groups: readonly ApproachIndicatorGroup[],
+    groupLo: number,
+    groupHi: number,
+    noteMeta: WeakMap<Note, RenderNoteMeta>,
+    timing: RenderFrameTiming,
+  ): void {
+    type Approaching = {
+      position: ButtonPosition;
+      timingMs: number;
+      guideScale: number;
+      kind: "normal" | "each" | "break" | "slide";
+      x: number;
+      y: number;
+      note: HoldStartNote | SlideNote | TapNote;
+    };
+    const approaching: Approaching[] = [];
+
+    for (let i = headLo; i < headHi; i++) {
+      const item = layered[i];
+      if (item.note.timingMs <= timing.currentTimeMs) continue;
+      const isEach = this.getNoteMeta(noteMeta, item.note).simultaneousNoteCount >= 2;
+      if (item.kind === "tap") {
+        const pos = this.noteRenderer.calculateNotePosition(item.note, timing.currentBeat, timing.currentTimeMs);
+        if (!pos.visible || !pos.showGuide) continue;
+        const kind = this.guideKindForTap(item.note, isEach);
+        this.drawGuideRing(kind, pos.guideScale ?? 0);
+        approaching.push({
+          position: item.note.position,
+          timingMs: item.note.timingMs,
+          guideScale: pos.guideScale ?? 0,
+          kind,
+          x: pos.x,
+          y: pos.y,
+          note: item.note,
+        });
+      } else if (item.kind === "hold") {
+        const pos = this.noteRenderer.calculateNotePosition(item.note, timing.currentBeat, timing.currentTimeMs);
+        if (!pos.visible || !pos.showGuide) continue;
+        const kind = item.note.isBreakHold ? "break" : isEach ? "each" : "normal";
+        this.drawGuideRing(kind, pos.guideScale ?? 0);
+        approaching.push({
+          position: item.note.position,
+          timingMs: item.note.timingMs,
+          guideScale: pos.guideScale ?? 0,
+          kind,
+          x: pos.x,
+          y: pos.y,
+          note: item.note,
+        });
+      } else {
+        const pos = this.slideRenderer.calculateSlideStartPosition(item.note, timing.currentBeat, timing.currentTimeMs);
+        if (!pos.visible || !pos.showGuide) continue;
+        const kind = item.note.isStartBreak ? "break" : isEach ? "each" : "slide";
+        this.drawGuideRing(kind, pos.guideScale ?? 0);
+        approaching.push({
+          position: item.note.position,
+          timingMs: item.note.timingMs,
+          guideScale: pos.guideScale ?? 0,
+          kind,
+          x: pos.x,
+          y: pos.y,
+          note: item.note,
+        });
+      }
+    }
+
+    const byTiming = new Map<number, Approaching[]>();
+    for (const item of approaching) {
+      const list = byTiming.get(item.timingMs);
+      if (list) list.push(item);
+      else byTiming.set(item.timingMs, [item]);
+    }
+    for (const group of byTiming.values()) {
+      if (group.length < 2) continue;
+      for (let i = 0; i < group.length; i++) {
+        for (let j = i + 1; j < group.length; j++) {
+          const span = eachLineSpan(group[i].position, group[j].position);
+          if (!span) continue;
+          const img = this.skin.get(eachLineSkinPath(span));
+          const scale = Math.min(group[i].guideScale, group[j].guideScale);
+          if (img && scale > 0) {
+            const cw = (((group[j].position - group[i].position) % 8) + 8) % 8;
+            const start = cw > 0 && cw <= 4 ? group[i] : group[j];
+            const startPos = this.noteRenderer.getPositionOnRing(start.position);
+            const rotation = Math.atan2(startPos.y - this.centerY, startPos.x - this.centerX);
+            const size = 2 * scale * this.radius;
+            drawSkinSprite(this.ctx, img, this.centerX, this.centerY, this.radius, {
+              rotation,
+              displayWidth: size,
+              displayHeight: size,
+            });
+          } else {
+            this.noteRenderer.renderSimultaneousConnector(
+              group[i].position,
+              group[j].position,
+              Math.hypot(group[i].x - this.centerX, group[i].y - this.centerY),
+              COLORS.SIMULTANEOUS_GOLD,
+            );
+          }
+        }
+      }
+    }
+
+    if (!this.skin.get(guideSkinPath("normal"))) {
+      this.renderApproachIndicators(groups, groupLo, groupHi, noteMeta, timing);
+      this.renderTapApproachArcs(layered, headLo, headHi, noteMeta, timing);
+    }
+  }
+
   private renderApproachIndicators(
     groups: readonly ApproachIndicatorGroup[],
     groupLo: number,
@@ -1101,6 +1261,77 @@ export class MainRenderer {
     }
   }
 
+  private renderJudgeHints(prepared: PreparedRenderNotes, currentTimeMs: number): void {
+    const mode = this.config.judgeHint;
+    if (mode === "hidden") return;
+    const windowStart = currentTimeMs - JUDGE_HINT_DURATION_MS;
+
+    const drawText = (x: number, y: number, kind: ReturnType<typeof judgeHintTapHoldTouchText>, score: ReturnType<typeof judgeHintBreakScore>) => {
+      if (kind) {
+        const img = this.skin.get(judgeTextSkinPath(kind));
+        if (img) drawSkinSprite(this.ctx, img, x, y, this.radius);
+      }
+      if (score) {
+        const img = this.skin.get(judgeTextSkinPath(score));
+        if (img) drawSkinSprite(this.ctx, img, x, y + this.radius * 0.12, this.radius);
+      }
+    };
+
+    for (const note of prepared.hitEffectNotes) {
+      if (note.timingMs < windowStart || note.timingMs > currentTimeMs) continue;
+      if (isSlideNote(note)) continue;
+      if (isHoldEndNote(note) || note.type === "touch-hold-end") continue;
+      if (isTouchNote(note)) {
+        const p = this.touchRenderer.getTouchPosition(note.position);
+        drawText(p.x, p.y, judgeHintTapHoldTouchText(mode, false), null);
+        continue;
+      }
+      const p = this.noteRenderer.getPositionOnRing(note.position as ButtonPosition);
+      const breakNote = note.type === "break";
+      drawText(p.x, p.y, judgeHintTapHoldTouchText(mode, breakNote), judgeHintBreakScore(mode, breakNote));
+    }
+
+    for (const hold of prepared.holds) {
+      if (hold.timingMs < windowStart || hold.timingMs > currentTimeMs) continue;
+      const p = this.noteRenderer.getPositionOnRing(hold.position);
+      const isBreak = !!hold.isBreakHold;
+      drawText(p.x, p.y, judgeHintTapHoldTouchText(mode, isBreak), judgeHintBreakScore(mode, isBreak));
+    }
+
+    for (const touchHold of prepared.touchHolds) {
+      if (touchHold.timingMs < windowStart || touchHold.timingMs > currentTimeMs) continue;
+      const p = this.touchRenderer.getTouchPosition(touchHold.position);
+      drawText(p.x, p.y, judgeHintTapHoldTouchText(mode, false), null);
+    }
+
+    for (const slide of prepared.slides) {
+      const pathCount = slide.allSlideSegments?.length ?? 1;
+      for (let i = 0; i < pathCount; i++) {
+        const delayMs = slide.allDelayMs?.[i] ?? slide.delayMs ?? 60000 / slide.bpm;
+        const durationMs = slide.allDurationMs?.[i] ?? slide.durationMs ?? 0;
+        const hitMs = slide.timingMs + delayMs + durationMs;
+        if (hitMs < windowStart || hitMs > currentTimeMs) continue;
+        const ok = judgeHintSlideOk(mode);
+        if (!ok) continue;
+        const segs = slide.allSlideSegments?.[i] ?? slide.slideSegments;
+        const last = segs?.[segs.length - 1];
+        const first = segs?.[0];
+        const endPos = last?.endPos ?? slide.position;
+        const startPos = first?.startPos ?? slide.position;
+        const type = last?.type ?? "-";
+        const p = this.noteRenderer.getPositionOnRing(endPos);
+        const img = this.skin.get(slideOkSkinPath(slideOkShape(type, startPos, endPos), ok));
+        if (img) drawSkinSprite(this.ctx, img, p.x, p.y, this.radius);
+        const pathBreak = slide.allSlideBreaks?.[i] ?? false;
+        const score = judgeHintBreakScore(mode, pathBreak);
+        if (score) {
+          const scoreImg = this.skin.get(judgeTextSkinPath(score));
+          if (scoreImg) drawSkinSprite(this.ctx, scoreImg, p.x, p.y + this.radius * 0.12, this.radius);
+        }
+      }
+    }
+  }
+
   private renderSingleHold(
     hold: HoldStartNote,
     holdEndMap: ReadonlyMap<string, HoldEndNote>,
@@ -1165,16 +1396,15 @@ export class MainRenderer {
     noteMeta: WeakMap<Note, RenderNoteMeta>,
     currentTimeMs: number,
   ): void {
-    const baseApproachTime = BASE_APPROACH_TIME_MS / this.config.hiSpeed;
-
     const visibleByPos = this.visibleTouchCountByPos;
     visibleByPos.clear();
     for (let i = touchLo; i < touchHi; i++) {
       const touch = touches[i];
       if (touch.type === "touch-hold-start") continue;
       const timeDiff = touch.timingMs - currentTimeMs;
-      const approachTime = baseApproachTime / (Math.abs(touch.hiSpeed ?? 1) || 1);
-      if (timeDiff <= approachTime && timeDiff >= -50) {
+      const noteHs = Math.abs(touch.hiSpeed ?? 1) || 1;
+      const { wholeDuration } = arcadeTouchDurations(this.config.hiSpeed * noteHs);
+      if (timeDiff <= wholeDuration * 1000 && timeDiff >= -50) {
         const pos = touch.position as string;
         visibleByPos.set(pos, (visibleByPos.get(pos) || 0) + 1);
       }
@@ -1203,21 +1433,22 @@ export class MainRenderer {
 
     const meta = this.getNoteMeta(noteMeta, slide);
     const isSimultaneous = meta.simultaneousNoteCount >= 2;
-    // 接近圈由 renderApproachIndicators 统一画（在底层），这里只画星星头。
-    const color = this.getStarHeadColor(slide.timing, slide.isStartBreak ?? false, isSimultaneous);
-
+    const isBreak = slide.isStartBreak ?? false;
     const rotation = this.config.slideRotation
       ? this.slideRenderer.calculateStarRotation(slide, currentTimeMs)
       : 0;
+    const isDouble = !!slide.isSplitSlide;
+    const skinStar = this.skin.get(starSkinPath(isBreak, isSimultaneous, isDouble, this.config.pinkSlideStart));
 
-    if (slide.isSplitSlide) {
+    if (isDouble && !skinStar) {
       const noteSize = this.getStarNoteSize(pos.scale);
+      const color = this.getStarHeadColor(slide.timing, isBreak, isSimultaneous);
       if (slide.isEx) {
         this.slideRenderer.renderExSplitStarRing(
           pos.x,
           pos.y,
           noteSize,
-          slide.isStartBreak ?? false,
+          isBreak,
           isSimultaneous,
           this.exScale,
         );
@@ -1228,11 +1459,12 @@ export class MainRenderer {
         pos.x,
         pos.y,
         pos.scale,
-        color,
         rotation,
         slide.isEx ?? false,
-        slide.isStartBreak ?? false,
+        isBreak,
         isSimultaneous,
+        isDouble,
+        currentTimeMs,
       );
     }
 
@@ -1348,19 +1580,44 @@ export class MainRenderer {
     x: number,
     y: number,
     scale: number,
-    color: string,
     rotation: number,
     isEx: boolean,
     isBreak: boolean,
     isSimultaneous: boolean,
+    isDouble: boolean,
+    currentTimeMs: number,
   ): void {
-    const noteSize = this.getStarNoteSize(scale);
+    const star = this.skin.get(starSkinPath(isBreak, isSimultaneous, isDouble, this.config.pinkSlideStart));
+    if (star) {
+      drawSkinSprite(this.ctx, star, x, y, this.radius, {
+        scale,
+        rotation,
+        alpha: isBreak ? breakPulseBrightness(currentTimeMs) : 1,
+      });
+      if (isEx && this.config.highlightExNotes) {
+        const ex = this.skin.get(isDouble ? "StarSkins/star_ex_double.png" : "StarSkins/star_ex.png");
+        if (ex) {
+          drawSkinSprite(this.ctx, ex, x, y, this.radius, {
+            scale: scale * this.exScale,
+            rotation,
+          });
+        }
+      }
+      return;
+    }
 
+    const noteSize = this.getStarNoteSize(scale);
     if (isEx) {
       this.slideRenderer.renderExStarRing(x, y, noteSize, isBreak, isSimultaneous, this.exScale);
     }
-
-    this.slideRenderer.drawStar(x, y, noteSize, color, rotation, isEx);
+    this.slideRenderer.drawStar(
+      x,
+      y,
+      noteSize,
+      this.getStarHeadColor(0, isBreak, isSimultaneous),
+      rotation,
+      isEx,
+    );
   }
 
   private get exScale(): number {
@@ -1456,7 +1713,7 @@ export class MainRenderer {
         tap.type === "break",
         isSimultaneous,
         tap.isEx ?? false,
-        tap.timing,
+        currentTimeMs,
         this.exScale,
       );
     }
@@ -1487,11 +1744,12 @@ export class MainRenderer {
       x,
       y,
       scale,
-      this.getStarHeadColor(tap.timing, tap.type === "break", isSimultaneous),
       rotation,
       tap.isEx ?? false,
       tap.type === "break",
       isSimultaneous,
+      false,
+      currentTimeMs,
     );
   }
 

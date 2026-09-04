@@ -14,6 +14,9 @@
  * - `w`: Wi-Fi 滑条（扇形图案）
  * - `V`: V 形带有中间点
  */
+import type { JudgeHintMode } from "../utils/judgeHint";
+
+export type { JudgeHintMode } from "../utils/judgeHint";
 export type SlidePathType =
   | "-"
   | ">"
@@ -380,6 +383,8 @@ export interface NoteRenderPosition {
   y: number;
   scale: number;
   visible: boolean;
+  showGuide?: boolean;
+  guideScale?: number;
 }
 
 export interface Point2D {
@@ -424,6 +429,8 @@ export interface RendererConfig {
   showFireworks: boolean;
   /** 是否显示判定点打击特效（tap / hold 尾 / 星星头 / 绝赞） */
   showHitEffect: boolean;
+  /** 判定提示：区分 Critical / 合并为 Perfect·JUST / 不显示 */
+  judgeHint: JudgeHintMode;
 }
 
 export interface AudioConfig {

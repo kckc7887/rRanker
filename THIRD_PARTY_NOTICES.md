@@ -54,6 +54,21 @@ The engine is licensed under the MIT License, Copyright (c) 2026 Lxns-Network.
 The surrounding preview feature (chart loading, audio wiring, gesture
 rendering) is rRanker's own implementation.
 
+## MajdataViewX chart-preview motion (MajdataViewX)
+
+舞萌谱面确认播放器的进场距离、缩放、HOLD 三切片、TOUCH 花瓣时长、滑条淡入与
+末箭省略公式对照 **MajdataViewX**
+（[re-poem/MajdataViewX](https://github.com/re-poem/MajdataViewX)）的
+TapUpdateJob / HoldUpdateJob / TouchData / SlideData 数值语义，由 TypeScript
+重写为 Canvas 2D（`engine/utils/arcadeMotion.ts` 及各 renderer 贴图绘制）。
+未复制 Unity、C# 或 HLSL。
+
+MajdataViewX is licensed under the GNU General Public License v3.0. Per
+GPL-3.0 §5 the rewritten files keep a source notice; GPLv3 code may be
+combined into this AGPL-3.0 project as a whole under AGPL-3.0 (FSF
+compatibility rules). A copy of the license is included at
+`LICENSES/MajdataViewX-GPL-3.0.txt`.
+
 ## Phigros / Phira chart-preview player core (phira)
 
 Phigros/Phira 谱面确认 WebView 播放器
