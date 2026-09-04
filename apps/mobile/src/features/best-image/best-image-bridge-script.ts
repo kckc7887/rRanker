@@ -1,7 +1,7 @@
 /*
  * 最佳成绩图 WebView 桥接脚本共享模块。
  *
- * 舞萌（build-best-image-html.ts）与中二（build-chunithm-best-image-html.ts）
+ * 舞萌（build-maimai-best-image-html.ts）与中二（build-chunithm-best-image-html.ts）
  * 的导出 HTML 内联了同构的桥接脚本：postToNative、runtime 消息广播、
  * measureAndFit（layoutChildren/contentHeight/logicalHeight/exportViewport/scale）、
  * schedule+pending、Resize/MutationObserver 注册、图片就绪 5000ms 竞速与

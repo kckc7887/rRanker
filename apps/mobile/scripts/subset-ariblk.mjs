@@ -1,5 +1,5 @@
 // 生成 ariblk 子集字体，就地覆盖 assets/rating/ariblk.ttf。
-// 用途：舞萌成绩图游戏风格 DX Rating 五位数字（build-best-image-html.ts 的
+// 用途：舞萌成绩图游戏风格 DX Rating 五位数字（build-maimai-best-image-html.ts 的
 // `String(rating).padStart(5, '0')`），字符集仅数字。
 // 用法：node scripts/subset-ariblk.mjs
 import fs from 'node:fs';

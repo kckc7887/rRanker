@@ -6,7 +6,7 @@ import {
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
   parseBestImageRuntimeMessage,
-} from './build-best-image-html';
+} from './best-image-messages';
 import {
   bestImageCaptureDimensions,
   deleteBestImageCapture,

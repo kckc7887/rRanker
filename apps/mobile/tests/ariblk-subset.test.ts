@@ -8,7 +8,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 describe('ariblk 子集守卫', () => {
   it('成绩图 Rating 数字构造仍是五位数字且字符集覆盖 0-9', () => {
     const htmlBuilder = readFileSync(
-      path.join(projectRoot, 'src/features/best-image/build-best-image-html.ts'),
+      path.join(projectRoot, 'src/features/maimai-best-image/build-maimai-best-image-html.ts'),
       'utf8',
     );
     // .rating-digits 的文本来源必须保持为纯数字（padStart 五位）
