@@ -1,5 +1,10 @@
-import { MAIMAI_CHART_PREVIEW_SKIN_ASSETS } from '../../maimai-chart-preview-skin-manifest.generated';
+import {
+  maimaiChartPreviewRuntimeSkinAssets,
+  maimaiChartPreviewSkinStagePath,
+} from '../../maimai-chart-preview-skin-files';
 import { canvasSizeFromNativePx } from '../utils/arcadeMotion';
+
+const IMAGE_LOAD_CONCURRENCY = 4;
 
 export class ChartPreviewSkin {
   private readonly images = new Map<string, HTMLImageElement>();
@@ -13,7 +18,14 @@ export class ChartPreviewSkin {
 
   async load(base = './'): Promise<void> {
     const prefix = base.endsWith('/') ? base : `${base}/`;
-    await Promise.all(MAIMAI_CHART_PREVIEW_SKIN_ASSETS.map((asset) => this.loadOne(`${prefix}${asset.path}`, asset.path)));
+    const assets = maimaiChartPreviewRuntimeSkinAssets();
+    for (let index = 0; index < assets.length; index += IMAGE_LOAD_CONCURRENCY) {
+      const batch = assets.slice(index, index + IMAGE_LOAD_CONCURRENCY);
+      await Promise.all(batch.map((asset) => this.loadOne(
+        `${prefix}${maimaiChartPreviewSkinStagePath(asset.path)}`,
+        asset.path,
+      )));
+    }
     this.ready = true;
   }
 

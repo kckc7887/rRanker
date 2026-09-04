@@ -66,6 +66,7 @@ const STAR_TAP_ROTATION_SPEED_RAD_PER_MS = (2 * Math.PI) / 1000;
 
 export interface MainRendererConfig {
   skinBase?: string;
+  skin?: ChartPreviewSkin;
 }
 
 // tap / hold / slide 星星头同层、按时间分层（早的在上）的合并列表，按 timingMs 降序（晚的先画/在底）。
@@ -272,7 +273,7 @@ export class MainRenderer {
   private holdRenderer!: HoldRenderer;
   private touchRenderer!: TouchRenderer;
 
-  private skin = new ChartPreviewSkin();
+  private skin: ChartPreviewSkin;
   private skinBase: string;
 
   private backgroundVideo: HTMLVideoElement | null = null;
@@ -315,6 +316,7 @@ export class MainRenderer {
 
   constructor(canvas: HTMLCanvasElement, config: MainRendererConfig = {}) {
     this.canvas = canvas;
+    this.skin = config.skin ?? new ChartPreviewSkin();
     this.skinBase = config.skinBase ?? "./";
 
     // alpha: false 让浏览器知道 canvas 不透明（CSS 已经把 background 设成 #000），
@@ -363,7 +365,7 @@ export class MainRenderer {
   }
 
   async loadSkin(): Promise<void> {
-    await this.skin.load(this.skinBase);
+    if (!this.skin.ready) await this.skin.load(this.skinBase);
     this.updateRenderersContext();
   }
 
