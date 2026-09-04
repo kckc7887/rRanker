@@ -35,7 +35,7 @@ if (!html.includes('<!--CHART_PREVIEW_CONFIG-->') || !html.includes('<!--PLAYER_
 }
 html = html
   .replace('<!--CHART_PREVIEW_CONFIG-->', '<!--CHART_PREVIEW_CONFIG-->')
-  .replace('<!--PLAYER_SCRIPT-->', '<script src="./player.js"></script>');
+  .replace('<!--PLAYER_SCRIPT-->', '<script src="./skin-data.js"></script>\n  <script src="./player.js"></script>');
 fs.writeFileSync(outHtml, html, 'utf8');
 fs.copyFileSync(outPlayerJs, outPlayerBundle);
 

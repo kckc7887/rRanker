@@ -10,6 +10,7 @@ import {
 import {
   isMaimaiChartPreviewRuntimeSkinPath,
   maimaiChartPreviewRuntimeSkinAssets,
+  maimaiChartPreviewSkinDataScript,
   maimaiChartPreviewSkinStagePath,
 } from '@/features/maimai-chart-preview/maimai-chart-preview-skin-files';
 import {
@@ -58,6 +59,11 @@ vi.mock('expo-file-system', () => {
     get exists() { return mockFs.files.has(this.uri); }
     get size() { return mockFs.files.get(this.uri)?.byteLength ?? 0; }
     async base64() { return `b64:${this.uri}`; }
+    async bytes() {
+      const bytes = mockFs.files.get(this.uri);
+      if (!bytes) throw new Error('source does not exist');
+      return Uint8Array.from(bytes);
+    }
     create() { mockFs.files.set(this.uri, new Uint8Array()); }
     write(content: string | Uint8Array) {
       mockFs.files.set(this.uri, typeof content === 'string' ? Uint8Array.from(Buffer.from(content)) : Uint8Array.from(content));
@@ -188,6 +194,8 @@ describe('maimai chart preview remote assets', () => {
     expect(prepare).not.toContain("require('../../../assets/maimai-chart-preview/answer.wav')");
     expect(prepare).toContain('maimaiChartPreviewRuntimeSkinAssets');
     expect(prepare).toContain('maimaiChartPreviewSkinStagePath');
+    expect(prepare).toContain('maimaiChartPreviewSkinDataScript');
+    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE');
     expect(prepare).toContain('MAIMAI_CHART_PREVIEW_ANSWER_SOUND');
     expect(prepare).toContain('remoteCacheDirectory');
   });
@@ -282,5 +290,10 @@ describe('maimai chart preview remote assets', () => {
     });
     expect(mockFs.downloadCalls).toEqual([TAP.url]);
     expect(mockFs.files.get(stageUri(stagedName))?.byteLength).toBe(TAP.bytes);
+  });
+
+  it('encodes skins as a data-url script for file:// playback', () => {
+    expect(maimaiChartPreviewSkinDataScript({ 'TapSkins/tap.png': 'data:image/png;base64,abc' }))
+      .toBe('window.__MAIMAI_CHART_PREVIEW_SKINS__={"TapSkins/tap.png":"data:image/png;base64,abc"};');
   });
 });

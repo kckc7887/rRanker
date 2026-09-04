@@ -7,7 +7,7 @@
  * 落盘与资产解析复用本目录 chart-preview-assets 公共层，不重复实现。
  * 资产来源用判别联合表达：moduleId 为本地 bundle 资产（每次覆盖落盘），
  * url + bytes 为对象存储远程资产（已缓存且大小匹配时跳过下载）。
- * 远程资产有限并发下载；若提供 remoteCacheDirectory，先写入该目录再复制到本次 session。
+ * 远程资产有限并发下载；若提供 remoteCacheDirectory，先写入该目录再复制字节到本次 session。
  */
 
 import { Directory, File } from 'expo-file-system';
@@ -122,7 +122,12 @@ async function stageRemoteAsset(
   const target = new File(sessionDirectory, fileName);
   if (target.exists && target.size === source.size) return target;
   if (target.exists) target.delete();
-  source.copy(target);
+  const payload = await source.bytes();
+  target.create({ intermediates: true, overwrite: true });
+  target.write(payload);
+  if (target.size !== source.size) {
+    throw new Error(`远程资产复制失败：${fileName}`);
+  }
   return target;
 }
 

@@ -1,4 +1,4 @@
-import { Directory } from 'expo-file-system';
+import { Directory, File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import { chartPreviewStageDirectory as chartPreviewStageDirectoryBase } from '@/features/chart-preview-shared/chart-preview-assets';
@@ -8,7 +8,9 @@ import {
 } from './chart-preview-inject';
 import { MAIMAI_CHART_PREVIEW_ANSWER_SOUND } from './maimai-chart-preview-skin-manifest.generated';
 import {
+  MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE,
   maimaiChartPreviewRuntimeSkinAssets,
+  maimaiChartPreviewSkinDataScript,
   maimaiChartPreviewSkinStagePath,
 } from './maimai-chart-preview-skin-files';
 
@@ -42,7 +44,7 @@ export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Dire
   return chartPreviewStageDirectoryBase(name);
 }
 
-/** 将播放器脚本、远程皮肤与正解音写入同一目录，保证 file URL 可以互相访问。 */
+/** 将播放器脚本、远程皮肤与正解音写入同一 session；皮肤编码为 skin-data.js。 */
 export async function prepareChartPreviewWebViewSource(
   config: ChartPreviewInjectConfig,
 ): Promise<ChartPreviewWebViewSource> {
@@ -63,6 +65,19 @@ export async function prepareChartPreviewWebViewSource(
         fileName: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.path,
         url: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.url,
         bytes: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.bytes,
+      },
+    ],
+    writers: [
+      async (directory) => {
+        const entries: Record<string, string> = {};
+        for (const asset of maimaiChartPreviewRuntimeSkinAssets()) {
+          const file = new File(directory, maimaiChartPreviewSkinStagePath(asset.path));
+          if (!file.exists) throw new Error(`皮肤缺失：${asset.path}`);
+          entries[asset.path] = `data:image/png;base64,${await file.base64()}`;
+        }
+        const output = new File(directory, MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE);
+        output.create({ overwrite: true });
+        output.write(maimaiChartPreviewSkinDataScript(entries));
       },
     ],
     htmlModuleId: HTML_MODULE,

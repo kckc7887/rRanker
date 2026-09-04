@@ -25,3 +25,11 @@ export function isMaimaiChartPreviewRuntimeSkinPath(path: string): boolean {
 export function maimaiChartPreviewRuntimeSkinAssets(): readonly MaimaiChartPreviewSkinAsset[] {
   return MAIMAI_CHART_PREVIEW_SKIN_ASSETS.filter((asset) => isMaimaiChartPreviewRuntimeSkinPath(asset.path));
 }
+
+export const MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE = 'skin-data.js';
+export const MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL = '__MAIMAI_CHART_PREVIEW_SKINS__';
+
+/** 对齐 Phigros `music-data.js`：iOS file:// 不能稳定读取本地 PNG，改由脚本注入 data URL。 */
+export function maimaiChartPreviewSkinDataScript(entries: Record<string, string>): string {
+  return `window.${MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL}=${JSON.stringify(entries)};`;
+}
