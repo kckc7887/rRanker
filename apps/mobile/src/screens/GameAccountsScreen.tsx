@@ -140,29 +140,41 @@ export function GameAccountsScreen() {
       .catch(() => undefined);
   };
 
-  const unbindAccount = async (account: BoundAccount, includePersonalData: boolean) => {
-    setBusy(true);
-    const failures: string[] = [];
-    const attempt = async (label: string, action: () => Promise<unknown>) => {
-      try { await action(); } catch { failures.push(label); }
-    };
-    await attempt('凭据', () => sessions.removeAccount(account.id));
-    await attempt('缓存', () => snapshots.clear(account.id));
-    if (account.providerId === 'osu' && isOsuGameId(account.gameId)) {
-      const osuGameId = account.gameId;
-      const userId = osuUserIdFromAccountId(account.id);
-      if (userId !== null) {
-        await attempt('模式缓存', () => osuCache.clear(osuGameId, userId));
-      }
+  async function persistActiveAccountId() {
+    const nextId = useSession.getState().activeAccountId;
+    if (!nextId || nextId === UNBOUND_ACCOUNT_ID) {
+      await sessions.setActiveAccountId(null);
+      return;
     }
-    if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
-    removeBoundAccount(account.id);
-    await attempt('当前账号', persistActiveAccountId);
-    clearRemoteCaches();
-    if (failures.length > 0) setMessage(`部分清除失败（${failures.join('、')}），其余项目已清除，请重试`);
-    else setMessage(includePersonalData ? '已解除绑定并清除个人数据' : '已解除绑定；个人数据已保留');
-    setBusy(false);
-  };
+    await sessions.setActiveAccountId(nextId);
+  }
+
+  const unbindAccount = (account: BoundAccount, includePersonalData: boolean) => removeBoundPlayerAccount({
+    includePersonalData,
+    displayName: account.displayName,
+    clearPlayer: async (attempt) => {
+      await attempt('凭据', () => sessions.removeAccount(account.id));
+      await attempt('缓存', () => snapshots.clear(account.id));
+      if (account.providerId === 'osu' && isOsuGameId(account.gameId)) {
+        const osuGameId = account.gameId;
+        const userId = osuUserIdFromAccountId(account.id);
+        if (userId !== null) {
+          await attempt('模式缓存', () => osuCache.clear(osuGameId, userId));
+        }
+      }
+    },
+    clearPersonalData: () => library.clearGameUserData(account.gameId),
+    removeBoundAccount: () => removeBoundAccount(account.id),
+    persistActive: persistActiveAccountId,
+    afterRemove: clearRemoteCaches,
+    formatMessage: (failures) => (
+      failures.length > 0
+        ? `部分清除失败（${failures.join('、')}），其余项目已清除，请重试`
+        : includePersonalData ? '已解除绑定并清除个人数据' : '已解除绑定；个人数据已保留'
+    ),
+    setBusy,
+    setMessage,
+  });
 
   const promptUnbind = (account: BoundAccount) => promptAccountRemoval({
     isLast: isLastGameAccount(account),
@@ -404,73 +416,76 @@ export function GameAccountsScreen() {
     setMessage(`已将本地玩家改名为「${displayName}」`);
   };
 
-  async function persistActiveAccountId() {
-    const nextId = useSession.getState().activeAccountId;
-    if (!nextId || nextId === UNBOUND_ACCOUNT_ID) {
-      await sessions.setActiveAccountId(null);
-      return;
-    }
-    await sessions.setActiveAccountId(nextId);
-  }
+  const removeLocalAccount = (account: BoundAccount, includePersonalData: boolean) => removeBoundPlayerAccount({
+    includePersonalData,
+    displayName: account.displayName,
+    clearPlayer: async (attempt) => {
+      await attempt('账号', () => localAccounts.remove(account.id));
+      await attempt('成绩', () => snapshots.clear(account.id));
+    },
+    clearPersonalData: () => library.clearGameUserData(account.gameId),
+    removeBoundAccount: () => removeBoundAccount(account.id),
+    persistActive: persistActiveAccountId,
+    afterRemove: clearRemoteCaches,
+    formatMessage: (failures) => (
+      failures.length > 0
+        ? `本地玩家已从列表移除，但${failures.join('、')}数据清理失败`
+        : `已删除本地玩家「${account.displayName}」`
+    ),
+    setBusy,
+    setMessage,
+  });
 
-  const removeLocalAccount = async (account: BoundAccount, includePersonalData: boolean) => {
-    setBusy(true);
-    const failures: string[] = [];
-    try { await localAccounts.remove(account.id); } catch { failures.push('账号'); }
-    try { await snapshots.clear(account.id); } catch { failures.push('成绩'); }
-    if (includePersonalData) {
-      try { await library.clearGameUserData(account.gameId); } catch { failures.push('个人数据'); }
-    }
-    removeBoundAccount(account.id);
-    try { await persistActiveAccountId(); } catch { failures.push('当前账号'); }
-    clearRemoteCaches();
-    setMessage(failures.length > 0
-      ? `本地玩家已从列表移除，但${failures.join('、')}数据清理失败`
-      : `已删除本地玩家「${account.displayName}」`);
-    setBusy(false);
-  };
-
-  const removeDemoAccount = async (account: BoundAccount, includePersonalData: boolean) => {
-    setBusy(true);
-    const failures: string[] = [];
-    try {
-      if (account.providerId === 'chunithm-test') await chunithmDemoAccount.remove();
-      else if (account.providerId === 'phigros-test') await phigrosDemoAccount.remove();
-      else if (account.providerId === 'musedash-test') {
-        await museDashDemoAccount.remove();
-        await museDashCache.clearPlayer(MUSEDASH_TEST_USER_ID);
+  const removeDemoAccount = (account: BoundAccount, includePersonalData: boolean) => removeBoundPlayerAccount({
+    includePersonalData,
+    displayName: account.displayName,
+    clearPlayer: async (attempt) => {
+      await attempt('账号', async () => {
+        if (account.providerId === 'chunithm-test') await chunithmDemoAccount.remove();
+        else if (account.providerId === 'phigros-test') await phigrosDemoAccount.remove();
+        else if (account.providerId === 'musedash-test') {
+          await museDashDemoAccount.remove();
+          await museDashCache.clearPlayer(MUSEDASH_TEST_USER_ID);
+        }
+        else await demoAccounts.remove(account.id);
+      });
+    },
+    clearPersonalData: () => library.clearGameUserData(account.gameId),
+    removeBoundAccount: () => removeBoundAccount(account.id),
+    persistActive: persistActiveAccountId,
+    afterRemove: () => {
+      clearRemoteCaches();
+      if (account.providerId === 'musedash-test') {
+        queryClient.removeQueries({ queryKey: ['musedash'] });
       }
-      else await demoAccounts.remove(account.id);
-    } catch {
-      failures.push('账号');
-    }
-    if (includePersonalData) {
-      try { await library.clearGameUserData(account.gameId); } catch { failures.push('个人数据'); }
-    }
-    removeBoundAccount(account.id);
-    try { await persistActiveAccountId(); } catch { failures.push('当前账号'); }
-    clearRemoteCaches();
-    if (account.providerId === 'musedash-test') {
-      queryClient.removeQueries({ queryKey: ['musedash'] });
-    }
-    setMessage(failures.length > 0
-      ? `示例账号已从列表移除，但${failures.join('、')}清理失败`
-      : `已删除示例账号「${account.displayName}」`);
-    setBusy(false);
-  };
+    },
+    formatMessage: (failures) => (
+      failures.length > 0
+        ? `示例账号已从列表移除，但${failures.join('、')}清理失败`
+        : `已删除示例账号「${account.displayName}」`
+    ),
+    setBusy,
+    setMessage,
+  });
 
-  const removeChunithmTempAccount = async (account: BoundAccount) => {
-    setBusy(true);
-    const failures: string[] = [];
-    try { await chunithmTempAccount.remove(); } catch { failures.push('账号'); }
-    removeBoundAccount(account.id);
-    try { await persistActiveAccountId(); } catch { failures.push('当前账号'); }
-    clearRemoteCaches();
-    setMessage(failures.length > 0
-      ? `临时账号已从列表移除，但${failures.join('、')}清理失败`
-      : '已删除中二节奏临时账号');
-    setBusy(false);
-  };
+  const removeChunithmTempAccount = (account: BoundAccount) => removeBoundPlayerAccount({
+    includePersonalData: false,
+    displayName: account.displayName,
+    clearPlayer: async (attempt) => {
+      await attempt('账号', () => chunithmTempAccount.remove());
+    },
+    clearPersonalData: () => Promise.resolve(),
+    removeBoundAccount: () => removeBoundAccount(account.id),
+    persistActive: persistActiveAccountId,
+    afterRemove: clearRemoteCaches,
+    formatMessage: (failures) => (
+      failures.length > 0
+        ? `临时账号已从列表移除，但${failures.join('、')}清理失败`
+        : '已删除中二节奏临时账号'
+    ),
+    setBusy,
+    setMessage,
+  });
 
   const promptRemoveLocal = (account: BoundAccount) => promptAccountRemoval({
     isLast: isLastGameAccount(account),
@@ -688,23 +703,9 @@ export function GameAccountsScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   content: { padding: 16, gap: 12 },
-  gameGroup: { gap: 12 },
-  gameGroupHeader: { minHeight: 34, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  gameGroupTitle: { color: '#111827', fontSize: 18, fontWeight: '800' },
-  gameGroupSummary: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  gameGroupCount: { color: '#6B7280', fontSize: 12 },
-  gameAccounts: { gap: 12 },
-  card: { backgroundColor: '#FFF', borderRadius: 14, padding: 18, gap: 8 },
-  game: { color: '#6B7280', fontSize: 13, fontWeight: '600' },
-  name: { color: '#111827', fontSize: 20, fontWeight: '700' },
-  meta: { color: '#4B5563', fontSize: 14 },
-  state: { color: '#246BFD', fontWeight: '600', marginTop: 4 },
   switch: { color: '#246BFD', textAlign: 'center', paddingTop: 8, fontWeight: '600' },
   rename: { color: '#246BFD', textAlign: 'center', paddingTop: 8, fontWeight: '600' },
   unbind: { color: '#B42318', textAlign: 'center', paddingTop: 8 },
-  emptyCard: { backgroundColor: '#FFF', borderRadius: 14, padding: 24, gap: 8 },
-  emptyTitle: { color: '#111827', fontSize: 17, fontWeight: '700' },
-  emptyBody: { color: '#6B7280', lineHeight: 20 },
   message: { color: '#4B5563', fontSize: 13 },
   error: { color: '#B42318', fontSize: 13 },
   fab: {

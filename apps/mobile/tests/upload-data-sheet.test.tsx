@@ -26,7 +26,13 @@ type TestHubEntry = {
   updatedAt: number;
 };
 type MockUploadInput = {
-  onPhase: (phase: { kind: string; message?: string; uploaded?: number; skipped?: number }) => void;
+  onPhase: (phase: {
+    kind: string;
+    message?: string;
+    uploaded?: number;
+    skipped?: number;
+    authMode?: string;
+  }) => void;
   resolveCatalog: () => Promise<CatalogSnapshot>;
   onQrAccepted?: () => void;
 };
@@ -168,6 +174,25 @@ jest.mock('@/services/upload-maimai-from-friend-code', () => {
     uploadMaimaiFromFriendCode: (...args: unknown[]) => (mockUploadFriend as (...a: unknown[]) => unknown)(...args),
     uploadMaimaiFromQrLogin: (...args: unknown[]) => (mockUploadQr as (...a: unknown[]) => unknown)(...args),
     uploadMaimaiWithScoreHubSession: (...args: unknown[]) => (mockUploadSession as (...a: unknown[]) => unknown)(...args),
+    uploadMaimaiPreferringSession: async (input: MockUploadInput & {
+      preferSession?: boolean;
+      signal?: { aborted?: boolean };
+    }) => {
+      if (input.preferSession) {
+        try {
+          return await mockUploadSession(input);
+        } catch (error) {
+          if (input.signal?.aborted) throw error;
+          if (!actual.isScoreHubAuthExpired(error)) throw error;
+          input.onPhase({
+            kind: 'logging_in',
+            message: '会话已失效，改用好友码重新登录…',
+            authMode: 'friend_code',
+          });
+        }
+      }
+      return mockUploadFriend(input);
+    },
   };
 });
 jest.mock('@/domain/maimai-maintenance', () => ({

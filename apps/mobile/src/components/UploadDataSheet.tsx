@@ -17,7 +17,6 @@ import type { ScoreHubAbortSignal, ScoreHubDxnetJobStats } from '@/services/scor
 import {
   fetchMe,
   fetchScoreHubStatistics,
-  ScoreHubError,
   scoreHubErrorToUserMessage,
 } from '@/services/score-hub-client';
 import {
@@ -29,9 +28,8 @@ import {
   isScoreHubAuthExpired,
   resolveUploadTargets,
   scoreHubSuccessHint,
-  uploadMaimaiFromFriendCode,
   uploadMaimaiFromQrLogin,
-  uploadMaimaiWithScoreHubSession,
+  uploadMaimaiPreferringSession,
   uploadTaskController,
   type UploadPhase,
   type UploadResult,
@@ -56,35 +54,6 @@ import { uploadDataSheetStyles as styles } from '@/components/upload-data-sheet-
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { useAppTheme } from '@/theme/app-theme';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle';
-
-function phaseLabel(phase: UploadPhase): string {
-  switch (phase.kind) {
-    case 'idle':
-      return '';
-    case 'logging_in':
-    case 'sending_friend':
-    case 'awaiting_friend':
-    case 'fetching_scores':
-    case 'syncing_catalog':
-    case 'awaiting_catalog':
-    case 'binding':
-    case 'uploading':
-    case 'syncing':
-    case 'canceling':
-    case 'done':
-    case 'error':
-      return phase.message;
-    default:
-      return '';
-  }
-}
-
-type CatalogWaiter = {
-  promise: Promise<CatalogSnapshot>;
-  resolve: (catalog: CatalogSnapshot) => void;
-  reject: (error: Error) => void;
-  unsubscribeCancel?: () => void;
-};
 
 export function UploadDataSheet({
   visible,
@@ -142,17 +111,11 @@ export function UploadDataSheet({
   const abortRef = useRef<ScoreHubAbortSignal>(uploadTaskController.getSignal());
   const uploadInFlightRef = useRef(initialTask.status === 'running' || initialTask.status === 'paused');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const idleResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistedSelectedIdsRef = useRef<string[]>([]);
   const wasVisibleRef = useRef(false);
   const bindLookupSeqRef = useRef(0);
-  const catalogRef = useRef(catalog);
-  const requestCatalogRef = useRef(requestCatalog);
-  const catalogWaiterRef = useRef<CatalogWaiter | null>(null);
-  const catalogRequestRef = useRef<Promise<void> | null>(null);
 
-  catalogRef.current = catalog;
-  requestCatalogRef.current = requestCatalog;
+  uploadTaskController.attachCatalogSource(catalog, requestCatalog);
 
   const targets = resolveUploadTargets(accounts, sessionsByAccountId);
   const statsSummary = statsStatus === 'loading'
@@ -196,17 +159,6 @@ export function UploadDataSheet({
     setPhase(next);
     uploadTaskController.setPhase(next);
     onPhaseChange?.(next);
-    if (idleResetTimerRef.current) {
-      clearTimeout(idleResetTimerRef.current);
-      idleResetTimerRef.current = null;
-    }
-    if (next.kind === 'done') {
-      idleResetTimerRef.current = setTimeout(() => {
-        idleResetTimerRef.current = null;
-        setPhase({ kind: 'idle' });
-        onPhaseChange?.({ kind: 'idle' });
-      }, 5_000);
-    }
   }, [onPhaseChange]);
 
   useEffect(() => uploadTaskController.subscribe((snapshot) => {
@@ -219,78 +171,14 @@ export function UploadDataSheet({
     onPhaseChange?.(snapshot.phase);
   }), [onPhaseChange]);
 
-  const finishCatalogWait = useCallback((nextCatalog: CatalogSnapshot) => {
-    const waiter = catalogWaiterRef.current;
-    if (!waiter) return;
-    catalogWaiterRef.current = null;
-    waiter.unsubscribeCancel?.();
-    waiter.resolve(nextCatalog);
-  }, []);
-
-  const cancelCatalogWait = useCallback(() => {
-    const waiter = catalogWaiterRef.current;
-    if (!waiter) return;
-    catalogWaiterRef.current = null;
-    waiter.unsubscribeCancel?.();
-    waiter.reject(new ScoreHubError('已取消'));
-  }, []);
-
-  const syncCatalogForUpload = useCallback(() => {
-    const waiter = catalogWaiterRef.current;
-    if (!waiter || catalogRequestRef.current) return;
-    applyPhase({ kind: 'syncing_catalog', message: '成绩已获取，正在同步曲库…' });
-    const attempt = Promise.resolve().then(async () => {
-      try {
-        const nextCatalog = await requestCatalogRef.current?.();
-        if (abortRef.current.aborted) {
-          cancelCatalogWait();
-          return;
-        }
-        const availableCatalog = nextCatalog ?? catalogRef.current;
-        if (availableCatalog) {
-          finishCatalogWait(availableCatalog);
-        } else if (catalogWaiterRef.current === waiter) {
-          applyPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
-        }
-      } catch {
-        if (catalogWaiterRef.current === waiter && !abortRef.current.aborted) {
-          applyPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
-        }
-      } finally {
-        if (catalogRequestRef.current === attempt) catalogRequestRef.current = null;
-        if (catalogWaiterRef.current && catalogWaiterRef.current !== waiter && !abortRef.current.aborted) {
-          applyPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
-        }
-      }
-    });
-    catalogRequestRef.current = attempt;
-  }, [applyPhase, cancelCatalogWait, finishCatalogWait]);
-
-  const resolveCatalogForUpload = useCallback((): Promise<CatalogSnapshot> => {
-    const availableCatalog = catalogRef.current;
-    if (availableCatalog) return Promise.resolve(availableCatalog);
-    if (abortRef.current.aborted) return Promise.reject(new ScoreHubError('已取消'));
-    const existing = catalogWaiterRef.current;
-    if (existing) return existing.promise;
-
-    let resolve!: (nextCatalog: CatalogSnapshot) => void;
-    let reject!: (error: Error) => void;
-    const promise = new Promise<CatalogSnapshot>((promiseResolve, promiseReject) => {
-      resolve = promiseResolve;
-      reject = promiseReject;
-    });
-    const waiter: CatalogWaiter = { promise, resolve, reject };
-    waiter.unsubscribeCancel = abortRef.current.onCancel?.(() => {
-      if (catalogWaiterRef.current === waiter) cancelCatalogWait();
-    });
-    catalogWaiterRef.current = waiter;
-    syncCatalogForUpload();
-    return promise;
-  }, [cancelCatalogWait, syncCatalogForUpload]);
-
   useEffect(() => {
-    if (catalog) finishCatalogWait(catalog);
-  }, [catalog, finishCatalogWait]);
+    if (catalog) uploadTaskController.finishCatalogWait(catalog);
+  }, [catalog]);
+
+  const resolveCatalogForUpload = useCallback(
+    () => uploadTaskController.waitForCatalog(),
+    [],
+  );
 
   const refreshStoredList = useCallback(async () => {
     const list = await scoreHubAccountStore.listWithToken();
@@ -450,7 +338,6 @@ export function UploadDataSheet({
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    if (idleResetTimerRef.current) clearTimeout(idleResetTimerRef.current);
   }, []);
 
   const close = () => {
@@ -464,7 +351,6 @@ export function UploadDataSheet({
   const cancelUpload = () => {
     if (!running || abortRef.current.aborted) return;
     uploadTaskController.cancel();
-    cancelCatalogWait();
     applyPhase({ kind: 'canceling', message: '正在取消…' });
   };
 
@@ -602,27 +488,6 @@ export function UploadDataSheet({
     applyQrText(text);
   };
 
-  const runFriendCodeUpload = async () => uploadMaimaiFromFriendCode({
-    friendCode,
-    selectedAccountIds: selectedIds,
-    targets,
-    sessionsByAccountId,
-    resolveCatalog: resolveCatalogForUpload,
-    signal: abortRef.current,
-    onPhase: applyPhase,
-    onNeedFriendAccept: (botFriendCode) => {
-      showActionNotification({
-        title: '请同意好友申请',
-        message: botFriendCode
-          ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
-          : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
-        variant: 'info',
-        actions: [{ label: '知道了', tone: 'default' }],
-      });
-    },
-    onLxnsTokensRotated,
-  });
-
   const uploadErrorMessage = (error: unknown, fallback: string) => (
     scoreHubErrorToUserMessage(error, providerErrorToUserMessage(error, fallback))
   );
@@ -655,32 +520,27 @@ export function UploadDataSheet({
     });
 
     try {
-      let result: UploadResult;
-      if (preferSession) {
-        try {
-          result = await uploadMaimaiWithScoreHubSession({
-            expectedFriendCode: friendCode.trim(),
-            selectedAccountIds: selectedIds,
-            targets,
-            sessionsByAccountId,
-            resolveCatalog: resolveCatalogForUpload,
-            signal: abortRef.current,
-            onPhase: applyPhase,
-            onLxnsTokensRotated,
+      const result = await uploadMaimaiPreferringSession({
+        friendCode,
+        preferSession,
+        selectedAccountIds: selectedIds,
+        targets,
+        sessionsByAccountId,
+        resolveCatalog: resolveCatalogForUpload,
+        signal: abortRef.current,
+        onPhase: applyPhase,
+        onNeedFriendAccept: (botFriendCode) => {
+          showActionNotification({
+            title: '请同意好友申请',
+            message: botFriendCode
+              ? `Bot（${botFriendCode}）已向你发送好友申请。请打开“舞萌-中二公众号-我的记录-舞萌DX”接受后，本页会继续自动进行。`
+              : '请打开“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 的好友申请，接受后本页会继续自动进行。',
+            variant: 'info',
+            actions: [{ label: '知道了', tone: 'default' }],
           });
-        } catch (error) {
-          if (abortRef.current.aborted) throw error;
-          if (!isScoreHubAuthExpired(error)) throw error;
-          applyPhase({
-            kind: 'logging_in',
-            message: '会话已失效，改用好友码重新登录…',
-            authMode: 'friend_code',
-          });
-          result = await runFriendCodeUpload();
-        }
-      } else {
-        result = await runFriendCodeUpload();
-      }
+        },
+        onLxnsTokensRotated,
+      });
 
       setLastResult(result);
       uploadTaskController.complete(result);
@@ -774,7 +634,7 @@ export function UploadDataSheet({
     }
   };
 
-  const statusText = phaseLabel(phase);
+  const statusText = phase.kind === 'idle' ? '' : phase.message;
   const botHint = phase.kind === 'awaiting_friend' && phase.botFriendCode
     ? `Bot 好友码：${phase.botFriendCode}`
     : null;
@@ -888,7 +748,7 @@ export function UploadDataSheet({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="重试同步曲库"
-              onPress={syncCatalogForUpload}
+              onPress={() => uploadTaskController.retryCatalogSync()}
               style={({ pressed }) => [
                 styles.secondary,
                 { borderColor: theme.border, backgroundColor: theme.surface },

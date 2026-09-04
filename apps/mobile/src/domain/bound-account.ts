@@ -1,6 +1,6 @@
 import type { GameId, ProviderId } from './game-bind-options';
 import { formatPlayerScore } from './game-data';
-import type { OsuGameId } from './game-mode-family';
+import { isOsuGameId, type OsuGameId } from './game-mode-family';
 import { getGameProfile } from './game-profile';
 
 /** 已绑定账号：切换列表展开后的一页行（图标由 UI 按 provider/game 解析）。 */
@@ -344,6 +344,50 @@ export function osuUserIdFromAccountId(accountId: string): number | null {
   if (!match) return null;
   const userId = Number(match[2]);
   return Number.isSafeInteger(userId) && userId > 0 ? userId : null;
+}
+
+export function boundAccountFromStored(account: {
+  id: string;
+  gameId: GameId;
+  providerId: ProviderId;
+  displayName: string;
+  scoreDisplay: string;
+  challengeModeRank?: number | null;
+  ratingPossession?: string | null;
+}): BoundAccount {
+  if (account.gameId === 'phigros' && account.providerId === 'phi-taptap') {
+    const rating = Number(account.scoreDisplay);
+    const restored = createPhigrosBoundAccount({
+      playerId: account.displayName,
+      rating: Number.isFinite(rating) ? rating : 0,
+      challengeModeRank: account.challengeModeRank,
+    });
+    return Number.isFinite(rating) ? restored : { ...restored, scoreDisplay: '—' };
+  }
+  if (account.gameId === 'chunithm' && account.providerId === 'lxns') {
+    const rating = Number(account.scoreDisplay);
+    return createChunithmBoundAccount({
+      accountId: account.id,
+      displayName: account.displayName,
+      rating: Number.isFinite(rating) ? rating : null,
+      ratingPossession: account.ratingPossession,
+    });
+  }
+  if (isOsuGameId(account.gameId) && account.providerId === 'osu') {
+    const pp = Number(account.scoreDisplay);
+    return createOsuBoundAccount({
+      gameId: account.gameId,
+      userId: osuUserIdFromAccountId(account.id) ?? 0,
+      displayName: account.displayName,
+      pp: Number.isFinite(pp) && account.scoreDisplay !== '—' ? pp : null,
+    });
+  }
+  return createMaimaiBoundAccount({
+    providerId: account.providerId,
+    displayName: account.displayName,
+    rating: Number.parseInt(account.scoreDisplay, 10) || 0,
+    playerId: account.id.split(':').slice(2).join(':') || account.displayName,
+  });
 }
 
 export function groupBoundAccountGameIds(accounts: BoundAccount[]): GameId[] {
