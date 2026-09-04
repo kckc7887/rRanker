@@ -13,7 +13,7 @@ import {
   renderApplicationBestImageCard,
 } from '@/features/best-image/application-best-image-card';
 import { buildBestImageCanvasRuntime } from '@/features/best-image/build-best-image-canvas-runtime';
-import { minimumBestImageHeight } from '@/features/best-image/build-best-image-html';
+import { minimumBestImageHeight } from '@/features/best-image/best-image-messages';
 import {
   escapePhigrosBestImageHtml,
   ratingName,

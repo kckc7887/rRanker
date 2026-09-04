@@ -69,6 +69,18 @@ import { MuseDashCache } from '@/services/muse-dash-cache';
 import { resolveTufAvatarUrl } from '@/domain/tuf';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
 import { PhiraCache } from '@/services/phira-cache';
+import {
+  DEMO_REMOVE_COPY,
+  LOCAL_REMOVE_COPY,
+  PHIRA_UNBIND_COPY,
+  REMOTE_UNBIND_COPY,
+  addOrSwitchDemoAccount,
+  bindOrSwitchPublicPlayer,
+  formatPhiraRemovalMessage,
+  formatPublicPlayerRemovalMessage,
+  promptAccountRemoval,
+  removeBoundPlayerAccount,
+} from '@/screens/game-accounts-actions';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -123,6 +135,11 @@ export function GameAccountsScreen() {
     boundAccounts.filter((item) => item.gameId === account.gameId).length === 1
   );
 
+  const onSelectAccount = (account: BoundAccount) => {
+    void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
+      .catch(() => undefined);
+  };
+
   const unbindAccount = async (account: BoundAccount, includePersonalData: boolean) => {
     setBusy(true);
     const failures: string[] = [];
@@ -147,78 +164,40 @@ export function GameAccountsScreen() {
     setBusy(false);
   };
 
-  const promptUnbind = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
-    title: '解除最后一个账号',
-    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认解绑并保留个人数据', tone: 'destructive', onPress: () => unbindAccount(account, false) },
-      { label: '解绑并清除个人数据', tone: 'destructive', onPress: () => unbindAccount(account, true) },
-    ],
-  } : {
-    title: '解除绑定',
-    message: `将清除「${account.displayName}」的本机凭据和成绩缓存。`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认解绑', tone: 'destructive', onPress: () => unbindAccount(account, false) },
-    ],
+  const promptUnbind = (account: BoundAccount) => promptAccountRemoval({
+    isLast: isLastGameAccount(account),
+    displayName: account.displayName,
+    copy: REMOTE_UNBIND_COPY,
+    onKeepPersonal: () => void unbindAccount(account, false),
+    onClearPersonal: () => void unbindAccount(account, true),
+    showActionNotification,
   });
 
-  const promptRemoveTuf = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
-    title: '解除最后一个账号',
-    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认解绑并保留个人数据', tone: 'destructive', onPress: () => void removeTufAccount(account, false) },
-      { label: '解绑并清除个人数据', tone: 'destructive', onPress: () => void removeTufAccount(account, true) },
-    ],
-  } : {
-    title: '解除绑定',
-    message: `将清除「${account.displayName}」的本机凭据和成绩缓存。`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认解绑', tone: 'destructive', onPress: () => void removeTufAccount(account, false) },
-    ],
+  const promptRemoveTuf = (account: BoundAccount) => promptAccountRemoval({
+    isLast: isLastGameAccount(account),
+    displayName: account.displayName,
+    copy: REMOTE_UNBIND_COPY,
+    onKeepPersonal: () => void removeTufAccount(account, false),
+    onClearPersonal: () => void removeTufAccount(account, true),
+    showActionNotification,
   });
 
-  const promptRemoveMuseDash = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
-    title: '解除最后一个账号',
-    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认解绑并保留个人数据', tone: 'destructive', onPress: () => void removeMuseDashAccount(account, false) },
-      { label: '解绑并清除个人数据', tone: 'destructive', onPress: () => void removeMuseDashAccount(account, true) },
-    ],
-  } : {
-    title: '解除绑定',
-    message: `将清除「${account.displayName}」的本机凭据和成绩缓存。`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认解绑', tone: 'destructive', onPress: () => void removeMuseDashAccount(account, false) },
-    ],
+  const promptRemoveMuseDash = (account: BoundAccount) => promptAccountRemoval({
+    isLast: isLastGameAccount(account),
+    displayName: account.displayName,
+    copy: REMOTE_UNBIND_COPY,
+    onKeepPersonal: () => void removeMuseDashAccount(account, false),
+    onClearPersonal: () => void removeMuseDashAccount(account, true),
+    showActionNotification,
   });
 
-  const promptRemovePhira = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
-    title: '解除最后一个账号',
-    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏和本地标签？`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认解绑并保留个人数据', tone: 'destructive', onPress: () => void removePhiraAccount(account, false) },
-      { label: '解绑并清除个人数据', tone: 'destructive', onPress: () => void removePhiraAccount(account, true) },
-    ],
-  } : {
-    title: '解除玩家绑定', message: `将清除「${account.displayName}」的本机资料和成绩缓存。`, variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认解绑', tone: 'destructive', onPress: () => void removePhiraAccount(account, false) },
-    ],
+  const promptRemovePhira = (account: BoundAccount) => promptAccountRemoval({
+    isLast: isLastGameAccount(account),
+    displayName: account.displayName,
+    copy: PHIRA_UNBIND_COPY,
+    onKeepPersonal: () => void removePhiraAccount(account, false),
+    onClearPersonal: () => void removePhiraAccount(account, true),
+    showActionNotification,
   });
 
   const addLocalAccount = async () => {
@@ -255,233 +234,168 @@ export function GameAccountsScreen() {
     }
   };
 
-  const addDemoAccount = async () => {
-    setBusy(true);
-    try {
-      const existing = boundAccounts.find((account) => account.providerId === 'maimai-test');
-      if (existing) {
-        setPickerVisible(false);
-        InteractionManager.runAfterInteractions(() => {
-          onSelectAccount(existing);
-          setMessage(`示例账号「${existing.displayName}」已在列表中，已切换到该账号`);
-        });
-        return;
-      }
-      const account = createMaxedMaimaiTestAccount();
-      await demoAccounts.upsert({ id: account.id, displayName: account.displayName });
-      upsertBoundAccount(account);
-      setPickerVisible(false);
-      InteractionManager.runAfterInteractions(() => {
-        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
-          .catch(() => undefined);
-        setMessage(`已添加示例账号「${account.displayName}」`);
-      });
-    } catch (error) {
-      showNotification({
-        title: '添加失败',
-        message: providerErrorToUserMessage(error, '无法添加示例账号，请重试。'),
-        variant: 'error',
-      });
-    } finally {
-      setBusy(false);
-    }
+  const demoAccountUi = {
+    setBusy,
+    setPickerVisible,
+    setMessage,
+    onSelectExisting: onSelectAccount,
+    upsertBoundAccount,
+    showNotification,
   };
 
-  const addChunithmDemoAccount = async () => {
-    setBusy(true);
-    try {
-      const existing = boundAccounts.find((account) => account.providerId === 'chunithm-test');
-      if (existing) {
-        setPickerVisible(false);
-        InteractionManager.runAfterInteractions(() => {
-          onSelectAccount(existing);
-          setMessage(`示例账号「${existing.displayName}」已在列表中，已切换到该账号`);
-        });
-        return;
-      }
-      const account = createMaxedChunithmTestAccount();
-      await chunithmDemoAccount.save({ id: account.id, displayName: account.displayName });
-      upsertBoundAccount(account);
-      setPickerVisible(false);
-      InteractionManager.runAfterInteractions(() => {
-        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
-          .catch(() => undefined);
-        setMessage(`已添加中二节奏示例账号「${account.displayName}」`);
-      });
-    } catch (error) {
-      showNotification({
-        title: '添加失败',
-        message: providerErrorToUserMessage(error, '无法添加中二节奏示例账号，请重试。'),
-        variant: 'error',
-      });
-    } finally {
-      setBusy(false);
-    }
-    queryClient.removeQueries({ queryKey: ['tuf'] });
-  };
+  const addDemoAccount = () => addOrSwitchDemoAccount({
+    ...demoAccountUi,
+    existing: boundAccounts.find((account) => account.providerId === 'maimai-test'),
+    create: createMaxedMaimaiTestAccount,
+    persist: (account) => demoAccounts.upsert({ id: account.id, displayName: account.displayName }),
+    existingMessage: (account) => `示例账号「${account.displayName}」已在列表中，已切换到该账号`,
+    successMessage: (account) => `已添加示例账号「${account.displayName}」`,
+    errorFallback: '无法添加示例账号，请重试。',
+  });
+
+  const addChunithmDemoAccount = () => addOrSwitchDemoAccount({
+    ...demoAccountUi,
+    existing: boundAccounts.find((account) => account.providerId === 'chunithm-test'),
+    create: createMaxedChunithmTestAccount,
+    persist: (account) => chunithmDemoAccount.save({ id: account.id, displayName: account.displayName }),
+    existingMessage: (account) => `示例账号「${account.displayName}」已在列表中，已切换到该账号`,
+    successMessage: (account) => `已添加中二节奏示例账号「${account.displayName}」`,
+    errorFallback: '无法添加中二节奏示例账号，请重试。',
+    afterFinally: () => { queryClient.removeQueries({ queryKey: ['tuf'] }); },
+  });
 
   const bindTufPlayer = async (player: import('@/domain/tuf').TufPlayer) => {
-    const existing = boundAccounts.find((account) => account.id === `adofai:tuf:${player.id}`);
-    if (existing) {
-      await switchBoundAccount(existing.id, { navigateToOverview: false });
-      setMessage(`TUF 玩家「${existing.displayName}」已绑定，已切换到该玩家`);
-      setTufPickerVisible(false);
-      return;
-    }
-    const account = createTufBoundAccount({
-      playerId: player.id, displayName: player.name, avatarUrl: resolveTufAvatarUrl(player),
+    await bindOrSwitchPublicPlayer({
+      existing: boundAccounts.find((account) => account.id === `adofai:tuf:${player.id}`),
+      existingMessage: (account) => `TUF 玩家「${account.displayName}」已绑定，已切换到该玩家`,
+      onExistingBound: () => setTufPickerVisible(false),
+      create: () => createTufBoundAccount({
+        playerId: player.id, displayName: player.name, avatarUrl: resolveTufAvatarUrl(player),
+      }),
+      persist: async (account) => {
+        await tufAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: account.avatarUrl });
+      },
+      successMessage: () => `已绑定 TUF 玩家「${player.name}」`,
+      onCreated: () => { setTufPickerVisible(false); setPickerVisible(false); },
+      upsertBoundAccount,
+      setMessage,
     });
-    await tufAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: account.avatarUrl });
-    upsertBoundAccount(account);
-    await switchBoundAccount(account.id, { navigateToOverview: false });
-    setMessage(`已绑定 TUF 玩家「${player.name}」`);
-    setTufPickerVisible(false);
-    setPickerVisible(false);
   };
 
-  const removeTufAccount = async (account: BoundAccount, includePersonalData: boolean) => {
-    setBusy(true);
-    const failures: string[] = [];
-    const attempt = async (label: string, action: () => Promise<unknown>) => {
-      try { await action(); } catch { failures.push(label); }
-    };
-    const playerId = tufPlayerIdFromAccountId(account.id);
-    if (playerId !== null) {
-      await attempt('账号', () => tufAccounts.remove(playerId));
-      await attempt('缓存', () => tufCache.clearPlayer(playerId));
-    }
-    if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
-    removeBoundAccount(account.id);
-    await attempt('当前账号', persistActiveAccountId);
-    queryClient.removeQueries({ queryKey: ['tuf'] });
-    setMessage(failures.length > 0
-      ? `部分清除失败（${failures.join('、')}），其余项目已清除，请重试`
-      : includePersonalData
-        ? `已解除 TUF 玩家「${account.displayName}」的绑定并清除个人数据`
-        : `已解除 TUF 玩家「${account.displayName}」的绑定；个人数据已保留`);
-    setBusy(false);
-  };
+  const removeTufAccount = (account: BoundAccount, includePersonalData: boolean) => removeBoundPlayerAccount({
+    includePersonalData,
+    displayName: account.displayName,
+    clearPlayer: async (attempt) => {
+      const playerId = tufPlayerIdFromAccountId(account.id);
+      if (playerId !== null) {
+        await attempt('账号', () => tufAccounts.remove(playerId));
+        await attempt('缓存', () => tufCache.clearPlayer(playerId));
+      }
+    },
+    clearPersonalData: () => library.clearGameUserData(account.gameId),
+    removeBoundAccount: () => removeBoundAccount(account.id),
+    persistActive: persistActiveAccountId,
+    afterRemove: () => { queryClient.removeQueries({ queryKey: ['tuf'] }); },
+    formatMessage: (failures) => formatPublicPlayerRemovalMessage({
+      failures, includePersonalData, displayName: account.displayName, gameLabel: 'TUF',
+    }),
+    setBusy,
+    setMessage,
+  });
 
   const bindPhiraPlayer = async (player: import('@/domain/phira').PhiraUser) => {
-    const account = createPhiraBoundAccount({ playerId: player.id, displayName: player.name, rks: player.rks, avatarUrl: player.avatar });
-    await phiraAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: player.avatar });
-    upsertBoundAccount(account); await switchBoundAccount(account.id, { navigateToOverview: false });
-    setMessage(`已绑定 Phira 玩家「${player.name}」`); setPhiraPickerVisible(false); setPickerVisible(false);
+    await bindOrSwitchPublicPlayer({
+      existing: undefined,
+      existingMessage: (account) => `已绑定 Phira 玩家「${account.displayName}」`,
+      onExistingBound: () => undefined,
+      create: () => createPhiraBoundAccount({
+        playerId: player.id, displayName: player.name, rks: player.rks, avatarUrl: player.avatar,
+      }),
+      persist: async () => {
+        await phiraAccounts.upsert({ playerId: player.id, displayName: player.name, avatarUrl: player.avatar });
+      },
+      successMessage: () => `已绑定 Phira 玩家「${player.name}」`,
+      onCreated: () => { setPhiraPickerVisible(false); setPickerVisible(false); },
+      upsertBoundAccount,
+      setMessage,
+    });
   };
 
-  const removePhiraAccount = async (account: BoundAccount, includePersonalData: boolean) => {
-    setBusy(true); const failures: string[] = [];
-    const attempt = async (label: string, action: () => Promise<unknown>) => { try { await action(); } catch { failures.push(label); } };
-    const playerId = phiraPlayerIdFromAccountId(account.id);
-    if (playerId !== null) { await attempt('账号', () => phiraAccounts.remove(playerId)); await attempt('缓存', () => phiraCache.clearPlayer(playerId)); }
-    if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
-    removeBoundAccount(account.id); await attempt('当前账号', persistActiveAccountId); queryClient.removeQueries({ queryKey: ['phira'] });
-    setMessage(failures.length ? `部分清除失败（${failures.join('、')}）` : `已解除 Phira 玩家「${account.displayName}」的绑定`); setBusy(false);
-  };
+  const removePhiraAccount = (account: BoundAccount, includePersonalData: boolean) => removeBoundPlayerAccount({
+    includePersonalData,
+    displayName: account.displayName,
+    clearPlayer: async (attempt) => {
+      const playerId = phiraPlayerIdFromAccountId(account.id);
+      if (playerId !== null) {
+        await attempt('账号', () => phiraAccounts.remove(playerId));
+        await attempt('缓存', () => phiraCache.clearPlayer(playerId));
+      }
+    },
+    clearPersonalData: () => library.clearGameUserData(account.gameId),
+    removeBoundAccount: () => removeBoundAccount(account.id),
+    persistActive: persistActiveAccountId,
+    afterRemove: () => { queryClient.removeQueries({ queryKey: ['phira'] }); },
+    formatMessage: (failures) => formatPhiraRemovalMessage(failures, account.displayName),
+    setBusy,
+    setMessage,
+  });
 
   const bindMuseDashPlayer = async (player: import('@/components/MuseDashPlayerPickerSheet').MuseDashSearchResult) => {
-    const existing = boundAccounts.find((account) => account.id === `musedash:musedash-moe:${player.userId}`);
-    if (existing) {
-      await switchBoundAccount(existing.id, { navigateToOverview: false });
-      setMessage(`喵斯快跑玩家「${existing.displayName}」已绑定，已切换到该玩家`);
-      setMuseDashPickerVisible(false);
-      return;
-    }
-    const account = createMuseDashBoundAccount({ userId: player.userId, displayName: player.nickname });
-    await museDashAccounts.upsert({ userId: player.userId, displayName: player.nickname });
-    upsertBoundAccount(account);
-    await switchBoundAccount(account.id, { navigateToOverview: false });
-    setMessage(`已绑定喵斯快跑玩家「${player.nickname}」`);
-    setMuseDashPickerVisible(false);
-    setPickerVisible(false);
+    await bindOrSwitchPublicPlayer({
+      existing: boundAccounts.find((account) => account.id === `musedash:musedash-moe:${player.userId}`),
+      existingMessage: (account) => `喵斯快跑玩家「${account.displayName}」已绑定，已切换到该玩家`,
+      onExistingBound: () => setMuseDashPickerVisible(false),
+      create: () => createMuseDashBoundAccount({ userId: player.userId, displayName: player.nickname }),
+      persist: async () => {
+        await museDashAccounts.upsert({ userId: player.userId, displayName: player.nickname });
+      },
+      successMessage: () => `已绑定喵斯快跑玩家「${player.nickname}」`,
+      onCreated: () => { setMuseDashPickerVisible(false); setPickerVisible(false); },
+      upsertBoundAccount,
+      setMessage,
+    });
   };
 
-  const removeMuseDashAccount = async (account: BoundAccount, includePersonalData: boolean) => {
-    setBusy(true);
-    const failures: string[] = [];
-    const attempt = async (label: string, action: () => Promise<unknown>) => {
-      try { await action(); } catch { failures.push(label); }
-    };
-    const userId = museDashUserIdFromAccountId(account.id);
-    if (userId !== null) {
-      await attempt('账号', () => museDashAccounts.remove(userId));
-      await attempt('缓存', () => museDashCache.clearPlayer(userId));
-    }
-    if (includePersonalData) await attempt('个人数据', () => library.clearGameUserData(account.gameId));
-    removeBoundAccount(account.id);
-    await attempt('当前账号', persistActiveAccountId);
-    queryClient.removeQueries({ queryKey: ['musedash'] });
-    setMessage(failures.length > 0
-      ? `部分清除失败（${failures.join('、')}），其余项目已清除，请重试`
-      : includePersonalData
-        ? `已解除喵斯快跑玩家「${account.displayName}」的绑定并清除个人数据`
-        : `已解除喵斯快跑玩家「${account.displayName}」的绑定；个人数据已保留`);
-    setBusy(false);
-  };
-
-  const addPhigrosDemoAccount = async () => {
-    setBusy(true);
-    try {
-      const existing = boundAccounts.find((account) => account.providerId === 'phigros-test');
-      if (existing) {
-        setPickerVisible(false);
-        InteractionManager.runAfterInteractions(() => {
-          onSelectAccount(existing);
-          setMessage(`示例账号「${existing.displayName}」已在列表中，已切换到该账号`);
-        });
-        return;
+  const removeMuseDashAccount = (account: BoundAccount, includePersonalData: boolean) => removeBoundPlayerAccount({
+    includePersonalData,
+    displayName: account.displayName,
+    clearPlayer: async (attempt) => {
+      const userId = museDashUserIdFromAccountId(account.id);
+      if (userId !== null) {
+        await attempt('账号', () => museDashAccounts.remove(userId));
+        await attempt('缓存', () => museDashCache.clearPlayer(userId));
       }
-      const account = createMaxedPhigrosTestAccount();
-      await phigrosDemoAccount.save({ id: account.id, displayName: account.displayName });
-      upsertBoundAccount(account);
-      setPickerVisible(false);
-      InteractionManager.runAfterInteractions(() => {
-        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
-          .catch(() => undefined);
-        setMessage(`已添加 Phigros 示例账号「${account.displayName}」`);
-      });
-    } catch (error) {
-      showNotification({
-        title: '添加失败',
-        message: providerErrorToUserMessage(error, '无法添加 Phigros 示例账号，请重试。'),
-        variant: 'error',
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
+    },
+    clearPersonalData: () => library.clearGameUserData(account.gameId),
+    removeBoundAccount: () => removeBoundAccount(account.id),
+    persistActive: persistActiveAccountId,
+    afterRemove: () => { queryClient.removeQueries({ queryKey: ['musedash'] }); },
+    formatMessage: (failures) => formatPublicPlayerRemovalMessage({
+      failures, includePersonalData, displayName: account.displayName, gameLabel: '喵斯快跑',
+    }),
+    setBusy,
+    setMessage,
+  });
 
-  const addMuseDashDemoAccount = async () => {
-    setBusy(true);
-    try {
-      const existing = boundAccounts.find((account) => account.providerId === 'musedash-test');
-      if (existing) {
-        setPickerVisible(false);
-        InteractionManager.runAfterInteractions(() => {
-          onSelectAccount(existing);
-          setMessage(`示例账号「${existing.displayName}」已在列表中，已切换到该账号`);
-        });
-        return;
-      }
-      const account = createMaxedMuseDashTestAccount();
-      await museDashDemoAccount.save({ id: account.id, displayName: account.displayName });
-      upsertBoundAccount(account);
-      setPickerVisible(false);
-      InteractionManager.runAfterInteractions(() => {
-        void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
-          .catch(() => undefined);
-        setMessage(`已添加喵斯快跑示例账号「${account.displayName}」`);
-      });
-    } catch (error) {
-      showNotification({
-        title: '添加失败',
-        message: providerErrorToUserMessage(error, '无法添加喵斯快跑示例账号，请重试。'),
-        variant: 'error',
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
+  const addPhigrosDemoAccount = () => addOrSwitchDemoAccount({
+    ...demoAccountUi,
+    existing: boundAccounts.find((account) => account.providerId === 'phigros-test'),
+    create: createMaxedPhigrosTestAccount,
+    persist: (account) => phigrosDemoAccount.save({ id: account.id, displayName: account.displayName }),
+    existingMessage: (account) => `示例账号「${account.displayName}」已在列表中，已切换到该账号`,
+    successMessage: (account) => `已添加 Phigros 示例账号「${account.displayName}」`,
+    errorFallback: '无法添加 Phigros 示例账号，请重试。',
+  });
+
+  const addMuseDashDemoAccount = () => addOrSwitchDemoAccount({
+    ...demoAccountUi,
+    existing: boundAccounts.find((account) => account.providerId === 'musedash-test'),
+    create: createMaxedMuseDashTestAccount,
+    persist: (account) => museDashDemoAccount.save({ id: account.id, displayName: account.displayName }),
+    existingMessage: (account) => `示例账号「${account.displayName}」已在列表中，已切换到该账号`,
+    successMessage: (account) => `已添加喵斯快跑示例账号「${account.displayName}」`,
+    errorFallback: '无法添加喵斯快跑示例账号，请重试。',
+  });
 
   const saveLocalAccountName = async (account: BoundAccount, displayName: string) => {
     await localAccounts.upsert({ id: account.id, displayName });
@@ -558,42 +472,22 @@ export function GameAccountsScreen() {
     setBusy(false);
   };
 
-  const promptRemoveLocal = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
-    title: '删除最后一个本地玩家',
-    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认删除并保留个人数据', tone: 'destructive', onPress: () => removeLocalAccount(account, false) },
-      { label: '删除并清除个人数据', tone: 'destructive', onPress: () => removeLocalAccount(account, true) },
-    ],
-  } : {
-    title: '删除本地玩家',
-    message: `将删除「${account.displayName}」及其本机成绩，且无法恢复。`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认删除', tone: 'destructive', onPress: () => removeLocalAccount(account, false) },
-    ],
+  const promptRemoveLocal = (account: BoundAccount) => promptAccountRemoval({
+    isLast: isLastGameAccount(account),
+    displayName: account.displayName,
+    copy: LOCAL_REMOVE_COPY,
+    onKeepPersonal: () => void removeLocalAccount(account, false),
+    onClearPersonal: () => void removeLocalAccount(account, true),
+    showActionNotification,
   });
 
-  const promptRemoveDemo = (account: BoundAccount) => showActionNotification(isLastGameAccount(account) ? {
-    title: '删除最后一个示例账号',
-    message: `「${account.displayName}」是该游戏最后一个账号。是否同时清除该游戏的收藏、练习清单和本地标签？`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认删除并保留个人数据', tone: 'destructive', onPress: () => removeDemoAccount(account, false) },
-      { label: '删除并清除个人数据', tone: 'destructive', onPress: () => removeDemoAccount(account, true) },
-    ],
-  } : {
-    title: '删除示例账号',
-    message: `将移除「${account.displayName}」。之后可在添加菜单中重新加入示例查分器。`,
-    variant: 'warning',
-    actions: [
-      { label: '取消', tone: 'cancel' },
-      { label: '确认删除', tone: 'destructive', onPress: () => removeDemoAccount(account, false) },
-    ],
+  const promptRemoveDemo = (account: BoundAccount) => promptAccountRemoval({
+    isLast: isLastGameAccount(account),
+    displayName: account.displayName,
+    copy: DEMO_REMOVE_COPY,
+    onKeepPersonal: () => void removeDemoAccount(account, false),
+    onClearPersonal: () => void removeDemoAccount(account, true),
+    showActionNotification,
   });
 
   const promptRemoveChunithmTemp = (account: BoundAccount) => showActionNotification({
@@ -666,12 +560,6 @@ export function GameAccountsScreen() {
     setLoginProviderId(null);
     setLoginGameId(null);
     setPickerVisible(false);
-  };
-
-  const onSelectAccount = (account: BoundAccount) => {
-    // 游戏管理内切换：只换会话，留在本页，不跳总览。
-    void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
-      .catch(() => undefined);
   };
 
   const toggleGame = (gameId: GameId) => setCollapsedManagedGameIds((current) => {

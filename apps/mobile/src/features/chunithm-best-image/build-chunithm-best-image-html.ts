@@ -16,7 +16,7 @@ import {
   layeredBadgeCssBackground,
   STATUS_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
-import { minimumBestImageHeight } from '@/features/best-image/build-best-image-html';
+import { minimumBestImageHeight } from '@/features/best-image/best-image-messages';
 import {
   bestImageBridgeMeasureScript,
   bestImageBridgeReadyScript,
