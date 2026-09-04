@@ -7,6 +7,25 @@ import {
   MAIMAI_CHART_PREVIEW_ASSET_BASE,
   MAIMAI_CHART_PREVIEW_SKIN_ASSETS,
 } from '@/features/maimai-chart-preview/maimai-chart-preview-skin-manifest.generated';
+import {
+  isMaimaiChartPreviewRuntimeSkinPath,
+  maimaiChartPreviewRuntimeSkinAssets,
+  maimaiChartPreviewSkinStagePath,
+} from '@/features/maimai-chart-preview/maimai-chart-preview-skin-files';
+import {
+  eachLineSkinPath,
+  guideSkinPath,
+  holdEndSkinPath,
+  holdSkinPath,
+  slideSkinPath,
+  starSkinPath,
+  tapSkinPath,
+  touchBorderSkinPath,
+  touchPointSkinPath,
+  touchSkinPath,
+  wifiSkinPath,
+} from '@/features/maimai-chart-preview/engine/renderers/skinAtlas';
+import { judgeTextSkinPath, slideOkShape, slideOkSkinPath } from '@/features/maimai-chart-preview/engine/utils/judgeHint';
 
 const mockFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
@@ -44,6 +63,11 @@ vi.mock('expo-file-system', () => {
       mockFs.files.set(this.uri, typeof content === 'string' ? Uint8Array.from(Buffer.from(content)) : Uint8Array.from(content));
     }
     delete() { mockFs.files.delete(this.uri); }
+    copy(destination: File) {
+      const bytes = mockFs.files.get(this.uri);
+      if (!bytes) throw new Error('source does not exist');
+      mockFs.files.set(destination.uri, Uint8Array.from(bytes));
+    }
     move(destination: File) {
       const bytes = mockFs.files.get(this.uri);
       if (!bytes) throw new Error('source does not exist');
@@ -162,7 +186,101 @@ describe('maimai chart preview remote assets', () => {
     );
     expect(prepare).not.toContain('sensor.webp');
     expect(prepare).not.toContain("require('../../../assets/maimai-chart-preview/answer.wav')");
-    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_SKIN_ASSETS');
+    expect(prepare).toContain('maimaiChartPreviewRuntimeSkinAssets');
+    expect(prepare).toContain('maimaiChartPreviewSkinStagePath');
     expect(prepare).toContain('MAIMAI_CHART_PREVIEW_ANSWER_SOUND');
+    expect(prepare).toContain('remoteCacheDirectory');
+  });
+
+  it('flattens runtime skins under skin/ and excludes autoplay-unused mine art', () => {
+    expect(maimaiChartPreviewSkinStagePath('TapSkins/tap.png')).toBe('skin/TapSkins_tap.png');
+    expect(isMaimaiChartPreviewRuntimeSkinPath('TapSkins/tap.png')).toBe(true);
+    expect(isMaimaiChartPreviewRuntimeSkinPath('TapSkins/tap_mine.png')).toBe(false);
+    expect(isMaimaiChartPreviewRuntimeSkinPath('NoteGuideSkins/Mine.png')).toBe(false);
+    expect(isMaimaiChartPreviewRuntimeSkinPath('HoldSkins/hold_off.png')).toBe(false);
+    expect(maimaiChartPreviewRuntimeSkinAssets().length).toBeLessThan(MAIMAI_CHART_PREVIEW_SKIN_ASSETS.length);
+    expect(maimaiChartPreviewRuntimeSkinAssets().every((asset) => !asset.path.toLowerCase().includes('mine'))).toBe(true);
+  });
+
+  it('covers every sprite path the autoplay renderer can request', () => {
+    const runtime = new Set(maimaiChartPreviewRuntimeSkinAssets().map((asset) => asset.path));
+    const required = new Set<string>([
+      'outline.png',
+      'TapSkins/tap_ex.png',
+      'HoldSkins/hold_ex.png',
+      'StarSkins/star_ex.png',
+      'StarSkins/star_ex_double.png',
+      'TouchHoldSkins/touchhold_border.png',
+      'TouchHoldSkins/touchhold_break_border.png',
+    ]);
+    for (let i = 0; i < 4; i += 1) {
+      required.add(`TouchHoldSkins/touchhold_${i}.png`);
+      required.add(`TouchHoldSkins/touchhold_break_${i}.png`);
+    }
+    for (const isBreak of [false, true]) {
+      for (const isEach of [false, true]) {
+        required.add(tapSkinPath(isBreak, isEach));
+        required.add(holdSkinPath(isBreak, isEach, false));
+        required.add(holdSkinPath(isBreak, isEach, true));
+        required.add(holdEndSkinPath(isBreak, isEach));
+        required.add(slideSkinPath(isBreak, isEach, false));
+        required.add(slideSkinPath(isBreak, isEach, true));
+        required.add(touchSkinPath(isBreak, isEach));
+        required.add(touchPointSkinPath(isBreak, isEach));
+        for (const count of [2, 3] as const) {
+          const border = touchBorderSkinPath(count, isBreak, isEach);
+          if (border) required.add(border);
+        }
+        for (const isDouble of [false, true]) {
+          for (const pink of [false, true]) {
+            required.add(starSkinPath(isBreak, isEach, isDouble, pink));
+          }
+        }
+        for (let wifi = 0; wifi <= 10; wifi += 1) {
+          required.add(wifiSkinPath(wifi, isBreak, isEach, false));
+          required.add(wifiSkinPath(wifi, isBreak, isEach, true));
+        }
+      }
+    }
+    for (const span of [1, 2, 3, 4] as const) required.add(eachLineSkinPath(span));
+    for (const kind of ['normal', 'each', 'break', 'slide'] as const) required.add(guideSkinPath(kind));
+    for (const kind of ['cPerfect', 'perfect', 'cPerfectBreak', 'break2600', 'break2550'] as const) {
+      required.add(judgeTextSkinPath(kind));
+    }
+    for (const type of ['w', '-', 'q']) {
+      for (const start of [1, 5]) {
+        for (const end of [1, 2, 3, 8]) {
+          const shape = slideOkShape(type, start, end);
+          required.add(slideOkSkinPath(shape, 'just'));
+          required.add(slideOkSkinPath(shape, 'critical'));
+        }
+      }
+    }
+    const missing = [...required].filter((path) => !runtime.has(path));
+    expect(missing).toEqual([]);
+  });
+
+  it('copies remote skins from a persistent cache directory without re-downloading', async () => {
+    mockFs.remotes.set(TAP.url, TAP_BYTES);
+    const cacheDir = mockFs.makeStageDirectory('rranker-chart-preview-remote') as never;
+    const stagedName = maimaiChartPreviewSkinStagePath(TAP.path);
+
+    await runPlan({
+      remoteCacheDirectory: cacheDir,
+      stagedAssets: [{ fileName: stagedName, url: TAP.url, bytes: TAP.bytes }],
+    });
+    expect(mockFs.downloadCalls).toEqual([TAP.url]);
+    expect(mockFs.files.get(`file://cache/rranker-chart-preview-remote/${stagedName}`)?.byteLength).toBe(TAP.bytes);
+
+    for (const key of [...mockFs.files.keys()]) {
+      if (key.startsWith('file://cache/rranker-test/')) mockFs.files.delete(key);
+    }
+
+    await runPlan({
+      remoteCacheDirectory: cacheDir,
+      stagedAssets: [{ fileName: stagedName, url: TAP.url, bytes: TAP.bytes }],
+    });
+    expect(mockFs.downloadCalls).toEqual([TAP.url]);
+    expect(mockFs.files.get(stageUri(stagedName))?.byteLength).toBe(TAP.bytes);
   });
 });

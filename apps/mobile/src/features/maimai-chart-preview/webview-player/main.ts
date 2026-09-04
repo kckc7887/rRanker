@@ -17,6 +17,7 @@ import {
   type PreparedAudioEvent,
 } from '../engine';
 import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
+import { ChartPreviewSkin } from '../engine/renderers/skinAtlas';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 import {
@@ -464,16 +465,17 @@ async function main(): Promise<void> {
     canvasWrap.classList.add('dual');
     document.body.classList.add('dual');
   }
-  const renderers = canvases.map((c) => new MainRenderer(c));
+  const skin = new ChartPreviewSkin();
   statusEl.textContent = '正在加载皮肤…';
   try {
-    await Promise.all(renderers.map((r) => r.loadSkin()));
+    await skin.load('./');
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '皮肤加载失败，请返回重试。';
     postStatus('error', { message: '皮肤加载失败，请返回重试。', diagnostic });
     return;
   }
+  const renderers = canvases.map((c) => new MainRenderer(c, { skin }));
   const applyRendererSettings = (r: MainRenderer) => {
     r.setJudgmentLineDesign((saved.judgmentLineDesign as string) || 'sensor');
     r.setPlaybackSpeed(saved.playbackSpeed ?? 1);

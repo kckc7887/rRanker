@@ -6,10 +6,11 @@ import {
   applyChartPreviewConfigToHtml,
   type ChartPreviewInjectConfig,
 } from './chart-preview-inject';
+import { MAIMAI_CHART_PREVIEW_ANSWER_SOUND } from './maimai-chart-preview-skin-manifest.generated';
 import {
-  MAIMAI_CHART_PREVIEW_ANSWER_SOUND,
-  MAIMAI_CHART_PREVIEW_SKIN_ASSETS,
-} from './maimai-chart-preview-skin-manifest.generated';
+  maimaiChartPreviewRuntimeSkinAssets,
+  maimaiChartPreviewSkinStagePath,
+} from './maimai-chart-preview-skin-files';
 
 export {
   applyChartPreviewConfigToHtml,
@@ -47,10 +48,11 @@ export async function prepareChartPreviewWebViewSource(
 ): Promise<ChartPreviewWebViewSource> {
   return prepareChartPreviewWebviewFromPlan({
     directoryName: 'rranker-chart-preview',
+    remoteCacheDirectory: chartPreviewStageDirectoryBase('rranker-chart-preview-remote'),
     stagedAssets: [
       { fileName: 'player.js', moduleId: PLAYER_MODULE },
-      ...MAIMAI_CHART_PREVIEW_SKIN_ASSETS.map(({ path, url, bytes }) => ({
-        fileName: path,
+      ...maimaiChartPreviewRuntimeSkinAssets().map(({ path, url, bytes }) => ({
+        fileName: maimaiChartPreviewSkinStagePath(path),
         url,
         bytes,
       })),
