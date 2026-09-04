@@ -310,7 +310,7 @@ describe('Chunithm records and B50 screens', () => {
     expect(screen.getByTestId('chunithm-primary-tags-1-2')).toBeTruthy();
     expect(screen.getByTestId('chunithm-achievement-tags-1-2')).toBeTruthy();
     expect(screen.getByTestId('flowing-chunithm-score')).toBeTruthy();
-    expect(screen.getByTestId('flowing-chunithm-rank')).toBeTruthy();
+    expect(screen.getByTestId('chunithm-rank-SSS+')).toBeTruthy();
     expect(screen.getAllByTestId('gradient-chunithm-score')).toHaveLength(2);
     expect(CHUNITHM_RANK_GRADIENT).toEqual([
       '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',

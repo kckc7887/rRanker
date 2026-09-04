@@ -237,8 +237,8 @@ describe('settings navigation', () => {
     await waitFor(() => expect(screen.getByText('PANDORA PARADOXXX')).toBeTruthy());
     expect(screen.getByText('101.0000%')).toBeTruthy();
     expect(screen.getByTestId('status-AP')).toBeTruthy();
-    expect(screen.getByTestId('flowing-status-FDX+')).toBeTruthy();
-    expect(screen.getByTestId('flowing-rate-SSS+')).toBeTruthy();
+    expect(screen.getByTestId('status-FDX+')).toBeTruthy();
+    expect(screen.getByTestId('rainbow-rate-SSS+')).toBeTruthy();
     expect(screen.queryByLabelText('查看谱面 PANDORA PARADOXXX SD remaster')).toBeNull();
     fireEvent.press(screen.getByText('PANDORA PARADOXXX'));
     expect(mockPush).not.toHaveBeenCalled();

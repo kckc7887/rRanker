@@ -12,6 +12,7 @@ export function useFlowingProgress(enabled: boolean, duration: number): Animated
       toValue: 1,
       duration,
       easing: Easing.linear,
+      isInteraction: false,
       useNativeDriver: true,
     }));
     animation.start();

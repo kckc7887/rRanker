@@ -152,13 +152,13 @@ export function RemoteImage({
         cachePolicy={cachePolicy}
         onDisplay={onDisplay}
         onError={onError}
-        source={source}
+        source={active ? source : null}
       />
     );
   }
 
   if (!supportsCompressedCache && (mode === 'thumbnail' || mode === 'artwork')) {
-    return <Image {...props} cachePolicy="memory" onDisplay={onDisplay} onError={onError} source={source} />;
+    return <Image {...props} cachePolicy="memory" onDisplay={onDisplay} onError={onError} source={active ? source : null} />;
   }
 
   if (mode === 'none' || mode === 'native' || !requestKey) {
@@ -168,7 +168,7 @@ export function RemoteImage({
         cachePolicy={mode === 'none' ? 'none' : 'memory-disk'}
         onDisplay={onDisplay}
         onError={onError}
-        source={source}
+        source={active ? source : null}
       />
     );
   }
@@ -206,7 +206,7 @@ export function RemoteImage({
         }
         onError?.(event);
       }}
-      source={!requestReady || phase === 'checking'
+      source={!active || !requestReady || phase === 'checking'
         ? null
         : showingCached
           ? resolved?.source ?? null

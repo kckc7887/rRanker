@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Animated,
-  Easing,
   StyleSheet,
   Text,
   type StyleProp,
@@ -18,7 +17,7 @@ import {
   BADGE_RAINBOW_FILL_COLORS,
   BEST_IMAGE_RAINBOW_TEXT,
 } from '@/features/best-image/best-image-badge-theme';
-import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 
 type LayeredGradientBadgeTone = 'rainbow' | 'gold';
 type GradientColors = readonly [string, string, ...string[]];
@@ -56,23 +55,9 @@ export function LayeredGradientBadge({
   numberOfLines?: number;
 }) {
   const colors = colorsFor(tone);
-  const tabActive = useCachedTabActive();
   const [width, setWidth] = useState(52);
-  const progress = useRef(new Animated.Value(0)).current;
+  const progress = useFlowingProgress(flowing, 1_400);
   const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [-width, 0] });
-
-  useEffect(() => {
-    progress.setValue(0);
-    if (!flowing || !tabActive) return;
-    const animation = Animated.loop(Animated.timing(progress, {
-      toValue: 1,
-      duration: 1_400,
-      easing: Easing.linear,
-      useNativeDriver: true,
-    }));
-    animation.start();
-    return () => animation.stop();
-  }, [flowing, progress, tabActive]);
 
   return (
     <LinearGradient

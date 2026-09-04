@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { Freeze } from 'react-freeze';
 import { InteractionManager, StyleSheet, View } from 'react-native';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';
@@ -17,6 +18,23 @@ const CachedTabActiveContext = createContext(true);
 
 export function useCachedTabActive(): boolean {
   return useContext(CachedTabActiveContext);
+}
+
+function DelayedFreeze({ freeze, children }: { freeze: boolean; children: ReactNode }) {
+  const [freezeState, setFreezeState] = useState(false);
+  useEffect(() => {
+    if (!freeze) {
+      setFreezeState(false);
+      return undefined;
+    }
+    const id = setTimeout(() => {
+      setFreezeState(true);
+    }, 0);
+    return () => {
+      clearTimeout(id);
+    };
+  }, [freeze]);
+  return <Freeze freeze={freeze && freezeState}>{children}</Freeze>;
 }
 
 export function CachedTabScreen({ children }: { children: ReactNode }) {
@@ -72,7 +90,10 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
     }
     if (lifecycle.foregroundReady) {
       scheduleActivation();
-      return stopActivation;
+      return () => {
+        activationTaskRef.current?.cancel();
+        activationTaskRef.current = null;
+      };
     }
     stopActivation();
     return undefined;
@@ -85,7 +106,9 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
   return (
     <RemoteImageActivityScope active={active}>
       <CachedTabActiveContext.Provider value={active}>
-        {cachedChildrenRef.current}
+        <DelayedFreeze freeze={!active}>
+          {cachedChildrenRef.current}
+        </DelayedFreeze>
       </CachedTabActiveContext.Provider>
     </RemoteImageActivityScope>
   );
