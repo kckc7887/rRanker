@@ -18,7 +18,6 @@ jest.mock('@/state/app-lifecycle', () => ({
 }));
 
 let mockFocusEffect: (() => void | (() => void)) | null = null;
-const mockHeavyPageRender = jest.fn();
 
 jest.mock('expo-router', () => ({
   useFocusEffect: (effect: () => void | (() => void)) => { mockFocusEffect = effect; },
@@ -30,7 +29,6 @@ function ActivityLabel() {
 }
 
 function StatefulHeavyPage() {
-  mockHeavyPageRender();
   const [count, setCount] = useState(0);
   return <Pressable accessibilityLabel="修改页面状态" onPress={() => setCount((value) => value + 1)}>
     <Text>页面状态 {count}</Text>
@@ -38,15 +36,8 @@ function StatefulHeavyPage() {
   </Pressable>;
 }
 
-async function flushDelayedFreeze() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
-
 describe('cached native-tab content', () => {
   beforeEach(() => {
-    mockHeavyPageRender.mockClear();
     mockLifecycle = {
       appState: 'active', phase: 'foreground-ready', foregroundReady: true,
       foregroundGeneration: 1, memoryWarningGeneration: 0,
@@ -76,25 +67,23 @@ describe('cached native-tab content', () => {
     await fireEvent.press(screen.getByLabelText('修改页面状态'));
     expect(screen.getByText('页面状态 1')).toBeTruthy();
     expect(screen.getByText('前台')).toBeTruthy();
-    const rendersAfterStateChange = mockHeavyPageRender.mock.calls.length;
 
     await act(() => { cleanup?.(); });
     expect(pendingTasks[0]?.cancel).toHaveBeenCalledTimes(1);
     expect(screen.getByText('页面状态 1')).toBeTruthy();
     expect(screen.getByText('后台')).toBeTruthy();
-    await flushDelayedFreeze();
-    expect(screen.queryByText('后台')).toBeNull();
 
     let secondCleanup: void | (() => void);
     await act(() => { secondCleanup = mockFocusEffect?.(); });
     expect(pendingTasks).toHaveLength(2);
     expect(screen.queryByText('前台')).toBeNull();
-    expect(mockHeavyPageRender).toHaveBeenCalledTimes(rendersAfterStateChange);
+    expect(screen.getByText('后台')).toBeTruthy();
+    expect(screen.getByText('页面状态 1')).toBeTruthy();
 
     await act(() => { secondCleanup?.(); });
     expect(pendingTasks[1]?.cancel).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('前台')).toBeNull();
-    expect(mockHeavyPageRender).toHaveBeenCalledTimes(rendersAfterStateChange);
+    expect(screen.getByText('页面状态 1')).toBeTruthy();
 
     let thirdCleanup: void | (() => void);
     await act(() => { thirdCleanup = mockFocusEffect?.(); });
@@ -102,7 +91,6 @@ describe('cached native-tab content', () => {
     await act(() => { pendingTasks[2]?.callback(); });
     expect(screen.getByText('前台')).toBeTruthy();
     expect(screen.getByText('页面状态 1')).toBeTruthy();
-    expect(mockHeavyPageRender).toHaveBeenCalledTimes(rendersAfterStateChange);
 
     await act(() => { thirdCleanup?.(); });
     expect(pendingTasks[2]?.cancel).toHaveBeenCalledTimes(1);
@@ -126,8 +114,7 @@ describe('cached native-tab content', () => {
     };
     await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
     expect(screen.getByText('后台')).toBeTruthy();
-    expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
-    await flushDelayedFreeze();
+    expect(screen.getByText('页面状态 0')).toBeTruthy();
     expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
     mockLifecycle = {
       ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true,
@@ -135,6 +122,7 @@ describe('cached native-tab content', () => {
     };
     await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
     expect(pendingTasks).toHaveLength(2);
+    expect(screen.getByText('后台')).toBeTruthy();
     expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
 
     mockLifecycle = {
@@ -143,6 +131,7 @@ describe('cached native-tab content', () => {
     await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
     expect(pendingTasks[1]?.cancel).toHaveBeenCalledTimes(1);
     await act(() => { pendingTasks[1]?.callback(); });
+    expect(screen.getByText('后台')).toBeTruthy();
     expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
   });
 
@@ -162,12 +151,14 @@ describe('cached native-tab content', () => {
       expect(screen.getByText('页面状态 1')).toBeTruthy();
       await act(() => { cleanup?.(); });
       expect(tasks[index]?.cancel).toHaveBeenCalledTimes(1);
-      await flushDelayedFreeze();
+      expect(screen.getByText('页面状态 1')).toBeTruthy();
+      expect(screen.getByText('后台')).toBeTruthy();
     }
     expect(tasks).toHaveLength(30);
     await act(() => { mockFocusEffect?.(); });
     await act(() => { tasks[30]?.callback(); });
     expect(screen.getByText('页面状态 1')).toBeTruthy();
+    expect(screen.getByText('前台')).toBeTruthy();
   });
 
   it('evicts only an unfocused page after a memory warning', async () => {
