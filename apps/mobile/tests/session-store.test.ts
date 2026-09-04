@@ -34,11 +34,15 @@ import {
 
 const updateAccountSession = vi.hoisted(() => vi.fn(async () => undefined));
 
-vi.mock('@/storage/secure-session-store', () => ({
-  SecureSessionStore: class {
-    updateAccountSession = updateAccountSession;
-  },
-}));
+vi.mock('@/storage/secure-session-store', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/storage/secure-session-store')>();
+  return {
+    ...actual,
+    SecureSessionStore: class {
+      updateAccountSession = updateAccountSession;
+    },
+  };
+});
 
 vi.mock('expo-secure-store', () => ({
   getItemAsync: vi.fn(async () => null),

@@ -42,6 +42,24 @@ export type SessionVault = {
   accounts: StoredProviderAccount[];
 };
 
+export function sessionsMapFromVault(vault: SessionVault): Record<string, ProviderSession> {
+  const credentials = new Map(
+    vault.credentials.map((credential) => [credential.id, credential.session] as const),
+  );
+  const map: Record<string, ProviderSession> = {};
+  for (const account of vault.accounts) {
+    const session = credentials.get(account.credentialId);
+    if (session) map[account.id] = session;
+  }
+  return map;
+}
+
+export function credentialIdsMapFromVault(vault: SessionVault): Record<string, string> {
+  return Object.fromEntries(
+    vault.accounts.map((account) => [account.id, account.credentialId]),
+  );
+}
+
 type V2StoredProviderAccount = Omit<StoredProviderAccount, 'credentialId'> & {
   session: ProviderSession;
 };
