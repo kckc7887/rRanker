@@ -21,6 +21,8 @@
 
 Node.js 最低版本由 `apps/mobile/package.json` 约束为 22.13；当前 iOS CI 使用 Node.js 22 和 `npm ci`。最低系统版本为 iOS 16.4、Android 7，iOS 编译要求 Xcode 26.4 及以上，CI 在读取应用元数据前检查 Xcode。Web 配置存在，但项目执行规范禁止启动 Expo Web。
 
+Reanimated 4.5.1 与 Worklets 0.10.1 按 Expo 57 发布包兼容表显式锁定为直接依赖；Router 引入的动画依赖与 Expo Modules Core 必须共用兼容版本。锁文件需同时通过 CI 的 Node.js 22 / npm 10 与本地 npm 11 的 `npm ci` 校验，不能仅依赖某一版本 npm 自动补齐 peer dependencies。
+
 ## 路由与运行时装配
 
 `apps/mobile/app/_layout.tsx` 是运行时装配中心：
