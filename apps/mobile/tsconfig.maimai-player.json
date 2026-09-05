@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"], "strict": true, "noEmit": true,
+    "skipLibCheck": true, "types": [], "allowSyntheticDefaultImports": true
+  },
+  "include": ["src/features/maimai-chart-preview/engine/**/*.ts", "src/features/maimai-chart-preview/webview-player/**/*.ts"]
+}

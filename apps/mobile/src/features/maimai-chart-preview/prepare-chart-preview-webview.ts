@@ -62,7 +62,7 @@ export async function prepareChartPreviewWebViewSource(
     dataUrlAssets: [
       {
         key: 'answerSoundUrl',
-        fileName: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.path,
+        fileName: `${MAIMAI_CHART_PREVIEW_ANSWER_SOUND.sha256.slice(0, 16)}_${MAIMAI_CHART_PREVIEW_ANSWER_SOUND.path}`,
         url: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.url,
         bytes: MAIMAI_CHART_PREVIEW_ANSWER_SOUND.bytes,
       },

@@ -284,7 +284,8 @@ describe('chart preview webview helpers', () => {
     expect(player).toContain('parseJudgeHint(saved.judgeHint)');
     expect(player).toContain('r.setJudgeHint(parseJudgeHint(saved.judgeHint))');
     expect(player).toContain('r.setShowHitEffect(saved.showHitEffect ?? true)');
-    expect(inject).toContain("judgeHint?: 'distinguish' | 'unified' | 'hidden'");
+    expect(inject).toContain("from './configuration'");
+    expect(readFileSync(resolve(process.cwd(), 'src/features/maimai-chart-preview/configuration.ts'), 'utf8')).toContain("judgeHint?: 'distinguish' | 'unified' | 'hidden'");
   });
 
   it('offers the three persisted background choices and stages image/video media', () => {
@@ -316,8 +317,8 @@ describe('chart preview webview helpers', () => {
       backgroundMode: 'video',
       videoBackgroundConfirmed: true,
     })).toEqual({ mode: 'video', prompted: true });
-    expect(renderer).toContain('setBackgroundImage(image: HTMLImageElement | null)');
-    expect(renderer).toContain('getBackgroundImageCache(image: HTMLImageElement)');
+    expect(renderer).toContain('setBackgroundImage(value: HTMLImageElement | null)');
+    expect(renderer).toContain('ctx.drawImage(this.backgroundCache, 0, 0)');
     expect(renderer).not.toContain('cacheBackgroundVideoFrame');
   });
 

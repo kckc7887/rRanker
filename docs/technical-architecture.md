@@ -87,6 +87,32 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；预览轮播同一时刻只挂载当前 WebView 页面。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
+### 舞萌谱面确认内核
+
+`features/maimai-chart-preview/configuration.ts` 是注入层与播放器的配置类型来源。
+`chart-preview-inject.ts` 保留原导出，设置存储、页面桥接和 LXNS 谱面/音乐入口继续使用
+既有公共链路；普通难度和 Buddy `inote_2` / `inote_102` 使用同一解析器。
+
+舞萌语义集中在专属 `engine/`：`SimaiParser` 输出带来源位置、实际时间、HS/SV、
+Each 分组和分支/分段的音符模型；`prepareChart` 预计算路径与判定事件；`buildFrame`
+按指定实际时刻生成有序绘制命令；`MainRenderer` 用 Canvas 2D 执行贴图、三切片与遮罩。
+解析基准是 MajSimai 2.2.2 锁定 commit，表现数据来自本地 MajdataViewX。
+滑条各段书写时长保存在模型；播放按 ViewX 的合并路径总时长与路径长度分配视觉速度。
+`ScrollTimeline` 只影响视觉位置，音乐、正解音、结束和判定使用实际时间。
+播放器通过共享 `PlaybackClock` 重建暂停、跳转和变速状态；变速/跳转取消旧正解音调度。
+
+皮肤清单保存 SHA-256、尺寸与透明边界；缓存文件名包含资源修订，正解音文件名包含
+内容哈希。仍由共享计划执行器按大小检查缓存及落盘，通过 `skin-data.js` 注入 PNG。
+`skinSemantics.ts` 解释语义名、S3 别名、100 PPU、中心锚点及切片/朝向；缺少必需贴图
+或尺寸不匹配时阻止播放。线上对象不因命名修正而变化。
+
+独立参考程序位于 `apps/mobile/scripts/maimai-reference/`；原始 C# 路径输出和
+MajSimai 输出作为 TypeScript 测试的外部基准。素材审计和浏览器截图位于本地被忽略的
+`apps/mobile/build/`。语法范围、素材映射、复现命令与验收限制见
+`docs/maimai-chart-preview.md`。八张 ViewX 内置特效贴图及其层级由
+`effectSprites.generated.ts` 随播放器加载，皮肤仍通过 S3/`skin-data.js` 加载。
+烟花 Shader 使用 Canvas 预计算颜色贴图和径向遮罩；Unity 画面对照与原生平台仍待验收。
+
 ## 开发、测试与构建
 
 所有 npm 命令在 `apps/mobile` 执行：
@@ -102,7 +128,12 @@ npm test
 
 `npm run test:unit` 使用 Vitest 运行 `tests/**/*.test.ts`；`npm run test:ui` 使用 Jest Expo 串行运行 `tests/**/*.test.tsx`。公共 UI 还由 Host Tree/Style 哈希、HTML/脚本字符串金样和虚构游戏合同保护，禁止仅更新基线来接受未解释差异。
 
-应用 `tsconfig.json` 排除了舞萌播放器入口及引擎目录；`maimai-chart-preview-webview.test.ts` 使用 TypeScript 独立检查播放器入口及其依赖中的未定义名称。播放器源码改动后运行 `npm run build:chart-preview`，生成 `assets/maimai-chart-preview/index.html`、`player.js` 和供 Metro 加载的 `player.bundle`；两个脚本产物必须一致。打包成功不代表类型检查或手机 WebView 播放验收通过。
+应用 `tsconfig.json` 排除了舞萌播放器入口及引擎目录；`npm run typecheck` 同时调用
+`typecheck:maimai-player`，通过 `tsconfig.maimai-player.json` 对整个引擎、入口和依赖
+执行严格类型检查。`maimai-chart-preview-webview.test.ts` 另检查入口名称和页面合同。
+播放器源码改动后运行 `npm run build:chart-preview`，生成
+`assets/maimai-chart-preview/index.html`、`player.js` 和供 Metro 加载的 `player.bundle`；
+两个脚本产物必须一致。打包成功不代表手机 WebView 播放验收通过。
 
 本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
 

@@ -1,6 +1,4 @@
-export type ChartFileType = "simai" | "ma2";
-
-export { parseMa2Chart } from "./Ma2Parser";
+export type ChartFileType = "simai";
 export {
   getAvailableDifficulties,
   parseSimaiChart,

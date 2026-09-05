@@ -1,6 +1,6 @@
 /**
  * 舞萌谱面确认 WebView 播放器入口。
- * 音乐时钟与正解音边界对齐水鱼：音乐唯一时钟，AudioManager 只管正解音。
+ * 音乐通过共享 PlaybackClock 定时，AudioManager 调度实际时间的正解音。
  */
 import {
   AudioManager,
@@ -34,47 +34,16 @@ import {
   type ChartPreviewBackgroundMode,
 } from './interactionScheduler';
 
+import type { ChartPreviewSettings, ChartPreviewInjectConfig as ChartPreviewConfig } from '../configuration';
+
 declare global {
   interface Window {
     __CHART_PREVIEW__?: ChartPreviewConfig;
     ReactNativeWebView?: { postMessage: (message: string) => void };
   }
 }
-
-export interface ChartPreviewSettings {
-  hiSpeed?: number;
-  playbackSpeed?: number;
-  musicVolume?: number;
-  soundVolume?: number;
-  mirrorMode?: string;
-  judgmentLineDesign?: string;
-  pinkSlideStart?: boolean;
-  slideRotation?: boolean;
-  highlightExNotes?: boolean;
-  normalColorBreakSlide?: boolean;
-  showHitEffect?: boolean;
-  judgeHint?: 'distinguish' | 'unified' | 'hidden';
-  showFireworks?: boolean;
-  backgroundMode?: BackgroundMode;
-  videoBackgroundPrompted?: boolean;
-  videoBackgroundConfirmed?: boolean;
-}
-
+export type { ChartPreviewSettings, ChartPreviewInjectConfig as ChartPreviewConfig } from '../configuration';
 type BackgroundMode = ChartPreviewBackgroundMode;
-
-export interface ChartPreviewConfig {
-  chartId: number;
-  difficulty: ChartDifficulty;
-  title?: string;
-  settings?: ChartPreviewSettings | null;
-  answerSoundUrl?: string;
-  backgroundImageUrl?: string;
-  backgroundVideoUrl?: string;
-  /** Buddy 宴谱预览侧：'0'=1P，'1'=2P，'dual'=1P+2P 同屏。 */
-  buddySide?: '0' | '1' | 'dual';
-  /** 播放器界面主题：由 RN 侧按应用深浅色注入。 */
-  theme?: 'light' | 'dark';
-}
 
 const CHART_BASE = 'https://assets2.lxns.net/maimai/chart';
 const MUSIC_BASE = 'https://assets2.lxns.net/maimai/music';
@@ -445,15 +414,15 @@ async function main(): Promise<void> {
     return;
   }
   const chart = charts[0]!;
-  const allNotes = charts.flatMap((c) => c.notes ?? []);
+  const allNotes = charts.flatMap((c) => c.notes.map(n => {
+    const shift = 240000 / charts[0]!.bpm - 240000 / c.bpm;
+    return { ...n, timingMs: n.timingMs + shift, endTimeMs: n.endTimeMs + shift };
+  }));
 
   const totalBeats = Math.max(4, ...charts.map((c) => c.measures * 4));
   let totalDurationMs = 0;
   for (const c of charts) {
-    let duration = beatsToMs(c.measures * 4, c.bpmEvents, c.bpm);
-    for (const note of c.notes ?? []) {
-      if (note.timingMs > duration) duration = note.timingMs;
-    }
+    const duration = c.durationMs + 240000 / chart.bpm - 240000 / c.bpm;
     if (duration > totalDurationMs) totalDurationMs = duration;
   }
 
@@ -469,7 +438,7 @@ async function main(): Promise<void> {
   const skin = new ChartPreviewSkin();
   statusEl.textContent = '正在加载皮肤…';
   try {
-    await skin.load('./');
+    await skin.load();
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '皮肤加载失败，请返回重试。';
@@ -493,7 +462,13 @@ async function main(): Promise<void> {
     r.setJudgeHint(parseJudgeHint(saved.judgeHint));
     r.setShowFireworks(saved.showFireworks ?? true);
   };
-  for (const r of renderers) applyRendererSettings(r);
+  try {
+    for (let i = 0; i < renderers.length; i++) { applyRendererSettings(renderers[i]); renderers[i].prepare(charts[i]); }
+  } catch (error) {
+    statusEl.textContent = '这份谱面暂时无法播放，请返回选择其他谱面。';
+    postStatus('error', { message: statusEl.textContent, diagnostic: error instanceof Error ? error.message : String(error) });
+    return;
+  }
 
   let audioContext: AudioContext | null = null;
   let musicGain: GainNode | null = null;
@@ -506,6 +481,7 @@ async function main(): Promise<void> {
   const playbackClock = new PlaybackClock();
   let isSourcePlaying = false;
   let isPlaying = false;
+  let playbackEpoch = 0;
   let preciseBeats = 0;
   let playbackSpeed = saved.playbackSpeed ?? 1;
   const musicOffset = 0;
@@ -600,10 +576,10 @@ async function main(): Promise<void> {
     return playbackClock.positionAt(outputTime);
   };
 
-  const playFromMusicPosition = async (positionSec: number) => {
+  const playFromMusicPosition = async (positionSec: number, epoch: number) => {
     if (!audioBuffer) return;
     const ctx = await ensureAudio();
-    if (!musicGain) return;
+    if (!musicGain || epoch !== playbackEpoch) return;
     stopSource(true);
     const duration = audioBuffer.duration;
     const clamped = clamp(positionSec, 0, Math.max(0, duration - 0.01));
@@ -611,7 +587,8 @@ async function main(): Promise<void> {
     const gain = ctx.createGain();
     source.buffer = audioBuffer;
     source.playbackRate.value = playbackSpeed;
-    const startTime = ctx.currentTime + SOURCE_START_LEAD_TIME_S;
+    const introDelay = Math.max(0, -positionSec) / playbackSpeed;
+    const startTime = ctx.currentTime + SOURCE_START_LEAD_TIME_S + introDelay;
     gain.gain.setValueAtTime(0, startTime);
     gain.gain.linearRampToValueAtTime(1, startTime + SOURCE_FADE_TIME_S);
     source.connect(gain);
@@ -629,7 +606,7 @@ async function main(): Promise<void> {
     sourceGain = gain;
     isSourcePlaying = true;
     const audibleAt = getAudioContextOutputTime(ctx) + SOURCE_START_LEAD_TIME_S;
-    playbackClock.set(audibleAt, clamped, playbackSpeed);
+    playbackClock.set(audibleAt, Math.min(positionSec, clamped), playbackSpeed);
   };
 
   try {
@@ -755,7 +732,7 @@ async function main(): Promise<void> {
   const renderFrameAll = () => {
     syncBackgroundMedia();
     for (let i = 0; i < charts.length; i++) {
-      renderers[i]!.renderFrame(charts[i]!, preciseBeats, 4);
+      renderers[i]!.renderAtTime(charts[i]!, beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm) + 240000 / charts[i]!.bpm - 240000 / chart.bpm);
     }
   };
 
@@ -866,8 +843,8 @@ async function main(): Promise<void> {
       const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.timingMs / step)));
       const b = buckets[idx]!;
       switch (note.type) {
-        case 'tap': case 'simultaneous': b.tap++; break;
-        case 'hold-start': case 'hold-start-simultaneous': b.hold++; break;
+        case 'tap': b.tap++; break;
+        case 'hold-start': b.hold++; break;
         case 'slide': b.slide++; break;
         case 'touch': case 'touch-hold-start': b.touch++; break;
         case 'break': b.break++; break;
@@ -1107,9 +1084,12 @@ async function main(): Promise<void> {
     speedList,
     speedVal,
     (speed) => {
+      if (isSourcePlaying) preciseBeats = musicTimeToBeats(getMusicTime(), chart.bpmEvents, chart.bpm, musicOffset, chart.firstMs);
       playbackSpeed = clamp(speed, 0.1, 5);
       for (const r of renderers) r.setPlaybackSpeed(playbackSpeed);
+      answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
       if (sourceNode && isSourcePlaying && audioContext) {
+        if (getMusicTime() < 0) { void startPlayback(); return; }
         const startTime = audioContext.currentTime;
         const outputTime = getAudioContextOutputTime(audioContext);
         sourceNode.playbackRate.setValueAtTime(playbackSpeed, startTime);
@@ -1159,7 +1139,7 @@ async function main(): Promise<void> {
 
   const MIRROR_LABELS = ['无', '左右反', '上下反', '全反'] as const;
   const MIRROR_VALUES = ['none', 'horizontal', 'vertical', 'rotate180'] as const;
-  const mirrorIdx = Math.max(0, MIRROR_VALUES.indexOf((saved.mirrorMode as string) ?? 'none'));
+  const mirrorIdx = Math.max(0, MIRROR_VALUES.findIndex(value => value === saved.mirrorMode));
   setupWheelPopup(
     mirrorTrigger, mirrorPopup, mirrorWheel, mirrorList, mirrorVal,
     (idx) => {
@@ -1173,7 +1153,7 @@ async function main(): Promise<void> {
 
   const STYLE_LABELS = ['无', '判定点', '判定线', '判定区'] as const;
   const STYLE_VALUES = ['blind', 'noLine', 'simple', 'sensor'] as const;
-  const styleIdx = Math.max(0, STYLE_VALUES.indexOf((saved.judgmentLineDesign as string) ?? 'sensor'));
+  const styleIdx = Math.max(0, STYLE_VALUES.findIndex(value => value === (saved.judgmentLineDesign ?? 'sensor')));
   setupWheelPopup(
     styleTrigger, stylePopup, styleWheel, styleList, styleVal,
     (idx) => {
@@ -1276,7 +1256,7 @@ async function main(): Promise<void> {
       stage.style.height = `${size}px`;
     }
     canvasWrap.style.height = `${size}px`;
-    for (const r of renderers) r.resize(false);
+    for (const r of renderers) r.resize(isFullscreen);
     renderAt(preciseBeats);
   };
   const resizeScheduler = createLatestFrameScheduler(
@@ -1320,14 +1300,13 @@ async function main(): Promise<void> {
     } else {
       if (lastRafTs > 0) {
         const deltaMs = timestamp - lastRafTs;
-        currentBeats += ((deltaMs / 1000) * playbackSpeed * chart.bpm) / 60;
+        currentBeats = msToBeats(beatsToMs(currentBeats, chart.bpmEvents, chart.bpm) + deltaMs * playbackSpeed, chart.bpmEvents, chart.bpm);
       }
       lastRafTs = timestamp;
     }
 
     if (currentBeats >= totalBeats) {
       isPlaying = false;
-      for (const r of renderers) r.setIsPlaying(false);
       stopSource(true);
       answerManager?.reset(undefined, true);
       syncPlayButtons();
@@ -1346,9 +1325,10 @@ async function main(): Promise<void> {
   };
 
   const startPlayback = async () => {
+    const epoch = ++playbackEpoch;
     await ensureAudio();
+    if (epoch !== playbackEpoch) return;
     isPlaying = true;
-    for (const r of renderers) r.setIsPlaying(true);
     syncPlayButtons();
     lastRafTs = 0;
     const musicTime = calculateMusicTime(
@@ -1360,18 +1340,19 @@ async function main(): Promise<void> {
     );
     answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
     if (audioBuffer && musicTime < audioBuffer.duration - MUSIC_END_EPSILON_S) {
-      await playFromMusicPosition(Math.max(0, musicTime));
+      await playFromMusicPosition(musicTime, epoch);
     } else {
       stopSource(true);
       lastRafTs = performance.now();
     }
+    if (epoch !== playbackEpoch) return;
     cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(tick);
   };
 
   const pausePlayback = () => {
+    playbackEpoch++;
     isPlaying = false;
-    for (const r of renderers) r.setIsPlaying(false);
     syncPlayButtons();
     if (isSourcePlaying) {
       playbackClock.setOffset(getMusicTime());
@@ -1454,8 +1435,8 @@ async function main(): Promise<void> {
       const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.timingMs / step)));
       const b = buckets[idx]!;
       switch (note.type) {
-        case 'tap': case 'simultaneous': b.tap++; break;
-        case 'hold-start': case 'hold-start-simultaneous': b.hold++; break;
+        case 'tap': b.tap++; break;
+        case 'hold-start': b.hold++; break;
         case 'slide': b.slide++; break;
         case 'touch': case 'touch-hold-start': b.touch++; break;
         case 'break': b.break++; break;

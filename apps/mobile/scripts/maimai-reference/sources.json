@@ -1,0 +1,247 @@
+{
+  "project": "https://github.com/re-poem/MajdataViewX",
+  "snapshot": "Local MajdataViewX-master; identified by file hashes, no Git revision asserted",
+  "license": "GPL-3.0",
+  "files": [
+    {
+      "upstream": "Assets/Scripts/Base/MajGeo.cs",
+      "copy": "ViewX/MajGeo.cs",
+      "sha256": "e374a5db827209b1b59c39ce15ea6a5fa2d25729f0df2f0da3641ef1283b9372"
+    },
+    {
+      "upstream": "Assets/Scripts/Types/Input/SensorType.cs",
+      "copy": "ViewX/SensorType.cs",
+      "sha256": "1cec952b6ae3062f2bcac42cfd7f69563f636ba0bc160b55eb4901468f6f0917"
+    },
+    {
+      "upstream": "Assets/Scripts/Notes/SlideUtils/ParametricSlidePath.cs",
+      "copy": "ViewX/ParametricSlidePath.cs",
+      "sha256": "83e1d841111b3d808a63c4f3ac1e2bd65aaf5568a67bfd397e087419b1e4526a"
+    },
+    {
+      "upstream": "Assets/Scripts/Notes/SlideUtils/SlidePathConstructor.cs",
+      "copy": "ViewX/SlidePathConstructor.cs",
+      "sha256": "e2387fcb6a6d43b4b45c30a5c735f682541c144033cda5498422866f1f124875"
+    },
+    {
+      "upstream": "Assets/Scripts/Notes/SlideUtils/SlideCodeParser.cs",
+      "copy": "ViewX/SlideCodeParser.cs",
+      "sha256": "88c9d72a05197931bdab15d457a7f78afb858e204bdb6e4d92ce2c35aa54dd86"
+    },
+    {
+      "upstream": "Assets/Scripts/Notes/SlideUtils/SlideDataBuilder.cs",
+      "copy": "ViewX/SlideDataBuilder.cs",
+      "sha256": "4730fb5ba322ea5239e4258d3e2b4261684099d20b918b6df71257fbbc9e98ec"
+    },
+    {
+      "upstream": "Assets/Scripts/Notes/SlideUtils/SlideTableNeo.cs",
+      "copy": "ViewX/SlideTableNeo.cs",
+      "sha256": "53a92bc341f52bcb9cdb66adbea1ef2f434f390f921fd46fa45a46aad24bcdc2"
+    },
+    {
+      "upstream": "Assets/Animation/Effect/JudgeEffect/JudgeBreak.anim",
+      "copy": "Effects/Animation/Effect/JudgeEffect/JudgeBreak.anim",
+      "sha256": "549f0b162196d4beb2c1f2da0af4a77f90861a7d9c4c9f9c1132097758429259"
+    },
+    {
+      "upstream": "Assets/Animation/Effect/JudgeEffect/JudgePerfect.anim",
+      "copy": "Effects/Animation/Effect/JudgeEffect/JudgePerfect.anim",
+      "sha256": "d3f8d81246d6d0f72b91dfec145de0e8a828f2827018814cb9d5590a8cd8a310"
+    },
+    {
+      "upstream": "Assets/Animation/Effect/NoteEffect/BreakPerfect.anim",
+      "copy": "Effects/Animation/Effect/NoteEffect/BreakPerfect.anim",
+      "sha256": "e599a0a8540a5ce1031ee7f8ccb369b0c0bb4fa439d0b72d35239ca8ec26da0a"
+    },
+    {
+      "upstream": "Assets/Animation/Effect/NoteEffect/TapPerfect.anim",
+      "copy": "Effects/Animation/Effect/NoteEffect/TapPerfect.anim",
+      "sha256": "2fffb3cc15ee7808d5f257341f944779f1c0031c4a65b439280fdc8a6a3538ce"
+    },
+    {
+      "upstream": "Assets/Animation/Effect/TouchEffect/TouchPerfect.anim",
+      "copy": "Effects/Animation/Effect/TouchEffect/TouchPerfect.anim",
+      "sha256": "b53d7e0c5a9300ba88763b6dbcf2f2e98335f7f2b050582a0e1488dfbf8131b0"
+    },
+    {
+      "upstream": "Assets/Animation/Hanabi/Fire.anim",
+      "copy": "Effects/Animation/Hanabi/Fire.anim",
+      "sha256": "03b152984f6a41ad5f03c5cff6990d250c7c7dd69930ec74508b2b85844b875e"
+    },
+    {
+      "upstream": "Assets/Materials/Circle.mat",
+      "copy": "Effects/Materials/Circle.mat",
+      "sha256": "15c5eeade5face1789e67b0467d23908bd24d79f8fec65d51ae6eb2acd10b8e8"
+    },
+    {
+      "upstream": "Assets/Materials/Hanabi.mat",
+      "copy": "Effects/Materials/Hanabi.mat",
+      "sha256": "9f35d1f32c9af618c6895cf32ef4d511dc41d763ae2cb81309cc46ea941e8b75"
+    },
+    {
+      "upstream": "Assets/Materials/MaimaiColorEffect.shader",
+      "copy": "Effects/Materials/MaimaiColorEffect.shader",
+      "sha256": "2dc89e16333dc8fb165b2c3f4d0d74da7b76d2af93dd40a39062ca430672ee8f"
+    },
+    {
+      "upstream": "Assets/Prefab/Firework.prefab",
+      "copy": "Effects/Prefab/Firework.prefab",
+      "sha256": "34677e41e22c8097e3acd2a165bddb902d77e30ffbdb3b735dba1fcba942dd2d"
+    },
+    {
+      "upstream": "Assets/Prefab/Effect/HoldEffect.prefab",
+      "copy": "Effects/Prefab/Effect/HoldEffect.prefab",
+      "sha256": "5f87890257e3293eb8199a3b7b8d8b0f4a0665373f1ee6c16d792017aedc03f7"
+    },
+    {
+      "upstream": "Assets/Prefab/Effect/TapPerfect.prefab",
+      "copy": "Effects/Prefab/Effect/TapPerfect.prefab",
+      "sha256": "19b913b4209adb00630f1473e33f487da9d3d55e00b9ed117d35b4582a87828a"
+    },
+    {
+      "upstream": "Assets/Prefab/Effect/TouchPerfect.prefab",
+      "copy": "Effects/Prefab/Effect/TouchPerfect.prefab",
+      "sha256": "d1bab6c232cf1786931b9e5d5598dc82e36ceea41f9d39312792c2d53b35519a"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Circle.png",
+      "copy": "Effects/Sprites/Effect/Circle.png",
+      "sha256": "c9070a55cb400c441dfb64f63b564b3283863b2bc4a5c4d2c61b481c2dbee082"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Circle.png.meta",
+      "copy": "Effects/Sprites/Effect/Circle.png.meta",
+      "sha256": "20c25b9856e52f91e5e8186b4d6bbe8e1a319858f3320acc739837ef09dec339"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/CircleMask.png",
+      "copy": "Effects/Sprites/Effect/CircleMask.png",
+      "sha256": "a69be05c744f5cc81ff57011ef80edd52d01e92163b500b37db9c48ab6923188"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/CircleMask.png.meta",
+      "copy": "Effects/Sprites/Effect/CircleMask.png.meta",
+      "sha256": "df9f4798bbf42f95126839518a3e1bc99922869bcc165f949a2c54e0c31b7a85"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/ColorBall.png",
+      "copy": "Effects/Sprites/Effect/ColorBall.png",
+      "sha256": "c8cbb336ef2cc333c88b7494bae268dabc8610e0c4951dae93aa30e808735b9f"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/ColorBall.png.meta",
+      "copy": "Effects/Sprites/Effect/ColorBall.png.meta",
+      "sha256": "a0faa3bd6fb83dd34afe49f28c5fb556da37ed4dffb937ea16bcea8fcbe468ff"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Firework.png",
+      "copy": "Effects/Sprites/Effect/Firework.png",
+      "sha256": "f01d61266853b6474976d707204920dcf276882e63ceeaf7c998bfae6e997375"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Firework.png.meta",
+      "copy": "Effects/Sprites/Effect/Firework.png.meta",
+      "sha256": "4ed0df55574b1ec6262e1572c0371824de06b23678e06318b2cd5010767b853c"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Hex_Good.png",
+      "copy": "Effects/Sprites/Effect/Hex_Good.png",
+      "sha256": "470443831fad1f08eeab9d1256fabecc27b0a61ac7b7d87d5d95972136417504"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Hex_Good.png.meta",
+      "copy": "Effects/Sprites/Effect/Hex_Good.png.meta",
+      "sha256": "2892c809d25c093eed99dcda63812cb84db1ca33c2503b4fdb049002488f6c41"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Hex_Great.png",
+      "copy": "Effects/Sprites/Effect/Hex_Great.png",
+      "sha256": "0792d65a6e5b346c4184e4ed6e10f66d0c0471851e005d85c49a31b2e178bbcb"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Hex_Great.png.meta",
+      "copy": "Effects/Sprites/Effect/Hex_Great.png.meta",
+      "sha256": "1a1b09de0356c3f47583c932c067c413f065f5814f96c2106d52d35193c76579"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Hex_Perfect.png",
+      "copy": "Effects/Sprites/Effect/Hex_Perfect.png",
+      "sha256": "6e5032444b5a5320a1d08981e2ecd5a7f7d9abcc10e7a2675d4029347e67f585"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Hex_Perfect.png.meta",
+      "copy": "Effects/Sprites/Effect/Hex_Perfect.png.meta",
+      "sha256": "6db794940edd48dacbfa6d29f618307c728f7f42d74097fecc90fc0a2de1f056"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Star_Good.png",
+      "copy": "Effects/Sprites/Effect/Star_Good.png",
+      "sha256": "575bf6987cf8c87240957a5d8dcfce8c673430af26479597a691acfae84b4b8d"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Star_Good.png.meta",
+      "copy": "Effects/Sprites/Effect/Star_Good.png.meta",
+      "sha256": "dda7d72f2a354ee177a73a81b27c5827bb67ce012ffff52b0e45823e5fe5a8af"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Star_Great.png",
+      "copy": "Effects/Sprites/Effect/Star_Great.png",
+      "sha256": "51f93b0013bf323bd834f47e8b58f4f7938b5f417c6f0599dca4d7af0f209fac"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Star_Great.png.meta",
+      "copy": "Effects/Sprites/Effect/Star_Great.png.meta",
+      "sha256": "c3e70705251ef379eeb5d0514005270d68eea22e6d17884c22267f33eb1eefcb"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Star_Perfect.png",
+      "copy": "Effects/Sprites/Effect/Star_Perfect.png",
+      "sha256": "fd9626c1ac4fb7fb74aae6e14f493df7fd3a746adeda7fcfc14b67f402a4f411"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/Star_Perfect.png.meta",
+      "copy": "Effects/Sprites/Effect/Star_Perfect.png.meta",
+      "sha256": "f5d34caf9dbbcb00ab80e8f4c53c03c3f976e704650ef41afcc644ba641f4c5f"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/StarWhite.png",
+      "copy": "Effects/Sprites/Effect/StarWhite.png",
+      "sha256": "14af01c12d5b1c435df618e9b9f50baf9d721a3a0d779095e491a80b8304296d"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/StarWhite.png.meta",
+      "copy": "Effects/Sprites/Effect/StarWhite.png.meta",
+      "sha256": "91661c231c4622992bb9011389370a29dfbaeae3bb719f05993ba8c175337792"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/TouchEffectCircle.png",
+      "copy": "Effects/Sprites/Effect/TouchEffectCircle.png",
+      "sha256": "c89cdc521888bf5c51b9e50eb4232b1906cbf96f6127fb7baffaaa8d3ea58cc2"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/TouchEffectCircle.png.meta",
+      "copy": "Effects/Sprites/Effect/TouchEffectCircle.png.meta",
+      "sha256": "26a845e8931eadb55a5efacfa0a750ecd31318b548cf423f87556764fb291bd4"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/TouchEffectStar_1.png",
+      "copy": "Effects/Sprites/Effect/TouchEffectStar_1.png",
+      "sha256": "5c52039f8fc8a3b2fd1166756945adeeaa2dcb7080a472827f6b1ca90b098fd6"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/TouchEffectStar_1.png.meta",
+      "copy": "Effects/Sprites/Effect/TouchEffectStar_1.png.meta",
+      "sha256": "fdee9cb4d4da8b17a9241dcfbbdabcb463e194ebf83767fcc2c6cf4ab9ead76a"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/TouchEffectStar_2.png",
+      "copy": "Effects/Sprites/Effect/TouchEffectStar_2.png",
+      "sha256": "c7c67e6b7c210f9ee53d7bfa9dbe082270d56a925a18bf6005c037f3d01dcddd"
+    },
+    {
+      "upstream": "Assets/Sprites/Effect/TouchEffectStar_2.png.meta",
+      "copy": "Effects/Sprites/Effect/TouchEffectStar_2.png.meta",
+      "sha256": "96d5749ddd582b48534786ac4b30e4926e9e9e419a04a4831867b5bc8253bc13"
+    }
+  ]
+}

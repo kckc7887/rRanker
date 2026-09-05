@@ -1,109 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { holdRipplePhase } from '@/features/maimai-chart-preview/engine/renderers/NoteRenderer';
-import type {
-  HoldStartNote,
-  TouchHoldStartNote,
-} from '@/features/maimai-chart-preview/engine/types';
+import { parseSimaiBody } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
+import { prepareChart, buildFrame } from '@/features/maimai-chart-preview/engine/renderers/frame';
+import { DEFAULT_RENDERER_CONFIG } from '@/features/maimai-chart-preview/engine/renderers/MainRenderer';
+import { holdParticleState } from '@/features/maimai-chart-preview/engine/renderers/effects';
 
-// duration（拍）× bpm → hold 持续毫秒：60000 × duration / bpm。
-function makeHold(timingMs: number, duration: number, bpm: number): HoldStartNote {
-  return {
-    type: 'hold-start',
-    position: 1,
-    timing: 0,
-    timingMs,
-    measure: 1,
-    positionInMeasure: 0,
-    scale: 1,
-    bpm,
-    duration,
-    isHoldStart: true,
-  };
-}
-
-function makeTouchHold(timingMs: number, duration: number, bpm: number): TouchHoldStartNote {
-  return {
-    type: 'touch-hold-start',
-    position: 'C',
-    timing: 0,
-    timingMs,
-    measure: 1,
-    positionInMeasure: 0,
-    scale: 1,
-    bpm,
-    duration,
-    durationMs: (60000 * duration) / bpm,
-    isHoldStart: true,
-  };
-}
-
-describe('holdRipplePhase', () => {
-  it('hold 开始前不生成波纹', () => {
-    const hold = makeHold(1000, 1, 200); // 持续 300ms
-    expect(holdRipplePhase(hold, 999.999)).toBeNull();
+describe('ViewX hold effect emission (10/s, 0.3s lifetime)', () => {
+  it('samples the prefab size and seven-key alpha gradient', () => {
+    expect(holdParticleState(0)).toMatchObject({ size: 0.44897956, alpha: 0.007843138 });
+    expect(holdParticleState(300 * 32894 / 65535).alpha).toBeCloseTo(1);
+    expect(holdParticleState(300).alpha).toBe(0);
   });
-
-  it('hold 开始瞬间生成第 0 个波纹，progress 为 0', () => {
-    const hold = makeHold(1000, 1, 200);
-    expect(holdRipplePhase(hold, 1000)).toEqual({ generateMs: 1000, progress: 0 });
-  });
-
-  it('按 0.1s 间隔生成新波纹，与扩散时长无缝衔接', () => {
-    const hold = makeHold(1000, 2, 400); // 持续 300ms
-    expect(holdRipplePhase(hold, 1099)).toEqual({ generateMs: 1000, progress: 0.99 });
-    // 上一圈消失的瞬间下一圈生成，无空窗期
-    expect(holdRipplePhase(hold, 1100)).toEqual({ generateMs: 1100, progress: 0 });
-    expect(holdRipplePhase(hold, 1149)).toEqual({ generateMs: 1100, progress: 0.49 });
-  });
-
-  it('单个波纹扩散 0.1s 完成，全程无空窗', () => {
-    const hold = makeHold(0, 1, 200); // 持续 300ms，结束时刻恰为 300（整除 100）
-    expect(holdRipplePhase(hold, 50)).toEqual({ generateMs: 0, progress: 0.5 });
-    expect(holdRipplePhase(hold, 99)).toEqual({ generateMs: 0, progress: 0.99 });
-    expect(holdRipplePhase(hold, 100)).toEqual({ generateMs: 100, progress: 0 });
-    expect(holdRipplePhase(hold, 200)).toEqual({ generateMs: 200, progress: 0 });
-    expect(holdRipplePhase(hold, 299)).toEqual({ generateMs: 200, progress: 0.99 });
-  });
-
-  it('长 hold 中段波纹序号正确', () => {
-    const hold = makeHold(0, 8, 240); // 持续 2000ms
-    // 1000ms：k=10，恰为第 10 个波纹生成瞬间
-    expect(holdRipplePhase(hold, 1000)).toEqual({ generateMs: 1000, progress: 0 });
-    // 1050ms：第 10 个波纹扩散到一半
-    expect(holdRipplePhase(hold, 1050)).toEqual({ generateMs: 1000, progress: 0.5 });
-  });
-
-  it('hold 结束后不再生成新波纹，最后一圈自然扩散消亡', () => {
-    const hold = makeHold(0, 1, 200); // 持续 300ms，结束时刻恰为 300（整除 100）
-    // 结束时刻 300 允许生成最后一圈（g=300 ≤ end），399ms 时仍可见
-    expect(holdRipplePhase(hold, 300)).toEqual({ generateMs: 300, progress: 0 });
-    expect(holdRipplePhase(hold, 399)).toEqual({ generateMs: 300, progress: 0.99 });
-    // 400ms：该波纹扩散完毕
-    expect(holdRipplePhase(hold, 400)).toBeNull();
-    // 450ms：k=4 → generateMs=400 > 300，不生成
-    expect(holdRipplePhase(hold, 450)).toBeNull();
-  });
-
-  it('短 hold（不足一个间隔）仅第 0 个波纹', () => {
-    const hold = makeHold(0, 0.5, 400); // 持续 75ms
-    expect(holdRipplePhase(hold, 0)).toEqual({ generateMs: 0, progress: 0 });
-    expect(holdRipplePhase(hold, 74)).toEqual({ generateMs: 0, progress: 0.74 });
-    // 75ms 为 hold 结束：k=0 波纹 t=75 < 100 仍可见
-    expect(holdRipplePhase(hold, 75)).toEqual({ generateMs: 0, progress: 0.75 });
-    expect(holdRipplePhase(hold, 100)).toBeNull();
-  });
-
-  it('拍与 BPM 换算持续毫秒', () => {
-    const hold = makeHold(0, 2, 120); // 持续 1000ms
-    // 950ms：k=9 → g=900 ≤ 1000，t=50 → progress 0.5
-    expect(holdRipplePhase(hold, 950)).toEqual({ generateMs: 900, progress: 0.5 });
-    // 1000ms：恰为结束时刻，允许生成最后一圈（g=1000 ≤ 1000）
-    expect(holdRipplePhase(hold, 1000)).toEqual({ generateMs: 1000, progress: 0 });
-  });
-
-  it('touch-hold 也是 hold，共用同一波纹相位函数', () => {
-    const hold = makeTouchHold(0, 2, 120); // 持续 1000ms
-    expect(holdRipplePhase(hold, 950)).toEqual({ generateMs: 900, progress: 0.5 });
-    expect(holdRipplePhase(hold, 1100)).toBeNull();
+  for (const token of ['1h', 'Ch']) it(`${token} reconstructs particles on seek, and drains at the end`, () => {
+    const prepared = prepareChart(parseSimaiBody(`(120)${token}[4:2],`));
+    const particles = (time: number) => buildFrame(prepared, time, DEFAULT_RENDERER_CONFIG).filter(c => c.effect?.kind === 'hold').map(c => c.effect!.ageMs);
+    expect(particles(1999)).toEqual([]);
+    expect(particles(2000)).toEqual([0]);
+    expect(particles(2250)).toEqual([250, 150, 50]);
+    expect(particles(3150)).toEqual([250, 150]);
+    expect(particles(3300)).toEqual([]);
+    expect(particles(2250)).toEqual([250, 150, 50]);
+    expect(buildFrame(prepared, 2250, { ...DEFAULT_RENDERER_CONFIG, showHitEffect: false }).some(c => c.effect)).toBe(false);
   });
 });

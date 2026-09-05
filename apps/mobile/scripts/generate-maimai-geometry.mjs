@@ -1,0 +1,13 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+const root = path.resolve(import.meta.dirname, '..');
+const input = JSON.parse(await fs.readFile(path.join(root, 'build/maimai-reference/geometry.json'), 'utf8'));
+const pose = p => [p.X, p.Y, p.RotZ, p.L];
+const entries = Object.fromEntries(Object.entries(input).map(([key, v]) => [key, [v.SlideConst, v.SlideLength, v.ConditionalLastArrow, pose(v.OkPose), v.OkType, v.ArrowPoses.map(pose), v.JudgeAreaQueue.map(a => [a.ArrowProgressPush, a.ArrowProgressFinish, a.SensorA, a.SensorB])]]));
+const lookup = JSON.parse(await fs.readFile(path.join(root, 'build/maimai-reference/geometry.json.areas.json'), 'utf8'));
+const areas = Object.fromEntries(Object.entries(lookup).map(([key, v]) => [key, v.map(a => [a.LengthAfterPush, a.LengthAfterFinish, a.SensorA, a.SensorB])]));
+const out = path.join(root, 'src/features/maimai-chart-preview/engine/core/geometry');
+await fs.mkdir(out, { recursive: true });
+const header = '/** Generated from MajdataViewX SlideTableNeo / SlideDataBuilder (GPL-3.0).\n * Reproduce with scripts/maimai-reference and generate-maimai-geometry.mjs. */\n';
+await fs.writeFile(path.join(out, 'slideTable.generated.ts'), `${header}export const SLIDE_TABLE: Record<string, [number, number, boolean, number[], number, number[][], number[][]]> = ${JSON.stringify(entries)};\nexport const AREA_LOOKUP: Record<string, number[][]> = ${JSON.stringify(areas)};\n`);
+console.log(`Generated ${Object.keys(entries).length} slide paths and ${Object.keys(areas).length} area transitions`);
