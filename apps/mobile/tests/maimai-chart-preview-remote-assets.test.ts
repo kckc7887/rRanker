@@ -13,20 +13,10 @@ import {
   maimaiChartPreviewSkinDataScript,
   maimaiChartPreviewSkinStagePath,
 } from '@/features/maimai-chart-preview/maimai-chart-preview-skin-files';
-import {
-  eachLineSkinPath,
-  guideSkinPath,
-  holdEndSkinPath,
-  holdSkinPath,
-  slideSkinPath,
-  starSkinPath,
-  tapSkinPath,
-  touchBorderSkinPath,
-  touchPointSkinPath,
-  touchSkinPath,
-  wifiSkinPath,
-} from '@/features/maimai-chart-preview/engine/renderers/skinAtlas';
-import { judgeTextSkinPath, slideOkShape, slideOkSkinPath } from '@/features/maimai-chart-preview/engine/utils/judgeHint';
+import { parseSimaiBody } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
+import { buildFrame, prepareChart } from '@/features/maimai-chart-preview/engine/renderers/frame';
+import { DEFAULT_RENDERER_CONFIG } from '@/features/maimai-chart-preview/engine/renderers/MainRenderer';
+import { resolveSkinObject } from '@/features/maimai-chart-preview/engine/renderers/skinSemantics';
 
 const mockFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
@@ -200,72 +190,31 @@ describe('maimai chart preview remote assets', () => {
     expect(prepare).toContain('remoteCacheDirectory');
   });
 
-  it('flattens runtime skins under skin/ and excludes autoplay-unused mine art', () => {
-    expect(maimaiChartPreviewSkinStagePath('TapSkins/tap.png')).toBe('skin/TapSkins_tap.png');
+  it('revisions cached skins and includes community Mine art', () => {
+    expect(maimaiChartPreviewSkinStagePath('TapSkins/tap.png')).toMatch(/^skin\/[a-f0-9]{16}_TapSkins_tap.png$/);
     expect(isMaimaiChartPreviewRuntimeSkinPath('TapSkins/tap.png')).toBe(true);
-    expect(isMaimaiChartPreviewRuntimeSkinPath('TapSkins/tap_mine.png')).toBe(false);
-    expect(isMaimaiChartPreviewRuntimeSkinPath('NoteGuideSkins/Mine.png')).toBe(false);
+    expect(isMaimaiChartPreviewRuntimeSkinPath('TapSkins/tap_mine.png')).toBe(true);
+    expect(isMaimaiChartPreviewRuntimeSkinPath('NoteGuideSkins/Mine.png')).toBe(true);
     expect(isMaimaiChartPreviewRuntimeSkinPath('HoldSkins/hold_off.png')).toBe(false);
     expect(maimaiChartPreviewRuntimeSkinAssets().length).toBeLessThan(MAIMAI_CHART_PREVIEW_SKIN_ASSETS.length);
-    expect(maimaiChartPreviewRuntimeSkinAssets().every((asset) => !asset.path.toLowerCase().includes('mine'))).toBe(true);
+    expect(maimaiChartPreviewRuntimeSkinAssets().some((asset) => asset.path.toLowerCase().includes('mine'))).toBe(true);
   });
 
-  it('covers every sprite path the autoplay renderer can request', () => {
-    const runtime = new Set(maimaiChartPreviewRuntimeSkinAssets().map((asset) => asset.path));
-    const required = new Set<string>([
-      'outline.png',
-      'TapSkins/tap_ex.png',
-      'HoldSkins/hold_ex.png',
-      'StarSkins/star_ex.png',
-      'StarSkins/star_ex_double.png',
-      'TouchHoldSkins/touchhold_border.png',
-      'TouchHoldSkins/touchhold_break_border.png',
-    ]);
-    for (let i = 0; i < 4; i += 1) {
-      required.add(`TouchHoldSkins/touchhold_${i}.png`);
-      required.add(`TouchHoldSkins/touchhold_break_${i}.png`);
-    }
-    for (const isBreak of [false, true]) {
-      for (const isEach of [false, true]) {
-        required.add(tapSkinPath(isBreak, isEach));
-        required.add(holdSkinPath(isBreak, isEach, false));
-        required.add(holdSkinPath(isBreak, isEach, true));
-        required.add(holdEndSkinPath(isBreak, isEach));
-        required.add(slideSkinPath(isBreak, isEach, false));
-        required.add(slideSkinPath(isBreak, isEach, true));
-        required.add(touchSkinPath(isBreak, isEach));
-        required.add(touchPointSkinPath(isBreak, isEach));
-        for (const count of [2, 3] as const) {
-          const border = touchBorderSkinPath(count, isBreak, isEach);
-          if (border) required.add(border);
-        }
-        for (const isDouble of [false, true]) {
-          for (const pink of [false, true]) {
-            required.add(starSkinPath(isBreak, isEach, isDouble, pink));
-          }
-        }
-        for (let wifi = 0; wifi <= 10; wifi += 1) {
-          required.add(wifiSkinPath(wifi, isBreak, isEach, false));
-          required.add(wifiSkinPath(wifi, isBreak, isEach, true));
-        }
+  it('resolves actual frame commands for every modifier and family to audited sprites', () => {
+    const runtime = new Set(maimaiChartPreviewRuntimeSkinAssets().map(asset => asset.path));
+    const missing = new Set<string>();
+    for (const flags of ['', 'b', 'm', 'bm', 'x', 'bx', 'mx', 'bmx']) {
+      const body = '(120){4}' + [
+        '1'+flags+'/5', '2h'+flags+'[4:2]', '3'+flags+'-7'+flags+'[4:1]',
+        '4'+flags+'w8'+flags+'[4:1]', '5'+flags+'-1[4:1]*-2[4:1]',
+        'C'+flags+'/A1', 'Ch'+flags+'[4:2]', 'A2'+flags+'/A2'+flags+'/A2'+flags,
+      ].join(',') + ',';
+      const prepared = prepareChart(parseSimaiBody(body));
+      for (let time = 0; time < prepared.chart.durationMs; time += 25) for (const command of buildFrame(prepared, time, { ...DEFAULT_RENDERER_CONFIG, highlightExNotes: true })) {
+        for (const path of [command.path, command.exPath]) if (path && !runtime.has(resolveSkinObject(path))) missing.add(path);
       }
     }
-    for (const span of [1, 2, 3, 4] as const) required.add(eachLineSkinPath(span));
-    for (const kind of ['normal', 'each', 'break', 'slide'] as const) required.add(guideSkinPath(kind));
-    for (const kind of ['cPerfect', 'perfect', 'cPerfectBreak', 'break2600', 'break2550'] as const) {
-      required.add(judgeTextSkinPath(kind));
-    }
-    for (const type of ['w', '-', 'q']) {
-      for (const start of [1, 5]) {
-        for (const end of [1, 2, 3, 8]) {
-          const shape = slideOkShape(type, start, end);
-          required.add(slideOkSkinPath(shape, 'just'));
-          required.add(slideOkSkinPath(shape, 'critical'));
-        }
-      }
-    }
-    const missing = [...required].filter((path) => !runtime.has(path));
-    expect(missing).toEqual([]);
+    expect([...missing]).toEqual([]);
   });
 
   it('copies remote skins from a persistent cache directory without re-downloading', async () => {

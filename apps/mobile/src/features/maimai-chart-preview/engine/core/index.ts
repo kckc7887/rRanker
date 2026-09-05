@@ -1,6 +1,5 @@
 export {
   parseSimaiChart,
-  parseMa2Chart,
   parseSimaiBuddyCharts,
   parseSimaiSideChart,
   getAvailableDifficulties,

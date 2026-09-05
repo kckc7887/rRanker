@@ -104,7 +104,18 @@ app 路由 / 游戏容器
 
 ### WebView 与内存
 
-- 舞萌播放器复用 `chart-preview-shared/webview-player/playbackClock.ts` 的 `PlaybackClock`。播放器入口被应用 `tsconfig.json` 排除，`maimai-chart-preview-webview.test.ts` 单独检查入口及其依赖的未定义名称；该检查不替代完整播放器类型检查。修改播放器后必须执行 `npm run build:chart-preview`，验证生成的 `player.js` 与应用加载的 `player.bundle` 一致，并完成运行时验收。
+- 舞萌播放器复用 `chart-preview-shared/webview-player/playbackClock.ts` 的 `PlaybackClock`。
+  `configuration.ts` 集中定义 `ChartPreviewInjectConfig` 和设置类型，注入模块保留兼容导出；
+  `createChartPreviewInjectors<TConfig>(spec)` 负责序列化入口，`prepareChartPreviewWebviewFromPlan(plan)`
+  负责资源暂存和清理。舞萌通过计划中的 `fileName` 加入皮肤修订/正解音哈希，复用共享
+  `remoteCacheDirectory` 的大小校验，不另建缓存执行器或清理范围。
+  `skin-data.js` 的键仍为原始 S3 对象路径，语义别名仅在舞萌 `skinSemantics.ts` 解释。
+  模型、simai 扩展、路径、SV、帧命令与皮肤加载均留在舞萌目录；共享层不解释音符。
+  `npm run typecheck` 包含 `typecheck:maimai-player`，完整检查播放器入口和引擎。
+  修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的
+  `player.bundle` 一致，并完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
+  `maimai-chart-preview-webview.test.ts`、`maimai-chart-preview-remote-assets.test.ts` 和
+  `maimai-chart-preview-reference.test.ts`；浏览器检查不能代替 iOS/Android WebView 验收。
 
 - 成绩图预览只挂载当前页 WebView，其余页使用轻量占位；不得让多份大 HTML 常驻。
 - 谱面确认和下载任务必须响应卸载、后台与 AbortSignal，不得在取消后继续写缓存或显示成功。

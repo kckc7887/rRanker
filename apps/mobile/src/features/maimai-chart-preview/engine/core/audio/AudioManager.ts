@@ -61,50 +61,25 @@ export function decodeBase64AudioDataUrl(value: string): ArrayBuffer | null {
 }
 
 export function prepareAudioEvents(notes: readonly Note[] | null): PreparedAudioEvent[] {
-  if (!notes || notes.length === 0) return [];
-
-  const eventsByKey = new Map<string, PreparedAudioEvent>();
-  for (const note of notes) {
-    const key = note.timingMs.toFixed(3);
-    let event = eventsByKey.get(key);
-    if (!event) {
-      event = {
-        timeMs: note.timingMs,
-        key,
-        hasBaseSound: false,
-        hasTouchSound: false,
-        hasHoldEndSound: false,
-        hasTouchHoldEndSound: false,
-      };
-      eventsByKey.set(key, event);
-    }
-
-    switch (note.type) {
-      case "slide":
-        event.hasBaseSound ||= !note.isHeadless;
-        break;
-      case "tap":
-      case "break":
-      case "simultaneous":
-      case "hold-start":
-      case "hold-start-simultaneous":
-        event.hasBaseSound = true;
-        break;
-      case "touch":
-      case "touch-hold-start":
-        event.hasTouchSound = true;
-        break;
-      case "hold-end":
-      case "hold-end-simultaneous":
-        event.hasHoldEndSound = true;
-        break;
-      case "touch-hold-end":
-        event.hasTouchHoldEndSound = true;
-        break;
-    }
+  const events: PreparedAudioEvent[] = [];
+  const push = (timeMs: number, kind: keyof Pick<PreparedAudioEvent, 'hasBaseSound' | 'hasTouchSound' | 'hasHoldEndSound' | 'hasTouchHoldEndSound'>) => {
+    events.push({ timeMs, key: '', hasBaseSound: false, hasTouchSound: false, hasHoldEndSound: false, hasTouchHoldEndSound: false, [kind]: true });
+  };
+  for (const note of notes ?? []) {
+    if (note.type === 'slide' && note.isHeadless) continue;
+    push(note.timingMs, note.type === 'touch' || note.type === 'touch-hold-start' ? 'hasTouchSound' : 'hasBaseSound');
+    if (note.type === 'hold-start' || note.type === 'touch-hold-start') push(note.endTimeMs, note.type === 'hold-start' ? 'hasHoldEndSound' : 'hasTouchHoldEndSound');
   }
-
-  return [...eventsByKey.values()].sort((a, b) => a.timeMs - b.timeMs);
+  events.sort((a, b) => a.timeMs - b.timeMs);
+  const merged: PreparedAudioEvent[] = [];
+  for (const event of events) {
+    const previous = merged[merged.length - 1];
+    if (previous && event.timeMs - previous.timeMs <= 1) {
+      previous.hasBaseSound ||= event.hasBaseSound; previous.hasTouchSound ||= event.hasTouchSound;
+      previous.hasHoldEndSound ||= event.hasHoldEndSound; previous.hasTouchHoldEndSound ||= event.hasTouchHoldEndSound;
+    } else { event.key = event.timeMs.toFixed(3); merged.push(event); }
+  }
+  return merged;
 }
 
 /**
