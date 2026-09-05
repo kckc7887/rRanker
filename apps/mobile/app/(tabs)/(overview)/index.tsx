@@ -1,13 +1,11 @@
+import { useModalCloseAction } from '@/hooks/use-modal-close-action';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  InteractionManager,
-  Pressable,
+import { Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  View,
-} from 'react-native';
+  View} from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -130,7 +128,7 @@ function PublicOverviewScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const refreshingRef = useRef(false);
-  const accountSwitchTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const switchSheetClose = useModalCloseAction(setPickerVisible);
   const renderableData = data?.payload && typeof data.payload === 'object' ? data : undefined;
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
@@ -165,12 +163,7 @@ function PublicOverviewScreen() {
     void hydratePins();
   }, [hydratePins]);
 
-  useEffect(() => () => {
-    accountSwitchTaskRef.current?.cancel();
-    accountSwitchTaskRef.current = null;
-  }, []);
-
-  const syncData = useCallback(async (): Promise<boolean> => {
+const syncData = useCallback(async (): Promise<boolean> => {
     if (refreshingRef.current) return false;
     refreshingRef.current = true;
     setRefreshing(true);
@@ -380,10 +373,7 @@ function PublicOverviewScreen() {
   };
 
   const onSelectAccount = (account: BoundAccount) => {
-    setPickerVisible(false);
-    accountSwitchTaskRef.current?.cancel();
-    accountSwitchTaskRef.current = InteractionManager.runAfterInteractions(() => {
-      accountSwitchTaskRef.current = null;
+    switchSheetClose.close(() => {
       // 已在总览账号页：弹层退场后复用目标账号缓存并切换。
       void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
         .catch(() => undefined);
@@ -675,7 +665,8 @@ function PublicOverviewScreen() {
         accounts={boundAccounts}
         expandedGameId={expandedGameId}
         activeAccountId={activeAccountId}
-        onClose={() => setPickerVisible(false)}
+        onClose={() => switchSheetClose.close()}
+        onDismiss={switchSheetClose.onDismiss}
         onToggleGame={toggleExpandedGameId}
         onSelectAccount={onSelectAccount}
       />

@@ -114,6 +114,7 @@ export default function PhigrosChartPreviewScreen() {
             { ...prepared.config, theme: isDark ? 'dark' : 'light' },
             prepared.musicDataBase64 ?? null,
             directory,
+            signal,
           );
         } catch (error) {
           disposeChartPreviewSessionDirectory(directory);

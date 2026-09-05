@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
@@ -6,6 +6,7 @@ import { createTufBoundAccount } from '@/domain/bound-account';
 
 const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
 const mockSwitchBoundAccount = jest.fn();
+let mockDismiss: (() => void) | undefined;
 let mockNullPayload = false;
 const mockFirstAccount = createTufBoundAccount({ playerId: 25, displayName: '公开玩家', rankedScore: 1824.52 });
 const mockSecondAccount = createTufBoundAccount({ playerId: 26, displayName: '公开二号', rankedScore: 1600 });
@@ -34,13 +35,15 @@ jest.mock('@/components/AppNotification', () => ({
 }));
 jest.mock('@/components/AccountSwitchSheet', () => ({
   AccountSwitchSheet: ({
-    visible, accounts, onSelectAccount,
+    visible, accounts, onSelectAccount, onDismiss,
   }: {
     visible: boolean;
     accounts: typeof mockFirstAccount[];
     onSelectAccount: (account: typeof mockFirstAccount) => void;
+    onDismiss: () => void;
   }) => {
     const RN = jest.requireActual<typeof import('react-native')>('react-native');
+    mockDismiss = onDismiss;
     return visible ? <>
       <RN.Text>账号切换已打开</RN.Text>
       <RN.Pressable accessibilityLabel="选择 TUF 二号" onPress={() => onSelectAccount(accounts[1])} />
@@ -139,6 +142,8 @@ describe('TUF public overview', () => {
     await fireEvent.press(screen.getByLabelText('当前玩家 公开玩家，点击切换账号'));
     expect(screen.getByText('账号切换已打开')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('选择 TUF 二号'));
+    expect(mockSwitchBoundAccount).not.toHaveBeenCalled();
+    await act(() => { mockDismiss?.(); });
     expect(mockSwitchBoundAccount).toHaveBeenCalledWith(mockSecondAccount.id, { navigateToOverview: false });
 
     await fireEvent.press(screen.getByLabelText('同步数据，当前 TUF 社区'));

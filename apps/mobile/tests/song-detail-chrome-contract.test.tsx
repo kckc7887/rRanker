@@ -1,5 +1,6 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { createHash } from 'node:crypto';
-import { Animated, InteractionManager } from 'react-native';
+import { Animated } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import SongDetailScreen from '../app/songs/[songId]';
@@ -14,9 +15,9 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
   stop: jest.fn(),
   reset: jest.fn(),
 } as unknown as ReturnType<typeof Animated.loop>);
-jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
   (callback as () => void)();
-  return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+  return { cancel: jest.fn() } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
 });
 
 let mockRouteParams: { songId: string; levelIndex?: string } = { songId: '1' };

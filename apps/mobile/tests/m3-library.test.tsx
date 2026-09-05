@@ -1,6 +1,7 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager, Linking, Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
 import SongDetailScreen from '../app/songs/[songId]';
 import UserLibraryScreen from '../app/library';
@@ -10,9 +11,9 @@ import type { ProviderSession } from '@/providers/contracts';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { useCatalogFilter } from '@/state/catalog-filter';
 
-jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
   (callback as () => void)();
-  return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+  return { cancel: jest.fn() } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
 });
 
 const mockPush = jest.fn();

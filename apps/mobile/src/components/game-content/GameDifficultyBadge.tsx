@@ -107,6 +107,6 @@ const pill = {
 const styles = StyleSheet.create({
   badge: pill,
   badgeClipped: { ...pill, overflow: 'hidden' as const },
-  specialOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(20,14,38,0.24)' },
+  specialOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(20,14,38,0.24)' },
   text: { fontSize: 9, fontWeight: '900', letterSpacing: 0.25 },
 });

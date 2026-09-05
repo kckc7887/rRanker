@@ -1,6 +1,7 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { act, render, screen } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState, InteractionManager, Text } from 'react-native';
+import { AppState, Text } from 'react-native';
 import {
   AppLifecycleProvider,
   getForegroundAbortSignal,
@@ -30,10 +31,10 @@ describe('AppLifecycleProvider', () => {
     }) as typeof AppState.addEventListener);
 
     const tasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+    jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
       const task = { callback: callback as () => void, cancel: jest.fn() };
       tasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      return { cancel: task.cancel } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
     });
 
     const view = await render(<AppLifecycleProvider><LifecycleProbe /></AppLifecycleProvider>);

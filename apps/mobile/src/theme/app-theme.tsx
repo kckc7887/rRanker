@@ -22,7 +22,7 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
   const appearance = useThemeStore((state) => state.appearance);
   const accent = useThemeStore((state) => state.accent);
   const customHex = useThemeStore((state) => state.customHex);
-  const mode = resolveAppearance(appearance, system);
+  const mode = resolveAppearance(appearance, system === 'unspecified' ? null : system);
   const accentHex = resolveAccentHex({ accent, customHex });
   const value = useMemo(() => createAppTheme(mode, accentHex), [accentHex, mode]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

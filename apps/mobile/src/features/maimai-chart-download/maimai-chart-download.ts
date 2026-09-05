@@ -129,7 +129,7 @@ export async function downloadMaimaiChartPackage(
     options.onProgress?.({ phase: 'organizing', progress: 1 });
     await options.onReadyToSave?.();
     throwIfChartDownloadCancelled(options.signal);
-    return saveChartPackage(`${packageName}.adx.zip`, { kind: 'bytes', bytes: zipBytes });
+    return await saveChartPackage(`${packageName}.adx.zip`, { kind: 'bytes', bytes: zipBytes }, options.signal);
   } finally {
     cleanupChartDownloadSessionDirectory(staging);
   }

@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
   value: { flex: 1, minWidth: 0, fontSize: 12, fontWeight: '600' },
   adornmentHidden: { opacity: 0 },
   adornmentOverlay: { position: 'absolute', zIndex: 2, justifyContent: 'center' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.08)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.08)' },
   dropdown: {
     position: 'absolute',
     zIndex: 1,

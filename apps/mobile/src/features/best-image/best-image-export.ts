@@ -1,4 +1,4 @@
-import * as MediaLibrary from 'expo-media-library';
+import * as MediaLibrary from 'expo-media-library/legacy';
 import { File, Paths } from 'expo-file-system';
 
 export class BestImageExportError extends Error {}
@@ -57,7 +57,7 @@ export async function saveBestImageCapture(captureUri: string, filename: string)
   const output = new File(Paths.cache, filename);
   try {
     if (output.exists) output.delete();
-    source.copy(output);
+    await source.copy(output);
     await MediaLibrary.saveToLibraryAsync(output.uri);
   } finally {
     if (output.exists) output.delete();

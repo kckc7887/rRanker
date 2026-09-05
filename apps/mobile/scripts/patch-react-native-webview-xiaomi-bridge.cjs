@@ -12,14 +12,16 @@ const replacement = [
   '        if (!useLegacyBridge && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)){',
 ].join('\n');
 
-if (packageJson.version !== '13.15.0') {
+if (packageJson.version !== '13.16.1') {
   throw new Error(`Unsupported react-native-webview version ${packageJson.version}; review the Xiaomi bridge patch before upgrading.`);
 }
 
 const java = fs.readFileSync(javaPath, 'utf8');
-if (java.includes(replacement)) {
+const patchedCount = java.split(replacement).length - 1;
+const originalCount = java.replace(replacement, '').split(original).length - 1;
+if (patchedCount === 1 && originalCount === 0) {
   console.log('react-native-webview Xiaomi bridge patch already applied');
-} else if (java.includes(original)) {
+} else if (patchedCount === 0 && originalCount === 1) {
   fs.writeFileSync(javaPath, java.replace(original, replacement));
   console.log('Applied react-native-webview Xiaomi bridge compatibility patch');
 } else {

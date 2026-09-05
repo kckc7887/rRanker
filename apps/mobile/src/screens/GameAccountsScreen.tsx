@@ -1,6 +1,6 @@
+import { useModalCloseAction } from '@/hooks/use-modal-close-action';
 import { useState } from 'react';
 import {
-  InteractionManager,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -115,6 +115,9 @@ export function GameAccountsScreen() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const pickerClose = useModalCloseAction(setPickerVisible);
+  const [loginPresented, setLoginPresented] = useState(false);
+  const loginClose = useModalCloseAction(setLoginPresented);
   const [loginProviderId, setLoginProviderId] = useState<ProviderId | null>(null);
   const [loginGameId, setLoginGameId] = useState<GameId | null>(null);
   const [reopenPickerAfterLogin, setReopenPickerAfterLogin] = useState(false);
@@ -226,11 +229,7 @@ export function GameAccountsScreen() {
       );
       await localAccounts.upsert({ id: account.id, displayName: account.displayName });
       upsertBoundAccount(account);
-      // Close the picker first; switching account + opening rename in the same
-      // tick stacks formSheet dismiss, pageSheet present, keyboard, and query
-      // refetch — which freezes the UI and can stretch the iOS tab bar.
-      setPickerVisible(false);
-      InteractionManager.runAfterInteractions(() => {
+      pickerClose.close(() => {
         void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
           .catch(() => undefined);
         setRenameAccount(account);
@@ -248,7 +247,7 @@ export function GameAccountsScreen() {
 
   const demoAccountUi = {
     setBusy,
-    setPickerVisible,
+    closePicker: pickerClose.close,
     setMessage,
     onSelectExisting: onSelectAccount,
     upsertBoundAccount,
@@ -520,7 +519,7 @@ export function GameAccountsScreen() {
     setPickerVisible(true);
   };
 
-  const closePicker = () => setPickerVisible(false);
+  const closePicker = () => pickerClose.close();
 
   const openLogin = (gameId: GameId, provider: ProviderOption) => {
     if (!provider.available) {
@@ -548,34 +547,33 @@ export function GameAccountsScreen() {
       return;
     }
     if (provider.bindingKind === 'public-player') {
-      setPickerVisible(false);
-      if (provider.id === 'musedash-moe') setMuseDashPickerVisible(true);
-      else if (provider.id === 'phira-community') setPhiraPickerVisible(true);
-      else setTufPickerVisible(true);
+      pickerClose.close(() => {
+        if (provider.id === 'musedash-moe') setMuseDashPickerVisible(true);
+        else if (provider.id === 'phira-community') setPhiraPickerVisible(true);
+        else setTufPickerVisible(true);
+      });
       return;
     }
     setExpandedPickerGameId(gameId);
-    setLoginGameId(gameId);
-    setLoginProviderId(provider.id);
-    setReopenPickerAfterLogin(true);
-    setPickerVisible(false);
-    InteractionManager.runAfterInteractions(() => undefined);
+    pickerClose.close(() => {
+      setLoginGameId(gameId);
+      setLoginProviderId(provider.id);
+      setReopenPickerAfterLogin(true);
+      setLoginPresented(true);
+    });
   };
 
   const closeLogin = (options?: { reopenPicker?: boolean }) => {
     const shouldReopen = options?.reopenPicker ?? reopenPickerAfterLogin;
-    setLoginProviderId(null);
-    setLoginGameId(null);
-    setReopenPickerAfterLogin(false);
-    if (shouldReopen) InteractionManager.runAfterInteractions(() => setPickerVisible(true));
+    loginClose.close(() => {
+      setLoginProviderId(null);
+      setLoginGameId(null);
+      setReopenPickerAfterLogin(false);
+      if (shouldReopen) setPickerVisible(true);
+    });
   };
 
-  const finishLogin = () => {
-    setReopenPickerAfterLogin(false);
-    setLoginProviderId(null);
-    setLoginGameId(null);
-    setPickerVisible(false);
-  };
+  const finishLogin = () => closeLogin({ reopenPicker: false });
 
   const toggleGame = (gameId: GameId) => setCollapsedManagedGameIds((current) => {
     const next = new Set(current);
@@ -652,7 +650,7 @@ export function GameAccountsScreen() {
 
   const loginProvider = loginProviderId ? findProvider(loginProviderId) ?? null : null;
   const loginGame = loginGameId ? findGame(loginGameId) : null;
-  const loginVisible = loginProviderId !== null && !pickerVisible;
+  const loginVisible = loginPresented;
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
@@ -679,12 +677,13 @@ export function GameAccountsScreen() {
       </Pressable>
 
       <GamePickerSheet mode="bind" visible={pickerVisible} expandedGameId={expandedPickerGameId}
+        onDismiss={pickerClose.onDismiss}
         onClose={closePicker} onToggleGame={toggleExpandedPickerGameId} onSelectProvider={openLogin}
         onSelectUnavailableGame={(title, detail) => showNotification({
           title, message: `${detail}，待后续开放。`, variant: 'info',
         })} />
 
-      <ProviderLoginSheet visible={loginVisible} provider={loginProvider}
+      <ProviderLoginSheet onDismiss={loginClose.onDismiss} visible={loginVisible} provider={loginProvider}
         gameId={loginGame?.id ?? 'maimai'} gameTitle={loginGame?.title ?? ''}
         onClose={() => closeLogin({ reopenPicker: true })} onSuccess={finishLogin} />
       {tufPickerVisible ? <TufPlayerPickerSheet visible onClose={() => setTufPickerVisible(false)} onSelect={bindTufPlayer} /> : null}

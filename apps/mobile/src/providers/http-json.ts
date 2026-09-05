@@ -77,7 +77,7 @@ export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T>
         throw new ProviderError('upstream_schema', schemaMessage, true, { cause: caught });
       }
       if (caught instanceof ProviderError) throw caught;
-      const normalized = caught instanceof Error && caught.name === 'AbortError'
+      const normalized = (controller.signal.aborted || (caught instanceof Error && caught.name === 'AbortError'))
         ? new ProviderError('timeout', timeoutMessage, true, { cause: caught })
         : new ProviderError('network', networkMessage, true, { cause: caught });
       if (attempt === 0) { previousError = normalized; continue; }
@@ -122,7 +122,7 @@ export async function fetchProviderJson(options: ProviderJsonOptions): Promise<u
     if (error instanceof SyntaxError) {
       throw new ProviderError('upstream_schema', options.invalidJsonMessage, true, { cause: error });
     }
-    if (error instanceof Error && error.name === 'AbortError') {
+    if ((controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))) {
       throw new ProviderError('timeout', options.timeoutMessage, true, { cause: error });
     }
     throw new ProviderError('network', options.networkMessage, true, { cause: error });

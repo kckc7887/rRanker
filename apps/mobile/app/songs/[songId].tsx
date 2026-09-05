@@ -1,10 +1,10 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
-  InteractionManager,
   Linking,
   Platform,
   ScrollView,
@@ -277,7 +277,7 @@ function Detail({ song, versions, records, dxratingTags, library, notesLoading, 
   const [deferredReady, setDeferredReady] = useState(false);
   useEffect(() => {
     setDeferredReady(false);
-    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
+    const task = IdleTasks.scheduleIdleTask(() => setDeferredReady(true));
     return () => task.cancel();
   }, [song.id]);
   const metadataItems: SongMetadataItem[] = [
@@ -925,7 +925,7 @@ const styles = StyleSheet.create({
   levelBlock: { alignItems: 'flex-end' }, level: { color: '#172033', fontSize: 28, lineHeight: 31, fontWeight: '900' }, constant: { color: '#667085', fontSize: 11, fontWeight: '600' },
   resultRow: { flexDirection: 'row', marginTop: 22 }, resultMain: { flex: 1, alignItems: 'flex-start' },
   achievementLabel: { color: '#7D8797', fontSize: 12, fontWeight: '700', marginBottom: 2 },
-  gradientFill: { ...StyleSheet.absoluteFillObject },
+  gradientFill: { ...StyleSheet.absoluteFill },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, minHeight: 29, marginTop: 7 },
   rating: { color: '#667085', fontSize: 12, fontWeight: '700', marginTop: 10 }, ratingValue: { color: '#172033', fontSize: 17, fontWeight: '900' },
   chartDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(51,65,85,0.18)', marginVertical: 16 },

@@ -1,6 +1,7 @@
 const native = vi.hoisted(() => ({
   bytes: new Map<string, Uint8Array>(),
   cancelDownload: vi.fn(),
+  copyWait: null as Promise<void> | null,
   createFileCalls: [] as { name: string; mime: string | null }[],
   createdDirs: [] as string[],
   deleted: [] as string[],
@@ -23,7 +24,8 @@ vi.mock('expo-file-system', () => {
     get size() { return native.bytes.get(this.uri)?.length ?? 0; }
     async bytes() { return native.bytes.get(this.uri) ?? new Uint8Array(0); }
     write(content: string | Uint8Array) { native.writes.push({ uri: this.uri, content }); }
-    copy(destination: MockFile) {
+    async copy(destination: MockFile) {
+      if (native.copyWait) await native.copyWait;
       native.writes.push({ uri: destination.uri, content: native.bytes.get(this.uri) ?? new Uint8Array(0) });
     }
   }
@@ -120,6 +122,7 @@ describe('Phira compatible chart download', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     native.bytes.clear();
+    native.copyWait = null;
     native.createFileCalls.length = 0;
     native.createdDirs.length = 0;
     native.deleted.length = 0;
@@ -207,6 +210,33 @@ describe('Phira compatible chart download', () => {
     );
     await expect(downloadPhiraChartPackage(phiraChart)).resolves.toBe(false);
     expect(native.writes).toEqual([]);
+  });
+
+  it('keeps the downloaded source alive until an asynchronous copy finishes', async () => {
+    let finish!: () => void;
+    native.copyWait = new Promise<void>((resolve) => { finish = resolve; });
+    const pending = downloadPhiraChartPackage(phiraChart);
+    await vi.waitFor(() => expect(native.createFileCalls).toHaveLength(1));
+    expect(native.deleted).toEqual([]);
+    expect(native.writes).toEqual([]);
+    finish();
+    await expect(pending).resolves.toBe(true);
+    expect(native.writes).toHaveLength(1);
+    expect(native.deleted).toContainEqual(expect.stringContaining('rranker-chart-download-'));
+  });
+
+  it('does not report success when cancelled while the copy is pending', async () => {
+    let finish!: () => void;
+    const controller = new AbortController();
+    native.copyWait = new Promise<void>((resolve) => { finish = resolve; });
+    const pending = downloadPhiraChartPackage(phiraChart, { signal: controller.signal });
+    const result = expect(pending).rejects.toThrow('谱面下载已取消');
+    await vi.waitFor(() => expect(native.createFileCalls).toHaveLength(1));
+    controller.abort();
+    expect(native.deleted).toEqual([]);
+    finish();
+    await result;
+    expect(native.deleted).toContainEqual(expect.stringContaining('rranker-chart-download-'));
   });
 
   it('rejects a Phira chart without a downloadable file', async () => {

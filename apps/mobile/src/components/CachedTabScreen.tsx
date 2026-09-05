@@ -1,3 +1,4 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import {
   createContext,
   type ReactNode,
@@ -8,7 +9,7 @@ import {
   useState,
 } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { InteractionManager, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';
 import { RemoteImageActivityScope } from '@/components/RemoteImage';
@@ -27,7 +28,7 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
   const focusedRef = useRef(false);
   const foregroundReadyRef = useRef(lifecycle.foregroundReady);
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
-  const activationTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const activationTaskRef = useRef<ReturnType<typeof IdleTasks.scheduleIdleTask> | null>(null);
   const [activated, setActivated] = useState(false);
   const [active, setActive] = useState(false);
 
@@ -41,7 +42,7 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
     activationTaskRef.current?.cancel();
     activationTaskRef.current = null;
     if (!focusedRef.current || !foregroundReadyRef.current) return;
-    activationTaskRef.current = InteractionManager.runAfterInteractions(() => {
+    activationTaskRef.current = IdleTasks.scheduleIdleTask(() => {
       if (!focusedRef.current || !foregroundReadyRef.current) return;
       if (!activatedRef.current) {
         activatedRef.current = true;

@@ -141,7 +141,7 @@ export const bestImageScreenSharedStyles: BestImageScreenSharedStyles = StyleShe
   exportButtonDisabled: { opacity: 0.55 },
   exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#111111' },
-  exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  exportOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 12 },
   exportOverlayText: { fontSize: 14, fontWeight: '700' },
 });
 

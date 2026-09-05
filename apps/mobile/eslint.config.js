@@ -12,6 +12,13 @@ module.exports = defineConfig([
       'src/features/maimai-chart-preview/webview-player/**',
     ],
     rules: {
+      // Keep compiler adoption diagnostics visible without changing the
+      // established Hooks correctness checks during the SDK migration.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/refs': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
+      'react-hooks/immutability': 'warn',
+      'react-hooks/globals': 'warn',
       'no-restricted-imports': ['error', {
         paths: [{
           name: 'react-native',

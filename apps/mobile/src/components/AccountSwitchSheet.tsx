@@ -1,3 +1,4 @@
+import { useModalDismissal } from '@/hooks/use-modal-close-action';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GameId } from '@/domain/game-bind-options';
@@ -14,6 +15,7 @@ export function AccountSwitchSheet({
   expandedGameId,
   activeAccountId,
   onClose,
+  onDismiss,
   onToggleGame,
   onSelectAccount,
 }: {
@@ -22,14 +24,17 @@ export function AccountSwitchSheet({
   expandedGameId: GameId | null;
   activeAccountId: string | null;
   onClose: () => void;
+  onDismiss?: () => void;
   onToggleGame: (id: GameId) => void;
   onSelectAccount: (account: BoundAccount) => void;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
 
+  const handleDismiss = useModalDismissal(visible, onDismiss);
   return (
     <Modal
+      onDismiss={handleDismiss}
       visible={visible}
       animationType="slide"
       presentationStyle="formSheet"

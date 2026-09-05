@@ -102,7 +102,7 @@ describe('全局顶部通知', () => {
       reset: jest.fn(),
     } as ReturnType<typeof Animated.parallel>);
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
-      hardwareBackHandler = () => handler() === true;
+      hardwareBackHandler = () => handler({ type: 'hardwareBackPress', timeStamp: 0 }) === true;
       return { remove: jest.fn() };
     });
   });

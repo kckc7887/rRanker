@@ -1,7 +1,7 @@
 /* eslint-disable import/first -- Vitest native-module mocks must be registered before imports. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('expo-media-library', () => ({
+vi.mock('expo-media-library/legacy', () => ({
   isAvailableAsync: vi.fn(async () => true),
   requestPermissionsAsync: vi.fn(async () => ({ granted: true })),
   saveToLibraryAsync: vi.fn(async () => undefined),
@@ -31,7 +31,7 @@ vi.mock('expo-file-system', () => {
   return { File, Paths: { cache: 'file:///cache' }, __fileStates: fileStates };
 });
 
-import * as MediaLibrary from 'expo-media-library';
+import * as MediaLibrary from 'expo-media-library/legacy';
 import * as FileSystem from 'expo-file-system';
 import {
   bestImageCaptureDimensions,
@@ -85,5 +85,36 @@ describe('best image export', () => {
 
     deleteBestImageCapture('file:///capture.png');
     expect(states.get('file:///capture.png')).toBe(false);
+  });
+
+  it('waits for the copy before saving and deleting the temporary image', async () => {
+    let complete!: () => void;
+    const originalCopy = FileSystem.File.prototype.copy;
+    const copy = vi.spyOn(FileSystem.File.prototype, 'copy').mockImplementation(function (this: FileSystem.File, output) {
+      return new Promise<void>((resolve) => { complete = () => { originalCopy.call(this, output); resolve(); }; });
+    });
+    const remove = vi.spyOn(FileSystem.File.prototype, 'delete');
+    try {
+      const saving = saveBestImageCapture('file:///capture-deferred.png', 'deferred.png');
+      expect(MediaLibrary.saveToLibraryAsync).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+      complete();
+      await saving;
+      expect(MediaLibrary.saveToLibraryAsync).toHaveBeenCalledWith('file:///cache/deferred.png');
+      expect(remove).toHaveBeenCalledTimes(1);
+    } finally {
+      copy.mockRestore();
+      remove.mockRestore();
+    }
+  });
+
+  it('does not save an image when copying fails', async () => {
+    const copy = vi.spyOn(FileSystem.File.prototype, 'copy').mockRejectedValueOnce(new Error('copy failed'));
+    try {
+      await expect(saveBestImageCapture('file:///capture-failed.png', 'failed.png')).rejects.toThrow('copy failed');
+      expect(MediaLibrary.saveToLibraryAsync).not.toHaveBeenCalled();
+    } finally {
+      copy.mockRestore();
+    }
   });
 });

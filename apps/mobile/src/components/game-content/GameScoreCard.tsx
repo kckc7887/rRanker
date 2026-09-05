@@ -158,13 +158,13 @@ export function GameScoreCard({
             onError={() => setFailedArtworkSource(artworkSource)}
             pointerEvents="none"
             source={artworkSource}
-            style={[StyleSheet.absoluteFillObject, artwork?.scale ? { transform: [{ scale: artwork.scale }] } : null]}
+            style={[StyleSheet.absoluteFill, artwork?.scale ? { transform: [{ scale: artwork.scale }] } : null]}
             testID="score-card-artwork"
           />
           <View
             pointerEvents="none"
             style={[
-              StyleSheet.absoluteFillObject,
+              StyleSheet.absoluteFill,
               { backgroundColor: `rgba(${overlayColor},${1 - artworkTransparency / 100})` },
             ]}
             testID="score-card-artwork-overlay"

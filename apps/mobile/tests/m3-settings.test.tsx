@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
@@ -59,6 +59,21 @@ const mockTufAccount = createTufBoundAccount({ playerId: 4242, displayName: 'TUF
 const mockMuseDashAccount = createMuseDashBoundAccount({ userId: 'u-muse-1', displayName: '喵斯玩家' });
 let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount];
 let mockExpandedGameId: GameId = 'maimai';
+
+let mockPickerProps: { visible: boolean; onDismiss?: () => void };
+jest.mock('@/components/GamePickerSheet', () => {
+  const { GamePickerSheet } = jest.requireActual<typeof import('@/components/GamePickerSheet')>('@/components/GamePickerSheet');
+  return { GamePickerSheet: (props: React.ComponentProps<typeof GamePickerSheet>) => {
+    mockPickerProps = props;
+    return <GamePickerSheet {...props} />;
+  } };
+});
+
+async function finishPickerDismissal() {
+  await waitFor(() => expect(mockPickerProps.visible).toBe(false));
+  expect(mockSelectBoundAccount).not.toHaveBeenCalled();
+  await act(() => mockPickerProps.onDismiss?.());
+}
 
 describe('示例账号图标', () => {
   it('中二/Phigros/喵斯示例账号与舞萌示例账号复用同一图标', () => {
@@ -280,6 +295,7 @@ describe('M3A game account management', () => {
     expect(screen.queryByText('测试游戏')).toBeNull();
     expect(screen.getByLabelText('水鱼查分器')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('水鱼查分器'));
+    await finishPickerDismissal();
     await waitFor(() => expect(screen.getByText('登录查分器')).toBeTruthy());
     expect(screen.getByText('用于绑定 舞萌 DX')).toBeTruthy();
   });
@@ -325,6 +341,7 @@ describe('M3A game account management', () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     await fireEvent.press(screen.getByLabelText('示例查分器'));
+    await finishPickerDismissal();
     await waitFor(() => expect(mockSelectBoundAccount).toHaveBeenCalledWith(mockTestAccount.id));
     expect(mockUpsertDemoAccount).not.toHaveBeenCalled();
   });
@@ -334,6 +351,7 @@ describe('M3A game account management', () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     await fireEvent.press(screen.getByLabelText('落雪查分器'));
+    await finishPickerDismissal();
 
     expect(screen.getByText('登录查分器')).toBeTruthy();
     expect(screen.getByText('用于绑定 中二节奏')).toBeTruthy();
@@ -345,6 +363,7 @@ describe('M3A game account management', () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     await fireEvent.press(screen.getByLabelText('示例查分器'));
+    await finishPickerDismissal();
 
     const expected = createMaxedChunithmTestAccount();
     await waitFor(() => expect(mockSaveChunithmDemoAccount).toHaveBeenCalledWith({
@@ -361,6 +380,7 @@ describe('M3A game account management', () => {
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     const exampleProviders = screen.getAllByLabelText('示例查分器');
     await fireEvent.press(exampleProviders.at(-1)!);
+    await finishPickerDismissal();
 
     const expected = createMaxedPhigrosTestAccount();
     await waitFor(() => expect(mockSavePhigrosDemoAccount).toHaveBeenCalledWith({
@@ -377,6 +397,7 @@ describe('M3A game account management', () => {
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     const exampleProviders = screen.getAllByLabelText('示例查分器');
     await fireEvent.press(exampleProviders.at(-1)!);
+    await finishPickerDismissal();
 
     const expected = createMaxedMuseDashTestAccount();
     await waitFor(() => expect(mockSaveMuseDashDemoAccount).toHaveBeenCalledWith({
@@ -404,6 +425,7 @@ describe('M3A game account management', () => {
     const screen = await renderScreen();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     await fireEvent.press(screen.getByLabelText('本地查分器'));
+    await finishPickerDismissal();
 
     await waitFor(() => expect(mockUpsertBoundAccount).toHaveBeenCalledTimes(1));
     const added = mockUpsertBoundAccount.mock.calls[0][0] as BoundAccount;

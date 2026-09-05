@@ -845,7 +845,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: 32 },
   hero: { position: 'relative', overflow: 'hidden' },
   heroPlaceholder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#D1D5DB',
@@ -883,7 +883,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   worldsEndCardOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 23,
   },
   specialTagEditorSurface: {

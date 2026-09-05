@@ -1,6 +1,7 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import * as IdleTasks from '@/state/idle-tasks';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager, Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
@@ -188,7 +189,7 @@ describe('Phira page contracts', () => {
     expect(screen.queryByText('曲绘画师')).toBeNull();
     expect(screen.getByTestId('phira-metadata-value-作者').props.children).toBe('#1252389');
     expect(screen.getAllByText('未上架')).toHaveLength(2);
-    expect(screen.getByText('Click')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Click')).toBeTruthy());
     expect(screen.getAllByText('总计')).toHaveLength(1);
     expect(screen.getByText('Perfect')).toBeTruthy();
     expect(screen.getByText('XING-GOOD')).toBeTruthy();
@@ -226,7 +227,7 @@ describe('Phira page contracts', () => {
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
     try {
       const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
-      expect(screen.getByLabelText('查看谱面确认：初音未来的消失').props.testID).toBeUndefined();
+      await waitFor(() => expect(screen.getByLabelText('查看谱面确认：初音未来的消失').props.testID).toBeUndefined());
       expect(screen.getByLabelText('下载谱面文件：初音未来的消失').props.testID).toBeUndefined();
       await screen.unmount();
     } finally {
@@ -247,9 +248,9 @@ describe('Phira page contracts', () => {
 
   it('cancels deferred detail work when leaving during the navigation transition', async () => {
     const cancel = jest.fn();
-    const interaction = jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(() => ({
+    const interaction = jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation(() => ({
       cancel,
-    }) as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>);
+    }) as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>);
     const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
     expect(mockNotesEnabled).toEqual([false]);
     await screen.unmount();

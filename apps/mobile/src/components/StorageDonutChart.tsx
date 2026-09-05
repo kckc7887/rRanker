@@ -83,7 +83,7 @@ export function StorageDonutChart({ segments, totalBytes, size = 200 }: Props) {
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center' },
   center: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -39,7 +39,7 @@ export class PhiraProvider {
       }
       if (error instanceof ProviderError) throw error;
       if (signal?.aborted) throw error;
-      throw error instanceof Error && error.name === 'AbortError'
+      throw (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))
         ? new ProviderError('timeout', 'Phira 数据读取超时', true, { cause: error })
         : new ProviderError('network', '无法连接 Phira 社区服务', true, { cause: error });
     } finally {

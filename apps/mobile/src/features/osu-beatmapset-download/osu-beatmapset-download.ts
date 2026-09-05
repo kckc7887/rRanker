@@ -44,6 +44,7 @@ export async function downloadOsuBeatmapsetPackage(
     return await saveChartPackage(
       osuBeatmapsetPackageName(request.title, request.beatmapsetId),
       { kind: 'file', file: archive },
+      signal,
     );
   } finally {
     cleanupChartDownloadSessionDirectory(staging);

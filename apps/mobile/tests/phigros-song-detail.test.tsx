@@ -1,15 +1,16 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager } from 'react-native';
+
 import SongDetailScreen from '../app/songs/[songId]';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import type { Song } from '@/domain/models';
 import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 
-jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
   (callback as () => void)();
-  return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+  return { cancel: jest.fn() } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
 });
 
 const mockBack = jest.fn();

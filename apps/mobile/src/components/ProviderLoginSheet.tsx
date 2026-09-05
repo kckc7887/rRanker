@@ -1,3 +1,4 @@
+import { useModalDismissal } from '@/hooks/use-modal-close-action';
 import { useState } from 'react';
 import {
   Image,
@@ -24,6 +25,7 @@ export function ProviderLoginSheet({
   gameId,
   gameTitle,
   onClose,
+  onDismiss,
   onSuccess,
 }: {
   visible: boolean;
@@ -31,10 +33,12 @@ export function ProviderLoginSheet({
   gameId: GameId;
   gameTitle: string;
   onClose: () => void;
+  onDismiss?: () => void;
   onSuccess: () => void;
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
+  const handleDismiss = useModalDismissal(visible, onDismiss);
   const [busy, setBusy] = useState(false);
   const boundMaimaiCount = useSession((s) => s.boundAccounts.filter(
     (account) => account.gameId === 'maimai' && account.id !== LOCAL_MAIMAI_ACCOUNT_ID,
@@ -51,6 +55,7 @@ export function ProviderLoginSheet({
 
   return (
     <Modal
+      onDismiss={handleDismiss}
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"

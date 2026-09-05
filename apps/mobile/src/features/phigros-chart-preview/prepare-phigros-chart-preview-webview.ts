@@ -52,8 +52,10 @@ export async function preparePhigrosChartPreviewWebViewSource(
   config: PhigrosChartPreviewConfig,
   musicDataBase64: string | null = null,
   directory?: Directory,
+  signal?: AbortSignal,
 ): Promise<PhigrosChartPreviewWebViewSource> {
   return prepareChartPreviewWebviewFromPlan({
+    signal,
     directoryName: STAGE_DIRECTORY_NAME,
     directory,
     stagedAssets: [

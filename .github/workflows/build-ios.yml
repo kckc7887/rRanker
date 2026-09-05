@@ -60,6 +60,17 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
 
+      - name: Verify Xcode version
+        shell: pwsh
+        run: |
+          $xcodeInfo = xcodebuild -version
+          if ($LASTEXITCODE -ne 0) { throw "Unable to read Xcode version" }
+          $versionLine = $xcodeInfo | Select-String '^Xcode (\d+\.\d+(?:\.\d+)?)$'
+          if (-not $versionLine -or [version]$versionLine.Matches[0].Groups[1].Value -lt [version]'26.4') {
+            throw "Expo SDK 57 requires Xcode 26.4 or newer"
+          }
+          $xcodeInfo
+
       - name: Read app metadata
         id: app
         shell: pwsh

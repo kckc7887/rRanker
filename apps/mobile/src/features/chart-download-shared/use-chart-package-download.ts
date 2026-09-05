@@ -110,7 +110,7 @@ export function useChartPackageDownload({
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
         },
       });
-      if (saved) {
+      if (saved && !controller.signal.aborted && mountedRef.current) {
         showNotification({
           title: '谱面已保存',
           message: successMessage,

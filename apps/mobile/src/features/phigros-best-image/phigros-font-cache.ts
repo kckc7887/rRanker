@@ -128,7 +128,7 @@ export function createPhigrosFontPreparer(
       fontPartFile.create({ overwrite: true });
       fontPartFile.write(fontBytes);
       if (finalFile.exists) finalFile.delete();
-      fontPartFile.move(finalFile);
+      await fontPartFile.move(finalFile);
       fontPartMoved = true;
       return finalFile;
     } finally {

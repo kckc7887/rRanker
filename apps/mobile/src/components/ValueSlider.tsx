@@ -129,7 +129,7 @@ export function ValueSlider({
             end={{ x: 1, y: 0.5 }}
             pointerEvents="none"
             start={{ x: 0, y: 0.5 }}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
           />
         ) : null}
       </View>

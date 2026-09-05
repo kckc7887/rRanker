@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Icon, Label, NativeTabs, VectorIcon } from 'expo-router/unstable-native-tabs';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useAppTheme } from '@/theme/app-theme';
 
 export default function TabLayout() {
@@ -17,33 +17,33 @@ export default function TabLayout() {
       tintColor={theme.accent}
     >
       <NativeTabs.Trigger name="(overview)">
-        <Icon
+        <NativeTabs.Trigger.Icon
           sf={{ default: 'house', selected: 'house.fill' }}
-          androidSrc={<VectorIcon family={Ionicons} name="home-outline" />}
+          src={<NativeTabs.Trigger.VectorIcon family={Ionicons} name="home-outline" />}
         />
-        <Label>总览</Label>
+        <NativeTabs.Trigger.Label>总览</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="b50">
-        <Icon
+        <NativeTabs.Trigger.Icon
           sf={{ default: 'trophy', selected: 'trophy.fill' }}
-          androidSrc={<VectorIcon family={Ionicons} name="trophy-outline" />}
+          src={<NativeTabs.Trigger.VectorIcon family={Ionicons} name="trophy-outline" />}
         />
-        <Label>最佳</Label>
+        <NativeTabs.Trigger.Label>最佳</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="records">
-        <Icon sf="chart.bar.xaxis" androidSrc={<VectorIcon family={Ionicons} name="stats-chart-outline" />} />
-        <Label>成绩</Label>
+        <NativeTabs.Trigger.Icon sf="chart.bar.xaxis" src={<NativeTabs.Trigger.VectorIcon family={Ionicons} name="stats-chart-outline" />} />
+        <NativeTabs.Trigger.Label>成绩</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="search">
-        <Icon sf="music.note.list" androidSrc={<VectorIcon family={Ionicons} name="musical-notes-outline" />} />
-        <Label>曲库</Label>
+        <NativeTabs.Trigger.Icon sf="music.note.list" src={<NativeTabs.Trigger.VectorIcon family={Ionicons} name="musical-notes-outline" />} />
+        <NativeTabs.Trigger.Label>曲库</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
-        <Icon
+        <NativeTabs.Trigger.Icon
           sf={{ default: 'gearshape', selected: 'gearshape.fill' }}
-          androidSrc={<VectorIcon family={Ionicons} name="settings-outline" />}
+          src={<NativeTabs.Trigger.VectorIcon family={Ionicons} name="settings-outline" />}
         />
-        <Label>设置</Label>
+        <NativeTabs.Trigger.Label>设置</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

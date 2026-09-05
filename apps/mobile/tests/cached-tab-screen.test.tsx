@@ -1,7 +1,8 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { useState } from 'react';
-import { InteractionManager, Pressable, Text } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { CachedTabScreen, useCachedTabActive } from '@/components/CachedTabScreen';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
 
@@ -47,13 +48,13 @@ describe('cached native-tab content', () => {
 
   it('keeps mounted state and resumes activity only after every focus transition', async () => {
     const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+    jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
       const task = {
         callback: callback as () => void,
         cancel: jest.fn(),
       };
       pendingTasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      return { cancel: task.cancel } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
     });
 
     const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
@@ -98,10 +99,10 @@ describe('cached native-tab content', () => {
 
   it('keeps the focused page mounted in background and cancels a superseded resume task', async () => {
     const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+    jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
       const task = { callback: callback as () => void, cancel: jest.fn() };
       pendingTasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      return { cancel: task.cancel } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
     });
 
     const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
@@ -137,10 +138,10 @@ describe('cached native-tab content', () => {
 
   it('retains page state and closes every interaction handle across 30 focus cycles', async () => {
     const tasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+    jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
       const task = { callback: callback as () => void, cancel: jest.fn() };
       tasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      return { cancel: task.cancel } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
     });
     const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
     for (let index = 0; index < 30; index += 1) {
@@ -162,9 +163,9 @@ describe('cached native-tab content', () => {
   });
 
   it('evicts only an unfocused page after a memory warning', async () => {
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+    jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
       (callback as () => void)();
-      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      return { cancel: jest.fn() } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
     });
     const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
     let cleanup: void | (() => void);

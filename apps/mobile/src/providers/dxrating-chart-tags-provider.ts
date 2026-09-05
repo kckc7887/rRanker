@@ -128,7 +128,7 @@ export class DxRatingChartTagsProvider {
       if (error instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', 'DXRating 返回了无效 JSON', true, { cause: error });
       }
-      if (error instanceof Error && error.name === 'AbortError') {
+      if ((controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))) {
         throw new ProviderError('timeout', 'DXRating 谱面标签读取超时', true, { cause: error });
       }
       throw new ProviderError('network', '无法连接 DXRating 谱面标签服务', true, { cause: error });

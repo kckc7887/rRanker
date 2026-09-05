@@ -119,7 +119,7 @@ export default function PersonalizationScreen() {
               ) : (
                 <LinearGradient colors={BADGE_RAINBOW_BORDER_COLORS} end={{ x: 1, y: 0.5 }} start={{ x: 0, y: 0.5 }} style={styles.customRainbowBorder}>
                   <LinearGradient colors={BADGE_RAINBOW_FILL_COLORS} end={{ x: 1, y: 0.5 }} start={{ x: 0, y: 0.5 }} style={styles.customRainbowFill}>
-                    <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.customRainbowOverlay]} />
+                    <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.customRainbowOverlay]} />
                     <Text style={styles.customMark}>+</Text>
                   </LinearGradient>
                 </LinearGradient>

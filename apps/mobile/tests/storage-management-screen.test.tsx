@@ -1,6 +1,7 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager } from 'react-native';
+
 import {
   resetStorageManagementScreenCacheForTests,
   StorageManagementScreen,
@@ -74,7 +75,7 @@ describe('StorageManagementScreen', () => {
     mockLoad.mockClear();
     mockCollect.mockReset().mockResolvedValue(usage);
     pendingInteraction = null;
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((task) => {
+    jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((task) => {
       pendingInteraction = task as () => void;
       return { cancel: jest.fn(), then: jest.fn() } as never;
     });

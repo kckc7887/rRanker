@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  InteractionManager,
   Pressable,
   StyleSheet,
   Text,
@@ -38,12 +37,6 @@ export function RenameLocalAccountSheet({
     if (!visible) return;
     setDraft(initialName);
     setError('');
-    // Focus after the pageSheet finishes presenting — autoFocus during present
-    // races the keyboard with Native Tabs and can freeze / stretch the tab bar.
-    const handle = InteractionManager.runAfterInteractions(() => {
-      inputRef.current?.focus();
-    });
-    return () => handle.cancel();
   }, [initialName, visible]);
 
   const save = async () => {
@@ -67,6 +60,7 @@ export function RenameLocalAccountSheet({
   return (
     <AppModal
       visible={visible}
+      onShow={() => inputRef.current?.focus()}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={saving ? undefined : onClose}

@@ -110,7 +110,7 @@ export class LxnsOAuthRequestCore {
       if (error instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', '落雪返回了无效 JSON', true, { cause: error });
       }
-      if (error instanceof Error && error.name === 'AbortError') {
+      if ((controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))) {
         throw new ProviderError('timeout', texts.timeoutMessage, true, { cause: error });
       }
       throw new ProviderError('network', '无法连接落雪服务', true, { cause: error });

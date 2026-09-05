@@ -231,7 +231,7 @@ async function persistManifest(): Promise<void> {
   if (part.exists) part.delete();
   await part.write(JSON.stringify(payload));
   if (finalFile.exists) finalFile.delete();
-  part.move(finalFile);
+  await part.move(finalFile);
 }
 
 function queueManifestWrite(): void {
@@ -526,10 +526,15 @@ async function createCompressed(
     const finalFile = entryFile(root, cacheKey);
     part = new File(root, `${cacheKey}.part`);
     if (part.exists) part.delete();
-    selected.move(part);
+    await selected.move(part);
     selected = null;
+    if (!current()) return null;
     if (finalFile.exists) finalFile.delete();
-    part.move(finalFile);
+    await part.move(finalFile);
+    if (!current()) {
+      if (finalFile.exists) finalFile.delete();
+      return null;
+    }
     part = null;
     const state = await manifest();
     const now = Date.now();

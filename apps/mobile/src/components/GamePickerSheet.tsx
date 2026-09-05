@@ -1,3 +1,4 @@
+import { useModalDismissal } from '@/hooks/use-modal-close-action';
 import { useMemo } from 'react';
 import {
   Image,
@@ -43,6 +44,7 @@ export function GamePickerSheet({
   currentGameId,
   currentProviderId,
   onClose,
+  onDismiss,
   onToggleGame,
   onSelectProvider,
   onSelectGame,
@@ -55,6 +57,7 @@ export function GamePickerSheet({
   currentGameId?: GameId;
   currentProviderId?: string | null;
   onClose: () => void;
+  onDismiss?: () => void;
   onToggleGame: (id: GameId) => void;
   onSelectProvider: (gameId: GameId, provider: ProviderOption) => void;
   /** switch 模式下，无查分器的游戏（如测试游戏）点此项切换 */
@@ -63,6 +66,7 @@ export function GamePickerSheet({
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
+  const handleDismiss = useModalDismissal(visible, onDismiss);
   const sheetTitle = title ?? (mode === 'switch' ? '切换游戏' : '选择游戏');
 
   /** 家族聚合：同 familyId 的游戏折叠为一个板块行（锚点携带查分器，成员为模式子行）。 */
@@ -89,6 +93,7 @@ export function GamePickerSheet({
 
   return (
     <Modal
+      onDismiss={handleDismiss}
       visible={visible}
       animationType="slide"
       presentationStyle="formSheet"

@@ -104,7 +104,7 @@ export class PhigrosKyouProvider {
       if (error instanceof z.ZodError || error instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', 'Kyou 数据结构与已验证契约不一致', true, { cause: error });
       }
-      if (error instanceof Error && error.name === 'AbortError') {
+      if ((controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))) {
         throw new ProviderError('timeout', 'Kyou 数据读取超时', true, { cause: error });
       }
       throw new ProviderError('network', '无法连接 Kyou 数据服务', true, { cause: error });

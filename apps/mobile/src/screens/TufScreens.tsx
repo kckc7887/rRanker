@@ -276,16 +276,16 @@ function TufLevelHero({ level }: { level: TufLevel }) {
   return <View testID="tuf-level-hero" style={[styles.hero, { width, height: width }]}>
     {mediaActive && candidate ? <Image accessibilityLabel={`关卡头图 ${level.song}`}
       cachePolicy="disk" cacheProfile="artwork" gameId="adofai" contentFit="cover" onError={() => setCandidateIndex((index) => index + 1)}
-      source={candidate} style={StyleSheet.absoluteFillObject} transition={120} /> : (
+      source={candidate} style={StyleSheet.absoluteFill} transition={120} /> : (
       <LinearGradient colors={theme.dark ? ['#173346', '#3C416A', '#532A2C'] : ['#DDF6FF', '#E5E7F7', '#FFE2DF']}
-        end={{ x: 1, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFillObject}>
+        end={{ x: 1, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill}>
         <Image accessibilityLabel={`关卡备用图 ${level.song}`} cachePolicy="disk" cacheProfile="artwork" gameId="adofai" contentFit="contain"
           onError={candidate ? () => setCandidateIndex((index) => index + 1) : undefined}
           source={candidate ?? ADOFAI_ICON} style={styles.heroFallbackImage} transition={120} />
       </LinearGradient>
     )}
     <LinearGradient pointerEvents="none" colors={['rgba(10,18,28,0.02)', 'rgba(10,18,28,0.84)']}
-      locations={[0.15, 1]} style={StyleSheet.absoluteFillObject} />
+      locations={[0.15, 1]} style={StyleSheet.absoluteFill} />
     <View style={styles.heroCopy}>
       <Text numberOfLines={1} style={styles.heroId}>#{level.id}</Text>
       <AutoScrollText contentContainerStyle={styles.heroScrollContent} style={styles.heroScroll}

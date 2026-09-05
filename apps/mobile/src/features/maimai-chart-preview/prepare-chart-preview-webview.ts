@@ -47,8 +47,10 @@ export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Dire
 /** 将播放器脚本、远程皮肤与正解音写入同一 session；皮肤编码为 skin-data.js。 */
 export async function prepareChartPreviewWebViewSource(
   config: ChartPreviewInjectConfig,
+  signal?: AbortSignal,
 ): Promise<ChartPreviewWebViewSource> {
   return prepareChartPreviewWebviewFromPlan({
+    signal,
     directoryName: 'rranker-chart-preview',
     remoteCacheDirectory: chartPreviewStageDirectoryBase('rranker-chart-preview-remote'),
     stagedAssets: [

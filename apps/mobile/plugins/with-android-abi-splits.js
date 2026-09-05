@@ -4,6 +4,7 @@ const {
 } = require('expo/config-plugins');
 const {
   mergeContents,
+  removeGeneratedContents,
 } = require('@expo/config-plugins/build/utils/generateCode');
 
 const TAG = 'rranker-android-abi-splits';
@@ -27,10 +28,8 @@ function withAndroidAbiSplits(config) {
       return config;
     }
 
-    const src = config.modResults.contents;
-    if (src.includes(`@generated begin ${TAG}`)) {
-      return config;
-    }
+    const original = config.modResults.contents;
+    const src = removeGeneratedContents(original, TAG) ?? original;
 
     // 手工已写入但无标记时避免重复插入
     if (/\bsplits\s*\{\s*\n\s*abi\s*\{/.test(src)) {
@@ -41,14 +40,14 @@ function withAndroidAbiSplits(config) {
       src,
       newSrc: SPLITS_BLOCK,
       tag: TAG,
-      anchor: /packagingOptions\s*\{/,
-      offset: -1,
+      anchor: /^android\s*\{/,
+      offset: 1,
       comment: '//',
     });
 
     if (!result.didMerge) {
       throw new Error(
-        `[${TAG}] 未能插入 ABI splits：找不到 packagingOptions 锚点`,
+        `[${TAG}] 未能插入 ABI splits：找不到 android 锚点`,
       );
     }
 

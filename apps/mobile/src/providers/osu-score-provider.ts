@@ -104,7 +104,7 @@ export class OsuScoreProvider {
     } catch (error) {
       if (signal?.aborted) throw error;
       if (error instanceof ProviderError) throw error;
-      if (error instanceof Error && error.name === 'AbortError') {
+      if ((controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))) {
         throw new ProviderError('timeout', 'osu! 数据读取超时', true, { cause: error });
       }
       throw new ProviderError('network', '无法连接 osu! 服务', true, { cause: error });

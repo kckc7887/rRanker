@@ -98,14 +98,21 @@ function isDirectoryPickerCancellation(error: unknown): boolean {
 export async function saveChartPackage(
   fileName: string,
   output: ChartPackageOutput,
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  let destination: File | undefined;
   try {
+    throwIfChartDownloadCancelled(signal);
     const picked = await Directory.pickDirectoryAsync();
-    const destination = picked.createFile(fileName, 'application/zip');
-    if (output.kind === 'file') output.file.copy(destination);
+    throwIfChartDownloadCancelled(signal);
+    destination = picked.createFile(fileName, 'application/zip');
+    if (output.kind === 'file') await output.file.copy(destination);
     else destination.write(output.bytes);
+    throwIfChartDownloadCancelled(signal);
     return true;
   } catch (error) {
+    if (destination?.exists) destination.delete();
+    if (error instanceof ChartPackageDownloadCancelledError) throw error;
     if (isDirectoryPickerCancellation(error)) return false;
     throw new ChartPackageDownloadError('无法打开保存位置选择', { cause: error });
   }

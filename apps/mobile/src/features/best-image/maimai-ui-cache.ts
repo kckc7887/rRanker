@@ -102,7 +102,7 @@ export function createMaimaiUiPreparer(
       }
       const finalFile = new File(uiDirectory, finalPath);
       if (finalFile.exists) finalFile.delete();
-      part.move(finalFile);
+      await part.move(finalFile);
     }
   }
 

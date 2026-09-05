@@ -1,6 +1,7 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, InteractionManager, StyleSheet } from 'react-native';
+import { Animated, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SettingsTabScreen, { SettingsScreen } from '../app/(tabs)/settings';
 import PersonalizationScreen from '../app/personalization';
@@ -132,9 +133,9 @@ describe('settings navigation', () => {
 
   it('uses the shared cached-tab lifecycle for the settings route', async () => {
     let resume: (() => void) | null = null;
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+    jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
       resume = callback as () => void;
-      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      return { cancel: jest.fn() } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
     });
 
     const screen = await renderSettings(<SettingsTabScreen />);

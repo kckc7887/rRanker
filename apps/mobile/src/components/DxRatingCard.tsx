@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   outlinedValueFill: { zIndex: 1 },
   outlineWarm: { opacity: 0 },
   outlineMask: { flex: 1 },
-  outlineText: { ...StyleSheet.absoluteFillObject },
+  outlineText: { ...StyleSheet.absoluteFill },
   outlineMaskText: { color: '#000000' },
   meta: { fontSize: 14, opacity: 0.78 },
   stars: { maxWidth: 96, fontSize: 20, lineHeight: 28, fontWeight: '800', letterSpacing: 2, textAlign: 'right' },

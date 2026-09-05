@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  InteractionManager,
   Pressable,
   StyleSheet,
   Text,
@@ -35,10 +34,6 @@ export function ArcadeOriginPickerSheet({
     setDraft('');
     setError('');
     setSearching(false);
-    const handle = InteractionManager.runAfterInteractions(() => {
-      inputRef.current?.focus();
-    });
-    return () => handle.cancel();
   }, [visible]);
 
   const search = async () => {
@@ -90,6 +85,7 @@ export function ArcadeOriginPickerSheet({
   return (
     <AppModal
       visible={visible}
+      onShow={() => inputRef.current?.focus()}
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={searching ? undefined : onClose}

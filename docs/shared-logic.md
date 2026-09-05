@@ -40,7 +40,7 @@ app 路由 / 游戏容器
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
 |---|---|---|---|
 | Provider 契约 | `src/providers/contracts.ts`：`ProviderSession`、`AuthProvider`、`ScoreProvider`、`CatalogDrivenScoreProvider`、`CatalogProvider`、`DetailedCatalogProvider` | 每个游戏保留自己的 DTO 与 Schema；示例账号的曲库驱动成绩实现 `CatalogDrivenScoreProvider` | 各 Provider 测试、`maxed-*-test-provider.test.ts` |
-| JSON 请求 | `src/providers/http-json.ts`：`requestJson`、`fetchProviderJson`、`retryAfterMs` | 统一超时、取消、重试、429 退避和结构校验；游戏提供 base URL、Schema 与场景文案 | 各 Provider 测试 |
+| JSON 请求 | `src/providers/http-json.ts`：`requestJson`、`fetchProviderJson`、`retryAfterMs` | 统一超时、取消、重试、429 退避和结构校验；以自身 AbortController 状态兼容 Expo 包装的取消错误，外部取消优先透传；游戏提供 base URL、Schema 与场景文案 | `http-json.test.ts`、各 Provider 测试 |
 | 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage` | 底层 code/cause 用于诊断；所有用户可见出口必须转换为可行动文案 | `consumer-copy-policy.test.ts`、各 Provider 测试 |
 | LXNS OAuth 请求 | `src/providers/lxns-oauth-request.ts` 与 `lxns-oauth.ts` | 舞萌和中二共享 OAuth 请求与令牌轮换骨架；游戏差异通过参数和账号映射表达 | LXNS OAuth、登录和 Session 测试 |
 | 示例满成绩 | `src/providers/maxed-records.ts` 的 `buildMaxedScoreRecords` | 由游戏测试 Provider 提供真实目录和映射函数，不复制通用生成循环 | `maxed-*-test-provider.test.ts` |
@@ -57,6 +57,8 @@ app 路由 / 游戏容器
 | Session | `src/state/session-store.ts`：`useSession`、`restoreSession`、令牌轮换函数 | 当前账号、游戏、Provider 与会话集中管理；页面不得维护第二份账号真相 | Session、账号切换、OAuth 测试 |
 | QueryClient | `src/state/query-client.ts`：`queryClient`、`releaseInactiveQueries` | 全应用唯一实例；只有内存警告清理非活动 Query | 生命周期与缓存测试 |
 | 生命周期 | `src/state/app-lifecycle-core.ts`、`app-lifecycle.tsx`：`AppLifecycleProvider`、`useAppLifecycle`、`getForegroundAbortSignal`、`waitForForeground` | 短暂 inactive、后台、前台代次和 memory warning 分开处理；异步任务传递 AbortSignal | `app-lifecycle.test.tsx`、下载生命周期测试 |
+| 空闲任务与导航转场 | `src/state/idle-tasks.ts`：`scheduleIdleTask(callback): { cancel() }`、`beginNavigationTransition()`、`setIdleTasksPaused(boolean)`；`src/hooks/use-navigation-transition-listeners.ts` | 根栈和 `MainTabStack` 注册转场起止；Provider 在 inactive/后台取消原生空闲回调，前台重新调度尚未取消的工作；所有转场结束后才执行，取消后不得恢复；不使用 InteractionManager 判断动画结束 | `idle-tasks.test.ts`、生命周期与标签驻留测试 |
+| 弹层关闭动作 | `src/hooks/use-modal-close-action.ts`：`useModalCloseAction(setVisible)`、`useModalDismissal(visible, onDismiss?)` | 单一待执行动作，替换旧动作，卸载清空；iOS 等待原生关闭事件，Android 等待宿主移除；切换、选择与登录 Sheet 通过可选 `onDismiss` 接入 | `modal-close-action.test.tsx`、总览账号切换测试 |
 | 普通筛选 Store | `src/state/create-filter-store.ts` 的 `createFilterStore` | defaults 生成 setter；`clearKeys` 决定清空范围，游戏保留筛选字段语义 | 各游戏 filter 测试 |
 | 持久化随机筛选 | `src/state/create-random-charts-filter-store.ts` 的 `createPersistedRandomChartsFilterStore` | 统一水合、脏写保护和串行保存；游戏提供偏好 Store 与默认值 | 随机歌曲测试 |
 | 多账号列表 | `src/storage/create-account-list-store.ts` 的 `createAccountListStore` | 统一解析失败清理、normalize、upsert 和空列表删键 | 各账号 Store 测试 |
@@ -108,6 +110,8 @@ app 路由 / 游戏容器
 
 - 成绩图预览只挂载当前页 WebView，其余页使用轻量占位；不得让多份大 HTML 常驻。
 - 谱面确认和下载任务必须响应卸载、后台与 AbortSignal，不得在取消后继续写缓存或显示成功。
+- `ChartPreviewWebviewPlan.signal` 和准备入口的可选 AbortSignal 沿公共暂存路径传递；同批异步写入全部结束后才允许清理失败会话。文件 `copy()`、`move()` 均需 await，不能用同步 mock 掩盖提前读取或清理。
+- `saveChartPackage(fileName, output, signal?)` 在目录选择及复制后检查取消，调用方必须 await 保存再清理源目录；`useChartPackageDownload` 只在未取消且仍挂载时显示成功。成绩图导出仍经 `requestBestImageExportPermission`、`saveBestImageCapture`，相册权限和保存使用 `expo-media-library/legacy`。
 - 作为下游 memo 依赖的数组或对象必须保持稳定引用，避免无意义重算和重渲染。
 
 ## 新增或修改功能时的检查顺序

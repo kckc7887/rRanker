@@ -1,10 +1,12 @@
+import * as IdleTasks from '@/state/idle-tasks';
+import { useNavigationTransitionListeners } from '@/hooks/use-navigation-transition-listeners';
 import { useEffect, useRef, useState } from 'react';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router/react-navigation';
 import { Image as ExpoImage } from 'expo-image';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Appearance, InteractionManager, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Appearance, StyleSheet, View } from 'react-native';
 
 import { queryClient, releaseInactiveQueries } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
@@ -187,7 +189,7 @@ function RootLayoutContent() {
 
   useEffect(() => {
     if (restoreStatus !== 'ready') return;
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = IdleTasks.scheduleIdleTask(() => {
       void markRemoteImageCacheGameActive(activeGameId).catch(() => undefined);
     });
     return () => task.cancel();
@@ -256,7 +258,7 @@ function RootLayoutContent() {
     if (localHydrationGenerationRef.current === lifecycle.foregroundGeneration) return;
     localHydrationGenerationRef.current = lifecycle.foregroundGeneration;
     const signal = getForegroundAbortSignal();
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = IdleTasks.scheduleIdleTask(() => {
       void hydrateLocalAccountRatings(undefined, signal).catch(() => undefined);
       void hydrateBoundAccountThumbnails(undefined, signal).catch(() => undefined);
     });
@@ -267,12 +269,12 @@ function RootLayoutContent() {
     const stop = startTimer('root.themeHydrate');
     void hydrateTheme().finally(stop);
   }, [hydrateTheme]);
-  useEffect(() => { Appearance.setColorScheme(appearance === 'system' ? null : appearance); }, [appearance]);
+  useEffect(() => { Appearance.setColorScheme(appearance === 'system' ? 'unspecified' : appearance); }, [appearance]);
 
   useEffect(() => {
     if (restoreStatus !== 'ready' || !themeHydrated || !iconFontsReady || !lifecycle.foregroundReady) return;
     if (storageMaintenanceStartedRef.current) return;
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = IdleTasks.scheduleIdleTask(() => {
       if (storageMaintenanceStartedRef.current) return;
       storageMaintenanceStartedRef.current = true;
       void runStorageCacheMaintenance().catch(() => undefined);
@@ -294,6 +296,7 @@ function RootLayoutContent() {
 }
 
 function ThemedNavigation() {
+  const screenListeners = useNavigationTransitionListeners();
   const theme = useAppTheme();
   const navigationTheme = {
     ...(theme.dark ? DarkTheme : DefaultTheme),
@@ -305,7 +308,7 @@ function ThemedNavigation() {
   };
   return <ThemeProvider value={navigationTheme}>
     <NotificationProvider>
-      <Stack screenOptions={{
+      <Stack screenListeners={screenListeners} screenOptions={{
         headerBackButtonDisplayMode: 'minimal', headerBackButtonMenuEnabled: false,
         headerStyle: { backgroundColor: theme.surface }, headerTintColor: theme.text,
         contentStyle: { backgroundColor: theme.background },

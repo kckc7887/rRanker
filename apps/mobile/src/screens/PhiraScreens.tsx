@@ -1,9 +1,10 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, InteractionManager, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
@@ -197,7 +198,7 @@ function PhiraSongDetailContent({
   const [deferredReady, setDeferredReady] = useState(false); const [coverFailed, setCoverFailed] = useState(false);
   useEffect(() => {
     setDeferredReady(false);
-    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
+    const task = IdleTasks.scheduleIdleTask(() => setDeferredReady(true));
     return () => task.cancel();
   }, [chart.id]);
   const score = usePhiraChartBest(playerId, deferredReady ? chart : undefined);
@@ -213,7 +214,7 @@ function PhiraSongDetailContent({
     { key: 'bad', label: 'Bad', value: score.data.record.bad }, { key: 'miss', label: 'Miss', value: score.data.record.miss },
   ] } : null;
   return <ScrollView testID="phira-song-detail-scroll" contentContainerStyle={detailStyles.content}>
-      <View style={[detailStyles.hero, { width, height: width }]}>{chart.illustration && !coverFailed ? <Image accessibilityLabel="曲绘" source={chart.illustration} cachePolicy="disk" cacheProfile="artwork" gameId="phira" contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFillObject} transition={120} /> : <View style={[detailStyles.heroPlaceholder, { backgroundColor: theme.input }]}><Text style={detailStyles.heroPlaceholderNote}>♪</Text></View>}
+      <View style={[detailStyles.hero, { width, height: width }]}>{chart.illustration && !coverFailed ? <Image accessibilityLabel="曲绘" source={chart.illustration} cachePolicy="disk" cacheProfile="artwork" gameId="phira" contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFill} transition={120} /> : <View style={[detailStyles.heroPlaceholder, { backgroundColor: theme.input }]}><Text style={detailStyles.heroPlaceholderNote}>♪</Text></View>}
         <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']} locations={[0, 1]} style={detailStyles.heroShade} />
         <View style={detailStyles.heroCopy}><Text numberOfLines={1} style={detailStyles.songId}>#{chart.id}</Text><AutoScrollText testID="phira-song-title-scroll" text={chart.name} textStyle={detailStyles.title} style={detailStyles.singleLine} contentContainerStyle={detailStyles.singleLineContent} /><Text numberOfLines={1} style={detailStyles.artist}>{chart.composer || '曲师未知'}</Text></View></View>
       <SongMetadataTable accessibilityLabel="歌曲详情数据" items={[

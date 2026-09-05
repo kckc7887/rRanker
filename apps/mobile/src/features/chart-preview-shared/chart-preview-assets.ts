@@ -30,12 +30,15 @@ export function disposeChartPreviewSessionDirectory(directory: Directory): void 
   if (directory.exists) directory.delete();
 }
 
-export async function stageAsset(moduleId: number, fileName: string, directory: Directory): Promise<File> {
+export async function stageAsset(moduleId: number, fileName: string, directory: Directory, signal?: AbortSignal): Promise<File> {
+  signal?.throwIfAborted();
   const sourceUri = await loadAssetFileUri(moduleId, fileName);
+  signal?.throwIfAborted();
   const target = new File(directory, fileName);
   const source = new File(sourceUri);
   if (target.exists) target.delete();
-  source.copy(target);
+  await source.copy(target);
+  signal?.throwIfAborted();
   return target;
 }
 

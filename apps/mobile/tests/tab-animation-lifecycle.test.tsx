@@ -1,6 +1,7 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { act, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, InteractionManager } from 'react-native';
+import { Animated } from 'react-native';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { fixtureRecords } from '@/fixtures/sanitized';
@@ -17,10 +18,10 @@ describe('cached tab animation lifecycle', () => {
 
   it('stops native looping animations on blur and restarts them after refocus settles', async () => {
     const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+    jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
       const task = { callback: callback as () => void, cancel: jest.fn() };
       pendingTasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+      return { cancel: task.cancel } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
     });
 
     const animations: { start: jest.Mock; stop: jest.Mock }[] = [];

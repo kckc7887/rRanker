@@ -28,6 +28,7 @@ export type ChartPreviewDataUrlAsset =
   | { key: string; fileName: string; url: string; bytes: number };
 
 export type ChartPreviewWebviewPlan = {
+  signal?: AbortSignal;
   /** stage 目录名（舞萌默认 'rranker-chart-preview'，其它游戏自定义）。 */
   directoryName: string;
   /** 由调用方提前创建的同一会话目录；用于先写音乐/RPE 再准备播放器。 */
@@ -76,7 +77,10 @@ async function mapPool<T>(
       }
     }
   };
-  await Promise.all(Array.from({ length: limit }, () => run()));
+  // Finish in-flight writes before the caller removes the session directory.
+  const results = await Promise.allSettled(Array.from({ length: limit }, () => run()));
+  const rejected = results.find((result) => result.status === 'rejected');
+  if (rejected?.status === 'rejected') throw rejected.reason;
 }
 
 /** 远程资产下载到目标目录：已存在且大小匹配则跳过；否则经 .part 下载、校验后替换。 */
@@ -85,7 +89,9 @@ async function downloadRemoteAsset(
   bytes: number,
   directory: Directory,
   fileName: string,
+  signal?: AbortSignal,
 ): Promise<File> {
+  signal?.throwIfAborted();
   const target = new File(directory, fileName);
   if (target.exists && target.size === bytes) return target;
 
@@ -94,11 +100,13 @@ async function downloadRemoteAsset(
   try {
     if (partFile.exists) partFile.delete();
     await File.downloadFileAsync(url, partFile, { idempotent: true });
+    signal?.throwIfAborted();
     if (partFile.size !== bytes) {
       throw new Error(`远程资产大小不匹配：${fileName}`);
     }
     if (target.exists) target.delete();
-    partFile.move(target);
+    await partFile.move(target);
+    signal?.throwIfAborted();
     partMoved = true;
     return target;
   } finally {
@@ -112,10 +120,11 @@ async function stageRemoteAsset(
   sessionDirectory: Directory,
   fileName: string,
   cacheDirectory?: Directory,
+  signal?: AbortSignal,
 ): Promise<File> {
   const sourceDirectory = cacheDirectory ?? sessionDirectory;
   ensureParentDirectory(sourceDirectory, fileName);
-  const source = await downloadRemoteAsset(url, bytes, sourceDirectory, fileName);
+  const source = await downloadRemoteAsset(url, bytes, sourceDirectory, fileName, signal);
   if (!cacheDirectory) return source;
 
   ensureParentDirectory(sessionDirectory, fileName);
@@ -123,6 +132,7 @@ async function stageRemoteAsset(
   if (target.exists && target.size === source.size) return target;
   if (target.exists) target.delete();
   const payload = await source.bytes();
+  signal?.throwIfAborted();
   target.create({ intermediates: true, overwrite: true });
   target.write(payload);
   if (target.size !== source.size) {
@@ -145,10 +155,12 @@ export async function prepareChartPreviewWebviewFromPlan(
   const directory = plan.directory ?? createChartPreviewSessionDirectory(plan.directoryName);
 
   try {
+    plan.signal?.throwIfAborted();
     await mapPool(plan.stagedAssets, REMOTE_STAGE_CONCURRENCY, async (asset) => {
+      plan.signal?.throwIfAborted();
       ensureParentDirectory(directory, asset.fileName);
       if ('moduleId' in asset) {
-        await stageAsset(asset.moduleId, asset.fileName, directory);
+        await stageAsset(asset.moduleId, asset.fileName, directory, plan.signal);
       } else {
         await stageRemoteAsset(
           asset.url,
@@ -156,12 +168,14 @@ export async function prepareChartPreviewWebviewFromPlan(
           directory,
           asset.fileName,
           plan.remoteCacheDirectory,
+          plan.signal,
         );
       }
     });
 
     const dataUrls: Record<string, string> = {};
     for (const asset of plan.dataUrlAssets ?? []) {
+      plan.signal?.throwIfAborted();
       if ('moduleId' in asset) {
         const sourceUri = await loadAssetFileUri(asset.moduleId, asset.fileName);
         dataUrls[asset.key] = `data:audio/wav;base64,${await new File(sourceUri).base64()}`;
@@ -172,16 +186,19 @@ export async function prepareChartPreviewWebviewFromPlan(
           directory,
           asset.fileName,
           plan.remoteCacheDirectory,
+          plan.signal,
         );
         dataUrls[asset.key] = `data:audio/wav;base64,${await staged.base64()}`;
       }
     }
 
     for (const writer of plan.writers ?? []) {
+      plan.signal?.throwIfAborted();
       await writer(directory);
     }
 
     const template = await readAssetText(plan.htmlModuleId);
+    plan.signal?.throwIfAborted();
     const html = plan.buildHtml(template, dataUrls, directory);
     const htmlFile = new File(directory, 'index.html');
     htmlFile.create({ overwrite: true });

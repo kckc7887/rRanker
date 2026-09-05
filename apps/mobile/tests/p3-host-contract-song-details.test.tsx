@@ -1,13 +1,14 @@
+import * as IdleTasks from '@/state/idle-tasks';
 /**
  * 宿主树回归基线，禁止更新哈希接受差异。
  * 覆盖：PhigrosSongDetail / ChunithmSongDetail 全页 Host Tree（Chrome + Hero + 轮播 + 信息卡）。
  * mock 使用 phigros-song-detail.test.tsx / chunithm-song-detail.test.tsx 的固定数据：
  * 固定 catalog/detail/scores/library 数据、固定 insets 与窗口尺寸、
- * InteractionManager 同步执行、Animated.loop 静态 mock、
+ * 空闲任务同步执行、Animated.loop 静态 mock、
  * useFlowingProgress 固定静态首帧（progress=0 → outputRange[0]）。
  */
 import { createHash } from 'node:crypto';
-import { Animated, Dimensions, InteractionManager } from 'react-native';
+import { Animated, Dimensions } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { PhigrosSongDetail } from '@/components/phigros/PhigrosSongDetail';
@@ -22,9 +23,9 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
   stop: jest.fn(),
   reset: jest.fn(),
 } as unknown as ReturnType<typeof Animated.loop>);
-jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+jest.spyOn(IdleTasks, 'scheduleIdleTask').mockImplementation((callback) => {
   (callback as () => void)();
-  return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+  return { cancel: jest.fn() } as unknown as ReturnType<typeof IdleTasks.scheduleIdleTask>;
 });
 
 // 流光动画值固定为静态首帧：progress=0 → translateX 取 outputRange[0]（-width）。

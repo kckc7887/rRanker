@@ -1,3 +1,4 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import {
   createContext,
   type ReactNode,
@@ -9,7 +10,6 @@ import {
 } from 'react';
 import {
   AppState,
-  InteractionManager,
   type AppStateStatus,
 } from 'react-native';
 import {
@@ -46,7 +46,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
     memoryWarningGeneration: 0,
   }));
   const snapshotRef = useRef(snapshot);
-  const readyTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const readyTaskRef = useRef<ReturnType<typeof IdleTasks.scheduleIdleTask> | null>(null);
 
   useEffect(() => {
     const update = (next: AppLifecycleSnapshot) => {
@@ -59,6 +59,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
       readyTaskRef.current = null;
     };
     const enterInactive = (appState: AppStateStatus | null | undefined) => {
+      IdleTasks.setIdleTasksPaused(true);
       cancelReadyTask();
       update({
         ...snapshotRef.current,
@@ -68,6 +69,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
       });
     };
     const enterBackground = (appState: AppStateStatus | null | undefined) => {
+      IdleTasks.setIdleTasksPaused(true);
       cancelReadyTask();
       abortForegroundWork();
       update({
@@ -78,6 +80,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
       });
     };
     const scheduleReady = (appState: AppStateStatus | null | undefined) => {
+      IdleTasks.setIdleTasksPaused(false);
       if (snapshotRef.current.phase === 'foreground-ready' && snapshotRef.current.appState === appState) {
         return;
       }
@@ -92,7 +95,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
         foregroundReady: false,
       });
       const expectedGeneration = previous.foregroundGeneration + (startsForegroundGeneration ? 1 : 0);
-      readyTaskRef.current = InteractionManager.runAfterInteractions(() => {
+      readyTaskRef.current = IdleTasks.scheduleIdleTask(() => {
         readyTaskRef.current = null;
         if (snapshotRef.current.appState === 'background' || snapshotRef.current.appState === 'inactive') return;
         if (startsForegroundGeneration) beginForegroundWork();

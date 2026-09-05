@@ -6,6 +6,9 @@ const mockFs = vi.hoisted(() => ({
   remotes: new Map<string, Uint8Array | Error>(),
   downloadCalls: [] as string[],
   stagedLocalAssets: [] as string[],
+  moveWait: null as Promise<void> | null,
+  moveStarted: vi.fn(),
+  deletedDirectories: [] as string[],
   readAssetTexts: new Map<number, string>(),
   makeStageDirectory: ((_name: string) => ({ uri: '' })) as (name: string) => { uri: string },
 }));
@@ -21,6 +24,7 @@ vi.mock('expo-file-system', () => {
     create() { /* in-memory directories always exist */ }
     get exists() { return true; }
     delete() {
+      mockFs.deletedDirectories.push(this.uri);
       for (const key of [...mockFs.files.keys()]) {
         if (key.startsWith(`${this.uri}/`)) mockFs.files.delete(key);
       }
@@ -37,7 +41,9 @@ vi.mock('expo-file-system', () => {
       mockFs.files.set(this.uri, typeof content === 'string' ? Uint8Array.from(Buffer.from(content)) : Uint8Array.from(content));
     }
     delete() { mockFs.files.delete(this.uri); }
-    move(destination: File) {
+    async move(destination: File) {
+      mockFs.moveStarted();
+      await mockFs.moveWait;
       const bytes = mockFs.files.get(this.uri);
       if (!bytes) throw new Error('source does not exist');
       mockFs.files.set(destination.uri, bytes);
@@ -94,6 +100,9 @@ describe('chart preview plan executor remote assets', () => {
     mockFs.remotes.clear();
     mockFs.downloadCalls.length = 0;
     mockFs.stagedLocalAssets.length = 0;
+    mockFs.moveWait = null;
+    mockFs.moveStarted.mockClear();
+    mockFs.deletedDirectories.length = 0;
     mockFs.readAssetTexts.clear();
     mockFs.readAssetTexts.set(1, '<html>');
   });
@@ -157,5 +166,54 @@ describe('chart preview plan executor remote assets', () => {
     expect(mockFs.downloadCalls).toEqual([SOUND_URL]);
     expect(mockFs.files.get(stageUri('hit-sounds/click.wav'))).toEqual(SOUND_BYTES);
     expect(seen.click).toBe(`data:audio/wav;base64,b64:${stageUri('hit-sounds/click.wav')}`);
+  });
+
+  it.each(['complete', 'cancel', 'fail'] as const)('waits for an asynchronous move before %s', async (outcome) => {
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    mockFs.moveWait = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    mockFs.remotes.set(SKIN_URL, SKIN_BYTES);
+    const controller = new AbortController();
+    const buildHtml = vi.fn(() => 'ready');
+    const pending = runPlan({
+      signal: controller.signal,
+      buildHtml,
+      stagedAssets: [{ fileName: 'skin/Tap2.png', url: SKIN_URL, bytes: SKIN_BYTES.length }],
+    });
+    const result = pending.then(() => null, (error: unknown) => error);
+    await vi.waitFor(() => expect(mockFs.moveStarted).toHaveBeenCalledOnce());
+    expect(buildHtml).not.toHaveBeenCalled();
+    expect(mockFs.deletedDirectories).toEqual([]);
+    expect(mockFs.files.has(stageUri('skin/Tap2.png.part'))).toBe(true);
+    if (outcome === 'cancel') controller.abort();
+    if (outcome === 'fail') reject(new Error('move failed'));
+    else resolve();
+    if (outcome === 'complete') {
+      expect(await result).toBeNull();
+      expect(buildHtml).toHaveBeenCalledOnce();
+      expect(mockFs.files.has(stageUri('index.html'))).toBe(true);
+    } else {
+      expect(await result).toBeInstanceOf(Error);
+      expect(buildHtml).not.toHaveBeenCalled();
+      expect(mockFs.files.size).toBe(0);
+    }
+  });
+
+  it('waits for other in-flight moves before cleaning a failed batch', async () => {
+    let finish!: () => void;
+    mockFs.moveWait = new Promise<void>((resolve) => { finish = resolve; });
+    mockFs.remotes.set(SKIN_URL, SKIN_BYTES);
+    mockFs.remotes.set(SOUND_URL, new Error('download failed'));
+    const pending = runPlan({ stagedAssets: [
+      { fileName: 'skin/Tap2.png', url: SKIN_URL, bytes: SKIN_BYTES.length },
+      { fileName: 'sound.wav', url: SOUND_URL, bytes: SOUND_BYTES.length },
+    ] });
+    const result = pending.catch((error: unknown) => error);
+    await vi.waitFor(() => expect(mockFs.moveStarted).toHaveBeenCalledOnce());
+    expect(mockFs.deletedDirectories).toEqual([]);
+    finish();
+    expect(await result).toEqual(new Error('download failed'));
+    expect(mockFs.files.size).toBe(0);
+    expect(mockFs.deletedDirectories).toHaveLength(1);
   });
 });

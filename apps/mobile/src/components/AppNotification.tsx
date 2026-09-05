@@ -408,7 +408,7 @@ function NotificationHost({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1000,
     // Keep a high elevation so toasts stay above sheets/modals; empty areas still
     // pass touches via pointerEvents="box-none" on non-action notifications.
@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(17, 24, 39, 0.18)',
   },
   card: {

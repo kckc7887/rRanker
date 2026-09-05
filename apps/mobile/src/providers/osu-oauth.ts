@@ -134,7 +134,7 @@ async function postToken(body: Record<string, string>): Promise<OsuOAuthSession>
     return toSession(parseTokenPayload(payload));
   } catch (error) {
     if (error instanceof ProviderError) throw error;
-    if (error instanceof Error && error.name === 'AbortError') {
+    if ((controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))) {
       throw new ProviderError('timeout', 'osu! OAuth 超时', true, { cause: error });
     }
     throw new ProviderError('network', '无法连接 osu! OAuth', true, { cause: error });

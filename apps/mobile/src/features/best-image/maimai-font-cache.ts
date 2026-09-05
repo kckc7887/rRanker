@@ -78,7 +78,7 @@ export function createMaimaiFontPreparer(
         throw new Error(`${entry.name} 字体校验失败`);
       }
       if (finalFile.exists) finalFile.delete();
-      fontPartFile.move(finalFile);
+      await fontPartFile.move(finalFile);
       fontPartMoved = true;
       return finalFile;
     } finally {

@@ -11,15 +11,15 @@
 | 项目 | 当前实现 |
 |---|---|
 | 应用目录 | `apps/mobile`，npm 工程，入口为 `expo-router/entry` |
-| 运行框架 | Expo 54、React Native 0.81、React 19，启用 React Native New Architecture |
-| 语言 | TypeScript 5.9，严格模式，`@/*` 映射到 `apps/mobile/src/*` |
-| 导航 | Expo Router 6；根级 `Stack` + 五个 `NativeTabs` |
+| 运行框架 | Expo 57、React Native 0.86、React 19.2，使用 React Native New Architecture 与默认 Hermes 引擎 |
+| 语言 | TypeScript 6，严格模式，`@/*` 映射到 `apps/mobile/src/*` |
+| 导航 | Expo Router 57；根级 `Stack` + 五个 `NativeTabs`；导航主题由 `expo-router/react-navigation` 提供 |
 | 服务端状态 | TanStack React Query 5 |
 | 本地状态 | Zustand 5 |
 | 持久化 | Expo SQLite、`expo-sqlite/kv-store`、Expo SecureStore、受控文件目录 |
 | 校验 | Zod 4、Vitest 单元测试、Jest Expo UI/合同测试、ESLint、TypeScript |
 
-Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS CI 使用 Node.js 22 和 `npm ci`。应用同时包含 iOS、Android 配置，Web 配置存在，但项目执行规范禁止启动 Expo Web。
+Node.js 最低版本由 `apps/mobile/package.json` 约束为 22.13；当前 iOS CI 使用 Node.js 22 和 `npm ci`。最低系统版本为 iOS 16.4、Android 7，iOS 编译要求 Xcode 26.4 及以上，CI 在读取应用元数据前检查 Xcode。Web 配置存在，但项目执行规范禁止启动 Expo Web。
 
 ## 路由与运行时装配
 
@@ -28,10 +28,12 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 1. 最外层安装 `AppLifecycleProvider`，将 `active`、短暂 `inactive`、后台和内存警告转成统一生命周期状态。
 2. 启动阶段并行恢复主题、图标字体、SecureStore 会话和各类本地账号档案；准备完成前只渲染加载态。
 3. 准备完成后安装 React Query、应用主题、全局通知和根导航栈。
-4. 首帧交互结束后再补齐账号缩略信息、本地 Rating 与存储维护，避免阻塞启动。
+4. 通过 `state/idle-tasks.ts` 的可取消空闲任务补齐账号缩略信息、本地 Rating 与存储维护，避免阻塞启动；根栈与标签内部栈通过转场事件暂停这些任务，结束后等待空闲再执行。
 5. 后台时暂停上传任务并取消查询；回到前台后产生新的可取消工作代次；内存警告时释放非活动 Query 和 Expo Image 内存缓存。
 
 根栈承载主标签页、个人曲库、游戏管理、存储管理、个性化、歌曲详情、成绩图、谱面确认和 OAuth 回调等文件路由。主标签页位于 `app/(tabs)/_layout.tsx`，固定为总览、最佳、成绩、曲库、设置五项；各标签内部通过 `MainTabStack` 和 `CachedTabScreen` 保持导航及页面状态。
+
+总览账号切换、游戏选择与登录弹层通过 `hooks/use-modal-close-action.ts` 串联关闭后的动作；iOS 等待原生 `onDismiss`，Android 在 `visible=false` 提交并移除原生宿主后继续。登录弹层退场期间保留 Provider 内容，输入框在 `onShow` 后聚焦。空闲调度不承担判断弹窗动画结束的职责。
 
 ## 模块职责
 
@@ -87,6 +89,10 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；预览轮播同一时刻只挂载当前 WebView 页面。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
+- Expo FileSystem 的 `copy()`、`move()` 必须等待完成；下载保存完成后才清理暂存目录，取消时不显示保存成功。谱面准备清单接收 AbortSignal，并等待同批在途写入结束后清理失败会话。成绩图相册保存通过 `expo-media-library/legacy` 保留只写照片权限。
+- Expo 的默认全局 fetch 与显式 `expo/fetch` 使用同一原生实现；请求超时按自身 AbortController 状态判断，兼容原生包装后的错误，外部取消优先透传。登录保留既有 Cookie/Authorization 与表单请求，谱面下载继续使用 FileSystem 可取消下载任务，不依赖全局 fetch。真实登录和 OAuth 仍需设备验收。
+- `scripts/patch-react-native-webview-xiaomi-bridge.cjs` 在安装后为 WebView 13.16.1 应用小米桥接兼容补丁，校验依赖版本和唯一源码锚点，拒绝漂移或重复补丁。Android ABI 拆分仍由 `plugins/with-android-abi-splits.js` 写入生成工程。
+
 ## 开发、测试与构建
 
 所有 npm 命令在 `apps/mobile` 执行：
@@ -101,6 +107,10 @@ npm test
 ```
 
 `npm run test:unit` 使用 Vitest 运行 `tests/**/*.test.ts`；`npm run test:ui` 使用 Jest Expo 串行运行 `tests/**/*.test.tsx`。公共 UI 还由 Host Tree/Style 哈希、HTML/脚本字符串金样和虚构游戏合同保护，禁止仅更新基线来接受未解释差异。
+
+Jest Expo 57 使用与 React Native 对齐的 `@react-native/jest-preset`；配置允许从 Expo 的嵌套依赖解析模块，转换 Router 的 `standard-navigation`，并安装仅供测试的异步空闲调度替身。ESLint 保留 Hooks 正确性检查，React Compiler 的五类采用诊断在 `eslint.config.js` 中设为警告，不要求通过 SDK 升级重构全部既有组件。
+
+依赖升级还需运行 `npx expo install --check`、`npx expo-doctor`，并使用 `npx expo export --platform android --platform ios` 检查两个原生平台的 JS 与资源包。`android/`、`ios/` 是本地生成目录，不进入 Git；重新生成前保留现有本地配置及密钥。ABI 插件把生成块写在顶层 `android` 内，重复 prebuild 会重建该块，保留四种 ABI 拆分。
 
 应用 `tsconfig.json` 排除了舞萌播放器入口及引擎目录；`maimai-chart-preview-webview.test.ts` 使用 TypeScript 独立检查播放器入口及其依赖中的未定义名称。播放器源码改动后运行 `npm run build:chart-preview`，生成 `assets/maimai-chart-preview/index.html`、`player.js` 和供 Metro 加载的 `player.bundle`；两个脚本产物必须一致。打包成功不代表类型检查或手机 WebView 播放验收通过。
 

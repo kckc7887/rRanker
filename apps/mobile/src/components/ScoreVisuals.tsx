@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   achievementNormal: { color: '#172033' },
   achievementMask: { alignSelf: 'stretch', height: 44 }, achievementMaskCompact: { height: 28 },
   achievementMaskContent: { flex: 1, alignItems: 'flex-start' }, maskText: { color: '#000000' },
-  gradientFill: { ...StyleSheet.absoluteFillObject }, flowTrack: { position: 'absolute', top: 0, bottom: 0, left: 0 },
+  gradientFill: { ...StyleSheet.absoluteFill }, flowTrack: { position: 'absolute', top: 0, bottom: 0, left: 0 },
   statusBadge: { minWidth: 32, height: 24, borderRadius: 9, paddingHorizontal: 10, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   layeredRateFrame: { minWidth: 32, height: 24 },
   layeredRateContent: { paddingHorizontal: 8 },

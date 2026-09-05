@@ -50,7 +50,7 @@ export class DivingFishProvider implements ScoreProvider {
       if (error instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', '水鱼返回了无效 JSON', true, { cause: error });
       }
-      if (error instanceof Error && error.name === 'AbortError') {
+      if ((controller.signal.aborted || (error instanceof Error && error.name === 'AbortError'))) {
         throw new ProviderError('timeout', '水鱼读取超时', true, { cause: error });
       }
       throw new ProviderError('network', '无法连接水鱼服务', true, { cause: error });

@@ -1,9 +1,9 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
-  InteractionManager,
   ScrollView,
   StyleSheet,
   Text,
@@ -230,7 +230,7 @@ function Detail({
     setDeferredReady(false);
     setCoverFailed(false);
     setCoverStage('full');
-    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
+    const task = IdleTasks.scheduleIdleTask(() => setDeferredReady(true));
     return () => task.cancel();
   }, [song.id]);
 
@@ -268,7 +268,7 @@ function Detail({
               setCoverFailed(true);
             }}
             source={coverSource}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             transition={120}
           />
         )}
@@ -704,7 +704,7 @@ export const PHIGROS_SONG_DETAIL_STYLES = StyleSheet.create({
   content: { paddingBottom: 48 },
   deferredPlaceholder: { minHeight: 180 },
   hero: { position: 'relative', backgroundColor: '#D9DEE7', overflow: 'hidden' },
-  heroPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  heroPlaceholder: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   heroPlaceholderNote: { color: '#6B7280', fontSize: 64 },
   heroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
   heroCopy: { position: 'absolute', left: 18, right: 18, bottom: 20, gap: 2 },

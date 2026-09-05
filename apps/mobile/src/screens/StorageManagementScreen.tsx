@@ -1,7 +1,7 @@
+import * as IdleTasks from '@/state/idle-tasks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  InteractionManager,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -86,7 +86,7 @@ export function StorageManagementScreen() {
 
   useEffect(() => {
     mountedRef.current = true;
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = IdleTasks.scheduleIdleTask(() => {
       void refresh();
     });
     return () => {

@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
   detail: { paddingBottom: 32 },
   hero: { position: 'relative', backgroundColor: '#D1D5DB', overflow: 'hidden' },
   heroSvg: { position: 'absolute', top: 0, left: 0 },
-  heroPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  heroPlaceholder: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   heroPlaceholderNote: { color: '#6B7280', fontSize: 60 },
   heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
   singleLine: { flexGrow: 0 },

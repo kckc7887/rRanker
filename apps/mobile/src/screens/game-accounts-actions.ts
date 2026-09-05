@@ -1,4 +1,3 @@
-import { InteractionManager } from 'react-native';
 import type { ActionNotificationInput, NotificationInput } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import { providerErrorToUserMessage } from '@/providers/errors';
@@ -124,7 +123,7 @@ export async function addOrSwitchDemoAccount(input: {
   errorFallback: string;
   afterFinally?: () => void;
   setBusy: (busy: boolean) => void;
-  setPickerVisible: (visible: boolean) => void;
+  closePicker: (action: () => void) => void;
   setMessage: (message: string) => void;
   onSelectExisting: (account: BoundAccount) => void;
   upsertBoundAccount: (account: BoundAccount) => void;
@@ -134,8 +133,7 @@ export async function addOrSwitchDemoAccount(input: {
   try {
     const existing = input.existing;
     if (existing) {
-      input.setPickerVisible(false);
-      InteractionManager.runAfterInteractions(() => {
+      input.closePicker(() => {
         input.onSelectExisting(existing);
         input.setMessage(input.existingMessage(existing));
       });
@@ -144,8 +142,7 @@ export async function addOrSwitchDemoAccount(input: {
     const account = input.create();
     await input.persist(account);
     input.upsertBoundAccount(account);
-    input.setPickerVisible(false);
-    InteractionManager.runAfterInteractions(() => {
+    input.closePicker(() => {
       void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
         .catch(() => undefined);
       input.setMessage(input.successMessage(account));

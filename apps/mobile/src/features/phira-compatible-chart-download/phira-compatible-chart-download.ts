@@ -101,9 +101,10 @@ export async function downloadPhigrosChartAsPhiraPackage(
     options.onProgress?.({ phase: 'organizing', progress: 1 });
     await options.onReadyToSave?.();
     throwIfChartDownloadCancelled(signal);
-    return saveChartPackage(
+    return await saveChartPackage(
       phiraCompatiblePackageName(request.title ?? bundle.song.title, level),
       { kind: 'bytes', bytes: zipBytes },
+      signal,
     );
   } finally {
     cleanupChartDownloadSessionDirectory(staging);
@@ -134,9 +135,10 @@ export async function downloadPhiraChartPackage(
     options.onProgress?.({ phase: 'downloading', progress: 1 });
     await options.onReadyToSave?.();
     throwIfChartDownloadCancelled(options.signal);
-    return saveChartPackage(
+    return await saveChartPackage(
       phiraCompatiblePackageName(chart.name, chart.level),
       { kind: 'file', file },
+      options.signal,
     );
   } finally {
     cleanupChartDownloadSessionDirectory(staging);
