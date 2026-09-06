@@ -62,6 +62,11 @@ Each、EX、Break、Mine、左右完成提示和 WIFI 原生弯折形状。只�
 同大小旧修订不会复用新修订身份。共享执行器仍按文件大小校验；运行时核对图片实际尺寸。
 S3 贴图仍由 `skin-data.js` 注入；缺少必需资源或尺寸错误时阻止播放。
 
+内嵌特效生成时只重新压缩 PNG 的 IDAT，原始素材保留在生成输入中；其它 PNG 块、
+解压数据、色彩信息与像素不变。清单的 `sourceSha256` 标识原始 PNG，`sha256` 标识
+实际内嵌 PNG。路径表使用数值字典生成，模块初始化时还原完整精度的表及判定区域；
+`maimai-generated-data.test.ts` 覆盖全部 568 条路径、176 组区域和八张特效图。
+
 S3 皮肤记录为项目所有者自行绘制。新增的 ViewX 内置特效另行保留上游版权及 GPL
 许可，原始生成输入和 PNG 位于 `scripts/maimai-reference/Effects/`；不得把它们记为
 用户原创。完整许可与组合源码要求见根 `THIRD_PARTY_NOTICES.md`。

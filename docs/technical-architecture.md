@@ -138,6 +138,11 @@ MajSimai 输出作为 TypeScript 测试的外部基准。素材审计和浏览�
 `apps/mobile/build/`。语法范围、素材映射、复现命令与验收限制见
 `docs/maimai-chart-preview.md`。八张 ViewX 内置特效贴图及其层级由
 `effectSprites.generated.ts` 随播放器加载，皮肤仍通过 S3/`skin-data.js` 加载。
+特效生成器经 `scripts/lib/recompress-png.mjs` 只重压缩 PNG 的 IDAT，保留其它块、
+像素与色彩信息，并重算 CRC；`sourceSha256` 对应原始 PNG，`sha256` 对应内嵌内容。
+`scripts/generate-maimai-geometry.mjs` 将路径表的重复数值编码为字典索引，生成模块
+初始化时原地还原 `SLIDE_TABLE` / `AREA_LOOKUP`，随后释放字典引用；不改变数值精度。
+`maimai-generated-data.test.ts` 校验全部路径/区域数据、场景定义、PNG 块与解码像素。
 烟花 Shader 使用 Canvas 预计算颜色贴图和径向遮罩；Unity 画面对照与原生平台仍待验收。
 
 ## 开发、测试与构建
@@ -163,5 +168,25 @@ npm test
 两个脚本产物必须一致。打包成功不代表手机 WebView 播放验收通过。
 
 本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
+
+### 生产包体积约束
+
+`metro.config.js` 保留 Ionicons 字体子集映射，并只在 iOS/Android 将当前安装的 Zod
+内部 `v4/locales/index.js` / `index.cjs` 解析到 `src/utils/zod-locales.ts`。
+该模块仅导出默认英文语言；Zod 自身的初始化、Schema 与错误类仍使用原库。
+二维码服务只导入 `jpeg-js/lib/decoder.js`，其类型引用 jpeg-js 自身声明。
+不启用实验性全局摇树，也不把未引用的参考素材或测试文件算作包体积收益。
+
+`plugins/with-android-abi-splits.js` 在顶层 `android {}` 插入 ABI 分包配置，并通过
+Gradle properties 启用 Release R8 与资源裁剪，将默认 ProGuard 文件设为
+`proguard-android-optimize.txt`。自定义保留规则、签名与 Hermes 配置继续由原生工程
+决定。插件可重复应用；已有本地原生目录须先运行 `npm run prebuild:android` 才能
+获得更新配置，直接执行 `apk:release:abi` 不会自动运行 prebuild。
+
+双端体积检查使用 `npx expo export --platform android --platform ios --source-maps
+--dump-assetmap --output-dir build/size-audit --max-workers 4`，不启动 Expo Web。
+统计主程序 Hermes、独立播放器和按路径去重的导出资源，source map 不计入交付体积。
+播放器已经包含在资源合计内；gzip 只作压缩参考，不代表 APK/IPA 或安装体积。
+Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 macOS 出包验收。
 
 `.github/workflows/build-ios.yml` 是手动触发的 iOS 流程：Ubuntu 质量任务运行 lint、typecheck 和全部测试；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA、上传构建产物并提交 TestFlight。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。

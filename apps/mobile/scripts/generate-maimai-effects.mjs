@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import YAML from 'yaml';
+import { recompressPng } from './lib/recompress-png.mjs';
 const sourceRoot = path.resolve(import.meta.dirname, 'maimai-reference/Effects');
 const root = sourceRoot + '/Animation/';
 const files = { tap: 'Effect/NoteEffect/TapPerfect.anim', break: 'Effect/NoteEffect/BreakPerfect.anim', touch: 'Effect/TouchEffect/TouchPerfect.anim', firework: 'Hanabi/Fire.anim', judge: 'Effect/JudgeEffect/JudgePerfect.anim', judgeBreak: 'Effect/JudgeEffect/JudgeBreak.anim' };
@@ -25,10 +26,11 @@ fs.writeFileSync('src/features/maimai-chart-preview/engine/renderers/effectCurve
 const spritesByGuid = new Map(), sprites = {};
 for (const file of fs.readdirSync(sourceRoot + '/Sprites/Effect').filter(f => f.endsWith('.png'))) {
   const bytes = fs.readFileSync(sourceRoot + '/Sprites/Effect/' + file);
+  const encoded = recompressPng(bytes);
   const meta = YAML.parse(fs.readFileSync(sourceRoot + '/Sprites/Effect/' + file + '.meta', 'utf8'));
   const importer = meta.TextureImporter;
   spritesByGuid.set(meta.guid, file);
-  sprites[file] = { data: 'data:image/png;base64,' + bytes.toString('base64'), width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), ppu: importer.spritePixelsToUnits, pivot: importer.spritePivot, sha256: createHash('sha256').update(bytes).digest('hex') };
+  sprites[file] = { data: 'data:image/png;base64,' + encoded.toString('base64'), width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), ppu: importer.spritePixelsToUnits, pivot: importer.spritePivot, sourceSha256: createHash('sha256').update(bytes).digest('hex'), sha256: createHash('sha256').update(encoded).digest('hex') };
 }
 function documents(file) {
   const text = fs.readFileSync(sourceRoot + '/' + file, 'utf8');
@@ -61,5 +63,5 @@ const holdData = { lifetime: hold.InitialModule.startLifetime.scalar, rate: hold
 const used = new Set(['Circle.png', ...Object.values(scenes).flatMap(nodes => nodes.map(n => n.sprite).filter(Boolean))]);
 const selected = Object.fromEntries([...used].map(name => [name, sprites[name]]));
 const types = `type Vec = { x: number; y: number; z: number };\nexport type EffectNode = { path: string; parent: string | null; position: Vec; scale: Vec; angle: number; sprite?: string; color?: { r: number; g: number; b: number; a: number }; order: number; shader: boolean };\n`;
-fs.writeFileSync('src/features/maimai-chart-preview/engine/renderers/effectSprites.generated.ts', `/** Generated from MajdataViewX prefab/PNG sources, GPL-3.0. Copyright MajdataViewX contributors.\n * Adapted by rRanker 2026-09-05; see scripts/maimai-reference/Effects and THIRD_PARTY_NOTICES.md. */\n${types}export const EFFECT_SCENES: Record<string, EffectNode[]> = ${JSON.stringify(scenes)};\nexport const EFFECT_SPRITES: Record<string, { data: string; width: number; height: number; ppu: number; pivot: { x: number; y: number }; sha256: string }> = ${JSON.stringify(selected)};\nexport const HOLD_PARTICLES = ${JSON.stringify(holdData)};\n`);
+fs.writeFileSync('src/features/maimai-chart-preview/engine/renderers/effectSprites.generated.ts', `/** Generated from MajdataViewX prefab/PNG sources, GPL-3.0. Copyright MajdataViewX contributors.\n * Adapted by rRanker 2026-09-05; see scripts/maimai-reference/Effects and THIRD_PARTY_NOTICES.md. */\n${types}export const EFFECT_SCENES: Record<string, EffectNode[]> = ${JSON.stringify(scenes)};\nexport const EFFECT_SPRITES: Record<string, { data: string; width: number; height: number; ppu: number; pivot: { x: number; y: number }; sourceSha256: string; sha256: string }> = ${JSON.stringify(selected)};\nexport const HOLD_PARTICLES = ${JSON.stringify(holdData)};\n`);
 console.log(`Generated ${used.size} effect sprites and ${Object.keys(scenes).length} prefab scenes`);
