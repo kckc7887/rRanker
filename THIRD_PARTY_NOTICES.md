@@ -42,7 +42,7 @@ with rRanker's existing providers.
 ## maimai chart engine (maimai-prober-frontend)
 
 The retained timing and audio scheduling utilities in
-`apps/mobile/src/features/maimai-chart-preview/engine/` originate from the
+`apps/mobile/src/features/simai-chart-preview/engine/` originate from the
 `packages/maimai-chart-engine` package of **maimai-prober-frontend**
 ([Lxns-Network/maimai-prober-frontend](https://github.com/Lxns-Network/maimai-prober-frontend)),
 including `core/timing/TimingTimeline.ts` and the Web Audio scheduler in
@@ -195,3 +195,16 @@ rRanker 的舞萌DX 谱面标签（`dxrating-chart-tags`）来源于
 [gekichumai/dxrating](https://github.com/gekichumai/dxrating)（MIT License）
 公开的 `https://miruku.dxrating.net/api/v1/tags` 接口数据。
 rRanker 仅消费其公开 API 数据并本地缓存，未复制其源码。
+
+## Majdata Net integration and MajdataPlay scoring reference
+
+Majdata Net 接入按本地 `refer/MajdataNet` 的公开协议实现，使用
+`https://majdata.net/api3/api`，游戏图标来自 Majdata Net 的公开 `icon-192x192.png`。
+应用没有复制该站点的页面代码或在线收藏功能。
+
+`apps/mobile/scripts/maimai-reference/MajdataScoreReference.cs` 包含 MajdataPlay
+`ObjectCounter.cs` 的 `UpdateNoteScoreCount` 原始方法，Copyright MajdataPlay contributors，
+GPL-3.0。方法仅提升为 public，增加空类型以执行原始类型分派；来源和 SHA-256 见同目录
+`majdata-source.json`，许可证副本见 `LICENSES/MajdataPlay-GPL-3.0.txt`。
+此方法用于生成测试对照数据，不编入应用。应用的物量和双达成率计算对照该项目的实际规则。
+Simai 解析、渲染和原有皮肤适配现由舞萌与 Majdata Net 共用，仍保留前述来源与许可证。

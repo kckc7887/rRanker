@@ -1,0 +1,7 @@
+{
+  "source": "refer/MajdataPlay/Assets/Scripts/Scenes/Game/ObjectCounter.cs",
+  "sha256": "6b8280ad3ff1a8ccf719de2da2f2e3a58e97c05a79aa2efcd39a32dd631ac113",
+  "method": "UpdateNoteScoreCount",
+  "local": "MajdataScoreReference.cs",
+  "modifications": "Public visibility and type-only stand-ins; judgment implementation unchanged."
+}

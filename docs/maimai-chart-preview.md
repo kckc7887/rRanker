@@ -1,7 +1,7 @@
-# 舞萌谱面确认内核与验证
+# Simai 谱面确认内核与验证
 
 播放器为 TypeScript / Canvas 2D / WebView，音符表现以本地 MajdataViewX 为基准，
-解析以其 NuGet 锁定的 MajSimai 2.2.2 commit 为基准。普通和 Buddy 的谱面、音乐
+解析以其 NuGet 锁定的 MajSimai 2.2.2 commit 为基准。舞萌普通和 Buddy 的谱面、音乐
 仍来自 LXNS；没有 majdatanet 联网入口。Expo 54、版本号与页面设置协议不变。
 
 ## 执行路径
@@ -16,7 +16,7 @@
 按合并路径长度匀速推进；自定义 BPM 先确定默认等待，`##` 才是显式延迟。
 
 暂停、跳转、变速和 Buddy 两侧初始 BPM 不一致时，使用共享 `PlaybackClock` 和
-同一实际时间轴重建画面；取消旧正解音调度。音符头（无头滑条除外）和长条结束生成
+同一实际时间轴重建画面；取消旧正解音调度。准备阶段只解码音频，用户点击播放时再恢复 AudioContext，避免自动播放权限使页面停留在加载中。音符头（无头滑条除外）和长条结束生成
 预览正解音，1 ms 内合并事件；保留音乐、正解音音量和原有音频补偿设置。
 
 ## 语法与独立对照
@@ -29,12 +29,38 @@
 | BPM、分拍、`[#秒]` HOLD、自定义 BPM、显式等待 `##` | C# 基准覆盖实际时间；滑条 `[#秒]` 额外保留 LXNS 兼容写法，锁定 MajSimai 不接受该写法 |
 | `<HS*>`、`<SV*>`、`c`、`{#秒}`、`||s 分子/分母`、注释 | 比较 HS/SV 属性、积分与时间；包括零/负 HS、零/负 SV、变 BPM |
 | `A/B/C/P/Q/K` 自定义路径 | 八个合法路径、一个非法路径对照 ViewX；支持直接 K、控制点、连接及旋转圆弧 |
-| 普通难度、无 Re:MASTER、Buddy | 共用解析器，页面包检查覆盖缺失难度回退及双侧初始 BPM 不同 |
+| 普通难度、无 Re:MASTER、Buddy | 共用解析器，页面包检查覆盖指定难度缺失报错及双侧初始 BPM 不同 |
 | 非法输入 | `SimaiParseError` 保存行、列、偏移与原句；准备路径失败同样记录来源，通过既有 error 桥接显示场景化提示 |
 
 用例与独立输出在 `apps/mobile/tests/fixtures/maimai-*-cases.json` 和
 `maimai-*-reference.json`。`scripts/maimai-reference/README.md` 给出原始 C# 复现命令。
 这些用例覆盖所列类别，不代表枚举了所有扩展语句的排列组合；未知语句会报错，不静默丢弃。
+
+## Majdata 七难度、物量与计分
+
+共享实现位于 `src/features/simai-chart-preview/`。Majdata 的原始难度 0～6 严格映射
+到 `inote_1`～`inote_7`；预览接收详情缓存的同一 `parsedChart`，不会改播其它难度。
+游戏资源由 `app/songs/chart-preview.tsx` 提供，运行时不推算歌曲 ID 或资源地址。
+通用 WebView 壳继续只负责资源、桥接、设置和生命周期。
+
+`statistics.ts` 从 Chart 生成 TAP / HOLD / SLIDE / TOUCH / BREAK / MINE 六类物量。
+Touch Hold 计 HOLD，星头计 TAP；头部与本体分别计数，一条连接分支只有一个滑条判定单位。
+Mine 优先于 Break 显示，但 `scoring` / `mines` 保留各计分类别，避免丢失混合 Mine 权重。
+
+计分对照 `scripts/maimai-reference/MajdataScoreReference.cs` 的原始 MajdataPlay
+`UpdateNoteScoreCount` 方法；只调整可见性，并用空类型提供原方法的类型分派。
+来源与完整原文件 SHA-256 记录在 `majdata-source.json`。`majdata-score-reference.json`
+包含各本体、Break 与每种判定的实际输出；`majdata-simai-reference.json` 由 MajSimai
+独立生成，覆盖混合 Mine、分叉、连接、Touch Hold、EX、特殊节拍、HS/SV 和第七难度样本。
+
+```powershell
+dotnet run --project scripts/maimai-reference/Reference.csproj -- parse tests/fixtures/majdata-simai-cases.json tests/fixtures/majdata-simai-reference.json
+dotnet run --project scripts/maimai-reference/Reference.csproj -- score tests/fixtures/majdata-score-reference.json
+```
+
+`check-maimai-player.mjs` 同时检查普通、Buddy、Majdata 已解析第七难度，以及缺失难度报错。
+`check-maimai-visuals.mjs` 保留扩展音符固定时刻、设置、背景和播放检查；这些是本播放器的
+Canvas 检查，不代替 Unity / ViewX 同时间双端截图及手机音画同步验收。
 
 ## 素材语义与审计
 

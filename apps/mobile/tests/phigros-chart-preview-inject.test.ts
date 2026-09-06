@@ -5,7 +5,7 @@ import {
   buildPhigrosChartPreviewConfigScript,
   buildPhigrosChartPreviewInjectedJavaScript,
 } from '@/features/phigros-chart-preview/phigros-chart-preview-inject';
-import { parseChartPreviewBridgeMessage } from '@/features/maimai-chart-preview/chart-preview-inject';
+import { parseChartPreviewBridgeMessage } from '@/features/simai-chart-preview/chart-preview-inject';
 
 describe('phigros chart preview config injection', () => {
   const config = {

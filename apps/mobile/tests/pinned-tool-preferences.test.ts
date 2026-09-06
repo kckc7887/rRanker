@@ -17,26 +17,26 @@ describe('pinned tool preferences', () => {
     expect(parsePinnedToolPreferences({
       version: 1,
       pinnedToolIdsByGame: {
-        maimai: ['rating', 'rating', 'unknown', 3],
+        'majdata-net': [], maimai: ['rating', 'rating', 'unknown', 3],
         chunithm: ['rating'],
         phigros: ['rating'],
         test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
-    })).toEqual({ maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] });
+    })).toEqual({ 'majdata-net': [], maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] });
   });
 
   it('keeps valid plate ids only for games with a plate tool', () => {
     expect(parseHomePinPreferences({
       version: 1,
-      pinnedToolIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
+      pinnedToolIdsByGame: { 'majdata-net': [], maimai: [], chunithm: [], phigros: [], test: [] },
       pinnedPlateIdsByGame: {
-        maimai: [6101, 6101, -1, 1.5, '6102'],
+        'majdata-net': [], maimai: [6101, 6101, -1, 1.5, '6102'],
         chunithm: [6101],
         phigros: [6101],
         test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
     }).pinnedPlateIdsByGame).toEqual({
-      maimai: [6101],
+      'majdata-net': [], maimai: [6101],
       chunithm: [],
       phigros: [],
       phira: [],
@@ -48,18 +48,18 @@ describe('pinned tool preferences', () => {
   it('migrates existing tool-only preferences with empty plate pins', () => {
     expect(parseHomePinPreferences({
       version: 1,
-      pinnedToolIdsByGame: { maimai: ['rating'], phigros: [], test: [] },
+      pinnedToolIdsByGame: { 'majdata-net': [], maimai: ['rating'], phigros: [], test: [] },
     })).toEqual({
-      pinnedToolIdsByGame: { maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
-      pinnedPlateIdsByGame: { maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
-      pinnedCollectionIdsByGame: { maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
+      pinnedToolIdsByGame: { 'majdata-net': [], maimai: ['rating'], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
+      pinnedPlateIdsByGame: { 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
+      pinnedCollectionIdsByGame: { 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] },
     });
   });
 
   it('keeps valid chunithm collection pins by kind and removes duplicates', () => {
     expect(parseHomePinPreferences({
       version: 1,
-      pinnedToolIdsByGame: { maimai: [], chunithm: [], phigros: [], test: [] },
+      pinnedToolIdsByGame: { 'majdata-net': [], maimai: [], chunithm: [], phigros: [], test: [] },
       pinnedCollectionIdsByGame: {
         chunithm: [
           { kind: 'trophy', id: 866 },
@@ -71,14 +71,14 @@ describe('pinned tool preferences', () => {
           { kind: 'unknown', id: 5 },
           { kind: 'trophy', id: -1 },
         ],
-        maimai: [{ kind: 'trophy', id: 866 }],
+        'majdata-net': [], maimai: [{ kind: 'trophy', id: 866 }],
         phigros: [],
         phira: [],
         adofai: [], musedash: [],
         test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
     }).pinnedCollectionIdsByGame).toEqual({
-      maimai: [],
+      'majdata-net': [], maimai: [],
       chunithm: [
         { kind: 'trophy', id: 866 },
         { kind: 'character', id: 16620 },
@@ -98,7 +98,7 @@ describe('pinned tool preferences', () => {
     const store = new PinnedToolPreferencesStore(storage);
     await store.save({
       pinnedToolIdsByGame: {
-        maimai: ['rating', 'versions'],
+        'majdata-net': [], maimai: ['rating', 'versions'],
         chunithm: [],
         phigros: [],
         phira: [],
@@ -106,7 +106,7 @@ describe('pinned tool preferences', () => {
         test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
       pinnedPlateIdsByGame: {
-        maimai: [6101, 6102],
+        'majdata-net': [], maimai: [6101, 6102],
         chunithm: [],
         phigros: [],
         phira: [],
@@ -114,7 +114,7 @@ describe('pinned tool preferences', () => {
         test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
       pinnedCollectionIdsByGame: {
-        maimai: [],
+        'majdata-net': [], maimai: [],
         chunithm: [],
         phigros: [],
         phira: [],
@@ -124,7 +124,7 @@ describe('pinned tool preferences', () => {
     });
     await expect(store.load()).resolves.toEqual({
       pinnedToolIdsByGame: {
-        maimai: ['rating', 'versions'],
+        'majdata-net': [], maimai: ['rating', 'versions'],
         chunithm: [],
         phigros: [],
         phira: [],
@@ -132,7 +132,7 @@ describe('pinned tool preferences', () => {
         test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
       pinnedPlateIdsByGame: {
-        maimai: [6101, 6102],
+        'majdata-net': [], maimai: [6101, 6102],
         chunithm: [],
         phigros: [],
         phira: [],
@@ -140,7 +140,7 @@ describe('pinned tool preferences', () => {
         test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [],
       },
       pinnedCollectionIdsByGame: {
-        maimai: [],
+        'majdata-net': [], maimai: [],
         chunithm: [],
         phigros: [],
         phira: [],

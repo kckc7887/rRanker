@@ -9,19 +9,19 @@ import {
   chartPreviewExitFullscreenScript,
   chartPreviewStopScript,
   parseChartPreviewBridgeMessage,
-} from '@/features/maimai-chart-preview/chart-preview-inject';
-import { chartPreviewCanvasSize } from '@/features/maimai-chart-preview/webview-player/fullscreenLayout';
+} from '@/features/simai-chart-preview/chart-preview-inject';
+import { chartPreviewCanvasSize } from '@/features/simai-chart-preview/webview-player/fullscreenLayout';
 import { toggleFullscreenLockUiState } from '@/features/chart-preview-shared/webview-player/fullscreenLock';
-import { chartPreviewNativeScreenOptions } from '@/features/maimai-chart-preview/chart-preview-native-screen';
+import { chartPreviewNativeScreenOptions } from '@/features/simai-chart-preview/chart-preview-native-screen';
 import {
   createLatestFrameScheduler,
   resolveInitialBackgroundState,
-} from '@/features/maimai-chart-preview/webview-player/interactionScheduler';
+} from '@/features/simai-chart-preview/webview-player/interactionScheduler';
 import { chartPreviewPlayerMessageScript } from '@/features/chart-preview-shared/chart-preview-bridge';
 
 describe('chart preview webview helpers', () => {
   it('resolves player identifiers that the app typecheck excludes', () => {
-    const entry = resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/main.ts');
+    const entry = resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/main.ts');
     const program = ts.createProgram([entry], {
       noEmit: true,
       target: ts.ScriptTarget.ES2020,
@@ -185,7 +185,7 @@ describe('chart preview webview helpers', () => {
 
   it('keeps the fullscreen lock visible inside the iOS safe area', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     expect(html).toContain('right: calc(10px + env(safe-area-inset-right));');
@@ -194,7 +194,7 @@ describe('chart preview webview helpers', () => {
 
   it('hides the fullscreen lock together with the overlay', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     expect(html).toContain('#fs-lock.hidden { opacity: 0; pointer-events: none; }');
@@ -203,7 +203,7 @@ describe('chart preview webview helpers', () => {
 
   it('slides the fullscreen overlay out from the bottom like the phigros player', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     // 统一横屏表现：控制器底部滑出 220ms（与 Phigros/Phira 一致）。
@@ -213,7 +213,7 @@ describe('chart preview webview helpers', () => {
 
   it('stages a second canvas for dual buddy previews hidden in single mode', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     expect(html).toContain('id="chart-canvas-2"');
@@ -225,7 +225,7 @@ describe('chart preview webview helpers', () => {
 
   it('adapts the player chrome to light mode while keeping the canvas dark', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     expect(html).toContain('html[data-theme="light"] {');
@@ -254,7 +254,7 @@ describe('chart preview webview helpers', () => {
 
   it('scrolls overflowing portrait controls but keeps fullscreen fixed', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     expect(html).toContain('overflow-y: auto;');
@@ -265,15 +265,15 @@ describe('chart preview webview helpers', () => {
 
   it('offers three judge hint modes next to 款式 and keeps hit effects independent', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     const player = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/main.ts'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/main.ts'),
       'utf8',
     );
     const inject = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/chart-preview-inject.ts'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/chart-preview-inject.ts'),
       'utf8',
     );
     expect(html).toContain('判定提示');
@@ -285,20 +285,20 @@ describe('chart preview webview helpers', () => {
     expect(player).toContain('r.setJudgeHint(parseJudgeHint(saved.judgeHint))');
     expect(player).toContain('r.setShowHitEffect(saved.showHitEffect ?? true)');
     expect(inject).toContain("from './configuration'");
-    expect(readFileSync(resolve(process.cwd(), 'src/features/maimai-chart-preview/configuration.ts'), 'utf8')).toContain("judgeHint?: 'distinguish' | 'unified' | 'hidden'");
+    expect(readFileSync(resolve(process.cwd(), 'src/features/simai-chart-preview/configuration.ts'), 'utf8')).toContain("judgeHint?: 'distinguish' | 'unified' | 'hidden'");
   });
 
   it('offers the three persisted background choices and stages image/video media', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     const player = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/main.ts'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/main.ts'),
       'utf8',
     );
     const renderer = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/engine/renderers/MainRenderer.ts'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/engine/renderers/MainRenderer.ts'),
       'utf8',
     );
     expect(html).toContain('id="background-image"');
@@ -362,7 +362,7 @@ describe('chart preview webview helpers', () => {
 
   it('adapts the fullscreen lock button to light mode with an outline', () => {
     const html = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/webview-player/index.html'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
       'utf8',
     );
     // 深色保持原半透明底值；浅色换白色半透明底并加细边框（浮在浅色 letterbox 上保持可见）。

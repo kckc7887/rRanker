@@ -1,3 +1,4 @@
+import { MajdataLoginPanel } from '@/components/majdata/MajdataLoginPanel';
 import { useState } from 'react';
 import {
   Image,
@@ -91,7 +92,9 @@ export function ProviderLoginSheet({
             {boundMaimaiCount > 0 ? (
               <Text style={styles.hint}>可同时保存多个查分器账号；同一玩家再次登录会更新该账号凭据。</Text>
             ) : null}
-            {bindingKind === 'device-code' ? (
+            {provider.id === 'majdata-net' ? (
+              <MajdataLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={setBusy} />
+            ) : bindingKind === 'device-code' ? (
               <PhigrosLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={setBusy} />
             ) : bindingKind === 'oauth-code' && isOsu ? (
               <OsuLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={setBusy} />

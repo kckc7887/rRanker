@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
-import { AREA_LOOKUP, SLIDE_TABLE } from '@/features/maimai-chart-preview/engine/core/geometry/slideTable.generated';
-import { EFFECT_SCENES, EFFECT_SPRITES, HOLD_PARTICLES } from '@/features/maimai-chart-preview/engine/renderers/effectSprites.generated';
+import { AREA_LOOKUP, SLIDE_TABLE } from '@/features/simai-chart-preview/engine/core/geometry/slideTable.generated';
+import { EFFECT_SCENES, EFFECT_SPRITES, HOLD_PARTICLES } from '@/features/simai-chart-preview/engine/renderers/effectSprites.generated';
 import { recompressPng } from '../scripts/lib/recompress-png.mjs';
 
 const sha256 = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex');

@@ -1,3 +1,4 @@
+import { MajdataSongDetail } from '@/components/majdata/MajdataSongDetail';
 import { useEffect, useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -104,6 +105,7 @@ export default function SongDetailScreen() {
   if (activeGameId === 'phigros') {
     return <PhigrosSongDetail songId={songId} levelIndex={initialLevelIndex} />;
   }
+  if (activeGameId === 'majdata-net') return <MajdataSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
   if (activeGameId === 'phira') return <PhiraSongDetailScreen chartId={songId} />;
   if (activeGameId === 'chunithm') {
     return <ChunithmSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;

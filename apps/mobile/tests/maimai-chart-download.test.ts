@@ -1,9 +1,11 @@
+import { downloadSimaiPackage } from '@/features/chart-download-shared/simai-package';
 const native = vi.hoisted(() => ({
   downloadFileAsync: vi.fn(),
   pickDirectoryAsync: vi.fn(),
   downloaded: [] as { url: string; uri: string }[],
   texts: new Map<string, string>(),
   bytes: new Map<string, Uint8Array>(),
+  resourceBytes: new Map<string, Uint8Array>(),
   writes: [] as { uri: string; content: string | Uint8Array }[],
   createFileCalls: [] as { name: string; mime: string | null }[],
   deleted: [] as string[],
@@ -53,7 +55,7 @@ vi.mock('expo-file-system/legacy', () => ({
     downloadAsync: async () => {
       await native.downloadFileAsync(url, uri);
       native.texts.set(uri, `${url}\n谱面内容`);
-      native.bytes.set(uri, new TextEncoder().encode(`${url}\n谱面内容`));
+      native.bytes.set(uri, native.resourceBytes.get(url) ?? new TextEncoder().encode(`${url}\n谱面内容`));
       onProgress?.({ totalBytesWritten: 100, totalBytesExpectedToWrite: 100 });
       return { uri, status: 200, headers: {} };
     },
@@ -91,6 +93,7 @@ describe('maimai chart download', () => {
     native.downloaded.length = 0;
     native.texts.clear();
     native.bytes.clear();
+    native.resourceBytes.clear();
     native.writes.length = 0;
     native.createFileCalls.length = 0;
     native.deleted.length = 0;
@@ -279,4 +282,31 @@ describe('maimai chart download', () => {
       includeVideo: false,
     })).rejects.toBeInstanceOf(MaimaiChartDownloadError);
   });
+  it.each([
+    ['bg.png', [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]],
+    ['bg.jpg', [0xFF, 0xD8, 0xFF, 0xE0]],
+  ] as const)('names the full cover by its bytes as %s', async (name, bytes) => {
+    native.resourceBytes.set('https://majdata.net/image', new Uint8Array(bytes));
+    await downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources: [{ fileName: 'bg.auto', url: 'https://majdata.net/image' }] });
+    const zip = await JSZip.loadAsync(native.writes[0].content as Uint8Array);
+    expect(zip.file(`Majdata Master/${name}`)).not.toBeNull();
+  });
+
+  it('rejects an unsupported cover and cleans the temporary package without saving', async () => {
+    await expect(downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources: [{ fileName: 'bg.auto', url: 'https://majdata.net/image' }] })).rejects.toBeInstanceOf(MaimaiChartDownloadError);
+    expect(native.pickDirectoryAsync).not.toHaveBeenCalled();
+    expect(native.deleted).toContain(native.createdDirs[0]);
+  });
+
+  it('exports a plain Majdata ZIP through the same save and cancellation path', async () => {
+    const resources = [{ fileName: 'maidata.txt', url: 'https://majdata.net/chart' }, { fileName: 'track.mp3', url: 'https://majdata.net/track' }];
+    expect(await downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources })).toBe(true);
+    expect(native.createFileCalls[0].name).toBe('Majdata Master.zip');
+    const zip = await JSZip.loadAsync(native.writes[0].content as Uint8Array);
+    expect(await zip.file('Majdata Master/maidata.txt')!.async('string')).toContain('谱面内容');
+    const controller = new AbortController(); controller.abort();
+    await expect(downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources }, { signal: controller.signal })).rejects.toThrow();
+    expect(native.deleted).toContain(native.createdDirs[native.createdDirs.length - 1]);
+  });
+
 });

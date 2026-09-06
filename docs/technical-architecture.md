@@ -52,7 +52,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 
 ## 游戏、Provider 与数据链路
 
-`src/domain/game-bind-options.ts` 的 `GAME_OPTIONS` 是前台游戏与绑定方式注册表。当前可用板块包括舞萌 DX、中二节奏、Phigros、Phira、冰与火之舞、喵斯快跑，以及聚合展示的 osu!standard、osu!mania、osu!catch、osu!taiko。Provider 包括账号密码、OAuth、设备授权、公开玩家、本地账号和示例账号等形态；`test` 仍是类型层保留的空壳 GameId，不是当前选择器条目。
+`src/domain/game-bind-options.ts` 的 `GAME_OPTIONS` 是前台游戏与绑定方式注册表。当前可用板块包括 Majdata Net、舞萌 DX、中二节奏、Phigros、Phira、冰与火之舞、喵斯快跑，以及聚合展示的 osu!standard、osu!mania、osu!catch、osu!taiko。Provider 包括账号密码、OAuth、设备授权、公开玩家、本地账号和示例账号等形态；`test` 仍是类型层保留的空壳 GameId，不是当前选择器条目。
 
 主数据读取链路为：
 
@@ -70,6 +70,36 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 `useGameData` 是当前账号总览数据的中央编排点，会根据游戏、Provider、账号和会话模式分派到对应加载器。注册表和中央编排允许显式枚举游戏；可复用渲染核心不承担游戏查询，也不应通过 `gameId` 分支解释游戏语义。
 
 每个游戏保留自己的上游 DTO、Zod Schema、缓存快照和计算规则。跨游戏稳定身份和展示语义通过 `domain/game-content.ts`、`features/game-content/presentation.ts` 及各游戏适配器输出；个人曲库继续使用既有 `ChartType`、`levelIndex` 和存储键，不由展示层改写。
+
+### Majdata Net
+
+`majdata-net` 在游戏、Provider、账号和存储管理注册表独立注册。`MajdataProvider`
+通过公共 `requestJson` / `requestProviderResponse` 调用 `https://majdata.net/api3/api`；
+登录提交用户名、MD5 密码与 `rememberMe=true` 表单。`HttpCookieSession` 按来源、路径、
+安全标志和有效期生成 Cookie，请求禁用环境 Cookie。安全仓库只保存 Cookie，会话与账号
+分别索引；不保存明文或 MD5 密码。`SecureSessionStore.upsertAccount(account, signal?)`
+在取消时阻止或回滚账号索引写入，继续沿用既有安全凭据的串行变更、恢复和删除流程。
+
+`useGameData` 调用 `majdata-service` 保存账号的玩家、最好成绩和 Recent 快照。总览
+`DX · Classic` 为完整最好成绩列表的两项独立合计；筛选只影响成绩列表。Recent 时间倒序、
+保留重复游玩与上游实际字段。排名由 `useMajdataRanking` 按账号和歌曲共享查询，仅匹配
+当前玩家、当前难度，已知 HASH 不同时不使用该排名。
+
+`useMajdataSongs` 保留上游页码，每页 30 首，通过原始页长判断下一页；分页只在 React Query
+会话中保存。名称多选和线上标签多选各自取并集、两组取交集；筛选后空页仍可加载下一页。
+线上标签由 `tags` 与 `publicTags` 合并，本地标签不参与该筛选。
+
+详情与个人曲库通过同一资源仓库读取。`majdata-net:song:{id}` 保存当前元数据，
+`majdata-net:song:{id}:{hash}` 保存修订；`chart:{id}:{hash}` 保存完整文本，
+`parsed:{id}:{hash}:{level}` 保存共享 Chart 模型和六类物量，均有 `majdata-net:` 前缀。
+首次详情优先返回本地缓存再刷新；刷新失败保留旧数据。抓取谱面后复核上游 HASH，避免把
+新文本写入旧修订。歌曲请求代次、账号请求代次、取消信号和公共资源写入代次阻止旧请求回填。
+清理器归属 Majdata 的数据和图片缓存，收藏、练习与标签仍在公共用户曲库仓库中保留。
+
+`MajdataSongDetail` 复用 Hero、难度轮播、物量表、下载控制器和 TagEditor。UUID 原样保存，
+原始索引 0～6 映射到 `inote_1`～`inote_7`，排序为 5、4、3、2、1、0、6。
+用户曲库仅用 `SD` 作为既有结构的内部兼容字段，不展示类型或据此构造资源地址。
+预览路由为两种游戏组装资源与参数，Simai 运行时不构造 LXNS 或 Majdata 网络地址。
 
 ### Phigros 发布资源
 
@@ -177,13 +207,13 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；预览轮播同一时刻只挂载当前 WebView 页面。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
-### 舞萌谱面确认内核
+### Simai 谱面确认内核
 
-`features/maimai-chart-preview/configuration.ts` 是注入层与播放器的配置类型来源。
+`features/simai-chart-preview/configuration.ts` 是注入层与播放器的配置类型来源。
 `chart-preview-inject.ts` 保留原导出，设置存储、页面桥接和 LXNS 谱面/音乐入口继续使用
 既有公共链路；普通难度和 Buddy `inote_2` / `inote_102` 使用同一解析器。
 
-舞萌语义集中在专属 `engine/`：`SimaiParser` 输出带来源位置、实际时间、HS/SV、
+舞萌与 Majdata 的 Simai 语义集中在 `features/simai-chart-preview/engine/`：`SimaiParser` 输出带来源位置、实际时间、HS/SV、
 Each 分组和分支/分段的音符模型；`prepareChart` 预计算路径与判定事件；`buildFrame`
 按指定实际时刻生成有序绘制命令；`MainRenderer` 用 Canvas 2D 执行贴图、三切片与遮罩。
 解析基准是 MajSimai 2.2.2 锁定 commit，表现数据来自本地 MajdataViewX。

@@ -1,6 +1,16 @@
 import type { DataSource } from '@/domain/models';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
+const resourceWriteGenerations = new Map<string, number>();
+/** Invalidates detached cache-first refreshes as well as active queries. */
+export function invalidateResourceWrites(scope: string): void {
+  resourceWriteGenerations.set(scope, (resourceWriteGenerations.get(scope) ?? 0) + 1);
+}
+export function captureResourceWrites(scope: string): () => void {
+  const generation = resourceWriteGenerations.get(scope) ?? 0;
+  return () => { if ((resourceWriteGenerations.get(scope) ?? 0) !== generation) throw new Error('缓存请求已失效'); };
+}
+
 /** 构造缓存快照的 source：kind/label 由各游戏传入，updatedAt 记录本次拉取时间。 */
 export function snapshotSource(
   source: Pick<DataSource, 'kind' | 'label'>,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveChartPreviewAssetUri } from '@/features/maimai-chart-preview/chart-preview-asset-uri';
+import { resolveChartPreviewAssetUri } from '@/features/simai-chart-preview/chart-preview-asset-uri';
 
 describe('resolveChartPreviewAssetUri', () => {
   it('将 Android drawable 资源标识符转换为可下载的绝对 URI', () => {

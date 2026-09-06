@@ -1,3 +1,6 @@
+import { loadMajdataCached, loadMajdataFresh } from '@/services/majdata-service';
+import { majdataTotalText, majdataTotals, type MajdataSnapshot } from '@/domain/majdata';
+import { cacheFirstLoad, staleCached } from '@/services/cache-first';
 import { phigrosResources } from '@/services/phigros-resources';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -31,7 +34,6 @@ import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
 import { PhigrosSaveCache, stalePhigrosPayload, type PhigrosGameDataPayload } from '@/services/phigros-save-cache';
-import { staleCached } from '@/services/cache-first';
 import { gameDataQueryKey } from '@/services/game-data-query';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
@@ -109,6 +111,27 @@ export function useGameData(enabled = true) {
     refetchOnReconnect: false,
     queryFn: async ({ signal }): Promise<GameDataBundle> => {
       const hasSessionData = queryClient.getQueryData<GameDataBundle>(queryKey) !== undefined;
+      if (activeGameId === 'majdata-net') {
+        const toBundle = (snapshot: MajdataSnapshot): GameDataBundle => ({ gameId: 'majdata-net', providerId: 'majdata-net', profile,
+          payload: { kind: 'majdata-net', snapshot, source: snapshot.source,
+            playerScore: { label: 'DX · Classic', value: majdataTotals(snapshot.records).dx, display: majdataTotalText(snapshot) } } });
+        if (session?.mode !== 'http-cookies') {
+          const cached = await loadMajdataCached(activeAccountId);
+          if (cached) return toBundle(staleCached(cached));
+          return { gameId: activeGameId, providerId: activeProviderId, profile, payload: emptyGamePayload(activeGameId, '请重新登录 Majdata Net') };
+        }
+        const fresh = async (requestSignal: AbortSignal) => {
+          try { const result = await loadMajdataFresh(activeAccountId, session, requestSignal);
+            void queryClient.invalidateQueries({ queryKey: ['majdata-net', 'ranking', activeAccountId] });
+            return result; }
+          catch (error) { const cached = await loadMajdataCached(activeAccountId); if (cached && !requestSignal.aborted) return staleCached(cached); throw error; }
+        };
+        const snapshot = hasSessionData ? await fresh(signal) : await cacheFirstLoad({
+          loadCached: () => loadMajdataCached(activeAccountId), loadFresh: fresh, signal,
+          onFresh: value => queryClient.setQueryData(queryKey, toBundle(value)),
+        });
+        return toBundle(snapshot);
+      }
       if (activeGameId === 'phira') {
         const playerId = phiraPlayerIdFromAccountId(activeAccountId);
         if (activeProviderId !== 'phira-community' || playerId === null) {
@@ -596,6 +619,10 @@ export function useGameData(enabled = true) {
         scoreDisplay: d.payload.playerScore.display,
       }).catch(() => undefined);
     }
+    if (d.payload.kind === 'majdata-net') {
+      updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.username);
+      void new SecureSessionStore().updateAccountMetadata(activeAccountId, { scoreDisplay: d.payload.playerScore.display, displayName: d.payload.snapshot.player.username });
+    }
     if (d.payload.kind === 'phira') {
       updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.name, d.payload.snapshot.player.avatar ?? undefined);
       void persistBoundAccountThumbnail(activeAccountId, { scoreDisplay: d.payload.playerScore.display, avatarUrl: d.payload.snapshot.player.avatar ?? undefined }).catch(() => undefined);
@@ -629,6 +656,8 @@ export function useGameData(enabled = true) {
         : query.data.payload.kind === 'adofai'
           ? query.data.payload.source.isStale
           : query.data.payload.kind === 'musedash'
+            ? query.data.payload.source.isStale
+          : query.data.payload.kind === 'majdata-net'
             ? query.data.payload.source.isStale
           : query.data.payload.kind === 'phira'
             ? query.data.payload.source.isStale

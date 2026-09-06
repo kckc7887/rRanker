@@ -1,3 +1,4 @@
+export type AchievementMode = 'dx' | 'classic';
 export type NormalJudgment = 'perfect' | 'great' | 'good' | 'miss';
 export type BreakJudgment = 'criticalPerfect' | 'perfect1' | 'perfect2' | 'great1' | 'great2' | 'great3' | 'good' | 'miss';
 export type NoteKind = 'tap' | 'hold' | 'slide' | 'touch' | 'break';
@@ -17,6 +18,8 @@ const NORMAL_RATIO: Record<NormalJudgment, number> = { perfect: 1, great: 0.8, g
 const BREAK_BASE: Record<BreakJudgment, number> = { criticalPerfect: 5, perfect1: 5, perfect2: 5, great1: 4, great2: 3, great3: 2.5, good: 2, miss: 0 };
 const BREAK_BONUS: Record<BreakJudgment, number> = { criticalPerfect: 1, perfect1: 0.75, perfect2: 0.5, great1: 0.4, great2: 0.4, great3: 0.4, good: 0.3, miss: 0 };
 
+const CLASSIC_BONUS: Record<BreakJudgment, number> = { criticalPerfect: 0.2, perfect1: 0.1, perfect2: 0, great1: 0, great2: 0, great3: 0, good: 0, miss: 0 };
+
 function validCount(value: number | undefined): number {
   if (value === undefined) return 0;
   if (!Number.isInteger(value) || value < 0) throw new Error('判定数量必须是非负整数');
@@ -30,7 +33,11 @@ export function weightedNoteTotal(notes: NoteCounts): number {
   return total;
 }
 
-export function calculateAchievement(notes: NoteCounts, judgments: JudgmentInput): number {
+export function calculateAchievement(notes: NoteCounts, judgments: JudgmentInput, mode: AchievementMode = 'dx'): number {
+  if (Object.values(notes).every(value => value === 0)) {
+    if (Object.values(judgments).some(group => Object.values(group).some(value => value !== 0))) throw new Error('空谱没有可输入的判定');
+    return 0;
+  }
   const total = weightedNoteTotal(notes);
   let base = 0;
   (['tap', 'hold', 'slide', 'touch'] as const).forEach((kind) => {
@@ -46,20 +53,20 @@ export function calculateAchievement(notes: NoteCounts, judgments: JudgmentInput
   let breakBonus = 0;
   (Object.keys(BREAK_BASE) as BreakJudgment[]).forEach((judgment) => {
     const count = validCount(judgments.break?.[judgment]); breakEntered += count;
-    base += count * BREAK_BASE[judgment]; breakBonus += count * BREAK_BONUS[judgment];
+    base += count * BREAK_BASE[judgment]; breakBonus += count * (mode === 'classic' ? CLASSIC_BONUS[judgment] : BREAK_BONUS[judgment]);
   });
   if (breakEntered > notes.break) throw new Error('BREAK 判定数超过物量');
   base += (notes.break - breakEntered) * 5;
-  breakBonus += notes.break - breakEntered;
-  return base / total * 100 + (notes.break ? breakBonus / notes.break : 0);
+  breakBonus += (notes.break - breakEntered) * (mode === 'classic' ? 0.2 : 1);
+  return mode === 'classic' ? (base + breakBonus) / total * 100 : base / total * 100 + (notes.break ? breakBonus / notes.break : 0);
 }
 
-export function singleNoteLoss(notes: NoteCounts, kind: NoteKind, judgment: NormalJudgment | BreakJudgment): number {
+export function singleNoteLoss(notes: NoteCounts, kind: NoteKind, judgment: NormalJudgment | BreakJudgment, scoringMode: AchievementMode = 'dx'): number {
   const total = weightedNoteTotal(notes);
   if (kind === 'break') {
     if (!notes.break) throw new Error('零 BREAK 谱面无法计算 BREAK 容错');
     const key = judgment as BreakJudgment;
-    return (5 - BREAK_BASE[key]) / total * 100 + (1 - BREAK_BONUS[key]) / notes.break;
+    return (5 - BREAK_BASE[key]) / total * 100 + (scoringMode === 'classic' ? (0.2 - CLASSIC_BONUS[key]) / total * 100 : (1 - BREAK_BONUS[key]) / notes.break);
   }
   return NOTE_WEIGHT[kind] * (1 - NORMAL_RATIO[judgment as NormalJudgment]) / total * 100;
 }
@@ -75,18 +82,19 @@ export function singleNoteAnalysis(
   kind: NoteKind,
   judgment: NormalJudgment | BreakJudgment,
   mode: NoteAnalysisMode,
+  scoringMode: AchievementMode = 'dx',
 ): number {
   const total = weightedNoteTotal(notes);
   if (kind === 'break') {
     if (!notes.break) throw new Error('零 BREAK 谱面无法计算 BREAK 达成率');
     const key = judgment as BreakJudgment;
     const baseEarned = BREAK_BASE[key] / total * 100;
-    const bonusEarned = BREAK_BONUS[key] / notes.break;
+    const bonusEarned = scoringMode === 'classic' ? CLASSIC_BONUS[key] / total * 100 : BREAK_BONUS[key] / notes.break;
     if (mode === 'zeroPlus') return baseEarned + bonusEarned;
     const baseLoss = (5 - BREAK_BASE[key]) / total * 100;
     return mode === 'hundredMinus'
       ? baseLoss - bonusEarned
-      : baseLoss + (1 - BREAK_BONUS[key]) / notes.break;
+      : baseLoss + (scoringMode === 'classic' ? (0.2 - CLASSIC_BONUS[key]) / total * 100 : (1 - BREAK_BONUS[key]) / notes.break);
   }
 
   const key = judgment as NormalJudgment;
@@ -95,9 +103,10 @@ export function singleNoteAnalysis(
   return NOTE_WEIGHT[kind] * (1 - NORMAL_RATIO[key]) / total * 100;
 }
 
-export function maximumSameErrors(notes: NoteCounts, target: number, kind: NoteKind, judgment: NormalJudgment | BreakJudgment): number {
-  if (!Number.isFinite(target) || target < 0 || target > 101) throw new Error('目标达成率必须在 0% 到 101% 之间');
-  const loss = singleNoteLoss(notes, kind, judgment);
+export function maximumSameErrors(notes: NoteCounts, target: number, kind: NoteKind, judgment: NormalJudgment | BreakJudgment, scoringMode: AchievementMode = 'dx'): number {
+  const maximum = calculateAchievement(notes, {}, scoringMode);
+  if (!Number.isFinite(target) || target < 0 || target > maximum) throw new Error('目标达成率超过谱面上限');
+  const loss = singleNoteLoss(notes, kind, judgment, scoringMode);
   if (loss <= 0) return notes[kind];
-  return Math.min(notes[kind], Math.max(0, Math.floor((101 - target + 1e-10) / loss)));
+  return Math.min(notes[kind], Math.max(0, Math.floor((maximum - target + 1e-10) / loss)));
 }

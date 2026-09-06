@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseSimaiBody } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
-import { prepareChart, buildFrame, touchPoint } from '@/features/maimai-chart-preview/engine/renderers/frame';
-import { DEFAULT_RENDERER_CONFIG, MainRenderer, mirrorHint } from '@/features/maimai-chart-preview/engine/renderers/MainRenderer';
-import { ChartPreviewSkin } from '@/features/maimai-chart-preview/engine/renderers/skinAtlas';
-import { arcadeTapTravelSpeed } from '@/features/maimai-chart-preview/engine/utils/arcadeMotion';
+import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { prepareChart, buildFrame, touchPoint } from '@/features/simai-chart-preview/engine/renderers/frame';
+import { DEFAULT_RENDERER_CONFIG, MainRenderer, mirrorHint } from '@/features/simai-chart-preview/engine/renderers/MainRenderer';
+import { ChartPreviewSkin } from '@/features/simai-chart-preview/engine/renderers/skinAtlas';
+import { arcadeTapTravelSpeed } from '@/features/simai-chart-preview/engine/utils/arcadeMotion';
 
 describe('deterministic ViewX frames', () => {
   it.each([[320, 1], [540, 2], [1080, 2]])('aligns all judgment styles with note positions at %ipx / DPR %i', (size, dpr) => {

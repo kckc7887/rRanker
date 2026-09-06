@@ -4,7 +4,7 @@ import {
   parseSimaiBuddyCharts,
   parseSimaiChart,
   parseSimaiSideChart,
-} from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
+} from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 
 const BUDDY_SIMAI = [
   '&title=テスタメント',

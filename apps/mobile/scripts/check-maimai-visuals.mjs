@@ -11,9 +11,9 @@ const manifest = JSON.parse(await fs.readFile(path.join(audit, 'manifest.json'),
 const images = Object.fromEntries(await Promise.all(manifest.map(async a => [a.path, `data:image/png;base64,${(await fs.readFile(path.join(audit, a.path))).toString('base64')}`])));
 images['sensor.webp'] = `data:image/webp;base64,${(await fs.readFile(path.join(root, 'assets/maimai-chart-preview/sensor.webp'))).toString('base64')}`;
 const source = `
-import { parseSimaiBody } from './src/features/maimai-chart-preview/engine/core/parser/SimaiParser';
-import { MainRenderer } from './src/features/maimai-chart-preview/engine/renderers/MainRenderer';
-import { ChartPreviewSkin } from './src/features/maimai-chart-preview/engine/renderers/skinAtlas';
+import { parseSimaiBody } from './src/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { MainRenderer } from './src/features/simai-chart-preview/engine/renderers/MainRenderer';
+import { ChartPreviewSkin } from './src/features/simai-chart-preview/engine/renderers/skinAtlas';
 const skin = new ChartPreviewSkin();
 const samples = {
  tap: '(120){4}1/2,3b/7,4x/8,5m/6bx,',

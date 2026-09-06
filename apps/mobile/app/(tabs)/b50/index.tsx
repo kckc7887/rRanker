@@ -1,3 +1,4 @@
+import { MajdataBestScreen } from '@/screens/MajdataScreens';
 import { useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View, type SectionListRenderItem } from 'react-native';
 import { BestImageEntryButton } from '@/components/BestImageEntryButton';
@@ -61,6 +62,7 @@ export function Best50Screen() {
   if (activeGameId === 'phigros') {
     return <PhigrosBestScreen />;
   }
+  if (activeGameId === 'majdata-net') return <MajdataBestScreen />;
   if (activeGameId === 'phira') return <PhiraBestScreen />;
   if (isOsuGameId(activeGameId)) return <OsuBestScreen />;
   if (activeGameId === 'adofai') {

@@ -16,8 +16,8 @@
     "expo-env.d.ts"
   ],
   "exclude": [
-    "src/features/maimai-chart-preview/engine/**",
-    "src/features/maimai-chart-preview/webview-player/**",
+    "src/features/simai-chart-preview/engine/**",
+    "src/features/simai-chart-preview/webview-player/**",
     "src/features/phigros-chart-preview/webview-player/**"
   ]
 }

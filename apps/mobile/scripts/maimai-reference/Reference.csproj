@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="ViewX/*.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="MajdataScoreReference.cs" />
     <Compile Include="../../build/maimai-reference/MajSimai-334f3b4141cbc204814bccb9f3e1cea7c1b14594/Runtime/**/*.cs" />
   </ItemGroup>
 </Project>

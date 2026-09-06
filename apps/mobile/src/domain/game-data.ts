@@ -35,6 +35,7 @@ export type ChunithmBestListSection = {
  * - unsupported：已登记但尚未接入成绩模型的游戏
  */
 export type GamePayload =
+  | { kind: 'majdata-net'; snapshot: import('./majdata').MajdataSnapshot; playerScore: PlayerScoreSummary; source: DataSource }
   | {
       kind: 'adofai';
       player: TufPlayer;

@@ -21,7 +21,7 @@ for (const [name, file] of Object.entries(files)) {
   for (const c of clip.m_FloatCurves) curves[`${c.path ?? ''}:${c.attribute}`] = c.curve.m_Curve.map(k => [k.time, k.value, k.inSlope, k.outSlope].map(v => Number.isFinite(v) ? v : null));
   output[name] = { duration: clip.m_AnimationClipSettings.m_StopTime, curves };
 }
-fs.writeFileSync('src/features/maimai-chart-preview/engine/renderers/effectCurves.generated.ts', `// Generated from MajdataViewX Unity animations (GPL-3.0); do not edit.\nexport const EFFECT_CURVES: Record<string, { duration: number; curves: Record<string, (number | null)[][]> }> = ${JSON.stringify(output)};\n`);
+fs.writeFileSync('src/features/simai-chart-preview/engine/renderers/effectCurves.generated.ts', `// Generated from MajdataViewX Unity animations (GPL-3.0); do not edit.\nexport const EFFECT_CURVES: Record<string, { duration: number; curves: Record<string, (number | null)[][]> }> = ${JSON.stringify(output)};\n`);
 
 const spritesByGuid = new Map(), sprites = {};
 for (const file of fs.readdirSync(sourceRoot + '/Sprites/Effect').filter(f => f.endsWith('.png'))) {
@@ -63,5 +63,5 @@ const holdData = { lifetime: hold.InitialModule.startLifetime.scalar, rate: hold
 const used = new Set(['Circle.png', ...Object.values(scenes).flatMap(nodes => nodes.map(n => n.sprite).filter(Boolean))]);
 const selected = Object.fromEntries([...used].map(name => [name, sprites[name]]));
 const types = `type Vec = { x: number; y: number; z: number };\nexport type EffectNode = { path: string; parent: string | null; position: Vec; scale: Vec; angle: number; sprite?: string; color?: { r: number; g: number; b: number; a: number }; order: number; shader: boolean };\n`;
-fs.writeFileSync('src/features/maimai-chart-preview/engine/renderers/effectSprites.generated.ts', `/** Generated from MajdataViewX prefab/PNG sources, GPL-3.0. Copyright MajdataViewX contributors.\n * Adapted by rRanker 2026-09-05; see scripts/maimai-reference/Effects and THIRD_PARTY_NOTICES.md. */\n${types}export const EFFECT_SCENES: Record<string, EffectNode[]> = ${JSON.stringify(scenes)};\nexport const EFFECT_SPRITES: Record<string, { data: string; width: number; height: number; ppu: number; pivot: { x: number; y: number }; sourceSha256: string; sha256: string }> = ${JSON.stringify(selected)};\nexport const HOLD_PARTICLES = ${JSON.stringify(holdData)};\n`);
+fs.writeFileSync('src/features/simai-chart-preview/engine/renderers/effectSprites.generated.ts', `/** Generated from MajdataViewX prefab/PNG sources, GPL-3.0. Copyright MajdataViewX contributors.\n * Adapted by rRanker 2026-09-05; see scripts/maimai-reference/Effects and THIRD_PARTY_NOTICES.md. */\n${types}export const EFFECT_SCENES: Record<string, EffectNode[]> = ${JSON.stringify(scenes)};\nexport const EFFECT_SPRITES: Record<string, { data: string; width: number; height: number; ppu: number; pivot: { x: number; y: number }; sourceSha256: string; sha256: string }> = ${JSON.stringify(selected)};\nexport const HOLD_PARTICLES = ${JSON.stringify(holdData)};\n`);
 console.log(`Generated ${used.size} effect sprites and ${Object.keys(scenes).length} prefab scenes`);

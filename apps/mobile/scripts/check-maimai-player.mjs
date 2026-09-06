@@ -1,3 +1,4 @@
+import { build } from 'esbuild';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
@@ -23,12 +24,17 @@ function wav(seconds) {
 const music=wav(30),answer=wav(0.2);
 const body='(120){4}1,2hx[4:2],3-7[4:2],Cf,5w1[4:2],6/8,(180)1,2,3,4,5,6,7,8,';
 const chart=`&title=Playback verification\n&inote_5=${body}\n&inote_2=${body}\n&inote_102=(150){4}8,7,6h[4:2],5,4-8[4:2],3,2,1,`;
+await build({ entryPoints: [path.join(root, 'src/features/simai-chart-preview/engine/core/parser/SimaiParser.ts')], outfile: path.join(output, 'simai-parser.mjs'), bundle: true, platform: 'node', format: 'esm' });
+const { parseSimaiChart } = await import(pathToFileURL(path.join(output, 'simai-parser.mjs')).href);
+const extended = '&title=Majdata preview\n&inote_7=(120){4}1m,2hbx[4:2],Chm[4:2],3?-5-7[4:2],4-8b[4:2]*-6m[4:1],<HS*2><SV*0.5>5CK1[4:2],';
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const results=[];
 try {
- for(const buddy of [false,true]) {
+ for(const mode of (process.argv[3] ? [process.argv[3]] : ['normal','buddy','majdata','missing'])) {
+  const buddy = mode === 'buddy';
   const page=await browser.newPage({viewport:{width:900,height:1100}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
+  page.on('console',m=>{if(m.type()==='error') errors.push(m.text());});
   await page.addInitScript(()=>{
    window.messages=[];window.ReactNativeWebView={postMessage:s=>window.messages.push(JSON.parse(s))};
    window.sources=[];
@@ -41,7 +47,9 @@ try {
     }
    };
   });
-  const config={chartId:1,difficulty:6,title:'Playback verification',buddySide:buddy?'dual':undefined,answerSoundUrl:'https://preview.test/answer.wav',backgroundImageUrl:images['outline.png'],settings:{musicVolume:0,soundVolume:0,backgroundMode:'none'}};
+  const config={chartId:1,chartUrl:'https://preview.test/1.txt',musicUrl:'https://preview.test/1.mp3',difficulty:5,title:'Playback verification',buddySide:buddy?'dual':undefined,answerSoundUrl:'https://preview.test/answer.wav',backgroundImageUrl:images['outline.png'],settings:{musicVolume:0,soundVolume:0,backgroundMode:'none'}};
+  if (mode === 'majdata') Object.assign(config, { chartId: '0dff2974-9419-4290-bea9-307caa5825b7', difficulty: 7, parsedChart: parseSimaiChart(extended, 7) });
+  if (mode === 'missing') config.difficulty = 6;
   await page.route('**/*',async route=>{
    const url=route.request().url();
    if(url.startsWith('data:'))return route.continue();
@@ -54,9 +62,14 @@ try {
    return route.abort();
   });
   await page.goto('https://preview.test/index.html');
-  await page.waitForFunction(()=>window.messages.some(m=>m.type==='ready'));
+  if (mode === 'missing') {
+    await page.waitForFunction(()=>window.messages.some(m=>m.type==='error'));
+    assert.ok((await page.evaluate(()=>window.messages)).some(m=>m.type==='error' && m.diagnostic?.includes('所选难度')));
+    results.push({mode, rejected: true}); await page.close(); continue;
+  }
+  try { await page.waitForFunction(()=>window.messages.some(m=>m.type==='ready'), undefined, {timeout: 10000}); } catch (error) { console.error(mode, errors, await page.evaluate(()=>({messages:window.messages, status:document.querySelector('#status')?.textContent, config: window.__CHART_PREVIEW__?.chartId, scripts:[...document.scripts].map(s=>s.src)}))); throw error; }
   await page.locator('#play').click();
-  await page.waitForFunction(()=>document.querySelector('#play').getAttribute('aria-label')==='暂停');
+  try { await page.waitForFunction(()=>document.querySelector('#play').getAttribute('aria-label')==='暂停', undefined, {timeout: 10000}); } catch (error) { console.error(mode, errors, await page.evaluate(()=>({messages: window.messages, play: document.querySelector('#play').outerHTML, status: document.querySelector('#status')?.textContent}))); throw error; }
   await page.waitForTimeout(400);
   const intro=await page.locator('#info-combo').innerText();assert.match(intro,/^0\s*\//);
   await page.locator('#play').click();
@@ -85,7 +98,7 @@ try {
   assert.equal(await page.evaluate(()=>window.sources.every(s=>!s.started||s.stopped||s.ended)),true);
   assert.deepEqual(errors,[]);
   const messages=await page.evaluate(()=>window.messages);assert.equal(messages.some(m=>m.type==='error'),false);
-  results.push({buddy,errors,intro,paused,scheduledAnswersCanceled:oldIds.length,settings:messages.filter(m=>m.type==='settings'),stoppedAllSources:true});
+  results.push({mode,buddy,errors,intro,paused,scheduledAnswersCanceled:oldIds.length,settings:messages.filter(m=>m.type==='settings'),stoppedAllSources:true});
   await page.close();
  }
  await fs.writeFile(path.join(output,'player-results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results));

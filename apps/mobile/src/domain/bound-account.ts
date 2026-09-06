@@ -56,6 +56,7 @@ export function createAdditionalLocalMaimaiAccountId(
 }
 
 const PROVIDER_TITLES: Record<ProviderId, string> = {
+  'majdata-net': 'Majdata Net',
   'diving-fish': '水鱼查分器',
   lxns: '落雪查分器',
   local: '本地查分器',
@@ -355,6 +356,7 @@ export function boundAccountFromStored(account: {
   challengeModeRank?: number | null;
   ratingPossession?: string | null;
 }): BoundAccount {
+  if (account.gameId === 'majdata-net') return { ...account, scoreLabel: 'DX · Classic', providerTitle: 'Majdata Net' };
   if (account.gameId === 'phigros' && account.providerId === 'phi-taptap') {
     const rating = Number(account.scoreDisplay);
     const restored = createPhigrosBoundAccount({

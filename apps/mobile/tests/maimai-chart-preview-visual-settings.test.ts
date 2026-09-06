@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseSimaiBody } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
-import { buildFrame, prepareChart } from '@/features/maimai-chart-preview/engine/renderers/frame';
-import { DEFAULT_RENDERER_CONFIG, MainRenderer, mirrorHint } from '@/features/maimai-chart-preview/engine/renderers/MainRenderer';
-import { ChartPreviewSkin } from '@/features/maimai-chart-preview/engine/renderers/skinAtlas';
-import { EffectRenderer } from '@/features/maimai-chart-preview/engine/renderers/effects';
-import { MAIMAI_CHART_PREVIEW_SKIN_ASSETS } from '@/features/maimai-chart-preview/maimai-chart-preview-skin-manifest.generated';
+import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { buildFrame, prepareChart } from '@/features/simai-chart-preview/engine/renderers/frame';
+import { DEFAULT_RENDERER_CONFIG, MainRenderer, mirrorHint } from '@/features/simai-chart-preview/engine/renderers/MainRenderer';
+import { ChartPreviewSkin } from '@/features/simai-chart-preview/engine/renderers/skinAtlas';
+import { EffectRenderer } from '@/features/simai-chart-preview/engine/renderers/effects';
+import { MAIMAI_CHART_PREVIEW_SKIN_ASSETS } from '@/features/simai-chart-preview/maimai-chart-preview-skin-manifest.generated';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 

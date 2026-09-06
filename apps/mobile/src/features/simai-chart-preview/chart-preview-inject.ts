@@ -21,6 +21,10 @@ const chartPreviewInjectors = createChartPreviewInjectors<ChartPreviewInjectConf
   placeholder: '<!--CHART_PREVIEW_CONFIG-->',
   serialize: (config) => JSON.stringify({
     chartId: config.chartId,
+    chartUrl: config.chartUrl,
+    musicUrl: config.musicUrl,
+    simaiText: config.simaiText,
+    parsedChart: config.parsedChart,
     difficulty: config.difficulty,
     title: config.title ?? '',
     settings: config.settings ?? null,

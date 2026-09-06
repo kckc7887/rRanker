@@ -201,21 +201,21 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 
 ### WebView 与内存
 
-- 舞萌播放器复用 `chart-preview-shared/webview-player/playbackClock.ts` 的 `PlaybackClock`。
+- 舞萌与 Majdata 播放器复用 `chart-preview-shared/webview-player/playbackClock.ts` 的 `PlaybackClock`。
   `configuration.ts` 集中定义 `ChartPreviewInjectConfig` 和设置类型，注入模块保留兼容导出；
-  `createChartPreviewInjectors<TConfig>(spec)` 负责序列化入口，`prepareChartPreviewWebviewFromPlan(plan)`
+  `createChartPreviewInjectors<TConfig>(spec)` 负责序列化入口，转义脚本边界并原样保留 `$`，`prepareChartPreviewWebviewFromPlan(plan)`
   负责资源暂存和清理。舞萌通过计划中的 `fileName` 加入皮肤修订/正解音哈希，复用共享
   `remoteCacheDirectory` 的大小校验，不另建缓存执行器或清理范围。
-  `skin-data.js` 的键仍为原始 S3 对象路径，语义别名仅在舞萌 `skinSemantics.ts` 解释。
-  舞萌 `resolveStarSkin(path, pink)` 由 `buildFrame` 的统一命令入口调用，只替换普通
+  `skin-data.js` 的键仍为原始 S3 对象路径，语义别名仅在 Simai `skinSemantics.ts` 解释。
+  Simai `resolveStarSkin(path, pink)` 由 `buildFrame` 的统一命令入口调用，只替换普通
   `star.png` / `star_double.png`；`SKIN_DISPLAY_SIZE` 保留粉色资源的原显示占位和 EX 对齐。
   `EACH_COLOR` 同时供 Each 着色与全部 HOLD 持续圈使用；Slide 的 JUST 资源选择和
-  打击星型图层过滤留在舞萌引擎。图片/视频共用 `MainRenderer` 的居中圆形背景绘制，
+  打击星型图层过滤留在 Simai 引擎。图片/视频共用 `MainRenderer` 的居中圆形背景绘制，
   不扩展共享设置协议。`maimai-chart-preview-visual-settings.test.ts` 覆盖这些渲染合同。
   本地原始 `sensor.webp` 以 `moduleId` 复用共享暂存清单，并由既有 writer 注入同一
-  `skin-data.js`；判定区的中心/缩放校准留在舞萌 `skinSemantics.ts`，判定点复用
+  `skin-data.js`；判定区的中心/缩放校准留在 Simai `skinSemantics.ts`，判定点复用
   音符几何 `buttonPoint`，判定区与判定线共用圆环和点的绘制路径。
-  模型、simai 扩展、路径、SV、帧命令与皮肤加载均留在舞萌目录；共享层不解释音符。
+  模型、Simai 扩展、路径、SV、帧命令与皮肤加载位于 `features/simai-chart-preview/`；通用 `chart-preview-shared` 壳不解释音符。
   `npm run typecheck` 包含 `typecheck:maimai-player`，完整检查播放器入口和引擎。
   修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的
   `player.bundle` 一致，并完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
@@ -225,6 +225,36 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 - 成绩图预览只挂载当前页 WebView，其余页使用轻量占位；不得让多份大 HTML 常驻。
 - 谱面确认和下载任务必须响应卸载、后台与 AbortSignal，不得在取消后继续写缓存或显示成功。
 - 作为下游 memo 依赖的数组或对象必须保持稳定引用，避免无意义重算和重渲染。
+
+## Majdata 与 Simai 公共路径
+
+- `http-json.ts` 的 `JsonRequestOptions<T>` 支持 `init` 与 `onResponse`；JSON、字节和
+  `requestProviderResponse(options, read)` 共用取消、超时、重试、Schema 和错误归一化。
+  `http-cookies.ts` 提供 `responseCookies`、`cookieHeader` 和会话校验；Cookie 仅发送到
+  明确的来源与路径。`PasswordLoginPanel` 复用登录表单、取消和前后台流程，游戏只提供登录动作。
+- `majdataContentAdapter` 保留 UUID 和原始难度索引；DTO 不进入共享卡片逻辑。
+  `SimaiScoreCardStyles` 由舞萌 `ScoreRecordCard` 与 Majdata 成绩卡共同使用，原难度配色与
+  成就徽章继续复用 `ScoreVisuals`，Easy 在 Majdata 适配层提供蓝色主题。
+  `DxRatingCard.valueRows` 支持多项数值；不传时保持原有 Rating 布局。
+- `features/simai-chart-preview/configuration.ts` 提供两种游戏统一的配置。资源 URL 由路由
+  提供，Majdata 可注入按 HASH 缓存的 `parsedChart`；缺少指定难度会报错，不选择其它难度。
+  `simaiStatistics(chart)` 对同一 Chart 展开判定单位，同时保留本体、Break、Mine、EX。
+  六类显示按 Mine 优先，其次 Break；连接滑条一条分支计一个本体，头部独立计数。
+- `domain/tolerance.ts` 的计算、单音符损失、物量分析和同类容错增加可选 DX / Classic
+  模式参数，默认 DX。Classic 奖励按基础总分归一化，上限由实际物量计算；无 Break 的 DX
+  上限 100%，空谱结果 0%。MINE 行逐子类计算，不能将混合 MINE 总数作为统一权重。
+- `chart-download-shared/simai-package.ts` 的 `downloadSimaiPackage(request, options)`
+  执行资源下载、打包、取消、临时目录清理和保存。舞萌保留 `.adx.zip`，Majdata 使用 `.zip`，
+  完整文本与音频、原格式封面、可选视频均走相同入口。封面按实际文件签名保存为
+  `bg.png` / `bg.jpg`；无法识别时中止并清理临时目录，避免生成播放器无法读取的封面。
+- `snapshot-cache-utils` 的 `captureResourceWrites(scope)` 与 `invalidateResourceWrites(scope)`
+  让缓存清理使已返回首屏的后台刷新也失效。游戏缓存清理在枚举和删除前提升代次。
+  Majdata 详情复用 `cacheFirstLoad`，文本请求复用 `createInflightGuard`；图片仍遵守公共
+  10 MiB、10 KiB、50% / 250 ms 可见性规则，没有另建图片缓存。
+
+合同覆盖 `majdata.test.ts`、`majdata-cache.test.ts`、`majdata-ui.test.tsx`、安全仓库与
+下载测试，以及完整舞萌解析、预览、共享 UI 测试。独立 C# 样本来自 MajSimai 与
+MajdataPlay 原始计分方法，普通测试无需 `refer/` 或 .NET；原生账号、保存和播放仍须真机验收。
 
 ## 新增或修改功能时的检查顺序
 

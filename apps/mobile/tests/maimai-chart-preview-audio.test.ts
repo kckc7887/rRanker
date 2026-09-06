@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { decodeBase64AudioDataUrl } from '@/features/maimai-chart-preview/engine/core/audio/AudioManager';
-import { resolveBackgroundVideoFrame } from '@/features/maimai-chart-preview/webview-player/timeConversion';
+import { decodeBase64AudioDataUrl } from '@/features/simai-chart-preview/engine/core/audio/AudioManager';
+import { resolveBackgroundVideoFrame } from '@/features/simai-chart-preview/webview-player/timeConversion';
 
 describe('decodeBase64AudioDataUrl', () => {
   it('直接解码内联 WAV，避免 Android WebView 读取 file URL', () => {

@@ -37,3 +37,13 @@ node scripts/generate-maimai-geometry.mjs
 
 参考快照、生成数据与移植部分保留 GPL 条款；rRanker 的整合代码按仓库 AGPL 条款提供。
 参见根目录 `THIRD_PARTY_NOTICES.md` 的修改说明和组合许可说明。
+
+## MajdataPlay 计分参考
+
+`MajdataScoreReference.cs` 提取 MajdataPlay `ObjectCounter.UpdateNoteScoreCount`，
+仅改为 public，并提供不含行为的音符类型与判定类型。`majdata-source.json` 记录来源 SHA-256。
+`dotnet run --project scripts/maimai-reference/Reference.csproj -- score tests/fixtures/majdata-score-reference.json`
+生成原始判定结果。新增 Majdata 语法样本使用同一 `parse` 命令生成，输入为
+`tests/fixtures/majdata-simai-cases.json`，输出为 `tests/fixtures/majdata-simai-reference.json`。
+源代码受 GPL-3.0 许可，副本见根目录 `LICENSES/MajdataPlay-GPL-3.0.txt`；它只参与参考程序，
+不编入应用。此参考不模拟 Unity 的渲染或硬件判定。

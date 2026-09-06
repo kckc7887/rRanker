@@ -1,6 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
 export type ProviderId =
+  | 'majdata-net'
   | 'diving-fish'
   | 'lxns'
   | 'local'
@@ -14,9 +15,9 @@ export type ProviderId =
   | 'phira-community'
   | 'musedash-test'
   | 'osu';
-export type RemoteProviderId = Extract<ProviderId, 'diving-fish' | 'lxns' | 'phi-taptap' | 'osu'>;
+export type RemoteProviderId = Extract<ProviderId, 'majdata-net' | 'diving-fish' | 'lxns' | 'phi-taptap' | 'osu'>;
 export type GameId =
-  | 'maimai' | 'chunithm' | 'phigros' | 'phira' | 'adofai' | 'musedash' | 'test'
+  | 'majdata-net' | 'maimai' | 'chunithm' | 'phigros' | 'phira' | 'adofai' | 'musedash' | 'test'
   | 'osu-standard' | 'osu-mania' | 'osu-catch' | 'osu-taiko';
 export type ProviderBindingKind = 'credentials' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
 
@@ -68,6 +69,8 @@ const osuCatchIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-catch.png` } as ImageSourc
 const osuTaikoIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-taiko.png` } as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
+  { id: 'majdata-net', title: 'Majdata Net', icon: { uri: 'https://majdata.net/icon-192x192.png' }, available: true, pendingDetail: '',
+    providers: [{ id: 'majdata-net', title: 'Majdata Net', detail: '账密登录', icon: { uri: 'https://majdata.net/icon-192x192.png' }, available: true, bindingKind: 'credentials' }] },
   {
     id: 'maimai',
     title: '舞萌 DX',

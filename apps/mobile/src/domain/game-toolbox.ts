@@ -35,6 +35,10 @@ const OSU_TOOLS: readonly GameToolDefinition[] = [
  * 新游戏不需要在页面组件里增加 gameId 分支。
  */
 export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
+  'majdata-net': { tools: [
+    { id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找', detail: '查找附近机厅', summaryLabel: '机厅查找' },
+    { id: 'tolerance', href: '/tools/tolerance?gameId=majdata-net', title: '达成率与容错', detail: '计算 DX、Classic 达成率与容错', summaryLabel: '达成率/容错' },
+  ], emptyDetail: '' },
   maimai: {
     tools: [
       {

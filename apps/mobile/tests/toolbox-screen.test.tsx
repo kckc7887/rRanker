@@ -29,6 +29,7 @@ jest.mock('@/state/toolbox-pins', () => ({
     togglePinnedTool: typeof mockTogglePinnedTool;
   }) => unknown) => selector({
     pinnedToolIdsByGame: {
+      'majdata-net': [],
       maimai: mockPinnedToolIds,
       chunithm: [],
       phigros: [],

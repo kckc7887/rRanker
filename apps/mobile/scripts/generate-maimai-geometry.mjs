@@ -6,7 +6,7 @@ const pose = p => [p.X, p.Y, p.RotZ, p.L];
 const entries = Object.fromEntries(Object.entries(input).map(([key, v]) => [key, [v.SlideConst, v.SlideLength, v.ConditionalLastArrow, pose(v.OkPose), v.OkType, v.ArrowPoses.map(pose), v.JudgeAreaQueue.map(a => [a.ArrowProgressPush, a.ArrowProgressFinish, a.SensorA, a.SensorB])]]));
 const lookup = JSON.parse(await fs.readFile(path.join(root, 'build/maimai-reference/geometry.json.areas.json'), 'utf8'));
 const areas = Object.fromEntries(Object.entries(lookup).map(([key, v]) => [key, v.map(a => [a.LengthAfterPush, a.LengthAfterFinish, a.SensorA, a.SensorB])]));
-const out = path.join(root, 'src/features/maimai-chart-preview/engine/core/geometry');
+const out = path.join(root, 'src/features/simai-chart-preview/engine/core/geometry');
 await fs.mkdir(out, { recursive: true });
 const header = '/** Generated from MajdataViewX SlideTableNeo / SlideDataBuilder (GPL-3.0).\n * Reproduce with scripts/maimai-reference and generate-maimai-geometry.mjs. */\n';
 const numbers = [], numberIndexes = new Map();
