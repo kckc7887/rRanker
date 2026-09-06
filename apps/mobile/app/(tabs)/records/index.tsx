@@ -1,6 +1,8 @@
+import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
+import { SIMAI_RECORDS_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { MajdataRecordsScreen } from '@/screens/MajdataScreens';
 import { useDeferredValue, useEffect, useMemo } from 'react';
-import { StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
@@ -180,12 +182,8 @@ export function RecordsScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
-        <TextInput accessibilityLabel="成绩搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / 曲师 / 谱师 / 罗马音" placeholderTextColor={theme.textMuted}
-          value={keyword} onChangeText={setKeyword}
-          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-      </View>
+      <GameSearchHeader layout="records" accessibilityLabel="成绩搜索"
+        placeholder="曲名 / 曲师 / 谱师 / 罗马音" value={keyword} onChangeText={setKeyword} />
       <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
         difficulty={difficulty} version={version} type={type}
         constantMin={constantMin} constantMax={constantMax}
@@ -614,16 +612,3 @@ function PhigrosRecordsScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F8FA' },
-  list: { flex: 1 },
-  listContent: { padding: 16, gap: 10 },
-  note: { color: '#6B7280', marginBottom: 6 },
-  header: { gap: 9 },
-  searchArea: { padding: 12, paddingBottom: 8 },
-  searchBox: { borderWidth: 1, borderRadius: 10, padding: 11 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24 },
-  statusText: { fontSize: 16, fontWeight: '600' },
-  statusHint: { fontSize: 13 },
-});

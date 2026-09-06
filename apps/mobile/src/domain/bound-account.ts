@@ -1,4 +1,5 @@
-import type { GameId, ProviderId } from './game-bind-options';
+import { GAME_OPTIONS, type GameId, type ProviderId } from './game-bind-options';
+import { majdataAvatarUrl, normalizeMajdataTotalDisplay } from './majdata';
 import { formatPlayerScore } from './game-data';
 import { isOsuGameId, type OsuGameId } from './game-mode-family';
 import { getGameProfile } from './game-profile';
@@ -71,6 +72,21 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'musedash-test': '示例查分器',
   osu: 'osu! 官方',
 };
+
+export function createMajdataBoundAccount(input: {
+  accountId: string; displayName: string; scoreDisplay?: string; avatarUrl?: string | null;
+}): BoundAccount {
+  return {
+    id: input.accountId,
+    gameId: 'majdata-net',
+    providerId: 'majdata-net',
+    displayName: input.displayName,
+    scoreLabel: getGameProfile('majdata-net').ratingLabel,
+    scoreDisplay: normalizeMajdataTotalDisplay(input.scoreDisplay ?? '—'),
+    providerTitle: PROVIDER_TITLES['majdata-net'],
+    avatarUrl: input.avatarUrl ?? majdataAvatarUrl(input.displayName),
+  };
+}
 
 export function createPhiraBoundAccount(input: {
   playerId: number; displayName: string; rks?: number | null; avatarUrl?: string | null;
@@ -356,7 +372,7 @@ export function boundAccountFromStored(account: {
   challengeModeRank?: number | null;
   ratingPossession?: string | null;
 }): BoundAccount {
-  if (account.gameId === 'majdata-net') return { ...account, scoreLabel: 'DX · Classic', providerTitle: 'Majdata Net' };
+  if (account.gameId === 'majdata-net') return createMajdataBoundAccount({ ...account, accountId: account.id });
   if (account.gameId === 'phigros' && account.providerId === 'phi-taptap') {
     const rating = Number(account.scoreDisplay);
     const restored = createPhigrosBoundAccount({
@@ -393,9 +409,8 @@ export function boundAccountFromStored(account: {
 }
 
 export function groupBoundAccountGameIds(accounts: BoundAccount[]): GameId[] {
-  const order: GameId[] = [
-    'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash',
-    'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko', 'test',
-  ];
+  const registered = [...GAME_OPTIONS].sort((a, b) =>
+    (a.accountOrder ?? Number.MAX_SAFE_INTEGER) - (b.accountOrder ?? Number.MAX_SAFE_INTEGER));
+  const order = [...new Set([...registered.map(game => game.id), ...accounts.map(account => account.gameId)])];
   return order.filter((gameId) => accounts.some((account) => account.gameId === gameId));
 }

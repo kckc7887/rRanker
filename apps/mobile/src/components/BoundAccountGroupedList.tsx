@@ -84,7 +84,6 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
 }) {
   const theme = useAppTheme();
   const avatarHydrateKey = accounts
-    .filter((account) => account.providerId === 'lxns' || account.providerId === 'phi-taptap' || account.providerId === 'tuf' || account.providerId === 'osu')
     .map((account) => account.id)
     .join('|');
   useHydrateAccountSummaries(avatarHydrateKey, hydrationEnabled);
@@ -134,6 +133,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
 
   const renderAccount = (account: BoundAccount) => {
     const current = account.id === activeAccountId;
+    const scoreTheme = findGame(account.gameId)?.accountScoreTheme;
     const ratingTag = renderRatingTag?.(account)
       ?? (account.gameId === 'maimai' ? <DxRatingTag rating={ratingNumber(account.scoreDisplay)} display={account.scoreDisplay} /> : null)
       ?? (account.gameId === 'chunithm' ? (
@@ -158,7 +158,9 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
           accessibilityLabel={`Rating ${account.scoreDisplay}`}
           testID="musedash-rating-tag"
         />
-      ) : null);
+      ) : null)
+      ?? (scoreTheme ? <TintedRatingTag theme={scoreTheme} display={account.scoreDisplay}
+        accessibilityLabel={`${account.scoreLabel} ${account.scoreDisplay}`} /> : null);
     return <View key={account.id} testID={`account-card-${account.id}`}
       style={[styles.accountCard, { backgroundColor: theme.surface }, current && { borderColor: theme.accent }]}>
       <Pressable accessibilityRole="button" disabled={!onSelectAccount}
@@ -226,8 +228,12 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   };
 
   return <View style={styles.list}>
-    {gameGroups.map(renderGameCard)}
-    {familyGroups.map(renderFamilyCard)}
+    {groupBoundAccountGameIds(accounts).map(gameId => {
+      const game = gameGroups.find(group => group.gameId === gameId);
+      if (game) return renderGameCard(game);
+      const family = familyGroups.find(group => group.modes[0]?.gameId === gameId);
+      return family ? renderFamilyCard(family) : null;
+    })}
   </View>;
 }
 

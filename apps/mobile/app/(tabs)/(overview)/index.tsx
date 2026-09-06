@@ -1,4 +1,3 @@
-import { majdataTotals } from '@/domain/majdata';
 import { refreshPhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -482,10 +481,10 @@ function PublicOverviewScreen() {
                 borderless={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData}
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
-                valueRows={bundle.payload.kind === 'majdata-net' ? [
-                  { label: 'DX', value: `${majdataTotals(bundle.payload.snapshot.records).dx.toFixed(4)}%` },
-                  { label: 'Classic', value: `${majdataTotals(bundle.payload.snapshot.records).classic.toFixed(4)}%` },
-                ] : undefined}
+                fitValue={bundle.payload.kind === 'majdata-net'}
+                accessibilityLabel={bundle.payload.kind === 'majdata-net'
+                  ? `${bundle.payload.playerScore.label} ${bundle.payload.playerScore.display}`
+                  : undefined}
                 rating={bundle.payload.kind === 'majdata-net' || (bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData)
                   ? null
                   : bundle.payload.playerScore.value}
@@ -663,12 +662,11 @@ function PublicOverviewScreen() {
                     || bundle.payload.kind === 'adofai'
                     || bundle.payload.kind === 'musedash'
                     || bundle.payload.kind === 'majdata-net'
-              || bundle.payload.kind === 'phira'
+                    || bundle.payload.kind === 'phira'
                     || bundle.payload.kind === 'osu'
                     ? (library.isError
                         ? '个人数据暂不可用'
-                        : bundle.payload.kind === 'adofai' || bundle.payload.kind === 'majdata-net'
-              || bundle.payload.kind === 'phira'
+                        : bundle.payload.kind === 'adofai' || bundle.payload.kind === 'phira'
                           ? `收藏 ${favorites} 首`
                           : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
                     : '当前游戏暂未开放个人曲库'}

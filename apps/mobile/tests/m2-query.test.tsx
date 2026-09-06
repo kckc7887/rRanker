@@ -34,7 +34,7 @@ type MockActionNotificationInput = {
 const mockShowActionNotification = jest.fn<(input: MockActionNotificationInput) => number>();
 const mockShowNotification = jest.fn();
 const mockUpdateNotification = jest.fn();
-const mockCheckVideo = jest.fn<(chartId: number) => Promise<boolean>>();
+const mockVideoHead = jest.fn<(url: string, init?: RequestInit) => Promise<Response>>();
 type MockDownloadOptions = {
   signal?: AbortSignal;
   onProgress?: (progress: { phase: 'downloading' | 'organizing'; progress: number }) => void;
@@ -77,9 +77,11 @@ jest.mock('@/components/AppNotification', () => ({
 }));
 jest.mock('@/features/maimai-chart-download/maimai-chart-download', () => ({
   MaimaiChartDownloadError: class MaimaiChartDownloadError extends Error {},
-  checkMaimaiChartVideoAvailable: (chartId: number) => mockCheckVideo(chartId),
   downloadMaimaiChartPackage: (request: Record<string, unknown>, options?: MockDownloadOptions) =>
     mockDownloadPackage(request, options),
+}));
+jest.mock('expo/fetch', () => ({
+  fetch: (url: string, init?: RequestInit) => mockVideoHead(url, init),
 }));
 jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
   downloadPhigrosChartAsPhiraPackage: jest.fn(),
@@ -278,7 +280,7 @@ describe('M2 song query screens', () => {
     mockUserLibraryData = [];
     mockCanGoBack.mockReturnValue(true);
     mockVideoAvailable = false;
-    mockCheckVideo.mockImplementation(async () => mockVideoAvailable);
+    mockVideoHead.mockImplementation(async () => new Response(null, { status: mockVideoAvailable ? 200 : 404 }));
     mockDownloadPackage.mockResolvedValue(true);
     useCatalogFilter.getState().reset();
     jest.clearAllMocks();
@@ -729,6 +731,9 @@ describe('M2 song query screens', () => {
       onProgress: expect.any(Function),
       onReadyToSave: expect.any(Function),
     })));
+    expect(mockVideoHead).toHaveBeenCalledWith('https://maimai-video.lxns.net/1.mp4', expect.objectContaining({
+      method: 'HEAD', signal: expect.any(AbortSignal),
+    }));
     expect(mockShowActionNotification).not.toHaveBeenCalledWith(expect.objectContaining({
       message: expect.stringContaining('背景视频'),
     }));
@@ -764,7 +769,9 @@ describe('M2 song query screens', () => {
     await act(async () => {
       fireEvent.press(screen.getByLabelText('下载谱面文件：正常曲目 A DX MASTER'));
     });
-    await waitFor(() => expect(mockCheckVideo).toHaveBeenCalledWith(10001));
+    await waitFor(() => expect(mockVideoHead).toHaveBeenCalledWith('https://maimai-video.lxns.net/1.mp4', expect.objectContaining({
+      method: 'HEAD', signal: expect.any(AbortSignal),
+    })));
     await waitFor(() => expect(mockShowActionNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: '下载谱面文件',
       message: expect.stringContaining('背景视频'),

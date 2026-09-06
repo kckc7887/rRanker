@@ -2,13 +2,16 @@ import type { DataSource } from '@/domain/models';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const resourceWriteGenerations = new Map<string, number>();
+export function resourceWriteGeneration(scope: string): number {
+  return resourceWriteGenerations.get(scope) ?? 0;
+}
 /** Invalidates detached cache-first refreshes as well as active queries. */
 export function invalidateResourceWrites(scope: string): void {
   resourceWriteGenerations.set(scope, (resourceWriteGenerations.get(scope) ?? 0) + 1);
 }
 export function captureResourceWrites(scope: string): () => void {
-  const generation = resourceWriteGenerations.get(scope) ?? 0;
-  return () => { if ((resourceWriteGenerations.get(scope) ?? 0) !== generation) throw new Error('缓存请求已失效'); };
+  const generation = resourceWriteGeneration(scope);
+  return () => { if (resourceWriteGeneration(scope) !== generation) throw new Error('缓存请求已失效'); };
 }
 
 /** 构造缓存快照的 source：kind/label 由各游戏传入，updatedAt 记录本次拉取时间。 */
@@ -31,12 +34,15 @@ export function makeSnapshot<T>(
 /** in-flight 去重守卫：并发调用同一 key 的加载共享一次网络请求，请求结束（成功或失败）后移除。 */
 export interface InflightGuard<K> {
   dedupe<T>(key: K, loader: () => Promise<T>, signal?: AbortSignal): Promise<T>;
+  /** Each consumer cancels independently; only the last cancellation aborts the shared loader. */
+  share<T>(key: K, loader: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T>;
   /** 测试用：清空去重表。 */
   resetForTests(): void;
 }
 
 export function createInflightGuard<K>(): InflightGuard<K> {
   const inflight = new Map<K, { promise: Promise<unknown>; signal?: AbortSignal }>();
+  const shared = new Map<K, { promise: Promise<unknown>; controller: AbortController; users: number }>();
   return {
     dedupe<T>(key: K, loader: () => Promise<T>, signal?: AbortSignal): Promise<T> {
       const existing = inflight.get(key) as { promise: Promise<T>; signal?: AbortSignal } | undefined;
@@ -49,8 +55,44 @@ export function createInflightGuard<K>(): InflightGuard<K> {
       void fresh.then(cleanup, cleanup);
       return fresh;
     },
+    share<T>(key: K, loader: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
+      if (signal?.aborted) return Promise.reject(signal.reason);
+      let entry = shared.get(key);
+      if (!entry || entry.controller.signal.aborted) {
+        const controller = new AbortController();
+        entry = { controller, users: 0, promise: Promise.resolve().then(() => {
+          if (controller.signal.aborted) throw controller.signal.reason;
+          return loader(controller.signal);
+        }) };
+        shared.set(key, entry);
+        const current = entry;
+        const cleanup = () => { if (shared.get(key) === current) shared.delete(key); };
+        void entry.promise.then(cleanup, cleanup);
+      }
+      const current = entry;
+      current.users++;
+      return new Promise<T>((resolve, reject) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return false;
+          settled = true;
+          signal?.removeEventListener('abort', cancel);
+          current.users--;
+          if (current.users === 0 && shared.get(key) === current) {
+            shared.delete(key);
+            current.controller.abort();
+          }
+          return true;
+        };
+        const cancel = () => { if (finish()) reject(signal?.reason); };
+        signal?.addEventListener('abort', cancel, { once: true });
+        current.promise.then(value => { if (finish()) resolve(value as T); }, error => { if (finish()) reject(error); });
+      });
+    },
     resetForTests(): void {
       inflight.clear();
+      for (const entry of shared.values()) entry.controller.abort();
+      shared.clear();
     },
   };
 }

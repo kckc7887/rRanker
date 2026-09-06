@@ -1,4 +1,5 @@
 import type { ImageSourcePropType } from 'react-native';
+import { NEUTRAL_RATING_THEME, type DxRatingTheme } from './dx-rating-theme';
 
 export type ProviderId =
   | 'majdata-net'
@@ -37,6 +38,10 @@ export type GameOption = {
   available: boolean;
   pendingDetail: string;
   providers: ProviderOption[];
+  /** 已绑定游戏列表的既有顺序；未指定的新增游戏按注册顺序追加。 */
+  accountOrder?: number;
+  /** 账号合计的固定主题，不按其它游戏的评价体系推导。 */
+  accountScoreTheme?: DxRatingTheme;
   /** 多模式家族 id：前台把同家族成员聚合为一个板块（见 domain/game-mode-family）。 */
   familyId?: string;
   /** 家族非锚点成员：picker 中不单独列出行，只经家族锚点渲染。 */
@@ -59,6 +64,7 @@ const adofaiIcon = { uri: `${REMOTE_IMAGE_BASE}/adofai.png` } as ImageSourceProp
 const tufIcon = { uri: `${REMOTE_IMAGE_BASE}/tuf.png` } as ImageSourcePropType;
 const museDashIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash.png` } as ImageSourcePropType;
 const museDashMoeIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash-moe.png` } as ImageSourcePropType;
+const majdataIcon = { uri: `${REMOTE_IMAGE_BASE}/majdata.png` } as ImageSourcePropType;
 /** 从 https://phira.moe/favicon.svg 原样提取的内嵌 PNG。 */
 const phiraIcon = { uri: `${REMOTE_IMAGE_BASE}/phira.png` } as ImageSourcePropType;
 /** osu! 家族板块通用图标。 */
@@ -69,10 +75,9 @@ const osuCatchIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-catch.png` } as ImageSourc
 const osuTaikoIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-taiko.png` } as ImageSourcePropType;
 
 export const GAME_OPTIONS: GameOption[] = [
-  { id: 'majdata-net', title: 'Majdata Net', icon: { uri: 'https://majdata.net/icon-192x192.png' }, available: true, pendingDetail: '',
-    providers: [{ id: 'majdata-net', title: 'Majdata Net', detail: '账密登录', icon: { uri: 'https://majdata.net/icon-192x192.png' }, available: true, bindingKind: 'credentials' }] },
   {
     id: 'maimai',
+    accountOrder: 0,
     title: '舞萌 DX',
     icon: maimaiIcon,
     available: true,
@@ -114,6 +119,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'chunithm',
+    accountOrder: 1,
     title: '中二节奏',
     icon: chunithmIcon,
     available: true,
@@ -139,6 +145,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'adofai',
+    accountOrder: 4,
     title: '冰与火之舞',
     icon: adofaiIcon,
     available: true,
@@ -154,6 +161,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'musedash',
+    accountOrder: 5,
     title: '喵斯快跑',
     icon: museDashIcon,
     available: true,
@@ -179,6 +187,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'phira',
+    accountOrder: 3,
     title: 'Phira',
     icon: phiraIcon,
     available: true,
@@ -194,6 +203,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'phigros',
+    accountOrder: 2,
     title: 'Phigros',
     icon: phigrosIcon,
     available: true,
@@ -219,6 +229,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'osu-standard',
+    accountOrder: 6,
     title: 'osu!standard',
     icon: osuStandardIcon,
     available: true,
@@ -238,6 +249,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'osu-mania',
+    accountOrder: 7,
     title: 'osu!mania',
     icon: osuManiaIcon,
     available: true,
@@ -248,6 +260,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'osu-catch',
+    accountOrder: 8,
     title: 'osu!catch',
     icon: osuCatchIcon,
     available: true,
@@ -258,6 +271,7 @@ export const GAME_OPTIONS: GameOption[] = [
   },
   {
     id: 'osu-taiko',
+    accountOrder: 9,
     title: 'osu!taiko',
     icon: osuTaikoIcon,
     available: true,
@@ -265,6 +279,22 @@ export const GAME_OPTIONS: GameOption[] = [
     familyId: 'osu',
     hiddenInPicker: true,
     providers: [],
+  },
+  {
+    id: 'majdata-net',
+    title: 'Majdata Net',
+    icon: majdataIcon,
+    available: true,
+    pendingDetail: '',
+    accountScoreTheme: NEUTRAL_RATING_THEME,
+    providers: [{
+      id: 'majdata-net',
+      title: 'Majdata Net',
+      detail: '账密登录',
+      icon: majdataIcon,
+      available: true,
+      bindingKind: 'credentials',
+    }],
   },
 ];
 
@@ -278,4 +308,10 @@ export function findProvider(id: ProviderId): ProviderOption | undefined {
     if (provider) return provider;
   }
   return undefined;
+}
+
+/** 需要持久登录凭据的来源；账号管理按注册能力判断，不维护平行来源名单。 */
+export function isCredentialProvider(id: ProviderId | null): boolean {
+  const kind = id ? findProvider(id)?.bindingKind : undefined;
+  return kind === 'credentials' || kind === 'oauth-code' || kind === 'device-code';
 }

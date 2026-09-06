@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { FlowingGradientValue } from '@/components/game-content/FlowingGradientValue';
-import { GameDifficultyBadge } from '@/components/game-content/GameDifficultyBadge';
+import { SimaiDifficultyBadge } from '@/components/game-content/SimaiDifficultyBadge';
 import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 import { useAppTheme } from '@/theme/app-theme';
 import type { ChartType, Difficulty } from '@/domain/models';
@@ -94,31 +94,17 @@ export function DifficultyBadge({ difficulty, constant, display, compact = false
     : effectiveDisplay === 'label-and-constant' && constant !== undefined
       ? `${visual.label} (${constant.toFixed(1)})`
       : visual.label;
-  const badgeVariants = [
-    styles.difficultyBadge,
-    compact && !mini && styles.difficultyBadgeCompact,
-    mini && styles.difficultyBadgeMini,
-  ];
-  const textVariants = [
-    styles.difficultyText,
-    compact && !mini && styles.difficultyTextCompact,
-    mini && styles.difficultyTextMini,
-  ];
   if (difficulty === 'utage') {
     const label = specialLabel?.trim() || 'U·TA·GE';
-    return <GameDifficultyBadge
+    return <SimaiDifficultyBadge compact={compact} mini={mini}
       accessibilityLabel={label}
-      badgeVariants={badgeVariants}
       testID="maimai-utage-difficulty-badge"
       text={label}
-      textVariants={textVariants}
       theme={{ background: MAIMAI_UTAGE_COLOR, border: MAIMAI_UTAGE_COLOR, text: visual.badgeText }}
     />;
   }
-  return <GameDifficultyBadge
-    badgeVariants={badgeVariants}
+  return <SimaiDifficultyBadge compact={compact} mini={mini}
     text={text}
-    textVariants={textVariants}
     theme={{ background: visual.badgeBackground, border: visual.badgeBorder, text: visual.badgeText }}
   />;
 }
@@ -279,12 +265,6 @@ function getStatusSpec(kind: 'fc' | 'fs', rawValue: string): {
 }
 
 const styles = StyleSheet.create({
-  difficultyBadge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6 },
-  difficultyBadgeCompact: { paddingHorizontal: 8, paddingVertical: 5 },
-  difficultyBadgeMini: { paddingHorizontal: 5, paddingVertical: 2 },
-  difficultyText: { fontSize: 11, fontWeight: '900', letterSpacing: 0.7 },
-  difficultyTextCompact: { fontSize: 9, letterSpacing: 0.25 },
-  difficultyTextMini: { fontSize: 8, letterSpacing: 0.1, fontWeight: '800' },
   chartTypeBadge: { minWidth: 31, height: 18, borderRadius: 6, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   utageTypeText: { color: '#FFFFFF', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 0.1 },
   sdTypeBadge: { backgroundColor: '#3286E6' },

@@ -5,6 +5,7 @@ import {
   createMaxedChunithmTestAccount,
   createChunithmTempAccount,
   createLocalMaimaiAccount,
+  groupBoundAccountGameIds,
   createMaxedMaimaiTestAccount,
   createMaxedMuseDashTestAccount,
   createMaxedPhigrosTestAccount,
@@ -95,6 +96,37 @@ describe('useSession store', () => {
       restoreStatus: 'ready',
       restoreError: null,
     });
+  });
+
+  it('activates, restores and switches isolated Majdata accounts with real avatar URLs', async () => {
+    const session = (value: string): ProviderSession => ({ mode: 'http-cookies', origin: 'https://majdata.net',
+      cookies: [{ name: 'auth', value, path: '/', secure: true }], persistable: true });
+    const first = { accountId: 'majdata-net:account:玩家 a&b', displayName: '玩家 A&B',
+      gameId: 'majdata-net' as const, providerId: 'majdata-net' as const, rating: null, credentialId: 'credential:first' };
+    const second = { ...first, accountId: 'majdata-net:account:second', displayName: 'Second', credentialId: 'credential:second' };
+    useSession.getState().setSession(session('one'), first);
+    useSession.getState().updateBoundAccountScore(first.accountId, '123.4567%');
+    useSession.getState().setSession(session('one'), first);
+    expect(useSession.getState().boundAccounts.find(a => a.id === first.accountId)?.scoreDisplay).toBe('123.4567%');
+    useSession.getState().setSession(session('two'), second);
+    expect(groupBoundAccountGameIds(useSession.getState().boundAccounts)).toContain('majdata-net');
+    useSession.getState().selectBoundAccount(first.accountId);
+    expect(useSession.getState().session).toEqual(session('one'));
+    expect(useSession.getState().boundAccounts.find(a => a.id === first.accountId)?.avatarUrl)
+      .toBe('https://majdata.net/api3/api/account/Icon?username=%E7%8E%A9%E5%AE%B6%20A%26B');
+    await restoreSession(async () => ({ version: 3 as const, activeAccountId: second.accountId,
+      credentials: [first, second].map((a, i) => ({ id: a.credentialId, providerId: 'majdata-net' as const, session: session(i === 0 ? 'one' : 'two') })),
+      accounts: [first, second].map(a => ({ id: a.accountId, credentialId: a.credentialId, gameId: a.gameId,
+        providerId: a.providerId, displayName: a.displayName, scoreDisplay: '100.1250% · 99.8750%' })),
+    }));
+    expect(useSession.getState().activeAccountId).toBe(second.accountId);
+    expect(useSession.getState().session).toEqual(session('two'));
+    expect(useSession.getState().boundAccounts.every(a => a.scoreDisplay === '200.0000%')).toBe(true);
+    useSession.getState().selectBoundAccount(first.accountId);
+    useSession.getState().removeBoundAccount(second.accountId);
+    expect(useSession.getState().session).toEqual(session('one'));
+    expect(useSession.getState().boundAccounts).toHaveLength(1);
+    expect(useSession.getState().credentialIdsByAccountId[second.accountId]).toBeUndefined();
   });
 
   it('does not re-inject deleted local or demo accounts', () => {

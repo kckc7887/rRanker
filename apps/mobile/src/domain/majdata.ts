@@ -49,8 +49,20 @@ export function majdataTime(value?: string | null): number {
 export function majdataTotals(records: readonly MajdataScore[]) {
   return records.reduce((sum, score) => ({ dx: sum.dx + score.acc.dx, classic: sum.classic + score.acc.classic }), { dx: 0, classic: 0 });
 }
+export function majdataTotal(records: readonly MajdataScore[]): number {
+  const totals = majdataTotals(records);
+  return totals.dx + totals.classic;
+}
 export function majdataTotalText(snapshot: MajdataSnapshot): string {
-  const totals = majdataTotals(snapshot.records); return `${totals.dx.toFixed(4)}% · ${totals.classic.toFixed(4)}%`;
+  return `${majdataTotal(snapshot.records).toFixed(4)}%`;
+}
+export function majdataAvatarUrl(username: string): string {
+  return `${MAJDATA_BASE}/account/Icon?username=${encodeURIComponent(username)}`;
+}
+/** 兼容首版账号摘要，原快照与账号身份不变。 */
+export function normalizeMajdataTotalDisplay(display: string): string {
+  const pair = /^(\d+(?:\.\d+)?)% · (\d+(?:\.\d+)?)%$/.exec(display);
+  return pair ? `${(Number(pair[1]) + Number(pair[2])).toFixed(4)}%` : display;
 }
 export function majdataRank(ranking: MajdataRanking | undefined, username: string, level: number, hash?: string): number | undefined {
   if (hash && ranking?.hash && ranking.hash !== hash) return undefined;

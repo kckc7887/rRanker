@@ -1,4 +1,5 @@
 import { MAJDATA_NAMES, majdataAsset, type MajdataSong } from '@/domain/majdata';
+import { GameSongCover } from '@/components/game-content/GameSongCover';
 import { useMajdataLibrarySongs } from '@/hooks/use-majdata';
 import { useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
@@ -290,7 +291,7 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
   if (!song || isTufLevel(song)) {
     return <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
-  if (isMajdataLibrarySong(song)) return <Image accessibilityLabel="曲绘" cacheProfile="thumbnail" gameId={gameId} source={majdataAsset(song.id, 'image')} style={styles.cover} />;
+  if (isMajdataLibrarySong(song)) return <GameSongCover source={majdataAsset(song.id, 'image')} gameId={gameId} />;
   if (isMuseDashSong(song)) {
     const url = museDashCoverUrl(song.cover);
     return url

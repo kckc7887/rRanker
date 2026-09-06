@@ -1,5 +1,5 @@
 import { loadMajdataCached, loadMajdataFresh } from '@/services/majdata-service';
-import { majdataTotalText, majdataTotals, type MajdataSnapshot } from '@/domain/majdata';
+import { majdataAvatarUrl, majdataTotalText, majdataTotal, type MajdataSnapshot } from '@/domain/majdata';
 import { cacheFirstLoad, staleCached } from '@/services/cache-first';
 import { phigrosResources } from '@/services/phigros-resources';
 import { useEffect } from 'react';
@@ -114,7 +114,7 @@ export function useGameData(enabled = true) {
       if (activeGameId === 'majdata-net') {
         const toBundle = (snapshot: MajdataSnapshot): GameDataBundle => ({ gameId: 'majdata-net', providerId: 'majdata-net', profile,
           payload: { kind: 'majdata-net', snapshot, source: snapshot.source,
-            playerScore: { label: 'DX · Classic', value: majdataTotals(snapshot.records).dx, display: majdataTotalText(snapshot) } } });
+            playerScore: { label: 'DX · Classic', value: majdataTotal(snapshot.records), display: majdataTotalText(snapshot) } } });
         if (session?.mode !== 'http-cookies') {
           const cached = await loadMajdataCached(activeAccountId);
           if (cached) return toBundle(staleCached(cached));
@@ -620,8 +620,12 @@ export function useGameData(enabled = true) {
       }).catch(() => undefined);
     }
     if (d.payload.kind === 'majdata-net') {
-      updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.username);
-      void new SecureSessionStore().updateAccountMetadata(activeAccountId, { scoreDisplay: d.payload.playerScore.display, displayName: d.payload.snapshot.player.username });
+      const avatarUrl = majdataAvatarUrl(d.payload.snapshot.player.username);
+      updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.username, avatarUrl);
+      void persistBoundAccountThumbnail(activeAccountId, { scoreDisplay: d.payload.playerScore.display, avatarUrl }).catch(() => undefined);
+      void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
+        scoreDisplay: d.payload.playerScore.display, displayName: d.payload.snapshot.player.username,
+      }).catch(() => undefined);
     }
     if (d.payload.kind === 'phira') {
       updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.name, d.payload.snapshot.player.avatar ?? undefined);

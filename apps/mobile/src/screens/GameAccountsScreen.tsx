@@ -40,6 +40,7 @@ import {
 import {
   findGame,
   findProvider,
+  isCredentialProvider,
   type GameId,
   type ProviderId,
   type ProviderOption,
@@ -599,7 +600,7 @@ export function GameAccountsScreen() {
       || account.providerId === 'phigros-test'
       || account.providerId === 'musedash-test';
     const isChunithmTemp = account.providerId === 'chunithm-temp';
-    const isRemote = account.providerId === 'diving-fish' || account.providerId === 'lxns' || account.providerId === 'phi-taptap' || account.providerId === 'osu';
+    const isRemote = isCredentialProvider(account.providerId);
     const isTuf = account.providerId === 'tuf';
     const isMuseDash = account.providerId === 'musedash-moe';
     const isPhira = account.providerId === 'phira-community';
