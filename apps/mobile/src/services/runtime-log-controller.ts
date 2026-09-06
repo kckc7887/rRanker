@@ -1,10 +1,11 @@
-import { isRuntimeLogCapacity, sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogSession } from '@/domain/runtime-log';
+import { isRuntimeLogCapacity, sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogPreferences, type RuntimeLogSession } from '@/domain/runtime-log';
 import type { RuntimeLogRepository } from '@/storage/runtime-log-repository';
 
 export type RuntimeLogState = {
   ready: boolean;
   busy: boolean;
   capacity: RuntimeLogCapacity;
+  enabled: boolean;
   activeId: number | null;
   sessions: RuntimeLogSession[];
   failed: boolean;
@@ -12,14 +13,20 @@ export type RuntimeLogState = {
 
 export function createRuntimeLogController(dependencies: {
   repository: () => Promise<RuntimeLogRepository>;
-  preferences: { load: () => Promise<{ capacity: RuntimeLogCapacity }>; save: (value: { capacity: RuntimeLogCapacity }) => Promise<void> };
+  preferences: { load: () => Promise<RuntimeLogPreferences>; save: (value: RuntimeLogPreferences) => Promise<void> };
   context: () => Readonly<Record<string, unknown>>;
   now?: () => string;
 }) {
   const now = dependencies.now ?? (() => new Date().toISOString());
-  let state: RuntimeLogState = { ready: false, busy: false, capacity: 2000, activeId: null, sessions: [], failed: false };
+  let state: RuntimeLogState = { ready: false, busy: false, capacity: 2000, enabled: false, activeId: null, sessions: [], failed: false };
   let repository: RuntimeLogRepository | undefined;
   let initialization: Promise<void> | undefined;
+  let controlQueue = Promise.resolve();
+  const serializeControl = (operation: () => Promise<void>): Promise<void> => {
+    const pending = controlQueue.then(operation);
+    controlQueue = pending.catch(() => undefined);
+    return pending;
+  };
   const listeners = new Set<() => void>();
   const publish = (patch: Partial<RuntimeLogState>) => {
     state = { ...state, ...patch };
@@ -37,17 +44,28 @@ export function createRuntimeLogController(dependencies: {
       sessions: state.sessions.map((session) => session.id === id ? { ...session, status: 'failed' } : session),
     });
   };
+  const beginRecording = () => {
+    const at = now();
+    const entry = sanitizeRuntimeLogEntry('recording-start', { ...dependencies.context(), capacity: state.capacity }, at);
+    const id = repository!.start(state.capacity, at, entry);
+    state = { ...state, activeId: id };
+    publish({ sessions: repository!.list(), failed: false });
+  };
   const initialize = (): Promise<void> => {
     if (state.ready) return Promise.resolve();
     if (initialization) return initialization;
     publish({ busy: true });
     initialization = (async () => {
       try {
-        const [loaded, preferences] = await Promise.all([dependencies.repository(), dependencies.preferences.load()]);
+        const preferences = await dependencies.preferences.load();
+        publish({ capacity: preferences.capacity, enabled: preferences.enabled });
+        const loaded = await dependencies.repository();
         loaded.recover();
         const sessions = loaded.list();
         repository = loaded;
-        publish({ ready: true, busy: false, capacity: preferences.capacity, sessions, failed: false });
+        state = { ...state, ready: true, sessions };
+        if (state.enabled) beginRecording();
+        publish({ busy: false, failed: false });
       } catch (error) {
         fail();
         throw error;
@@ -63,33 +81,42 @@ export function createRuntimeLogController(dependencies: {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    async setCapacity(capacity: RuntimeLogCapacity): Promise<void> {
+    setCapacity: (capacity: RuntimeLogCapacity): Promise<void> => serializeControl(async () => {
       await initialize();
-      if (!isRuntimeLogCapacity(capacity) || state.activeId !== null || state.busy) return;
+      if (!isRuntimeLogCapacity(capacity) || state.enabled) return;
       publish({ busy: true });
       try {
-        await dependencies.preferences.save({ capacity });
+        await dependencies.preferences.save({ capacity, enabled: state.enabled });
         publish({ capacity, busy: false });
       } catch (error) { publish({ busy: false }); throw error; }
-    },
-    async start(): Promise<void> {
+    }),
+    start: (): Promise<void> => serializeControl(async () => {
       await initialize();
-      if (state.activeId !== null || state.busy) return;
+      if (state.activeId !== null) return;
+      publish({ busy: true });
       try {
-        const at = now();
-        const entry = sanitizeRuntimeLogEntry('recording-start', { ...dependencies.context(), capacity: state.capacity }, at);
-        const id = repository!.start(state.capacity, at, entry);
-        state = { ...state, activeId: id };
-        publish({ activeId: id, sessions: repository!.list(), failed: false });
+        await dependencies.preferences.save({ capacity: state.capacity, enabled: true });
+        publish({ enabled: true });
+        beginRecording();
+        publish({ busy: false });
       } catch (error) { fail(); throw error; }
-    },
-    stop(): void {
-      if (state.activeId === null) return;
+    }),
+    stop: (): Promise<void> => serializeControl(async () => {
+      await initialize();
+      if (!state.enabled && state.activeId === null) return;
+      publish({ busy: true });
       try {
-        repository!.finish(state.activeId, 'stopped', sanitizeRuntimeLogEntry('recording-stop', {}, now()));
-        publish({ activeId: null, sessions: repository!.list() });
+        await dependencies.preferences.save({ capacity: state.capacity, enabled: false });
+      } catch (error) {
+        publish({ busy: false });
+        throw error;
+      }
+      publish({ enabled: false });
+      try {
+        if (state.activeId !== null) repository!.finish(state.activeId, 'stopped', sanitizeRuntimeLogEntry('recording-stop', {}, now()));
+        publish({ activeId: null, sessions: repository!.list(), busy: false, failed: false });
       } catch (error) { fail(); throw error; }
-    },
+    }),
     record(type: string, fields: Readonly<Record<string, unknown>>): void {
       if (state.activeId === null) return;
       try {

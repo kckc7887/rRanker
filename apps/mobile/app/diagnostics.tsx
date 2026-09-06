@@ -16,7 +16,7 @@ export default function DiagnosticsScreen() {
   const { showNotification } = useNotification();
   const state = useSyncExternalStore(runtimeLogs.subscribe, runtimeLogs.getSnapshot);
   const [action, setAction] = useState<string | null>(null);
-  const active = state.activeId !== null;
+  const active = state.enabled;
   useEffect(() => { void initializeRuntimeLogs().catch(() => undefined); }, []);
 
   const perform = async (key: string, task: () => void | Promise<void>, message: string) => {
@@ -44,7 +44,7 @@ export default function DiagnosticsScreen() {
           <Switch accessibilityLabel="记录日志" value={active} disabled={!state.ready || state.busy || action !== null}
             onValueChange={(enabled) => void perform('toggle', () => enabled ? runtimeLogs.start() : runtimeLogs.stop(), '暂时无法更改记录状态，请重试。')} />
         </View>
-        <Text style={{ color: theme.textMuted }}>开启后重现问题，再分享对应日志。重启应用后会停止记录。</Text>
+        <Text style={{ color: theme.textMuted }}>开启后持续记录，每次启动应用会创建一份新日志，直到手动关闭。</Text>
         <Text style={{ color: theme.text }}>每份日志保留条数</Text>
         <View style={styles.row}>
           {RUNTIME_LOG_CAPACITIES.map((capacity) => <Pressable key={capacity} accessibilityRole="radio" accessibilityLabel={`保留 ${capacity} 条`}
@@ -58,7 +58,7 @@ export default function DiagnosticsScreen() {
         <Text style={{ color: theme.textMuted }}>超过条数后替换最早的日志。日志库保留最近两份记录。</Text>
         {state.busy ? <ActivityIndicator accessibilityLabel="正在准备日志" color={theme.accent} /> : null}
         {state.failed ? <>
-          <Text style={{ color: theme.text }}>日志保存遇到问题，记录已停止。请重试。</Text>
+          <Text style={{ color: theme.text }}>日志保存遇到问题，请重试。</Text>
           {button('retry', '重试', () => state.ready ? runtimeLogs.start() : initializeRuntimeLogs(), '暂时无法开始记录，请稍后重试。')}
         </> : null}
       </View>

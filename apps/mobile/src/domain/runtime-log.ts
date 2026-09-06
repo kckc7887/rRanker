@@ -1,4 +1,5 @@
 export type RuntimeLogCapacity = 1000 | 2000 | 5000;
+export type RuntimeLogPreferences = { capacity: RuntimeLogCapacity; enabled: boolean };
 export type RuntimeLogStatus = 'recording' | 'stopped' | 'interrupted' | 'failed';
 export type RuntimeLogSession = {
   id: number;

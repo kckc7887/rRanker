@@ -84,13 +84,16 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 - `services/runtime-logs.ts` 提供 `initializeRuntimeLogs()`、`recordRuntimeRoute(segments)`、
   `shareRuntimeLog(id)` 和唯一 `runtimeLogs` 控制器。控制器公开 `start()`、`stop()`、
   `setCapacity(1000 | 2000 | 5000)`、`subscribe()`、`getSnapshot()` 与 `snapshot(id)`。
-  页面订阅状态，不直接写数据库；容量偏好复用 `createPreferencesStore`。
+  页面订阅状态，不直接写数据库；容量和 `enabled` 偏好复用 `createPreferencesStore`。
+  `start()`、`stop()`、`setCapacity()` 均返回 `Promise<void>`，串行保存用户选择。
+  状态中的 `enabled` 表示持久开关，`activeId` 表示当前记录，保存失败不自动关闭开关。
 - `domain/runtime-log.ts` 定义类型与脱敏：字段白名单、基于类别的错误摘要、最多 30 个
   堆栈位置和单条 8 KiB 上限；不读取任意异常的序列化结果。路由传入 `useSegments`
   返回的模板，HTTP 入口记录固定场景名，不传入地址、账号或请求载荷。
 - `storage/rranker-database.ts` 的 `getRuntimeLogDatabase()` 管理独立日志连接；
   `RuntimeLogRepository` 统一事务创建、增量追加、容量裁剪、结束和恢复。成功创建第三份
-  才淘汰最旧记录；每份独立保留最后 N 条，重启不创建新记录且不自动开启。
+  才淘汰最旧记录；每份独立保留最后 N 条。每次启动恢复开启偏好后创建新记录，
+  包含当前记录在内保留两份；进程内重复初始化、页面切换及前后台切换不另建记录。
 - 日志正文不属于缓存；分享副本复用 `expo-sharing` 和现有 `rranker-` 临时缓存规则。
   简要诊断的三次启动/256 条总额与 `exportRuntimeDiagnostics()` 继续独立使用。
 - `runtime-logs.test.ts` 使用真实内存 SQLite 检查事务、保留、恢复、失败和脱敏，

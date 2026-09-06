@@ -1,12 +1,13 @@
 import { createPreferencesStore } from './create-preferences-store';
-import { isRuntimeLogCapacity, type RuntimeLogCapacity } from '@/domain/runtime-log';
+import { isRuntimeLogCapacity, type RuntimeLogPreferences } from '@/domain/runtime-log';
 
-const { Store } = createPreferencesStore<{ capacity: RuntimeLogCapacity }>({
+const { Store } = createPreferencesStore<RuntimeLogPreferences>({
   storeKey: 'runtime-log-preferences-v1',
-  defaults: () => ({ capacity: 2000 }),
+  defaults: () => ({ capacity: 2000, enabled: false }),
   parse: (value) => {
     const capacity = value && typeof value === 'object' && 'capacity' in value ? value.capacity : undefined;
-    return { capacity: isRuntimeLogCapacity(capacity) ? capacity : 2000 };
+    const enabled = value !== null && typeof value === 'object' && 'enabled' in value && value.enabled === true;
+    return { capacity: isRuntimeLogCapacity(capacity) ? capacity : 2000, enabled };
   },
 });
 export const runtimeLogPreferencesStore = new Store();

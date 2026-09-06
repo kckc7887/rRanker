@@ -4,12 +4,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RUNTIME_LOG_SCHEMA, RuntimeLogRepository } from '@/storage/runtime-log-repository';
 import { createRuntimeLogController } from '@/services/runtime-log-controller';
 import { installRuntimeLogErrors, type RuntimeExceptionHost } from '@/services/runtime-log-errors';
-import { sanitizeRuntimeLogEntry, type RuntimeLogCapacity } from '@/domain/runtime-log';
+import { sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogPreferences } from '@/domain/runtime-log';
 import { installRuntimeDiagnosticRecorder, installRuntimeLogRecorder, recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 import { requestJson, requestBytes } from '@/providers/http-json';
 import { ProviderError } from '@/providers/errors';
 import { z } from 'zod';
 import { queryClient } from '@/state/query-client';
+import Storage from 'expo-sqlite/kv-store';
+import { runtimeLogPreferencesStore } from '@/storage/runtime-log-preferences-store';
 
 const databases: DatabaseSync[] = [];
 function fixture(capacity: RuntimeLogCapacity = 2000) {
@@ -30,7 +32,11 @@ function fixture(capacity: RuntimeLogCapacity = 2000) {
     },
   };
   const repository = new RuntimeLogRepository(db as unknown as SQLiteDatabase);
-  const preferences = { load: vi.fn(async () => ({ capacity })), save: vi.fn(async (_value: { capacity: RuntimeLogCapacity }) => undefined) };
+  let saved: RuntimeLogPreferences = { capacity, enabled: false };
+  const preferences = {
+    load: vi.fn(async () => ({ ...saved })),
+    save: vi.fn(async (value: RuntimeLogPreferences) => { saved = { ...value }; }),
+  };
   let time = 0;
   const create = () => createRuntimeLogController({
     repository: async () => repository, preferences,
@@ -59,7 +65,7 @@ describe('manual runtime logs', () => {
     const id = controller.getSnapshot().activeId!;
     controller.record('lifecycle', { lifecyclePhase: 'background' });
     controller.record('lifecycle', { lifecyclePhase: 'foreground-ready' });
-    controller.stop();
+    await controller.stop();
     controller.record('task', { taskPhase: 'after' });
     expect(repository.list()).toHaveLength(1);
     expect(repository.snapshot(id).entries.map((entry) => entry.type)).toEqual(['recording-start', 'lifecycle', 'lifecycle', 'recording-stop']);
@@ -79,24 +85,43 @@ describe('manual runtime logs', () => {
     expect(repository.list()[0]?.count).toBe(capacity);
   });
 
-  it('recovers interrupted sessions without enabling recording or creating a new session', async () => {
+  it('starts one new log per boot while enabled and keeps the current and previous logs', async () => {
     const { controller, create, repository } = fixture();
     await controller.start();
     controller.record('error', { error: new TypeError('secret') });
     const restarted = create();
     await restarted.initialize();
-    expect(restarted.getSnapshot()).toMatchObject({ activeId: null, sessions: [{ status: 'interrupted', count: 2 }] });
+    expect(restarted.getSnapshot()).toMatchObject({ enabled: true, activeId: 2, sessions: [{ id: 2, status: 'recording', count: 1 }, { id: 1, status: 'interrupted', count: 2 }] });
     restarted.record('task', {});
     expect(repository.list()[0]?.count).toBe(2);
+    await Promise.all([restarted.initialize(), restarted.initialize()]);
+    expect(repository.list().map((session) => session.id)).toEqual([2, 1]);
+    const thirdBoot = create();
+    await thirdBoot.initialize();
+    expect(repository.list().map((session) => session.id)).toEqual([3, 2]);
+    expect(thirdBoot.getSnapshot()).toMatchObject({ enabled: true, activeId: 3 });
+    expect(() => repository.snapshot(1)).toThrow();
+  });
+
+  it('persists manual disable so subsequent boots do not create a log', async () => {
+    const { controller, create, repository, preferences } = fixture();
+    await controller.start();
+    await controller.stop();
+    expect(await preferences.load()).toEqual({ capacity: 2000, enabled: false });
+    const restarted = create();
+    await restarted.initialize();
+    expect(restarted.getSnapshot()).toMatchObject({ enabled: false, activeId: null });
+    expect(repository.list()).toHaveLength(1);
+    expect(repository.list()[0]?.status).toBe('stopped');
   });
 
   it('keeps two sessions including the active one, with independent capacities', async () => {
     const { controller, repository } = fixture(1000);
     await controller.start();
-    controller.stop();
+    await controller.stop();
     await controller.setCapacity(5000);
     await controller.start();
-    controller.stop();
+    await controller.stop();
     await controller.setCapacity(2000);
     await controller.start();
     expect(repository.list().map((session) => session.capacity)).toEqual([2000, 5000]);
@@ -105,8 +130,8 @@ describe('manual runtime logs', () => {
 
   it('rolls back a failed third creation without deleting either previous session', async () => {
     const { controller, repository, db } = fixture();
-    await controller.start(); controller.stop();
-    await controller.start(); controller.stop();
+    await controller.start(); await controller.stop();
+    await controller.start(); await controller.stop();
     const before = repository.list();
     vi.spyOn(db, 'execSync').mockImplementationOnce(() => { throw new Error('disk full'); });
     await expect(controller.start()).rejects.toThrow();
@@ -117,16 +142,20 @@ describe('manual runtime logs', () => {
   });
 
   it('stops on write failure and keeps committed entries without recursive errors', async () => {
-    const { controller, repository } = fixture();
+    const { controller, repository, preferences, create } = fixture();
     await controller.start();
     const id = controller.getSnapshot().activeId!;
     controller.record('task', { taskPhase: 'saved' });
     vi.spyOn(repository, 'append').mockImplementationOnce(() => { throw new Error('storage failed'); });
     controller.record('task', { taskPhase: 'lost' });
     controller.record('task', { taskPhase: 'ignored' });
-    expect(controller.getSnapshot()).toMatchObject({ activeId: null, failed: true });
+    expect(controller.getSnapshot()).toMatchObject({ enabled: true, activeId: null, failed: true });
     expect(repository.snapshot(id).entries).toHaveLength(2);
     expect(repository.list()[0]?.status).toBe('failed');
+    expect((await preferences.load()).enabled).toBe(true);
+    const restarted = create();
+    await restarted.initialize();
+    expect(restarted.getSnapshot()).toMatchObject({ enabled: true, activeId: 2, failed: false });
   });
 
   it('rolls back sequence and timestamp when an event insert fails after updating its session', async () => {
@@ -144,14 +173,38 @@ describe('manual runtime logs', () => {
   it('locks capacity while recording and persists only successful preference changes', async () => {
     const { controller, preferences } = fixture();
     await controller.start();
+    preferences.save.mockClear();
     await controller.setCapacity(5000);
     expect(preferences.save).not.toHaveBeenCalled();
-    controller.stop();
+    await controller.stop();
     await controller.setCapacity(5000);
-    expect(preferences.save).toHaveBeenCalledWith({ capacity: 5000 });
+    expect(preferences.save).toHaveBeenCalledWith({ capacity: 5000, enabled: false });
     preferences.save.mockRejectedValueOnce(new Error('write failed'));
     await expect(controller.setCapacity(1000)).rejects.toThrow();
     expect(controller.getSnapshot().capacity).toBe(5000);
+  });
+
+  it('does not enable if preference saving fails and does not stop when disable saving fails', async () => {
+    const { controller, preferences, repository } = fixture();
+    preferences.save.mockRejectedValueOnce(new Error('write failed'));
+    await expect(controller.start()).rejects.toThrow();
+    expect(controller.getSnapshot()).toMatchObject({ enabled: false, activeId: null });
+    expect(repository.list()).toHaveLength(0);
+    await controller.start();
+    preferences.save.mockRejectedValueOnce(new Error('write failed'));
+    await expect(controller.stop()).rejects.toThrow();
+    expect(controller.getSnapshot()).toMatchObject({ enabled: true, activeId: 1, busy: false });
+    controller.record('task', {});
+    expect(repository.list()[0]?.count).toBe(2);
+  });
+
+  it('serializes a stop requested while enabling so it stays disabled after restart', async () => {
+    const { controller, create, preferences } = fixture();
+    await Promise.all([controller.start(), controller.stop()]);
+    expect((await preferences.load()).enabled).toBe(false);
+    const restarted = create();
+    await restarted.initialize();
+    expect(restarted.getSnapshot()).toMatchObject({ enabled: false, activeId: null });
   });
 
   it('freezes a selected snapshot while continuing to record', async () => {
@@ -163,6 +216,18 @@ describe('manual runtime logs', () => {
     expect(JSON.parse(snapshot).entries).toHaveLength(1);
     expect(JSON.parse(controller.snapshot(id)).entries).toHaveLength(2);
     expect(controller.getSnapshot().activeId).toBe(id);
+  });
+});
+
+describe('runtime log preferences', () => {
+  it('reads capacity-only preferences as disabled and round trips the enabled flag', async () => {
+    await Storage.setItem('runtime-log-preferences-v1', JSON.stringify({ capacity: 5000 }));
+    expect(await runtimeLogPreferencesStore.load()).toEqual({ capacity: 5000, enabled: false });
+    await runtimeLogPreferencesStore.save({ capacity: 1000, enabled: true });
+    expect(await runtimeLogPreferencesStore.load()).toEqual({ capacity: 1000, enabled: true });
+    await Storage.setItem('runtime-log-preferences-v1', JSON.stringify({ capacity: -1, enabled: 'true' }));
+    expect(await runtimeLogPreferencesStore.load()).toEqual({ capacity: 2000, enabled: false });
+    await Storage.removeItem('runtime-log-preferences-v1');
   });
 });
 
