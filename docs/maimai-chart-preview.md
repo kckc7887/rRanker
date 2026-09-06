@@ -2,7 +2,8 @@
 
 播放器为 TypeScript / Canvas 2D / WebView，音符表现以本地 MajdataViewX 为基准，
 解析以其 NuGet 锁定的 MajSimai 2.2.2 commit 为基准。舞萌普通和 Buddy 的谱面、音乐
-仍来自 LXNS；没有 majdatanet 联网入口。Expo 54、版本号与页面设置协议不变。
+仍来自 LXNS；Majdata Net 的谱面、音乐、封面与视频由游戏资源适配层提供。
+两者使用同一内核与页面设置协议，通用播放壳不解释 Simai 或构造游戏资源地址。
 
 ## 执行路径
 
@@ -42,6 +43,9 @@
 到 `inote_1`～`inote_7`；预览接收详情缓存的同一 `parsedChart`，不会改播其它难度。
 游戏资源由 `app/songs/chart-preview.tsx` 提供，运行时不推算歌曲 ID 或资源地址。
 通用 WebView 壳继续只负责资源、桥接、设置和生命周期。
+详情物量在页面转场结束后按可见难度读取；解析结果由资源仓库按完整歌曲 UUID、HASH
+与原始难度索引保存，详情、容错计算和预览共用模型。共享请求按消费者取消，清理缓存和
+修订变化后旧请求不能回填。该缓存不改变本地收藏、练习或标签的身份。
 
 `statistics.ts` 从 Chart 生成 TAP / HOLD / SLIDE / TOUCH / BREAK / MINE 六类物量。
 Touch Hold 计 HOLD，星头计 TAP；头部与本体分别计数，一条连接分支只有一个滑条判定单位。
@@ -138,7 +142,7 @@ git diff --check
 输出 12 张截图并检查中心、圆外、上下/左右留黑像素，比较图片与视频结果。
 `check-maimai-player.mjs` 校验实际 `player.bundle` 与 `player.js` 一致，再检查实际页面的
 播放、暂停、跳转、循环操作、变速、水平镜像、图片背景、全屏与退出停音；包含普通谱面
-和 Buddy。谱面/音乐请求由测试数据拦截，音频调度使用真实 AudioContext 节点；
+和 Buddy，以及 Majdata 已解析第七难度和缺失谱面报错。谱面/音乐请求由测试数据拦截，音频调度使用真实 AudioContext 节点；
 这不是 LXNS 在线曲库或人耳音画同步验收。
 
 `maimai-chart-preview-visual-settings.test.ts` 检查粉色资源替换、原占位和 EX 对齐、

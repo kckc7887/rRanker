@@ -232,10 +232,31 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   `requestProviderResponse(options, read)` 共用取消、超时、重试、Schema 和错误归一化。
   `http-cookies.ts` 提供 `responseCookies`、`cookieHeader` 和会话校验；Cookie 仅发送到
   明确的来源与路径。`PasswordLoginPanel` 复用登录表单、取消和前后台流程，游戏只提供登录动作。
+- `GAME_OPTIONS` 是添加游戏和已绑定账号分组的同一注册来源；可选 `accountOrder`
+  保持已有账号顺序，新游戏按注册顺序追加，`familyId` 保留 osu! 家族分组。
+  `isCredentialProvider(id)` 根据 `bindingKind` 决定账密账号操作，不另列 Provider 白名单。
+  `createMajdataBoundAccount(input)` 统一登录、恢复和同步的账号映射；头像使用
+  `majdataAvatarUrl(username)`，沿用 `BoundAccount.avatarUrl`、账号缩略信息与公共头像回退。
 - `majdataContentAdapter` 保留 UUID 和原始难度索引；DTO 不进入共享卡片逻辑。
-  `SimaiScoreCardStyles` 由舞萌 `ScoreRecordCard` 与 Majdata 成绩卡共同使用，原难度配色与
-  成就徽章继续复用 `ScoreVisuals`，Easy 在 Majdata 适配层提供蓝色主题。
-  `DxRatingCard.valueRows` 支持多项数值；不传时保持原有 Rating 布局。
+  `game-content/SimaiScoreCard` 是舞萌与 Majdata 共用的实际卡片布局，通过
+  `difficultyBadge`、可选 `chartTypeBadge` 和 `sideMetric` 注入难度、类型与右侧指标；
+  `SimaiDifficultyBadge` 接受已格式化文本与主题，支持普通、compact、mini 三种既有尺寸。
+  `FavoriteSongRow`、`GameSongCover`、`SongListSectionHeader` 与 `SimaiListStyles`
+  统一歌曲行、封面失败占位、分区标题及三种列表布局。
+  `GameSearchHeader.layout` 的 `records` / `catalog` 复用既有搜索区，
+  `resultCountText` 用于分页已加载数量；筛选控件放在独立的横向标签行中。
+  `domain/difficulty-theme.ts` 的 `BLUE_DIFFICULTY_COLORS` 由 Phigros HD 和 Majdata Easy
+  同时引用；其余难度和成就徽章复用 `ScoreVisuals`。
+- `SimaiSongDetailLayout` 的 `SimaiSongHero`、`SimaiSongChrome`、`SimaiSongMetadata`、
+  `SimaiChartResultLayout`、`SimaiNoteTable` 与 `SimaiSongDetailStyles` 由两种游戏共同使用，
+  保持舞萌封面遮罩、文字、悬浮按钮、元数据表、成绩区与网格物量的实际结构和样式。
+  `SimaiNoteStatus({ loading, onRetry? })` 复用社区谱面文字加载状态，成功后才显示网格。
+  `simaiChartActionStyle` / `simaiChartActionTextStyle` 通过主题值表达既有按钮状态；
+  游戏容器只组装字段和动作，`TagEditor` 自己渲染每处唯一的本地标签标题。
+- `DxRatingCard` 保持单值结构；可选 `fitValue` 允许完整合计适应宽度，
+  `accessibilityLabel` 表达指标本身，其余调用方保留原 Rating 结构。
+  Majdata 总览与账号共用 `majdataTotal(records)` 的 Σ(DX＋Classic)，四位小数附 `%`；
+  账号 `accountScoreTheme` 使用固定中性主题，不套用舞萌评价档位。单谱与难度详情只显示 DX。
 - `features/simai-chart-preview/configuration.ts` 提供两种游戏统一的配置。资源 URL 由路由
   提供，Majdata 可注入按 HASH 缓存的 `parsedChart`；缺少指定难度会报错，不选择其它难度。
   `simaiStatistics(chart)` 对同一 Chart 展开判定单位，同时保留本体、Break、Mine、EX。
@@ -247,13 +268,23 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   执行资源下载、打包、取消、临时目录清理和保存。舞萌保留 `.adx.zip`，Majdata 使用 `.zip`，
   完整文本与音频、原格式封面、可选视频均走相同入口。封面按实际文件签名保存为
   `bg.png` / `bg.jpg`；无法识别时中止并清理临时目录，避免生成播放器无法读取的封面。
+- `useChartPackageDownload.start(runner, { optionalVideoUrl? })` 统一视频 HEAD 检查、
+  是否包含视频的选择和正式下载；runner 接收 `(options, includeVideo)`。
+  视频检查使用公共 HTTP 的 12 秒超时和单次尝试，与弹窗、下载共用重复点击锁与取消信号。
+  进入后台、卸载或取消后关闭未完成选择，迟到结果不得再打开弹窗、开始下载或显示成功。
 - `snapshot-cache-utils` 的 `captureResourceWrites(scope)` 与 `invalidateResourceWrites(scope)`
   让缓存清理使已返回首屏的后台刷新也失效。游戏缓存清理在枚举和删除前提升代次。
-  Majdata 详情复用 `cacheFirstLoad`，文本请求复用 `createInflightGuard`；图片仍遵守公共
+  `resourceWriteGeneration(scope)` 隔离清理前后的共享请求键；`createInflightGuard.share`
+  按消费者维护取消，只有最后一个消费者取消才终止底层请求。
+  Majdata 详情复用 `cacheFirstLoad`，详情、文本和解析复用该共享请求入口，写入和
+  首屏后台刷新回调前后检查代次；图片仍遵守公共
   10 MiB、10 KiB、50% / 250 ms 可见性规则，没有另建图片缓存。
 
-合同覆盖 `majdata.test.ts`、`majdata-cache.test.ts`、`majdata-ui.test.tsx`、安全仓库与
-下载测试，以及完整舞萌解析、预览、共享 UI 测试。独立 C# 样本来自 MajSimai 与
+合同覆盖 `majdata.test.ts`、`majdata-cache.test.ts`、`majdata-ui.test.tsx`、
+`majdata-account-flow.test.tsx`、`majdata-overview.test.tsx`、`majdata-list-contract.test.tsx`、
+`majdata-detail-contract.test.tsx`、安全仓库和下载测试，以及完整舞萌解析、预览与共享 UI。
+详情合同使用真实顶部按钮、TagEditor、元数据表及轮播；舞萌原结构与样式基线不变。
+独立 C# 样本来自 MajSimai 与
 MajdataPlay 原始计分方法，普通测试无需 `refer/` 或 .NET；原生账号、保存和播放仍须真机验收。
 
 ## 新增或修改功能时的检查顺序

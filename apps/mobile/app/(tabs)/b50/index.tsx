@@ -1,6 +1,8 @@
+import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
+import { SIMAI_BEST_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { MajdataBestScreen } from '@/screens/MajdataScreens';
 import { useCallback, useMemo } from 'react';
-import { StyleSheet, Text, View, type SectionListRenderItem } from 'react-native';
+import { Text, View, type SectionListRenderItem } from 'react-native';
 import { BestImageEntryButton } from '@/components/BestImageEntryButton';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -191,10 +193,7 @@ function MaimaiBest50Screen() {
           ListHeaderComponent: <View style={styles.header}>
               <BestImageEntryButton label="生成B50图片" />
             </View>,
-          renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
-            <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 张谱面</Text>
-          </View>,
+          renderSectionHeader: ({ section }) => <SongListSectionHeader title={section.title} count={section.data.length} />,
           renderItem: ({ item, index }) => <ScoreRecordCard record={item} rank={index + 1} />,
         }}
       />
@@ -305,16 +304,3 @@ function PhigrosBestScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F8FA' },
-  list: { flex: 1 },
-  listContent: { padding: 16, gap: 10 },
-  header: { gap: 9, marginBottom: 2 },
-  sectionHeader: { marginTop: 10, marginBottom: 2, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  sectionTitle: { color: '#111827', fontSize: 18, fontWeight: '800' },
-  sectionCount: { color: '#8A93A3', fontSize: 11 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 24 },
-  statusText: { fontSize: 16, fontWeight: '600' },
-  statusHint: { fontSize: 13, textAlign: 'center' },
-});

@@ -199,7 +199,9 @@ rRanker 仅消费其公开 API 数据并本地缓存，未复制其源码。
 ## Majdata Net integration and MajdataPlay scoring reference
 
 Majdata Net 接入按本地 `refer/MajdataNet` 的公开协议实现，使用
-`https://majdata.net/api3/api`，游戏图标来自 Majdata Net 的公开 `icon-192x192.png`。
+`https://majdata.net/api3/api`，游戏和来源图标使用用户指定的
+`https://rranker.cn-nb1.rains3.com/assets/images/majdata.png`（1330×1330 PNG）。
+玩家头像来自 Majdata Net 的公开 `account/Icon?username=` 接口。
 应用没有复制该站点的页面代码或在线收藏功能。
 
 `apps/mobile/scripts/maimai-reference/MajdataScoreReference.cs` 包含 MajdataPlay

@@ -1,5 +1,6 @@
 import { StyleSheet, Text, TextInput, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { useAppTheme } from '@/theme/app-theme';
+import { SIMAI_CATALOG_LIST_STYLES, SIMAI_RECORDS_LIST_STYLES } from './SimaiListStyles';
 
 // 差异页面通过 wrapStyle 和 inputStyle 覆盖布局。
 const styles = StyleSheet.create({
@@ -9,6 +10,9 @@ const styles = StyleSheet.create({
 });
 
 type GameSearchHeaderProps = {
+  /** 复用既有成绩/曲库搜索结构；缺省维持社区游戏搜索栏。 */
+  layout?: 'records' | 'catalog';
+  resultCountText?: string;
   // 缺省时使用 placeholder 作为无障碍标签。
   accessibilityLabel?: string;
   placeholder: string;
@@ -24,6 +28,8 @@ type GameSearchHeaderProps = {
 };
 
 export function GameSearchHeader({
+  layout,
+  resultCountText,
   accessibilityLabel,
   placeholder,
   value,
@@ -35,6 +41,15 @@ export function GameSearchHeader({
   resultCountStyle,
 }: GameSearchHeaderProps) {
   const theme = useAppTheme();
+  if (layout) {
+    const listStyles = layout === 'catalog' ? SIMAI_CATALOG_LIST_STYLES : SIMAI_RECORDS_LIST_STYLES;
+    return <View style={[listStyles.searchArea, { backgroundColor: theme.surface }]}>
+      <TextInput accessibilityLabel={accessibilityLabel ?? placeholder} autoCapitalize="none" autoCorrect={false}
+        placeholder={placeholder} placeholderTextColor={theme.textMuted} value={value} onChangeText={onChangeText}
+        style={[listStyles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
+      {resultCountText === undefined ? null : <Text style={SIMAI_CATALOG_LIST_STYLES.resultCount}>{resultCountText}</Text>}
+    </View>;
+  }
   return <View style={[wrapStyle ?? styles.wrap, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
     <TextInput accessibilityLabel={accessibilityLabel ?? placeholder} placeholder={placeholder} placeholderTextColor={theme.textMuted}
       value={value} onChangeText={onChangeText}

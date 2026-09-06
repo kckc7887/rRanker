@@ -2,14 +2,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FlowingGradientValue } from '@/components/game-content/FlowingGradientValue';
-import { resolveDxRatingTheme, type DxRatingTheme } from '@/domain/dx-rating-theme';
-
-const EMPTY_THEME: DxRatingTheme = {
-  id: 'empty', label: 'empty',
-  fillColors: ['#2A3140', '#1A1F2A'], fillLocations: [0, 1],
-  borderColors: ['#596273', '#303745'], borderLocations: [0, 1],
-  overlayColor: 'transparent', textColor: '#FFFFFF', starColor: '#CBD5E1', starCount: 0,
-};
+import { NEUTRAL_RATING_THEME, resolveDxRatingTheme, type DxRatingTheme } from '@/domain/dx-rating-theme';
 
 export function DxRatingCard({
   label,
@@ -20,7 +13,8 @@ export function DxRatingCard({
   valueTheme,
   sideBadge,
   borderless = false,
-  valueRows,
+  fitValue = false,
+  accessibilityLabel: accessibilityLabelOverride,
 }: {
   label: string;
   display: string;
@@ -40,14 +34,16 @@ export function DxRatingCard({
   };
   /** 移除外层渐变边框，并补偿内边距以保持卡片尺寸与内容位置。 */
   borderless?: boolean;
-  valueRows?: readonly { label: string; value: string }[];
+  /** 长数值保持单行，并按可用宽度缩小字号。 */
+  fitValue?: boolean;
+  accessibilityLabel?: string;
 }) {
-  const theme = themeOverride ?? (rating == null ? EMPTY_THEME : resolveDxRatingTheme(rating));
+  const theme = themeOverride ?? (rating == null ? NEUTRAL_RATING_THEME : resolveDxRatingTheme(rating));
   const stars = '★'.repeat(theme.starCount);
   const valueLabel = valueTheme?.label ?? theme.label;
-  const accessibilityLabel = valueTheme
+  const accessibilityLabel = accessibilityLabelOverride ?? (valueTheme
     ? `${label} ${display}，档位 ${valueLabel}，背景 ${theme.label}`
-    : `${label} ${display}，档位 ${theme.label}${theme.starCount ? `，${theme.starCount} 星` : ''}`;
+    : `${label} ${display}，档位 ${theme.label}${theme.starCount ? `，${theme.starCount} 星` : ''}`);
 
   return (
     <LinearGradient
@@ -71,10 +67,7 @@ export function DxRatingCard({
         <View style={styles.row}>
           <View style={styles.copy}>
             <Text style={[styles.cardLabel, { color: theme.textColor }]}>{label}</Text>
-            {valueRows ? valueRows.map(row => <View key={row.label} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
-              <Text style={{ color: theme.textColor, width: 56, fontSize: 12 }}>{row.label}</Text>
-              <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: theme.textColor, fontSize: 24, fontWeight: '800', flexShrink: 1 }}>{row.value}</Text>
-            </View>) : <RatingValue display={display} fallbackColor={theme.textColor} valueTheme={valueTheme} />}
+            <RatingValue display={display} fallbackColor={theme.textColor} valueTheme={valueTheme} fit={fitValue} />
             <Text style={[styles.meta, { color: theme.textColor }]}>{meta}</Text>
           </View>
           {sideBadge ? (
@@ -95,9 +88,11 @@ function RatingValue({
   display,
   fallbackColor,
   valueTheme,
+  fit,
 }: {
   display: string;
   fallbackColor: string;
+  fit: boolean;
   valueTheme?: {
     label: string;
     colors: readonly [string, ...string[]];
@@ -121,6 +116,7 @@ function RatingValue({
     return (
       <Text
         testID="dx-rating-card-value"
+        {...(fit ? { numberOfLines: 1, adjustsFontSizeToFit: true } : {})}
         style={[styles.rating, { color: fallbackColor }]}
       >
         {display}

@@ -50,6 +50,11 @@ describe('Majdata revision and account cache', () => {
     expect(await loadMajdataParsedChart(song, 6)).toEqual(utage);
     mock.getSong.mockResolvedValue({ ...song, hash: 'hash2' }); await loadMajdataChart({ ...song, hash: 'hash2' }); expect(mock.getChart).toHaveBeenCalledTimes(2);
   });
+  it('parses the same revision and difficulty only once for concurrent consumers', async () => {
+    const [first, second] = await Promise.all([loadMajdataParsedChart(song, 4), loadMajdataParsedChart(song, 4)]);
+    expect(first).toBe(second);
+    expect(mock.getChart).toHaveBeenCalledTimes(1);
+  });
   it('does not label new text as an old revision', async () => {
     mock.getSong.mockResolvedValue({ ...song, hash: 'hash2' }); await expect(loadMajdataChart(song)).rejects.toThrow('谱面已更新');
     expect(mock.values.has(`majdata-net:chart:${song.id}:${song.hash}`)).toBe(false);
@@ -58,5 +63,62 @@ describe('Majdata revision and account cache', () => {
     const remote = deferred<typeof song>(); mock.getSong.mockReturnValue(remote.promise);
     const pending = loadMajdataSong(song.id); await vi.waitFor(() => expect(mock.getSong).toHaveBeenCalled());
     invalidateResourceWrites('majdata-net'); remote.resolve(song); await expect(pending).rejects.toThrow('缓存请求已失效'); expect(mock.values.size).toBe(0);
+  });
+  it('shares concurrent song metadata without cancelling a remaining consumer', async () => {
+    const remote = deferred<typeof song>(); mock.getSong.mockReturnValue(remote.promise);
+    const firstController = new AbortController();
+    const first = loadMajdataSong(song.id, firstController.signal);
+    const second = loadMajdataSong(song.id);
+    const cancelled = expect(first).rejects.toBeDefined();
+    await vi.waitFor(() => expect(mock.getSong).toHaveBeenCalledTimes(1));
+    firstController.abort(); await cancelled;
+    expect(mock.getSong.mock.calls[0][1].aborted).toBe(false);
+    remote.resolve(song); expect(await second).toEqual(song);
+    expect(mock.values.get(majdataSongKey(song.id))).toEqual({ song });
+  });
+  it('cancels only the departing chart consumer and aborts when all consumers leave', async () => {
+    const remote = deferred<string>(); mock.getChart.mockReturnValue(remote.promise);
+    const firstController = new AbortController(); const secondController = new AbortController();
+    const first = loadMajdataChart(song, firstController.signal);
+    const second = loadMajdataChart(song, secondController.signal);
+    const firstCancelled = expect(first).rejects.toBeDefined(); const secondCancelled = expect(second).rejects.toBeDefined();
+    await vi.waitFor(() => expect(mock.getChart).toHaveBeenCalledTimes(1));
+    secondController.abort(); await secondCancelled;
+    expect(mock.getChart.mock.calls[0][1].aborted).toBe(false);
+    firstController.abort(); await firstCancelled;
+    expect(mock.getChart.mock.calls[0][1].aborted).toBe(true);
+    remote.resolve('&inote_5=(120)1,');
+    await Promise.resolve(); await Promise.resolve();
+    expect(mock.values.has(`majdata-net:chart:${song.id}:${song.hash}`)).toBe(false);
+  });
+  it('lets another difficulty finish when the first parsed-chart consumer leaves', async () => {
+    const remote = deferred<string>(); mock.getChart.mockReturnValue(remote.promise);
+    const firstController = new AbortController();
+    const first = loadMajdataParsedChart(song, 4, firstController.signal);
+    const second = loadMajdataParsedChart(song, 6);
+    const cancelled = expect(first).rejects.toBeDefined();
+    await vi.waitFor(() => expect(mock.getChart).toHaveBeenCalledTimes(1));
+    firstController.abort(); await cancelled;
+    remote.resolve('&inote_5=(120)1,\n&inote_7=(120)2m,');
+    expect((await second).statistics.counts.mine).toBe(1);
+    expect(mock.values.has(`majdata-net:parsed:${song.id}:${song.hash}:4`)).toBe(false);
+  });
+  it('starts a new cache generation without joining an invalidated chart request', async () => {
+    const oldText = deferred<string>(); mock.getChart.mockReturnValueOnce(oldText.promise);
+    const old = loadMajdataChart(song); const rejected = expect(old).rejects.toThrow('缓存请求已失效');
+    await vi.waitFor(() => expect(mock.getChart).toHaveBeenCalledTimes(1));
+    invalidateResourceWrites('majdata-net');
+    const freshText = '&inote_5=(120)2,'; mock.getChart.mockResolvedValue(freshText);
+    expect(await loadMajdataChart(song)).toBe(freshText);
+    oldText.resolve('&inote_5=(120)1,'); await rejected;
+    expect(mock.values.get(`majdata-net:chart:${song.id}:${song.hash}`)).toBe(freshText);
+  });
+  it('does not publish a cached callback from a cleared request generation', async () => {
+    mock.values.set(majdataSongKey(song.id), { song });
+    const fresh = deferred<typeof song>(); mock.getSong.mockReturnValue(fresh.promise);
+    const onFresh = vi.fn(); await loadMajdataSong(song.id, undefined, onFresh);
+    invalidateResourceWrites('majdata-net'); fresh.resolve({ ...song, hash: 'hash2' });
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(onFresh).not.toHaveBeenCalled();
   });
 });

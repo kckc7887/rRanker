@@ -52,7 +52,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 
 ## 游戏、Provider 与数据链路
 
-`src/domain/game-bind-options.ts` 的 `GAME_OPTIONS` 是前台游戏与绑定方式注册表。当前可用板块包括 Majdata Net、舞萌 DX、中二节奏、Phigros、Phira、冰与火之舞、喵斯快跑，以及聚合展示的 osu!standard、osu!mania、osu!catch、osu!taiko。Provider 包括账号密码、OAuth、设备授权、公开玩家、本地账号和示例账号等形态；`test` 仍是类型层保留的空壳 GameId，不是当前选择器条目。
+`src/domain/game-bind-options.ts` 的 `GAME_OPTIONS` 是前台游戏与绑定方式注册表。当前可用板块包括舞萌 DX、中二节奏、Phigros、Phira、冰与火之舞、喵斯快跑、聚合展示的 osu!standard、osu!mania、osu!catch、osu!taiko，以及列表末尾的 Majdata Net。Provider 包括账号密码、OAuth、设备授权、公开玩家、本地账号和示例账号等形态；`test` 仍是类型层保留的空壳 GameId，不是当前选择器条目。账号分组消费同一注册表的顺序与家族能力，不另行维护游戏名单。
 
 主数据读取链路为：
 
@@ -79,15 +79,23 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 安全标志和有效期生成 Cookie，请求禁用环境 Cookie。安全仓库只保存 Cookie，会话与账号
 分别索引；不保存明文或 MD5 密码。`SecureSessionStore.upsertAccount(account, signal?)`
 在取消时阻止或回滚账号索引写入，继续沿用既有安全凭据的串行变更、恢复和删除流程。
+添加游戏、来源与账号入口使用 `assets/images/majdata.png` 的 S3 图标。
+`createMajdataBoundAccount` 统一各入口的账号资料；玩家头像来自
+`account/Icon?username=<编码用户名>`，使用公共头像、缩略信息持久化与失败回退。
+启动恢复包含所有已绑定 Majdata 账号，账号管理与切换共用分组；账密解绑依据 Provider
+绑定能力生成。旧账号、Cookie、快照和用户曲库的持久化键保持兼容。
 
 `useGameData` 调用 `majdata-service` 保存账号的玩家、最好成绩和 Recent 快照。总览
-`DX · Classic` 为完整最好成绩列表的两项独立合计；筛选只影响成绩列表。Recent 时间倒序、
+`DX · Classic` 为完整最好成绩列表 Σ(DX＋Classic) 的单值合计，合计后保留四位小数并附 `%`，
+账号列表使用相同格式；离线从成绩快照重新计算。该值使用中性主题，不参与舞萌档位或星级计算。
+筛选只影响成绩列表；单谱与难度详情只展示 DX 达成率。Recent 时间倒序、
 保留重复游玩与上游实际字段。排名由 `useMajdataRanking` 按账号和歌曲共享查询，仅匹配
 当前玩家、当前难度，已知 HASH 不同时不使用该排名。
 
 `useMajdataSongs` 保留上游页码，每页 30 首，通过原始页长判断下一页；分页只在 React Query
-会话中保存。名称多选和线上标签多选各自取并集、两组取交集；筛选后空页仍可加载下一页。
-线上标签由 `tags` 与 `publicTags` 合并，本地标签不参与该筛选。
+会话中保存，只展示已加载数量。难度名称多选和线上标签多选各自取并集、两组取交集；
+筛选后空页继续下一上游页，失焦后暂停自动续页。线上标签由 `tags` 与 `publicTags` 合并，
+本地标签不参与筛选。筛选器每项独立横向行，收起和重置关闭展开的下拉。
 
 详情与个人曲库通过同一资源仓库读取。`majdata-net:song:{id}` 保存当前元数据，
 `majdata-net:song:{id}:{hash}` 保存修订；`chart:{id}:{hash}` 保存完整文本，
@@ -96,7 +104,13 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 新文本写入旧修订。歌曲请求代次、账号请求代次、取消信号和公共资源写入代次阻止旧请求回填。
 清理器归属 Majdata 的数据和图片缓存，收藏、练习与标签仍在公共用户曲库仓库中保留。
 
-`MajdataSongDetail` 复用 Hero、难度轮播、物量表、下载控制器和 TagEditor。UUID 原样保存，
+舞萌与 Majdata 的列表、成绩卡、难度徽章、封面和收藏行使用 `game-content` 中同一实际
+布局；游戏适配层提供原始难度字符串、可选类型徽章和右侧指标，不向共享渲染层增加游戏分支。
+`MajdataSongDetail` 与舞萌详情共用 `SimaiSongDetailLayout` / `SimaiSongDetailStyles`，
+包括封面文字与遮罩、返回/收藏按钮、安全区位置、元数据表、成绩区、物量网格和操作样式。
+物量在转场后、当前可见难度启用请求；未加载时显示文字，成功后才绘制六列网格。
+Easy 与 Phigros HD 复用公共蓝色主题。歌曲信息只含简介、线上标签和 HASH；歌曲、谱面
+分别使用同一 `TagEditor` 保存各自标签，标题只由编辑器渲染一次。UUID 原样保存，
 原始索引 0～6 映射到 `inote_1`～`inote_7`，排序为 5、4、3、2、1、0、6。
 用户曲库仅用 `SD` 作为既有结构的内部兼容字段，不展示类型或据此构造资源地址。
 预览路由为两种游戏组装资源与参数，Simai 运行时不构造 LXNS 或 Majdata 网络地址。
@@ -202,7 +216,7 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 ## WebView 与文件型功能
 
 - 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（大小匹配则跳过下载），再写入 session。舞萌皮肤在 session 内编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读 PNG；该文件随共享缓存一并统计和清理。
-- 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。
+- 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。`useChartPackageDownload.start` 可接收 `optionalVideoUrl`，将视频可用性检查、选择与下载放在同一重复点击锁、超时与取消生命周期中；后台、卸载和取消后的迟到结果不能再弹窗或启动下载。
 - Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；预览轮播同一时刻只挂载当前 WebView 页面。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。

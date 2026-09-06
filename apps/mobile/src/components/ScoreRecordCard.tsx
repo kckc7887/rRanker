@@ -1,10 +1,7 @@
-import { simaiScoreCardStyles as styles } from '@/components/game-content/SimaiScoreCardStyles';
 import { memo } from 'react';
-import { Text, View } from 'react-native';
 import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
-import { AchievementValue, ChartTypeBadge, DifficultyBadge, ScoreStatusBadges } from './ScoreVisuals';
-import { useAppTheme } from '@/theme/app-theme';
-import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { ChartTypeBadge, DifficultyBadge } from './ScoreVisuals';
+import { SimaiScoreCard } from '@/components/game-content/SimaiScoreCard';
 import { presentMaimaiScore } from '@/features/game-content/adapters';
 import { maimaiJacketUrl } from '@/domain/maimai-assets';
 
@@ -37,30 +34,17 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({
   /** 预览等一次性场景传 "none" 完全跳过曲绘缓存。 */
   artworkCachePolicy?: 'none';
 }) {
-  const theme = useAppTheme();
   const presentation = presentMaimaiScore(record, rank);
-  return <GameScoreCard
+  return <SimaiScoreCard
     artwork={{ source: maimaiJacketUrl(record.songId), ...(artworkCachePolicy ? { cachePolicy: artworkCachePolicy } : {}) }}
-    cardStyle={styles.card}
-    mainStyle={styles.main}
     presentation={presentation}
-    pressable={interactive}
-    side={record.type === 'UTAGE' ? null : <View style={styles.ratingBlock}>
-      <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>Rating</Text>
-      <Text style={[styles.rating, { color: record.rating === undefined ? theme.textMuted : theme.accent }]}>
-        {record.rating === undefined ? '—' : record.rating}
-      </Text>
-    </View>}
-    titleStyle={styles.title}
-  >
-      <AchievementValue value={record.achievements} compact />
-      {record.type === 'UTAGE'
-        ? <Text style={[styles.dxScore, { color: theme.textSecondary }]}>DX分数 {record.dxScore ?? '—'}</Text>
-        : null}
-      <View testID={`score-card-badges-${record.songId}`} style={styles.tags}>
-        <DifficultyBadge difficulty={record.difficulty} constant={record.difficultyConstant} compact />
-        {record.type === 'UTAGE' ? null : <ChartTypeBadge type={record.type} />}
-        <ScoreStatusBadges rate={record.rate} achievements={record.achievements} fc={record.fc} fs={record.fs} nearMissFirst />
-      </View>
-  </GameScoreCard>;
+    interactive={interactive}
+    achievements={record.achievements}
+    sideMetric={record.type === 'UTAGE' ? undefined : { label: 'Rating', value: record.rating, emptyText: '—' }}
+    supplementalMetric={record.type === 'UTAGE' ? <>DX分数 {record.dxScore ?? '—'}</> : undefined}
+    difficultyBadge={<DifficultyBadge difficulty={record.difficulty} constant={record.difficultyConstant} compact />}
+    chartTypeBadge={record.type === 'UTAGE' ? null : <ChartTypeBadge type={record.type} />}
+    rate={record.rate} fc={record.fc} fs={record.fs}
+    badgesTestID={`score-card-badges-${record.songId}`}
+  />;
 });

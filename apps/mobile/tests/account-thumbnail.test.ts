@@ -1,5 +1,6 @@
 import {
   createMaimaiBoundAccount,
+  createMajdataBoundAccount,
   createMaxedChunithmTestAccount,
   createMaxedMaimaiTestAccount,
   createMaxedPhigrosTestAccount,
@@ -169,6 +170,17 @@ describe('hydrateBoundAccountThumbnails', () => {
 
     const account = useSession.getState().boundAccounts.find((item) => item.id === 'phigros:test');
     expect(account?.scoreDisplay).toBe('16.5432');
+  });
+
+  it('hydrates the complete Majdata total and player avatar from the shared thumbnail cache', async () => {
+    const account = createMajdataBoundAccount({ accountId: 'majdata-net:account:player', displayName: 'Player' });
+    useSession.setState({ boundAccounts: [account], activeAccountId: account.id });
+    const repo = thumbnailRepository();
+    repo.getResource.mockResolvedValue({ scoreDisplay: '12345.6789%', avatarUrl: account.avatarUrl });
+    await hydrateBoundAccountThumbnails(repo);
+    expect(useSession.getState().boundAccounts[0]).toMatchObject({
+      scoreDisplay: '12345.6789%', avatarUrl: 'https://majdata.net/api3/api/account/Icon?username=Player',
+    });
   });
 
   it('reads a snapshot per bound account', async () => {

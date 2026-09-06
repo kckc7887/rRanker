@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   boundAccountFromStored,
+  createMajdataBoundAccount,
   createChunithmBoundAccount,
   createMaimaiBoundAccount,
   createPhigrosBoundAccount,
@@ -330,8 +331,9 @@ export const useSession = create<SessionState>((set, get) => ({
   restoreError: null,
   setSession: (session, accountMeta) => {
     if (accountMeta?.gameId === 'majdata-net' && accountMeta.accountId) {
-      const account: BoundAccount = { id: accountMeta.accountId, gameId: 'majdata-net', providerId: 'majdata-net',
-        displayName: accountMeta.displayName, scoreLabel: 'DX · Classic', scoreDisplay: '—', providerTitle: 'Majdata Net' };
+      const account = createMajdataBoundAccount({ accountId: accountMeta.accountId,
+        displayName: accountMeta.displayName, avatarUrl: accountMeta.avatarUrl,
+        scoreDisplay: get().boundAccounts.find(item => item.id === accountMeta.accountId)?.scoreDisplay });
       set(activateAccount(upsertAccountList(get().boundAccounts, account),
         { ...get().sessionsByAccountId, [account.id]: session },
         { ...get().credentialIdsByAccountId, [account.id]: accountMeta.credentialId ?? `credential:${account.id}` }, account.id));

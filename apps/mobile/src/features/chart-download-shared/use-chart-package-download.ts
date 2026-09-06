@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import { fetch as expoFetch } from 'expo/fetch';
+import { z } from 'zod';
 import { useNotification } from '@/components/AppNotification';
-import { providerErrorToUserMessage } from '@/providers/errors';
+import { providerErrorFromStatus, providerErrorToUserMessage } from '@/providers/errors';
+import { requestProviderResponse } from '@/providers/http-json';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import {
   type ChartPackageDownloadOptions,
@@ -9,7 +12,25 @@ import {
 
 export type ChartPackageDownloadRunner = (
   options: ChartPackageDownloadOptions,
+  includeVideo: boolean,
 ) => Promise<boolean>;
+
+export type ChartPackageDownloadStartOptions = {
+  optionalVideoUrl?: string;
+};
+
+async function videoAvailable(url: string, signal: AbortSignal): Promise<boolean> {
+  try {
+    return await requestProviderResponse({
+      path: url, baseUrl: '', schema: z.boolean(), label: '背景视频',
+      fetcher: expoFetch as unknown as typeof fetch, signal, retries: 1,
+      init: { method: 'HEAD', headers: { Accept: '*/*' } },
+      error: providerErrorFromStatus,
+    }, async () => true);
+  } catch {
+    return false;
+  }
+}
 
 export function useChartPackageDownload({
   successMessage,
@@ -31,10 +52,16 @@ export function useChartPackageDownload({
   const notificationIdRef = useRef<number | null>(null);
   const backgroundCanceledRef = useRef(false);
 
-  const cancel = useCallback(() => {
+  const dismissCurrentNotification = useCallback(() => {
+    const notificationId = notificationIdRef.current;
     notificationIdRef.current = null;
+    if (notificationId !== null) dismissNotification(notificationId);
+  }, [dismissNotification]);
+
+  const cancel = useCallback(() => {
     controllerRef.current?.abort();
-  }, []);
+    dismissCurrentNotification();
+  }, [dismissCurrentNotification]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -68,8 +95,8 @@ export function useChartPackageDownload({
     }
   }, [dismissNotification, lifecycle.foregroundGeneration, lifecycle.foregroundReady, lifecycle.phase, showNotification]);
 
-  const start = useCallback(async (runner: ChartPackageDownloadRunner) => {
-    if (controllerRef.current) return;
+  const start = useCallback(async (runner: ChartPackageDownloadRunner, options: ChartPackageDownloadStartOptions = {}) => {
+    if (controllerRef.current || !mountedRef.current || lifecycle.phase === 'background') return;
     if (Platform.OS === 'web') {
       showNotification({
         title: '无法下载',
@@ -83,13 +110,43 @@ export function useChartPackageDownload({
     backgroundCanceledRef.current = false;
     controllerRef.current = controller;
     setIsRunning(true);
-    notificationIdRef.current = showActionNotification({
-      title: '下载谱面文件',
-      variant: 'info',
-      progress: { label: '下载进度', value: 0 },
-      actions: [{ label: '取消', tone: 'cancel', onPress: cancel }],
-    });
+    const cancelRun = () => { if (controllerRef.current === controller) cancel(); };
     try {
+      let includeVideo = false;
+      if (options.optionalVideoUrl && await videoAvailable(options.optionalVideoUrl, controller.signal)) {
+        if (controller.signal.aborted) return;
+        const choice = await new Promise<boolean | undefined>((resolve) => {
+          let settled = false;
+          const finish = (value?: boolean) => {
+            if (settled) return;
+            settled = true;
+            controller.signal.removeEventListener('abort', onAbort);
+            dismissCurrentNotification();
+            resolve(value);
+          };
+          const onAbort = () => finish();
+          controller.signal.addEventListener('abort', onAbort, { once: true });
+          notificationIdRef.current = showActionNotification({
+            title: '下载谱面文件',
+            message: '该谱面带有背景视频，视频文件较大、会消耗流量，是否一并下载？',
+            variant: 'info',
+            actions: [
+              { label: '包含背景视频', onPress: () => finish(true) },
+              { label: '仅封面图片', onPress: () => finish(false) },
+              { label: '取消', tone: 'cancel', onPress: cancelRun },
+            ],
+          });
+        });
+        if (choice === undefined) return;
+        includeVideo = choice;
+      }
+      if (controller.signal.aborted || !mountedRef.current) return;
+      notificationIdRef.current = showActionNotification({
+        title: '下载谱面文件',
+        variant: 'info',
+        progress: { label: '下载进度', value: 0 },
+        actions: [{ label: '取消', tone: 'cancel', onPress: cancelRun }],
+      });
       const saved = await runner({
         signal: controller.signal,
         onProgress: (progress) => {
@@ -109,8 +166,8 @@ export function useChartPackageDownload({
           if (notificationId !== null) dismissNotification(notificationId);
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
         },
-      });
-      if (saved) {
+      }, includeVideo);
+      if (saved && !controller.signal.aborted && mountedRef.current) {
         showNotification({
           title: '谱面已保存',
           message: successMessage,
@@ -118,7 +175,7 @@ export function useChartPackageDownload({
         });
       }
     } catch (error) {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && mountedRef.current) {
         showNotification({
           title: '下载失败',
           message: providerErrorToUserMessage(error, failureMessage),
@@ -132,7 +189,7 @@ export function useChartPackageDownload({
       if (notificationId !== null) dismissNotification(notificationId);
       if (mountedRef.current && !backgroundCanceledRef.current) setIsRunning(false);
     }
-  }, [cancel, dismissNotification, failureMessage, showActionNotification, showNotification, successMessage, updateNotification]);
+  }, [cancel, dismissCurrentNotification, dismissNotification, failureMessage, lifecycle.phase, showActionNotification, showNotification, successMessage, updateNotification]);
 
   return { cancel, isRunning, start };
 }

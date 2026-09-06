@@ -15,6 +15,13 @@ export type DxRatingTheme = {
   starCount: number;
 };
 
+export const NEUTRAL_RATING_THEME: DxRatingTheme = {
+  id: 'empty', label: 'empty',
+  fillColors: ['#2A3140', '#1A1F2A'], fillLocations: [0, 1],
+  borderColors: ['#596273', '#303745'], borderLocations: [0, 1],
+  overlayColor: 'transparent', textColor: '#FFFFFF', starColor: '#CBD5E1', starCount: 0,
+};
+
 type Tier = {
   min: number;
   theme: Omit<DxRatingTheme, 'starCount'>;

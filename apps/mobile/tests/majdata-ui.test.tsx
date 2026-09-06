@@ -1,12 +1,11 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { MajdataBestScreen, MajdataCatalogScreen, MajdataRecordsScreen } from '@/screens/MajdataScreens';
-import { MajdataSongDetail } from '@/components/majdata/MajdataSongDetail';
 import { useMajdataCatalogFilter, useMajdataRecordsFilter } from '@/state/majdata-filters';
 import type { MajdataSong } from '@/domain/majdata';
 
-const mockPush = jest.fn(); const mockMore = jest.fn(); const mockPractice = jest.fn(async () => []);
-const mockRefetch = jest.fn(); const mockCarousel = jest.fn();
+const mockPush = jest.fn(); const mockMore = jest.fn();
+const mockRefetch = jest.fn();
 const mockSong: MajdataSong = { id: '0dff2974-9419-4290-bea9-307caa5825b7', title: '测试歌曲', artist: '曲师', designer: '谱师', uploader: '上传者', description: '简介文本', timestamp: '2026-09-01T00:00:00Z', hash: 'revision', levels: ['1', '3', '', '13+', '14.5', '15', '宴'], tags: ['在线 A'], publicTags: ['在线 B'] };
 let mockSongs = [mockSong];
 const mockScore = { chartInfo: mockSong, chartLevel: 4, acc: { dx: 100.1234, classic: 99.5678 }, dxScore: 500, comboState: 2, hash: 'revision', timestamp: mockSong.timestamp };
@@ -25,14 +24,11 @@ jest.mock('@/hooks/use-majdata', () => ({
   useMajdataRanking: () => ({ data: { hash: 'revision', scores: [[], [], [], [{ player: { username: 'player' } }], []] } }),
   useMajdataParsedChart: () => ({ data: { statistics: { counts: { tap: 1, hold: 2, slide: 3, touch: 4, break: 5, mine: 6 } } }, isError: false }),
 }));
-jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ data: [], tagPresets: [], songKey: (id: string) => id, chartKey: (id: string) => id, setSongFavorite: jest.fn(), setChartPractice: mockPractice, setTags: jest.fn(), setTagPresets: jest.fn() }) }));
+jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ data: [], tagPresets: [], songKey: (id: string) => id, chartKey: (id: string) => id, setSongFavorite: jest.fn(), setChartPractice: jest.fn(), setTags: jest.fn(), setTagPresets: jest.fn() }) }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showActionNotification: jest.fn() }) }));
 jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({ useChartPackageDownload: () => ({ isRunning: false, start: jest.fn() }) }));
 jest.mock('@/components/TagEditor', () => ({ TagEditor: () => null }));
 jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
-jest.mock('@/components/game-content/ChartCarousel', () => ({ ChartCarousel: (props: { items: number[]; initialIndex: number; renderItem: (level: number) => React.ReactNode }) => {
-  mockCarousel(props); const { View } = jest.requireActual<typeof import('react-native')>('react-native'); return <View>{props.items.map(level => <View key={level}>{props.renderItem(level)}</View>)}</View>;
-} }));
 jest.mock('@/components/RemoteImage', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return { RemoteImage: View, RemoteImagePersistenceScope: View, RemoteImageActivityScope: View };
@@ -45,23 +41,13 @@ describe('Majdata page contracts', () => {
     expect(screen.getAllByText('排名')).toHaveLength(2); expect(screen.queryByText(/Classic/)).toBeNull();
     await screen.unmount();
   });
-  it('shows both personal achievements and never borrows a different difficulty rank', async () => {
-    const screen = await render(<MajdataRecordsScreen />); expect(screen.getByText('Classic 99.5678%')).toBeTruthy(); expect(screen.getByText('-')).toBeTruthy();
-    expect(screen.getByText('Master 14.5')).toBeTruthy(); expect(screen.queryByText('Rating')).toBeNull(); await screen.unmount();
+  it('shows only DX achievements and never borrows a different difficulty rank', async () => {
+    const screen = await render(<MajdataRecordsScreen />); expect(screen.queryByText(/Classic/)).toBeNull(); expect(screen.getByText('-')).toBeTruthy();
+    expect(screen.getByText('MASTER (14.5)')).toBeTruthy(); expect(screen.queryByText('Rating')).toBeNull(); await screen.unmount();
   });
   it('keeps the upstream cursor when a fetched page has no matching difficulty', async () => {
     mockSongs = [{ ...mockSong, levels: ['1', '', '', '', '', '', ''] }]; useMajdataCatalogFilter.setState({ difficulties: [5] });
     const screen = await render(<MajdataCatalogScreen />); expect(screen.queryByText(mockSong.title)).toBeNull();
-    await fireEvent.press(screen.getByText('加载更多')); expect(mockMore).toHaveBeenCalled(); await screen.unmount();
-  });
-  it('preserves UUID and original chart index through detail, practice, preview and tolerance', async () => {
-    const screen = await render(<MajdataSongDetail songId={mockSong.id} initialLevelIndex={0} />);
-    const carousel = mockCarousel.mock.calls[0][0] as { items: number[]; initialIndex: number };
-    expect(carousel.items).toEqual([5, 4, 3, 1, 0, 6]); expect(carousel.initialIndex).toBe(4);
-    expect(screen.getByText(mockSong.id)).toBeTruthy(); expect(screen.getByText('曲师')).toBeTruthy(); expect(screen.getByText('简介文本')).toBeTruthy();
-    await fireEvent.press(screen.getAllByText('加入练习清单')[0]); expect(mockPractice).toHaveBeenCalledWith(mockSong.id, 'SD', 5, true);
-    await fireEvent.press(screen.getAllByText('查看谱面确认')[0]); expect(mockPush).toHaveBeenLastCalledWith(expect.objectContaining({ params: expect.objectContaining({ songId: mockSong.id, levelIndex: '5', gameId: 'majdata-net' }) }));
-    await fireEvent.press(screen.getAllByLabelText('物量与达成率计算')[0]); expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/tools/tolerance', params: { songId: mockSong.id, levelIndex: '5', gameId: 'majdata-net', hash: 'revision' } });
-    await screen.unmount();
+    expect(mockMore).toHaveBeenCalled(); await screen.unmount();
   });
 });

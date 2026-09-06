@@ -3,7 +3,7 @@ import majdataCases from './fixtures/majdata-simai-cases.json';
 import majdataReference from './fixtures/majdata-simai-reference.json';
 import scoreReference from './fixtures/majdata-score-reference.json';
 import { describe, expect, it, vi } from 'vitest';
-import { MAJDATA_FILTER_DEFAULTS, MAJDATA_ORDER, MajdataSongSchema, filterMajdataRecords, majdataDefaultDifficulty, majdataRank, majdataTags, majdataTime, majdataTotals, matchesMajdataSong, type MajdataScore } from '@/domain/majdata';
+import { MAJDATA_FILTER_DEFAULTS, MAJDATA_ORDER, MajdataSongSchema, filterMajdataRecords, majdataDefaultDifficulty, majdataRank, majdataTags, majdataTime, majdataTotals, majdataTotal, majdataTotalText, majdataAvatarUrl, matchesMajdataSong, type MajdataScore } from '@/domain/majdata';
 import { MajdataProvider } from '@/providers/majdata-provider';
 import { cookieHeader, responseCookies, isHttpCookieSession, type HttpCookieSession } from '@/providers/http-cookies';
 import { chartLibraryKey, songLibraryKey } from '@/domain/user-library';
@@ -54,6 +54,9 @@ describe('Majdata integration contracts', () => {
   });
   it('totals both percentages independently and filters difficulty OR, tag OR, and between groups', () => {
     expect(majdataTotals([record(3, 98.1251, 96), record(4, 100.0001, 101.5)])).toEqual({ dx: 198.1252, classic: 197.5 });
+    expect(majdataTotal([record(3, 98.1251, 96), record(4, 100.0001, 101.5)])).toBe(395.6252);
+    expect(majdataTotalText({ records: [record(3, 98.1251, 96), record(4, 100.0001, 101.5)], recent: [], player: { username: 'player' }, source: { kind: 'majdata-net', label: 'Majdata Net', updatedAt: song.timestamp, isStale: false } })).toBe('395.6252%');
+    expect(majdataAvatarUrl('玩家 A&B')).toBe('https://majdata.net/api3/api/account/Icon?username=%E7%8E%A9%E5%AE%B6%20A%26B');
     expect(majdataTags(song)).toEqual(['A', 'B', 'C']);
     expect(filterMajdataRecords([record(3, 98), record(4, 100)], { ...MAJDATA_FILTER_DEFAULTS, difficulties: [3, 4], tags: ['C'], min: '99' })).toEqual([record(4, 100)]);
     expect(matchesMajdataSong(song, { ...MAJDATA_FILTER_DEFAULTS, difficulties: [2], tags: ['A'] })).toBe(false);

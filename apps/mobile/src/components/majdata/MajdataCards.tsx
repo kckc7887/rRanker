@@ -1,42 +1,67 @@
 import { memo } from 'react';
-import { Text, View } from 'react-native';
-import { GameScoreCard } from '@/components/game-content/GameScoreCard';
-import { GameSongRow, WRAPPED_COVER_ROW_STYLES as row } from '@/components/game-content/GameSongRow';
-import { GameDifficultyBadge } from '@/components/game-content/GameDifficultyBadge';
-import { simaiScoreCardStyles as styles } from '@/components/game-content/SimaiScoreCardStyles';
-import { AchievementValue, DIFFICULTY_VISUAL, ScoreStatusBadges } from '@/components/ScoreVisuals';
-import { MAJDATA_DIFFICULTIES, MAJDATA_NAMES, MAJDATA_ORDER, majdataAsset, majdataRank, type MajdataSong } from '@/domain/majdata';
+import { View } from 'react-native';
+import { FavoriteSongRow } from '@/components/game-content/FavoriteSongRow';
+import { GameSongCover } from '@/components/game-content/GameSongCover';
+import { SimaiDifficultyBadge } from '@/components/game-content/SimaiDifficultyBadge';
+import { SimaiScoreCard } from '@/components/game-content/SimaiScoreCard';
+import { SIMAI_CATALOG_LIST_STYLES as catalogStyles } from '@/components/game-content/SimaiListStyles';
+import { DIFFICULTY_VISUAL, type DifficultyBadgeDisplay } from '@/components/ScoreVisuals';
+import { BLUE_DIFFICULTY_COLORS } from '@/domain/difficulty-theme';
+import { MAJDATA_DIFFICULTIES, majdataAsset, majdataRank, type MajdataSong } from '@/domain/majdata';
 import { presentMajdataScore, presentMajdataSong, type MajdataCard } from '@/features/game-content/adapters/majdata';
 import { useMajdataRanking } from '@/hooks/use-majdata';
-import { useAppTheme } from '@/theme/app-theme';
 
 export function majdataVisual(level: number) {
-  return level === 0 ? { ...DIFFICULTY_VISUAL.basic, color: '#2563EB', tint: '#DBEAFE', badgeBackground: '#2563EB', badgeBorder: '#2563EB', badgeText: '#FFFFFF' }
+  return level === 0
+    ? { label: 'EASY', color: BLUE_DIFFICULTY_COLORS.fg, tint: BLUE_DIFFICULTY_COLORS.bg,
+        badgeBackground: BLUE_DIFFICULTY_COLORS.fg, badgeBorder: BLUE_DIFFICULTY_COLORS.fg, badgeText: '#FFFFFF' }
     : DIFFICULTY_VISUAL[MAJDATA_DIFFICULTIES[level] ?? 'unknown'];
 }
-export function MajdataDifficultyBadge({ level, value, name = true }: { level: number; value?: string; name?: boolean }) {
-  const v = majdataVisual(level);
-  return <GameDifficultyBadge text={[name ? MAJDATA_NAMES[level] : '', value].filter(Boolean).join(' ')}
-    theme={{ background: v.badgeBackground, text: v.badgeText, border: v.badgeBorder }} />;
+
+export function MajdataDifficultyBadge({ level, value, name = true, display, compact = false, mini = false }: {
+  level: number;
+  value?: string;
+  name?: boolean;
+  display?: DifficultyBadgeDisplay;
+  compact?: boolean;
+  mini?: boolean;
+}) {
+  const visual = majdataVisual(level);
+  const mode = display ?? (!name ? 'constant' : value === undefined ? 'label' : 'label-and-constant');
+  const text = mode === 'constant' ? value ?? '—'
+    : mode === 'label-and-constant' && value !== undefined ? `${visual.label} (${value})` : visual.label;
+  return <SimaiDifficultyBadge text={text} compact={compact} mini={mini}
+    theme={{ background: visual.badgeBackground, text: visual.badgeText, border: visual.badgeBorder }} />;
 }
-export const MajdataScoreCard = memo(function MajdataScoreCard({ card, username, visible }: { card: MajdataCard; username: string; visible: boolean }) {
-  const theme = useAppTheme(); const ranking = useMajdataRanking(card.songId, visible);
+
+export const MajdataScoreCard = memo(function MajdataScoreCard({ card, username, visible, position }: {
+  card: MajdataCard;
+  username: string;
+  visible: boolean;
+  position?: number;
+}) {
+  const ranking = useMajdataRanking(card.songId, visible);
   const rank = majdataRank(ranking.data, username, card.level, card.hash);
-  return <GameScoreCard presentation={presentMajdataScore(card, rank)} cardStyle={styles.card} mainStyle={styles.main} titleStyle={styles.title}
-    artwork={{ source: majdataAsset(card.songId, 'image') }}
-    side={<View style={styles.ratingBlock}><Text style={[styles.ratingLabel, { color: theme.textMuted }]}>排名</Text><Text style={[styles.rating, { color: theme.accent }]}>{rank ?? '-'}</Text></View>}>
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>{card.classic !== undefined ? <Text style={{ color: theme.textMuted }}>DX</Text> : null}<AchievementValue value={card.dx} compact /></View>
-    {card.classic !== undefined ? <Text style={[styles.dxScore, { color: theme.textSecondary }]}>Classic {card.classic.toFixed(4)}%</Text> : null}
-    <View style={styles.tags}><MajdataDifficultyBadge level={card.level} value={card.difficulty} />
-      <ScoreStatusBadges achievements={card.dx} fc={['', 'fc', 'fcp', 'ap', 'app'][card.combo]} />
-    </View>
-    {card.timestamp ? <Text style={{ color: theme.textMuted, fontSize: 10 }}>{new Date(card.timestamp).toLocaleString()}</Text> : null}
-  </GameScoreCard>;
+  return <SimaiScoreCard presentation={{ ...presentMajdataScore(card, rank), position }}
+    artwork={{ source: majdataAsset(card.songId, 'image') }} achievements={card.dx}
+    sideMetric={{ label: '排名', value: rank, emptyText: '-' }}
+    difficultyBadge={<MajdataDifficultyBadge level={card.level} value={card.difficulty} compact />}
+    fc={['', 'fc', 'fcp', 'ap', 'app'][card.combo]}
+    badgesTestID={`score-card-badges-${card.songId}`} />;
 });
-export function MajdataSongRow({ song }: { song: MajdataSong }) {
-  return <GameSongRow presentation={presentMajdataSong(song)} cover={null} rowStyle={row.row} mainStyle={row.meta}
-    titleStyle={row.title} subtitleStyle={row.composer} openStyle={row.openSong}
-    coverImage={{ source: majdataAsset(song.id, 'image'), accessibilityLabel: `${song.title} 封面`, imageStyle: row.cover,
-      wrapStyle: row.coverWrap, placeholderStyle: row.placeholder, noteStyle: row.placeholderNote }}
-    badges={<View style={row.badges}>{MAJDATA_ORDER.filter(i => song.levels[i]?.trim()).map(i => <MajdataDifficultyBadge key={i} level={i} value={song.levels[i]} />)}</View>} />;
-}
+
+export const MajdataSongRow = memo(function MajdataSongRow({ song, favorite, favoritePending, onFavoriteChange }: {
+  song: MajdataSong;
+  favorite: boolean;
+  favoritePending: boolean;
+  onFavoriteChange: (songId: string, favorite: boolean) => void;
+}) {
+  return <FavoriteSongRow presentation={presentMajdataSong(song)}
+    subtitleContent={song.artist || '曲师未知'}
+    cover={<GameSongCover source={majdataAsset(song.id, 'image')} gameId="majdata-net" />}
+    badges={<View accessibilityLabel="谱面难度" style={catalogStyles.chartGroups}>
+      <View style={catalogStyles.chartGroup}>{song.levels.map((value, level) => value?.trim()
+        ? <MajdataDifficultyBadge key={level} level={level} value={value} display="constant" compact /> : null)}</View>
+    </View>}
+    favorite={favorite} favoritePending={favoritePending} onFavoriteChange={onFavoriteChange} />;
+});

@@ -1,11 +1,12 @@
+import { FavoriteSongRow } from '@/components/game-content/FavoriteSongRow';
+import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
+import { SIMAI_CATALOG_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { MajdataCatalogScreen } from '@/screens/MajdataScreens';
 import { memo, useCallback, useDeferredValue, useEffect, useMemo } from 'react';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { CatalogListPage } from '@/components/game-content/GameListPages';
-import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
@@ -190,13 +191,9 @@ export function SearchScreen() {
 
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
-        <TextInput accessibilityLabel="歌曲搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / ID / 别名 / 曲师 / 谱师 / 罗马音" placeholderTextColor={theme.textMuted}
-          value={keyword} onChangeText={setKeyword}
-          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-        <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
-      </View>
+      <GameSearchHeader layout="catalog" accessibilityLabel="歌曲搜索"
+        placeholder="曲名 / ID / 别名 / 曲师 / 谱师 / 罗马音" value={keyword} onChangeText={setKeyword}
+        resultCountText={isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`} />
       <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
         difficulty={difficulty} version={version} type={type}
         constantMin={constantMin} constantMax={constantMax} versionLocale={versionLocale} versions={versions}
@@ -243,29 +240,18 @@ const CatalogSongRow = memo(function CatalogSongRow({
   versionLabelsById: ReadonlyMap<number, string>;
   matchedAlias?: string;
 }) {
-  const theme = useAppTheme();
   const presentation = presentStandardSong('maimai', song);
   const displayedCharts = selectedChartVersionId === undefined
     ? song.charts
     : song.charts.filter((chart) => chart.versionId === selectedChartVersionId);
   const displayedVersion = selectedVersionLabel ?? songChartVersionLabel(song, versionLabelsById);
-  return <GameSongRow
+  return <FavoriteSongRow
     presentation={presentation}
-    accessibilityLabel={null}
-    rowStyle={styles.row}
-    openStyle={styles.openSong}
-    mainStyle={styles.main}
-    titleStyle={styles.title}
-    subtitleStyle={styles.meta}
-    matchNote={matchedAlias ? `别名：${matchedAlias}` : undefined}
-    matchNoteStyle={styles.meta}
+    matchedAlias={matchedAlias}
     subtitleContent={<>{song.artist ?? '曲师未知'} · {displayedVersion}</>}
     cover={<SongCover songId={song.id} />}
     badges={<SongChartBadges songId={song.id} charts={displayedCharts} />}
-    accessory={<Pressable accessibilityRole="button" accessibilityLabel={favorite ? `取消收藏 ${song.title}` : `收藏 ${song.title}`}
-      disabled={favoritePending} onPress={() => onFavoriteChange(song.id, !favorite)} style={styles.favorite}>
-      <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={theme.accent} size={24} />
-    </Pressable>}
+    favorite={favorite} favoritePending={favoritePending} onFavoriteChange={onFavoriteChange}
   />;
 });
 
@@ -578,19 +564,3 @@ function PhigrosSearchScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F7F8FA' },
-  searchArea: { padding: 12, paddingBottom: 8, gap: 6, backgroundColor: '#FFF' },
-  searchBox: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 11, backgroundColor: '#FFF', color: '#111827' },
-  resultCount: { color: '#6B7280', fontSize: 11 },
-  listContent: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 20, gap: 9 },
-  row: { backgroundColor: '#FFF', borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  openSong: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  favorite: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  main: { flex: 1, gap: 3 },
-  title: { color: '#111827', fontWeight: '700' },
-  meta: { color: '#6B7280', fontSize: 11 },
-  chartGroups: { gap: 4 },
-  chartGroup: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 },
-});
