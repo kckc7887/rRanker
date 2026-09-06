@@ -120,13 +120,16 @@ export function createRuntimeLogController(dependencies: {
     record(type: string, fields: Readonly<Record<string, unknown>>): void {
       if (state.activeId === null) return;
       try {
-        repository!.append(state.activeId, sanitizeRuntimeLogEntry(type, fields, now()));
-        publish({ sessions: repository!.list() });
+        const entry = sanitizeRuntimeLogEntry(type, { route: dependencies.context().route, ...fields }, now());
+        repository!.append(state.activeId, entry);
+        publish({ sessions: state.sessions.map((session) => session.id === state.activeId
+          ? { ...session, lastAt: entry.at, count: Math.min(session.capacity, session.count + 1) } : session) });
       } catch { fail(); }
     },
     snapshot(id: number): string {
       if (!repository) throw new Error('log store unavailable');
-      return JSON.stringify({ formatVersion: 1, ...repository.snapshot(id) }, null, 2);
+      const snapshotAt = now();
+      return JSON.stringify({ formatVersion: 1, snapshotAt, ...repository.snapshot(id) }, null, 2);
     },
   };
 }

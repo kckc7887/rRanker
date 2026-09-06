@@ -165,6 +165,7 @@ function versionAtOrBefore(
 
 function getJson(path: string): Promise<unknown> {
   return fetchProviderJson({
+    diagnosticScenario: 'catalog',
     baseUrl: API_ROOT,
     path,
     invalidJsonMessage: 'LXNS 中二曲库返回了无效 JSON',

@@ -211,7 +211,7 @@ export async function loadPhigrosChartPreviewResources(
   target: PhigrosChartPreviewTarget,
   signal: AbortSignal,
   read: (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array> =
-    (asset) => phigrosResources.bytes(asset.url, signal, 60_000),
+    (asset, index) => phigrosResources.bytes(asset.url, signal, 60_000, (['chart', 'music', 'illustration'] as const)[index] ?? 'resource'),
 ) {
   return phigrosResources.withRelease(async (release) => {
     const bundle = resolvePhigrosChartPreviewAssetBundle({ ...release, target });

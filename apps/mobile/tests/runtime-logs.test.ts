@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RUNTIME_LOG_SCHEMA, RuntimeLogRepository } from '@/storage/runtime-log-repository';
 import { createRuntimeLogController } from '@/services/runtime-log-controller';
 import { installRuntimeLogErrors, type RuntimeExceptionHost } from '@/services/runtime-log-errors';
-import { sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogPreferences } from '@/domain/runtime-log';
-import { installRuntimeDiagnosticRecorder, installRuntimeLogRecorder, recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
-import { requestJson, requestBytes } from '@/providers/http-json';
+import { runtimeBuildContext, sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogPreferences } from '@/domain/runtime-log';
+import { createRuntimeOperation, installRuntimeDiagnosticRecorder, installRuntimeLogRecorder, recordRuntimeDiagnostic, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { requestJson, requestBytes, fetchProviderJson } from '@/providers/http-json';
 import { ProviderError } from '@/providers/errors';
 import { z } from 'zod';
 import { queryClient } from '@/state/query-client';
@@ -51,6 +51,7 @@ afterEach(() => {
   installRuntimeLogRecorder(undefined);
   installRuntimeDiagnosticRecorder(async () => undefined);
   vi.restoreAllMocks();
+  vi.useRealTimers();
   queryClient.clear();
 });
 
@@ -83,6 +84,9 @@ describe('manual runtime logs', () => {
     expect(snapshot.entries.at(-1)?.fields.attempt).toBe(capacity + 19);
     expect(snapshot.context.appVersion).toBe('0.3.0');
     expect(repository.list()[0]?.count).toBe(capacity);
+    expect(snapshot.summary).toMatchObject({ totalCount: capacity + 21, retainedCount: capacity, trimmedCount: 21, byType: { task: capacity } });
+    expect(snapshot.summary.firstAt).toBe(snapshot.entries[0]?.at);
+    expect(snapshot.summary.lastAt).toBe(snapshot.entries.at(-1)?.at);
   });
 
   it('starts one new log per boot while enabled and keeps the current and previous logs', async () => {
@@ -216,6 +220,20 @@ describe('manual runtime logs', () => {
     expect(JSON.parse(snapshot).entries).toHaveLength(1);
     expect(JSON.parse(controller.snapshot(id)).entries).toHaveLength(2);
     expect(controller.getSnapshot().activeId).toBe(id);
+    expect(JSON.parse(snapshot).summary.totalCount).toBe(1);
+    expect(JSON.parse(snapshot).snapshotAt).toBeTruthy();
+  });
+
+  it('updates committed metadata without reading the session list per event', async () => {
+    const { controller, repository } = fixture();
+    await controller.start();
+    const list = vi.spyOn(repository, 'list');
+    controller.record('task', {});
+    expect(list).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().sessions[0]).toMatchObject({ count: 2 });
+    const entries = repository.snapshot(1).entries;
+    expect(entries[1]?.fields.route).toBe('/songs/[songId]');
+    expect(controller.getSnapshot().sessions[0]?.lastAt).toBe(entries[1]?.at);
   });
 });
 
@@ -232,6 +250,19 @@ describe('runtime log preferences', () => {
 });
 
 describe('privacy and exception handling', () => {
+  it.each(['/(tabs)/b50', '/songs/[songId]', '/(tabs)/(overview)', '/files/[...parts]'])('retains route template %s', (route) => {
+    expect(sanitizeRuntimeLogEntry('route', { route }, '2026-09-06').fields.route).toBe(route);
+  });
+
+  it('validates new diagnostic fields and distinguishes native and configured builds', () => {
+    expect(runtimeBuildContext('19', '18')).toEqual({ buildVersion: '19', buildVersionSource: 'native' });
+    expect(runtimeBuildContext(null, 18)).toEqual({ buildVersion: '18', buildVersionSource: 'config' });
+    expect(runtimeBuildContext(undefined, undefined)).toEqual({ buildVersion: 'unknown', buildVersionSource: 'unknown' });
+    expect(runtimeBuildContext('file:///private', null).buildVersion).toBe('unknown');
+    const entry = sanitizeRuntimeLogEntry('request', { scenario: 'secret', errorCode: 'credential', operationId: -1, pageIndex: 1.5, route: '/b50?token=secret', phase: 'https://private' }, '2026-09-06');
+    expect(entry.fields).toEqual({});
+    expect(sanitizeRuntimeLogEntry('error', { error: new ProviderError('permission', 'secret', false) }, '2026-09-06').fields.errorCode).toBe('permission');
+  });
   it('discards arbitrary payloads, credentials, messages and paths while bounding stack and UTF-8 size', () => {
     const error = new TypeError('Alice secret-token https://host/?token=secret');
     error.stack = `TypeError: Alice\n${Array(100).fill('    at Alice (C:\\Users\\Alice\\project\\index.js:42:7)').join('\n')}`;
@@ -319,10 +350,79 @@ describe('shared operation capture', () => {
     fetcher.mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])));
     await requestBytes(options);
     const entries = repository.snapshot(controller.getSnapshot().activeId!).entries;
-    expect(entries.slice(1).map((entry) => [entry.fields.source, entry.fields.result, entry.fields.attempt, entry.fields.status])).toEqual([
+    expect(entries.filter((entry) => entry.type === 'request').map((entry) => [entry.fields.source, entry.fields.result, entry.fields.attempt, entry.fields.status])).toEqual([
       ['request-json', 'error', 1, 503], ['request-json', 'success', 2, 200], ['request-bytes', 'success', 1, 200],
     ]);
     expect(JSON.stringify(entries)).not.toMatch(/Alice|private|secret-token/u);
+    expect(entries[1]?.type).toBe('request-start');
+    expect(new Set(entries.slice(1, 4).map((entry) => entry.fields.operationId)).size).toBe(1);
+    expect(entries[4]?.fields.operationId).not.toBe(entries[1]?.fields.operationId);
+  });
+
+  it('keeps concurrent request IDs and explicit scenarios separate', async () => {
+    const log = vi.fn(); installRuntimeLogRecorder(log);
+    let finish!: (response: Response) => void;
+    const options = { baseUrl: '', path: '/secret', label: 'test', error: () => new ProviderError('network', 'secret', false), schema: z.object({}) };
+    const first = requestJson({ ...options, diagnosticScenario: 'chart', fetcher: () => new Promise((resolve) => { finish = resolve; }) });
+    await requestJson({ ...options, diagnosticScenario: 'music', fetcher: async () => new Response('{}') });
+    finish(new Response('{}')); await first;
+    const events = log.mock.calls.map(([type, fields]) => ({ type, ...fields }));
+    expect(events.map((event) => event.scenario)).toEqual(['chart', 'music', 'music', 'chart']);
+    expect(events[0].operationId).toBe(events[3].operationId);
+    expect(events[1].operationId).toBe(events[2].operationId);
+    expect(events[0].operationId).not.toBe(events[1].operationId);
+  });
+
+  it.each(['schema', 'network', 'timeout', 'cancelled'] as const)('records normalized %s results', async (kind) => {
+    const { controller } = fixture(); await controller.start(); installRuntimeLogRecorder(controller.record);
+    const abort = new AbortController();
+    const fetcher: typeof fetch = async () => {
+      if (kind === 'schema') return new Response('invalid json');
+      if (kind === 'network') throw new TypeError('secret host');
+      if (kind === 'cancelled') abort.abort();
+      throw new DOMException('secret', 'AbortError');
+    };
+    await expect(requestJson({ baseUrl: '', path: '', label: 'test', error: () => new ProviderError('unknown', '', false), schema: z.object({}), retries: 1, signal: abort.signal, fetcher })).rejects.toThrow();
+    const entry = JSON.parse(controller.snapshot(1)).entries.at(-1);
+    expect(entry.fields.errorCode).toBe(kind === 'schema' ? 'upstream_schema' : kind);
+    expect(entry.fields.result).toBe(kind === 'cancelled' ? 'cancelled' : 'error');
+    if (kind === 'cancelled') expect(entry.error).toBeUndefined();
+  });
+
+  it('deduplicates operation stages and preserves the error context API', () => {
+    const log = vi.fn(); installRuntimeLogRecorder(log);
+    const operation = createRuntimeOperation('preview');
+    operation.record('ready'); operation.record('ready');
+    operation.record('ready', {}, 'second-view');
+    expect(log).toHaveBeenCalledTimes(2);
+    recordRuntimeError('query', new ProviderError('timeout', 'secret', true), false, { phase: 'final', operationId: operation.operationId });
+    expect(log.mock.calls.at(-1)?.[1]).toMatchObject({ phase: 'final', operationId: operation.operationId, fatal: false });
+  });
+
+  it('records provider JSON schema failures with a normalized code and shared request ID', async () => {
+    const { controller } = fixture(); await controller.start(); installRuntimeLogRecorder(controller.record);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('invalid json'));
+    await expect(fetchProviderJson({ baseUrl: 'https://secret', path: '/secret', diagnosticScenario: 'catalog', invalidJsonMessage: 'secret', timeoutMessage: 'secret', networkMessage: 'secret' })).rejects.toMatchObject({ code: 'upstream_schema' });
+    const entries = JSON.parse(controller.snapshot(1)).entries;
+    expect(entries.at(-1).fields).toMatchObject({ source: 'provider-json', scenario: 'catalog', errorCode: 'upstream_schema', operationId: entries[1].fields.operationId });
+    expect(JSON.stringify(entries)).not.toContain('secret');
+  });
+
+  it('records timer-driven timeouts and cancels during retry backoff without another request', async () => {
+    vi.useFakeTimers();
+    const log = vi.fn(); installRuntimeLogRecorder(log);
+    const options = { baseUrl: '', path: '', label: 'test', schema: z.object({}), error: () => new ProviderError('rate_limit', 'secret', true) };
+    const timeout = requestJson({ ...options, timeoutMs: 50, retries: 1, fetcher: (_url, init) => new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new DOMException('secret', 'AbortError')))) });
+    const rejected = expect(timeout).rejects.toMatchObject({ code: 'timeout' });
+    await vi.advanceTimersByTimeAsync(50); await rejected;
+    expect(log.mock.calls.at(-1)?.[1]).toMatchObject({ errorCode: 'timeout', durationMs: 50 });
+    const abort = new AbortController();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('', { status: 429 }));
+    const retry = requestJson({ ...options, fetcher: fetcher as typeof fetch, signal: abort.signal });
+    const cancelled = expect(retry).rejects.toBeDefined();
+    await vi.advanceTimersByTimeAsync(1); abort.abort(); await cancelled;
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls.at(-1)?.[1]).toMatchObject({ result: 'cancelled', errorCode: 'cancelled' });
   });
 
   it('records final query errors without copying query keys', async () => {

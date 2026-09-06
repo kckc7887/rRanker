@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import { PixelRatio, Platform, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
+import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
 
 const mockShowNotification = jest.fn();
 
@@ -115,6 +116,18 @@ jest.mock('@/hooks/use-game-data', () => ({
 }));
 
 describe('Phigros 生成图片页', () => {
+  afterEach(() => installRuntimeLogRecorder(undefined));
+  it('只记录一次预览就绪，不记录页面内容', async () => {
+    const log = jest.fn<(type: string, fields: Readonly<Record<string, unknown>>) => void>(); installRuntimeLogRecorder(log);
+    const screen = await render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><PhigrosBestImageScreen /></SafeAreaProvider>);
+    const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
+    await fireEvent(preview, 'message', { nativeEvent: { data: '{"type":"best-image-ready","width":1080,"height":1500,"secret":"player"}' } });
+    await fireEvent(preview, 'message', { nativeEvent: { data: '{"type":"best-image-ready","width":1080,"height":1500}' } });
+    const ready = log.mock.calls.filter(([type, fields]) => type === 'operation' && fields.source === 'best-image-preview' && fields.phase === 'ready');
+    expect(ready).toHaveLength(1);
+    expect(ready[0]?.[1]).toMatchObject({ pageIndex: 1, operationId: expect.any(Number) });
+    expect(JSON.stringify(ready)).not.toContain('secret');
+  });
   beforeEach(() => {
     const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     preparePhigrosFonts.mockReset().mockImplementation(async (...args: unknown[]) => {

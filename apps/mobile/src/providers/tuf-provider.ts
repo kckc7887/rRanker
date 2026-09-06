@@ -1,3 +1,4 @@
+import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 import { z } from 'zod';
 import {
   TufDifficultyHashSchema, TufDifficultyListSchema, TufLevelDetailResponseSchema,
@@ -26,9 +27,9 @@ function statusError(status: number): ProviderError {
 export class TufProvider {
   constructor(private readonly fetcher: FetchLike = fetch, private readonly baseUrl = TUF_API_BASE) {}
 
-  private request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+  private request<T>(path: string, schema: z.ZodType<T>, diagnosticScenario: RuntimeRequestScenario, signal?: AbortSignal): Promise<T> {
     return requestJson({
-      path,
+      path, diagnosticScenario,
       schema,
       fetcher: this.fetcher,
       baseUrl: this.baseUrl,
@@ -53,17 +54,17 @@ export class TufProvider {
         ? `pid:${digits}`
         : `#${digits}`;
     const params = new URLSearchParams({ query: searchQuery, limit: String(limit), offset: String(offset) });
-    return this.request(`/v3/players/search?${params}`, TufPlayerSearchResponseSchema, signal);
+    return this.request(`/v3/players/search?${params}`, TufPlayerSearchResponseSchema, 'player-search', signal);
   }
-  getPlayer(playerId: number, signal?: AbortSignal) { return this.request(`/v3/players/${playerId}`, TufPlayerSchema, signal); }
-  getPlayerProfile(playerId: number, signal?: AbortSignal) { return this.request(`/v3/players/${playerId}/profile`, TufPlayerSchema, signal); }
+  getPlayer(playerId: number, signal?: AbortSignal) { return this.request(`/v3/players/${playerId}`, TufPlayerSchema, 'player-profile', signal); }
+  getPlayerProfile(playerId: number, signal?: AbortSignal) { return this.request(`/v3/players/${playerId}/profile`, TufPlayerSchema, 'player-profile', signal); }
   getPasses(playerId: number, query: TufPassQuery, signal?: AbortSignal) {
     const params = new URLSearchParams({
       offset: String(query.offset), limit: String(query.limit), sortBy: query.sortBy,
       order: query.order, bestPerLevel: String(query.bestPerLevel),
     });
     if (query.query?.trim()) params.set('query', query.query.trim());
-    return this.request(`/v3/players/${playerId}/passes?${params}`, TufPassPageSchema, signal);
+    return this.request(`/v3/players/${playerId}/passes?${params}`, TufPassPageSchema, 'scores', signal);
   }
   searchLevels(query: TufLevelQuery, signal?: AbortSignal) {
     const params = new URLSearchParams({ offset: String(query.offset), limit: String(query.limit) });
@@ -71,24 +72,24 @@ export class TufProvider {
     if (query.sort && query.order) params.set('sort', `${query.sort}_${query.order}`);
     if (query.pguRange) params.set('pguRange', query.pguRange);
     if (query.specialDifficulties?.length) params.set('specialDifficulties', query.specialDifficulties.join(','));
-    return this.request(`/v2/database/levels?${params}`, TufLevelPageSchema, signal);
+    return this.request(`/v2/database/levels?${params}`, TufLevelPageSchema, 'chart-search', signal);
   }
   getLevel(levelId: number, signal?: AbortSignal) {
-    return this.request(`/v2/database/levels/${levelId}`, TufLevelDetailResponseSchema, signal);
+    return this.request(`/v2/database/levels/${levelId}`, TufLevelDetailResponseSchema, 'chart-detail', signal);
   }
   getLevelPasses(levelId: number, signal?: AbortSignal) {
-    return this.request(`/v2/database/passes/level/${levelId}`, TufLevelPassListSchema, signal);
+    return this.request(`/v2/database/passes/level/${levelId}`, TufLevelPassListSchema, 'scores', signal);
   }
   getVideoDetails(videoLink: string, signal?: AbortSignal) {
     const normalized = tufHttpsUrl(videoLink);
     if (!normalized) throw new ProviderError('unknown', 'TUF 视频链接无效', false);
-    return this.request(`/v2/media/video-details/${encodeURIComponent(normalized)}`, TufVideoDetailsSchema, signal);
+    return this.request(`/v2/media/video-details/${encodeURIComponent(normalized)}`, TufVideoDetailsSchema, 'video-details', signal);
   }
   getDifficulties(signal?: AbortSignal) {
-    return this.request('/v2/database/difficulties', TufDifficultyListSchema, signal);
+    return this.request('/v2/database/difficulties', TufDifficultyListSchema, 'difficulty', signal);
   }
   getDifficultyHash(signal?: AbortSignal) {
-    return this.request('/v2/database/difficulties/hash', TufDifficultyHashSchema, signal);
+    return this.request('/v2/database/difficulties/hash', TufDifficultyHashSchema, 'difficulty', signal);
   }
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetSta
 import { PixelRatio, Platform, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import { useNotification } from '@/components/AppNotification';
-import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { createRuntimeOperation } from '@/services/runtime-diagnostics-recorder';
 import {
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
@@ -87,6 +87,16 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
   const exportResolve = useRef<((height: number) => void) | null>(null);
   const exportReject = useRef<((error: Error) => void) | null>(null);
   const exportTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exportDiagnostic = useRef<{
+    operation: ReturnType<typeof createRuntimeOperation>; phase: string; pageIndex?: number; cancelled: boolean; timedOut: boolean;
+  } | null>(null);
+  const exportStage = (phase: string, pageIndex?: number) => {
+    const diagnostic = exportDiagnostic.current;
+    if (!diagnostic) return;
+    diagnostic.phase = phase;
+    diagnostic.pageIndex = pageIndex;
+    diagnostic.operation.record(phase, { pageIndex, result: 'start' });
+  };
 
   // 配置可能在每次渲染时产生新引用，用 ref 避免无关 effect 重跑。
   const configRef = useRef(config);
@@ -156,6 +166,7 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
     setExportHeight(knownHeight ?? configRef.current.defaultExportHeight(width));
     setExportIndex(waitForIndex);
     exportTimer.current = setTimeout(() => {
+      if (exportDiagnostic.current) exportDiagnostic.current.timedOut = true;
       exportResolve.current = null;
       exportReject.current = null;
       reject(new Error('图片渲染超时'));
@@ -168,6 +179,8 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
     if (measured !== null) setExportHeight(measured);
     const readyHeight = parseReadyMessage(dataValue);
     if (readyHeight === null || !exportResolve.current) return;
+    const diagnostic = exportDiagnostic.current;
+    diagnostic?.operation.record('canvas', { pageIndex: diagnostic.pageIndex, result: 'success' });
     setExportHeight(readyHeight);
     const resolve = exportResolve.current;
     exportResolve.current = null;
@@ -180,7 +193,9 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
 
   /** iOS 截图失败时改用 useRenderInContext。 */
   const captureExportPage = async (index: number, pages: readonly { id: string }[]): Promise<string> => {
+    exportStage('canvas', index + 1);
     const height = await waitForExportPage(index, pages);
+    exportStage('capture', index + 1);
     const dimensions = bestImageCaptureDimensions(width, height, PixelRatio.get(), Platform.OS);
     const useRenderInContext = shouldUseBestImageRenderInContext(Platform.OS, width, height);
     const captureOptions = {
@@ -203,10 +218,15 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
     const { wrapExportPageError, exportBusyIncludesIndex } = configRef.current;
     const busy = exportStatus !== null || (exportBusyIncludesIndex === true && exportIndex !== null);
     if (!htmlPages || !sources || !canExport || busy) return;
+    const diagnostic = { operation: createRuntimeOperation('best-image-export'), phase: 'permission', pageIndex: undefined as number | undefined, cancelled: false, timedOut: false };
+    exportDiagnostic.current = diagnostic;
+    diagnostic.operation.record('export', { result: 'start' });
+    exportStage('permission');
     const pageCount = htmlPages.length;
     const captures: { uri: string; filename: string }[] = [];
     try {
       await requestBestImageExportPermission();
+      diagnostic.operation.record('permission', { result: 'success' });
       for (let index = 0; index < pageCount; index += 1) {
         setExportStatus(`正在导出 ${index + 1}/${pageCount}`);
         let uri: string;
@@ -220,9 +240,11 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
           uri = await captureExportPage(index, pages);
         }
         captures.push({ uri, filename: buildExportFilename(index, pageCount) });
+        diagnostic.operation.record('capture', { result: 'success', pageIndex: index + 1 });
       }
       setExportIndex(null);
       for (let index = 0; index < captures.length; index += 1) {
+        exportStage('save', index + 1);
         setExportStatus(`正在保存 ${index + 1}/${captures.length}`);
         if (wrapExportPageError) {
           try {
@@ -233,20 +255,29 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
         } else {
           await saveBestImageCapture(captures[index]!.uri, captures[index]!.filename);
         }
+        diagnostic.operation.record('save', { result: 'success', pageIndex: index + 1 });
       }
+      diagnostic.operation.record('export', { result: 'success' });
       showNotification({
         title: '导出完成',
         message: `已保存 ${captures.length} 张成绩图片到相册`,
         variant: 'success',
       });
     } catch (error) {
-      recordRuntimeError('best-image-save', error);
+      diagnostic.operation.record(diagnostic.phase, {
+        result: diagnostic.cancelled ? 'cancelled' : diagnostic.timedOut ? 'timeout' : 'error',
+        pageIndex: diagnostic.pageIndex,
+        errorCode: diagnostic.cancelled ? 'cancelled' : diagnostic.timedOut ? 'timeout' : undefined,
+        error: diagnostic.cancelled ? undefined : error,
+      });
+      diagnostic.operation.record('export', { result: diagnostic.cancelled ? 'cancelled' : 'error' });
       showNotification({
         title: '导出失败',
         message: '无法导出成绩图片，请重试。',
         variant: 'error',
       });
     } finally {
+      if (exportDiagnostic.current === diagnostic) exportDiagnostic.current = null;
       if (exportTimer.current) clearTimeout(exportTimer.current);
       exportTimer.current = null;
       exportResolve.current = null;
@@ -258,6 +289,7 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
   };
 
   const cancelExportRequest = () => {
+    if (exportReject.current && exportDiagnostic.current) exportDiagnostic.current.cancelled = true;
     exportReject.current?.(new Error('导出已取消'));
   };
 

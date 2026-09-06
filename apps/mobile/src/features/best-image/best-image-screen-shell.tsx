@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,7 +17,8 @@ import {
 import { WebView } from 'react-native-webview';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
-import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { createRuntimeOperation, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { parseBestImageReadyMessage } from './best-image-messages';
 import { useAppTheme } from '@/theme/app-theme';
 import type { BestImageWebViewSource } from './prepare-best-image-webview-sources';
 import {
@@ -284,6 +285,18 @@ export function BestImageScreenShell<TType extends string>({
   const heavyContentMounted = !heavyContentBlocked;
   const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
   const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
+  // 新页面源、轮播页或内容进程代表一次新的预览；重新渲染不轮换编号。
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- source and generation define the operation lifetime
+  const previewOperation = useMemo(() => createRuntimeOperation('best-image-preview'), [sources, pageIndex, webViewGeneration, heavyContentMounted]);
+  const activePreviewOperation = useRef<typeof previewOperation | null>(previewOperation);
+  activePreviewOperation.current = previewOperation;
+  useEffect(() => {
+    activePreviewOperation.current = previewOperation;
+    return () => { if (activePreviewOperation.current === previewOperation) activePreviewOperation.current = null; };
+  }, [previewOperation]);
+  const recordPreview = (phase: string, fields: Readonly<Record<string, unknown>>) => {
+    if (activePreviewOperation.current === previewOperation) previewOperation.record(phase, fields);
+  };
   const releasedMarkerRef = useRef('');
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
   const window = useWindowDimensions();
@@ -301,6 +314,7 @@ export function BestImageScreenShell<TType extends string>({
     onRequestCloseExport();
     onReleaseHeavySources?.();
     void recordRuntimeDiagnostic('web-content', {
+      source: 'best-image',
       lifecyclePhase: lifecycle.phase,
       webContentState: 'released',
     });
@@ -314,6 +328,7 @@ export function BestImageScreenShell<TType extends string>({
   useEffect(() => {
     if (!heavyContentMounted || !sources) return;
     void recordRuntimeDiagnostic('web-content', {
+      source: 'best-image',
       lifecyclePhase: lifecycle.phase,
       webContentState: 'mounted',
     });
@@ -374,19 +389,28 @@ export function BestImageScreenShell<TType extends string>({
                   || request.url === 'about:blank'
                   || ('uri' in item ? request.url === item.uri : request.url === item.baseUrl)}
                 onError={(event) => {
-                  recordRuntimeError('best-image-preview', event?.nativeEvent);
+                  recordPreview('load-error', { result: 'error', error: event?.nativeEvent, pageIndex: index + 1 });
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, 'error');
                 }}
-                onLoadEnd={() => markBestImageWebViewLoaded(onPreviewStatesChange, pageId)}
-                onLoadStart={() => updateBestImageWebViewState(onPreviewStatesChange, pageId, 'loading')}
-                onMessage={(event) => onPreviewMessage(event.nativeEvent.data, pageId)}
+                onLoadEnd={() => {
+                  recordPreview('loaded', { pageIndex: index + 1 });
+                  markBestImageWebViewLoaded(onPreviewStatesChange, pageId);
+                }}
+                onLoadStart={() => {
+                  recordPreview('loading', { pageIndex: index + 1 });
+                  updateBestImageWebViewState(onPreviewStatesChange, pageId, 'loading');
+                }}
+                onMessage={(event) => {
+                  if (parseBestImageReadyMessage(event.nativeEvent.data, activeWidth) !== null) recordPreview('ready', { pageIndex: index + 1 });
+                  onPreviewMessage(event.nativeEvent.data, pageId);
+                }}
                 onContentProcessDidTerminate={() => {
-                  recordRuntimeError('best-image-terminated', undefined);
+                  recordPreview('terminated', { pageIndex: index + 1 });
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, 'terminated');
                   setWebViewGeneration((value) => value + 1);
                 }}
                 onRenderProcessGone={(event) => {
-                  recordRuntimeError('best-image-process-gone', undefined, event.nativeEvent.didCrash);
+                  recordPreview('process-gone', { pageIndex: index + 1, fatal: event.nativeEvent.didCrash });
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated');
                   setWebViewGeneration((value) => value + 1);
                 }}

@@ -1,7 +1,8 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import { ProviderError, providerErrorFromStatus } from './errors';
-import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
+import { nextRuntimeOperationId, recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
+import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 
 type FetchLike = typeof fetch;
 const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -28,6 +29,7 @@ export function retryAfterMs(response: Response): number {
 }
 
 export type JsonRequestOptions<T> = {
+  diagnosticScenario?: RuntimeRequestScenario;
   path: string;
   schema: z.ZodType<T>;
   fetcher: FetchLike;
@@ -52,8 +54,14 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
   const timeoutMessage = options.messages?.timeout ?? `${label}数据读取超时`;
   const networkMessage = options.messages?.network ?? `无法连接${label}服务`;
   let previousError: ProviderError | null = null;
+  const operationId = nextRuntimeOperationId();
+  const diagnostic = { source, scenario: options.diagnosticScenario, operationId };
+  void recordRuntimeDiagnostic('request-start', diagnostic);
   for (let attempt = 0; attempt < retries; attempt += 1) {
-    if (options.signal?.aborted) throw options.signal.reason;
+    if (options.signal?.aborted) {
+      void recordRuntimeDiagnostic('request', { ...diagnostic, result: 'cancelled', errorCode: 'cancelled', attempt: attempt + 1, durationMs: 0 });
+      throw options.signal.reason;
+    }
     const controller = new AbortController();
     const onExternalAbort = () => controller.abort();
     options.signal?.addEventListener('abort', onExternalAbort, { once: true });
@@ -85,19 +93,21 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
       if (options.signal?.aborted) result = 'cancelled';
       if (options.signal?.aborted) throw caught;
       if (caught instanceof z.ZodError || caught instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', schemaMessage, true, { cause: caught });
+        diagnosticError = new ProviderError('upstream_schema', schemaMessage, true, { cause: caught });
+        throw diagnosticError;
       }
       if (caught instanceof ProviderError) throw caught;
       const normalized = caught instanceof Error && caught.name === 'AbortError'
         ? new ProviderError('timeout', timeoutMessage, true, { cause: caught })
         : new ProviderError('network', networkMessage, true, { cause: caught });
+      diagnosticError = normalized;
       if (attempt === 0) { previousError = normalized; continue; }
       throw normalized;
     } finally {
       void recordRuntimeDiagnostic('request', {
-        source, result, status, attempt: attempt + 1, durationMs: Date.now() - started,
-        errorCode: diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
-        error: diagnosticError,
+        ...diagnostic, result, status, attempt: attempt + 1, durationMs: Date.now() - started,
+        errorCode: result === 'cancelled' ? 'cancelled' : diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
+        error: result === 'cancelled' ? undefined : diagnosticError,
       });
       clearTimeout(timeout);
       options.signal?.removeEventListener('abort', onExternalAbort);
@@ -116,6 +126,7 @@ export function requestBytes(options: Omit<JsonRequestOptions<Uint8Array>, 'sche
 }
 
 export type ProviderJsonOptions = {
+  diagnosticScenario?: RuntimeRequestScenario;
   baseUrl: string;
   path: string;
   /** 三段错误文案（无效 JSON/读取超时/无法连接），由调用方按数据源逐字提供。 */
@@ -130,6 +141,8 @@ export type ProviderJsonOptions = {
  * 与解析/超时/网络错误归一化，无重试（LXNS 公共曲库语义）。
  */
 export async function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown> {
+  const diagnostic = { source: 'provider-json', scenario: options.diagnosticScenario, operationId: nextRuntimeOperationId() };
+  void recordRuntimeDiagnostic('request-start', diagnostic);
   const started = Date.now();
   let status: number | undefined;
   let result = 'error';
@@ -154,17 +167,20 @@ export async function fetchProviderJson(options: ProviderJsonOptions): Promise<u
     if (options.signal?.aborted) throw error;
     if (error instanceof ProviderError) throw error;
     if (error instanceof SyntaxError) {
-      throw new ProviderError('upstream_schema', options.invalidJsonMessage, true, { cause: error });
+      diagnosticError = new ProviderError('upstream_schema', options.invalidJsonMessage, true, { cause: error });
+      throw diagnosticError;
     }
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new ProviderError('timeout', options.timeoutMessage, true, { cause: error });
+      diagnosticError = new ProviderError('timeout', options.timeoutMessage, true, { cause: error });
+      throw diagnosticError;
     }
-    throw new ProviderError('network', options.networkMessage, true, { cause: error });
+    diagnosticError = new ProviderError('network', options.networkMessage, true, { cause: error });
+    throw diagnosticError;
   } finally {
     void recordRuntimeDiagnostic('request', {
-      source: 'provider-json', result, status, attempt: 1, durationMs: Date.now() - started,
-      errorCode: diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
-      error: diagnosticError,
+      ...diagnostic, result, status, attempt: 1, durationMs: Date.now() - started,
+      errorCode: result === 'cancelled' ? 'cancelled' : diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
+      error: result === 'cancelled' ? undefined : diagnosticError,
     });
     clearTimeout(timeout);
     options.signal?.removeEventListener('abort', onExternalAbort);

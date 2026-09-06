@@ -1,3 +1,4 @@
+import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 import { z } from 'zod';
 import {
   MuseDashAlbumsResponseSchema,
@@ -29,9 +30,9 @@ function statusError(status: number): ProviderError {
 export class MuseDashProvider {
   constructor(private readonly fetcher: FetchLike = fetch, private readonly baseUrl = MUSE_DASH_API_BASE) {}
 
-  private request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+  private request<T>(path: string, schema: z.ZodType<T>, diagnosticScenario: RuntimeRequestScenario, signal?: AbortSignal): Promise<T> {
     return requestJson({
-      path,
+      path, diagnosticScenario,
       schema,
       fetcher: this.fetcher,
       baseUrl: this.baseUrl,
@@ -43,24 +44,24 @@ export class MuseDashProvider {
 
   /** /search/:string 昵称搜索，返回 [[nickname, user_id], ...]。 */
   searchPlayers(query: string, signal?: AbortSignal) {
-    return this.request(`/search/${encodeURIComponent(query.trim())}`, MuseDashSearchResponseSchema, signal);
+    return this.request(`/search/${encodeURIComponent(query.trim())}`, MuseDashSearchResponseSchema, 'player-search', signal);
   }
   /** /player/:id 玩家资料与全部成绩。 */
-  getPlayer(userId: string, signal?: AbortSignal) { return this.request(`/player/${encodeURIComponent(userId)}`, MuseDashPlayerSchema, signal); }
+  getPlayer(userId: string, signal?: AbortSignal) { return this.request(`/player/${encodeURIComponent(userId)}`, MuseDashPlayerSchema, 'player-profile', signal); }
   /** /rank/:uid/:difficulty/:platform/:id 单曲原始成绩明细（含 miss/judge/combo，成就判定用）。 */
   getPlayDetail(uid: string, difficulty: number, platform: string, userId: string, signal?: AbortSignal) {
     return this.request(
       `/rank/${encodeURIComponent(uid)}/${difficulty}/${encodeURIComponent(platform)}/${encodeURIComponent(userId)}`,
-      MuseDashPlayDetailSchema,
+      MuseDashPlayDetailSchema, 'score-detail',
       signal,
     );
   }
   /** /albums 全量曲库（专辑 → 歌曲）。 */
-  getAlbums(signal?: AbortSignal) { return this.request('/albums', MuseDashAlbumsResponseSchema, signal); }
+  getAlbums(signal?: AbortSignal) { return this.request('/albums', MuseDashAlbumsResponseSchema, 'catalog', signal); }
   /** /ce 角色与精灵名称表。 */
-  getCe(signal?: AbortSignal) { return this.request('/ce', MuseDashCeResponseSchema, signal); }
+  getCe(signal?: AbortSignal) { return this.request('/ce', MuseDashCeResponseSchema, 'characters', signal); }
   /** /diffdiff 全曲定数表。 */
-  getDiffdiff(signal?: AbortSignal) { return this.request('/diffdiff', MuseDashDiffdiffResponseSchema, signal); }
+  getDiffdiff(signal?: AbortSignal) { return this.request('/diffdiff', MuseDashDiffdiffResponseSchema, 'difficulty', signal); }
 }
 
 export const museDashProvider = new MuseDashProvider();

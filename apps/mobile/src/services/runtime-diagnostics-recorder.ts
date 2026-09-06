@@ -1,3 +1,5 @@
+import type { RuntimeErrorContext } from '@/domain/runtime-log';
+
 export type RuntimeDiagnosticRecorder = (
   type: string,
   fields?: Readonly<Record<string, unknown>>,
@@ -10,8 +12,28 @@ export function installRuntimeLogRecorder(next: typeof logRecorder): void {
   logRecorder = next;
 }
 
-export function recordRuntimeError(source: string, error: unknown, fatal = false): void {
-  void recordRuntimeDiagnostic('error', { source, error, fatal });
+let operationSequence = 0;
+export function nextRuntimeOperationId(): number {
+  return ++operationSequence;
+}
+
+export function createRuntimeOperation(source: string) {
+  const operationId = nextRuntimeOperationId();
+  const started = Date.now();
+  const recorded = new Set<string>();
+  return {
+    operationId,
+    record(phase: string, fields: Readonly<Record<string, unknown>> = {}, generation = '') {
+      const key = `${generation}:${phase}:${fields.pageIndex ?? ''}:${fields.result ?? ''}`;
+      if (recorded.has(key)) return;
+      recorded.add(key);
+      void recordRuntimeDiagnostic('operation', { ...fields, source, phase, operationId, durationMs: Math.max(0, Date.now() - started) });
+    },
+  };
+}
+
+export function recordRuntimeError(source: string, error: unknown, fatal = false, context: RuntimeErrorContext = {}): void {
+  void recordRuntimeDiagnostic('error', { ...context, source, error, fatal });
 }
 
 export function installRuntimeDiagnosticRecorder(next: RuntimeDiagnosticRecorder): void {

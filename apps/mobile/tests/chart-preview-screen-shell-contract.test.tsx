@@ -13,6 +13,7 @@ import {
   type ChartPreviewShellSource,
 } from '@/features/chart-preview-shared/chart-preview-screen-shell';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
 
 let mockLifecycle: AppLifecycleSnapshot = {
   appState: 'active', phase: 'foreground-ready', foregroundReady: true,
@@ -120,7 +121,10 @@ function countTreeNodesOfType(json: unknown, type: string): number {
 }
 
 describe('ChartPreviewScreenShell 虚构游戏契约', () => {
+  const log = jest.fn<(type: string, fields: Readonly<Record<string, unknown>>) => void>();
+  afterEach(() => { installRuntimeLogRecorder(undefined); jest.useRealTimers(); });
   beforeEach(() => {
+    log.mockClear(); installRuntimeLogRecorder(log);
     mockInjectJavaScript.mockClear();
     mockSaveSettings.mockClear();
     latestWebViewProps = {};
@@ -128,6 +132,49 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
       appState: 'active', phase: 'foreground-ready', foregroundReady: true,
       foregroundGeneration: 1, memoryWarningGeneration: 0,
     };
+  });
+
+  it('关联准备、加载和就绪，去重回调并隔离旧内容进程', async () => {
+    await renderFictionalShell({ kind: 'ready', payload: { chartName: 'secret' }, prepare: async () => fictionalSource });
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    const old = latestWebViewProps;
+    await act(() => {
+      (old.onLoadEnd as () => void)(); (old.onLoadEnd as () => void)();
+      (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"ready"}' } });
+      (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"ready"}' } });
+    });
+    const operations = () => log.mock.calls.filter(([type]) => type === 'operation').map(([, fields]) => fields);
+    expect(operations().map((fields) => [fields.phase, fields.result])).toEqual([
+      ['prepare', 'start'], ['prepare', 'success'], ['loaded', undefined], ['ready', undefined],
+    ]);
+    expect(new Set(operations().map((fields) => fields.operationId)).size).toBe(1);
+    await act(() => { (old.onContentProcessDidTerminate as () => void)(); });
+    await act(() => { (old.onError as (event: unknown) => void)({ nativeEvent: {} }); });
+    expect(operations().some((fields) => fields.phase === 'load-error')).toBe(false);
+    expect(operations().some((fields) => fields.phase === 'terminated')).toBe(true);
+    expect(JSON.stringify(operations())).not.toContain('secret');
+  });
+
+  it('后台取消只记录一次，迟到的准备结果不会记录成功', async () => {
+    let resolve!: (source: ChartPreviewShellSource) => void;
+    const dispose = jest.fn();
+    const request: ChartPreviewShellRequest<FictionalPayload> = { kind: 'ready', payload: { chartName: 'secret' }, prepare: () => new Promise((done) => { resolve = done; }) };
+    const view = await renderFictionalShell(request);
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await view.rerender(<FictionalShell request={request} />);
+    await act(() => resolve({ ...fictionalSource, dispose }));
+    const phases = log.mock.calls.filter(([type]) => type === 'operation').map(([, fields]) => fields.result);
+    expect(phases).toEqual(['start', 'cancelled']);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('准备超时与正常取消分别记录', async () => {
+    jest.useFakeTimers();
+    const view = await renderFictionalShell({ kind: 'ready', payload: { chartName: 'secret' }, timeoutMs: 50, prepare: () => new Promise(() => {}) });
+    await act(async () => { jest.advanceTimersByTime(50); });
+    await view.unmount();
+    const phases = log.mock.calls.filter(([type]) => type === 'operation').map(([, fields]) => fields.result);
+    expect(phases).toEqual(['start', 'timeout']);
   });
 
   it('prepare 挂起时渲染加载分支，虚构 WebView 尚未出现', async () => {
