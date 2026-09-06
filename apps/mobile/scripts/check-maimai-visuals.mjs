@@ -8,6 +8,7 @@ await fs.mkdir(output, { recursive: true });
 const audit = path.join(root, 'build/maimai-skin-audit');
 const manifest = JSON.parse(await fs.readFile(path.join(audit, 'manifest.json'), 'utf8'));
 const images = Object.fromEntries(await Promise.all(manifest.map(async a => [a.path, `data:image/png;base64,${(await fs.readFile(path.join(audit, a.path))).toString('base64')}`])));
+images['sensor.webp'] = `data:image/webp;base64,${(await fs.readFile(path.join(root, 'assets/maimai-chart-preview/sensor.webp'))).toString('base64')}`;
 const source = `
 import { parseSimaiBody } from './src/features/maimai-chart-preview/engine/core/parser/SimaiParser';
 import { MainRenderer } from './src/features/maimai-chart-preview/engine/renderers/MainRenderer';

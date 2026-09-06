@@ -175,12 +175,14 @@ describe('maimai chart preview remote assets', () => {
     result.dispose();
   });
 
-  it('does not Metro-pack sensor.webp or answer.wav', () => {
+  it('stages the original bundled sensor through the shared plan and injects it with the remote skins', () => {
     const prepare = readFileSync(
       resolve(process.cwd(), 'src/features/maimai-chart-preview/prepare-chart-preview-webview.ts'),
       'utf8',
     );
-    expect(prepare).not.toContain('sensor.webp');
+    expect(prepare).toContain("require('../../../assets/maimai-chart-preview/sensor.webp')");
+    expect(prepare).toContain('{ fileName: MAIMAI_CHART_PREVIEW_SENSOR.path, moduleId: SENSOR_MODULE }');
+    expect(prepare).toContain('data:image/webp;base64,${await sensor.base64()}');
     expect(prepare).not.toContain("require('../../../assets/maimai-chart-preview/answer.wav')");
     expect(prepare).toContain('maimaiChartPreviewRuntimeSkinAssets');
     expect(prepare).toContain('maimaiChartPreviewSkinStagePath');

@@ -154,6 +154,9 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   负责资源暂存和清理。舞萌通过计划中的 `fileName` 加入皮肤修订/正解音哈希，复用共享
   `remoteCacheDirectory` 的大小校验，不另建缓存执行器或清理范围。
   `skin-data.js` 的键仍为原始 S3 对象路径，语义别名仅在舞萌 `skinSemantics.ts` 解释。
+  本地原始 `sensor.webp` 以 `moduleId` 复用共享暂存清单，并由既有 writer 注入同一
+  `skin-data.js`；判定区的中心/缩放校准留在舞萌 `skinSemantics.ts`，判定点复用
+  音符几何 `buttonPoint`，判定区与判定线共用圆环和点的绘制路径。
   模型、simai 扩展、路径、SV、帧命令与皮肤加载均留在舞萌目录；共享层不解释音符。
   `npm run typecheck` 包含 `typecheck:maimai-player`，完整检查播放器入口和引擎。
   修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的

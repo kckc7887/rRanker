@@ -5,6 +5,10 @@ export const SKIN_ALIASES: Readonly<Record<string, string>> = {
   'TouchHoldSkins/touchhold_mine_border.png': 'TouchHoldSkins/touchhold_break_mine.png',
 };
 export const resolveSkinObject = (semantic: string): string => SKIN_ALIASES[semantic] ?? semantic;
+// Measured from the original 2048px sensor.webp: eight E-region centers fit touchPoint at radius 3.1.
+export const SENSOR_TRANSFORM = { center: [1025.5, 997] as const, pixelsPerUnit: 197 } as const;
+// S3 outline.png: 480px ring radius, 6px stroke and approximately 29px marker diameter at 100 PPU.
+export const JUDGMENT_OUTLINE = { lineWidth: 0.06, markerRadius: 0.145 } as const;
 export const SKIN_TRANSFORM = {
   pixelsPerUnit: 100,
   pivot: [0.5, 0.5] as const,

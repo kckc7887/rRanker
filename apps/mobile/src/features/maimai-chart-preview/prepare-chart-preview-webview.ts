@@ -12,6 +12,7 @@ import {
   maimaiChartPreviewRuntimeSkinAssets,
   maimaiChartPreviewSkinDataScript,
   maimaiChartPreviewSkinStagePath,
+  MAIMAI_CHART_PREVIEW_SENSOR,
 } from './maimai-chart-preview-skin-files';
 
 export {
@@ -33,6 +34,7 @@ export {
 const HTML_MODULE = require('../../../assets/maimai-chart-preview/index.html') as number;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PLAYER_MODULE = require('../../../assets/maimai-chart-preview/player.bundle') as number;
+const SENSOR_MODULE = require('../../../assets/maimai-chart-preview/sensor.webp') as number;
 
 export type ChartPreviewWebViewSource = {
   uri: string;
@@ -53,6 +55,7 @@ export async function prepareChartPreviewWebViewSource(
     remoteCacheDirectory: chartPreviewStageDirectoryBase('rranker-chart-preview-remote'),
     stagedAssets: [
       { fileName: 'player.js', moduleId: PLAYER_MODULE },
+      { fileName: MAIMAI_CHART_PREVIEW_SENSOR.path, moduleId: SENSOR_MODULE },
       ...maimaiChartPreviewRuntimeSkinAssets().map(({ path, url, bytes }) => ({
         fileName: maimaiChartPreviewSkinStagePath(path),
         url,
@@ -70,6 +73,8 @@ export async function prepareChartPreviewWebViewSource(
     writers: [
       async (directory) => {
         const entries: Record<string, string> = {};
+        const sensor = new File(directory, MAIMAI_CHART_PREVIEW_SENSOR.path);
+        entries[MAIMAI_CHART_PREVIEW_SENSOR.path] = `data:image/webp;base64,${await sensor.base64()}`;
         for (const asset of maimaiChartPreviewRuntimeSkinAssets()) {
           const file = new File(directory, maimaiChartPreviewSkinStagePath(asset.path));
           if (!file.exists) throw new Error(`皮肤缺失：${asset.path}`);

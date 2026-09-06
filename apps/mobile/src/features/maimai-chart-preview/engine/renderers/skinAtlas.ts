@@ -1,6 +1,7 @@
 import {
   maimaiChartPreviewRuntimeSkinAssets,
   MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL,
+  MAIMAI_CHART_PREVIEW_SENSOR,
 } from '../../maimai-chart-preview-skin-files';
 import { resolveSkinObject } from './skinSemantics';
 import { EFFECT_SPRITES } from './effectSprites.generated';
@@ -29,6 +30,9 @@ export class ChartPreviewSkin {
 
   async load(): Promise<void> {
     const dataUrls = readInjectedSkinDataUrls();
+    const sensor = MAIMAI_CHART_PREVIEW_SENSOR;
+    if (!dataUrls[sensor.path]) throw new Error(`皮肤缺失：${sensor.path}`);
+    await this.loadOne(dataUrls[sensor.path], sensor.path, sensor.width, sensor.height);
     const assets = maimaiChartPreviewRuntimeSkinAssets();
     for (let index = 0; index < assets.length; index += IMAGE_LOAD_CONCURRENCY) {
       const batch = assets.slice(index, index + IMAGE_LOAD_CONCURRENCY);
