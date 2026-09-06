@@ -1,3 +1,4 @@
+import type { Chart } from './engine/types';
 export type ChartPreviewSettings = {
   hiSpeed?: number;
   playbackSpeed?: number;
@@ -22,7 +23,11 @@ export type ChartPreviewSettings = {
 export type BuddyPreviewSide = '0' | '1' | 'dual';
 
 export type ChartPreviewInjectConfig = {
-  chartId: number;
+  chartId: number | string;
+  chartUrl?: string;
+  musicUrl?: string;
+  simaiText?: string;
+  parsedChart?: Chart;
   difficulty: number;
   title?: string;
   settings?: ChartPreviewSettings;

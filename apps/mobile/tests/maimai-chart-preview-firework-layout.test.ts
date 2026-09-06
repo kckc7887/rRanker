@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { effectCurve } from '@/features/maimai-chart-preview/engine/renderers/effects';
-import { parseSimaiBody } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
-import { prepareChart, buildFrame, touchPoint } from '@/features/maimai-chart-preview/engine/renderers/frame';
-import { DEFAULT_RENDERER_CONFIG } from '@/features/maimai-chart-preview/engine/renderers/MainRenderer';
+import { effectCurve } from '@/features/simai-chart-preview/engine/renderers/effects';
+import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { prepareChart, buildFrame, touchPoint } from '@/features/simai-chart-preview/engine/renderers/frame';
+import { DEFAULT_RENDERER_CONFIG } from '@/features/simai-chart-preview/engine/renderers/MainRenderer';
 
 describe('ViewX firework timing', () => {
   it('uses the original animation keys including the initial delay', () => {

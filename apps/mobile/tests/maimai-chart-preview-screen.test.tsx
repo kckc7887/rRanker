@@ -5,11 +5,11 @@ import MaimaiChartPreviewScreen from '../app/songs/chart-preview';
 import {
   createLatestFrameScheduler,
   resolveInitialBackgroundState,
-} from '@/features/maimai-chart-preview/webview-player/interactionScheduler';
+} from '@/features/simai-chart-preview/webview-player/interactionScheduler';
 import {
   getAvailableDifficulties,
   parseSimaiChart,
-} from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
+} from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 
 const mockInjectJavaScript = jest.fn();
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
@@ -75,7 +75,7 @@ jest.mock('@/components/AppNotification', () => ({
   }),
 }));
 
-jest.mock('@/features/maimai-chart-preview/prepare-chart-preview-webview', () => ({
+jest.mock('@/features/simai-chart-preview/prepare-chart-preview-webview', () => ({
   buildChartPreviewInjectedJavaScript: () => 'true;',
   chartPreviewAllowsFileAccess: () => true,
   chartPreviewExitFullscreenScript: () => "window.postMessage({type:'exit-fullscreen'}, '*');true;",

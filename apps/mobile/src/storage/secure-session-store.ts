@@ -1,3 +1,4 @@
+import { isHttpCookieSession } from '@/providers/http-cookies';
 import * as SecureStore from 'expo-secure-store';
 import Storage from 'expo-sqlite/kv-store';
 import type { GameId, RemoteProviderId } from '@/domain/game-bind-options';
@@ -112,11 +113,11 @@ const EMPTY_VAULT: SessionVault = {
 };
 
 function isRemoteProviderId(value: unknown): value is RemoteProviderId {
-  return value === 'diving-fish' || value === 'lxns' || value === 'phi-taptap' || value === 'osu';
+  return value === 'majdata-net' || value === 'diving-fish' || value === 'lxns' || value === 'phi-taptap' || value === 'osu';
 }
 
 function isGameId(value: unknown): value is GameId {
-  return value === 'maimai'
+  return value === 'majdata-net' || value === 'maimai'
     || value === 'chunithm'
     || value === 'phigros'
     || value === 'osu-standard'
@@ -127,6 +128,7 @@ function isGameId(value: unknown): value is GameId {
 }
 
 function isPersistableSession(session: ProviderSession): session is ProviderSession & { persistable: true } {
+  if (session.mode === 'http-cookies') return isHttpCookieSession(session);
   if (session.persistable !== true) return false;
   if (session.mode === 'jwt' || session.mode === 'import-token' || session.mode === 'phi-session') return true;
   if (session.mode === 'lxns-oauth') {
@@ -520,7 +522,7 @@ export class SecureSessionStore {
     return legacyVault;
   }
 
-  private async saveVaultUnlocked(vault: SessionVault): Promise<void> {
+  private async saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal): Promise<void> {
     const sanitized = sanitizeVault(vault);
     const currentRaw = await this.storage.getItem(INDEX_KEY);
     const current = currentRaw ? parseSessionIndex(currentRaw) : null;
@@ -557,7 +559,13 @@ export class SecureSessionStore {
         credentials: nextCredentials,
         accounts: sanitized.accounts,
       };
+      if (signal?.aborted) throw signal.reason;
       await this.storage.setItem(INDEX_KEY, JSON.stringify(index));
+      if (signal?.aborted) {
+        if (currentRaw === null) await this.storage.removeItem(INDEX_KEY);
+        else await this.storage.setItem(INDEX_KEY, currentRaw);
+        throw signal.reason;
+      }
     } catch (error) {
       for (const secretRef of newSecretRefs) {
         await this.secrets.delete(secretRef).catch(() => undefined);
@@ -577,7 +585,8 @@ export class SecureSessionStore {
     await this.enqueueMutation(() => this.saveVaultUnlocked(vault));
   }
 
-  private async upsertAccountUnlocked(account: StoredProviderAccountInput): Promise<string> {
+  private async upsertAccountUnlocked(account: StoredProviderAccountInput, signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted) throw signal.reason;
     const vault = await this.loadVault();
     const credentialId = account.credentialId
       ?? credentialIdForLegacyAccount(account.id);
@@ -607,13 +616,13 @@ export class SecureSessionStore {
         ...vault.accounts.filter((item) => item.id !== account.id),
         nextAccount,
       ],
-    });
+    }, signal);
     return credentialId;
   }
 
-  async upsertAccount(account: StoredProviderAccountInput): Promise<string> {
+  async upsertAccount(account: StoredProviderAccountInput, signal?: AbortSignal): Promise<string> {
     if (!isPersistableSession(account.session)) return '';
-    return this.enqueueMutation(() => this.upsertAccountUnlocked(account));
+    return this.enqueueMutation(() => this.upsertAccountUnlocked(account, signal));
   }
 
   /** 按账号解析共享凭据并轮换 token，不改变 activeAccountId。 */

@@ -1,3 +1,4 @@
+import { MajdataRecordsScreen } from '@/screens/MajdataScreens';
 import { useDeferredValue, useEffect, useMemo } from 'react';
 import { StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
@@ -160,6 +161,7 @@ export function RecordsScreen() {
     return <ChunithmRecordsScreen />;
   }
 
+  if (activeGameId === 'majdata-net') return <MajdataRecordsScreen />;
   if (activeGameId === 'phira') return <PhiraRecordsScreen />;
 
   if (isOsuGameId(activeGameId)) return <OsuRecordsScreen />;

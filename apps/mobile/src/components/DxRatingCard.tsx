@@ -20,6 +20,7 @@ export function DxRatingCard({
   valueTheme,
   sideBadge,
   borderless = false,
+  valueRows,
 }: {
   label: string;
   display: string;
@@ -39,6 +40,7 @@ export function DxRatingCard({
   };
   /** 移除外层渐变边框，并补偿内边距以保持卡片尺寸与内容位置。 */
   borderless?: boolean;
+  valueRows?: readonly { label: string; value: string }[];
 }) {
   const theme = themeOverride ?? (rating == null ? EMPTY_THEME : resolveDxRatingTheme(rating));
   const stars = '★'.repeat(theme.starCount);
@@ -69,7 +71,10 @@ export function DxRatingCard({
         <View style={styles.row}>
           <View style={styles.copy}>
             <Text style={[styles.cardLabel, { color: theme.textColor }]}>{label}</Text>
-            <RatingValue display={display} fallbackColor={theme.textColor} valueTheme={valueTheme} />
+            {valueRows ? valueRows.map(row => <View key={row.label} style={{ flexDirection: 'row', alignItems: 'baseline', gap: 12 }}>
+              <Text style={{ color: theme.textColor, width: 56, fontSize: 12 }}>{row.label}</Text>
+              <Text adjustsFontSizeToFit numberOfLines={1} style={{ color: theme.textColor, fontSize: 24, fontWeight: '800', flexShrink: 1 }}>{row.value}</Text>
+            </View>) : <RatingValue display={display} fallbackColor={theme.textColor} valueTheme={valueTheme} />}
             <Text style={[styles.meta, { color: theme.textColor }]}>{meta}</Text>
           </View>
           {sideBadge ? (

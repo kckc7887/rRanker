@@ -549,3 +549,14 @@ describe('SQLite physical allocation estimate', () => {
     mocks.getFirstAsync.mockImplementation(async (_sql: string) => null);
   });
 });
+
+
+describe('Majdata storage segment', () => {
+  it('clears only Majdata resources and owns account queries as well as catalog pages', async () => {
+    const resources = ['majdata-net:account:a', 'majdata-net:song:uuid', 'majdata-net:chart:uuid:hash', 'majdata-net:parsed:uuid:hash:6'];
+    const snapshots = { listAccountScoreSizes: vi.fn(async () => []), listResourceSizes: vi.fn(async () => [...resources.map(key => ({ key, bytes: 10 })), { key: 'local-tags', bytes: 100 }, { key: 'phira:chart:1', bytes: 99 }]), clearAccountScores: vi.fn(async () => undefined), clearResources: vi.fn(async () => undefined) };
+    const adapter = getGameStorageAdapter('majdata-net')!; expect(listClearableCategoryIds()).toContain('majdata-net');
+    expect(adapter.queryKeys).toContainEqual(['game-data']); expect(adapter.queryKeys).toContainEqual(['majdata-net']);
+    expect(await adapter.measure(snapshots as never)).toBe(40); await adapter.clear(snapshots as never); expect(snapshots.clearResources).toHaveBeenCalledWith(resources);
+  });
+});

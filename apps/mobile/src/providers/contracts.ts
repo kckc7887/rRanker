@@ -3,6 +3,7 @@ import type {
 } from '@/domain/models';
 
 export type ProviderSession =
+  | import('./http-cookies').HttpCookieSession
   | { mode: 'jwt'; value: string; persistable: true }
   | { mode: 'import-token'; value: string; persistable: true }
   | {

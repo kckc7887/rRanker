@@ -3,10 +3,10 @@ import {
   judgeHintTapHoldTouchText,
   judgeTextSkinPath,
   parseJudgeHint,
-} from '@/features/maimai-chart-preview/engine/utils/judgeHint';
-import { parseSimaiBody } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
-import { prepareChart, buildFrame } from '@/features/maimai-chart-preview/engine/renderers/frame';
-import { DEFAULT_RENDERER_CONFIG } from '@/features/maimai-chart-preview/engine/renderers/MainRenderer';
+} from '@/features/simai-chart-preview/engine/utils/judgeHint';
+import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { prepareChart, buildFrame } from '@/features/simai-chart-preview/engine/renderers/frame';
+import { DEFAULT_RENDERER_CONFIG } from '@/features/simai-chart-preview/engine/renderers/MainRenderer';
 
 describe('judge hint selection', () => {
   it('defaults missing or unknown values to distinguish', () => {

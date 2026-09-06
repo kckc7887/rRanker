@@ -1,0 +1,6 @@
+{
+  "majdata-mixed-mine": "(120){4}1m,2hm[4:1],3?-7m[4:1],4bm,Chm[4:1],",
+  "majdata-fork-break-mine": "(180){8}1bx-5b[4:1]*-7m[8:1],2?-4-6[4:2],3bm-7bm[4:1],",
+  "majdata-empty": "(120),",
+  "majdata-seven-slot": "(150){#0.2}1/2,Chxb[4:1],<HS*2><SV*0.5>3K7[4:1],"
+}

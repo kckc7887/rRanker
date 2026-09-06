@@ -1,3 +1,5 @@
+import { majdataAsset } from '@/domain/majdata';
+import { loadMajdataSong, loadMajdataParsedChart } from '@/services/majdata-service';
 import { useCallback, useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import type { ChartType } from '@/domain/models';
@@ -6,14 +8,16 @@ import {
   maimaiChartPreviewChartId,
   maimaiChartPreviewEngineDifficulty,
   maimaiChartPreviewVideoUrl,
+  maimaiChartPreviewSimaiUrl,
+  maimaiChartPreviewMusicUrl,
 } from '@/domain/maimai-chart-preview';
 import { maimaiJacketUrl } from '@/domain/maimai-assets';
 import {
   buildChartPreviewInjectedJavaScript,
   chartPreviewAllowsFileAccess,
   prepareChartPreviewWebViewSource,
-} from '@/features/maimai-chart-preview/prepare-chart-preview-webview';
-import type { BuddyPreviewSide, ChartPreviewSettings } from '@/features/maimai-chart-preview/chart-preview-inject';
+} from '@/features/simai-chart-preview/prepare-chart-preview-webview';
+import type { BuddyPreviewSide, ChartPreviewSettings } from '@/features/simai-chart-preview/chart-preview-inject';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
 import type { ChartPreviewBridgeMessage } from '@/features/chart-preview-shared/chart-preview-bridge';
 import { useNotification } from '@/components/AppNotification';
@@ -27,7 +31,10 @@ function parseChartType(value: string | undefined): ChartType | null {
 type MappedPreview =
   | { error: string }
   | {
-      chartId: number;
+      chartId: number | string;
+      hash?: string;
+      chartUrl: string;
+      musicUrl: string;
       difficulty: number;
       buddySide: BuddyPreviewSide | undefined;
       title: string | undefined;
@@ -41,6 +48,8 @@ export default function MaimaiChartPreviewScreen() {
   const isDark = theme.dark;
   const params = useLocalSearchParams<{
     songId?: string;
+    gameId?: string;
+    hash?: string;
     chartType?: string;
     levelIndex?: string;
     buddySide?: string;
@@ -56,6 +65,10 @@ export default function MaimaiChartPreviewScreen() {
         params.buddySide === '0' || params.buddySide === '1' || params.buddySide === 'dual'
           ? params.buddySide
           : undefined;
+      if (params.gameId === 'majdata-net') {
+        if (!songId || !Number.isInteger(levelIndex) || levelIndex < 0 || levelIndex > 6) return { error: '所选难度不存在' };
+        return { chartId: songId, hash: params.hash, difficulty: levelIndex + 1, chartUrl: majdataAsset(songId, 'chart'), musicUrl: majdataAsset(songId, 'track'), title: params.title, buddySide: undefined, backgroundImageUrl: majdataAsset(songId, 'image', true), backgroundVideoUrl: majdataAsset(songId, 'video') };
+      }
       if (!songId || !chartType) return { error: '缺少歌曲或谱面类型参数' as string };
       try {
         const chartId = maimaiChartPreviewChartId(songId, chartType);
@@ -69,6 +82,8 @@ export default function MaimaiChartPreviewScreen() {
               );
         return {
           chartId,
+          chartUrl: maimaiChartPreviewSimaiUrl(chartId),
+          musicUrl: maimaiChartPreviewMusicUrl(chartId),
           difficulty,
           buddySide,
           title: typeof params.title === 'string' ? params.title : undefined,
@@ -79,7 +94,7 @@ export default function MaimaiChartPreviewScreen() {
         return { error: '无法打开该谱面，请返回歌曲详情重试。' };
       }
     },
-    [params.buddySide, params.chartType, params.levelIndex, params.songId, params.title],
+    [params.hash, params.gameId, params.buddySide, params.chartType, params.levelIndex, params.songId, params.title],
   );
 
   const request = useMemo(
@@ -88,12 +103,18 @@ export default function MaimaiChartPreviewScreen() {
       : {
           kind: 'ready' as const,
           payload: mapped,
-          prepare: (signal: AbortSignal, settings: unknown) =>
-            prepareChartPreviewWebViewSource({
+          prepare: async (signal: AbortSignal, settings: unknown) => {
+            const song = typeof mapped.chartId === 'string' ? await loadMajdataSong(mapped.chartId, signal) : undefined;
+            if (mapped.hash && song?.hash !== mapped.hash) throw new Error('谱面已更新，请返回歌曲详情重试');
+            const parsed = song ? await loadMajdataParsedChart(song, mapped.difficulty - 1, signal) : undefined;
+            if (signal.aborted) throw signal.reason;
+            return prepareChartPreviewWebViewSource({
+              parsedChart: parsed?.chart,
               ...mapped,
               settings: settings as ChartPreviewSettings,
               theme: isDark ? 'dark' : 'light',
-            }),
+            });
+          },
         }),
     [mapped, isDark],
   );
@@ -132,7 +153,7 @@ export default function MaimaiChartPreviewScreen() {
       request={request}
       settingsKey="maimai-chart-preview-settings"
       testID="maimai-chart-preview-webview"
-      accessibilityLabel="舞萌谱面确认播放器"
+      accessibilityLabel="谱面确认播放器"
       errorHint="可返回歌曲详情重试，或改用搜索谱面确认。"
       prepareErrorFallback="无法准备谱面预览资源"
       allowFileAccess={chartPreviewAllowsFileAccess()}

@@ -69,7 +69,7 @@ describe('M2 tool screens', () => {
     const screen = await render(<RatingToolScreen />);
     expect(screen.getByLabelText('定数').props.value).toBe('12.3');
   });
-  it('shows tolerance result and invalid zero-total error', async () => {
+  it('shows tolerance result and handles empty charts', async () => {
     const screen = await render(<ToleranceToolScreen />);
     expect(screen.getAllByText(/预计达成率/).length).toBeGreaterThan(0);
     expect(screen.getByLabelText('物量分析表')).toBeTruthy();
@@ -80,7 +80,7 @@ describe('M2 tool screens', () => {
     expect(screen.getByLabelText('容错计算表')).toBeTruthy();
     expect(screen.getAllByText('↔ 左右滑动查看完整表格')).toHaveLength(2);
     for (const label of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK']) await fireEvent.changeText(screen.getByLabelText(label), '0');
-    expect(screen.getAllByText('输入无效，请检查各项数值。').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('预计达成率 0.0000%').length).toBeGreaterThan(0);
   });
   it('fills chart note counts from song-detail route parameters', async () => {
     mockToleranceParams = { tap: '321', hold: '45', slide: '67', touch: '89', break: '10' };

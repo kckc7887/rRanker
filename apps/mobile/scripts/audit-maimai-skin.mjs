@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 
 const root = path.resolve(import.meta.dirname, '..');
-const manifest = await fs.readFile(path.join(root, 'src/features/maimai-chart-preview/maimai-chart-preview-skin-manifest.generated.ts'), 'utf8');
+const manifest = await fs.readFile(path.join(root, 'src/features/simai-chart-preview/maimai-chart-preview-skin-manifest.generated.ts'), 'utf8');
 const base = manifest.match(/'https:[^']+'/)[0].slice(1, -1);
 const paths = [...new Set([...manifest.matchAll(/"?path"?:\s*"([^"]+)"/g)].map(m => m[1]).filter(key => key.endsWith('.png')).concat(process.argv.slice(2)))];
 if (paths.length === 0) throw new Error('Empty skin manifest');

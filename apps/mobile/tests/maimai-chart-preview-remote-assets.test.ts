@@ -6,17 +6,17 @@ import {
   MAIMAI_CHART_PREVIEW_ANSWER_SOUND,
   MAIMAI_CHART_PREVIEW_ASSET_BASE,
   MAIMAI_CHART_PREVIEW_SKIN_ASSETS,
-} from '@/features/maimai-chart-preview/maimai-chart-preview-skin-manifest.generated';
+} from '@/features/simai-chart-preview/maimai-chart-preview-skin-manifest.generated';
 import {
   isMaimaiChartPreviewRuntimeSkinPath,
   maimaiChartPreviewRuntimeSkinAssets,
   maimaiChartPreviewSkinDataScript,
   maimaiChartPreviewSkinStagePath,
-} from '@/features/maimai-chart-preview/maimai-chart-preview-skin-files';
-import { parseSimaiBody } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
-import { buildFrame, prepareChart } from '@/features/maimai-chart-preview/engine/renderers/frame';
-import { DEFAULT_RENDERER_CONFIG } from '@/features/maimai-chart-preview/engine/renderers/MainRenderer';
-import { resolveSkinObject } from '@/features/maimai-chart-preview/engine/renderers/skinSemantics';
+} from '@/features/simai-chart-preview/maimai-chart-preview-skin-files';
+import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { buildFrame, prepareChart } from '@/features/simai-chart-preview/engine/renderers/frame';
+import { DEFAULT_RENDERER_CONFIG } from '@/features/simai-chart-preview/engine/renderers/MainRenderer';
+import { resolveSkinObject } from '@/features/simai-chart-preview/engine/renderers/skinSemantics';
 
 const mockFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
@@ -177,7 +177,7 @@ describe('maimai chart preview remote assets', () => {
 
   it('stages the original bundled sensor through the shared plan and injects it with the remote skins', () => {
     const prepare = readFileSync(
-      resolve(process.cwd(), 'src/features/maimai-chart-preview/prepare-chart-preview-webview.ts'),
+      resolve(process.cwd(), 'src/features/simai-chart-preview/prepare-chart-preview-webview.ts'),
       'utf8',
     );
     expect(prepare).toContain("require('../../../assets/maimai-chart-preview/sensor.webp')");

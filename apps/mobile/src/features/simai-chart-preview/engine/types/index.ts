@@ -1,6 +1,6 @@
 export type ButtonPosition = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 export type TouchPosition = 'C' | 'C1' | 'C2' | `${'A' | 'B' | 'D' | 'E'}${ButtonPosition}`;
-export type ChartDifficulty = 1 | 2 | 3 | 4 | 5 | 6;
+export type ChartDifficulty = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type MirrorMode = 'none' | 'horizontal' | 'vertical' | 'rotate180';
 export type JudgmentLineDesign = 'blind' | 'noLine' | 'simple' | 'sensor';
 export type JudgeHintMode = 'distinguish' | 'unified' | 'hidden';
@@ -34,8 +34,8 @@ export interface Chart {
   bpmEvents: BpmEvent[]; divisorEvents: DivisorEvent[]; scrollEvents: ScrollEvent[]; signatures: SignatureEvent[];
   firstMs: number; durationMs: number;
 }
-export const DIFFICULTY_NAMES: Record<ChartDifficulty, string> = { 1: 'EASY', 2: 'BASIC', 3: 'ADVANCED', 4: 'EXPERT', 5: 'MASTER', 6: 'Re:MASTER' };
-export const DIFFICULTY_COLORS: Record<ChartDifficulty, string> = { 1: '#1E3A8A', 2: '#22C55E', 3: '#EAB308', 4: '#EF4444', 5: '#A855F7', 6: '#F8FAFC' };
+export const DIFFICULTY_NAMES: Record<ChartDifficulty, string> = { 1: 'EASY', 2: 'BASIC', 3: 'ADVANCED', 4: 'EXPERT', 5: 'MASTER', 6: 'Re:MASTER', 7: 'UTAGE' };
+export const DIFFICULTY_COLORS: Record<ChartDifficulty, string> = { 1: '#1E3A8A', 2: '#22C55E', 3: '#EAB308', 4: '#EF4444', 5: '#A855F7', 6: '#F8FAFC', 7: '#EC4899' };
 export interface RendererConfig {
   hiSpeed: number; alwaysKeepHiSpeed: boolean; playbackSpeed: number; mirrorMode: MirrorMode;
   highlightExNotes: boolean; normalColorBreakSlide: boolean; pinkSlideStart: boolean; slideRotation: boolean;

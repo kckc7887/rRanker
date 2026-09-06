@@ -143,7 +143,7 @@ function metadata(text: string) {
 }
 export function getAvailableDifficulties(text: string): AvailableDifficulties {
   const fields = metadata(text), result: AvailableDifficulties = {};
-  for (let i = 1; i <= 6; i++) if (fields[`inote_${i}`]) result[i as ChartDifficulty] = true;
+  for (let i = 1; i <= 7; i++) if (fields[`inote_${i}`]) result[i as ChartDifficulty] = true;
   return result;
 }
 export function parseSimaiChart(text: string, difficulty?: ChartDifficulty | number): Chart {

@@ -3,10 +3,10 @@ import cases from './fixtures/maimai-simai-cases.json';
 import reference from './fixtures/maimai-simai-reference.json';
 import customReference from './fixtures/maimai-custom-reference.json';
 import connectedReference from './fixtures/maimai-connected-reference.json';
-import { parseSimaiBody, SimaiParseError } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
-import { ScrollTimeline } from '@/features/maimai-chart-preview/engine/core/timing/ScrollTimeline';
-import { geometryFor, prepareBranch, joinGeometries } from '@/features/maimai-chart-preview/engine/core/geometry/slidePath';
-import { prepareAudioEvents } from '@/features/maimai-chart-preview/engine/core/audio/AudioManager';
+import { parseSimaiBody, SimaiParseError } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { ScrollTimeline } from '@/features/simai-chart-preview/engine/core/timing/ScrollTimeline';
+import { geometryFor, prepareBranch, joinGeometries } from '@/features/simai-chart-preview/engine/core/geometry/slidePath';
+import { prepareAudioEvents } from '@/features/simai-chart-preview/engine/core/audio/AudioManager';
 
 describe('MajSimai 2.2.2 reference output', () => {
   for (const [code, expected] of Object.entries(connectedReference)) it(`ViewX connected geometry ${code}`, () => {

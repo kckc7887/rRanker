@@ -383,3 +383,23 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect(secure.values.has('rranker.diving-fish.session.v1')).toBe(false);
   });
 });
+
+
+describe('Majdata Cookie secure accounts', () => {
+  const input = (id: string): StoredProviderAccountInput => ({ id, gameId: 'majdata-net', providerId: 'majdata-net', displayName: id, scoreDisplay: '-', session: { mode: 'http-cookies', persistable: true, origin: 'https://majdata.net', cookies: [{ name: 'auth', value: `secret-${id}`, path: '/', secure: true }] } });
+  beforeEach(() => { secure.values.clear(); sqlite.values.clear(); });
+  it('restores and removes each isolated credential without exposing it in SQLite', async () => {
+    const store = createStore(); await store.upsertAccount(input('a')); await store.upsertAccount(input('b'));
+    const restored = await store.loadVault(); expect(restored.credentials).toHaveLength(2);
+    expect([...sqlite.values.values()].join('')).not.toContain('secret-');
+    await store.removeAccount('a'); const remaining = await store.loadVault(); expect(remaining.accounts.map(a => a.id)).toEqual(['b']);
+    expect(remaining.credentials[0].session).toMatchObject({ cookies: [{ value: 'secret-b' }] });
+  });
+  it('rolls back an account binding cancelled while its index is being saved', async () => {
+    const controller = new AbortController(); let armed = false;
+    const store = new SecureSessionStore({ ...kvStore, setItem: async (key, value) => { await kvStore.setItem(key, value); if (armed) { armed = false; controller.abort(); } } });
+    await store.upsertAccount(input('a')); armed = true;
+    await expect(store.upsertAccount(input('b'), controller.signal)).rejects.toBeDefined();
+    const remaining = await store.loadVault(); expect(remaining.accounts.map(a => a.id)).toEqual(['a']); expect(remaining.activeAccountId).toBe('a');
+  });
+});

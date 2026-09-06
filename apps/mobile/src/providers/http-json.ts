@@ -29,6 +29,8 @@ export function retryAfterMs(response: Response): number {
 }
 
 export type JsonRequestOptions<T> = {
+  init?: RequestInit;
+  onResponse?: (response: Response) => void | Promise<void>;
   diagnosticScenario?: RuntimeRequestScenario;
   path: string;
   schema: z.ZodType<T>;
@@ -71,9 +73,16 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
     let result = 'error';
     let diagnosticError: unknown;
     try {
-      const response = await fetcher(`${baseUrl}${path}`, {
-        headers: { Accept: 'application/json', 'Cache-Control': 'no-store' }, signal: controller.signal,
+      const headers: Record<string, string> = { Accept: 'application/json', 'Cache-Control': 'no-store' };
+      new Headers(options.init?.headers).forEach((value, key) => {
+        headers[Object.keys(headers).find(existing => existing.toLowerCase() === key) ?? key] = value;
       });
+      const response = await fetcher(`${baseUrl}${path}`, {
+        ...options.init,
+        headers, signal: controller.signal,
+      });
+      if (options.signal?.aborted) throw options.signal.reason;
+      await options.onResponse?.(response);
       status = response.status;
       if (!response.ok) {
         const mapped = error(response.status);
@@ -86,6 +95,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
         throw mapped;
       }
       const data = schema.parse(await read(response));
+      if (options.signal?.aborted) throw options.signal.reason;
       result = 'success';
       return data;
     } catch (caught) {
@@ -118,6 +128,10 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
 
 export function requestJson<T>(options: JsonRequestOptions<T>): Promise<T> {
   return requestData(options, (response) => response.json(), 'request-json');
+}
+
+export function requestProviderResponse<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>): Promise<T> {
+  return requestData(options, read, 'request-json');
 }
 
 export function requestBytes(options: Omit<JsonRequestOptions<Uint8Array>, 'schema'>): Promise<Uint8Array> {

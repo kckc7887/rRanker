@@ -1,3 +1,4 @@
+import { MajdataCatalogScreen } from '@/screens/MajdataScreens';
 import { memo, useCallback, useDeferredValue, useEffect, useMemo } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, TextInput, View, type ListRenderItem } from 'react-native';
@@ -166,6 +167,7 @@ export function SearchScreen() {
   if (activeGameId === 'phigros') {
     return <PhigrosSearchScreen />;
   }
+  if (activeGameId === 'majdata-net') return <MajdataCatalogScreen />;
   if (activeGameId === 'phira') return <PhiraCatalogScreen />;
 
   if (isOsuGameId(activeGameId)) return <OsuCatalogScreen />;

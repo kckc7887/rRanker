@@ -8,8 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(scriptDir, '..');
-const entry = path.join(root, 'src/features/maimai-chart-preview/webview-player/main.ts');
-const htmlTemplate = path.join(root, 'src/features/maimai-chart-preview/webview-player/index.html');
+const entry = path.join(root, 'src/features/simai-chart-preview/webview-player/main.ts');
+const htmlTemplate = path.join(root, 'src/features/simai-chart-preview/webview-player/index.html');
 const outDir = path.join(root, 'assets/maimai-chart-preview');
 const outHtml = path.join(outDir, 'index.html');
 const outPlayerJs = path.join(outDir, 'player.js');

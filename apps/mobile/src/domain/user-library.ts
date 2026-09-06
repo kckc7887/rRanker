@@ -11,8 +11,8 @@ export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
 export const MAX_BACKUP_ITEMS = 5000;
 
-const KNOWN_GAME_IDS = new Set<GameId>(['maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']);
-const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']);
+const KNOWN_GAME_IDS = new Set<GameId>(['majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']);
+const GameIdSchema = z.enum(['majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']);
 
 /**
  * 曲库歌曲 id 规范化：adofai 关卡 id 是完整数字（如 11372），
@@ -22,7 +22,7 @@ const GameIdSchema = z.enum(['maimai', 'chunithm', 'phigros', 'phira', 'adofai',
  * 都不适用 maimai 的 U·TA·GE 截断语义；其余游戏使用 normalizeSongId。
  */
 export function normalizeLibrarySongId(gameId: GameId, songId: string | number): string {
-  return gameId === 'adofai' || gameId === 'musedash' || gameId === 'phira' || isOsuGameId(gameId)
+  return gameId === 'majdata-net' || gameId === 'adofai' || gameId === 'musedash' || gameId === 'phira' || isOsuGameId(gameId)
     ? String(songId)
     : normalizeSongId(songId);
 }

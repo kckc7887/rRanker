@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseSimaiBody } from '@/features/maimai-chart-preview/engine/core/parser/SimaiParser';
-import { prepareChart, buildFrame } from '@/features/maimai-chart-preview/engine/renderers/frame';
-import { DEFAULT_RENDERER_CONFIG } from '@/features/maimai-chart-preview/engine/renderers/MainRenderer';
-import { holdParticleState } from '@/features/maimai-chart-preview/engine/renderers/effects';
+import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { prepareChart, buildFrame } from '@/features/simai-chart-preview/engine/renderers/frame';
+import { DEFAULT_RENDERER_CONFIG } from '@/features/simai-chart-preview/engine/renderers/MainRenderer';
+import { holdParticleState } from '@/features/simai-chart-preview/engine/renderers/effects';
 
 describe('ViewX hold effect emission (10/s, 0.3s lifetime)', () => {
   it('samples the prefab size and seven-key alpha gradient', () => {

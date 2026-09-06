@@ -25,7 +25,7 @@ export function createChartPreviewInjectors<TConfig>(
   spec: ChartPreviewInjectSpec<TConfig>,
 ): ChartPreviewInjectors<TConfig> {
   const { globalVar, placeholder, serialize } = spec;
-  const buildConfigJson = (config: TConfig): string => serialize(config);
+  const buildConfigJson = (config: TConfig): string => serialize(config).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const buildConfigScript = (config: TConfig): string =>
     `<script>window.${globalVar}=${buildConfigJson(config)};</script>`;
   const buildInjectedJavaScript = (config: TConfig): string =>
@@ -33,7 +33,7 @@ export function createChartPreviewInjectors<TConfig>(
   const applyConfigToHtml = (html: string, config: TConfig): string => {
     const script = buildConfigScript(config);
     if (html.includes(placeholder)) {
-      return html.replace(placeholder, script);
+      return html.replace(placeholder, () => script);
     }
     return script + html;
   };

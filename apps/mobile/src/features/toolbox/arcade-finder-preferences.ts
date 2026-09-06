@@ -26,7 +26,7 @@ function storeKey(gameId: GameId): string {
 /** Each game gets its own first-visit default; persisted per-game choices remain authoritative. */
 export function defaultArcadeFinderPreferences(gameId: GameId = 'maimai'): ArcadeFinderPreferences {
   const defaultTitleIds: Record<GameId, number[]> = {
-    maimai: [MAIMAI_DX_TITLE_ID],
+    'majdata-net': [], maimai: [MAIMAI_DX_TITLE_ID],
     chunithm: [CHUNITHM_TITLE_ID],
     phigros: [],
     phira: [],

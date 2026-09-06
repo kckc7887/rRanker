@@ -13,7 +13,6 @@ import {
   parseSimaiSideChart,
   prepareAudioEvents,
   type Chart,
-  type ChartDifficulty,
   type PreparedAudioEvent,
 } from '../engine';
 import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
@@ -45,8 +44,6 @@ declare global {
 export type { ChartPreviewSettings, ChartPreviewInjectConfig as ChartPreviewConfig } from '../configuration';
 type BackgroundMode = ChartPreviewBackgroundMode;
 
-const CHART_BASE = 'https://assets2.lxns.net/maimai/chart';
-const MUSIC_BASE = 'https://assets2.lxns.net/maimai/music';
 const SOURCE_FADE_TIME_S = 0.015;
 const SOURCE_START_LEAD_TIME_S = 0.05;
 const SCHEDULE_LOOKAHEAD_MS = 1500;
@@ -351,7 +348,7 @@ async function main(): Promise<void> {
   statusEl.textContent = '正在等待参数…';
   for (let i = 0; i < 200; i++) {
     const incoming = window.__CHART_PREVIEW__;
-    if (incoming && Number.isFinite(incoming.chartId)) {
+    if (incoming && (typeof incoming.chartId === 'string' || Number.isFinite(incoming.chartId))) {
       config = incoming;
       break;
     }
@@ -371,14 +368,20 @@ async function main(): Promise<void> {
   let videoBackgroundPrompted = initialBackground.prompted;
   let backgroundMode: BackgroundMode = initialBackground.mode;
 
-  const chartUrl = `${CHART_BASE}/${config.chartId}.txt`;
-  const musicUrl = `${MUSIC_BASE}/${config.chartId % 10000}.mp3`;
+  const chartUrl = config.chartUrl;
+  const musicUrl = config.musicUrl;
+  if (!musicUrl) throw new Error('缺少音乐资源');
 
   let simaiText: string;
   try {
+    if (config.parsedChart) simaiText = '';
+    else if (config.simaiText !== undefined) simaiText = config.simaiText;
+    else {
+    if (!chartUrl) throw new Error('缺少谱面资源');
     const response = await fetch(chartUrl);
     if (!response.ok) throw new Error(`谱面文件不可用（${response.status}）`);
     simaiText = await response.text();
+    }
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '谱面加载失败，请返回重试。';
@@ -388,19 +391,18 @@ async function main(): Promise<void> {
 
   let charts: Chart[];
   try {
-    if (config.buddySide === 'dual') {
+    if (config.parsedChart) {
+      if (config.parsedChart.difficulty !== config.difficulty) throw new Error('所选难度不存在');
+      charts = [config.parsedChart];
+    } else if (config.buddySide === 'dual') {
       const buddy = parseSimaiBuddyCharts(simaiText);
       charts = [buddy.side1, buddy.side2];
     } else if (config.buddySide === '0' || config.buddySide === '1') {
       charts = [parseSimaiSideChart(simaiText, config.buddySide === '1' ? 1 : 0)];
     } else {
       const available = getAvailableDifficulties(simaiText);
-      let difficulty = config.difficulty;
-      if (!available[difficulty]) {
-        const keys = (Object.keys(available).map(Number) as ChartDifficulty[]).sort((a, b) => b - a);
-        if (!keys[0]) throw new Error('谱面中没有可用难度');
-        difficulty = keys[0];
-      }
+      const difficulty = config.difficulty;
+      if (!available[difficulty]) throw new Error('所选难度的谱面不存在');
       charts = [parseSimaiChart(simaiText, difficulty)];
     }
   } catch (error) {
@@ -518,7 +520,7 @@ async function main(): Promise<void> {
     postStatus('settings', partial);
   };
 
-  const ensureAudio = async (): Promise<AudioContext> => {
+  const ensureAudio = async (resume = true): Promise<AudioContext> => {
     if (!audioContext) {
       audioContext = new AudioContext();
       musicGain = audioContext.createGain();
@@ -536,7 +538,7 @@ async function main(): Promise<void> {
       answerManager.setEnabled(true);
       await answerManager.init();
     }
-    if (audioContext.state === 'suspended') await audioContext.resume();
+    if (resume && audioContext.state === 'suspended') await audioContext.resume();
     return audioContext;
   };
 
@@ -611,11 +613,11 @@ async function main(): Promise<void> {
 
   try {
     statusEl.textContent = '正在加载预览曲…';
-    await ensureAudio();
+    await ensureAudio(false);
     const musicResponse = await fetch(musicUrl);
     if (!musicResponse.ok) throw new Error(`预览曲不可用（${musicResponse.status}）`);
     const arrayBuffer = await musicResponse.arrayBuffer();
-    audioBuffer = await (await ensureAudio()).decodeAudioData(arrayBuffer);
+    audioBuffer = await (await ensureAudio(false)).decodeAudioData(arrayBuffer);
   } catch {
     statusEl.textContent = '预览曲加载失败，仍可静音看谱。';
     audioBuffer = null;

@@ -1,3 +1,4 @@
+import { majdataTotals } from '@/domain/majdata';
 import { refreshPhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -237,6 +238,7 @@ function PublicOverviewScreen() {
           return false;
         }
       }
+      if (activeGameId === 'majdata-net' && (payload?.kind !== 'majdata-net' || payload.source.isStale)) throw new Error('Majdata refresh failed');
       return true;
     } catch (syncError) {
       showNotification({
@@ -473,16 +475,21 @@ function PublicOverviewScreen() {
               || bundle.payload.kind === 'chunithm'
               || bundle.payload.kind === 'adofai'
               || bundle.payload.kind === 'musedash'
+              || bundle.payload.kind === 'majdata-net'
               || bundle.payload.kind === 'phira'
               || bundle.payload.kind === 'osu' ? (
               <DxRatingCard
                 borderless={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData}
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
-                rating={bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData
+                valueRows={bundle.payload.kind === 'majdata-net' ? [
+                  { label: 'DX', value: `${majdataTotals(bundle.payload.snapshot.records).dx.toFixed(4)}%` },
+                  { label: 'Classic', value: `${majdataTotals(bundle.payload.snapshot.records).classic.toFixed(4)}%` },
+                ] : undefined}
+                rating={bundle.payload.kind === 'majdata-net' || (bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData)
                   ? null
                   : bundle.payload.playerScore.value}
-                meta={bundle.payload.kind === 'adofai'
+                meta={bundle.payload.kind === 'majdata-net' ? '' : bundle.payload.kind === 'adofai'
                   ? formatTufOverviewRatingMeta(bundle.payload.player)
                   : bundle.payload.kind === 'musedash'
                     ? formatMuseDashOverviewRatingMeta(bundle.payload.player)
@@ -655,11 +662,13 @@ function PublicOverviewScreen() {
                     || bundle.payload.kind === 'chunithm'
                     || bundle.payload.kind === 'adofai'
                     || bundle.payload.kind === 'musedash'
-                    || bundle.payload.kind === 'phira'
+                    || bundle.payload.kind === 'majdata-net'
+              || bundle.payload.kind === 'phira'
                     || bundle.payload.kind === 'osu'
                     ? (library.isError
                         ? '个人数据暂不可用'
-                        : bundle.payload.kind === 'adofai' || bundle.payload.kind === 'phira'
+                        : bundle.payload.kind === 'adofai' || bundle.payload.kind === 'majdata-net'
+              || bundle.payload.kind === 'phira'
                           ? `收藏 ${favorites} 首`
                           : `收藏 ${favorites} 首 · 练习 ${practice} 张`)
                     : '当前游戏暂未开放个人曲库'}
@@ -900,6 +909,7 @@ function displayName(bundle: GameDataBundle): string {
   }
   if (bundle.payload.kind === 'adofai') return bundle.payload.player.name;
   if (bundle.payload.kind === 'musedash') return bundle.payload.player.user.nickname;
+  if (bundle.payload.kind === 'majdata-net') return bundle.payload.snapshot.player.username;
   if (bundle.payload.kind === 'phira') return bundle.payload.snapshot.player.name;
   if (bundle.payload.kind === 'osu') return bundle.payload.player.username;
   return bundle.payload.displayName;
@@ -955,6 +965,7 @@ function syncProviderHint(providerId: ProviderId | null): string {
   if (providerId === 'chunithm-temp') return '无成绩临时账号';
   if (providerId === 'tuf') return 'TUF 社区';
   if (providerId === 'musedash-moe') return 'MuseDash.moe';
+  if (providerId === 'majdata-net') return 'Majdata Net';
   if (providerId === 'phira-community') return 'Phira社区';
   if (providerId === 'osu') return 'osu! 官方';
   return '本地';

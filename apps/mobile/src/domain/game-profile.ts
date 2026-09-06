@@ -34,6 +34,8 @@ const commonNav = {
 };
 
 export const GAME_PROFILES: Record<GameId, GameProfile> = {
+  'majdata-net': { id: 'majdata-net', title: 'Majdata Net', ratingLabel: 'DX · Classic', ratingDigits: 4,
+    bestSections: [{ id: 'recent', title: 'Recent', size: 0 }], capabilities: { ...commonNav, hasTools: true } },
   maimai: {
     id: 'maimai',
     title: '舞萌 DX',

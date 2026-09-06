@@ -1,3 +1,4 @@
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { phigrosResources } from '@/services/phigros-resources';
 import type { GameId } from '@/domain/game-bind-options';
 import type { Directory } from 'expo-file-system';
@@ -114,6 +115,7 @@ function accountIdFromResourceKey(key: string): string | null {
 }
 
 function resourceBelongsToGame(key: string, gameId: GameId): boolean {
+  if (gameId === 'majdata-net' && key.startsWith('majdata-net:')) return true;
   if (gameId === 'maimai' && (MAIMAI_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
     return true;
   }
@@ -205,6 +207,7 @@ async function clearGameSqlite(
   gameId: GameId,
   includeCatalog: boolean,
 ): Promise<void> {
+  invalidateResourceWrites(gameId);
   const [scores, resources] = await Promise.all([
     snapshots.listAccountScoreSizes(),
     snapshots.listResourceSizes(),
@@ -336,6 +339,13 @@ const musedashAdapter: GameStorageAdapter = {
   clear: (snapshots) => clearGameSqlite(snapshots, 'musedash', false),
 };
 
+const majdataAdapter: GameStorageAdapter = {
+  gameId: 'majdata-net', title: 'Majdata Net', color: '#2563EB', note: '玩家成绩、歌曲和谱面缓存',
+  queryKeys: [['majdata-net'], ['game-data']], fileResources: [],
+  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'majdata-net', false, inventory),
+  clear: snapshots => clearGameSqlite(snapshots, 'majdata-net', false),
+};
+
 const phiraAdapter: GameStorageAdapter = {
   gameId: 'phira',
   title: findGame('phira')?.title ?? 'Phira',
@@ -403,6 +413,7 @@ export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   adofaiAdapter,
   musedashAdapter,
   phiraAdapter,
+  majdataAdapter,
   osuStandardAdapter,
   osuManiaAdapter,
   osuCatchAdapter,

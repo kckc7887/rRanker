@@ -1,3 +1,4 @@
+import { clearMajdataAccount } from '@/services/majdata-service';
 import { useState } from 'react';
 import {
   InteractionManager,
@@ -153,6 +154,12 @@ export function GameAccountsScreen() {
     includePersonalData,
     displayName: account.displayName,
     clearPlayer: async (attempt) => {
+      if (account.gameId === 'majdata-net') {
+        await queryClient.cancelQueries({ predicate: query => query.queryKey[0] === 'game-data' && query.queryKey[2] === account.id });
+        await queryClient.cancelQueries({ queryKey: ['majdata-net', 'ranking', account.id] });
+        await attempt('成绩缓存', () => clearMajdataAccount(account.id));
+        queryClient.removeQueries({ queryKey: ['majdata-net', 'ranking', account.id] });
+      }
       await attempt('凭据', () => sessions.removeAccount(account.id));
       await attempt('缓存', () => snapshots.clear(account.id));
       if (account.providerId === 'osu' && isOsuGameId(account.gameId)) {

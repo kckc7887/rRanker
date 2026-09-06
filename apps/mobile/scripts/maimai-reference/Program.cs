@@ -21,6 +21,18 @@ if (args[0] == "geometry") {
         } catch (Exception error) { result[entry.Key] = new { error = error.Message }; }
     }
     File.WriteAllText(args[2], JsonSerializer.Serialize(result, new JsonSerializerOptions { IncludeFields = true }));
+ } else if (args[0] == "score") {
+    var result = new List<object>();
+    foreach (var kind in new[] { "tap", "hold", "touch", "touch-hold", "slide" }) foreach (var isBreak in new[] { false, true }) foreach (var grade in Enum.GetValues<MajdataReference.JudgeGrade>()) {
+        MajdataReference.NoteDrop note = kind switch { "hold" => new MajdataReference.HoldDrop(), "touch" => new MajdataReference.TouchDrop(), "touch-hold" => new MajdataReference.TouchHoldDrop(), "slide" => new MajdataReference.SlideBase(), _ => new MajdataReference.TapDrop() };
+        var score = new MajdataReference.ScoreReference();
+        score.UpdateNoteScoreCount(note, new MajdataReference.NoteJudgeResult(isBreak, grade));
+        var totalBase = isBreak ? 2500 : kind == "slide" ? 1500 : kind is "hold" or "touch-hold" ? 1000 : 500;
+        result.Add(new { kind, isBreak, grade = grade.ToString(), baseScore = score.CurrentNoteBaseScore, dxExtra = score.CurrentNoteExtraScore, classicExtra = score.CurrentNoteExtraScoreClassic,
+            dx = score.CurrentNoteBaseScore / (decimal)totalBase * 100 + (isBreak ? score.CurrentNoteExtraScore / 100m : 0),
+            classic = (score.CurrentNoteBaseScore + score.CurrentNoteExtraScoreClassic) / (decimal)totalBase * 100 });
+    }
+    File.WriteAllText(args[1], JsonSerializer.Serialize(result));
 } else if (args[0] == "customcases") {
     SlideDataBuilder.InitializeSlideAreaLookup();
     var codes = JsonSerializer.Deserialize<string[]>(File.ReadAllText(args[1]))!;

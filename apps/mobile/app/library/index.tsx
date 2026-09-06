@@ -1,3 +1,5 @@
+import { MAJDATA_NAMES, majdataAsset, type MajdataSong } from '@/domain/majdata';
+import { useMajdataLibrarySongs } from '@/hooks/use-majdata';
 import { useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { RemoteImageFlatList } from '@/components/game-content/GameListPages';
@@ -34,7 +36,9 @@ import { useAppTheme } from '@/theme/app-theme';
 type Mode = 'all' | 'favorite' | 'practice';
 type MuseDashLibrarySong = { id: string; title: string; artist?: string; cover?: string };
 type PhiraLibrarySong = { id: string; title: string; illustration: string | null };
-type LibrarySong = Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong | OsuBeatmapsetDetail;
+type LibrarySong = MajdataSong | Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong | OsuBeatmapsetDetail;
+
+function isMajdataLibrarySong(song: LibrarySong): song is MajdataSong { return 'publicTags' in song && 'hash' in song; }
 
 function isChunithmSong(song: LibrarySong): song is ChunithmSong {
   return 'difficulties' in song;
@@ -58,6 +62,7 @@ function isPhiraLibrarySong(song: LibrarySong): song is PhiraLibrarySong {
 
 export default function UserLibraryScreen() {
   const activeGameId = useSession((state) => state.activeGameId);
+  if (activeGameId === 'majdata-net') return <MajdataLibraryScreen />;
   if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
   if (activeGameId === 'musedash') return <MuseDashLibraryScreen />;
   if (activeGameId === 'phira') return <PhiraLibraryScreen />;
@@ -147,6 +152,15 @@ function SharedLibraryScreen() {
   return <LibraryList items={items} songsById={songsById} blurUrls={phigrosBlurUrls} />;
 }
 
+function MajdataLibraryScreen() {
+  const library = useUserLibrary();
+  const ids = useMemo(() => [...new Set((library.data ?? []).map(item => item.songId))], [library.data]);
+  const songs = useMajdataLibrarySongs(ids);
+  const map = new Map<string, LibrarySong>();
+  for (const query of songs) if (query.data) map.set(query.data.id, query.data);
+  return <LibraryList items={library.data ?? []} songsById={map} />;
+}
+
 function AdofaiLibraryScreen() {
   const items = useUserLibrary().data ?? [];
   const tufLevelSearch = useTufLevelSearch('', { sort: 'RECENT' });
@@ -220,7 +234,7 @@ function LibraryRow({
   const theme = useAppTheme();
   const chunithmSong = song && isChunithmSong(song) ? song : undefined;
   const osuSong = song && isOsuLibrarySong(song) ? song : undefined;
-  const standardSong = song && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) && !isOsuLibrarySong(song) ? song : undefined;
+  const standardSong = song && !isMajdataLibrarySong(song) && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) && !isOsuLibrarySong(song) ? song : undefined;
   const tufLevel = song && isTufLevel(song) ? song : undefined;
   const museDashSong = song && isMuseDashSong(song) ? song : undefined;
   const osuBeatmap = item.kind === 'chart'
@@ -236,7 +250,7 @@ function LibraryRow({
     ?? (song && !isTufLevel(song) ? song.title : undefined)
     ?? `歌曲 ID ${item.songId}`;
   const chartLabel = item.kind === 'chart'
-    ? chunithmDifficulty
+    ? item.gameId === 'majdata-net' ? `${MAJDATA_NAMES[item.levelIndex]} ${song && isMajdataLibrarySong(song) ? song.levels[item.levelIndex] : ''}` : chunithmDifficulty
       ? CHUNITHM_DIFFICULTY_LABELS[chunithmDifficulty.difficulty]
       : chart
       ? (['EZ', 'HD', 'IN', 'AT'].includes(chart.level)
@@ -255,7 +269,7 @@ function LibraryRow({
     params: item.kind === 'chart'
       ? {
           songId: item.songId,
-          ...(chunithmSong || osuSong ? {} : { chartType: item.type }),
+          ...(chunithmSong || osuSong || item.gameId === 'majdata-net' ? {} : { chartType: item.type }),
           levelIndex: String(item.levelIndex),
         }
       : { songId: item.songId },
@@ -276,6 +290,7 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
   if (!song || isTufLevel(song)) {
     return <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
+  if (isMajdataLibrarySong(song)) return <Image accessibilityLabel="曲绘" cacheProfile="thumbnail" gameId={gameId} source={majdataAsset(song.id, 'image')} style={styles.cover} />;
   if (isMuseDashSong(song)) {
     const url = museDashCoverUrl(song.cover);
     return url

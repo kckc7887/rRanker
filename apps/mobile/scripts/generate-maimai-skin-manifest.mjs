@@ -15,5 +15,5 @@ export const MAIMAI_CHART_PREVIEW_SKIN_ASSETS: readonly MaimaiChartPreviewSkinAs
 ${items.map(i => '  ' + JSON.stringify({ ...i, url: base + '/' + i.path })).join(',\n')}
 ];
 `;
-await fs.writeFile(path.join(root, 'src/features/maimai-chart-preview/maimai-chart-preview-skin-manifest.generated.ts'), text);
+await fs.writeFile(path.join(root, 'src/features/simai-chart-preview/maimai-chart-preview-skin-manifest.generated.ts'), text);
 console.log(revision);

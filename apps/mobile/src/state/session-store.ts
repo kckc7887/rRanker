@@ -236,7 +236,7 @@ interface SessionState {
 }
 
 function providersForAccount(account: BoundAccount, sessionsByAccountId: SessionsByAccountId) {
-  if (account.gameId === 'test' || account.gameId === 'chunithm' || account.gameId === 'adofai' || account.gameId === 'musedash' || account.gameId === 'phira' || isOsuGameId(account.gameId) || !account.providerId) {
+  if (account.gameId === 'majdata-net' || account.gameId === 'test' || account.gameId === 'chunithm' || account.gameId === 'adofai' || account.gameId === 'musedash' || account.gameId === 'phira' || isOsuGameId(account.gameId) || !account.providerId) {
     return emptyProviders();
   }
   if (account.gameId === 'phigros') {
@@ -329,6 +329,14 @@ export const useSession = create<SessionState>((set, get) => ({
   restoreStatus: 'restoring',
   restoreError: null,
   setSession: (session, accountMeta) => {
+    if (accountMeta?.gameId === 'majdata-net' && accountMeta.accountId) {
+      const account: BoundAccount = { id: accountMeta.accountId, gameId: 'majdata-net', providerId: 'majdata-net',
+        displayName: accountMeta.displayName, scoreLabel: 'DX · Classic', scoreDisplay: '—', providerTitle: 'Majdata Net' };
+      set(activateAccount(upsertAccountList(get().boundAccounts, account),
+        { ...get().sessionsByAccountId, [account.id]: session },
+        { ...get().credentialIdsByAccountId, [account.id]: accountMeta.credentialId ?? `credential:${account.id}` }, account.id));
+      return;
+    }
     if (session.mode === 'phi-session') {
       const phigrosAccount = createPhigrosBoundAccount({
         playerId: session.playerId,
