@@ -52,6 +52,44 @@ describe('phigros chart preview resource resolution（移植 demo resource-loade
     })).toThrow(/谱面.*2/);
   });
 
+  it.each(['EZ', 'HD', 'IN'])('Random 的七套 %s 谱面优先使用与音乐一致的 .0', (difficulty) => {
+    const id = 'Random.SobremSilentroom';
+    const assets = [6, 3, 1, 5, 0, 4, 2].flatMap((variant) => ['EZ', 'HD', 'IN'].map((level) => ({
+      path: `charts/${id}.${variant}/${level}.json`, size: 100, contentType: 'application/json',
+    })));
+    const result = resolvePhigrosChartPreviewAssetBundle({
+      current, catalog: { songs: [{ ...catalog.songs[0], id }] },
+      manifest: { assets: [...assets, { path: `music/${id}.ogg` }, { path: `illustrations/${id}.png` }] },
+      target: { songId: id, difficulty },
+    });
+    expect(result.chart.path).toBe(`charts/${id}.0/${difficulty}.json`);
+    expect(result.music.path).toBe(`music/${id}.ogg`);
+  });
+
+  it('默认目录缺少目标难度时不混入其它变体', () => {
+    expect(() => resolvePhigrosChartPreviewAssetBundle({
+      current, catalog,
+      manifest: { assets: [...manifest.assets, { path: 'charts/DistortedFate.Sakuzyo.0/IN.json' }] },
+      target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
+    })).toThrow(/谱面.*0/);
+  });
+
+  it('没有默认目录且存在多个编号变体时仍拒绝歧义', () => {
+    expect(() => resolvePhigrosChartPreviewAssetBundle({
+      current, catalog,
+      manifest: { assets: [...manifest.assets, { path: 'charts/DistortedFate.Sakuzyo.1/AT.json' }] },
+      target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
+    })).toThrow(/谱面.*2/);
+  });
+
+  it('仍拒绝默认路径在清单中重复出现', () => {
+    const asset = { path: 'charts/DistortedFate.Sakuzyo.0/AT.json' };
+    expect(() => resolvePhigrosChartPreviewAssetBundle({
+      current, catalog, manifest: { assets: [...manifest.assets, asset, asset] },
+      target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
+    })).toThrow(/谱面.*2/);
+  });
+
   it('缺少全尺寸曲绘时回退 lowres 曲绘', () => {
     const result = resolvePhigrosChartPreviewAssetBundle({
       current, catalog,

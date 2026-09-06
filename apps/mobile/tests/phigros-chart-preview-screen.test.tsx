@@ -6,6 +6,11 @@ import PhigrosChartPreviewScreen from '../app/songs/phigros-chart-preview';
 import { stageChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 
 const mockInjectJavaScript = jest.fn();
+const mockShowAction = jest.fn(() => 1);
+const mockDismiss = jest.fn();
+jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+  showActionNotification: mockShowAction, dismissNotification: mockDismiss,
+}) }));
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
 const mockPrepare = jest.fn();
 const mockStageMusic = jest.fn();
@@ -94,6 +99,7 @@ jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
 }));
 
 jest.mock('@/domain/phigros-chart-preview', () => ({
+  loadPhigrosChartPreviewVariants: async () => [0],
   loadPhigrosChartPreviewResources: async (...args: unknown[]) => ({
     bundle: await mockLoadPhigrosBundle(...args),
     chart: new Uint8Array([123, 125]), music: new Uint8Array([1]), illustration: new Uint8Array([2]),

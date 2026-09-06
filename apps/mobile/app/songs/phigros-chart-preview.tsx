@@ -22,6 +22,7 @@ import {
   disposeChartPreviewSessionDirectory,
 } from '@/features/chart-preview-shared/chart-preview-assets';
 import { useAppTheme } from '@/theme/app-theme';
+import { usePhigrosChartVariantSelection } from '@/features/phigros-chart-preview/use-phigros-chart-variant-selection';
 
 /** Phigros 在进入播放器前完成三类资源下载、校验与一次恢复重试。 */
 const PHIGROS_PREPARE_TIMEOUT_MS = 120_000;
@@ -91,9 +92,12 @@ export default function PhigrosChartPreviewScreen() {
   );
   const phiraChartId = !('error' in mapped) && mapped.game === 'phira' && !mapped.chart ? mapped.chartId : null;
   const phiraChart = usePhiraChart(phiraChartId);
+  const variantSelection = usePhigrosChartVariantSelection(!('error' in mapped) && mapped.game === 'phigros' ? mapped : null);
 
   const request = useMemo(() => {
     if ('error' in mapped) return { kind: 'error' as const, message: mapped.error };
+    if (mapped.game === 'phigros' && !variantSelection) return { kind: 'waiting' as const };
+    if (variantSelection?.error) return { kind: 'error' as const, message: variantSelection.error };
     if (mapped.game === 'phira' && !mapped.chart && phiraChart.data === undefined && !phiraChart.isError) {
       return { kind: 'waiting' as const };
     }
@@ -105,7 +109,7 @@ export default function PhigrosChartPreviewScreen() {
         const directory = createChartPreviewSessionDirectory('rranker-phigros-chart-preview');
         try {
           const prepared = mapped.game === 'phigros'
-            ? await buildPhigrosChartPreviewInput(mapped, settings as PhigrosChartPreviewSettings, signal)
+            ? await buildPhigrosChartPreviewInput({ ...mapped, variantIndex: variantSelection?.variantIndex }, settings as PhigrosChartPreviewSettings, signal)
             : await buildPhiraChartPreviewInput(mapped, settings as PhigrosChartPreviewSettings, signal, {
                 stageMusic: (bytes, fileName) => stagePhiraChartMusic(bytes, fileName, directory),
                 stageRpeBundle: (chartId, files) => stagePhiraRpeBundle(chartId, files, directory),
@@ -121,7 +125,7 @@ export default function PhigrosChartPreviewScreen() {
         }
       },
     };
-  }, [mapped, phiraChart.data, phiraChart.isError, isDark]);
+  }, [mapped, phiraChart.data, phiraChart.isError, isDark, variantSelection]);
 
   const externalError = phiraChartId !== null && phiraChart.isError
     ? '无法读取 Phira 谱面，请重试。'

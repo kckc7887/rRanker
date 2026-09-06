@@ -37,6 +37,7 @@ export type PhigrosChartPreviewInput = {
   songId: string;
   levelIndex: number;
   title?: string;
+  variantIndex?: number;
 };
 
 export type PhiraChartPreviewInput = {
@@ -67,13 +68,14 @@ export async function buildPhigrosChartPreviewInput(
   const resources = await loadPhigrosChartPreviewResources({
     songId: input.songId,
     difficulty: phigrosChartPreviewLevelLabel(input.levelIndex),
+    ...(input.variantIndex === undefined ? {} : { variantIndex: input.variantIndex }),
   }, signal);
   const { bundle } = resources;
   return {
     musicDataBase64: bytesToBase64(resources.music),
     config: {
       game: 'phigros',
-      title: input.title ?? `${bundle.song.title} ${bundle.target.difficulty}`,
+      title: `${input.title ?? `${bundle.song.title} ${bundle.target.difficulty}`}${input.variantIndex ? ` · 里谱 ${input.variantIndex}` : ''}`,
       chartText: new TextDecoder('utf-8', { fatal: true }).decode(resources.chart),
       illustrationUrl: `data:${bundle.illustration.contentType};base64,${bytesToBase64(resources.illustration)}`,
       settings,
