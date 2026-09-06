@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export function releaseFixture(revision = 'r1', songIds = ['Song.A'], options: { music?: boolean } = {}) {
+export function releaseFixture(revision = 'r1', songIds = ['Song.A'], options: { music?: boolean; variants?: number[] } = {}) {
   const encode = (value: string) => new TextEncoder().encode(value);
   const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
   const files: Record<string, Uint8Array> = {
@@ -14,6 +14,10 @@ export function releaseFixture(revision = 'r1', songIds = ['Song.A'], options: {
     files[`charts/${id}.0/EZ.json`] = encode('{"judgeLineList":[]}');
     if (options.music !== false) files[`music/${id}.ogg`] = encode('OggSfixture');
     files[`illustrations/${id}.png`] = encode('PNGfixture');
+    for (const variant of options.variants ?? []) {
+      files[`charts/${id}.${variant}/EZ.json`] = encode(`{"variant":${variant},"judgeLineList":[]}`);
+      files[`music/${id}.${variant}.ogg`] = encode(`OggSvariant${variant}`);
+    }
   }
   const manifest = { gameVersion: '9.9.9', generatedAt: revision, assets: Object.entries(files).map(([path, bytes]) => ({
     path, size: bytes.length, sha256: hash(bytes), contentType: path.endsWith('.ogg') ? 'audio/ogg' : 'application/json',

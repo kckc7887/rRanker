@@ -12,6 +12,7 @@ export const PHIGROS_CHART_PREVIEW_DIFFICULTIES = Object.freeze(['EZ', 'HD', 'IN
 export type PhigrosChartPreviewTarget = {
   songId: string;
   difficulty: string;
+  variantIndex?: number;
 };
 
 export type PhigrosChartPreviewAsset = {
@@ -121,8 +122,18 @@ export function resolvePhigrosChartPreviewAssetBundle({
     return matches[0]!;
   };
 
-  const chart = findUnique((path) => chartPattern.test(path), `${target.difficulty} 谱面`);
-  const music = findUnique((path) => path === `music/${target.songId}.ogg`, '音乐');
+  // Published music comes from .0/music.wav; Random also contains .1-.6 variants.
+  const defaultDirectory = [`charts/${target.songId}.0/`, `charts/${target.songId}/`]
+    .find((prefix) => assets.some((asset) => typeof asset?.path === 'string' && asset.path.startsWith(prefix)));
+  if (target.variantIndex !== undefined && (!Number.isSafeInteger(target.variantIndex) || target.variantIndex < 0)) {
+    throw new Error('无效的里谱编号');
+  }
+  const selectedDirectory = target.variantIndex === undefined ? defaultDirectory : `charts/${target.songId}.${target.variantIndex}/`;
+  const chart = findUnique((path) => selectedDirectory
+    ? path === `${selectedDirectory}${target.difficulty}.json`
+    : chartPattern.test(path), `${target.difficulty} 谱面`);
+  const musicId = target.variantIndex ? `${target.songId}.${target.variantIndex}` : target.songId;
+  const music = findUnique((path) => path === `music/${musicId}.ogg`, '音乐');
   let illustration: AssetRecord;
   const full = assets.filter((asset) => asset?.path === `illustrations/${target.songId}.png`);
   if (full.length === 1) illustration = full[0]!;
@@ -173,6 +184,23 @@ export async function loadPhigrosChartPreviewBundle(
   return resources.withRelease(async (release) => resolvePhigrosChartPreviewAssetBundle({
     ...release, target, ossBase,
   }), signal);
+}
+
+export async function loadPhigrosChartPreviewVariants(
+  target: PhigrosChartPreviewTarget,
+  signal: AbortSignal,
+): Promise<number[]> {
+  return phigrosResources.withRelease(async (release) => {
+    const pattern = new RegExp(`^charts/${escapeRegExp(target.songId)}\\.(\\d+)/${escapeRegExp(target.difficulty)}\\.json$`);
+    const variants = release.manifest.assets.flatMap((asset) => {
+      const match = pattern.exec(asset.path);
+      return match ? [Number(match[1])] : [];
+    });
+    if (variants.some((value) => !Number.isSafeInteger(value)) || new Set(variants).size !== variants.length) {
+      throw new Error('谱面编号重复或无效');
+    }
+    return variants.sort((a, b) => a - b);
+  }, signal);
 }
 
 export async function loadPhigrosChartPreviewResources(

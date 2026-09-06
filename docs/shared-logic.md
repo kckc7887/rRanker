@@ -101,6 +101,14 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 
 Phigros 的 `domain/phigros-chart-preview.ts` 提供
 `loadPhigrosChartPreviewResources(target, signal, read?)`，预览和兼容包下载共用发布恢复与字节校验。
+其共同定位器 `resolvePhigrosChartPreviewAssetBundle(...)` 按 `.0`、无编号、唯一编号目录选择默认谱面；
+已有默认目录缺少所选难度时仍报错，不从其它变体拼接，确保匹配默认音乐。
+`PhigrosChartPreviewTarget` 可选 `variantIndex` 指定编号谱面及同编号音乐；未指定时保持默认规则。
+`loadPhigrosChartPreviewVariants(target, signal)` 复用发布服务，按所选难度枚举并数字排序编号。
+预览路由通过 `usePhigrosChartVariantSelection(target)` 组合公共 `showActionNotification(input)`
+的队列和 `dismissNotification(id)`：先提示里谱，再展示非 `.0` 选项，单谱不弹窗。
+选择期间复用 `ChartPreviewScreenShell` 的 waiting 状态，公共渲染层不增加游戏分支。
+卸载与后台撤销弹窗及请求；交互由 `phigros-chart-variant-selection.test.tsx` 覆盖。
 预览将已验证的谱面文本、音乐 Base64 和曲绘 data URL 交给既有配置与暂存计划；
 下载通过可选 `read(asset, index)` 接入 `downloadChartResource` 的原生文件、取消和进度，
 返回字节通过校验后才进入 ZIP。共享预览/下载核心不识别 Phigros 修订或音符。

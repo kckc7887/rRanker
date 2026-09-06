@@ -1,11 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PhigrosResourceService, phigrosResources } from '@/services/phigros-resources';
-import { loadPhigrosChartPreviewResources } from '@/domain/phigros-chart-preview';
+import { loadPhigrosChartPreviewResources, loadPhigrosChartPreviewVariants } from '@/domain/phigros-chart-preview';
 import { releaseFixture } from './fixtures/phigros-release';
 
 afterEach(() => { phigrosResources.clear(); vi.unstubAllGlobals(); });
 
 describe('Phigros release transactions', () => {
+  it('lists numeric variants in order and loads the selected chart with its matching music', async () => {
+    const fixture = releaseFixture('r1', ['Random.SobremSilentroom'], { variants: [6, 1, 3, 2, 5, 4] });
+    vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
+    const target = { songId: 'Random.SobremSilentroom', difficulty: 'EZ' };
+    const signal = new AbortController().signal;
+    expect(await loadPhigrosChartPreviewVariants(target, signal)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    const result = await loadPhigrosChartPreviewResources({ ...target, variantIndex: 6 }, signal);
+    expect(result.bundle.chart.path).toBe('charts/Random.SobremSilentroom.6/EZ.json');
+    expect(new TextDecoder().decode(result.music)).toBe('OggSvariant6');
+    delete fixture.files['music/Random.SobremSilentroom.6.ogg'];
+    await expect(loadPhigrosChartPreviewResources({ ...target, variantIndex: 6 }, signal)).rejects.toThrow();
+  });
   it('rechecks the pointer but reuses verified metadata for an unchanged release', async () => {
     const fixture = releaseFixture();
     const fetcher = vi.fn(async (input: RequestInfo | URL) => fixture.respond(input));
