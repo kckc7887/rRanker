@@ -6,8 +6,8 @@ export function releaseInactiveQueries(client: QueryClient): void {
 }
 
 export const queryClient = new QueryClient({
-  queryCache: new QueryCache({ onError: (error) => recordRuntimeError('query', error) }),
-  mutationCache: new MutationCache({ onError: (error) => recordRuntimeError('mutation', error) }),
+  queryCache: new QueryCache({ onError: (error) => recordRuntimeError('query', error, false, { phase: 'final' }) }),
+  mutationCache: new MutationCache({ onError: (error) => recordRuntimeError('mutation', error, false, { phase: 'final' }) }),
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000,

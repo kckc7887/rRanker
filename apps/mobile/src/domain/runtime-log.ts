@@ -21,12 +21,40 @@ export const isRuntimeLogCapacity = (value: unknown): value is RuntimeLogCapacit
   value === 1000 || value === 2000 || value === 5000;
 
 const words = /^[a-zA-Z0-9_.:-]{1,64}$/u;
+export const RUNTIME_REQUEST_SCENARIOS = [
+  'catalog', 'player-search', 'player-profile', 'scores', 'score-detail', 'chart-detail',
+  'chart-search', 'video-details', 'difficulty', 'characters', 'release', 'manifest',
+  'chart', 'music', 'illustration', 'metadata', 'resource',
+] as const;
+export type RuntimeRequestScenario = typeof RUNTIME_REQUEST_SCENARIOS[number];
+export const RUNTIME_ERROR_CODES = [
+  'authentication', 'permission', 'rate_limit', 'timeout', 'upstream_schema',
+  'no_data', 'cache_corrupt', 'network', 'unknown', 'cancelled',
+] as const;
+export type RuntimeErrorContext = {
+  phase?: string;
+  operationId?: number;
+  pageIndex?: number;
+  errorCode?: typeof RUNTIME_ERROR_CODES[number];
+};
 const stringFields = new Set([
   'lifecyclePhase', 'gameType', 'providerType', 'taskPhase', 'webContentState',
-  'source', 'result', 'errorCode', 'platform', 'appVersion', 'buildVersion',
+  'source', 'result', 'platform', 'appVersion', 'buildVersion', 'phase',
+  'buildVersionSource', 'systemVersion', 'executionEnvironment',
 ]);
-const numberFields = new Set(['accountCount', 'queryCount', 'durationMs', 'attempt', 'status', 'capacity']);
+const numberFields = new Set(['accountCount', 'queryCount', 'durationMs', 'attempt', 'status', 'capacity', 'operationId', 'pageIndex']);
 const errorNames = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AbortError', 'ProviderError']);
+
+export function runtimeBuildContext(nativeBuild: unknown, configuredBuild: unknown) {
+  const value = (input: unknown) => typeof input === 'string' && words.test(input) ? input
+    : typeof input === 'number' && Number.isSafeInteger(input) && input >= 0 ? String(input) : undefined;
+  const native = value(nativeBuild);
+  const configured = value(configuredBuild);
+  return {
+    buildVersion: native ?? configured ?? 'unknown',
+    buildVersionSource: native ? 'native' : configured ? 'config' : 'unknown',
+  };
+}
 
 function property(value: unknown, key: string): unknown {
   try {
@@ -76,14 +104,18 @@ export function sanitizeRuntimeLogEntry(type: string, input: Readonly<Record<str
   }
   for (const key of numberFields) {
     const value = property(input, key);
-    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000) fields[key] = value;
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= (key === 'operationId' ? Number.MAX_SAFE_INTEGER : 1_000_000_000)) fields[key] = value;
   }
-  for (const key of ['memoryWarning', 'fatal']) {
+  for (const key of ['memoryWarning', 'fatal', 'development']) {
     const value = property(input, key);
     if (typeof value === 'boolean') fields[key] = value;
   }
   const route = property(input, 'route');
-  if (typeof route === 'string' && route.length <= 256 && /^\/[a-zA-Z/()[\]_.-]*$/u.test(route)) fields.route = route;
+  if (typeof route === 'string' && route.length <= 256 && /^\/[a-zA-Z0-9/()[\]_.-]*$/u.test(route)) fields.route = route;
+  const scenario = property(input, 'scenario');
+  if (RUNTIME_REQUEST_SCENARIOS.some((value) => value === scenario)) fields.scenario = scenario as string;
+  const errorCode = property(input, 'errorCode') ?? property(property(input, 'error'), 'code');
+  if (RUNTIME_ERROR_CODES.some((value) => value === errorCode)) fields.errorCode = errorCode as string;
   const error = property(input, 'error');
   const entry: RuntimeLogEntry = {
     at, type: words.test(type) ? type : 'event', fields,

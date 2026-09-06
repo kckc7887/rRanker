@@ -73,13 +73,21 @@ export class RuntimeLogRepository {
     });
   }
 
-  snapshot(id: number): { session: RuntimeLogSession; context: RuntimeLogEntry['fields']; entries: RuntimeLogEntry[] } {
+  snapshot(id: number) {
     const session = this.list().find((item) => item.id === id);
     if (!session) throw new Error('log session unavailable');
     const entries = this.db.getAllSync<{ payload: string }>(
       'SELECT payload FROM log_entries WHERE sessionId = ? ORDER BY sequence', id,
     ).map((row) => JSON.parse(row.payload) as RuntimeLogEntry);
-    const row = this.db.getFirstSync<{ context: string }>('SELECT context FROM log_sessions WHERE id = ?', id);
-    return { session, context: JSON.parse(row!.context) as RuntimeLogEntry['fields'], entries };
+    const row = this.db.getFirstSync<{ context: string; sequence: number }>('SELECT context, sequence FROM log_sessions WHERE id = ?', id)!;
+    const byType: Record<string, number> = Object.create(null);
+    for (const entry of entries) byType[entry.type] = (byType[entry.type] ?? 0) + 1;
+    return {
+      session, context: JSON.parse(row.context) as RuntimeLogEntry['fields'], entries,
+      summary: {
+        totalCount: row.sequence, retainedCount: entries.length, trimmedCount: Math.max(0, row.sequence - entries.length),
+        firstAt: entries[0]?.at ?? null, lastAt: entries.at(-1)?.at ?? null, byType,
+      },
+    };
   }
 }

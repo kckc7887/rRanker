@@ -22,7 +22,7 @@ import {
 import { chartPreviewNativeScreenOptions } from './chart-preview-native-screen-options';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
-import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { createRuntimeOperation } from '@/services/runtime-diagnostics-recorder';
 import { useAppTheme } from '@/theme/app-theme';
 
 export type ChartPreviewShellSource = {
@@ -99,6 +99,16 @@ export function ChartPreviewScreenShell<TPayload>({
   const [heavyContentBlocked, setHeavyContentBlocked] = useState(!lifecycle.foregroundReady);
   const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
+  const preparationRef = useRef<ReturnType<typeof createRuntimeOperation> | null>(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- source and generation identify the mounted content
+  const viewToken = useMemo(() => ({ operation: preparationRef.current }), [source, webViewGeneration]);
+  const activeViewToken = useRef(viewToken);
+  activeViewToken.current = viewToken;
+  const recordView = (phase: string, fields: Readonly<Record<string, unknown>> = {}) => {
+    if (activeViewToken.current === viewToken && viewToken.operation === preparationRef.current) {
+      viewToken.operation?.record(phase, fields, webViewGeneration);
+    }
+  };
   const backgrounded = lifecycle.phase === 'background';
   const heavyContentMounted = !heavyContentBlocked;
   const prepareGeneration = heavyContentMounted ? lifecycle.foregroundGeneration : null;
@@ -112,6 +122,7 @@ export function ChartPreviewScreenShell<TPayload>({
     setReady(false);
     setIsFullscreen(false);
     void recordRuntimeDiagnostic('web-content', {
+      source: 'chart-preview',
       lifecyclePhase: lifecycle.phase,
       webContentState: 'released',
     });
@@ -131,6 +142,7 @@ export function ChartPreviewScreenShell<TPayload>({
   useEffect(() => {
     if (!heavyContentMounted || !source) return;
     void recordRuntimeDiagnostic('web-content', {
+      source: 'chart-preview',
       lifecyclePhase: lifecycle.phase,
       webContentState: 'mounted',
     });
@@ -142,6 +154,8 @@ export function ChartPreviewScreenShell<TPayload>({
     let controller: AbortController | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let preparedSource: ChartPreviewShellSource | undefined;
+    let finished = false;
+    let timedOut = false;
 
     if (prepareGeneration === null || request.kind !== 'ready') {
       setSource(null);
@@ -155,12 +169,24 @@ export function ChartPreviewScreenShell<TPayload>({
     setPlayerError(null);
     setStageError(null);
     settingsRef.current = {};
+    const operation = createRuntimeOperation('chart-preview');
+    preparationRef.current = operation;
+    operation.record('prepare', { result: 'start' });
+    const finish = (result: string, error?: unknown) => {
+      if (finished) return;
+      finished = true;
+      operation.record('prepare', { result, errorCode: result === 'timeout' ? 'timeout' : result === 'cancelled' ? 'cancelled' : undefined, error });
+    };
 
     void (async () => {
       const localController = new AbortController();
       controller = localController;
       if (request.timeoutMs !== undefined) {
-        timeout = setTimeout(() => localController.abort(), request.timeoutMs);
+        timeout = setTimeout(() => {
+          timedOut = true;
+          finish('timeout');
+          localController.abort();
+        }, request.timeoutMs);
       }
       try {
         const settings = await loadSettings(settingsKey);
@@ -169,8 +195,9 @@ export function ChartPreviewScreenShell<TPayload>({
         preparedSource = prepared;
         if (cancelled) prepared.dispose?.();
         else setSource(prepared);
+        finish(cancelled ? 'cancelled' : timedOut ? 'timeout' : 'success');
       } catch (error) {
-        recordRuntimeError('chart-preview-prepare', error);
+        finish(cancelled ? 'cancelled' : timedOut ? 'timeout' : 'error', cancelled || timedOut ? undefined : error);
         // 诊断日志：底层原因只进日志，不进用户界面。
         console.log('[chart-preview] prepare error', error);
         if (!cancelled) {
@@ -185,6 +212,8 @@ export function ChartPreviewScreenShell<TPayload>({
 
     return () => {
       cancelled = true;
+      finish('cancelled');
+      if (preparationRef.current === operation) preparationRef.current = null;
       controller?.abort();
       if (timeout) clearTimeout(timeout);
       // 卸载时停止播放；cleanup 必须读最新 webRef。
@@ -282,6 +311,7 @@ export function ChartPreviewScreenShell<TPayload>({
             injectedJavaScriptBeforeContentLoaded={injected}
             style={[styles.webview, { backgroundColor: webviewBackground }]}
             onLoadEnd={() => {
+              recordView('loaded');
               if (!reInjectOnLoadEnd || request.kind !== 'ready') return;
               const script = buildInjectedJavaScript?.(request.payload);
               if (script !== undefined) webRef.current?.injectJavaScript(script);
@@ -289,12 +319,15 @@ export function ChartPreviewScreenShell<TPayload>({
             onMessage={(event) => {
               const data = parseChartPreviewBridgeMessage(event.nativeEvent.data);
               if (!data) return;
-              if (data.type === 'ready') setReady(true);
+              if (data.type === 'ready') {
+                recordView('ready');
+                setReady(true);
+              }
               if (data.type === 'fullscreen' && typeof data.active === 'boolean') {
                 setIsFullscreen(data.active);
               }
               if (data.type === 'error') {
-                recordRuntimeError('chart-preview-player', data);
+                recordView('player-error', { result: 'error', error: data });
                 // 诊断日志：底层原因只进日志，不进用户界面。
                 console.log('[chart-preview] player error', {
                   diagnostic: typeof data.diagnostic === 'string' ? data.diagnostic : undefined,
@@ -310,19 +343,19 @@ export function ChartPreviewScreenShell<TPayload>({
               onBridgeMessage?.(data, bridge);
             }}
             onError={(event) => {
-              recordRuntimeError('chart-preview-load', event?.nativeEvent);
+              recordView('load-error', { result: 'error', error: event?.nativeEvent });
               console.log('[chart-preview] webview error', event?.nativeEvent);
               setIsFullscreen(false);
               setPlayerError('播放器加载失败，请返回重试。');
             }}
             onContentProcessDidTerminate={() => {
-              recordRuntimeError('chart-preview-terminated', undefined);
+              recordView('terminated');
               setReady(false);
               setIsFullscreen(false);
               setWebViewGeneration((value) => value + 1);
             }}
             onRenderProcessGone={() => {
-              recordRuntimeError('chart-preview-process-gone', undefined);
+              recordView('process-gone');
               setReady(false);
               setIsFullscreen(false);
               setWebViewGeneration((value) => value + 1);

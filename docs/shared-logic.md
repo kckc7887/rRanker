@@ -80,7 +80,11 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 
 - `services/runtime-diagnostics-recorder.ts` 的 `recordRuntimeDiagnostic(type, fields?)`
   返回 `Promise<void>`；同步分发到手动记录器，再调用简要诊断记录器，两者失败均不传播到业务。
-  `recordRuntimeError(source, error, fatal?)` 统一错误采集，底层调用方只依赖该轻量入口。
+  `recordRuntimeError(source, error, fatal?, context?)` 统一错误采集，兼容原三参数调用。
+  可选 `RuntimeErrorContext` 包含 phase、operationId、pageIndex 和受限 errorCode。
+  同一入口的 `nextRuntimeOperationId()` 分配进程内编号；`createRuntimeOperation(source)`
+  返回编号及 `record(phase, fields?, generation?)`，按内容代次、阶段、页序号和结果去重，
+  输出操作累计耗时。底层调用方只依赖该轻量入口，不引入日志存储或页面依赖。
 - `services/runtime-logs.ts` 提供 `initializeRuntimeLogs()`、`recordRuntimeRoute(segments)`、
   `shareRuntimeLog(id)` 和唯一 `runtimeLogs` 控制器。控制器公开 `start()`、`stop()`、
   `setCapacity(1000 | 2000 | 5000)`、`subscribe()`、`getSnapshot()` 与 `snapshot(id)`。
@@ -90,15 +94,27 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 - `domain/runtime-log.ts` 定义类型与脱敏：字段白名单、基于类别的错误摘要、最多 30 个
   堆栈位置和单条 8 KiB 上限；不读取任意异常的序列化结果。路由传入 `useSegments`
   返回的模板，HTTP 入口记录固定场景名，不传入地址、账号或请求载荷。
+  模板允许数字固定路径；控制器为普通事件补充当时的路由。HTTP 三个公共请求入口接受
+  可选 `diagnosticScenario?: RuntimeRequestScenario`，调用方按明确用途传入枚举值；
+  开始与各尝试结果共享 operationId，错误码使用公共归一化结果，主动取消不带错误堆栈。
+  查询/变更终态错误补充 `phase: final`，只提取白名单错误码，不读取 Query Key 或任意 cause 链。
+  `runtimeBuildContext(nativeBuild, configuredBuild)` 区分构建号的原生、配置和未知来源。
 - `storage/rranker-database.ts` 的 `getRuntimeLogDatabase()` 管理独立日志连接；
   `RuntimeLogRepository` 统一事务创建、增量追加、容量裁剪、结束和恢复。成功创建第三份
   才淘汰最旧记录；每份独立保留最后 N 条。每次启动恢复开启偏好后创建新记录，
   包含当前记录在内保留两份；进程内重复初始化、页面切换及前后台切换不另建记录。
+  控制器只在追加成功后更新内存条数和时间，不对每条事件调用 list；状态转换重新读取。
+  Repository 快照复用 sequence 输出 summary 的 totalCount、retainedCount、trimmedCount、
+  firstAt、lastAt 和 byType；后两项时间及类型统计只覆盖保留事件。控制器补充 snapshotAt，
+  不修改已有 formatVersion、记录结构或数据库表，旧记录继续分享。
 - 日志正文不属于缓存；分享副本复用 `expo-sharing` 和现有 `rranker-` 临时缓存规则。
   简要诊断的三次启动/256 条总额与 `exportRuntimeDiagnostics()` 继续独立使用。
 - `runtime-logs.test.ts` 使用真实内存 SQLite 检查事务、保留、恢复、失败和脱敏，
   并覆盖公共 HTTP/查询和异常监听合同；`runtime-log-sharing.test.tsx` 覆盖分享快照与失败，
   `diagnostics-screen.test.tsx`、`settings-navigation.test.tsx` 覆盖页面交互与入口迁移。
+  `chart-preview-screen-shell-contract.test.tsx` 覆盖准备阶段、去重、后台取消及迟到回调；
+  `best-image-diagnostics.test.tsx` 覆盖公共导出控制器的捕获、保存、取消和超时日志，
+  `phigros-best-image-preview.test.tsx` 验证现有游戏经公共壳采集就绪，不记录页面内容。
   根路由错误边界、平台异常终止和原生分享必须另做真机验收。
 
 ## 共享 UI 与交互

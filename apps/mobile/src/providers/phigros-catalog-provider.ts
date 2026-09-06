@@ -41,7 +41,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   resetCatalogCache(): void { this.catalog = null; }
 
   private async fetchText(url: string, signal?: AbortSignal): Promise<string> {
-    return new TextDecoder().decode(await this.resources.bytes(url, signal));
+    return new TextDecoder().decode(await this.resources.bytes(url, signal, 12_000, 'catalog'));
   }
 
   /** 拉取章节映射表；失败（未发布/网络）时返回 null，调用方回退现状 */

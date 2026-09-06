@@ -1,4 +1,6 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import { runtimeBuildContext } from '@/domain/runtime-log';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { getRuntimeLogDatabase, runSerializedSchemaInit } from '@/storage/rranker-database';
@@ -19,7 +21,12 @@ export const runtimeLogs = createRuntimeLogController({
   context: () => ({
     route, platform: process.env.EXPO_OS ?? 'unknown',
     appVersion: Constants.expoConfig?.version ?? 'unknown',
-    buildVersion: Constants.nativeBuildVersion ?? 'unknown',
+    ...runtimeBuildContext(
+      Platform.OS === 'ios' ? Constants.platform?.ios?.buildNumber : Constants.platform?.android?.versionCode,
+      Platform.OS === 'ios' ? Constants.expoConfig?.ios?.buildNumber : Constants.expoConfig?.android?.versionCode,
+    ),
+    systemVersion: String(Platform.Version ?? 'unknown'), executionEnvironment: Constants.executionEnvironment,
+    development: __DEV__,
   }),
 });
 

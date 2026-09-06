@@ -1,3 +1,4 @@
+import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 import { z } from 'zod';
 import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
 import { requestBytes, requestJson } from '@/providers/http-json';
@@ -83,16 +84,16 @@ export class PhigrosResourceService {
     return this.url(`${directory}${asset.path}`, release);
   }
 
-  async bytes(url: string, signal?: AbortSignal, timeoutMs = 12_000): Promise<Uint8Array> {
+  async bytes(url: string, signal?: AbortSignal, timeoutMs = 12_000, diagnosticScenario: RuntimeRequestScenario = 'resource'): Promise<Uint8Array> {
     // The shared request runner owns timeout, cancellation and HTTP error handling.
     return requestBytes({
-      baseUrl: '', path: url, signal, timeoutMs, retries: 1, label: 'Phigros', fetcher: fetch,
+      baseUrl: '', path: url, signal, timeoutMs, diagnosticScenario, retries: 1, label: 'Phigros', fetcher: fetch,
       error: (status) => new ProviderError('network', `Phigros 资源请求失败：${status}`, true),
     });
   }
 
-  async readAsset(release: PhigrosRelease, asset: PhigrosResourceAsset, signal?: AbortSignal): Promise<Uint8Array> {
-    const bytes = await this.bytes(this.assetUrl(release, asset), signal);
+  async readAsset(release: PhigrosRelease, asset: PhigrosResourceAsset, signal?: AbortSignal, diagnosticScenario: RuntimeRequestScenario = 'metadata'): Promise<Uint8Array> {
+    const bytes = await this.bytes(this.assetUrl(release, asset), signal, 12_000, diagnosticScenario);
     await verifyPhigrosResource(bytes, asset);
     aborted(signal);
     return bytes;
@@ -101,6 +102,7 @@ export class PhigrosResourceService {
   private async fetchRelease(signal: AbortSignal, force: boolean): Promise<PhigrosRelease> {
     const nonce = `${Date.now()}-${++this.sequence}`;
     const current = await requestJson({
+      diagnosticScenario: 'release',
       baseUrl: this.base, path: `/phigros/current.json?_check=${nonce}`, schema: CurrentSchema,
       fetcher: fetch, signal, retries: 1, label: 'Phigros',
       error: (status) => new ProviderError('network', `Phigros 发布信息请求失败：${status}`, true),
@@ -108,7 +110,7 @@ export class PhigrosResourceService {
     const revision = JSON.stringify(current);
     if (!force && this.release?.revision === revision) return this.release;
     const candidate = { current, revision, bypass: force ? nonce : undefined, fetchedAt: new Date().toISOString() } as PhigrosRelease;
-    const rawManifest = await this.bytes(this.url(current.manifest, candidate), signal);
+    const rawManifest = await this.bytes(this.url(current.manifest, candidate), signal, 12_000, 'manifest');
     if (current.manifestSha256 && await sha256(rawManifest) !== current.manifestSha256.toLowerCase()) {
       throw new ProviderError('upstream_schema', 'Phigros 清单校验失败', true);
     }
@@ -124,9 +126,9 @@ export class PhigrosResourceService {
     };
     const avatarAsset = candidate.manifest.assets.find((asset) => asset.path === 'metadata/tmp.tsv');
     const [catalog, notes, difficulty, avatars] = await Promise.all([
-      this.readAsset(candidate, this.asset(candidate, relative(current.catalog)), signal),
+      this.readAsset(candidate, this.asset(candidate, relative(current.catalog)), signal, 'catalog'),
       this.readAsset(candidate, this.asset(candidate, current.noteCounts ? relative(current.noteCounts) : 'metadata/note_counts.tsv'), signal),
-      this.readAsset(candidate, this.asset(candidate, 'metadata/difficulty.tsv'), signal),
+      this.readAsset(candidate, this.asset(candidate, 'metadata/difficulty.tsv'), signal, 'difficulty'),
       avatarAsset ? this.readAsset(candidate, avatarAsset, signal) : Promise.resolve(new Uint8Array()),
     ]);
     candidate.catalog = CatalogSchema.parse(JSON.parse(new TextDecoder().decode(catalog)));

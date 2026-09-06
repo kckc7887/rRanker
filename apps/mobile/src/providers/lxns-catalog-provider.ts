@@ -126,6 +126,7 @@ function versionAtOrBefore<T extends { version: number }>(versions: readonly T[]
 
 function getJson(path: string, signal?: AbortSignal): Promise<unknown> {
   return fetchProviderJson({
+    diagnosticScenario: 'catalog',
     baseUrl: API_ROOT,
     path,
     invalidJsonMessage: 'LXNS 返回了无效 JSON',
