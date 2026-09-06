@@ -1,5 +1,5 @@
 import type CryptoJS from 'crypto-js';
-import { AES, Base64, Hex, WordArray } from '@/utils/crypto-subset';
+import { AES, Base64, Hex, uint8ArrayToWordArray } from '@/utils/crypto-subset';
 import JSZip from 'jszip';
 import type { Difficulty, PhigrosChartNotes, ScoreRecord } from '@/domain/models';
 
@@ -76,19 +76,6 @@ function wordArrayToUint8Array(wa: CryptoJS.lib.WordArray): Uint8Array {
     out[i] = (wa.words[i >>> 2]! >>> (24 - (i % 4) * 8)) & 0xff;
   }
   return out;
-}
-
-function uint8ArrayToWordArray(data: Uint8Array): CryptoJS.lib.WordArray {
-  const words: number[] = [];
-  for (let i = 0; i < data.length; i += 4) {
-    words.push(
-      ((data[i] ?? 0) << 24)
-      | ((data[i + 1] ?? 0) << 16)
-      | ((data[i + 2] ?? 0) << 8)
-      | (data[i + 3] ?? 0),
-    );
-  }
-  return WordArray.create(words, data.length);
 }
 
 export function decryptAes(encryptedBase64: string): Uint8Array {

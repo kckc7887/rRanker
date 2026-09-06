@@ -35,6 +35,8 @@ export function aliasedCatalogSource<TCatalog extends Sourced, TAlias extends So
 export type AliasedCatalogOptions<TCatalog extends Sourced, TAlias extends Sourced, TData> = {
   queryKey: readonly unknown[];
   enabled?: boolean;
+  /** 服务已自行完成恢复时可关闭外层查询重试。 */
+  retry?: boolean;
   /** 本地缓存读取（可含别名缓存合并）；返回 null 时直接走网络。 */
   loadCached: () => Promise<TCatalog | null>;
   /** 主曲库新鲜加载（含持久化回写与网络失败兜底，由各游戏自行组合）。 */
@@ -82,6 +84,7 @@ export function useAliasedCatalog<TCatalog extends Sourced, TAlias extends Sourc
 ) {
   return useQuery({
     enabled: options.enabled,
+    retry: options.retry,
     queryKey: options.queryKey,
     staleTime: Infinity,
     gcTime: Infinity,

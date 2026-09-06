@@ -5,6 +5,7 @@
  */
 
 import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
+import { phigrosResources, PhigrosResourceService, verifyPhigrosResource } from '@/services/phigros-resources';
 
 export const PHIGROS_CHART_PREVIEW_DIFFICULTIES = Object.freeze(['EZ', 'HD', 'IN', 'AT'] as const);
 
@@ -74,16 +75,6 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export async function fetchPhigrosPreviewJson<T>(url: string, signal: AbortSignal, label = 'JSON'): Promise<T> {
-  const response = await fetch(url, { signal, headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`${label} 请求失败：HTTP ${response.status}`);
-  try {
-    return await response.json() as T;
-  } catch (error) {
-    throw new Error(`${label} 无法解析：${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
 export function phigrosChartPreviewLevelLabel(levelIndex: number): string {
   const label = PHIGROS_CHART_PREVIEW_DIFFICULTIES[levelIndex];
   if (label === undefined) throw new Error(`不支持的难度下标 ${levelIndex}`);
@@ -142,7 +133,7 @@ export function resolvePhigrosChartPreviewAssetBundle({
   // 谱面/音乐/曲绘路径随发布覆盖且声明 immutable 长缓存，URL 必须带 resourceVersion
   // 区分发布版本，否则 WebView 与各层 HTTP 缓存会命中旧发布内容。
   const toPublicAsset = (asset: AssetRecord): PhigrosChartPreviewAsset => {
-    const url = new URL(String(asset.path), releaseBase);
+    const url = new URL(String(asset.path).split('/').map(encodeURIComponent).join('/'), releaseBase);
     url.searchParams.set('v', resourceVersion);
     return {
       path: String(asset.path),
@@ -178,24 +169,28 @@ export async function loadPhigrosChartPreviewBundle(
   signal: AbortSignal,
   ossBase = PHIGROS_OSS_BASE,
 ): Promise<PhigrosChartPreviewBundle> {
-  const currentUrl = new URL('phigros/current.json', ossBase);
-  const current = await fetchPhigrosPreviewJson<CurrentPointer>(currentUrl.href, signal, 'current.json');
-  const currentObject = assertObject(current, 'current.json');
-  const catalogPath = requiredString(currentObject.catalog, 'catalog 路径');
-  const manifestPath = requiredString(currentObject.manifest, 'manifest 路径');
-  const resourceVersion = requiredString(currentObject.resourceVersion, 'resourceVersion');
+  const resources = ossBase === PHIGROS_OSS_BASE ? phigrosResources : new PhigrosResourceService(ossBase);
+  return resources.withRelease(async (release) => resolvePhigrosChartPreviewAssetBundle({
+    ...release, target, ossBase,
+  }), signal);
+}
 
-  // catalog/manifest 在对象存储声明 immutable 长缓存但同一路径随发布覆盖，
-  // 请求 URL 带 resourceVersion 才能绕开各层缓存拿到与 current 一致的版本。
-  const withVersion = (path: string): string => {
-    const url = new URL(path, ossBase);
-    url.searchParams.set('v', resourceVersion);
-    return url.href;
-  };
-
-  const [catalog, manifest] = await Promise.all([
-    fetchPhigrosPreviewJson<CatalogDocument>(withVersion(catalogPath), signal, 'catalog.json'),
-    fetchPhigrosPreviewJson<ManifestDocument>(withVersion(manifestPath), signal, 'manifest.json'),
-  ]);
-  return resolvePhigrosChartPreviewAssetBundle({ current, catalog, manifest, target, ossBase });
+export async function loadPhigrosChartPreviewResources(
+  target: PhigrosChartPreviewTarget,
+  signal: AbortSignal,
+  read: (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array> =
+    (asset) => phigrosResources.bytes(asset.url, signal, 60_000),
+) {
+  return phigrosResources.withRelease(async (release) => {
+    const bundle = resolvePhigrosChartPreviewAssetBundle({ ...release, target });
+    const bytes: Uint8Array[] = [];
+    for (const [index, asset] of [bundle.chart, bundle.music, bundle.illustration].entries()) {
+      asset.url = phigrosResources.assetUrl(release, phigrosResources.asset(release, asset.path));
+      const data = await read(asset, index);
+      await verifyPhigrosResource(data, asset);
+      if (signal.aborted) throw signal.reason;
+      bytes.push(data);
+    }
+    return { bundle, chart: bytes[0]!, music: bytes[1]!, illustration: bytes[2]! };
+  }, signal);
 }

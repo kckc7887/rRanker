@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { staleCached } from '@/services/cache-first';
+import { phigrosResources } from '@/services/phigros-resources';
 import type { CatalogSnapshot } from '@/domain/models';
 import { mapPhigrosKyouAliases, type PhigrosKyouAliasesSnapshot } from '@/domain/phigros-kyou';
 import { loadPhigrosKyouAliases } from '@/hooks/use-phigros-kyou';
@@ -13,7 +15,9 @@ import { normalizeSearchText } from '@/utils/search';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { queryClient } from '@/state/query-client';
 
-const PHIGROS_CATALOG_QUERY_KEY = ['phigros-catalog'] as const;
+export const PHIGROS_CATALOG_QUERY_KEY = ['phigros-catalog'] as const;
+const sharedProvider = new PhigrosCatalogProvider();
+let catalogRevision: string | undefined;
 type PhigrosCatalogData = { snapshot: CatalogSnapshot; provider: PhigrosCatalogProvider };
 
 function mergeAliasLists(existing: readonly string[] | undefined, incoming: readonly string[] | undefined): string[] {
@@ -34,12 +38,20 @@ function phigrosCatalogOptions(
 ): AliasedCatalogOptions<CatalogSnapshot, PhigrosKyouAliasesSnapshot, PhigrosCatalogData> {
   return {
     enabled,
+    retry: false,
     queryKey: PHIGROS_CATALOG_QUERY_KEY,
-    // Phigros 曲库由 provider 内存缓存承载（resetCatalogCache 后重拉 OSS），无本地持久化快照。
+    // 曲库与已验证发布只保留在会话内，更新检查由所有页面共用。
     loadCached: async () => null,
-    loadCatalog: (signal) => {
-      provider.resetCatalogCache();
-      return provider.getCatalog(signal);
+    loadCatalog: async (signal) => {
+      const release = await phigrosResources.load(signal, true);
+      const catalog = await provider.getCatalog(signal);
+      if (catalogRevision !== release.revision) {
+        catalogRevision = release.revision;
+        void queryClient.invalidateQueries({
+          predicate: (query) => query.queryKey[0] === 'game-data' && query.queryKey[3] === 'phigros',
+        });
+      }
+      return catalog;
     },
     loadAliases: loadPhigrosKyouAliases,
     mergeAliases: (catalog, aliasSnapshot) => {
@@ -66,19 +78,32 @@ function phigrosCatalogOptions(
 
 export function ensurePhigrosCatalog(provider: PhigrosCatalogProvider): Promise<PhigrosCatalogData> {
   const options = phigrosCatalogOptions(provider);
-  return queryClient.ensureQueryData({
+  return queryClient.fetchQuery({
     queryKey: PHIGROS_CATALOG_QUERY_KEY,
     queryFn: ({ signal }) => loadAliasedCatalog(options, signal),
     staleTime: Infinity,
     gcTime: Infinity,
-    revalidateIfStale: false,
+    retry: false,
   });
 }
 
 export function usePhigrosCatalog(enabled = true) {
   const tabActive = useCachedTabActive();
-  const provider = useMemo(() => new PhigrosCatalogProvider(), []);
-  return useAliasedCatalog<CatalogSnapshot, PhigrosKyouAliasesSnapshot, PhigrosCatalogData>(
+  const provider = sharedProvider;
+  const query = useAliasedCatalog<CatalogSnapshot, PhigrosKyouAliasesSnapshot, PhigrosCatalogData>(
     phigrosCatalogOptions(provider, enabled && tabActive),
   );
+  const data = useMemo(() => query.isError && query.data ? {
+    ...query.data, snapshot: { ...query.data.snapshot, source: staleCached(query.data.snapshot.source) },
+  } : query.data, [query.data, query.isError]);
+  return { ...query, data, isError: query.isError && !data };
+}
+
+export async function refreshPhigrosCatalog(): Promise<PhigrosCatalogData> {
+  await queryClient.invalidateQueries({ queryKey: PHIGROS_CATALOG_QUERY_KEY, refetchType: 'none' });
+  return queryClient.fetchQuery({
+    queryKey: PHIGROS_CATALOG_QUERY_KEY,
+    queryFn: ({ signal }) => loadAliasedCatalog(phigrosCatalogOptions(sharedProvider), signal),
+    staleTime: Infinity, gcTime: Infinity, retry: false,
+  });
 }

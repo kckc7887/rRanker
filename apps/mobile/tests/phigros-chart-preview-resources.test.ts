@@ -1,3 +1,4 @@
+import { releaseFixture } from './fixtures/phigros-release';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   loadPhigrosChartPreviewBundle,
@@ -95,30 +96,22 @@ describe('phigros chart preview resource resolution（移植 demo resource-loade
     expect(() => phigrosChartPreviewLevelLabel(4)).toThrow(/不支持的难度下标/);
   });
 
-  it('catalog/manifest 请求 URL 携带发布版本参数绕开缓存', async () => {
+  it('catalog/manifest 请求 URL 携带发布版本并校验实际内容', async () => {
+    const fixture = releaseFixture('9.9.9-test', ['DistortedFate.Sakuzyo']);
     const requests: string[] = [];
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = String(input);
-      requests.push(url);
-      const body = url.includes('current.json') ? JSON.stringify(current)
-        : url.includes('catalog.json') ? JSON.stringify(catalog)
-          : JSON.stringify(manifest);
-      return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      requests.push(String(input));
+      return fixture.respond(input);
     });
-    try {
-      const bundle = await loadPhigrosChartPreviewBundle(
-        { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
-        new AbortController().signal,
-        'https://assets.example/',
-      );
-      expect(requests[0]).toBe('https://assets.example/phigros/current.json');
-      expect(requests[1]).toBe('https://assets.example/phigros/releases/9.9.9/catalog.json?v=9.9.9-test');
-      expect(requests[2]).toBe('https://assets.example/phigros/releases/9.9.9/manifest.json?v=9.9.9-test');
-      expect(bundle.chart.url).toContain('?v=9.9.9-test');
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    const bundle = await loadPhigrosChartPreviewBundle(
+      { songId: 'DistortedFate.Sakuzyo', difficulty: 'EZ' }, new AbortController().signal, 'https://assets.example',
+    );
+    expect(requests[0]).toContain('phigros/current.json?_check=');
+    expect(requests).toContain('https://assets.example/phigros/releases/9.9.9/catalog.json?v=9.9.9-test');
+    expect(requests).toContain('https://assets.example/phigros/releases/9.9.9/manifest.json?v=9.9.9-test');
+    expect(bundle.chart.url).toContain('?v=9.9.9-test');
   });
+
 });
 
 afterEach(() => {

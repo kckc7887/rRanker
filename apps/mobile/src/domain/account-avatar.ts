@@ -7,10 +7,12 @@ export const LXNS_COLLECTION_ASSET_ROOT = 'https://assets2.lxns.net/maimai';
 export function buildPhigrosAvatarUrl(
   gameVersion: string | null | undefined,
   avatarName: string | null | undefined,
+  resourceVersion?: string,
 ): string | null {
   const name = avatarName?.trim();
   if (!gameVersion || !name) return null;
-  return `${PHIGROS_OSS_BASE}/phigros/releases/${gameVersion}/avatars/${encodeURIComponent(name)}.png`;
+  const url = `${PHIGROS_OSS_BASE}/phigros/releases/${gameVersion}/avatars/${encodeURIComponent(name)}.png`;
+  return resourceVersion ? `${url}?v=${encodeURIComponent(resourceVersion)}` : url;
 }
 
 export function buildLxnsIconUrl(iconId: number | null | undefined): string | null {

@@ -40,15 +40,27 @@ app 路由 / 游戏容器
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
 |---|---|---|---|
 | Provider 契约 | `src/providers/contracts.ts`：`ProviderSession`、`AuthProvider`、`ScoreProvider`、`CatalogDrivenScoreProvider`、`CatalogProvider`、`DetailedCatalogProvider` | 每个游戏保留自己的 DTO 与 Schema；示例账号的曲库驱动成绩实现 `CatalogDrivenScoreProvider` | 各 Provider 测试、`maxed-*-test-provider.test.ts` |
-| JSON 请求 | `src/providers/http-json.ts`：`requestJson`、`fetchProviderJson`、`retryAfterMs` | 统一超时、取消、重试、429 退避和结构校验；游戏提供 base URL、Schema 与场景文案 | 各 Provider 测试 |
+| HTTP 请求 | `src/providers/http-json.ts`：`requestJson<T>(options)`、`requestBytes(options)`、`fetchProviderJson`、`retryAfterMs` | JSON 和原始字节复用同一超时、取消、重试、429 退避和错误归一化执行器；游戏提供 base URL、Schema 与场景文案 | 各 Provider 测试、`phigros-resources.test.ts` |
+| 内容摘要 | `src/utils/resource-integrity.ts`：`sha256(bytes)`、`bytesToHex(buffer)`；`src/utils/crypto-subset.ts`：`uint8ArrayToWordArray(bytes)`、`bytesToBase64(bytes)` | 通过现有 Expo Crypto 和 CryptoJS 能力计算摘要、编码；字体缓存保留摘要兼容导出，游戏不得反向依赖字体功能 | 字体缓存、Phigros 资源与存档测试 |
+| Phigros 发布事务 | `src/services/phigros-resources.ts`：`phigrosResources`、`load(signal?, check?)`、`withRelease(action, signal?, check?)`、`verifyPhigrosResource(bytes, asset)` | Phigros 各调用方共用唯一会话发布；校验所有必需元数据后原子替换，实际资源使用修订 URL 和大小/SHA-256 校验；失败强制绕过缓存重读一次，取消以消费者计数管理 | `phigros-resources.test.ts`、`phigros-catalog-notes.test.ts`、`phigros-score-revision.test.ts` |
 | 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage` | 底层 code/cause 用于诊断；所有用户可见出口必须转换为可行动文案 | `consumer-copy-policy.test.ts`、各 Provider 测试 |
 | LXNS OAuth 请求 | `src/providers/lxns-oauth-request.ts` 与 `lxns-oauth.ts` | 舞萌和中二共享 OAuth 请求与令牌轮换骨架；游戏差异通过参数和账号映射表达 | LXNS OAuth、登录和 Session 测试 |
 | 示例满成绩 | `src/providers/maxed-records.ts` 的 `buildMaxedScoreRecords` | 由游戏测试 Provider 提供真实目录和映射函数，不复制通用生成循环 | `maxed-*-test-provider.test.ts` |
 | Repository | `src/repositories/{catalog,resource,snapshot,user-library}-repository.ts` | Service 依赖接口；SQLite 实现留在 `storage/`，页面不直接写数据库 | Repository、存储迁移和用户曲库测试 |
 | 缓存优先 | `src/services/cache-first.ts`：`cacheFirstLoad`、`staleCached`、`isCacheFallback` | 统一“本地首屏、后台刷新、失败保留旧数据”；调用方提供读写和游戏语义 | `cache-first.test.ts` |
 | 快照公共工具 | `src/services/snapshot-cache-utils.ts`：`makeSnapshot`、`snapshotSource`、`createInflightGuard`、`clearResourcesByPrefix` | 统一快照来源、并发去重和资源前缀清理 | 各游戏缓存测试 |
-| 曲库与别名 | `src/hooks/use-aliased-catalog.ts`：`loadAliasedCatalog`、`useAliasedCatalog` | 游戏提供目录、别名查询和合并函数；Hook 统一查询时序和来源 | 曲库与搜索测试 |
+| 曲库与别名 | `src/hooks/use-aliased-catalog.ts`：`loadAliasedCatalog`、`useAliasedCatalog` | 游戏提供目录、别名查询和合并函数；Hook 统一查询时序和来源；可选 `retry` 允许已自行恢复的服务关闭外层重试 | 曲库与搜索测试 |
 | 最终数据 Query | `src/services/game-data-query.ts`：`GAME_DATA_QUERY_VERSION`、`gameDataQueryKey`、`readSettledGameDataBundle` | 账号、游戏、Provider、会话模式共同组成键；键结构变化时统一提升版本 | 游戏数据与同步测试 |
+
+Phigros 曲库复用 `loadAliasedCatalog` / `useAliasedCatalog` 的来源与别名合并，
+`use-phigros-catalog.ts` 的 `refreshPhigrosCatalog()` 统一主动更新入口。
+`usePhigrosResourceSync()` 只在启动恢复到 Phigros、从其它游戏进入 Phigros 时检查；
+总览手动同步直接调用同一刷新入口。查询键保持会话有效，标签切换不重复同步，曲库不持久化。
+Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重拉。
+资源修订变化使中央 `useGameData` 的 Phigros 查询失效，成绩载荷的可选 `resourceRevision`
+决定持久化快照是否仍匹配定数；离线可保留已有快照。新修订计算完成前不写入新成绩快照。
+相关入口合同由 `phigros-resource-sync.test.tsx`、`use-phigros-catalog.test.tsx` 和
+`phigros-score-revision.test.ts` 覆盖。
 
 ## 状态与持久化
 
@@ -86,6 +98,14 @@ app 路由 / 游戏容器
 | 谱面下载 | `src/features/chart-download-shared/`：下载会话目录、取消错误、命名、保存与 `useChartPackageDownload` | 组装具体资源、压缩包结构和成功文案 | `chart-package-download-lifecycle.test.tsx` 及各游戏下载测试 |
 | 成绩图 | `src/features/best-image/`：桥接、状态机、偏好、资源加载、HTML 运行时、选择器、控制器、屏幕壳和导出 | 构建游戏卡片/HTML、素材清单、样式选项和分区语义 | `best-image-screen-contract.test.tsx`、HTML 金样和游戏成绩图测试 |
 | 存储管理 | `src/features/storage-management/`：缓存策略、文件边界、游戏适配器、统计、清理、维护和图标字体恢复 | 在注册适配器中声明本游戏查询键、资源和清理动作 | `storage-management.test.ts`、`storage-cache-policy.test.ts` |
+
+Phigros 的 `domain/phigros-chart-preview.ts` 提供
+`loadPhigrosChartPreviewResources(target, signal, read?)`，预览和兼容包下载共用发布恢复与字节校验。
+预览将已验证的谱面文本、音乐 Base64 和曲绘 data URL 交给既有配置与暂存计划；
+下载通过可选 `read(asset, index)` 接入 `downloadChartResource` 的原生文件、取消和进度，
+返回字节通过校验后才进入 ZIP。共享预览/下载核心不识别 Phigros 修订或音符。
+相关合同包括 `phigros-chart-preview-resources.test.ts`、`phigros-chart-preview-screen.test.tsx`、
+`phira-compatible-chart-download.test.ts` 和 `chart-preview-screen-shell-contract.test.tsx`。
 
 ## 跨层硬约束
 

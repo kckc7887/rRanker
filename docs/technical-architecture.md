@@ -71,6 +71,23 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 
 每个游戏保留自己的上游 DTO、Zod Schema、缓存快照和计算规则。跨游戏稳定身份和展示语义通过 `domain/game-content.ts`、`features/game-content/presentation.ts` 及各游戏适配器输出；个人曲库继续使用既有 `ChartType`、`levelIndex` 和存储键，不由展示层改写。
 
+### Phigros 发布资源
+
+`src/services/phigros-resources.ts` 的 `phigrosResources` 是曲库、定数、头像别名、
+谱面确认和下载的唯一发布读取入口。`current.json` 每次检查使用缓存绕过参数；
+修订或清单标识变化后读取同一发布的 manifest、catalog、物量表、定数表和可选头像别名。
+指针可带 `manifestSha256`，旧指针仍可读取；资源实际字节必须符合清单大小与 SHA-256。
+所有必需元数据完成校验后才替换会话对象，失败保留上次有效数据；曲库不落 SQLite 或文件。
+谱面、音乐和曲绘在使用时经同一服务校验，缺资源、404 或校验失败时强制重读发布信息并重试一次。
+修订 URL 使用 `resourceVersion`；同一游戏版本重发也会更新地址。取消的旧事务不得提交，
+并发消费者共享请求，其中一个取消不会取消其余消费者。
+
+根布局的 `usePhigrosResourceSync` 在恢复选择完成并进入 Phigros 时调用
+`refreshPhigrosCatalog`；总览手动同步复用同一入口。标签切换与普通前后台切换不触发额外检查。
+查询通过唯一 QueryClient 去重，更新后替换曲库并使 Phigros 成绩查询失效。
+成绩 Provider 的定数和 Best30 缓存、持久化成绩载荷均记录资源修订，避免沿用旧定数计算结果。
+曲库刷新失败时保留列表并标记来源过期；预览、下载与手动同步继续使用各自既有错误出口。
+
 ## 状态、持久化与资源生命周期
 
 - `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；持久凭据由 `storage/secure-session-store.ts` 管理。
@@ -84,6 +101,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 
 - 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（大小匹配则跳过下载），再写入 session。舞萌皮肤在 session 内编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读 PNG；该文件随共享缓存一并统计和清理。
 - 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。
+- Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；预览轮播同一时刻只挂载当前 WebView 页面。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 

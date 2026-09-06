@@ -94,7 +94,10 @@ jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
 }));
 
 jest.mock('@/domain/phigros-chart-preview', () => ({
-  loadPhigrosChartPreviewBundle: (...args: unknown[]) => mockLoadPhigrosBundle(...args),
+  loadPhigrosChartPreviewResources: async (...args: unknown[]) => ({
+    bundle: await mockLoadPhigrosBundle(...args),
+    chart: new Uint8Array([123, 125]), music: new Uint8Array([1]), illustration: new Uint8Array([2]),
+  }),
   phigrosChartPreviewLevelLabel: () => 'AT',
 }));
 
@@ -179,11 +182,10 @@ describe('PhigrosChartPreviewScreen', () => {
 
     await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
       game: 'phigros',
-      chartUrl: 'https://assets.example/charts/DistortedFate.Sakuzyo/AT.json',
-      musicUrl: 'https://assets.example/music/DistortedFate.Sakuzyo.ogg',
-      illustrationUrl: 'https://assets.example/illustrations/DistortedFate.Sakuzyo.png',
+      chartText: '{}',
+      illustrationUrl: expect.stringContaining(';base64,Ag=='),
       settings: { playbackSpeed: 1.5 },
-    }), null));
+    }), 'AQ=='));
     // 参数对象身份在每次渲染都会变化，prepare 只应执行一次。
     expect(mockPrepare).toHaveBeenCalledTimes(1);
   });
@@ -201,7 +203,7 @@ describe('PhigrosChartPreviewScreen', () => {
     expect(mockLoadPhigrosBundle).toHaveBeenCalledWith({ songId, difficulty: 'AT' }, expect.any(AbortSignal));
     expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
       game: 'phigros', title: '祈-我ら神祖と共に歩む者なり- AT',
-    }), null);
+    }), 'AQ==');
   });
 
   it('phira 参数经 ZIP 解包后注入谱面文本与本地音乐 URI', async () => {

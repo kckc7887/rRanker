@@ -1,4 +1,5 @@
-import { buildPhigrosAvatarUrl, PHIGROS_OSS_BASE } from '@/domain/account-avatar';
+import { phigrosResources } from '@/services/phigros-resources';
+import { buildPhigrosAvatarUrl } from '@/domain/account-avatar';
 
 type AvatarAliasMap = {
   fileByKey: Map<string, string>;
@@ -23,25 +24,17 @@ function parseAvatarAliasTsv(text: string): AvatarAliasMap {
   return { fileByKey };
 }
 
-async function loadAvatarAliasMap(gameVersion: string): Promise<AvatarAliasMap> {
-  const cached = aliasCache.get(gameVersion);
-  if (cached) return cached;
-
-  const url = `${PHIGROS_OSS_BASE}/phigros/releases/${gameVersion}/metadata/tmp.tsv`;
+async function loadAvatarAliasMap(_gameVersion: string): Promise<AvatarAliasMap> {
   try {
-    const res = await fetch(url, { headers: { Accept: 'text/plain' } });
-    if (!res.ok) {
-      const empty = { fileByKey: new Map<string, string>() };
-      aliasCache.set(gameVersion, empty);
-      return empty;
-    }
-    const map = parseAvatarAliasTsv(await res.text());
-    aliasCache.set(gameVersion, map);
+    const release = await phigrosResources.load();
+    const cached = aliasCache.get(release.revision);
+    if (cached) return cached;
+    const map = parseAvatarAliasTsv(release.avatarAliases);
+    aliasCache.clear();
+    aliasCache.set(release.revision, map);
     return map;
   } catch {
-    const empty = { fileByKey: new Map<string, string>() };
-    aliasCache.set(gameVersion, empty);
-    return empty;
+    return { fileByKey: new Map<string, string>() };
   }
 }
 
@@ -73,7 +66,8 @@ export async function resolvePhigrosAvatarUrl(
 ): Promise<string | null> {
   if (!gameVersion) return null;
   const fileName = await resolvePhigrosAvatarFileName(gameVersion, avatarKey);
-  return buildPhigrosAvatarUrl(gameVersion, fileName);
+  const current = phigrosResources.peek()?.current;
+  return buildPhigrosAvatarUrl(current?.gameVersion ?? gameVersion, fileName, current?.resourceVersion);
 }
 
 export function resetPhigrosAvatarAliasCacheForTests(): void {

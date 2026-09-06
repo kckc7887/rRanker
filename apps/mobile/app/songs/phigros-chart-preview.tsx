@@ -23,8 +23,8 @@ import {
 } from '@/features/chart-preview-shared/chart-preview-assets';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** Phigros 资源较小，使用较短等待时间。 */
-const PHIGROS_PREPARE_TIMEOUT_MS = 20_000;
+/** Phigros 在进入播放器前完成三类资源下载、校验与一次恢复重试。 */
+const PHIGROS_PREPARE_TIMEOUT_MS = 120_000;
 /** Phira 谱面包较大，使用较长等待时间。 */
 const PHIRA_PREPARE_TIMEOUT_MS = 60_000;
 

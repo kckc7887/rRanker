@@ -50,3 +50,10 @@ describe('phigros avatar resolver', () => {
     );
   });
 });
+
+vi.mock('@/services/phigros-resources', () => ({
+  phigrosResources: {
+    load: async () => ({ revision: 'r1', avatarAliases: await (await fetch('https://example.com/tmp.tsv')).text() }),
+    peek: () => undefined,
+  },
+}));

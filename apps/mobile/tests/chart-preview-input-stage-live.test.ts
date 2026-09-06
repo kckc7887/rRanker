@@ -77,27 +77,12 @@ live('谱面确认传入阶段 live 演示', () => {
             {},
             controller.signal,
           );
-          expect(prepared.config.chartUrl).toBe(bundle.chart.url);
-          expect(prepared.config.musicUrl).toBe(bundle.music.url);
-          expect(prepared.config.illustrationUrl).toBe(bundle.illustration.url);
-
-          // 播放器实际要读取的三个资源：谱面文本可解析、音乐与曲绘可下载。
-          const chartText = await withRetry(async () => {
-            const res = await fetch(prepared.config.chartUrl!, { signal: controller.signal });
-            expect(res.ok).toBe(true);
-            return res.text();
-          });
-          const chartJson = JSON.parse(chartText) as { judgeLineList?: unknown[] };
+          const chartJson = JSON.parse(prepared.config.chartText!) as { judgeLineList?: unknown[] };
           expect(Array.isArray(chartJson.judgeLineList)).toBe(true);
+          expect(Buffer.from(prepared.musicDataBase64!, 'base64').length).toBe(bundle.music.size);
+          const illustration = prepared.config.illustrationUrl!.split(',')[1]!;
+          expect(Buffer.from(illustration, 'base64').length).toBe(bundle.illustration.size);
 
-          for (const url of [prepared.config.musicUrl!, prepared.config.illustrationUrl!]) {
-            await withRetry(async () => {
-              const res = await fetch(url, { signal: controller.signal, headers: { Range: 'bytes=0-2047' } });
-              expect(res.status === 200 || res.status === 206).toBe(true);
-              const buffer = await res.arrayBuffer();
-              expect(buffer.byteLength).toBeGreaterThan(64);
-            });
-          }
         }
       } finally {
         clearTimeout(timeout);

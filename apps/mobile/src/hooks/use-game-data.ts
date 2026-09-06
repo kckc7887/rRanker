@@ -1,3 +1,4 @@
+import { phigrosResources } from '@/services/phigros-resources';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -359,18 +360,21 @@ export function useGameData(enabled = true) {
             ? catalogProvider
             : new PhigrosCatalogProvider();
           const loadFresh = async (): Promise<PhigrosGameDataPayload> => {
+            const release = await phigrosResources.load(signal);
             scoreProvider.invalidateCache();
             // 复用会话里的曲库 provider，避免每次同步成绩都新建实例并重拉 OSS、误刷新资源时间。
             const [player, records, bestSections, gameVersion, summary, userProfile, gameProgress] = await Promise.all([
-              scoreProvider.getPlayer(),
-              scoreProvider.getRecords(),
-              scoreProvider.getBestSections(),
-              phiCatalog.getGameVersion(),
-              scoreProvider.getSummary(),
-              scoreProvider.getUserProfile(),
-              scoreProvider.getGameProgress(),
+              scoreProvider.getPlayer(signal),
+              scoreProvider.getRecords(signal),
+              scoreProvider.getBestSections(signal),
+              phiCatalog.getGameVersion(signal),
+              scoreProvider.getSummary(signal),
+              scoreProvider.getUserProfile(signal),
+              scoreProvider.getGameProgress(signal),
             ]);
 
+            if (signal.aborted) throw signal.reason;
+            if (phigrosResources.peek()?.revision !== release.revision) throw new Error('Phigros release changed during score loading');
             const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
             const source = {
               kind: 'generated' as const,
@@ -388,6 +392,7 @@ export function useGameData(enabled = true) {
             const avatarUrl = await resolvePhigrosAvatarUrl(gameVersion, summary.avatar);
             return {
               kind: 'phigros' as const,
+              resourceRevision: release.revision,
               player,
               records,
               bestSections,
@@ -419,8 +424,17 @@ export function useGameData(enabled = true) {
           });
           const cache = new PhigrosSaveCache(repository);
           const stored = hasSessionData ? null : await cache.load(activeAccountId);
-          const payload = stored ? stalePhigrosPayload(stored) : await loadFresh();
-          if (!stored && !signal.aborted) {
+          let compatibleStored = stored;
+          if (stored) {
+            try {
+              const release = await phigrosResources.load(signal);
+              if (stored.resourceRevision !== release.revision) compatibleStored = null;
+            } catch {
+              if (signal.aborted) throw signal.reason;
+            }
+          }
+          const payload = compatibleStored ? stalePhigrosPayload(compatibleStored) : await loadFresh();
+          if (!compatibleStored && !signal.aborted) {
             void cache.save(activeAccountId, payload).catch(() => undefined);
           }
           return toBundle(payload);
