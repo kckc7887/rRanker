@@ -1,6 +1,7 @@
 const {
   createRunOncePlugin,
   withAppBuildGradle,
+  withGradleProperties,
 } = require('expo/config-plugins');
 const {
   mergeContents,
@@ -19,14 +20,29 @@ const SPLITS_BLOCK = `    splits {
 
 /**
  * 一次 assembleRelease 按 ABI 各出一份 APK，避免四合一 fat 包。
- * prebuild 会重写 android/app/build.gradle，故用 config plugin 持久化。
+ * prebuild 会重写原生文件；分包、R8 和资源裁剪必须由同一插件持久化。
  */
 function withAndroidAbiSplits(config) {
+  config = withGradleProperties(config, (config) => {
+    for (const key of ['android.enableMinifyInReleaseBuilds', 'android.enableShrinkResourcesInReleaseBuilds']) {
+      config.modResults = config.modResults.filter(entry => entry.type !== 'property' || entry.key !== key);
+      config.modResults.push({ type: 'property', key, value: 'true' });
+    }
+    return config;
+  });
   return withAppBuildGradle(config, (config) => {
     if (config.modResults.language !== 'groovy') {
-      return config;
+      throw new Error(`[${TAG}] Unsupported app build script language`);
     }
 
+    const original = config.modResults.contents;
+    if (!/getDefaultProguardFile\(["']proguard-android(?:-optimize)?\.txt["']\)/.test(original)) {
+      throw new Error(`[${TAG}] Default ProGuard configuration not found`);
+    }
+    config.modResults.contents = original.replace(
+      /getDefaultProguardFile\((["'])proguard-android\.txt\1\)/g,
+      'getDefaultProguardFile("proguard-android-optimize.txt")',
+    );
     const src = config.modResults.contents;
     if (src.includes(`@generated begin ${TAG}`)) {
       return config;
@@ -41,14 +57,14 @@ function withAndroidAbiSplits(config) {
       src,
       newSrc: SPLITS_BLOCK,
       tag: TAG,
-      anchor: /packagingOptions\s*\{/,
-      offset: -1,
+      anchor: /^android\s*\{\s*$/,
+      offset: 1,
       comment: '//',
     });
 
     if (!result.didMerge) {
       throw new Error(
-        `[${TAG}] 未能插入 ABI splits：找不到 packagingOptions 锚点`,
+        `[${TAG}] 未能插入 ABI splits：找不到 android 锚点`,
       );
     }
 

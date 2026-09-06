@@ -1,5 +1,5 @@
 import * as ImageManipulator from 'expo-image-manipulator';
-import jpeg from 'jpeg-js';
+import decodeJpeg from 'jpeg-js/lib/decoder.js';
 import jsQR from 'jsqr';
 import { File } from 'expo-file-system';
 import { extractMaimaiQrPayload } from '@/services/maimai-qr-payload';
@@ -57,7 +57,7 @@ export async function decodeMaimaiQrFromImageUri(uri: string, signal?: AbortSign
 
     const bytes = base64ToUint8Array(prepared.base64);
     throwIfAborted(signal);
-    const decoded = jpeg.decode(bytes, { useTArray: true });
+    const decoded = decodeJpeg(bytes, { useTArray: true });
     throwIfAborted(signal);
     if (!decoded.width || !decoded.height || !decoded.data?.length) {
       throw new QrDecodeError('图片解码失败');

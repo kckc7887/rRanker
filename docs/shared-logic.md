@@ -119,6 +119,20 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 
 ## 跨层硬约束
 
+### 打包与生成数据
+
+- `metro.config.js` 是依赖裁剪入口：保留 Ionicons 子集映射，移动端仅重定向当前 Zod
+  包内部的语言集合入口到 `src/utils/zod-locales.ts`。业务继续从 `zod` 导入，不能
+  另建 Schema 工厂或替换错误类；默认英文初始化由原库执行。若增加校验语言需求，
+  必须先扩展这个集合和 `metro-code-subsets.test.ts`，不能假定全集仍在移动包中。
+- `decodeMaimaiQrFromImageUri(uri, signal?)` 仍是上传图片二维码的公共服务，解码器
+  按深路径导入并沿用 jpeg-js 的类型；取消、识别结果、错误和临时图片清理合同由
+  `maimai-qr-image-decode.test.ts` 保护，上传组件不得复制识别链路。
+- 舞萌数值字典与 PNG IDAT 压缩仅属于构建时数据表示；`SLIDE_TABLE`、`AREA_LOOKUP`
+  的运行时类型和值保持完整。特效 `sourceSha256` 标识原始输入，`sha256` 标识生成内容，
+  两者不得混用。`maimai-generated-data.test.ts` 校验数据与像素，加载仍经现有播放器
+  及 `prepareChartPreviewWebviewFromPlan(plan)`，不增加网络资源或缓存执行器。
+
 ### 用户文案与错误
 
 - 用户界面只表达对象、动作、结果、风险和恢复方式，不显示 Schema、Provider、WebView、SecureStore、SQLite、PKCE、Token、响应或状态机等实现术语。
