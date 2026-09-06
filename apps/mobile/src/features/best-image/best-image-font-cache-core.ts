@@ -1,5 +1,6 @@
-import { CryptoDigestAlgorithm, digest } from 'expo-crypto';
+import { sha256 } from '@/utils/resource-integrity';
 import { Directory, File, Paths } from 'expo-file-system';
+export { sha256, bytesToHex } from '@/utils/resource-integrity';
 
 /** 字体缓存清单条目的公共字段：缓存校验与 inflight 防重只依赖这些稳定语义。 */
 export type FontCacheManifestEntry = {
@@ -19,16 +20,6 @@ export type FontCacheDirectories = {
   fontDirectory: Directory;
   temporaryDirectory: Directory;
 };
-
-export function bytesToHex(value: ArrayBuffer): string {
-  return Array.from(new Uint8Array(value), (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
-
-export async function sha256(bytes: Uint8Array): Promise<string> {
-  const stableBytes = new Uint8Array(bytes.byteLength);
-  stableBytes.set(bytes);
-  return bytesToHex(await digest(CryptoDigestAlgorithm.SHA256, stableBytes));
-}
 
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

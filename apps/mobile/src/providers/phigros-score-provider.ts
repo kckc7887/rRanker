@@ -1,3 +1,4 @@
+import { phigrosResources } from '@/services/phigros-resources';
 import type { DataSource, Player, ScoreRecord } from '@/domain/models';
 import type { ProviderSession, ScoreProvider } from './contracts';
 import { ProviderError } from './errors';
@@ -17,7 +18,6 @@ import {
   computeB30,
   gameRecordToScoreRecords,
   loadDifficultyTable,
-  mergeDifficultyTables,
   phigrosEntryToScoreRecord,
   roundRks,
   type PhigrosB30,
@@ -37,6 +37,7 @@ export type { DeviceCodeResult };
 type LoadedSave = {
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>;
   diffTable: PhigrosDifficultyTable;
+  resourceRevision: string;
   gameVersion: number;
   songCount: number;
   chartCount: number;
@@ -45,6 +46,7 @@ type LoadedSave = {
 };
 
 export class PhigrosScoreProvider implements ScoreProvider {
+  private cacheGeneration = 0;
   private sessionToken: string;
   private playerId: string;
   private saveCache: LoadedSave | null = null;
@@ -57,8 +59,10 @@ export class PhigrosScoreProvider implements ScoreProvider {
 
   private async ensureSaveMeta(signal?: AbortSignal): Promise<GameSaveMeta> {
     if (this.saveMeta) return this.saveMeta;
+    const generation = this.cacheGeneration;
     const meta = await getGameSave(this.sessionToken, signal);
     if (signal?.aborted) throw signal.reason;
+    if (generation !== this.cacheGeneration) throw new Error('Phigros save request replaced');
     this.saveMeta = meta;
     this.summaryCache = parseSummary(meta.summaryBase64);
     return meta;
@@ -149,38 +153,6 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return this.ensureSaveMeta(signal).then(() => this.summaryCache!);
   }
 
-  private async fetchDifficultyTable(gameVersion: number, signal?: AbortSignal): Promise<string> {
-    const res = await fetch(
-      `https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/${gameVersion}/metadata/difficulty.tsv`,
-      { signal },
-    );
-    if (!res.ok) throw new ProviderError('network', `无法加载定数表（版本 ${gameVersion}）`, true);
-    return await res.text();
-  }
-
-  private async loadMergedDifficultyTable(gameVersion: number, signal?: AbortSignal): Promise<PhigrosDifficultyTable> {
-    const current = await fetch(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/current.json',
-      { signal },
-    ).then((r) => r.json()) as { gameVersion: number };
-
-    const [saveVerRaw, currentRaw] = await Promise.all([
-      this.fetchDifficultyTable(gameVersion, signal).catch(() => null),
-      this.fetchDifficultyTable(current.gameVersion, signal).catch(() => null),
-    ]);
-
-    const tables = [saveVerRaw, currentRaw]
-      .filter((raw): raw is string => !!raw)
-      .map(loadDifficultyTable);
-
-    if (!tables.length) {
-      throw new ProviderError('network', '无法加载定数表', true);
-    }
-
-    const [primary, ...fallbacks] = tables;
-    return mergeDifficultyTables(primary!, ...fallbacks);
-  }
-
   private countGameRecord(
     gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   ): { songCount: number; chartCount: number } {
@@ -197,24 +169,35 @@ export class PhigrosScoreProvider implements ScoreProvider {
     const { gameRecord, user, gameProgress } = await decodeSaveZip(zipBuf);
 
     const gameVersion = this.summaryCache?.gameVersion ?? 0;
-    const diffTable = await this.loadMergedDifficultyTable(gameVersion, signal);
+    const release = await phigrosResources.load(signal);
+    const diffTable = loadDifficultyTable(release.difficulty);
     if (signal?.aborted) throw signal.reason;
     const { songCount, chartCount } = this.countGameRecord(gameRecord);
 
-    return { gameRecord, diffTable, gameVersion, songCount, chartCount, user, gameProgress };
+    return { gameRecord, diffTable, resourceRevision: release.revision, gameVersion, songCount, chartCount, user, gameProgress };
   }
 
   private async loadSave(signal?: AbortSignal): Promise<LoadedSave> {
-    if (this.saveCache) return this.saveCache;
+    if (signal?.aborted) throw signal.reason;
+    if (this.saveCache) {
+      const release = phigrosResources.peek();
+      if (release && this.saveCache.resourceRevision !== release.revision) {
+        this.saveCache = { ...this.saveCache, diffTable: loadDifficultyTable(release.difficulty), resourceRevision: release.revision };
+        this.b30Cache = null;
+      }
+      return this.saveCache;
+    }
+    const generation = this.cacheGeneration;
     if (!this.saveLoadPromise) {
-      this.saveLoadPromise = this.loadSaveInternal(signal).finally(() => {
-        this.saveLoadPromise = null;
-      });
+      const pending = this.loadSaveInternal(signal);
+      this.saveLoadPromise = pending;
+      void pending.finally(() => { if (this.saveLoadPromise === pending) this.saveLoadPromise = null; }).catch(() => undefined);
     }
     const loaded = await this.saveLoadPromise;
     if (signal?.aborted) throw signal.reason;
+    if (generation !== this.cacheGeneration) throw new Error('Phigros save request replaced');
     this.saveCache = loaded;
-    return this.saveCache;
+    return loaded;
   }
 
   async getRecords(signal?: AbortSignal): Promise<ScoreRecord[]> {
@@ -222,17 +205,20 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return gameRecordToScoreRecords(gameRecord, diffTable);
   }
 
-  async getUserProfile(): Promise<PhigrosUserProfile | null> {
-    return (await this.loadSave()).user;
+  async getUserProfile(signal?: AbortSignal): Promise<PhigrosUserProfile | null> {
+    return (await this.loadSave(signal)).user;
   }
 
-  async getGameProgress(): Promise<PhigrosGameProgress | null> {
-    return (await this.loadSave()).gameProgress;
+  async getGameProgress(signal?: AbortSignal): Promise<PhigrosGameProgress | null> {
+    return (await this.loadSave(signal)).gameProgress;
   }
 
-  getB30(): Promise<PhigrosB30> {
-    if (this.b30Cache) return Promise.resolve(this.b30Cache);
-    return this.loadSave().then(({ gameRecord, diffTable }) => {
+  getB30(signal?: AbortSignal): Promise<PhigrosB30> {
+    const generation = this.cacheGeneration;
+    return this.loadSave(signal).then(({ gameRecord, diffTable }) => {
+      if (signal?.aborted) throw signal.reason;
+      if (generation !== this.cacheGeneration) throw new Error('Phigros save request replaced');
+      if (this.b30Cache) return this.b30Cache;
       this.b30Cache = computeB30(gameRecord, diffTable);
       return this.b30Cache;
     });
@@ -250,6 +236,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
 
   /** 丢弃内存缓存，下次拉取会重新请求云存档 */
   invalidateCache(): void {
+    this.cacheGeneration += 1;
     this.saveCache = null;
     this.b30Cache = null;
     this.summaryCache = null;
@@ -258,8 +245,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
   }
 
   /** Best30 分区：Phi3 + Best27，与 RKS 计算口径一致 */
-  async getBestSections(): Promise<{ id: string; title: string; records: ScoreRecord[] }[]> {
-    const b30 = await this.getB30();
+  async getBestSections(signal?: AbortSignal): Promise<{ id: string; title: string; records: ScoreRecord[] }[]> {
+    const b30 = await this.getB30(signal);
     return [
       { id: 'phi3', title: 'Phi3', records: b30.phi3.map(phigrosEntryToScoreRecord) },
       { id: 'b27', title: 'Best27', records: b30.best27.map(phigrosEntryToScoreRecord) },

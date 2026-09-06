@@ -43,7 +43,7 @@ export type JsonRequestOptions<T> = {
 };
 
 /** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
-export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T> {
+async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>): Promise<T> {
   const { path, schema, fetcher, baseUrl, error, label } = options;
   const timeoutMs = options.timeoutMs ?? 12_000;
   const retries = options.retries ?? 2;
@@ -70,7 +70,7 @@ export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T>
         }
         throw mapped;
       }
-      return schema.parse(await response.json());
+      return schema.parse(await read(response));
     } catch (caught) {
       if (options.signal?.aborted) throw caught;
       if (caught instanceof z.ZodError || caught instanceof SyntaxError) {
@@ -88,6 +88,15 @@ export async function requestJson<T>(options: JsonRequestOptions<T>): Promise<T>
     }
   }
   throw previousError ?? new ProviderError('network', networkMessage, true);
+}
+
+export function requestJson<T>(options: JsonRequestOptions<T>): Promise<T> {
+  return requestData(options, (response) => response.json());
+}
+
+export function requestBytes(options: Omit<JsonRequestOptions<Uint8Array>, 'schema'>): Promise<Uint8Array> {
+  return requestData({ ...options, schema: z.instanceof(Uint8Array) },
+    async (response) => new Uint8Array(await response.arrayBuffer()));
 }
 
 export type ProviderJsonOptions = {

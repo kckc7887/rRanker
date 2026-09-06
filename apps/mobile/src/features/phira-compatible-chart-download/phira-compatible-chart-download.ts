@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import type { PhiraChart } from '@/domain/phira';
 import {
-  loadPhigrosChartPreviewBundle,
+  loadPhigrosChartPreviewResources,
   phigrosChartPreviewLevelLabel,
 } from '@/domain/phigros-chart-preview';
 import {
@@ -35,39 +35,20 @@ export async function downloadPhigrosChartAsPhiraPackage(
 ): Promise<boolean> {
   const signal = options.signal ?? new AbortController().signal;
   const level = phigrosChartPreviewLevelLabel(request.levelIndex);
-  const bundle = await loadPhigrosChartPreviewBundle({
-    songId: request.songId,
-    difficulty: level,
-  }, signal);
   const staging = createChartDownloadSessionDirectory();
   try {
-    const resources = [
-      { fileName: 'chart.json', url: bundle.chart.url },
-      { fileName: 'music.ogg', url: bundle.music.url },
-      { fileName: 'illustration.png', url: bundle.illustration.url },
-    ] as const;
-    const downloaded = new Map<string, Awaited<ReturnType<typeof downloadChartResource>>>();
-    for (const [index, resource] of resources.entries()) {
-      throwIfChartDownloadCancelled(signal);
-      options.onProgress?.({ phase: 'downloading', progress: index / resources.length });
-      const file = await downloadChartResource(
-        staging,
-        resource.fileName,
-        resource.url,
-        signal,
-        ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
-          const fileProgress = totalBytesExpectedToWrite > 0
-            ? Math.min(1, totalBytesWritten / totalBytesExpectedToWrite)
-            : 0;
-          options.onProgress?.({
-            phase: 'downloading',
-            progress: (index + fileProgress) / resources.length,
-          });
-        },
-      );
-      downloaded.set(resource.fileName, file);
-      options.onProgress?.({ phase: 'downloading', progress: (index + 1) / resources.length });
-    }
+    const resources = await loadPhigrosChartPreviewResources({
+      songId: request.songId, difficulty: level,
+    }, signal, async (asset, index) => {
+      const file = await downloadChartResource(staging,
+        ['chart.json', 'music.ogg', 'illustration.png'][index]!, asset.url, signal,
+        ({ totalBytesWritten, totalBytesExpectedToWrite }) => options.onProgress?.({
+          phase: 'downloading',
+          progress: (index + (totalBytesExpectedToWrite > 0 ? Math.min(1, totalBytesWritten / totalBytesExpectedToWrite) : 0)) / 3,
+        }));
+      return file.bytes();
+    });
+    const { bundle } = resources;
 
     options.onProgress?.({ phase: 'organizing', progress: 0 });
     throwIfChartDownloadCancelled(signal);
@@ -86,9 +67,9 @@ export async function downloadPhigrosChartAsPhiraPackage(
     };
     const zip = new JSZip();
     zip.file('info.yml', JSON.stringify(info, null, 2));
-    zip.file('chart.json', await downloaded.get('chart.json')!.bytes());
-    zip.file('music.ogg', await downloaded.get('music.ogg')!.bytes());
-    zip.file('illustration.png', await downloaded.get('illustration.png')!.bytes());
+    zip.file('chart.json', resources.chart);
+    zip.file('music.ogg', resources.music);
+    zip.file('illustration.png', resources.illustration);
     // 音乐与图片已是压缩格式，STORE 可避免无收益的压缩峰值。
     const zipBytes = await zip.generateAsync(
       { type: 'uint8array', compression: 'STORE' },

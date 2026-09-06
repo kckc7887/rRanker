@@ -12,3 +12,16 @@ import core from 'crypto-js/core.js';
 /** core.lib.WordArray：加解密与编码互转的工厂。 */
 export const WordArray = core.lib.WordArray;
 export { AES, HmacSHA1, MD5, Base64, Hex };
+
+export function uint8ArrayToWordArray(data: Uint8Array) {
+  const words: number[] = [];
+  for (let i = 0; i < data.length; i += 4) {
+    words.push(((data[i] ?? 0) << 24) | ((data[i + 1] ?? 0) << 16)
+      | ((data[i + 2] ?? 0) << 8) | (data[i + 3] ?? 0));
+  }
+  return WordArray.create(words, data.length);
+}
+
+export function bytesToBase64(data: Uint8Array): string {
+  return Base64.stringify(uint8ArrayToWordArray(data));
+}

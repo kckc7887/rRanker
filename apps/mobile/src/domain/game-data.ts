@@ -68,6 +68,7 @@ export type GamePayload =
     }
   | {
       kind: 'phigros';
+      resourceRevision?: string;
       player: Player;
       records: ScoreRecord[];
       bestSections: BestListSection[];

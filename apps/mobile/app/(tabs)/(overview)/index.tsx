@@ -1,3 +1,4 @@
+import { refreshPhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   InteractionManager,
@@ -196,6 +197,7 @@ function PublicOverviewScreen() {
           refreshed.snapshot.player.displayName,
         );
       }
+      if (activeGameId === 'phigros') await refreshPhigrosCatalog();
       // 先把相关页面标为过期但不并发请求，再只刷新当前总览一次。
       await invalidateAccountDataQueries(queryClient, 'none');
       const refreshed = await refetch();

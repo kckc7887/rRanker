@@ -182,3 +182,19 @@ describe('PhigrosCatalogProvider chapters', () => {
       String(url) === `${PHIGROS_OSS_BASE}/phigros/chapters.csv`)).toBe(true);
   });
 });
+
+vi.mock('@/services/phigros-resources', () => ({
+  phigrosResources: {
+    peek: () => undefined,
+    load: async () => {
+      const current = await (await fetch(`${PHIGROS_OSS_BASE}/phigros/current.json`)).json();
+      const catalog = await (await fetch(`${PHIGROS_OSS_BASE}/${current.catalog}`)).json();
+      return { current, catalog, noteCounts: '', fetchedAt: new Date().toISOString() };
+    },
+    bytes: async (url: string) => {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('unavailable');
+      return new TextEncoder().encode(await response.text());
+    },
+  },
+}));

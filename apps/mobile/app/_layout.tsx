@@ -1,3 +1,4 @@
+import { usePhigrosResourceSync } from '@/hooks/use-phigros-resource-sync';
 import { useEffect, useRef, useState } from 'react';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -169,6 +170,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutContent() {
+  usePhigrosResourceSync();
   const restoreStatus = useSession((state) => state.restoreStatus);
   const activeAccountId = useSession((state) => state.activeAccountId);
   const activeGameId = useSession((state) => state.activeGameId);

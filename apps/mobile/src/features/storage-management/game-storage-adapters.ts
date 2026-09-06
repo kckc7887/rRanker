@@ -1,3 +1,4 @@
+import { phigrosResources } from '@/services/phigros-resources';
 import type { GameId } from '@/domain/game-bind-options';
 import type { Directory } from 'expo-file-system';
 import { findGame } from '@/domain/game-bind-options';
@@ -287,7 +288,7 @@ const phigrosAdapter: GameStorageAdapter = {
   color: '#8B5CF6',
   note: '账号存档与当前版本字体；SQLite 为估算值',
   queryKeys: [['score-snapshot'], ['game-data'], ['phigros-catalog'], ['phigros-kyou-chart-tags']],
-  resetMemory: resetPhigrosKyouAliasesCache,
+  resetMemory: () => { resetPhigrosKyouAliasesCache(); phigrosResources.clear(); },
   fileResources: phigrosFileResources,
   async measure(snapshots, inventory) {
     const [sqlite, files] = await Promise.all([

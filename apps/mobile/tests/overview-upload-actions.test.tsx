@@ -6,6 +6,9 @@ import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bou
 import type { ProviderId } from '@/domain/game-bind-options';
 
 let mockProviderId: ProviderId = 'local';
+let mockGameId = 'maimai';
+const mockRefreshPhigros = jest.fn(async () => undefined);
+jest.mock('@/hooks/use-phigros-catalog', () => ({ refreshPhigrosCatalog: () => mockRefreshPhigros() }));
 let mockPinnedToolIds: string[] = [];
 let mockPinnedPlateIds: number[] = [];
 let mockSettledBundle: unknown = undefined;
@@ -24,6 +27,7 @@ const mockExtraWater = createMaimaiBoundAccount({
 const mockLxns = createMaimaiBoundAccount({
   providerId: 'lxns', displayName: '落雪玩家', rating: 15000, playerId: 'lxns',
 });
+const mockPhigros = { ...mockLxns, id: 'phigros', gameId: 'phigros', providerId: 'phi-taptap' };
 
 jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockRouterPush(...args) } }));
 jest.mock('@/components/AppNotification', () => ({
@@ -140,7 +144,7 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: {
-      gameId: 'maimai',
+      gameId: mockGameId,
       providerId: mockProviderId,
       profile: {
         title: '舞萌 DX', ratingLabel: 'DX RATING', ratingDigits: 5,
@@ -153,7 +157,9 @@ jest.mock('@/hooks/use-game-data', () => ({
         bestSections: [{ id: 'b35', title: 'B35' }, { id: 'b15', title: 'B15' }],
       },
       payload: {
-        kind: 'maimai',
+        kind: mockGameId,
+        challengeModeRank: 0,
+        progress: { cleared: [0, 0, 0, 0], fullCombo: [0, 0, 0, 0], phi: [0, 0, 0, 0] },
         player: { displayName: mockProviderId === 'local' ? '本地玩家' : '水鱼玩家' },
         records: [],
         bestSections: [{ id: 'b35', title: 'B35', records: [] }, { id: 'b15', title: 'B15', records: [] }],
@@ -184,9 +190,9 @@ jest.mock('@/hooks/use-plates', () => ({
 jest.mock('@/state/session-store', () => ({
   applyLxnsTokenRotation: jest.fn(),
   useSession: (selector: (state: unknown) => unknown) => selector({
-    boundAccounts: [mockLocal, mockExtraLocal, mockWater, mockExtraWater, mockLxns],
-    activeGameId: 'maimai',
-    activeAccountId: mockProviderId === 'local'
+    boundAccounts: [mockLocal, mockExtraLocal, mockWater, mockExtraWater, mockLxns, mockPhigros],
+    activeGameId: mockGameId,
+    activeAccountId: mockProviderId === 'phi-taptap' ? mockPhigros.id : mockProviderId === 'local'
       ? mockExtraLocal.id
       : mockProviderId === 'lxns'
         ? mockLxns.id
@@ -249,13 +255,26 @@ jest.mock('@/storage/secure-session-store', () => ({
 
 describe('总览上传和同步操作', () => {
   beforeEach(() => {
+    mockGameId = 'maimai';
+    mockRefreshPhigros.mockClear();
     mockTemporarySelectedAccountIds = undefined;
     mockPinnedToolIds = [];
     mockPinnedPlateIds = [];
     mockSettledBundle = undefined;
     mockShowNotification.mockClear();
     mockRouterPush.mockClear();
+    mockRefetch.mockClear();
     mockRefetch.mockResolvedValue({ data: undefined });
+  });
+
+  it('Phigros 手动同步先检查资源，再刷新成绩', async () => {
+    mockGameId = 'phigros';
+    mockProviderId = 'phi-taptap';
+    const screen = await render(<OverviewScreen />);
+    await fireEvent.press(screen.getByText('同步数据'));
+    await waitFor(() => expect(mockRefreshPhigros).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockRefetch).toHaveBeenCalled());
+    expect(mockRefreshPhigros.mock.invocationCallOrder[0]).toBeLessThan(mockRefetch.mock.invocationCallOrder[0]!);
   });
 
   it('本地查分器页只显示使用好友码的同步按钮', async () => {

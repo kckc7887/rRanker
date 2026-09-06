@@ -3,15 +3,16 @@
  * 把详情页交接过来的歌曲/谱面信息构建成播放器配置（Phigros 经 OSS 资源定位，
  * Phira 经谱面包解包），并产出需要落盘的本地音乐/谱面包资源数据。
  *
- * 本模块保持纯函数（无 react-native / expo 依赖），谱面确认屏幕与
+ * 本模块负责资源准备、不直接读写原生文件，谱面确认屏幕与
  * live 演示（tests/chart-preview-input-stage-live.test.ts）共用同一实现，
  * 避免传入逻辑在屏幕内与测试侧各自演化。
  */
 
 import JSZip from 'jszip';
+import { bytesToBase64 } from '@/utils/crypto-subset';
 import type { PhiraChart } from '@/domain/phira';
 import {
-  loadPhigrosChartPreviewBundle,
+  loadPhigrosChartPreviewResources,
   phigrosChartPreviewLevelLabel,
 } from '@/domain/phigros-chart-preview';
 import {
@@ -63,17 +64,18 @@ export async function buildPhigrosChartPreviewInput(
   settings: PhigrosChartPreviewSettings,
   signal: AbortSignal,
 ): Promise<PreparedChartPreviewInput> {
-  const bundle = await loadPhigrosChartPreviewBundle({
+  const resources = await loadPhigrosChartPreviewResources({
     songId: input.songId,
     difficulty: phigrosChartPreviewLevelLabel(input.levelIndex),
   }, signal);
+  const { bundle } = resources;
   return {
+    musicDataBase64: bytesToBase64(resources.music),
     config: {
       game: 'phigros',
       title: input.title ?? `${bundle.song.title} ${bundle.target.difficulty}`,
-      chartUrl: bundle.chart.url,
-      musicUrl: bundle.music.url,
-      illustrationUrl: bundle.illustration.url,
+      chartText: new TextDecoder('utf-8', { fatal: true }).decode(resources.chart),
+      illustrationUrl: `data:${bundle.illustration.contentType};base64,${bytesToBase64(resources.illustration)}`,
       settings,
     },
   };
