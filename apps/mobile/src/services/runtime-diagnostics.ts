@@ -158,15 +158,26 @@ installRuntimeDiagnosticRecorder((type, fields) => persistRuntimeDiagnostic(
   fields as RuntimeDiagnosticFields,
 ));
 
+export function snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore> {
+  // 读取也占据队列位置，后续事件不能抢在本次快照之前落盘。
+  const pending = writeQueue.then(readStore);
+  writeQueue = pending.then(() => undefined, () => undefined);
+  return pending;
+}
+
+let exporting = false;
 export async function exportRuntimeDiagnostics(): Promise<void> {
-  await writeQueue;
-  const store = await readStore();
-  const file = exportFile();
-  await file.write(JSON.stringify(store, null, 2));
-  if (!await Sharing.isAvailableAsync()) throw new Error('sharing unavailable');
-  await Sharing.shareAsync(file.uri, {
-    dialogTitle: '导出诊断记录',
-    mimeType: 'text/plain',
-    UTI: 'public.plain-text',
-  });
+  if (exporting) return;
+  exporting = true;
+  try {
+    const store = await snapshotRuntimeDiagnostics();
+    const file = exportFile();
+    await file.write(JSON.stringify(store, null, 2));
+    if (!await Sharing.isAvailableAsync()) throw new Error('sharing unavailable');
+    await Sharing.shareAsync(file.uri, {
+      dialogTitle: '分享诊断信息',
+      mimeType: 'text/plain',
+      UTI: 'public.plain-text',
+    });
+  } finally { exporting = false; }
 }

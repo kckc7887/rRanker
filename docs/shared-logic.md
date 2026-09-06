@@ -108,10 +108,22 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   firstAt、lastAt 和 byType；后两项时间及类型统计只覆盖保留事件。控制器补充 snapshotAt，
   不修改已有 formatVersion、记录结构或数据库表，旧记录继续分享。
 - 日志正文不属于缓存；分享副本复用 `expo-sharing` 和现有 `rranker-` 临时缓存规则。
-  简要诊断的三次启动/256 条总额与 `exportRuntimeDiagnostics()` 继续独立使用。
+  `runtime-diagnostics.ts` 的 `snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore>`
+  将读取排入既有串行队列，返回独立快照，保持最近三次启动/256 条事件的上限。
+  `shareRuntimeLog(id): Promise<void>` 先同步固定所选日志，再立即排入简要诊断读取；
+  完成的单个 JSON 文本增加 `diagnostics` 字段，不改变日志事件、统计、formatVersion 或存储。
+  `exportRuntimeDiagnostics(): Promise<void>` 复用同一快照入口，只供无日志空态分享诊断信息。
+  两种分享均在文件完成后打开系统面板，并防止各自操作期间的重复分享。
+- 诊断页面继续通过 `useSyncExternalStore` 订阅唯一控制器，开关反映 enabled，
+  运行状态结合 activeId、记录状态、ready、busy 与 failed，不从开启偏好推断正在记录。
+  最新/上次标签沿 Repository 创建顺序；开关通过 `useAppTheme()` 复用个性化页的
+  原生 Switch 轨道和滑块颜色，滚动区按压复用 `DetailGestureRoot` / `DetailPressable`。
+  每份日志提供分享，只有加载成功的无日志空态提供“分享诊断信息”；失败走公共通知与重试。
 - `runtime-logs.test.ts` 使用真实内存 SQLite 检查事务、保留、恢复、失败和脱敏，
-  并覆盖公共 HTTP/查询和异常监听合同；`runtime-log-sharing.test.tsx` 覆盖分享快照与失败，
-  `diagnostics-screen.test.tsx`、`settings-navigation.test.tsx` 覆盖页面交互与入口迁移。
+  并覆盖公共 HTTP/查询和异常监听合同；`runtime-log-sharing.test.tsx` 覆盖合并分享、
+  旧记录、并发与失败重试，`runtime-diagnostics.test.tsx` 覆盖快照队列隔离、脱敏和容量上限。
+  `diagnostics-screen.test.tsx` 覆盖主题色、新旧标签、状态、空态与分享交互，
+  `settings-navigation.test.tsx` 覆盖设置入口和个性化行为。
   `chart-preview-screen-shell-contract.test.tsx` 覆盖准备阶段、去重、后台取消及迟到回调；
   `best-image-diagnostics.test.tsx` 覆盖公共导出控制器的捕获、保存、取消和超时日志，
   `phigros-best-image-preview.test.tsx` 验证现有游戏经公共壳采集就绪，不记录页面内容。
