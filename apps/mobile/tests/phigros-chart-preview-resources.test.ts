@@ -74,6 +74,14 @@ describe('phigros chart preview resource resolution（移植 demo resource-loade
     })).toThrow(/谱面.*0/);
   });
 
+  it('专属音乐重复时拒绝回退歌曲共用音乐', () => {
+    const music = { path: 'music/DistortedFate.Sakuzyo.7.ogg' };
+    expect(() => resolvePhigrosChartPreviewAssetBundle({
+      current, catalog, manifest: { assets: [...manifest.assets, music, music] },
+      target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT', variantIndex: 7 },
+    })).toThrow(/音乐.*2/);
+  });
+
   it('没有默认目录且存在多个编号变体时仍拒绝歧义', () => {
     expect(() => resolvePhigrosChartPreviewAssetBundle({
       current, catalog,

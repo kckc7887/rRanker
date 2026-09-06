@@ -6,6 +6,27 @@ import { releaseFixture } from './fixtures/phigros-release';
 afterEach(() => { phigrosResources.clear(); vi.unstubAllGlobals(); });
 
 describe('Phigros release transactions', () => {
+  it.each([1, 2, 3, 4, 5, 6])('loads variant %i with shared song music when no dedicated music is published', async (variantIndex) => {
+    const id = 'Random.SobremSilentroom';
+    const fixture = releaseFixture('r1', [id], { variants: [1, 2, 3, 4, 5, 6], variantMusic: false });
+    const fetcher = vi.fn(async (input) => fixture.respond(input));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await loadPhigrosChartPreviewResources({ songId: id, difficulty: 'EZ', variantIndex },
+      new AbortController().signal);
+    expect(result.bundle.chart.path).toBe(`charts/${id}.${variantIndex}/EZ.json`);
+    expect(result.chart).toEqual(fixture.files[`charts/${id}.${variantIndex}/EZ.json`]);
+    expect(result.bundle.music.path).toBe(`music/${id}.ogg`);
+    expect(result.music).toEqual(fixture.files[`music/${id}.ogg`]);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('current.json'))).toHaveLength(1);
+  });
+
+  it('still rejects a variant when neither dedicated nor shared music is published', async () => {
+    const fixture = releaseFixture('r1', ['Song.A'], { variants: [1], variantMusic: false, music: false });
+    vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
+    await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ', variantIndex: 1 },
+      new AbortController().signal)).rejects.toThrow(/音乐.*0/);
+  });
+
   it('lists numeric variants in order and loads the selected chart with its matching music', async () => {
     const fixture = releaseFixture('r1', ['Random.SobremSilentroom'], { variants: [6, 1, 3, 2, 5, 4] });
     vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
@@ -18,6 +39,17 @@ describe('Phigros release transactions', () => {
     delete fixture.files['music/Random.SobremSilentroom.6.ogg'];
     await expect(loadPhigrosChartPreviewResources({ ...target, variantIndex: 6 }, signal)).rejects.toThrow();
   });
+
+  it('rejects corrupt dedicated music even when shared music is available', async () => {
+    const fixture = releaseFixture('r1', ['Song.A'], { variants: [1] });
+    fixture.files['music/Song.A.1.ogg'][4] = 0;
+    const fetcher = vi.fn(async (input) => fixture.respond(input));
+    vi.stubGlobal('fetch', fetcher);
+    await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ', variantIndex: 1 },
+      new AbortController().signal)).rejects.toThrow('校验失败');
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes('/music/Song.A.ogg'))).toBe(false);
+  });
+
   it('rechecks the pointer but reuses verified metadata for an unchanged release', async () => {
     const fixture = releaseFixture();
     const fetcher = vi.fn(async (input: RequestInfo | URL) => fixture.respond(input));

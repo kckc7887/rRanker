@@ -17,7 +17,7 @@ import {
   buildPhigrosChartPreviewInput,
   buildPhiraChartPreviewInput,
 } from '@/features/phigros-chart-preview/chart-preview-input';
-import { loadPhigrosChartPreviewBundle } from '@/domain/phigros-chart-preview';
+import { loadPhigrosChartPreviewBundle, loadPhigrosChartPreviewVariants } from '@/domain/phigros-chart-preview';
 import {
   applyPhigrosChartPreviewConfigToHtml,
   buildPhigrosChartPreviewConfigJson,
@@ -55,6 +55,20 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 live('谱面确认传入阶段 live 演示', () => {
+  it('Phigros：Random 全部 IN 里谱产出完整播放器配置', async () => {
+    const songId = 'Random.SobremSilentroom';
+    const signal = AbortSignal.timeout(300_000);
+    const variants = await loadPhigrosChartPreviewVariants({ songId, difficulty: 'IN' }, signal);
+    expect(variants).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    for (const variantIndex of variants.filter((value) => value !== 0)) {
+      const prepared = await buildPhigrosChartPreviewInput({ songId, levelIndex: 2, variantIndex }, {}, signal);
+      expect(JSON.parse(prepared.config.chartText!).judgeLineList.length).toBeGreaterThan(0);
+      expect(Buffer.from(prepared.musicDataBase64!, 'base64').subarray(0, 4).toString()).toBe('OggS');
+      expect(prepared.config.illustrationUrl).toMatch(/^data:image\/png;base64,/);
+      expect(prepared.config.title).toContain(`里谱 ${variantIndex}`);
+    }
+  }, 300_000);
+
   it('Phigros：5 首问题歌曲全部难度经 OSS 定位并产出可读取的谱面/音乐/曲绘', async () => {
     for (const songId of PHIGROS_CASES) {
       const controller = new AbortController();

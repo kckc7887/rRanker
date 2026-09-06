@@ -87,7 +87,9 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 `AppNotification` 提供“继续播放谱面 / 查看里谱”，后者关闭当前弹窗后按数字顺序列出非 `.0` 谱面。
 `usePhigrosChartVariantSelection` 在选择期间保持共享播放器壳等待，选择完成才启动资源准备及超时。
 离开页面或进入后台会取消未完成读取并撤销弹窗。所选 `variantIndex` 经既有资源入口匹配同编号谱面
-和 `music/<songId>.<编号>.ogg`；缺少里谱音乐时不回退默认音频。默认预览与谱面下载保持原行为。
+和优先使用的 `music/<songId>.<编号>.ogg`；清单未发布同编号音乐时使用歌曲共用的
+`music/<songId>.ogg`。已声明的专属音乐下载或校验失败仍走发布恢复并报错，不替换为共用音乐。
+默认预览与谱面下载保持原行为。
 
 根布局的 `usePhigrosResourceSync` 在恢复选择完成并进入 Phigros 时调用
 `refreshPhigrosCatalog`；总览手动同步复用同一入口。标签切换与普通前后台切换不触发额外检查。

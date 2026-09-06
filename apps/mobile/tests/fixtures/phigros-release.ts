@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-export function releaseFixture(revision = 'r1', songIds = ['Song.A'], options: { music?: boolean; variants?: number[] } = {}) {
+export function releaseFixture(revision = 'r1', songIds = ['Song.A'], options: { music?: boolean; variants?: number[]; variantMusic?: boolean } = {}) {
   const encode = (value: string) => new TextEncoder().encode(value);
   const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
   const files: Record<string, Uint8Array> = {
@@ -16,7 +16,7 @@ export function releaseFixture(revision = 'r1', songIds = ['Song.A'], options: {
     files[`illustrations/${id}.png`] = encode('PNGfixture');
     for (const variant of options.variants ?? []) {
       files[`charts/${id}.${variant}/EZ.json`] = encode(`{"variant":${variant},"judgeLineList":[]}`);
-      files[`music/${id}.${variant}.ogg`] = encode(`OggSvariant${variant}`);
+      if (options.variantMusic !== false) files[`music/${id}.${variant}.ogg`] = encode(`OggSvariant${variant}`);
     }
   }
   const manifest = { gameVersion: '9.9.9', generatedAt: revision, assets: Object.entries(files).map(([path, bytes]) => ({
