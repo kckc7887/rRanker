@@ -27,7 +27,7 @@ jest.mock('@/services/runtime-logs', () => ({
 describe('diagnostics screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockState = { ready: true, busy: false, capacity: 2000, activeId: null, sessions: [], failed: false };
+    mockState = { ready: true, busy: false, capacity: 2000, enabled: false, activeId: null, sessions: [], failed: false };
   });
 
   it('shows the default off switch, capacity choices, empty state and relocated export', async () => {
@@ -35,6 +35,7 @@ describe('diagnostics screen', () => {
     expect(screen.getByLabelText('记录日志').props.value).toBe(false);
     expect(screen.getByLabelText('保留 2000 条').props.accessibilityState.checked).toBe(true);
     expect(screen.getByText('暂无日志，请先开启记录。')).toBeTruthy();
+    expect(screen.getByText('开启后持续记录，每次启动应用会创建一份新日志，直到手动关闭。')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('保留 5000 条'));
     expect(mockCapacity).toHaveBeenCalledWith(5000);
     await fireEvent.press(screen.getByLabelText('导出诊断记录'));
@@ -47,7 +48,7 @@ describe('diagnostics screen', () => {
     await fireEvent(screen.getByLabelText('记录日志'), 'valueChange', true);
     expect(mockStart).toHaveBeenCalledTimes(1);
     await act(() => {
-      mockState = { ...mockState, activeId: 3 };
+      mockState = { ...mockState, enabled: true, activeId: 3 };
       mockListeners.forEach((listener) => listener());
     });
     expect(screen.getByLabelText('记录日志').props.value).toBe(true);
@@ -60,7 +61,7 @@ describe('diagnostics screen', () => {
   });
 
   it('shares the selected record and renders statuses and counts for both records', async () => {
-    mockState = { ...mockState, activeId: 2, sessions: [
+    mockState = { ...mockState, enabled: true, activeId: 2, sessions: [
       { id: 2, startedAt: '2026-09-06T10:00:00Z', lastAt: '2026-09-06T10:01:00Z', status: 'recording', count: 20, capacity: 2000 },
       { id: 1, startedAt: '2026-09-05T10:00:00Z', lastAt: '2026-09-05T10:01:00Z', status: 'interrupted', count: 1000, capacity: 1000 },
     ] };
@@ -85,9 +86,10 @@ describe('diagnostics screen', () => {
   });
 
   it('offers retry after a storage failure without claiming the session crashed', async () => {
-    mockState = { ...mockState, failed: true };
+    mockState = { ...mockState, enabled: true, failed: true };
     const screen = await render(<DiagnosticsScreen />);
-    expect(screen.getByText('日志保存遇到问题，记录已停止。请重试。')).toBeTruthy();
+    expect(screen.getByText('日志保存遇到问题，请重试。')).toBeTruthy();
+    expect(screen.getByLabelText('记录日志').props.value).toBe(true);
     await fireEvent.press(screen.getByLabelText('重试'));
     expect(mockStart).toHaveBeenCalledTimes(1);
   });
