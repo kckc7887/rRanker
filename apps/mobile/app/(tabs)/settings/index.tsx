@@ -11,7 +11,6 @@ import { listClearableCategoryIds } from '@/features/storage-management/storage-
 import { useAppTheme } from '@/theme/app-theme';
 import { storageClearPreferencesStore } from '@/storage/storage-clear-prefs-store';
 import { providerErrorToUserMessage } from '@/providers/errors';
-import { exportRuntimeDiagnostics } from '@/services/runtime-diagnostics';
 
 export default function SettingsTabScreen() {
   return <CachedTabScreen><SettingsScreen /></CachedTabScreen>;
@@ -22,23 +21,6 @@ export function SettingsScreen() {
   const theme = useAppTheme();
   const { showNotification } = useNotification();
   const [quickClearing, setQuickClearing] = useState(false);
-  const [exportingDiagnostics, setExportingDiagnostics] = useState(false);
-
-  const handleExportDiagnostics = async () => {
-    if (exportingDiagnostics) return;
-    setExportingDiagnostics(true);
-    try {
-      await exportRuntimeDiagnostics();
-    } catch {
-      showNotification({
-        title: '导出失败',
-        message: '暂时无法导出诊断记录，请稍后重试。',
-        variant: 'error',
-      });
-    } finally {
-      setExportingDiagnostics(false);
-    }
-  };
 
   const handleQuickClear = async () => {
     if (quickClearing) return;
@@ -149,18 +131,15 @@ export function SettingsScreen() {
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="导出诊断记录"
-        disabled={exportingDiagnostics}
-        onPress={() => void handleExportDiagnostics()}
+        accessibilityLabel="诊断"
+        onPress={() => router.push('/diagnostics' as Href)}
         style={[styles.row, { backgroundColor: theme.surface }]}
       >
         <View style={styles.rowText}>
-          <Text style={[styles.title, { color: theme.text }]}>导出诊断记录</Text>
+          <Text style={[styles.title, { color: theme.text }]}>诊断</Text>
           <Text style={[styles.detail, { color: theme.textMuted }]}>遇到闪退或功能异常时，可导出记录并发送给开发者协助排查</Text>
         </View>
-        {exportingDiagnostics
-          ? <ActivityIndicator color={theme.accent} size="small" />
-          : <Ionicons name="share-outline" size={21} color={theme.accent} />}
+        <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
       </Pressable>
     </ScrollView>
   );

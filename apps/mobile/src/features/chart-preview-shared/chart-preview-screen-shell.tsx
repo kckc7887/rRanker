@@ -22,6 +22,7 @@ import {
 import { chartPreviewNativeScreenOptions } from './chart-preview-native-screen-options';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { useAppTheme } from '@/theme/app-theme';
 
 export type ChartPreviewShellSource = {
@@ -169,6 +170,7 @@ export function ChartPreviewScreenShell<TPayload>({
         if (cancelled) prepared.dispose?.();
         else setSource(prepared);
       } catch (error) {
+        recordRuntimeError('chart-preview-prepare', error);
         // 诊断日志：底层原因只进日志，不进用户界面。
         console.log('[chart-preview] prepare error', error);
         if (!cancelled) {
@@ -292,6 +294,7 @@ export function ChartPreviewScreenShell<TPayload>({
                 setIsFullscreen(data.active);
               }
               if (data.type === 'error') {
+                recordRuntimeError('chart-preview-player', data);
                 // 诊断日志：底层原因只进日志，不进用户界面。
                 console.log('[chart-preview] player error', {
                   diagnostic: typeof data.diagnostic === 'string' ? data.diagnostic : undefined,
@@ -307,21 +310,25 @@ export function ChartPreviewScreenShell<TPayload>({
               onBridgeMessage?.(data, bridge);
             }}
             onError={(event) => {
+              recordRuntimeError('chart-preview-load', event?.nativeEvent);
               console.log('[chart-preview] webview error', event?.nativeEvent);
               setIsFullscreen(false);
               setPlayerError('播放器加载失败，请返回重试。');
             }}
             onContentProcessDidTerminate={() => {
+              recordRuntimeError('chart-preview-terminated', undefined);
               setReady(false);
               setIsFullscreen(false);
               setWebViewGeneration((value) => value + 1);
             }}
             onRenderProcessGone={() => {
+              recordRuntimeError('chart-preview-process-gone', undefined);
               setReady(false);
               setIsFullscreen(false);
               setWebViewGeneration((value) => value + 1);
             }}
             onHttpError={(event) => {
+              void recordRuntimeDiagnostic('request', { source: 'chart-preview', result: 'error', status: event?.nativeEvent?.statusCode });
               console.log('[chart-preview] webview http error', event?.nativeEvent);
               if (!blockOnHttpError) return;
               setIsFullscreen(false);

@@ -76,6 +76,28 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 | 示例账号 | `src/storage/create-demo-account-store.ts` 的 `createDemoAccountStore` | 单个可删除示例档案的公共持久化工厂 | 示例账号 Store 测试 |
 | SQLite 与存储统计 | `src/storage/rranker-database.ts`、SQLite Repository、`src/features/storage-management/game-storage-adapters.ts` | 数据库连接与 Schema 初始化串行；统计和清理均经同一游戏适配器 | `storage-management.test.ts`、`storage-management-screen.test.tsx` |
 
+### 诊断记录
+
+- `services/runtime-diagnostics-recorder.ts` 的 `recordRuntimeDiagnostic(type, fields?)`
+  返回 `Promise<void>`；同步分发到手动记录器，再调用简要诊断记录器，两者失败均不传播到业务。
+  `recordRuntimeError(source, error, fatal?)` 统一错误采集，底层调用方只依赖该轻量入口。
+- `services/runtime-logs.ts` 提供 `initializeRuntimeLogs()`、`recordRuntimeRoute(segments)`、
+  `shareRuntimeLog(id)` 和唯一 `runtimeLogs` 控制器。控制器公开 `start()`、`stop()`、
+  `setCapacity(1000 | 2000 | 5000)`、`subscribe()`、`getSnapshot()` 与 `snapshot(id)`。
+  页面订阅状态，不直接写数据库；容量偏好复用 `createPreferencesStore`。
+- `domain/runtime-log.ts` 定义类型与脱敏：字段白名单、基于类别的错误摘要、最多 30 个
+  堆栈位置和单条 8 KiB 上限；不读取任意异常的序列化结果。路由传入 `useSegments`
+  返回的模板，HTTP 入口记录固定场景名，不传入地址、账号或请求载荷。
+- `storage/rranker-database.ts` 的 `getRuntimeLogDatabase()` 管理独立日志连接；
+  `RuntimeLogRepository` 统一事务创建、增量追加、容量裁剪、结束和恢复。成功创建第三份
+  才淘汰最旧记录；每份独立保留最后 N 条，重启不创建新记录且不自动开启。
+- 日志正文不属于缓存；分享副本复用 `expo-sharing` 和现有 `rranker-` 临时缓存规则。
+  简要诊断的三次启动/256 条总额与 `exportRuntimeDiagnostics()` 继续独立使用。
+- `runtime-logs.test.ts` 使用真实内存 SQLite 检查事务、保留、恢复、失败和脱敏，
+  并覆盖公共 HTTP/查询和异常监听合同；`runtime-log-sharing.test.tsx` 覆盖分享快照与失败，
+  `diagnostics-screen.test.tsx`、`settings-navigation.test.tsx` 覆盖页面交互与入口迁移。
+  根路由错误边界、平台异常终止和原生分享必须另做真机验收。
+
 ## 共享 UI 与交互
 
 | 能力 | 权威入口 | 使用边界 | 主要验证 |

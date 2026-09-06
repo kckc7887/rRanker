@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetSta
 import { PixelRatio, Platform, View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import { useNotification } from '@/components/AppNotification';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import {
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
@@ -238,7 +239,8 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
         message: `已保存 ${captures.length} 张成绩图片到相册`,
         variant: 'success',
       });
-    } catch {
+    } catch (error) {
+      recordRuntimeError('best-image-save', error);
       showNotification({
         title: '导出失败',
         message: '无法导出成绩图片，请重试。',
