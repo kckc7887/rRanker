@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import assert from 'node:assert/strict';
 const root = path.resolve(import.meta.dirname, '..');
 const output = path.join(root, 'build/maimai-visual-check');
 await fs.mkdir(output, { recursive: true });
@@ -30,6 +31,41 @@ const charts = Object.fromEntries(Object.entries(samples).map(([k,v])=>[k,parseS
 window.visual = {
  samples: Object.keys(samples),
  render(name,time,mirror='none') { renderer.setMirrorMode(mirror); renderer.renderAtTime(charts[name],time); return renderer.frameOverlay; },
+ settings(body,time) {
+  renderer.setBackgroundImage(null); renderer.setBackgroundVideo(null); renderer.resizeToSize(540);
+  renderer.setPinkSlideStart(true); renderer.setJudgeHint('unified'); renderer.setMirrorMode('none');
+  renderer.renderAtTime(parseSimaiBody('(120)'+body+','),time);
+ },
+ async background(width,height,size,videoMode) {
+  const media=document.createElement('canvas');media.width=width;media.height=height;
+  const context=media.getContext('2d')!;context.fillStyle='#ffffff';context.fillRect(0,0,width,height);
+  const image=new Image();image.src=media.toDataURL();await image.decode();
+  const video=document.createElement('video');video.muted=true;video.playsInline=true;
+  let stream: MediaStream | undefined, pump: ReturnType<typeof setInterval> | undefined;
+  try {
+   renderer.setBackgroundVideo(null);renderer.setBackgroundImage(image);renderer.resizeToSize(size);renderer.clear();
+   const read=()=>{
+    const ctx=canvas.getContext('2d')!,s=canvas.width;
+    return [[.5,.5],[.1,.1],[.5,.05],[.05,.5]].map(([x,y])=>Array.from(ctx.getImageData(Math.floor(s*x),Math.floor(s*y),1,1).data));
+   };
+   const imagePixels=read();
+   if(videoMode) {
+    stream=media.captureStream(0);video.srcObject=stream;
+    const track=stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+    pump=setInterval(()=>{context.fillRect(0,0,width,height);track.requestFrame();},30);
+    let playTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {await Promise.race([video.play(),new Promise((_,reject)=>{playTimeout=setTimeout(()=>reject(new Error('Video playback timeout')),5000);})]);}
+    finally {clearTimeout(playTimeout);}
+    await new Promise<void>((resolve,reject)=>{
+     const timeout=setTimeout(()=>reject(new Error('Video frame timeout')),3000);
+     video.requestVideoFrameCallback(()=>{clearTimeout(timeout);resolve();});
+     context.fillRect(0,0,width,height);
+    });
+    renderer.setBackgroundVideo(video);renderer.clear();
+   }
+   return {imagePixels,pixels:read(),width:canvas.width,height:canvas.height};
+  } finally {clearInterval(pump);video.pause();stream?.getTracks().forEach(track=>track.stop());video.srcObject=null;renderer.setBackgroundVideo(null);}
+ },
  async playback(name) {
   const start=performance.now(); let frames=0;
   await new Promise(resolve=>{ const tick=()=>{const elapsed=performance.now()-start; renderer.renderAtTime(charts[name],1500+elapsed); frames++;if(elapsed<3000)requestAnimationFrame(tick);else resolve(null);};requestAnimationFrame(tick); });
@@ -56,7 +92,27 @@ try {
    const name=sample+'-'+time+'.png';await page.screenshot({path:path.join(output,name)});results.push({sample,time,name,stats});
  }
  const playback=await page.evaluate(()=>window.visual.playback('chain'));
+ const settings=[];
+ for(const [name,body,time] of [
+  ['pink-single','1x-5[4:2]',1850],['pink-double','1x-5[4:2]*-7[4:2]',1850],
+  ['pink-moving','1-5[4:2]',2750],['pink-wifi','1w5[4:2]',2750],
+  ['special-stars','1b-5[4:2]/3-7[4:2]/5m-1[4:2]',1850],
+  ['just','1-5[4:1]',3100],['just-curve','1<5[4:1]',3100],['just-wifi','1w5[4:1]b',3100],
+  ['gold-hold','1h[4:2]/3hb[4:2]/Ch[4:2]',2250],
+ ]) {
+  await page.evaluate(([body,time])=>window.visual.settings(body,time),[body,time]);
+  const file='settings-'+name+'.png';await page.screenshot({path:path.join(output,file)});settings.push(file);
+ }
+ const backgrounds=[];
+ for(const [width,height] of [[1600,900],[900,1600],[800,800]]) for(const size of [320,540]) for(const video of [false,true]) {
+  const result=await page.evaluate(args=>window.visual.background(...args),[width,height,size,video]);
+  const expected=[140,0,height<width?0:140,width<height?0:140];
+  result.pixels.forEach((pixel,i)=>{for(let c=0;c<3;c++)assert.ok(Math.abs(pixel[c]-expected[i])<=3);assert.equal(pixel[3],255);});
+  result.pixels.forEach((pixel,i)=>pixel.forEach((value,c)=>assert.ok(Math.abs(value-result.imagePixels[i][c])<=3)));
+  const file='background-'+width+'x'+height+'-'+size+'-'+(video?'video':'image')+'.png';
+  await page.screenshot({path:path.join(output,file)});backgrounds.push({width,height,size,video,file,...result});
+ }
  if(errors.length)throw new Error(errors.join('\n'));
- await fs.writeFile(path.join(output,'results.json'),JSON.stringify({errors,playback,frames:results},null,2));
- console.log(JSON.stringify({output,frames:results.length,playback,errors}));
+ await fs.writeFile(path.join(output,'results.json'),JSON.stringify({errors,playback,frames:results,settings,backgrounds},null,2));
+ console.log(JSON.stringify({output,frames:results.length,settings:settings.length,backgrounds:backgrounds.length,playback,errors}));
 } finally { await browser.close(); }

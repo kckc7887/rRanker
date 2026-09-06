@@ -4,6 +4,7 @@
 import { EFFECT_CURVES } from './effectCurves.generated';
 import { EFFECT_SCENES, EFFECT_SPRITES, HOLD_PARTICLES, type EffectNode } from './effectSprites.generated';
 import type { ChartPreviewSkin } from './skinAtlas';
+import { EACH_COLOR } from './skinSemantics';
 
 function sample(keys: (number | null)[][], seconds: number): number {
   if (seconds <= keys[0][0]!) return keys[0][1]!;
@@ -83,10 +84,10 @@ export class EffectRenderer {
     }
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, 512, 512); return canvas;
   }
-  draw(ctx: CanvasRenderingContext2D, kind: 'tap' | 'touch' | 'hold' | 'firework', ageMs: number, isBreak: boolean, timeMs: number, color?: string) {
+  draw(ctx: CanvasRenderingContext2D, kind: 'tap' | 'touch' | 'hold' | 'firework', ageMs: number, isBreak: boolean, timeMs: number) {
     if (kind === 'hold') {
       const state = holdParticleState(ageMs); ctx.globalAlpha *= state.alpha;
-      const image = this.colorSprite('Circle.png', color ?? (isBreak ? '#ffbe50' : '#ffb7e8'));
+      const image = this.colorSprite('Circle.png', EACH_COLOR);
       ctx.drawImage(image, -state.size / 2, -state.size / 2, state.size, state.size); return;
     }
     const name = isBreak && kind === 'tap' ? 'break' : kind, t = ageMs / 1000 * (name === 'break' ? 0.9 : 1);
@@ -99,6 +100,7 @@ export class EffectRenderer {
       ctx.scale(curve(node, 'scale.x', node.scale.x), curve(node, 'scale.y', node.scale.y));
     };
     for (const node of [...nodes].filter(n => n.sprite).sort((a, b) => a.order - b.order)) {
+      if (node.sprite === 'Star_Perfect.png' || node.sprite === 'TouchEffectStar_1.png' || node.sprite === 'TouchEffectStar_2.png') continue;
       if (!active(node) || curve(node, 'm_Enabled', 1) < 0.5) continue;
       ctx.save(); transform(node);
       const alpha = curve(node, node.shader ? 'material._Alpha' : 'm_Color.a', node.color?.a ?? 1);

@@ -7,7 +7,7 @@ import { ChartPreviewSkin } from './skinAtlas';
 import { buildFrame, prepareChart, completedAt, type DrawCommand, type PreparedChart } from './frame';
 import { parseJudgeHint } from '../utils/judgeHint';
 import { EffectRenderer } from './effects';
-import { SKIN_TRANSFORM, SENSOR_TRANSFORM, JUDGMENT_OUTLINE } from './skinSemantics';
+import { SKIN_TRANSFORM, SKIN_DISPLAY_SIZE, SENSOR_TRANSFORM, JUDGMENT_OUTLINE } from './skinSemantics';
 import { buttonPoint } from '../core/geometry/slidePath';
 import { MAIMAI_CHART_PREVIEW_SENSOR } from '../../maimai-chart-preview-skin-files';
 
@@ -87,19 +87,19 @@ export class MainRenderer {
   private draw(command: DrawCommand) {
     if (command.effect) {
       const ctx = this.ctx; ctx.save(); ctx.translate(command.x, -command.y); ctx.rotate(-command.angle);
-      this.effects.draw(ctx, command.effect.kind, command.effect.ageMs, command.effect.isBreak, this.timeMs, command.effect.color); ctx.restore(); return;
+      this.effects.draw(ctx, command.effect.kind, command.effect.ageMs, command.effect.isBreak, this.timeMs); ctx.restore(); return;
     }
     const image = this.skin.get(command.path);
     if (!image) throw new Error(`Required sprite missing: ${command.path}`);
-    const ctx = this.ctx, nativeWidth = image.naturalWidth / SKIN_TRANSFORM.pixelsPerUnit, nativeHeight = image.naturalHeight / SKIN_TRANSFORM.pixelsPerUnit;
+    const ctx = this.ctx;
+    const [nativeWidth, nativeHeight] = SKIN_DISPLAY_SIZE[command.path] ?? [image.naturalWidth / SKIN_TRANSFORM.pixelsPerUnit, image.naturalHeight / SKIN_TRANSFORM.pixelsPerUnit];
     const width = nativeWidth * command.scale, height = (nativeHeight + (command.stretch ?? 0)) * command.scale;
     ctx.save(); ctx.translate(command.x, -command.y); ctx.rotate(-command.angle); ctx.globalAlpha = command.alpha;
     if (command.brightness && command.brightness !== 1) ctx.filter = `brightness(${command.brightness})`;
     if (command.cutoff !== undefined) {
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, Math.hypot(width, height), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * command.cutoff); ctx.closePath(); ctx.clip();
     }
-    const baseImage = command.recolor ? this.tint(command.path, command.recolor) ?? image : image;
-    this.drawSliced(baseImage, image.naturalWidth, image.naturalHeight, width, height, command.stretch !== undefined, command.scale);
+    this.drawSliced(image, image.naturalWidth, image.naturalHeight, width, height, command.stretch !== undefined, command.scale);
     if (command.exPath) {
       const overlay = this.tint(command.exPath, command.tint ?? '#ffffff');
       if (overlay) this.drawSliced(overlay, overlay.width, overlay.height, width, height, command.stretch !== undefined, command.scale);
@@ -124,23 +124,25 @@ export class MainRenderer {
   }
   clear() {
     const ctx = this.ctx, size = this.canvas.width;
-    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.fillStyle = '#080a10'; ctx.fillRect(0, 0, size, size);
-    if (this.video && this.video.readyState >= 2 && this.video.videoWidth > 0) this.drawBackgroundSource(this.video, this.video.videoWidth, this.video.videoHeight);
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, size, size);
+    if (this.video && this.video.readyState >= 2 && this.video.videoWidth > 0) this.drawBackgroundSource(ctx, this.video, this.video.videoWidth, this.video.videoHeight);
     else if (this.background?.complete && this.background.naturalWidth > 0) {
       if (!this.backgroundCache) {
         const cache = document.createElement('canvas'); cache.width = size; cache.height = size;
         const c = cache.getContext('2d')!, image = this.background;
-        const scale = Math.max(size / image.naturalWidth, size / image.naturalHeight);
-        c.drawImage(image, (size - image.naturalWidth * scale) / 2, (size - image.naturalHeight * scale) / 2, image.naturalWidth * scale, image.naturalHeight * scale);
+        this.drawBackgroundSource(c, image, image.naturalWidth, image.naturalHeight);
         this.backgroundCache = cache;
       }
       ctx.drawImage(this.backgroundCache, 0, 0);
     }
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, size, size);
   }
-  private drawBackgroundSource(source: CanvasImageSource, width: number, height: number) {
-    const size = this.canvas.width, scale = Math.max(size / width, size / height);
-    this.ctx.drawImage(source, (size - width * scale) / 2, (size - height * scale) / 2, width * scale, height * scale);
+  private drawBackgroundSource(ctx: CanvasRenderingContext2D, source: CanvasImageSource, width: number, height: number) {
+    if (width <= 0 || height <= 0) return;
+    const size = this.canvas.width, scale = Math.min(size / width, size / height);
+    ctx.save(); ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
+    ctx.drawImage(source, (size - width * scale) / 2, (size - height * scale) / 2, width * scale, height * scale);
+    ctx.restore();
   }
   renderJudgmentLine() {
     if (this.config.judgmentLineDesign === 'blind') return;

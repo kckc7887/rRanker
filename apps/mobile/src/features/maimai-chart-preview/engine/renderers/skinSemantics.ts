@@ -1,10 +1,22 @@
 /** Runtime sprite contract; object names are immutable S3 keys.
- * All sprites use the full image rectangle, center pivot, and 100 pixels/world unit.
+ * Sprites use the full image rectangle and center pivot; default density is 100 pixels/world unit.
  * Native alpha bounds and dimensions are recorded in the audited manifest. */
 export const SKIN_ALIASES: Readonly<Record<string, string>> = {
   'TouchHoldSkins/touchhold_mine_border.png': 'TouchHoldSkins/touchhold_break_mine.png',
 };
 export const resolveSkinObject = (semantic: string): string => SKIN_ALIASES[semantic] ?? semantic;
+export const EACH_COLOR = '#fff55d';
+export function resolveStarSkin(path: string, pink: boolean): string {
+  if (!pink) return path;
+  if (path === 'StarSkins/star.png') return 'StarSkins/star_pink.png';
+  if (path === 'StarSkins/star_double.png') return 'StarSkins/star_pink_double.png';
+  return path;
+}
+// Pink artwork has a different pixel resolution; preserve the original single/double star footprint.
+export const SKIN_DISPLAY_SIZE: Readonly<Record<string, readonly [number, number]>> = {
+  'StarSkins/star_pink.png': [1.26, 1.26],
+  'StarSkins/star_pink_double.png': [1.22, 1.26],
+};
 // Measured from the original 2048px sensor.webp: eight E-region centers fit touchPoint at radius 3.1.
 export const SENSOR_TRANSFORM = { center: [1025.5, 997] as const, pixelsPerUnit: 197 } as const;
 // S3 outline.png: 480px ring radius, 6px stroke and approximately 29px marker diameter at 100 PPU.
