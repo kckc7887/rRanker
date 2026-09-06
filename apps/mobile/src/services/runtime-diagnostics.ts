@@ -136,6 +136,9 @@ function persistRuntimeDiagnostic(
   type: RuntimeDiagnosticEventType,
   fields: RuntimeDiagnosticFields = {},
 ): Promise<void> {
+  if (!['lifecycle', 'memory-warning', 'account-hydration', 'query-memory', 'task', 'web-content'].includes(type)) {
+    return Promise.resolve();
+  }
   if (!activeSessionStartedAt) void initializeRuntimeDiagnostics();
   const event = sanitizeRuntimeDiagnosticEvent(type, fields);
   return enqueueWrite(async () => {

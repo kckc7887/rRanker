@@ -173,14 +173,12 @@ describe('settings navigation', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it('shows a user-actionable message when diagnostic export fails', async () => {
-    mockExportDiagnostics.mockRejectedValueOnce(new Error('sharing unavailable'));
+  it('opens diagnostics and removes the direct export action', async () => {
     const screen = await renderSettings();
-
-    await fireEvent.press(screen.getByLabelText('导出诊断记录'));
-
-    expect(await screen.findByText('导出失败')).toBeTruthy();
-    expect(screen.getByText('暂时无法导出诊断记录，请稍后重试。')).toBeTruthy();
+    expect(screen.queryByLabelText('导出诊断记录')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('诊断'));
+    expect(mockPush).toHaveBeenCalledWith('/diagnostics');
+    expect(mockExportDiagnostics).not.toHaveBeenCalled();
   });
 
   it('changes appearance and accent from theme settings', async () => {

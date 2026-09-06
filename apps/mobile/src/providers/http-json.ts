@@ -1,6 +1,7 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import { ProviderError, providerErrorFromStatus } from './errors';
+import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 
 type FetchLike = typeof fetch;
 const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
@@ -43,7 +44,7 @@ export type JsonRequestOptions<T> = {
 };
 
 /** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
-async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>): Promise<T> {
+async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>, source: string): Promise<T> {
   const { path, schema, fetcher, baseUrl, error, label } = options;
   const timeoutMs = options.timeoutMs ?? 12_000;
   const retries = options.retries ?? 2;
@@ -57,12 +58,18 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
     const onExternalAbort = () => controller.abort();
     options.signal?.addEventListener('abort', onExternalAbort, { once: true });
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const started = Date.now();
+    let status: number | undefined;
+    let result = 'error';
+    let diagnosticError: unknown;
     try {
       const response = await fetcher(`${baseUrl}${path}`, {
         headers: { Accept: 'application/json', 'Cache-Control': 'no-store' }, signal: controller.signal,
       });
+      status = response.status;
       if (!response.ok) {
         const mapped = error(response.status);
+        diagnosticError = mapped;
         if (attempt === 0 && mapped.retryable) {
           previousError = mapped;
           if (response.status === 429) await pause(retryAfterMs(response), options.signal);
@@ -70,8 +77,12 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
         }
         throw mapped;
       }
-      return schema.parse(await read(response));
+      const data = schema.parse(await read(response));
+      result = 'success';
+      return data;
     } catch (caught) {
+      diagnosticError = caught;
+      if (options.signal?.aborted) result = 'cancelled';
       if (options.signal?.aborted) throw caught;
       if (caught instanceof z.ZodError || caught instanceof SyntaxError) {
         throw new ProviderError('upstream_schema', schemaMessage, true, { cause: caught });
@@ -83,6 +94,11 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
       if (attempt === 0) { previousError = normalized; continue; }
       throw normalized;
     } finally {
+      void recordRuntimeDiagnostic('request', {
+        source, result, status, attempt: attempt + 1, durationMs: Date.now() - started,
+        errorCode: diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
+        error: diagnosticError,
+      });
       clearTimeout(timeout);
       options.signal?.removeEventListener('abort', onExternalAbort);
     }
@@ -91,12 +107,12 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
 }
 
 export function requestJson<T>(options: JsonRequestOptions<T>): Promise<T> {
-  return requestData(options, (response) => response.json());
+  return requestData(options, (response) => response.json(), 'request-json');
 }
 
 export function requestBytes(options: Omit<JsonRequestOptions<Uint8Array>, 'schema'>): Promise<Uint8Array> {
   return requestData({ ...options, schema: z.instanceof(Uint8Array) },
-    async (response) => new Uint8Array(await response.arrayBuffer()));
+    async (response) => new Uint8Array(await response.arrayBuffer()), 'request-bytes');
 }
 
 export type ProviderJsonOptions = {
@@ -114,6 +130,10 @@ export type ProviderJsonOptions = {
  * 与解析/超时/网络错误归一化，无重试（LXNS 公共曲库语义）。
  */
 export async function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown> {
+  const started = Date.now();
+  let status: number | undefined;
+  let result = 'error';
+  let diagnosticError: unknown;
   const controller = new AbortController();
   const onExternalAbort = () => controller.abort();
   if (options.signal?.aborted) controller.abort(options.signal.reason);
@@ -123,9 +143,14 @@ export async function fetchProviderJson(options: ProviderJsonOptions): Promise<u
     const response = await expoFetch(`${options.baseUrl}${options.path}`, {
       headers: { Accept: 'application/json' }, signal: controller.signal,
     });
+    status = response.status;
     if (!response.ok) throw providerErrorFromStatus(response.status);
-    return await response.json();
+    const data = await response.json();
+    result = 'success';
+    return data;
   } catch (error) {
+    diagnosticError = error;
+    if (options.signal?.aborted) result = 'cancelled';
     if (options.signal?.aborted) throw error;
     if (error instanceof ProviderError) throw error;
     if (error instanceof SyntaxError) {
@@ -136,6 +161,11 @@ export async function fetchProviderJson(options: ProviderJsonOptions): Promise<u
     }
     throw new ProviderError('network', options.networkMessage, true, { cause: error });
   } finally {
+    void recordRuntimeDiagnostic('request', {
+      source: 'provider-json', result, status, attempt: 1, durationMs: Date.now() - started,
+      errorCode: diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
+      error: diagnosticError,
+    });
     clearTimeout(timeout);
     options.signal?.removeEventListener('abort', onExternalAbort);
   }

@@ -17,6 +17,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { useAppTheme } from '@/theme/app-theme';
 import type { BestImageWebViewSource } from './prepare-best-image-webview-sources';
 import {
@@ -372,15 +373,20 @@ export function BestImageScreenShell<TType extends string>({
                 onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
                   || request.url === 'about:blank'
                   || ('uri' in item ? request.url === item.uri : request.url === item.baseUrl)}
-                onError={() => updateBestImageWebViewState(onPreviewStatesChange, pageId, 'error')}
+                onError={(event) => {
+                  recordRuntimeError('best-image-preview', event?.nativeEvent);
+                  updateBestImageWebViewState(onPreviewStatesChange, pageId, 'error');
+                }}
                 onLoadEnd={() => markBestImageWebViewLoaded(onPreviewStatesChange, pageId)}
                 onLoadStart={() => updateBestImageWebViewState(onPreviewStatesChange, pageId, 'loading')}
                 onMessage={(event) => onPreviewMessage(event.nativeEvent.data, pageId)}
                 onContentProcessDidTerminate={() => {
+                  recordRuntimeError('best-image-terminated', undefined);
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, 'terminated');
                   setWebViewGeneration((value) => value + 1);
                 }}
                 onRenderProcessGone={(event) => {
+                  recordRuntimeError('best-image-process-gone', undefined, event.nativeEvent.didCrash);
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated');
                   setWebViewGeneration((value) => value + 1);
                 }}
@@ -433,8 +439,15 @@ export function BestImageScreenShell<TType extends string>({
             onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
               || request.url === 'about:blank'
               || ('uri' in exportSource ? request.url === exportSource.uri : request.url === exportSource.baseUrl)}
-            onContentProcessDidTerminate={onRequestCloseExport}
-            onRenderProcessGone={onRequestCloseExport}
+            onError={(event) => recordRuntimeError('best-image-export', event?.nativeEvent)}
+            onContentProcessDidTerminate={() => {
+              recordRuntimeError('best-image-export-terminated', undefined);
+              onRequestCloseExport();
+            }}
+            onRenderProcessGone={(event) => {
+              recordRuntimeError('best-image-export-process-gone', undefined, event?.nativeEvent?.didCrash);
+              onRequestCloseExport();
+            }}
             scrollEnabled={false}
             source={exportSource}
             style={styles.webview}

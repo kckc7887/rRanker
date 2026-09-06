@@ -3,9 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Image as ExpoImage } from 'expo-image';
-import { Stack } from 'expo-router';
+import { Stack, useSegments, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Appearance, InteractionManager, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Appearance, InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { queryClient, releaseInactiveQueries } from '@/state/query-client';
 import { restoreSession, useSession } from '@/state/session-store';
@@ -69,6 +69,8 @@ import {
   recordRuntimeDiagnostic,
 } from '@/services/runtime-diagnostics';
 import { uploadTaskController } from '@/services/upload-maimai-from-friend-code';
+import { initializeRuntimeLogs, recordRuntimeRoute } from '@/services/runtime-logs';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -165,11 +167,23 @@ async function loadOptionalBoundAccounts() {
 }
 
 export const unstable_settings = { anchor: '(tabs)' };
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  const theme = useAppTheme();
+  useEffect(() => { recordRuntimeError('screen-render', error); }, [error]);
+  return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 16, backgroundColor: theme.background }}>
+    <Text style={{ color: theme.text }}>页面暂时无法显示，请重试。</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="重试" onPress={() => void retry()} style={{ padding: 16 }}>
+      <Text style={{ color: theme.accent }}>重试</Text>
+    </Pressable>
+  </View>;
+}
+
 export default function RootLayout() {
   return <AppLifecycleProvider><RootLayoutContent /></AppLifecycleProvider>;
 }
 
 function RootLayoutContent() {
+  const routeTemplate = useSegments().join('/');
   usePhigrosResourceSync();
   const restoreStatus = useSession((state) => state.restoreStatus);
   const activeAccountId = useSession((state) => state.activeAccountId);
@@ -185,7 +199,10 @@ function RootLayoutContent() {
 
   useEffect(() => {
     void initializeRuntimeDiagnostics();
+    void initializeRuntimeLogs().catch(() => undefined);
   }, []);
+
+  useEffect(() => { recordRuntimeRoute(routeTemplate.split('/')); }, [routeTemplate]);
 
   useEffect(() => {
     if (restoreStatus !== 'ready') return;
@@ -317,6 +334,7 @@ function ThemedNavigation() {
         <Stack.Screen name="library/index" options={{ title: '我的曲库' }} />
         <Stack.Screen name="game-management" options={{ title: '游戏管理' }} />
         <Stack.Screen name="storage-management" options={{ title: '存储管理' }} />
+        <Stack.Screen name="diagnostics" options={{ title: '诊断' }} />
         <Stack.Screen name="best-image" options={{ title: '成绩图片' }} />
         <Stack.Screen name="songs/[songId]" options={songDetailScreenOptions()} />
         <Stack.Screen name="songs/chart-preview" options={{ title: '谱面确认' }} />

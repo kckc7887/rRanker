@@ -4,6 +4,18 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 const DATABASE_NAME = 'rranker.db';
 
 let databasePromise: Promise<SQLiteDatabase> | null = null;
+let runtimeLogDatabasePromise: Promise<SQLiteDatabase> | null = null;
+
+/** 日志使用独立连接，业务事务的回滚与等待不得影响崩溃前记录。 */
+export function getRuntimeLogDatabase(): Promise<SQLiteDatabase> {
+  if (!runtimeLogDatabasePromise) {
+    runtimeLogDatabasePromise = SQLite.openDatabaseAsync('rranker-runtime-logs.db').catch((error) => {
+      runtimeLogDatabasePromise = null;
+      throw error;
+    });
+  }
+  return runtimeLogDatabasePromise;
+}
 /** 串行化 schema 初始化，避免首启并发 execAsync / 换 journal mode 卡住原生队列。 */
 let schemaChain: Promise<void> = Promise.resolve();
 
