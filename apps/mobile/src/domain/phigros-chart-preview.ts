@@ -133,7 +133,11 @@ export function resolvePhigrosChartPreviewAssetBundle({
     ? path === `${selectedDirectory}${target.difficulty}.json`
     : chartPattern.test(path), `${target.difficulty} 谱面`);
   const musicId = target.variantIndex ? `${target.songId}.${target.variantIndex}` : target.songId;
-  const music = findUnique((path) => path === `music/${musicId}.ogg`, '音乐');
+  // Only an absent manifest entry permits shared music; broken dedicated assets must still fail verification.
+  const musicPath = assets.some((asset) => asset?.path === `music/${musicId}.ogg`)
+    ? `music/${musicId}.ogg`
+    : `music/${target.songId}.ogg`;
+  const music = findUnique((path) => path === musicPath, '音乐');
   let illustration: AssetRecord;
   const full = assets.filter((asset) => asset?.path === `illustrations/${target.songId}.png`);
   if (full.length === 1) illustration = full[0]!;

@@ -103,7 +103,9 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 `loadPhigrosChartPreviewResources(target, signal, read?)`，预览和兼容包下载共用发布恢复与字节校验。
 其共同定位器 `resolvePhigrosChartPreviewAssetBundle(...)` 按 `.0`、无编号、唯一编号目录选择默认谱面；
 已有默认目录缺少所选难度时仍报错，不从其它变体拼接，确保匹配默认音乐。
-`PhigrosChartPreviewTarget` 可选 `variantIndex` 指定编号谱面及同编号音乐；未指定时保持默认规则。
+`PhigrosChartPreviewTarget` 可选 `variantIndex` 指定编号谱面，优先匹配同编号音乐；清单中没有
+专属音乐条目时使用歌曲共用音乐。专属音乐重复、下载失败或校验失败不得触发共用音乐回退；
+未指定编号时保持默认规则。`phigros-resources.test.ts` 覆盖共用音乐、专属音乐与缺失资源。
 `loadPhigrosChartPreviewVariants(target, signal)` 复用发布服务，按所选难度枚举并数字排序编号。
 预览路由通过 `usePhigrosChartVariantSelection(target)` 组合公共 `showActionNotification(input)`
 的队列和 `dismissNotification(id)`：先提示里谱，再展示非 `.0` 选项，单谱不弹窗。
