@@ -39,32 +39,41 @@
 ## 素材语义与审计
 
 S3 基址为 `https://rranker-maimai-data.cn-nb1.rains3.com/chart-preview`。
-清单内 147 张 PNG 全部读取成功，总计 2,043,610 字节；`answer.wav` 为 35,816 字节，
-RIFF/WAVE 头有效。内容修订为 `b6c5b699892e3811`。每个对象的 URL、尺寸、SHA-256
+清单内 155 张 PNG 全部读取成功，总计 3,091,140 字节；`answer.wav` 为 35,816 字节，
+RIFF/WAVE 头有效。内容修订为 `83a00350faddc68d`。每个对象的 URL、尺寸、SHA-256
 和非零透明边界完整记录于 `maimai-chart-preview-skin-manifest.generated.ts`。
 
 | 语义 | 对象与变换 |
 |---|---|
 | TAP、星星、Mine、Break、EX | 对应 TapSkins/StarSkins 族；原图中心锚点、100 PPU；EX 与本体同尺寸、角度和缩放 |
+| 粉色星星 | 开关开启时，普通 `star.png` / `star_double.png` 在音符头、移动星星及 WIFI 中统一映射到 `star_pink.png` / `star_pink_double.png`；保留 Each、Break、Mine、EX 专用贴图。原图分别为 1254×1254、126×126，显示占位分别为 1.26×1.26、1.22×1.26 世界单位 |
 | HOLD 本体、点亮与 EX | HoldSkins 族；122×200，顶部和底部各 58 px（0.29），中段拉伸；EX 共用切片变换 |
 | TOUCH 花瓣 | TouchSkins 族；四瓣依次在右/上/左/下，旋转 90/180/270/360 度；重叠边框使用同位置计数 |
 | TOUCH HOLD | TouchHoldSkins 族；0/1/2/3 在右上/右下/左下/左上，旋转 135/45/-45/-135 度；边框按持续时间遮罩 |
 | TOUCH HOLD 地雷边框 | 语义 `touchhold_mine_border.png` 映射到现有对象 `TouchHoldSkins/touchhold_break_mine.png`，不修改线上名字 |
 | Each、轨道箭头、WIFI、完成提示 | NoteGuideSkins、SlideSkins、WifiSkins、SlideOKSkins；路径表统一箭头、星星和完成提示；左右完成提示在镜像时换向，文字不作位图反射 |
-| 判定特效 | 八张 ViewX 原始特效 PNG、Prefab 和动画曲线随 bundle 加载；HOLD 10 次/秒、0.3 秒粒子；烟花颜色与径向遮罩按原 Shader 移植 |
+| 判定特效 | 八张 ViewX 原始特效 PNG、Prefab 和动画曲线随 bundle 加载；渲染跳过普通、Break、Touch 星型层，保留非星型层和独立烟花；HOLD/TOUCH HOLD 持续圈统一为 Each 金色 `#fff55d`，保持 10 次/秒、0.3 秒粒子 |
+| Slide 判定文字 | 不区分模式使用六种方向 `just_*_p.png`，显示 JUST PERFECT；区分模式使用不带 `_p` 的 CRITICAL PERFECT 及 Break 闪烁贴图，隐藏模式不绘制 |
 | 判定点与判定线 | 按 S3 `outline.png` 的 6 px 线宽、约 29 px 点径及 100 PPU 绘制；落点复用 `buttonPoint`，圆环半径由落点取得 |
 | 判定区 | 原始 `assets/maimai-chart-preview/sensor.webp`，2048×2048；图案中心为 (1025.5, 997)，197 PPU，八个 E 区中心对齐 `touchPoint` 的 3.1 半径；再叠加同一判定线和判定点 |
 
 `skinSemantics.ts` 是本地别名与锚点/切片契约。四张带文件名对照图位于
 `apps/mobile/build/maimai-skin-audit/contact-1.png` 至 `contact-4.png`，已检查花瓣编号、
 Each、EX、Break、Mine、左右完成提示和 WIFI 原生弯折形状。只排除无调用的
-`hold_off.png`、`touchhold_off.png`，其余 145 个 S3 贴图随预览暂存。
+`hold_off.png`、`touchhold_off.png`，其余 153 个 S3 贴图随预览暂存。
 
 缓存继续使用共享计划执行器；文件名为 `skin/修订_扁平对象名`，正解音文件名含内容哈希。
 同大小旧修订不会复用新修订身份。共享执行器仍按文件大小校验；运行时核对图片实际尺寸。
 S3 贴图仍由 `skin-data.js` 注入；缺少必需资源或尺寸错误时阻止播放。
+审计脚本只对 PNG 解码，正解音单独验证；可追加 S3 对象路径参数以审计新增贴图，
+随后执行 `generate-maimai-skin-manifest.mjs` 生成带真实尺寸、摘要及透明边界的清单。
 本地 `sensor.webp` 同样通过共享计划暂存并注入 `skin-data.js` 的 WebP data URL；
 原图保持不变，位置与缩放校准由 `SENSOR_TRANSFORM` 统一表达，随画布尺寸与像素比缩放。
+
+图片和视频背景共用 `MainRenderer` 的绘制入口，按 `min(边长/媒体宽, 边长/媒体高)`
+完整容纳并水平、垂直居中。圆形裁剪中心为窗口中心、直径等于窗口边长；未覆盖区域和
+圆外背景为纯黑，保留 45% 暗化。遮罩只作用于媒体，音符和判定层正常叠加；图片缓存
+在媒体或窗口尺寸变化时重建。普通、全屏与 Buddy 每个方形播放窗应用相同规则。
 
 内嵌特效生成时只重新压缩 PNG 的 IDAT，原始素材保留在生成输入中；其它 PNG 块、
 解压数据、色彩信息与像素不变。清单的 `sourceSha256` 标识原始 PNG，`sha256` 标识
@@ -81,6 +90,7 @@ S3 皮肤记录为项目所有者自行绘制。新增的 ViewX 内置特效另�
 
 ```powershell
 node scripts/audit-maimai-skin.mjs
+node scripts/generate-maimai-skin-manifest.mjs
 node scripts/generate-maimai-effects.mjs
 npm run build:chart-preview
 node scripts/check-maimai-visuals.mjs <Playwright模块绝对路径>
@@ -97,18 +107,21 @@ git diff --check
 `check-maimai-visuals.mjs` 输出七类谱面 × 六个时刻的 42 张截图及连续播放记录，
 覆盖入场、HOLD 本体/EX、花瓣合拢、WIFI、连接转折和 SV。输出在
 `apps/mobile/build/maimai-visual-check/`，`results.json` 记录时刻和叠加统计。
+同一脚本另输出 9 张设置截图，覆盖粉色单双星、移动星星、WIFI、专用星星、JUST 及
+金色持续圈；横向、纵向、正方形媒体在 320/540 窗口中各以图片和真实视频帧绘制，
+输出 12 张截图并检查中心、圆外、上下/左右留黑像素，比较图片与视频结果。
 `check-maimai-player.mjs` 校验实际 `player.bundle` 与 `player.js` 一致，再检查实际页面的
 播放、暂停、跳转、循环操作、变速、水平镜像、图片背景、全屏与退出停音；包含普通谱面
 和 Buddy。谱面/音乐请求由测试数据拦截，音频调度使用真实 AudioContext 节点；
 这不是 LXNS 在线曲库或人耳音画同步验收。
 
-本地工程检查：lint 无警告/错误，应用与完整播放器 typecheck 通过；Vitest 1404 项通过、
-5 项跳过，Jest 534 项通过。共享屏幕、资源、注入和生命周期合同包含在完整测试内。
-`git diff --check` 通过，生成的 `player.js` 与 `player.bundle` SHA-256 相同。
-单屏和 Buddy 页面无运行异常，变速分别取消 3/7 个旧正解音节点，退出后所有音频节点停止。
-本次公共路径核验没有新增跨游戏组件引用、共享层反向依赖或共享渲染中的游戏分支；
-搜索 `chart-preview-shared` 的解析/皮肤能力后，舞萌的 simai、SV、路径和贴图变换保留在
-专属目录，共享层继续承担计划执行、注入、屏幕壳、桥接与时钟。
+`maimai-chart-preview-visual-settings.test.ts` 检查粉色资源替换、原占位和 EX 对齐、
+六种方向的判定提示、镜像、背景绘制/缓存及打击特效。HOLD 粒子回归覆盖普通和 Break
+的 HOLD/TOUCH HOLD，验证拖动重建、结束排空和特效开关。共享屏幕、资源、注入与
+生命周期合同随完整单元/UI 测试执行；检查结果以当前命令输出和本地运行记录为准。
+
+公共入口保持 `prepareChartPreviewWebviewFromPlan(plan): Promise<ChartPreviewWebviewPlanResult>`，
+新增皮肤仍由现有清单、暂存与 writer 注入，不增加缓存执行器或共享游戏分支。
 
 ## 验收边界
 

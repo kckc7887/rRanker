@@ -6,12 +6,12 @@ import { buttonPoint, pathPose, prepareBranch, joinGeometries, consumedArrows, t
 import { arcadeTapTravelSpeed, arcadeTouchDurations, breakPulseBrightness } from '../utils/arcadeMotion';
 import { judgeTextSkinPath, judgeHintTapHoldTouchText } from '../utils/judgeHint';
 import { effectCurve } from './effects';
-import { SKIN_TRANSFORM } from './skinSemantics';
+import { SKIN_TRANSFORM, EACH_COLOR, resolveStarSkin } from './skinSemantics';
 
 export type DrawCommand = {
   path: string; x: number; y: number; angle: number; scale: number; alpha: number; layer: number; time: number; order: number;
   stretch?: number; exPath?: string; tint?: string; cutoff?: number; brightness?: number;
-  recolor?: string; stack?: number; effect?: { kind: 'tap' | 'touch' | 'hold' | 'firework'; ageMs: number; isBreak: boolean; color?: string };
+  stack?: number; effect?: { kind: 'tap' | 'touch' | 'hold' | 'firework'; ageMs: number; isBreak: boolean };
 };
 export type PreparedChart = {
   chart: Chart; scroll: ScrollTimeline; branches: Map<SlideBranch, ReturnType<typeof prepareBranch>>; paths: Map<SlideBranch, Geometry>; groups: Map<number, Note[]>;
@@ -50,7 +50,7 @@ export function touchPoint(position: string) {
   return { x: radius * Math.cos(angle), y: radius * Math.sin(angle) };
 }
 const variant = (n: { isMine: boolean; isBreak: boolean; isEach: boolean }) => n.isMine ? n.isBreak ? '_break_mine' : '_mine' : n.isBreak ? '_break' : n.isEach ? '_each' : '';
-const tint = (n: { isMine: boolean; isBreak: boolean; isEach: boolean }, star = false) => n.isMine ? '#272727' : n.isBreak ? '#ffbe50' : n.isEach ? '#fff55d' : star ? '#00ccff' : '#ffb7e8';
+const tint = (n: { isMine: boolean; isBreak: boolean; isEach: boolean }, star = false) => n.isMine ? '#272727' : n.isBreak ? '#ffbe50' : n.isEach ? EACH_COLOR : star ? '#00ccff' : '#ffb7e8';
 const guide = (n: Note, star: boolean) => `NoteGuideSkins/${n.isMine ? 'Mine' : n.isBreak ? 'Break' : n.isEach ? 'Each' : star ? 'Slide' : 'Normal'}.png`;
 
 export function buildFrame(prepared: PreparedChart, now: number, config: RendererConfig): DrawCommand[] {
@@ -71,7 +71,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
     if ('hasFirework' in n && n.hasFirework && finish <= now && finish >= fireworkTime) { firework = n; fireworkTime = finish; }
   }
   const emit = (n: Note, path: string, layer: number, values: Partial<DrawCommand> = {}) => {
-    const command: DrawCommand = { path, layer, x: 0, y: 0, angle: 0, scale: 1, alpha: 1, time: n.timingMs, order: n.id, ...values };
+    const command: DrawCommand = { path: resolveStarSkin(path, config.pinkSlideStart), layer, x: 0, y: 0, angle: 0, scale: 1, alpha: 1, time: n.timingMs, order: n.id, ...values };
     if (command.alpha > 0 && command.scale > 0 && Number.isFinite(command.x + command.y + command.angle + command.scale)) result.push(command);
   };
   for (const n of chart.notes) {
@@ -177,9 +177,8 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
           const duration = sameBranches.reduce((sum, b) => sum + b.durationMs / 1000, 0);
           if (config.slideRotation && duration > 0) angle -= (now - n.timingMs) / 1000 * Math.PI * Math.min(6, length / (duration * 2 * Math.PI));
         } else if ('isSpinningStar' in n && n.isSpinningStar) angle += (now - n.timingMs) / 1000 * Math.PI * 3;
-        let path = star ? `StarSkins/star${double ? n.isMine ? n.isBreak ? '_break_double_mine' : '_double_mine' : n.isBreak ? '_break_double' : n.isEach ? '_each_double' : '_double' : variant(n)}.png` : `TapSkins/tap${variant(n)}.png`;
-        if (star && config.pinkSlideStart && !n.isMine && !n.isBreak && !n.isEach) path = 'StarSkins/star.png';
-        emit(n, path, 3, { ...buttonPoint(Number(n.position), distance), angle, scale, recolor: star && config.pinkSlideStart && !n.isMine && !n.isBreak && !n.isEach ? '#ffb7e8' : undefined, exPath: n.isEx && config.highlightExNotes ? star ? `StarSkins/star_ex${double ? '_double' : ''}.png` : 'TapSkins/tap_ex.png' : undefined, tint: tint(n, star), brightness: n.isBreak ? breakPulseBrightness(now) : 1 });
+        const path = star ? `StarSkins/star${double ? n.isMine ? n.isBreak ? '_break_double_mine' : '_double_mine' : n.isBreak ? '_break_double' : n.isEach ? '_each_double' : '_double' : variant(n)}.png` : `TapSkins/tap${variant(n)}.png`;
+        emit(n, path, 3, { ...buttonPoint(Number(n.position), distance), angle, scale, exPath: n.isEx && config.highlightExNotes ? star ? `StarSkins/star_ex${double ? '_double' : ''}.png` : 'TapSkins/tap_ex.png' : undefined, tint: tint(n, star), brightness: n.isBreak ? breakPulseBrightness(now) : 1 });
       }
     }
     const hitAge = now - (hold ? n.endTimeMs : n.timingMs);
@@ -190,7 +189,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
         const lastEmission = Math.min(Math.floor(age / 100), Math.floor((n.endTimeMs - n.timingMs) / 100));
         for (let i = Math.max(0, lastEmission - 2); i <= lastEmission; i++) {
           const particleAge = age - i * 100;
-          if (particleAge < 300) emit(n, '', 6, { ...hitPosition, effect: { kind: 'hold', ageMs: particleAge, isBreak: n.isBreak, color: tint(n) } });
+          if (particleAge < 300) emit(n, '', 6, { ...hitPosition, effect: { kind: 'hold', ageMs: particleAge, isBreak: n.isBreak } });
         }
       }
       if (config.showFireworks && firework === n && hitAge >= 0 && hitAge < 1334) emit(n, '', 7, { ...hitPosition, effect: { kind: 'firework', ageMs: hitAge, isBreak: n.isBreak } });
@@ -227,5 +226,5 @@ function emitSlideOk(n: Note, g: Geometry, isBreak: boolean, age: number, config
   const names = ['str_l', 'str_r', 'curv_l', 'curv_r', 'wifi_u', 'wifi_d'];
   const flash = isBreak && config.judgeHint === 'distinguish' && Math.floor(age / (1000 / 60) / 2) % 2 === 0;
   const alpha = age < 1000 / 30 ? age / (1000 / 30) : 1 - clamp((age - 17000 / 60) / (8000 / 60));
-  emit(n, `SlideOKSkins/just_${names[g.okType]}${flash ? '_break' : ''}.png`, 7, { ...g.ok, alpha });
+  emit(n, `SlideOKSkins/just_${names[g.okType]}${config.judgeHint === 'unified' ? '_p' : flash ? '_break' : ''}.png`, 7, { ...g.ok, alpha });
 }

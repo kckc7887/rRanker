@@ -10,7 +10,7 @@ describe('ViewX hold effect emission (10/s, 0.3s lifetime)', () => {
     expect(holdParticleState(300 * 32894 / 65535).alpha).toBeCloseTo(1);
     expect(holdParticleState(300).alpha).toBe(0);
   });
-  for (const token of ['1h', 'Ch']) it(`${token} reconstructs particles on seek, and drains at the end`, () => {
+  for (const token of ['1h', '1hb', 'Ch', 'Chb']) it(`${token} reconstructs particles on seek, and drains at the end`, () => {
     const prepared = prepareChart(parseSimaiBody(`(120)${token}[4:2],`));
     const particles = (time: number) => buildFrame(prepared, time, DEFAULT_RENDERER_CONFIG).filter(c => c.effect?.kind === 'hold').map(c => c.effect!.ageMs);
     expect(particles(1999)).toEqual([]);
