@@ -27,6 +27,7 @@ export function maimaiChartPreviewRuntimeSkinAssets(): readonly MaimaiChartPrevi
 
 export const MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE = 'skin-data.js';
 export const MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL = '__MAIMAI_CHART_PREVIEW_SKINS__';
+export const MAIMAI_CHART_PREVIEW_SENSOR = { path: 'sensor.webp', width: 2048, height: 2048 } as const;
 
 /** 对齐 Phigros `music-data.js`：iOS file:// 不能稳定读取本地 PNG，改由脚本注入 data URL。 */
 export function maimaiChartPreviewSkinDataScript(entries: Record<string, string>): string {

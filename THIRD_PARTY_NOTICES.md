@@ -101,6 +101,12 @@ combination. No MajdataPlay source is copied into the runtime.
 
 ## Maimai preview skin artwork and corresponding source
 
+The touch-region overlay `apps/mobile/assets/maimai-chart-preview/sensor.webp`
+is the original bundled asset from maimai-prober-frontend, distinct from the
+owner-authored S3 skins below. It is loaded through the shared preview staging
+plan; the renderer calibrates its artwork center and scale without modifying
+the image bytes.
+
 The 147 skin PNGs at the rRanker S3 chart-preview endpoint are user-authored
 artwork, as declared by the project owner. Their normalized filenames do not
 transfer copyright from MajdataViewX. `maimai-chart-preview-skin-manifest.generated.ts`

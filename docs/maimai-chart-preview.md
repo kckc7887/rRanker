@@ -52,6 +52,8 @@ RIFF/WAVE 头有效。内容修订为 `b6c5b699892e3811`。每个对象的 URL�
 | TOUCH HOLD 地雷边框 | 语义 `touchhold_mine_border.png` 映射到现有对象 `TouchHoldSkins/touchhold_break_mine.png`，不修改线上名字 |
 | Each、轨道箭头、WIFI、完成提示 | NoteGuideSkins、SlideSkins、WifiSkins、SlideOKSkins；路径表统一箭头、星星和完成提示；左右完成提示在镜像时换向，文字不作位图反射 |
 | 判定特效 | 八张 ViewX 原始特效 PNG、Prefab 和动画曲线随 bundle 加载；HOLD 10 次/秒、0.3 秒粒子；烟花颜色与径向遮罩按原 Shader 移植 |
+| 判定点与判定线 | 按 S3 `outline.png` 的 6 px 线宽、约 29 px 点径及 100 PPU 绘制；落点复用 `buttonPoint`，圆环半径由落点取得 |
+| 判定区 | 原始 `assets/maimai-chart-preview/sensor.webp`，2048×2048；图案中心为 (1025.5, 997)，197 PPU，八个 E 区中心对齐 `touchPoint` 的 3.1 半径；再叠加同一判定线和判定点 |
 
 `skinSemantics.ts` 是本地别名与锚点/切片契约。四张带文件名对照图位于
 `apps/mobile/build/maimai-skin-audit/contact-1.png` 至 `contact-4.png`，已检查花瓣编号、
@@ -61,6 +63,8 @@ Each、EX、Break、Mine、左右完成提示和 WIFI 原生弯折形状。只�
 缓存继续使用共享计划执行器；文件名为 `skin/修订_扁平对象名`，正解音文件名含内容哈希。
 同大小旧修订不会复用新修订身份。共享执行器仍按文件大小校验；运行时核对图片实际尺寸。
 S3 贴图仍由 `skin-data.js` 注入；缺少必需资源或尺寸错误时阻止播放。
+本地 `sensor.webp` 同样通过共享计划暂存并注入 `skin-data.js` 的 WebP data URL；
+原图保持不变，位置与缩放校准由 `SENSOR_TRANSFORM` 统一表达，随画布尺寸与像素比缩放。
 
 内嵌特效生成时只重新压缩 PNG 的 IDAT，原始素材保留在生成输入中；其它 PNG 块、
 解压数据、色彩信息与像素不变。清单的 `sourceSha256` 标识原始 PNG，`sha256` 标识

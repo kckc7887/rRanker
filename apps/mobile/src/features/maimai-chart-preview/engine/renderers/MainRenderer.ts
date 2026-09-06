@@ -7,7 +7,9 @@ import { ChartPreviewSkin } from './skinAtlas';
 import { buildFrame, prepareChart, completedAt, type DrawCommand, type PreparedChart } from './frame';
 import { parseJudgeHint } from '../utils/judgeHint';
 import { EffectRenderer } from './effects';
-import { SKIN_TRANSFORM } from './skinSemantics';
+import { SKIN_TRANSFORM, SENSOR_TRANSFORM, JUDGMENT_OUTLINE } from './skinSemantics';
+import { buttonPoint } from '../core/geometry/slidePath';
+import { MAIMAI_CHART_PREVIEW_SENSOR } from '../../maimai-chart-preview-skin-files';
 
 export interface FrameOverlayInfo { bpm: number; beatText: string; fps: number; completedNotes: number; totalNotes: number; completedBreaks: number; totalBreaks: number; completedBreaksNoEx: number; totalBreaksNoEx: number }
 export interface MainRendererConfig { skin?: ChartPreviewSkin }
@@ -142,13 +144,20 @@ export class MainRenderer {
   }
   renderJudgmentLine() {
     if (this.config.judgmentLineDesign === 'blind') return;
-    const ctx = this.ctx, size = this.canvas.width, unit = size / 10.8, radius = unit * 4.8, c = size / 2;
-    ctx.save(); ctx.strokeStyle = '#ffffff'; ctx.fillStyle = '#ffffff'; ctx.lineWidth = unit * 0.012;
+    const ctx = this.ctx, size = this.canvas.width, unit = size / 10.8, c = size / 2;
+    const firstPoint = buttonPoint(1), radius = Math.hypot(firstPoint.x, firstPoint.y) * unit;
+    if (this.config.judgmentLineDesign === 'sensor') {
+      const sensor = this.skin.get(MAIMAI_CHART_PREVIEW_SENSOR.path);
+      if (!sensor) throw new Error(`Required sprite missing: ${MAIMAI_CHART_PREVIEW_SENSOR.path}`);
+      const scale = unit / SENSOR_TRANSFORM.pixelsPerUnit;
+      ctx.drawImage(sensor, c - SENSOR_TRANSFORM.center[0] * scale, c - SENSOR_TRANSFORM.center[1] * scale,
+        sensor.naturalWidth * scale, sensor.naturalHeight * scale);
+    }
+    ctx.save(); ctx.strokeStyle = '#ffffff'; ctx.fillStyle = '#ffffff'; ctx.lineWidth = unit * JUDGMENT_OUTLINE.lineWidth;
     if (this.config.judgmentLineDesign !== 'noLine') { ctx.beginPath(); ctx.arc(c, c, radius, 0, Math.PI * 2); ctx.stroke(); }
-    for (let i = 0; i < 8; i++) {
-      const angle = (-67.5 + i * 45) * Math.PI / 180;
-      ctx.beginPath(); ctx.arc(c + Math.cos(angle) * radius, c + Math.sin(angle) * radius, unit * 0.04, 0, Math.PI * 2); ctx.fill();
-      if (this.config.judgmentLineDesign === 'sensor') { ctx.save(); ctx.globalAlpha = 0.15; ctx.beginPath(); ctx.moveTo(c + Math.cos(angle + Math.PI / 8) * unit * 1.15, c + Math.sin(angle + Math.PI / 8) * unit * 1.15); ctx.lineTo(c + Math.cos(angle + Math.PI / 8) * radius, c + Math.sin(angle + Math.PI / 8) * radius); ctx.stroke(); ctx.restore(); }
+    for (let i = 1; i <= 8; i++) {
+      const point = buttonPoint(i);
+      ctx.beginPath(); ctx.arc(c + point.x * unit, c - point.y * unit, unit * JUDGMENT_OUTLINE.markerRadius, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
   }

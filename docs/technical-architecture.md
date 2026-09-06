@@ -132,6 +132,9 @@ Each 分组和分支/分段的音符模型；`prepareChart` 预计算路径与�
 内容哈希。仍由共享计划执行器按大小检查缓存及落盘，通过 `skin-data.js` 注入 PNG。
 `skinSemantics.ts` 解释语义名、S3 别名、100 PPU、中心锚点及切片/朝向；缺少必需贴图
 或尺寸不匹配时阻止播放。线上对象不因命名修正而变化。
+判定区使用应用内原始 `assets/maimai-chart-preview/sensor.webp`，经共享计划暂存后写入
+同一 `skin-data.js`。舞萌渲染器按原图图案中心与 197 PPU 校准判定区；判定点和判定线
+按 S3 `outline.png` 的点径、线宽绘制，坐标复用音符的 `buttonPoint`，判定区叠加同一判定线。
 
 独立参考程序位于 `apps/mobile/scripts/maimai-reference/`；原始 C# 路径输出和
 MajSimai 输出作为 TypeScript 测试的外部基准。素材审计和浏览器截图位于本地被忽略的
