@@ -9,6 +9,7 @@ import { runtimeLogPreferencesStore } from '@/storage/runtime-log-preferences-st
 import { createRuntimeLogController } from './runtime-log-controller';
 import { installRuntimeLogErrors, type RuntimeExceptionHost } from './runtime-log-errors';
 import { installRuntimeLogRecorder, recordRuntimeDiagnostic, recordRuntimeError } from './runtime-diagnostics-recorder';
+import { snapshotRuntimeDiagnostics } from './runtime-diagnostics';
 
 let route = '/';
 export const runtimeLogs = createRuntimeLogController({
@@ -49,9 +50,11 @@ export async function shareRuntimeLog(id: number): Promise<void> {
   const contents = runtimeLogs.snapshot(id);
   sharing = true;
   try {
+    const diagnostics = await snapshotRuntimeDiagnostics();
+    const combined = JSON.stringify({ ...JSON.parse(contents), diagnostics }, null, 2);
     if (!await Sharing.isAvailableAsync()) throw new Error('sharing unavailable');
     const file = new File(Paths.cache, `rranker-runtime-log-${id}-${Date.now()}-${++exportSequence}.txt`);
-    file.write(contents);
+    file.write(combined);
     await Sharing.shareAsync(file.uri, { dialogTitle: '分享日志', mimeType: 'text/plain', UTI: 'public.plain-text' });
   } finally { sharing = false; }
 }
