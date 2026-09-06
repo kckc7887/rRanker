@@ -230,3 +230,14 @@ Gradle properties 启用 Release R8 与资源裁剪，将默认 ProGuard 文件�
 Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 macOS 出包验收。
 
 `.github/workflows/build-ios.yml` 是手动触发的 iOS 流程：Ubuntu 质量任务运行 lint、typecheck 和全部测试；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA、上传构建产物并提交 TestFlight。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
+
+`.github/workflows/build-android.yml` 是手动触发的 Android 流程：Ubuntu 质量任务运行
+lint、typecheck 和全部测试；构建任务使用 Node.js 22、Temurin JDK 17 与 Android SDK，
+执行 `npm ci`、`npm run prebuild:android` 和 Gradle `:app:assembleRelease`。
+prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a`、`arm64-v8a`、
+`x86`、`x86_64` 四份 APK。版本与构建号分别读取 `app.json` 的 `expo.version` 和
+`expo.android.versionCode`，不自动递增。工作流检查 Gradle 输出清单、APK 内部 ABI、
+Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构建号)-ABI.apk` 复制到
+`apps/mobile/build/android-apks/`，上传为保留 14 天的 Actions artifact。
+当前沿用 Expo 生成工程的默认调试密钥签名，属于 Release 模式测试安装包；流程不发布
+GitHub Release 或上传应用商店。实际云端构建与真机安装需运行工作流后验证。
