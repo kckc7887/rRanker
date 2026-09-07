@@ -329,7 +329,8 @@ Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 ma
 Node 22、npm ci 后依次完成 lint、应用及两类播放器类型检查、公共边界、生成/无损资源
 检查、全量单元/UI 合同及 CPU 基准；UI 日志中的未等待 act 警告会使验证失败。
 同一个 runner 分别导出候选提交和固定基线 `246f0bbe57bb9a23ce21858c82c53b3066aad3d9`
-的 Android/iOS Hermes 与资源，基线 checkout 放在被忽略的 build 目录。
+的 Android/iOS Hermes 与资源，基线 checkout 放在被忽略的 build 目录。Expo 要求输出位于
+项目内部，因此先导出到基线项目自己的 build，再复制到候选项目的比较目录。
 `scripts/compare-optimization-exports.mjs` 接收两份导出目录及完整 SHA，输出独立播放器、
 去重资源和主程序的明细，不重复累加播放器或 source map。日志、JSON、比较表与导出
 metadata/assetmap 作为 14 天 artifact 上传；只有对应最终候选 SHA 的工作流成功才完成

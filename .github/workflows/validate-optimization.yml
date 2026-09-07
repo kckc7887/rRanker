@@ -70,7 +70,8 @@ jobs:
         run: |
           npm ci
           test "$(git rev-parse HEAD)" = "$OPTIMIZATION_BASELINE_SHA"
-          npx --no-install expo export --platform android --platform ios --source-maps --dump-assetmap --max-workers 4 --output-dir "$EXPORT_DIRECTORY" 2>&1 | tee "$EXPORT_LOG"
+          npx --no-install expo export --platform android --platform ios --source-maps --dump-assetmap --max-workers 4 --output-dir build/optimization-baseline 2>&1 | tee "$EXPORT_LOG"
+          node --input-type=module -e 'import fs from "node:fs"; fs.cpSync("build/optimization-baseline", process.env.EXPORT_DIRECTORY, { recursive: true });'
       - name: Compare exact revisions
         run: |
           node scripts/compare-optimization-exports.mjs build/optimization-baseline build/optimization-candidate "$OPTIMIZATION_BASELINE_SHA" "$(git rev-parse HEAD)"
