@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { cleanup, act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { InteractionManager, Linking, Platform } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
@@ -216,7 +216,9 @@ jest.mock('@/state/session-store', () => ({
 }));
 
 describe('M3A personal library screens', () => {
+  afterEach(async () => { await cleanup(); jest.useRealTimers(); });
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     useCatalogFilter.getState().reset();
     mockRefetchScore.mockResolvedValue(undefined);

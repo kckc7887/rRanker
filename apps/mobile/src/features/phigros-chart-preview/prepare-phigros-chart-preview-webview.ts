@@ -52,6 +52,7 @@ export async function preparePhigrosChartPreviewWebViewSource(
   config: PhigrosChartPreviewConfig,
   musicDataBase64: string | null = null,
   directory?: Directory,
+  signal?: AbortSignal,
 ): Promise<PhigrosChartPreviewWebViewSource> {
   return prepareChartPreviewWebviewFromPlan({
     directoryName: STAGE_DIRECTORY_NAME,
@@ -78,7 +79,7 @@ export async function preparePhigrosChartPreviewWebViewSource(
       ...config,
       hitSounds: dataUrls,
     }),
-  });
+  }, signal);
 }
 
 /** Phira 谱面音乐落盘到预览 stage 目录，并返回其 base64 供 WebView 解码。 */
@@ -86,12 +87,16 @@ export async function stagePhiraChartMusic(
   bytes: Uint8Array,
   fileName: string,
   directory = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME),
+  signal?: AbortSignal,
 ): Promise<{ uri: string; base64: string }> {
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const file = new File(directory, fileName);
   if (file.exists) file.delete();
   file.create();
   file.write(bytes);
-  return { uri: file.uri, base64: await file.base64() };
+  const base64 = await file.base64();
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  return { uri: file.uri, base64 };
 }
 
 /**
@@ -103,7 +108,9 @@ export async function stagePhiraRpeBundle(
   chartId: number,
   files: readonly { name: string; bytes: Uint8Array }[],
   root = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME),
+  signal?: AbortSignal,
 ): Promise<{ basePath: string }> {
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const directory = new Directory(root, `rpe/${chartId}`);
   directory.create({ intermediates: true, idempotent: true });
   for (const file of files) {

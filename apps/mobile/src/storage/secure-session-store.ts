@@ -651,7 +651,8 @@ export class SecureSessionStore {
   ): Promise<void> {
     await this.enqueueMutation(async () => {
       const index = await this.loadOrCreateIndexUnlocked();
-      if (!index.accounts.some((account) => account.id === accountId)) return;
+      const current = index.accounts.find((account) => account.id === accountId);
+      if (!current || Object.entries(metadata).every(([key, value]) => current[key as keyof StoredProviderAccount] === value)) return;
       await this.storage.setItem(INDEX_KEY, JSON.stringify({
         ...index,
         accounts: index.accounts.map((account) => (

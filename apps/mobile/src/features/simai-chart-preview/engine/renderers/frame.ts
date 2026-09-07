@@ -13,8 +13,12 @@ export type DrawCommand = {
   stretch?: number; exPath?: string; tint?: string; cutoff?: number; brightness?: number;
   stack?: number; effect?: { kind: 'tap' | 'touch' | 'hold' | 'firework'; ageMs: number; isBreak: boolean };
 };
+type TimedNotes = { times: number[]; notes: Note[] };
+type NoteFacts = { startScroll: number; endScroll: number; point: { x: number; y: number }; slide?: { double: boolean; length: number; duration: number } };
 export type PreparedChart = {
   chart: Chart; scroll: ScrollTimeline; branches: Map<SlideBranch, ReturnType<typeof prepareBranch>>; paths: Map<SlideBranch, Geometry>; groups: Map<number, Note[]>;
+  starts: Map<string | number, TimedNotes>; finishes: Map<string | number, TimedNotes>; fireworks: TimedNotes;
+  touches: Note[]; facts: Map<Note, NoteFacts>; eachGroups: { time: number; usingSV: boolean; heads: Note[] }[];
   judgements: { notes: number[]; breaks: number[]; noEx: number[] };
 };
 export function prepareChart(chart: Chart): PreparedChart {
@@ -33,7 +37,46 @@ export function prepareChart(chart: Chart): PreparedChart {
     const group = groups.get(note.group) ?? []; group.push(note); groups.set(note.group, group);
   }
   for (const times of Object.values(judgements)) times.sort((a, b) => a - b);
-  return { chart, scroll: new ScrollTimeline(chart.scrollEvents), branches, paths, groups, judgements };
+  const scroll = new ScrollTimeline(chart.scrollEvents);
+  const facts = new Map<Note, NoteFacts>();
+  const startNotes = new Map<string | number, Note[]>(), finishNotes = new Map<string | number, Note[]>();
+  const fireworks: Note[] = [], touches: Note[] = [];
+  const finishTime = (note: Note) => note.type === 'slide' ? note.timingMs : note.endTimeMs;
+  for (const note of chart.notes) {
+    const touch = note.type === 'touch' || note.type === 'touch-hold-start';
+    facts.set(note, { startScroll: scroll.at(note.timingMs), endScroll: scroll.at(note.endTimeMs),
+      point: touch ? touchPoint(String(note.position)) : buttonPoint(Number(note.position)) });
+    if (note.type === 'touch') touches.push(note);
+    if (note.isMine || (note.type === 'slide' && note.isHeadless)) continue;
+    const starts = startNotes.get(note.position) ?? []; starts.push(note); startNotes.set(note.position, starts);
+    const finishes = finishNotes.get(note.position) ?? []; finishes.push(note); finishNotes.set(note.position, finishes);
+    if ('hasFirework' in note && note.hasFirework) fireworks.push(note);
+  }
+  const index = (notes: Note[], time: (note: Note) => number): TimedNotes => {
+    // Stable sort retains original input order for simultaneous events (the last one wins).
+    const sorted = notes.filter((note) => !Number.isNaN(time(note))).sort((a, b) => time(a) - time(b));
+    return { notes: sorted, times: sorted.map(time) };
+  };
+  const starts = new Map([...startNotes].map(([position, notes]) => [position, index(notes, (note) => note.timingMs)]));
+  const finishes = new Map([...finishNotes].map(([position, notes]) => [position, index(notes, finishTime)]));
+  const eachGroups = [...groups.values()].map((group) => {
+    const slideHeads = new Map<string | number, Note[]>();
+    for (const note of group) if (note.type === 'slide') {
+      const same = slideHeads.get(note.position) ?? []; same.push(note); slideHeads.set(note.position, same);
+    }
+    for (const same of slideHeads.values()) {
+      const sameBranches = same.flatMap((note) => note.type === 'slide' ? note.branches : []);
+      const slide = { double: sameBranches.length > 1,
+        length: sameBranches.reduce((sum, branch) => sum + branches.get(branch)!.reduce((length, part) => length + part.geometry.length, 0), 0),
+        duration: sameBranches.reduce((sum, branch) => sum + branch.durationMs / 1000, 0) };
+      for (const note of same) facts.get(note)!.slide = slide;
+    }
+    return { time: group[0].timingMs,
+      usingSV: group.some((note) => !note.isMine && note.usingSV && (note.type === 'tap' || note.type === 'break' || note.type === 'hold-start')),
+      heads: group.filter((note) => !note.isMine && typeof note.position === 'number' && !(note.type === 'slide' && note.isHeadless)) };
+  });
+  return { chart, scroll, branches, paths, groups, judgements, starts, finishes,
+    fireworks: index(fireworks, finishTime), touches, facts, eachGroups };
 }
 export function completedAt(times: readonly number[], now: number): number {
   let lo = 0, hi = times.length;
@@ -56,19 +99,18 @@ const guide = (n: Note, star: boolean) => `NoteGuideSkins/${n.isMine ? 'Mine' : 
 export function buildFrame(prepared: PreparedChart, now: number, config: RendererConfig): DrawCommand[] {
   const result: DrawCommand[] = [], { chart, scroll } = prepared;
   const tapSpeed = arcadeTapTravelSpeed(config.hiSpeed) / (config.alwaysKeepHiSpeed ? config.playbackSpeed : 1);
-  const elapsed = (n: Note, end = false) => ((n.usingSV ? scroll.at(now) - scroll.at(end ? n.endTimeMs : n.timingMs) : now - (end ? n.endTimeMs : n.timingMs)) / 1000);
-  const starts = new Map<string | number, { note: Note; time: number }>(), finishes = new Map<string | number, { note: Note; time: number }>();
+  const currentScroll = scroll.at(now);
+  const elapsed = (note: Note, end = false) => ((note.usingSV
+    ? currentScroll - (end ? prepared.facts.get(note)!.endScroll : prepared.facts.get(note)!.startScroll)
+    : now - (end ? note.endTimeMs : note.timingMs)) / 1000);
+  const latest = (events: TimedNotes | undefined) => events?.notes[completedAt(events.times, now) - 1];
+  const firework = latest(prepared.fireworks);
   const touchOverlaps = new Map<string | number, Note[]>();
-  let firework: Note | undefined, fireworkTime = -Infinity;
-  for (const n of chart.notes) {
-    if (n.type === 'touch' && n.timingMs >= now && -elapsed(n) < arcadeTouchDurations(config.hiSpeed * n.hiSpeed / (config.alwaysKeepHiSpeed ? config.playbackSpeed : 1)).wholeDuration) {
+  // Touch visibility still evaluates full SV semantics, including zero and negative velocity.
+  for (const n of prepared.touches) {
+    if (n.timingMs >= now && -elapsed(n) < arcadeTouchDurations(config.hiSpeed * n.hiSpeed / (config.alwaysKeepHiSpeed ? config.playbackSpeed : 1)).wholeDuration) {
       const notes = touchOverlaps.get(n.position) ?? []; notes.push(n); touchOverlaps.set(n.position, notes);
     }
-    if (n.isMine || (n.type === 'slide' && n.isHeadless)) continue;
-    const finish = n.type === 'slide' ? n.timingMs : n.endTimeMs;
-    if (n.timingMs <= now && n.timingMs >= (starts.get(n.position)?.time ?? -Infinity)) starts.set(n.position, { note: n, time: n.timingMs });
-    if (finish <= now && finish >= (finishes.get(n.position)?.time ?? -Infinity)) finishes.set(n.position, { note: n, time: finish });
-    if ('hasFirework' in n && n.hasFirework && finish <= now && finish >= fireworkTime) { firework = n; fireworkTime = finish; }
   }
   const emit = (n: Note, path: string, layer: number, values: Partial<DrawCommand> = {}) => {
     const command: DrawCommand = { path: resolveStarSkin(path, config.pinkSlideStart), layer, x: 0, y: 0, angle: 0, scale: 1, alpha: 1, time: n.timingMs, order: n.id, ...values };
@@ -124,7 +166,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
     const hold = n.type === 'hold-start' || n.type === 'touch-hold-start';
     const alive = now <= (hold ? n.endTimeMs : n.timingMs);
     if (touch && alive) {
-      const timing = elapsed(n), p = touchPoint(String(n.position));
+      const timing = elapsed(n), p = prepared.facts.get(n)!.point;
       const speed = config.hiSpeed * n.hiSpeed / (config.alwaysKeepHiSpeed ? config.playbackSpeed : 1);
       const durations = arcadeTouchDurations(speed), { wholeDuration, moveDuration, displayDuration } = durations;
       if (-timing <= wholeDuration) {
@@ -133,7 +175,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
         const radius = 0.226 + fanDist;
         if (hold) {
           const border = n.isMine ? 'TouchHoldSkins/touchhold_mine_border.png' : `TouchHoldSkins/touchhold${n.isBreak ? '_break' : ''}_border.png`;
-          const duration = n.usingSV ? (scroll.at(n.endTimeMs) - scroll.at(n.timingMs)) / 1000 : (n.endTimeMs - n.timingMs) / 1000;
+          const duration = n.usingSV ? (prepared.facts.get(n)!.endScroll - prepared.facts.get(n)!.startScroll) / 1000 : (n.endTimeMs - n.timingMs) / 1000;
           const cutoff = duration === 0 ? 1 : clamp(timing / duration);
           emit(n, border, 4, { ...p, alpha, cutoff });
         }
@@ -170,11 +212,8 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
       } else {
         let angle = keyAngle, double = false;
         if (n.type === 'slide') {
-          const sameHeads = prepared.groups.get(n.group)!.filter(other => other.type === 'slide' && other.position === n.position);
-          const sameBranches = sameHeads.flatMap(other => other.type === 'slide' ? other.branches : []);
-          double = sameBranches.length > 1;
-          const length = sameBranches.reduce((sum, b) => sum + prepared.branches.get(b)!.reduce((l, p) => l + p.geometry.length, 0), 0);
-          const duration = sameBranches.reduce((sum, b) => sum + b.durationMs / 1000, 0);
+          const { double: multiple, length, duration } = prepared.facts.get(n)!.slide!;
+          double = multiple;
           if (config.slideRotation && duration > 0) angle -= (now - n.timingMs) / 1000 * Math.PI * Math.min(6, length / (duration * 2 * Math.PI));
         } else if ('isSpinningStar' in n && n.isSpinningStar) angle += (now - n.timingMs) / 1000 * Math.PI * 3;
         const path = star ? `StarSkins/star${double ? n.isMine ? n.isBreak ? '_break_double_mine' : '_double_mine' : n.isBreak ? '_break_double' : n.isEach ? '_each_double' : '_double' : variant(n)}.png` : `TapSkins/tap${variant(n)}.png`;
@@ -182,9 +221,9 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
       }
     }
     const hitAge = now - (hold ? n.endTimeMs : n.timingMs);
-    const hitPosition = touch ? touchPoint(String(n.position)) : buttonPoint(Number(n.position));
+    const hitPosition = prepared.facts.get(n)!.point;
     if (!n.isMine && !(n.type === 'slide' && n.isHeadless)) {
-      if (config.showHitEffect && starts.get(n.position)?.note === n && age >= 0 && age < (touch ? 317 : 889)) emit(n, '', 6, { ...hitPosition, angle: touch ? 0 : (22.5 - 45 * Number(n.position)) * DEG, effect: { kind: touch ? 'touch' : 'tap', ageMs: age, isBreak: n.isBreak } });
+      if (config.showHitEffect && latest(prepared.starts.get(n.position)) === n && age >= 0 && age < (touch ? 317 : 889)) emit(n, '', 6, { ...hitPosition, angle: touch ? 0 : (22.5 - 45 * Number(n.position)) * DEG, effect: { kind: touch ? 'touch' : 'tap', ageMs: age, isBreak: n.isBreak } });
       if (config.showHitEffect && hold && age >= 0 && endAge < 300) {
         const lastEmission = Math.min(Math.floor(age / 100), Math.floor((n.endTimeMs - n.timingMs) / 100));
         for (let i = Math.max(0, lastEmission - 2); i <= lastEmission; i++) {
@@ -194,7 +233,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
       }
       if (config.showFireworks && firework === n && hitAge >= 0 && hitAge < 1334) emit(n, '', 7, { ...hitPosition, effect: { kind: 'firework', ageMs: hitAge, isBreak: n.isBreak } });
     }
-    if (hitAge >= 0 && hitAge < 450 && finishes.get(n.position)?.note === n && !n.isMine && !(n.type === 'slide' && n.isHeadless)) {
+    if (hitAge >= 0 && hitAge < 450 && latest(prepared.finishes.get(n.position)) === n && !n.isMine && !(n.type === 'slide' && n.isHeadless)) {
       const index = typeof n.position === 'number' ? n.position : Number(n.position[1] ?? 0);
       const angle = String(n.position).startsWith('C') ? 0 : (22.5 - 45 * index) * DEG;
       const p = { x: hitPosition.x + Math.sin(angle), y: hitPosition.y - Math.cos(angle) };
@@ -206,15 +245,13 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
       if (kind) emit(n, judgeTextSkinPath(cover ? 'cPerfectBreak' : kind === 'cPerfectBreak' ? 'cPerfect' : kind), 7, { ...p, angle, alpha, scale });
     }
   }
-  for (const group of prepared.groups.values()) {
-    if (group[0].timingMs <= now) continue;
-    const usingSV = group.some(n => !n.isMine && n.usingSV && (n.type === 'tap' || n.type === 'break' || n.type === 'hold-start'));
-    const heads = group.filter(n => !n.isMine && typeof n.position === 'number' && !(n.type === 'slide' && n.isHeadless));
+  for (const { time, usingSV, heads } of prepared.eachGroups) {
+    if (time <= now) continue;
     for (let i = 1; i < heads.length; i++) {
       const n = heads[i - 1]; if (now >= n.timingMs) continue;
       const a = Number(n.position), b = Number(heads[i].position), diff = (b - a + 8) % 8;
       const span = Math.min(diff, 8 - diff); if (!span) continue;
-      const raw = (usingSV ? scroll.at(now) - scroll.at(n.timingMs) : now - n.timingMs) / 1000 * tapSpeed * n.hiSpeed + 4.8;
+      const raw = (usingSV ? currentScroll - prepared.facts.get(n)!.startScroll : now - n.timingMs) / 1000 * tapSpeed * n.hiSpeed + 4.8;
       if (raw * 0.4 + 0.51 <= 0) continue;
       const start = diff < 4 ? a : b;
       emit(n, `NoteGuideSkins/EachLine${span}.png`, 1, { angle: (45 - 45 * start) * DEG, scale: Math.max(raw, 1.225) / 4.8 });

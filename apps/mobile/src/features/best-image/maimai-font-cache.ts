@@ -1,3 +1,5 @@
+import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { Directory, File } from 'expo-file-system';
 import {
   clearFontCacheDirectory,
@@ -63,13 +65,16 @@ export function createMaimaiFontPreparer(
     entry: MaimaiFontManifestEntry,
     fontDirectory: Directory,
     temporaryDirectory: Directory,
+    signal: AbortSignal,
+    assertCurrent: () => void,
   ): Promise<File> {
     const finalFile = new File(fontDirectory, entry.cssFileName);
     const fontPartFile = new File(temporaryDirectory, `${entry.cssFileName}.part`);
     let fontPartMoved = false;
     try {
       if (fontPartFile.exists) fontPartFile.delete();
-      await File.downloadFileAsync(entry.url, fontPartFile, { idempotent: true });
+      await downloadChartResource(temporaryDirectory, `${entry.cssFileName}.part`, entry.url, signal);
+      assertCurrent();
       if (fontPartFile.size !== entry.fontBytes) {
         throw new Error(`${entry.name} 字体大小不匹配`);
       }
@@ -77,6 +82,7 @@ export function createMaimaiFontPreparer(
       if (await sha256(fontBytes) !== entry.fontSha256) {
         throw new Error(`${entry.name} 字体校验失败`);
       }
+      assertCurrent();
       if (finalFile.exists) finalFile.delete();
       fontPartFile.move(finalFile);
       fontPartMoved = true;
@@ -86,20 +92,21 @@ export function createMaimaiFontPreparer(
     }
   }
 
-  const { ensureFont } = createFontCacheGuard({ downloadFont });
+  const { ensureFont } = createFontCacheGuard({ downloadFont, scope: 'maimai' });
 
   return async function prepareMaimaiFonts(
     onProgress?: ProgressListener,
+    signal?: AbortSignal,
   ): Promise<PreparedMaimaiFonts> {
     const { directory, fontDirectory, temporaryDirectory } = directories();
     const emit = (phase: MaimaiFontProgressPhase, currentFont: string | null, error?: string) => {
-      onProgress?.({ phase, completed: 0, total: manifest.length, currentFont, error });
+      if (!signal?.aborted) onProgress?.({ phase, completed: 0, total: manifest.length, currentFont, error });
     };
     emit('checking', null);
     const fullReady = (async () => {
       try {
         for (const entry of manifest) {
-          await ensureFont(entry, fontDirectory, temporaryDirectory, () => emit('downloading', entry.name));
+          await ensureFont(entry, fontDirectory, temporaryDirectory, () => emit('downloading', entry.name), signal);
         }
         emit('ready', null);
       } catch (error) {
@@ -116,5 +123,6 @@ export const prepareMaimaiFonts = createMaimaiFontPreparer();
 
 /** 清除成绩图字体本地下载缓存（Documents/rranker/maimai-assets）。 */
 export function clearMaimaiFontCache(): void {
+  invalidateResourceWrites('maimai');
   clearFontCacheDirectory('maimai-assets');
 }

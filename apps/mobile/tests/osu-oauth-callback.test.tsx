@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import OsuOAuthCallbackScreen from '../app/oauth/osu';
 import { createOsuBoundAccount } from '@/domain/bound-account';
@@ -89,14 +89,14 @@ describe('osu! OAuth 回调页', () => {
       activeAccountId: mockAccount.id,
     });
 
-    await act(async () => { render(<OsuOAuthCallbackScreen />); });
+    await render(<OsuOAuthCallbackScreen />);
 
     expect(mockNotify).toHaveBeenCalledWith({ status: 'awaiting-mode-selection' });
     expect(screen.getByText('选择 osu! 模式')).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText('osu!mania'));
+    await fireEvent.press(screen.getByLabelText('osu!mania'));
     await waitFor(() => expect(screen.getByLabelText('osu!mania').props.accessibilityState.checked).toBe(true));
-    fireEvent.press(screen.getByLabelText('绑定选中模式'));
+    await fireEvent.press(screen.getByLabelText('绑定选中模式'));
 
     await waitFor(() => expect(mockBindOsuModes).toHaveBeenCalledWith({
       modeGameIds: ['osu-mania'],
@@ -117,10 +117,10 @@ describe('osu! OAuth 回调页', () => {
   it('返回首页走 dismissTo 回退到既有主页（不再 replace 新建页面）', async () => {
     mockParams = { error: 'access_denied' };
 
-    await act(async () => { render(<OsuOAuthCallbackScreen />); });
+    await render(<OsuOAuthCallbackScreen />);
 
     expect(screen.getByText('授权失败')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('返回首页'));
+    await fireEvent.press(screen.getByLabelText('返回首页'));
     expect(mockDismissTo).toHaveBeenCalledWith('/');
   });
 });

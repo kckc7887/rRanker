@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
 import { useAppTheme } from '@/theme/app-theme';
-import { BestImagePickerShell } from '@/features/best-image/best-image-picker-shell';
+import { BestImagePickerShell, compactBestImagePickerStyles } from '@/features/best-image/best-image-picker-shell';
 import { RemoteNativeImage as Image } from '@/components/RemoteNativeImage';
 import type { ChunithmBestImageCollectionItem } from './load-chunithm-best-image-collections';
 import type {
@@ -133,13 +133,7 @@ export function ChunithmBestImageStylePicker({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 8 },
-  grabber: { alignSelf: 'center', width: 42, height: 5, borderRadius: 999, marginBottom: 10 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 12 },
-  title: { fontSize: 18, fontWeight: '800' },
-  count: { marginTop: 2, fontSize: 12, fontWeight: '600' },
-  close: { fontSize: 15, fontWeight: '700' },
-  search: { marginHorizontal: 16, minHeight: 40, paddingHorizontal: 12, borderWidth: 1, borderRadius: 12, fontSize: 14 },
+  ...compactBestImagePickerStyles,
   modeRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   modeChip: { minHeight: 34, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   modeText: { fontSize: 12, fontWeight: '700' },

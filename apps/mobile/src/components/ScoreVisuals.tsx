@@ -16,7 +16,7 @@ import {
 import {
   BEST_IMAGE_RAINBOW_COLORS,
   STATUS_BADGE_THEMES,
-} from '@/features/best-image/best-image-badge-theme';
+} from '@/domain/badge-theme';
 import {
   MAIMAI_UTAGE_COLOR,
   MAIMAI_UTAGE_TINT,

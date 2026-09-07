@@ -1,3 +1,4 @@
+import { preparePhigrosBestImageCards } from './phigros-best-image';
 /*
  * DOM 与 CSS 契约直接对齐 phi-plugin resources/html/b19/b19.art。
  * 这里只负责将 rRanker 数据注入原模板并接入 WebView 导出协议。
@@ -122,40 +123,10 @@ function sectionDivider(title: string, titleNote?: string): string {
 }
 
 function scoreCards(input: PhigrosBestImageHtmlInput): string {
-  const phiRecords = input.type === 'best30'
-    ? input.page.sections.filter((section) => section.id.toLowerCase().includes('phi')).flatMap((section) => section.records)
-    : [];
-  const bestRecords = input.type === 'best30'
-    ? input.page.sections.filter((section) => !section.id.toLowerCase().includes('phi')).flatMap((section) => section.records)
-    : input.page.sections.flatMap((section) => section.records);
-  const cutoffIndex = input.type === 'best30' ? 26 : 29;
-  const cutoffRks = bestRecords[Math.min(cutoffIndex, bestRecords.length - 1)]?.rating ?? bestRecords.at(-1)?.rating ?? 0;
-  const lowestPhiRks = phiRecords.at(-1)?.rating ?? 0;
-  const pageOffset = input.type === 'custom' ? input.page.pageIndex * 30 : 0;
-  const bestLimit = input.type === 'best30' ? 27 : 30;
-  let phiIndex = 0;
-  let bestIndex = 0;
-  return input.page.sections.map((section) => {
-    if (!section.records.length) return '';
-    const isPhi = input.type === 'best30' && section.id.toLowerCase().includes('phi');
-    const cards = section.records.map((record) => {
-      if (isPhi) {
-        const rank = `P${phiIndex + 1}`;
-        phiIndex += 1;
-        return scoreCard(input, record, rank, true, false, cutoffRks, false);
-      }
-      const index = bestIndex;
-      bestIndex += 1;
-      return scoreCard(
-        input,
-        record,
-        `#${pageOffset + index + 1}`,
-        false,
-        index < bestLimit,
-        index < cutoffIndex ? record.rating : cutoffRks,
-        !lowestPhiRks || record.rating > lowestPhiRks,
-      );
-    }).join('');
+  return preparePhigrosBestImageCards(input.type, input.page).map(({ section, cards: prepared }) => {
+    const cards = prepared.map(({ record, rank, isPhi, inBest, referenceRks, allowPerfect }) => scoreCard(
+      input, record, rank, isPhi, inBest, referenceRks, allowPerfect,
+    )).join('');
     return `${sectionDivider(section.title, section.titleNote)}${cards}`;
   }).join('');
 }

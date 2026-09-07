@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import type { ChunithmSong } from '@/domain/chunithm';
 import { useAppTheme } from '@/theme/app-theme';
-import { BestImagePickerShell } from '@/features/best-image/best-image-picker-shell';
+import { BestImagePickerShell, compactBestImagePickerStyles } from '@/features/best-image/best-image-picker-shell';
 import { RemoteNativeImage as Image } from '@/components/RemoteNativeImage';
 import { filterChunithmBestImageBackgroundSongs } from './chunithm-best-image-background';
 import type { ChunithmBestImageBackgroundChoice } from './chunithm-best-image-preferences';
@@ -119,13 +119,7 @@ export function ChunithmBestImageBackgroundPicker({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 8 },
-  grabber: { alignSelf: 'center', width: 42, height: 5, borderRadius: 999, marginBottom: 10 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, marginBottom: 12 },
-  title: { fontSize: 18, fontWeight: '800' },
-  count: { marginTop: 2, fontSize: 12, fontWeight: '600' },
-  close: { fontSize: 15, fontWeight: '700' },
-  search: { marginHorizontal: 16, minHeight: 40, paddingHorizontal: 12, borderWidth: 1, borderRadius: 12, fontSize: 14 },
+  ...compactBestImagePickerStyles,
   defaultItem: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 72, marginHorizontal: 16, marginTop: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderRadius: 14 },
   defaultPreview: { width: 54, height: 54, overflow: 'hidden', borderRadius: 10 },
   defaultGlow: { position: 'absolute', width: 64, height: 64, borderRadius: 32, right: -18, bottom: -22 },

@@ -22,7 +22,7 @@ import { findGame, type GameId } from '@/domain/game-bind-options';
 import { familyForGameId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
 import { hydrateBoundAccountAvatars } from '@/services/hydrate-bound-account-avatars';
-import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
+import { hydrateAccountDisplayData } from '@/services/account-thumbnail';
 import { hydrateChunithmAccountSummaries } from '@/services/hydrate-chunithm-account-summaries';
 import { hydratePhigrosAccountSummaries } from '@/services/hydrate-phigros-account-summaries';
 import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
@@ -37,7 +37,7 @@ function useHydrateAccountSummaries(accountIds: string, enabled: boolean): void 
     ranFor.current = hydrationKey;
     const signal = getForegroundAbortSignal();
     void hydrateBoundAccountAvatars(signal);
-    void hydrateBoundAccountThumbnails(undefined, signal);
+    void hydrateAccountDisplayData(signal).catch(() => undefined);
     void hydrateChunithmAccountSummaries(signal);
     void hydratePhigrosAccountSummaries(signal);
   }, [accountIds, enabled, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);

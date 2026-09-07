@@ -34,12 +34,12 @@ export class PhigrosSaveCache {
     );
   }
 
-  async save(accountId: string, payload: PhigrosGameDataPayload): Promise<void> {
+  async save(accountId: string, payload: PhigrosGameDataPayload, assertCurrent?: () => void): Promise<void> {
     await this.repository.saveResource(
       phigrosSaveResourceKey(accountId),
       PHIGROS_SAVE_SCHEMA_VERSION,
       payload.saveUpdatedAt,
-      payload,
+      payload, assertCurrent,
     );
   }
 }

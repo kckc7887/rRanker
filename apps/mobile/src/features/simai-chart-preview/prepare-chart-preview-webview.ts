@@ -49,6 +49,7 @@ export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Dire
 /** 将播放器脚本、远程皮肤与正解音写入同一 session；皮肤编码为 skin-data.js。 */
 export async function prepareChartPreviewWebViewSource(
   config: ChartPreviewInjectConfig,
+  signal?: AbortSignal,
 ): Promise<ChartPreviewWebViewSource> {
   return prepareChartPreviewWebviewFromPlan({
     directoryName: 'rranker-chart-preview',
@@ -71,15 +72,17 @@ export async function prepareChartPreviewWebViewSource(
       },
     ],
     writers: [
-      async (directory) => {
+      async (directory, writerSignal) => {
         const entries: Record<string, string> = {};
         const sensor = new File(directory, MAIMAI_CHART_PREVIEW_SENSOR.path);
         entries[MAIMAI_CHART_PREVIEW_SENSOR.path] = `data:image/webp;base64,${await sensor.base64()}`;
         for (const asset of maimaiChartPreviewRuntimeSkinAssets()) {
+          if (writerSignal?.aborted) throw writerSignal.reason ?? new Error('操作已取消');
           const file = new File(directory, maimaiChartPreviewSkinStagePath(asset.path));
           if (!file.exists) throw new Error(`皮肤缺失：${asset.path}`);
           entries[asset.path] = `data:image/png;base64,${await file.base64()}`;
         }
+        if (writerSignal?.aborted) throw writerSignal.reason ?? new Error('操作已取消');
         const output = new File(directory, MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE);
         output.create({ overwrite: true });
         output.write(maimaiChartPreviewSkinDataScript(entries));
@@ -90,7 +93,7 @@ export async function prepareChartPreviewWebViewSource(
       ...config,
       answerSoundUrl: dataUrls.answerSoundUrl,
     }),
-  });
+  }, signal);
 }
 
 export function chartPreviewAllowsFileAccess(): boolean {

@@ -1,3 +1,4 @@
+import { indexSongsById } from '@/domain/catalog';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SIMAI_RECORDS_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { MajdataRecordsScreen } from '@/screens/MajdataScreens';
@@ -468,16 +469,17 @@ function PhigrosRecordsScreen() {
     [catalogSongs],
   );
 
+  const catalogSongIndex = useMemo(() => indexSongsById(catalogSongs), [catalogSongs]);
   const searchDocs = useMemo(() => new Map(
     records.map((r) => {
       const title = titleMap.get(r.songId) ?? r.songId;
-      const song = catalogSongs.find((item) => item.id === r.songId);
+      const song = catalogSongIndex.get(r.songId);
       return [recordKey(r), {
         ...buildSearchDocument([r.songId, title, ...(song?.aliases ?? [])]),
         title,
       }] as const;
     }),
-  ), [catalogSongs, records, titleMap]);
+  ), [catalogSongIndex, records, titleMap]);
 
   const filterSpec = useMemo(() => ({
     keyword: debouncedKeyword, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,

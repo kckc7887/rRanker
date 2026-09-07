@@ -1,3 +1,4 @@
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import {
   CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION,
   CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
@@ -64,17 +65,20 @@ export class ChunithmPersonalService {
   }
 
   private async loadFresh(signal: AbortSignal): Promise<ChunithmPersonalSnapshot> {
+    const assertCurrent = captureResourceWrites('chunithm', signal, this.accountId);
     try {
       const snapshot = await this.provider.getSnapshot(signal);
-      if (signal.aborted) throw signal.reason;
+      assertCurrent();
       await this.repository.saveResource(
         chunithmPersonalResourceKey(this.accountId),
         CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
         snapshot.source.updatedAt,
         snapshot,
+        assertCurrent,
       );
       return snapshot;
     } catch (error) {
+      assertCurrent();
       if (error instanceof ProviderError && error.code === 'authentication') throw error;
       const compatible = await this.loadCached();
       if (!compatible) throw error;
@@ -99,6 +103,7 @@ export class ChunithmPersonalService {
     signal: AbortSignal = getForegroundAbortSignal(),
   ): Promise<ChunithmPersonalSnapshot> {
     return cacheFirstLoad({
+      assertCurrent: captureResourceWrites('chunithm', signal, this.accountId),
       loadCached: () => this.loadCached(),
       loadFresh: () => this.load(signal),
       onFresh,

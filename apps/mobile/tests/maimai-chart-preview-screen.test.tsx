@@ -111,7 +111,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
   });
 
   it('switches the native screen to immersive landscape and restores portrait on exit', async () => {
-    render(<MaimaiChartPreviewScreen />);
+    await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('maimai-chart-preview-webview');
 
@@ -122,7 +122,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(latestScreenOptions).not.toHaveProperty('statusBarHidden');
     expect(latestScreenOptions).not.toHaveProperty('navigationBarHidden');
 
-    fireEvent(webview, 'message', {
+    await fireEvent(webview, 'message', {
       nativeEvent: { data: '{"type":"fullscreen","active":true}' },
     });
 
@@ -139,7 +139,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
       expect.stringContaining("type:'exit-fullscreen'"),
     );
 
-    fireEvent(webview, 'message', {
+    await fireEvent(webview, 'message', {
       nativeEvent: { data: '{"type":"fullscreen","active":false}' },
     });
 
@@ -151,11 +151,11 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
   });
 
   it('persists only player settings fields from bridge messages', async () => {
-    render(<MaimaiChartPreviewScreen />);
+    await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('maimai-chart-preview-webview');
 
-    fireEvent(webview, 'message', {
+    await fireEvent(webview, 'message', {
       nativeEvent: {
         data: '{"type":"settings","active":false,"message":"ignored","hiSpeed":7.5,"backgroundMode":"video","videoBackgroundPrompted":true}',
       },
@@ -168,15 +168,15 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
   });
 
   it('serializes rapid settings messages without losing earlier fields', async () => {
-    render(<MaimaiChartPreviewScreen />);
+    await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('maimai-chart-preview-webview');
 
     await act(async () => {
-      fireEvent(webview, 'message', {
+      await fireEvent(webview, 'message', {
         nativeEvent: { data: '{"type":"settings","backgroundMode":"image"}' },
       });
-      fireEvent(webview, 'message', {
+      await fireEvent(webview, 'message', {
         nativeEvent: { data: '{"type":"settings","videoBackgroundPrompted":true}' },
       });
       await Promise.resolve();
@@ -190,11 +190,11 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
   });
 
   it('uses the shared action notification for the one-time video warning', async () => {
-    render(<MaimaiChartPreviewScreen />);
+    await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('maimai-chart-preview-webview');
 
-    fireEvent(webview, 'message', {
+    await fireEvent(webview, 'message', {
       nativeEvent: { data: '{"type":"background-video-confirmation"}' },
     });
 
@@ -216,7 +216,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
   });
 
   it('keeps the player open when an optional background resource returns an HTTP error', async () => {
-    render(<MaimaiChartPreviewScreen />);
+    await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
 
     await act(async () => {
@@ -228,7 +228,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
   });
 
   it('passes the current jacket and reference video source into the player config', async () => {
-    render(<MaimaiChartPreviewScreen />);
+    await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(mockPrepareChartPreview).toHaveBeenCalled());
 
     expect(mockPrepareChartPreview).toHaveBeenCalledWith(expect.objectContaining({

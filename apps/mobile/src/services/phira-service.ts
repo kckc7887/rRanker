@@ -1,13 +1,16 @@
+import { captureResourceWrites } from './snapshot-cache-utils';
 import type { PhiraChart, PhiraPlayerSnapshot, PhiraQueriedBest } from '@/domain/phira';
 import { loadItemsBounded } from './offset-pagination';
 import { phiraCache, phiraSource } from './phira-cache';
 import { phiraProvider } from '@/providers/phira-provider';
 
 export async function loadPhiraPlayerFresh(playerId: number, signal?: AbortSignal): Promise<PhiraPlayerSnapshot> {
+  const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
   const [player, stats, rawPool, recent] = await Promise.all([
     phiraProvider.getUser(playerId, signal), phiraProvider.getUserStats(playerId, signal),
     phiraProvider.getPool(playerId, signal), phiraProvider.getRecent(playerId, signal),
   ]);
+  assertCurrent();
   const seeds = [...rawPool.bestPool, ...rawPool.recentPool];
   const chartIds = [...new Set([...seeds.map((item) => item.chart), ...recent.map((record) => record.chart)])];
   const [charts, records] = await Promise.all([
@@ -22,7 +25,8 @@ export async function loadPhiraPlayerFresh(playerId: number, signal?: AbortSigna
   });
   const pool = { bestPool: hydrate(rawPool.bestPool), recentPool: hydrate(rawPool.recentPool), rks: rawPool.rks };
   const snapshot = { player, stats, pool, recent, seedCharts: charts, source: phiraSource() };
-  if (!signal?.aborted) await phiraCache.savePlayer(playerId, snapshot);
+  assertCurrent();
+  await phiraCache.savePlayer(playerId, snapshot, assertCurrent);
   return snapshot;
 }
 
@@ -36,8 +40,10 @@ export function phiraSeedCharts(snapshot: PhiraPlayerSnapshot): PhiraChart[] {
 export async function queryPhiraChartBest(
   playerId: number, chart: PhiraChart, poolRks: number | null, signal?: AbortSignal,
 ): Promise<PhiraQueriedBest> {
+  const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
   const value = await readPhiraChartBest(playerId, chart, poolRks, signal);
-  if (!signal?.aborted) await phiraCache.mergeBests(playerId, [value]);
+  assertCurrent();
+  await phiraCache.mergeBests(playerId, [value], assertCurrent);
   return value;
 }
 
@@ -60,6 +66,7 @@ export async function refreshPhiraSeedBests(snapshot: PhiraPlayerSnapshot, signa
 async function refreshPhiraBestItems(
   playerId: number, items: readonly Pick<PhiraQueriedBest, 'chart' | 'poolRks'>[], signal?: AbortSignal,
 ) {
+  const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
   const values: PhiraQueriedBest[] = [];
   await loadItemsBounded({
     items, concurrency: 4, signal,
@@ -67,11 +74,13 @@ async function refreshPhiraBestItems(
     onItem: (value) => values.push(value),
   });
   if (signal?.aborted) throw signal.reason ?? new Error('phira refresh aborted');
-  return phiraCache.mergeBests(playerId, values);
+  return phiraCache.mergeBests(playerId, values, assertCurrent);
 }
 
 export async function refreshAllPhiraBests(playerId: number, signal?: AbortSignal) {
+  const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
   const [snapshot, player] = await Promise.all([phiraCache.loadBests(playerId), phiraCache.loadPlayer(playerId)]);
+  assertCurrent();
   const items = new Map<number, Pick<PhiraQueriedBest, 'chart' | 'poolRks'>>();
   for (const item of Object.values(snapshot?.items ?? {})) items.set(item.chart.id, item);
   for (const pool of [...(player?.pool.recentPool ?? []), ...(player?.pool.bestPool ?? [])]) {

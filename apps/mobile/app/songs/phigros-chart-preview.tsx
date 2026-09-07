@@ -111,13 +111,14 @@ export default function PhigrosChartPreviewScreen() {
           const prepared = mapped.game === 'phigros'
             ? await buildPhigrosChartPreviewInput({ ...mapped, variantIndex: variantSelection?.variantIndex }, settings as PhigrosChartPreviewSettings, signal)
             : await buildPhiraChartPreviewInput(mapped, settings as PhigrosChartPreviewSettings, signal, {
-                stageMusic: (bytes, fileName) => stagePhiraChartMusic(bytes, fileName, directory),
-                stageRpeBundle: (chartId, files) => stagePhiraRpeBundle(chartId, files, directory),
+                stageMusic: (bytes, fileName) => stagePhiraChartMusic(bytes, fileName, directory, signal),
+                stageRpeBundle: (chartId, files) => stagePhiraRpeBundle(chartId, files, directory, signal),
               });
           return await preparePhigrosChartPreviewWebViewSource(
             { ...prepared.config, theme: isDark ? 'dark' : 'light' },
             prepared.musicDataBase64 ?? null,
             directory,
+            signal,
           );
         } catch (error) {
           disposeChartPreviewSessionDirectory(directory);

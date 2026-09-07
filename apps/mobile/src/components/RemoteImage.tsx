@@ -88,6 +88,12 @@ export function RemoteImage({
   const requestKey = normalized && gameId && (mode === 'thumbnail' || mode === 'artwork')
     ? `${gameId}|${mode}|${normalized.stableIdentity}`
     : null;
+  const sourceIdentity = normalized?.stableIdentity ?? null;
+  const requestSource = useMemo(() => {
+    if (sourceIdentity === null) return null;
+    if (!sourceIdentity.startsWith('{')) return sourceIdentity;
+    return JSON.parse(sourceIdentity) as { uri: string; cacheKey?: string; headers?: Record<string, string> };
+  }, [sourceIdentity]);
   const releaseRef = useRef<(() => void) | undefined>(undefined);
   const activeRequestKeyRef = useRef<string | null>(null);
   const [resolved, setResolved] = useState<CompressedRemoteImageResult | null>(null);
@@ -103,7 +109,7 @@ export function RemoteImage({
     setPhase('checking');
     setRemoteDisplayed(false);
     let cancelled = false;
-    void findCompressedRemoteImage(source, { gameId: gameId!, profile: mode })
+    void findCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode })
       .then((result) => {
         if (cancelled) {
           result?.release?.();
@@ -125,7 +131,7 @@ export function RemoteImage({
       releaseRef.current?.();
       releaseRef.current = undefined;
     };
-  }, [gameId, mode, requestKey, source]);
+  }, [gameId, mode, requestKey, requestSource]);
 
   useEffect(() => {
     if (!requestKey
@@ -135,7 +141,7 @@ export function RemoteImage({
       || !remoteDisplayed
       || resolved) return undefined;
     const controller = new AbortController();
-    void cacheCompressedRemoteImage(source, { gameId: gameId!, profile: mode }, controller.signal)
+    void cacheCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode }, controller.signal)
       .then((result) => {
         if (controller.signal.aborted || !result) return;
         releaseRef.current = result.release;
@@ -143,7 +149,7 @@ export function RemoteImage({
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, [active, gameId, mode, persistenceEnabled, remoteDisplayed, requestKey, resolved, source]);
+  }, [active, gameId, mode, persistenceEnabled, remoteDisplayed, requestKey, resolved, requestSource]);
 
   if (!supportsNativeCachePolicy) {
     return (

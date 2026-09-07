@@ -183,7 +183,7 @@ describe('PhigrosChartPreviewScreen', () => {
   });
 
   it('phigros 参数经 OSS 解析后注入谱面确认配置并渲染 WebView', async () => {
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
 
     await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
@@ -203,7 +203,7 @@ describe('PhigrosChartPreviewScreen', () => {
     });
     mockRouteParams = { requestId: href.params.requestId };
 
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
 
     expect(mockLoadPhigrosBundle).toHaveBeenCalledWith({ songId, difficulty: 'AT' }, expect.any(AbortSignal));
@@ -215,7 +215,7 @@ describe('PhigrosChartPreviewScreen', () => {
   it('phira 参数经 ZIP 解包后注入谱面文本与本地音乐 URI', async () => {
     mockZipBuffer = await buildPhiraZip();
     mockRouteParams = { game: 'phira', chartId: '38294', title: '测试谱面' };
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
 
     await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
@@ -240,7 +240,7 @@ describe('PhigrosChartPreviewScreen', () => {
     const href = stageChartPreviewNavigation({ game: 'phira', chart });
     mockRouteParams = { requestId: href.params.requestId };
 
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
 
     expect(mockGetChart).not.toHaveBeenCalled();
@@ -251,7 +251,7 @@ describe('PhigrosChartPreviewScreen', () => {
 
   it('短令牌不存在时明确显示交接错误，不静默等待', async () => {
     mockRouteParams = { requestId: 'missing-request' };
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByText('谱面确认请求已失效，请返回歌曲详情重试')).toBeTruthy());
     expect(screen.queryByTestId('phigros-chart-preview-webview')).toBeNull();
   });
@@ -259,7 +259,7 @@ describe('PhigrosChartPreviewScreen', () => {
   it('phira RPE 谱面：文本资源注入、其余资源落盘 rpe/{chartId}/', async () => {
     mockZipBuffer = await buildPhiraRpeZip();
     mockRouteParams = { game: 'phira', chartId: '38294', title: '测试 RPE' };
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
 
     await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
@@ -283,19 +283,19 @@ describe('PhigrosChartPreviewScreen', () => {
 
   it('缺少游戏参数时显示阻断错误且不渲染 WebView', async () => {
     mockRouteParams = { songId: 'DistortedFate.Sakuzyo' };
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByText('缺少游戏参数')).toBeTruthy());
     expect(screen.queryByTestId('phigros-chart-preview-webview')).toBeNull();
   });
 
   it('全屏桥切换原生屏幕为沉浸横屏并处理返回键退出', async () => {
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('phigros-chart-preview-webview');
 
     expect(latestScreenOptions).toMatchObject({ headerShown: true, orientation: 'portrait_up' });
 
-    fireEvent(webview, 'message', { nativeEvent: { data: '{"type":"fullscreen","active":true}' } });
+    await fireEvent(webview, 'message', { nativeEvent: { data: '{"type":"fullscreen","active":true}' } });
     await waitFor(() => expect(latestScreenOptions).toMatchObject({
       headerShown: false,
       orientation: 'landscape',
@@ -305,7 +305,7 @@ describe('PhigrosChartPreviewScreen', () => {
     expect(hardwareBackHandler?.()).toBe(true);
     expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining("type:'exit-fullscreen'"));
 
-    fireEvent(webview, 'message', { nativeEvent: { data: '{"type":"fullscreen","active":false}' } });
+    await fireEvent(webview, 'message', { nativeEvent: { data: '{"type":"fullscreen","active":false}' } });
     await waitFor(() => expect(latestScreenOptions).toMatchObject({
       headerShown: true,
       orientation: 'portrait_up',
@@ -314,11 +314,11 @@ describe('PhigrosChartPreviewScreen', () => {
   });
 
   it('仅持久化播放器设置字段到 KV', async () => {
-    render(<PhigrosChartPreviewScreen />);
+    await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('phigros-chart-preview-webview');
 
-    fireEvent(webview, 'message', {
+    await fireEvent(webview, 'message', {
       nativeEvent: {
         data: '{"type":"settings","active":false,"message":"ignored","playbackSpeed":2,"noteScale":0.8}',
       },

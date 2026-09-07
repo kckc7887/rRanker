@@ -16,7 +16,7 @@ import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import {
   clearResourcesByPrefix,
-  createInflightGuard,
+  createInflightGuard, resourceWriteGeneration,
   makeSnapshot,
   snapshotSource,
 } from '@/services/snapshot-cache-utils';
@@ -38,10 +38,10 @@ export function loadOsuSnapshotFresh(
   userId: number,
   signal?: AbortSignal,
 ): Promise<OsuSnapshot> {
-  return inflightLoads.dedupe(`${gameId}:${userId}`, async () => {
+  return inflightLoads.share(`${gameId}:${resourceWriteGeneration(gameId)}:${resourceWriteGeneration(`account:${gameId}:osu:${userId}`)}:${userId}`, async requestSignal => {
     const [user, bestScores] = await Promise.all([
-      provider.getUser(userId, gameId, signal),
-      provider.getBestScores(userId, gameId, 100, signal),
+      provider.getUser(userId, gameId, requestSignal),
+      provider.getBestScores(userId, gameId, 100, requestSignal),
     ]);
     return makeOsuSnapshot(normalizeOsuSnapshot(user, bestScores));
   }, signal);
@@ -64,13 +64,13 @@ export class OsuCache {
   async save(
     gameId: OsuGameId,
     userId: number,
-    snapshot: OsuSnapshot,
+    snapshot: OsuSnapshot, assertCurrent?: () => void,
   ): Promise<void> {
     await this.repository.saveResource(
       osuSnapshotCacheKey(gameId, userId),
       OSU_SNAPSHOT_SCHEMA_VERSION,
       snapshot.source.updatedAt,
-      snapshot,
+      snapshot, assertCurrent,
     );
   }
 
@@ -87,13 +87,13 @@ export class OsuCache {
   async saveKnownScores(
     gameId: OsuGameId,
     userId: number,
-    snapshot: OsuKnownScoresSnapshot,
+    snapshot: OsuKnownScoresSnapshot, assertCurrent?: () => void,
   ): Promise<void> {
     await this.repository.saveResource(
       osuKnownScoresCacheKey(gameId, userId),
       OSU_KNOWN_SCORES_SCHEMA_VERSION,
       snapshot.source.updatedAt,
-      snapshot,
+      snapshot, assertCurrent,
     );
   }
 
@@ -101,7 +101,7 @@ export class OsuCache {
   async mergeKnownScores(
     gameId: OsuGameId,
     userId: number,
-    scores: readonly OsuBestScore[],
+    scores: readonly OsuBestScore[], assertCurrent?: () => void,
   ): Promise<OsuKnownScoresSnapshot> {
     const previous = await this.loadKnownScores(gameId, userId);
     const items = { ...(previous?.items ?? {}) };
@@ -114,7 +114,7 @@ export class OsuCache {
       items,
       source: snapshotSource({ kind: 'osu', label: 'osu.ppy.sh' }),
     };
-    await this.saveKnownScores(gameId, userId, snapshot);
+    await this.saveKnownScores(gameId, userId, snapshot, assertCurrent);
     return snapshot;
   }
 
