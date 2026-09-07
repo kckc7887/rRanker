@@ -23,7 +23,7 @@ import {
 } from '@/domain/tuf';
 import { tufProvider } from '@/providers/tuf-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { clearResourcesByPrefix, createInflightGuard, makeSnapshot } from '@/services/snapshot-cache-utils';
+import { clearResourcesByPrefix, createInflightGuard, resourceWriteGeneration, makeSnapshot } from '@/services/snapshot-cache-utils';
 
 /** 构造 TUF 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeTufSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
@@ -31,10 +31,10 @@ export function makeTufSnapshot<T>(data: T, updatedAt = new Date().toISOString()
 }
 
 /** 同一 TUF 玩家资料并发读取共享一次网络请求（总览与最佳页可能并发）。 */
-const inflightPlayerLoads = createInflightGuard<number>();
+const inflightPlayerLoads = createInflightGuard<string>();
 
 export function loadTufPlayerFresh(playerId: number, signal?: AbortSignal): Promise<TufPlayer> {
-  return inflightPlayerLoads.dedupe(playerId, () => tufProvider.getPlayerProfile(playerId, signal), signal);
+  return inflightPlayerLoads.share(resourceWriteGeneration('adofai') + ':' + resourceWriteGeneration(`account:adofai:tuf:${playerId}`) + ':' + playerId, requestSignal => tufProvider.getPlayerProfile(playerId, requestSignal), signal);
 }
 
 /**
@@ -47,8 +47,8 @@ export class TufCache {
   async loadPlayer(playerId: number): Promise<TufPlayerSnapshot | null> {
     return this.repository.getResource<TufPlayerSnapshot>(tufPlayerCacheKey(playerId), TUF_PLAYER_SCHEMA_VERSION);
   }
-  async savePlayer(playerId: number, snapshot: TufPlayerSnapshot): Promise<void> {
-    await this.repository.saveResource(tufPlayerCacheKey(playerId), TUF_PLAYER_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot);
+  async savePlayer(playerId: number, snapshot: TufPlayerSnapshot, assertCurrent?: () => void): Promise<void> {
+    await this.repository.saveResource(tufPlayerCacheKey(playerId), TUF_PLAYER_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
   async loadPassPage(
@@ -65,13 +65,13 @@ export class TufCache {
     playerId: number,
     options: Omit<TufPassQuery, 'offset' | 'limit'>,
     offset: number,
-    snapshot: TufPassPageSnapshot,
+    snapshot: TufPassPageSnapshot, assertCurrent?: () => void,
   ): Promise<void> {
     await this.repository.saveResource(
       tufPassPageCacheKey(playerId, options, offset),
       TUF_PASS_PAGE_SCHEMA_VERSION,
       snapshot.source.updatedAt,
-      snapshot,
+      snapshot, assertCurrent,
     );
   }
 
@@ -87,21 +87,21 @@ export class TufCache {
   async saveLevelPage(
     options: Omit<TufLevelQuery, 'offset' | 'limit'>,
     offset: number,
-    snapshot: TufLevelPageSnapshot,
+    snapshot: TufLevelPageSnapshot, assertCurrent?: () => void,
   ): Promise<void> {
     await this.repository.saveResource(
       tufLevelPageCacheKey(options, offset),
       TUF_LEVEL_PAGE_SCHEMA_VERSION,
       snapshot.source.updatedAt,
-      snapshot,
+      snapshot, assertCurrent,
     );
   }
 
   async loadLevel(levelId: number): Promise<TufLevelDetailSnapshot | null> {
     return this.repository.getResource<TufLevelDetailSnapshot>(tufLevelCacheKey(levelId), TUF_LEVEL_SCHEMA_VERSION);
   }
-  async saveLevel(levelId: number, snapshot: TufLevelDetailSnapshot): Promise<void> {
-    await this.repository.saveResource(tufLevelCacheKey(levelId), TUF_LEVEL_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot);
+  async saveLevel(levelId: number, snapshot: TufLevelDetailSnapshot, assertCurrent?: () => void): Promise<void> {
+    await this.repository.saveResource(tufLevelCacheKey(levelId), TUF_LEVEL_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
   async loadDifficulties(): Promise<TufDifficultiesSnapshot | null> {
@@ -110,12 +110,12 @@ export class TufCache {
       TUF_DIFFICULTIES_SCHEMA_VERSION,
     );
   }
-  async saveDifficulties(snapshot: TufDifficultiesSnapshot): Promise<void> {
+  async saveDifficulties(snapshot: TufDifficultiesSnapshot, assertCurrent?: () => void): Promise<void> {
     await this.repository.saveResource(
       TUF_DIFFICULTIES_CACHE_KEY,
       TUF_DIFFICULTIES_SCHEMA_VERSION,
       snapshot.source.updatedAt,
-      snapshot,
+      snapshot, assertCurrent,
     );
   }
 

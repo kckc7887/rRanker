@@ -63,7 +63,7 @@ vi.mock('expo-file-system', () => {
       return destination;
     }
   }
-  return { Directory, File, Paths: { document: new Directory('file://', 'document') } };
+  return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
 function hex(bytes: Uint8Array): string {
@@ -206,4 +206,9 @@ describe('maimai ui asset cache', () => {
     clearMaimaiUiCache();
     expect(mockUiFs.deletes.some((uri) => uri.endsWith('/rranker/maimai-assets'))).toBe(true);
   });
+});
+
+vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
+  const { File } = await import('expo-file-system');
+  return { downloadChartResource: (directory: import('expo-file-system').Directory, name: string, url: string) => File.downloadFileAsync(url, new File(directory, name)) };
 });

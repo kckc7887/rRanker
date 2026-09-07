@@ -54,12 +54,7 @@ import {
   BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
-import { useBestImageScreenController } from '@/features/best-image/use-best-image-screen-controller';
-import {
-  inlineBestImageWebViewSources,
-  prepareAndroidBestImageWebViewSources,
-  type BestImageWebViewSource,
-} from '@/features/best-image/prepare-best-image-webview-sources';
+import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
 
 const WIDTHS = [1080, 1440, 2160] as const;
 const SELECTION_COUNTS: readonly ChunithmBestImageSelectionCount[] = [0, 5, 10];
@@ -88,8 +83,6 @@ export function ChunithmBestImageScreen() {
   const [coverUrls, setCoverUrls] = useState<Record<string, string | null> | null>(null);
   const [characterDataUri, setCharacterDataUri] = useState<string | null>(null);
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
-  const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
-  const [androidSources, setAndroidSources] = useState<BestImageWebViewSource[] | null>(null);
   const styleAssetKeyRef = useRef<string | null>(null);
   const randomizedRef = useRef(new Set<string>());
 
@@ -263,17 +256,19 @@ export function ChunithmBestImageScreen() {
   const jacketKey = jacketIds.join('|');
 
   useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
     let cancelled = false;
     if (!payload || !lifecycle.foregroundReady) return;
     setCoverUrls(null);
     setAssetProgress({ done: 0, total: jacketIds.length });
     void loadChunithmBestImageJackets(jacketIds, (done, total) => {
       if (!cancelled) setAssetProgress({ done, total });
-    }).then((loaded) => {
+    }, signal).then((loaded) => {
       if (!cancelled) setCoverUrls(loaded);
     });
     return () => {
-      cancelled = true;
+      cancelled = true; controller.abort();
     };
   }, [jacketKey, jacketIds, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
 
@@ -286,19 +281,21 @@ export function ChunithmBestImageScreen() {
   const styleAssetKey = [stylePrefs.character.mode, characterId ?? ''].join('|');
 
   useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
     let cancelled = false;
     if (!payload || !lifecycle.foregroundReady) return;
     if (styleAssetKeyRef.current === styleAssetKey) return;
     const pending = hideCharacter || characterId === null
       ? Promise.resolve(null)
-      : loadChunithmRemoteImageDataUri(buildChunithmCharacterUrl(characterId));
+      : loadChunithmRemoteImageDataUri(buildChunithmCharacterUrl(characterId), signal);
     void pending.then((nextCharacter) => {
       if (cancelled) return;
       styleAssetKeyRef.current = styleAssetKey;
       setCharacterDataUri(nextCharacter);
     });
     return () => {
-      cancelled = true;
+      cancelled = true; controller.abort();
     };
   }, [
     characterId,
@@ -340,32 +337,14 @@ export function ChunithmBestImageScreen() {
     width,
   ]);
 
-  const inlineSources = useMemo(
-    () => (htmlPages ? inlineBestImageWebViewSources(htmlPages) : null),
-    [htmlPages],
-  );
-
+  const { sources, setSources } = usePreparedBestImageSources(htmlPages, undefined, Platform.OS !== 'android');
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    if (!htmlPages) {
-      setAndroidSources(null);
-      return;
-    }
-    const prepared = prepareAndroidBestImageWebViewSources(htmlPages);
-    setAndroidSources(prepared.sources);
-    return prepared.dispose;
-  }, [htmlPages]);
-
-  useEffect(() => {
-    setPageHeights({});
-    setPageIndex(0);
-    setPreviewStates({});
-    setSources(Platform.OS === 'android' ? androidSources : inlineSources);
-  }, [androidSources, inlineSources, setPageHeights, setPageIndex, setPreviewStates]);
+    setPageHeights({}); setPageIndex(0); setPreviewStates({});
+  }, [sources, setPageHeights, setPageIndex, setPreviewStates]);
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * 0.75);
-  const webViewSources = Platform.OS === 'android' ? androidSources : inlineSources;
+  const webViewSources = sources;
 
   const chooseStyle = (choice: ChunithmBestImageStyleChoice) => {
     if (choice.mode === 'random') {
@@ -593,7 +572,6 @@ export function ChunithmBestImageScreen() {
       onRequestCloseExport={cancelExportRequest}
       onReleaseHeavySources={() => {
         setSources(null);
-        setAndroidSources(null);
         setCoverUrls(null);
         setCharacterDataUri(null);
         styleAssetKeyRef.current = null;

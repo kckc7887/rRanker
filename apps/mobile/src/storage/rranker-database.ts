@@ -16,8 +16,8 @@ export function getRuntimeLogDatabase(): Promise<SQLiteDatabase> {
   }
   return runtimeLogDatabasePromise;
 }
-/** 串行化 schema 初始化，避免首启并发 execAsync / 换 journal mode 卡住原生队列。 */
-let schemaChain: Promise<void> = Promise.resolve();
+/** 同一连接的 schema、写入和事务共用队列，防止无关写入进入另一操作的事务。 */
+let writeChain: Promise<void> = Promise.resolve();
 
 /** 进程内唯一的 rranker.db 连接，避免 Android 多开触发 NativeDatabase NPE。 */
 export function getRrankerDatabase(): Promise<SQLiteDatabase> {
@@ -30,14 +30,16 @@ export function getRrankerDatabase(): Promise<SQLiteDatabase> {
   return databasePromise;
 }
 
-/**
- * 将 schema 初始化串到同一条 Promise 链上。
- * 失败不会卡住后续任务（链继续），由调用方自行管理可重试状态。
- */
-export function runSerializedSchemaInit(task: () => Promise<void>): Promise<void> {
-  const run = schemaChain.then(task, task);
-  schemaChain = run.then(() => undefined, () => undefined);
+/** 调用前先完成仓库初始化；task 内不得再次进入该队列。失败不阻塞后续写入。 */
+export function runDatabaseWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeChain.then(task, task);
+  writeChain = run.then(() => undefined, () => undefined);
   return run;
+}
+
+/** schema 初始化与业务写入串行，仍由各仓库维护可重试的初始化锁。 */
+export function runSerializedSchemaInit(task: () => Promise<void>): Promise<void> {
+  return runDatabaseWrite(task);
 }
 
 /**
@@ -45,8 +47,10 @@ export function runSerializedSchemaInit(task: () => Promise<void>): Promise<void
  * 失败由调用方决定是否吞掉（体积不收缩不影响清除结果）。
  */
 export async function compactRrankerDatabase(): Promise<void> {
-  const db = await getRrankerDatabase();
-  await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE); VACUUM;');
+  await runDatabaseWrite(async () => {
+    const db = await getRrankerDatabase();
+    await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE); VACUUM;');
+  });
 }
 
 export type RrankerDatabaseAllocation = {
@@ -81,5 +85,5 @@ export async function measureRrankerDatabaseAllocation(): Promise<RrankerDatabas
 /** 测试用：重置单例与 schema 串行链。 */
 export function resetRrankerDatabaseForTests(): void {
   databasePromise = null;
-  schemaChain = Promise.resolve();
+  writeChain = Promise.resolve();
 }

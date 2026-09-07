@@ -1,3 +1,4 @@
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
 import {
@@ -48,12 +49,14 @@ export function useTufProfile(playerId: number | null, enabled = true) {
   return useQuery({
     queryKey,
     queryFn: async ({ signal }): Promise<TufPlayer> => {
+      const assertCurrent = captureResourceWrites('adofai', signal, `adofai:tuf:${playerId}`);
       const snapshot = await cacheFirstLoad({
+      assertCurrent,
         loadCached: () => cache.loadPlayer(playerId!),
         loadFresh: async () => {
           const player = await loadTufPlayerFresh(playerId!, signal);
           const fresh = makeTufSnapshot(player);
-          if (!signal.aborted) void cache.savePlayer(playerId!, fresh).catch(() => undefined);
+          if (!signal.aborted) void cache.savePlayer(playerId!, fresh, assertCurrent).catch(() => undefined);
           return fresh;
         },
         onFresh: (fresh) => {
@@ -106,7 +109,9 @@ export async function prefetchTufPassPage(
   offset: number,
   signal?: AbortSignal,
 ): Promise<TufPassPage> {
+  const assertCurrent = captureResourceWrites('adofai', signal, `adofai:tuf:${playerId}`);
   const page = await loadTufPassPage(playerId, options, offset, signal);
+  assertCurrent();
   if (!signal?.aborted) mergeTufPassPage(playerId, options, page);
   return page;
 }

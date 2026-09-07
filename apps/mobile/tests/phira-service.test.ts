@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PhiraChartSchema, PhiraRecordSchema, PhiraUserSchema, PhiraUserStatsSchema } from '@/domain/phira';
 import { phiraProvider } from '@/providers/phira-provider';
 import { phiraCache } from '@/services/phira-cache';
-import { loadPhiraPlayerFresh, queryPhiraChartBest } from '@/services/phira-service';
+import { loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests } from '@/services/phira-service';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
 
 const chart = (id: number) => PhiraChartSchema.parse({
@@ -43,6 +44,18 @@ describe('Phira player seed and best service', () => {
     }));
     const result = await queryPhiraChartBest(323528, target, null);
     expect(result.record).toBeNull();
-    expect(merge).toHaveBeenCalledWith(323528, [expect.objectContaining({ chart: target, record: null })]);
+    expect(merge).toHaveBeenCalledWith(323528, [expect.objectContaining({ chart: target, record: null })], expect.any(Function));
   });
+  it('does not start a new best refresh from cache reads invalidated by account removal', async () => {
+    const pending = Promise.withResolvers<null>();
+    vi.spyOn(phiraCache, 'loadBests').mockReturnValue(pending.promise);
+    vi.spyOn(phiraCache, 'loadPlayer').mockResolvedValue(null);
+    const requests = vi.spyOn(phiraProvider, 'getChartBest');
+    const refreshing = refreshAllPhiraBests(323528);
+    invalidateResourceWrites('account:phira:community:323528');
+    pending.resolve(null);
+    await expect(refreshing).rejects.toThrow('缓存请求已失效');
+    expect(requests).not.toHaveBeenCalled();
+  });
+
 });

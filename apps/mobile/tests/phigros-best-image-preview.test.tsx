@@ -185,7 +185,7 @@ describe('Phigros 生成图片页', () => {
     await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
     await waitFor(() => expect(screen.getByText('无法准备成绩图片，请重试。')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
-    fireEvent.press(screen.getByLabelText('重试字体下载'));
+    await fireEvent.press(screen.getByLabelText('重试字体下载'));
     await waitFor(() => expect(preparePhigrosFonts).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
   });
@@ -219,26 +219,26 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByLabelText('导出成绩图片')).toBeTruthy();
     expect(screen.queryByTestId('phigros-best-image-webview-status')).toBeNull();
 
-    fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({
+    await fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({
       type: 'best-image-height', width: 1080, height: 1215,
     }) } });
     await waitFor(() => expect(screen.getByText(/1080 × 1215 px/u)).toBeTruthy());
     const previewFrameStyle = screen.getByLabelText('HTML图片预览窗').props.style[1];
     expect(previewFrameStyle.height).toBeCloseTo(previewFrameStyle.width * 4 / 3);
-    fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({
+    await fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({
       type: 'best-image-height', width: 1080, height: 1400,
     }) } });
     await waitFor(() => expect(screen.getByText(/1080 × 1400 px/u)).toBeTruthy());
 
-    fireEvent.press(screen.getByLabelText('导出成绩图片'));
+    await fireEvent.press(screen.getByLabelText('导出成绩图片'));
     await waitFor(() => expect(requestBestImageExportPermission).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getAllByText('正在导出 1/1')).toHaveLength(2));
     const renderer = await screen.findByLabelText('导出渲染 第1页');
     await act(async () => {
-      fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({
+      await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({
         type: 'best-image-height', width: 1080, height: 1500,
       }) } });
-      fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({
+      await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({
         type: 'best-image-ready', width: 1080, height: 1666,
       }) } });
     });
@@ -259,7 +259,7 @@ describe('Phigros 生成图片页', () => {
       loadPhigrosIllustrations: jest.Mock;
     };
     loadPhigrosIllustrations.mockClear();
-    fireEvent.press(screen.getByLabelText('自定义'));
+    await fireEvent.press(screen.getByLabelText('自定义'));
     await waitFor(() => {
       expect(screen.getByLabelText('自定义').props.accessibilityState.selected).toBe(true);
     });
@@ -279,7 +279,7 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByLabelText('XING 筛选 Miss')).toBeTruthy();
     expect(screen.queryByText('OVER FLOW')).toBeNull();
 
-    fireEvent.press(screen.getByLabelText('选择头像'));
+    await fireEvent.press(screen.getByLabelText('选择头像'));
     await waitFor(() => expect(screen.getByLabelText('使用玩家当前头像')).toBeTruthy());
     expect(screen.getByLabelText('搜索头像')).toBeTruthy();
     expect(screen.getByLabelText('avatar.test，头像')).toBeTruthy();

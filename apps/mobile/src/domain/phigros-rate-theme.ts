@@ -1,3 +1,5 @@
+import { phigrosScoreToRate } from './phigros';
+import type { ScoreRecord } from './models';
 export type PhigrosRateKind = 'f' | 'c' | 'b' | 'a' | 's' | 'v' | 'phi';
 
 export const PHIGROS_RATE_COLORS: Record<PhigrosRateKind | 'vFc', { bg: string; fg: string }> = {
@@ -20,3 +22,9 @@ export const PHIGROS_RATE_LABELS: Record<PhigrosRateKind, string> = {
   v: 'V',
   phi: '\u03C6',
 };
+
+export function resolvePhigrosRate(record: Pick<ScoreRecord, 'dxScore' | 'fc'>): PhigrosRateKind {
+  const rate = phigrosScoreToRate(record.dxScore ?? 0, record.fc === 'ap') as PhigrosRateKind;
+  if (rate in PHIGROS_RATE_LABELS) return rate;
+  return 'f';
+}

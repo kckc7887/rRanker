@@ -16,7 +16,7 @@ import {
   BADGE_RAINBOW_BORDER_COLORS,
   BADGE_RAINBOW_FILL_COLORS,
   BEST_IMAGE_RAINBOW_TEXT,
-} from '@/features/best-image/best-image-badge-theme';
+} from '@/domain/badge-theme';
 import { useFlowingProgress } from '@/components/game-content/use-flowing-progress';
 
 type LayeredGradientBadgeTone = 'rainbow' | 'gold';

@@ -9,7 +9,7 @@ import { createMajdataBoundAccount, createOsuBoundAccount, groupBoundAccountGame
 import { GAME_OPTIONS, findGame, isCredentialProvider } from '@/domain/game-bind-options';
 import { useSession } from '@/state/session-store';
 import { switchBoundAccount } from '@/services/switch-bound-account';
-import { hydrateBoundAccountThumbnails, persistBoundAccountThumbnail } from '@/services/account-thumbnail';
+import { hydrateAccountDisplayData, persistBoundAccountThumbnail } from '@/services/account-thumbnail';
 import majdataIcon from '../assets/images/majdata.png';
 
 const mockSession = { mode: 'http-cookies', origin: 'https://majdata.net', persistable: true,
@@ -44,7 +44,7 @@ jest.mock('@/state/query-client', () => ({ queryClient: {
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn(async () => undefined) }) }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showActionNotification: mockNotification, showNotification: jest.fn() }) }));
 jest.mock('@/services/hydrate-bound-account-avatars', () => ({ hydrateBoundAccountAvatars: jest.fn(async () => undefined) }));
-jest.mock('@/services/account-thumbnail', () => ({ hydrateBoundAccountThumbnails: jest.fn(async () => undefined), persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
+jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined), persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
 jest.mock('@/services/hydrate-chunithm-account-summaries', () => ({ hydrateChunithmAccountSummaries: jest.fn(async () => undefined) }));
 jest.mock('@/services/hydrate-phigros-account-summaries', () => ({ hydratePhigrosAccountSummaries: jest.fn(async () => undefined) }));
 jest.mock('@/components/RemoteImage', () => {
@@ -79,7 +79,7 @@ test('login appears in real management and switch lists with the player avatar a
   expect(management.getByTestId(`account-card-${account.id}`)).toBeTruthy();
   expect(management.getByText(account.avatarUrl!)).toBeTruthy();
   expect(management.getByLabelText('解除绑定 玩家 A&B')).toBeTruthy();
-  expect(hydrateBoundAccountThumbnails).toHaveBeenCalled();
+  expect(hydrateAccountDisplayData).toHaveBeenCalled();
   await management.unmount();
   const second = createMajdataBoundAccount({ accountId: 'majdata-net:account:second', displayName: 'Second', scoreDisplay: '200.0000%' });
   await act(() => useSession.getState().upsertBoundAccount(second));

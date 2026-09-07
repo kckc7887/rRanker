@@ -71,3 +71,23 @@ export function paginatePhigrosBestImageSections(
     return { id: `phi-page-${pageIndex}`, pageIndex, pageCount, sections: pageSections };
   });
 }
+
+export function preparePhigrosBestImageCards(type: PhigrosBestImageType, page: PhigrosBestImagePage) {
+  const phiRecords = type === 'best30' ? page.sections.filter((section) => section.id.toLowerCase().includes('phi')).flatMap((section) => section.records) : [];
+  const bestRecords = type === 'best30' ? page.sections.filter((section) => !section.id.toLowerCase().includes('phi')).flatMap((section) => section.records) : page.sections.flatMap((section) => section.records);
+  const cutoffIndex = type === 'best30' ? 26 : 29;
+  const cutoffRks = bestRecords[Math.min(cutoffIndex, bestRecords.length - 1)]?.rating ?? bestRecords.at(-1)?.rating ?? 0;
+  const lowestPhiRks = phiRecords.at(-1)?.rating ?? 0;
+  const pageOffset = type === 'custom' ? page.pageIndex * 30 : 0;
+  const bestLimit = type === 'best30' ? 27 : 30;
+  let phiIndex = 0, bestIndex = 0;
+  return page.sections.filter((section) => section.records.length > 0).map((section) => {
+    const isPhi = type === 'best30' && section.id.toLowerCase().includes('phi');
+    return { section, cards: section.records.map((record) => {
+      if (isPhi) return { record, rank: 'P' + (++phiIndex), isPhi: true, inBest: false, referenceRks: cutoffRks, allowPerfect: false };
+      const index = bestIndex++;
+      return { record, rank: '#' + (pageOffset + index + 1), isPhi: false, inBest: index < bestLimit,
+        referenceRks: index < cutoffIndex ? record.rating : cutoffRks, allowPerfect: !lowestPhiRks || record.rating > lowestPhiRks };
+    }) };
+  });
+}

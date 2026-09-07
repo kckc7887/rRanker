@@ -53,7 +53,7 @@ vi.mock('expo-file-system', () => {
       return destination;
     }
   }
-  return { Directory, File, Paths: { document: new Directory('file://', 'document') } };
+  return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
 function hex(bytes: Uint8Array): string {
@@ -148,8 +148,7 @@ describe('Phigros remote font cache', () => {
     const prepare = createPhigrosFontPreparer([entry]);
     const first = prepare();
     const second = prepare();
-    await Promise.resolve();
-    expect(mockFontFs.downloadCalls).toEqual([entry.url]);
+    await vi.waitFor(() => expect(mockFontFs.downloadCalls).toEqual([entry.url]));
     release();
     const results = await Promise.all([first, second]);
     await Promise.all(results.map((result) => result.fullReady));
@@ -233,4 +232,9 @@ describe('Phigros remote font cache', () => {
     await prepared.fullReady;
     expect(mockFontFs.downloadCalls).toEqual(['https://fonts.test/core-a.zip']);
   });
+});
+
+vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
+  const { File } = await import('expo-file-system');
+  return { downloadChartResource: (directory: import('expo-file-system').Directory, name: string, url: string) => File.downloadFileAsync(url, new File(directory, name)) };
 });

@@ -1,3 +1,15 @@
+import { cancelBoundAccountQueries ,
+  DEMO_REMOVE_COPY,
+  LOCAL_REMOVE_COPY,
+  PHIRA_UNBIND_COPY,
+  REMOTE_UNBIND_COPY,
+  addOrSwitchDemoAccount,
+  bindOrSwitchPublicPlayer,
+  formatPhiraRemovalMessage,
+  formatPublicPlayerRemovalMessage,
+  promptAccountRemoval,
+  removeBoundPlayerAccount,
+} from './game-accounts-actions';
 import { clearMajdataAccount } from '@/services/majdata-service';
 import { useState } from 'react';
 import {
@@ -71,18 +83,6 @@ import { MuseDashCache } from '@/services/muse-dash-cache';
 import { resolveTufAvatarUrl } from '@/domain/tuf';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
 import { PhiraCache } from '@/services/phira-cache';
-import {
-  DEMO_REMOVE_COPY,
-  LOCAL_REMOVE_COPY,
-  PHIRA_UNBIND_COPY,
-  REMOTE_UNBIND_COPY,
-  addOrSwitchDemoAccount,
-  bindOrSwitchPublicPlayer,
-  formatPhiraRemovalMessage,
-  formatPublicPlayerRemovalMessage,
-  promptAccountRemoval,
-  removeBoundPlayerAccount,
-} from '@/screens/game-accounts-actions';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -127,11 +127,6 @@ export function GameAccountsScreen() {
 
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
 
-  const clearRemoteCaches = () => {
-    for (const key of ['score-snapshot', 'game-data', 'songs', 'detailed-catalog', 'chunithm-catalog', 'plates']) {
-      queryClient.removeQueries({ queryKey: [key] });
-    }
-  };
 
   const isLastGameAccount = (account: BoundAccount) => (
     boundAccounts.filter((item) => item.gameId === account.gameId).length === 1
@@ -155,6 +150,7 @@ export function GameAccountsScreen() {
     includePersonalData,
     displayName: account.displayName,
     clearPlayer: async (attempt) => {
+      await cancelBoundAccountQueries(account, queryClient);
       if (account.gameId === 'majdata-net') {
         await queryClient.cancelQueries({ predicate: query => query.queryKey[0] === 'game-data' && query.queryKey[2] === account.id });
         await queryClient.cancelQueries({ queryKey: ['majdata-net', 'ranking', account.id] });
@@ -174,7 +170,6 @@ export function GameAccountsScreen() {
     clearPersonalData: () => library.clearGameUserData(account.gameId),
     removeBoundAccount: () => removeBoundAccount(account.id),
     persistActive: persistActiveAccountId,
-    afterRemove: clearRemoteCaches,
     formatMessage: (failures) => (
       failures.length > 0
         ? `部分清除失败（${failures.join('、')}），其余项目已清除，请重试`
@@ -306,6 +301,7 @@ export function GameAccountsScreen() {
     includePersonalData,
     displayName: account.displayName,
     clearPlayer: async (attempt) => {
+      await cancelBoundAccountQueries(account, queryClient);
       const playerId = tufPlayerIdFromAccountId(account.id);
       if (playerId !== null) {
         await attempt('账号', () => tufAccounts.remove(playerId));
@@ -315,7 +311,6 @@ export function GameAccountsScreen() {
     clearPersonalData: () => library.clearGameUserData(account.gameId),
     removeBoundAccount: () => removeBoundAccount(account.id),
     persistActive: persistActiveAccountId,
-    afterRemove: () => { queryClient.removeQueries({ queryKey: ['tuf'] }); },
     formatMessage: (failures) => formatPublicPlayerRemovalMessage({
       failures, includePersonalData, displayName: account.displayName, gameLabel: 'TUF',
     }),
@@ -345,6 +340,7 @@ export function GameAccountsScreen() {
     includePersonalData,
     displayName: account.displayName,
     clearPlayer: async (attempt) => {
+      await cancelBoundAccountQueries(account, queryClient);
       const playerId = phiraPlayerIdFromAccountId(account.id);
       if (playerId !== null) {
         await attempt('账号', () => phiraAccounts.remove(playerId));
@@ -354,7 +350,6 @@ export function GameAccountsScreen() {
     clearPersonalData: () => library.clearGameUserData(account.gameId),
     removeBoundAccount: () => removeBoundAccount(account.id),
     persistActive: persistActiveAccountId,
-    afterRemove: () => { queryClient.removeQueries({ queryKey: ['phira'] }); },
     formatMessage: (failures) => formatPhiraRemovalMessage(failures, account.displayName),
     setBusy,
     setMessage,
@@ -380,6 +375,7 @@ export function GameAccountsScreen() {
     includePersonalData,
     displayName: account.displayName,
     clearPlayer: async (attempt) => {
+      await cancelBoundAccountQueries(account, queryClient);
       const userId = museDashUserIdFromAccountId(account.id);
       if (userId !== null) {
         await attempt('账号', () => museDashAccounts.remove(userId));
@@ -389,7 +385,6 @@ export function GameAccountsScreen() {
     clearPersonalData: () => library.clearGameUserData(account.gameId),
     removeBoundAccount: () => removeBoundAccount(account.id),
     persistActive: persistActiveAccountId,
-    afterRemove: () => { queryClient.removeQueries({ queryKey: ['musedash'] }); },
     formatMessage: (failures) => formatPublicPlayerRemovalMessage({
       failures, includePersonalData, displayName: account.displayName, gameLabel: '喵斯快跑',
     }),
@@ -428,13 +423,13 @@ export function GameAccountsScreen() {
     includePersonalData,
     displayName: account.displayName,
     clearPlayer: async (attempt) => {
+      await cancelBoundAccountQueries(account, queryClient);
       await attempt('账号', () => localAccounts.remove(account.id));
       await attempt('成绩', () => snapshots.clear(account.id));
     },
     clearPersonalData: () => library.clearGameUserData(account.gameId),
     removeBoundAccount: () => removeBoundAccount(account.id),
     persistActive: persistActiveAccountId,
-    afterRemove: clearRemoteCaches,
     formatMessage: (failures) => (
       failures.length > 0
         ? `本地玩家已从列表移除，但${failures.join('、')}数据清理失败`
@@ -448,6 +443,7 @@ export function GameAccountsScreen() {
     includePersonalData,
     displayName: account.displayName,
     clearPlayer: async (attempt) => {
+      await cancelBoundAccountQueries(account, queryClient);
       await attempt('账号', async () => {
         if (account.providerId === 'chunithm-test') await chunithmDemoAccount.remove();
         else if (account.providerId === 'phigros-test') await phigrosDemoAccount.remove();
@@ -461,12 +457,6 @@ export function GameAccountsScreen() {
     clearPersonalData: () => library.clearGameUserData(account.gameId),
     removeBoundAccount: () => removeBoundAccount(account.id),
     persistActive: persistActiveAccountId,
-    afterRemove: () => {
-      clearRemoteCaches();
-      if (account.providerId === 'musedash-test') {
-        queryClient.removeQueries({ queryKey: ['musedash'] });
-      }
-    },
     formatMessage: (failures) => (
       failures.length > 0
         ? `示例账号已从列表移除，但${failures.join('、')}清理失败`
@@ -480,12 +470,12 @@ export function GameAccountsScreen() {
     includePersonalData: false,
     displayName: account.displayName,
     clearPlayer: async (attempt) => {
+      await cancelBoundAccountQueries(account, queryClient);
       await attempt('账号', () => chunithmTempAccount.remove());
     },
     clearPersonalData: () => Promise.resolve(),
     removeBoundAccount: () => removeBoundAccount(account.id),
     persistActive: persistActiveAccountId,
-    afterRemove: clearRemoteCaches,
     formatMessage: (failures) => (
       failures.length > 0
         ? `临时账号已从列表移除，但${failures.join('、')}清理失败`

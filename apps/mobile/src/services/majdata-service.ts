@@ -26,7 +26,11 @@ export function clearMajdataAccount(id: string) {
 export async function loadMajdataFresh(id: string, session: HttpCookieSession, signal?: AbortSignal): Promise<MajdataSnapshot> {
   const generation = (accountRequests.get(id) ?? 0) + 1;
   accountRequests.set(id, generation);
-  const assertCurrent = captureResourceWrites('majdata-net');
+  const assertGeneration = captureResourceWrites('majdata-net', signal, id);
+  const assertCurrent = () => {
+    assertGeneration();
+    if (accountRequests.get(id) !== generation) throw new Error('请求已失效');
+  };
   let expected = session;
   const provider = new MajdataProvider(session, async next => {
     assertCurrent();
@@ -44,7 +48,7 @@ export async function loadMajdataFresh(id: string, session: HttpCookieSession, s
   assertCurrent();
   if (accountRequests.get(id) !== generation) throw new Error('请求已失效');
   const snapshot = { player, records, recent, source: majdataSource() };
-  await repository.saveResource(majdataAccountKey(id), 1, snapshot.source.updatedAt, snapshot);
+  await repository.saveResource(majdataAccountKey(id), 1, snapshot.source.updatedAt, snapshot, assertCurrent);
   if (signal?.aborted) throw signal.reason;
   assertCurrent();
   if (accountRequests.get(id) !== generation) throw new Error('请求已失效');
@@ -76,9 +80,9 @@ export async function loadMajdataSong(id: string, signal?: AbortSignal, onFresh?
     try {
       const song = await majdataProvider.getSong(id, requestSignal);
       assertSongCurrent();
-      await repository.saveResource(majdataSongKey(id), 1, new Date().toISOString(), { song });
+      await repository.saveResource(majdataSongKey(id), 1, new Date().toISOString(), { song }, assertSongCurrent);
       assertSongCurrent();
-      await repository.saveResource(`${majdataSongKey(id)}:${song.hash}`, 1, new Date().toISOString(), { song });
+      await repository.saveResource(`${majdataSongKey(id)}:${song.hash}`, 1, new Date().toISOString(), { song }, assertSongCurrent);
       assertSongCurrent();
       return song;
     } catch (error) { assertCurrent(); if (cached && !requestSignal?.aborted && songRequests.get(id) === generation) return cached.song; throw error; }
@@ -98,7 +102,7 @@ export async function loadMajdataChart(song: MajdataSong, signal?: AbortSignal):
     if (current.hash !== song.hash) throw new Error('谱面已更新，请刷新歌曲后重试');
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
-    await repository.saveResource(key, 1, new Date().toISOString(), text);
+    await repository.saveResource(key, 1, new Date().toISOString(), text, () => { assertCurrent(); if (requestSignal.aborted) throw new Error('已取消'); });
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
     return text;
@@ -119,7 +123,7 @@ export async function loadMajdataParsedChart(song: MajdataSong, level: number, s
     const parsed = { chart, statistics: simaiStatistics(chart) };
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
-    await repository.saveResource(key, 1, new Date().toISOString(), parsed);
+    await repository.saveResource(key, 1, new Date().toISOString(), parsed, () => { assertCurrent(); if (requestSignal.aborted) throw new Error('已取消'); });
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
     return parsed;

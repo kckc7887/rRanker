@@ -647,7 +647,12 @@ export class RpeRenderer {
       if (note.endHitTime + VISUAL_END_GRACE_SEC >= time) window.notes.push(note);
       window.index += 1;
     }
-    window.notes = window.notes.filter((note) => note.endHitTime + VISUAL_END_GRACE_SEC >= time);
+    let writeIndex = 0;
+    for (let readIndex = 0; readIndex < window.notes.length; readIndex++) {
+      const note = window.notes[readIndex]!;
+      if (note.endHitTime + VISUAL_END_GRACE_SEC >= time) window.notes[writeIndex++] = note;
+    }
+    window.notes.length = writeIndex;
   }
 
   private drawNotes(context: CanvasRenderingContext2D, lineIndex: number, state: LineState, time: number): void {
@@ -741,8 +746,8 @@ export class RpeRenderer {
       context.globalAlpha = alpha;
       const image = this.tintedCanvas(style[note.kind], note.tint);
       // 注意：tintedCanvas 可能返回 canvas（无 naturalWidth/naturalHeight），统一用 width/height 回退
-      const imageWidth = image.width ?? image.naturalWidth;
-      const imageHeight = image.height ?? image.naturalHeight;
+      const imageWidth = image.width;
+      const imageHeight = image.height;
       const noteHeight = baseNoteWidth * noteHeightFactor * imageHeight / imageWidth;
       drawTextureFlippedY(context, image, null, [-noteWidth / 2, headDist - noteHeight / 2, noteWidth, noteHeight]);
     }
@@ -750,7 +755,7 @@ export class RpeRenderer {
     return true;
   }
 
-  private tintedCanvas(image: CanvasImageSource, tint: [number, number, number] | null): CanvasImageSource {
+  private tintedCanvas<T extends CanvasImageSource>(image: T, tint: [number, number, number] | null): T | HTMLCanvasElement {
     // 白色 tint 与原图逐像素一致，直接返回原图（prpr WHITE 语义）
     if (!tint || (tint[0] === 255 && tint[1] === 255 && tint[2] === 255)) return image;
     // 缓存按「图片身份 × 颜色」键控（WeakMap 以 image 为键，避免不同贴图共用同一颜色缓存）

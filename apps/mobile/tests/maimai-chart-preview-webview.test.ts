@@ -12,7 +12,7 @@ import {
 } from '@/features/simai-chart-preview/chart-preview-inject';
 import { chartPreviewCanvasSize } from '@/features/simai-chart-preview/webview-player/fullscreenLayout';
 import { toggleFullscreenLockUiState } from '@/features/chart-preview-shared/webview-player/fullscreenLock';
-import { chartPreviewNativeScreenOptions } from '@/features/simai-chart-preview/chart-preview-native-screen';
+import { chartPreviewNativeScreenOptions } from '@/features/chart-preview-shared/chart-preview-native-screen-options';
 import {
   createLatestFrameScheduler,
   resolveInitialBackgroundState,

@@ -1,3 +1,4 @@
+import { preparePhigrosBestImageCards } from './phigros-best-image';
 /*
  * Phigros 成绩图「应用风格」模板。
  * 自绘 HTML：顶部按总览页 DxRatingCard 形态（头像 + RKS/课题模式渐变卡 + 进度统计表同一行），
@@ -107,42 +108,10 @@ function scoreCard(
 }
 
 function scoreCards(input: PhigrosBestImageHtmlInput): string {
-  const phiRecords = input.type === 'best30'
-    ? input.page.sections.filter((section) => section.id.toLowerCase().includes('phi')).flatMap((section) => section.records)
-    : [];
-  const bestRecords = input.type === 'best30'
-    ? input.page.sections.filter((section) => !section.id.toLowerCase().includes('phi')).flatMap((section) => section.records)
-    : input.page.sections.flatMap((section) => section.records);
-  const cutoffIndex = input.type === 'best30' ? 26 : 29;
-  const cutoffRks = bestRecords[Math.min(cutoffIndex, bestRecords.length - 1)]?.rating ?? bestRecords.at(-1)?.rating ?? 0;
-  const lowestPhiRks = phiRecords.at(-1)?.rating ?? 0;
-  const pageOffset = input.type === 'custom' ? input.page.pageIndex * 30 : 0;
-  const bestLimit = input.type === 'best30' ? 27 : 30;
-  let phiIndex = 0;
-  let bestIndex = 0;
-  return input.page.sections.map((section) => {
-    if (!section.records.length) return '';
-    const isPhi = input.type === 'best30' && section.id.toLowerCase().includes('phi');
-    const cards = section.records.map((record) => {
-      const levelIndex = Math.max(0, Math.min(3, record.levelIndex));
-      if (isPhi) {
-        const rank = `P${phiIndex + 1}`;
-        phiIndex += 1;
-        return scoreCard(input, record, rank, true, false, cutoffRks, false, levelIndex);
-      }
-      const index = bestIndex;
-      bestIndex += 1;
-      return scoreCard(
-        input,
-        record,
-        `#${pageOffset + index + 1}`,
-        false,
-        index < bestLimit,
-        index < cutoffIndex ? record.rating : cutoffRks,
-        !lowestPhiRks || record.rating > lowestPhiRks,
-        levelIndex,
-      );
-    }).join('');
+  return preparePhigrosBestImageCards(input.type, input.page).map(({ section, cards: prepared }) => {
+    const cards = prepared.map(({ record, rank, isPhi, inBest, referenceRks, allowPerfect }) => scoreCard(
+      input, record, rank, isPhi, inBest, referenceRks, allowPerfect, Math.max(0, Math.min(3, record.levelIndex)),
+    )).join('');
     return `<section class="score-section" aria-label="${escapePhigrosBestImageHtml(section.title)}"><div class="section-divider"><span>${escapePhigrosBestImageHtml(section.title)}${section.titleNote ? `<small class="section-divider-note">（${escapePhigrosBestImageHtml(section.titleNote)}）</small>` : ''}</span></div><div class="score-grid">${cards || '<div class="empty-section">暂无符合条件的成绩</div>'}</div></section>`;
   }).join('');
 }

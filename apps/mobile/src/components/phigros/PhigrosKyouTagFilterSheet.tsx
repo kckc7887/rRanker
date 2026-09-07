@@ -1,12 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Pressable as GesturePressable } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppModal } from '@/components/AppModal';
+import { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { TagFilterSheet, TagSheetPressable as SheetPressable, TAG_FILTER_STYLES } from '@/components/game-content/TagFilterSheet';
 import type { PhigrosKyouTag, PhigrosKyouTagType } from '@/domain/phigros-kyou';
 import { useAppTheme } from '@/theme/app-theme';
 
-const SheetPressable = Platform.OS === 'android' ? Pressable : GesturePressable;
 
 const GROUPS: readonly { type: PhigrosKyouTagType; label: string }[] = [
   { type: 'primary', label: '主要难点' },
@@ -27,52 +24,14 @@ export function PhigrosKyouTagFilterSheet({
   onClose: () => void;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
-  const [draftTagIds, setDraftTagIds] = useState<Set<number>>(() => new Set(selectedTagIds));
   const grouped = useMemo(() => GROUPS.map((group) => ({
     ...group,
     tags: tags.filter((tag) => tag.type === group.type),
   })), [tags]);
 
-  const toggleTag = (tagId: number) => {
-    setDraftTagIds((current) => {
-      const next = new Set(current);
-      if (next.has(tagId)) next.delete(tagId);
-      else next.add(tagId);
-      return next;
-    });
-  };
-  const apply = () => {
-    onApply(tags.filter((tag) => draftTagIds.has(tag.id)).map((tag) => tag.id));
-    onClose();
-  };
-
-  return <AppModal
-    animationType="slide"
-    presentationStyle="pageSheet"
-    visible={visible}
-    onShow={() => setDraftTagIds(new Set(selectedTagIds))}
-    onRequestClose={onClose}
-  >
-    <View testID="phigros-kyou-tag-filter-sheet" style={[styles.page, {
-      backgroundColor: theme.background,
-      paddingBottom: Math.max(insets.bottom, 12),
-    }]}>
-      <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-      <View style={styles.header}>
-        <SheetPressable accessibilityRole="button" accessibilityLabel="清空谱面标签筛选"
-          accessibilityState={{ disabled: draftTagIds.size === 0 }} disabled={draftTagIds.size === 0}
-          onPress={() => setDraftTagIds(new Set())} style={({ pressed }) => [styles.headerActionHit, pressed && styles.pressed]}>
-          <Text style={[styles.headerAction, { color: draftTagIds.size === 0 ? theme.textMuted : theme.accent }]}>清空</Text>
-        </SheetPressable>
-        <Text style={[styles.title, { color: theme.text }]}>谱面标签</Text>
-        <SheetPressable accessibilityRole="button" accessibilityLabel="完成谱面标签筛选"
-          onPress={apply} style={({ pressed }) => [styles.headerActionHit, pressed && styles.pressed]}>
-          <Text style={[styles.headerAction, { color: theme.accent }]}>完成</Text>
-        </SheetPressable>
-      </View>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {grouped.map((group) => <View key={group.type} testID={`phigros-kyou-tag-filter-group-${group.type}`} style={styles.group}>
+  return <TagFilterSheet visible={visible} tags={tags} selectedTagIds={selectedTagIds} onApply={onApply} onClose={onClose}
+    title="谱面标签" testID="phigros-kyou-tag-filter-sheet">
+    {(draftTagIds, toggleTag) => grouped.map((group) => <View key={group.type} testID={`phigros-kyou-tag-filter-group-${group.type}`} style={styles.group}>
           <View style={[styles.groupHeader, {
             backgroundColor: group.type === 'primary' ? theme.accentSoft : theme.surfaceMuted,
             borderColor: group.type === 'primary' ? theme.accent : theme.border,
@@ -105,27 +64,15 @@ export function PhigrosKyouTagFilterSheet({
             })}
           </View>
         </View>)}
-      </ScrollView>
-    </View>
-  </AppModal>;
+  </TagFilterSheet>;
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 },
-  grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 8, marginBottom: 4 },
-  header: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 18, lineHeight: 24, fontWeight: '700' },
-  headerActionHit: { minWidth: 52, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
-  headerAction: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
-  content: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, gap: 22 },
-  group: { gap: 10 },
+  ...TAG_FILTER_STYLES,
   groupHeader: { alignSelf: 'flex-start', minHeight: 28, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   groupTypeMark: { fontSize: 10, lineHeight: 14, fontWeight: '900' },
   groupName: { fontSize: 13, lineHeight: 18, fontWeight: '700' },
-  tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  tagFrame: { borderWidth: 2, borderRadius: 999, padding: 2 },
   tag: { minHeight: 30, borderWidth: 1, borderRadius: 999, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   tagTypeMark: { fontSize: 9, lineHeight: 13, fontWeight: '900' },
   tagText: { fontSize: 12, lineHeight: 16, fontWeight: '700' },
-  pressed: { opacity: 0.65 },
 });

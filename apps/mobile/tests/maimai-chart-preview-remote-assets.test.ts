@@ -84,6 +84,14 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { cache: new Directory('file://', 'cache') } };
 });
 
+vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({
+  downloadChartResource: async (directory: unknown, fileName: string, url: string, signal?: AbortSignal) => {
+    signal?.throwIfAborted();
+    const { File } = await import('expo-file-system');
+    return File.downloadFileAsync(url, new File(directory as never, fileName));
+  },
+}));
+
 vi.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
   chartPreviewStageDirectory: (name: string) => mockFs.makeStageDirectory(name),
   createChartPreviewSessionDirectory: (name: string) => mockFs.makeStageDirectory(name),

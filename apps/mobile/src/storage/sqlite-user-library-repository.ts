@@ -12,7 +12,7 @@ import {
 } from '@/domain/user-library';
 import type { RestoreMode, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
-import { getRrankerDatabase, runSerializedSchemaInit } from '@/storage/rranker-database';
+import { getRrankerDatabase, runDatabaseWrite, runSerializedSchemaInit } from '@/storage/rranker-database';
 
 const USER_LIBRARY_SCHEMA_VERSION = 4;
 type DatabaseAccess = Pick<SQLiteDatabase, 'getAllAsync' | 'getFirstAsync' | 'runAsync'>;
@@ -35,15 +35,7 @@ interface ExperimentalV5ItemRow extends ItemRow { chart_id: string | null }
 interface ExperimentalV5TagLinkRow { item_key: string; tag_id: number }
 
 let schemaReady: Promise<void> | null = null;
-/** 曲库写操作串行，避免 withTransactionAsync 与并发写交叉。 */
-let writeChain: Promise<void> = Promise.resolve();
 let utageMigrationSequence = 0;
-
-function withLibraryWrite<T>(task: () => Promise<T>): Promise<T> {
-  const run = writeChain.then(task, task);
-  writeChain = run.then(() => undefined, () => undefined);
-  return run;
-}
 
 async function writeTagPresets(db: DatabaseAccess, values: readonly string[]): Promise<void> {
   await db.runAsync('DELETE FROM user_library_tag_presets');
@@ -402,7 +394,6 @@ async function initializeUserLibrarySchema(): Promise<void> {
 /** 测试用：重置模块级 schema 初始化锁。 */
 export function resetUserLibrarySchemaForTests(): void {
   schemaReady = null;
-  writeChain = Promise.resolve();
   utageMigrationSequence = 0;
 }
 
@@ -429,7 +420,7 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
   async setTagPresets(values: readonly string[]): Promise<string[]> {
     await this.initialize();
     const normalized = normalizeTags(values);
-    await withLibraryWrite(async () => {
+    await runDatabaseWrite(async () => {
       const db = await getRrankerDatabase();
       await db.withTransactionAsync(() => writeTagPresets(db, normalized));
     });
@@ -438,7 +429,7 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
 
   async update(transform: (items: UserLibraryItem[]) => UserLibraryItem[]): Promise<UserLibraryItem[]> {
     await this.initialize();
-    return withLibraryWrite(async () => {
+    return runDatabaseWrite(async () => {
       const db = await getRrankerDatabase();
       let result: UserLibraryItem[] = [];
       await db.withTransactionAsync(async () => {
@@ -451,7 +442,7 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
 
   async restore(items: UserLibraryItem[], mode: RestoreMode): Promise<UserLibraryItem[]> {
     await this.initialize();
-    return withLibraryWrite(async () => {
+    return runDatabaseWrite(async () => {
       const db = await getRrankerDatabase();
       let result: UserLibraryItem[] = [];
       await db.withTransactionAsync(async () => {
@@ -465,7 +456,7 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
 
   async clear(): Promise<void> {
     await this.initialize();
-    await withLibraryWrite(async () => {
+    await runDatabaseWrite(async () => {
       const db = await getRrankerDatabase();
       await db.withTransactionAsync(async () => {
         await db.runAsync('DELETE FROM user_library_item_tags');
@@ -476,28 +467,28 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
     });
   }
 
-  /** 估算个人曲库相关表占用（按文本字段长度，不含索引开销）。 */
+  /** 估算个人曲库相关表占用（按 UTF-8 文本字节与固定字段估算，不含索引开销）。 */
   async measureBytes(): Promise<number> {
     await this.initialize();
     const db = await getRrankerDatabase();
     const [items, tags, presets, itemTags] = await Promise.all([
       db.getFirstAsync<{ bytes: number }>(
         `SELECT COALESCE(SUM(
-          LENGTH(item_key) + LENGTH(game_id) + LENGTH(kind) + LENGTH(song_id)
-          + IFNULL(LENGTH(chart_type), 0) + LENGTH(created_at) + LENGTH(updated_at) + 8
+          LENGTH(CAST(item_key AS BLOB)) + LENGTH(CAST(game_id AS BLOB)) + LENGTH(CAST(kind AS BLOB)) + LENGTH(CAST(song_id AS BLOB))
+          + IFNULL(LENGTH(CAST(chart_type AS BLOB)), 0) + LENGTH(CAST(created_at AS BLOB)) + LENGTH(CAST(updated_at AS BLOB)) + 8
         ), 0) AS bytes FROM user_library_items`,
       ),
       db.getFirstAsync<{ bytes: number }>(
-        `SELECT COALESCE(SUM(LENGTH(normalized_name) + LENGTH(display_name) + LENGTH(created_at)), 0) AS bytes
+        `SELECT COALESCE(SUM(LENGTH(CAST(normalized_name AS BLOB)) + LENGTH(CAST(display_name AS BLOB)) + LENGTH(CAST(created_at AS BLOB))), 0) AS bytes
          FROM user_library_tags`,
       ),
       db.getFirstAsync<{ bytes: number }>(
         `SELECT COALESCE(SUM(
-          LENGTH(normalized_name) + LENGTH(display_name) + LENGTH(created_at) + 4
+          LENGTH(CAST(normalized_name AS BLOB)) + LENGTH(CAST(display_name AS BLOB)) + LENGTH(CAST(created_at AS BLOB)) + 4
         ), 0) AS bytes FROM user_library_tag_presets`,
       ),
       db.getFirstAsync<{ bytes: number }>(
-        `SELECT COALESCE(SUM(LENGTH(item_key) + 8), 0) AS bytes FROM user_library_item_tags`,
+        `SELECT COALESCE(SUM(LENGTH(CAST(item_key AS BLOB)) + 8), 0) AS bytes FROM user_library_item_tags`,
       ),
     ]);
     return (items?.bytes ?? 0) + (tags?.bytes ?? 0) + (presets?.bytes ?? 0) + (itemTags?.bytes ?? 0);

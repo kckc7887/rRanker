@@ -9,7 +9,7 @@ import {
   mapChunithmCollections,
   mapChunithmSongDetail,
 } from '@/providers/chunithm-catalog-provider';
-import { ResourceService } from '@/services/resource-service';
+import { cacheFirstLoad } from '@/services/cache-first';
 import type { ResourceRepository } from '@/repositories/resource-repository';
 
 const responsePayload = {
@@ -256,13 +256,9 @@ describe('ChunithmCatalogProvider', () => {
       getResource: async <T>() => cached as T,
       deleteResource: async () => undefined,
     };
-    const result = await new ResourceService(repository).load<ChunithmSongDetailSnapshot>(
-      'chunithm-song-detail:3',
-      1,
-      async () => {
+    const result = await cacheFirstLoad<ChunithmSongDetailSnapshot>({ loadCached: () => repository.getResource<ChunithmSongDetailSnapshot>('chunithm-song-detail:3', 1), loadFresh: async () => {
         throw new Error('network');
-      },
-    );
+      }, onFresh: () => undefined });
     expect(result.source).toMatchObject({ kind: 'cache', isStale: true });
     expect(result.song.difficulties[0]?.notes?.total).toBe(333);
   });
@@ -275,15 +271,10 @@ describe('ChunithmCatalogProvider', () => {
       getResource: async <T>() => await getResource() as T,
       deleteResource: async () => undefined,
     };
-    const service = new ResourceService(repository);
 
-    const result = await service.load<ChunithmCatalogSnapshot>(
-      'chunithm-catalog',
-      2,
-      async () => {
+    const result = await cacheFirstLoad<ChunithmCatalogSnapshot>({ loadCached: () => repository.getResource<ChunithmCatalogSnapshot>('chunithm-catalog', 2), loadFresh: async () => {
       throw new Error('network');
-      },
-    );
+      }, onFresh: () => undefined });
 
     expect(getResource).toHaveBeenCalledTimes(1);
     expect(result.source).toMatchObject({ kind: 'cache', isStale: true });

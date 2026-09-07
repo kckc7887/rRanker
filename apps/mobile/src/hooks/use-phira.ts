@@ -1,4 +1,6 @@
-import { useMemo } from 'react';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { useEffect, useMemo, useRef } from 'react';
+import { getForegroundAbortSignal } from '@/state/app-lifecycle';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { PhiraChart, PhiraChartPage, PhiraChartStatus, PhiraPlayerSnapshot } from '@/domain/phira';
 import { phiraProvider } from '@/providers/phira-provider';
@@ -30,11 +32,15 @@ export function usePhiraPlayer(playerId: number | null, enabled = true) {
   return useQuery({
     queryKey: key, enabled: enabled && tabActive && playerId !== null,
     queryFn: async ({ signal }): Promise<PhiraPlayerSnapshot> => cacheFirstLoad({
+      assertCurrent: captureResourceWrites('phira', signal, `phira:community:${playerId}`),
       loadCached: () => phiraCache.loadPlayer(playerId!),
       loadFresh: async () => {
+        const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
         const fresh = await loadPhiraPlayerFresh(playerId!, signal);
+        assertCurrent();
         void refreshPhiraSeedBests(fresh, signal)
           .then((bests) => {
+            assertCurrent();
             if (!signal.aborted) queryClient.setQueryData(['phira', 'bests', playerId], bests);
           })
           .catch(() => undefined);
@@ -56,10 +62,33 @@ export function usePhiraBests(playerId: number | null, enabled = true) {
 }
 
 export function useRefreshAllPhiraBests(playerId: number | null) {
-  return () => playerId === null ? Promise.resolve(null) : loadPhiraPlayerFresh(playerId)
-    .then(() => refreshAllPhiraBests(playerId)).then((value) => {
-    queryClient.setQueryData(['phira', 'bests', playerId], value); return value;
-  });
+  const lifetime = useRef(new AbortController());
+  useEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller;
+    return () => controller.abort();
+  }, [playerId]);
+  return async () => {
+    if (playerId === null) return null;
+    const controller = new AbortController();
+    const foreground = getForegroundAbortSignal();
+    const cancel = () => controller.abort();
+    const signals = [foreground, lifetime.current.signal];
+    signals.forEach((signal) => signal.addEventListener('abort', cancel, { once: true }));
+    if (signals.some((signal) => signal.aborted)) cancel();
+    const assertCurrent = captureResourceWrites('phira', controller.signal, `phira:community:${playerId}`);
+    try {
+      assertCurrent();
+      await loadPhiraPlayerFresh(playerId, controller.signal);
+      assertCurrent();
+      const value = await refreshAllPhiraBests(playerId, controller.signal);
+      assertCurrent();
+      queryClient.setQueryData(['phira', 'bests', playerId], value);
+      return value;
+    } finally {
+      signals.forEach((signal) => signal.removeEventListener('abort', cancel));
+    }
+  };
 }
 
 export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled = true) {
@@ -99,10 +128,13 @@ export function usePhiraChartBest(playerId: number | null, chart: PhiraChart | u
   return useQuery({
     queryKey: ['phira', 'best', playerId, chart?.id], enabled: playerId !== null && !!chart,
     queryFn: async ({ signal }) => {
+      const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
       const cached = await phiraCache.loadBests(playerId!);
+      assertCurrent();
       const existing = cached?.items[String(chart!.id)];
       if (existing) return existing;
       const player = await phiraCache.loadPlayer(playerId!);
+      assertCurrent();
       const pool = [...(player?.pool.bestPool ?? []), ...(player?.pool.recentPool ?? [])]
         .find((item) => item.chart.id === chart!.id);
       return queryPhiraChartBest(playerId!, chart!, pool?.rks ?? null, signal);

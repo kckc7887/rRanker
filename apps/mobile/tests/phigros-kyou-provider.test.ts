@@ -5,7 +5,7 @@ import {
 } from '@/domain/phigros-kyou';
 import { PhigrosKyouProvider } from '@/providers/phigros-kyou-provider';
 import type { ResourceRepository } from '@/repositories/resource-repository';
-import { ResourceService } from '@/services/resource-service';
+import { cacheFirstLoad } from '@/services/cache-first';
 
 const manifest = {
   ok: true,
@@ -111,11 +111,7 @@ describe('PhigrosKyouProvider', () => {
       saveResource: async () => undefined,
       deleteResource: async () => undefined,
     };
-    const result = await new ResourceService(repository).load<PhigrosKyouChartTagsSnapshot>(
-      PHIGROS_KYOU_TAGS_RESOURCE_KEY,
-      PHIGROS_KYOU_TAGS_SCHEMA_VERSION,
-      async () => { throw new Error('offline'); },
-    );
-    expect(result.source).toMatchObject({ kind: 'cache', isStale: true, label: 'Kyou缓存' });
+    const result = await cacheFirstLoad<PhigrosKyouChartTagsSnapshot>({ loadCached: () => repository.getResource<PhigrosKyouChartTagsSnapshot>(PHIGROS_KYOU_TAGS_RESOURCE_KEY, PHIGROS_KYOU_TAGS_SCHEMA_VERSION), loadFresh: async () => { throw new Error('offline'); }, onFresh: () => undefined });
+    expect(result.source).toMatchObject({ kind: 'cache', isStale: true, label: 'Kyou' });
   });
 });
