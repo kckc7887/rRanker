@@ -14,7 +14,7 @@ import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from './best-image-badge-theme';
-import { BestImagePickerShell } from './best-image-picker-shell';
+import { BestImagePickerShell, standardBestImagePickerStyles } from './best-image-picker-shell';
 import type {
   BestImageCollectionChoice,
   BestImageCollectionKind,
@@ -261,13 +261,7 @@ export function BestImageCollectionPicker({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 10 },
-  header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 20, fontWeight: '800' },
-  count: { fontSize: 12, marginTop: 3 },
-  done: { fontSize: 16, fontWeight: '700' },
-  search: { marginHorizontal: 16, marginBottom: 10, minHeight: 44, borderRadius: 12, borderWidth: 1, paddingHorizontal: 14, fontSize: 15 },
+  ...standardBestImagePickerStyles,
   levelSection: { paddingHorizontal: 16, paddingBottom: 10 },
   levelLabel: { fontSize: 12, fontWeight: '700', marginBottom: 7 },
   levelFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },

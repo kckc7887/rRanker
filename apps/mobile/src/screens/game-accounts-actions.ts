@@ -3,6 +3,25 @@ import type { ActionNotificationInput, NotificationInput } from '@/components/Ap
 import type { BoundAccount } from '@/domain/bound-account';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { switchBoundAccount } from '@/services/switch-bound-account';
+import type { QueryClient } from '@tanstack/react-query';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+
+/** Cancel only the removed account's observers; shared public catalogs remain usable. */
+export async function cancelBoundAccountQueries(account: BoundAccount, client: QueryClient): Promise<void> {
+  invalidateResourceWrites('account:' + account.id);
+  const externalId = account.id.slice(account.id.lastIndexOf(':') + 1);
+  const owned = { predicate: ({ queryKey: key }: { queryKey: readonly unknown[] }) => {
+    if (key.includes(account.id)) return true;
+    if (account.gameId === 'adofai') return key[0] === 'tuf' && key[1] === 'player' && String(key[2]) === externalId;
+    if (account.gameId === 'musedash') return key[0] === 'musedash'
+      && (key[1] === 'player' || key[1] === 'play-detail') && key[2] === externalId;
+    if (account.gameId === 'phira') return key[0] === 'phira'
+      && ['player', 'bests', 'best'].includes(String(key[1])) && String(key[2]) === externalId;
+    return false;
+  } };
+  await client.cancelQueries(owned);
+  client.removeQueries(owned);
+}
 
 export async function attemptLabeled(
   failures: string[],
@@ -171,7 +190,7 @@ export async function removeBoundPlayerAccount(input: {
   clearPersonalData: () => Promise<unknown>;
   removeBoundAccount: () => void;
   persistActive: () => Promise<unknown>;
-  afterRemove: () => void;
+  afterRemove?: () => void;
   formatMessage: (failures: string[]) => string;
   setBusy: (busy: boolean) => void;
   setMessage: (message: string) => void;
@@ -183,7 +202,7 @@ export async function removeBoundPlayerAccount(input: {
   if (input.includePersonalData) await attempt('个人数据', input.clearPersonalData);
   input.removeBoundAccount();
   await attempt('当前账号', input.persistActive);
-  input.afterRemove();
+  input.afterRemove?.();
   input.setMessage(input.formatMessage(failures));
   input.setBusy(false);
 }

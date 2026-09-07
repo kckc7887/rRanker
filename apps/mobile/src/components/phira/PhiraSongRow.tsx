@@ -1,7 +1,7 @@
+import { PhiraDifficultyBadge } from './PhiraScoreVisuals';
 import { memo } from 'react';
 import { View } from 'react-native';
 import { GameSongRow, WRAPPED_COVER_ROW_STYLES as styles } from '@/components/game-content/GameSongRow';
-import { PhigrosDifficultyBadge } from '@/components/phigros/PhigrosDifficultyBadge';
 import type { PhiraChart } from '@/domain/phira';
 import { presentPhiraSong } from '@/features/game-content/adapters';
 import { useAppTheme } from '@/theme/app-theme';
@@ -13,5 +13,5 @@ export const PhiraSongRow = memo(function PhiraSongRow({ chart }: { chart: Phira
     coverImage={{ source: chart.illustration ?? null, accessibilityLabel: '曲绘', imageStyle: styles.cover,
       wrapStyle: styles.coverWrap, placeholderStyle: [styles.placeholder, { backgroundColor: theme.input }],
       noteStyle: styles.placeholderNote }}
-    badges={<View style={styles.badges}><PhigrosDifficultyBadge levelIndex={4} constant={chart.difficulty} labelOverride={chart.level} /></View>} />;
+    badges={<View style={styles.badges}><PhiraDifficultyBadge constant={chart.difficulty} label={chart.level} /></View>} />;
 });

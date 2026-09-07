@@ -18,26 +18,26 @@ export function phiraSource(updatedAt = new Date().toISOString()): DataSource {
 export class PhiraCache {
   constructor(private readonly repository = new SqliteSnapshotRepository()) {}
   loadPlayer(id: number) { return this.repository.getResource<PhiraPlayerSnapshot>(phiraPlayerCacheKey(id), PHIRA_PLAYER_SCHEMA_VERSION); }
-  savePlayer(id: number, value: PhiraPlayerSnapshot) { return this.repository.saveResource(phiraPlayerCacheKey(id), PHIRA_PLAYER_SCHEMA_VERSION, value.source.updatedAt, value); }
+  savePlayer(id: number, value: PhiraPlayerSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraPlayerCacheKey(id), PHIRA_PLAYER_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
   loadBests(id: number) { return this.repository.getResource<PhiraBestSnapshot>(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION); }
-  saveBests(id: number, value: PhiraBestSnapshot) { return this.repository.saveResource(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION, value.source.updatedAt, value); }
-  async mergeBests(id: number, values: readonly PhiraQueriedBest[]): Promise<PhiraBestSnapshot> {
+  saveBests(id: number, value: PhiraBestSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
+  async mergeBests(id: number, values: readonly PhiraQueriedBest[], assertCurrent?: () => void): Promise<PhiraBestSnapshot> {
     const previous = await this.loadBests(id);
     const items = { ...(previous?.items ?? {}) };
     for (const item of values) items[String(item.chart.id)] = item;
     const value = { items, source: phiraSource() };
-    await this.saveBests(id, value);
+    await this.saveBests(id, value, assertCurrent);
     return value;
   }
   loadChart(id: number) { return this.repository.getResource<PhiraChartSnapshot>(phiraChartCacheKey(id), PHIRA_CHART_SCHEMA_VERSION); }
-  saveChart(id: number, value: PhiraChartSnapshot) { return this.repository.saveResource(phiraChartCacheKey(id), PHIRA_CHART_SCHEMA_VERSION, value.source.updatedAt, value); }
+  saveChart(id: number, value: PhiraChartSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraChartCacheKey(id), PHIRA_CHART_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
   loadNotes(id: number) { return this.repository.getResource<PhiraNoteSnapshot>(phiraNoteCacheKey(id), PHIRA_NOTE_SCHEMA_VERSION); }
-  saveNotes(id: number, value: PhiraNoteSnapshot) { return this.repository.saveResource(phiraNoteCacheKey(id), PHIRA_NOTE_SCHEMA_VERSION, value.source.updatedAt, value); }
+  saveNotes(id: number, value: PhiraNoteSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraNoteCacheKey(id), PHIRA_NOTE_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
   loadPage(status: PhiraChartStatus, page: number, search = '') {
     return this.repository.getResource<{ data: PhiraChartPage; source: DataSource }>(phiraPageCacheKey(status, page, search), PHIRA_PAGE_SCHEMA_VERSION);
   }
-  savePage(status: PhiraChartStatus, page: number, search: string, value: { data: PhiraChartPage; source: DataSource }) {
-    return this.repository.saveResource(phiraPageCacheKey(status, page, search), PHIRA_PAGE_SCHEMA_VERSION, value.source.updatedAt, value);
+  savePage(status: PhiraChartStatus, page: number, search: string, value: { data: PhiraChartPage; source: DataSource }, assertCurrent?: () => void) {
+    return this.repository.saveResource(phiraPageCacheKey(status, page, search), PHIRA_PAGE_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent);
   }
   async clearPlayer(id: number) {
     await this.repository.clearResources([phiraPlayerCacheKey(id), phiraBestCacheKey(id)]);

@@ -285,8 +285,8 @@ jest.mock('@/components/CachedTabScreen', () => ({
 }));
 
 describe('Phigros song detail', () => {
-  afterEach(() => {
-    cleanup();
+  afterEach(async () => {
+    await cleanup();
   });
 
   beforeEach(() => {
@@ -447,10 +447,10 @@ describe('Phigros song detail', () => {
         onFavoriteChange={mockSetSongFavorite}
       />,
     );
-    fireEvent.press(row.getByLabelText('查看歌曲 测试曲'));
+    await fireEvent.press(row.getByLabelText('查看歌曲 测试曲'));
     expect(mockPush).toHaveBeenCalledWith('/songs/Song.A');
 
-    fireEvent.press(row.getByLabelText('收藏 测试曲'));
+    await fireEvent.press(row.getByLabelText('收藏 测试曲'));
     expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);
 
     mockPush.mockClear();
@@ -464,7 +464,7 @@ describe('Phigros song detail', () => {
         catalogTitle="测试曲"
       />,
     );
-    fireEvent.press(card.getByLabelText('查看谱面 测试曲'));
+    await fireEvent.press(card.getByLabelText('查看谱面 测试曲'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
       params: { songId: 'Song.A', levelIndex: '2' },
@@ -475,13 +475,13 @@ describe('Phigros song detail', () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByText('测试曲')).toBeTruthy());
 
-    fireEvent.press(screen.getByLabelText('收藏 测试曲'));
+    await fireEvent.press(screen.getByLabelText('收藏 测试曲'));
     expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);
 
-    fireEvent.press(screen.getAllByLabelText('编辑标签').at(-1)!);
+    await fireEvent.press(screen.getAllByLabelText('编辑标签').at(-1)!);
     expect(mockSetTags).toHaveBeenCalledWith({ kind: 'song', songId: 'Song.A' }, ['测试标签']);
 
-    fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
+    await fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
     expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
 
     // iOS（jest-expo 默认平台）：滚动区内的练习/谱面确认按钮必须走 gesture-handler 按压体系，

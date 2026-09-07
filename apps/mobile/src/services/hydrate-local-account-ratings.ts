@@ -3,6 +3,7 @@ import { getGameProfile } from '@/domain/game-profile';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSession } from '@/state/session-store';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
 /**
  * 启动后后台补齐本地玩家账号的真实 Rating。
@@ -15,8 +16,10 @@ export async function hydrateLocalAccountRatings(
   const { boundAccounts, updateBoundAccountScore } = useSession.getState();
   await Promise.all(boundAccounts.map(async (account) => {
     if (account.gameId !== 'maimai' || account.providerId !== 'local') return;
+    const assertCurrent = captureResourceWrites(account.gameId, signal, account.id);
     const snapshot = await repository.getLatest(account.id);
     if (!snapshot || signal?.aborted) return;
+    try { assertCurrent(); } catch { return; }
     updateBoundAccountScore(
       account.id,
       formatPlayerScore(snapshot.best50.rating ?? 0, getGameProfile('maimai').ratingDigits),

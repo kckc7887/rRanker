@@ -1,3 +1,4 @@
+import { useSyncAccountMetadata } from '@/hooks/use-sync-account-metadata';
 import { usePhigrosResourceSync } from '@/hooks/use-phigros-resource-sync';
 import { useEffect, useRef, useState } from 'react';
 import { focusManager, QueryClientProvider } from '@tanstack/react-query';
@@ -53,8 +54,7 @@ import { ensureUiIconFontsLoaded } from '@/features/storage-management/ui-icon-f
 import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
 import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
 import { RemoteImageActivityScope } from '@/components/RemoteImage';
-import { hydrateBoundAccountThumbnails } from '@/services/account-thumbnail';
-import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
+import { hydrateAccountDisplayData } from '@/services/account-thumbnail';
 import { startTimer } from '@/utils/startup-timing';
 import { TufAccountStore } from '@/storage/tuf-account-store';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
@@ -276,8 +276,7 @@ function RootLayoutContent() {
     localHydrationGenerationRef.current = lifecycle.foregroundGeneration;
     const signal = getForegroundAbortSignal();
     const task = InteractionManager.runAfterInteractions(() => {
-      void hydrateLocalAccountRatings(undefined, signal).catch(() => undefined);
-      void hydrateBoundAccountThumbnails(undefined, signal).catch(() => undefined);
+      void hydrateAccountDisplayData(signal).catch(() => undefined);
     });
     return () => task.cancel();
   }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady, restoreStatus]);
@@ -313,6 +312,7 @@ function RootLayoutContent() {
 }
 
 function ThemedNavigation() {
+  useSyncAccountMetadata();
   const theme = useAppTheme();
   const navigationTheme = {
     ...(theme.dark ? DarkTheme : DefaultTheme),

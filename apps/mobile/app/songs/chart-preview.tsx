@@ -113,7 +113,7 @@ export default function MaimaiChartPreviewScreen() {
               ...mapped,
               settings: settings as ChartPreviewSettings,
               theme: isDark ? 'dark' : 'light',
-            });
+            }, signal);
           },
         }),
     [mapped, isDark],

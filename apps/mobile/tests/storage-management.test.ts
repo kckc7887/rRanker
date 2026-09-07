@@ -234,6 +234,7 @@ describe('phira storage segment', () => {
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
+      cancelQueries: vi.fn(async () => undefined),
     };
     await expect(clearStorageByCategories(['phira'], client as never)).resolves.toEqual({
       clearedIds: ['phira'],
@@ -473,6 +474,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
+      cancelQueries: vi.fn(async () => undefined),
     };
     await clearStorageByCategories(['maimai'], client as never);
     expect(mocks.execAsync).toHaveBeenCalledWith(expect.stringContaining('VACUUM'));
@@ -483,6 +485,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
+      cancelQueries: vi.fn(async () => undefined),
     };
     await clearStorageByCategories(['phigros'], client as never);
     expect(mocks.resetPhigrosKyouAliasesCache).toHaveBeenCalledTimes(1);
@@ -493,6 +496,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
+      cancelQueries: vi.fn(async () => undefined),
     };
     await clearStorageByCategories(['maimai'], client as never);
     expect(mocks.resetPhigrosKyouAliasesCache).not.toHaveBeenCalled();
@@ -503,6 +507,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
+      cancelQueries: vi.fn(async () => undefined),
     };
     await clearStorageByCategories(['shared'], client as never);
     expect(client.removeQueries).not.toHaveBeenCalled();
@@ -521,6 +526,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     const client = {
       invalidateQueries: vi.fn(async () => undefined),
       removeQueries: vi.fn(),
+      cancelQueries: vi.fn(async () => undefined),
     };
     await expect(clearStorageByCategories(['shared'], client as never)).resolves.toMatchObject({
       clearedIds: ['shared'],

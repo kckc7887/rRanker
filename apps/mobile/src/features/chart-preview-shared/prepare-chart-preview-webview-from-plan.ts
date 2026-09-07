@@ -11,6 +11,9 @@
  */
 
 import { Directory, File } from 'expo-file-system';
+import { loadItemsBounded } from '@/services/offset-pagination';
+import { createInflightGuard, captureResourceWrites, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
+import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
 import {
   createChartPreviewSessionDirectory,
   disposeChartPreviewSessionDirectory,
@@ -39,7 +42,7 @@ export type ChartPreviewWebviewPlan = {
   /** 生成 data:audio/wav data URL 的资产，结果以 key 汇入传给 buildHtml 的 Record。 */
   dataUrlAssets?: readonly ChartPreviewDataUrlAsset[];
   /** 额外写盘回调（如 music-data.js）。 */
-  writers?: readonly ((directory: Directory) => Promise<void>)[];
+  writers?: readonly ((directory: Directory, signal?: AbortSignal) => Promise<void>)[];
   /** HTML 模板资产 moduleId（readAssetText 读取）。 */
   htmlModuleId: number;
   /** 由模板、data URL 集合与 stage 目录生成最终 index.html 内容。 */
@@ -54,56 +57,27 @@ export type ChartPreviewWebviewPlanResult = {
 
 const REMOTE_STAGE_CONCURRENCY = 4;
 
-async function mapPool<T>(
-  items: readonly T[],
-  concurrency: number,
-  worker: (item: T) => Promise<void>,
-): Promise<void> {
-  if (items.length === 0) return;
-  const limit = Math.max(1, Math.min(concurrency, items.length));
-  let next = 0;
-  let firstError: unknown;
-  const run = async () => {
-    while (next < items.length) {
-      if (firstError) return;
-      const index = next;
-      next += 1;
-      try {
-        await worker(items[index]!);
-      } catch (error) {
-        firstError = error;
-        throw error;
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: limit }, () => run()));
-}
+const remoteLoads = createInflightGuard<string>();
+let partSequence = 0;
 
-/** 远程资产下载到目标目录：已存在且大小匹配则跳过；否则经 .part 下载、校验后替换。 */
-async function downloadRemoteAsset(
-  url: string,
-  bytes: number,
-  directory: Directory,
-  fileName: string,
-): Promise<File> {
+async function downloadRemoteAsset(url: string, bytes: number, directory: Directory, fileName: string, signal?: AbortSignal): Promise<File> {
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  const assertCurrent = captureResourceWrites('shared');
   const target = new File(directory, fileName);
   if (target.exists && target.size === bytes) return target;
-
-  const partFile = new File(directory, `${fileName}.part`);
-  let partMoved = false;
+  const partName = fileName + '.' + (++partSequence) + '.part';
+  const part = new File(directory, partName);
+  let published = false;
   try {
-    if (partFile.exists) partFile.delete();
-    await File.downloadFileAsync(url, partFile, { idempotent: true });
-    if (partFile.size !== bytes) {
-      throw new Error(`远程资产大小不匹配：${fileName}`);
-    }
+    await downloadChartResource(directory, partName, url, signal);
+    if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+    assertCurrent();
+    if (part.size !== bytes) throw new Error('远程资产大小不匹配：' + fileName);
     if (target.exists) target.delete();
-    partFile.move(target);
-    partMoved = true;
+    part.move(target);
+    published = true;
     return target;
-  } finally {
-    if (!partMoved && partFile.exists) partFile.delete();
-  }
+  } finally { if (!published && part.exists) part.delete(); }
 }
 
 async function stageRemoteAsset(
@@ -112,10 +86,17 @@ async function stageRemoteAsset(
   sessionDirectory: Directory,
   fileName: string,
   cacheDirectory?: Directory,
+  signal?: AbortSignal,
 ): Promise<File> {
+  const assertGeneration = captureResourceWrites('shared');
   const sourceDirectory = cacheDirectory ?? sessionDirectory;
   ensureParentDirectory(sourceDirectory, fileName);
-  const source = await downloadRemoteAsset(url, bytes, sourceDirectory, fileName);
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  const source = cacheDirectory
+    ? await remoteLoads.share(JSON.stringify([sourceDirectory.uri, fileName, url, bytes, resourceWriteGeneration('shared')]),
+      sharedSignal => { assertGeneration(); return downloadRemoteAsset(url, bytes, sourceDirectory, fileName, sharedSignal); }, signal)
+    : await downloadRemoteAsset(url, bytes, sourceDirectory, fileName, signal);
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   if (!cacheDirectory) return source;
 
   ensureParentDirectory(sessionDirectory, fileName);
@@ -123,6 +104,7 @@ async function stageRemoteAsset(
   if (target.exists && target.size === source.size) return target;
   if (target.exists) target.delete();
   const payload = await source.bytes();
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   target.create({ intermediates: true, overwrite: true });
   target.write(payload);
   if (target.size !== source.size) {
@@ -141,11 +123,16 @@ function ensureParentDirectory(directory: Directory, fileName: string): void {
 
 export async function prepareChartPreviewWebviewFromPlan(
   plan: ChartPreviewWebviewPlan,
+  signal?: AbortSignal,
 ): Promise<ChartPreviewWebviewPlanResult> {
+  const assertCurrent = captureResourceWrites('shared', signal);
+  assertCurrent();
   const directory = plan.directory ?? createChartPreviewSessionDirectory(plan.directoryName);
 
   try {
-    await mapPool(plan.stagedAssets, REMOTE_STAGE_CONCURRENCY, async (asset) => {
+    await loadItemsBounded({ items: plan.stagedAssets, concurrency: REMOTE_STAGE_CONCURRENCY,
+      signal, failureMode: 'throw', load: async (asset) => {
+      assertCurrent();
       ensureParentDirectory(directory, asset.fileName);
       if ('moduleId' in asset) {
         await stageAsset(asset.moduleId, asset.fileName, directory);
@@ -156,12 +143,15 @@ export async function prepareChartPreviewWebviewFromPlan(
           directory,
           asset.fileName,
           plan.remoteCacheDirectory,
+          signal,
         );
       }
-    });
+      assertCurrent();
+    } });
 
     const dataUrls: Record<string, string> = {};
     for (const asset of plan.dataUrlAssets ?? []) {
+      assertCurrent();
       if ('moduleId' in asset) {
         const sourceUri = await loadAssetFileUri(asset.moduleId, asset.fileName);
         dataUrls[asset.key] = `data:audio/wav;base64,${await new File(sourceUri).base64()}`;
@@ -172,16 +162,20 @@ export async function prepareChartPreviewWebviewFromPlan(
           directory,
           asset.fileName,
           plan.remoteCacheDirectory,
+          signal,
         );
         dataUrls[asset.key] = `data:audio/wav;base64,${await staged.base64()}`;
       }
     }
 
     for (const writer of plan.writers ?? []) {
-      await writer(directory);
+      assertCurrent();
+      await writer(directory, signal);
+      assertCurrent();
     }
 
     const template = await readAssetText(plan.htmlModuleId);
+    assertCurrent();
     const html = plan.buildHtml(template, dataUrls, directory);
     const htmlFile = new File(directory, 'index.html');
     htmlFile.create({ overwrite: true });

@@ -28,7 +28,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 1. 最外层安装 `AppLifecycleProvider`，将 `active`、短暂 `inactive`、后台和内存警告转成统一生命周期状态。
 2. 启动阶段并行恢复主题、图标字体、SecureStore 会话和各类本地账号档案；准备完成前只渲染加载态。
 3. 准备完成后安装 React Query、应用主题、全局通知和根导航栈。
-4. 首帧交互结束后再补齐账号缩略信息、本地 Rating 与存储维护，避免阻塞启动。
+4. 根部唯一 `useSyncAccountMetadata` 订阅当前账号结果；页面只读取。首帧交互结束后，根布局与账号列表通过 `hydrateAccountDisplayData` 共享缩略信息和本地 Rating 恢复，再执行存储维护。
 5. 后台时暂停上传任务并取消查询；回到前台后产生新的可取消工作代次；内存警告时释放非活动 Query 和 Expo Image 内存缓存。
 
 根栈承载主标签页、个人曲库、游戏管理、存储管理、个性化、歌曲详情、成绩图、谱面确认和 OAuth 回调等文件路由。主标签页位于 `app/(tabs)/_layout.tsx`，固定为总览、最佳、成绩、曲库、设置五项；各标签内部通过 `MainTabStack` 和 `CachedTabScreen` 保持导航及页面状态。
@@ -145,9 +145,9 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 
 - `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；持久凭据由 `storage/secure-session-store.ts` 管理。
 - `state/query-client.ts` 提供进程内唯一 QueryClient；账号最终数据使用 `services/game-data-query.ts` 的版本化键。
-- SQLite 的进程内连接由 `storage/rranker-database.ts` 集中管理；快照、资源和用户曲库通过对应 Repository 访问。
-- 缓存读取优先走本地首屏、后台刷新和 AbortSignal 取消链路。短暂 `inactive` 与普通后台不会被当作内存压力；只有内存警告触发非活动 Query 和图片内存释放。`CachedTabScreen` 在这些状态下保持已挂载画面，只通过 active context 暂停重工作。
-- `RemoteImage` 统一远程图片加载。受控压缩缓存是 v3，总预算 10 MiB、单项上限 10 KiB；列表项达到 50% 可见并持续 250 ms 后才允许持久化。在线原图仍作为主加载源，缓存文件只作本地回退。失活只暂停落盘，不把已显示 source 置空。
+- SQLite 的进程内连接由 `storage/rranker-database.ts` 集中管理；`runDatabaseWrite` 串行化 schema 初始化、快照和用户曲库写入。批量清理以 500 个绑定参数分批，在同连接事务内执行；文本统计使用 UTF-8 字节，数据库分配页单列。表结构和个人数据键不变。
+- 缓存读取优先走本地首屏、后台刷新和 AbortSignal 取消链路。共享任务按消费者计数取消；清缓存先提升游戏写入代次并取消/移除 Query，解绑只失效所属账号。后台刷新及实际 SQL 提交前复核游戏/账号代次，旧结果不能重新填回缓存。短暂 `inactive` 与普通后台不会被当作内存压力；只有内存警告触发非活动 Query 和图片内存释放。`CachedTabScreen` 在这些状态下保持已挂载画面，只通过 active context 暂停重工作。
+- `RemoteImage` 统一远程图片加载。受控压缩缓存是 v3，总预算 10 MiB、单项上限 10 KiB；列表项达到 50% 可见并持续 250 ms 后才允许持久化。在线原图仍作为主加载源，缓存文件只作本地回退。失活只暂停落盘，不把已显示 source 置空。可见性通过条目级订阅通知，保持列表 renderItem、extraData 和窗口参数稳定；等价 URL/请求头/cacheKey 不触发图片缓存重查。
 - 存储管理通过 `GAME_STORAGE_ADAPTERS` 统一统计和清理各游戏资源。显示的可清理范围与实际删除范围必须使用同一适配器和缓存策略；不得直接清空整个 Expo `Paths.cache`。
 
 ## 设置诊断与日志
@@ -234,6 +234,9 @@ Each 分组和分支/分段的音符模型；`prepareChart` 预计算路径与�
 滑条各段书写时长保存在模型；播放按 ViewX 的合并路径总时长与路径长度分配视觉速度。
 `ScrollTimeline` 只影响视觉位置，音乐、正解音、结束和判定使用实际时间。
 播放器通过共享 `PlaybackClock` 重建暂停、跳转和变速状态；变速/跳转取消旧正解音调度。
+Simai 预计算位置、Each/Slide 分组和开始、结束、烟花事件索引，保留相同时刻的原始顺序；
+SV 为零、负值和非单调时继续做完整可见性判断。RPE 原地稳定压缩活动数组，保持绘制层次
+及内部顺序，不调整音频时钟、帧率、判定或特效。
 
 皮肤清单保存 SHA-256、尺寸与透明边界；缓存文件名包含资源修订，正解音文件名包含
 内容哈希。仍由共享计划执行器按大小检查缓存及落盘，通过 `skin-data.js` 注入 PNG。
@@ -272,6 +275,9 @@ MajSimai 输出作为 TypeScript 测试的外部基准。素材审计和浏览�
 npm ci
 npm run lint
 npm run typecheck
+npm run check:architecture
+npm run check:generated
+npm run check:lossless-assets
 npm run test:unit
 npm run test:ui
 npm test
@@ -279,12 +285,19 @@ npm test
 
 `npm run test:unit` 使用 Vitest 运行 `tests/**/*.test.ts`；`npm run test:ui` 使用 Jest Expo 串行运行 `tests/**/*.test.tsx`。公共 UI 还由 Host Tree/Style 哈希、HTML/脚本字符串金样和虚构游戏合同保护，禁止仅更新基线来接受未解释差异。
 
-应用 `tsconfig.json` 排除了舞萌播放器入口及引擎目录；`npm run typecheck` 同时调用
-`typecheck:maimai-player`，通过 `tsconfig.maimai-player.json` 对整个引擎、入口和依赖
-执行严格类型检查。`maimai-chart-preview-webview.test.ts` 另检查入口名称和页面合同。
-播放器源码改动后运行 `npm run build:chart-preview`，生成
-`assets/maimai-chart-preview/index.html`、`player.js` 和供 Metro 加载的 `player.bundle`；
-两个脚本产物必须一致。打包成功不代表手机 WebView 播放验收通过。
+应用类型检查与独立播放器检查共同组成 `npm run typecheck`：
+`tsconfig.maimai-player.json` 覆盖 Simai 引擎/入口，`tsconfig.phigros-player.json` 覆盖
+Phigros/Phira 及 RPE 入口。播放器源码改动后分别运行 `npm run build:chart-preview`
+或 `npm run build:phigros-chart-preview`；两者共用 `scripts/lib/build-preview.mjs`。
+`npm run check:generated` 不写文件，从源码重新构建并验证 HTML、player.js、player.bundle
+与交付产物一致。打包成功不代表手机 WebView 播放验收通过。
+
+`npm run benchmark:optimization` 与固定基线比较完整 Simai 帧命令和 RPE Canvas 绘制
+命令，覆盖跳转、暂停、变速、镜像、长 Hold、连接 Slide、Each、Mine、Break 和非单调 SV；
+另测 6000 音符场景的 CPU 分布与 5000 首/20000 成绩搜索。Phigros 搜索通过
+`indexSongsById` 一次建立曲库索引，保留首次匹配、别名、排序和筛选合同。
+结果写入被忽略的 `build/optimization-performance.json`，包含基线/候选 SHA 和工作区状态。
+测试中的请求数、数据库调用数和条目重绘次数是受控测量，不代表真机帧率。
 
 本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
 
@@ -304,9 +317,24 @@ Gradle properties 启用 Release R8 与资源裁剪，将默认 ProGuard 文件�
 
 双端体积检查使用 `npx expo export --platform android --platform ios --source-maps
 --dump-assetmap --output-dir build/size-audit --max-workers 4`，不启动 Expo Web。
-统计主程序 Hermes、独立播放器和按路径去重的导出资源，source map 不计入交付体积。
+统计主程序 Hermes、独立播放器和按实际内容 SHA-256 去重的导出资源，source map 不计入交付体积。
 播放器已经包含在资源合计内；gzip 只作压缩参考，不代表 APK/IPA 或安装体积。
 Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 macOS 出包验收。
+
+`npm run check:lossless-assets` 对照固定基线核验已改 PNG；优化器只选择更小的 IDAT
+压缩流，CRC、解压扫描线、RGBA/透明度和全部非 IDAT 块必须保持一致。原始来源 hash
+与生成 hash 分别保留。仓库素材减少不直接等于导出收益，导出中未引用素材不计入收益。
+
+`.github/workflows/validate-optimization.yml` 在优化分支 push、PR 和手动触发时运行。
+Node 22、npm ci 后依次完成 lint、应用及两类播放器类型检查、公共边界、生成/无损资源
+检查、全量单元/UI 合同及 CPU 基准；UI 日志中的未等待 act 警告会使验证失败。
+同一个 runner 分别导出候选提交和固定基线 `246f0bbe57bb9a23ce21858c82c53b3066aad3d9`
+的 Android/iOS Hermes 与资源，基线 checkout 放在被忽略的 build 目录。Expo 要求输出位于
+项目内部，因此先导出到基线项目自己的 build，再复制到候选项目的比较目录。
+`scripts/compare-optimization-exports.mjs` 接收两份导出目录及完整 SHA，输出独立播放器、
+去重资源和主程序的明细，不重复累加播放器或 source map。日志、JSON、比较表与导出
+metadata/assetmap 作为 14 天 artifact 上传；只有对应最终候选 SHA 的工作流成功才完成
+云端验证。该流程不构建 APK/IPA，不修改版本，不发布或合并分支。
 
 `.github/workflows/build-ios.yml` 是手动触发的 iOS 流程：Ubuntu 质量任务运行 lint、typecheck 和全部测试；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA、上传构建产物并提交 TestFlight。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
 

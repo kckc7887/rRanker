@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.maimai-player.json",
+  "include": ["src/features/phigros-chart-preview/webview-player/**/*.ts"]
+}
