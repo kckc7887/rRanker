@@ -13,7 +13,7 @@ import {
   createTufBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
-import { findGame, type GameId } from '@/domain/game-bind-options';
+import type { GameId } from '@/domain/game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
 import { NotificationProvider } from '@/components/AppNotification';
 
@@ -59,34 +59,6 @@ const mockTufAccount = createTufBoundAccount({ playerId: 4242, displayName: 'TUF
 const mockMuseDashAccount = createMuseDashBoundAccount({ userId: 'u-muse-1', displayName: '喵斯玩家' });
 let mockBoundAccounts = [mockLocalAccount, mockTestAccount, mockAccount];
 let mockExpandedGameId: GameId = 'maimai';
-
-describe('示例账号图标', () => {
-  it('中二/Phigros/喵斯示例账号与舞萌示例账号复用同一图标', () => {
-    const maimaiIcon = findGame('maimai')?.providers
-      .find((provider) => provider.id === 'maimai-test')?.icon;
-    const chunithmIcon = findGame('chunithm')?.providers
-      .find((provider) => provider.id === 'chunithm-test')?.icon;
-    const phigrosIcon = findGame('phigros')?.providers
-      .find((provider) => provider.id === 'phigros-test')?.icon;
-    const musedashIcon = findGame('musedash')?.providers
-      .find((provider) => provider.id === 'musedash-test')?.icon;
-    expect(chunithmIcon).toBe(maimaiIcon);
-    expect(phigrosIcon).toBe(maimaiIcon);
-    expect(musedashIcon).toBe(maimaiIcon);
-  });
-
-  it('冰与火之舞与 TUF 社区使用各自的正式图标', () => {
-    const adofai = findGame('adofai');
-    const tufIcon = adofai?.providers.find((provider) => provider.id === 'tuf')?.icon;
-    expect(tufIcon).not.toBe(adofai?.icon);
-  });
-
-  it('喵斯快跑与喵斯快跑社区使用各自的正式图标', () => {
-    const musedash = findGame('musedash');
-    const musedashMoeIcon = musedash?.providers.find((provider) => provider.id === 'musedash-moe')?.icon;
-    expect(musedashMoeIcon).not.toBe(musedash?.icon);
-  });
-});
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));

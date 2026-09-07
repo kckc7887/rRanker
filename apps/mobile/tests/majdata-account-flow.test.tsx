@@ -10,6 +10,7 @@ import { GAME_OPTIONS, findGame, isCredentialProvider } from '@/domain/game-bind
 import { useSession } from '@/state/session-store';
 import { switchBoundAccount } from '@/services/switch-bound-account';
 import { hydrateBoundAccountThumbnails, persistBoundAccountThumbnail } from '@/services/account-thumbnail';
+import majdataIcon from '../assets/images/majdata.png';
 
 const mockSession = { mode: 'http-cookies', origin: 'https://majdata.net', persistable: true,
   cookies: [{ name: 'auth', value: 'test-cookie', path: '/', secure: true }] } as const;
@@ -102,7 +103,7 @@ test('login appears in real management and switch lists with the player avatar a
 
 test('both game pickers and bound groups place Majdata after the existing osu family', async () => {
   expect(GAME_OPTIONS.at(-1)?.id).toBe('majdata-net');
-  expect(findGame('majdata-net')?.icon).toEqual({ uri: 'https://rranker.cn-nb1.rains3.com/assets/images/majdata.png' });
+  expect(findGame('majdata-net')?.icon).toEqual(majdataIcon);
   expect(isCredentialProvider('majdata-net')).toBe(true);
   expect(isCredentialProvider('phira-community')).toBe(false);
   const accounts = GAME_OPTIONS.map(game => ({ ...createMajdataBoundAccount({ accountId: game.id, displayName: game.title }), gameId: game.id }));
