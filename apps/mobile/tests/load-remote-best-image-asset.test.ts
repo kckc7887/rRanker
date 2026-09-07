@@ -70,3 +70,13 @@ describe('remote best image asset localization', () => {
     expect(mocks.files.size).toBe(0);
   });
 });
+
+vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
+  const { File } = await import('expo-file-system');
+  return {
+  downloadChartResource: async (directory: unknown, fileName: string, url: string, signal?: AbortSignal) => {
+    if (signal?.aborted) throw new Error('cancelled');
+    return File.downloadFileAsync(url, new File(directory as never, fileName), { idempotent: true });
+  },
+  };
+});

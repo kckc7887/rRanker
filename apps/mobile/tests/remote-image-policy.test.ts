@@ -50,8 +50,8 @@ describe('song cover call path', () => {
     expect(source('src/features/chunithm-best-image/load-chunithm-best-image-jackets.ts')).not.toContain('profile:');
     const phigrosLoader = source('src/features/phigros-best-image/load-phigros-image-assets.ts');
     expect(phigrosLoader).not.toContain('loadCompressedRemoteImage');
-    expect(phigrosLoader).toContain('await File.downloadFileAsync(url, staged');
-    expect(phigrosLoader).toContain('disposedDirectories.has(directory.uri) && staged.exists');
+    expect(phigrosLoader).toContain('await downloadChartResource(Paths.cache, temporaryName, url, requestSignal)');
+    expect(phigrosLoader).toContain('if (disposedDirectories.has(directory)) return null;');
   });
 
   it('keeps compressed-cover fallbacks out of native disk cache', () => {

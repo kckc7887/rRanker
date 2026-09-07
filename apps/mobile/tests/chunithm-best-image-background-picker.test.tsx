@@ -39,7 +39,7 @@ describe('ChunithmBestImageBackgroundPicker', () => {
 
     expect(screen.getByLabelText('使用默认背景').props.accessibilityState).toEqual({ selected: false });
     expect(screen.getByLabelText('使用B.B.K.K.B.K.K.作为背景').props.accessibilityState).toEqual({ selected: true });
-    fireEvent.press(screen.getByLabelText('使用光線チューニング作为背景'));
+    await fireEvent.press(screen.getByLabelText('使用光線チューニング作为背景'));
     expect(onSelect).toHaveBeenCalledWith({ mode: 'song', songId: 202 });
   });
 
@@ -54,7 +54,7 @@ describe('ChunithmBestImageBackgroundPicker', () => {
       />,
     );
 
-    fireEvent.changeText(screen.getByLabelText('搜索背景歌曲'), 'ナユタン');
+    await fireEvent.changeText(screen.getByLabelText('搜索背景歌曲'), 'ナユタン');
     await waitFor(() => expect(screen.queryByLabelText('使用B.B.K.K.B.K.K.作为背景')).toBeNull());
     expect(screen.getByLabelText('使用光線チューニング作为背景')).toBeTruthy();
     expect(screen.getByLabelText('使用默认背景').props.accessibilityState).toEqual({ selected: true });

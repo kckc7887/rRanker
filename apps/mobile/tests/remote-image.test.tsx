@@ -14,7 +14,10 @@ jest.mock('@/services/remote-image-cache', () => ({
   cacheCompressedRemoteImage: (...args: [unknown, unknown, AbortSignal?]) => mockCache(...args),
   findCompressedRemoteImage: () => mockFind(),
   invalidateCompressedRemoteImage: () => mockInvalidate(),
-  normalizeRemoteImageSource: (source: string) => ({ source: { uri: source }, stableIdentity: source }),
+  normalizeRemoteImageSource: (source: string | { uri: string; headers?: Record<string, string>; cacheKey?: string }) => ({
+    source: typeof source === 'string' ? { uri: source } : source,
+    stableIdentity: typeof source === 'string' ? source : JSON.stringify({ uri: source.uri, cacheKey: source.cacheKey, headers: source.headers }),
+  }),
   supportsCompressedRemoteImageCache: () => true,
 }));
 
@@ -38,6 +41,21 @@ const cachedResult = {
 };
 
 describe('RemoteImage 压缩垫图', () => {
+  it('keeps an equal source object stable and rechecks changed headers or cache identity', async () => {
+    mockFind.mockResolvedValue(cachedResult);
+    const tree = (token = 'first', cacheKey = 'cover') => <RemoteImage cacheProfile="thumbnail" gameId="maimai" testID="cover"
+      source={{ uri: remoteSource, headers: { Authorization: token }, cacheKey }} />;
+    const screen = await render(tree());
+    await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(1));
+    await screen.rerender(tree());
+    expect(mockFind).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    await screen.rerender(tree('second'));
+    await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(2));
+    await screen.rerender(tree('second', 'other'));
+    await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(3));
+    await screen.unmount();
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     mockCache.mockResolvedValue(null);

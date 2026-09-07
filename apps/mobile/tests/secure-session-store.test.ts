@@ -45,6 +45,17 @@ function account(id: string): StoredProviderAccountInput {
 }
 
 describe('SecureSessionStore 内置账号兼容', () => {
+  it('does not persist identical account metadata across store instances', async () => {
+    const writes = vi.fn(kvStore.setItem);
+    const storage = { ...kvStore, setItem: writes };
+    const first = new SecureSessionStore(storage), second = new SecureSessionStore(storage);
+    const stored = account('maimai:diving-fish:dedupe');
+    await first.upsertAccount(stored);
+    writes.mockClear();
+    const metadata = { displayName: '名称', scoreDisplay: '15000', ratingPossession: null };
+    await Promise.all([first.updateAccountMetadata(stored.id, metadata), second.updateAccountMetadata(stored.id, metadata)]);
+    expect(writes).toHaveBeenCalledTimes(1);
+  });
   beforeEach(() => {
     secure.values.clear();
     sqlite.values.clear();

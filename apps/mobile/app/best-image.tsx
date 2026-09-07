@@ -66,14 +66,10 @@ import {
   BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
-import { useBestImageScreenController } from '@/features/best-image/use-best-image-screen-controller';
+import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
 import { useBestImageCollections } from '@/features/best-image/use-best-image-collections';
 import { loadBestImageJackets } from '@/features/best-image/load-best-image-jackets';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
-import {
-  prepareBestImageWebViewSources,
-  type BestImageWebViewSource,
-} from '@/features/best-image/prepare-best-image-webview-sources';
 import {
   prepareMaimaiFonts,
   type MaimaiFontProgress,
@@ -192,8 +188,6 @@ export function MaimaiBestImageScreen() {
   const [nearMiss, setNearMiss] = useState(false);
   const [versionLocale, setVersionLocale] = useState<VersionNameLocale>('china');
   const [selectedDxRatingTagIds, setSelectedDxRatingTagIds] = useState<number[]>([]);
-  const [webViewSources, setWebViewSources] = useState<BestImageWebViewSource[] | null>(null);
-  const [webViewSourceError, setWebViewSourceError] = useState<string | null>(null);
   const [fontAttempt, setFontAttempt] = useState(0);
   const [assetsDirectory, setAssetsDirectory] = useState<Directory | null>(null);
   const [assetsReady, setAssetsReady] = useState(false);
@@ -264,28 +258,7 @@ export function MaimaiBestImageScreen() {
     return () => { cancelled = true; };
   }, [frameSource, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setExportAssetError(null);
-    setAssetsReady(false);
-    setWebViewSources(null);
-    void (async () => {
-      const [font, ui] = await Promise.all([
-        prepareMaimaiFonts((progress) => { if (!cancelled) setFontProgress(progress); }),
-        prepareMaimaiUi((progress) => { if (!cancelled) setUiProgress(progress); }),
-      ]);
-      const results = await Promise.allSettled([font.fullReady, ui.fullReady]);
-      const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
-      if (failed) throw failed.reason;
-      if (!cancelled) {
-        setAssetsDirectory(font.directory);
-        setAssetsReady(true);
-      }
-    })().catch((error) => {
-      if (!cancelled) setExportAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
-    });
-    return () => { cancelled = true; };
-  }, [fontAttempt]);
+
 
   useEffect(() => {
     const items = collections.data?.items;
@@ -447,6 +420,8 @@ export function MaimaiBestImageScreen() {
 
   const coverRequestKey = JSON.stringify(scoreSections.flatMap((section) => section.records.map((record) => record.songId)));
   useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
     let cancelled = false;
     if (!lifecycle.foregroundReady) return;
     setCoverUrls(null);
@@ -454,10 +429,10 @@ export function MaimaiBestImageScreen() {
     const songIds = JSON.parse(coverRequestKey) as string[];
     loadBestImageJackets(songIds, (completed, total) => {
       if (!cancelled) setCoverProgress({ completed, total });
-    }).then((nextCoverUrls) => {
+    }, signal).then((nextCoverUrls) => {
       if (!cancelled) setCoverUrls(nextCoverUrls);
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [coverRequestKey, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
   const htmlPages = useMemo(() => embeddedAssets && coverUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
@@ -475,22 +450,33 @@ export function MaimaiBestImageScreen() {
     cnFontUrl: 'maimai-noto.ttf',
     dataSource: player?.source?.label ?? '',
   })) : null, [coverUrls, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, player?.source?.label]);
-  const htmlPagesRef = useRef(htmlPages);
-  htmlPagesRef.current = htmlPages;
   const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages]);
+  const sourceGeneration = useMemo(() => [coverUrls, embeddedAssets, htmlGenerationKey], [coverUrls, embeddedAssets, htmlGenerationKey]);
+  const { sources: webViewSources, setSources: setWebViewSources, error: webViewSourceError } = usePreparedBestImageSources(htmlPages, assetsDirectory, false, sourceGeneration);
   useEffect(() => {
+    let cancelled = false;
+    if (!lifecycle.foregroundReady) return;
+    const controller = new AbortController();
+    setExportAssetError(null);
+    setAssetsReady(false);
     setWebViewSources(null);
-    setWebViewSourceError(null);
-    const currentHtmlPages = htmlPagesRef.current;
-    if (!currentHtmlPages || !assetsDirectory) return;
-    try {
-      const prepared = prepareBestImageWebViewSources(currentHtmlPages, assetsDirectory);
-      setWebViewSources(prepared.sources);
-      return prepared.dispose;
-    } catch {
-      setWebViewSourceError('无法准备成绩图片，请重试。');
-    }
-  }, [coverUrls, embeddedAssets, assetsDirectory, htmlGenerationKey]);
+    void (async () => {
+      const [font, ui] = await Promise.all([
+        prepareMaimaiFonts((progress) => { if (!cancelled) setFontProgress(progress); }, controller.signal),
+        prepareMaimaiUi((progress) => { if (!cancelled) setUiProgress(progress); }, controller.signal),
+      ]);
+      const results = await Promise.allSettled([font.fullReady, ui.fullReady]);
+      const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (failed) throw failed.reason;
+      if (!cancelled) {
+        setAssetsDirectory(font.directory);
+        setAssetsReady(true);
+      }
+    })().catch((error) => {
+      if (!cancelled) setExportAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
+    });
+    return () => { cancelled = true; controller.abort(); };
+  }, [fontAttempt, lifecycle.foregroundGeneration, lifecycle.foregroundReady, setWebViewSources]);
   const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
   const currentWebViewState = webViewStates[pages[Math.min(currentPageIndex, pages.length - 1)]!.id];
   const assetStatusText = fontProgress.phase === 'checking' || fontProgress.phase === 'downloading'

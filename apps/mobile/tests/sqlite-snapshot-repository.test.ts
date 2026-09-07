@@ -35,8 +35,8 @@ describe('SqliteSnapshotRepository schema migration', () => {
     const repository = new SqliteSnapshotRepository();
     await expect(repository.getLatest('maimai:lxns:1')).resolves.toBeNull();
     expect(sqlite.db.runAsync).toHaveBeenCalledWith(
-      'DELETE FROM account_score_snapshots WHERE account_id = ?',
-      'maimai:lxns:1',
+      'DELETE FROM account_score_snapshots WHERE account_id = ? AND payload = ? AND schema_version = ?',
+      'maimai:lxns:1', '{}', 1,
     );
   });
 
@@ -45,8 +45,8 @@ describe('SqliteSnapshotRepository schema migration', () => {
     const repository = new SqliteSnapshotRepository();
     await expect(repository.getLatest('maimai:lxns:frame')).resolves.toBeNull();
     expect(sqlite.db.runAsync).toHaveBeenCalledWith(
-      'DELETE FROM account_score_snapshots WHERE account_id = ?',
-      'maimai:lxns:frame',
+      'DELETE FROM account_score_snapshots WHERE account_id = ? AND payload = ? AND schema_version = ?',
+      'maimai:lxns:frame', '{}', 4,
     );
   });
 

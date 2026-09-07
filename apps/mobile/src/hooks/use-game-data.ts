@@ -1,22 +1,18 @@
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { loadMajdataCached, loadMajdataFresh } from '@/services/majdata-service';
-import { majdataAvatarUrl, majdataTotalText, majdataTotal, type MajdataSnapshot } from '@/domain/majdata';
+import { majdataTotalText, majdataTotal, type MajdataSnapshot } from '@/domain/majdata';
 import { cacheFirstLoad, staleCached } from '@/services/cache-first';
 import { phigrosResources } from '@/services/phigros-resources';
-import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   emptyGamePayload,
-  formatPlayerScore,
   maimaiPayloadFromSnapshot,
   osuPayloadFromSnapshot,
   type GameDataBundle,
 } from '@/domain/game-data';
-import { buildLxnsIconUrl } from '@/domain/account-avatar';
 import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
 import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService, staleCachedSnapshot } from '@/services/score-service';
-import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
-import { persistBoundAccountThumbnail } from '@/services/account-thumbnail';
 import { queryClient } from '@/state/query-client';
 import type { ScoreSnapshot, DataSource } from '@/domain/models';
 import type { ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
@@ -35,7 +31,6 @@ import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
 import { PhigrosSaveCache, stalePhigrosPayload, type PhigrosGameDataPayload } from '@/services/phigros-save-cache';
 import { gameDataQueryKey } from '@/services/game-data-query';
-import { SecureSessionStore } from '@/storage/secure-session-store';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 import { isOsuGameId } from '@/domain/game-mode-family';
@@ -59,9 +54,8 @@ import {
   makeMuseDashSnapshot,
   MuseDashCache,
 } from '@/services/muse-dash-cache';
-import { resolveTufAvatarUrl, type TufPlayer } from '@/domain/tuf';
+import { type TufPlayer } from '@/domain/tuf';
 import type { MuseDashPlayer } from '@/domain/muse-dash';
-import { buildChunithmMapIconUrl } from '@/domain/chunithm-personal';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
 import {
   buildMaxedPhigrosSnapshot,
@@ -90,7 +84,6 @@ export function useGameData(enabled = true) {
   const activeAccount = useSession((s) => (
     s.boundAccounts.find((account) => account.id === s.activeAccountId)
   ));
-  const updateBoundAccountScore = useSession((s) => s.updateBoundAccountScore);
   const scoreProvider = useSession((s) => s.scoreProvider);
   const catalogProvider = useSession((s) => s.catalogProvider);
   const profile = getGameProfile(activeGameId);
@@ -110,6 +103,7 @@ export function useGameData(enabled = true) {
     refetchOnMount: false,
     refetchOnReconnect: false,
     queryFn: async ({ signal }): Promise<GameDataBundle> => {
+      const assertCurrent = captureResourceWrites(activeGameId, signal, activeAccountId);
       const hasSessionData = queryClient.getQueryData<GameDataBundle>(queryKey) !== undefined;
       if (activeGameId === 'majdata-net') {
         const toBundle = (snapshot: MajdataSnapshot): GameDataBundle => ({ gameId: 'majdata-net', providerId: 'majdata-net', profile,
@@ -128,6 +122,7 @@ export function useGameData(enabled = true) {
         };
         const snapshot = hasSessionData ? await fresh(signal) : await cacheFirstLoad({
           loadCached: () => loadMajdataCached(activeAccountId), loadFresh: fresh, signal,
+          assertCurrent,
           onFresh: value => queryClient.setQueryData(queryKey, toBundle(value)),
         });
         return toBundle(snapshot);
@@ -150,7 +145,8 @@ export function useGameData(enabled = true) {
         if (!stored) {
           void refreshPhiraSeedBests(snapshot, signal).then(() => toBundle(snapshot))
             .then((bundle) => {
-              if (!signal.aborted) queryClient.setQueryData(queryKey, bundle);
+              assertCurrent();
+              queryClient.setQueryData(queryKey, bundle);
             }).catch(() => undefined);
         }
         return toBundle(snapshot);
@@ -178,7 +174,7 @@ export function useGameData(enabled = true) {
         const snapshot = stored
           ? staleCached(stored)
           : makeTufSnapshot(await loadTufPlayerFresh(playerId, signal));
-        if (!stored && !signal.aborted) void tufCache.savePlayer(playerId, snapshot).catch(() => undefined);
+        if (!stored && !signal.aborted) void tufCache.savePlayer(playerId, snapshot, assertCurrent).catch(() => undefined);
         return toBundle(snapshot.data, snapshot.source);
       }
       if (activeGameId === 'musedash') {
@@ -228,7 +224,7 @@ export function useGameData(enabled = true) {
         const snapshot = stored
           ? staleCached(stored)
           : makeMuseDashSnapshot(await loadMuseDashPlayerFresh(userId, signal));
-        if (!stored && !signal.aborted) void museDashCache.savePlayer(userId, snapshot).catch(() => undefined);
+        if (!stored && !signal.aborted) void museDashCache.savePlayer(userId, snapshot, assertCurrent).catch(() => undefined);
         return toBundle(snapshot.data, snapshot.source);
       }
       if (activeGameId === 'chunithm') {
@@ -324,7 +320,7 @@ export function useGameData(enabled = true) {
           const snapshot = stored
             ? staleCached(stored)
             : await loadOsuSnapshotFresh(provider, activeGameId, userId, signal);
-          if (!stored && !signal.aborted) void osuCache.save(activeGameId, userId, snapshot).catch(() => undefined);
+          if (!stored && !signal.aborted) void osuCache.save(activeGameId, userId, snapshot, assertCurrent).catch(() => undefined);
           return toBundle(snapshot);
         }
         return {
@@ -458,7 +454,7 @@ export function useGameData(enabled = true) {
           }
           const payload = compatibleStored ? stalePhigrosPayload(compatibleStored) : await loadFresh();
           if (!compatibleStored && !signal.aborted) {
-            void cache.save(activeAccountId, payload).catch(() => undefined);
+            void cache.save(activeAccountId, payload, assertCurrent).catch(() => undefined);
           }
           return toBundle(payload);
         }
@@ -522,131 +518,6 @@ export function useGameData(enabled = true) {
       return toBundle(snapshot);
     },
   });
-
-  useEffect(() => {
-    if (!query.data?.payload || !activeAccountId) return;
-    const d = query.data;
-    if (d.payload.kind === 'maimai') {
-      const avatarUrl = d.providerId === 'lxns'
-        ? buildLxnsIconUrl(d.payload.player.presentation?.iconId)
-        : undefined;
-      const scoreDisplay = formatPlayerScore(d.payload.playerScore.value, d.profile.ratingDigits);
-      updateBoundAccountScore(
-        activeAccountId,
-        scoreDisplay,
-        d.payload.player.displayName,
-        avatarUrl,
-      );
-      void persistBoundAccountThumbnail(activeAccountId, {
-        scoreDisplay,
-        avatarUrl: avatarUrl ?? undefined,
-      }).catch(() => undefined);
-      if (avatarUrl) {
-        void persistBoundAccountAvatar(activeAccountId, avatarUrl);
-      }
-    }
-    if (d.payload.kind === 'phigros') {
-      updateBoundAccountScore(
-        activeAccountId,
-        d.payload.playerScore.display,
-        d.payload.player.displayName,
-        d.payload.avatarUrl ?? undefined,
-        d.payload.challengeModeRank,
-      );
-      void persistBoundAccountThumbnail(activeAccountId, {
-        scoreDisplay: d.payload.playerScore.display,
-        avatarUrl: d.payload.avatarUrl ?? undefined,
-        challengeModeRank: d.payload.challengeModeRank,
-      }).catch(() => undefined);
-      if (d.providerId === 'phi-taptap') {
-        void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
-          displayName: d.payload.player.displayName,
-          scoreDisplay: d.payload.playerScore.display,
-          challengeModeRank: d.payload.challengeModeRank,
-        }).catch(() => undefined);
-      }
-      if (d.payload.avatarUrl) {
-        void persistBoundAccountAvatar(activeAccountId, d.payload.avatarUrl);
-      }
-    }
-    if (d.payload.kind === 'chunithm') {
-      const avatarUrl = buildChunithmMapIconUrl(d.payload.player?.map_icon?.id);
-      updateBoundAccountScore(
-        activeAccountId,
-        d.payload.playerScore.display,
-        d.payload.player?.name,
-        avatarUrl ?? undefined,
-        undefined,
-        d.payload.player?.rating_possession ?? null,
-      );
-      void persistBoundAccountThumbnail(activeAccountId, {
-        scoreDisplay: d.payload.playerScore.display,
-        avatarUrl: avatarUrl ?? undefined,
-        ratingPossession: d.payload.player?.rating_possession ?? null,
-      }).catch(() => undefined);
-      if (d.providerId === 'lxns') {
-        void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
-          displayName: d.payload.player?.name ?? '落雪账号（待同步）',
-          scoreDisplay: d.payload.playerScore.display,
-          ratingPossession: d.payload.player?.rating_possession ?? null,
-        }).catch(() => undefined);
-      }
-      if (avatarUrl) {
-        void persistBoundAccountAvatar(activeAccountId, avatarUrl);
-      }
-    }
-    if (d.payload.kind === 'adofai') {
-      const avatarUrl = resolveTufAvatarUrl(d.payload.player);
-      updateBoundAccountScore(
-        activeAccountId,
-        d.payload.playerScore.display,
-        d.payload.player.name,
-        avatarUrl ?? undefined,
-      );
-      void persistBoundAccountThumbnail(activeAccountId, {
-        scoreDisplay: d.payload.playerScore.display,
-        avatarUrl: avatarUrl ?? undefined,
-      }).catch(() => undefined);
-      if (avatarUrl) void persistBoundAccountAvatar(activeAccountId, avatarUrl);
-    }
-    if (d.payload.kind === 'musedash') {
-      updateBoundAccountScore(
-        activeAccountId,
-        d.payload.playerScore.display,
-        d.payload.player.user.nickname,
-      );
-      void persistBoundAccountThumbnail(activeAccountId, {
-        scoreDisplay: d.payload.playerScore.display,
-      }).catch(() => undefined);
-    }
-    if (d.payload.kind === 'majdata-net') {
-      const avatarUrl = majdataAvatarUrl(d.payload.snapshot.player.username);
-      updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.username, avatarUrl);
-      void persistBoundAccountThumbnail(activeAccountId, { scoreDisplay: d.payload.playerScore.display, avatarUrl }).catch(() => undefined);
-      void new SecureSessionStore().updateAccountMetadata(activeAccountId, {
-        scoreDisplay: d.payload.playerScore.display, displayName: d.payload.snapshot.player.username,
-      }).catch(() => undefined);
-    }
-    if (d.payload.kind === 'phira') {
-      updateBoundAccountScore(activeAccountId, d.payload.playerScore.display, d.payload.snapshot.player.name, d.payload.snapshot.player.avatar ?? undefined);
-      void persistBoundAccountThumbnail(activeAccountId, { scoreDisplay: d.payload.playerScore.display, avatarUrl: d.payload.snapshot.player.avatar ?? undefined }).catch(() => undefined);
-    }
-    if (d.payload.kind === 'osu') {
-      updateBoundAccountScore(
-        activeAccountId,
-        d.payload.playerScore.display,
-        d.payload.player.username,
-        d.payload.player.avatarUrl ?? undefined,
-      );
-      void persistBoundAccountThumbnail(activeAccountId, {
-        scoreDisplay: d.payload.playerScore.display,
-        avatarUrl: d.payload.player.avatarUrl ?? undefined,
-      }).catch(() => undefined);
-      if (d.payload.player.avatarUrl) {
-        void persistBoundAccountAvatar(activeAccountId, d.payload.player.avatarUrl);
-      }
-    }
-  }, [activeAccountId, query.data, updateBoundAccountScore]);
 
   return {
     ...query,

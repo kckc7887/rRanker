@@ -427,4 +427,40 @@ describe('remote image cache', () => {
     await expect(second).resolves.toBeNull();
     expect(mocks.loadAsync).toHaveBeenCalledTimes(1);
   });
+  it('shares one transform without letting the first consumer cancel the second', async () => {
+    const gate = Promise.withResolvers<void>();
+    mocks.manipulate.mockImplementationOnce(() => ({
+      release: vi.fn(), renderAsync: async () => {
+        await gate.promise; return { release: vi.fn(), saveAsync: mocks.saveAsync };
+      },
+    }));
+    const controller = new AbortController();
+    const options = { gameId: 'maimai', profile: 'thumbnail' as const };
+    const first = cacheCompressedRemoteImage('https://example.test/shared.png', options, controller.signal);
+    const second = cacheCompressedRemoteImage('https://example.test/shared.png', options);
+    await vi.waitFor(() => expect(mocks.manipulate).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await expect(first).resolves.toBeNull();
+    gate.resolve();
+    await expect(second).resolves.not.toBeNull();
+    expect(mocks.loadAsync).toHaveBeenCalledTimes(1);
+    expect(mocks.saveAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not recreate a cleared game cache when an old native transform finishes', async () => {
+    const gate = Promise.withResolvers<void>();
+    mocks.manipulate.mockImplementationOnce(() => ({
+      release: vi.fn(), renderAsync: async () => {
+        await gate.promise; return { release: vi.fn(), saveAsync: mocks.saveAsync };
+      },
+    }));
+    const pending = cacheCompressedRemoteImage('https://example.test/late.png', { gameId: 'maimai', profile: 'thumbnail' });
+    await vi.waitFor(() => expect(mocks.manipulate).toHaveBeenCalledTimes(1));
+    await clearGameRemoteImageCache('maimai');
+    gate.resolve();
+    await expect(pending).resolves.toBeNull();
+    expect(await measureGameRemoteImageCacheBytes('maimai')).toBe(0);
+    expect([...mocks.files.keys()].filter((path) => path.endsWith('.webp') || path.endsWith('.part'))).toEqual([]);
+  });
+
 });

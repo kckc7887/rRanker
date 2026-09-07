@@ -21,7 +21,33 @@ import {
   updateBestImageWebViewState,
   type BestImageWebViewState,
 } from './best-image-webview-state';
-import type { BestImageWebViewSource } from './prepare-best-image-webview-sources';
+import { inlineBestImageWebViewSources, prepareBestImageWebViewSources, type BestImageWebViewSource } from './prepare-best-image-webview-sources';
+import type { Directory } from 'expo-file-system';
+
+/** Own the generated HTML files; disposal always follows the corresponding source generation. */
+export function usePreparedBestImageSources(
+  htmlPages: readonly string[] | null,
+  directory?: Directory | null,
+  inline = false,
+  generation: unknown = htmlPages,
+) {
+  const pagesRef = useRef(htmlPages);
+  pagesRef.current = htmlPages;
+  const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setSources(null); setError(null);
+    const pages = pagesRef.current;
+    if (!pages || (!inline && directory === null)) return;
+    if (inline) { setSources(inlineBestImageWebViewSources(pages)); return; }
+    try {
+      const prepared = prepareBestImageWebViewSources(pages, directory ?? undefined);
+      setSources(prepared.sources);
+      return prepared.dispose;
+    } catch { setError('无法准备成绩图片，请重试。'); }
+  }, [directory, generation, inline]);
+  return { sources, setSources, error };
+}
 
 /** 导出渲染超时与原生视图稳定等待时间。 */
 const EXPORT_RENDER_TIMEOUT_MS = 30_000;

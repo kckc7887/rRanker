@@ -347,3 +347,5 @@ describe('filterChunithmBestImageBackgroundSongs', () => {
     expect(filterChunithmBestImageBackgroundSongs(songs, '')).toBe(songs);
   });
 });
+
+vi.mock('@/features/best-image/load-remote-image-data-uri', () => ({ loadImageDataUris: vi.fn(async () => ({})) }));

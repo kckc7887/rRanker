@@ -42,7 +42,7 @@ describe('best image jacket temporary loading', () => {
     mocks.base64.mockClear();
   });
 
-  it('loads jackets serially through temporary files and reports progress', async () => {
+  it('loads jackets concurrently through temporary files and reports progress', async () => {
     const progress: string[] = [];
     const result = await loadBestImageJackets(['11447', '11448'], (completed, total) => {
       progress.push(`${completed}/${total}`);
@@ -74,4 +74,14 @@ describe('best image jacket temporary loading', () => {
     expect(imageCachePathToFileUri('/data/user/0/app/cache/1449.png'))
       .toBe('file:///data/user/0/app/cache/1449.png');
   });
+});
+
+vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
+  const { File } = await import('expo-file-system');
+  return {
+  downloadChartResource: async (directory: unknown, fileName: string, url: string, signal?: AbortSignal) => {
+    if (signal?.aborted) throw new Error('cancelled');
+    return File.downloadFileAsync(url, new File(directory as never, fileName), { idempotent: true });
+  },
+  };
 });

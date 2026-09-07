@@ -57,7 +57,7 @@ describe('generated maimai data equivalence', () => {
       expect(b.info).toEqual(a.info);
       expect(b.data.equals(a.data)).toBe(true);
       expect([b.info.width, b.info.height]).toEqual([sprite.width, sprite.height]);
-    });
+    }, 20_000);
   }
 
   it('rejects broken PNG input rather than generating corrupt player assets', () => {

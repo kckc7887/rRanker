@@ -9,9 +9,17 @@ export function resourceWriteGeneration(scope: string): number {
 export function invalidateResourceWrites(scope: string): void {
   resourceWriteGenerations.set(scope, (resourceWriteGenerations.get(scope) ?? 0) + 1);
 }
-export function captureResourceWrites(scope: string): () => void {
+export function captureResourceWrites(scope: string, signal?: AbortSignal, accountId?: string): () => void {
   const generation = resourceWriteGeneration(scope);
-  return () => { if (resourceWriteGeneration(scope) !== generation) throw new Error('缓存请求已失效'); };
+  const accountScope = accountId === undefined ? undefined : 'account:' + accountId;
+  const accountGeneration = accountScope === undefined ? 0 : resourceWriteGeneration(accountScope);
+  return () => {
+    if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+    if (resourceWriteGeneration(scope) !== generation
+      || (accountScope !== undefined && resourceWriteGeneration(accountScope) !== accountGeneration)) {
+      throw new Error('缓存请求已失效');
+    }
+  };
 }
 
 /** 构造缓存快照的 source：kind/label 由各游戏传入，updatedAt 记录本次拉取时间。 */
@@ -36,6 +44,8 @@ export interface InflightGuard<K> {
   dedupe<T>(key: K, loader: () => Promise<T>, signal?: AbortSignal): Promise<T>;
   /** Each consumer cancels independently; only the last cancellation aborts the shared loader. */
   share<T>(key: K, loader: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T>;
+  /** Abort shared work and forget in-flight entries when the owning cache is cleared. */
+  clear(): void;
   /** 测试用：清空去重表。 */
   resetForTests(): void;
 }
@@ -56,12 +66,12 @@ export function createInflightGuard<K>(): InflightGuard<K> {
       return fresh;
     },
     share<T>(key: K, loader: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
-      if (signal?.aborted) return Promise.reject(signal.reason);
+      if (signal?.aborted) return Promise.reject(signal.reason ?? new Error('操作已取消'));
       let entry = shared.get(key);
       if (!entry || entry.controller.signal.aborted) {
         const controller = new AbortController();
         entry = { controller, users: 0, promise: Promise.resolve().then(() => {
-          if (controller.signal.aborted) throw controller.signal.reason;
+          if (controller.signal.aborted) throw controller.signal.reason ?? new Error('操作已取消');
           return loader(controller.signal);
         }) };
         shared.set(key, entry);
@@ -84,16 +94,17 @@ export function createInflightGuard<K>(): InflightGuard<K> {
           }
           return true;
         };
-        const cancel = () => { if (finish()) reject(signal?.reason); };
+        const cancel = () => { if (finish()) reject(signal?.reason ?? new Error('操作已取消')); };
         signal?.addEventListener('abort', cancel, { once: true });
         current.promise.then(value => { if (finish()) resolve(value as T); }, error => { if (finish()) reject(error); });
       });
     },
-    resetForTests(): void {
+    clear(): void {
       inflight.clear();
       for (const entry of shared.values()) entry.controller.abort();
       shared.clear();
     },
+    resetForTests(): void { this.clear(); },
   };
 }
 
