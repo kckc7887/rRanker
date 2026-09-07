@@ -1,5 +1,5 @@
 import { Animated } from 'react-native';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
@@ -158,10 +158,17 @@ jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
 
 describe('M4 score list cards', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     mockRecordsDxRatingState = 'live';
     mockActiveAccountId = 'maimai:diving-fish:demo';
     useRecordsFilter.getState().reset();
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    jest.clearAllTimers();
+    jest.useRealTimers();
   });
 
   it('shows the unbound empty state on best and records', async () => {
