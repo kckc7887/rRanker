@@ -106,21 +106,12 @@ const NOTE_BAR_COLORS: Readonly<Record<string, string>> = Object.freeze({
   flick: '#ff69b4',
 });
 
-/** WebCodecs ImageDecoder 最小类型（Android WebView 可用；iOS 无则降级静态贴图）。 */
-interface ImageDecoderConstructor {
-  new (init: { data: ArrayBuffer; type: string }): {
-    tracks: { ready: Promise<{ selectedTrack: { frameCount: number } }> };
-    decode: (options: { frameIndex: number }) => Promise<{ image: { close: () => void }; duration: number }>;
-    close: () => void;
-  };
-}
-
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
 }
 
-function $(id: string): HTMLElement {
-  const el = document.getElementById(id);
+function $<T extends Element = HTMLElement>(id: string): T {
+  const el = document.querySelector<T>(`#${id}`);
   if (!el) throw new Error(`Missing element #${id}`);
   return el;
 }
@@ -345,7 +336,7 @@ function start(): void {
     stage: $('stage'),
     canvas: $('chart-canvas') as HTMLCanvasElement,
     play: $('play-button') as HTMLButtonElement,
-    playIcon: $('play-icon') as SVGElement,
+    playIcon: $<SVGElement>('play-icon'),
     btnRestart: $('btn-restart') as HTMLButtonElement,
     btnStepBack: $('btn-step-back') as HTMLButtonElement,
     btnStepForward: $('btn-step-forward') as HTMLButtonElement,
@@ -434,7 +425,7 @@ function start(): void {
       if (line.gifEvents.length === 0 || gifs.has(line.texture)) continue;
       jobs.push((async () => {
         try {
-          const imageDecoderCtor = (globalThis as { ImageDecoder?: ImageDecoderConstructor }).ImageDecoder;
+          const imageDecoderCtor = globalThis.ImageDecoder;
           if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
           const response = await fetch(`${basePath}${line.texture}`, { signal });
           if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
@@ -442,16 +433,25 @@ function start(): void {
           const lower = line.texture.toLowerCase();
           const mimeType = lower.endsWith('.apng') ? 'image/apng' : 'image/gif';
           const decoder = new imageDecoderCtor({ data: bytes, type: mimeType });
-          const { selectedTrack } = await decoder.tracks.ready;
           const frames: ImageBitmap[] = [];
           const durationsMs: number[] = [];
-          for (let index = 0; index < selectedTrack.frameCount; index += 1) {
-            const { image, duration } = await decoder.decode({ frameIndex: index });
-            frames.push(await createImageBitmap(image as ImageBitmapSource));
-            durationsMs.push(duration / 1000);
-            image.close();
+          try {
+            await decoder.tracks.ready;
+            const track = decoder.tracks.selectedTrack;
+            if (!track) throw new Error('GIF 没有可用图像轨道');
+            for (let index = 0; index < track.frameCount; index += 1) {
+              const { image } = await decoder.decode({ frameIndex: index });
+              try {
+                frames.push(await createImageBitmap(image));
+                durationsMs.push((image.duration ?? 100_000) / 1000);
+              } finally { image.close(); }
+            }
+          } catch (error) {
+            frames.forEach(frame => frame.close());
+            throw error;
+          } finally {
+            decoder.close();
           }
-          decoder.close();
           const cumulativeMs: number[] = [];
           let totalMs = 0;
           for (const duration of durationsMs) {
@@ -685,14 +685,14 @@ function start(): void {
   }
 
   async function loadNoteAssets(signal: AbortSignal): Promise<NoteAssets> {
-    const entries = await Promise.all([
+    const entries = await Promise.all(([
       ['normal', 'tap', 'Tap2.png'], ['normal', 'drag', 'Drag.png'], ['normal', 'flick', 'Flick2.png'], ['normal', 'hold', 'Hold2.png'],
       ['multi', 'tap', 'Tap2HL.png'], ['multi', 'drag', 'DragHL.png'], ['multi', 'flick', 'Flick2HL.png'], ['multi', 'hold', 'Hold2HL.png'],
       ['shared', 'fx', 'hit.png'],
-    ].map(async ([group, kind, file]) => [group, kind, await loadImage(`${SKIN_BASE}${file}`, signal)] as const));
+    ] as const).map(async ([group, kind, file]) => [group, kind, await loadImage(`${SKIN_BASE}${file}`, signal)] as const));
     return entries.reduce<NoteAssets>((assets, [group, kind, image]) => {
       if (group === 'shared') assets.fx = image;
-      else assets[group][kind] = image;
+      else if (kind !== 'fx') assets[group][kind] = image;
       return assets;
     }, { normal: {} as NoteAssets['normal'], multi: {} as NoteAssets['multi'], fx: null as unknown as HTMLImageElement });
   }

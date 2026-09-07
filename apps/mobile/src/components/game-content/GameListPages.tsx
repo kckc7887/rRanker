@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   FlatList,
   SectionList,
@@ -21,18 +21,42 @@ type ViewabilityChange<TItem> = Parameters<
   NonNullable<FlatListProps<TItem>['onViewableItemsChanged']>
 >[0];
 
-function useRemoteImageViewability<TItem>(
-  onViewableItemsChanged: FlatListProps<TItem>['onViewableItemsChanged'],
-) {
-  const [visibleItems, setVisibleItems] = useState<ReadonlySet<TItem>>(() => new Set());
+function createViewabilityStore<TItem>() {
+  let visible = new Set<TItem>();
+  const listeners = new Map<TItem, Set<() => void>>();
+  return {
+    has: (item: TItem) => visible.has(item),
+    subscribe(item: TItem, listener: () => void) {
+      let group = listeners.get(item);
+      if (!group) listeners.set(item, group = new Set());
+      group.add(listener);
+      return () => { group.delete(listener); if (!group.size) listeners.delete(item); };
+    },
+    update(next: Set<TItem>) {
+      const previous = visible;
+      visible = next;
+      for (const item of previous) if (!next.has(item)) listeners.get(item)?.forEach((notify) => notify());
+      for (const item of next) if (!previous.has(item)) listeners.get(item)?.forEach((notify) => notify());
+    },
+  };
+}
+
+function VisibleItemScope<TItem>({ store, item, children }: {
+  store: ReturnType<typeof createViewabilityStore<TItem>>; item: TItem; children: ReactNode;
+}) {
+  const subscribe = useCallback((notify: () => void) => store.subscribe(item, notify), [store, item]);
+  const snapshot = useCallback(() => store.has(item), [store, item]);
+  const visible = useSyncExternalStore(subscribe, snapshot, snapshot);
+  return <RemoteImagePersistenceScope enabled={visible}>{children}</RemoteImagePersistenceScope>;
+}
+
+function useRemoteImageViewability<TItem>(onViewableItemsChanged: FlatListProps<TItem>['onViewableItemsChanged']) {
+  const [store] = useState(() => createViewabilityStore<TItem>());
   const handleViewableItemsChanged = useCallback((info: ViewabilityChange<TItem>) => {
-    const next = new Set(info.viewableItems.map((token) => token.item));
-    setVisibleItems((current) => (
-      current.size === next.size && [...current].every((item) => next.has(item)) ? current : next
-    ));
+    store.update(new Set(info.viewableItems.map((token) => token.item)));
     onViewableItemsChanged?.(info);
-  }, [onViewableItemsChanged]);
-  return { visibleItems, handleViewableItemsChanged };
+  }, [onViewableItemsChanged, store]);
+  return { store, handleViewableItemsChanged };
 }
 
 export function RemoteImageFlatList<TItem>({
@@ -42,16 +66,15 @@ export function RemoteImageFlatList<TItem>({
   viewabilityConfig,
   ...props
 }: FlatListProps<TItem>) {
-  const { visibleItems, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged);
-  const scopedExtraData = useMemo(() => [extraData, visibleItems] as const, [extraData, visibleItems]);
+  const { store, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged);
   const scopedRenderItem = useCallback<NonNullable<FlatListProps<TItem>['renderItem']>>((info) => {
     const content = renderItem?.(info) ?? null;
     return (
-      <RemoteImagePersistenceScope enabled={visibleItems.has(info.item)}>
+      <VisibleItemScope store={store} item={info.item}>
         {content}
-      </RemoteImagePersistenceScope>
+      </VisibleItemScope>
     );
-  }, [renderItem, visibleItems]);
+  }, [renderItem, store]);
   const mergedViewabilityConfig = useMemo(() => ({
     ...viewabilityConfig,
     ...REMOTE_IMAGE_VIEWABILITY_CONFIG,
@@ -61,7 +84,7 @@ export function RemoteImageFlatList<TItem>({
     <FlatList<TItem>
       {...props}
       {...TAB_LIST_CACHE_PROPS}
-      extraData={scopedExtraData}
+      extraData={extraData}
       onViewableItemsChanged={handleViewableItemsChanged}
       renderItem={scopedRenderItem}
       viewabilityConfig={mergedViewabilityConfig}
@@ -79,16 +102,15 @@ function RemoteImageSectionList<
   viewabilityConfig,
   ...props
 }: SectionListProps<TItem, TSection>) {
-  const { visibleItems, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged);
-  const scopedExtraData = useMemo(() => [extraData, visibleItems] as const, [extraData, visibleItems]);
+  const { store, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged);
   const scopedRenderItem = useCallback<NonNullable<SectionListProps<TItem, TSection>['renderItem']>>((info) => {
     const content = renderItem?.(info) ?? null;
     return (
-      <RemoteImagePersistenceScope enabled={visibleItems.has(info.item)}>
+      <VisibleItemScope store={store} item={info.item}>
         {content}
-      </RemoteImagePersistenceScope>
+      </VisibleItemScope>
     );
-  }, [renderItem, visibleItems]);
+  }, [renderItem, store]);
   const mergedViewabilityConfig = useMemo(() => ({
     ...viewabilityConfig,
     ...REMOTE_IMAGE_VIEWABILITY_CONFIG,
@@ -98,7 +120,7 @@ function RemoteImageSectionList<
     <SectionList<TItem, TSection>
       {...props}
       {...TAB_LIST_CACHE_PROPS}
-      extraData={scopedExtraData}
+      extraData={extraData}
       onViewableItemsChanged={handleViewableItemsChanged}
       renderItem={scopedRenderItem}
       viewabilityConfig={mergedViewabilityConfig}

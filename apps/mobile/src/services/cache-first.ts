@@ -47,13 +47,18 @@ export async function cacheFirstLoad<T extends Sourced>(options: {
   onFresh: (fresh: T) => void;
   markStale?: (value: T) => T;
   signal?: AbortSignal;
+  assertCurrent?: () => void;
 }): Promise<T> {
+  const assertCurrent = options.assertCurrent ?? (() => undefined);
+  assertCurrent();
   const signal = options.signal ?? getForegroundAbortSignal();
   if (signal.aborted) throw new Error('cache first load aborted');
   const cached = await options.loadCached();
   if (signal.aborted) throw new Error('cache first load aborted');
+  assertCurrent();
   if (cached) {
     void options.loadFresh(signal).then((fresh) => {
+      assertCurrent();
       if (!signal.aborted && !isCacheFallback(fresh)) options.onFresh(fresh);
     }).catch(() => undefined);
     const mark = options.markStale ?? ((value: T) => staleCached(value));
@@ -61,5 +66,6 @@ export async function cacheFirstLoad<T extends Sourced>(options: {
   }
   const fresh = await options.loadFresh(signal);
   if (signal.aborted) throw new Error('cache first load aborted');
+  assertCurrent();
   return fresh;
 }

@@ -20,10 +20,14 @@ async function requestAverages(
   records: readonly ScoreRecord[],
   minRks: number,
   maxRks: number,
+  signal?: AbortSignal,
 ): Promise<AverageResponse> {
   const songIds = [...new Set(records.map((record) => apiSongId(record.songId)))];
   if (!songIds.length) return {};
+  if (signal?.aborted) return {};
   const controller = new AbortController();
+  const cancel = () => controller.abort();
+  signal?.addEventListener('abort', cancel, { once: true });
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
     const response = await fetch(`${PHI_PLUGIN_API}/get/scoreList/allAccAvg`, {
@@ -38,6 +42,7 @@ async function requestAverages(
     return json.data;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', cancel);
   }
 }
 
@@ -55,12 +60,13 @@ function averageFor(response: AverageResponse, record: ScoreRecord): number | nu
 export async function loadPhigrosAccAverages(
   records: readonly ScoreRecord[],
   playerRks: number,
+  signal?: AbortSignal,
 ): Promise<Record<string, PhigrosAccAverage>> {
   if (!records.length || !Number.isFinite(playerRks)) return {};
   try {
     const baseMin = Math.floor((playerRks - 0.05) / 0.05) * 0.05;
     const baseMax = Math.floor((playerRks + 0.05) / 0.05) * 0.05;
-    const first = await requestAverages(records, baseMin, baseMax);
+    const first = await requestAverages(records, baseMin, baseMax, signal);
     const result: Record<string, PhigrosAccAverage> = {};
     let allHigher = true;
     for (const [index, record] of records.entries()) {
@@ -75,7 +81,7 @@ export async function loadPhigrosAccAverages(
 
     const higherMin = (Math.floor((playerRks - 0.05) / 0.05) + 2) * 0.05;
     const higherMax = (Math.ceil((playerRks + 0.05) / 0.05) + 2) * 0.05;
-    const second = await requestAverages(records, higherMin, higherMax);
+    const second = await requestAverages(records, higherMin, higherMax, signal);
     const elevated: Record<string, PhigrosAccAverage> = {};
     for (const record of records) {
       const value = averageFor(second, record);

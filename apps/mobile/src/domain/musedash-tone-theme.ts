@@ -5,7 +5,7 @@
  * 成就 AP 金、FC 粉；排名 #1 用彩虹渐变（组件层 LayeredGradientBadge），<10 金、<50 蓝、<100 绿。
  * 金色/银色徽章（评价 S 金档、AP、排名 <10）由组件层渲染渐变胶囊（金色复用共享 BADGE_GOLD_* 渐变 + 深字）。
  */
-import { BADGE_GOLD_BORDER_COLORS, BADGE_GOLD_FILL_COLORS } from '@/features/best-image/best-image-badge-theme';
+import { BADGE_GOLD_BORDER_COLORS, BADGE_GOLD_FILL_COLORS } from '@/domain/badge-theme';
 
 export const MUSE_DASH_TONE_COLORS: Readonly<Record<string, string>> = {
   'acc-gold': '#D69B24',

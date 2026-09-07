@@ -1,3 +1,4 @@
+import { createInflightGuard } from '@/services/snapshot-cache-utils';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File } from 'expo-file-system';
 import { Image, type ImageRef, type ImageSource } from 'expo-image';
@@ -92,7 +93,8 @@ type TransformWaiter = {
   onAbort?: () => void;
 };
 const transformWaiters: TransformWaiter[] = [];
-const inflight = new Map<string, Promise<CompressedRemoteImageResult | null>>();
+const inflight = createInflightGuard<string>();
+let temporarySequence = 0;
 
 export function supportsCompressedRemoteImageCache(): boolean {
   const imageClass = Image as typeof Image | undefined;
@@ -471,7 +473,8 @@ async function createCompressed(
 ): Promise<CompressedRemoteImageResult | null> {
   const candidates = PROFILE_OPTIONS[options.profile];
   const root = ensureCacheRoot();
-  const sourceFile = new File(root, `${cacheKey}.source.part`);
+  const sequence = ++temporarySequence;
+  const sourceFile = new File(root, `${cacheKey}.${sequence}.source.part`);
   let loaded: Awaited<ReturnType<typeof Image.loadAsync>> | null = null;
   let context: ReturnType<typeof ImageManipulator.manipulate> | null = null;
   let rendered: Awaited<ReturnType<ReturnType<typeof ImageManipulator.manipulate>['renderAsync']>> | null = null;
@@ -523,15 +526,16 @@ async function createCompressed(
       if (selected) break;
     }
     if (!selected || !current()) return null;
+    const state = await manifest();
+    if (!current()) return null;
     const finalFile = entryFile(root, cacheKey);
-    part = new File(root, `${cacheKey}.part`);
+    part = new File(root, `${cacheKey}.${sequence}.part`);
     if (part.exists) part.delete();
     selected.move(part);
     selected = null;
     if (finalFile.exists) finalFile.delete();
     part.move(finalFile);
     part = null;
-    const state = await manifest();
     const now = Date.now();
     state.entries.set(cacheKey, {
       bytes: finalFile.size ?? REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES,
@@ -541,7 +545,7 @@ async function createCompressed(
     state.gameLastUsed.set(options.gameId, Math.max(state.gameLastUsed.get(options.gameId) ?? 0, now));
     await pruneRemoteImageCache();
     queueManifestWrite();
-    if (!finalFile.exists) return null;
+    if (!current() || !finalFile.exists) return null;
     return { cacheKey, fileUri: finalFile.uri, source: { uri: finalFile.uri } };
   } finally {
     if (sourceFile.exists) sourceFile.delete();
@@ -570,26 +574,23 @@ export async function cacheCompressedRemoteImage(
 ): Promise<CompressedRemoteImageResult | null> {
   const normalized = normalizeRemoteImageSource(source);
   if (!normalized || !options.gameId || signal?.aborted || !supportsCompressedRemoteImageCache()) return null;
-  const cacheKey = await remoteImageCacheKey(normalized, options);
-  const cached = await findCached(cacheKey);
-  if (cached || signal?.aborted) return cached;
-  const existing = inflight.get(cacheKey);
-  if (existing) return existing;
   const generation = cacheGeneration;
   const gameGeneration = gameGenerations.get(options.gameId) ?? 0;
-  const pending = withTransformSlot(() => createCompressed(
-    normalized,
-    options,
-    cacheKey,
-    generation,
-    gameGeneration,
-    signal,
-  ), signal);
-  inflight.set(cacheKey, pending);
-  void pending.finally(() => {
-    if (inflight.get(cacheKey) === pending) inflight.delete(cacheKey);
-  }).catch(() => undefined);
-  return pending;
+  const current = () => !signal?.aborted && generation === cacheGeneration
+    && gameGeneration === (gameGenerations.get(options.gameId) ?? 0);
+  const cacheKey = await remoteImageCacheKey(normalized, options);
+  if (!current()) return null;
+  const cached = await findCached(cacheKey);
+  if (!current()) return null;
+  if (cached) return cached;
+  try {
+    return await inflight.share(`${cacheKey}:${generation}:${gameGeneration}`, (sharedSignal) => withTransformSlot(() => createCompressed(
+      normalized, options, cacheKey, generation, gameGeneration, sharedSignal,
+    ), sharedSignal), signal);
+  } catch (error) {
+    if (!current()) return null;
+    throw error;
+  }
 }
 
 export async function invalidateCompressedRemoteImage(cacheKey: string): Promise<void> {

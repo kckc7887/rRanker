@@ -1,5 +1,6 @@
 import { sha256 } from '@/utils/resource-integrity';
 import { Directory, File, Paths } from 'expo-file-system';
+import { captureResourceWrites, createInflightGuard, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
 export { sha256, bytesToHex } from '@/utils/resource-integrity';
 
 /** 字体缓存清单条目的公共字段：缓存校验与 inflight 防重只依赖这些稳定语义。 */
@@ -52,11 +53,16 @@ export function clearFontCacheDirectory(assetDirectoryName: string): void {
  * downloadFont 钩子下载，各游戏的下载/解压/校验差异由钩子表达；同名条目并发请求
  * 共享同一个 Promise，结束后自动清理。
  */
+let fontDownloadSequence = 0;
+
 export function createFontCacheGuard<Entry extends FontCacheManifestEntry>(options: {
+  scope: string;
   downloadFont: (
     entry: Entry,
     fontDirectory: Directory,
     temporaryDirectory: Directory,
+    signal: AbortSignal,
+    assertCurrent: () => void,
   ) => Promise<File>;
 }): {
   ensureFont: (
@@ -64,9 +70,11 @@ export function createFontCacheGuard<Entry extends FontCacheManifestEntry>(optio
     fontDirectory: Directory,
     temporaryDirectory: Directory,
     onDownloadStart: () => void,
+    signal?: AbortSignal,
   ) => Promise<File>;
 } {
-  const inFlightFonts = new Map<string, Promise<File>>();
+  const inFlightFonts = createInflightGuard<string>();
+
 
   async function isValidFont(file: File, entry: Entry): Promise<boolean> {
     if (!file.exists || file.size !== entry.fontBytes) return false;
@@ -78,17 +86,23 @@ export function createFontCacheGuard<Entry extends FontCacheManifestEntry>(optio
     fontDirectory: Directory,
     temporaryDirectory: Directory,
     onDownloadStart: () => void,
+    signal?: AbortSignal,
   ): Promise<File> {
-    const file = new File(fontDirectory, entry.cssFileName);
-    if (await isValidFont(file, entry)) return file;
-    if (file.exists) file.delete();
-    const existing = inFlightFonts.get(entry.name);
-    if (existing) return existing;
-    onDownloadStart();
-    const pending = options.downloadFont(entry, fontDirectory, temporaryDirectory)
-      .finally(() => inFlightFonts.delete(entry.name));
-    inFlightFonts.set(entry.name, pending);
-    return pending;
+    const assertGeneration = captureResourceWrites(options.scope);
+    const key = `${fontDirectory.uri}:${entry.fontSha256}:${resourceWriteGeneration(options.scope)}`;
+    return inFlightFonts.share(key, async (requestSignal) => {
+      assertGeneration();
+      const assertCurrent = captureResourceWrites(options.scope, requestSignal);
+      const file = new File(fontDirectory, entry.cssFileName);
+      const valid = await isValidFont(file, entry);
+      assertCurrent();
+      if (valid) return file;
+      onDownloadStart();
+      const temporary = new Directory(Paths.cache, `rranker-font-${Date.now()}-${++fontDownloadSequence}`);
+      temporary.create({ intermediates: true, idempotent: true });
+      try { return await options.downloadFont(entry, fontDirectory, temporary, requestSignal, assertCurrent); }
+      finally { if (temporary.exists) temporary.delete(); }
+    }, signal);
   }
 
   return { ensureFont };

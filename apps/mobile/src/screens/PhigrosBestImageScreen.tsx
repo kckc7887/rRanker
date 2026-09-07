@@ -19,10 +19,7 @@ import {
   BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
-import { useBestImageScreenController } from '@/features/best-image/use-best-image-screen-controller';
-import {
-  prepareBestImageWebViewSources, type BestImageWebViewSource,
-} from '@/features/best-image/prepare-best-image-webview-sources';
+import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
 import { buildPhigrosBestImageHtml } from '@/features/phigros-best-image/build-phigros-best-image-html';
 import { buildPhigrosBestImageAppHtml } from '@/features/phigros-best-image/build-phigros-best-image-app-html';
 import { collectPhigrosBestImageVisibleStrings } from '@/features/phigros-best-image/collect-phigros-best-image-visible-strings';
@@ -159,7 +156,6 @@ export function PhigrosBestImageScreen() {
     phase: 'checking', completed: 0, total: 2, currentFont: null,
   });
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
-  const [sources, setSources] = useState<BestImageWebViewSource[] | null>(null);
   const illustrationCacheRef = useRef<Record<string, string | null>>({});
   const neededFontEntriesRef = useRef<ReturnType<typeof resolveNeededPhigrosFonts>>([]);
   const styleAssetKeyRef = useRef<string | null>(null);
@@ -246,6 +242,7 @@ export function PhigrosBestImageScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     if (!lifecycle.foregroundReady) return;
     setTemplateAssetError(null);
     setFontsReady(false);
@@ -253,7 +250,7 @@ export function PhigrosBestImageScreen() {
     void (async () => {
       const prepared = await preparePhigrosFonts((progress) => {
         if (!cancelled) setFontProgress(progress);
-      }, { neededNames });
+      }, { neededNames, signal: controller.signal });
       const fullResult = prepared.fullReady.then(
         () => ({ ok: true as const }),
         (error: unknown) => ({ ok: false as const, error }),
@@ -280,7 +277,7 @@ export function PhigrosBestImageScreen() {
     })().catch((error) => {
       if (!cancelled) setTemplateAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [fontAttempt, lifecycle.foregroundGeneration, lifecycle.foregroundReady, neededFontKey, provider]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
   const selectedSongKey = selectedSongIds.join('|');
@@ -295,12 +292,14 @@ export function PhigrosBestImageScreen() {
   }, [payload?.playerScore.value, sections, type]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
     let cancelled = false;
     if (!payload || !lifecycle.foregroundReady) return;
-    void loadPhigrosAccAverages(averageRecords, averageReferenceRks).then((averages) => {
+    void loadPhigrosAccAverages(averageRecords, averageReferenceRks, signal).then((averages) => {
       if (!cancelled) setAccAverages(averages);
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [averageRecords, averageReferenceRks, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
 
   const selectStyleKey = (kind: PhigrosBestImagePickerKind, choice: PhigrosImageStyleChoice): string | null => {
@@ -319,6 +318,8 @@ export function PhigrosBestImageScreen() {
   ].join('|');
 
   useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
     let cancelled = false;
     if (!provider || !lifecycle.foregroundReady) return;
     const uniqueIds = [...new Set(selectedSongIds)];
@@ -331,31 +332,33 @@ export function PhigrosBestImageScreen() {
     if (!missing.length) return;
     void loadPhigrosIllustrations(missing, (id) => provider.getIllustrationLowresUrl(id), (done) => {
       if (!cancelled) setAssetProgress({ done: uniqueIds.length - missing.length + done, total: uniqueIds.length });
-    }, illustrationStage).then((loaded) => {
+    }, illustrationStage, signal).then((loaded) => {
       if (cancelled) return;
       const merged = Object.fromEntries(uniqueIds.map((id) => [id, loaded[id] ?? illustrationCacheRef.current[id] ?? null]));
       illustrationCacheRef.current = merged;
       setIllustrations(merged);
       setAssetProgress({ done: uniqueIds.length, total: uniqueIds.length });
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
     // selectedSongKey 是 selectedSongIds.join('|') 的派生签名：ids 内容任何变化必然
     // ids 与 key 来自同一次渲染，避免写入错误的素材会话。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [illustrationStage, lifecycle.foregroundGeneration, lifecycle.foregroundReady, provider, selectedSongKey]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
     let cancelled = false;
     if (!provider || !lifecycle.foregroundReady) return;
     if (styleAssetKeyRef.current === styleAssetKey) return;
     void Promise.all([
       stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl, illustrationStage)
-        ?? await loadRemoteImageDataUri(payload?.avatarUrl, illustrationStage)
+        await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl, illustrationStage, signal)
+        ?? await loadRemoteImageDataUri(payload?.avatarUrl, illustrationStage, signal)
       ))(),
       stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageDataUri(backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null, illustrationStage)
-        ?? await loadRemoteImageDataUri(backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null, illustrationStage)
+        await loadRemoteImageDataUri(backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null, illustrationStage, signal)
+        ?? await loadRemoteImageDataUri(backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null, illustrationStage, signal)
       ))(),
     ]).then(([nextAvatar, nextBackground]) => {
       if (cancelled) return;
@@ -363,7 +366,7 @@ export function PhigrosBestImageScreen() {
       setAvatarData(nextAvatar ?? null);
       setBackgroundData(nextBackground ?? null);
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [
     avatarKey, backgroundFallbackSongId, backgroundKey, illustrationStage, lifecycle.foregroundGeneration,
     lifecycle.foregroundReady, payload?.avatarUrl, provider,
@@ -386,16 +389,11 @@ export function PhigrosBestImageScreen() {
       : buildPhigrosBestImageHtml(input);
   }) : null, [accAverages, avatarData, backgroundData, illustrations, pages, payload, stylePrefs.ratingStyle, templateAssets, titles, type, width]);
 
+  const { sources, setSources, error: sourceError } = usePreparedBestImageSources(htmlPages, fontDirectory);
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
-    if (!htmlPages || !fontDirectory) {
-      setSources(null);
-      return;
-    }
-    const prepared = prepareBestImageWebViewSources(htmlPages, fontDirectory);
-    setSources(prepared.sources);
-    return prepared.dispose;
   }, [fontDirectory, htmlPages, setPageHeights, setPageIndex, setPreviewStates]);
+  useEffect(() => { if (sourceError) setTemplateAssetError(sourceError); }, [sourceError]);
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);

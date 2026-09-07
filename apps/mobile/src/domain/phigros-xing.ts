@@ -67,3 +67,5 @@ export function phigrosXingLabel(kind: PhigrosXingKind): string {
 export function phigrosChartNoteKey(songId: string, levelIndex: number): string {
   return `${songId}:${levelIndex}`;
 }
+
+export const PHIGROS_XING_COLORS = { bg: '#FFF7ED', fg: '#EA580C' } as const;

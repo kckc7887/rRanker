@@ -36,6 +36,39 @@ function thumbnailRepository() {
 }
 
 describe('persistBoundAccountThumbnail', () => {
+  it('does not notify store subscribers when account display fields are equal', () => {
+    const account = createMaxedMaimaiTestAccount();
+    useSession.setState({ boundAccounts: [account] });
+    const changed = vi.fn();
+    const unsubscribe = useSession.subscribe(changed);
+    const before = useSession.getState().boundAccounts;
+    useSession.getState().updateBoundAccountScore(account.id, account.scoreDisplay, account.displayName);
+    expect(useSession.getState().boundAccounts).toBe(before);
+    expect(changed).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+  it('coalesces concurrent patches, skips equal writes and preserves nullable fields', async () => {
+    const repo = thumbnailRepository();
+    await Promise.all([
+      persistBoundAccountThumbnail('maimai:coalesce', { scoreDisplay: '15000' }, repo),
+      persistBoundAccountThumbnail('maimai:coalesce', { ratingPossession: null }, repo),
+      persistBoundAccountThumbnail('maimai:coalesce', { scoreDisplay: '15000', challengeModeRank: null }, repo),
+    ]);
+    await persistBoundAccountThumbnail('maimai:coalesce', { scoreDisplay: '15000', ratingPossession: undefined }, repo);
+    expect(repo.getResource).toHaveBeenCalledTimes(1);
+    expect(repo.saveResource).toHaveBeenCalledTimes(1);
+    expect(repo.saveResource.mock.calls[0][3]).toEqual({ scoreDisplay: '15000', ratingPossession: null, challengeModeRank: null });
+  });
+
+  it('retries a failed write with the previously unsaved fields', async () => {
+    const repo = thumbnailRepository();
+    repo.saveResource.mockRejectedValueOnce(new Error('disk failure'));
+    await expect(persistBoundAccountThumbnail('maimai:retry', { scoreDisplay: '15000' }, repo)).rejects.toThrow();
+    await persistBoundAccountThumbnail('maimai:retry', { challengeModeRank: 5 }, repo);
+    expect(repo.saveResource).toHaveBeenCalledTimes(2);
+    expect(repo.saveResource.mock.calls[1][3]).toEqual({ scoreDisplay: '15000', challengeModeRank: 5 });
+  });
+
   it('writes the provided display fields under the account thumbnail key', async () => {
     const repo = thumbnailRepository();
 

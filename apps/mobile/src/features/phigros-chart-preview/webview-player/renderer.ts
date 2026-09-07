@@ -10,7 +10,7 @@
 import { findEventIndex, type PgrChart, type PgrHeightEvent, type PgrLine, type PgrMoveEvent, type PgrNote, type PgrTweenEvent } from './pgr-core';
 
 const NOTE_WIDTH_RATIO_BASE = 0.13175016;
-const HOLD_ATLAS = Object.freeze({ normal: [50, 50], multi: [96, 97] });
+const HOLD_ATLAS = Object.freeze({ normal: [50, 50], multi: [96, 97] } as const);
 const HOLD_PARTICLE_INTERVAL = 0.15;
 const HIT_FX_DURATION = 0.5;
 const HIT_FX_COLUMNS = 6;

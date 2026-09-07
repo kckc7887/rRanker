@@ -269,7 +269,7 @@ describe('best image preview', () => {
     expect(screen.queryByTestId('best-image-webview-status')).toBeNull();
 
     await act(async () => {
-      fireEvent(preview, 'message', {
+      await fireEvent(preview, 'message', {
         nativeEvent: {
           data: JSON.stringify({
             type: 'best-image-runtime',
@@ -278,14 +278,14 @@ describe('best image preview', () => {
           }),
         },
       });
-      fireEvent(preview, 'message', {
+      await fireEvent(preview, 'message', {
         nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1440 }) },
       });
     });
 
     expect(screen.queryByTestId('best-image-webview-status')).toBeNull();
     await act(async () => {
-      fireEvent(preview, 'renderProcessGone', { nativeEvent: { didCrash: true } });
+      await fireEvent(preview, 'renderProcessGone', { nativeEvent: { didCrash: true } });
     });
     expect(screen.queryByTestId('best-image-webview-status')).toBeNull();
   });
@@ -295,30 +295,30 @@ describe('best image preview', () => {
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
     expect(screen.getByText('样式选择')).toBeTruthy();
 
-    fireEvent.press(screen.getByLabelText('选择头像'));
+    await fireEvent.press(screen.getByLabelText('选择头像'));
     await waitFor(() => expect(screen.getByLabelText('示例头像，#9001')).toBeTruthy());
-    fireEvent.press(screen.getByLabelText('示例头像，#9001'));
+    await fireEvent.press(screen.getByLabelText('示例头像，#9001'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
       .toContain('https://assets2.lxns.net/maimai/icon/9001.png'));
 
-    fireEvent.press(screen.getByLabelText('选择姓名框'));
+    await fireEvent.press(screen.getByLabelText('选择姓名框'));
     await waitFor(() => expect(screen.getByLabelText('示例姓名框，#9002')).toBeTruthy());
-    fireEvent.press(screen.getByLabelText('示例姓名框，#9002'));
+    await fireEvent.press(screen.getByLabelText('示例姓名框，#9002'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
       .toContain('https://assets2.lxns.net/maimai/plate/9002.png'));
 
     await fireEvent.press(screen.getByLabelText('选择称号'));
     await waitFor(() => expect(screen.getByLabelText('示例称号，#9003')).toBeTruthy());
-    fireEvent.press(screen.getByLabelText('示例称号，#9003'));
+    await fireEvent.press(screen.getByLabelText('示例称号，#9003'));
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
       expect(html).toContain('示例称号');
       expect(html).toContain('src="ui/Shougou_Gold.png"');
     });
 
-    fireEvent.press(screen.getByLabelText('选择背景'));
+    await fireEvent.press(screen.getByLabelText('选择背景'));
     await waitFor(() => expect(screen.getByLabelText('示例背景，#9004')).toBeTruthy());
-    fireEvent.press(screen.getByLabelText('示例背景，#9004'));
+    await fireEvent.press(screen.getByLabelText('示例背景，#9004'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
       .toContain('https://assets2.lxns.net/maimai/frame/9004.png'));
   });
@@ -327,7 +327,7 @@ describe('best image preview', () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
 
-    fireEvent.press(screen.getByLabelText('选择称号'));
+    await fireEvent.press(screen.getByLabelText('选择称号'));
     await waitFor(() => expect(screen.getByLabelText('筛选称号等级 金')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('筛选称号等级 金'));
     await waitFor(() => {
@@ -356,7 +356,7 @@ describe('best image preview', () => {
   it('keeps the last valid custom preview and disables export for invalid input', async () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy(), { timeout: 3000 });
-    fireEvent.press(screen.getByLabelText('自定义'));
+    await fireEvent.press(screen.getByLabelText('自定义'));
     await waitFor(() => expect(screen.getByLabelText('自定义数量')).toBeTruthy());
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy(), { timeout: 3000 });
     const validHtml = screen.getByTestId('best-image-html-preview-0').props.source.html;
@@ -377,10 +377,10 @@ describe('best image preview', () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy(), { timeout: 3000 });
 
-    await act(async () => { fireEvent.press(screen.getByLabelText('导出成绩图片')); });
+    await act(async () => { await fireEvent.press(screen.getByLabelText('导出成绩图片')); });
     const renderer = await screen.findByLabelText('导出渲染 第1页');
     await act(async () => {
-      fireEvent(renderer, 'message', {
+      await fireEvent(renderer, 'message', {
         nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1440 }) },
       });
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -426,7 +426,7 @@ describe('best image preview', () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByText('无法准备成绩图片，请重试。')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
-    fireEvent.press(screen.getByLabelText('重试字体下载'));
+    await fireEvent.press(screen.getByLabelText('重试字体下载'));
     await waitFor(() => expect(prepareMaimaiFonts).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
   });

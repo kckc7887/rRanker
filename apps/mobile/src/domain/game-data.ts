@@ -1,3 +1,7 @@
+import { buildLxnsIconUrl } from './account-avatar';
+import { buildChunithmMapIconUrl } from './chunithm-personal';
+import { resolveTufAvatarUrl } from './tuf';
+import { majdataAvatarUrl } from './majdata';
 import type { GameId, ProviderId } from './game-bind-options';
 import type { GameProfile } from './game-profile';
 import type { DataSource, Player, ScoreRecord, ScoreSnapshot } from './models';
@@ -184,4 +188,32 @@ export function osuPayloadFromSnapshot(
     },
     source: snapshot.source,
   };
+}
+
+/** Build account display metadata without network or persistence side effects. */
+export function gameAccountMetadata(bundle: GameDataBundle): ({
+  scoreDisplay: string; displayName?: string; avatarUrl?: string | null;
+  challengeModeRank?: number | null; ratingPossession?: string | null;
+  storedDisplayName?: string;
+} | null) {
+  const { payload: p, providerId, profile } = bundle;
+  switch (p.kind) {
+    case 'maimai': return { scoreDisplay: formatPlayerScore(p.playerScore.value, profile.ratingDigits),
+      displayName: p.player.displayName,
+      avatarUrl: providerId === 'lxns' ? buildLxnsIconUrl(p.player.presentation?.iconId) : undefined };
+    case 'phigros': return { scoreDisplay: p.playerScore.display, displayName: p.player.displayName,
+      avatarUrl: p.avatarUrl ?? undefined, challengeModeRank: p.challengeModeRank,
+      storedDisplayName: providerId === 'phi-taptap' ? p.player.displayName : undefined };
+    case 'chunithm': return { scoreDisplay: p.playerScore.display, displayName: p.player?.name,
+      avatarUrl: buildChunithmMapIconUrl(p.player?.map_icon?.id) ?? undefined,
+      ratingPossession: p.player?.rating_possession ?? null,
+      storedDisplayName: providerId === 'lxns' ? p.player?.name ?? '落雪账号（待同步）' : undefined };
+    case 'adofai': return { scoreDisplay: p.playerScore.display, displayName: p.player.name, avatarUrl: resolveTufAvatarUrl(p.player) ?? undefined };
+    case 'musedash': return { scoreDisplay: p.playerScore.display, displayName: p.player.user.nickname };
+    case 'majdata-net': return { scoreDisplay: p.playerScore.display, displayName: p.snapshot.player.username,
+      avatarUrl: majdataAvatarUrl(p.snapshot.player.username), storedDisplayName: p.snapshot.player.username };
+    case 'phira': return { scoreDisplay: p.playerScore.display, displayName: p.snapshot.player.name, avatarUrl: p.snapshot.player.avatar ?? undefined };
+    case 'osu': return { scoreDisplay: p.playerScore.display, displayName: p.player.username, avatarUrl: p.player.avatarUrl ?? undefined };
+    default: return null;
+  }
 }

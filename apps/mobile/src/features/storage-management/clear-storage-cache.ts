@@ -10,6 +10,7 @@ import {
 } from '@/features/storage-management/game-storage-adapters';
 import { measureManagedStorageBytes } from '@/features/storage-management/storage-usage';
 import { clearGameRemoteImageCache } from '@/services/remote-image-cache';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
 const snapshots = new SqliteSnapshotRepository();
 
@@ -54,6 +55,11 @@ export async function clearStorageByCategories(
         failures.push(String(id));
         continue;
       }
+      const ownedQueries = { predicate: (query: { queryKey: readonly unknown[] }) => adapterOwnsQuery(adapter, query.queryKey) };
+      invalidateResourceWrites(id);
+      await client.cancelQueries(ownedQueries);
+      client.removeQueries(ownedQueries);
+      adapter.resetMemory?.();
       await Promise.all([
         adapter.clear(snapshots),
         clearGameRemoteImageCache(id),
@@ -65,13 +71,6 @@ export async function clearStorageByCategories(
   }
 
   if (clearedIds.length > 0) {
-    for (const id of clearedIds) {
-      if (id === 'shared') continue;
-      const adapter = getGameStorageAdapter(id);
-      if (!adapter) continue;
-      client.removeQueries({ predicate: (query) => adapterOwnsQuery(adapter, query.queryKey) });
-      adapter.resetMemory?.();
-    }
     try {
       await compactRrankerDatabase();
     } catch {

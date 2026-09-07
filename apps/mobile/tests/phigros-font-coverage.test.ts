@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
+vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({ downloadChartResource: vi.fn() }));
 
 vi.mock('expo-file-system', () => {
   class Directory {
