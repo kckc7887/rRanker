@@ -33,7 +33,18 @@ app 路由 / 游戏容器
 | 展示模型 | `src/features/game-content/presentation.ts`：`MetricPresentation`、`BadgePresentation`、`ScoreCardPresentation`、`SongRowPresentation`、`BestSectionPresentation`、`ChartCardPresentation` | 页面容器生成 presentation；共享组件不读取游戏 Hook 或原始 Provider DTO | `game-content-adapters.test.ts`、`game-content-host-contract.test.tsx` |
 | 游戏适配器 | `src/features/game-content/adapters/index.ts` 及同目录游戏适配器 | 在此完成原始歌曲、谱面、成绩和展示模型转换；允许适配器解释本游戏字段 | `game-content-adapters.test.ts` |
 | 当前账号数据包 | `src/domain/game-data.ts` 的 `GamePayload`、`GameDataBundle`；`src/hooks/use-game-data.ts` | 判别联合保留各游戏载荷；Hook 是中央编排，不是无游戏分支的公共渲染组件 | 游戏 Provider、缓存和页面测试 |
-| 游戏与能力注册 | `src/domain/game-bind-options.ts`、`game-profile.ts`、`game-mode-family.ts`、`game-toolbox.ts` | 新游戏或模式在注册表组合；页面通过查询函数消费，不复制注册信息 | `game-mode-family.test.ts` 及工具箱测试 |
+| 游戏与能力注册 | `src/domain/game-bind-options.ts`、`game-profile.ts`、`game-mode-family.ts`、`game-toolbox.ts` | 新游戏或模式在注册表组合；页面通过查询函数消费，不复制注册信息 | `game-bind-options.test.ts`、`game-mode-family.test.ts` 及工具箱测试 |
+
+`GameOption.icon` / `familyIcon` 与 `ProviderOption.icon` 保持 `ImageSourcePropType`。
+`GAME_OPTIONS` 通过静态图片导入提供包内模块 ID，`findGame(id)` / `findProvider(id)`
+仍是图标查询入口；选择、登录、账号分组及缺省头像/封面不得另建远程图标表。
+Muse Dash 与 MuseDash.moe 共用同一份图片，示例账号共用示例图标，osu! 家族与四模式
+各自保留图标。身份图标使用无损 WebP 或保留原色彩信息的 PNG，不占受控远程缓存预算；
+`normalizeRemoteImageSource(source: unknown)` 对数字模块 ID 返回 `null`，
+`RemoteImage` 将其直接传给图片组件，不触发下载或压缩。
+注册表映射与资源存在性由 Vitest 的 `game-bind-options.test.ts` 校验；
+`remote-image-cache.test.ts` 和 `remote-image.test.tsx` 覆盖包内源的缓存边界。
+Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest 的真实静态资源导入验证。
 
 ## Provider、仓库与数据服务
 

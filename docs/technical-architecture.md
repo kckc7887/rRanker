@@ -54,6 +54,13 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 
 `src/domain/game-bind-options.ts` 的 `GAME_OPTIONS` 是前台游戏与绑定方式注册表。当前可用板块包括舞萌 DX、中二节奏、Phigros、Phira、冰与火之舞、喵斯快跑、聚合展示的 osu!standard、osu!mania、osu!catch、osu!taiko，以及列表末尾的 Majdata Net。Provider 包括账号密码、OAuth、设备授权、公开玩家、本地账号和示例账号等形态；`test` 仍是类型层保留的空壳 GameId，不是当前选择器条目。账号分组消费同一注册表的顺序与家族能力，不另行维护游戏名单。
 
+游戏、家族和查分器身份图标由该注册表静态导入 `assets/images/` 的 17 份包内资源，
+随 Android/iOS 导出进入应用，首次离线启动不依赖图片下载。图标保留原尺寸、RGBA
+像素和色彩信息；osu! 通用图标与 Majdata 保留 PNG，其余使用无损 WebP，Phira 保留
+原始 ICC。Muse Dash 与 MuseDash.moe 使用相同图像，共用一份资源。
+选择器、登录、账号分组和缺省头像/封面继续消费注册表；真实用户头像与歌曲封面仍走
+原有远程资源路径。包内模块 ID 不进入 `RemoteImage` 的受控远程压缩缓存。
+
 主数据读取链路为：
 
 ```text
@@ -79,7 +86,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 安全标志和有效期生成 Cookie，请求禁用环境 Cookie。安全仓库只保存 Cookie，会话与账号
 分别索引；不保存明文或 MD5 密码。`SecureSessionStore.upsertAccount(account, signal?)`
 在取消时阻止或回滚账号索引写入，继续沿用既有安全凭据的串行变更、恢复和删除流程。
-添加游戏、来源与账号入口使用 `assets/images/majdata.png` 的 S3 图标。
+添加游戏、来源与账号入口共用包内 `assets/images/majdata.png` 图标。
 `createMajdataBoundAccount` 统一各入口的账号资料；玩家头像来自
 `account/Icon?username=<编码用户名>`，使用公共头像、缩略信息持久化与失败回退。
 启动恢复包含所有已绑定 Majdata 账号，账号管理与切换共用分组；账密解绑依据 Provider

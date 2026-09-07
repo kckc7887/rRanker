@@ -14,7 +14,9 @@ jest.mock('@/services/remote-image-cache', () => ({
   cacheCompressedRemoteImage: (...args: [unknown, unknown, AbortSignal?]) => mockCache(...args),
   findCompressedRemoteImage: () => mockFind(),
   invalidateCompressedRemoteImage: () => mockInvalidate(),
-  normalizeRemoteImageSource: (source: string) => ({ source: { uri: source }, stableIdentity: source }),
+  normalizeRemoteImageSource: (source: unknown) => typeof source === 'string' && /^https?:\/\//u.test(source)
+    ? { source: { uri: source }, stableIdentity: source }
+    : null,
   supportsCompressedRemoteImageCache: () => true,
 }));
 
@@ -42,6 +44,18 @@ describe('RemoteImage 压缩垫图', () => {
     jest.clearAllMocks();
     mockCache.mockResolvedValue(null);
     mockInvalidate.mockResolvedValue();
+  });
+
+  it('直接显示包内图标，不查询或生成远程压缩缓存', async () => {
+    const screen = await render(
+      <RemoteImage cacheProfile="thumbnail" gameId="adofai" source={73} testID="bundled-icon" />,
+    );
+    expect(screen.getByTestId('bundled-icon').props.source).toBe(73);
+    await fireEvent(screen.getByTestId('bundled-icon'), 'display');
+    expect(mockFind).not.toHaveBeenCalled();
+    expect(mockCache).not.toHaveBeenCalled();
+    expect(mockInvalidate).not.toHaveBeenCalled();
+    await screen.unmount();
   });
 
   it('先显示本地压缩图，再以内存在线图替换且不重复创建缓存', async () => {

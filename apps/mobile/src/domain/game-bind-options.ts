@@ -1,5 +1,22 @@
 import type { ImageSourcePropType } from 'react-native';
 import { NEUTRAL_RATING_THEME, type DxRatingTheme } from './dx-rating-theme';
+import maimaiIcon from '../../assets/images/maimai-dx.webp';
+import divingFishIcon from '../../assets/images/diving-fish.webp';
+import lxnsIcon from '../../assets/images/lxns.webp';
+import exampleAccountIcon from '../../assets/images/example-account.webp';
+import phigrosIcon from '../../assets/images/phigros.webp';
+import taptapIcon from '../../assets/images/taptap.webp';
+import chunithmIcon from '../../assets/images/chunithm.webp';
+import adofaiIcon from '../../assets/images/adofai.webp';
+import tufIcon from '../../assets/images/tuf.webp';
+import museDashIcon from '../../assets/images/musedash.webp';
+import majdataIcon from '../../assets/images/majdata.png';
+import phiraIcon from '../../assets/images/phira.webp';
+import osuIcon from '../../assets/images/osu.png';
+import osuStandardIcon from '../../assets/images/osu-standard.webp';
+import osuManiaIcon from '../../assets/images/osu-mania.webp';
+import osuCatchIcon from '../../assets/images/osu-catch.webp';
+import osuTaikoIcon from '../../assets/images/osu-taiko.webp';
 
 export type ProviderId =
   | 'majdata-net'
@@ -50,30 +67,7 @@ export type GameOption = {
   familyIcon?: ImageSourcePropType;
 };
 
-/** 游戏 / Provider 图标源：对象存储 rranker/assets/images（与本地 assets/images 同名同路径）。 */
-const REMOTE_IMAGE_BASE = 'https://rranker.cn-nb1.rains3.com/assets/images';
-
-const maimaiIcon = { uri: `${REMOTE_IMAGE_BASE}/maimai-dx.png` } as ImageSourcePropType;
-const divingFishIcon = { uri: `${REMOTE_IMAGE_BASE}/diving-fish.png` } as ImageSourcePropType;
-const lxnsIcon = { uri: `${REMOTE_IMAGE_BASE}/lxns.png` } as ImageSourcePropType;
-const exampleAccountIcon = { uri: `${REMOTE_IMAGE_BASE}/example-account.png` } as ImageSourcePropType;
-const phigrosIcon = { uri: `${REMOTE_IMAGE_BASE}/phigros.png` } as ImageSourcePropType;
-const taptapIcon = { uri: `${REMOTE_IMAGE_BASE}/taptap.png` } as ImageSourcePropType;
-const chunithmIcon = { uri: `${REMOTE_IMAGE_BASE}/chunithm.png` } as ImageSourcePropType;
-const adofaiIcon = { uri: `${REMOTE_IMAGE_BASE}/adofai.png` } as ImageSourcePropType;
-const tufIcon = { uri: `${REMOTE_IMAGE_BASE}/tuf.png` } as ImageSourcePropType;
-const museDashIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash.png` } as ImageSourcePropType;
-const museDashMoeIcon = { uri: `${REMOTE_IMAGE_BASE}/musedash-moe.png` } as ImageSourcePropType;
-const majdataIcon = { uri: `${REMOTE_IMAGE_BASE}/majdata.png` } as ImageSourcePropType;
-/** 从 https://phira.moe/favicon.svg 原样提取的内嵌 PNG。 */
-const phiraIcon = { uri: `${REMOTE_IMAGE_BASE}/phira.png` } as ImageSourcePropType;
-/** osu! 家族板块通用图标。 */
-const osuIcon = { uri: `${REMOTE_IMAGE_BASE}/osu.png` } as ImageSourcePropType;
-const osuStandardIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-standard.png` } as ImageSourcePropType;
-const osuManiaIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-mania.png` } as ImageSourcePropType;
-const osuCatchIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-catch.png` } as ImageSourcePropType;
-const osuTaikoIcon = { uri: `${REMOTE_IMAGE_BASE}/osu-taiko.png` } as ImageSourcePropType;
-
+/** 游戏、家族与 Provider 共用的包内图标，不依赖网络或图片缓存。 */
 export const GAME_OPTIONS: GameOption[] = [
   {
     id: 'maimai',
@@ -172,7 +166,7 @@ export const GAME_OPTIONS: GameOption[] = [
         bindingKind: 'public-player',
         title: 'MuseDash.moe',
         detail: '搜索公开玩家 · 无需登录',
-        icon: museDashMoeIcon,
+        icon: museDashIcon,
         available: true,
       },
       {

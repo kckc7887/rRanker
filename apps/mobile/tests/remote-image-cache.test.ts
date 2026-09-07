@@ -162,6 +162,24 @@ describe('remote image cache', () => {
     expect(normalizeRemoteImageSource([{ uri: 'https://example.test/cover.png' }])).toBeNull();
   });
 
+  it('leaves bundled module IDs outside remote download and compression', async () => {
+    const source = 73;
+    const download = vi.spyOn(mocks.MockFile, 'downloadFileAsync');
+    try {
+      expect(normalizeRemoteImageSource(source)).toBeNull();
+      await expect(findCompressedRemoteImage(source, { gameId: 'adofai', profile: 'thumbnail' }))
+        .resolves.toBeNull();
+      await expect(cacheCompressedRemoteImage(source, { gameId: 'adofai', profile: 'thumbnail' }))
+        .resolves.toBeNull();
+      expect(download).not.toHaveBeenCalled();
+      expect(mocks.loadAsync).not.toHaveBeenCalled();
+      expect(mocks.manipulate).not.toHaveBeenCalled();
+      expect(mocks.files.size).toBe(0);
+    } finally {
+      download.mockRestore();
+    }
+  });
+
   it('builds stable keys from URL, headers, cache key, profile and cache version', async () => {
     const left = normalizeRemoteImageSource({
       uri: 'https://example.test/cover.png',
