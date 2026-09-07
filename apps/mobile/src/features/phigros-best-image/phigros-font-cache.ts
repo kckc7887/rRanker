@@ -1,3 +1,5 @@
+import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { Directory, File } from 'expo-file-system';
 import JSZip from 'jszip';
 import {
@@ -87,6 +89,7 @@ export type PreparedPhigrosFonts = {
 type ProgressListener = (progress: PhigrosFontProgress) => void;
 
 export type PreparePhigrosFontsOptions = {
+  signal?: AbortSignal;
   /** 仅准备这些字体；未提供时准备完整清单。核心字体始终包含。 */
   neededNames?: readonly string[];
 };
@@ -100,6 +103,8 @@ export function createPhigrosFontPreparer(
     entry: PhigrosFontManifestEntry,
     fontDirectory: Directory,
     temporaryDirectory: Directory,
+    signal: AbortSignal,
+    assertCurrent: () => void,
   ): Promise<File> {
     const finalFile = new File(fontDirectory, entry.cssFileName);
     const archiveFile = new File(temporaryDirectory, `${entry.archiveFileName}.part`);
@@ -108,7 +113,8 @@ export function createPhigrosFontPreparer(
     try {
       if (archiveFile.exists) archiveFile.delete();
       if (fontPartFile.exists) fontPartFile.delete();
-      await File.downloadFileAsync(entry.url, archiveFile, { idempotent: true });
+      await downloadChartResource(temporaryDirectory, `${entry.archiveFileName}.part`, entry.url, signal);
+      assertCurrent();
       if (archiveFile.size !== entry.archiveBytes) {
         throw new Error(`${entry.name} 压缩包大小不匹配`);
       }
@@ -127,6 +133,7 @@ export function createPhigrosFontPreparer(
       }
       fontPartFile.create({ overwrite: true });
       fontPartFile.write(fontBytes);
+      assertCurrent();
       if (finalFile.exists) finalFile.delete();
       fontPartFile.move(finalFile);
       fontPartMoved = true;
@@ -137,12 +144,13 @@ export function createPhigrosFontPreparer(
     }
   }
 
-  const { ensureFont } = createFontCacheGuard({ downloadFont });
+  const { ensureFont } = createFontCacheGuard({ downloadFont, scope: 'phigros' });
 
   return async function preparePhigrosFonts(
     onProgress?: ProgressListener,
     options?: PreparePhigrosFontsOptions,
   ): Promise<PreparedPhigrosFonts> {
+    const signal = options?.signal;
     const { directory, fontDirectory, temporaryDirectory } = directories();
     const neededSet = options?.neededNames ? new Set(options.neededNames) : null;
     const selected = neededSet
@@ -151,14 +159,14 @@ export function createPhigrosFontPreparer(
     const completed = new Set<string>();
     const total = selected.length;
     const emit = (phase: PhigrosFontProgressPhase, currentFont: string | null, error?: string) => {
-      onProgress?.({ phase, completed: completed.size, total, currentFont, error });
+      if (!signal?.aborted) onProgress?.({ phase, completed: completed.size, total, currentFont, error });
     };
     const core = selected.filter((entry) => entry.core);
     const extensions = selected.filter((entry) => !entry.core);
     emit('checking', null);
     try {
       await Promise.all(core.map(async (entry) => {
-        await ensureFont(entry, fontDirectory, temporaryDirectory, () => emit('downloading-core', entry.name));
+        await ensureFont(entry, fontDirectory, temporaryDirectory, () => emit('downloading-core', entry.name), signal);
         completed.add(entry.name);
         emit('downloading-core', entry.name);
       }));
@@ -173,7 +181,7 @@ export function createPhigrosFontPreparer(
       try {
         for (const entry of extensions) {
           emit('checking', entry.name);
-          await ensureFont(entry, fontDirectory, temporaryDirectory, () => emit('downloading-extensions', entry.name));
+          await ensureFont(entry, fontDirectory, temporaryDirectory, () => emit('downloading-extensions', entry.name), signal);
           completed.add(entry.name);
           emit('downloading-extensions', entry.name);
         }
@@ -192,5 +200,6 @@ export const preparePhigrosFonts = createPhigrosFontPreparer();
 
 /** 清除成绩图字体本地下载缓存（Documents/rranker/phigros-fonts）。 */
 export function clearPhigrosFontCache(): void {
+  invalidateResourceWrites('phigros');
   clearFontCacheDirectory('phigros-fonts');
 }

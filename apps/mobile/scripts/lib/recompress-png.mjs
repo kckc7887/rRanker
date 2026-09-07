@@ -1,4 +1,4 @@
-import { deflateSync, inflateSync } from 'node:zlib';
+import { constants, deflateSync, inflateSync } from 'node:zlib';
 
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, value) => {
@@ -12,7 +12,25 @@ function crc32(bytes) {
   return (value ^ 0xffffffff) >>> 0;
 }
 
-/** Recompress filtered scanlines without decoding pixels or changing color metadata. */
+function pack(type, payload) {
+  const chunk = Buffer.alloc(payload.length + 12);
+  chunk.writeUInt32BE(payload.length, 0);
+  chunk.write(type, 4, 'ascii');
+  payload.copy(chunk, 8);
+  chunk.writeUInt32BE(crc32(chunk.subarray(4, -4)), chunk.length - 4);
+  return chunk;
+}
+
+function deflateSmallest(bytes) {
+  let best;
+  for (const memLevel of [8, 9]) for (const strategy of [constants.Z_DEFAULT_STRATEGY, constants.Z_FILTERED, constants.Z_RLE]) {
+    const candidate = deflateSync(bytes, { level: 9, memLevel, strategy });
+    if (!best || candidate.length < best.length) best = candidate;
+  }
+  return best;
+}
+
+/** Preserve filtered scanlines and every non-IDAT chunk byte, including XMP and color metadata. */
 export function recompressPng(bytes) {
   if (!bytes.subarray(0, 8).equals(SIGNATURE)) throw new Error('Invalid PNG signature');
   const chunks = [], idat = [];
@@ -28,12 +46,9 @@ export function recompressPng(bytes) {
     offset = end;
   }
   if (!idat.length || chunks.at(-1)?.type !== 'IEND') throw new Error('Incomplete PNG');
-  const compressed = deflateSync(inflateSync(Buffer.concat(idat)), { level: 9 });
-  const replacement = Buffer.alloc(compressed.length + 12);
-  replacement.writeUInt32BE(compressed.length, 0);
-  replacement.write('IDAT', 4, 'ascii');
-  compressed.copy(replacement, 8);
-  replacement.writeUInt32BE(crc32(replacement.subarray(4, -4)), replacement.length - 4);
+  const original = Buffer.concat(idat);
+  const compressed = deflateSmallest(inflateSync(original));
+  const replacement = pack('IDAT', compressed.length < original.length ? compressed : original);
   let inserted = false;
   const output = Buffer.concat([SIGNATURE, ...chunks.flatMap(chunk => {
     if (chunk.type !== 'IDAT') return [chunk.bytes];

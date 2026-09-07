@@ -1,3 +1,4 @@
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { enrichRecordsWithCatalog, isUtageSongId } from '@/domain/catalog';
 import { buildBest50 } from '@/domain/rating';
 import type { CatalogSnapshot, Player, ScoreRecord, ScoreSnapshot } from '@/domain/models';
@@ -113,20 +114,22 @@ export class ScoreService {
   ) {}
 
   private async loadCatalog(detailed = false, signal: AbortSignal): Promise<CatalogSnapshot> {
+    const assertCurrent = captureResourceWrites('maimai', signal, this.accountId);
     try {
       const catalog = this.catalogLoader
         ? await this.catalogLoader(detailed, signal)
         : detailed
           ? await this.catalogProvider.getDetailedCatalog(signal)
           : await this.catalogProvider.getCatalog(signal);
-      if (signal.aborted) throw signal.reason;
+      assertCurrent();
       if (!detailed) {
         const stopSave = startTimer('score.saveCatalog');
-        await this.catalogRepository?.saveCatalog(catalog);
+        await this.catalogRepository?.saveCatalog(catalog, assertCurrent);
         stopSave();
       }
       return catalog;
     } catch (error) {
+      assertCurrent();
       if (detailed) throw error;
       const cached = await this.catalogRepository?.getLatestCatalog();
       if (!cached) throw error;
@@ -172,6 +175,7 @@ export class ScoreService {
   ): Promise<ScoreSnapshot> {
     if (!this.snapshotRepository) return this.load(signal);
     return cacheFirstLoad({
+      assertCurrent: captureResourceWrites('maimai', signal, this.accountId),
       loadCached: () => this.snapshotRepository!.getLatest(this.accountId),
       loadFresh: () => this.load(signal),
       onFresh,
@@ -181,6 +185,7 @@ export class ScoreService {
   }
 
   private async loadFresh(signal: AbortSignal): Promise<ScoreSnapshot> {
+    const assertCurrent = captureResourceWrites('maimai', signal, this.accountId);
     const stopLoad = startTimer('score.load');
     try {
       let player: Player;
@@ -202,17 +207,18 @@ export class ScoreService {
           timed('score.loadCatalog', () => this.loadCatalog(false, signal)),
         ]);
       }
-      if (signal.aborted) throw signal.reason;
+      assertCurrent();
       const stopBuild = startTimer('score.buildSnapshot');
       const builtSnapshot = buildScoreSnapshot(player, rawRecords, catalog);
       const snapshot = catalogDriven ? withoutChartNotes(builtSnapshot) : builtSnapshot;
       stopBuild();
       const stopSave = startTimer('score.saveSnapshot');
-      if (!signal.aborted) await this.snapshotRepository?.save(this.accountId, snapshot);
+      if (!signal.aborted) await this.snapshotRepository?.save(this.accountId, snapshot, assertCurrent);
       stopSave();
       stopLoad();
       return snapshot;
     } catch (error) {
+      assertCurrent();
       stopLoad();
       const cached = await this.snapshotRepository?.getLatest(this.accountId);
       if (cached) {

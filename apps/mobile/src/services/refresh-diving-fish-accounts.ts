@@ -7,6 +7,7 @@ import type { DivingFishUploadRecord } from '@/services/score-hub-sync-map';
 import { buildScoreSnapshot } from '@/services/score-service';
 import { uploadedRecordsAreVisible } from '@/services/upload-refresh-visibility';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
 const REFRESH_RETRY_DELAYS_MS = [0, 2_000, 5_000, 10_000] as const;
 const repository = new SqliteSnapshotRepository();
@@ -37,9 +38,15 @@ async function refreshOne(input: {
   expectedRecords?: readonly DivingFishUploadRecord[];
   signal?: { aborted: boolean };
 }): Promise<ScoreSnapshot> {
+  const guardGeneration = captureResourceWrites(input.account.gameId, undefined, input.account.id);
+  const assertCurrent = () => {
+    if (input.signal?.aborted) throw new Error('已取消');
+    guardGeneration();
+  };
   let lastError: unknown;
   let lastReadableSnapshot: ScoreSnapshot | null = null;
   for (const delay of REFRESH_RETRY_DELAYS_MS) {
+    assertCurrent();
     if (input.signal?.aborted) throw new Error('已取消');
     if (delay > 0) await sleep(delay);
     if (input.signal?.aborted) throw new Error('已取消');
@@ -57,15 +64,20 @@ async function refreshOne(input: {
         lastReadableSnapshot = snapshot;
         continue;
       }
-      await repository.save(input.account.id, snapshot);
+      assertCurrent();
+      await repository.save(input.account.id, snapshot, assertCurrent);
+      assertCurrent();
       return snapshot;
     } catch (error) {
+      assertCurrent();
       lastError = error;
       if (error instanceof ProviderError && !error.retryable) throw error;
     }
   }
   if (lastReadableSnapshot) {
-    await repository.save(input.account.id, lastReadableSnapshot);
+    assertCurrent();
+    await repository.save(input.account.id, lastReadableSnapshot, assertCurrent);
+    assertCurrent();
     return lastReadableSnapshot;
   }
   if (lastError instanceof Error) throw lastError;

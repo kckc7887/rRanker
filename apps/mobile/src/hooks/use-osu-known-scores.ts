@@ -14,6 +14,7 @@ import { OsuCache } from '@/services/osu-cache';
 import { queryClient } from '@/state/query-client';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
 const osuCache = new OsuCache();
 const EMPTY_SCORES: readonly OsuBestScore[] = [];
@@ -55,12 +56,14 @@ export function useOsuKnownScores(
 
   useEffect(() => {
     if (!enabled || !tabActive || !bound || gameId === null || userId === null || seedScores.length === 0) return;
-    let cancelled = false;
-    void osuCache.mergeKnownScores(gameId, userId, seedScores).then((snapshot) => {
-      if (!cancelled) queryClient.setQueryData(key, snapshot);
+    const controller = new AbortController();
+    const assertCurrent = captureResourceWrites(gameId, controller.signal, activeAccountId ?? undefined);
+    void osuCache.mergeKnownScores(gameId, userId, seedScores, assertCurrent).then((snapshot) => {
+      assertCurrent();
+      queryClient.setQueryData(key, snapshot);
     }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [bound, enabled, gameId, key, seedScores, tabActive, userId]);
+    return () => { controller.abort(); };
+  }, [activeAccountId, bound, enabled, gameId, key, seedScores, tabActive, userId]);
 
   const scores = useMemo(
     () => Object.values(query.data?.items ?? {}),
@@ -89,6 +92,7 @@ export function useOsuBeatmapsetUserScores(
       song?.beatmapSetId ?? null,
     ] as const,
     queryFn: async ({ signal }): Promise<OsuBestScore[]> => {
+      const assertCurrent = captureResourceWrites(gameId, signal, activeAccountId ?? undefined);
       const currentSong = song as OsuBeatmapsetDetail;
       const provider = new OsuScoreProvider(
         session as OsuOAuthSession,
@@ -121,8 +125,8 @@ export function useOsuBeatmapsetUserScores(
         result.status === 'fulfilled' && result.value ? [result.value] : []
       ));
       if (scores.length > 0 && !signal.aborted) {
-        const snapshot = await osuCache.mergeKnownScores(gameId, userId as number, scores);
-        if (signal.aborted) return scores;
+        const snapshot = await osuCache.mergeKnownScores(gameId, userId as number, scores, assertCurrent);
+        assertCurrent();
         queryClient.setQueryData<OsuKnownScoresSnapshot>(
           osuKnownScoresQueryKey(activeAccountId, gameId, userId),
           snapshot,

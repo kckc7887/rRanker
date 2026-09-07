@@ -1,3 +1,4 @@
+import { SONG_DETAIL_METADATA_STYLES , SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
 import { useEffect, useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { router, type Href } from 'expo-router';
@@ -22,7 +23,6 @@ import { GameChartResultCard } from '@/components/game-content/GameChartResultCa
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
-import { SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
 import { SongDetailHero } from '@/components/game-content/SongDetailHero';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
@@ -857,18 +857,7 @@ const styles = StyleSheet.create({
   songId: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
   songTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900' },
   artist: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  metadataTable: {
-    flexDirection: 'row',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingVertical: 12,
-  },
-  metadataCellRoot: { minWidth: 0 },
-  metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
-  metadataLabel: { fontSize: 10, fontWeight: '800' },
-  metadataValueBlock: { position: 'relative', minWidth: 0, alignSelf: 'stretch' },
-  metadataValueMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
-  metadataValue: { fontSize: 12, lineHeight: 16, fontWeight: '700', textAlign: 'center' },
+  ...SONG_DETAIL_METADATA_STYLES,
   carouselRoot: { flexGrow: 0 },
   carouselScroll: { flexGrow: 0, marginTop: 14 },
   carousel: { paddingHorizontal: 20, gap: CARD_GAP, paddingBottom: 4 },

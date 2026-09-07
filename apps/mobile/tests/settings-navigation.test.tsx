@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, InteractionManager, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -111,6 +111,7 @@ function renderSettings(screen = <SettingsScreen />) {
 
 describe('settings navigation', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     mockPush.mockClear();
     mockSaveTheme.mockClear();
     mockClear.mockClear();
@@ -128,7 +129,12 @@ describe('settings navigation', () => {
       scoreCardArtworkEnabled: false, scoreCardArtworkTransparency: 35, scoreCardArtworkBlur: 12,
     });
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(async () => {
+    await cleanup();
+    jest.clearAllTimers();
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
 
   it('uses the shared cached-tab lifecycle for the settings route', async () => {
     let resume: (() => void) | null = null;
@@ -199,7 +205,7 @@ describe('settings navigation', () => {
     const screen = await renderSettings(<PersonalizationScreen />);
     expect(screen.queryByLabelText('成绩卡片曲绘透明度')).toBeNull();
     expect(screen.queryByText('PANDORA PARADOXXX')).toBeNull();
-    fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
+    await fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
     await waitFor(() => expect(screen.getByLabelText('成绩卡片曲绘透明度')).toBeTruthy());
     expect(screen.getByText('曲绘透明度')).toBeTruthy();
     expect(screen.getByText('65%')).toBeTruthy();
@@ -231,20 +237,20 @@ describe('settings navigation', () => {
 
   it('shows a non-interactive fixed-data score card preview under the artwork switch', async () => {
     const screen = await renderSettings(<PersonalizationScreen />);
-    fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
+    await fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
     await waitFor(() => expect(screen.getByText('PANDORA PARADOXXX')).toBeTruthy());
     expect(screen.getByText('101.0000%')).toBeTruthy();
     expect(screen.getByTestId('status-AP')).toBeTruthy();
     expect(screen.getByTestId('status-FDX+')).toBeTruthy();
     expect(screen.getByTestId('rainbow-rate-SSS+')).toBeTruthy();
     expect(screen.queryByLabelText('查看谱面 PANDORA PARADOXXX SD remaster')).toBeNull();
-    fireEvent.press(screen.getByText('PANDORA PARADOXXX'));
+    await fireEvent.press(screen.getByText('PANDORA PARADOXXX'));
     expect(mockPush).not.toHaveBeenCalled();
   });
 
   it('previews artwork slider movement locally and persists once when dragging ends', async () => {
     const screen = await renderSettings(<PersonalizationScreen />);
-    fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
+    await fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
     await waitFor(() => expect(screen.getByText('PANDORA PARADOXXX')).toBeTruthy());
     mockSaveTheme.mockClear();
 

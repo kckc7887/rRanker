@@ -432,6 +432,7 @@ export async function measureSharedCacheBytes(): Promise<number> {
 }
 
 export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }> {
+  invalidateResourceWrites('shared');
   // 禁止整目录清空 Paths.cache：会删掉 Ionicons 等 ExponentAsset 字体，导致全站图标空白。
   clearDirectoryContentsStrict(APP_CACHE_ROOT(), {
     skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name),

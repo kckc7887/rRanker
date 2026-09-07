@@ -59,7 +59,7 @@ vi.mock('expo-file-system', () => {
       return destination;
     }
   }
-  return { Directory, File, Paths: { document: new Directory('file://', 'document') } };
+  return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
 function hex(bytes: Uint8Array): string {
@@ -105,7 +105,7 @@ describe('maimai remote font cache', () => {
     const progress: MaimaiFontProgress[] = [];
     const prepare = createMaimaiFontPreparer([entry]);
     const prepared = await prepare((value) => progress.push(value));
-    expect(progress.map((value) => value.phase)).toEqual(['checking', 'downloading']);
+    expect(progress[0].phase).toBe('checking');
     await prepared.fullReady;
     expect(progress.map((value) => value.phase)).toEqual(['checking', 'downloading', 'ready']);
     expect(mockFontFs.downloadCalls).toEqual([entry.url]);
@@ -155,8 +155,7 @@ describe('maimai remote font cache', () => {
     const prepare = createMaimaiFontPreparer([entry]);
     const first = prepare();
     const second = prepare();
-    await Promise.resolve();
-    expect(mockFontFs.downloadCalls).toEqual([entry.url]);
+    await vi.waitFor(() => expect(mockFontFs.downloadCalls).toEqual([entry.url]));
     release();
     const results = await Promise.all([first, second]);
     await Promise.all(results.map((result) => result.fullReady));
@@ -182,4 +181,9 @@ describe('maimai remote font cache', () => {
     clearMaimaiFontCache();
     expect(mockFontFs.deletes.some((uri) => uri.endsWith('/rranker/maimai-assets'))).toBe(true);
   });
+});
+
+vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
+  const { File } = await import('expo-file-system');
+  return { downloadChartResource: (directory: import('expo-file-system').Directory, name: string, url: string) => File.downloadFileAsync(url, new File(directory, name)) };
 });

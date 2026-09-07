@@ -1,3 +1,4 @@
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { useMemo } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import type { DataSource } from '@/domain/models';
@@ -131,12 +132,14 @@ export function useMuseDashPlayer(userId: string | null, enabled = true) {
       ]);
       return maxedMuseDashPlayerSnapshot(albums.data, diffdiff.data);
     }
+    const assertCurrent = captureResourceWrites('musedash', signal, `musedash:musedash-moe:${userId}`);
     const snapshot = await cacheFirstLoad({
+      assertCurrent,
       loadCached: () => cache.loadPlayer(userId!),
       loadFresh: async () => {
         const player = await loadMuseDashPlayerFresh(userId!, signal);
         const fresh = makeMuseDashSnapshot(player);
-        if (!signal.aborted) void cache.savePlayer(userId!, fresh).catch(() => undefined);
+        if (!signal.aborted) void cache.savePlayer(userId!, fresh, assertCurrent).catch(() => undefined);
         return fresh;
       },
       onFresh: (fresh) => {

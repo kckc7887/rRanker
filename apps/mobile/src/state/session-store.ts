@@ -1,3 +1,4 @@
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { create } from 'zustand';
 import {
   boundAccountFromStored,
@@ -451,20 +452,21 @@ export const useSession = create<SessionState>((set, get) => ({
     challengeModeRank,
     ratingPossession,
   ) => {
-    if (!get().boundAccounts.some((account) => account.id === accountId)) return;
-    set({
-      boundAccounts: get().boundAccounts.map((account) => {
-        if (account.id !== accountId) return account;
-        return {
-          ...account,
-          scoreDisplay,
-          displayName: displayName ?? account.displayName,
-          ...(avatarUrl !== undefined ? { avatarUrl } : {}),
-          ...(challengeModeRank !== undefined ? { challengeModeRank } : {}),
-          ...(ratingPossession !== undefined ? { ratingPossession } : {}),
-        };
-      }),
-    });
+    const accounts = get().boundAccounts;
+    const account = accounts.find((item) => item.id === accountId);
+    if (!account) return;
+    const next = {
+      ...account,
+      scoreDisplay,
+      displayName: displayName ?? account.displayName,
+      ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+      ...(challengeModeRank !== undefined ? { challengeModeRank } : {}),
+      ...(ratingPossession !== undefined ? { ratingPossession } : {}),
+    };
+    if (account.scoreDisplay === next.scoreDisplay && account.displayName === next.displayName
+      && account.avatarUrl === next.avatarUrl && account.challengeModeRank === next.challengeModeRank
+      && account.ratingPossession === next.ratingPossession) return;
+    set({ boundAccounts: accounts.map((item) => item === account ? next : item) });
   },
   renameLocalAccount: (accountId, displayName) => {
     const current = get();
@@ -496,6 +498,7 @@ export const useSession = create<SessionState>((set, get) => ({
     });
   },
   removeBoundAccount: (accountId) => {
+    invalidateResourceWrites('account:' + accountId);
     const {
       sessionsByAccountId,
       credentialIdsByAccountId,

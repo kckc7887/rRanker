@@ -184,7 +184,7 @@ jest.mock('@/services/tuf-cache', () => ({
   })),
 }));
 jest.mock('@/services/account-thumbnail', () => ({
-  hydrateBoundAccountThumbnails: jest.fn(async () => undefined),
+  hydrateAccountDisplayData: jest.fn(async () => undefined),
   persistBoundAccountThumbnail: jest.fn(async () => undefined),
 }));
 jest.mock('@/storage/musedash-account-store', () => ({
@@ -203,6 +203,7 @@ jest.mock('@/services/switch-bound-account', () => ({
   ),
 }));
 jest.mock('@/state/query-client', () => ({ queryClient: {
+  cancelQueries: jest.fn(async () => undefined),
   invalidateQueries: jest.fn(),
   setQueriesData: jest.fn(),
   removeQueries: (...args: unknown[]) => mockRemoveQueries(...args),
@@ -428,8 +429,10 @@ describe('M3A game account management', () => {
     expect(mockRemoveAccount).toHaveBeenCalledWith(mockAccount.id);
     expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id);
     expect(mockClearOrder).toEqual(['credentials', 'cache']);
-    expect(mockRemoveQueries).toHaveBeenCalledTimes(6);
-    expect(mockRemoveQueries).toHaveBeenCalledWith({ queryKey: ['detailed-catalog'] });
+    expect(mockRemoveQueries).toHaveBeenCalledTimes(1);
+    const { predicate } = mockRemoveQueries.mock.calls[0][0] as { predicate: (query: { queryKey: unknown[] }) => boolean };
+    expect(predicate({ queryKey: ['game-data', 1, mockAccount.id, mockAccount.gameId] })).toBe(true);
+    expect(predicate({ queryKey: ['detailed-catalog'] })).toBe(false);
     expect(mockRemoveQueries).not.toHaveBeenCalledWith({ queryKey: ['user-library'] });
   });
 
@@ -499,7 +502,7 @@ describe('M3A game account management', () => {
     await waitFor(() => expect(screen.getByText('部分清除失败（缓存），其余项目已清除，请重试')).toBeTruthy());
     expect(mockClearUserData).toHaveBeenCalledTimes(1);
     expect(mockRemoveBoundAccount).toHaveBeenCalledTimes(1);
-    expect(mockRemoveQueries).toHaveBeenCalledTimes(6);
+    expect(mockRemoveQueries).toHaveBeenCalledTimes(1);
     expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
   });
 });

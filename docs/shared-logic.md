@@ -20,10 +20,13 @@ app 路由 / 游戏容器
 - 共享渲染契约和组件不得通过 `if/switch (gameId)` 枚举现有游戏。差异通过适配器、判别联合、能力、主题值、配置或插槽表达。
 - `GAME_OPTIONS`、`GAME_TOOLBOXES`、`GAME_STORAGE_ADAPTERS`、中央数据编排和游戏适配器属于组合边界，可以显式注册或分派游戏，但不得把分支扩散进共享渲染核心。
 
-### 当前结构核验
+### 结构检查
 
-- `components/game-content`、`features/chart-preview-shared`、`features/chart-download-shared` 和 `features/best-image` 当前没有引用游戏组件，也没有按具体 `gameId` 分支渲染。
-- 当前跨游戏组件引用并未完全消除：`components/phira/PhiraSongRow.tsx` 直接使用 `PhigrosDifficultyBadge`；`components/phira/PhiraScoreCard.tsx` 直接使用 `PhigrosDifficultyBadge`、`PhigrosRateBadge`、`resolvePhigrosRate`、`PhigrosScoreValue` 和 `PhigrosXingBadge`。这些 Phigros 路径不是公共入口，禁止作为新代码的复用先例；后续触及这组实现时，应先把稳定语义上提到 `game-content` 或 `domain`。
+`npm run check:architecture` 解析生产 TypeScript 的静态导入、导出、require 和动态导入，
+检查跨游戏组件引用、公共核心反向引用游戏组件、领域层反向依赖 UI/功能层，以及公共核心
+对具体游戏 ID 的比较与 switch。注册表、中央编排和游戏适配器保留显式分派。
+Phigros 与 Phira 的共同徽章和分值结构由 `game-content` 提供；游戏包装层提供文本和主题。
+结构检查与虚构游戏合同一起使用，不能替代对新间接依赖和业务分支的审查。
 
 ## 领域与展示契约
 
@@ -74,7 +77,42 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 | 多账号列表 | `src/storage/create-account-list-store.ts` 的 `createAccountListStore` | 统一解析失败清理、normalize、upsert 和空列表删键 | 各账号 Store 测试 |
 | 偏好设置 | `src/storage/create-preferences-store.ts` 的 `createPreferencesStore` | 支持全局单键和按账号/游戏 scope；迁移通过 `onMissing` 完成 | 偏好及迁移测试 |
 | 示例账号 | `src/storage/create-demo-account-store.ts` 的 `createDemoAccountStore` | 单个可删除示例档案的公共持久化工厂 | 示例账号 Store 测试 |
-| SQLite 与存储统计 | `src/storage/rranker-database.ts`、SQLite Repository、`src/features/storage-management/game-storage-adapters.ts` | 数据库连接与 Schema 初始化串行；统计和清理均经同一游戏适配器 | `storage-management.test.ts`、`storage-management-screen.test.tsx` |
+| SQLite 与存储统计 | `src/storage/rranker-database.ts`、SQLite Repository、`src/features/storage-management/game-storage-adapters.ts` | 唯一连接；Schema、快照及个人曲库写入共用 `runDatabaseWrite` 队列；统计和清理均经同一游戏适配器 | `storage-management.test.ts`、`storage-management-screen.test.tsx` |
+
+### 账号同步与缓存写入
+
+- `domain/game-data.ts` 的 `gameAccountMetadata(bundle)` 只构造纯展示载荷；
+  `useSyncAccountMetadata()` 在根布局的 QueryClientProvider 内挂载一次，订阅
+  `useGameData(false)` 并调用现有账号、缩略信息、头像和安全仓库入口。页面使用
+  `useGameData` 的签名、返回值及 Query Key 不变，页面观察者不再各自持久化元数据。
+- `updateBoundAccountScore` 与 `SecureSessionStore.updateAccountMetadata` 对现有字段
+  等值时保持对象/存储不变；继续保留 undefined 和 null 的既有含义。
+  `persistBoundAccountThumbnail(accountId, input, repo?)` 按仓库、账号和缓存代次合并
+  待写字段，写入成功后才更新已保存值；失败保留可重试载荷，闲置条目有 128 项上限。
+  `hydrateAccountDisplayData(signal?)` 让根布局与账号列表共享同一前台代次、账号集合
+  和缓存代次的缩略信息及本地 Rating 读取；读取完成后检查账号是否仍有效。
+- `captureResourceWrites(scope, signal?, accountId?)` 返回写入断言，游戏代次和
+  `account:<id>` 代次共同限制持久化与后台回调。`cacheFirstLoad` 的可选
+  `assertCurrent` 覆盖读取、刷新及 onFresh；Repository 的可选断言在初始化和写入
+  队列等待完成之后、实际 SQL 提交之前执行。
+- `clearStorageByCategories` 先提升所属游戏代次，再取消并移除查询，然后执行适配器清理。
+  `cancelBoundAccountQueries(account, client)` 在解绑删除前使单个账号失效，取消并移除
+  其查询，保留其他账号和公共曲库。解绑与全游戏清缓存不得混用失效范围。
+- `createInflightGuard.share(key, loader, signal?)` 为每个消费者单独管理取消；最后一个
+  消费者离开才取消底层任务。新请求键包含相应游戏/账号代次，清理前的任务不能被新调用复用。
+  Muse Dash、TUF、osu、Majdata 和图片/字体资源均沿用这个公共入口。
+- `loadItemsBounded({ items, concurrency, load, signal?, failureMode? })` 默认 `collect`
+  隔离单项失败；`throw` 模式首错停止领取，等待所有在途任务结束后再抛错。
+  公共暂存执行器使用后者，信号继续传入下载、读取及 writer；失败统一清理 session。
+  同一远程文件共享下载，每次写入使用独立临时文件，检查长度和代次后替换目标。
+- `runDatabaseWrite(task)` 串行化同一业务连接的写入、事务与 schema 初始化。调用者先
+  完成 Repository 初始化，task 内不得嵌套进入队列。批量资源/账号删除按 500 个参数分批，
+  一次清理使用同连接事务；失败不阻塞后续任务，也不回滚其他仓库的写入。
+  文本体积用 `LENGTH(CAST(field AS BLOB))` 统计 UTF-8 字节；数据库实际分配页仍独立报告。
+
+验证入口包括 `account-metadata-observers.test.tsx`、`account-thumbnail.test.ts`、
+`secure-session-store.test.ts`、`async-resource-lifetime.test.ts`、
+`sqlite-storage-integration.test.ts` 和各游戏缓存、解绑及生命周期合同。
 
 ### 诊断记录
 
@@ -143,6 +181,23 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 | 标签页驻留 | `CachedTabScreen.tsx`、`tab-list-cache.ts` | 短暂 inactive、普通后台和失焦保留已挂载画面；通过 active context 暂停查询、动画和图片落盘，不用 Freeze 卸可见树；只有内存警告才释放失焦页 | `cached-tab-screen.test.tsx`、`tab-animation-lifecycle.test.tsx` |
 | 远程图片 | `RemoteImage.tsx`、`services/remote-image-cache.ts` | 图片统一选择 native、none 或受控 profile；只有带 gameId 且进入持久化 scope 的可见图片写受控缓存；失活只暂停落盘，不拆已显示 source | `remote-image-cache.test.ts`、`remote-image.test.tsx`、列表合同测试 |
 
+`MetricBadges.tsx` 提供 `DualTextMetricBadge` 和 `StatusMetricBadge`，保留难度的两个
+独立文本节点及状态徽章的原样式。`AnimatedMetricValue` 继续通过 `FlowingGradientValue`
+呈现动效。Phigros/Phira 包装层负责格式、颜色和评价，公共组件不识别 gameId。
+`domain/badge-theme.ts` 保存共同颜色事实，成绩图 feature 只生成 HTML/CSS；
+`domain/phigros-score-theme.ts` 提供分值颜色，列表和导出不各自维护颜色副本。
+
+`TagFilterSheet` 共用打开时复制选择、清空、完成提交和关闭行为；children 插槽保留
+分组、标签样式及游戏操作。详情元数据样式复用 `SongDetailChromeStyles`；成绩图选择器
+在现有 `BestImagePickerShell` 中复用 `standardBestImagePickerStyles` / `compactBestImagePickerStyles`。
+
+列表可见性通过条目级 `useSyncExternalStore` 订阅，仅通知发生变化的图片持久化 scope；
+不替换列表 renderItem、extraData、宿主或窗口参数。`RemoteImage` 的缓存查找依赖
+URL、请求头和 cacheKey 的稳定身份，等价 source 对象不会重置已显示状态。
+`remote-image-cache` 保留既有压缩参数和预算；并发消费者独立取消，临时文件隔离，
+读取 manifest 后再次检查代次才发布文件。`list-viewability-subscriptions.test.tsx` 与
+`remote-image-cache.test.ts` / `remote-image.test.tsx` 覆盖通知次数、等价身份和迟到写入。
+
 ## 共享功能族
 
 | 功能族 | 公共入口 | 游戏侧职责 | 主要验证 |
@@ -151,6 +206,15 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 | 谱面下载 | `src/features/chart-download-shared/`：下载会话目录、取消错误、命名、保存与 `useChartPackageDownload` | 组装具体资源、压缩包结构和成功文案 | `chart-package-download-lifecycle.test.tsx` 及各游戏下载测试 |
 | 成绩图 | `src/features/best-image/`：桥接、状态机、偏好、资源加载、HTML 运行时、选择器、控制器、屏幕壳和导出 | 构建游戏卡片/HTML、素材清单、样式选项和分区语义 | `best-image-screen-contract.test.tsx`、HTML 金样和游戏成绩图测试 |
 | 存储管理 | `src/features/storage-management/`：缓存策略、文件边界、游戏适配器、统计、清理、维护和图标字体恢复 | 在注册适配器中声明本游戏查询键、资源和清理动作 | `storage-management.test.ts`、`storage-cache-policy.test.ts` |
+
+`loadImageDataUris(ids, urlFor, onProgress?, signal?, load?)` 使用有限并发 4，按实际 URL 去重，
+返回键及进度继续按原条目计数，失败项保持既有占位。舞萌与中二曲绘共用这个入口。
+`loadRemoteImageAsDataUri(url, signal?)` 在独立临时目录完成下载/读取并释放文件；
+字体缓存公共核心和舞萌 UI 包使用消费者独立取消、完整性校验及发布前代次检查。
+`usePreparedBestImageSources(htmlPages, directory?, inline?, generation?)` 在现有屏幕控制器
+模块中维护 HTML 文件的创建、错误和按代次释放；各屏幕仍决定原有模板与资源清单。
+Phigros 两套模板共用 `preparePhigrosBestImageCards` 的分区、排名、Phi 与参考 RKS 计算，
+HTML、尺寸、字体、署名和导出结构由各自模板保留，金样不能批量重录。
 
 Phigros 的 `domain/phigros-chart-preview.ts` 提供
 `loadPhigrosChartPreviewResources(target, signal, read?)`，预览和兼容包下载共用发布恢复与字节校验。
@@ -184,7 +248,7 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 - 舞萌数值字典与 PNG IDAT 压缩仅属于构建时数据表示；`SLIDE_TABLE`、`AREA_LOOKUP`
   的运行时类型和值保持完整。特效 `sourceSha256` 标识原始输入，`sha256` 标识生成内容，
   两者不得混用。`maimai-generated-data.test.ts` 校验数据与像素，加载仍经现有播放器
-  及 `prepareChartPreviewWebviewFromPlan(plan)`，不增加网络资源或缓存执行器。
+  及 `prepareChartPreviewWebviewFromPlan(plan, signal?)`，不增加网络资源或缓存执行器。
 
 ### 用户文案与错误
 
@@ -203,7 +267,7 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 
 - 舞萌与 Majdata 播放器复用 `chart-preview-shared/webview-player/playbackClock.ts` 的 `PlaybackClock`。
   `configuration.ts` 集中定义 `ChartPreviewInjectConfig` 和设置类型，注入模块保留兼容导出；
-  `createChartPreviewInjectors<TConfig>(spec)` 负责序列化入口，转义脚本边界并原样保留 `$`，`prepareChartPreviewWebviewFromPlan(plan)`
+  `createChartPreviewInjectors<TConfig>(spec)` 负责序列化入口，转义脚本边界并原样保留 `$`，`prepareChartPreviewWebviewFromPlan(plan, signal?)`
   负责资源暂存和清理。舞萌通过计划中的 `fileName` 加入皮肤修订/正解音哈希，复用共享
   `remoteCacheDirectory` 的大小校验，不另建缓存执行器或清理范围。
   `skin-data.js` 的键仍为原始 S3 对象路径，语义别名仅在 Simai `skinSemantics.ts` 解释。
@@ -216,7 +280,7 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   `skin-data.js`；判定区的中心/缩放校准留在 Simai `skinSemantics.ts`，判定点复用
   音符几何 `buttonPoint`，判定区与判定线共用圆环和点的绘制路径。
   模型、Simai 扩展、路径、SV、帧命令与皮肤加载位于 `features/simai-chart-preview/`；通用 `chart-preview-shared` 壳不解释音符。
-  `npm run typecheck` 包含 `typecheck:maimai-player`，完整检查播放器入口和引擎。
+  `npm run typecheck` 包含 `typecheck:maimai-player` 和 `typecheck:phigros-player`，完整检查两类播放器入口和引擎。
   修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的
   `player.bundle` 一致，并完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
   `maimai-chart-preview-webview.test.ts`、`maimai-chart-preview-remote-assets.test.ts` 和
@@ -272,7 +336,7 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   是否包含视频的选择和正式下载；runner 接收 `(options, includeVideo)`。
   视频检查使用公共 HTTP 的 12 秒超时和单次尝试，与弹窗、下载共用重复点击锁与取消信号。
   进入后台、卸载或取消后关闭未完成选择，迟到结果不得再打开弹窗、开始下载或显示成功。
-- `snapshot-cache-utils` 的 `captureResourceWrites(scope)` 与 `invalidateResourceWrites(scope)`
+- `snapshot-cache-utils` 的 `captureResourceWrites(scope, signal?, accountId?)` 与 `invalidateResourceWrites(scope)`
   让缓存清理使已返回首屏的后台刷新也失效。游戏缓存清理在枚举和删除前提升代次。
   `resourceWriteGeneration(scope)` 隔离清理前后的共享请求键；`createInflightGuard.share`
   按消费者维护取消，只有最后一个消费者取消才终止底层请求。
@@ -296,3 +360,11 @@ MajdataPlay 原始计分方法，普通测试无需 `refer/` 或 .NET；原生�
 5. 至少覆盖歌曲、谱面、成绩映射，以及缺失数据、未游玩、满成绩和特殊难度等真实边界。
 6. 按改动范围运行相关单元/UI/合同测试，再运行 lint、typecheck 和完整测试。Host 哈希与字符串金样出现差异时修正实现，不通过更新基线掩盖差异。
 7. WebView、导出、原生手势、动画流畅度、生命周期和内存行为仍需对应平台真机验收，自动化通过不能替代该链路。
+
+## 可复现检查
+
+在 `apps/mobile` 执行 `npm run check:architecture`、`npm run check:generated`、
+`npm run check:lossless-assets`、`npm run benchmark:optimization`。播放器生成检查从当前
+源码重新打包，同时验证 HTML、player.js 与 player.bundle；基准比较保留固定提交的绘制
+命令及搜索结果，报告桌面 CPU 分布，不推断手机帧率。无损 PNG 检查验证 CRC、解压扫描线、
+RGBA、透明度及所有非 IDAT 块。完整命令和双端云端比较流程见技术架构文档。

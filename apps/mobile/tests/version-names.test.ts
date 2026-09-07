@@ -1,5 +1,5 @@
 import { localizedVersionName, VERSION_NAME_MAPPINGS } from '@/domain/version-names';
-import { missingVersionLogoIds, VERSION_IDS_WITH_LOGOS } from '@/domain/version-logos';
+import { VERSION_LOGO_SOURCES } from '@/domain/version-logo-assets';
 
 describe('Chinese and Japanese version names', () => {
   it('maps current PRiSM PLUS to 舞萌DX 2026', () => {
@@ -33,8 +33,8 @@ describe('Chinese and Japanese version names', () => {
     expect(localizedVersionName(26000, '26000', 'japan')).toBe('26000');
   });
 
-  it('covers every mapped version with packaged logo slots', () => {
-    expect(missingVersionLogoIds()).toEqual([]);
-    expect(VERSION_IDS_WITH_LOGOS).toHaveLength(VERSION_NAME_MAPPINGS.length);
+  it('covers every mapped version with registered logo sources', () => {
+    expect(VERSION_NAME_MAPPINGS.filter(({ versionId }) => !VERSION_LOGO_SOURCES[versionId])).toEqual([]);
+    expect(Object.keys(VERSION_LOGO_SOURCES)).toHaveLength(VERSION_NAME_MAPPINGS.length);
   });
 });

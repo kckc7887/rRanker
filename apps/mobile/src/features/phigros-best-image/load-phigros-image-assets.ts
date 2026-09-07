@@ -1,14 +1,17 @@
+import { createInflightGuard, captureResourceWrites, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
+import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
+import { loadImageDataUris } from '@/features/best-image/load-remote-image-data-uri';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 
 /** 模块级只缓存短 file URI，禁止再持有 base64 data URI。 */
-const cache = new Map<string, Promise<string | null>>();
-const disposedDirectories = new Set<string>();
+const cache = createInflightGuard<string>();
+const disposedDirectories = new WeakSet<Directory>();
 
 export function phigrosIllustrationStageDirectory(): Directory {
   const directory = new Directory(Paths.document, 'rranker', 'phigros-illustration-stage');
   directory.create({ intermediates: true, idempotent: true });
-  disposedDirectories.delete(directory.uri);
+  disposedDirectories.delete(directory);
   return directory;
 }
 
@@ -21,16 +24,13 @@ export function createPhigrosIllustrationSessionDirectory(): Directory {
     `session-${Date.now()}-${illustrationSession}`,
   );
   directory.create({ intermediates: true, idempotent: true });
-  disposedDirectories.delete(directory.uri);
+  disposedDirectories.delete(directory);
   return directory;
 }
 
 export function disposePhigrosIllustrationSession(directory: Directory): void {
-  disposedDirectories.add(directory.uri);
+  disposedDirectories.add(directory);
   if (directory.exists) directory.delete();
-  for (const key of cache.keys()) {
-    if (key.startsWith(`${directory.uri}|`)) cache.delete(key);
-  }
 }
 
 /** Documents/rranker —— WebView allowingReadAccess 覆盖字体与曲绘舞台。 */
@@ -42,8 +42,7 @@ export function phigrosReadableRootDirectory(): Directory {
 
 export function clearPhigrosIllustrationStage(): void {
   const directory = new Directory(Paths.document, 'rranker', 'phigros-illustration-stage');
-  disposedDirectories.add(directory.uri);
-  for (const key of cache.keys()) disposedDirectories.add(key.slice(0, key.indexOf('|')));
+  disposedDirectories.add(directory);
   if (directory.exists) directory.delete();
   cache.clear();
 }
@@ -60,47 +59,31 @@ async function stageFileName(url: string, extensionOverride?: string): Promise<s
  * 使用文件 URI，避免大型图片占用 JS 堆。
  */
 export async function loadRemoteImageDataUri(
-  url: string | null | undefined,
-  directory: Directory = phigrosIllustrationStageDirectory(),
+  url: string | null | undefined, directory: Directory = phigrosIllustrationStageDirectory(), signal?: AbortSignal,
 ): Promise<string | null> {
-  if (!url) return null;
-  const cacheKey = `${directory.uri}|${url}`;
-  if (disposedDirectories.has(directory.uri)) return null;
-  const existing = cache.get(cacheKey);
-  if (existing) return existing;
-  const pending = (async () => {
-    const staged = new File(directory, await stageFileName(url));
+  if (!url || signal?.aborted || disposedDirectories.has(directory)) return null;
+  const assertGeneration = captureResourceWrites('phigros');
+  return cache.share(resourceWriteGeneration('phigros') + '|' + directory.uri + '|' + url, async (requestSignal) => {
+    assertGeneration();
+    const assertCurrent = captureResourceWrites('phigros', requestSignal);
+    const name = await stageFileName(url);
+    assertCurrent();
+    const staged = new File(directory, name);
+    if (staged.exists) return staged.uri;
+    const temporaryName = 'rranker-best-image-session-' + Date.now() + '-' + (++illustrationSession) + '.tmp';
+    const temporary = new File(Paths.cache, temporaryName);
     try {
-      if (!staged.exists) {
-        await File.downloadFileAsync(url, staged, { idempotent: true });
-      }
-      if (disposedDirectories.has(directory.uri)) return null;
+      await downloadChartResource(Paths.cache, temporaryName, url, requestSignal);
+      assertCurrent();
+      if (disposedDirectories.has(directory)) return null;
+      temporary.copy(staged);
       return staged.uri;
-    } finally {
-      if (disposedDirectories.has(directory.uri) && staged.exists) staged.delete();
-    }
-  })();
-  cache.set(cacheKey, pending);
-  try {
-    return await pending;
-  } catch {
-    cache.delete(cacheKey);
-    return null;
-  }
+    } finally { if (temporary.exists) temporary.delete(); }
+  }, signal).catch(() => null);
 }
-
-export async function loadPhigrosIllustrations(
-  songIds: readonly string[],
-  urlFor: (songId: string) => string | null,
-  onProgress?: (done: number, total: number) => void,
-  directory?: Directory,
+export function loadPhigrosIllustrations(
+  songIds: readonly string[], urlFor: (songId: string) => string | null,
+  onProgress?: (done: number, total: number) => void, directory?: Directory, signal?: AbortSignal,
 ): Promise<Record<string, string | null>> {
-  const unique = [...new Set(songIds)];
-  const result: Record<string, string | null> = {};
-  onProgress?.(0, unique.length);
-  for (const [index, id] of unique.entries()) {
-    result[id] = await loadRemoteImageDataUri(urlFor(id), directory);
-    onProgress?.(index + 1, unique.length);
-  }
-  return result;
+  return loadImageDataUris(songIds, urlFor, onProgress, signal, (url, requestSignal) => loadRemoteImageDataUri(url, directory, requestSignal));
 }
