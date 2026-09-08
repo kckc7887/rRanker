@@ -348,20 +348,9 @@ Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 ma
 `addedFiles` 中列出，不计作基线无损比较或压缩收益。仓库素材减少不直接等于导出收益，
 导出中未引用素材不计入收益。
 
-`.github/workflows/validate-optimization.yml` 在优化分支 push、PR 和手动触发时运行。
-Node 22、npm ci 后依次完成 lint、应用及两类播放器类型检查、公共边界、生成/无损资源
-检查、全量单元/UI 合同及 CPU 基准；UI 日志中的未等待 act 警告会使验证失败。
-同一个 runner 分别导出候选提交和固定基线 `246f0bbe57bb9a23ce21858c82c53b3066aad3d9`
-的 Android/iOS Hermes 与资源，基线 checkout 放在被忽略的 build 目录。Expo 要求输出位于
-项目内部，因此先导出到基线项目自己的 build，再复制到候选项目的比较目录。
-`scripts/compare-optimization-exports.mjs` 接收两份导出目录及完整 SHA，输出独立播放器、
-去重资源和主程序的明细，不重复累加播放器或 source map。日志、JSON、比较表与导出
-metadata/assetmap 作为 14 天 artifact 上传；只有对应最终候选 SHA 的工作流成功才完成
-云端验证。该流程不构建 APK/IPA，不修改版本，不发布或合并分支。
+`.github/workflows/build-ios.yml` 在每次 push、PR 创建/更新/重新打开及手动触发时运行：Ubuntu 质量任务运行 lint、typecheck 和全部测试；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA，先上传保留 14 天的 Actions artifact，再提交 TestFlight。来自外部 fork 的 PR 只运行质量任务，跳过需要仓库签名密钥的 macOS 任务。同仓库 PR、push 和手动触发均执行完整构建与上传流程；这些流程共用串行并发组。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
 
-`.github/workflows/build-ios.yml` 是手动触发的 iOS 流程：Ubuntu 质量任务运行 lint、typecheck 和全部测试；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA、上传构建产物并提交 TestFlight。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
-
-`.github/workflows/build-android.yml` 是手动触发的 Android 流程：Ubuntu 质量任务运行
+`.github/workflows/build-android.yml` 在每次 push、PR 创建/更新/重新打开及手动触发时运行：Ubuntu 质量任务运行
 lint、typecheck 和全部测试；构建任务使用 Node.js 22、Temurin JDK 17 与 Android SDK，
 执行 `npm ci`、`npm run prebuild:android` 和 Gradle `:app:assembleRelease`。
 prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a`、`arm64-v8a`、
