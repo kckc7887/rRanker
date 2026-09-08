@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { RUNTIME_DIAGNOSTIC_STORE_FILE_NAME } from '@/features/storage-management/cache-policy';
 import {
   installRuntimeDiagnosticRecorder,
 } from '@/services/runtime-diagnostics-recorder';
@@ -41,13 +42,18 @@ export type RuntimeDiagnosticStore = {
   sessions: RuntimeDiagnosticSession[];
 };
 
-const storeFile = () => new File(Paths.cache, 'rranker-runtime-diagnostics.json');
+const storeFile = () => new File(Paths.document, RUNTIME_DIAGNOSTIC_STORE_FILE_NAME);
+const previousStoreFile = () => new File(Paths.document, `${RUNTIME_DIAGNOSTIC_STORE_FILE_NAME}.previous`);
+const pendingStoreFile = () => new File(Paths.document, `${RUNTIME_DIAGNOSTIC_STORE_FILE_NAME}.pending`);
+const legacyStoreFile = () => new File(Paths.cache, RUNTIME_DIAGNOSTIC_STORE_FILE_NAME);
 const exportFile = () => new File(Paths.cache, 'rranker-runtime-diagnostics.txt');
 const MAX_SESSIONS = 3;
 const MAX_EVENTS = 256;
 const SAFE_VALUE = /^[a-z0-9_.:-]{1,48}$/iu;
 let writeQueue = Promise.resolve();
 let activeSessionStartedAt: string | null = null;
+let initialization: Promise<void> | null = null;
+let initialized = false;
 
 function safeString(value: unknown): string | undefined {
   return typeof value === 'string' && SAFE_VALUE.test(value) ? value : undefined;
@@ -105,14 +111,43 @@ export function trimRuntimeDiagnosticStore(store: RuntimeDiagnosticStore): Runti
   return { sessions: sessions.filter((session) => session.events.length > 0 || session === sessions.at(-1)) };
 }
 
-async function readStore(): Promise<RuntimeDiagnosticStore> {
-  const file = storeFile();
-  if (!file.exists) return { sessions: [] };
+async function readStoreFile(file: File): Promise<RuntimeDiagnosticStore | null> {
+  if (!file.exists) return null;
+  // 读取失败须保留原文件供重试，不能按空记录继续写入。
+  const contents = await file.text();
   try {
-    const parsed = JSON.parse(await file.text()) as RuntimeDiagnosticStore;
-    return Array.isArray(parsed.sessions) ? trimRuntimeDiagnosticStore(parsed) : { sessions: [] };
+    const parsed = JSON.parse(contents) as RuntimeDiagnosticStore;
+    return Array.isArray(parsed.sessions) ? trimRuntimeDiagnosticStore(parsed) : null;
   } catch {
-    return { sessions: [] };
+    return null;
+  }
+}
+
+async function readStore(): Promise<RuntimeDiagnosticStore> {
+  return await readStoreFile(storeFile()) ?? await readStoreFile(previousStoreFile())
+    ?? await readStoreFile(legacyStoreFile()) ?? { sessions: [] };
+}
+
+async function writeStore(store: RuntimeDiagnosticStore): Promise<void> {
+  const pending = pendingStoreFile();
+  await pending.write(JSON.stringify(trimRuntimeDiagnosticStore(store)));
+  const current = storeFile();
+  if (current.exists) {
+    if (await readStoreFile(current)) {
+      const previous = previousStoreFile();
+      if (previous.exists) previous.delete();
+      current.move(previous);
+    } else {
+      current.delete();
+    }
+  }
+  // 暂存写入和替换均可能失败；替换期间保留可读取的上一份完整正文。
+  pending.move(storeFile());
+  for (const obsoleteFile of [previousStoreFile, legacyStoreFile]) {
+    try {
+      const obsolete = obsoleteFile();
+      if (obsolete.exists) obsolete.delete();
+    } catch { /* 已保存正文仍有效，下次写入继续回收旧副本。 */ }
   }
 }
 
@@ -123,13 +158,18 @@ function enqueueWrite(operation: () => Promise<void>): Promise<void> {
 }
 
 export function initializeRuntimeDiagnostics(): Promise<void> {
-  if (activeSessionStartedAt) return writeQueue;
-  activeSessionStartedAt = new Date().toISOString();
-  return enqueueWrite(async () => {
+  if (initialization) return initialization;
+  if (initialized) return writeQueue;
+  activeSessionStartedAt ??= new Date().toISOString();
+  initialization = enqueueWrite(async () => {
     const store = await readStore();
-    store.sessions.push({ startedAt: activeSessionStartedAt!, events: [] });
-    await storeFile().write(JSON.stringify(trimRuntimeDiagnosticStore(store)));
-  });
+    if (!store.sessions.some((session) => session.startedAt === activeSessionStartedAt)) {
+      store.sessions.push({ startedAt: activeSessionStartedAt!, events: [] });
+    }
+    await writeStore(store);
+    initialized = true;
+  }).finally(() => { initialization = null; });
+  return initialization;
 }
 
 function persistRuntimeDiagnostic(
@@ -149,7 +189,7 @@ function persistRuntimeDiagnostic(
       store.sessions.push(session);
     }
     session.events.push(event);
-    await storeFile().write(JSON.stringify(trimRuntimeDiagnosticStore(store)));
+    await writeStore(store);
   });
 }
 
