@@ -20,6 +20,7 @@ import {
 import {
   buildStorageUsageReport,
   listClearableCategoryIds,
+  measureManagedStorageBytes,
 } from '@/features/storage-management/storage-usage';
 import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
 
@@ -167,6 +168,8 @@ describe('app-owned cache entries', () => {
     expect(isAppOwnedCacheEntry('rRanker-backup-x.json')).toBe(true);
     expect(isAppOwnedCacheEntry('ExponentAsset-123.ttf')).toBe(false);
     expect(isAppOwnedCacheEntry('Image')).toBe(false);
+    expect(isAppOwnedCacheEntry('rranker-runtime-diagnostics.json')).toBe(false);
+    expect(isAppOwnedCacheEntry('rranker-runtime-diagnostics.txt')).toBe(true);
   });
 });
 
@@ -306,6 +309,21 @@ describe('shared cache note wording', () => {
     expect(options.skip('third-party-cache')).toBe(false);
     expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
     expect(options.skip('rranker-remote-image-cache-v2')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.txt')).toBe(false);
+    expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
+  });
+
+  it('does not count migrating diagnostic bytes as reclaimed storage', async () => {
+    mocks.measureDirectoryBytes.mockClear();
+    await measureManagedStorageBytes();
+    const calls = mocks.measureDirectoryBytes.mock.calls as unknown[][];
+    const options = calls[0]?.[1] as { skip: (name: string) => boolean };
+    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.txt')).toBe(false);
+    expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
+    expect(options.skip('rranker-remote-image-cache-v2')).toBe(false);
+    expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
   });
 });
 
@@ -518,6 +536,9 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     expect(options.skip('rranker-best-image-session-1.tmp')).toBe(false);
     expect(options.skip('third-party-cache')).toBe(false);
     expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.txt')).toBe(false);
+    expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
   });
 
   it('finishes clearing measured files when the native image cache reports no change', async () => {

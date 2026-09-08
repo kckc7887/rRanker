@@ -97,12 +97,49 @@ function RemoteImageSectionList<
   TSection extends SectionListData<TItem>,
 >({
   extraData,
+  keyExtractor,
   onViewableItemsChanged,
   renderItem,
+  sections,
   viewabilityConfig,
   ...props
 }: SectionListProps<TItem, TSection>) {
+  const [sectionKeys] = useState(() => new WeakMap<object, string>());
+  const sectionKey = useCallback((item: unknown) => (
+    item !== null && typeof item === 'object' ? sectionKeys.get(item) : undefined
+  ), [sectionKeys]);
+  const protectKeyExtractor = useCallback((extractor: NonNullable<SectionListProps<TItem, TSection>['keyExtractor']>) => (
+    (item: TItem, index: number) => sectionKey(item) ?? extractor(item, index)
+  ), [sectionKey]);
+  const guardedKeyExtractor = useMemo(() => (
+    keyExtractor ? protectKeyExtractor(keyExtractor) : undefined
+  ), [keyExtractor, protectKeyExtractor]);
+  const guardedSections = useMemo(() => {
+    let hasSectionExtractor = false;
+    const guarded = sections.map((section, index) => {
+      const key = section.key || String(index);
+      // RN sends section objects through item key extractors for header/footer visibility.
+      // Retain old identities weakly because delayed callbacks can outlive a sections update.
+      sectionKeys.set(section, key);
+      if (!section.keyExtractor) return section;
+      hasSectionExtractor = true;
+      const result = { ...section, keyExtractor: protectKeyExtractor(section.keyExtractor) };
+      sectionKeys.set(result, key);
+      return result;
+    });
+    return hasSectionExtractor ? guarded : sections;
+  }, [protectKeyExtractor, sectionKeys, sections]);
   const { store, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged);
+  const handleRowViewability = useCallback((info: ViewabilityChange<TItem>) => {
+    const isRow = (token: ViewabilityChange<TItem>['viewableItems'][number]) => (
+      token.index != null && sectionKey(token.item) === undefined
+    );
+    handleViewableItemsChanged({
+      ...info,
+      viewableItems: info.viewableItems.filter(isRow),
+      changed: info.changed.filter(isRow),
+    });
+  }, [handleViewableItemsChanged, sectionKey]);
   const scopedRenderItem = useCallback<NonNullable<SectionListProps<TItem, TSection>['renderItem']>>((info) => {
     const content = renderItem?.(info) ?? null;
     return (
@@ -121,8 +158,10 @@ function RemoteImageSectionList<
       {...props}
       {...TAB_LIST_CACHE_PROPS}
       extraData={extraData}
-      onViewableItemsChanged={handleViewableItemsChanged}
+      keyExtractor={guardedKeyExtractor}
+      onViewableItemsChanged={handleRowViewability}
       renderItem={scopedRenderItem}
+      sections={guardedSections}
       viewabilityConfig={mergedViewabilityConfig}
     />
   );

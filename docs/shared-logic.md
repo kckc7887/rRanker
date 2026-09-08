@@ -159,6 +159,14 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 - 日志正文不属于缓存；分享副本复用 `expo-sharing` 和现有 `rranker-` 临时缓存规则。
   `runtime-diagnostics.ts` 的 `snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore>`
   将读取排入既有串行队列，返回独立快照，保持最近三次启动/256 条事件的上限。
+  简要诊断正文使用 `Paths.document/rranker-runtime-diagnostics.json`；有效正文优先，
+  缺失或损坏时依次读取同目录 `.previous` 完整副本、缓存目录中的同名文件。
+  写入先完成同目录 `.pending` 暂存，再保留有效正文并提升暂存文件；提升成功后回收
+  `.previous` 与缓存副本，未提交的 `.pending` 不参与读取。文件读取、部分写入或替换
+  失败保留恢复来源；重复初始化不新增会话，失败后可再次初始化。
+  `cache-policy.ts` 的 `isLegacyRuntimeDiagnosticCacheEntry(name: string): boolean`
+  精确识别待迁移正文，启动清理与共享缓存统计、手动清理均保留它；TXT 分享副本仍可清理。
+  `measureManagedStorageBytes()` 的清理前后物理口径也排除该正文，迁移不计为释放空间。
   `shareRuntimeLog(id): Promise<void>` 先同步固定所选日志，再立即排入简要诊断读取；
   完成的单个 JSON 文本增加 `diagnostics` 字段，不改变日志事件、统计、formatVersion 或存储。
   `exportRuntimeDiagnostics(): Promise<void>` 复用同一快照入口，只供无日志空态分享诊断信息。
@@ -170,7 +178,8 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   每份日志提供分享，只有加载成功的无日志空态提供“分享诊断信息”；失败走公共通知与重试。
 - `runtime-logs.test.ts` 使用真实内存 SQLite 检查事务、保留、恢复、失败和脱敏，
   并覆盖公共 HTTP/查询和异常监听合同；`runtime-log-sharing.test.tsx` 覆盖合并分享、
-  旧记录、并发与失败重试，`runtime-diagnostics.test.tsx` 覆盖快照队列隔离、脱敏和容量上限。
+  旧记录、并发与失败重试，`runtime-diagnostics.test.tsx` 覆盖正文迁移、读写重试、跨启动保留、
+  清理竞争、快照队列隔离、脱敏和容量上限；存储缓存策略与管理测试验证统计/删除边界。
   `diagnostics-screen.test.tsx` 覆盖主题色、新旧标签、状态、空态与分享交互，
   `settings-navigation.test.tsx` 覆盖设置入口和个性化行为。
   `chart-preview-screen-shell-contract.test.tsx` 覆盖准备阶段、去重、后台取消及迟到回调；
@@ -208,6 +217,13 @@ URL、请求头和 cacheKey 的稳定身份，等价 source 对象不会重置�
 `remote-image-cache` 保留既有压缩参数和预算；并发消费者独立取消，临时文件隔离，
 读取 manifest 后再次检查代次才发布文件。`list-viewability-subscriptions.test.tsx` 与
 `remote-image-cache.test.ts` / `remote-image.test.tsx` 覆盖通知次数、等价身份和迟到写入。
+
+`BestListPage` 内部的 `RemoteImageSectionList` 按对象身份识别分组标题与尾部，
+保护列表级和分组级 `keyExtractor`，只将真实条目交给图片可见订阅与业务回调。
+分组身份以弱引用保留，覆盖分组数组更新后的迟到回调；真实条目的提取器优先级、
+默认键规则、渲染键和 50% / 250 ms 门槛不变。没有分组级提取器时保留传入的分组数组；
+需要包装分组提取器时保留其数据与其它字段。`section-list-viewability.test.tsx`
+通过真实 React Native 分组列表转换入口覆盖标题、尾部、条目及迟到分组事件。
 
 ## 共享功能族
 

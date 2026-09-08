@@ -1,6 +1,7 @@
 export type CachePersistence = 'durable' | 'session-only' | 'temporary' | 'bounded-cache' | 'versioned-asset';
 
 export const COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME = 'rranker-remote-image-cache-v2';
+export const RUNTIME_DIAGNOSTIC_STORE_FILE_NAME = 'rranker-runtime-diagnostics.json';
 
 /**
  * 公开数据与查询派生数据只在 React Query 会话内存活。
@@ -63,9 +64,14 @@ export function isSessionOnlyResourceKey(key: string): boolean {
 
 /** rRanker 自有的会话文件；异常退出时允许下次启动直接回收。 */
 export function isTemporaryCacheEntry(name: string): boolean {
-  return !isBoundedCacheEntry(name) && (name.startsWith('rranker-') || name.startsWith('rRanker-'));
+  return !isBoundedCacheEntry(name) && !isLegacyRuntimeDiagnosticCacheEntry(name)
+    && (name.startsWith('rranker-') || name.startsWith('rRanker-'));
 }
 
 export function isBoundedCacheEntry(name: string): boolean {
   return name === COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME;
+}
+
+export function isLegacyRuntimeDiagnosticCacheEntry(name: string): boolean {
+  return name === RUNTIME_DIAGNOSTIC_STORE_FILE_NAME;
 }

@@ -2,6 +2,7 @@ import type { StorageClearCategoryId } from '@/storage/storage-clear-prefs-store
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repository';
 import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
+import { isLegacyRuntimeDiagnosticCacheEntry } from '@/features/storage-management/cache-policy';
 import {
   GAME_STORAGE_ADAPTERS,
   collectStorageMeasurementInventory,
@@ -211,7 +212,7 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
 export async function measureManagedStorageBytes(): Promise<number> {
   const [sqlite, ...directoryBytes] = await Promise.all([
     measureRrankerDatabaseAllocation(),
-    measureDirectoryBytesStrictAsync(APP_CACHE_ROOT(), { skip: isExpoSystemCacheEntry }),
+    measureDirectoryBytesStrictAsync(APP_CACHE_ROOT(), { skip: (name) => isExpoSystemCacheEntry(name) || isLegacyRuntimeDiagnosticCacheEntry(name) }),
     measureDirectoryBytesStrictAsync(MAIMAI_ASSETS_ROOT()),
     measureDirectoryBytesStrictAsync(PHIGROS_FONT_ROOT()),
     measureDirectoryBytesStrictAsync(PHIGROS_ILLUSTRATION_ROOT()),

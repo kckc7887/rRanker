@@ -20,7 +20,7 @@ import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-fon
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { isBoundedCacheEntry } from '@/features/storage-management/cache-policy';
+import { isBoundedCacheEntry, isLegacyRuntimeDiagnosticCacheEntry } from '@/features/storage-management/cache-policy';
 import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
 import {
   clearDirectoryContentsStrict,
@@ -425,9 +425,9 @@ export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | unde
 }
 
 export async function measureSharedCacheBytes(): Promise<number> {
-  // Paths.cache 中除系统字体与游戏封面外均可由系统随时回收，统计和清理必须使用同一边界。
+  // 旧诊断正文在迁移成功前必须保留；统计和清理使用同一边界。
   return measureDirectoryBytesAsync(APP_CACHE_ROOT(), {
-    skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name),
+    skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name) || isLegacyRuntimeDiagnosticCacheEntry(name),
   });
 }
 
@@ -435,7 +435,7 @@ export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }
   invalidateResourceWrites('shared');
   // 禁止整目录清空 Paths.cache：会删掉 Ionicons 等 ExponentAsset 字体，导致全站图标空白。
   clearDirectoryContentsStrict(APP_CACHE_ROOT(), {
-    skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name),
+    skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name) || isLegacyRuntimeDiagnosticCacheEntry(name),
   });
   const { Image } = await import('expo-image');
   const [disk, memory] = await Promise.all([

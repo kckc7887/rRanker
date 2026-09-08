@@ -66,6 +66,9 @@ describe('cache policy registry', () => {
     expect(isTemporaryCacheEntry('rranker-remote-image-cache-v1')).toBe(true);
     expect(isTemporaryCacheEntry('rranker-remote-image-cache-v2')).toBe(false);
     expect(isTemporaryCacheEntry('ExponentAsset-font.ttf')).toBe(false);
+    expect(isTemporaryCacheEntry('rranker-runtime-diagnostics.json')).toBe(false);
+    expect(isTemporaryCacheEntry('rranker-runtime-diagnostics.txt')).toBe(true);
+    expect(isTemporaryCacheEntry('rranker-runtime-log-31-1.txt')).toBe(true);
   });
 });
 
@@ -126,5 +129,17 @@ describe('startup orphan cleanup', () => {
     expect(options.skip('rranker-remote-image-cache-v2')).toBe(true);
     expect(options.skip('Image')).toBe(true);
     expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.txt')).toBe(false);
+    expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
+  });
+
+  it('keeps an unmigrated diagnostic source while removing other temporary files', () => {
+    const files = new Set(['rranker-runtime-diagnostics.json', 'rranker-runtime-diagnostics.txt', 'rranker-chart-preview-session-1']);
+    mocks.clearDirectoryContentsStrict.mockImplementationOnce((_root, options: { skip: (name: string) => boolean }) => {
+      for (const name of files) if (!options.skip(name)) files.delete(name);
+    });
+    cleanupOrphanedTemporaryStorage();
+    expect([...files]).toEqual(['rranker-runtime-diagnostics.json']);
   });
 });
