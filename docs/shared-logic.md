@@ -307,6 +307,13 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   `skin-data.js`；判定区的中心/缩放校准留在 Simai `skinSemantics.ts`，判定点复用
   音符几何 `buttonPoint`，判定区与判定线共用圆环和点的绘制路径。
   模型、Simai 扩展、路径、SV、帧命令与皮肤加载位于 `features/simai-chart-preview/`；通用 `chart-preview-shared` 壳不解释音符。
+  同目录 `webview-player/timeConversion.ts` 的
+  `resolvePlaybackRange(charts: readonly Chart[], musicDurationSeconds: number | null, musicOffset?: number)`
+  接收已解析的非空谱面数组，返回同一主谱时间轴上的 `totalDurationMs` / `totalBeats`。
+  复用 `TimingTimeline` 和音乐时间换算，以各侧实际谱尾与音频结尾的较晚者统一播放、拖动、
+  小节跳转和背景范围；音乐缺失时保留谱尾。音源自然结束不清除公共 `PlaybackClock`，
+  剩余谱面继续计时和变速；主动暂停、跳转与退出仍清除时钟。
+  `maimai-chart-preview-audio.test.ts` 覆盖歌曲尾奏、长条谱尾、偏移、变 BPM 与 Buddy 范围。
   `npm run typecheck` 包含 `typecheck:maimai-player` 和 `typecheck:phigros-player`，完整检查两类播放器入口和引擎。
   修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的
   `player.bundle` 一致，并完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
