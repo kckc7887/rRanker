@@ -44,7 +44,7 @@ function phigrosCatalogOptions(
     loadCached: async () => null,
     loadCatalog: async (signal) => {
       const release = await phigrosResources.load(signal, true);
-      const catalog = await provider.getCatalog(signal);
+      const catalog = await provider.getCatalog(signal, true);
       if (catalogRevision !== release.revision) {
         catalogRevision = release.revision;
         void queryClient.invalidateQueries({

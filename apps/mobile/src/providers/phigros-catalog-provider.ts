@@ -30,6 +30,10 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   private catalog: CatalogSnapshot | null = null;
   private catalogRelease: PhigrosRelease | undefined;
   private release: PhigrosRelease | undefined;
+  private chaptersRaw: string | undefined;
+  private chaptersTable: PhigrosChaptersTable | null = null;
+  private chaptersAttempted = false;
+  private chaptersSequence = 0;
 
   getResourceUpdatedAt(): string | null { return this.release?.fetchedAt ?? null; }
 
@@ -44,15 +48,43 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     return new TextDecoder().decode(await this.resources.bytes(url, signal, 12_000, 'catalog'));
   }
 
-  /** 拉取章节映射表；失败（未发布/网络）时返回 null，调用方回退现状 */
-  private async loadChapters(signal?: AbortSignal): Promise<PhigrosChaptersTable | null> {
+  /**
+   * 拉取章节映射表。`check` 时带缓存绕过参数。
+   * 重拉或解析失败且已有会话副本时保留上次结果；首次失败回退无章节。
+   * @returns 会话中的章节表是否因此次调用而改变
+   */
+  private async refreshChapters(signal: AbortSignal | undefined, check: boolean): Promise<boolean> {
+    const url = check
+      ? `${CHAPTERS_PATH}?_check=${Date.now()}-${++this.chaptersSequence}`
+      : CHAPTERS_PATH;
+    let raw: string | null = null;
     try {
-      const raw = await this.fetchText(CHAPTERS_PATH, signal);
-      return loadChaptersTable(raw);
-    } catch {
-      if (signal?.aborted) throw signal.reason ?? new Error('catalog load aborted');
-      return null;
+      raw = await this.fetchText(url, signal);
+    } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? error;
+      raw = null;
     }
+    if (signal?.aborted) throw signal.reason ?? new Error('catalog load aborted');
+    if (raw === null) {
+      if (this.chaptersAttempted) return false;
+      this.chaptersAttempted = true;
+      this.chaptersRaw = undefined;
+      this.chaptersTable = null;
+      return true;
+    }
+    const table = loadChaptersTable(raw);
+    if (!table) {
+      if (this.chaptersAttempted) return false;
+      this.chaptersAttempted = true;
+      this.chaptersRaw = undefined;
+      this.chaptersTable = null;
+      return true;
+    }
+    if (this.chaptersAttempted && this.chaptersRaw === raw) return false;
+    this.chaptersAttempted = true;
+    this.chaptersRaw = raw;
+    this.chaptersTable = table;
+    return true;
   }
 
   async getGameVersion(signal?: AbortSignal): Promise<string> {
@@ -60,13 +92,21 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     return this.release.current.gameVersion;
   }
 
-  async getCatalog(signal?: AbortSignal): Promise<CatalogSnapshot> {
+  async getCatalog(signal?: AbortSignal, checkChapters = false): Promise<CatalogSnapshot> {
     const release = await this.resources.load(signal);
-    if (this.catalog && this.catalogRelease === release) return this.catalog;
-    const chapters = await this.loadChapters(signal);
+    if (!checkChapters && this.catalog && this.catalogRelease === release) return this.catalog;
+    const chaptersChanged = checkChapters || !this.chaptersAttempted
+      ? await this.refreshChapters(signal, checkChapters)
+      : false;
     if (signal?.aborted) throw signal.reason;
     if (this.resources.peek() && this.resources.peek() !== release) return this.getCatalog(signal);
+    if (this.catalog && this.catalogRelease === release && !chaptersChanged) return this.catalog;
+    return this.buildCatalog(release);
+  }
+
+  private buildCatalog(release: PhigrosRelease): CatalogSnapshot {
     this.release = release;
+    const chapters = this.chaptersTable;
     const catalog = release.catalog;
     const noteCounts = loadNoteCountsTable(release.noteCounts);
     const version = release.current.gameVersion;

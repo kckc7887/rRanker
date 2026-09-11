@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadChaptersTable } from '@/domain/phigros';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
+import { PhigrosResourceService } from '@/services/phigros-resources';
+import { releaseFixture } from './fixtures/phigros-release';
 
 function jsonResponse(body: unknown, ok = true): Response {
   return {
@@ -30,6 +32,14 @@ const SAMPLE_CSV = '\uFEFF'
   + 'SongA.Artist,legacy\r\n'
   + 'SongB.Composer,c5\r\n'
   + 'SongC.Ghost,unknown-chapter\r\n';
+
+const SONG_A_CHAPTERS_V1 = 'legacy,Chapter Legacy 过去的章节\n# 歌曲章节映射：songId,章节变量\nSong.A,legacy\n';
+const SONG_A_CHAPTERS_V2 = 'legacy,Chapter Legacy 过去的章节\nc5,Chapter 5 霓虹灯牌\n# 歌曲章节映射：songId,章节变量\nSong.A,c5\n';
+
+function chaptersUrl(input: RequestInfo | URL): URL | undefined {
+  const url = new URL(String(input));
+  return url.pathname.endsWith('/chapters.csv') ? url : undefined;
+}
 
 describe('loadChaptersTable', () => {
   it('parses definitions and mapping with BOM, CRLF, comments and blank lines', () => {
@@ -97,7 +107,7 @@ describe('PhigrosCatalogProvider chapters', () => {
           { id: 'SongD.None', title: 'D', composer: 'None', illustrator: 'I', charters: ['e'], difficulties: [2] },
         ]);
       }
-      if (url.endsWith('/chapters.csv')) {
+      if (chaptersUrl(url)) {
         return textResponse(SAMPLE_CSV);
       }
       return textResponse('', false);
@@ -171,7 +181,7 @@ describe('PhigrosCatalogProvider chapters', () => {
         });
       }
       if (url.endsWith('/catalog.json')) return catalogJson([]);
-      if (url.endsWith('/chapters.csv')) return textResponse(SAMPLE_CSV);
+      if (chaptersUrl(url)) return textResponse(SAMPLE_CSV);
       return textResponse('', false);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -183,18 +193,100 @@ describe('PhigrosCatalogProvider chapters', () => {
   });
 });
 
-vi.mock('@/services/phigros-resources', () => ({
-  phigrosResources: {
-    peek: () => undefined,
-    load: async () => {
-      const current = await (await fetch(`${PHIGROS_OSS_BASE}/phigros/current.json`)).json();
-      const catalog = await (await fetch(`${PHIGROS_OSS_BASE}/${current.catalog}`)).json();
-      return { current, catalog, noteCounts: '', fetchedAt: new Date().toISOString() };
+describe('PhigrosCatalogProvider chapters recheck', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function chapterCalls(fetchMock: ReturnType<typeof vi.fn>) {
+    return fetchMock.mock.calls
+      .map(([input]) => chaptersUrl(input as RequestInfo | URL))
+      .filter((url): url is URL => url !== undefined);
+  }
+
+  function setup(csv: { current: string | null }) {
+    const fixture = releaseFixture();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (chaptersUrl(input)) {
+        return csv.current === null
+          ? new Response('', { status: 404 })
+          : new Response(csv.current);
+      }
+      return fixture.respond(input);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const resources = new PhigrosResourceService('https://example.com');
+    return { fetchMock, provider: new PhigrosCatalogProvider(resources) };
+  }
+
+  it('reuses the catalog snapshot without refetching chapters on the same release', async () => {
+    const { fetchMock, provider } = setup({ current: SONG_A_CHAPTERS_V1 });
+    const first = await provider.getCatalog();
+    expect(first.songs[0]?.version).toBe('Chapter Legacy 过去的章节');
+    expect(chapterCalls(fetchMock)).toHaveLength(1);
+    expect(await provider.getCatalog()).toBe(first);
+    expect(chapterCalls(fetchMock)).toHaveLength(1);
+  });
+
+  it('rechecks chapters with a cache-busting query and keeps the snapshot when unchanged', async () => {
+    const { fetchMock, provider } = setup({ current: SONG_A_CHAPTERS_V1 });
+    const first = await provider.getCatalog();
+    const second = await provider.getCatalog(undefined, true);
+    expect(second).toBe(first);
+    const checks = chapterCalls(fetchMock);
+    expect(checks).toHaveLength(2);
+    expect(checks[0]?.searchParams.has('_check')).toBe(false);
+    expect(checks[1]?.searchParams.has('_check')).toBe(true);
+    expect(checks[1]?.pathname).toBe('/phigros/chapters.csv');
+  });
+
+  it('rebuilds chapter titles and version ids when chapters.csv changes on the same release', async () => {
+    const csv = { current: SONG_A_CHAPTERS_V1 as string | null };
+    const { provider } = setup(csv);
+    const first = await provider.getCatalog();
+    expect(first.songs[0]?.version).toBe('Chapter Legacy 过去的章节');
+    expect(first.songs[0]?.versionId).toBe(0);
+    csv.current = SONG_A_CHAPTERS_V2;
+    const second = await provider.getCatalog(undefined, true);
+    expect(second).not.toBe(first);
+    expect(second.versions).toEqual([
+      { id: 0, title: 'Chapter Legacy 过去的章节' },
+      { id: 1, title: 'Chapter 5 霓虹灯牌' },
+    ]);
+    expect(second.songs[0]?.version).toBe('Chapter 5 霓虹灯牌');
+    expect(second.songs[0]?.versionId).toBe(1);
+    expect(second.chartVersionIndex['Song.A']).toBe(1);
+  });
+
+  it('keeps previous chapters when a recheck fails instead of falling back to the game version', async () => {
+    const csv = { current: SONG_A_CHAPTERS_V1 as string | null };
+    const { provider } = setup(csv);
+    const first = await provider.getCatalog();
+    csv.current = null;
+    const second = await provider.getCatalog(undefined, true);
+    expect(second).toBe(first);
+    expect(second.songs[0]?.version).toBe('Chapter Legacy 过去的章节');
+    expect(second.versions[0]?.title).not.toBe('9.9.9');
+  });
+});
+
+vi.mock('@/services/phigros-resources', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/phigros-resources')>();
+  return {
+    ...actual,
+    phigrosResources: {
+      peek: () => undefined,
+      load: async () => {
+        const current = await (await fetch(`${PHIGROS_OSS_BASE}/phigros/current.json`)).json();
+        const catalog = await (await fetch(`${PHIGROS_OSS_BASE}/${current.catalog}`)).json();
+        return { current, catalog, noteCounts: '', fetchedAt: new Date().toISOString() };
+      },
+      bytes: async (url: string) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('unavailable');
+        return new TextEncoder().encode(await response.text());
+      },
     },
-    bytes: async (url: string) => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('unavailable');
-      return new TextEncoder().encode(await response.text());
-    },
-  },
-}));
+  };
+});
