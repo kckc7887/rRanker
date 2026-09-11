@@ -26,6 +26,7 @@ import {
   msToBeats,
   musicTimeToBeats,
   resolveBackgroundVideoFrame,
+  resolvePlaybackRange,
 } from './timeConversion';
 import {
   createLatestFrameScheduler,
@@ -47,7 +48,6 @@ type BackgroundMode = ChartPreviewBackgroundMode;
 const SOURCE_FADE_TIME_S = 0.015;
 const SOURCE_START_LEAD_TIME_S = 0.05;
 const SCHEDULE_LOOKAHEAD_MS = 1500;
-const MUSIC_END_EPSILON_S = 0.05;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -421,13 +421,6 @@ async function main(): Promise<void> {
     return { ...n, timingMs: n.timingMs + shift, endTimeMs: n.endTimeMs + shift };
   }));
 
-  const totalBeats = Math.max(4, ...charts.map((c) => c.measures * 4));
-  let totalDurationMs = 0;
-  for (const c of charts) {
-    const duration = c.durationMs + 240000 / chart.bpm - 240000 / c.bpm;
-    if (duration > totalDurationMs) totalDurationMs = duration;
-  }
-
   const chartCount = charts.length as 1 | 2;
   const canvases = [canvas];
   const canvasStages = [canvasStage];
@@ -481,7 +474,7 @@ async function main(): Promise<void> {
   let answerManager: AudioManager | null = null;
   const answerEvents: PreparedAudioEvent[] = prepareAudioEvents(allNotes);
   const playbackClock = new PlaybackClock();
-  let isSourcePlaying = false;
+  let isAudioClockRunning = false;
   let isPlaying = false;
   let playbackEpoch = 0;
   let preciseBeats = 0;
@@ -547,7 +540,7 @@ async function main(): Promise<void> {
     const gain = sourceGain;
     sourceNode = null;
     sourceGain = null;
-    isSourcePlaying = false;
+    isAudioClockRunning = false;
     playbackClock.clear();
     if (!source) return;
     try {
@@ -572,7 +565,7 @@ async function main(): Promise<void> {
   };
 
   const getMusicTime = (): number => {
-    if (!audioContext || !isSourcePlaying) return playbackClock.offset;
+    if (!audioContext || !isAudioClockRunning) return playbackClock.offset;
     const outputTime = getAudioContextOutputTime(audioContext);
     playbackClock.prune(outputTime);
     return playbackClock.positionAt(outputTime);
@@ -584,7 +577,7 @@ async function main(): Promise<void> {
     if (!musicGain || epoch !== playbackEpoch) return;
     stopSource(true);
     const duration = audioBuffer.duration;
-    const clamped = clamp(positionSec, 0, Math.max(0, duration - 0.01));
+    const clamped = clamp(positionSec, 0, duration);
     const source = ctx.createBufferSource();
     const gain = ctx.createGain();
     source.buffer = audioBuffer;
@@ -599,14 +592,15 @@ async function main(): Promise<void> {
       if (sourceNode === source) {
         sourceNode = null;
         sourceGain = null;
-        isSourcePlaying = false;
-        playbackClock.clear();
+        source.disconnect();
+        gain.disconnect();
+        // 音频自然结束后保留公共时钟，剩余谱面继续沿同一时间轴播放。
       }
     };
     source.start(startTime, clamped);
     sourceNode = source;
     sourceGain = gain;
-    isSourcePlaying = true;
+    isAudioClockRunning = true;
     const audibleAt = getAudioContextOutputTime(ctx) + SOURCE_START_LEAD_TIME_S;
     playbackClock.set(audibleAt, Math.min(positionSec, clamped), playbackSpeed);
   };
@@ -623,6 +617,8 @@ async function main(): Promise<void> {
     audioBuffer = null;
   }
 
+  const { totalDurationMs, totalBeats } = resolvePlaybackRange(charts, audioBuffer?.duration ?? null, musicOffset);
+
   statusEl.textContent = '';
   postStatus('ready', { chartId: config.chartId, measures: chart.measures });
 
@@ -630,7 +626,7 @@ async function main(): Promise<void> {
     tap: '#FFD700', hold: '#FF8C00', slide: '#00CED1', touch: '#0080FF', break: '#ff69b4',
   };
 
-  const maxMeasure = Math.max(0, ...charts.map((c) => c.measures - 1));
+  const maxMeasure = Math.max(0, Math.ceil(totalBeats / 4) - 1);
   const measurePercents: number[] = [];
   for (let m = 0; m <= maxMeasure; m++) {
     measurePercents.push(Math.min(100, (beatsToMs(m * 4, chart.bpmEvents, chart.bpm) / totalDurationMs) * 100));
@@ -1086,16 +1082,20 @@ async function main(): Promise<void> {
     speedList,
     speedVal,
     (speed) => {
-      if (isSourcePlaying) preciseBeats = musicTimeToBeats(getMusicTime(), chart.bpmEvents, chart.bpm, musicOffset, chart.firstMs);
+      if (isAudioClockRunning) preciseBeats = musicTimeToBeats(getMusicTime(), chart.bpmEvents, chart.bpm, musicOffset, chart.firstMs);
       playbackSpeed = clamp(speed, 0.1, 5);
       for (const r of renderers) r.setPlaybackSpeed(playbackSpeed);
       answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
-      if (sourceNode && isSourcePlaying && audioContext) {
+      if (isAudioClockRunning && audioContext) {
         if (getMusicTime() < 0) { void startPlayback(); return; }
-        const startTime = audioContext.currentTime;
         const outputTime = getAudioContextOutputTime(audioContext);
-        sourceNode.playbackRate.setValueAtTime(playbackSpeed, startTime);
-        playbackClock.appendSegment(startTime, playbackSpeed, outputTime);
+        if (sourceNode) {
+          const startTime = audioContext.currentTime;
+          sourceNode.playbackRate.setValueAtTime(playbackSpeed, startTime);
+          playbackClock.appendSegment(startTime, playbackSpeed, outputTime);
+        } else {
+          playbackClock.set(outputTime, playbackClock.positionAt(outputTime), playbackSpeed);
+        }
       }
     },
     (speed) => saveSettings({ playbackSpeed: clamp(speed, 0.1, 5) }),
@@ -1286,28 +1286,24 @@ async function main(): Promise<void> {
     if (!isPlaying) return;
     let currentBeats = preciseBeats;
 
-    if (audioBuffer && isSourcePlaying && audioContext) {
+    if (audioBuffer && isAudioClockRunning && audioContext) {
       const musicTime = getMusicTime();
-      if (musicTime >= audioBuffer.duration - MUSIC_END_EPSILON_S) {
-        stopSource(true);
-      } else {
-        currentBeats = musicTimeToBeats(
-          musicTime,
-          chart.bpmEvents,
-          chart.bpm,
-          musicOffset,
-          chart.firstMs ?? 0,
-        );
-      }
+      currentBeats = musicTimeToBeats(
+        musicTime,
+        chart.bpmEvents,
+        chart.bpm,
+        musicOffset,
+        chart.firstMs ?? 0,
+      );
     } else {
       if (lastRafTs > 0) {
         const deltaMs = timestamp - lastRafTs;
         currentBeats = msToBeats(beatsToMs(currentBeats, chart.bpmEvents, chart.bpm) + deltaMs * playbackSpeed, chart.bpmEvents, chart.bpm);
       }
-      lastRafTs = timestamp;
     }
+    lastRafTs = timestamp;
 
-    if (currentBeats >= totalBeats) {
+    if (currentBeats >= totalBeats && !sourceNode) {
       isPlaying = false;
       stopSource(true);
       answerManager?.reset(undefined, true);
@@ -1316,7 +1312,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    preciseBeats = currentBeats;
+    preciseBeats = Math.min(currentBeats, totalBeats);
     checkLoop();
     const currentMs = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
     renderFrameAll();
@@ -1341,7 +1337,7 @@ async function main(): Promise<void> {
       chart.firstMs ?? 0,
     );
     answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
-    if (audioBuffer && musicTime < audioBuffer.duration - MUSIC_END_EPSILON_S) {
+    if (audioBuffer && musicTime < audioBuffer.duration) {
       await playFromMusicPosition(musicTime, epoch);
     } else {
       stopSource(true);
@@ -1356,8 +1352,10 @@ async function main(): Promise<void> {
     playbackEpoch++;
     isPlaying = false;
     syncPlayButtons();
-    if (isSourcePlaying) {
-      playbackClock.setOffset(getMusicTime());
+    if (isAudioClockRunning) {
+      const musicTime = getMusicTime();
+      preciseBeats = musicTimeToBeats(musicTime, chart.bpmEvents, chart.bpm, musicOffset, chart.firstMs);
+      playbackClock.setOffset(musicTime);
       stopSource();
     }
     answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);

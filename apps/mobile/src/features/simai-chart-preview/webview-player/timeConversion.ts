@@ -1,4 +1,4 @@
-import { TimingTimeline, type BpmEvent } from '../engine';
+import { TimingTimeline, type BpmEvent, type Chart } from '../engine';
 
 let cachedBpmEvents: readonly BpmEvent[] | null = null;
 let cachedDefaultBpm = Number.NaN;
@@ -61,6 +61,29 @@ export function musicTimeToBeats(
   const leadInMs = getLeadInMs(bpm);
   const chartTimeMs = musicTimeSec * 1000 + leadInMs + musicOffset - firstMs;
   return msToBeats(chartTimeMs, bpmEvents, bpm);
+}
+
+export function resolvePlaybackRange(
+  charts: readonly Chart[],
+  musicDurationSeconds: number | null,
+  musicOffset: number = 0,
+): { totalDurationMs: number; totalBeats: number } {
+  const chart = charts[0]!;
+  const leadInMs = getLeadInMs(chart.bpm);
+  let totalDurationMs = leadInMs;
+  for (const side of charts) {
+    totalDurationMs = Math.max(totalDurationMs, side.durationMs + leadInMs - getLeadInMs(side.bpm));
+  }
+  if (musicDurationSeconds !== null) {
+    const musicEndBeats = musicTimeToBeats(
+      musicDurationSeconds, chart.bpmEvents, chart.bpm, musicOffset, chart.firstMs,
+    );
+    totalDurationMs = Math.max(totalDurationMs, beatsToMs(musicEndBeats, chart.bpmEvents, chart.bpm));
+  }
+  return {
+    totalDurationMs,
+    totalBeats: msToBeats(totalDurationMs, chart.bpmEvents, chart.bpm),
+  };
 }
 
 export type BackgroundVideoFrame = {
