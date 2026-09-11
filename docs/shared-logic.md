@@ -67,14 +67,16 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 | 最终数据 Query | `src/services/game-data-query.ts`：`GAME_DATA_QUERY_VERSION`、`gameDataQueryKey`、`readSettledGameDataBundle` | 账号、游戏、Provider、会话模式共同组成键；键结构变化时统一提升版本 | 游戏数据与同步测试 |
 
 Phigros 曲库复用 `loadAliasedCatalog` / `useAliasedCatalog` 的来源与别名合并，
-`use-phigros-catalog.ts` 的 `refreshPhigrosCatalog()` 统一主动更新入口。
+`use-phigros-catalog.ts` 的 `refreshPhigrosCatalog()` 统一主动更新入口，
+并经 `PhigrosCatalogProvider.getCatalog(signal?, checkChapters?)` 校对独立的 `chapters.csv`。
 `usePhigrosResourceSync()` 只在启动恢复到 Phigros、从其它游戏进入 Phigros 时检查；
 总览手动同步直接调用同一刷新入口。查询键保持会话有效，标签切换不重复同步，曲库不持久化。
 Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重拉。
 资源修订变化使中央 `useGameData` 的 Phigros 查询失效，成绩载荷的可选 `resourceRevision`
 决定持久化快照是否仍匹配定数；离线可保留已有快照。新修订计算完成前不写入新成绩快照。
-相关入口合同由 `phigros-resource-sync.test.tsx`、`use-phigros-catalog.test.tsx` 和
-`phigros-score-revision.test.ts` 覆盖。
+章节表变化只替换曲库查询，不因章节本身使成绩查询失效；校对失败保留上次章节。
+相关入口合同由 `phigros-resource-sync.test.tsx`、`use-phigros-catalog.test.tsx`、
+`phigros-chapters.test.ts` 和 `phigros-score-revision.test.ts` 覆盖。
 
 ## 状态与持久化
 
