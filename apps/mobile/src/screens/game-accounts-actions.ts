@@ -186,6 +186,7 @@ export type LabeledAttempt = (label: string, action: () => Promise<unknown>) => 
 export async function removeBoundPlayerAccount(input: {
   includePersonalData: boolean;
   displayName: string;
+  prepareRemoval?: () => Promise<void>;
   clearPlayer: (attempt: LabeledAttempt) => Promise<void>;
   clearPersonalData: () => Promise<unknown>;
   removeBoundAccount: () => void;
@@ -194,17 +195,26 @@ export async function removeBoundPlayerAccount(input: {
   formatMessage: (failures: string[]) => string;
   setBusy: (busy: boolean) => void;
   setMessage: (message: string) => void;
+  showNotification?: (notification: NotificationInput) => unknown;
 }): Promise<void> {
   input.setBusy(true);
   const failures: string[] = [];
   const attempt = (label: string, action: () => Promise<unknown>) => attemptLabeled(failures, label, action);
-  await input.clearPlayer(attempt);
-  if (input.includePersonalData) await attempt('个人数据', input.clearPersonalData);
-  input.removeBoundAccount();
-  await attempt('当前账号', input.persistActive);
-  input.afterRemove?.();
-  input.setMessage(input.formatMessage(failures));
-  input.setBusy(false);
+  try {
+    await input.prepareRemoval?.();
+    await input.clearPlayer(attempt);
+    if (input.includePersonalData) await attempt('个人数据', input.clearPersonalData);
+    input.removeBoundAccount();
+    await attempt('当前账号', input.persistActive);
+    input.afterRemove?.();
+    input.setMessage(input.formatMessage(failures));
+  } catch (error) {
+    const message = providerErrorToUserMessage(error, '暂时无法移除账号，请稍后重试。');
+    input.setMessage(message);
+    input.showNotification?.({ title: '移除失败', message, variant: 'error' });
+  } finally {
+    input.setBusy(false);
+  }
 }
 
 export async function bindOrSwitchPublicPlayer(input: {

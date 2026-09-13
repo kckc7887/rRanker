@@ -13,6 +13,7 @@ import { SymbolView } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   GAME_OPTIONS,
+  canBindProvider,
   type GameId,
   type GameOption,
   type ProviderOption,
@@ -42,6 +43,7 @@ export function GamePickerSheet({
   expandedGameId,
   currentGameId,
   currentProviderId,
+  testAccountsEnabled = false,
   onClose,
   onToggleGame,
   onSelectProvider,
@@ -54,6 +56,7 @@ export function GamePickerSheet({
   expandedGameId: GameId | null;
   currentGameId?: GameId;
   currentProviderId?: string | null;
+  testAccountsEnabled?: boolean;
   onClose: () => void;
   onToggleGame: (id: GameId) => void;
   onSelectProvider: (gameId: GameId, provider: ProviderOption) => void;
@@ -69,7 +72,11 @@ export function GamePickerSheet({
   const entries = useMemo(() => {
     const result: { key: string; game: GameOption; familyTitle?: string; modeGames: GameOption[] }[] = [];
     const seenFamilies = new Set<string>();
-    for (const game of GAME_OPTIONS) {
+    for (const registeredGame of GAME_OPTIONS) {
+      const game = mode === 'bind' ? {
+        ...registeredGame,
+        providers: registeredGame.providers.filter((provider) => canBindProvider(provider, testAccountsEnabled)),
+      } : registeredGame;
       if (game.hiddenInPicker) continue;
       if (!game.familyId) {
         result.push({ key: game.id, game, modeGames: [] });
@@ -85,7 +92,7 @@ export function GamePickerSheet({
       });
     }
     return result;
-  }, []);
+  }, [mode, testAccountsEnabled]);
 
   return (
     <Modal

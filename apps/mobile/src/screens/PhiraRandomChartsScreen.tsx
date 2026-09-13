@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { RandomChartsPage } from '@/components/RandomChartsPage';
 import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
-import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
+import { PhiraFilterBar } from '@/components/phira/PhiraFilterBar';
 import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
 import { pickRandomItems, type RandomChartsCount } from '@/domain/random-charts';
 import type { PhiraQueriedBest } from '@/domain/phira';
@@ -17,7 +17,7 @@ export function PhiraRandomChartsScreen() {
   const pool = useMemo(() => filterPhiraBests(Object.values(query.data?.items ?? {}), filter), [filter, query.data?.items]);
   const draw = () => { setResults(pickRandomItems(pool, count, `${Date.now()}-${Math.random()}`)); setDrawn(true); };
   return <RandomChartsPage count={count} onCountChange={setCount} filter={
-    <PhigrosFilterBar collapsible={false} showLevel={false} level="all" onLevelChange={() => undefined}
+    <PhiraFilterBar collapsible={false}
       collapsed={false} onCollapsedChange={() => undefined}
       constantMin={filter.constantMin} constantMax={filter.constantMax}
       accuracyMin={filter.accuracyMin} accuracyMax={filter.accuracyMax}

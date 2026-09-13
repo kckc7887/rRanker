@@ -6,30 +6,17 @@ import {
   createChunithmBoundAccount,
   createMaimaiBoundAccount,
   createPhigrosBoundAccount,
-  LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
 import type { GameId, ProviderId, RemoteProviderId } from '@/domain/game-bind-options';
-import { isOsuGameId } from '@/domain/game-mode-family';
 import type { AnyScoreProvider, DetailedCatalogProvider, ProviderSession } from '@/providers/contracts';
-import { DivingFishProvider } from '@/providers/diving-fish-provider';
-import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
-import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
-import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
-import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
-import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
-import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provider';
-import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
-import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import {
   credentialIdsMapFromVault,
   sessionsMapFromVault,
   type SessionVault,
 } from '@/storage/secure-session-store';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { startTimer } from '@/utils/startup-timing';
-
-const localRepository = new SqliteSnapshotRepository();
+import { createSessionProviders } from '@/services/session-providers';
 
 /** 无已绑定账号时的占位 ID；页面按空数据处理。 */
 export const UNBOUND_ACCOUNT_ID = 'maimai:unbound';
@@ -70,12 +57,7 @@ export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthS
   const activeScoreProvider = sessionsByAccountId[state.activeAccountId] === next
     && activeAccount?.gameId === 'maimai'
     && activeAccount.providerId === 'lxns'
-    ? maimaiProviders(
-      activeAccount.providerId,
-      next,
-      activeAccount.id,
-      activeAccount.displayName,
-    ).scoreProvider
+    ? createSessionProviders(activeAccount, next, applyLxnsTokenRotation).scoreProvider
     : state.scoreProvider;
   useSession.setState({
     sessionsByAccountId,
@@ -103,86 +85,6 @@ export async function applyOsuTokenRotation(accountId: string, next: OsuOAuthSes
   });
   const { SecureSessionStore } = await import('@/storage/secure-session-store');
   await new SecureSessionStore().updateAccountSession(accountId, next);
-}
-
-function emptyProviders(): {
-  scoreProvider: AnyScoreProvider;
-  catalogProvider: DetailedCatalogProvider;
-} {
-  return {
-    scoreProvider: new EmptyScoreProvider(),
-    catalogProvider: new EmptyCatalogProvider(),
-  };
-}
-
-function maimaiProviders(
-  providerId: ProviderId,
-  session: ProviderSession | null,
-  accountId?: string,
-  displayName?: string,
-): {
-  scoreProvider: AnyScoreProvider;
-  catalogProvider: DetailedCatalogProvider;
-} {
-  if (providerId === 'local') {
-    return {
-      scoreProvider: new LocalMaimaiScoreProvider(
-        localRepository,
-        accountId ?? LOCAL_MAIMAI_ACCOUNT_ID,
-        displayName ?? '本地玩家',
-      ),
-      catalogProvider: new LxnsCatalogProvider(),
-    };
-  }
-  if (providerId === 'maimai-test') {
-    return {
-      scoreProvider: new MaxedMaimaiTestProvider(
-        accountId,
-        displayName ?? '示例账号',
-      ),
-      catalogProvider: new LxnsCatalogProvider(),
-    };
-  }
-  if (providerId === 'lxns' && session?.mode === 'lxns-oauth') {
-    const boundAccountId = accountId ?? useSession.getState().activeAccountId;
-    return {
-      scoreProvider: new LxnsScoreProvider(
-        session,
-        (next) => applyLxnsTokenRotation(boundAccountId, next),
-      ),
-      catalogProvider: new LxnsCatalogProvider(),
-    };
-  }
-  if (providerId === 'diving-fish' && session) {
-    return {
-      scoreProvider: new DivingFishProvider(session),
-      catalogProvider: new LxnsCatalogProvider(),
-    };
-  }
-  return emptyProviders();
-}
-
-function phigrosProviders(
-  account: BoundAccount,
-  sessionsByAccountId: SessionsByAccountId,
-): {
-  scoreProvider: AnyScoreProvider;
-  catalogProvider: DetailedCatalogProvider;
-} {
-  if (account.providerId === 'phigros-test') {
-    return {
-      scoreProvider: new MaxedPhigrosTestProvider(account.displayName),
-      catalogProvider: new PhigrosCatalogProvider() as unknown as DetailedCatalogProvider,
-    };
-  }
-  const session = sessionsByAccountId[account.id] ?? null;
-  if (session?.mode === 'phi-session') {
-    return {
-      scoreProvider: new PhigrosScoreProvider(session),
-      catalogProvider: new PhigrosCatalogProvider() as unknown as DetailedCatalogProvider,
-    };
-  }
-  return emptyProviders();
 }
 
 export type SessionRestoreStatus = 'restoring' | 'ready' | 'error';
@@ -237,19 +139,18 @@ interface SessionState {
   failRestore: (message: string) => void;
 }
 
-function providersForAccount(account: BoundAccount, sessionsByAccountId: SessionsByAccountId) {
-  if (account.gameId === 'majdata-net' || account.gameId === 'test' || account.gameId === 'chunithm' || account.gameId === 'adofai' || account.gameId === 'musedash' || account.gameId === 'phira' || isOsuGameId(account.gameId) || !account.providerId) {
-    return emptyProviders();
-  }
-  if (account.gameId === 'phigros') {
-    return phigrosProviders(account, sessionsByAccountId);
-  }
-  return maimaiProviders(
-    account.providerId,
-    sessionsByAccountId[account.id] ?? null,
-    account.id,
-    account.displayName,
-  );
+function providersForAccount(account: BoundAccount | null, sessionsByAccountId: SessionsByAccountId) {
+  return createSessionProviders(account, account ? sessionsByAccountId[account.id] ?? null : null, applyLxnsTokenRotation);
+}
+
+function activeAccountFields(account: BoundAccount, sessionsByAccountId: SessionsByAccountId) {
+  return {
+    session: sessionsByAccountId[account.id] ?? null,
+    activeAccountId: account.id,
+    activeGameId: account.gameId,
+    activeProviderId: account.providerId,
+    ...providersForAccount(account, sessionsByAccountId),
+  };
 }
 
 function dedupeAccounts(accounts: BoundAccount[]): BoundAccount[] {
@@ -276,7 +177,7 @@ function unboundState(extra?: Partial<SessionState>) {
     activeAccountId: UNBOUND_ACCOUNT_ID,
     activeGameId: 'maimai' as GameId,
     activeProviderId: null as ProviderId | null,
-    ...emptyProviders(),
+    ...providersForAccount(null, {}),
     ...extra,
   };
 }
@@ -311,19 +212,32 @@ function activateAccount(
   if (!active) {
     return unboundState({ boundAccounts, restoreStatus: 'ready' as const, restoreError: null });
   }
-  const session = sessionsByAccountId[active.id] ?? null;
   return {
     sessionsByAccountId,
     credentialIdsByAccountId,
-    session,
     boundAccounts,
-    activeAccountId: active.id,
-    activeGameId: active.gameId,
-    activeProviderId: active.providerId,
-    ...providersForAccount(active, sessionsByAccountId),
+    ...activeAccountFields(active, sessionsByAccountId),
     restoreStatus: 'ready' as const,
     restoreError: null,
   };
+}
+
+function bindSessionAccount(
+  state: SessionState,
+  account: BoundAccount,
+  session: ProviderSession,
+  credentialId = `credential:${account.id}`,
+  shareCredential = false,
+) {
+  const sessionsByAccountId = shareCredential
+    ? sessionsWithSharedCredential(state.sessionsByAccountId, state.credentialIdsByAccountId, account.id, credentialId, session)
+    : { ...state.sessionsByAccountId, [account.id]: session };
+  return activateAccount(
+    upsertAccountList(state.boundAccounts, account),
+    sessionsByAccountId,
+    { ...state.credentialIdsByAccountId, [account.id]: credentialId },
+    account.id,
+  );
 }
 
 export const useSession = create<SessionState>((set, get) => ({
@@ -335,9 +249,7 @@ export const useSession = create<SessionState>((set, get) => ({
       const account = createMajdataBoundAccount({ accountId: accountMeta.accountId,
         displayName: accountMeta.displayName, avatarUrl: accountMeta.avatarUrl,
         scoreDisplay: get().boundAccounts.find(item => item.id === accountMeta.accountId)?.scoreDisplay });
-      set(activateAccount(upsertAccountList(get().boundAccounts, account),
-        { ...get().sessionsByAccountId, [account.id]: session },
-        { ...get().credentialIdsByAccountId, [account.id]: accountMeta.credentialId ?? `credential:${account.id}` }, account.id));
+      set(bindSessionAccount(get(), account, session, accountMeta.credentialId));
       return;
     }
     if (session.mode === 'phi-session') {
@@ -345,26 +257,7 @@ export const useSession = create<SessionState>((set, get) => ({
         playerId: session.playerId,
         rating: 0,
       });
-      const sessionsByAccountId = {
-        ...get().sessionsByAccountId,
-        [phigrosAccount.id]: session,
-      };
-      const credentialIdsByAccountId = {
-        ...get().credentialIdsByAccountId,
-        [phigrosAccount.id]: accountMeta?.credentialId ?? `credential:${phigrosAccount.id}`,
-      };
-      set({
-        sessionsByAccountId,
-        credentialIdsByAccountId,
-        session,
-        boundAccounts: upsertAccountList(get().boundAccounts, phigrosAccount),
-        activeAccountId: phigrosAccount.id,
-        activeGameId: 'phigros',
-        activeProviderId: 'phi-taptap',
-        ...phigrosProviders(phigrosAccount, sessionsByAccountId),
-        restoreStatus: 'ready',
-        restoreError: null,
-      });
+      set(bindSessionAccount(get(), phigrosAccount, session, accountMeta?.credentialId));
       return;
     }
 
@@ -379,30 +272,7 @@ export const useSession = create<SessionState>((set, get) => ({
         avatarUrl: accountMeta.avatarUrl,
         ratingPossession: accountMeta.ratingPossession,
       });
-      const credentialId = accountMeta.credentialId ?? `credential:${chunithmAccount.id}`;
-      const sessionsByAccountId = sessionsWithSharedCredential(
-        get().sessionsByAccountId,
-        get().credentialIdsByAccountId,
-        chunithmAccount.id,
-        credentialId,
-        session,
-      );
-      const credentialIdsByAccountId = {
-        ...get().credentialIdsByAccountId,
-        [chunithmAccount.id]: credentialId,
-      };
-      set({
-        sessionsByAccountId,
-        credentialIdsByAccountId,
-        session,
-        boundAccounts: upsertAccountList(get().boundAccounts, chunithmAccount),
-        activeAccountId: chunithmAccount.id,
-        activeGameId: 'chunithm',
-        activeProviderId: 'lxns',
-        ...emptyProviders(),
-        restoreStatus: 'ready',
-        restoreError: null,
-      });
+      set(bindSessionAccount(get(), chunithmAccount, session, accountMeta.credentialId, true));
       return;
     }
     const maimaiAccount = createMaimaiBoundAccount({
@@ -416,30 +286,7 @@ export const useSession = create<SessionState>((set, get) => ({
     const visibleMaimaiAccount = accountMeta?.rating === null
       ? { ...maimaiAccount, scoreDisplay: '—' }
       : maimaiAccount;
-    const credentialId = accountMeta?.credentialId ?? `credential:${visibleMaimaiAccount.id}`;
-    const sessionsByAccountId = sessionsWithSharedCredential(
-      get().sessionsByAccountId,
-      get().credentialIdsByAccountId,
-      visibleMaimaiAccount.id,
-      credentialId,
-      session,
-    );
-    const credentialIdsByAccountId = {
-      ...get().credentialIdsByAccountId,
-      [visibleMaimaiAccount.id]: credentialId,
-    };
-    set({
-      sessionsByAccountId,
-      credentialIdsByAccountId,
-      session,
-      boundAccounts: upsertAccountList(get().boundAccounts, visibleMaimaiAccount),
-      activeAccountId: visibleMaimaiAccount.id,
-      activeGameId: 'maimai',
-      activeProviderId: providerId,
-      ...maimaiProviders(providerId, session, visibleMaimaiAccount.id),
-      restoreStatus: 'ready',
-      restoreError: null,
-    });
+    set(bindSessionAccount(get(), visibleMaimaiAccount, session, accountMeta?.credentialId, true));
   },
   upsertBoundAccount: (account) => {
     set({ boundAccounts: upsertAccountList(get().boundAccounts, account) });
@@ -488,14 +335,7 @@ export const useSession = create<SessionState>((set, get) => ({
     const account = get().boundAccounts.find((item) => item.id === accountId);
     if (!account) return;
     const { sessionsByAccountId } = get();
-    const session = sessionsByAccountId[accountId] ?? null;
-    set({
-      activeAccountId: account.id,
-      activeGameId: account.gameId,
-      activeProviderId: account.providerId,
-      session,
-      ...providersForAccount(account, sessionsByAccountId),
-    });
+    set(activeAccountFields(account, sessionsByAccountId));
   },
   removeBoundAccount: (accountId) => {
     invalidateResourceWrites('account:' + accountId);
@@ -533,11 +373,7 @@ export const useSession = create<SessionState>((set, get) => ({
       sessionsByAccountId: nextSessions,
       credentialIdsByAccountId: nextCredentialIds,
       boundAccounts: nextAccounts,
-      session: input.session,
-      activeAccountId: active.id,
-      activeGameId: active.gameId,
-      activeProviderId: 'osu',
-      ...providersForAccount(active, nextSessions),
+      ...activeAccountFields(active, nextSessions),
       restoreStatus: 'ready',
       restoreError: null,
     });

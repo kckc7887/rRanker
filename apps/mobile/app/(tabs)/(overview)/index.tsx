@@ -1,14 +1,9 @@
-import { refreshPhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { useOverviewOperation } from '@/hooks/use-overview-operation';
+import { useOverviewSync } from '@/hooks/use-overview-sync';
+import { useOverviewUpload } from '@/hooks/use-overview-upload';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  InteractionManager,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { InteractionManager, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -22,75 +17,42 @@ import { ChunithmSyncGuideSheet } from '@/components/chunithm/ChunithmSyncGuideS
 import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { MaimaiSyncGuideContent } from '@/components/maimai/MaimaiSyncGuideSheet';
-import {
-  MaimaiUploadTabs,
-  type MaimaiUploadPage,
-} from '@/components/maimai/MaimaiUploadTabs';
-import { useNotification } from '@/components/AppNotification';
+import { MaimaiUploadTabs } from '@/components/maimai/MaimaiUploadTabs';
+
 import type { BoundAccount } from '@/domain/bound-account';
-import {
-  CHUNITHM_MAINTENANCE_MESSAGE,
-  isChunithmMaintenanceWindow,
-} from '@/domain/chunithm-maintenance';
-import {
-  resolveChunithmRatingCardTheme,
-  resolveChunithmRatingTier,
-} from '@/domain/chunithm-rating-theme';
+
+import { resolveChunithmRatingCardTheme, resolveChunithmRatingTier } from '@/domain/chunithm-rating-theme';
 import { averageChunithmRating } from '@/domain/chunithm-score-presentation';
-import { formatPlayerScore, type BestListSection, type GameDataBundle } from '@/domain/game-data';
+import { type BestListSection, type GameDataBundle } from '@/domain/game-data';
 import type { ProviderId } from '@/domain/game-bind-options';
 import { resolveMaimaiCourseRank } from '@/domain/maimai-course-rank';
 import { formatPhigrosChallengeBadge, resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 import { selectGameTools, summarizeGameTools } from '@/domain/game-toolbox';
 import { calculatePlateProgress } from '@/domain/plates';
 import type { ScoreRecord } from '@/domain/models';
-import {
-  calculateChunithmCollectionProgress,
-  isChunithmCollectionComputable,
-  type ChunithmCollection,
-  type ChunithmCollectionKind,
-} from '@/domain/chunithm-collections';
+import { calculateChunithmCollectionProgress, isChunithmCollectionComputable, type ChunithmCollection, type ChunithmCollectionKind } from '@/domain/chunithm-collections';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
-import {
-  normalizeTrophyTone,
-  TROPHY_BADGE_THEMES,
-} from '@/features/best-image/best-image-badge-theme';
+import { normalizeTrophyTone, TROPHY_BADGE_THEMES } from '@/features/best-image/best-image-badge-theme';
 import type { PinnedChunithmCollection } from '@/features/toolbox/pinned-tool-preferences';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePlates } from '@/hooks/use-plates';
-import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
+
 import { switchBoundAccount } from '@/services/switch-bound-account';
-import { refreshDivingFishAccounts } from '@/services/refresh-diving-fish-accounts';
-import {
-  compactUploadPhaseLabel,
-  resolveUploadTargets,
-  type UploadPhase,
-  type UploadResult,
-} from '@/services/upload-maimai-from-friend-code';
-import {
-  transferMaimaiFromLxns,
-  type LxnsTransferPhase,
-} from '@/services/transfer-maimai-from-lxns';
+
+import { compactUploadPhaseLabel } from '@/services/upload-maimai-from-friend-code';
+
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useGamePickerUi } from '@/state/game-picker-ui';
-import { queryClient } from '@/state/query-client';
-import { readSettledGameDataBundle } from '@/services/game-data-query';
-import { awaitChunithmFresh } from '@/services/chunithm-personal-service';
-import { awaitScoreFresh } from '@/services/score-service';
-import { providerErrorToUserMessage } from '@/providers/errors';
+
 import { applyLxnsTokenRotation, UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
-import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
+
 import { useAppTheme } from '@/theme/app-theme';
-import {
-  formatTufOverviewRatingMeta, formatTufRankBadge, TUF_RATING_THEME,
-} from '@/components/adofai/TufOverviewDetails';
-import {
-  formatMuseDashOverviewRatingMeta, MUSE_DASH_RATING_THEME,
-} from '@/components/musedash/MuseDashOverviewDetails';
+import { formatTufOverviewRatingMeta, formatTufRankBadge, TUF_RATING_THEME } from '@/components/adofai/TufOverviewDetails';
+import { formatMuseDashOverviewRatingMeta, MUSE_DASH_RATING_THEME } from '@/components/musedash/MuseDashOverviewDetails';
 import { formatOsuPlayTime } from '@/domain/osu';
 
 export default function OverviewTabScreen() {
@@ -102,11 +64,12 @@ export function OverviewScreen() {
 }
 
 function PublicOverviewScreen() {
-  const { showNotification } = useNotification();
   const theme = useAppTheme();
-  const { data, isLoading, isError, error, refetch, profile } = useGameData();
+  const gameQuery = useGameData();
+  const { data, isLoading, isError, error, refetch, profile } = gameQuery;
   const library = useUserLibrary();
-  const { data: catalogData, error: catalogError, refetch: refetchCatalog } = useDetailedCatalog();
+  const catalogQuery = useDetailedCatalog();
+  const { data: catalogData, refetch: refetchCatalog } = catalogQuery;
   const requestUploadCatalog = useCallback(async () => (
     catalogData ?? (await refetchCatalog()).data
   ), [catalogData, refetchCatalog]);
@@ -116,42 +79,23 @@ function PublicOverviewScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const activeSession = useSession((s) => s.session);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
-  const updateBoundAccountScore = useSession((s) => s.updateBoundAccountScore);
+  const { busy: syncBusy, operation } = useOverviewOperation();
+  const { syncData, refreshing } = useOverviewSync({ boundAccounts, activeAccountId, activeGameId, activeSession, catalogQuery, gameQuery, operation });
+  const { uploadVisible, maimaiUploadPage, setMaimaiUploadPage, maimaiSourceAccountId, setMaimaiSourceAccountId,
+    maimaiTransferTargetIds, setMaimaiTransferTargetIds, chunithmSyncGuideVisible, setChunithmSyncGuideVisible,
+    uploadPhase, setUploadPhase, maimaiLxnsSources, maimaiTransferTargets, maimaiLxnsGuideAvailable,
+    friendCodeUploadBusy, showingMaimaiSyncGuide, currentUploadSelection, finishUpload, syncMaimaiFromLxns,
+    openUpload, closeUpload, openChunithmUpload } = useOverviewUpload({ boundAccounts, activeAccountId, activeGameId,
+      sessionsByAccountId, catalogQuery, ratingDigits: profile.ratingDigits, syncBusy, operation });
   const isUnbound = activeAccountId === UNBOUND_ACCOUNT_ID;
   const expandedGameId = useGamePickerUi((s) => s.expandedGameId);
   const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [pickerVisible, setPickerVisible] = useState(false);
-  const [uploadVisible, setUploadVisible] = useState(false);
-  const [maimaiUploadPage, setMaimaiUploadPage] = useState<MaimaiUploadPage>('friend_code');
-  const [maimaiSourceAccountId, setMaimaiSourceAccountId] = useState<string | null>(null);
-  const [maimaiTransferTargetIds, setMaimaiTransferTargetIds] = useState<string[]>([]);
-  const [chunithmSyncGuideVisible, setChunithmSyncGuideVisible] = useState(false);
-  const [uploadPhase, setUploadPhase] = useState<UploadPhase>({ kind: 'idle' });
-  const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const refreshingRef = useRef(false);
   const accountSwitchTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
   const renderableData = data?.payload && typeof data.payload === 'object' ? data : undefined;
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
-  const syncBusy = syncing;
-  const maimaiLxnsSources = useMemo(
-    () => boundAccounts.filter((account) => (
-      account.gameId === 'maimai'
-      && account.providerId === 'lxns'
-      && sessionsByAccountId[account.id]?.mode === 'lxns-oauth'
-    )),
-    [boundAccounts, sessionsByAccountId],
-  );
-  const maimaiTransferTargets = useMemo(
-    () => resolveUploadTargets(boundAccounts, sessionsByAccountId),
-    [boundAccounts, sessionsByAccountId],
-  );
-  const maimaiLxnsGuideAvailable = activeGameId === 'maimai';
-  const friendCodeUploadBusy = !['idle', 'done', 'error'].includes(uploadPhase.kind);
-  const showingMaimaiSyncGuide = maimaiLxnsGuideAvailable && maimaiUploadPage === 'lxns_guide';
-  const currentUploadSelection = useMemo(() => [activeAccountId], [activeAccountId]);
   const toolboxGameId = data?.gameId ?? activeGameId;
   const pinnedToolIds = useToolboxPins((s) => s.pinnedToolIdsByGame[toolboxGameId]);
   const pinnedPlateIds = useToolboxPins((s) => s.pinnedPlateIdsByGame[toolboxGameId]);
@@ -171,211 +115,6 @@ function PublicOverviewScreen() {
     accountSwitchTaskRef.current = null;
   }, []);
 
-  const syncData = useCallback(async (): Promise<boolean> => {
-    if (refreshingRef.current) return false;
-    refreshingRef.current = true;
-    setRefreshing(true);
-    setSyncing(true);
-    try {
-      // 用户主动同步优先，终止登录后仍可能在后台运行的同账号自动刷新。
-      await queryClient.cancelQueries({ queryKey: ['game-data'] });
-      const account = boundAccounts.find((item) => item.id === activeAccountId);
-      if (account?.providerId === 'diving-fish'
-        && activeSession?.mode === 'import-token') {
-        const catalog = catalogData ?? (await refetchCatalog()).data;
-        if (!catalog) throw catalogError ?? new Error('舞萌曲库尚未就绪，请稍后重试');
-        const result = await refreshDivingFishAccounts({
-          accounts: [account],
-          sessionsByAccountId: { [account.id]: activeSession },
-          catalog,
-        });
-        const refreshed = result.refreshed[0];
-        if (!refreshed) throw result.failed[0]?.error ?? new Error('水鱼账号同步失败');
-        updateBoundAccountScore(
-          account.id,
-          formatPlayerScore(refreshed.snapshot.best50.rating, profile.ratingDigits),
-          refreshed.snapshot.player.displayName,
-        );
-      }
-      if (activeGameId === 'phigros') await refreshPhigrosCatalog();
-      // 先把相关页面标为过期但不并发请求，再只刷新当前总览一次。
-      await invalidateAccountDataQueries(queryClient, 'none');
-      const refreshed = await refetch();
-      // 缓存优先下 refetch 会立即返回打标缓存；等同一账号后台网络读取落定后，以最终缓存判定。
-      if (activeGameId === 'maimai') await awaitScoreFresh(activeAccountId);
-      else if (activeGameId === 'chunithm') await awaitChunithmFresh(activeAccountId);
-      const payload = readSettledGameDataBundle(
-        activeAccountId,
-        activeGameId,
-        account?.providerId ?? null,
-        activeSession?.mode ?? null,
-      )?.payload ?? refreshed.data?.payload;
-      if (activeGameId === 'maimai' && account?.providerId === 'lxns') {
-        const isFreshMaimaiData = payload?.kind === 'maimai' && !payload.source.isStale;
-        if (!isFreshMaimaiData) {
-          showNotification({
-            title: '尚未读取到新数据',
-            message: payload?.kind === 'maimai' && payload.source.isStale
-              ? '本次仅读取到缓存，请关闭代理并检查网络后重试。'
-              : '请确认微信已完成上传、代理已经关闭，再重试同步。',
-            variant: 'warning',
-          });
-          return false;
-        }
-      } else if (activeGameId === 'chunithm') {
-        const isFreshChunithmData = payload?.kind === 'chunithm'
-          && payload.hasSyncedData
-          && !payload.source.isStale;
-        if (!isFreshChunithmData) {
-          showNotification({
-            title: '尚未读取到新数据',
-            message: payload?.kind === 'chunithm' && payload.source.isStale
-              ? '本次仅读取到缓存，请关闭代理并检查网络后重试。'
-              : '请确认微信已提示上传完成、代理已经关闭，再重试同步。',
-            variant: 'warning',
-          });
-          return false;
-        }
-      }
-      if (activeGameId === 'majdata-net' && (payload?.kind !== 'majdata-net' || payload.source.isStale)) throw new Error('Majdata refresh failed');
-      return true;
-    } catch (syncError) {
-      showNotification({
-        title: '同步失败',
-        message: providerErrorToUserMessage(syncError, '暂时无法同步成绩，请稍后重试。'),
-        variant: 'error',
-      });
-      return false;
-    } finally {
-      refreshingRef.current = false;
-      setRefreshing(false);
-      setSyncing(false);
-    }
-  }, [activeAccountId, activeGameId, activeSession, boundAccounts, catalogData, catalogError, profile.ratingDigits,
-    refetch, refetchCatalog, showNotification, updateBoundAccountScore]);
-
-  const finishUpload = useCallback((result: UploadResult) => {
-    for (const refreshed of result.refreshedAccounts) {
-      updateBoundAccountScore(
-        refreshed.account.id,
-        formatPlayerScore(refreshed.snapshot.best50.rating, profile.ratingDigits),
-        refreshed.snapshot.player.displayName,
-      );
-    }
-    void invalidateAccountDataQueries();
-  }, [profile.ratingDigits, updateBoundAccountScore]);
-
-  const syncMaimaiFromLxns = useCallback(async (): Promise<boolean> => {
-    if (refreshingRef.current) return false;
-    const sourceAccount = maimaiLxnsSources.find((account) => account.id === maimaiSourceAccountId);
-    const sourceSession = sourceAccount
-      ? sessionsByAccountId[sourceAccount.id]
-      : undefined;
-    const selected = maimaiTransferTargets.filter((target) => (
-      target.account.id !== sourceAccount?.id
-      && maimaiTransferTargetIds.includes(target.account.id)
-      && target.writable
-    ));
-    if (!sourceAccount || sourceSession?.mode !== 'lxns-oauth') {
-      showNotification({
-        title: '请选择读取账号',
-        message: '需要选择一个已授权的舞萌落雪账号。',
-        variant: 'warning',
-      });
-      return false;
-    }
-    if (selected.length === 0) {
-      showNotification({
-        title: '请选择上传目标',
-        message: '请至少勾选一个可写的查分器账号。',
-        variant: 'warning',
-      });
-      return false;
-    }
-
-    refreshingRef.current = true;
-    setSyncing(true);
-    try {
-      const catalog = catalogData ?? (await refetchCatalog()).data;
-      if (!catalog) throw catalogError ?? new Error('舞萌曲库尚未就绪，请稍后重试');
-      const phaseLabel = (phase: LxnsTransferPhase) => {
-        if (phase.kind === 'reading') return `正在读取 ${phase.account.displayName} 的落雪成绩…`;
-        if (phase.kind === 'refreshing') return `正在刷新 ${phase.account.displayName}…`;
-        return `正在写入 ${phase.account.displayName}…`;
-      };
-      const result = await transferMaimaiFromLxns({
-        sourceAccount,
-        sourceSession,
-        selected,
-        sessionsByAccountId,
-        catalog,
-        onLxnsTokensRotated: applyLxnsTokenRotation,
-        onPhase: (phase) => setUploadPhase({
-          kind: phase.kind === 'refreshing' ? 'syncing' : 'uploading',
-          message: phaseLabel(phase),
-          providerTitle: phase.account.providerTitle,
-        }),
-      });
-      await finishUpload(result);
-
-      const failed = result.targetResults.filter((target) => target.status === 'failed');
-      if (failed.length > 0) {
-        showNotification({
-          title: failed.length === result.targetResults.length ? '传输失败' : '部分传输完成',
-          message: failed.map((target) => (
-            `${target.account.displayName}：写入失败，请重试。`
-          )).join('；'),
-          variant: failed.length === result.targetResults.length ? 'error' : 'warning',
-        });
-        setUploadPhase({
-          kind: 'error',
-          message: failed.length === result.targetResults.length
-            ? '所有目标均写入失败'
-            : `部分完成，${failed.length} 个目标失败`,
-        });
-        return false;
-      }
-
-      const refreshWarning = result.failedAccountNames.length > 0
-        ? `；${result.failedAccountNames.join('、')}的页面未能更新`
-        : '';
-      showNotification({
-        title: '传输完成',
-        message: `已从 ${sourceAccount.displayName} 向 ${selected.length} 个账号写入 ${result.uploaded} 条成绩${refreshWarning}`,
-        variant: result.failedAccountNames.length > 0 ? 'warning' : 'success',
-      });
-      setUploadPhase({
-        kind: 'done',
-        message: `传输完成：写入 ${result.uploaded} 条`,
-        uploaded: result.uploaded,
-        skipped: result.skipped,
-      });
-      return true;
-    } catch (transferError) {
-      const message = providerErrorToUserMessage(
-        transferError,
-        '暂时无法传输成绩，请稍后重试。',
-      );
-      setUploadPhase({ kind: 'error', message });
-      showNotification({ title: '传输失败', message, variant: 'error' });
-      return false;
-    } finally {
-      refreshingRef.current = false;
-      setSyncing(false);
-    }
-  }, [
-    catalogData,
-    catalogError,
-    finishUpload,
-    maimaiLxnsSources,
-    maimaiSourceAccountId,
-    maimaiTransferTargetIds,
-    maimaiTransferTargets,
-    refetchCatalog,
-    sessionsByAccountId,
-    showNotification,
-  ]);
-
   const openSwitchSheet = () => {
     const active = boundAccounts.find((account) => account.id === activeAccountId);
     setExpandedGameId(active?.gameId ?? null);
@@ -391,40 +130,6 @@ function PublicOverviewScreen() {
       void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
         .catch(() => undefined);
     });
-  };
-
-  const openUpload = () => {
-    if (isMaimaiMaintenanceWindow()) {
-      showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
-      return;
-    }
-    const activeSource = maimaiLxnsSources.find((account) => account.id === activeAccountId);
-    const sourceId = activeSource?.id ?? maimaiLxnsSources[0]?.id ?? null;
-    const activeTarget = maimaiTransferTargets.find((target) => (
-      target.account.id === activeAccountId
-      && target.account.id !== sourceId
-      && target.writable
-    ));
-    setMaimaiSourceAccountId(sourceId);
-    setMaimaiTransferTargetIds(activeTarget ? [activeTarget.account.id] : []);
-    if (!friendCodeUploadBusy && !syncBusy) setMaimaiUploadPage('friend_code');
-    setUploadVisible(true);
-  };
-
-  const closeUpload = () => {
-    setUploadVisible(false);
-    if (!friendCodeUploadBusy && !syncBusy) setMaimaiUploadPage('friend_code');
-  };
-  const openChunithmUpload = () => {
-    if (isChunithmMaintenanceWindow()) {
-      showNotification({
-        title: '游戏服务器维护中',
-        message: CHUNITHM_MAINTENANCE_MESSAGE,
-        variant: 'warning',
-      });
-      return;
-    }
-    setChunithmSyncGuideVisible(true);
   };
 
   if (isUnbound) {

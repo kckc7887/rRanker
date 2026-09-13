@@ -2,15 +2,15 @@ import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { loadMajdataCached, loadMajdataFresh } from '@/services/majdata-service';
 import { majdataTotalText, majdataTotal, type MajdataSnapshot } from '@/domain/majdata';
 import { cacheFirstLoad, staleCached } from '@/services/cache-first';
-import { phigrosResources } from '@/services/phigros-resources';
+import { loadPhigrosGameData } from '@/services/phigros-game-data-service';
 import { useQuery } from '@tanstack/react-query';
 import {
   emptyGamePayload,
   maimaiPayloadFromSnapshot,
   osuPayloadFromSnapshot,
+  phigrosPayloadFromSnapshot,
   type GameDataBundle,
 } from '@/domain/game-data';
-import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
 import { getGameProfile } from '@/domain/game-profile';
 import { ScoreService, staleCachedSnapshot } from '@/services/score-service';
 import { queryClient } from '@/state/query-client';
@@ -28,8 +28,7 @@ import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
-import { formatPhigrosDataMoney } from '@/domain/phigros';
-import { PhigrosSaveCache, stalePhigrosPayload, type PhigrosGameDataPayload } from '@/services/phigros-save-cache';
+import { PhigrosSaveCache } from '@/services/phigros-save-cache';
 import { gameDataQueryKey } from '@/services/game-data-query';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
@@ -352,111 +351,20 @@ export function useGameData(enabled = true) {
             gameId: 'phigros' as const,
             providerId: 'phigros-test' as const,
             profile: getGameProfile('phigros'),
-            payload: {
-              kind: 'phigros' as const,
-              player: snapshot.player,
-              records: snapshot.records,
-              bestSections: snapshot.bestSections,
-              playerScore: {
-                label: 'Raking Score',
-                value: snapshot.player.rating,
-                display: snapshot.player.rating.toFixed(4),
-              },
-              challengeModeRank: snapshot.challengeModeRank,
-              source: snapshot.source,
-              saveUpdatedAt: snapshot.source.updatedAt,
-              catalogSource: catalog.source,
-              avatarUrl: null,
-              avatarKey: null,
-              backgroundSongId: null,
-              dataAmount: '0KiB',
-              progress: snapshot.progress,
-            },
+            payload: phigrosPayloadFromSnapshot(snapshot, catalog.source),
           };
         }
         if (scoreProvider instanceof PhigrosScoreProvider) {
           const phiCatalog = catalogProvider instanceof PhigrosCatalogProvider
             ? catalogProvider
             : new PhigrosCatalogProvider();
-          const loadFresh = async (): Promise<PhigrosGameDataPayload> => {
-            const release = await phigrosResources.load(signal);
-            scoreProvider.invalidateCache();
-            // 复用会话里的曲库 provider，避免每次同步成绩都新建实例并重拉 OSS、误刷新资源时间。
-            const [player, records, bestSections, gameVersion, summary, userProfile, gameProgress] = await Promise.all([
-              scoreProvider.getPlayer(signal),
-              scoreProvider.getRecords(signal),
-              scoreProvider.getBestSections(signal),
-              phiCatalog.getGameVersion(signal),
-              scoreProvider.getSummary(signal),
-              scoreProvider.getUserProfile(signal),
-              scoreProvider.getGameProgress(signal),
-            ]);
-
-            if (signal.aborted) throw signal.reason;
-            if (phigrosResources.peek()?.revision !== release.revision) throw new Error('Phigros release changed during score loading');
-            const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
-            const source = {
-              kind: 'generated' as const,
-              label: 'TapTap云存档',
-              updatedAt: saveUpdatedAt,
-              isStale: false,
-            };
-            const catalogSource = {
-              kind: 'generated' as const,
-              label: `Phigros${gameVersion}`,
-              updatedAt: phiCatalog.getResourceUpdatedAt() ?? saveUpdatedAt,
-              isStale: false,
-            };
-            const rks = player.rating;
-            const avatarUrl = await resolvePhigrosAvatarUrl(gameVersion, summary.avatar);
-            return {
-              kind: 'phigros' as const,
-              resourceRevision: release.revision,
-              player,
-              records,
-              bestSections,
-              playerScore: {
-                label: 'Raking Score',
-                value: rks,
-                display: rks.toFixed(4),
-              },
-              challengeModeRank: summary.challengeModeRank,
-              source,
-              saveUpdatedAt,
-              catalogSource,
-              avatarUrl,
-              avatarKey: userProfile?.avatar || summary.avatar || null,
-              backgroundSongId: userProfile?.backgroundSongId || null,
-              dataAmount: formatPhigrosDataMoney(gameProgress?.money ?? []),
-              progress: {
-                cleared: summary.cleared,
-                fullCombo: summary.fullCombo,
-                phi: summary.phi,
-              },
-            };
-          };
-          const toBundle = (payload: PhigrosGameDataPayload): GameDataBundle => ({
-            gameId: 'phigros' as const,
-            providerId: 'phi-taptap' as const,
-            profile: getGameProfile('phigros'),
-            payload,
+          const payload = await loadPhigrosGameData({
+            accountId: activeAccountId, scoreProvider, catalogProvider: phiCatalog,
+            cache: new PhigrosSaveCache(repository), hasSessionData, signal, assertCurrent,
           });
-          const cache = new PhigrosSaveCache(repository);
-          const stored = hasSessionData ? null : await cache.load(activeAccountId);
-          let compatibleStored = stored;
-          if (stored) {
-            try {
-              const release = await phigrosResources.load(signal);
-              if (stored.resourceRevision !== release.revision) compatibleStored = null;
-            } catch {
-              if (signal.aborted) throw signal.reason;
-            }
-          }
-          const payload = compatibleStored ? stalePhigrosPayload(compatibleStored) : await loadFresh();
-          if (!compatibleStored && !signal.aborted) {
-            void cache.save(activeAccountId, payload, assertCurrent).catch(() => undefined);
-          }
-          return toBundle(payload);
+          return {
+            gameId: 'phigros', providerId: 'phi-taptap', profile: getGameProfile('phigros'), payload,
+          };
         }
 
         return {

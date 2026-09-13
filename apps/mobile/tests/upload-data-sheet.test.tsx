@@ -1,5 +1,6 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { useUploadTaskState } from '@/hooks/use-upload-task';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
 import type { CatalogSnapshot } from '@/domain/models';
@@ -113,6 +114,7 @@ const mockFetchStatistics = jest.fn(async () => ({
     avgDuration: 80_000,
   },
 }));
+const mockDeletePickedFile = jest.fn((_uri: string) => undefined);
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -124,6 +126,20 @@ jest.mock('expo-image-picker', () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(async () => ({ granted: true })),
   launchImageLibraryAsync: jest.fn(async () => ({ canceled: true, assets: [] })),
 }));
+jest.mock('expo-file-system', () => {
+  const actual = jest.requireActual<typeof import('expo-file-system')>('expo-file-system');
+  return {
+    ...actual,
+    Paths: class extends actual.Paths {
+      static get cache() { return { uri: 'file:///cache/' } as InstanceType<typeof actual.Directory>; }
+    },
+    File: class {
+      readonly uri: string;
+      constructor(uri: string) { this.uri = uri; }
+      delete() { mockDeletePickedFile(this.uri); }
+    },
+  };
+});
 jest.mock('expo-clipboard', () => ({
   getStringAsync: jest.fn(async () => ''),
 }));
@@ -717,7 +733,14 @@ describe('好友码统一上传弹窗', () => {
     expect(screen.getByText('请输入 15 位数字好友码。')).toBeTruthy();
   });
 
-  it('相册识码写入二维码同步框', async () => {
+  it.each([
+    ['file:///cache/ImagePicker/bind-qr.jpg', true],
+    ['file:///documents/bind-qr.jpg', false],
+    ['file:///cache-other/bind-qr.jpg', false],
+    ['file:///cache/../documents/bind-qr.jpg', false],
+    ['file:///cache/%2e%2e/documents/bind-qr.jpg', false],
+    ['file:///cache/%2e%2e%2fdocuments/bind-qr.jpg', false],
+  ] as const)('相册识码写入同步框且只清理 cache 副本：%s', async (assetUri, shouldDelete) => {
     setHubEntry({
       friendCode: '111111111111111',
       token: 'tok',
@@ -731,7 +754,7 @@ describe('好友码统一上传弹窗', () => {
       mockResolvedValueOnce: (value: unknown) => void;
     }).mockResolvedValueOnce({
       canceled: false,
-      assets: [{ uri: 'file:///bind-qr.jpg', fileName: 'bind-qr.jpg' }],
+      assets: [{ uri: assetUri, fileName: 'bind-qr.jpg' }],
     });
     (decode.decodeMaimaiQrFromImageUri as unknown as {
       mockResolvedValueOnce: (value: unknown) => void;
@@ -742,6 +765,47 @@ describe('好友码统一上传弹窗', () => {
     await waitFor(() => {
       expect(screen.getByLabelText('玩家二维码字符串').props.value).toBe('SGWCMAIDBIND');
     });
+    expect(decode.decodeMaimaiQrFromImageUri).toHaveBeenCalledWith(assetUri, expect.any(AbortSignal));
+    if (shouldDelete) expect(mockDeletePickedFile).toHaveBeenCalledWith(assetUri);
+    else expect(mockDeletePickedFile).not.toHaveBeenCalled();
+  });
+
+  it('关闭后取消图片识别并忽略迟到结果', async () => {
+    const imagePicker = jest.requireMock<typeof import('expo-image-picker')>('expo-image-picker');
+    const decode = jest.requireMock<typeof import('@/services/maimai-qr-decode')>('@/services/maimai-qr-decode');
+    jest.mocked(imagePicker.launchImageLibraryAsync).mockResolvedValueOnce({
+      canceled: false, assets: [{ uri: 'file:///late-qr.jpg', width: 100, height: 100 }],
+    });
+    let resolveDecode!: (value: string) => void;
+    jest.mocked(decode.decodeMaimaiQrFromImageUri).mockImplementationOnce(() => new Promise(resolve => { resolveDecode = resolve; }));
+    const screen = await renderSheet([water.id], [local, water], true, 'qr');
+    await fireEvent.press(screen.getByLabelText('从相册选择玩家二维码图片'));
+    await waitFor(() => expect(resolveDecode).toBeDefined());
+    const signal = jest.mocked(decode.decodeMaimaiQrFromImageUri).mock.calls.at(-1)?.[1];
+    await fireEvent.press(screen.getByLabelText('关闭上传'));
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { resolveDecode('SGWCMAIDLATE'); });
+    expect(screen.getByLabelText('玩家二维码字符串').props.value).toBe('');
+    expect(screen.queryByText('已识别二维码')).toBeNull();
+    expect(uploadTaskController.getSnapshot().status).toBe('idle');
+  });
+
+  it('两个上传观察者同一帧开始时只建立一个全局任务', async () => {
+    const first = await renderHook(() => useUploadTaskState(catalog));
+    const second = await renderHook(() => useUploadTaskState(catalog));
+    let firstSignal: unknown;
+    let secondSignal: unknown;
+    await act(async () => {
+      firstSignal = first.result.current.begin();
+      secondSignal = second.result.current.begin();
+    });
+    expect(firstSignal).toBe(uploadTaskController.getSignal());
+    expect(secondSignal).toBeNull();
+    expect(first.result.current.running).toBe(true);
+    expect(second.result.current.running).toBe(true);
+    await act(async () => uploadTaskController.cancel());
+    await first.unmount();
+    await second.unmount();
   });
 
   it('二维码同步不走好友申请并在任务接受后清空输入', async () => {

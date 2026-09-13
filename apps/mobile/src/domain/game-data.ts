@@ -131,6 +131,32 @@ export type GameDataBundle = {
   payload: GamePayload;
 };
 
+export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
+
+export function phigrosPayloadFromSnapshot(
+  snapshot: Pick<PhigrosGameDataPayload, 'player' | 'records' | 'bestSections' | 'challengeModeRank' | 'source' | 'progress'>,
+  catalogSource: DataSource,
+  details: Partial<Pick<PhigrosGameDataPayload, 'resourceRevision' | 'avatarUrl' | 'avatarKey' | 'backgroundSongId' | 'dataAmount'>> = {},
+): PhigrosGameDataPayload {
+  return {
+    kind: 'phigros',
+    player: snapshot.player,
+    records: snapshot.records,
+    bestSections: snapshot.bestSections,
+    playerScore: { label: 'Raking Score', value: snapshot.player.rating, display: snapshot.player.rating.toFixed(4) },
+    challengeModeRank: snapshot.challengeModeRank,
+    source: snapshot.source,
+    saveUpdatedAt: snapshot.source.updatedAt,
+    catalogSource,
+    avatarUrl: null,
+    avatarKey: null,
+    backgroundSongId: null,
+    dataAmount: '0KiB',
+    progress: snapshot.progress,
+    ...details,
+  };
+}
+
 export function formatPlayerScore(value: number, digits: number): string {
   if (digits <= 0) return String(value);
   return value.toString().padStart(digits, '0');

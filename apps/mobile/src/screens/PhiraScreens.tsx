@@ -16,15 +16,14 @@ import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { Card } from '@/components/Card';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { TagEditor } from '@/components/TagEditor';
-import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
-import { PhigrosRateBadge, resolvePhigrosRate } from '@/components/phigros/PhigrosRateBadge';
-import { PhigrosScoreValue } from '@/components/phigros/PhigrosScoreValue';
-import { PhigrosDetailChrome, PHIGROS_SONG_DETAIL_STYLES as detailStyles } from '@/components/phigros/PhigrosSongDetail';
+import { PhiraFilterBar } from '@/components/phira/PhiraFilterBar';
+import { PhiraRateBadge, resolvePhiraRate, PhiraScoreValue, PhiraXingBadge } from '@/components/phira/PhiraScoreVisuals';
+import { FloatingSongDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
+import { VERTICAL_SONG_DETAIL_STYLES as detailStyles } from '@/components/game-content/SongDetailChromeStyles';
 import { useNotification } from '@/components/AppNotification';
 import { openChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-open';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
 import { downloadPhiraChartPackage } from '@/features/phira-compatible-chart-download/phira-compatible-chart-download';
-import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
 import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
 import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
 import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
@@ -90,7 +89,7 @@ export function PhiraRecordsScreen() {
   const retry = async () => { await refreshAll(); await query.refetch(); };
   const controls = <><GameSearchHeader value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索已查询歌曲"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
-    <PhigrosFilterBar showLevel={false} level="all" onLevelChange={() => undefined}
+    <PhiraFilterBar
       collapsed={filter.collapsed} onCollapsedChange={filter.setCollapsed}
       constantMin={filter.constantMin} constantMax={filter.constantMax}
       constantBounds={constantBounds}
@@ -119,7 +118,7 @@ export function PhiraCatalogScreen() {
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
   const controls = <><GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
-    <PhigrosFilterBar showLevel={false} level="all" onLevelChange={() => undefined} collapsed={collapsed}
+    <PhiraFilterBar collapsed={collapsed}
       constantMin={constantMin} constantMax={constantMax} onCollapsedChange={setCollapsed}
       onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
       selectRows={[
@@ -163,7 +162,7 @@ export function PhiraSongDetailScreen({ chartId }: { chartId: string }) {
           playerId={playerId}
         />}
       />
-      <PhigrosDetailChrome
+      <FloatingSongDetailChrome
         songTitle={chart?.name}
         favorite={favorite}
         favoriteDisabled={library.isLoading || library.isUpdating}
@@ -223,8 +222,8 @@ function PhiraSongDetailContent({
       ]} cellStyle={detailStyles.metadataCell} labelStyle={detailStyles.metadataLabel} measureStyle={detailStyles.metadataValueMeasure} style={detailStyles.metadataTable} testIDPrefix="phira-metadata" valueBlockStyle={detailStyles.metadataValueBlock} valueStyle={detailStyles.metadataValue} />
       {deferredReady ? <><View style={detailStyles.carousel}><GameChartResultCard testID="phira-chart-card" accessibilityLabel={`${chart.level} 难度卡片`} style={[detailStyles.chartCard, { width: Math.max(280, width - 40), backgroundColor: colors.bg, borderColor: colors.fg }]}>
         <View style={detailStyles.chartHeader}><View style={[detailStyles.diffPill, { backgroundColor: colors.fg }]}><Text style={detailStyles.diffPillText}>{chart.level}</Text></View><Text style={[detailStyles.level, { color: colors.fg }]}>{chart.difficulty.toFixed(1)}</Text></View>
-        <View style={detailStyles.resultBlock}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>Score</Text>{score.data?.record ? <PhigrosScoreValue score={score.data.record.score} variant={score.data.record.score >= 1_000_000 ? 'phi' : score.data.record.fullCombo ? 'fc' : 'normal'} textColor={theme.text} fontSize={38} lineHeight={43} /> : <Text style={[detailStyles.scoreValue, { color: theme.text }]}>—</Text>}
-          {score.data?.record ? <View style={detailStyles.badgeRow}><PhigrosRateBadge rate={resolvePhigrosRate({ dxScore: score.data.record.score, fc: score.data.record.fullCombo ? 'ap' : null })} fc={score.data.record.fullCombo} />{xing ? <PhigrosXingBadge kind={xing} /> : null}</View> : null}</View>
+        <View style={detailStyles.resultBlock}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>Score</Text>{score.data?.record ? <PhiraScoreValue score={score.data.record.score} variant={score.data.record.score >= 1_000_000 ? 'phi' : score.data.record.fullCombo ? 'fc' : 'normal'} textColor={theme.text} fontSize={38} lineHeight={43} /> : <Text style={[detailStyles.scoreValue, { color: theme.text }]}>—</Text>}
+          {score.data?.record ? <View style={detailStyles.badgeRow}><PhiraRateBadge rate={resolvePhiraRate({ dxScore: score.data.record.score, fc: score.data.record.fullCombo ? 'ap' : null })} fc={score.data.record.fullCombo} />{xing ? <PhiraXingBadge kind={xing} /> : null}</View> : null}</View>
         <View style={detailStyles.statRow}><View style={detailStyles.statCell}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>ACC</Text><Text style={[detailStyles.statValue, { color: theme.text }]}>{score.data?.record ? formatPhiraAccuracy(score.data.record.accuracy) : '—'}</Text></View><View style={detailStyles.statCell}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>RKS</Text><Text style={[detailStyles.statValue, { color: theme.text }]}>{score.data?.poolRks == null ? '—' : score.data.poolRks.toFixed(4)}</Text></View></View>
         <View style={[detailStyles.chartDivider, { backgroundColor: theme.border }]} /><Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
         {noteGroup ? <GameNoteTable mode="grid" group={noteGroup} accessibilityLabel="谱面物量" containerStyle={[detailStyles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} rowStyle={detailStyles.notesRow} headerRowStyle={detailStyles.notesHeaderRow} headerTextStyle={[detailStyles.notesCell, detailStyles.notesHeader, { color: theme.textMuted }]} valueTextStyle={[detailStyles.notesCell, detailStyles.notesValue, { color: theme.text }]} /> : <Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>{notes.isLoading ? '加载物量中…' : `物量不可用${notes.data?.unavailableReason ? `：${notes.data.unavailableReason}` : ''}`}</Text>}

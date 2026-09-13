@@ -23,10 +23,12 @@ app 路由 / 游戏容器
 ### 结构检查
 
 `npm run check:architecture` 解析生产 TypeScript 的静态导入、导出、require 和动态导入，
-检查跨游戏组件引用、公共核心反向引用游戏组件、领域层反向依赖 UI/功能层，以及公共核心
+检查游戏组件和游戏 `screens` 的跨游戏组件引用、公共核心反向引用游戏组件、领域层反向依赖 UI/功能层，以及公共核心
 对具体游戏 ID 的比较与 switch。注册表、中央编排和游戏适配器保留显式分派。
 Phigros 与 Phira 的共同徽章和分值结构由 `game-content` 提供；游戏包装层提供文本和主题。
-结构检查与虚构游戏合同一起使用，不能替代对新间接依赖和业务分支的审查。
+State 不得反向引用组件，存储与 `storage-management` 执行核心不得引用 Hook。
+规则入口 `scripts/lib/architecture-boundaries.mjs` 的 `inspectArchitectureSources(entries, games)`
+由命令行和允许/拒绝源码合同共同使用。结构检查与虚构游戏合同一起使用，不能替代对新间接依赖和业务分支的审查。
 
 ## 领域与展示契约
 
@@ -66,6 +68,21 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 | 曲库与别名 | `src/hooks/use-aliased-catalog.ts`：`loadAliasedCatalog`、`useAliasedCatalog` | 游戏提供目录、别名查询和合并函数；Hook 统一查询时序和来源；可选 `retry` 允许已自行恢复的服务关闭外层重试 | 曲库与搜索测试 |
 | 最终数据 Query | `src/services/game-data-query.ts`：`GAME_DATA_QUERY_VERSION`、`gameDataQueryKey`、`readSettledGameDataBundle` | 账号、游戏、Provider、会话模式共同组成键；键结构变化时统一提升版本 | 游戏数据与同步测试 |
 
+`services/phigros-game-data-service.ts` 的 `loadPhigrosGameData` 接收账号、成绩/曲库 Provider、
+快照缓存、会话数据状态、AbortSignal 和写入断言，负责首次兼容快照与显式云存档读取。
+服务不调用 Hook；`useGameData(enabled = true)` 保留查询键、返回结构和游戏分派。
+`domain/game-data.ts` 的 `PhigrosGameDataPayload` 和 `phigrosPayloadFromSnapshot(snapshot, catalogSource, details?)`
+统一真实/示例账号的纯展示转换，缓存模块保留载荷类型兼容导出。
+读取与头像解析结束及排队写入时均复核发布修订、取消和写入代次；离线保留已有快照。
+合同包括 `phigros-game-data-service.test.ts`、`phigros-score-revision.test.ts` 与原缓存/页面测试。
+
+`services/phigros-kyou-cache.ts` 的 `loadPhigrosKyouAliases(signal?)` / `resetPhigrosKyouAliasesCache()`
+供查询和存储清理共同使用。一小时缓存与共享在途请求分开管理，调用前捕获本地及游戏代次，
+复用 `createInflightGuard.share` 的消费者取消；清理终止旧工作，旧失败不清空新缓存。
+`PhigrosKyouProvider.getAliases(signal?)` / `getChartTags(signal?)` 通过 `requestJson` 执行，
+12 秒超时、一次尝试，保留 manifest 数量、唯一性及引用一致性检查；别名失败仍沿曲库入口降级。
+`phigros-kyou-cache.test.ts`、Provider 与曲库 Hook 测试覆盖此合同。
+
 Phigros 曲库复用 `loadAliasedCatalog` / `useAliasedCatalog` 的来源与别名合并，
 `use-phigros-catalog.ts` 的 `refreshPhigrosCatalog()` 统一主动更新入口，
 并经 `PhigrosCatalogProvider.getCatalog(signal?, checkChapters?)` 校对独立的 `chapters.csv`。
@@ -91,6 +108,26 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 | 偏好设置 | `src/storage/create-preferences-store.ts` 的 `createPreferencesStore` | 支持全局单键和按账号/游戏 scope；迁移通过 `onMissing` 完成 | 偏好及迁移测试 |
 | 示例账号 | `src/storage/create-demo-account-store.ts` 的 `createDemoAccountStore` | 单个可删除示例档案的公共持久化工厂 | 示例账号 Store 测试 |
 | SQLite 与存储统计 | `src/storage/rranker-database.ts`、SQLite Repository、`src/features/storage-management/game-storage-adapters.ts` | 唯一连接；Schema、快照及个人曲库写入共用 `runDatabaseWrite` 队列；统计和清理均经同一游戏适配器 | `storage-management.test.ts`、`storage-management-screen.test.tsx` |
+
+`state/debug-store.ts` 的 `useDebugStore` 提供 `testAccountsEnabled`、`hydrated`、`saving`、
+`hydrate(): Promise<void>` 和 `setTestAccountsEnabled(enabled): Promise<void>`。
+偏好复用 `storage/debug-preferences-store.ts` 的公共偏好工厂，缺失或无效数据默认关闭；
+初始化合并，修改串行保存，成功才发布状态，失败可重试。
+`domain/game-bind-options.ts` 的 `canBindProvider(provider, testAccountsEnabled)` 按 fixture 能力筛选添加入口，
+`GamePickerSheet.testAccountsEnabled` 默认 false，仅作用于 bind 模式；数量提示与实际添加复用同一判断。
+已有账号恢复、Provider 查询和上传目标始终使用完整注册信息，不受该偏好影响。
+
+`services/session-providers.ts` 的 `createSessionProviders(account, session, onLxnsTokenRotation)`
+只装配运行时 Provider，不读取 Store；`useSession` 保持唯一会话状态、动作与令牌轮换入口。
+`services/account-restoration.ts` 的 `restoreAppAccounts()` / `loadOptionalBoundAccounts()`
+统一安全会话、可选档案及默认本地玩家迁移；`useAppStartup` 处理启动准备，`useAppRuntime`
+处理路由、前后台、内存警告和延后维护。界面 Provider/导航仍在根布局装配。
+
+`storage-adapter-core.ts` 的 `createGameStorageAdapter(definition)` 接收 `StorageOwnership`，
+`selectStorageInventory(inventory, ownership)` 为统计和清理提供同一账号/资源选择结果。
+`GAME_STORAGE_ADAPTERS` 保留游戏组合；`shared-storage-cache.ts` 独立维护共享文件缓存边界。
+既有统计、清理与类型导出继续从适配器模块提供，SQL 批量删除、诊断正文和字体保护规则不变。
+`storage-adapter-core.test.ts` 覆盖无成绩行资源、测量/删除一致性、代次与 SQL 失败边界。
 
 ### 账号同步与缓存写入
 
@@ -191,6 +228,16 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 
 ## 共享 UI 与交互
 
+账号管理的 `useManagedAccountOperations` 继续使用 `screens/game-accounts-actions.ts` 的公共执行器，
+档案/缓存策略由 `services/account-management.ts` 提供，互斥弹层与转场归 `useAccountBindingFlow`。
+`removeBoundPlayerAccount` 的可选 `prepareRemoval` 在删除前取消账号查询；失败中止删除并通知，
+`finally` 始终释放 busy，既有分项失败继续汇总。屏幕不自行实现第二套绑定或删除流程。
+
+总览的 `useOverviewSync`、`useOverviewUpload` 共享 `useOverviewOperation` 操作锁，
+同步仍等待缓存后台读取落定后判断成功。`UploadDataSheet` 的账号偏好、二维码输入和上传执行
+分别复用 `useUploadAccountPreferences`、`useUploadQrInput`、`useUploadTaskState` / `useUploadExecution`，
+任务真相仍在唯一 `uploadTaskController`，关闭/卸载弹层不取消任务。
+
 | 能力 | 权威入口 | 使用边界 | 主要验证 |
 |---|---|---|---|
 | 列表页面 | `src/components/game-content/GameListPages.tsx`：`BestListPage`、`RecordsListPage`、`CatalogListPage`、`RemoteImageFlatList` | 页面容器提供查询状态、presentation、筛选头和 renderItem；列表统一窗口参数与可见图片持久化 | `game-content-host-contract.test.tsx`、P3 host contracts |
@@ -212,6 +259,12 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 `TagFilterSheet` 共用打开时复制选择、清空、完成提交和关闭行为；children 插槽保留
 分组、标签样式及游戏操作。详情元数据样式复用 `SongDetailChromeStyles`；成绩图选择器
 在现有 `BestImagePickerShell` 中复用 `standardBestImagePickerStyles` / `compactBestImagePickerStyles`。
+
+Phigros 与 Phira 的定数、Acc、选择及评价筛选行复用 `MetricFilterRows`；游戏包装负责章节、
+Kyou 标签、评级主题和具体字段。Phira 使用自身 `PhiraFilterBar` / `PhiraScoreVisuals`，
+详情复用 `FloatingSongDetailChrome`（内部调用 `SongDetailChrome`）与
+`SongDetailChromeStyles.ts` 的 `VERTICAL_SONG_DETAIL_STYLES`，不引用 Phigros 页面。
+Muse Dash 筛选字段类型位于 `domain/muse-dash.ts`，State 与 UI 均从领域层导入。
 
 列表可见性通过条目级 `useSyncExternalStore` 订阅，仅通知发生变化的图片持久化 scope；
 不替换列表 renderItem、extraData、宿主或窗口参数。`RemoteImage` 的缓存查找依赖
@@ -244,6 +297,13 @@ URL、请求头和 cacheKey 的稳定身份，等价 source 对象不会重置�
 模块中维护 HTML 文件的创建、错误和按代次释放；各屏幕仍决定原有模板与资源清单。
 Phigros 两套模板共用 `preparePhigrosBestImageCards` 的分区、排名、Phi 与参考 RKS 计算，
 HTML、尺寸、字体、署名和导出结构由各自模板保留，金样不能批量重录。
+
+`useBestImageScreenController(config)` 保持公共返回形状，内部组合 `useBestImagePreferences`、
+`useBestImagePreview` 与 `useBestImageExport`；类型由 `best-image-controller-types.ts` 提供兼容导出。
+导出会话独占同步操作锁、等待画布及稳定计时器、临时捕获文件和操作代次。
+权限/捕获/保存异步边界复核取消，迟到桥接回调不能完成其他页面；取消后不继续保存或提示成功。
+不可取消的原生捕获返回后回收文件；已经开始的相册保存完成后收尾，不回删相册。
+原生 I/O 继续使用 `best-image-export.ts`，`best-image-export-lifecycle.test.tsx` 覆盖取消阶段和重复启动。
 
 Phigros 的 `domain/phigros-chart-preview.ts` 提供
 `loadPhigrosChartPreviewResources(target, signal, read?)`，预览和兼容包下载共用发布恢复与字节校验。

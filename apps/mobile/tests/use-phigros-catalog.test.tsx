@@ -16,7 +16,7 @@ jest.mock('@/services/phigros-resources', () => ({ phigrosResources: {
   peek: () => mockRelease,
   load: (...args: unknown[]) => mockLoad(...args),
 } }));
-jest.mock('@/hooks/use-phigros-kyou', () => ({ loadPhigrosKyouAliases: async () => { throw new Error('offline aliases'); } }));
+jest.mock('@/services/phigros-kyou-cache', () => ({ loadPhigrosKyouAliases: async () => { throw new Error('offline aliases'); } }));
 jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
 jest.mock('@/providers/phigros-catalog-provider', () => ({ PhigrosCatalogProvider: class {
   async getCatalog() {

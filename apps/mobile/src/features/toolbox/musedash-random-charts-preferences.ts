@@ -3,7 +3,7 @@ import type {
   MuseDashAchievementFilter,
   MuseDashDifficultySlot,
   MuseDashDlcFilter,
-} from '@/components/musedash/MuseDashFilterBar';
+} from '@/domain/muse-dash';
 import type { RandomChartsCount } from '@/domain/random-charts';
 
 export type MuseDashRandomChartsPreferences = {

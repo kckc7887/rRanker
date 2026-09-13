@@ -1,5 +1,7 @@
+import { useDebugStore } from '@/state/debug-store';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { queryClient } from '@/state/query-client';
 import { StyleSheet } from 'react-native';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
 import {
@@ -220,6 +222,7 @@ jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInse
 
 describe('M3A game account management', () => {
   beforeEach(() => {
+    useDebugStore.setState({ hydrated: true, testAccountsEnabled: true });
     jest.clearAllMocks();
     mockClearOrder.length = 0;
     mockExpandedGameId = 'maimai';
@@ -326,6 +329,7 @@ describe('M3A game account management', () => {
     }));
     expect(mockUpsertBoundAccount).toHaveBeenCalledWith(expected);
     await waitFor(() => expect(mockSelectBoundAccount).toHaveBeenCalledWith(expected.id));
+    expect(mockRemoveQueries).not.toHaveBeenCalledWith({ queryKey: ['tuf'] });
   });
 
   it('adds the generated maxed Phigros demo account', async () => {
@@ -476,5 +480,29 @@ describe('M3A game account management', () => {
     expect(mockRemoveBoundAccount).toHaveBeenCalledTimes(1);
     expect(mockRemoveQueries).toHaveBeenCalledTimes(1);
     expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
+  });
+
+  it('stops removal before touching persisted data when query cancellation fails and releases busy', async () => {
+    jest.spyOn(queryClient, 'cancelQueries').mockRejectedValueOnce(new Error('cancel failed'));
+    mockBoundAccounts = [mockAccount];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByText('解除绑定'));
+    await fireEvent.press(screen.getByText('解绑并清除个人数据'));
+    await waitFor(() => expect(screen.getByText('移除失败')).toBeTruthy());
+    expect(mockRemoveAccount).not.toHaveBeenCalled();
+    expect(mockClearSnapshots).not.toHaveBeenCalled();
+    expect(mockClearUserData).not.toHaveBeenCalled();
+    expect(mockRemoveBoundAccount).not.toHaveBeenCalled();
+    expect(mockSetActiveAccountId).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('添加游戏账号').props.accessibilityState.disabled).toBe(false);
+  });
+
+  it('keeps existing demo accounts manageable when adding test accounts is disabled', async () => {
+    useDebugStore.setState({ hydrated: true, testAccountsEnabled: false });
+    const screen = await renderScreen();
+    expect(screen.getByLabelText('删除示例账号 示例账号')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('添加游戏账号'));
+    expect(screen.queryByLabelText('示例查分器')).toBeNull();
+    expect(screen.getByLabelText('本地查分器')).toBeTruthy();
   });
 });

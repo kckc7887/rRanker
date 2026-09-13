@@ -131,13 +131,13 @@ export function SettingsScreen() {
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="诊断"
-        onPress={() => router.push('/diagnostics' as Href)}
+        accessibilityLabel="调试"
+        onPress={() => router.push('/debug' as Href)}
         style={[styles.row, { backgroundColor: theme.surface }]}
       >
         <View style={styles.rowText}>
-          <Text style={[styles.title, { color: theme.text }]}>诊断</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>遇到闪退或功能异常时，可导出记录并发送给开发者协助排查</Text>
+          <Text style={[styles.title, { color: theme.text }]}>调试</Text>
+          <Text style={[styles.detail, { color: theme.textMuted }]}>测试账号与问题排查</Text>
         </View>
         <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
       </Pressable>
