@@ -124,6 +124,17 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   `withRelease` 同时捕获整个操作的代次，清理不能触发旧操作的恢复重试并重新填回内存。
   Rizline 严格验证 manifest/catalog 摘要、大小、路径、唯一 ID 和引用；Phigros 保持其
   原发布格式、`verifyPhigrosResource` 与预览/下载校验行为。
+- 独立发布器 `D:/Projects/rizline-resource-publisher/rizline_publisher/core.py` 的
+  `publish(..., workers=4)` 统一预览与实际上传；`verify_remote_object` 校验 GET 实际字节，
+  相同内容跳过 PUT，包含 current。不可变资源仍使用 Content-MD5 与条件写入，并行任务
+  全部完成后才顺序验证 manifest、current；失败先等待在途任务结束，不提前删除旧资源。
+  `cleanup_releases(client, keep, current_data)` 仅删除 `rizline/releases/` 内不在清单文件与
+  manifest 精确键集合中的可见对象。清理前、每批删除前及清理后复核 current，校验删除响应
+  与最终对象集合；清理失败不能返回发布成功。发布必须串行，不能把指针复核当作跨进程锁。
+  单版本策略仅针对 S3 发布前缀；Actions 完整归档保留 90 天，线上回滚通过本地或归档恢复后
+  重新走校验与发布入口，不依赖 S3 历史版本。客户端失败回退仍读取本机最后有效曲库。
+  独立项目的 `tests/test_publisher.py` 覆盖重复发布、并发校验、指针顺序、精确清理与删除失败；
+  调度、凭据及归档配置见技术架构文档的 Rizline 发布说明。
 - `rizlinePayloadFromSnapshot(snapshot, catalog?)` 保留原快照与官方指标，集中构造成绩和
   推定分组。曲库 Hook 更新后通过当前 QueryClient 重建派生字段，不额外请求官方存档。
   `useGameResourceSync` 是允许显式注册游戏的元数据编排边界，不把游戏差异放入共享渲染层。
