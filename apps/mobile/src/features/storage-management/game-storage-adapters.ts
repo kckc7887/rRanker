@@ -1,12 +1,8 @@
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { phigrosResources } from '@/services/phigros-resources';
 import type { GameId } from '@/domain/game-bind-options';
-import type { Directory } from 'expo-file-system';
 import { findGame } from '@/domain/game-bind-options';
-import { isOsuGameId } from '@/domain/game-mode-family';
 import { DXRATING_CHART_TAGS_RESOURCE_KEY } from '@/domain/dxrating-chart-tags';
 import {
-  isPhigrosKyouResourceKey,
   PHIGROS_KYOU_RESOURCE_KEYS,
 } from '@/domain/phigros-kyou';
 import {
@@ -20,17 +16,19 @@ import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-fon
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { isBoundedCacheEntry, isLegacyRuntimeDiagnosticCacheEntry } from '@/features/storage-management/cache-policy';
-import { isExpoSystemCacheEntry } from '@/features/storage-management/expo-system-cache';
+import { MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT } from '@/features/storage-management/fs-storage';
+import { resetPhigrosKyouAliasesCache } from '@/services/phigros-kyou-cache';
 import {
-  clearDirectoryContentsStrict,
-  measureDirectoryBytesAsync,
-  APP_CACHE_ROOT,
-  MAIMAI_ASSETS_ROOT,
-  PHIGROS_FONT_ROOT,
-} from '@/features/storage-management/fs-storage';
-import { reloadUiIconFonts } from '@/features/storage-management/ui-icon-fonts';
-import { resetPhigrosKyouAliasesCache } from '@/hooks/use-phigros-kyou';
+  collectStorageMeasurementInventory,
+  createGameStorageAdapter,
+  selectStorageInventory,
+  type GameStorageAdapter,
+  type StorageMeasurementInventory,
+} from '@/features/storage-management/storage-adapter-core';
+
+export { collectStorageMeasurementInventory } from '@/features/storage-management/storage-adapter-core';
+export type { GameStorageAdapter, StorageMeasurementInventory } from '@/features/storage-management/storage-adapter-core';
+export { clearSharedCache, measureSharedCacheBytes, sharedCacheNote } from '@/features/storage-management/shared-storage-cache';
 
 export { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
 
@@ -51,214 +49,22 @@ export const PHIGROS_RESOURCE_KEYS = [
 
 export type StorageSegmentId = 'app' | 'shared' | GameId;
 
-export type GameStorageAdapter = {
-  gameId: GameId;
-  title: string;
-  color: string;
-  note: string;
-  /** 该游戏拥有的 React Query 前缀；清理器按前缀选择性移除。 */
-  queryKeys: readonly (readonly unknown[])[];
-  resetMemory?: () => void;
-  fileResources: readonly {
-    persistence: 'temporary' | 'versioned-asset';
-    root: () => Directory;
-    clear: () => void;
-  }[];
-  measure: (
-    snapshots: SqliteSnapshotRepository,
-    inventory?: StorageMeasurementInventory,
-  ) => Promise<number>;
-  clear: (snapshots: SqliteSnapshotRepository) => Promise<void>;
-};
-
-export type StorageMeasurementInventory = {
-  scores: Awaited<ReturnType<SqliteSnapshotRepository['listAccountScoreSizes']>>;
-  resources: Awaited<ReturnType<SqliteSnapshotRepository['listResourceSizes']>>;
-  catalogBytes: number;
-  legacyScoreBytes: number;
-};
-
-export async function collectStorageMeasurementInventory(
-  snapshots: SqliteSnapshotRepository,
-): Promise<StorageMeasurementInventory> {
-  const [scores, resources, catalogBytes, legacyScoreBytes] = await Promise.all([
-    snapshots.listAccountScoreSizes(),
-    snapshots.listResourceSizes(),
-    snapshots.measureCatalogBytes(),
-    snapshots.measureLegacyScoreBytes(),
-  ]);
-  return { scores, resources, catalogBytes, legacyScoreBytes };
+function accountOwnership(gameId: GameId, exclude?: (accountId: string) => boolean) {
+  return (accountId: string) => (accountId === gameId || accountId.startsWith(`${gameId}:`)) && !exclude?.(accountId);
 }
 
-async function measureFileResources(adapter: Pick<GameStorageAdapter, 'fileResources'>): Promise<number> {
-  const sizes = await Promise.all(
-    adapter.fileResources.map((resource) => measureDirectoryBytesAsync(resource.root())),
-  );
-  return sizes.reduce((sum, bytes) => sum + bytes, 0);
-}
-
-function clearFileResources(adapter: Pick<GameStorageAdapter, 'fileResources'>): void {
-  for (const resource of adapter.fileResources) resource.clear();
-}
-
-function accountIdBelongsToGame(accountId: string, gameId: GameId): boolean {
-  return accountId === gameId || accountId.startsWith(`${gameId}:`);
-}
-
-function accountIdFromResourceKey(key: string): string | null {
-  if (key.startsWith('score:')) return key.slice('score:'.length);
-  if (key.startsWith('chunithm-score:')) return key.slice('chunithm-score:'.length);
-  if (key.startsWith('account-avatar:')) return key.slice('account-avatar:'.length);
-  if (key.startsWith('account-thumbnail:')) return key.slice('account-thumbnail:'.length);
-  if (key.startsWith('phigros-save:')) return key.slice('phigros-save:'.length);
-  return null;
-}
-
-function resourceBelongsToGame(key: string, gameId: GameId): boolean {
-  if (gameId === 'majdata-net' && key.startsWith('majdata-net:')) return true;
-  if (gameId === 'maimai' && (MAIMAI_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
-    return true;
-  }
-  if (gameId === 'chunithm'
-    && (CHUNITHM_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) {
-    return true;
-  }
-  if (gameId === 'phigros' && isPhigrosKyouResourceKey(key)) {
-    return true;
-  }
-  if (gameId === 'chunithm' && key.startsWith(CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX)) {
-    return true;
-  }
-  // 中二收藏品列表缓存
-  if (gameId === 'chunithm' && key.startsWith(`${CHUNITHM_COLLECTION_LIST_RESOURCE_KEY}:`)) {
-    return true;
-  }
-  // TUF 玩家资料、成绩分页、曲库分页、关卡详情与难度列表缓存
-  if (gameId === 'adofai' && key.startsWith('tuf:')) {
-    return true;
-  }
-  // Muse Dash 曲库、定数表、名称表与玩家成绩缓存
-  if (gameId === 'musedash' && key.startsWith('musedash:')) {
-    return true;
-  }
-  // Phira 玩家资料、最佳成绩、曲库分页、谱面详情与物量计数缓存
-  if (gameId === 'phira' && key.startsWith('phira:')) {
-    return true;
-  }
-  // osu! 分模式玩家快照与已知成绩集合，四模式各自归属。
-  if (isOsuGameId(gameId)
-    && (key.startsWith(`osu:${gameId}:`) || key.startsWith(`osu-known-scores:${gameId}:`))) {
-    return true;
-  }
-  const accountId = accountIdFromResourceKey(key);
-  if (accountId) return accountIdBelongsToGame(accountId, gameId);
-  return false;
-}
-
-/** 舞萌可清缓存：排除本地账号成绩/头像资源。 */
-function isClearableMaimaiAccountData(accountId: string): boolean {
-  return accountIdBelongsToGame(accountId, 'maimai') && !isDurableMaimaiAccountId(accountId);
-}
-
-function isClearableMaimaiResource(key: string): boolean {
-  if ((MAIMAI_CATALOG_RESOURCE_KEYS as readonly string[]).includes(key)) return true;
-  const accountId = accountIdFromResourceKey(key);
-  if (!accountId) return false;
-  return isClearableMaimaiAccountData(accountId);
-}
-
-async function measureGameSqliteBytes(
-  snapshots: SqliteSnapshotRepository,
-  gameId: GameId,
-  includeCatalog: boolean,
-  inventory?: StorageMeasurementInventory,
-): Promise<number> {
-  const measured = inventory ?? await (async () => {
-    const [scores, resources, catalogBytes, legacyScoreBytes] = await Promise.all([
-      snapshots.listAccountScoreSizes(),
-      snapshots.listResourceSizes(),
-      includeCatalog ? snapshots.measureCatalogBytes() : Promise.resolve(0),
-      includeCatalog ? snapshots.measureLegacyScoreBytes() : Promise.resolve(0),
-    ]);
-    return { scores, resources, catalogBytes, legacyScoreBytes };
-  })();
-  let total = 0;
-  for (const row of measured.scores) {
-    if (gameId === 'maimai') {
-      if (isClearableMaimaiAccountData(row.accountId)) total += row.bytes;
-      continue;
-    }
-    if (accountIdBelongsToGame(row.accountId, gameId)) total += row.bytes;
-  }
-  for (const row of measured.resources) {
-    if (gameId === 'maimai') {
-      if (isClearableMaimaiResource(row.key)) total += row.bytes;
-      continue;
-    }
-    if (resourceBelongsToGame(row.key, gameId)) total += row.bytes;
-  }
-  return total
-    + (includeCatalog ? measured.catalogBytes : 0)
-    + (includeCatalog ? measured.legacyScoreBytes : 0);
-}
-
-async function clearGameSqlite(
-  snapshots: SqliteSnapshotRepository,
-  gameId: GameId,
-  includeCatalog: boolean,
-): Promise<void> {
-  invalidateResourceWrites(gameId);
-  const [scores, resources] = await Promise.all([
-    snapshots.listAccountScoreSizes(),
-    snapshots.listResourceSizes(),
-  ]);
-  const accountIds = scores
-    .map((row) => row.accountId)
-    .filter((id) => (
-      gameId === 'maimai'
-        ? isClearableMaimaiAccountData(id)
-        : accountIdBelongsToGame(id, gameId)
-    ));
-  const resourceKeys = resources
-    .map((row) => row.key)
-    .filter((key) => (
-      gameId === 'maimai'
-        ? isClearableMaimaiResource(key)
-        : resourceBelongsToGame(key, gameId)
-    ));
-  // Phigros 等不落盘成绩时，头像等资源只有 resource 行，必须按键直接删，不能依赖成绩行顺带清理。
-  await snapshots.clearAccountScores(accountIds);
-  await snapshots.clearResources(resourceKeys);
-  if (includeCatalog) await snapshots.clearCatalog();
-}
-
-/** 本地舞萌账号成绩快照计入个人数据（不可清除）。 */
 export async function measureDurableLocalMaimaiBytes(
   snapshots: SqliteSnapshotRepository,
   inventory?: StorageMeasurementInventory,
 ): Promise<number> {
-  const measured = inventory ?? await (async () => {
-    const [scores, resources] = await Promise.all([
-      snapshots.listAccountScoreSizes(),
-      snapshots.listResourceSizes(),
-    ]);
-    return { scores, resources };
-  })();
-  let total = 0;
-  for (const row of measured.scores) {
-    if (isDurableMaimaiAccountId(row.accountId)) total += row.bytes;
-  }
-  for (const row of measured.resources) {
-    const accountId = accountIdFromResourceKey(row.key);
-    if (accountId && isDurableMaimaiAccountId(accountId)) total += row.bytes;
-  }
-  return total;
+  const measured = inventory ?? await collectStorageMeasurementInventory(snapshots, false);
+  return selectStorageInventory(measured, { ownsAccount: isDurableMaimaiAccountId }).bytes;
 }
 
 const maimaiFileResources: GameStorageAdapter['fileResources'] = [{
   persistence: 'versioned-asset', root: MAIMAI_ASSETS_ROOT, clear: clearMaimaiUiCache,
 }];
-const maimaiAdapter: GameStorageAdapter = {
+const maimaiAdapter = createGameStorageAdapter({
   gameId: 'maimai',
   title: findGame('maimai')?.title ?? '舞萌 DX',
   color: '#F43F5E',
@@ -268,24 +74,18 @@ const maimaiAdapter: GameStorageAdapter = {
     ['collections'], ['dxrating-chart-tags'], ['best-image-collections'],
   ],
   fileResources: maimaiFileResources,
-  async measure(snapshots, inventory) {
-    const [sqlite, files] = await Promise.all([
-      measureGameSqliteBytes(snapshots, 'maimai', true, inventory),
-      measureFileResources(maimaiAdapter),
-    ]);
-    return sqlite + files;
+  ownership: {
+    ownsAccount: accountOwnership('maimai', isDurableMaimaiAccountId),
+    resourceKeys: MAIMAI_CATALOG_RESOURCE_KEYS,
+    includeCatalog: true,
   },
-  async clear(snapshots) {
-    await clearGameSqlite(snapshots, 'maimai', true);
-    clearFileResources(maimaiAdapter);
-  },
-};
+});
 
 const phigrosFileResources: GameStorageAdapter['fileResources'] = [
   { persistence: 'versioned-asset', root: PHIGROS_FONT_ROOT, clear: clearPhigrosFontCache },
   { persistence: 'temporary', root: phigrosIllustrationStageDirectory, clear: clearPhigrosIllustrationStage },
 ];
-const phigrosAdapter: GameStorageAdapter = {
+const phigrosAdapter = createGameStorageAdapter({
   gameId: 'phigros',
   title: findGame('phigros')?.title ?? 'Phigros',
   color: '#8B5CF6',
@@ -293,119 +93,99 @@ const phigrosAdapter: GameStorageAdapter = {
   queryKeys: [['score-snapshot'], ['game-data'], ['phigros-catalog'], ['phigros-kyou-chart-tags']],
   resetMemory: () => { resetPhigrosKyouAliasesCache(); phigrosResources.clear(); },
   fileResources: phigrosFileResources,
-  async measure(snapshots, inventory) {
-    const [sqlite, files] = await Promise.all([
-      measureGameSqliteBytes(snapshots, 'phigros', false, inventory),
-      measureFileResources(phigrosAdapter),
-    ]);
-    return sqlite + files;
-  },
-  async clear(snapshots) {
-    await clearGameSqlite(snapshots, 'phigros', false);
-    clearFileResources(phigrosAdapter);
-  },
-};
+  ownership: { ownsAccount: accountOwnership('phigros'), resourceKeys: PHIGROS_RESOURCE_KEYS },
+});
 
-const chunithmAdapter: GameStorageAdapter = {
+const chunithmAdapter = createGameStorageAdapter({
   gameId: 'chunithm',
   title: findGame('chunithm')?.title ?? '中二节奏',
   color: '#27A7E7',
   note: '账号成绩快照；公开曲库仅保留在会话内，SQLite 为估算值',
   queryKeys: [['score-snapshot'], ['game-data'], ['chunithm-catalog'], ['chunithm-song-detail'], ['chunithm-collections']],
   fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'chunithm', false, inventory),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'chunithm', false),
-};
+  ownership: { ownsAccount: accountOwnership('chunithm'), resourceKeys: CHUNITHM_CATALOG_RESOURCE_KEYS, resourcePrefixes: [CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX, `${CHUNITHM_COLLECTION_LIST_RESOURCE_KEY}:`] },
+});
 
-const adofaiAdapter: GameStorageAdapter = {
+const adofaiAdapter = createGameStorageAdapter({
   gameId: 'adofai',
   title: findGame('adofai')?.title ?? '冰与火之舞',
   color: '#F15B55',
   note: '玩家资料与核心成绩快照；公开结果仅保留在会话内，SQLite 为估算值',
   queryKeys: [['tuf']],
   fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'adofai', false, inventory),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'adofai', false),
-};
+  ownership: { ownsAccount: accountOwnership('adofai'), resourcePrefixes: ['tuf:'] },
+});
 
-const musedashAdapter: GameStorageAdapter = {
+const musedashAdapter = createGameStorageAdapter({
   gameId: 'musedash',
   title: findGame('musedash')?.title ?? '喵斯快跑',
   color: '#EC4899',
   note: '玩家与核心成绩快照；曲库及单曲明细仅保留在会话内，SQLite 为估算值',
   queryKeys: [['musedash']],
   fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'musedash', false, inventory),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'musedash', false),
-};
+  ownership: { ownsAccount: accountOwnership('musedash'), resourcePrefixes: ['musedash:'] },
+});
 
-const majdataAdapter: GameStorageAdapter = {
+const majdataAdapter = createGameStorageAdapter({
   gameId: 'majdata-net', title: 'Majdata Net', color: '#2563EB', note: '玩家成绩、歌曲和谱面缓存',
   queryKeys: [['majdata-net'], ['game-data']], fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'majdata-net', false, inventory),
-  clear: snapshots => clearGameSqlite(snapshots, 'majdata-net', false),
-};
+  ownership: { ownsAccount: accountOwnership('majdata-net'), resourcePrefixes: ['majdata-net:'] },
+});
 
-const phiraAdapter: GameStorageAdapter = {
+const phiraAdapter = createGameStorageAdapter({
   gameId: 'phira',
   title: findGame('phira')?.title ?? 'Phira',
   color: '#8D5BD6',
   note: '玩家与核心成绩快照；曲库、谱面及物量仅保留在会话内，SQLite 为估算值',
   queryKeys: [['phira']],
   fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'phira', false, inventory),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'phira', false),
-};
+  ownership: { ownsAccount: accountOwnership('phira'), resourcePrefixes: ['phira:'] },
+});
 
 /** osu! 四模式：后台各注册为独立游戏，按模式统计/清除各自的快照缓存。 */
 const OSU_STORAGE_COLOR = '#FF66AA';
 const OSU_STORAGE_NOTE = '玩家资料、Top 100 与已知成绩快照；SQLite 为估算值';
 
-const osuStandardAdapter: GameStorageAdapter = {
+const osuStandardAdapter = createGameStorageAdapter({
   gameId: 'osu-standard',
   title: findGame('osu-standard')?.title ?? 'osu!standard',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
   queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'osu-standard', false, inventory),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'osu-standard', false),
-};
+  ownership: { ownsAccount: accountOwnership('osu-standard'), resourcePrefixes: ['osu:osu-standard:', 'osu-known-scores:osu-standard:'] },
+});
 
-const osuManiaAdapter: GameStorageAdapter = {
+const osuManiaAdapter = createGameStorageAdapter({
   gameId: 'osu-mania',
   title: findGame('osu-mania')?.title ?? 'osu!mania',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
   queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'osu-mania', false, inventory),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'osu-mania', false),
-};
+  ownership: { ownsAccount: accountOwnership('osu-mania'), resourcePrefixes: ['osu:osu-mania:', 'osu-known-scores:osu-mania:'] },
+});
 
-const osuCatchAdapter: GameStorageAdapter = {
+const osuCatchAdapter = createGameStorageAdapter({
   gameId: 'osu-catch',
   title: findGame('osu-catch')?.title ?? 'osu!catch',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
   queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'osu-catch', false, inventory),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'osu-catch', false),
-};
+  ownership: { ownsAccount: accountOwnership('osu-catch'), resourcePrefixes: ['osu:osu-catch:', 'osu-known-scores:osu-catch:'] },
+});
 
-const osuTaikoAdapter: GameStorageAdapter = {
+const osuTaikoAdapter = createGameStorageAdapter({
   gameId: 'osu-taiko',
   title: findGame('osu-taiko')?.title ?? 'osu!taiko',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
   queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
   fileResources: [],
-  measure: (snapshots, inventory) => measureGameSqliteBytes(snapshots, 'osu-taiko', false, inventory),
-  clear: (snapshots) => clearGameSqlite(snapshots, 'osu-taiko', false),
-};
+  ownership: { ownsAccount: accountOwnership('osu-taiko'), resourcePrefixes: ['osu:osu-taiko:', 'osu-known-scores:osu-taiko:'] },
+});
 
-/** 新游戏接入：在此注册 measure/clear 即可出现在环形图与勾选列表。 */
 export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   maimaiAdapter,
   chunithmAdapter,
@@ -422,31 +202,4 @@ export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
 
 export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | undefined {
   return GAME_STORAGE_ADAPTERS.find((adapter) => adapter.gameId === gameId);
-}
-
-export async function measureSharedCacheBytes(): Promise<number> {
-  // 旧诊断正文在迁移成功前必须保留；统计和清理使用同一边界。
-  return measureDirectoryBytesAsync(APP_CACHE_ROOT(), {
-    skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name) || isLegacyRuntimeDiagnosticCacheEntry(name),
-  });
-}
-
-export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean }> {
-  invalidateResourceWrites('shared');
-  // 禁止整目录清空 Paths.cache：会删掉 Ionicons 等 ExponentAsset 字体，导致全站图标空白。
-  clearDirectoryContentsStrict(APP_CACHE_ROOT(), {
-    skip: (name) => isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name) || isLegacyRuntimeDiagnosticCacheEntry(name),
-  });
-  const { Image } = await import('expo-image');
-  const [disk, memory] = await Promise.all([
-    Image.clearDiskCache().catch(() => false),
-    Image.clearMemoryCache().catch(() => false),
-  ]);
-  const imageCacheCleared = disk === true || memory === true;
-  await reloadUiIconFonts();
-  return { imageCacheCleared };
-}
-
-export function sharedCacheNote(): string {
-  return '临时文件与其它可重新下载的内容';
 }

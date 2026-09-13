@@ -26,10 +26,10 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 `apps/mobile/app/_layout.tsx` 是运行时装配中心：
 
 1. 最外层安装 `AppLifecycleProvider`，将 `active`、短暂 `inactive`、后台和内存警告转成统一生命周期状态。
-2. 启动阶段并行恢复主题、图标字体、SecureStore 会话和各类本地账号档案；准备完成前只渲染加载态。
+2. `useAppStartup` 并行恢复主题、图标字体和账号；准备完成前只渲染加载态。`services/account-restoration.ts` 统一安全会话、可选账号档案和旧默认本地玩家快照迁移，真实本地 Rating 延后读取。调试偏好同时恢复，但不阻塞主界面；恢复前示例添加入口关闭。
 3. 准备完成后安装 React Query、应用主题、全局通知和根导航栈。
-4. 根部唯一 `useSyncAccountMetadata` 订阅当前账号结果；页面只读取。首帧交互结束后，根布局与账号列表通过 `hydrateAccountDisplayData` 共享缩略信息和本地 Rating 恢复，再执行存储维护。
-5. 后台时暂停上传任务并取消查询；回到前台后产生新的可取消工作代次；内存警告时释放非活动 Query 和 Expo Image 内存缓存。
+4. 根部唯一 `useSyncAccountMetadata` 订阅当前账号结果；页面只读取。`useAppRuntime` 在首帧交互结束后通过 `hydrateAccountDisplayData` 与账号列表共享缩略信息和本地 Rating 恢复，存储维护每次挂载执行一次。
+5. `useAppRuntime` 统一路由记录、前后台与内存联动：后台暂停上传任务并取消查询；每个前台代次恢复一次展示数据，任务被短暂 inactive 取消后可以重新排队；只有内存警告释放非活动 Query 和 Expo Image 内存缓存。
 
 根栈承载主标签页、个人曲库、游戏管理、存储管理、个性化、歌曲详情、成绩图、谱面确认和 OAuth 回调等文件路由。主标签页位于 `app/(tabs)/_layout.tsx`，固定为总览、最佳、成绩、曲库、设置五项；各标签内部通过 `MainTabStack` 和 `CachedTabScreen` 保持导航及页面状态。
 
@@ -75,6 +75,12 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 ```
 
 `useGameData` 是当前账号总览数据的中央编排点，会根据游戏、Provider、账号和会话模式分派到对应加载器。注册表和中央编排允许显式枚举游戏；可复用渲染核心不承担游戏查询，也不应通过 `gameId` 分支解释游戏语义。
+
+Phigros 云存档加载由 `services/phigros-game-data-service.ts` 的 `loadPhigrosGameData` 执行：
+首次查询检查快照与发布修订是否兼容，离线可返回旧快照；显式同步重新读取云存档。
+七路元数据读取与头像解析完成后复核取消、账号/游戏写入代次及发布修订，实际快照提交前再次复核。
+`domain/game-data.ts` 的 `phigrosPayloadFromSnapshot` 为真实与示例账号生成相同展示结构。
+Hook 继续拥有原 Query Key、查询选项与结果发布，服务不依赖 Hook。
 
 每个游戏保留自己的上游 DTO、Zod Schema、缓存快照和计算规则。跨游戏稳定身份和展示语义通过 `domain/game-content.ts`、`features/game-content/presentation.ts` 及各游戏适配器输出；个人曲库继续使用既有 `ChartType`、`levelIndex` 和存储键，不由展示层改写。
 
@@ -153,21 +159,41 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 
 ## 状态、持久化与资源生命周期
 
-- `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；持久凭据由 `storage/secure-session-store.ts` 管理。
+- `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；激活字段由同一转换路径生成。`services/session-providers.ts` 的 `createSessionProviders` 接收账号、会话和令牌轮换回调，不反向读取 Store；持久凭据由 `storage/secure-session-store.ts` 管理，轮换继续广播到共享凭据账号。
 - `state/query-client.ts` 提供进程内唯一 QueryClient；账号最终数据使用 `services/game-data-query.ts` 的版本化键。
 - SQLite 的进程内连接由 `storage/rranker-database.ts` 集中管理；`runDatabaseWrite` 串行化 schema 初始化、快照和用户曲库写入。批量清理以 500 个绑定参数分批，在同连接事务内执行；文本统计使用 UTF-8 字节，数据库分配页单列。表结构和个人数据键不变。
 - 缓存读取优先走本地首屏、后台刷新和 AbortSignal 取消链路。共享任务按消费者计数取消；清缓存先提升游戏写入代次并取消/移除 Query，解绑只失效所属账号。后台刷新及实际 SQL 提交前复核游戏/账号代次，旧结果不能重新填回缓存。短暂 `inactive` 与普通后台不会被当作内存压力；只有内存警告触发非活动 Query 和图片内存释放。`CachedTabScreen` 在这些状态下保持已挂载画面，只通过 active context 暂停重工作。
 - `RemoteImage` 统一远程图片加载。受控压缩缓存是 v3，总预算 10 MiB、单项上限 10 KiB；列表项达到 50% 可见并持续 250 ms 后才允许持久化。在线原图仍作为主加载源，缓存文件只作本地回退。失活只暂停落盘，不把已显示 source 置空。可见性通过条目级订阅通知，保持列表 renderItem、extraData 和窗口参数稳定；等价 URL/请求头/cacheKey 不触发图片缓存重查。
-- 存储管理通过 `GAME_STORAGE_ADAPTERS` 统一统计和清理各游戏资源。显示的可清理范围与实际删除范围必须使用同一适配器和缓存策略；不得直接清空整个 Expo `Paths.cache`。
+- 存储管理通过 `GAME_STORAGE_ADAPTERS` 声明账号归属、资源键/前缀、查询键及文件资源。`storage-adapter-core.ts` 的同一库存选择器用于统计与删除，涵盖没有成绩行的账号资源；SQL 写入仍走既有队列。共享缓存文件操作位于 `shared-storage-cache.ts`，不直接清空整个 Expo `Paths.cache`。
+
+账号管理由 `GameAccountsScreen` 装配列表和弹层，`useAccountBindingFlow` 维护互斥弹层及转场任务，
+`useManagedAccountOperations` 复用公共绑定/删除执行器；`services/account-management.ts` 提供档案、缓存和账号创建策略。
+删除前先失效并取消账号查询，准备失败中止后续删除，所有退出路径均解除忙碌状态；分项清理失败仍使用原有汇总提示。
+
+总览的 `useOverviewSync` 处理当前账号刷新与最终新鲜度判断，`useOverviewUpload` 处理上传选项、
+舞萌落雪传输及完成刷新，两者通过 `useOverviewOperation` 共享互斥。`UploadDataSheet` 的账号偏好、
+二维码输入与任务执行分别由 `useUploadAccountPreferences`、`useUploadQrInput`、`useUploadTaskState` /
+`useUploadExecution` 管理。唯一后台任务仍是 `uploadTaskController`；关闭或卸载弹层不终止任务，显式取消才结束。
+
+Kyou 别名的一小时会话缓存位于 `services/phigros-kyou-cache.ts`，查询 Hook 和存储清理均依赖该服务。
+服务通过 `createInflightGuard.share` 共享请求并独立取消消费者，清理使旧请求失效；迟到失败不能清空新缓存。
+`PhigrosKyouProvider` 通过公共 `requestJson` 请求，支持调用方 AbortSignal，保持 12 秒超时、单次尝试和数据交叉校验。
 
 最佳列表共用 `BestListPage` 的分组列表入口。分组标题和尾部在 React Native 可见性
 转换中仍会经过键提取器，共享入口按分组对象身份保护提取器，并在图片订阅和业务回调前
 移除非条目事件。弱引用身份表兼容分组更新后的迟到回调，真实条目的键、分组布局、
 列表窗口与图片持久化门槛保持一致。
 
-## 设置诊断与日志
+## 调试设置与诊断日志
 
-设置页的“诊断”进入 `app/diagnostics.tsx`，提供手动日志开关、1000/2000/5000 条容量选择、
+设置页的“调试”进入 `app/debug.tsx`，提供“启用测试账号”开关与独立“诊断”入口。
+`useDebugStore` 通过 `createPreferencesStore` 在 `debug-preferences-v1` 保存 `testAccountsEnabled`，默认关闭。
+初始化共享一次读取，写入串行执行，成功后更新开关；保存失败保留最近成功值并允许重试。
+`canBindProvider(provider, testAccountsEnabled)` 根据 `bindingKind === 'fixture'` 统一筛选添加选项；
+选择器数量和实际添加入口使用同一判断，恢复完成前不显示示例选项。关闭只限制添加，已有示例账号照常恢复和使用。
+开关使用现有主题色原生 Switch，不控制诊断日志开关。
+
+调试页中的“诊断”进入 `app/diagnostics.tsx`，提供手动日志开关、1000/2000/5000 条容量选择、
 最近两份记录的独立分享。页面分为记录控制与最近日志，开关使用个性化曲绘开关相同的
 主题色；记录状态依据当前记录与失败状态显示，不以开启偏好代替实际记录状态。
 日志沿数据库创建顺序标记最新记录、上次记录，独立展示状态、本地秒级时间和保留条数。
@@ -242,7 +268,7 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 - 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（大小匹配则跳过下载），再写入 session。舞萌皮肤在 session 内编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读 PNG；该文件随共享缓存一并统计和清理。
 - 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。`useChartPackageDownload.start` 可接收 `optionalVideoUrl`，将视频可用性检查、选择与下载放在同一重复点击锁、超时与取消生命周期中；后台、卸载和取消后的迟到结果不能再弹窗或启动下载。
 - Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
-- 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；预览轮播同一时刻只挂载当前 WebView 页面。
+- 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
 ### Simai 谱面确认内核

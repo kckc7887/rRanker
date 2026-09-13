@@ -10,7 +10,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { DetailPressable } from '@/components/game-content/DetailPressable';
@@ -19,8 +18,8 @@ import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
-import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
-import { SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
+import { FloatingSongDetailChrome as PhigrosDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
+import { VERTICAL_SONG_DETAIL_STYLES as PHIGROS_SONG_DETAIL_STYLES } from '@/components/game-content/SongDetailChromeStyles';
 import { SongDetailHero } from '@/components/game-content/SongDetailHero';
 import { TagEditor } from '@/components/TagEditor';
 import { PhigrosKyouChartTags, PhigrosKyouChartTagsSheet } from './PhigrosKyouChartTags';
@@ -51,8 +50,6 @@ import { downloadPhigrosChartAsPhiraPackage } from '@/features/phira-compatible-
 
 const PHIGROS_CHART_TYPE = 'SD' as const;
 
-const DETAIL_SCORE_FONT_SIZE = 34;
-const DETAIL_SCORE_LINE_HEIGHT = 40;
 
 const CARD_GAP = 12;
 const IN_LEVEL_INDEX = 2;
@@ -131,43 +128,7 @@ export function PhigrosSongDetail({
   </>;
 }
 
-export function PhigrosDetailChrome({
-  songTitle,
-  favorite,
-  favoriteDisabled,
-  onToggleFavorite,
-}: {
-  songTitle?: string;
-  favorite: boolean;
-  favoriteDisabled: boolean;
-  onToggleFavorite?: () => void;
-}) {
-  const insets = useSafeAreaInsets();
-  return (
-    <SharedSongDetailChrome
-      topInset={insets.top}
-      backStyle={(pressed) => [
-        SONG_DETAIL_CHROME_STYLES.headerButton,
-        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
-        { top: insets.top, left: 8 },
-        pressed && { opacity: 0.7 },
-      ]}
-      favorite={songTitle && onToggleFavorite ? {
-        label: favorite ? `取消收藏 ${songTitle}` : `收藏 ${songTitle}`,
-        active: favorite,
-        disabled: favoriteDisabled,
-        onPress: onToggleFavorite,
-      } : undefined}
-      favoriteStyle={(pressed) => [
-        SONG_DETAIL_CHROME_STYLES.headerButton,
-        SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
-        { top: insets.top, right: 8 },
-        favorite && SONG_DETAIL_CHROME_STYLES.headerFavoriteActive,
-        pressed && { opacity: 0.7 },
-      ]}
-    />
-  );
-}
+export { FloatingSongDetailChrome as PhigrosDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
 
 function Detail({
   song,
@@ -504,8 +465,8 @@ function ChartCard({
             score={score}
             variant={isPhi ? 'phi' : isFc ? 'fc' : 'normal'}
             textColor={theme.text}
-            fontSize={DETAIL_SCORE_FONT_SIZE}
-            lineHeight={DETAIL_SCORE_LINE_HEIGHT}
+            fontSize={styles.scoreValue.fontSize}
+            lineHeight={styles.scoreValue.lineHeight}
           />
         )}
         {best || xingKind ? (
@@ -699,109 +660,5 @@ function DetailRateBadge({ record }: { record: ScoreRecord }) {
   return <PhigrosRateBadge rate={resolvePhigrosRate(record)} fc={record.fc === 'ap'} />;
 }
 
-export const PHIGROS_SONG_DETAIL_STYLES = StyleSheet.create({
-  page: { flex: 1 },
-  content: { paddingBottom: 48 },
-  deferredPlaceholder: { minHeight: 180 },
-  hero: { position: 'relative', backgroundColor: '#D9DEE7', overflow: 'hidden' },
-  heroPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  heroPlaceholderNote: { color: '#6B7280', fontSize: 64 },
-  heroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
-  heroCopy: { position: 'absolute', left: 18, right: 18, bottom: 20, gap: 2 },
-  singleLine: { flexGrow: 0 },
-  singleLineContent: { paddingRight: 18 },
-  songId: { color: 'rgba(255,255,255,0.78)', fontSize: 12, fontWeight: '600', letterSpacing: 0.4 },
-  title: {
-    color: '#FFFFFF', fontSize: 30, lineHeight: 37, fontWeight: '900', letterSpacing: -0.6,
-    textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 8,
-  },
-  artist: { color: 'rgba(255,255,255,0.9)', fontSize: 16, lineHeight: 23, fontWeight: '600' },
-  metadataTable: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12, paddingVertical: 13, gap: 6,
-  },
-  metadataCell: { minWidth: 0, paddingHorizontal: 6, gap: 5 },
-  metadataLabel: { fontSize: 11, fontWeight: '700', lineHeight: 14 },
-  metadataValueBlock: { position: 'relative', minWidth: 0 },
-  metadataValueMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
-  metadataValue: { fontSize: 13, lineHeight: 16, fontWeight: '700' },
-  carouselRoot: { flexGrow: 0 },
-  carouselScroll: { flexGrow: 0 },
-  carousel: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12, gap: CARD_GAP },
-  noCharts: { padding: 20 },
-  chartCard: {
-    borderRadius: 24, borderWidth: 1, padding: 18,
-    shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4,
-  },
-  chartHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  diffPill: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  diffPillText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    lineHeight: 14,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-    includeFontPadding: false,
-  },
-  levelBlock: { alignItems: 'flex-end' },
-  level: { fontSize: 28, lineHeight: 31, fontWeight: '900' },
-  constant: { fontSize: 11, fontWeight: '600' },
-  resultBlock: { marginTop: 22, alignItems: 'flex-start', gap: 6 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
-  resultLabel: { fontSize: 12, fontWeight: '700' },
-  scoreValue: {
-    fontSize: DETAIL_SCORE_FONT_SIZE,
-    lineHeight: DETAIL_SCORE_LINE_HEIGHT,
-    fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-    includeFontPadding: false,
-  },
-  statRow: { flexDirection: 'row', marginTop: 16, gap: 24 },
-  statCell: { gap: 2 },
-  statValue: { fontSize: 18, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  chartDivider: { height: StyleSheet.hairlineWidth, marginVertical: 16 },
-  chartMeta: { fontSize: 12, lineHeight: 18 },
-  notesTable: {
-    marginTop: 9,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(76,88,106,0.28)',
-    borderRadius: 9,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.38)',
-  },
-  notesRow: { minHeight: 26, flexDirection: 'row', alignItems: 'center' },
-  notesHeaderRow: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(76,88,106,0.22)',
-  },
-  notesCell: { flex: 1, minWidth: 0, textAlign: 'center' },
-  notesHeader: { fontSize: 8, fontWeight: '800' },
-  notesValue: { fontSize: 10, fontWeight: '800' },
-  action: {
-    marginTop: 13,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderRadius: 11,
-    padding: 10,
-    alignItems: 'center',
-  },
-  chartSearchAction: { marginTop: 0 },
-  actionText: { fontWeight: '700' },
-  details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
-  songInformation: { gap: 12 },
-  informationTitle: { fontSize: 15, lineHeight: 20, fontWeight: '800' },
-  informationValue: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 19 },
-  aliasBlock: { position: 'relative', alignItems: 'stretch' },
-  aliasMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
-  aliasAction: { alignSelf: 'flex-end', paddingHorizontal: 2, paddingVertical: 3 },
-  aliasActionText: { fontSize: 12, fontWeight: '700' },
-  meta: { color: '#6B7280', fontSize: 12 },
-});
+export { VERTICAL_SONG_DETAIL_STYLES as PHIGROS_SONG_DETAIL_STYLES } from '@/components/game-content/SongDetailChromeStyles';
 const styles = PHIGROS_SONG_DETAIL_STYLES;

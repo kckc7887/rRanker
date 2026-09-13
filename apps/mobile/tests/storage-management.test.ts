@@ -106,7 +106,7 @@ vi.mock('@/features/best-image/maimai-ui-cache', () => ({
   clearMaimaiUiCache: mocks.clearMaimaiUiCache,
 }));
 
-vi.mock('@/hooks/use-phigros-kyou', () => ({
+vi.mock('@/services/phigros-kyou-cache', () => ({
   resetPhigrosKyouAliasesCache: mocks.resetPhigrosKyouAliasesCache,
 }));
 

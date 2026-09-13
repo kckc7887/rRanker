@@ -120,9 +120,13 @@ jest.mock('@/features/chart-download-shared/use-chart-package-download', () => (
 }));
 jest.mock('@/components/TagEditor', () => ({ TagEditor: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>本地标签</RN.Text>; } }));
 jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: (props: typeof mockChromeProps) => { mockChromeProps = props; return null; } }));
-jest.mock('@/components/phigros/PhigrosScoreValue', () => ({ PhigrosScoreValue: ({ score }: { score: number }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{score}</RN.Text>; } }));
-jest.mock('@/components/phigros/PhigrosRateBadge', () => ({ PhigrosRateBadge: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>FC</RN.Text>; }, resolvePhigrosRate: () => 'v' }));
-jest.mock('@/components/phigros/PhigrosXingBadge', () => ({ PhigrosXingBadge: ({ kind }: { kind: string }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{`XING-${kind.toUpperCase()}`}</RN.Text>; } }));
+jest.mock('@/components/phira/PhiraScoreVisuals', () => ({
+  ...jest.requireActual<typeof import('@/components/phira/PhiraScoreVisuals')>('@/components/phira/PhiraScoreVisuals'),
+  PhiraScoreValue: ({ score }: { score: number }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{score}</RN.Text>; },
+  PhiraRateBadge: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>FC</RN.Text>; },
+  resolvePhiraRate: () => 'v',
+  PhiraXingBadge: ({ kind }: { kind: string }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{`XING-${kind.toUpperCase()}`}</RN.Text>; },
+}));
 
 describe('Phira page contracts', () => {
   beforeEach(() => { mockBests = {}; mockCatalogCharts = []; mockNotesEnabled = []; mockChromeProps = null; jest.clearAllMocks(); });

@@ -3,7 +3,7 @@ import { staleCached } from '@/services/cache-first';
 import { phigrosResources } from '@/services/phigros-resources';
 import type { CatalogSnapshot } from '@/domain/models';
 import { mapPhigrosKyouAliases, type PhigrosKyouAliasesSnapshot } from '@/domain/phigros-kyou';
-import { loadPhigrosKyouAliases } from '@/hooks/use-phigros-kyou';
+import { loadPhigrosKyouAliases } from '@/services/phigros-kyou-cache';
 import {
   aliasedCatalogSource,
   loadAliasedCatalog,

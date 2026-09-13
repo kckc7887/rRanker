@@ -4,7 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
 import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
-import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
+import type { RangeBounds } from '@/components/game-content/RangeSelector';
+import { MetricFilterSelectRows, MetricFilterRangeRow, MetricFilterChoiceRow, type MetricFilterSelectRow } from '@/components/game-content/MetricFilterRows';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { PhigrosKyouTagFilterSheet } from '@/components/phigros/PhigrosKyouTagFilterSheet';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
@@ -31,16 +32,7 @@ type ChapterDropdownValue = string | 'all';
 type OpenDropdown = string | null;
 export type PhigrosKyouTagFilterState = 'ready' | 'loading' | 'unavailable';
 
-export type PhigrosFilterSelectRow = {
-  id: string;
-  label: string;
-  value: string;
-  defaultValue?: string;
-  options: readonly FilterSelectOption[];
-  accessibilityLabel: string;
-  optionAccessibilityPrefix: string;
-  onChange: (value: string) => void;
-};
+export type PhigrosFilterSelectRow = MetricFilterSelectRow;
 
 export interface PhigrosFilterBarProps {
   collapsible?: boolean;
@@ -175,25 +167,7 @@ export function PhigrosFilterBar({
     <FilterShell collapsed={collapsed} collapsible={collapsible} summary={summary}
       onCollapsedChange={onCollapsedChange} onReset={handleReset}
       onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
-      {selectRows.map((row) => {
-        const dropdownId = `select:${row.id}`;
-        const valueLabel = row.options.find((option) => option.value === row.value)?.label ?? row.value;
-        return (
-          <View key={row.id} style={filterShellStyles.filterRow}>
-            <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>{row.label}</Text>
-            <FilterAnchoredDropdown
-              accessibilityLabel={`${row.accessibilityLabel}，当前 ${valueLabel}`}
-              onOpenChange={setDropdownOpen(dropdownId)}
-              onSelect={row.onChange}
-              open={openDropdown === dropdownId}
-              optionAccessibilityPrefix={row.optionAccessibilityPrefix}
-              options={row.options}
-              selectedValue={row.value}
-              valueLabel={valueLabel}
-            />
-          </View>
-        );
-      })}
+      <MetricFilterSelectRows rows={selectRows} openDropdown={openDropdown} onOpenChange={setOpenDropdown} />
 
       {showLevel ? <View style={filterShellStyles.filterRow}>
         <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>难度</Text>
@@ -252,67 +226,24 @@ export function PhigrosFilterBar({
         </View>
       ) : null}
 
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, showAccuracyRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <RangeSelector accessibilityLabel="Phigros 定数范围" minimum={constantBounds.minimum} maximum={constantBounds.maximum}
-          step={0.1} lowerValue={constantMin} upperValue={constantMax}
-          onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
-          formatValue={(value) => value.toFixed(1)} testID="phigros-filter-constant" />
-      </View>
-
-      {showAccuracyRange ? (
-        <View style={[filterShellStyles.filterRow, styles.accuracyRow]}>
-          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>Acc</Text>
-          <RangeSelector accessibilityLabel="Phigros Acc 范围" minimum={accuracyBounds.minimum} maximum={accuracyBounds.maximum}
-            step={0.01} lowerValue={accuracyMin} upperValue={accuracyMax}
-            onLowerValueChange={onAccuracyMinChange} onUpperValueChange={onAccuracyMaxChange}
-            formatValue={(value) => `${value.toFixed(2)}%`} testID="phigros-filter-accuracy" />
-        </View>
-      ) : null}
-
-      {showRankPicker ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>评价</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.chipScroll}
-            contentContainerStyle={filterShellStyles.chipRowPadded}
-          >
-            <NeutralChip label="全部" active={rank === null} onPress={() => onRankChange(null)} />
-            {PHIGROS_RANK_FILTERS.map((item) => (
-              <RankChip
-                key={item.value}
-                value={item.value}
-                active={rank === item.value}
-                onPress={() => onRankChange(item.value)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      ) : null}
-
-      {showXingPicker ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>XING</Text>
-          <View style={filterShellStyles.chipRowPadded}>
-            <NeutralChip
-              label="关闭"
-              accessibilityLabel="XING 筛选 关闭"
-              active={xing === null}
-              onPress={() => onXingChange(null)}
-            />
-            {PHIGROS_XING_FILTERS.map((item) => (
-              <XingChip
-                key={item.value}
-                value={item.value}
-                active={xing === item.value}
-                onPress={() => onXingChange(item.value)}
-              />
-            ))}
-          </View>
-        </View>
-      ) : null}
+      <MetricFilterRangeRow label="定数" wide={showAccuracyRange} accessibilityLabel="Phigros 定数范围"
+        bounds={constantBounds} step={0.1} lowerValue={constantMin} upperValue={constantMax}
+        onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
+        formatValue={(value) => value.toFixed(1)} testID="phigros-filter-constant" />
+      {showAccuracyRange ? <MetricFilterRangeRow label="Acc" wide spaced accessibilityLabel="Phigros Acc 范围"
+        bounds={accuracyBounds} step={0.01} lowerValue={accuracyMin} upperValue={accuracyMax}
+        onLowerValueChange={onAccuracyMinChange} onUpperValueChange={onAccuracyMaxChange}
+        formatValue={(value) => `${value.toFixed(2)}%`} testID="phigros-filter-accuracy" /> : null}
+      {showRankPicker ? <MetricFilterChoiceRow label="评价" selected={rank} onSelect={onRankChange}
+        emptyLabel="全部" scrollable options={PHIGROS_RANK_FILTERS.map((item) => ({
+          value: item.value, accessibilityLabel: `筛选评价 ${phigrosRankFilterLabel(item.value)}`,
+          content: <PhigrosRateBadge rate={item.value === 'fc' ? 'v' : item.value} fc={item.value === 'fc'} />,
+        }))} /> : null}
+      {showXingPicker ? <MetricFilterChoiceRow label="XING" selected={xing} onSelect={onXingChange}
+        emptyLabel="关闭" emptyAccessibilityLabel="XING 筛选 关闭" options={PHIGROS_XING_FILTERS.map((item) => ({
+          value: item.value, accessibilityLabel: `XING 筛选 ${phigrosXingLabel(item.value)}`,
+          content: <PhigrosXingBadge kind={item.value} />,
+        }))} /> : null}
       {showKyouTagPicker ? <PhigrosKyouTagFilterSheet visible={tagSheetVisible} tags={kyouTags}
         selectedTagIds={selectedKyouTagIds} onApply={onKyouTagIdsChange} onClose={() => setTagSheetVisible(false)} /> : null}
     </FilterShell>
@@ -340,45 +271,11 @@ export function LevelChip({ level, active, onPress }: {
   );
 }
 
-function RankChip({ value, active, onPress }: {
-  value: PhigrosRankFilter; active: boolean; onPress: () => void;
-}) {
-  const badgeRate = value === 'fc' ? 'v' : value;
-  const badgeFc = value === 'fc';
-  return (
-    <FilterChipFrame
-      active={active}
-      shape="rounded"
-      accessibilityLabel={`筛选评价 ${phigrosRankFilterLabel(value)}`}
-      onPress={onPress}
-    >
-      <PhigrosRateBadge rate={badgeRate} fc={badgeFc} />
-    </FilterChipFrame>
-  );
-}
-
-function XingChip({ value, active, onPress }: {
-  value: PhigrosXingKind; active: boolean; onPress: () => void;
-}) {
-  return (
-    <FilterChipFrame
-      active={active}
-      shape="rounded"
-      accessibilityLabel={`XING 筛选 ${phigrosXingLabel(value)}`}
-      onPress={onPress}
-    >
-      <PhigrosXingBadge kind={value} />
-    </FilterChipFrame>
-  );
-}
-
-// Phigros 专属样式：难度/评价芯片、Kyou 标签触发器与 Acc 行距；其余公共样式见 game-content/FilterShell。
+// Phigros 专属样式：难度/评价芯片、Kyou 标签触发器；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
-  accuracyRow: { marginBottom: 14 },
   chipScroll: { flexGrow: 0, flexShrink: 1 },
   levelChip: { minHeight: 30, borderRadius: 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   levelChipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
-  rankChip: { minHeight: 30, borderRadius: 8, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center' },
   tagPicker: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8 },
   tagPickerText: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18, fontWeight: '600' },
   disabled: { opacity: 0.5 },

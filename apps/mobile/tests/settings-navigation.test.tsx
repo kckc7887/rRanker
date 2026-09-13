@@ -158,7 +158,7 @@ describe('settings navigation', () => {
   it('moves appearance controls to personalization and explains diagnostics in user language', async () => {
     const screen = await renderSettings();
     expect(screen.queryByLabelText('外观 深色')).toBeNull();
-    expect(screen.getByText('遇到闪退或功能异常时，可导出记录并发送给开发者协助排查')).toBeTruthy();
+    expect(screen.getByText('测试账号与问题排查')).toBeTruthy();
     await fireEvent.press(screen.getByText('个性化'));
     expect(mockPush).toHaveBeenCalledWith('/personalization');
   });
@@ -179,11 +179,11 @@ describe('settings navigation', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it('opens diagnostics and removes the direct export action', async () => {
+  it('opens debug and removes the direct export action', async () => {
     const screen = await renderSettings();
     expect(screen.queryByLabelText('导出诊断记录')).toBeNull();
-    await fireEvent.press(screen.getByLabelText('诊断'));
-    expect(mockPush).toHaveBeenCalledWith('/diagnostics');
+    await fireEvent.press(screen.getByLabelText('调试'));
+    expect(mockPush).toHaveBeenCalledWith('/debug');
     expect(mockExportDiagnostics).not.toHaveBeenCalled();
   });
 

@@ -1,8 +1,8 @@
-import type { GamePayload } from '@/domain/game-data';
+import type { PhigrosGameDataPayload } from '@/domain/game-data';
 import { staleCached } from '@/services/cache-first';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
-export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
+export type { PhigrosGameDataPayload } from '@/domain/game-data';
 
 const PHIGROS_SAVE_SCHEMA_VERSION = 1;
 
@@ -22,7 +22,7 @@ export function stalePhigrosPayload(payload: PhigrosGameDataPayload): PhigrosGam
 /**
  * Phigros 云端存档的本地持久化快照。
  * 每次同步都需重新下载云存档 zip 并解析（TapTap 存档 + 定数表），
- * 首屏先渲染上次成功同步的 payload，后台刷新完成后静默替换。
+ * 首次查询可读取兼容快照；显式同步由数据服务重新加载。
  */
 export class PhigrosSaveCache {
   constructor(private readonly repository = new SqliteSnapshotRepository()) {}

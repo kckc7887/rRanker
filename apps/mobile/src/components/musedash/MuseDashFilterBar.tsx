@@ -9,9 +9,8 @@ import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficult
 import { MUSE_DASH_DIFFICULTY_LABELS, museDashAchievementFilterLabel } from '@/domain/muse-dash';
 import { useAppTheme } from '@/theme/app-theme';
 
-export type MuseDashDifficultySlot = 'all' | 0 | 1 | 2 | 3 | 4;
-export type MuseDashDlcFilter = 'all' | string;
-export type MuseDashAchievementFilter = 'all' | 'fc' | 'ap';
+import type { MuseDashDifficultySlot, MuseDashDlcFilter, MuseDashAchievementFilter } from '@/domain/muse-dash';
+export type { MuseDashDifficultySlot, MuseDashDlcFilter, MuseDashAchievementFilter } from '@/domain/muse-dash';
 
 const DIFFICULTY_SLOTS: readonly FilterSelectOption<string>[] = [
   { value: 'all', label: '全部' },

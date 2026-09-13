@@ -296,6 +296,11 @@ export function findGame(id: GameId): GameOption | undefined {
   return GAME_OPTIONS.find((game) => game.id === id);
 }
 
+/** 添加入口按绑定能力过滤，已绑定账号仍使用完整注册表。 */
+export function canBindProvider(provider: ProviderOption, testAccountsEnabled: boolean): boolean {
+  return provider.bindingKind !== 'fixture' || testAccountsEnabled;
+}
+
 export function findProvider(id: ProviderId): ProviderOption | undefined {
   for (const game of GAME_OPTIONS) {
     const provider = game.providers.find((item) => item.id === id);

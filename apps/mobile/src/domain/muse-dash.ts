@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import type { DataSource } from '@/domain/models';
 
+export type MuseDashDifficultySlot = 'all' | 0 | 1 | 2 | 3 | 4;
+export type MuseDashDlcFilter = 'all' | string;
+export type MuseDashAchievementFilter = 'all' | 'fc' | 'ap';
+
 /**
  * Muse Dash 社区查分（https://api.musedash.moe）上游契约。
  * 每个字段保持上游原始语义，不与其他游戏合并；转换统一由 GameContentAdapter 完成。

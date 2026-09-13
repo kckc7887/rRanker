@@ -1,5 +1,5 @@
 import { createFilterStore } from '@/state/create-filter-store';
-import type { MuseDashAchievementFilter, MuseDashDifficultySlot, MuseDashDlcFilter } from '@/components/musedash/MuseDashFilterBar';
+import type { MuseDashAchievementFilter, MuseDashDifficultySlot, MuseDashDlcFilter } from '@/domain/muse-dash';
 
 export const useMuseDashRecordsFilter = createFilterStore({
   defaults: {

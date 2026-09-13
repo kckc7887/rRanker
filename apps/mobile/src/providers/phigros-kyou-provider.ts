@@ -6,6 +6,7 @@ import type {
   PhigrosKyouTagType,
 } from '@/domain/phigros-kyou';
 import { ProviderError } from '@/providers/errors';
+import { requestJson } from '@/providers/http-json';
 
 const BASE = `${PHIGROS_OSS_BASE}/kyou/latest`;
 
@@ -89,28 +90,17 @@ function assertCount(actual: number, expected: number, label: string): void {
 }
 
 export class PhigrosKyouProvider {
-  private async fetchJson<T>(name: string, schema: z.ZodType<T>): Promise<T> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    try {
-      const response = await fetch(`${BASE}/${name}`, {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      if (!response.ok) throw new ProviderError('network', `Kyou 请求失败 HTTP ${response.status}`, true);
-      return schema.parse(await response.json());
-    } catch (error) {
-      if (error instanceof ProviderError) throw error;
-      if (error instanceof z.ZodError || error instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', 'Kyou 数据结构与已验证契约不一致', true, { cause: error });
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', 'Kyou 数据读取超时', true, { cause: error });
-      }
-      throw new ProviderError('network', '无法连接 Kyou 数据服务', true, { cause: error });
-    } finally {
-      clearTimeout(timeout);
-    }
+  private fetchJson<T>(name: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+    return requestJson({
+      baseUrl: BASE, path: `/${name}`, schema, fetcher: fetch, signal,
+      label: 'Kyou', timeoutMs: 12_000, retries: 1, diagnosticScenario: 'metadata',
+      error: (status) => new ProviderError('network', `Kyou 请求失败 HTTP ${status}`, true),
+      messages: {
+        schema: 'Kyou 数据结构与已验证契约不一致',
+        timeout: 'Kyou 数据读取超时',
+        network: '无法连接 Kyou 数据服务',
+      },
+    });
   }
 
   private source(finishedUnix: number, label: string) {
@@ -122,11 +112,11 @@ export class PhigrosKyouProvider {
     };
   }
 
-  async getAliases(): Promise<PhigrosKyouAliasesSnapshot> {
+  async getAliases(signal?: AbortSignal): Promise<PhigrosKyouAliasesSnapshot> {
     const [manifest, songs, aliases] = await Promise.all([
-      this.fetchJson('manifest.json', ManifestSchema),
-      this.fetchJson('songs.json', z.array(SongSchema)),
-      this.fetchJson('aliases.json', z.array(AliasSchema)),
+      this.fetchJson('manifest.json', ManifestSchema, signal),
+      this.fetchJson('songs.json', z.array(SongSchema), signal),
+      this.fetchJson('aliases.json', z.array(AliasSchema), signal),
     ]);
     assertCount(songs.length, manifest.songs_rows, '歌曲');
     assertCount(aliases.length, manifest.aliases_rows, '别名');
@@ -149,13 +139,13 @@ export class PhigrosKyouProvider {
     };
   }
 
-  async getChartTags(): Promise<PhigrosKyouChartTagsSnapshot> {
+  async getChartTags(signal?: AbortSignal): Promise<PhigrosKyouChartTagsSnapshot> {
     const [manifest, songs, charts, tags, votes] = await Promise.all([
-      this.fetchJson('manifest.json', ManifestSchema),
-      this.fetchJson('songs.json', z.array(SongSchema)),
-      this.fetchJson('charts.json', z.array(ChartSchema)),
-      this.fetchJson('tag_catalog.json', z.array(TagSchema)),
-      this.fetchJson('tag_votes.json', z.array(TagVoteSchema)),
+      this.fetchJson('manifest.json', ManifestSchema, signal),
+      this.fetchJson('songs.json', z.array(SongSchema), signal),
+      this.fetchJson('charts.json', z.array(ChartSchema), signal),
+      this.fetchJson('tag_catalog.json', z.array(TagSchema), signal),
+      this.fetchJson('tag_votes.json', z.array(TagVoteSchema), signal),
     ]);
     assertCount(songs.length, manifest.songs_rows, '歌曲');
     assertCount(charts.length, manifest.charts_rows, '谱面');

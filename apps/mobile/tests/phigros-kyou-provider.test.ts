@@ -56,7 +56,44 @@ function stubRoutes(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('PhigrosKyouProvider', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it.each(['getAliases', 'getChartTags'] as const)('cancels all requests from %s through the shared HTTP runner', async (method) => {
+    const signals: AbortSignal[] = [];
+    vi.stubGlobal('fetch', vi.fn((_input: unknown, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      const signal = init.signal!;
+      signals.push(signal);
+      signal.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true });
+    })));
+    const controller = new AbortController();
+    const result = new PhigrosKyouProvider()[method](controller.signal);
+    const cancelled = expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    controller.abort();
+    await cancelled;
+    expect(signals).toHaveLength(method === 'getAliases' ? 3 : 5);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  });
+
+  it('times out after 12 seconds without retrying the failed resources', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn((_input: unknown, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init.signal!.addEventListener('abort', () => reject(new DOMException('timed out', 'AbortError')), { once: true });
+    })));
+    const result = new PhigrosKyouProvider().getAliases();
+    const timedOut = expect(result).rejects.toMatchObject({ code: 'timeout' });
+    await vi.advanceTimersByTimeAsync(11_999);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1);
+    await timedOut;
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('attempts each resource once on an upstream failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({}, 503)));
+    await expect(new PhigrosKyouProvider().getAliases()).rejects.toMatchObject({ code: 'network' });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
 
   it('loads the validated JSON resources and keeps main_label_question informational', async () => {
     stubRoutes();
