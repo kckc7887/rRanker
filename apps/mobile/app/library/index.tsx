@@ -23,12 +23,14 @@ import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
 import type { OsuBeatmapsetDetail } from '@/domain/osu';
 import type { TufLevel } from '@/domain/tuf';
 import type { UserLibraryItem } from '@/domain/user-library';
+import { RIZLINE_DIFFICULTIES, rizlineCoverUrl, rizlineDifficultyIndex, type RizlineSong } from '@/domain/rizline';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useMuseDashAlbums } from '@/hooks/use-muse-dash';
 import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhiraChartsByIds } from '@/hooks/use-phira';
+import { useRizlineCatalog } from '@/hooks/use-rizline-catalog';
 import { useTufLevelSearch } from '@/hooks/use-tuf';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
@@ -37,7 +39,9 @@ import { useAppTheme } from '@/theme/app-theme';
 type Mode = 'all' | 'favorite' | 'practice';
 type MuseDashLibrarySong = { id: string; title: string; artist?: string; cover?: string };
 type PhiraLibrarySong = { id: string; title: string; illustration: string | null };
-type LibrarySong = MajdataSong | Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong | OsuBeatmapsetDetail;
+type LibrarySong = MajdataSong | Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong | OsuBeatmapsetDetail | RizlineSong;
+
+function isRizlineLibrarySong(song: LibrarySong): song is RizlineSong { return 'packId' in song; }
 
 function isMajdataLibrarySong(song: LibrarySong): song is MajdataSong { return 'publicTags' in song && 'hash' in song; }
 
@@ -67,6 +71,7 @@ export default function UserLibraryScreen() {
   if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
   if (activeGameId === 'musedash') return <MuseDashLibraryScreen />;
   if (activeGameId === 'phira') return <PhiraLibraryScreen />;
+  if (activeGameId === 'rizline') return <RizlineLibraryScreen />;
   if (isOsuGameId(activeGameId)) return <OsuLibraryScreen gameId={activeGameId} />;
   return <SharedLibraryScreen />;
 }
@@ -223,6 +228,13 @@ function OsuLibraryScreen({ gameId }: { gameId: OsuGameId }) {
   return <LibraryList items={items} songsById={beatmapsets.data} />;
 }
 
+function RizlineLibraryScreen() {
+  const library = useUserLibrary();
+  const catalog = useRizlineCatalog();
+  const songsById = useMemo(() => new Map<string, LibrarySong>(catalog.data?.snapshot.songs.map((song) => [song.id, song])), [catalog.data]);
+  return <LibraryList items={library.data ?? []} songsById={songsById} />;
+}
+
 function LibraryRow({
   item,
   song,
@@ -235,7 +247,9 @@ function LibraryRow({
   const theme = useAppTheme();
   const chunithmSong = song && isChunithmSong(song) ? song : undefined;
   const osuSong = song && isOsuLibrarySong(song) ? song : undefined;
-  const standardSong = song && !isMajdataLibrarySong(song) && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) && !isOsuLibrarySong(song) ? song : undefined;
+  const standardSong = song && !isMajdataLibrarySong(song) && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) && !isOsuLibrarySong(song) && !isRizlineLibrarySong(song) ? song : undefined;
+  const rizlineSong = song && isRizlineLibrarySong(song) ? song : undefined;
+  const rizlineChart = item.kind === 'chart' ? rizlineSong?.charts.find((value) => rizlineDifficultyIndex(value.difficulty) === item.levelIndex) : undefined;
   const tufLevel = song && isTufLevel(song) ? song : undefined;
   const museDashSong = song && isMuseDashSong(song) ? song : undefined;
   const osuBeatmap = item.kind === 'chart'
@@ -251,7 +265,8 @@ function LibraryRow({
     ?? (song && !isTufLevel(song) ? song.title : undefined)
     ?? `歌曲 ID ${item.songId}`;
   const chartLabel = item.kind === 'chart'
-    ? item.gameId === 'majdata-net' ? `${MAJDATA_NAMES[item.levelIndex]} ${song && isMajdataLibrarySong(song) ? song.levels[item.levelIndex] : ''}` : chunithmDifficulty
+    ? item.gameId === 'rizline' ? rizlineChart ? `${rizlineChart.difficulty} ${rizlineChart.level}` : RIZLINE_DIFFICULTIES[item.levelIndex] ?? '—'
+    : item.gameId === 'majdata-net' ? `${MAJDATA_NAMES[item.levelIndex]} ${song && isMajdataLibrarySong(song) ? song.levels[item.levelIndex] : ''}` : chunithmDifficulty
       ? CHUNITHM_DIFFICULTY_LABELS[chunithmDifficulty.difficulty]
       : chart
       ? (['EZ', 'HD', 'IN', 'AT'].includes(chart.level)
@@ -292,6 +307,7 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
     return <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
   if (isMajdataLibrarySong(song)) return <GameSongCover source={majdataAsset(song.id, 'image')} gameId={gameId} />;
+  if (isRizlineLibrarySong(song)) return <GameSongCover source={rizlineCoverUrl(song)} gameId={gameId} />;
   if (isMuseDashSong(song)) {
     const url = museDashCoverUrl(song.cover);
     return url

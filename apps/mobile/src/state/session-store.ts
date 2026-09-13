@@ -1,15 +1,16 @@
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import { captureResourceWrites, invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { create } from 'zustand';
 import {
   boundAccountFromStored,
   createMajdataBoundAccount,
+  createRizlineBoundAccount,
   createChunithmBoundAccount,
   createMaimaiBoundAccount,
   createPhigrosBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
 import type { GameId, ProviderId, RemoteProviderId } from '@/domain/game-bind-options';
-import type { AnyScoreProvider, DetailedCatalogProvider, ProviderSession } from '@/providers/contracts';
+import type { AnyScoreProvider, DetailedCatalogProvider, ProviderSession, RizlineSession } from '@/providers/contracts';
 import {
   credentialIdsMapFromVault,
   sessionsMapFromVault,
@@ -85,6 +86,28 @@ export async function applyOsuTokenRotation(accountId: string, next: OsuOAuthSes
   });
   const { SecureSessionStore } = await import('@/storage/secure-session-store');
   await new SecureSessionStore().updateAccountSession(accountId, next);
+}
+
+export async function applyRizlineSessionRotation(
+  accountId: string,
+  next: RizlineSession,
+  expected: RizlineSession,
+  signal?: AbortSignal,
+): Promise<void> {
+  const assertCurrent = captureResourceWrites('rizline', signal, accountId);
+  assertCurrent();
+  if (useSession.getState().sessionsByAccountId[accountId] !== expected) return;
+  const { SecureSessionStore } = await import('@/storage/secure-session-store');
+  assertCurrent();
+  await new SecureSessionStore().updateAccountSession(accountId, next, { expected, signal });
+  assertCurrent();
+  const state = useSession.getState();
+  if (state.sessionsByAccountId[accountId] !== expected || !state.boundAccounts.some(account => account.id === accountId)) return;
+  const credentialId = state.credentialIdsByAccountId[accountId];
+  const sessionsByAccountId = credentialId
+    ? sessionsWithSharedCredential(state.sessionsByAccountId, state.credentialIdsByAccountId, accountId, credentialId, next)
+    : { ...state.sessionsByAccountId, [accountId]: next };
+  useSession.setState({ sessionsByAccountId, session: sessionsByAccountId[state.activeAccountId] ?? state.session });
 }
 
 export type SessionRestoreStatus = 'restoring' | 'ready' | 'error';
@@ -245,6 +268,12 @@ export const useSession = create<SessionState>((set, get) => ({
   restoreStatus: 'restoring',
   restoreError: null,
   setSession: (session, accountMeta) => {
+    if (session.mode === 'rizline' && accountMeta?.gameId === 'rizline' && accountMeta.playerId) {
+      const account = createRizlineBoundAccount({ userId: accountMeta.playerId,
+        username: accountMeta.displayName, totalRks: accountMeta.rating });
+      set(bindSessionAccount(get(), account, session, accountMeta.credentialId));
+      return;
+    }
     if (accountMeta?.gameId === 'majdata-net' && accountMeta.accountId) {
       const account = createMajdataBoundAccount({ accountId: accountMeta.accountId,
         displayName: accountMeta.displayName, avatarUrl: accountMeta.avatarUrl,

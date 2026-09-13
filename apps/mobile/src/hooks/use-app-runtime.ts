@@ -3,7 +3,7 @@ import { focusManager } from '@tanstack/react-query';
 import { Image as ExpoImage } from 'expo-image';
 import { useSegments } from 'expo-router';
 import { InteractionManager } from 'react-native';
-import { usePhigrosResourceSync } from './use-phigros-resource-sync';
+import { useGameResourceSync } from './use-game-resource-sync';
 import { queryClient, releaseInactiveQueries } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
@@ -16,7 +16,7 @@ import { recordRuntimeRoute } from '@/services/runtime-logs';
 
 export function useAppRuntime(ready: boolean) {
   const routeTemplate = useSegments().join('/');
-  usePhigrosResourceSync();
+  useGameResourceSync();
   const restoreStatus = useSession((state) => state.restoreStatus);
   const activeAccountId = useSession((state) => state.activeAccountId);
   const activeGameId = useSession((state) => state.activeGameId);

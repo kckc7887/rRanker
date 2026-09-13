@@ -79,6 +79,7 @@ import { useAppTheme } from '@/theme/app-theme';
 import { TufLevelDetailScreen } from '@/screens/TufScreens';
 import { MuseDashSongDetailScreen } from '@/screens/MuseDashScreens';
 import { PhiraSongDetailScreen } from '@/screens/PhiraScreens';
+import { RizlineSongDetail } from '@/components/rizline/RizlineSongDetail';
 
 const CARD_GAP = 12;
 const DIFFICULTY_ORDER: Record<Difficulty, number> = {
@@ -103,6 +104,7 @@ export default function SongDetailScreen() {
   }
   if (activeGameId === 'majdata-net') return <MajdataSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
   if (activeGameId === 'phira') return <PhiraSongDetailScreen chartId={songId} />;
+  if (activeGameId === 'rizline') return <RizlineSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
   if (activeGameId === 'chunithm') {
     return <ChunithmSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
   }

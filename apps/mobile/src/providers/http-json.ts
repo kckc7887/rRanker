@@ -18,14 +18,14 @@ const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', onAbort, { once: true });
 });
 
-/** Retry-After 头解析：秒或 HTTP 日期，上限 5s。 */
-export function retryAfterMs(response: Response): number {
+/** Retry-After 头解析：秒或 HTTP 日期，默认上限 5s；交互式冷却可指定其它上限。 */
+export function retryAfterMs(response: Response, maxMs = 5_000): number {
   const raw = response.headers.get('Retry-After');
   if (!raw) return 1_000;
   const seconds = Number(raw);
-  if (Number.isFinite(seconds)) return Math.min(5_000, Math.max(0, seconds * 1_000));
+  if (Number.isFinite(seconds)) return Math.min(maxMs, Math.max(0, seconds * 1_000));
   const date = Date.parse(raw);
-  return Number.isFinite(date) ? Math.min(5_000, Math.max(0, date - Date.now())) : 1_000;
+  return Number.isFinite(date) ? Math.min(maxMs, Math.max(0, date - Date.now())) : 1_000;
 }
 
 export type JsonRequestOptions<T> = {

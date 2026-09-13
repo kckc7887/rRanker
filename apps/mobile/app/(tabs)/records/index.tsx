@@ -47,6 +47,7 @@ import { useAppTheme } from '@/theme/app-theme';
 import { TufRecordsScreen } from '@/screens/TufScreens';
 import { MuseDashRecordsScreen } from '@/screens/MuseDashScreens';
 import { PhiraRecordsScreen } from '@/screens/PhiraScreens';
+import { RizlineRecordsScreen } from '@/screens/RizlineScreens';
 import { OsuRecordsScreen } from '@/screens/OsuScreens';
 import { isOsuGameId } from '@/domain/game-mode-family';
 
@@ -166,6 +167,7 @@ export function RecordsScreen() {
 
   if (activeGameId === 'majdata-net') return <MajdataRecordsScreen />;
   if (activeGameId === 'phira') return <PhiraRecordsScreen />;
+  if (activeGameId === 'rizline') return <RizlineRecordsScreen />;
 
   if (isOsuGameId(activeGameId)) return <OsuRecordsScreen />;
 

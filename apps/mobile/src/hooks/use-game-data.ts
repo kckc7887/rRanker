@@ -1,4 +1,7 @@
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { loadRizlineCached, loadRizlineWithFallback } from '@/services/rizline-service';
+import { ensureRizlineCatalog, RIZLINE_CATALOG_QUERY_KEY } from '@/hooks/use-rizline-catalog';
+import type { RizlineCatalogData } from '@/domain/rizline';
 import { loadMajdataCached, loadMajdataFresh } from '@/services/majdata-service';
 import { majdataTotalText, majdataTotal, type MajdataSnapshot } from '@/domain/majdata';
 import { cacheFirstLoad, staleCached } from '@/services/cache-first';
@@ -9,6 +12,7 @@ import {
   maimaiPayloadFromSnapshot,
   osuPayloadFromSnapshot,
   phigrosPayloadFromSnapshot,
+  rizlinePayloadFromSnapshot,
   type GameDataBundle,
 } from '@/domain/game-data';
 import { getGameProfile } from '@/domain/game-profile';
@@ -104,6 +108,28 @@ export function useGameData(enabled = true) {
     queryFn: async ({ signal }): Promise<GameDataBundle> => {
       const assertCurrent = captureResourceWrites(activeGameId, signal, activeAccountId);
       const hasSessionData = queryClient.getQueryData<GameDataBundle>(queryKey) !== undefined;
+      if (activeGameId === 'rizline') {
+        const catalog = await ensureRizlineCatalog().catch(() => undefined);
+        assertCurrent();
+        const toBundle = (snapshot: import('@/domain/rizline').RizlineSnapshot): GameDataBundle => ({
+          gameId: 'rizline', providerId: 'rizline-official', profile,
+          payload: rizlinePayloadFromSnapshot(snapshot, queryClient.getQueryData<RizlineCatalogData>(RIZLINE_CATALOG_QUERY_KEY) ?? catalog),
+        });
+        if (session?.mode !== 'rizline') {
+          const cached = await loadRizlineCached(activeAccountId);
+          assertCurrent();
+          return cached ? toBundle({ ...staleCached(cached), requiresLogin: true }) : { gameId: activeGameId, providerId: activeProviderId, profile,
+            payload: emptyGamePayload(activeGameId, '请登录 Rizline 官方账号') };
+        }
+        const fresh = (requestSignal: AbortSignal) => loadRizlineWithFallback(activeAccountId, session, requestSignal);
+        const snapshot = hasSessionData ? await fresh(signal) : await cacheFirstLoad({
+          loadCached: () => loadRizlineCached(activeAccountId), loadFresh: fresh, signal, assertCurrent,
+          onFresh: value => queryClient.setQueryData(queryKey, toBundle(value)),
+          onFallback: value => { if (value.requiresLogin) queryClient.setQueryData(queryKey, toBundle(value)); },
+        });
+        assertCurrent();
+        return toBundle(snapshot);
+      }
       if (activeGameId === 'majdata-net') {
         const toBundle = (snapshot: MajdataSnapshot): GameDataBundle => ({ gameId: 'majdata-net', providerId: 'majdata-net', profile,
           payload: { kind: 'majdata-net', snapshot, source: snapshot.source,
@@ -434,7 +460,9 @@ export function useGameData(enabled = true) {
     activeProviderId,
     activeAccountId,
     isDataStale: !!query.data?.payload && (
-      query.data.payload.kind === 'chunithm'
+      query.data.payload.kind === 'rizline'
+        ? query.data.payload.source.isStale || query.data.payload.catalogSource?.isStale === true
+        : query.data.payload.kind === 'chunithm'
         ? query.data.payload.source.isStale
         : query.data.payload.kind === 'adofai'
           ? query.data.payload.source.isStale

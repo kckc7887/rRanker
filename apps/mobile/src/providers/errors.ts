@@ -3,14 +3,16 @@ export type ProviderErrorCode =
   | 'upstream_schema' | 'no_data' | 'cache_corrupt' | 'network' | 'unknown';
 
 export class ProviderError extends Error {
+  readonly retryAfterSeconds?: number;
   constructor(
     public readonly code: ProviderErrorCode,
     message: string,
     public readonly retryable: boolean,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { retryAfterSeconds?: number },
   ) {
     super(message, options);
     this.name = 'ProviderError';
+    this.retryAfterSeconds = options?.retryAfterSeconds;
   }
 }
 
