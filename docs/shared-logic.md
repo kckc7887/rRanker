@@ -145,13 +145,15 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   `TagEditor` 和 `RandomChartsPage`。`rizline-filters.ts` 同时提供曲库与随机过滤，
   Store 分别复用 `createFilterStore`、`createPersistedRandomChartsFilterStore` 和偏好工厂。
   游戏领域层提供柔和的总览配色和适配白字胶囊的难度配色；
-  `rizlineRecordStatus(record?)` 集中选择评价，原始达成率等于 120 时优先 AP，
+  `rizlineRecordStatus(record?)` 集中选择评价，与成绩构造共用 `isRizlineAp`；有限的原始达成率
+  达到 120 时优先 AP，兼容 `120.00000762939453` 这类满达成率浮点值，不从四位显示值判断。
   其余 AH 相容性推定成绩显示 AH，未知状态不补评价。共享卡片不解释这些字段。
   `RizlineAccuracyValue` 复用 `AnimatedMetricValue`，AH 使用公共蓝绿流光，AP 使用金色流光；
   `RizlineStatusBadge` 分别通过 `GameDifficultyBadge` 与 `LayeredGradientBadge` 展示蓝绿渐变、
   金色胶囊。列表与详情共用这两个游戏包装，列表右侧保留 RKS 小标题。
   详情练习按钮与当前难度共用前景、背景色，不展示歌曲信息区；歌曲和谱面标签继续独立展示。
-  难度行复用 `MetricFilterChoiceRow` 与游戏难度徽章，保持单选并支持再次点击清空；
+  难度行复用 `FilterChipFrame`、`NeutralChip`、`filterShellStyles` 与游戏难度徽章，
+  选中框采用舞萌相同的默认胶囊形状，保持单选并支持再次点击清空；
   曲库与随机页共用同一筛选条。Rizline 工具箱注册随机歌曲与 `/tools/arcade-finder`，
   机厅筛选及偏好继续使用公共机厅查找入口，个人曲库保留在总览。
 - 收藏、练习、标签、备份和恢复使用既有 `UserLibraryService` 及其 Repository；

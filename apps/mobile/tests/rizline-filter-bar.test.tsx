@@ -1,6 +1,7 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
+import { MaimaiFilterBar } from '@/components/MaimaiFilterBar';
 import { RizlineFilterBar } from '@/components/rizline/RizlineFilterBar';
 import { rizlineDifficultyColors } from '@/domain/rizline';
 import { useRizlineCatalogFilter } from '@/state/rizline-catalog-filter';
@@ -64,9 +65,19 @@ test('collapse keeps the difficulty summary, all leaves other filters intact and
 
 test.each(['light', 'dark'] as const)('difficulty chips use the existing badge colors and the %s theme selection border', async (appearance) => {
   mockTheme = createAppTheme(appearance, '#AC285B');
+  const noop = () => {};
+  const reference = await render(<MaimaiFilterBar collapsed={false} difficulty="master" version="all" type="all"
+    constantMin="" constantMax="" versionLocale="china" versions={[]} onCollapsedChange={noop}
+    onDifficultyChange={noop} onVersionChange={noop} onTypeChange={noop} onConstantMinChange={noop}
+    onConstantMaxChange={noop} onVersionLocaleChange={noop} onReset={noop} />);
+  const selectedFrame = StyleSheet.flatten(reference.getByLabelText('筛选难度 MASTER').props.style);
+  const idleFrame = StyleSheet.flatten(reference.getByLabelText('筛选难度 BASIC').props.style);
+  await reference.unmount();
   useRizlineCatalogFilter.setState({ difficulty: 'SP' });
   const screen = await render(<Filter />);
   const special = screen.getByLabelText('筛选难度 SP');
+  expect(StyleSheet.flatten(special.props.style)).toEqual(selectedFrame);
+  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 IN').props.style)).toEqual(idleFrame);
   expect(StyleSheet.flatten(special.props.style).borderColor).toBe(mockTheme.accent);
   expect(StyleSheet.flatten(within(special).getByText('SP').props.style).color).toBe(rizlineDifficultyColors('SP', mockTheme.dark).fg);
   expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 IN').props.style).borderColor).toBe('transparent');
