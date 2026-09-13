@@ -93,7 +93,7 @@ describe('Rizline overview', () => {
 
   it('exposes random songs through the toolbox and opens the personal library', async () => {
     const screen = await render(<OverviewScreen />);
-    expect(screen.getByText('随机歌曲 · 我的曲库')).toBeTruthy();
+    expect(screen.getByText('随机歌曲 · 机厅查找')).toBeTruthy();
     await fireEvent.press(screen.getByText('工具箱'));
     expect(mockPush).toHaveBeenLastCalledWith('/tools');
     expect(screen.getByText('收藏 0 首 · 练习 0 张')).toBeTruthy();
@@ -105,8 +105,9 @@ describe('Rizline overview', () => {
     const screen = await render(<ToolsScreen />);
     await fireEvent.press(screen.getByText('随机歌曲'));
     expect(mockPush).toHaveBeenLastCalledWith('/tools/random-charts');
-    await fireEvent.press(screen.getByText('我的曲库'));
-    expect(mockPush).toHaveBeenLastCalledWith('/library');
+    expect(screen.queryByText('我的曲库')).toBeNull();
+    await fireEvent.press(screen.getByText('机厅查找'));
+    expect(mockPush).toHaveBeenLastCalledWith('/tools/arcade-finder');
   });
 
   it('keeps the official total visible with missing contribution values and an expired-login message', async () => {

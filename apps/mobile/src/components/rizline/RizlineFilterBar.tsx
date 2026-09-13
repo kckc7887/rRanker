@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { FilterShell, joinFilterSummary } from '@/components/game-content/FilterShell';
-import { MetricFilterRangeRow, MetricFilterSelectRows } from '@/components/game-content/MetricFilterRows';
+import { MetricFilterChoiceRow, MetricFilterRangeRow, MetricFilterSelectRows } from '@/components/game-content/MetricFilterRows';
 import type { RangeBounds } from '@/components/game-content/RangeSelector';
 import type { FilterSelectOption } from '@/components/FilterAnchoredDropdown';
+import { RizlineDifficultyBadge } from '@/components/rizline/RizlineScoreVisuals';
+import { RIZLINE_DIFFICULTIES } from '@/domain/rizline';
 import type { RizlineFilters } from '@/domain/rizline-filters';
+
+const DIFFICULTIES = [...RIZLINE_DIFFICULTIES].reverse();
 
 export type RizlineFilterControls = RizlineFilters & {
   collapsed: boolean; setCollapsed: (value: boolean) => void;
@@ -22,10 +26,11 @@ export function RizlineFilterBar({ filter, packs, constantBounds = { minimum: 1,
   ]);
   return <FilterShell collapsed={filter.collapsed} summary={summary} onCollapsedChange={filter.setCollapsed}
     onCollapse={() => { setOpen(null); filter.setCollapsed(true); }} onReset={() => { setOpen(null); filter.clearFilters(); }}>
+    <MetricFilterChoiceRow label="难度" selected={filter.difficulty === 'all' ? null : filter.difficulty}
+      onSelect={(value) => filter.setDifficulty(value === filter.difficulty ? 'all' : value ?? 'all')}
+      emptyLabel="全部" emptyAccessibilityLabel="筛选难度 全部" scrollable
+      options={DIFFICULTIES.map((value) => ({ value, accessibilityLabel: `筛选难度 ${value}`, content: <RizlineDifficultyBadge difficulty={value} /> }))} />
     <MetricFilterSelectRows openDropdown={open} onOpenChange={setOpen} rows={[
-      { id: 'difficulty', label: '难度', value: filter.difficulty, defaultValue: 'all', accessibilityLabel: '选择难度', optionAccessibilityPrefix: '选择难度',
-        options: ['all', 'SP', 'AT', 'IN', 'HD', 'EZ'].map((value) => ({ value, label: value === 'all' ? '全部' : value })),
-        onChange: (value) => filter.setDifficulty(value as RizlineFilters['difficulty']) },
       { id: 'pack', label: '曲包', value: filter.packId, defaultValue: 'all', options: packs, accessibilityLabel: '选择曲包', optionAccessibilityPrefix: '选择曲包', onChange: filter.setPackId },
     ]} />
     <MetricFilterRangeRow label="定数" accessibilityLabel="Rizline 定数范围" testID="rizline-filter-constant" bounds={constantBounds}

@@ -1,5 +1,5 @@
 import type { GameContentAdapter } from '@/domain/game-content';
-import { formatRizlineAccuracy, formatRizlineRks, rizlineDifficultyIndex, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
+import { formatRizlineAccuracy, formatRizlineRks, rizlineDifficultyIndex, rizlineRecordStatus, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
 import type { ChartCardPresentation, ScoreCardPresentation, SongRowPresentation } from '../presentation';
 
 export function presentRizlineNotes(chart: RizlineChart) {
@@ -28,7 +28,7 @@ export function presentRizlineScore(record: RizlineRecord, title = record.title,
     primaryMetric: { key: 'accuracy', label: '达成率', text: formatRizlineAccuracy(record.achievements) },
     secondaryMetrics: [{ key: 'rks', label: 'RKS', text: formatRizlineRks(record.rks) }],
     difficulty: { key: 'difficulty', label: record.difficulty, value: record.chart?.level ?? '—', tone: record.difficulty },
-    grade: record.ap ? { key: 'ap', label: 'AP', tone: 'ap' } : undefined, achievementRows: [],
+    grade: presentRizlineGrade(record), achievementRows: [],
   };
 }
 
@@ -45,6 +45,11 @@ export function presentRizlineChart(chart: RizlineChart, record?: RizlineRecord)
     primaryMetric: { key: 'accuracy', label: '达成率', text: formatRizlineAccuracy(record?.achievements) },
     secondaryMetrics: [{ key: 'score', label: 'Score', text: record?.score == null ? '—' : record.score.toLocaleString('en-US') },
       { key: 'rks', label: 'RKS', text: formatRizlineRks(record?.rks) }],
-    grade: record?.ap ? { key: 'ap', label: 'AP', tone: 'ap' } : undefined,
+    grade: presentRizlineGrade(record),
     achievementRows: [], charter: chart.designer ?? '—', notes: [presentRizlineNotes(chart)] };
+}
+
+function presentRizlineGrade(record?: RizlineRecord) {
+  const status = rizlineRecordStatus(record);
+  return status === 'normal' ? undefined : { key: status, label: status.toUpperCase(), tone: status };
 }

@@ -2,7 +2,7 @@ import type { GameId } from './game-bind-options';
 
 export type GameToolDefinition = {
   id: string;
-  href: `/tools/${string}` | '/best-image' | '/library';
+  href: `/tools/${string}` | '/best-image';
   title: string;
   detail: string;
   summaryLabel: string;
@@ -38,8 +38,8 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
   rizline: { tools: [
     { id: 'random-charts', href: '/tools/random-charts', title: '随机歌曲',
       detail: '按难度、曲包和定数抽取谱面', summaryLabel: '随机歌曲' },
-    { id: 'library', href: '/library', title: '我的曲库',
-      detail: '管理收藏、练习清单与本地标签', summaryLabel: '我的曲库' },
+    { id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找',
+      detail: '按定位查看附近机厅，搜索店名与跳转导航', summaryLabel: '机厅查找' },
   ], emptyDetail: '' },
   'majdata-net': { tools: [
     { id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找', detail: '查找附近机厅', summaryLabel: '机厅查找' },

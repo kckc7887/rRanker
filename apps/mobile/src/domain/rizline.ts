@@ -3,9 +3,9 @@ import type { DxRatingTheme } from './dx-rating-theme';
 
 export const RIZLINE_RESOURCE_BASE = 'https://rranker-rizline-data.cn-nb1.rains3.com';
 export const RIZLINE_RATING_THEME: DxRatingTheme = {
-  id: 'rizline', label: 'Rizline', fillColors: ['#57E4C4', '#57E4C4'], fillLocations: [0, 1],
-  borderColors: ['#4B364C', '#4B364C'], borderLocations: [0, 1], overlayColor: 'transparent',
-  textColor: '#263039', starColor: '#263039', starCount: 0,
+  id: 'rizline', label: 'Rizline', fillColors: ['#B5D9D0', '#94C5B8', '#7AB1A3'], fillLocations: [0, 0.52, 1],
+  borderColors: ['#52796F', '#3B6157'], borderLocations: [0, 1], overlayColor: 'rgba(75,78,85,0.10)',
+  textColor: '#263C36', starColor: '#3B6157', starCount: 0,
 };
 export const RIZLINE_DIFFICULTIES = ['EZ', 'HD', 'IN', 'AT', 'SP'] as const;
 export type RizlineDifficulty = typeof RIZLINE_DIFFICULTIES[number];
@@ -41,10 +41,14 @@ export type RizlineSnapshot = { save: RizlineSave; source: DataSource; requiresL
 export type RizlineCatalogData = { snapshot: RizlineCatalog; source: DataSource };
 
 const DIFFICULTY_COLORS: Record<RizlineDifficulty, string> = {
-  EZ: '#57E4C4', HD: '#FEBA61', IN: '#FE8661', AT: '#4B364C', SP: '#FFFFFF',
+  EZ: '#25826E', HD: '#A36721', IN: '#BB563B', AT: '#4B364C', SP: '#68717C',
 };
 export function rizlineDifficultyColors(difficulty: RizlineDifficulty, _dark = false) {
-  return { bg: DIFFICULTY_COLORS[difficulty], fg: difficulty === 'AT' ? '#FFFFFF' : '#263039' };
+  return { bg: DIFFICULTY_COLORS[difficulty], fg: '#FFFFFF' };
+}
+export function rizlineRecordStatus(record?: Pick<RizlineRecord, 'achievements' | 'ahStatus'>): 'ap' | 'ah' | 'normal' {
+  if (record?.achievements === 120) return 'ap';
+  return record?.ahStatus === 'inferred' ? 'ah' : 'normal';
 }
 export function rizlineDifficultyIndex(difficulty: RizlineDifficulty): number {
   return RIZLINE_DIFFICULTIES.indexOf(difficulty);

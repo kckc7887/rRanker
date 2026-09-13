@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, Text, TextInput } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';
 import { ProviderError, providerErrorToUserMessage } from '@/providers/errors';
@@ -52,7 +52,7 @@ export function SmsLoginPanel({ visible, onSuccess, onBusyChange, sendCode, logi
     if (action === 'send' && (cooldowns.get(cooldownKey) ?? 0) > Date.now()) return;
     if (action === 'login' && !code.trim()) { setMessage('请输入验证码'); return; }
     const controller = new AbortController(); request.current = controller;
-    setBusy(true); setMessage(action === 'send' ? '正在发送验证码…' : '正在登录…');
+    setBusy(true); setMessage(action === 'send' ? '' : '正在登录…');
     if (action === 'send') {
       const until = Date.now() + 60_000;
       cooldowns.set(cooldownKey, until);
@@ -65,7 +65,7 @@ export function SmsLoginPanel({ visible, onSuccess, onBusyChange, sendCode, logi
         const until = Date.now() + Math.max(60, result.retryAfterSeconds ?? 60) * 1000;
         cooldowns.set(cooldownKey, until);
         retryAtRef.current = until; setRetryAt(until); setNow(Date.now());
-        setMessage(result.confirmed === false ? '发送结果暂时无法确认；如已收到验证码，可继续登录。' : '请查收验证码。');
+        setMessage('');
       } else {
         await login(normalized, code.trim(), controller.signal);
         if (!controller.signal.aborted) { setCode(''); setMessage(''); onSuccess(); }
@@ -78,7 +78,7 @@ export function SmsLoginPanel({ visible, onSuccess, onBusyChange, sendCode, logi
           retryAtRef.current = until; setRetryAt(until); setNow(Date.now());
         }
         setMessage(providerErrorToUserMessage(error,
-          action === 'send' ? '发送结果暂时无法确认；如已收到验证码，可继续登录。' : '登录失败，请稍后重试。',
+          action === 'send' ? '验证码发送失败，请稍后重试。' : '登录失败，请稍后重试。',
           { authentication: action === 'send' ? '验证码发送失败，请确认手机号后稍后重试。' : '验证码不正确或已过期，请重新获取。' }));
         if (action === 'login') setCode('');
       }
@@ -89,14 +89,19 @@ export function SmsLoginPanel({ visible, onSuccess, onBusyChange, sendCode, logi
 
   return <>
     {message ? <Text accessibilityLiveRegion="polite" style={[styles.message, { color: theme.textSecondary }]}>{message}</Text> : null}
-    <TextInput placeholder="手机号" accessibilityLabel="手机号" value={phone}
-      onChangeText={value => { setPhone(value); setCode(''); }} keyboardType="phone-pad"
-      autoComplete="tel" textContentType="telephoneNumber" autoCapitalize="none" autoCorrect={false} editable={!busy}
-      style={[styles.input, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]} placeholderTextColor={theme.textMuted} />
-    <Pressable accessibilityRole="button" accessibilityLabel="获取验证码" disabled={busy || remaining > 0}
-      onPress={() => void run('send')} style={[styles.primary, { backgroundColor: theme.accent, opacity: busy || remaining > 0 ? 0.5 : 1 }]}>
-      <Text style={styles.primaryText}>{remaining > 0 ? `${remaining} 秒后可重新获取` : '获取验证码'}</Text>
-    </Pressable>
+    <View testID="sms-phone-row" style={smsStyles.phoneRow}>
+      <TextInput placeholder="手机号" accessibilityLabel="手机号" value={phone}
+        onChangeText={value => { setPhone(value); setCode(''); }} keyboardType="phone-pad"
+        autoComplete="tel" textContentType="telephoneNumber" autoCapitalize="none" autoCorrect={false} editable={!busy}
+        style={[styles.input, smsStyles.phoneInput, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]} placeholderTextColor={theme.textMuted} />
+      <Pressable accessibilityRole="button" accessibilityLabel="获取验证码" disabled={busy || remaining > 0}
+        accessibilityValue={remaining > 0 ? { text: `${remaining} 秒后可重新获取` } : undefined}
+        onPress={() => void run('send')} style={[styles.primary, smsStyles.sendButton, { backgroundColor: theme.accent, opacity: busy || remaining > 0 ? 0.5 : 1 }]}>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.primaryText, smsStyles.sendText]}>
+          {remaining > 0 ? `${remaining} 秒` : retryAt > 0 ? '重新获取' : '获取验证码'}
+        </Text>
+      </Pressable>
+    </View>
     <TextInput placeholder="验证码" accessibilityLabel="验证码" value={code} onChangeText={setCode} keyboardType="number-pad"
       autoComplete="sms-otp" textContentType="oneTimeCode" autoCapitalize="none" autoCorrect={false} maxLength={8} editable={!busy}
       style={[styles.input, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]} placeholderTextColor={theme.textMuted} />
@@ -106,3 +111,10 @@ export function SmsLoginPanel({ visible, onSuccess, onBusyChange, sendCode, logi
     </Pressable>
   </>;
 }
+
+const smsStyles = StyleSheet.create({
+  phoneRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
+  phoneInput: { flex: 1, minWidth: 0, minHeight: 44 },
+  sendButton: { width: 108, maxWidth: '44%', minHeight: 44, justifyContent: 'center', paddingHorizontal: 10 },
+  sendText: { fontSize: 13 },
+});
