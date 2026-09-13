@@ -113,11 +113,11 @@ const EMPTY_VAULT: SessionVault = {
 };
 
 function isRemoteProviderId(value: unknown): value is RemoteProviderId {
-  return value === 'majdata-net' || value === 'diving-fish' || value === 'lxns' || value === 'phi-taptap' || value === 'osu';
+  return value === 'rizline-official' || value === 'majdata-net' || value === 'diving-fish' || value === 'lxns' || value === 'phi-taptap' || value === 'osu';
 }
 
 function isGameId(value: unknown): value is GameId {
-  return value === 'majdata-net' || value === 'maimai'
+  return value === 'rizline' || value === 'majdata-net' || value === 'maimai'
     || value === 'chunithm'
     || value === 'phigros'
     || value === 'osu-standard'
@@ -130,6 +130,12 @@ function isGameId(value: unknown): value is GameId {
 function isPersistableSession(session: ProviderSession): session is ProviderSession & { persistable: true } {
   if (session.mode === 'http-cookies') return isHttpCookieSession(session);
   if (session.persistable !== true) return false;
+  if (session.mode === 'rizline') {
+    return typeof session.token === 'string' && session.token.length > 0
+      && typeof session.phone === 'string' && /^1\d{10}$/.test(session.phone)
+      && typeof session.deviceId === 'string' && session.deviceId.length > 0
+      && typeof session.channelId === 'string' && session.channelId.length > 0;
+  }
   if (session.mode === 'jwt' || session.mode === 'import-token' || session.mode === 'phi-session') return true;
   if (session.mode === 'lxns-oauth') {
     return typeof session.accessToken === 'string'
@@ -626,12 +632,17 @@ export class SecureSessionStore {
   }
 
   /** 按账号解析共享凭据并轮换 token，不改变 activeAccountId。 */
-  async updateAccountSession(accountId: string, session: ProviderSession): Promise<void> {
+  async updateAccountSession(accountId: string, session: ProviderSession, options?: {
+    signal?: AbortSignal; expected?: ProviderSession;
+  }): Promise<void> {
     if (!isPersistableSession(session)) return;
     await this.enqueueMutation(async () => {
+      if (options?.signal?.aborted) throw options.signal.reason;
       const vault = await this.loadVault();
       const existing = vault.accounts.find((account) => account.id === accountId);
       if (!existing) return;
+      const credential = vault.credentials.find(item => item.id === existing.credentialId);
+      if (options?.expected && JSON.stringify(credential?.session) !== JSON.stringify(options.expected)) return;
       await this.saveVaultUnlocked({
         ...vault,
         credentials: vault.credentials.map((credential) => (
@@ -639,7 +650,7 @@ export class SecureSessionStore {
             ? { ...credential, session }
             : credential
         )),
-      });
+      }, options?.signal);
     });
   }
 

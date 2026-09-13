@@ -81,7 +81,7 @@ it.each<GameId>(['maimai', 'chunithm', 'phigros', 'musedash'])('filters the %s e
 it('updates collapsed provider counts and keeps the osu family grouped', async () => {
   const screen = await render(picker(null));
   expect(screen.getByText('3 个查分器 · 点按展开')).toBeTruthy();
-  expect(screen.getAllByText('1 个查分器 · 点按展开')).toHaveLength(7);
+  expect(screen.getAllByText('1 个查分器 · 点按展开')).toHaveLength(8);
   await screen.rerender(picker(null, true));
   expect(screen.getByText('4 个查分器 · 点按展开')).toBeTruthy();
   expect(screen.getAllByText('2 个查分器 · 点按展开')).toHaveLength(3);

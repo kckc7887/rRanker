@@ -11,6 +11,7 @@ import {
   createMaxedPhigrosTestAccount,
   createMuseDashBoundAccount,
   createPhiraBoundAccount,
+  createRizlineBoundAccount,
   createTestBoundAccount,
   createTufBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
@@ -28,6 +29,7 @@ import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provide
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import {
   applyLxnsTokenRotation,
+  applyRizlineSessionRotation,
   restoreSession,
   UNBOUND_ACCOUNT_ID,
   useSession,
@@ -63,6 +65,37 @@ vi.mock('expo-sqlite', () => ({
 const jwtSession: ProviderSession = { mode: 'jwt', value: 'fake-jwt-token', persistable: true };
 const tokenSessionA: ProviderSession = { mode: 'import-token', value: 'token-a', persistable: true };
 const tokenSessionB: ProviderSession = { mode: 'import-token', value: 'token-b', persistable: true };
+
+describe('Rizline account sessions', () => {
+  const session = { mode: 'rizline', phone: '13800000000', token: 'private-token', deviceId: 'device-id', channelId: '1', persistable: true } as const;
+  const account = createRizlineBoundAccount({ userId: '123', username: 'Rizline 玩家', totalRks: 135.4321 });
+  const metadata = { gameId: 'rizline', providerId: 'rizline-official', playerId: '123', displayName: account.displayName,
+    rating: 135.4321, credentialId: 'rizline-credential' } as const;
+  beforeEach(() => { useSession.getState().finishRestore(null); updateAccountSession.mockClear(); });
+  it('activates and restores the same stable account id and RKS', () => {
+    useSession.getState().setSession(session, metadata);
+    expect(useSession.getState()).toMatchObject({ activeGameId: 'rizline', activeProviderId: 'rizline-official', activeAccountId: account.id, session });
+    useSession.getState().finishRestore({ version: 3, activeAccountId: account.id,
+      credentials: [{ id: metadata.credentialId, providerId: 'rizline-official', session }],
+      accounts: [{ id: account.id, credentialId: metadata.credentialId, gameId: 'rizline', providerId: 'rizline-official', displayName: account.displayName, scoreDisplay: '135.4321' }],
+    });
+    expect(useSession.getState().boundAccounts[0]).toEqual(account);
+    expect(useSession.getState().activeGameId).toBe('rizline');
+  });
+  it('rotates the current session and ignores a late rotation after reauthentication', async () => {
+    useSession.getState().setSession(session, metadata);
+    const next = { ...session, token: 'rotated' };
+    await applyRizlineSessionRotation(account.id, next, session);
+    expect(useSession.getState().session).toBe(next);
+    expect(updateAccountSession).toHaveBeenCalledWith(account.id, next, { expected: session, signal: undefined });
+    updateAccountSession.mockClear();
+    const latest = { ...session, token: 'new-login' };
+    useSession.getState().setSession(latest, metadata);
+    await applyRizlineSessionRotation(account.id, { ...session, token: 'late' }, next);
+    expect(updateAccountSession).not.toHaveBeenCalled();
+    expect(useSession.getState().session).toBe(latest);
+  });
+});
 const lxnsSession: ProviderSession = {
   mode: 'lxns-oauth',
   accessToken: 'access',

@@ -12,7 +12,7 @@ const mockShowNotification = jest.fn();
 
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
-  router: { push: mockRouterPush },
+  router: { push: (...args: unknown[]) => mockRouterPush(...args) },
 }));
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
@@ -29,7 +29,7 @@ jest.mock('@/state/toolbox-pins', () => ({
     togglePinnedTool: typeof mockTogglePinnedTool;
   }) => unknown) => selector({
     pinnedToolIdsByGame: {
-      'majdata-net': [],
+      rizline: [], 'majdata-net': [],
       maimai: mockPinnedToolIds,
       chunithm: [],
       phigros: [],
@@ -48,6 +48,14 @@ jest.mock('@/state/toolbox-pins', () => ({
 }));
 
 describe('game-aware toolbox screen', () => {
+  it('opens the Rizline random tool and personal library through registered routes', async () => {
+    mockActiveGameId = 'rizline';
+    const screen = await render(<ToolsScreen />);
+    await fireEvent.press(screen.getByText('随机歌曲'));
+    expect(mockRouterPush).toHaveBeenCalledWith('/tools/random-charts');
+    await fireEvent.press(screen.getByText('我的曲库'));
+    expect(mockRouterPush).toHaveBeenCalledWith('/library');
+  });
   beforeEach(() => {
     mockActiveGameId = 'maimai';
     mockPinnedToolIds = [];

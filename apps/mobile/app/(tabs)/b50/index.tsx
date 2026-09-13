@@ -30,6 +30,7 @@ import { useAppTheme } from '@/theme/app-theme';
 import { TufBestScreen } from '@/screens/TufScreens';
 import { MuseDashBestScreen } from '@/screens/MuseDashScreens';
 import { PhiraBestScreen } from '@/screens/PhiraScreens';
+import { RizlineBestScreen } from '@/screens/RizlineScreens';
 import { OsuBestScreen } from '@/screens/OsuScreens';
 import { isOsuGameId } from '@/domain/game-mode-family';
 
@@ -66,6 +67,7 @@ export function Best50Screen() {
   }
   if (activeGameId === 'majdata-net') return <MajdataBestScreen />;
   if (activeGameId === 'phira') return <PhiraBestScreen />;
+  if (activeGameId === 'rizline') return <RizlineBestScreen />;
   if (isOsuGameId(activeGameId)) return <OsuBestScreen />;
   if (activeGameId === 'adofai') {
     return <TufBestScreen />;

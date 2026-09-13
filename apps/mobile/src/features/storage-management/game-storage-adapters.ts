@@ -1,4 +1,5 @@
 import { phigrosResources } from '@/services/phigros-resources';
+import { rizlineResources } from '@/services/rizline-resources';
 import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
 import { DXRATING_CHART_TAGS_RESOURCE_KEY } from '@/domain/dxrating-chart-tags';
@@ -198,6 +199,9 @@ export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   osuManiaAdapter,
   osuCatchAdapter,
   osuTaikoAdapter,
+  createGameStorageAdapter({ gameId: 'rizline', title: 'Rizline', color: '#57E4C4', note: '账号成绩快照与已验证曲库',
+    queryKeys: [['rizline'], ['game-data']], fileResources: [], resetMemory: () => rizlineResources.clear(),
+    ownership: { ownsAccount: accountOwnership('rizline'), resourcePrefixes: ['rizline:'] } }),
 ];
 
 export function getGameStorageAdapter(gameId: GameId): GameStorageAdapter | undefined {

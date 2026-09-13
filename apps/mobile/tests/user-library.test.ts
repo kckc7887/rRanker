@@ -14,6 +14,20 @@ const chart: ChartLibraryItem = {
 };
 
 describe('user library domain', () => {
+  it('round-trips Rizline favorites, SP practice and scoped tags without changing official IDs', () => {
+    const items = [
+      { ...song, gameId: 'rizline' as const, songId: 'Song.A.0', key: songLibraryKey('rizline', 'Song.A.0'), tags: ['歌曲标签'] },
+      { ...song, gameId: 'rizline' as const, songId: 'Song.A.1', key: songLibraryKey('rizline', 'Song.A.1'), tags: ['SP歌曲'] },
+      { ...chart, gameId: 'rizline' as const, songId: 'Song.A.1', type: 'SD' as const, levelIndex: 4,
+        key: chartLibraryKey('rizline', 'Song.A.1', 'SD', 4), tags: ['SP谱面'] },
+    ];
+    const backup = createUserDataBackup(items, updatedAt);
+    const restored = parseUserDataBackup(JSON.parse(JSON.stringify(backup)));
+    expect(restored.items).toEqual(expect.arrayContaining(items));
+    expect(new Set(restored.items.map(item => item.key)).size).toBe(3);
+    expect(mergeLibraryItems(items, restored.items)).toHaveLength(3);
+    expect(backupPreview(restored)).toEqual({ songs: 2, charts: 1, tags: 3 });
+  });
   it('builds stable normalized song and chart keys per game', () => {
     expect(songLibraryKey('maimai', '10001')).toBe('song:maimai:1');
     expect(chartLibraryKey('maimai', '10001', 'DX', 3)).toBe('chart:maimai:1:DX:3');

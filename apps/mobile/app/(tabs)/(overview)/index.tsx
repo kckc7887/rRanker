@@ -1,3 +1,4 @@
+import { RIZLINE_RATING_THEME, formatRizlineRks } from '@/domain/rizline';
 import { useOverviewOperation } from '@/hooks/use-overview-operation';
 import { useOverviewSync } from '@/hooks/use-overview-sync';
 import { useOverviewUpload } from '@/hooks/use-overview-upload';
@@ -179,6 +180,7 @@ function PublicOverviewScreen() {
               || bundle.payload.kind === 'chunithm'
               || bundle.payload.kind === 'adofai'
               || bundle.payload.kind === 'musedash'
+              || bundle.payload.kind === 'rizline'
               || bundle.payload.kind === 'majdata-net'
               || bundle.payload.kind === 'phira'
               || bundle.payload.kind === 'osu' ? (
@@ -187,13 +189,15 @@ function PublicOverviewScreen() {
                 label={bundle.payload.playerScore.label}
                 display={bundle.payload.playerScore.display}
                 fitValue={bundle.payload.kind === 'majdata-net'}
-                accessibilityLabel={bundle.payload.kind === 'majdata-net'
+                accessibilityLabel={bundle.payload.kind === 'rizline' || bundle.payload.kind === 'majdata-net'
                   ? `${bundle.payload.playerScore.label} ${bundle.payload.playerScore.display}`
                   : undefined}
                 rating={bundle.payload.kind === 'majdata-net' || (bundle.payload.kind === 'chunithm' && !bundle.payload.hasSyncedData)
                   ? null
                   : bundle.payload.playerScore.value}
-                meta={bundle.payload.kind === 'majdata-net' ? '' : bundle.payload.kind === 'adofai'
+                meta={bundle.payload.kind === 'rizline'
+                  ? `AH5（推定） ${formatRizlineRks(bundle.payload.best.ah5Contribution)} · B35（推定） ${formatRizlineRks(bundle.payload.best.b35Contribution)}`
+                  : bundle.payload.kind === 'majdata-net' ? '' : bundle.payload.kind === 'adofai'
                   ? formatTufOverviewRatingMeta(bundle.payload.player)
                   : bundle.payload.kind === 'musedash'
                     ? formatMuseDashOverviewRatingMeta(bundle.payload.player)
@@ -204,7 +208,7 @@ function PublicOverviewScreen() {
                       : bundle.payload.kind === 'osu'
                         ? formatOsuPlayTime(bundle.payload.player.playTimeSeconds)
                         : formatBestSectionMeta(bundle.payload.bestSections, bundle.gameId)}
-                themeOverride={bundle.payload.kind === 'adofai'
+                themeOverride={bundle.payload.kind === 'rizline' ? RIZLINE_RATING_THEME : bundle.payload.kind === 'adofai'
                   ? TUF_RATING_THEME
                   : bundle.payload.kind === 'musedash'
                     ? MUSE_DASH_RATING_THEME
@@ -320,6 +324,10 @@ function PublicOverviewScreen() {
               </Pressable>
             )}
 
+            {bundle.payload.kind === 'rizline' && bundle.payload.requiresLogin ? (
+              <Text style={[styles.body, { color: theme.textSecondary }]}>登录已失效，请在游戏管理中重新绑定账号。</Text>
+            ) : null}
+
             {bundle.payload.kind === 'maimai' && pinnedPlateIds.length ? (
               <PinnedPlateCards plateIds={pinnedPlateIds} records={bundle.payload.records} />
             ) : null}
@@ -366,7 +374,8 @@ function PublicOverviewScreen() {
                     || bundle.payload.kind === 'chunithm'
                     || bundle.payload.kind === 'adofai'
                     || bundle.payload.kind === 'musedash'
-                    || bundle.payload.kind === 'majdata-net'
+                    || bundle.payload.kind === 'rizline'
+              || bundle.payload.kind === 'majdata-net'
                     || bundle.payload.kind === 'phira'
                     || bundle.payload.kind === 'osu'
                     ? (library.isError
@@ -605,6 +614,7 @@ function PinnedChunithmCollectionKindGroup({
 }
 
 function displayName(bundle: GameDataBundle): string {
+  if (bundle.payload.kind === 'rizline') return bundle.payload.player.username;
   if (bundle.payload.kind === 'maimai') return bundle.payload.player.displayName;
   if (bundle.payload.kind === 'phigros') return bundle.payload.player.displayName;
   if (bundle.payload.kind === 'chunithm') {
@@ -658,6 +668,7 @@ function formatChunithmBestMeta(
 }
 
 function syncProviderHint(providerId: ProviderId | null): string {
+  if (providerId === 'rizline-official') return '官方账号';
   if (providerId === 'lxns') return '落雪咖啡屋';
   if (providerId === 'diving-fish') return '水鱼查分器';
   if (providerId === 'phi-taptap') return 'TapTap 云存档';

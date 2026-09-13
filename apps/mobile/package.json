@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@noble/ciphers": "2.4.0",
     "@react-native-community/geolocation": "^3.4.0",
     "@react-native-masked-view/masked-view": "0.3.2",
     "@react-navigation/bottom-tabs": "^7.4.0",

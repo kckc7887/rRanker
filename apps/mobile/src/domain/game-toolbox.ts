@@ -2,7 +2,7 @@ import type { GameId } from './game-bind-options';
 
 export type GameToolDefinition = {
   id: string;
-  href: `/tools/${string}` | '/best-image';
+  href: `/tools/${string}` | '/best-image' | '/library';
   title: string;
   detail: string;
   summaryLabel: string;
@@ -35,6 +35,12 @@ const OSU_TOOLS: readonly GameToolDefinition[] = [
  * 新游戏不需要在页面组件里增加 gameId 分支。
  */
 export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
+  rizline: { tools: [
+    { id: 'random-charts', href: '/tools/random-charts', title: '随机歌曲',
+      detail: '按难度、曲包和定数抽取谱面', summaryLabel: '随机歌曲' },
+    { id: 'library', href: '/library', title: '我的曲库',
+      detail: '管理收藏、练习清单与本地标签', summaryLabel: '我的曲库' },
+  ], emptyDetail: '' },
   'majdata-net': { tools: [
     { id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找', detail: '查找附近机厅', summaryLabel: '机厅查找' },
     { id: 'tolerance', href: '/tools/tolerance?gameId=majdata-net', title: '达成率与容错', detail: '计算 DX、Classic 达成率与容错', summaryLabel: '达成率/容错' },

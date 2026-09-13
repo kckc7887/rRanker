@@ -34,6 +34,9 @@ const commonNav = {
 };
 
 export const GAME_PROFILES: Record<GameId, GameProfile> = {
+  rizline: { id: 'rizline', title: 'Rizline', ratingLabel: 'Ranking Score', ratingDigits: 4,
+    bestSections: [{ id: 'ah5', title: 'AH5（推定）', size: 5 }, { id: 'b35', title: 'Best35（推定）', size: 35 }],
+    capabilities: { ...commonNav, hasTools: true } },
   'majdata-net': { id: 'majdata-net', title: 'Majdata Net', ratingLabel: 'DX · Classic', ratingDigits: 4,
     bestSections: [{ id: 'recent', title: 'Recent', size: 0 }], capabilities: { ...commonNav, hasTools: true } },
   maimai: {
