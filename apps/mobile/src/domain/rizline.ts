@@ -1,3 +1,10 @@
+/**
+ * AH compatibility/best-group portions adapted from REDDRAGON-HL/rizline_b40_tool
+ * (Apache-2.0), 93b2881d5cea7d53ac11706c028245ed144d8a16.
+ * Modified by rRanker, 2026-09-14: typed inputs, inferred/unknown states, SP exclusion,
+ * stable ordering and partial groups. See THIRD_PARTY_NOTICES.md and
+ * LICENSES/rizline_b40_tool-APACHE-2.0.txt for the attribution and full license.
+ */
 import type { DataSource } from './models';
 import type { DxRatingTheme } from './dx-rating-theme';
 
@@ -46,8 +53,12 @@ const DIFFICULTY_COLORS: Record<RizlineDifficulty, string> = {
 export function rizlineDifficultyColors(difficulty: RizlineDifficulty, _dark = false) {
   return { bg: DIFFICULTY_COLORS[difficulty], fg: '#FFFFFF' };
 }
+function isRizlineAp(achievements: number | null | undefined): boolean {
+  // A full-completion float can be 120.00000762939453 after the game's percentage calculation.
+  return achievements != null && Number.isFinite(achievements) && achievements >= 120;
+}
 export function rizlineRecordStatus(record?: Pick<RizlineRecord, 'achievements' | 'ahStatus'>): 'ap' | 'ah' | 'normal' {
-  if (record?.achievements === 120) return 'ap';
+  if (isRizlineAp(record?.achievements)) return 'ap';
   return record?.ahStatus === 'inferred' ? 'ah' : 'normal';
 }
 export function rizlineDifficultyIndex(difficulty: RizlineDifficulty): number {
@@ -130,7 +141,7 @@ export function buildRizlineRecords(save: RizlineSave, catalog?: RizlineCatalog)
     const row = ensure(best.trackAssetId, best.difficultyClassName);
     row.achievements = Math.max(row.achievements ?? 0, best.completeRate);
     row.score = Math.max(row.score ?? 0, best.score);
-    row.ap = row.achievements === 120;
+    row.ap = isRizlineAp(row.achievements);
   }
   for (const level of save.levelsRks) {
     const row = ensure(level.trackId, level.difficultyClassName);

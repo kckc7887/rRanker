@@ -133,6 +133,8 @@ Easy 与 Phigros HD 复用公共蓝色主题。歌曲信息只含简介、线上
 
 大陆服手机版注册为 `rizline`，查分器为 `rizline-official`（官方账号）。包内图标为
 `assets/images/rizline.png`，由用户提供的 240×240 WebP 保留 RGBA 像素转换为 PNG。
+接入代码的来源、固定提交、修改说明和完整许可索引见根目录 `THIRD_PARTY_NOTICES.md`；
+`LICENSES/` 保留 RizlineGameSaveData、rizline_b40_tool、RizlineSavingTest 与 noble-ciphers 的许可全文。
 `RizlineLoginPanel` 通过公共 `SmsLoginPanel` 接收手机号与验证码，
 复用 `ProviderLoginSheet` 的忙碌状态、关闭和通知出口。验证码只保留在表单状态，关闭或进入
 后台时清空；发送验证码只尝试一次。公共面板按来源保留会话内冷却时间，默认 60 秒，遵守
@@ -157,7 +159,8 @@ Easy 与 Phigros HD 复用公共蓝色主题。歌曲信息只含简介、线上
 
 `domain/rizline.ts` 保留官方歌曲与谱面 ID 的末尾编号，仅移除存档关卡 ID 的 `track.` 前缀。
 SP 是独立条目，记录可展示，最佳计算排除。总 RKS 与单谱 RKS 均来自存档，达成率、RKS、
-贡献默认四位小数，只有原始达成率等于 120 才展示 AP。AH 相容性检查均为推定，
+贡献默认四位小数，有限的原始达成率达到 120 才展示 AP，兼容满达成率向上偏移的浮点误差；
+原值低于 120 时不因显示舍入升级为 AP。AH 相容性检查均为推定，
 不以“全部 HIT 位于 Riztime”确证 AH；取最高五张候选后排除它们，再取剩余最高 35 张。
 同分按稳定谱面 ID 排序，不足数量不填充；贡献为各组总和除以 40，不能替代官方总 RKS。
 缺少推定数据且可能影响 AH5 时，贡献保留未知；未识别歌曲和无 RKS 成绩不丢弃。
@@ -167,9 +170,10 @@ SP 是独立条目，记录可展示，最佳计算排除。总 RKS 与单谱 RK
 SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱面标签分别存储，内部
 `SD`/`levelIndex` 只用于现有用户曲库兼容结构，EZ～SP 对应 0～4。曲库与随机页共用
 `domain/rizline-filters.ts` 的难度、曲包和定数规则；难度使用彩色横向按钮单选，再次点击
-已选难度取消筛选。工具箱注册随机歌曲与机厅查找，总览保留公共个人曲库卡片。
+已选难度取消筛选，选中框与舞萌共用默认胶囊形状。工具箱注册随机歌曲与机厅查找，
+总览保留公共个人曲库卡片。
 总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊，详情练习按钮采用相同
-难度配色。`rizlineRecordStatus` 统一评价展示：原始 120% 优先 AP，其余推定 AH 显示 AH；
+难度配色。`rizlineRecordStatus` 统一评价展示：原始达成率达到 120% 优先 AP，其余推定 AH 显示 AH；
 AP 使用流金达成率和金色胶囊，AH 使用流动蓝绿达成率和蓝绿渐变胶囊。
 列表与详情复用 `RizlineAccuracyValue`、`RizlineStatusBadge`，通过公共动效组件消费
 `domain/metric-gradient-theme.ts`，与 Phigros 共用色组和时长。成绩卡右侧显示 RKS 小标题。

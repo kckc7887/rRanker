@@ -5,6 +5,7 @@ import { MajdataBestScreen, MajdataCatalogScreen, MajdataFilter, MajdataRecordsS
 import { MajdataDifficultyBadge, MajdataScoreCard, MajdataSongRow, majdataVisual } from '@/components/majdata/MajdataCards';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { DifficultyBadge } from '@/components/ScoreVisuals';
+import { MaimaiFilterBar } from '@/components/MaimaiFilterBar';
 import { filterShellStyles } from '@/components/game-content/FilterShell';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SIMAI_CATALOG_LIST_STYLES, SIMAI_RECORDS_LIST_STYLES } from '@/components/game-content/SimaiListStyles';
@@ -153,6 +154,24 @@ test('difficulty chips retain raw indices, union matching and selection across c
   await fireEvent.press(screen.getByLabelText('重置筛选'));
   expect(screen.getByText('共 2 条成绩')).toBeTruthy();
   expect(useMajdataRecordsFilter.getState().difficulties).toEqual([]);
+});
+
+test('difficulty selection frames use the exact existing maimai pill geometry', async () => {
+  const noop = () => {};
+  const reference = await render(<MaimaiFilterBar collapsed={false} difficulty="master" version="all" type="all"
+    constantMin="" constantMax="" versionLocale="china" versions={[]} onCollapsedChange={noop}
+    onDifficultyChange={noop} onVersionChange={noop} onTypeChange={noop} onConstantMinChange={noop}
+    onConstantMaxChange={noop} onVersionLocaleChange={noop} onReset={noop} />);
+  const selectedFrame = StyleSheet.flatten(reference.getByLabelText('筛选难度 MASTER').props.style);
+  const idleFrame = StyleSheet.flatten(reference.getByLabelText('筛选难度 BASIC').props.style);
+  await reference.unmount();
+  useMajdataRecordsFilter.setState({ collapsed: false, difficulties: [4] });
+  const screen = await render(<MajdataFilter catalog={false} tags={[]} />);
+  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 Master').props.style)).toEqual(selectedFrame);
+  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 Easy').props.style)).toEqual(idleFrame);
+  await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
+  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 Easy').props.style)).toEqual(selectedFrame);
+  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 Master').props.style)).toEqual(selectedFrame);
 });
 
 test('catalog sorting is in its own row and reset closes its dropdown', async () => {

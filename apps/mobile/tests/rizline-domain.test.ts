@@ -19,11 +19,20 @@ describe('Rizline identities and score semantics', () => {
     expect(records[1].rks).toBeNull();
     expect(selectRizlineBest(records).ah5).toHaveLength(1);
   });
-  it('labels only unrounded 120 percent as AP and retains missing data', () => {
+  it('labels raw completion reaching 120 percent as AP and retains missing data', () => {
     const save = rizlineSave(); save.myBest[0].completeRate = 119.99999;
     expect(buildRizlineRecords(save)[0].ap).toBe(false);
     save.myBest[0].completeRate = 120;
     expect(buildRizlineRecords(save)[0].ap).toBe(true);
+    // Numeric example: HiXcc/RizlineSavingTest@88b16f9, RizScoreUploader.py:37 (MIT, Copyright (c) 2026 HiXcc).
+    // Source and full license: THIRD_PARTY_NOTICES.md, LICENSES/RizlineSavingTest-MIT.txt.
+    const fullCompletion = Math.fround(Math.fround(1.2) * 100);
+    expect(fullCompletion).toBe(120.00000762939453);
+    save.myBest[0].completeRate = fullCompletion;
+    expect(formatRizlineAccuracy(fullCompletion)).toBe('120.0000%');
+    const full = buildRizlineRecords(save, rizlineCatalog())[0];
+    expect(full).toMatchObject({ achievements: fullCompletion, ap: true, ahStatus: 'inferred' });
+    expect(rizlineRecordStatus(full)).toBe('ap');
     const withoutBest = buildRizlineRecords({ ...save, myBest: [] });
     expect(withoutBest[0]).toMatchObject({ achievements: null, score: null, ahStatus: 'unknown' });
     expect(formatRizlineAccuracy(null)).toBe('—'); expect(formatRizlineRks(12)).toBe('12.0000');
@@ -33,9 +42,12 @@ describe('Rizline identities and score semantics', () => {
     expect(inferRizlineAh({ difficulty: 'IN', chart, rks: 1.234, score: 600_000, achievements: 70 })).toBe('incompatible');
     expect(inferRizlineAh({ difficulty: 'IN', chart: { ...chart, constant: null }, rks: 142, score: 600_000, achievements: 70 })).toBe('unknown');
   });
-  it('prioritizes exact AP independently of missing AH evidence and does not upgrade rounded values', () => {
+  it('prioritizes AP independently of missing AH evidence and does not upgrade rounded values below 120', () => {
     expect(rizlineRecordStatus({ achievements: 120, ahStatus: 'unknown' })).toBe('ap');
     expect(rizlineRecordStatus({ achievements: 120, ahStatus: 'inferred' })).toBe('ap');
+    expect(rizlineRecordStatus({ achievements: 120.00000762939453, ahStatus: 'unknown' })).toBe('ap');
+    expect(rizlineRecordStatus({ achievements: 120.00000762939453, ahStatus: 'inferred' })).toBe('ap');
+    expect(rizlineRecordStatus({ achievements: Infinity, ahStatus: 'unknown' })).toBe('normal');
     expect(rizlineRecordStatus({ achievements: 119.999999, ahStatus: 'inferred' })).toBe('ah');
     expect(rizlineRecordStatus({ achievements: 119.999999, ahStatus: 'unknown' })).toBe('normal');
     expect(rizlineRecordStatus({ achievements: 119, ahStatus: 'incompatible' })).toBe('normal');

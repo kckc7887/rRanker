@@ -142,6 +142,8 @@ describe('Rizline UI', () => {
     { achievements: 119.999999, ahStatus: 'inferred', status: 'ah' },
     { achievements: 120, ahStatus: 'inferred', status: 'ap' },
     { achievements: 120, ahStatus: 'unknown', status: 'ap' },
+    { achievements: 120.00000762939453, ahStatus: 'inferred', status: 'ap' },
+    { achievements: 120.00000762939453, ahStatus: 'unknown', status: 'ap' },
     { achievements: 119.999999, ahStatus: 'unknown', status: 'normal' },
     { achievements: 119.123456, ahStatus: 'incompatible', status: 'normal' },
   ])('shares $status badges and flowing accuracy between cards and detail at $achievements with $ahStatus AH', async ({ achievements, ahStatus, status }) => {

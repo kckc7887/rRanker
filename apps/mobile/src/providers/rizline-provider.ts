@@ -1,3 +1,10 @@
+/**
+ * Protocol/key adaptation from CHCAT1320/RizlineGameSaveData, GPL v3 text,
+ * ba89227baa2927655ea884a849d6a27ea1cdfb2d. Upstream README statements are retained
+ * in THIRD_PARTY_NOTICES.md; full license: LICENSES/RizlineGameSaveData-GPL-3.0.txt.
+ * Modified by rRanker, 2026-09-14: typed HTTP/SMS login, token rotation, cancellation
+ * and authenticated save parsing. AES-GCM itself uses unmodified @noble/ciphers (MIT).
+ */
 import { gcm } from '@noble/ciphers/aes.js';
 import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
@@ -30,7 +37,6 @@ const TokenClaimsSchema = z.object({
   channelId: z.union([z.string(), z.number().int()]).transform(String).pipe(z.enum(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'])),
 });
 
-// Protocol and packed key: CHCAT1320/RizlineGameSaveData, GPL-3.0, revision ba89227baa2927655ea884a849d6a27ea1cdfb2d.
 // https://github.com/CHCAT1320/RizlineGameSaveData/blob/ba89227baa2927655ea884a849d6a27ea1cdfb2d/gameDataAes2Json.py
 function saveKey(): Uint8Array {
   const packed = Uint8Array.from('9693ad9f6e7e7034350c223affd2a0b57b6c76572e511b1c93a0d230c09aede7'.match(/../gu)!, pair => parseInt(pair, 16));
