@@ -169,8 +169,19 @@ SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱�
 公开资源唯一基址为 `https://rranker-rizline-data.cn-nb1.rains3.com`。独立发布项目位于
 `D:/Projects/rizline-resource-publisher`，其维护说明管理官方导入、人工补充、校验、构建及发布。
 维护命令由 `rizline_publisher` 模块提供，`overrides.json` 保留人工修订，
-`work/supplement-template.json` 按完整官方 ID 列出缺项。发布预览默认不联网写入；实际发布
-先校验全部远端内容字节，再最后切换 current，版本对象条件写入并保留回滚版本。
+`work/supplement-template.json` 按完整官方 ID 列出缺项。独立项目的
+`.github/workflows/publish.yml` 配置每日北京时间 08:00（UTC 00:00）从 `main` 实际发布；
+手动触发默认只构建并预览，勾选 `execute` 才上传。工作流串行执行，只需配置
+`AWS_ACCESS_KEY_ID` 与 `AWS_SECRET_ACCESS_KEY`；端点、区域、桶名和公开基址由发布器内置。
+`publish` 默认不写远端，`publish --execute --workers 4` 通过公共发布入口执行，
+资源上传与校验支持 1–16 路并发。实际 GET 字节相同的对象跳过 PUT，包括 current；
+所有资源验证完成后才处理 manifest，再处理 current，版本对象仍使用条件写入。
+manifest 与 current 验证完成后，以清单文件和 manifest 的精确键集合清理
+`rizline/releases/`，使该前缀只保留当前版本的可见对象。前置步骤失败不删除旧资源；
+清理失败报错，此时 current 可能已经更新。桶级历史 VersionId 不属于此清理范围。
+Actions 完整发布归档与报告保留 90 天，S3 不保留回滚版本；线上回滚须从本地或完整归档
+恢复版本目录，校验后重新发布。`rollback` 只选择本地版本，不直接修改线上 current。
+
 客户端 `services/rizline-resources.ts` 验证 `/rizline/current.json` 指定的 manifest SHA-256、
 资源路径与修订，再验证完整 catalog 的大小、SHA-256、身份与引用一致性，全部通过后替换。
 `rizline:catalog` 单独持久化最后有效曲库；失败与离线保留旧数据。封面使用版本化地址走公共
