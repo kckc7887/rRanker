@@ -108,7 +108,8 @@ Hook 继续拥有原 Query Key、查询选项与结果发布，服务不依赖 H
 `useMajdataSongs` 保留上游页码，每页 30 首，通过原始页长判断下一页；分页只在 React Query
 会话中保存，只展示已加载数量。难度名称多选和线上标签多选各自取并集、两组取交集；
 筛选后空页继续下一上游页，失焦后暂停自动续页。线上标签由 `tags` 与 `publicTags` 合并，
-本地标签不参与筛选。筛选器每项独立横向行，收起和重置关闭展开的下拉。
+本地标签不参与筛选。难度通过带难度色的横向按钮直接多选，保留原始 0～6 索引；
+筛选器每项独立横向行，收起和重置关闭展开的下拉。
 
 详情与个人曲库通过同一资源仓库读取。`majdata-net:song:{id}` 保存当前元数据，
 `majdata-net:song:{id}:{hash}` 保存修订；`chart:{id}:{hash}` 保存完整文本，
@@ -131,10 +132,13 @@ Easy 与 Phigros HD 复用公共蓝色主题。歌曲信息只含简介、线上
 ### Rizline
 
 大陆服手机版注册为 `rizline`，查分器为 `rizline-official`（官方账号）。包内图标为
-`assets/images/rizline.png`。`RizlineLoginPanel` 通过公共 `SmsLoginPanel` 接收手机号与验证码，
+`assets/images/rizline.png`，由用户提供的 240×240 WebP 保留 RGBA 像素转换为 PNG。
+`RizlineLoginPanel` 通过公共 `SmsLoginPanel` 接收手机号与验证码，
 复用 `ProviderLoginSheet` 的忙碌状态、关闭和通知出口。验证码只保留在表单状态，关闭或进入
 后台时清空；发送验证码只尝试一次。公共面板按来源保留会话内冷却时间，默认 60 秒，遵守
-服务端更长的 Retry-After，关闭弹层不会重置冷却。设备 UUID 通过公共偏好工厂保存在
+服务端更长的 Retry-After，关闭弹层不会重置冷却。验证码按钮位于手机号输入框右侧，
+发送后只保留按钮倒计时，到期显示“重新获取”；实际错误继续通过公共文案出口显示。
+设备 UUID 通过公共偏好工厂保存在
 `rranker.rizline.device.v1`；账号会话另在 SecureStore 保存手机号、令牌、设备 UUID 和渠道。
 
 `providers/rizline-provider.ts` 的 `RizlineProvider` 通过公共 HTTP 入口和 `expo/fetch`
@@ -162,9 +166,15 @@ SP 是独立条目，记录可展示，最佳计算排除。总 RKS 与单谱 RK
 公共列表、卡片、封面定位、难度轮播、随机抽取、收藏、练习与标签。难度顺序为
 SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱面标签分别存储，内部
 `SD`/`levelIndex` 只用于现有用户曲库兼容结构，EZ～SP 对应 0～4。曲库与随机页共用
-`domain/rizline-filters.ts` 的难度、曲包和定数规则。工具箱注册随机歌曲与 `/library` 入口，
-总览同时保留公共个人曲库卡片。缺失资料显示 `—`，不使用抓取或上传
-时间充当游戏更新时间；成就展示名称和达成条件。未接入谱面预览、下载或成绩图。
+`domain/rizline-filters.ts` 的难度、曲包和定数规则；难度使用彩色横向按钮单选，再次点击
+已选难度取消筛选。工具箱注册随机歌曲与机厅查找，总览保留公共个人曲库卡片。
+总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊，详情练习按钮采用相同
+难度配色。`rizlineRecordStatus` 统一评价展示：原始 120% 优先 AP，其余推定 AH 显示 AH；
+AP 使用流金达成率和金色胶囊，AH 使用流动蓝绿达成率和蓝绿渐变胶囊。
+列表与详情复用 `RizlineAccuracyValue`、`RizlineStatusBadge`，通过公共动效组件消费
+`domain/metric-gradient-theme.ts`，与 Phigros 共用色组和时长。成绩卡右侧显示 RKS 小标题。
+详情不展示歌曲信息区，曲库中的成就和更新时间字段仍可维护，歌曲及谱面本地标签分别保留。
+未接入谱面预览、下载或成绩图。
 
 公开资源唯一基址为 `https://rranker-rizline-data.cn-nb1.rains3.com`。独立发布项目位于
 `D:/Projects/rizline-resource-publisher`，其维护说明管理官方导入、人工补充、校验、构建及发布。

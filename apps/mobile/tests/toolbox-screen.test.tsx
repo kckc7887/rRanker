@@ -48,13 +48,14 @@ jest.mock('@/state/toolbox-pins', () => ({
 }));
 
 describe('game-aware toolbox screen', () => {
-  it('opens the Rizline random tool and personal library through registered routes', async () => {
+  it('opens the Rizline random and arcade finder tools through registered routes', async () => {
     mockActiveGameId = 'rizline';
     const screen = await render(<ToolsScreen />);
     await fireEvent.press(screen.getByText('随机歌曲'));
     expect(mockRouterPush).toHaveBeenCalledWith('/tools/random-charts');
-    await fireEvent.press(screen.getByText('我的曲库'));
-    expect(mockRouterPush).toHaveBeenCalledWith('/library');
+    await fireEvent.press(screen.getByText('机厅查找'));
+    expect(mockRouterPush).toHaveBeenCalledWith('/tools/arcade-finder');
+    expect(screen.queryByText('我的曲库')).toBeNull();
   });
   beforeEach(() => {
     mockActiveGameId = 'maimai';

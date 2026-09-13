@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet } from 'react-native';
 import { MajdataBestScreen, MajdataCatalogScreen, MajdataFilter, MajdataRecordsScreen } from '@/screens/MajdataScreens';
@@ -100,7 +100,7 @@ test('catalog row uses compact value-only badges and the existing 44px local fav
     source: expect.stringContaining(mockSong.id), style: { width: 58, height: 58, borderRadius: 9 } });
 });
 
-test('expanded filters have independent existing filter rows and immediate checkbox multi-select', async () => {
+test('expanded filters use direct difficulty chips and keep online tags as immediate checkbox multi-select', async () => {
   useMajdataRecordsFilter.setState({ collapsed: false });
   const screen = await render(<MajdataFilter catalog={false} tags={['线上一', '线上二']} />);
   for (const name of ['difficulty', 'tags', 'achievement']) {
@@ -108,12 +108,22 @@ test('expanded filters have independent existing filter rows and immediate check
   }
   expect(screen.getAllByText('难度')).toHaveLength(1);
   expect(screen.getAllByText('标签')).toHaveLength(1);
-  await fireEvent.press(screen.getByLabelText('筛选难度，当前 全部'));
-  await fireEvent.press(screen.getByLabelText('难度 Easy'));
-  await fireEvent.press(screen.getByLabelText('难度 Master'));
+  const difficulty = within(screen.getByTestId('majdata-filter-difficulty-row'));
+  expect(difficulty.getAllByRole('button').map(button => button.props.accessibilityLabel))
+    .toEqual(['全部', 'Easy', 'Basic', 'Advanced', 'Expert', 'Master', 'Re:Master', '宴谱'].map(label => `筛选难度 ${label}`));
+  expect(screen.queryByLabelText('筛选难度，当前 全部')).toBeNull();
+  expect(StyleSheet.flatten(difficulty.getByText('EASY').props.style).color).toBe(majdataVisual(0).badgeText);
+  await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
+  await fireEvent.press(screen.getByLabelText('筛选难度 Master'));
   expect(useMajdataRecordsFilter.getState().difficulties).toEqual([0, 4]);
-  expect(screen.getByLabelText('难度 Master').props.accessibilityState.selected).toBe(true);
-  await fireEvent.press(screen.getByLabelText('关闭下拉列表'));
+  expect(screen.getByLabelText('筛选难度 Master').props.accessibilityState.selected).toBe(true);
+  expect(screen.getByLabelText('筛选难度 Easy').props.accessibilityState.selected).toBe(true);
+  expect(screen.getByLabelText('筛选难度 全部').props.accessibilityState.selected).toBe(false);
+  await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
+  expect(useMajdataRecordsFilter.getState().difficulties).toEqual([4]);
+  await fireEvent.press(screen.getByLabelText('筛选难度 全部'));
+  expect(useMajdataRecordsFilter.getState().difficulties).toEqual([]);
+  expect(screen.getByLabelText('筛选难度 全部').props.accessibilityState.selected).toBe(true);
   await fireEvent.press(screen.getByLabelText('筛选线上标签，当前 全部'));
   await fireEvent.press(screen.getByLabelText('线上标签 线上一'));
   await fireEvent.press(screen.getByLabelText('线上标签 线上二'));
@@ -121,6 +131,28 @@ test('expanded filters have independent existing filter rows and immediate check
   await fireEvent.press(screen.getByLabelText('重置筛选'));
   expect(useMajdataRecordsFilter.getState()).toMatchObject({ difficulties: [], tags: [], min: '', max: '' });
   expect(screen.queryByLabelText('线上标签 线上一')).toBeNull();
+});
+
+test('difficulty chips retain raw indices, union matching and selection across collapse', async () => {
+  mockRecords = [mockScore, { ...mockScore, chartLevel: 0, acc: { dx: 90, classic: 90 } }];
+  useMajdataRecordsFilter.setState({ collapsed: false });
+  const screen = await render(<MajdataRecordsScreen />);
+  await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
+  expect(screen.getByText('共 1 条成绩')).toBeTruthy();
+  expect(screen.getByText('90.0000%')).toBeTruthy();
+  expect(screen.queryByText('97.0000%')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('筛选难度 Master'));
+  expect(screen.getByText('共 2 条成绩')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('收起筛选'));
+  expect(screen.queryByLabelText('筛选难度 Master')).toBeNull();
+  await fireEvent.press(screen.getByLabelText('展开筛选，当前 Easy · Master'));
+  expect(screen.getByLabelText('筛选难度 Master').props.accessibilityState.selected).toBe(true);
+  await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
+  expect(screen.getByText('共 1 条成绩')).toBeTruthy();
+  expect(screen.getByText('97.0000%')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('重置筛选'));
+  expect(screen.getByText('共 2 条成绩')).toBeTruthy();
+  expect(useMajdataRecordsFilter.getState().difficulties).toEqual([]);
 });
 
 test('catalog sorting is in its own row and reset closes its dropdown', async () => {

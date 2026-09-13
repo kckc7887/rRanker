@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRizlineRecords, formatRizlineAccuracy, formatRizlineRks, inferRizlineAh, rizlineTrackId,
+import { buildRizlineRecords, formatRizlineAccuracy, formatRizlineRks, inferRizlineAh, rizlineRecordStatus, rizlineTrackId,
   selectRizlineBest, sortedRizlineCharts, sortRizlineRecords } from '@/domain/rizline';
 import { rizlinePayloadFromSnapshot } from '@/domain/game-data';
 import { RizlineCatalogSchema } from '@/providers/rizline-catalog-schema';
@@ -32,6 +32,14 @@ describe('Rizline identities and score semantics', () => {
     const chart = rizlineChart({ hit: 100, riztimeHit: 100 });
     expect(inferRizlineAh({ difficulty: 'IN', chart, rks: 1.234, score: 600_000, achievements: 70 })).toBe('incompatible');
     expect(inferRizlineAh({ difficulty: 'IN', chart: { ...chart, constant: null }, rks: 142, score: 600_000, achievements: 70 })).toBe('unknown');
+  });
+  it('prioritizes exact AP independently of missing AH evidence and does not upgrade rounded values', () => {
+    expect(rizlineRecordStatus({ achievements: 120, ahStatus: 'unknown' })).toBe('ap');
+    expect(rizlineRecordStatus({ achievements: 120, ahStatus: 'inferred' })).toBe('ap');
+    expect(rizlineRecordStatus({ achievements: 119.999999, ahStatus: 'inferred' })).toBe('ah');
+    expect(rizlineRecordStatus({ achievements: 119.999999, ahStatus: 'unknown' })).toBe('normal');
+    expect(rizlineRecordStatus({ achievements: 119, ahStatus: 'incompatible' })).toBe('normal');
+    expect(rizlineRecordStatus()).toBe('normal');
   });
   it('divides contributions by forty without filling missing slots or overriding official RKS', () => {
     const catalog = rizlineCatalog(); const source = { kind: 'rizline-official' as const, label: '官方账号', updatedAt: '2026-09-13', isStale: false };

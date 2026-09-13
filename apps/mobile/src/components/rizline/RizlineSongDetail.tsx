@@ -22,7 +22,7 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useRizlineCatalog } from '@/hooks/use-rizline-catalog';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useAppTheme } from '@/theme/app-theme';
-import { RizlineApBadge, RizlineDifficultyBadge } from './RizlineScoreVisuals';
+import { RizlineAccuracyValue, RizlineDifficultyBadge, RizlineStatusBadge } from './RizlineScoreVisuals';
 
 type Library = ReturnType<typeof useUserLibrary>;
 
@@ -77,15 +77,7 @@ function RizlineSongDetailContent({ song, library, initialLevelIndex }: { song: 
       contentContainerStyle={styles.carousel} keyExtractor={(chart) => chart.id}
       empty={<Text style={[styles.noCharts, { color: theme.textMuted }]}>暂无谱面</Text>}
       renderItem={(chart) => <RizlineChartCard chart={chart} record={recordsByChart.get(chart.id)} library={library} cardWidth={cardWidth} />} />
-      <View style={styles.details}><Card><View style={styles.songInformation}>
-        <Text style={[styles.informationTitle, { color: theme.text }]}>歌曲信息</Text>
-        <Text style={[styles.informationValue, { color: theme.textSecondary }]}>相关成就</Text>
-        {song.achievements.length ? song.achievements.map((achievement) => <View key={achievement.id} style={localStyles.achievement}>
-          <Text style={[styles.informationValue, { color: theme.text }]}>{achievement.title}</Text>
-          <Text style={[styles.informationValue, { color: theme.textSecondary }]}>{achievement.condition}</Text>
-        </View>) : <Text style={[styles.informationValue, { color: theme.text }]}>—</Text>}
-        <Text style={[styles.informationValue, { color: theme.text }]}>更新时间：{song.updatedAt ?? '—'}</Text>
-      </View></Card><Card><TagEditor testID="rizline-song-tags" tags={songItem?.kind === 'song' ? songItem.tags : []}
+      <View style={styles.details}><Card><TagEditor testID="rizline-song-tags" tags={songItem?.kind === 'song' ? songItem.tags : []}
         presets={library.tagPresets} historyTags={buildTagHistory(library.data ?? [], songKey, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
         onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card></View>
     </> : <View style={styles.deferredPlaceholder} />}
@@ -98,13 +90,13 @@ function RizlineChartCard({ chart, record, library, cardWidth }: { chart: Rizlin
   const levelIndex = rizlineDifficultyIndex(chart.difficulty); const key = library.chartKey(chart.songId, 'SD', levelIndex);
   const item = library.data?.find((entry) => entry.key === key); const practice = item?.kind === 'chart' && item.practice;
   return <GameChartResultCard testID={`rizline-chart-${chart.difficulty}`} accessibilityLabel={`${chart.difficulty} 难度卡片`}
-    style={[styles.chartCard, { width: cardWidth, backgroundColor: theme.surface, borderColor: chart.difficulty === 'SP' ? theme.border : colors.bg }]}>
+    style={[styles.chartCard, { width: cardWidth, backgroundColor: theme.surface, borderColor: colors.bg }]}>
     <View style={styles.chartHeader}><RizlineDifficultyBadge difficulty={chart.difficulty} /><View style={styles.levelBlock}>
       <Text style={[styles.level, { color: theme.text }]}>{chart.level}</Text><Text style={[styles.constant, { color: theme.textMuted }]}>{chart.constant?.toFixed(1) ?? '—'}</Text>
     </View></View>
     <View style={styles.resultBlock}><Text style={[styles.resultLabel, { color: theme.textMuted }]}>{presentation.primaryMetric.label}</Text>
-      <Text style={[styles.scoreValue, { color: theme.text }]}>{presentation.primaryMetric.text}</Text>
-      {presentation.grade ? <View style={styles.badgeRow}><RizlineApBadge /></View> : null}
+      <RizlineAccuracyValue record={record} text={presentation.primaryMetric.text} fontSize={34} lineHeight={40} />
+      <View style={styles.badgeRow}><RizlineStatusBadge record={record} /></View>
     </View>
     <View style={styles.statRow}>{presentation.secondaryMetrics.map((metric) => <View key={metric.key} style={styles.statCell}>
       <Text style={[styles.resultLabel, { color: theme.textMuted }]}>{metric.label}</Text><Text style={[styles.statValue, { color: theme.text }]}>{metric.text}</Text>
@@ -117,13 +109,11 @@ function RizlineChartCard({ chart, record, library, cardWidth }: { chart: Rizlin
     <DetailGestureRoot><DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '移出练习清单' : '加入练习清单'}
       disabled={library.isLoading || library.isUpdating} onPress={() => {
         void library.setChartPractice(chart.songId, 'SD', levelIndex, !practice).catch(() => showNotification({ title: '练习清单保存失败', message: '请重试。', variant: 'error' }));
-      }} style={[styles.action, { borderColor: theme.accent, backgroundColor: practice ? theme.accentSoft : 'transparent' }]}>
-      <Text style={[styles.actionText, { color: theme.accent }]}>{practice ? '移出练习清单' : '加入练习清单'}</Text>
+      }} style={[styles.action, { borderColor: colors.bg, backgroundColor: colors.bg }]}>
+      <Text style={[styles.actionText, { color: colors.fg }]}>{practice ? '移出练习清单' : '加入练习清单'}</Text>
     </DetailPressable></DetailGestureRoot>
     <TagEditor testID={`rizline-chart-tags-${chart.difficulty}`} tags={item?.kind === 'chart' ? item.tags : []} presets={library.tagPresets}
       historyTags={buildTagHistory(library.data ?? [], key, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
       onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'chart', songId: chart.songId, type: 'SD', levelIndex }, tags)} />
   </GameChartResultCard>;
 }
-
-const localStyles = StyleSheet.create({ achievement: { gap: 4 } });

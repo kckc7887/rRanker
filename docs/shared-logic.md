@@ -101,6 +101,8 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 - `components/game-content/SmsLoginPanel` 接受 `sendCode(phone, signal)`、
   `login(phone, code, signal)`、`validatePhone`、`cooldownKey` 及弹层状态回调。
   公共组件管理输入、单操作锁、倒计时、关闭/后台取消和错误文案，不识别游戏。
+  手机号输入框与验证码按钮位于同一横行；发送后的状态仅在按钮倒计时中展示，
+  到期显示“重新获取”，完整等待时间通过 accessibilityValue 提供，实际错误仍保留。
   验证码不持久化；同来源冷却在弹层卸载后保留，发送不自动重试。
   `ProviderError.retryAfterSeconds` 承载服务端限流时间；`retryAfterMs(response, maxMs = 5000)`
   保持原 HTTP 默认上限，短信 Provider 显式读取完整冷却时间。
@@ -142,8 +144,16 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   `GameSongRow`、`GameListPages`、`ChartCarousel`、`VERTICAL_SONG_DETAIL_STYLES`、
   `TagEditor` 和 `RandomChartsPage`。`rizline-filters.ts` 同时提供曲库与随机过滤，
   Store 分别复用 `createFilterStore`、`createPersistedRandomChartsFilterStore` 和偏好工厂。
-  游戏领域层保留官方颜色、原始 120% AP 与 AH 相容性推定规则，共享卡片不解释这些字段。
-  工具路由配置支持 `/library`，Rizline 工具箱直接复用已有个人曲库页面。
+  游戏领域层提供柔和的总览配色和适配白字胶囊的难度配色；
+  `rizlineRecordStatus(record?)` 集中选择评价，原始达成率等于 120 时优先 AP，
+  其余 AH 相容性推定成绩显示 AH，未知状态不补评价。共享卡片不解释这些字段。
+  `RizlineAccuracyValue` 复用 `AnimatedMetricValue`，AH 使用公共蓝绿流光，AP 使用金色流光；
+  `RizlineStatusBadge` 分别通过 `GameDifficultyBadge` 与 `LayeredGradientBadge` 展示蓝绿渐变、
+  金色胶囊。列表与详情共用这两个游戏包装，列表右侧保留 RKS 小标题。
+  详情练习按钮与当前难度共用前景、背景色，不展示歌曲信息区；歌曲和谱面标签继续独立展示。
+  难度行复用 `MetricFilterChoiceRow` 与游戏难度徽章，保持单选并支持再次点击清空；
+  曲库与随机页共用同一筛选条。Rizline 工具箱注册随机歌曲与 `/tools/arcade-finder`，
+  机厅筛选及偏好继续使用公共机厅查找入口，个人曲库保留在总览。
 - 收藏、练习、标签、备份和恢复使用既有 `UserLibraryService` 及其 Repository；
   `normalizeLibrarySongId` 对 Rizline 保留完整 ID，普通与 SP 不合并。
   `GAME_STORAGE_ADAPTERS` 的 `rizline:` 资源归属同时服务统计与清理，不清除用户曲库。
@@ -151,7 +161,7 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 验证入口为 `rizline-provider.test.ts`、`rizline-cache.test.ts`、`rizline-domain.test.ts`、
 `rizline-catalog-query.test.ts`、`rizline-resources.test.ts`、`rizline-content.test.ts`、
 `verified-release.test.ts`、`rizline-algorithm-audit.test.ts`、`rizline-sms-login.test.tsx`、
-`rizline-account-flow.test.tsx`、`rizline-ui.test.tsx`、`rizline-overview.test.tsx`、
+`rizline-account-flow.test.tsx`、`rizline-ui.test.tsx`、`rizline-filter-bar.test.tsx`、`rizline-overview.test.tsx`、
 `use-game-data-rizline.test.tsx`、`overview-rizline-sync.test.tsx`，以及 Session、
 SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同。真实短信、云存档、原生轮播和
 前后台验收单独进行，测试 fixture 不能作为真实登录成功的证据。
@@ -313,9 +323,11 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 
 `MetricBadges.tsx` 提供 `DualTextMetricBadge` 和 `StatusMetricBadge`，保留难度的两个
 独立文本节点及状态徽章的原样式。`AnimatedMetricValue` 继续通过 `FlowingGradientValue`
-呈现动效。Phigros/Phira 包装层负责格式、颜色和评价，公共组件不识别 gameId。
+呈现动效。Phigros/Phira/Rizline 包装层负责格式、颜色和评价，公共组件不识别 gameId。
 `domain/badge-theme.ts` 保存共同颜色事实，成绩图 feature 只生成 HTML/CSS；
-`domain/phigros-score-theme.ts` 提供分值颜色，列表和导出不各自维护颜色副本。
+`domain/metric-gradient-theme.ts` 的 `METRIC_GRADIENT_THEMES` 提供金色、蓝绿的基础色组、
+循环色组与时长，Phigros 和 Rizline 共用。`domain/phigros-score-theme.ts` 保留 Phigros
+评价到渐变的映射与测试标识，列表和导出不各自维护颜色副本。
 
 `TagFilterSheet` 共用打开时复制选择、清空、完成提交和关闭行为；children 插槽保留
 分组、标签样式及游戏操作。详情元数据样式复用 `SongDetailChromeStyles`；成绩图选择器
@@ -466,6 +478,8 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   统一歌曲行、封面失败占位、分区标题及三种列表布局。
   `GameSearchHeader.layout` 的 `records` / `catalog` 复用既有搜索区，
   `resultCountText` 用于分页已加载数量；筛选控件放在独立的横向标签行中。
+  Majdata 难度行通过 `FilterChipFrame`、`NeutralChip` 与 `MajdataDifficultyBadge`
+  组合直接多选按钮，保留原始难度索引和多选取并集的匹配规则；不另建筛选状态。
   `domain/difficulty-theme.ts` 的 `BLUE_DIFFICULTY_COLORS` 由 Phigros HD 和 Majdata Easy
   同时引用；其余难度和成就徽章复用 `ScoreVisuals`。
 - `SimaiSongDetailLayout` 的 `SimaiSongHero`、`SimaiSongChrome`、`SimaiSongMetadata`、
