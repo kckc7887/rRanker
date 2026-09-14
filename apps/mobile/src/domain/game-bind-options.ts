@@ -1,5 +1,6 @@
 import type { ImageSourcePropType } from 'react-native';
 import { NEUTRAL_RATING_THEME, type DxRatingTheme } from './dx-rating-theme';
+import { RIZLINE_RATING_THEME } from './rizline';
 import maimaiIcon from '../../assets/images/maimai-dx.webp';
 import divingFishIcon from '../../assets/images/diving-fish.webp';
 import lxnsIcon from '../../assets/images/lxns.webp';
@@ -11,6 +12,7 @@ import adofaiIcon from '../../assets/images/adofai.webp';
 import tufIcon from '../../assets/images/tuf.webp';
 import museDashIcon from '../../assets/images/musedash.webp';
 import majdataIcon from '../../assets/images/majdata.png';
+import rizlineIcon from '../../assets/images/rizline.png';
 import phiraIcon from '../../assets/images/phira.webp';
 import osuIcon from '../../assets/images/osu.png';
 import osuStandardIcon from '../../assets/images/osu-standard.webp';
@@ -19,6 +21,7 @@ import osuCatchIcon from '../../assets/images/osu-catch.webp';
 import osuTaikoIcon from '../../assets/images/osu-taiko.webp';
 
 export type ProviderId =
+  | 'rizline-official'
   | 'majdata-net'
   | 'diving-fish'
   | 'lxns'
@@ -33,11 +36,11 @@ export type ProviderId =
   | 'phira-community'
   | 'musedash-test'
   | 'osu';
-export type RemoteProviderId = Extract<ProviderId, 'majdata-net' | 'diving-fish' | 'lxns' | 'phi-taptap' | 'osu'>;
+export type RemoteProviderId = Extract<ProviderId, 'rizline-official' | 'majdata-net' | 'diving-fish' | 'lxns' | 'phi-taptap' | 'osu'>;
 export type GameId =
-  | 'majdata-net' | 'maimai' | 'chunithm' | 'phigros' | 'phira' | 'adofai' | 'musedash' | 'test'
+  | 'rizline' | 'majdata-net' | 'maimai' | 'chunithm' | 'phigros' | 'phira' | 'adofai' | 'musedash' | 'test'
   | 'osu-standard' | 'osu-mania' | 'osu-catch' | 'osu-taiko';
-export type ProviderBindingKind = 'credentials' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
+export type ProviderBindingKind = 'credentials' | 'sms-code' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
 
 export type ProviderOption = {
   id: ProviderId;
@@ -290,6 +293,22 @@ export const GAME_OPTIONS: GameOption[] = [
       bindingKind: 'credentials',
     }],
   },
+  {
+    id: 'rizline',
+    title: 'Rizline',
+    icon: rizlineIcon,
+    available: true,
+    pendingDetail: '',
+    accountScoreTheme: RIZLINE_RATING_THEME,
+    providers: [{
+      id: 'rizline-official',
+      title: '官方账号',
+      detail: '手机号与验证码登录',
+      icon: rizlineIcon,
+      available: true,
+      bindingKind: 'sms-code',
+    }],
+  },
 ];
 
 export function findGame(id: GameId): GameOption | undefined {
@@ -312,5 +331,5 @@ export function findProvider(id: ProviderId): ProviderOption | undefined {
 /** 需要持久登录凭据的来源；账号管理按注册能力判断，不维护平行来源名单。 */
 export function isCredentialProvider(id: ProviderId | null): boolean {
   const kind = id ? findProvider(id)?.bindingKind : undefined;
-  return kind === 'credentials' || kind === 'oauth-code' || kind === 'device-code';
+  return kind === 'credentials' || kind === 'sms-code' || kind === 'oauth-code' || kind === 'device-code';
 }

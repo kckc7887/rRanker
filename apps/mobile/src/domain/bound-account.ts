@@ -57,6 +57,7 @@ export function createAdditionalLocalMaimaiAccountId(
 }
 
 const PROVIDER_TITLES: Record<ProviderId, string> = {
+  'rizline-official': '官方账号',
   'majdata-net': 'Majdata Net',
   'diving-fish': '水鱼查分器',
   lxns: '落雪查分器',
@@ -72,6 +73,25 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'musedash-test': '示例查分器',
   osu: 'osu! 官方',
 };
+
+export function createRizlineBoundAccount(input: {
+  userId: string; username: string; totalRks?: number | null;
+}): BoundAccount {
+  return {
+    id: `rizline:official:${input.userId}`,
+    gameId: 'rizline',
+    providerId: 'rizline-official',
+    displayName: input.username,
+    scoreLabel: getGameProfile('rizline').ratingLabel,
+    scoreDisplay: input.totalRks == null || !Number.isFinite(input.totalRks) ? '—' : input.totalRks.toFixed(4),
+    providerTitle: PROVIDER_TITLES['rizline-official'],
+  };
+}
+
+export function rizlineUserIdFromAccountId(accountId: string): string | null {
+  const prefix = 'rizline:official:';
+  return accountId.startsWith(prefix) && accountId.length > prefix.length ? accountId.slice(prefix.length) : null;
+}
 
 export function createMajdataBoundAccount(input: {
   accountId: string; displayName: string; scoreDisplay?: string; avatarUrl?: string | null;
@@ -372,6 +392,10 @@ export function boundAccountFromStored(account: {
   challengeModeRank?: number | null;
   ratingPossession?: string | null;
 }): BoundAccount {
+  if (account.gameId === 'rizline' && account.providerId === 'rizline-official') {
+    return createRizlineBoundAccount({ userId: rizlineUserIdFromAccountId(account.id) ?? account.id,
+      username: account.displayName, totalRks: account.scoreDisplay === '—' ? null : Number(account.scoreDisplay) });
+  }
   if (account.gameId === 'majdata-net') return createMajdataBoundAccount({ ...account, accountId: account.id });
   if (account.gameId === 'phigros' && account.providerId === 'phi-taptap') {
     const rating = Number(account.scoreDisplay);

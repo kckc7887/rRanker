@@ -210,3 +210,78 @@ GPL-3.0。方法仅提升为 public，增加空类型以执行原始类型分派
 `majdata-source.json`，许可证副本见 `LICENSES/MajdataPlay-GPL-3.0.txt`。
 此方法用于生成测试对照数据，不编入应用。应用的物量和双达成率计算对照该项目的实际规则。
 Simai 解析、渲染和原有皮肤适配现由舞萌与 Majdata Net 共用，仍保留前述来源与许可证。
+
+## Rizline cloud-save protocol and key unpacking (RizlineGameSaveData)
+
+`apps/mobile/src/providers/rizline-provider.ts` adapts the login/save protocol and
+packed-key reconstruction described and implemented by **CHCAT1320/RizlineGameSaveData**,
+revision [`ba89227baa2927655ea884a849d6a27ea1cdfb2d`](https://github.com/CHCAT1320/RizlineGameSaveData/tree/ba89227baa2927655ea884a849d6a27ea1cdfb2d).
+Sources are `getUser.py`, `gameDataAes2Json.py`, `README.md` and `API.md`.
+The upstream repository supplies the GNU GPL version 3 license text, copied in full to
+[`LICENSES/RizlineGameSaveData-GPL-3.0.txt`](LICENSES/RizlineGameSaveData-GPL-3.0.txt).
+The upstream files do not state a separate program copyright line or an explicit
+"or later" version grant; the unfilled example in the license appendix is not
+an additional program copyright or version notice. Attribution remains with
+CHCAT1320 and the upstream contributors.
+
+Modifications by rRanker, 2026-09-14: TypeScript integration with the shared HTTP,
+credential, cancellation and cache paths; SMS login; typed save validation; token
+rotation; authenticated AES-GCM decryption through `@noble/ciphers`. The covered
+adaptation retains the upstream license notices; the project's own license is
+provided separately in the root `LICENSE`.
+
+The same pinned upstream README also contains these statements, retained here
+as upstream statements in addition to its GPL text:
+
+> 该库只可用于游戏查分
+>
+> 禁止用该项目做不利于鸽游的事情，包括短信轰炸，频繁请求数据等
+>
+> 该项目与鸽游无关
+
+This notice records both sources without treating the README statements as part
+of the standard GPL text or resolving their relationship to it. The integration
+is used for player login and score retrieval.
+
+## Rizline AH compatibility calculation (rizline_b40_tool)
+
+`apps/mobile/src/domain/rizline.ts` adapts the AH compatibility and best-group
+calculation from **REDDRAGON-HL/rizline_b40_tool**,
+[`rizb40_tool.js` at `93b2881d5cea7d53ac11706c028245ed144d8a16`](https://github.com/REDDRAGON-HL/rizline_b40_tool/blob/93b2881d5cea7d53ac11706c028245ed144d8a16/rizb40_tool.js).
+The applicable license is Apache License, Version 2.0; its full, unchanged text is
+[`LICENSES/rizline_b40_tool-APACHE-2.0.txt`](LICENSES/rizline_b40_tool-APACHE-2.0.txt).
+The pinned repository has no separate `NOTICE` file or filled-in copyright line.
+Source attribution remains with REDDRAGON-HL and the upstream contributors.
+
+Modifications by rRanker, 2026-09-14: typed catalog/score inputs, explicit unknown
+and inferred states, removal of the claim that an all-Riztime chart proves AH,
+SP exclusion from best groups, stable chart identity/order, and incomplete-group
+contributions. No upstream web UI, score-image layout or artwork is copied by
+this adaptation. The Apache-covered portions retain their original terms within
+the AGPL project; the Apache license does not apply to the entire Rizline module.
+
+## Rizline full-completion numeric reference (RizlineSavingTest)
+
+The AP regression in `apps/mobile/tests/rizline-domain.test.ts` uses the numeric
+`completeRate` example from **HiXcc/RizlineSavingTest**,
+[`RizScoreUploader.py` at `88b16f9f822972f9dc9ac18cefe7c8c555e9e7b8`](https://github.com/HiXcc/RizlineSavingTest/blob/88b16f9f822972f9dc9ac18cefe7c8c555e9e7b8/RizScoreUploader.py#L37).
+That project is MIT-licensed, **Copyright (c) 2026 HiXcc**. The complete notice is
+[`LICENSES/RizlineSavingTest-MIT.txt`](LICENSES/RizlineSavingTest-MIT.txt).
+Only the public numeric format example is used; its score-upload code is neither
+copied into nor executed by rRanker. The application reads scores and does not
+provide an official score-upload operation.
+
+## AES-GCM implementation (@noble/ciphers)
+
+The Rizline save decoder imports `@noble/ciphers/aes.js` from **@noble/ciphers 2.4.0**,
+maintained by [Paul Miller](https://github.com/paulmillr/noble-ciphers/tree/2.4.0).
+The package is used without source changes. Its MIT license contains both
+**Copyright (c) 2022 Paul Miller (https://paulmillr.com)** and
+**Copyright (c) 2016 Thomas Pornin <pornin@bolet.org>**.
+The complete installed-package license, including both copyright lines, is
+[`LICENSES/noble-ciphers-MIT.txt`](LICENSES/noble-ciphers-MIT.txt).
+
+The independently maintained resource publisher records its own code references
+and installed dependencies in
+[`rizline_publisher-publish/THIRD_PARTY_NOTICES.md`](https://github.com/kckc7887/rizline_publisher-publish/blob/main/THIRD_PARTY_NOTICES.md).
+Its references do not transfer third-party code licenses to game metadata or images.

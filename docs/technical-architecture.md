@@ -52,11 +52,11 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 
 ## 游戏、Provider 与数据链路
 
-`src/domain/game-bind-options.ts` 的 `GAME_OPTIONS` 是前台游戏与绑定方式注册表。当前可用板块包括舞萌 DX、中二节奏、Phigros、Phira、冰与火之舞、喵斯快跑、聚合展示的 osu!standard、osu!mania、osu!catch、osu!taiko，以及列表末尾的 Majdata Net。Provider 包括账号密码、OAuth、设备授权、公开玩家、本地账号和示例账号等形态；`test` 仍是类型层保留的空壳 GameId，不是当前选择器条目。账号分组消费同一注册表的顺序与家族能力，不另行维护游戏名单。
+`src/domain/game-bind-options.ts` 的 `GAME_OPTIONS` 是前台游戏与绑定方式注册表。当前可用板块包括舞萌 DX、中二节奏、Phigros、Phira、冰与火之舞、喵斯快跑、聚合展示的 osu!standard、osu!mania、osu!catch、osu!taiko，以及 Majdata Net 和列表末尾的 Rizline。Provider 包括账号密码、手机号验证码、OAuth、设备授权、公开玩家、本地账号和示例账号等形态；`test` 仍是类型层保留的空壳 GameId，不是当前选择器条目。账号分组消费同一注册表的顺序与家族能力，不另行维护游戏名单。
 
-游戏、家族和查分器身份图标由该注册表静态导入 `assets/images/` 的 17 份包内资源，
+游戏、家族和查分器身份图标由该注册表静态导入 `assets/images/` 的 18 份包内资源，
 随 Android/iOS 导出进入应用，首次离线启动不依赖图片下载。图标保留原尺寸、RGBA
-像素和色彩信息；osu! 通用图标与 Majdata 保留 PNG，其余使用无损 WebP，Phira 保留
+像素和色彩信息；osu! 通用图标、Majdata 与 Rizline 保留 PNG，其余使用无损 WebP，Phira 保留
 原始 ICC。Muse Dash 与 MuseDash.moe 使用相同图像，共用一份资源。
 选择器、登录、账号分组和缺省头像/封面继续消费注册表；真实用户头像与歌曲封面仍走
 原有远程资源路径。包内模块 ID 不进入 `RemoteImage` 的受控远程压缩缓存。
@@ -108,7 +108,8 @@ Hook 继续拥有原 Query Key、查询选项与结果发布，服务不依赖 H
 `useMajdataSongs` 保留上游页码，每页 30 首，通过原始页长判断下一页；分页只在 React Query
 会话中保存，只展示已加载数量。难度名称多选和线上标签多选各自取并集、两组取交集；
 筛选后空页继续下一上游页，失焦后暂停自动续页。线上标签由 `tags` 与 `publicTags` 合并，
-本地标签不参与筛选。筛选器每项独立横向行，收起和重置关闭展开的下拉。
+本地标签不参与筛选。难度通过带难度色的横向按钮直接多选，保留原始 0～6 索引；
+筛选器每项独立横向行，收起和重置关闭展开的下拉。
 
 详情与个人曲库通过同一资源仓库读取。`majdata-net:song:{id}` 保存当前元数据，
 `majdata-net:song:{id}:{hash}` 保存修订；`chart:{id}:{hash}` 保存完整文本，
@@ -127,6 +128,86 @@ Easy 与 Phigros HD 复用公共蓝色主题。歌曲信息只含简介、线上
 原始索引 0～6 映射到 `inote_1`～`inote_7`，排序为 5、4、3、2、1、0、6。
 用户曲库仅用 `SD` 作为既有结构的内部兼容字段，不展示类型或据此构造资源地址。
 预览路由为两种游戏组装资源与参数，Simai 运行时不构造 LXNS 或 Majdata 网络地址。
+
+### Rizline
+
+大陆服手机版注册为 `rizline`，查分器为 `rizline-official`（官方账号）。包内图标为
+`assets/images/rizline.png`，由用户提供的 240×240 WebP 保留 RGBA 像素转换为 PNG。
+接入代码的来源、固定提交、修改说明和完整许可索引见根目录 `THIRD_PARTY_NOTICES.md`；
+`LICENSES/` 保留 RizlineGameSaveData、rizline_b40_tool、RizlineSavingTest 与 noble-ciphers 的许可全文。
+`RizlineLoginPanel` 通过公共 `SmsLoginPanel` 接收手机号与验证码，
+复用 `ProviderLoginSheet` 的忙碌状态、关闭和通知出口。验证码只保留在表单状态，关闭或进入
+后台时清空；发送验证码只尝试一次。公共面板按来源保留会话内冷却时间，默认 60 秒，遵守
+服务端更长的 Retry-After，关闭弹层不会重置冷却。验证码按钮位于手机号输入框右侧，
+发送后只保留按钮倒计时，到期显示“重新获取”；实际错误继续通过公共文案出口显示。
+设备 UUID 通过公共偏好工厂保存在
+`rranker.rizline.device.v1`；账号会话另在 SecureStore 保存手机号、令牌、设备 UUID 和渠道。
+
+`providers/rizline-provider.ts` 的 `RizlineProvider` 通过公共 HTTP 入口和 `expo/fetch`
+请求 `https://rizserver.pigeongames.net` 的发送验证码、登录与 `/game/rn_login`。
+响应存档使用 `@noble/ciphers` AES-256-GCM 校验认证标签后解密，再由 Zod 验证。
+令牌与存档的用户 ID 必须匹配；轮换先通过 `applyRizlineSessionRotation` 持久化，再更新
+内存会话。账号、取消信号、期望旧会话和写入代次共同阻止解绑或重新登录后的迟到写入。
+恢复、删除和账号展示继续走现有安全仓库、`createRizlineBoundAccount` 与中央元数据订阅。
+
+`services/rizline-service.ts` 独立保存 `rizline:account:<accountId>` 原始有效成绩快照；
+登录读到的有效存档与后续同步共用 `cacheRizlineSave` 校验账号身份并落盘，首次登录后立即可离线恢复。
+`useGameData` 构造有类型的 Rizline 载荷。首次查询优先缓存，后台失败保留旧数据；
+明确认证失效在缓存载荷上标记 `requiresLogin` 并提示重新登录，不把网络失败当作凭据失效。
+显式同步等同账号后台读取完成后检查最终来源；成绩失败不能报成功。公开曲库失败时仍尝试
+官方成绩同步，若仅成绩成功则提示“成绩已同步，曲库暂未更新”，返回部分失败状态。
+
+`domain/rizline.ts` 保留官方歌曲与谱面 ID 的末尾编号，仅移除存档关卡 ID 的 `track.` 前缀。
+SP 是独立条目，记录可展示，最佳计算排除。总 RKS 与单谱 RKS 均来自存档，达成率、RKS、
+贡献默认四位小数，有限的原始达成率达到 120 才展示 AP，兼容满达成率向上偏移的浮点误差；
+原值低于 120 时不因显示舍入升级为 AP。AH 相容性检查均为推定，
+不以“全部 HIT 位于 Riztime”确证 AH；取最高五张候选后排除它们，再取剩余最高 35 张。
+同分按稳定谱面 ID 排序，不足数量不填充；贡献为各组总和除以 40，不能替代官方总 RKS。
+缺少推定数据且可能影响 AH5 时，贡献保留未知；未识别歌曲和无 RKS 成绩不丢弃。
+
+`RizlineScreens`、`RizlineSongDetail` 与 `RizlineRandomChartsScreen` 通过游戏适配器复用
+公共列表、卡片、封面定位、难度轮播、随机抽取、收藏、练习与标签。难度顺序为
+SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱面标签分别存储，内部
+`SD`/`levelIndex` 只用于现有用户曲库兼容结构，EZ～SP 对应 0～4。曲库与随机页共用
+`domain/rizline-filters.ts` 的难度、曲包和定数规则；难度使用彩色横向按钮单选，再次点击
+已选难度取消筛选，选中框与舞萌共用默认胶囊形状。工具箱注册随机歌曲与机厅查找，
+总览保留公共个人曲库卡片。
+总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊，详情练习按钮采用相同
+难度配色。`rizlineRecordStatus` 统一评价展示：原始达成率达到 120% 优先 AP，其余推定 AH 显示 AH；
+AP 使用流金达成率和金色胶囊，AH 使用流动蓝绿达成率和蓝绿渐变胶囊。
+列表与详情复用 `RizlineAccuracyValue`、`RizlineStatusBadge`，通过公共动效组件消费
+`domain/metric-gradient-theme.ts`，与 Phigros 共用色组和时长。成绩卡右侧显示 RKS 小标题。
+详情不展示歌曲信息区，曲库中的成就和更新时间字段仍可维护，歌曲及谱面本地标签分别保留。
+未接入谱面预览、下载或成绩图。
+
+公开资源唯一基址为 `https://rranker-rizline-data.cn-nb1.rains3.com`。独立发布项目位于
+`D:/Projects/rizline-resource-publisher`，其维护说明管理官方导入、人工补充、校验、构建及发布。
+维护命令由 `rizline_publisher` 模块提供，`overrides.json` 保留人工修订，
+`work/supplement-template.json` 按完整官方 ID 列出缺项。独立项目的
+`.github/workflows/publish.yml` 配置每日北京时间 08:00（UTC 00:00）从 `main` 实际发布；
+手动触发默认只构建并预览，勾选 `execute` 才上传。工作流串行执行，只需配置
+`AWS_ACCESS_KEY_ID` 与 `AWS_SECRET_ACCESS_KEY`；端点、区域、桶名和公开基址由发布器内置。
+`publish` 默认不写远端，`publish --execute --workers 4` 通过公共发布入口执行，
+资源上传与校验支持 1–16 路并发。实际 GET 字节相同的对象跳过 PUT，包括 current；
+所有资源验证完成后才处理 manifest，再处理 current，版本对象仍使用条件写入。
+manifest 与 current 验证完成后，以清单文件和 manifest 的精确键集合清理
+`rizline/releases/`，使该前缀只保留当前版本的可见对象。前置步骤失败不删除旧资源；
+清理失败报错，此时 current 可能已经更新。桶级历史 VersionId 不属于此清理范围。
+Actions 完整发布归档与报告保留 90 天，S3 不保留回滚版本；线上回滚须从本地或完整归档
+恢复版本目录，校验后重新发布。`rollback` 只选择本地版本，不直接修改线上 current。
+
+客户端 `services/rizline-resources.ts` 验证 `/rizline/current.json` 指定的 manifest SHA-256、
+资源路径与修订，再验证完整 catalog 的大小、SHA-256、身份与引用一致性，全部通过后替换。
+`rizline:catalog` 单独持久化最后有效曲库；失败与离线保留旧数据。封面使用版本化地址走公共
+图片缓存。`useRizlineCatalog`、`ensureRizlineCatalog` 和 `refreshRizlineCatalog` 共用查询；
+新的元数据只重建账号载荷的派生字段，不重取或改写官方成绩。根部 `useGameResourceSync`
+按注册表在恢复完成及进入相应游戏时检查 Phigros/Rizline 资源，不因普通标签或前后台切换重复检查。
+
+发布读取的取消、消费者计数、失败重试和完整候选切换共用
+`services/verified-release.ts` 的 `VerifiedReleaseSession`，摘要验证共用 `verifyResourceBytes`。
+Phigros 保留自己的发布格式和调用入口。Rizline 缓存统计和清理在 `GAME_STORAGE_ADAPTERS`
+中注册；清缓存提升游戏代次并取消旧请求，解绑只失效该账号，用户曲库与备份恢复继续走公共仓库。
+短信、真实云存档和 Android/iOS 详情轮播及后台行为仍需真机验收；单元/UI 测试和 Metro 导出不能替代。
 
 ### Phigros 发布资源
 
@@ -151,7 +232,7 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 `music/<songId>.ogg`。已声明的专属音乐下载或校验失败仍走发布恢复并报错，不替换为共用音乐。
 默认预览与谱面下载保持原行为。
 
-根布局的 `usePhigrosResourceSync` 在恢复选择完成并进入 Phigros 时调用
+根布局的 `useGameResourceSync` 在恢复选择完成并进入 Phigros 时调用
 `refreshPhigrosCatalog`；总览手动同步复用同一入口。标签切换与普通前后台切换不触发额外检查。
 查询通过唯一 QueryClient 去重，更新后替换曲库并使 Phigros 成绩查询失效。
 成绩 Provider 的定数和 Best30 缓存、持久化成绩载荷均记录资源修订，避免沿用旧定数计算结果。

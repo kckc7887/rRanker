@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Text, View, type ViewToken } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View, type ViewToken } from 'react-native';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
 import { SIMAI_BEST_LIST_STYLES as bestStyles, SIMAI_RECORDS_LIST_STYLES as recordsStyles, SIMAI_CATALOG_LIST_STYLES as catalogStyles } from '@/components/game-content/SimaiListStyles';
-import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { FilterChipFrame, FilterShell, NeutralChip, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import { FilterCheckboxList } from '@/components/game-content/FilterCheckboxList';
 import { RangeSelector } from '@/components/game-content/RangeSelector';
 import { FilterAnchoredDropdown } from '@/components/FilterAnchoredDropdown';
 import { QueryStateView } from '@/components/QueryStateView';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
-import { MajdataScoreCard, MajdataSongRow } from '@/components/majdata/MajdataCards';
+import { MajdataDifficultyBadge, MajdataScoreCard, MajdataSongRow } from '@/components/majdata/MajdataCards';
 import { MAJDATA_NAMES, MAJDATA_SORTS, filterMajdataRecords, majdataTags, majdataTime, matchesMajdataSong } from '@/domain/majdata';
 import { majdataRecentCard, majdataRecordCard, type MajdataCard } from '@/features/game-content/adapters/majdata';
 import { useGameData } from '@/hooks/use-game-data';
@@ -39,10 +39,14 @@ export function MajdataFilter({ catalog, tags }: { catalog: boolean; tags: strin
     onReset={() => { setOpen(''); filter.clearFilters(); }} summary={summary}>
     <View testID="majdata-filter-difficulty-row" style={filterShellStyles.filterRow}>
       <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>难度</Text>
-      <FilterCheckboxList open={open === 'difficulty'} onOpenChange={value => setOpen(value ? 'difficulty' : '')}
-        valueLabel={difficultyLabel} accessibilityLabel={`筛选难度，当前 ${difficultyLabel}`}
-        options={MAJDATA_NAMES.map((label, i) => ({ value: String(i), label }))} selectedValues={filter.difficulties.map(String)}
-        onValuesChange={values => filter.setDifficulties(values.map(Number))} optionAccessibilityPrefix="难度" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filterShellStyles.chipRow}>
+        <NeutralChip label="全部" accessibilityLabel="筛选难度 全部" active={!filter.difficulties.length} onPress={() => filter.setDifficulties([])} />
+        {MAJDATA_NAMES.map((label, level) => <FilterChipFrame key={level} active={filter.difficulties.includes(level)}
+          accessibilityLabel={`筛选难度 ${label}`} onPress={() => filter.setDifficulties(filter.difficulties.includes(level)
+            ? filter.difficulties.filter(value => value !== level) : [...filter.difficulties, level])}>
+          <MajdataDifficultyBadge level={level} compact />
+        </FilterChipFrame>)}
+      </ScrollView>
     </View>
     <View testID="majdata-filter-tags-row" style={filterShellStyles.filterRow}>
       <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>标签</Text>

@@ -17,6 +17,7 @@ describe('bundled game and provider icons', () => {
       'osu-catch': '/assets/images/osu-catch.webp',
       'osu-taiko': '/assets/images/osu-taiko.webp',
       'majdata-net': '/assets/images/majdata.png',
+      rizline: '/assets/images/rizline.png',
     });
   });
 
@@ -37,6 +38,7 @@ describe('bundled game and provider icons', () => {
       'phigros-test': '/assets/images/example-account.webp',
       osu: '/assets/images/osu.png',
       'majdata-net': '/assets/images/majdata.png',
+      'rizline-official': '/assets/images/rizline.png',
     });
   });
 
@@ -51,6 +53,7 @@ describe('bundled game and provider icons', () => {
     expect(findProvider('musedash-moe')!.icon).toBe(findGame('musedash')!.icon);
     expect(findProvider('phira-community')!.icon).toBe(findGame('phira')!.icon);
     expect(findProvider('majdata-net')!.icon).toBe(findGame('majdata-net')!.icon);
+    expect(findProvider('rizline-official')!.icon).toBe(findGame('rizline')!.icon);
     expect(findProvider('tuf')!.icon).not.toBe(findGame('adofai')!.icon);
 
     const familyIcon = findGame('osu-standard')!.familyIcon;
@@ -60,13 +63,13 @@ describe('bundled game and provider icons', () => {
     expect(new Set([familyIcon, ...modeIcons]).size).toBe(5);
   });
 
-  it('ships all game, provider and family sources as 17 nonempty local assets', () => {
+  it('ships all game, provider and family sources as 18 nonempty local assets', () => {
     const icons = new Set(GAME_OPTIONS.flatMap(game => [
       game.icon,
       ...(game.familyIcon ? [game.familyIcon] : []),
       ...game.providers.map(provider => provider.icon),
     ]));
-    expect(icons.size).toBe(17);
+    expect(icons.size).toBe(18);
     for (const icon of icons) {
       expect(icon).toEqual(expect.stringMatching(/^\/assets\/images\/[^/]+\.(?:png|webp)$/u));
       const file = statSync(resolve(process.cwd(), String(icon).slice(1)));

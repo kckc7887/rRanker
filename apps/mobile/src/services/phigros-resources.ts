@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
 import { requestBytes, requestJson } from '@/providers/http-json';
 import { ProviderError } from '@/providers/errors';
-import { sha256 } from '@/utils/resource-integrity';
+import { VerifiedReleaseSession, verifyResourceBytes } from './verified-release';
 
 const CurrentSchema = z.object({
   schemaVersion: z.literal(1), gameVersion: z.string().min(1),
@@ -43,24 +43,19 @@ function aborted(signal?: AbortSignal): void {
 }
 
 export async function verifyPhigrosResource(bytes: Uint8Array, asset: Pick<PhigrosResourceAsset, 'size' | 'sha256'>): Promise<void> {
-  if (bytes.byteLength !== asset.size || await sha256(bytes) !== asset.sha256.toLowerCase()) {
-    throw new ProviderError('upstream_schema', 'Phigros 资源校验失败', true);
-  }
+  await verifyResourceBytes(bytes, asset, 'Phigros 资源校验失败');
 }
 
 export class PhigrosResourceService {
-  private release: PhigrosRelease | undefined;
+  private readonly session = new VerifiedReleaseSession<PhigrosRelease>((signal, force) => this.fetchRelease(signal, force));
   private sequence = 0;
-  private pending: { promise: Promise<PhigrosRelease>; controller: AbortController; users: number; force: boolean } | undefined;
 
   constructor(private readonly base = PHIGROS_OSS_BASE) {}
 
-  peek(): PhigrosRelease | undefined { return this.release; }
+  peek(): PhigrosRelease | undefined { return this.session.peek(); }
 
   clear(): void {
-    this.pending?.controller.abort();
-    this.pending = undefined;
-    this.release = undefined;
+    this.session.clear();
   }
 
   url(path: string, release?: PhigrosRelease): string {
@@ -108,12 +103,11 @@ export class PhigrosResourceService {
       error: (status) => new ProviderError('network', `Phigros 发布信息请求失败：${status}`, true),
     });
     const revision = JSON.stringify(current);
-    if (!force && this.release?.revision === revision) return this.release;
+    const previous = this.peek();
+    if (!force && previous?.revision === revision) return previous;
     const candidate = { current, revision, bypass: force ? nonce : undefined, fetchedAt: new Date().toISOString() } as PhigrosRelease;
     const rawManifest = await this.bytes(this.url(current.manifest, candidate), signal, 12_000, 'manifest');
-    if (current.manifestSha256 && await sha256(rawManifest) !== current.manifestSha256.toLowerCase()) {
-      throw new ProviderError('upstream_schema', 'Phigros 清单校验失败', true);
-    }
+    if (current.manifestSha256) await verifyResourceBytes(rawManifest, { sha256: current.manifestSha256 }, 'Phigros 清单校验失败');
     candidate.manifest = ManifestSchema.parse(JSON.parse(new TextDecoder().decode(rawManifest)));
     if (candidate.manifest.gameVersion !== current.gameVersion
       || (current.publishedAt && candidate.manifest.generatedAt !== current.publishedAt)) {
@@ -137,62 +131,15 @@ export class PhigrosResourceService {
     candidate.difficulty = new TextDecoder().decode(difficulty);
     candidate.avatarAliases = new TextDecoder().decode(avatars);
     aborted(signal);
-    this.release = candidate;
     return candidate;
   }
 
-  private acquire(signal: AbortSignal | undefined, check: boolean, force: boolean): Promise<PhigrosRelease> {
-    aborted(signal);
-    if (!check && this.release) return Promise.resolve(this.release);
-    if (force && this.pending && !this.pending.force) {
-      // A pointer-only check cannot satisfy recovery of corrupted bytes at an unchanged revision.
-      return this.acquire(signal, true, false).catch(() => { aborted(signal); })
-        .then(() => this.acquire(signal, true, true));
-    }
-    if (!this.pending) {
-      const controller = new AbortController();
-      const entry = { controller, users: 0, force, promise: this.fetchRelease(controller.signal, force) };
-      this.pending = entry;
-      void entry.promise.finally(() => { if (this.pending === entry) this.pending = undefined; }).catch(() => undefined);
-    }
-    const entry = this.pending;
-    entry.users += 1;
-    return new Promise((resolve, reject) => {
-      let finished = false;
-      const finish = () => {
-        if (finished) return false;
-        finished = true;
-        signal?.removeEventListener('abort', cancel);
-        entry.users -= 1;
-        if (entry.users === 0 && this.pending === entry) {
-          this.pending = undefined;
-          entry.controller.abort();
-        }
-        return true;
-      };
-      const cancel = () => { if (finish()) reject(signal?.reason ?? new Error('Phigros resource request cancelled')); };
-      signal?.addEventListener('abort', cancel, { once: true });
-      entry.promise.then((value) => { if (finish()) resolve(value); }, (error) => { if (finish()) reject(error); });
-    });
-  }
-
-  async withRelease<T>(action: (release: PhigrosRelease) => Promise<T>, signal?: AbortSignal, check = false): Promise<T> {
-    for (let attempt = 0; ; attempt += 1) {
-      aborted(signal);
-      try {
-        const release = await this.acquire(signal, check || attempt > 0, attempt > 0);
-        const result = await action(release);
-        aborted(signal);
-        return result;
-      } catch (error) {
-        aborted(signal);
-        if (attempt > 0) throw error;
-      }
-    }
+  withRelease<T>(action: (release: PhigrosRelease) => Promise<T>, signal?: AbortSignal, check = false): Promise<T> {
+    return this.session.withRelease(action, signal, check);
   }
 
   load(signal?: AbortSignal, check = false): Promise<PhigrosRelease> {
-    return this.withRelease(async (release) => release, signal, check);
+    return this.session.load(signal, check);
   }
 }
 

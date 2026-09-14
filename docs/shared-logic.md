@@ -57,7 +57,8 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 |---|---|---|---|
 | Provider 契约 | `src/providers/contracts.ts`：`ProviderSession`、`AuthProvider`、`ScoreProvider`、`CatalogDrivenScoreProvider`、`CatalogProvider`、`DetailedCatalogProvider` | 每个游戏保留自己的 DTO 与 Schema；示例账号的曲库驱动成绩实现 `CatalogDrivenScoreProvider` | 各 Provider 测试、`maxed-*-test-provider.test.ts` |
 | HTTP 请求 | `src/providers/http-json.ts`：`requestJson<T>(options)`、`requestBytes(options)`、`fetchProviderJson`、`retryAfterMs` | JSON 和原始字节复用同一超时、取消、重试、429 退避和错误归一化执行器；游戏提供 base URL、Schema 与场景文案 | 各 Provider 测试、`phigros-resources.test.ts` |
-| 内容摘要 | `src/utils/resource-integrity.ts`：`sha256(bytes)`、`bytesToHex(buffer)`；`src/utils/crypto-subset.ts`：`uint8ArrayToWordArray(bytes)`、`bytesToBase64(bytes)` | 通过现有 Expo Crypto 和 CryptoJS 能力计算摘要、编码；字体缓存保留摘要兼容导出，游戏不得反向依赖字体功能 | 字体缓存、Phigros 资源与存档测试 |
+| 内容摘要 | `src/utils/resource-integrity.ts`：`sha256(bytes)`、`bytesToHex(buffer)`；`src/utils/crypto-subset.ts`：`uint8ArrayToWordArray(bytes)`、`bytesToBase64(bytes)`、`base64ToBytes(text)` | 通过现有 Expo Crypto 和 CryptoJS 能力计算摘要、编码；字体缓存保留摘要兼容导出，游戏不得反向依赖字体功能 | 字体缓存、Phigros 资源与存档测试 |
+| 校验发布会话 | `src/services/verified-release.ts`：`VerifiedReleaseSession<T>`、`verifyResourceBytes(bytes, asset, message)` | 调用方提供格式专属 prepare；共用消费者取消、代次、失败重读和完整候选切换；校验字节后才发布结果 | `phigros-resources.test.ts`、`rizline-resources.test.ts` |
 | Phigros 发布事务 | `src/services/phigros-resources.ts`：`phigrosResources`、`load(signal?, check?)`、`withRelease(action, signal?, check?)`、`verifyPhigrosResource(bytes, asset)` | Phigros 各调用方共用唯一会话发布；校验所有必需元数据后原子替换，实际资源使用修订 URL 和大小/SHA-256 校验；失败强制绕过缓存重读一次，取消以消费者计数管理 | `phigros-resources.test.ts`、`phigros-catalog-notes.test.ts`、`phigros-score-revision.test.ts` |
 | 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage` | 底层 code/cause 用于诊断；所有用户可见出口必须转换为可行动文案 | `consumer-copy-policy.test.ts`、各 Provider 测试 |
 | LXNS OAuth 请求 | `src/providers/lxns-oauth-request.ts` 与 `lxns-oauth.ts` | 舞萌和中二共享 OAuth 请求与令牌轮换骨架；游戏差异通过参数和账号映射表达 | LXNS OAuth、登录和 Session 测试 |
@@ -86,7 +87,7 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 Phigros 曲库复用 `loadAliasedCatalog` / `useAliasedCatalog` 的来源与别名合并，
 `use-phigros-catalog.ts` 的 `refreshPhigrosCatalog()` 统一主动更新入口，
 并经 `PhigrosCatalogProvider.getCatalog(signal?, checkChapters?)` 校对独立的 `chapters.csv`。
-`usePhigrosResourceSync()` 只在启动恢复到 Phigros、从其它游戏进入 Phigros 时检查；
+`useGameResourceSync()` 通过资源刷新注册表在启动恢复及游戏进入时调用 Phigros/Rizline 各自刷新入口；
 总览手动同步直接调用同一刷新入口。查询键保持会话有效，标签切换不重复同步，曲库不持久化。
 Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重拉。
 资源修订变化使中央 `useGameData` 的 Phigros 查询失效，成绩载荷的可选 `resourceRevision`
@@ -94,6 +95,78 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 章节表变化只替换曲库查询，不因章节本身使成绩查询失效；校对失败保留上次章节。
 相关入口合同由 `phigros-resource-sync.test.tsx`、`use-phigros-catalog.test.tsx`、
 `phigros-chapters.test.ts` 和 `phigros-score-revision.test.ts` 覆盖。
+
+### Rizline 接入与短信登录
+
+- `components/game-content/SmsLoginPanel` 接受 `sendCode(phone, signal)`、
+  `login(phone, code, signal)`、`validatePhone`、`cooldownKey` 及弹层状态回调。
+  公共组件管理输入、单操作锁、倒计时、关闭/后台取消和错误文案，不识别游戏。
+  手机号输入框与验证码按钮位于同一横行；发送后的状态仅在按钮倒计时中展示，
+  到期显示“重新获取”，完整等待时间通过 accessibilityValue 提供，实际错误仍保留。
+  验证码不持久化；同来源冷却在弹层卸载后保留，发送不自动重试。
+  `ProviderError.retryAfterSeconds` 承载服务端限流时间；`retryAfterMs(response, maxMs = 5000)`
+  保持原 HTTP 默认上限，短信 Provider 显式读取完整冷却时间。
+- `RizlineLoginPanel` 提供专属 Provider 操作，经 `cancelBoundAccountQueries` 失效旧请求后
+  调用 `SecureSessionStore.upsertAccount(account, signal?)` 和现有 Session 动作。
+  `bindingKind: 'sms-code'` 属于凭据能力，账号管理按 `isCredentialProvider` 查询该能力。
+  `applyRizlineSessionRotation(accountId, next, expected, signal?)` 复用安全仓库的期望值比较、
+  串行持久化与共享凭据广播；不新增平行账号恢复仓库。
+- `RizlineProvider.sendVerificationCode`、`login`、`getSave` 共用 `requestProviderResponse`。
+  AES-GCM 解密及官方 DTO 是游戏专属边界，不套用 Phigros 存档结构；二进制编码复用
+  `utils/crypto-subset.ts`，解密交给 `@noble/ciphers` 并验证认证标签。
+- `loadRizlineCached`、`loadRizlineFresh`、`loadRizlineWithFallback` 和 `awaitRizlineFresh`
+  复用 SQLite 资源仓库、`snapshotSource`、`createInflightGuard.share`、账号/游戏写入代次及
+  `cacheFirstLoad`。登录及同步都通过 `cacheRizlineSave(id, save, signal?)` 校验账号并保存有效存档。
+  `cacheFirstLoad` 可选 `onFallback` 只发布失败状态；不会把兜底缓存送给 `onFresh`。
+  Rizline 通过它显示明确认证失效，网络失败保留旧会话与成绩。手动同步等待完整结果，
+  公开曲库失败不阻止官方成绩尝试，部分成功明确通知且不返回同步成功。
+- `RizlineResourceService` 使用 `VerifiedReleaseSession<RizlineCatalogData>`，专属 Zod Schema
+  解释版本指针、清单和完整曲库。公共发布会话只在 prepare 完成后切换候选，clear 使旧请求
+  失效；单个消费者取消不影响其余消费者，最后一个取消才停止底层请求。
+  `withRelease` 同时捕获整个操作的代次，清理不能触发旧操作的恢复重试并重新填回内存。
+  Rizline 严格验证 manifest/catalog 摘要、大小、路径、唯一 ID 和引用；Phigros 保持其
+  原发布格式、`verifyPhigrosResource` 与预览/下载校验行为。
+- 独立发布器 `D:/Projects/rizline-resource-publisher/rizline_publisher/core.py` 的
+  `publish(..., workers=4)` 统一预览与实际上传；`verify_remote_object` 校验 GET 实际字节，
+  相同内容跳过 PUT，包含 current。不可变资源仍使用 Content-MD5 与条件写入，并行任务
+  全部完成后才顺序验证 manifest、current；失败先等待在途任务结束，不提前删除旧资源。
+  `cleanup_releases(client, keep, current_data)` 仅删除 `rizline/releases/` 内不在清单文件与
+  manifest 精确键集合中的可见对象。清理前、每批删除前及清理后复核 current，校验删除响应
+  与最终对象集合；清理失败不能返回发布成功。发布必须串行，不能把指针复核当作跨进程锁。
+  单版本策略仅针对 S3 发布前缀；Actions 完整归档保留 90 天，线上回滚通过本地或归档恢复后
+  重新走校验与发布入口，不依赖 S3 历史版本。客户端失败回退仍读取本机最后有效曲库。
+  独立项目的 `tests/test_publisher.py` 覆盖重复发布、并发校验、指针顺序、精确清理与删除失败；
+  调度、凭据及归档配置见技术架构文档的 Rizline 发布说明。
+- `rizlinePayloadFromSnapshot(snapshot, catalog?)` 保留原快照与官方指标，集中构造成绩和
+  推定分组。曲库 Hook 更新后通过当前 QueryClient 重建派生字段，不额外请求官方存档。
+  `useGameResourceSync` 是允许显式注册游戏的元数据编排边界，不把游戏差异放入共享渲染层。
+- `features/game-content/adapters/rizline.ts` 输出公共展示模型；页面使用 `GameScoreCard`、
+  `GameSongRow`、`GameListPages`、`ChartCarousel`、`VERTICAL_SONG_DETAIL_STYLES`、
+  `TagEditor` 和 `RandomChartsPage`。`rizline-filters.ts` 同时提供曲库与随机过滤，
+  Store 分别复用 `createFilterStore`、`createPersistedRandomChartsFilterStore` 和偏好工厂。
+  游戏领域层提供柔和的总览配色和适配白字胶囊的难度配色；
+  `rizlineRecordStatus(record?)` 集中选择评价，与成绩构造共用 `isRizlineAp`；有限的原始达成率
+  达到 120 时优先 AP，兼容 `120.00000762939453` 这类满达成率浮点值，不从四位显示值判断。
+  其余 AH 相容性推定成绩显示 AH，未知状态不补评价。共享卡片不解释这些字段。
+  `RizlineAccuracyValue` 复用 `AnimatedMetricValue`，AH 使用公共蓝绿流光，AP 使用金色流光；
+  `RizlineStatusBadge` 分别通过 `GameDifficultyBadge` 与 `LayeredGradientBadge` 展示蓝绿渐变、
+  金色胶囊。列表与详情共用这两个游戏包装，列表右侧保留 RKS 小标题。
+  详情练习按钮与当前难度共用前景、背景色，不展示歌曲信息区；歌曲和谱面标签继续独立展示。
+  难度行复用 `FilterChipFrame`、`NeutralChip`、`filterShellStyles` 与游戏难度徽章，
+  选中框采用舞萌相同的默认胶囊形状，保持单选并支持再次点击清空；
+  曲库与随机页共用同一筛选条。Rizline 工具箱注册随机歌曲与 `/tools/arcade-finder`，
+  机厅筛选及偏好继续使用公共机厅查找入口，个人曲库保留在总览。
+- 收藏、练习、标签、备份和恢复使用既有 `UserLibraryService` 及其 Repository；
+  `normalizeLibrarySongId` 对 Rizline 保留完整 ID，普通与 SP 不合并。
+  `GAME_STORAGE_ADAPTERS` 的 `rizline:` 资源归属同时服务统计与清理，不清除用户曲库。
+
+验证入口为 `rizline-provider.test.ts`、`rizline-cache.test.ts`、`rizline-domain.test.ts`、
+`rizline-catalog-query.test.ts`、`rizline-resources.test.ts`、`rizline-content.test.ts`、
+`verified-release.test.ts`、`rizline-algorithm-audit.test.ts`、`rizline-sms-login.test.tsx`、
+`rizline-account-flow.test.tsx`、`rizline-ui.test.tsx`、`rizline-filter-bar.test.tsx`、`rizline-overview.test.tsx`、
+`use-game-data-rizline.test.tsx`、`overview-rizline-sync.test.tsx`，以及 Session、
+SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同。真实短信、云存档、原生轮播和
+前后台验收单独进行，测试 fixture 不能作为真实登录成功的证据。
 
 ## 状态与持久化
 
@@ -143,14 +216,14 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   和缓存代次的缩略信息及本地 Rating 读取；读取完成后检查账号是否仍有效。
 - `captureResourceWrites(scope, signal?, accountId?)` 返回写入断言，游戏代次和
   `account:<id>` 代次共同限制持久化与后台回调。`cacheFirstLoad` 的可选
-  `assertCurrent` 覆盖读取、刷新及 onFresh；Repository 的可选断言在初始化和写入
+  `assertCurrent` 覆盖读取、刷新及 onFresh/onFallback；Repository 的可选断言在初始化和写入
   队列等待完成之后、实际 SQL 提交之前执行。
 - `clearStorageByCategories` 先提升所属游戏代次，再取消并移除查询，然后执行适配器清理。
   `cancelBoundAccountQueries(account, client)` 在解绑删除前使单个账号失效，取消并移除
   其查询，保留其他账号和公共曲库。解绑与全游戏清缓存不得混用失效范围。
 - `createInflightGuard.share(key, loader, signal?)` 为每个消费者单独管理取消；最后一个
   消费者离开才取消底层任务。新请求键包含相应游戏/账号代次，清理前的任务不能被新调用复用。
-  Muse Dash、TUF、osu、Majdata 和图片/字体资源均沿用这个公共入口。
+  Rizline、Muse Dash、TUF、osu、Majdata 和图片/字体资源均沿用这个公共入口。
 - `loadItemsBounded({ items, concurrency, load, signal?, failureMode? })` 默认 `collect`
   隔离单项失败；`throw` 模式首错停止领取，等待所有在途任务结束后再抛错。
   公共暂存执行器使用后者，信号继续传入下载、读取及 writer；失败统一清理 session。
@@ -252,9 +325,11 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 
 `MetricBadges.tsx` 提供 `DualTextMetricBadge` 和 `StatusMetricBadge`，保留难度的两个
 独立文本节点及状态徽章的原样式。`AnimatedMetricValue` 继续通过 `FlowingGradientValue`
-呈现动效。Phigros/Phira 包装层负责格式、颜色和评价，公共组件不识别 gameId。
+呈现动效。Phigros/Phira/Rizline 包装层负责格式、颜色和评价，公共组件不识别 gameId。
 `domain/badge-theme.ts` 保存共同颜色事实，成绩图 feature 只生成 HTML/CSS；
-`domain/phigros-score-theme.ts` 提供分值颜色，列表和导出不各自维护颜色副本。
+`domain/metric-gradient-theme.ts` 的 `METRIC_GRADIENT_THEMES` 提供金色、蓝绿的基础色组、
+循环色组与时长，Phigros 和 Rizline 共用。`domain/phigros-score-theme.ts` 保留 Phigros
+评价到渐变的映射与测试标识，列表和导出不各自维护颜色副本。
 
 `TagFilterSheet` 共用打开时复制选择、清空、完成提交和关闭行为；children 插槽保留
 分组、标签样式及游戏操作。详情元数据样式复用 `SongDetailChromeStyles`；成绩图选择器
@@ -405,6 +480,8 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   统一歌曲行、封面失败占位、分区标题及三种列表布局。
   `GameSearchHeader.layout` 的 `records` / `catalog` 复用既有搜索区，
   `resultCountText` 用于分页已加载数量；筛选控件放在独立的横向标签行中。
+  Majdata 难度行通过 `FilterChipFrame`、`NeutralChip` 与 `MajdataDifficultyBadge`
+  组合直接多选按钮，保留原始难度索引和多选取并集的匹配规则；不另建筛选状态。
   `domain/difficulty-theme.ts` 的 `BLUE_DIFFICULTY_COLORS` 由 Phigros HD 和 Majdata Easy
   同时引用；其余难度和成就徽章复用 `ScoreVisuals`。
 - `SimaiSongDetailLayout` 的 `SimaiSongHero`、`SimaiSongChrome`、`SimaiSongMetadata`、

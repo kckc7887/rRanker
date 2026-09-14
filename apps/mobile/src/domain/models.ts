@@ -7,7 +7,7 @@ export type Difficulty =
   | 'remaster'
   | 'utage'
   | 'unknown';
-export type DataSourceKind = 'majdata-net' | 'fixture' | 'diving-fish' | 'lxns' | 'dxrating' | 'kyou' | 'tuf' | 'musedash' | 'phira' | 'osu' | 'local' | 'generated' | 'cache';
+export type DataSourceKind = 'rizline' | 'rizline-official' | 'majdata-net' | 'fixture' | 'diving-fish' | 'lxns' | 'dxrating' | 'kyou' | 'tuf' | 'musedash' | 'phira' | 'osu' | 'local' | 'generated' | 'cache';
 
 export interface DataSource {
   kind: DataSourceKind;

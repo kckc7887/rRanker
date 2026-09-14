@@ -22,7 +22,7 @@ const mockRoute = jest.fn();
 jest.mock('@tanstack/react-query', () => ({ focusManager: { setFocused: (value: unknown) => mockFocus(value) } }));
 jest.mock('expo-image', () => ({ Image: { clearMemoryCache: () => mockClearMemory() } }));
 jest.mock('expo-router', () => ({ useSegments: () => ['(tabs)', '(overview)'] }));
-jest.mock('@/hooks/use-phigros-resource-sync', () => ({ usePhigrosResourceSync: () => undefined }));
+jest.mock('@/hooks/use-game-resource-sync', () => ({ useGameResourceSync: () => undefined }));
 jest.mock('@/state/session-store', () => ({ useSession: Object.assign((select: (state: unknown) => unknown) => select(mockState), { getState: () => mockState }) }));
 jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle, getForegroundAbortSignal: () => mockController.signal }));
 jest.mock('@/state/query-client', () => ({ queryClient: { cancelQueries: () => mockCancelQueries(), getQueryCache: () => ({ getAll: () => [] }) }, releaseInactiveQueries: () => mockReleaseQueries() }));

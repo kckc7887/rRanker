@@ -2,7 +2,17 @@ import type {
   AliasSnapshot, CatalogSnapshot, CollectionSnapshot, PlateSnapshot, Player, ScoreRecord, Song,
 } from '@/domain/models';
 
+export type RizlineSession = {
+  mode: 'rizline';
+  token: string;
+  phone: string;
+  deviceId: string;
+  channelId: string;
+  persistable: true;
+};
+
 export type ProviderSession =
+  | RizlineSession
   | import('./http-cookies').HttpCookieSession
   | { mode: 'jwt'; value: string; persistable: true }
   | { mode: 'import-token'; value: string; persistable: true }

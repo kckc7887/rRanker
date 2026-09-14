@@ -414,3 +414,38 @@ describe('Majdata Cookie secure accounts', () => {
     const remaining = await store.loadVault(); expect(remaining.accounts.map(a => a.id)).toEqual(['a']); expect(remaining.activeAccountId).toBe('a');
   });
 });
+
+describe('Rizline SMS secure accounts', () => {
+  const session = { mode: 'rizline', phone: '13800000000', token: 'private-token', deviceId: 'device-id', channelId: '1', persistable: true } as const;
+  const input: StoredProviderAccountInput = { id: 'rizline:official:123', gameId: 'rizline', providerId: 'rizline-official',
+    displayName: 'Rizline 玩家', scoreDisplay: '135.4321', session };
+  beforeEach(() => { secure.values.clear(); sqlite.values.clear(); });
+  it('round trips credentials separately from public account metadata and removes them on unlink', async () => {
+    const store = createStore();
+    await store.upsertAccount(input);
+    await store.updateAccountMetadata(input.id, { displayName: '新名称', scoreDisplay: '140.0000' });
+    const vault = await store.loadVault();
+    expect(vault.accounts[0]).toMatchObject({ id: input.id, gameId: 'rizline', providerId: 'rizline-official', displayName: '新名称', scoreDisplay: '140.0000' });
+    expect(vault.credentials[0].session).toEqual(session);
+    const ordinaryStorage = [...sqlite.values.values()].join('');
+    expect(ordinaryStorage).not.toContain(session.phone);
+    expect(ordinaryStorage).not.toContain(session.token);
+    await store.removeAccount(input.id);
+    expect((await store.loadVault()).credentials).toEqual([]);
+  });
+  it('does not overwrite credentials saved by a newer login', async () => {
+    const store = createStore();
+    await store.upsertAccount(input);
+    const newer = { ...session, token: 'new-login' };
+    await store.upsertAccount({ ...input, session: newer });
+    await store.updateAccountSession(input.id, { ...session, token: 'old-request-rotation' }, { expected: session });
+    expect((await store.loadVault()).credentials[0].session).toEqual(newer);
+  });
+  it('rejects a cancelled rotation and malformed persisted session', async () => {
+    const store = createStore(); await store.upsertAccount(input);
+    const controller = new AbortController(); controller.abort(new Error('cancelled'));
+    await expect(store.updateAccountSession(input.id, { ...session, token: 'late' }, { expected: session, signal: controller.signal })).rejects.toThrow('cancelled');
+    expect((await store.loadVault()).credentials[0].session).toEqual(session);
+    expect(await store.upsertAccount({ ...input, session: { ...session, phone: 'invalid' } })).toBe('');
+  });
+});

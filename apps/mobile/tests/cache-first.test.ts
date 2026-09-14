@@ -117,6 +117,23 @@ describe('cacheFirstLoad', () => {
     expect(onFreshCalled).toBe(false);
   });
 
+  it('reports fallback status separately and suppresses it after cancellation', async () => {
+    for (const cancel of [false, true]) {
+      const controller = new AbortController();
+      let finish!: (value: Sample) => void;
+      const pending = new Promise<Sample>(resolve => { finish = resolve; });
+      const onFresh = vi.fn(); const onFallback = vi.fn();
+      await cacheFirstLoad({ loadCached: async () => makeSample(1), loadFresh: () => pending,
+        signal: controller.signal, onFresh, onFallback });
+      if (cancel) controller.abort();
+      const fallback = staleCached(makeSample(1)); finish(fallback);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(onFresh).not.toHaveBeenCalled();
+      if (cancel) expect(onFallback).not.toHaveBeenCalled();
+      else expect(onFallback).toHaveBeenCalledWith(fallback);
+    }
+  });
+
   it('supports a custom stale marker for payloads with multiple sources', async () => {
     const payload = { source: fixtureSource, catalogSource: fixtureSource };
     const markStale = (value: typeof payload) => ({
