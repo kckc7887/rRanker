@@ -1,6 +1,6 @@
 import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 import { z } from 'zod';
-import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
+import { PHIGROS_OSS_BASE, phigrosReleaseDirectory } from '@/domain/account-avatar';
 import { requestBytes, requestJson } from '@/providers/http-json';
 import { ProviderError } from '@/providers/errors';
 import { VerifiedReleaseSession, verifyResourceBytes } from './verified-release';
@@ -74,9 +74,12 @@ export class PhigrosResourceService {
     return matches[0]!;
   }
 
+  directory(current: Pick<PhigrosRelease['current'], 'manifest'>): string {
+    return phigrosReleaseDirectory(current.manifest);
+  }
+
   assetUrl(release: PhigrosRelease, asset: PhigrosResourceAsset): string {
-    const directory = release.current.manifest.slice(0, release.current.manifest.lastIndexOf('/') + 1);
-    return this.url(`${directory}${asset.path}`, release);
+    return this.url(`${this.directory(release.current)}${asset.path}`, release);
   }
 
   async bytes(url: string, signal?: AbortSignal, timeoutMs = 12_000, diagnosticScenario: RuntimeRequestScenario = 'resource'): Promise<Uint8Array> {
@@ -113,7 +116,7 @@ export class PhigrosResourceService {
       || (current.publishedAt && candidate.manifest.generatedAt !== current.publishedAt)) {
       throw new ProviderError('upstream_schema', 'Phigros 发布内容不一致', true);
     }
-    const directory = current.manifest.slice(0, current.manifest.lastIndexOf('/') + 1);
+    const directory = this.directory(current);
     const relative = (path: string) => {
       if (!path.startsWith(directory)) throw new ProviderError('upstream_schema', 'Phigros 发布路径不一致', true);
       return path.slice(directory.length);

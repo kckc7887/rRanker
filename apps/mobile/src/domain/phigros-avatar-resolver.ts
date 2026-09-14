@@ -1,5 +1,5 @@
 import { phigrosResources } from '@/services/phigros-resources';
-import { buildPhigrosAvatarUrl } from '@/domain/account-avatar';
+import { buildPhigrosAvatarUrl, phigrosReleaseDirectory } from '@/domain/account-avatar';
 
 type AvatarAliasMap = {
   fileByKey: Map<string, string>;
@@ -67,7 +67,10 @@ export async function resolvePhigrosAvatarUrl(
   if (!gameVersion) return null;
   const fileName = await resolvePhigrosAvatarFileName(gameVersion, avatarKey);
   const current = phigrosResources.peek()?.current;
-  return buildPhigrosAvatarUrl(current?.gameVersion ?? gameVersion, fileName, current?.resourceVersion);
+  const directory = current
+    ? phigrosReleaseDirectory(current.manifest)
+    : `phigros/releases/${gameVersion}/`;
+  return buildPhigrosAvatarUrl(directory, fileName, current?.resourceVersion);
 }
 
 export function resetPhigrosAvatarAliasCacheForTests(): void {

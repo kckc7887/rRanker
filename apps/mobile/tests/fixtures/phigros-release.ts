@@ -1,8 +1,13 @@
 import { createHash } from 'node:crypto';
 
-export function releaseFixture(revision = 'r1', songIds = ['Song.A'], options: { music?: boolean; variants?: number[]; variantMusic?: boolean } = {}) {
+export function releaseFixture(
+  revision = 'r1',
+  songIds = ['Song.A'],
+  options: { music?: boolean; variants?: number[]; variantMusic?: boolean; releaseDirectory?: string } = {},
+) {
   const encode = (value: string) => new TextEncoder().encode(value);
   const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
+  const releaseDirectory = options.releaseDirectory ?? 'phigros/releases/9.9.9';
   const files: Record<string, Uint8Array> = {
     'catalog.json': encode(JSON.stringify({ songCount: songIds.length, songs: songIds.map((id) => ({
       id, title: id, composer: 'Artist', illustrator: 'I', charters: ['e'], difficulties: [1],
@@ -25,14 +30,14 @@ export function releaseFixture(revision = 'r1', songIds = ['Song.A'], options: {
   const manifestBytes = encode(JSON.stringify(manifest));
   const current = {
     schemaVersion: 1, gameVersion: '9.9.9', resourceVersion: revision, publishedAt: revision,
-    catalog: 'phigros/releases/9.9.9/catalog.json', manifest: 'phigros/releases/9.9.9/manifest.json',
-    noteCounts: 'phigros/releases/9.9.9/metadata/note_counts.tsv', manifestSha256: hash(manifestBytes),
+    catalog: `${releaseDirectory}/catalog.json`, manifest: `${releaseDirectory}/manifest.json`,
+    noteCounts: `${releaseDirectory}/metadata/note_counts.tsv`, manifestSha256: hash(manifestBytes),
   };
   return { files, manifest, current, respond(input: RequestInfo | URL): Response {
     const path = decodeURIComponent(new URL(String(input)).pathname);
     if (path.endsWith('/current.json')) return new Response(JSON.stringify(current));
     if (path.endsWith('/manifest.json')) return new Response(manifestBytes);
-    const file = files[path.replace('/phigros/releases/9.9.9/', '')];
+    const file = files[path.replace(`/${releaseDirectory}/`, '')];
     return file ? new Response(new Uint8Array(file)) : new Response('', { status: 404 });
   } };
 }

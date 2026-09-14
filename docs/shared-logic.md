@@ -59,7 +59,7 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 | HTTP 请求 | `src/providers/http-json.ts`：`requestJson<T>(options)`、`requestBytes(options)`、`fetchProviderJson`、`retryAfterMs` | JSON 和原始字节复用同一超时、取消、重试、429 退避和错误归一化执行器；游戏提供 base URL、Schema 与场景文案 | 各 Provider 测试、`phigros-resources.test.ts` |
 | 内容摘要 | `src/utils/resource-integrity.ts`：`sha256(bytes)`、`bytesToHex(buffer)`；`src/utils/crypto-subset.ts`：`uint8ArrayToWordArray(bytes)`、`bytesToBase64(bytes)`、`base64ToBytes(text)` | 通过现有 Expo Crypto 和 CryptoJS 能力计算摘要、编码；字体缓存保留摘要兼容导出，游戏不得反向依赖字体功能 | 字体缓存、Phigros 资源与存档测试 |
 | 校验发布会话 | `src/services/verified-release.ts`：`VerifiedReleaseSession<T>`、`verifyResourceBytes(bytes, asset, message)` | 调用方提供格式专属 prepare；共用消费者取消、代次、失败重读和完整候选切换；校验字节后才发布结果 | `phigros-resources.test.ts`、`rizline-resources.test.ts` |
-| Phigros 发布事务 | `src/services/phigros-resources.ts`：`phigrosResources`、`load(signal?, check?)`、`withRelease(action, signal?, check?)`、`verifyPhigrosResource(bytes, asset)` | Phigros 各调用方共用唯一会话发布；校验所有必需元数据后原子替换，实际资源使用修订 URL 和大小/SHA-256 校验；失败强制绕过缓存重读一次，取消以消费者计数管理 | `phigros-resources.test.ts`、`phigros-catalog-notes.test.ts`、`phigros-score-revision.test.ts` |
+| Phigros 发布事务 | `src/services/phigros-resources.ts`：`phigrosResources`、`load(signal?, check?)`、`withRelease(action, signal?, check?)`、`verifyPhigrosResource(bytes, asset)`、`directory(current)`；`src/domain/account-avatar.ts`：`phigrosReleaseDirectory`、`buildPhigrosAvatarUrl(releaseDirectory, avatarName, resourceVersion?)` | Phigros 各调用方共用唯一会话发布；校验所有必需元数据后原子替换；谱面、曲绘和头像路径取 `current.manifest` 所在目录，查询参数带 `resourceVersion`；实际资源校验大小/SHA-256；失败强制绕过缓存重读一次，取消以消费者计数管理 | `phigros-resources.test.ts`、`phigros-catalog-notes.test.ts`、`phigros-score-revision.test.ts`、`account-avatar.test.ts`、`phigros-avatar-resolver.test.ts` |
 | 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage` | 底层 code/cause 用于诊断；所有用户可见出口必须转换为可行动文案 | `consumer-copy-policy.test.ts`、各 Provider 测试 |
 | LXNS OAuth 请求 | `src/providers/lxns-oauth-request.ts` 与 `lxns-oauth.ts` | 舞萌和中二共享 OAuth 请求与令牌轮换骨架；游戏差异通过参数和账号映射表达 | LXNS OAuth、登录和 Session 测试 |
 | 示例满成绩 | `src/providers/maxed-records.ts` 的 `buildMaxedScoreRecords` | 由游戏测试 Provider 提供真实目录和映射函数，不复制通用生成循环 | `maxed-*-test-provider.test.ts` |
@@ -87,6 +87,7 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 Phigros 曲库复用 `loadAliasedCatalog` / `useAliasedCatalog` 的来源与别名合并，
 `use-phigros-catalog.ts` 的 `refreshPhigrosCatalog()` 统一主动更新入口，
 并经 `PhigrosCatalogProvider.getCatalog(signal?, checkChapters?)` 校对独立的 `chapters.csv`。
+曲绘三档和头像 URL 经 `phigrosReleaseDirectory` / `directory(current)` 使用 `current.manifest` 所在发布目录，不把 `gameVersion` 拼进对象路径。
 `useGameResourceSync()` 通过资源刷新注册表在启动恢复及游戏进入时调用 Phigros/Rizline 各自刷新入口；
 总览手动同步直接调用同一刷新入口。查询键保持会话有效，标签切换不重复同步，曲库不持久化。
 Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重拉。
@@ -94,7 +95,7 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 决定持久化快照是否仍匹配定数；离线可保留已有快照。新修订计算完成前不写入新成绩快照。
 章节表变化只替换曲库查询，不因章节本身使成绩查询失效；校对失败保留上次章节。
 相关入口合同由 `phigros-resource-sync.test.tsx`、`use-phigros-catalog.test.tsx`、
-`phigros-chapters.test.ts` 和 `phigros-score-revision.test.ts` 覆盖。
+`phigros-chapters.test.ts`、`phigros-catalog-notes.test.ts` 和 `phigros-score-revision.test.ts` 覆盖。
 
 ### Rizline 接入与短信登录
 

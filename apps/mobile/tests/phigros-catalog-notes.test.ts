@@ -17,8 +17,22 @@ it('maps verified note counts and refreshes same-version resources without mixin
   await resources.load(undefined, true);
   const second = await provider.getCatalog();
   expect(second.songs).toHaveLength(2);
-  expect(provider.getIllustrationUrl('Song.New')).toContain('?v=r2');
+  expect(provider.getIllustrationUrl('Song.New')).toContain('/phigros/releases/9.9.9/illustrations/Song.New.png?v=r2');
   expect(await provider.getGameVersion()).toBe('9.9.9');
+});
+
+it('builds illustration and avatar URLs from the current manifest directory', async () => {
+  const fixture = releaseFixture('9.9.9-deadbeef', ['Song.A'], { releaseDirectory: 'phigros/releases/9.9.9-deadbeef' });
+  vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
+  const provider = new PhigrosCatalogProvider(new PhigrosResourceService('https://example.com'));
+  await provider.getCatalog();
+  expect(provider.getIllustrationUrl('Song.A')).toBe(
+    'https://example.com/phigros/releases/9.9.9-deadbeef/illustrations/Song.A.png?v=9.9.9-deadbeef',
+  );
+  expect(provider.getIllustrationUrl('Song.A')).not.toContain('/phigros/releases/9.9.9/illustrations/');
+  expect(provider.getAvatarUrl('Glaciaxion')).toBe(
+    'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/9.9.9-deadbeef/avatars/Glaciaxion.png?v=9.9.9-deadbeef',
+  );
 });
 
 it('keeps the successful catalog and update timestamp after a failed release refresh', async () => {
