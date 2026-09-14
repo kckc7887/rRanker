@@ -2,6 +2,7 @@ import { buildLxnsIconUrl } from './account-avatar';
 import { buildChunithmMapIconUrl } from './chunithm-personal';
 import { resolveTufAvatarUrl } from './tuf';
 import { majdataAvatarUrl } from './majdata';
+import { buildRizlineRecords, selectRizlineBest, formatRizlineRks, type RizlineCatalogData, type RizlineSnapshot } from './rizline';
 import type { GameId, ProviderId } from './game-bind-options';
 import type { GameProfile } from './game-profile';
 import type { DataSource, Player, ScoreRecord, ScoreSnapshot } from './models';
@@ -39,6 +40,7 @@ export type ChunithmBestListSection = {
  * - unsupported：已登记但尚未接入成绩模型的游戏
  */
 export type GamePayload =
+  | ReturnType<typeof rizlinePayloadFromSnapshot>
   | { kind: 'majdata-net'; snapshot: import('./majdata').MajdataSnapshot; playerScore: PlayerScoreSummary; source: DataSource }
   | {
       kind: 'adofai';
@@ -133,6 +135,15 @@ export type GameDataBundle = {
 
 export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
 
+export function rizlinePayloadFromSnapshot(snapshot: RizlineSnapshot, catalog?: RizlineCatalogData) {
+  const records = buildRizlineRecords(snapshot.save, catalog?.snapshot);
+  const { userId, username, totalRks } = snapshot.save;
+  return { kind: 'rizline' as const, snapshot, player: { userId, username, totalRks }, records,
+    requiresLogin: snapshot.requiresLogin === true,
+    best: selectRizlineBest(records), source: snapshot.source, catalogSource: catalog?.source,
+    playerScore: { label: 'Ranking Score', value: totalRks, display: formatRizlineRks(totalRks) } };
+}
+
 export function phigrosPayloadFromSnapshot(
   snapshot: Pick<PhigrosGameDataPayload, 'player' | 'records' | 'bestSections' | 'challengeModeRank' | 'source' | 'progress'>,
   catalogSource: DataSource,
@@ -224,6 +235,7 @@ export function gameAccountMetadata(bundle: GameDataBundle): ({
 } | null) {
   const { payload: p, providerId, profile } = bundle;
   switch (p.kind) {
+    case 'rizline': return { scoreDisplay: p.playerScore.display, displayName: p.player.username, storedDisplayName: p.player.username };
     case 'maimai': return { scoreDisplay: formatPlayerScore(p.playerScore.value, profile.ratingDigits),
       displayName: p.player.displayName,
       avatarUrl: providerId === 'lxns' ? buildLxnsIconUrl(p.player.presentation?.iconId) : undefined };

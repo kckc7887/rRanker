@@ -35,6 +35,12 @@ const OSU_TOOLS: readonly GameToolDefinition[] = [
  * 新游戏不需要在页面组件里增加 gameId 分支。
  */
 export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
+  rizline: { tools: [
+    { id: 'random-charts', href: '/tools/random-charts', title: '随机歌曲',
+      detail: '按难度、曲包和定数抽取谱面', summaryLabel: '随机歌曲' },
+    { id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找',
+      detail: '按定位查看附近机厅，搜索店名与跳转导航', summaryLabel: '机厅查找' },
+  ], emptyDetail: '' },
   'majdata-net': { tools: [
     { id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找', detail: '查找附近机厅', summaryLabel: '机厅查找' },
     { id: 'tolerance', href: '/tools/tolerance?gameId=majdata-net', title: '达成率与容错', detail: '计算 DX、Classic 达成率与容错', summaryLabel: '达成率/容错' },

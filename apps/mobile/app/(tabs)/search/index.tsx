@@ -47,6 +47,7 @@ import { useAppTheme } from '@/theme/app-theme';
 import { TufSearchScreen } from '@/screens/TufScreens';
 import { MuseDashCatalogScreen } from '@/screens/MuseDashScreens';
 import { PhiraCatalogScreen } from '@/screens/PhiraScreens';
+import { RizlineCatalogScreen } from '@/screens/RizlineScreens';
 import { OsuCatalogScreen } from '@/screens/OsuScreens';
 import { isOsuGameId } from '@/domain/game-mode-family';
 
@@ -170,6 +171,7 @@ export function SearchScreen() {
   }
   if (activeGameId === 'majdata-net') return <MajdataCatalogScreen />;
   if (activeGameId === 'phira') return <PhiraCatalogScreen />;
+  if (activeGameId === 'rizline') return <RizlineCatalogScreen />;
 
   if (isOsuGameId(activeGameId)) return <OsuCatalogScreen />;
 

@@ -102,13 +102,13 @@ test('login appears in real management and switch lists with the player avatar a
 });
 
 test('both game pickers and bound groups place Majdata after the existing osu family', async () => {
-  expect(GAME_OPTIONS.at(-1)?.id).toBe('majdata-net');
+  expect(GAME_OPTIONS.at(-2)?.id).toBe('majdata-net');
   expect(findGame('majdata-net')?.icon).toEqual(majdataIcon);
   expect(isCredentialProvider('majdata-net')).toBe(true);
   expect(isCredentialProvider('phira-community')).toBe(false);
   const accounts = GAME_OPTIONS.map(game => ({ ...createMajdataBoundAccount({ accountId: game.id, displayName: game.title }), gameId: game.id }));
   expect(groupBoundAccountGameIds(accounts)).toHaveLength(GAME_OPTIONS.length);
-  expect(groupBoundAccountGameIds(accounts).at(-1)).toBe('majdata-net');
+  expect(groupBoundAccountGameIds(accounts).at(-2)).toBe('majdata-net');
   const majdata = createMajdataBoundAccount({ accountId: 'majdata-net:account:p', displayName: 'Player', scoreDisplay: '395.6252%' });
   const osu = createOsuBoundAccount({ gameId: 'osu-standard', userId: 1, displayName: 'Osu', pp: 100 });
   await act(() => { useSession.getState().upsertBoundAccount(majdata); useSession.getState().upsertBoundAccount(osu); });

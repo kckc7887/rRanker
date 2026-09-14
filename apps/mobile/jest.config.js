@@ -9,6 +9,6 @@ module.exports = {
     '\\.css$': '<rootDir>/tests/asset-module-stub.js',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|native-base|react-native-svg)',
+    'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|@noble/ciphers/.*|react-navigation|@react-navigation/.*|native-base|react-native-svg)',
   ],
 };

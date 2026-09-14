@@ -25,3 +25,13 @@ export function uint8ArrayToWordArray(data: Uint8Array) {
 export function bytesToBase64(data: Uint8Array): string {
   return Base64.stringify(uint8ArrayToWordArray(data));
 }
+
+export function base64ToBytes(value: string): Uint8Array {
+  const normalized = value.replace(/\s/gu, '');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/u.test(normalized) || normalized.length % 4 === 1) {
+    throw new Error('Invalid Base64');
+  }
+  const decoded = Base64.parse(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '='));
+  return Uint8Array.from({ length: decoded.sigBytes }, (_, index) =>
+    (decoded.words[index >>> 2]! >>> (24 - (index % 4) * 8)) & 0xff);
+}

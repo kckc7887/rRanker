@@ -7,6 +7,7 @@ import { PhigrosRandomChartsScreen } from '@/screens/PhigrosRandomChartsScreen';
 import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
 import { MuseDashRandomChartsScreen } from '@/screens/MuseDashRandomChartsScreen';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
+import { RizlineRandomChartsScreen } from '@/screens/RizlineRandomChartsScreen';
 import { useSession } from '@/state/session-store';
 
 const RANDOM_CHARTS_SCREENS: Partial<Record<GameId, ComponentType>> = {
@@ -16,6 +17,7 @@ const RANDOM_CHARTS_SCREENS: Partial<Record<GameId, ComponentType>> = {
   adofai: TufRandomChartsScreen,
   musedash: MuseDashRandomChartsScreen,
   phira: PhiraRandomChartsScreen,
+  rizline: RizlineRandomChartsScreen,
 };
 
 export default function RandomChartsToolScreen() {

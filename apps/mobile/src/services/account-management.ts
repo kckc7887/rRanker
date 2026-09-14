@@ -1,5 +1,6 @@
 import type { ProviderId } from '@/domain/game-bind-options';
 import { clearMajdataAccount } from '@/services/majdata-service';
+import { clearRizlineAccount } from '@/services/rizline-service';
 import {
   createAdditionalLocalMaimaiAccountId,
   createLocalMaimaiAccount,
@@ -146,6 +147,9 @@ export async function clearBoundAccountData(account: BoundAccount, attempt: Acco
   } else {
     if (account.gameId === 'majdata-net') {
       await attempt('成绩缓存', () => clearMajdataAccount(account.id));
+    }
+    if (account.gameId === 'rizline') {
+      await attempt('成绩缓存', () => clearRizlineAccount(account.id));
     }
     await attempt('凭据', () => sessions.removeAccount(account.id));
     await attempt('缓存', () => snapshots.clear(account.id));

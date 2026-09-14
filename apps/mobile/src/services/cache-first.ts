@@ -45,6 +45,8 @@ export async function cacheFirstLoad<T extends Sourced>(options: {
   loadCached: () => Promise<T | null>;
   loadFresh: (signal: AbortSignal) => Promise<T>;
   onFresh: (fresh: T) => void;
+  /** Notify fallback status changes without treating cached data as a successful refresh. */
+  onFallback?: (fallback: T) => void;
   markStale?: (value: T) => T;
   signal?: AbortSignal;
   assertCurrent?: () => void;
@@ -59,7 +61,10 @@ export async function cacheFirstLoad<T extends Sourced>(options: {
   if (cached) {
     void options.loadFresh(signal).then((fresh) => {
       assertCurrent();
-      if (!signal.aborted && !isCacheFallback(fresh)) options.onFresh(fresh);
+      if (!signal.aborted) {
+        if (isCacheFallback(fresh)) options.onFallback?.(fresh);
+        else options.onFresh(fresh);
+      }
     }).catch(() => undefined);
     const mark = options.markStale ?? ((value: T) => staleCached(value));
     return mark(cached);
