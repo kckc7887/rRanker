@@ -5,10 +5,12 @@ import {
   resolvePhigrosAvatarFileName,
   resolvePhigrosAvatarUrl,
 } from '@/domain/phigros-avatar-resolver';
+import { phigrosResources } from '@/services/phigros-resources';
 
 describe('phigros avatar resolver', () => {
   afterEach(() => {
     resetPhigrosAvatarAliasCacheForTests();
+    vi.mocked(phigrosResources.peek).mockReturnValue(undefined);
     vi.unstubAllGlobals();
   });
 
@@ -49,11 +51,25 @@ describe('phigros avatar resolver', () => {
       'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4/avatars/Glaciaxion.png',
     );
   });
+
+  it('resolvePhigrosAvatarUrl uses the peeked release directory when current exists', async () => {
+    vi.mocked(phigrosResources.peek).mockReturnValue({
+      current: {
+        gameVersion: '3.19.4',
+        resourceVersion: '3.19.4-deadbeef',
+        manifest: 'phigros/releases/3.19.4-deadbeef/manifest.json',
+      },
+    } as ReturnType<typeof phigrosResources.peek>);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('Glaciaxion\tGlaciaxion\n', { status: 200 })));
+    await expect(resolvePhigrosAvatarUrl('3.19.4', 'Glaciaxion')).resolves.toBe(
+      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4-deadbeef/avatars/Glaciaxion.png?v=3.19.4-deadbeef',
+    );
+  });
 });
 
 vi.mock('@/services/phigros-resources', () => ({
   phigrosResources: {
     load: async () => ({ revision: 'r1', avatarAliases: await (await fetch('https://example.com/tmp.tsv')).text() }),
-    peek: () => undefined,
+    peek: vi.fn(() => undefined),
   },
 }));

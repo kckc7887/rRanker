@@ -175,30 +175,31 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     return this.catalog;
   }
 
-  private illustrationBase(): string | null {
-    if (!this.release?.current.gameVersion) return null;
-    return `${OSS_BASE}/phigros/releases/${this.release?.current.gameVersion}/illustrations`;
+  private releaseFileUrl(relative: string): string | null {
+    const release = this.release;
+    if (!release) return null;
+    return this.resources.url(`${this.resources.directory(release.current)}${relative}`, release);
   }
 
   getIllustrationUrl(songId: string): string | null {
-    const base = this.illustrationBase();
-    if (!base) return null;
-    return `${base}/${encodeURIComponent(songId)}.png?v=${encodeURIComponent(this.release!.current.resourceVersion)}`;
+    return this.releaseFileUrl(`illustrations/${songId}.png`);
   }
 
   getIllustrationBlurUrl(songId: string): string | null {
-    const base = this.illustrationBase();
-    if (!base) return null;
-    return `${base}-blur/${encodeURIComponent(songId)}.png?v=${encodeURIComponent(this.release!.current.resourceVersion)}`;
+    return this.releaseFileUrl(`illustrations-blur/${songId}.png`);
   }
 
   getIllustrationLowresUrl(songId: string): string | null {
-    const base = this.illustrationBase();
-    if (!base) return null;
-    return `${base}-lowres/${encodeURIComponent(songId)}.png?v=${encodeURIComponent(this.release!.current.resourceVersion)}`;
+    return this.releaseFileUrl(`illustrations-lowres/${songId}.png`);
   }
 
   getAvatarUrl(avatarName: string): string | null {
-    return buildPhigrosAvatarUrl(this.release?.current.gameVersion, avatarName, this.release?.current.resourceVersion);
+    const release = this.release;
+    if (!release) return null;
+    return buildPhigrosAvatarUrl(
+      this.resources.directory(release.current),
+      avatarName,
+      release.current.resourceVersion,
+    );
   }
 }
