@@ -184,7 +184,7 @@ AP 使用流金达成率和金色胶囊，AH 使用流动蓝绿达成率和蓝�
 `D:/Projects/rizline-resource-publisher`，其维护说明管理官方导入、人工补充、校验、构建及发布。
 维护命令由 `rizline_publisher` 模块提供，`overrides.json` 保留人工修订，
 `work/supplement-template.json` 按完整官方 ID 列出缺项。独立项目的
-`.github/workflows/publish.yml` 配置每日北京时间 08:00（UTC 00:00）从 `main` 实际发布；
+`.github/workflows/publish.yml` 配置每日北京时间 20:00（UTC 12:00）从 `main` 实际发布；
 手动触发默认只构建并预览，勾选 `execute` 才上传。工作流串行执行，只需配置
 `AWS_ACCESS_KEY_ID` 与 `AWS_SECRET_ACCESS_KEY`；端点、区域、桶名和公开基址由发布器内置。
 `publish` 默认不写远端，`publish --execute --workers 4` 通过公共发布入口执行，
