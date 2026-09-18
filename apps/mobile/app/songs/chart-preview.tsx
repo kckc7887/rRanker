@@ -20,6 +20,7 @@ import {
 import type { BuddyPreviewSide, ChartPreviewSettings } from '@/features/simai-chart-preview/chart-preview-inject';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
 import type { ChartPreviewBridgeMessage } from '@/features/chart-preview-shared/chart-preview-bridge';
+import type { ChartPreviewLoadProgress } from '@/features/chart-preview-shared/chart-preview-progress';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -103,7 +104,7 @@ export default function MaimaiChartPreviewScreen() {
       : {
           kind: 'ready' as const,
           payload: mapped,
-          prepare: async (signal: AbortSignal, settings: unknown) => {
+          prepare: async (signal: AbortSignal, settings: unknown, onProgress?: (progress: ChartPreviewLoadProgress) => void) => {
             const song = typeof mapped.chartId === 'string' ? await loadMajdataSong(mapped.chartId, signal) : undefined;
             if (mapped.hash && song?.hash !== mapped.hash) throw new Error('谱面已更新，请返回歌曲详情重试');
             const parsed = song ? await loadMajdataParsedChart(song, mapped.difficulty - 1, signal) : undefined;
@@ -113,7 +114,7 @@ export default function MaimaiChartPreviewScreen() {
               ...mapped,
               settings: settings as ChartPreviewSettings,
               theme: isDark ? 'dark' : 'light',
-            }, signal);
+            }, signal, onProgress);
           },
         }),
     [mapped, isDark],

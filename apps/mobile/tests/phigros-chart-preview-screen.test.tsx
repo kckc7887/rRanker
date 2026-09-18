@@ -68,6 +68,7 @@ jest.mock('@/theme/app-theme', () => ({
     background: '#ffffff',
     text: '#111111',
     textMuted: '#666666',
+    surfaceMuted: '#EEF2F7',
   }),
 }));
 
@@ -91,6 +92,8 @@ jest.mock('@/features/phigros-chart-preview/prepare-phigros-chart-preview-webvie
     mockStageRpeBundle(args[0], args[1]);
     return Promise.resolve({ basePath: './rpe/38294/' });
   },
+  createPhigrosPreviewResourceRead: () => undefined,
+  downloadPhiraChartPreviewZip: () => Promise.resolve(mockZipBuffer),
 }));
 
 jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
@@ -101,7 +104,7 @@ jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
 jest.mock('@/domain/phigros-chart-preview', () => ({
   loadPhigrosChartPreviewVariants: async () => [0],
   loadPhigrosChartPreviewResources: async (...args: unknown[]) => ({
-    bundle: await mockLoadPhigrosBundle(...args),
+    bundle: await mockLoadPhigrosBundle(args[0], args[1]),
     chart: new Uint8Array([123, 125]), music: new Uint8Array([1]), illustration: new Uint8Array([2]),
   }),
   phigrosChartPreviewLevelLabel: () => 'AT',

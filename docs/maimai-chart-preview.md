@@ -154,7 +154,7 @@ git diff --check
 的 HOLD/TOUCH HOLD，验证拖动重建、结束排空和特效开关。共享屏幕、资源、注入与
 生命周期合同随完整单元/UI 测试执行；检查结果以当前命令输出和本地运行记录为准。
 
-公共入口保持 `prepareChartPreviewWebviewFromPlan(plan): Promise<ChartPreviewWebviewPlanResult>`，
+公共入口保持 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?): Promise<ChartPreviewWebviewPlanResult>`，
 新增皮肤仍由现有清单、暂存与 writer 注入，不增加缓存执行器或共享游戏分支。
 
 ## 验收边界

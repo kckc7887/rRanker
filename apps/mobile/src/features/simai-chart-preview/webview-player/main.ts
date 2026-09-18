@@ -39,6 +39,7 @@ import type { ChartPreviewSettings, ChartPreviewInjectConfig as ChartPreviewConf
 declare global {
   interface Window {
     __CHART_PREVIEW__?: ChartPreviewConfig;
+    __CHART_PREVIEW_MUSIC_DATA__?: string | null;
     ReactNativeWebView?: { postMessage: (message: string) => void };
   }
 }
@@ -57,6 +58,20 @@ let activePopupClose: (() => void) | null = null;
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
+}
+
+function decodeBase64Payload(value: string): ArrayBuffer {
+  const separator = value.indexOf(',');
+  const base64 = separator >= 0 ? value.slice(separator + 1) : value;
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes.buffer;
+}
+
+function postLoadProgress(label: string, value: number, statusEl?: HTMLElement): void {
+  if (statusEl) statusEl.textContent = label;
+  postStatus('progress', { label, value });
 }
 
 function $(id: string): HTMLElement {
@@ -361,7 +376,7 @@ async function main(): Promise<void> {
   }
 
   titleEl.textContent = config.title?.trim() || `谱面 ${config.chartId}`;
-  statusEl.textContent = '正在加载谱面…';
+  postLoadProgress('正在加载谱面…', 0.15, statusEl);
 
   const saved = config.settings ?? {};
   const initialBackground = resolveInitialBackgroundState(saved);
@@ -370,7 +385,6 @@ async function main(): Promise<void> {
 
   const chartUrl = config.chartUrl;
   const musicUrl = config.musicUrl;
-  if (!musicUrl) throw new Error('缺少音乐资源');
 
   let simaiText: string;
   try {
@@ -416,6 +430,7 @@ async function main(): Promise<void> {
     return;
   }
   const chart = charts[0]!;
+  postLoadProgress('正在加载谱面…', 0.35, statusEl);
   const allNotes = charts.flatMap((c) => c.notes.map(n => {
     const shift = 240000 / charts[0]!.bpm - 240000 / c.bpm;
     return { ...n, timingMs: n.timingMs + shift, endTimeMs: n.endTimeMs + shift };
@@ -431,9 +446,10 @@ async function main(): Promise<void> {
     document.body.classList.add('dual');
   }
   const skin = new ChartPreviewSkin();
-  statusEl.textContent = '正在加载皮肤…';
+  postLoadProgress('正在加载皮肤…', 0.4, statusEl);
   try {
     await skin.load();
+    postLoadProgress('正在加载皮肤…', 0.65, statusEl);
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '皮肤加载失败，请返回重试。';
@@ -606,12 +622,23 @@ async function main(): Promise<void> {
   };
 
   try {
-    statusEl.textContent = '正在加载预览曲…';
+    postLoadProgress('正在加载预览曲…', 0.75, statusEl);
     await ensureAudio(false);
-    const musicResponse = await fetch(musicUrl);
-    if (!musicResponse.ok) throw new Error(`预览曲不可用（${musicResponse.status}）`);
-    const arrayBuffer = await musicResponse.arrayBuffer();
-    audioBuffer = await (await ensureAudio(false)).decodeAudioData(arrayBuffer);
+    const embedded = window.__CHART_PREVIEW_MUSIC_DATA__;
+    let arrayBuffer: ArrayBuffer | null = null;
+    if (typeof embedded === 'string' && embedded.length > 0) {
+      arrayBuffer = decodeBase64Payload(embedded);
+    } else if (embedded === null) {
+      arrayBuffer = null;
+    } else {
+      if (!musicUrl) throw new Error('缺少音乐资源');
+      const musicResponse = await fetch(musicUrl);
+      if (!musicResponse.ok) throw new Error(`预览曲不可用（${musicResponse.status}）`);
+      arrayBuffer = await musicResponse.arrayBuffer();
+    }
+    audioBuffer = arrayBuffer
+      ? await (await ensureAudio(false)).decodeAudioData(arrayBuffer)
+      : null;
   } catch {
     statusEl.textContent = '预览曲加载失败，仍可静音看谱。';
     audioBuffer = null;
@@ -620,7 +647,6 @@ async function main(): Promise<void> {
   const { totalDurationMs, totalBeats } = resolvePlaybackRange(charts, audioBuffer?.duration ?? null, musicOffset);
 
   statusEl.textContent = '';
-  postStatus('ready', { chartId: config.chartId, measures: chart.measures });
 
   const NOTE_COLORS: Record<string, string> = {
     tap: '#FFD700', hold: '#FF8C00', slide: '#00CED1', touch: '#0080FF', break: '#ff69b4',
@@ -1690,6 +1716,7 @@ async function main(): Promise<void> {
   });
 
   renderAt(0);
+  postStatus('ready', { chartId: config.chartId, measures: chart.measures });
 }
 
 void main().catch((error) => {

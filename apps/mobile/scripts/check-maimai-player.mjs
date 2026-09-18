@@ -158,6 +158,7 @@ try {
    if(url.startsWith('data:'))return route.continue();
    if(url.endsWith('/index.html'))return route.fulfill({contentType:'text/html',body:html.replace('<!--CHART_PREVIEW_CONFIG-->',`<script>window.__CHART_PREVIEW__=${JSON.stringify(config)}</script>`)});
    if(url.endsWith('/player.js'))return route.fulfill({contentType:'text/javascript',body:bundle});
+   if(url.endsWith('/music-data.js'))return route.fulfill({contentType:'text/javascript',body:'window.__CHART_PREVIEW_MUSIC_DATA__=undefined;'});
    if(url.endsWith('/skin-data.js'))return route.fulfill({contentType:'text/javascript',body:`window.__MAIMAI_CHART_PREVIEW_SKINS__=${JSON.stringify(images)};`});
    if(url.endsWith('.txt'))return route.fulfill({body:tailFixture?.chart??chart});
    if(url.endsWith('.mp3'))return route.fulfill({contentType:'audio/wav',body:modeMusic});

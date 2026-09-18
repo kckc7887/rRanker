@@ -119,6 +119,18 @@ describe('chart preview webview helpers', () => {
     expect(parseChartPreviewBridgeMessage('{')).toBeNull();
   });
 
+  it('uses injected music data and simaiText before remote fetch', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/main.ts'),
+      'utf8',
+    );
+    expect(source).toContain('__CHART_PREVIEW_MUSIC_DATA__');
+    expect(source).toContain('config.simaiText !== undefined');
+    expect(source).toContain("postStatus('progress'");
+    expect(source).toContain('embedded === null');
+    expect(source.indexOf("renderAt(0)")).toBeLessThan(source.lastIndexOf("postStatus('ready'"));
+  });
+
   it('caps the canvas to the short viewport edge in and after fullscreen', () => {
     expect(chartPreviewCanvasSize({
       isFullscreen: true,
@@ -241,14 +253,16 @@ describe('chart preview webview helpers', () => {
     expect(themeScriptIndex).toBeLessThan(playerScriptIndex);
   });
 
-  it('loads skin-data.js before player.js in the packaged file:// html', () => {
+  it('loads music-data.js then skin-data.js before player.js in the packaged file:// html', () => {
     const html = readFileSync(
       resolve(process.cwd(), 'assets/maimai-chart-preview/index.html'),
       'utf8',
     );
+    const musicDataIndex = html.indexOf('src="./music-data.js"');
     const skinDataIndex = html.indexOf('src="./skin-data.js"');
     const playerIndex = html.indexOf('src="./player.js"');
-    expect(skinDataIndex).toBeGreaterThan(0);
+    expect(musicDataIndex).toBeGreaterThan(0);
+    expect(skinDataIndex).toBeGreaterThan(musicDataIndex);
     expect(playerIndex).toBeGreaterThan(skinDataIndex);
   });
 
