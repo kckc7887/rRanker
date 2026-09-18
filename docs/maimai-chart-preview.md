@@ -82,7 +82,7 @@ RIFF/WAVE 头有效。内容修订为 `83a00350faddc68d`。每个对象的 URL�
 | TOUCH HOLD | TouchHoldSkins 族；0/1/2/3 在右上/右下/左下/左上，旋转 135/45/-45/-135 度；边框按持续时间遮罩 |
 | TOUCH HOLD 地雷边框 | 语义 `touchhold_mine_border.png` 映射到现有对象 `TouchHoldSkins/touchhold_break_mine.png`，不修改线上名字 |
 | Each、轨道箭头、WIFI、完成提示 | NoteGuideSkins、SlideSkins、WifiSkins、SlideOKSkins；路径表统一箭头、星星和完成提示；左右完成提示在镜像时换向，文字不作位图反射 |
-| 判定特效 | 八张 ViewX 原始特效 PNG、Prefab 和动画曲线随 bundle 加载；渲染跳过普通、Break、Touch 星型层，保留非星型层和独立烟花；HOLD/TOUCH HOLD 持续圈统一为 Each 金色 `#fff55d`，保持 10 次/秒、0.3 秒粒子 |
+| 判定特效 | 八张 ViewX 原始特效 PNG、Prefab 和动画曲线随 bundle 加载；渲染跳过普通 TAP 与 Touch 星型层，保留 Break 星型层、其余非星型层和独立烟花；HOLD/TOUCH HOLD 持续圈统一为 Each 金色 `#fff55d`，保持 10 次/秒、0.3 秒粒子 |
 | Slide 判定文字 | 不区分模式使用六种方向 `just_*_p.png`，显示 JUST PERFECT；区分模式使用不带 `_p` 的 CRITICAL PERFECT 及 Break 闪烁贴图，隐藏模式不绘制 |
 | 判定点与判定线 | 按 S3 `outline.png` 的 6 px 线宽、约 29 px 点径及 100 PPU 绘制；落点复用 `buttonPoint`，圆环半径由落点取得 |
 | 判定区 | 原始 `assets/maimai-chart-preview/sensor.webp`，2048×2048；图案中心为 (1025.5, 997)，197 PPU，八个 E 区中心对齐 `touchPoint` 的 3.1 半径；再叠加同一判定线和判定点 |

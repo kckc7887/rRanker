@@ -441,7 +441,8 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   Simai `resolveStarSkin(path, pink)` 由 `buildFrame` 的统一命令入口调用，只替换普通
   `star.png` / `star_double.png`；`SKIN_DISPLAY_SIZE` 保留粉色资源的原显示占位和 EX 对齐。
   `EACH_COLOR` 同时供 Each 着色与全部 HOLD 持续圈使用；Slide 的 JUST 资源选择和
-  打击星型图层过滤留在 Simai 引擎。图片/视频共用 `MainRenderer` 的居中圆形背景绘制，
+  打击星型图层过滤留在 Simai 引擎：普通 TAP 与 Touch 跳过星型层，Break 绘制 `Star_Perfect`。
+  图片/视频共用 `MainRenderer` 的居中圆形背景绘制，
   不扩展共享设置协议。`maimai-chart-preview-visual-settings.test.ts` 覆盖这些渲染合同。
   本地原始 `sensor.webp` 以 `moduleId` 复用共享暂存清单，并由既有 writer 注入同一
   `skin-data.js`；判定区的中心/缩放校准留在 Simai `skinSemantics.ts`，判定点复用
