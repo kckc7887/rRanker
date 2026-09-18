@@ -347,7 +347,7 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 
 ## WebView 与文件型功能
 
-- 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。壳把 native `prepare` 映射到进度条 0～0.9，WebView 解码占 0.9～1，桥接 `ready` 后撤遮罩。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（大小匹配则跳过下载），再写入 session。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成；预览曲写入 `music-data.js`，皮肤编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读本地 PNG 或音频。这些文件随共享缓存一并统计和清理。
+- 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。壳把 native `prepare` 映射到进度条 0～0.9，WebView 解码占 0.9～1，桥接 `ready` 后撤遮罩。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（已有非空文件则跳过下载，`bytes` 只作进度权重），再写入 session。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成；预览曲写入 `music-data.js`，皮肤编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读本地 PNG 或音频。这些文件随共享缓存一并统计和清理。
 - 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。`useChartPackageDownload.start` 可接收 `optionalVideoUrl`，将视频可用性检查、选择与下载放在同一重复点击锁、超时与取消生命周期中；后台、卸载和取消后的迟到结果不能再弹窗或启动下载。
 - Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，自定义 `read` 走 `downloadChartResource` 字节进度，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira zip 同样经 `downloadChartResource` 计入进度后再解包。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
@@ -377,11 +377,11 @@ SV 为零、负值和非单调时继续做完整可见性判断。RPE 原地稳�
 及内部顺序，不调整音频时钟、帧率、判定或特效。
 
 皮肤清单保存 SHA-256、尺寸与透明边界；缓存文件名包含资源修订，正解音文件名包含
-内容哈希。仍由共享计划执行器按大小检查缓存及落盘，通过 `skin-data.js` 注入 PNG。
+内容哈希。共享计划执行器按已有非空缓存跳过下载，`bytes` 只作进度权重，通过 `skin-data.js` 注入 PNG。
 `skinSemantics.ts` 解释语义名、S3 别名、默认 100 PPU、显示尺寸覆盖、中心锚点及切片/朝向；缺少必需贴图
-或尺寸不匹配时阻止播放。线上对象不因命名修正而变化。
-粉色开关经同一帧命令入口替换普通单星和双星，使用 S3 原始粉色贴图；1254 像素单星
-按原单星显示尺寸绘制。Each、Break、Mine 与 EX 专用贴图不参与替换。
+时阻止播放。线上对象不因命名修正而变化。
+粉色开关经同一帧命令入口替换普通单星和双星，使用 S3 原始粉色贴图；`SKIN_DISPLAY_SIZE`
+保留原单双星显示占位和 EX 对齐。Each、Break、Mine 与 EX 专用贴图不参与替换。
 图片缓存和视频共用等比完整容纳、居中和圆形裁剪的背景入口；圆直径等于方形画布边长，
 背景底色为纯黑，保留 45% 暗化；背景遮罩不裁剪音符和判定层，画布尺寸变化使图片缓存失效。
 打击特效跳过普通 TAP 与 Touch 的星型贴图，保留 Break 星型层、其余非星型图层及独立烟花；HOLD/TOUCH HOLD 持续粒子使用

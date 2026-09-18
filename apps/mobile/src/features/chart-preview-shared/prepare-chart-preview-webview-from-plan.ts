@@ -6,7 +6,7 @@
  * 生成并写入 index.html」，落盘文件集合与返回值由清单决定，不感知具体游戏。
  * 落盘与资产解析复用本目录 chart-preview-assets 公共层，不重复实现。
  * 资产来源用判别联合表达：moduleId 为本地 bundle 资产（每次覆盖落盘），
- * url + bytes 为对象存储远程资产（已缓存且大小匹配时跳过下载）。
+ * url + bytes 为对象存储远程资产（bytes 只作进度权重；已有非空缓存则跳过下载）。
  * 远程资产有限并发下载；若提供 remoteCacheDirectory，先写入该目录再复制字节到本次 session。
  * 可选 onProgress 按远程字节权重报告下载，writer 与 HTML 占末段，避免下载结束仍卡住。
  */
@@ -93,7 +93,7 @@ async function downloadRemoteAsset(
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const assertCurrent = captureResourceWrites('shared');
   const target = new File(directory, fileName);
-  if (target.exists && target.size === bytes) {
+  if (target.exists && target.size > 0) {
     onFraction?.(1);
     return target;
   }
@@ -106,7 +106,6 @@ async function downloadRemoteAsset(
     });
     if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
     assertCurrent();
-    if (part.size !== bytes) throw new Error('远程资产大小不匹配：' + fileName);
     if (target.exists) target.delete();
     part.move(target);
     published = true;
@@ -129,7 +128,7 @@ async function stageRemoteAsset(
   ensureParentDirectory(sourceDirectory, fileName);
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const source = cacheDirectory
-    ? await remoteLoads.share(JSON.stringify([sourceDirectory.uri, fileName, url, bytes, resourceWriteGeneration('shared')]),
+    ? await remoteLoads.share(JSON.stringify([sourceDirectory.uri, fileName, url, resourceWriteGeneration('shared')]),
       sharedSignal => { assertGeneration(); return downloadRemoteAsset(url, bytes, sourceDirectory, fileName, sharedSignal, onFraction); }, signal)
     : await downloadRemoteAsset(url, bytes, sourceDirectory, fileName, signal, onFraction);
   onFraction?.(1);

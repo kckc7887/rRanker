@@ -125,7 +125,7 @@ describe('chart preview plan executor remote assets', () => {
     mockFs.readAssetTexts.set(1, '<html>');
   });
 
-  it('downloads remote staged assets once and skips when cached size matches', async () => {
+  it('downloads remote staged assets once and skips when a non-empty cache file exists', async () => {
     mockFs.remotes.set(SKIN_URL, SKIN_BYTES);
 
     await runPlan({ stagedAssets: [{ fileName: 'skin/Tap2.png', url: SKIN_URL, bytes: SKIN_BYTES.byteLength }] });
@@ -138,20 +138,23 @@ describe('chart preview plan executor remote assets', () => {
     expect(mockFs.downloadCalls).toEqual([SKIN_URL]);
   });
 
-  it('redownloads when cached size mismatches and throws on bad remote size', async () => {
+  it('skips a non-empty cache even when the byte estimate differs', async () => {
     mockFs.remotes.set(SKIN_URL, SKIN_BYTES);
     await runPlan({ stagedAssets: [{ fileName: 'skin/Tap2.png', url: SKIN_URL, bytes: SKIN_BYTES.byteLength }] });
     mockFs.files.set(stageUri('skin/Tap2.png'), Uint8Array.from([1]));
 
     await runPlan({ stagedAssets: [{ fileName: 'skin/Tap2.png', url: SKIN_URL, bytes: SKIN_BYTES.byteLength }] });
-    expect(mockFs.downloadCalls).toEqual([SKIN_URL, SKIN_URL]);
-    expect(mockFs.files.get(stageUri('skin/Tap2.png'))).toEqual(SKIN_BYTES);
+    expect(mockFs.downloadCalls).toEqual([SKIN_URL]);
+    expect(mockFs.files.get(stageUri('skin/Tap2.png'))).toEqual(Uint8Array.from([1]));
+  });
 
+  it('accepts a remote file when the byte estimate is wrong', async () => {
     const badUrl = `${SKIN_URL}?bad`;
     mockFs.remotes.set(badUrl, SKIN_BYTES);
-    await expect(runPlan({
+    await runPlan({
       stagedAssets: [{ fileName: 'skin/Bad.png', url: badUrl, bytes: SKIN_BYTES.byteLength + 1 }],
-    })).rejects.toThrow('远程资产大小不匹配');
+    });
+    expect(mockFs.files.get(stageUri('skin/Bad.png'))).toEqual(SKIN_BYTES);
     expect(mockFs.files.has(stageUri('skin/Bad.png.part'))).toBe(false);
   });
 
