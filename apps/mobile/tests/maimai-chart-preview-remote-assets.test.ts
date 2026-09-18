@@ -154,7 +154,7 @@ describe('maimai chart preview remote assets', () => {
     expect(MAIMAI_CHART_PREVIEW_SKIN_ASSETS.some((asset) => asset.path === 'sensor.webp')).toBe(false);
   });
 
-  it('stages skin relative paths and skips download when cached size matches', async () => {
+  it('stages skin relative paths and skips download when a cached file exists', async () => {
     mockFs.remotes.set(TAP.url, TAP_BYTES);
 
     await runPlan({ stagedAssets: [{ fileName: TAP.path, url: TAP.url, bytes: TAP.bytes }] });
@@ -162,8 +162,14 @@ describe('maimai chart preview remote assets', () => {
     expect(mockFs.downloadCalls).toEqual([TAP.url]);
     expect(mockFs.files.get(stageUri('TapSkins/tap.png'))?.byteLength).toBe(TAP.bytes);
 
-    await runPlan({ stagedAssets: [{ fileName: TAP.path, url: TAP.url, bytes: TAP.bytes }] });
+    await runPlan({ stagedAssets: [{ fileName: TAP.path, url: TAP.url, bytes: TAP.bytes + 1 }] });
     expect(mockFs.downloadCalls).toEqual([TAP.url]);
+  });
+
+  it('accepts a remote skin when the byte estimate is wrong', async () => {
+    mockFs.remotes.set(TAP.url, TAP_BYTES);
+    await runPlan({ stagedAssets: [{ fileName: TAP.path, url: TAP.url, bytes: TAP.bytes + 1 }] });
+    expect(mockFs.files.get(stageUri('TapSkins/tap.png'))?.byteLength).toBe(TAP.bytes);
   });
 
   it('stages outline.png beside player.js and feeds remote answer.wav as a data URL', async () => {
