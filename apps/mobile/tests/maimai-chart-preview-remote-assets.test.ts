@@ -85,10 +85,19 @@ vi.mock('expo-file-system', () => {
 });
 
 vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({
-  downloadChartResource: async (directory: unknown, fileName: string, url: string, signal?: AbortSignal) => {
+  downloadChartResource: async (
+    directory: unknown,
+    fileName: string,
+    url: string,
+    signal?: AbortSignal,
+    onProgress?: (progress: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => void,
+  ) => {
     signal?.throwIfAborted();
     const { File } = await import('expo-file-system');
-    return File.downloadFileAsync(url, new File(directory as never, fileName));
+    onProgress?.({ totalBytesWritten: 0, totalBytesExpectedToWrite: 100 });
+    const file = await File.downloadFileAsync(url, new File(directory as never, fileName));
+    onProgress?.({ totalBytesWritten: 100, totalBytesExpectedToWrite: 100 });
+    return file;
   },
 }));
 
@@ -114,14 +123,17 @@ function stageUri(fileName: string): string {
   return `file://cache/rranker-test/${fileName}`;
 }
 
-async function runPlan(overrides: Partial<Parameters<typeof prepareChartPreviewWebviewFromPlan>[0]> = {}) {
+async function runPlan(
+  overrides: Partial<Parameters<typeof prepareChartPreviewWebviewFromPlan>[0]> = {},
+  onProgress?: Parameters<typeof prepareChartPreviewWebviewFromPlan>[2],
+) {
   return prepareChartPreviewWebviewFromPlan({
     directoryName: 'rranker-test',
     stagedAssets: [],
     htmlModuleId: 1,
     buildHtml: (template, dataUrls) => `html(${template},${JSON.stringify(dataUrls)})`,
     ...overrides,
-  });
+  }, undefined, onProgress);
 }
 
 describe('maimai chart preview remote assets', () => {
@@ -196,6 +208,10 @@ describe('maimai chart preview remote assets', () => {
     expect(prepare).toContain('maimaiChartPreviewSkinStagePath');
     expect(prepare).toContain('maimaiChartPreviewSkinDataScript');
     expect(prepare).toContain('MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE');
+    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_MUSIC_DATA_FILE');
+    expect(prepare).toContain('__CHART_PREVIEW_MUSIC_DATA__');
+    expect(prepare).toContain('downloadChartResource');
+    expect(prepare).toContain('simaiText');
     expect(prepare).toContain('MAIMAI_CHART_PREVIEW_ANSWER_SOUND');
     expect(prepare).toContain('remoteCacheDirectory');
   });
@@ -254,5 +270,25 @@ describe('maimai chart preview remote assets', () => {
   it('encodes skins as a data-url script for file:// playback', () => {
     expect(maimaiChartPreviewSkinDataScript({ 'TapSkins/tap.png': 'data:image/png;base64,abc' }))
       .toBe('window.__MAIMAI_CHART_PREVIEW_SKINS__={"TapSkins/tap.png":"data:image/png;base64,abc"};');
+  });
+
+  it('reports monotonic remote download then player progress', async () => {
+    mockFs.remotes.set(TAP.url, TAP_BYTES);
+    const values: number[] = [];
+    const labels: string[] = [];
+    await runPlan(
+      { stagedAssets: [{ fileName: TAP.path, url: TAP.url, bytes: TAP.bytes }] },
+      (progress) => {
+        values.push(progress.value);
+        labels.push(progress.label);
+      },
+    );
+    expect(values.length).toBeGreaterThan(1);
+    for (let index = 1; index < values.length; index += 1) {
+      expect(values[index]!).toBeGreaterThanOrEqual(values[index - 1]!);
+    }
+    expect(values[values.length - 1]).toBe(1);
+    expect(labels).toContain('正在加载资源…');
+    expect(labels).toContain('正在准备播放器…');
   });
 });

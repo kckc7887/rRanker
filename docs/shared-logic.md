@@ -360,7 +360,7 @@ URL、请求头和 cacheKey 的稳定身份，等价 source 对象不会重置�
 
 | 功能族 | 公共入口 | 游戏侧职责 | 主要验证 |
 |---|---|---|---|
-| 谱面确认 | `src/features/chart-preview-shared/`：`ChartPreviewScreenShell`、资源暂存、URI 解析、桥接、注入工厂、计划执行器、播放时钟与全屏锁。`prepareChartPreviewWebviewFromPlan` 按清单落盘；`fileName` 支持 `skin/Tap2.png` 相对路径；远程 `url+bytes` 有限并发下载，可选 `remoteCacheDirectory` 先按大小跳过下载再写入本次 session | 提供图表解析、资源清单、HTML/脚本配置和场景文案。舞萌皮肤 PNG 缓存到 `rranker-chart-preview-remote` 后由 writer 写成 `skin-data.js` data URL（对齐 Phigros `music-data.js`）；Phigros 皮肤仍用 `./skin/` 相对路径 | `chart-preview-screen-shell-contract.test.tsx` 及各游戏预览测试 |
+| 谱面确认 | `src/features/chart-preview-shared/`：`ChartPreviewScreenShell`、`ChartPreviewLoadProgress`、资源暂存、URI 解析、桥接（含 `progress`）、注入工厂、计划执行器、播放时钟与全屏锁。壳用一条进度条覆盖 native `prepare` 与播放器就绪，`ready` 后撤遮罩。`prepare(signal, settings, onProgress?)` 与 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)` 按字节权重报告下载，writer/HTML 占落盘末段；`fileName` 支持相对路径，远程 `url+bytes` 有限并发，可选 `remoteCacheDirectory` 按大小跳过下载 | 提供图表解析、资源清单、HTML/脚本配置和场景文案。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成，预览曲写入 `music-data.js`；皮肤 PNG 缓存到 `rranker-chart-preview-remote` 后由 writer 写成 `skin-data.js` data URL。Phigros 皮肤仍用 `./skin/` 相对路径；Phigros 三类资源与 Phira zip 同样走 `downloadChartResource` 进度 | `chart-preview-screen-shell-contract.test.tsx`、`chart-preview-progress.test.ts` 及各游戏预览测试 |
 | 谱面下载 | `src/features/chart-download-shared/`：下载会话目录、取消错误、命名、保存与 `useChartPackageDownload` | 组装具体资源、压缩包结构和成功文案 | `chart-package-download-lifecycle.test.tsx` 及各游戏下载测试 |
 | 成绩图 | `src/features/best-image/`：桥接、状态机、偏好、资源加载、HTML 运行时、选择器、控制器、屏幕壳和导出 | 构建游戏卡片/HTML、素材清单、样式选项和分区语义 | `best-image-screen-contract.test.tsx`、HTML 金样和游戏成绩图测试 |
 | 存储管理 | `src/features/storage-management/`：缓存策略、文件边界、游戏适配器、统计、清理、维护和图标字体恢复 | 在注册适配器中声明本游戏查询键、资源和清理动作 | `storage-management.test.ts`、`storage-cache-policy.test.ts` |
@@ -394,10 +394,12 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 选择期间复用 `ChartPreviewScreenShell` 的 waiting 状态，公共渲染层不增加游戏分支。
 卸载与后台撤销弹窗及请求；交互由 `phigros-chart-variant-selection.test.tsx` 覆盖。
 预览将已验证的谱面文本、音乐 Base64 和曲绘 data URL 交给既有配置与暂存计划；
-下载通过可选 `read(asset, index)` 接入 `downloadChartResource` 的原生文件、取消和进度，
-返回字节通过校验后才进入 ZIP。共享预览/下载核心不识别 Phigros 修订或音符。
-相关合同包括 `phigros-chart-preview-resources.test.ts`、`phigros-chart-preview-screen.test.tsx`、
-`phira-compatible-chart-download.test.ts` 和 `chart-preview-screen-shell-contract.test.tsx`。
+预览自定义 `read(asset, index)` 与兼容包下载都接入 `downloadChartResource` 的原生文件、取消和进度，
+读完仍走 `verifyPhigrosResource`。Phira 预览 zip 经注入的 `downloadChart`（同一下载入口）再解包；
+未注入时回退 `phiraProvider.downloadChart`，供 live 演示。共享预览/下载核心不识别 Phigros 修订或音符。
+相关合同包括 `phigros-chart-preview-resources.test.ts`、`phigros-chart-preview-input.test.ts`、
+`phigros-chart-preview-screen.test.tsx`、`phira-compatible-chart-download.test.ts` 和
+`chart-preview-screen-shell-contract.test.tsx`。
 
 ## 跨层硬约束
 
@@ -413,7 +415,7 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 - 舞萌数值字典与 PNG IDAT 压缩仅属于构建时数据表示；`SLIDE_TABLE`、`AREA_LOOKUP`
   的运行时类型和值保持完整。特效 `sourceSha256` 标识原始输入，`sha256` 标识生成内容，
   两者不得混用。`maimai-generated-data.test.ts` 校验数据与像素，加载仍经现有播放器
-  及 `prepareChartPreviewWebviewFromPlan(plan, signal?)`，不增加网络资源或缓存执行器。
+  及 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)`，不增加网络资源或缓存执行器。
 
 ### 用户文案与错误
 
@@ -432,8 +434,8 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 
 - 舞萌与 Majdata 播放器复用 `chart-preview-shared/webview-player/playbackClock.ts` 的 `PlaybackClock`。
   `configuration.ts` 集中定义 `ChartPreviewInjectConfig` 和设置类型，注入模块保留兼容导出；
-  `createChartPreviewInjectors<TConfig>(spec)` 负责序列化入口，转义脚本边界并原样保留 `$`，`prepareChartPreviewWebviewFromPlan(plan, signal?)`
-  负责资源暂存和清理。舞萌通过计划中的 `fileName` 加入皮肤修订/正解音哈希，复用共享
+  `createChartPreviewInjectors<TConfig>(spec)` 负责序列化入口，转义脚本边界并原样保留 `$`，`prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)`
+  负责资源暂存、清理和落盘进度。舞萌通过计划中的 `fileName` 加入皮肤修订/正解音哈希，复用共享
   `remoteCacheDirectory` 的大小校验，不另建缓存执行器或清理范围。
   `skin-data.js` 的键仍为原始 S3 对象路径，语义别名仅在 Simai `skinSemantics.ts` 解释。
   Simai `resolveStarSkin(path, pink)` 由 `buildFrame` 的统一命令入口调用，只替换普通
@@ -455,8 +457,8 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   `npm run typecheck` 包含 `typecheck:maimai-player` 和 `typecheck:phigros-player`，完整检查两类播放器入口和引擎。
   修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的
   `player.bundle` 一致，并完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
-  `maimai-chart-preview-webview.test.ts`、`maimai-chart-preview-remote-assets.test.ts` 和
-  `maimai-chart-preview-reference.test.ts`；浏览器检查不能代替 iOS/Android WebView 验收。
+  `maimai-chart-preview-webview.test.ts`、`maimai-chart-preview-remote-assets.test.ts`、
+  `chart-preview-progress.test.ts` 和 `maimai-chart-preview-reference.test.ts`；浏览器检查不能代替 iOS/Android WebView 验收。
 
 - 成绩图预览只挂载当前页 WebView，其余页使用轻量占位；不得让多份大 HTML 常驻。
 - 谱面确认和下载任务必须响应卸载、后台与 AbortSignal，不得在取消后继续写缓存或显示成功。

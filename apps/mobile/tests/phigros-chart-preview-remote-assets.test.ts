@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 
@@ -32,6 +34,11 @@ vi.mock('expo-file-system', () => {
     get exists() { return mockFs.files.has(this.uri); }
     get size() { return mockFs.files.get(this.uri)?.byteLength ?? 0; }
     async base64() { return `b64:${this.uri}`; }
+    async bytes() {
+      const bytes = mockFs.files.get(this.uri);
+      if (!bytes) throw new Error('source does not exist');
+      return Uint8Array.from(bytes);
+    }
     create() { mockFs.files.set(this.uri, new Uint8Array()); }
     write(content: string | Uint8Array) {
       mockFs.files.set(this.uri, typeof content === 'string' ? Uint8Array.from(Buffer.from(content)) : Uint8Array.from(content));
@@ -58,10 +65,19 @@ vi.mock('expo-file-system', () => {
 });
 
 vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({
-  downloadChartResource: async (directory: unknown, fileName: string, url: string, signal?: AbortSignal) => {
+  downloadChartResource: async (
+    directory: unknown,
+    fileName: string,
+    url: string,
+    signal?: AbortSignal,
+    onProgress?: (progress: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => void,
+  ) => {
     signal?.throwIfAborted();
     const { File } = await import('expo-file-system');
-    return File.downloadFileAsync(url, new File(directory as never, fileName));
+    onProgress?.({ totalBytesWritten: 0, totalBytesExpectedToWrite: 100 });
+    const file = await File.downloadFileAsync(url, new File(directory as never, fileName));
+    onProgress?.({ totalBytesWritten: 100, totalBytesExpectedToWrite: 100 });
+    return file;
   },
 }));
 
@@ -86,14 +102,17 @@ function stageUri(fileName: string): string {
   return `file://cache/rranker-test/${fileName}`;
 }
 
-async function runPlan(overrides: Partial<Parameters<typeof prepareChartPreviewWebviewFromPlan>[0]> = {}) {
+async function runPlan(
+  overrides: Partial<Parameters<typeof prepareChartPreviewWebviewFromPlan>[0]> = {},
+  onProgress?: Parameters<typeof prepareChartPreviewWebviewFromPlan>[2],
+) {
   return prepareChartPreviewWebviewFromPlan({
     directoryName: 'rranker-test',
     stagedAssets: [],
     htmlModuleId: 1,
     buildHtml: (template, dataUrls) => `html(${template},${JSON.stringify(dataUrls)})`,
     ...overrides,
-  });
+  }, undefined, onProgress);
 }
 
 describe('chart preview plan executor remote assets', () => {
@@ -165,5 +184,32 @@ describe('chart preview plan executor remote assets', () => {
     expect(mockFs.downloadCalls).toEqual([SOUND_URL]);
     expect(mockFs.files.get(stageUri('hit-sounds/click.wav'))).toEqual(SOUND_BYTES);
     expect(seen.click).toBe(`data:audio/wav;base64,b64:${stageUri('hit-sounds/click.wav')}`);
+  });
+
+  it('reports monotonic remote download then player progress', async () => {
+    mockFs.remotes.set(SKIN_URL, SKIN_BYTES);
+    const values: number[] = [];
+    await runPlan(
+      { stagedAssets: [{ fileName: 'skin/Tap2.png', url: SKIN_URL, bytes: SKIN_BYTES.byteLength }] },
+      (progress) => values.push(progress.value),
+    );
+    expect(values.length).toBeGreaterThan(1);
+    for (let index = 1; index < values.length; index += 1) {
+      expect(values[index]!).toBeGreaterThanOrEqual(values[index - 1]!);
+    }
+    expect(values[values.length - 1]).toBe(1);
+  });
+
+  it('Phigros/Phira prepare 用 downloadChartResource 报告谱面、音乐与 zip 进度', () => {
+    const prepare = readFileSync(
+      resolve(process.cwd(), 'src/features/phigros-chart-preview/prepare-phigros-chart-preview-webview.ts'),
+      'utf8',
+    );
+    expect(prepare).toContain('export function createPhigrosPreviewResourceRead');
+    expect(prepare).toContain('export async function downloadPhiraChartPreviewZip');
+    expect(prepare).toContain('downloadChartResource');
+    expect(prepare).toContain('weightedChartPreviewProgress');
+    expect(prepare).toContain("'preview-chart.zip'");
+    expect(prepare).toContain('CHART_PREVIEW_RESOURCE_LABEL');
   });
 });

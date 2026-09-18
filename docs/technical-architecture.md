@@ -347,17 +347,18 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 
 ## WebView 与文件型功能
 
-- 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（大小匹配则跳过下载），再写入 session。舞萌皮肤在 session 内编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读 PNG；该文件随共享缓存一并统计和清理。
+- 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。壳把 native `prepare` 映射到进度条 0～0.9，WebView 解码占 0.9～1，桥接 `ready` 后撤遮罩。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（大小匹配则跳过下载），再写入 session。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成；预览曲写入 `music-data.js`，皮肤编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读本地 PNG 或音频。这些文件随共享缓存一并统计和清理。
 - 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。`useChartPackageDownload.start` 可接收 `optionalVideoUrl`，将视频可用性检查、选择与下载放在同一重复点击锁、超时与取消生命周期中；后台、卸载和取消后的迟到结果不能再弹窗或启动下载。
-- Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
+- Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，自定义 `read` 走 `downloadChartResource` 字节进度，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira zip 同样经 `downloadChartResource` 计入进度后再解包。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
 ### Simai 谱面确认内核
 
 `features/simai-chart-preview/configuration.ts` 是注入层与播放器的配置类型来源。
-`chart-preview-inject.ts` 保留原导出，设置存储、页面桥接和 LXNS 谱面/音乐入口继续使用
-既有公共链路；普通难度和 Buddy `inote_2` / `inote_102` 使用同一解析器。
+`chart-preview-inject.ts` 保留原导出，设置存储与页面桥接继续使用既有公共链路；
+LXNS 与 Majdata 只提供谱面/音乐 URL，下载在 RN `prepare` 完成后再注入播放器。
+普通难度和 Buddy `inote_2` / `inote_102` 使用同一解析器。
 
 舞萌与 Majdata 的 Simai 语义集中在 `features/simai-chart-preview/engine/`：`SimaiParser` 输出带来源位置、实际时间、HS/SV、
 Each 分组和分支/分段的音符模型；`prepareChart` 预计算路径与判定事件；`buildFrame`
