@@ -6,8 +6,9 @@
  * 生成并写入 index.html」，落盘文件集合与返回值由清单决定，不感知具体游戏。
  * 落盘与资产解析复用本目录 chart-preview-assets 公共层，不重复实现。
  * 资产来源用判别联合表达：moduleId 为本地 bundle 资产（每次覆盖落盘），
- * url + bytes 为对象存储远程资产（已缓存且大小匹配时跳过下载）。
+ * url + bytes 为对象存储远程资产（bytes 只作进度权重；已有非空缓存则跳过下载）。
  * 远程资产有限并发下载；若提供 remoteCacheDirectory，先写入该目录再复制字节到本次 session。
+ * 可选 onProgress 按远程字节权重报告下载，writer 与 HTML 占末段，避免下载结束仍卡住。
  */
 
 import { Directory, File } from 'expo-file-system';
@@ -21,6 +22,14 @@ import {
   readAssetText,
   stageAsset,
 } from './chart-preview-assets';
+import {
+  CHART_PREVIEW_PLAYER_LABEL,
+  CHART_PREVIEW_RESOURCE_LABEL,
+  chartPreviewDownloadFraction,
+  createChartPreviewProgressReporter,
+  weightedChartPreviewProgress,
+  type ChartPreviewLoadProgress,
+} from './chart-preview-progress';
 
 export type ChartPreviewStagedAsset =
   | { fileName: string; moduleId: number }
@@ -56,26 +65,51 @@ export type ChartPreviewWebviewPlanResult = {
 };
 
 const REMOTE_STAGE_CONCURRENCY = 4;
+const DOWNLOAD_END = 0.85;
 
 const remoteLoads = createInflightGuard<string>();
 let partSequence = 0;
 
-async function downloadRemoteAsset(url: string, bytes: number, directory: Directory, fileName: string, signal?: AbortSignal): Promise<File> {
+function isRemoteAsset(asset: ChartPreviewStagedAsset | ChartPreviewDataUrlAsset): asset is { fileName: string; url: string; bytes: number } {
+  return 'url' in asset && 'bytes' in asset;
+}
+
+function remoteKey(asset: { fileName: string; url: string }): string {
+  return `${asset.url}\0${asset.fileName}`;
+}
+
+function remoteWeight(asset: { bytes: number }): number {
+  return asset.bytes > 0 ? asset.bytes : 1;
+}
+
+async function downloadRemoteAsset(
+  url: string,
+  bytes: number,
+  directory: Directory,
+  fileName: string,
+  signal?: AbortSignal,
+  onFraction?: (fraction: number) => void,
+): Promise<File> {
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const assertCurrent = captureResourceWrites('shared');
   const target = new File(directory, fileName);
-  if (target.exists && target.size === bytes) return target;
+  if (target.exists && target.size > 0) {
+    onFraction?.(1);
+    return target;
+  }
   const partName = fileName + '.' + (++partSequence) + '.part';
   const part = new File(directory, partName);
   let published = false;
   try {
-    await downloadChartResource(directory, partName, url, signal);
+    await downloadChartResource(directory, partName, url, signal, ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+      onFraction?.(chartPreviewDownloadFraction(totalBytesWritten, totalBytesExpectedToWrite, bytes));
+    });
     if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
     assertCurrent();
-    if (part.size !== bytes) throw new Error('远程资产大小不匹配：' + fileName);
     if (target.exists) target.delete();
     part.move(target);
     published = true;
+    onFraction?.(1);
     return target;
   } finally { if (!published && part.exists) part.delete(); }
 }
@@ -87,15 +121,17 @@ async function stageRemoteAsset(
   fileName: string,
   cacheDirectory?: Directory,
   signal?: AbortSignal,
+  onFraction?: (fraction: number) => void,
 ): Promise<File> {
   const assertGeneration = captureResourceWrites('shared');
   const sourceDirectory = cacheDirectory ?? sessionDirectory;
   ensureParentDirectory(sourceDirectory, fileName);
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const source = cacheDirectory
-    ? await remoteLoads.share(JSON.stringify([sourceDirectory.uri, fileName, url, bytes, resourceWriteGeneration('shared')]),
-      sharedSignal => { assertGeneration(); return downloadRemoteAsset(url, bytes, sourceDirectory, fileName, sharedSignal); }, signal)
-    : await downloadRemoteAsset(url, bytes, sourceDirectory, fileName, signal);
+    ? await remoteLoads.share(JSON.stringify([sourceDirectory.uri, fileName, url, resourceWriteGeneration('shared')]),
+      sharedSignal => { assertGeneration(); return downloadRemoteAsset(url, bytes, sourceDirectory, fileName, sharedSignal, onFraction); }, signal)
+    : await downloadRemoteAsset(url, bytes, sourceDirectory, fileName, signal, onFraction);
+  onFraction?.(1);
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   if (!cacheDirectory) return source;
 
@@ -124,10 +160,29 @@ function ensureParentDirectory(directory: Directory, fileName: string): void {
 export async function prepareChartPreviewWebviewFromPlan(
   plan: ChartPreviewWebviewPlan,
   signal?: AbortSignal,
+  onProgress?: (progress: ChartPreviewLoadProgress) => void,
 ): Promise<ChartPreviewWebviewPlanResult> {
   const assertCurrent = captureResourceWrites('shared', signal);
   assertCurrent();
   const directory = plan.directory ?? createChartPreviewSessionDirectory(plan.directoryName);
+  const remotes = [...plan.stagedAssets, ...(plan.dataUrlAssets ?? [])].filter(isRemoteAsset);
+  const fractions = new Map(remotes.map((asset) => [remoteKey(asset), 0]));
+  const downloadEnd = remotes.length > 0 ? DOWNLOAD_END : 0;
+  const report = createChartPreviewProgressReporter(onProgress);
+  const emitDownload = () => {
+    if (remotes.length === 0) return;
+    report(CHART_PREVIEW_RESOURCE_LABEL, weightedChartPreviewProgress(
+      remotes.map((asset) => ({
+        weight: remoteWeight(asset),
+        fraction: fractions.get(remoteKey(asset)) ?? 0,
+      })),
+    ) * downloadEnd);
+  };
+  const markRemote = (asset: { fileName: string; url: string }, fraction: number) => {
+    const key = remoteKey(asset);
+    fractions.set(key, Math.max(fractions.get(key) ?? 0, fraction));
+    emitDownload();
+  };
 
   try {
     await loadItemsBounded({ items: plan.stagedAssets, concurrency: REMOTE_STAGE_CONCURRENCY,
@@ -144,6 +199,7 @@ export async function prepareChartPreviewWebviewFromPlan(
           asset.fileName,
           plan.remoteCacheDirectory,
           signal,
+          (fraction) => markRemote(asset, fraction),
         );
       }
       assertCurrent();
@@ -163,15 +219,28 @@ export async function prepareChartPreviewWebviewFromPlan(
           asset.fileName,
           plan.remoteCacheDirectory,
           signal,
+          (fraction) => markRemote(asset, fraction),
         );
         dataUrls[asset.key] = `data:audio/wav;base64,${await staged.base64()}`;
       }
     }
 
+    const finishTotal = (plan.writers?.length ?? 0) + 1;
+    let finishDone = 0;
+    const emitFinish = () => {
+      finishDone += 1;
+      report(
+        CHART_PREVIEW_PLAYER_LABEL,
+        downloadEnd + (finishDone / finishTotal) * (1 - downloadEnd),
+      );
+    };
+    report(CHART_PREVIEW_PLAYER_LABEL, downloadEnd > 0 ? downloadEnd : 0.2);
+
     for (const writer of plan.writers ?? []) {
       assertCurrent();
       await writer(directory, signal);
       assertCurrent();
+      emitFinish();
     }
 
     const template = await readAssetText(plan.htmlModuleId);
@@ -180,6 +249,7 @@ export async function prepareChartPreviewWebviewFromPlan(
     const htmlFile = new File(directory, 'index.html');
     htmlFile.create({ overwrite: true });
     htmlFile.write(html);
+    emitFinish();
 
     return {
       uri: htmlFile.uri,

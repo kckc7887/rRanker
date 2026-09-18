@@ -101,4 +101,14 @@ describe('phigros chart preview webview template', () => {
     expect(themeScriptIndex).toBeGreaterThan(configIndex);
     expect(themeScriptIndex).toBeLessThan(playerScriptIndex);
   });
+
+  it('posts progress then paints the first frame before ready', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/phigros-chart-preview/webview-player/main.ts'),
+      'utf8',
+    );
+    expect(source).toContain("postStatus('progress'");
+    expect(source).toContain('setLoadProgress');
+    expect(source.indexOf('renderFrame(0)')).toBeLessThan(source.lastIndexOf("postStatus('ready'"));
+  });
 });

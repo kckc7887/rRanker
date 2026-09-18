@@ -62,6 +62,7 @@ jest.mock('@/theme/app-theme', () => ({
     background: '#ffffff',
     text: '#111111',
     textMuted: '#666666',
+    surfaceMuted: '#21262D',
   }),
 }));
 
@@ -177,7 +178,7 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     expect(phases).toEqual(['start', 'timeout']);
   });
 
-  it('prepare 挂起时渲染加载分支，虚构 WebView 尚未出现', async () => {
+  it('prepare 挂起时渲染加载进度条，虚构 WebView 尚未出现', async () => {
     const pending = new Promise<ChartPreviewShellSource>(() => {});
     const view = await renderFictionalShell({
       kind: 'ready',
@@ -186,8 +187,55 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     });
 
     expect(screen.getByText('正在准备播放器…')).toBeTruthy();
-    expect(countTreeNodesOfType(view.toJSON(), 'ActivityIndicator')).toBe(1);
+    expect(screen.getByText('0%')).toBeTruthy();
+    expect(screen.getByLabelText('正在准备播放器 0%')).toBeTruthy();
+    expect(screen.getByTestId('chart-preview-load-progress')).toBeTruthy();
+    expect(countTreeNodesOfType(view.toJSON(), 'ActivityIndicator')).toBe(0);
     expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+  });
+
+  it('waiting 请求显示 0% 进度条，虚构 WebView 尚未出现', async () => {
+    const view = await renderFictionalShell({ kind: 'waiting' });
+
+    expect(screen.getByText('正在准备播放器…')).toBeTruthy();
+    expect(screen.getByText('0%')).toBeTruthy();
+    expect(screen.getByLabelText('正在准备播放器 0%')).toBeTruthy();
+    expect(screen.getByTestId('chart-preview-load-progress')).toBeTruthy();
+    expect(countTreeNodesOfType(view.toJSON(), 'ActivityIndicator')).toBe(0);
+    expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+  });
+
+  it('prepare 与播放器 progress 推进同一进度条，ready 后遮罩消失', async () => {
+    await renderFictionalShell({
+      kind: 'ready',
+      payload: { chartName: '虚构谱面' },
+      prepare: async (_signal, _settings, onProgress) => {
+        onProgress?.({ label: '正在加载资源…', value: 0.5 });
+        return fictionalSource;
+      },
+    });
+
+    await waitFor(() => expect(screen.getByText('正在加载资源…')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('45%')).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText('正在加载资源 45%')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    expect(screen.getByTestId('chart-preview-load-progress')).toBeTruthy();
+
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({
+        nativeEvent: { data: JSON.stringify({ type: 'progress', label: '正在加载谱面…', value: 0.5 }) },
+      });
+    });
+    await waitFor(() => expect(screen.getByText('正在加载谱面…')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('95%')).toBeTruthy());
+
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({
+        nativeEvent: { data: '{"type":"ready"}' },
+      });
+    });
+    expect(screen.queryByTestId('chart-preview-load-progress')).toBeNull();
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
   });
 
   it('壳显式接管状态栏样式，不被栈内前页的深色沉浸头声明覆盖', async () => {

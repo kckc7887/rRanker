@@ -100,7 +100,7 @@ export class EffectRenderer {
       ctx.scale(curve(node, 'scale.x', node.scale.x), curve(node, 'scale.y', node.scale.y));
     };
     for (const node of [...nodes].filter(n => n.sprite).sort((a, b) => a.order - b.order)) {
-      if (node.sprite === 'Star_Perfect.png' || node.sprite === 'TouchEffectStar_1.png' || node.sprite === 'TouchEffectStar_2.png') continue;
+      if ((name !== 'break' && node.sprite === 'Star_Perfect.png') || node.sprite === 'TouchEffectStar_1.png' || node.sprite === 'TouchEffectStar_2.png') continue;
       if (!active(node) || curve(node, 'm_Enabled', 1) < 0.5) continue;
       ctx.save(); transform(node);
       const alpha = curve(node, node.shader ? 'material._Alpha' : 'm_Color.a', node.color?.a ?? 1);

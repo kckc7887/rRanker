@@ -1,14 +1,14 @@
 /**
  * 谱面确认公共屏幕壳（公共路径）：
  * 承接各游戏谱面确认屏幕的全部共有逻辑——prepare 执行与超时中止、
- * 卸载停播、返回键退出全屏、ready/fullscreen/error/settings 桥接、
+ * 卸载停播、返回键退出全屏、ready/fullscreen/error/settings/progress 桥接、
  * 播放器设置 KV 读写合并、错误/加载分支与 WebView 属性透传。
  * 游戏差异仅通过 props 表达（请求对象、文案、testID、注入策略），
  * 壳不感知具体游戏，不出现游戏 ID / Storage key 字面量分支。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Platform, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
@@ -20,6 +20,14 @@ import {
   parseChartPreviewBridgeMessage,
 } from './chart-preview-bridge';
 import { chartPreviewNativeScreenOptions } from './chart-preview-native-screen-options';
+import {
+  CHART_PREVIEW_PLAYER_LABEL,
+  chartPreviewPrepareProgress,
+  chartPreviewWebViewProgress,
+  clampChartPreviewProgress,
+  mergeChartPreviewProgress,
+  type ChartPreviewLoadProgress,
+} from './chart-preview-progress';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
 import { createRuntimeOperation } from '@/services/runtime-diagnostics-recorder';
@@ -38,7 +46,11 @@ export type ChartPreviewShellRequest<TPayload> =
       kind: 'ready';
       payload: TPayload;
       timeoutMs?: number;
-      prepare: (signal: AbortSignal, settings: unknown) => Promise<ChartPreviewShellSource>;
+      prepare: (
+        signal: AbortSignal,
+        settings: unknown,
+        onProgress?: (progress: ChartPreviewLoadProgress) => void,
+      ) => Promise<ChartPreviewShellSource>;
     };
 
 export type ChartPreviewScreenShellProps<TPayload> = {
@@ -59,6 +71,11 @@ export type ChartPreviewScreenShellProps<TPayload> = {
   ) => void;
 };
 
+const INITIAL_LOAD_PROGRESS: ChartPreviewLoadProgress = {
+  label: CHART_PREVIEW_PLAYER_LABEL,
+  value: 0,
+};
+
 async function loadSettings(settingsKey: string): Promise<Record<string, unknown>> {
   try {
     const raw = await Storage.getItem(settingsKey);
@@ -67,6 +84,41 @@ async function loadSettings(settingsKey: string): Promise<Record<string, unknown
   } catch {
     return {};
   }
+}
+
+function ChartPreviewLoadProgressBar({
+  progress,
+  accent,
+  track,
+  labelColor,
+  valueColor,
+}: {
+  progress: ChartPreviewLoadProgress;
+  accent: string;
+  track: string;
+  labelColor: string;
+  valueColor: string;
+}) {
+  const percent = Math.round(clampChartPreviewProgress(progress.value) * 100);
+  const spokenLabel = progress.label.replace(/…$/u, '');
+  return (
+    <View
+      accessibilityLabel={`${spokenLabel} ${percent}%`}
+      style={styles.progress}
+      testID="chart-preview-load-progress"
+    >
+      <View style={styles.progressHeader}>
+        <Text style={[styles.progressLabel, { color: labelColor }]}>{progress.label}</Text>
+        <Text style={[styles.progressValue, { color: valueColor }]}>{percent}%</Text>
+      </View>
+      <View style={[styles.progressTrack, { backgroundColor: track }]}>
+        <View style={[styles.progressFill, {
+          backgroundColor: accent,
+          width: `${percent}%` as `${number}%`,
+        }]} />
+      </View>
+    </View>
+  );
 }
 
 export function ChartPreviewScreenShell<TPayload>({
@@ -97,6 +149,10 @@ export function ChartPreviewScreenShell<TPayload>({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
   const [heavyContentBlocked, setHeavyContentBlocked] = useState(!lifecycle.foregroundReady);
+  const [loadProgress, setLoadProgress] = useState<ChartPreviewLoadProgress>(INITIAL_LOAD_PROGRESS);
+  const loadProgressRef = useRef(loadProgress);
+  loadProgressRef.current = loadProgress;
+  const progressFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
   const preparationRef = useRef<ReturnType<typeof createRuntimeOperation> | null>(null);
@@ -112,6 +168,29 @@ export function ChartPreviewScreenShell<TPayload>({
   const backgrounded = lifecycle.phase === 'background';
   const heavyContentMounted = !heavyContentBlocked;
   const prepareGeneration = heavyContentMounted ? lifecycle.foregroundGeneration : null;
+
+  const applyLoadProgress = useCallback((next: ChartPreviewLoadProgress) => {
+    const merged = mergeChartPreviewProgress(loadProgressRef.current, next);
+    loadProgressRef.current = merged;
+    if (progressFlushRef.current !== null) return;
+    progressFlushRef.current = setTimeout(() => {
+      progressFlushRef.current = null;
+      setLoadProgress(loadProgressRef.current);
+    }, 50);
+  }, []);
+
+  const commitLoadProgress = useCallback((next?: ChartPreviewLoadProgress) => {
+    if (progressFlushRef.current !== null) {
+      clearTimeout(progressFlushRef.current);
+      progressFlushRef.current = null;
+    }
+    if (next) loadProgressRef.current = mergeChartPreviewProgress(loadProgressRef.current, next);
+    setLoadProgress(loadProgressRef.current);
+  }, []);
+
+  useEffect(() => () => {
+    if (progressFlushRef.current !== null) clearTimeout(progressFlushRef.current);
+  }, []);
 
   useEffect(() => {
     const memoryWarning = lifecycle.memoryWarningGeneration > memoryWarningRef.current;
@@ -168,6 +247,12 @@ export function ChartPreviewScreenShell<TPayload>({
     setIsFullscreen(false);
     setPlayerError(null);
     setStageError(null);
+    if (progressFlushRef.current !== null) {
+      clearTimeout(progressFlushRef.current);
+      progressFlushRef.current = null;
+    }
+    loadProgressRef.current = INITIAL_LOAD_PROGRESS;
+    setLoadProgress(INITIAL_LOAD_PROGRESS);
     settingsRef.current = {};
     const operation = createRuntimeOperation('chart-preview');
     preparationRef.current = operation;
@@ -191,10 +276,15 @@ export function ChartPreviewScreenShell<TPayload>({
       try {
         const settings = await loadSettings(settingsKey);
         settingsRef.current = settings;
-        const prepared = await request.prepare(localController.signal, settings);
+        const prepared = await request.prepare(localController.signal, settings, (progress) => {
+          if (!cancelled) applyLoadProgress(chartPreviewPrepareProgress(progress));
+        });
         preparedSource = prepared;
         if (cancelled) prepared.dispose?.();
-        else setSource(prepared);
+        else {
+          commitLoadProgress();
+          setSource(prepared);
+        }
         finish(cancelled ? 'cancelled' : timedOut ? 'timeout' : 'success');
       } catch (error) {
         finish(cancelled ? 'cancelled' : timedOut ? 'timeout' : 'error', cancelled || timedOut ? undefined : error);
@@ -265,6 +355,15 @@ export function ChartPreviewScreenShell<TPayload>({
   // 播放器 WebView 的深浅色底色（与播放器 HTML 的 --bg 保持一致，避免加载闪色）。
   const webviewBackground = theme.dark ? '#0b0d12' : '#F7F8FA';
   const loadingOverlayBackground = theme.dark ? 'rgba(11,13,18,0.72)' : 'rgba(247,248,250,0.72)';
+  const progressBar = (
+    <ChartPreviewLoadProgressBar
+      accent={theme.accent}
+      labelColor={theme.textMuted}
+      progress={loadProgress}
+      track={theme.surfaceMuted}
+      valueColor={theme.text}
+    />
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
@@ -277,17 +376,14 @@ export function ChartPreviewScreenShell<TPayload>({
           <Text style={[styles.hint, { color: theme.textMuted }]}>{errorHint}</Text>
         </View>
       ) : !source ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={theme.accent} />
-          <Text style={[styles.hint, { color: theme.textMuted }]}>正在准备播放器…</Text>
-        </View>
+        <View style={styles.center}>{progressBar}</View>
       ) : !heavyContentMounted ? (
         <View style={styles.center} />
       ) : (
         <View style={styles.webviewWrap}>
           {!ready ? (
             <View style={[styles.loadingOverlay, { backgroundColor: loadingOverlayBackground }]} pointerEvents="none">
-              <ActivityIndicator color={theme.accent} />
+              {progressBar}
             </View>
           ) : null}
           <WebView
@@ -319,8 +415,15 @@ export function ChartPreviewScreenShell<TPayload>({
             onMessage={(event) => {
               const data = parseChartPreviewBridgeMessage(event.nativeEvent.data);
               if (!data) return;
+              if (data.type === 'progress') {
+                applyLoadProgress(chartPreviewWebViewProgress({
+                  label: typeof data.label === 'string' && data.label ? data.label : CHART_PREVIEW_PLAYER_LABEL,
+                  value: typeof data.value === 'number' ? data.value : 0,
+                }));
+              }
               if (data.type === 'ready') {
                 recordView('ready');
+                commitLoadProgress({ label: CHART_PREVIEW_PLAYER_LABEL, value: 1 });
                 setReady(true);
               }
               if (data.type === 'fullscreen' && typeof data.active === 'boolean') {
@@ -391,5 +494,12 @@ const styles = StyleSheet.create({
     zIndex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    padding: 24,
   },
+  progress: { width: '80%', maxWidth: 320, gap: 7 },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  progressLabel: { flex: 1, fontSize: 13, lineHeight: 18, fontWeight: '700' },
+  progressValue: { fontSize: 13, lineHeight: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  progressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 999 },
 });
