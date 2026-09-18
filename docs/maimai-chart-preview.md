@@ -82,7 +82,7 @@ RIFF/WAVE 头有效。内容修订为 `83a00350faddc68d`。每个对象的 URL�
 | TOUCH HOLD | TouchHoldSkins 族；0/1/2/3 在右上/右下/左下/左上，旋转 135/45/-45/-135 度；边框按持续时间遮罩 |
 | TOUCH HOLD 地雷边框 | 语义 `touchhold_mine_border.png` 映射到现有对象 `TouchHoldSkins/touchhold_break_mine.png`，不修改线上名字 |
 | Each、轨道箭头、WIFI、完成提示 | NoteGuideSkins、SlideSkins、WifiSkins、SlideOKSkins；路径表统一箭头、星星和完成提示；左右完成提示在镜像时换向，文字不作位图反射 |
-| 判定特效 | 八张 ViewX 原始特效 PNG、Prefab 和动画曲线随 bundle 加载；渲染跳过普通、Break、Touch 星型层，保留非星型层和独立烟花；HOLD/TOUCH HOLD 持续圈统一为 Each 金色 `#fff55d`，保持 10 次/秒、0.3 秒粒子 |
+| 判定特效 | 八张 ViewX 原始特效 PNG、Prefab 和动画曲线随 bundle 加载；渲染跳过普通 TAP 与 Touch 星型层，保留 Break 星型层、其余非星型层和独立烟花；HOLD/TOUCH HOLD 持续圈统一为 Each 金色 `#fff55d`，保持 10 次/秒、0.3 秒粒子 |
 | Slide 判定文字 | 不区分模式使用六种方向 `just_*_p.png`，显示 JUST PERFECT；区分模式使用不带 `_p` 的 CRITICAL PERFECT 及 Break 闪烁贴图，隐藏模式不绘制 |
 | 判定点与判定线 | 按 S3 `outline.png` 的 6 px 线宽、约 29 px 点径及 100 PPU 绘制；落点复用 `buttonPoint`，圆环半径由落点取得 |
 | 判定区 | 原始 `assets/maimai-chart-preview/sensor.webp`，2048×2048；图案中心为 (1025.5, 997)，197 PPU，八个 E 区中心对齐 `touchPoint` 的 3.1 半径；再叠加同一判定线和判定点 |
@@ -93,8 +93,8 @@ Each、EX、Break、Mine、左右完成提示和 WIFI 原生弯折形状。只�
 `hold_off.png`、`touchhold_off.png`，其余 153 个 S3 贴图随预览暂存。
 
 缓存继续使用共享计划执行器；文件名为 `skin/修订_扁平对象名`，正解音文件名含内容哈希。
-同大小旧修订不会复用新修订身份。共享执行器仍按文件大小校验；运行时核对图片实际尺寸。
-S3 贴图仍由 `skin-data.js` 注入；缺少必需资源或尺寸错误时阻止播放。
+不同修订不会复用缓存身份。共享执行器按已有非空文件跳过下载，`bytes` 只作进度权重；
+播放器按实际解码尺寸加载。S3 贴图仍由 `skin-data.js` 注入；缺少必需资源时阻止播放。
 审计脚本只对 PNG 解码，正解音单独验证；可追加 S3 对象路径参数以审计新增贴图，
 随后执行 `generate-maimai-skin-manifest.mjs` 生成带真实尺寸、摘要及透明边界的清单。
 本地 `sensor.webp` 同样通过共享计划暂存并注入 `skin-data.js` 的 WebP data URL；
@@ -154,7 +154,7 @@ git diff --check
 的 HOLD/TOUCH HOLD，验证拖动重建、结束排空和特效开关。共享屏幕、资源、注入与
 生命周期合同随完整单元/UI 测试执行；检查结果以当前命令输出和本地运行记录为准。
 
-公共入口保持 `prepareChartPreviewWebviewFromPlan(plan): Promise<ChartPreviewWebviewPlanResult>`，
+公共入口保持 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?): Promise<ChartPreviewWebviewPlanResult>`，
 新增皮肤仍由现有清单、暂存与 writer 注入，不增加缓存执行器或共享游戏分支。
 
 ## 验收边界

@@ -12,11 +12,18 @@ import {
   preparePhigrosChartPreviewWebViewSource,
   stagePhiraChartMusic,
   stagePhiraRpeBundle,
+  createPhigrosPreviewResourceRead,
+  downloadPhiraChartPreviewZip,
 } from '@/features/phigros-chart-preview/prepare-phigros-chart-preview-webview';
 import { usePhiraChart } from '@/hooks/use-phira';
 import type { PhiraChart } from '@/domain/phira';
 import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
+import {
+  CHART_PREVIEW_PLAYER_LABEL,
+  mapChartPreviewProgress,
+  type ChartPreviewLoadProgress,
+} from '@/features/chart-preview-shared/chart-preview-progress';
 import {
   createChartPreviewSessionDirectory,
   disposeChartPreviewSessionDirectory,
@@ -105,20 +112,49 @@ export default function PhigrosChartPreviewScreen() {
       kind: 'ready' as const,
       payload: mapped,
       timeoutMs: mapped.game === 'phigros' ? PHIGROS_PREPARE_TIMEOUT_MS : PHIRA_PREPARE_TIMEOUT_MS,
-      prepare: async (signal: AbortSignal, settings: unknown) => {
+      prepare: async (signal: AbortSignal, settings: unknown, onProgress?: (progress: ChartPreviewLoadProgress) => void) => {
         const directory = createChartPreviewSessionDirectory('rranker-phigros-chart-preview');
+        const resourceEnd = 0.7;
         try {
           const prepared = mapped.game === 'phigros'
-            ? await buildPhigrosChartPreviewInput({ ...mapped, variantIndex: variantSelection?.variantIndex }, settings as PhigrosChartPreviewSettings, signal)
+            ? await buildPhigrosChartPreviewInput(
+              { ...mapped, variantIndex: variantSelection?.variantIndex },
+              settings as PhigrosChartPreviewSettings,
+              signal,
+              createPhigrosPreviewResourceRead(directory, signal, (progress) => {
+                onProgress?.({
+                  label: progress.label,
+                  value: mapChartPreviewProgress(progress.value, 0, resourceEnd),
+                });
+              }),
+            )
             : await buildPhiraChartPreviewInput(mapped, settings as PhigrosChartPreviewSettings, signal, {
+                downloadChart: (url, downloadSignal) => downloadPhiraChartPreviewZip(
+                  directory,
+                  url,
+                  downloadSignal,
+                  (progress) => {
+                    onProgress?.({
+                      label: progress.label,
+                      value: mapChartPreviewProgress(progress.value, 0, resourceEnd),
+                    });
+                  },
+                ),
                 stageMusic: (bytes, fileName) => stagePhiraChartMusic(bytes, fileName, directory, signal),
                 stageRpeBundle: (chartId, files) => stagePhiraRpeBundle(chartId, files, directory, signal),
               });
+          onProgress?.({ label: CHART_PREVIEW_PLAYER_LABEL, value: resourceEnd });
           return await preparePhigrosChartPreviewWebViewSource(
             { ...prepared.config, theme: isDark ? 'dark' : 'light' },
             prepared.musicDataBase64 ?? null,
             directory,
             signal,
+            (progress) => {
+              onProgress?.({
+                label: progress.label,
+                value: mapChartPreviewProgress(progress.value, resourceEnd, 1),
+              });
+            },
           );
         } catch (error) {
           disposeChartPreviewSessionDirectory(directory);

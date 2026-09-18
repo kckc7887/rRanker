@@ -1,6 +1,14 @@
 import { Directory, File } from 'expo-file-system';
 import { Platform } from 'react-native';
+import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
+import type { PhigrosChartPreviewAsset } from '@/domain/phigros-chart-preview';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
+import {
+  CHART_PREVIEW_RESOURCE_LABEL,
+  chartPreviewDownloadFraction,
+  weightedChartPreviewProgress,
+  type ChartPreviewLoadProgress,
+} from '@/features/chart-preview-shared/chart-preview-progress';
 import {
   applyPhigrosChartPreviewConfigToHtml,
   type PhigrosChartPreviewConfig,
@@ -42,6 +50,75 @@ export type PhigrosChartPreviewWebViewSource = {
 };
 
 const STAGE_DIRECTORY_NAME = 'rranker-phigros-chart-preview';
+const PREVIEW_RESOURCE_FILES = ['preview-chart.json', 'preview-music.ogg', 'preview-illustration.bin'] as const;
+
+export function createPhigrosPreviewResourceRead(
+  directory: Directory,
+  signal: AbortSignal,
+  onProgress?: (progress: ChartPreviewLoadProgress) => void,
+): (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array> {
+  const fractions = [0, 0, 0];
+  const weights = [1, 1, 1];
+  const emit = () => {
+    onProgress?.({
+      label: CHART_PREVIEW_RESOURCE_LABEL,
+      value: weightedChartPreviewProgress(
+        fractions.map((fraction, index) => ({
+          weight: weights[index] ?? 1,
+          fraction,
+        })),
+      ),
+    });
+  };
+  return async (asset, index) => {
+    while (fractions.length <= index) {
+      fractions.push(0);
+      weights.push(1);
+    }
+    weights[index] = asset.size > 0 ? asset.size : 1;
+    const fileName = PREVIEW_RESOURCE_FILES[index] ?? `preview-resource-${index}`;
+    const file = await downloadChartResource(
+      directory,
+      fileName,
+      asset.url,
+      signal,
+      ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+        fractions[index] = chartPreviewDownloadFraction(
+          totalBytesWritten,
+          totalBytesExpectedToWrite,
+          asset.size,
+        );
+        emit();
+      },
+    );
+    fractions[index] = 1;
+    emit();
+    return await file.bytes();
+  };
+}
+
+export async function downloadPhiraChartPreviewZip(
+  directory: Directory,
+  url: string,
+  signal: AbortSignal,
+  onProgress?: (progress: ChartPreviewLoadProgress) => void,
+): Promise<ArrayBuffer> {
+  const file = await downloadChartResource(
+    directory,
+    'preview-chart.zip',
+    url,
+    signal,
+    ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+      onProgress?.({
+        label: CHART_PREVIEW_RESOURCE_LABEL,
+        value: chartPreviewDownloadFraction(totalBytesWritten, totalBytesExpectedToWrite),
+      });
+    },
+  );
+  onProgress?.({ label: CHART_PREVIEW_RESOURCE_LABEL, value: 1 });
+  const bytes = await file.bytes();
+  return Uint8Array.from(bytes).buffer;
+}
 
 /**
  * 将 HTML / player.js / 内置皮肤落到缓存目录，打击音以 data URL 注入配置，
@@ -53,6 +130,7 @@ export async function preparePhigrosChartPreviewWebViewSource(
   musicDataBase64: string | null = null,
   directory?: Directory,
   signal?: AbortSignal,
+  onProgress?: (progress: ChartPreviewLoadProgress) => void,
 ): Promise<PhigrosChartPreviewWebViewSource> {
   return prepareChartPreviewWebviewFromPlan({
     directoryName: STAGE_DIRECTORY_NAME,
@@ -79,7 +157,7 @@ export async function preparePhigrosChartPreviewWebViewSource(
       ...config,
       hitSounds: dataUrls,
     }),
-  }, signal);
+  }, signal, onProgress);
 }
 
 /** Phira 谱面音乐落盘到预览 stage 目录，并返回其 base64 供 WebView 解码。 */

@@ -14,6 +14,7 @@ import type { PhiraChart } from '@/domain/phira';
 import {
   loadPhigrosChartPreviewResources,
   phigrosChartPreviewLevelLabel,
+  type PhigrosChartPreviewAsset,
 } from '@/domain/phigros-chart-preview';
 import {
   buildPhiraRpeBundlePlan,
@@ -58,18 +59,20 @@ export type PhiraChartPreviewStaging = {
     chartId: number,
     files: readonly { name: string; bytes: Uint8Array }[],
   ) => Promise<{ basePath: string }>;
+  downloadChart?: (url: string, signal: AbortSignal) => Promise<ArrayBuffer>;
 };
 
 export async function buildPhigrosChartPreviewInput(
   input: PhigrosChartPreviewInput,
   settings: PhigrosChartPreviewSettings,
   signal: AbortSignal,
+  read?: (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array>,
 ): Promise<PreparedChartPreviewInput> {
   const resources = await loadPhigrosChartPreviewResources({
     songId: input.songId,
     difficulty: phigrosChartPreviewLevelLabel(input.levelIndex),
     ...(input.variantIndex === undefined ? {} : { variantIndex: input.variantIndex }),
-  }, signal);
+  }, signal, read);
   const { bundle } = resources;
   return {
     musicDataBase64: bytesToBase64(resources.music),
@@ -97,7 +100,9 @@ export async function buildPhiraChartPreviewInput(
 ): Promise<PreparedChartPreviewInput> {
   const chart = input.chart ?? await phiraProvider.getChart(input.chartId, signal);
   if (!chart.file) throw new Error('该谱面未提供可下载文件');
-  const zipData = await phiraProvider.downloadChart(chart.file, signal);
+  const zipData = await (staging.downloadChart
+    ? staging.downloadChart(chart.file, signal)
+    : phiraProvider.downloadChart(chart.file, signal));
   const zip = await JSZip.loadAsync(zipData);
   throwIfAborted(signal);
   const entries = Object.values(zip.files).map((entry) => ({ name: entry.name, dir: entry.dir }));

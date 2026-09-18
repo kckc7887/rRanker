@@ -111,15 +111,19 @@ describe('background containment', () => {
 });
 
 describe('hit effect appearance', () => {
-  it('removes star layers while retaining tap hexagons and the Touch circle', () => {
+  it('removes ordinary and Touch star layers while retaining tap hexagons, Break stars and the Touch circle', () => {
     vi.stubGlobal('document', { createElement: () => canvasMock().canvas });
-    for (const [kind, isBreak, expected] of [['tap', false, 'Hex_Perfect.png'], ['tap', true, null], ['touch', false, 'TouchEffectCircle.png']] as const) {
+    for (const [kind, isBreak, expected, draws] of [
+      ['tap', false, 'Hex_Perfect.png', 4],
+      ['tap', true, 'Star_Perfect.png', 5],
+      ['touch', false, 'TouchEffectCircle.png', 1],
+    ] as const) {
       const skin = new ChartPreviewSkin();
       const get = vi.spyOn(skin, 'get').mockReturnValue({ naturalWidth: 100, naturalHeight: 100 } as HTMLImageElement);
       const { ctx } = canvasMock();
       new EffectRenderer(skin).draw(ctx as unknown as CanvasRenderingContext2D, kind, 100, isBreak, 2100);
-      expect(get.mock.calls.map(c => c[0])).toEqual(expected ? [`ViewXEffects/${expected}`] : []);
-      expect(ctx.drawImage.mock.calls.length).toBe(expected === 'Hex_Perfect.png' ? 4 : expected ? 1 : 0);
+      expect(new Set(get.mock.calls.map(c => c[0]))).toEqual(new Set([`ViewXEffects/${expected}`]));
+      expect(ctx.drawImage.mock.calls.length).toBe(draws);
     }
   });
 

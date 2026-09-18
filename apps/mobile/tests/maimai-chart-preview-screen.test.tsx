@@ -65,6 +65,7 @@ jest.mock('@/theme/app-theme', () => ({
     background: '#ffffff',
     text: '#111111',
     textMuted: '#666666',
+    surfaceMuted: '#EEF2F7',
   }),
 }));
 

@@ -554,6 +554,11 @@ function start(): void {
     elements.status.textContent = text;
   }
 
+  function setLoadProgress(text: string, value: number): void {
+    setStatus(text);
+    postStatus('progress', { label: text, value });
+  }
+
   function setControlsEnabled(value: boolean): void {
     elements.play.disabled = !value;
     elements.btnRestart.disabled = !value;
@@ -883,7 +888,7 @@ function start(): void {
     isPlaying = false;
     setControlsEnabled(false);
     try {
-      setStatus('正在读取谱面资源…');
+      setLoadProgress('正在读取谱面资源…', 0.2);
       const [chartText, image] = await Promise.all([
         loadChartText(signal),
         typeof config.illustrationUrl === 'string' && config.illustrationUrl.trim() !== ''
@@ -894,7 +899,7 @@ function start(): void {
           : Promise.resolve(null),
       ]);
       if (signal.aborted) return;
-      setStatus('正在解析谱面…');
+      setLoadProgress('正在解析谱面…', 0.45);
       const chart: PgrChart | RpeChart = await new Promise((resolve, reject) => {
         // 主线程解析：WebView file:// 下不使用 Worker，解析期间状态保持可见。
         window.setTimeout(() => {
@@ -906,7 +911,7 @@ function start(): void {
         }, 0);
       });
       if (signal.aborted) return;
-      setStatus('正在准备音乐与曲绘…');
+      setLoadProgress('正在准备音乐与曲绘…', 0.7);
       const rpeChart = isRpe ? (chart as RpeChart) : null;
       const [noteAssets, chartAssets] = await Promise.all([
         loadNoteAssets(signal),
