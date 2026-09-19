@@ -16,6 +16,7 @@ import {
   type PreparedAudioEvent,
 } from '../engine';
 import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
+import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
 import { ChartPreviewSkin } from '../engine/renderers/skinAtlas';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
@@ -53,8 +54,6 @@ const SCHEDULE_LOOKAHEAD_MS = 1500;
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
-
-let activePopupClose: (() => void) | null = null;
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
@@ -95,175 +94,6 @@ const SPEED_MIN = 0.1;
 const SPEED_MAX = 5;
 const SPEED_STEP = 0.1;
 const SPEED_DEFAULT = 1;
-const WHEEL_ITEM_HEIGHT = 28;
-
-function buildWheelValues(min: number, max: number, step: number): number[] {
-  const values: number[] = [];
-  for (let value = min; value <= max + 1e-9; value += step) {
-    values.push(Math.round(value * 10) / 10);
-  }
-  return values;
-}
-
-function createWheel(
-  viewport: HTMLElement,
-  list: HTMLElement,
-  onPreview: (value: number) => void,
-  onCommit: (value: number) => void,
-  min: number,
-  max: number,
-  step: number,
-  initial: number,
-  labels?: readonly string[],
-): { getValue: () => number; setValue: (v: number, notify?: boolean) => void } {
-  const values = buildWheelValues(min, max, step);
-  let current = values.includes(initial) ? initial : values[0] ?? min;
-  let settleTimer = 0;
-  let selectedItem: HTMLElement | null = null;
-  const previewScheduler = createLatestFrameScheduler(
-    requestAnimationFrame,
-    cancelAnimationFrame,
-    onPreview,
-  );
-
-  const itemLabel = (v: number) => {
-    if (labels) {
-      const i = values.indexOf(v);
-      return labels[i] ?? String(v);
-    }
-    return v.toFixed(1);
-  };
-
-  const refreshList = () => {
-    const items = values.map((value) => {
-        const item = document.createElement('div');
-        item.className = 'wheel-item';
-        item.dataset.value = String(value);
-        item.textContent = itemLabel(value);
-        item.setAttribute('role', 'option');
-        item.setAttribute('aria-selected', value === current ? 'true' : 'false');
-        if (value === current) selectedItem = item;
-        return item;
-      });
-    list.replaceChildren(...items);
-  };
-
-  refreshList();
-
-  const indexOf = (value: number) =>
-    Math.max(0, values.findIndex((item) => Math.abs(item - value) < 1e-9));
-
-  const applySelection = (value: number, notify: boolean) => {
-    current = value;
-    selectedItem?.setAttribute('aria-selected', 'false');
-    selectedItem = list.children[indexOf(value)] as HTMLElement | null;
-    selectedItem?.setAttribute('aria-selected', 'true');
-    if (notify) previewScheduler.schedule(value);
-  };
-
-  const scrollToValue = (value: number, behavior: ScrollBehavior = 'auto') => {
-    const index = indexOf(value);
-    viewport.scrollTo({ top: index * WHEEL_ITEM_HEIGHT, behavior });
-  };
-
-  const valueFromScroll = () => {
-    const index = clamp(Math.round(viewport.scrollTop / WHEEL_ITEM_HEIGHT), 0, values.length - 1);
-    return values[index]!;
-  };
-
-  const setValue = (value: number, notify = false) => {
-    const next = values[indexOf(value)] ?? values[0] ?? min;
-    applySelection(next, notify);
-    scrollToValue(next);
-  };
-
-  viewport.addEventListener('scroll', () => {
-    const next = valueFromScroll();
-    if (Math.abs(next - current) > 1e-9) applySelection(next, true);
-    window.clearTimeout(settleTimer);
-    settleTimer = window.setTimeout(() => {
-      const settled = valueFromScroll();
-      previewScheduler.flush();
-      scrollToValue(settled, 'smooth');
-      onCommit(settled);
-    }, 120);
-  }, { passive: true });
-
-  scrollToValue(current);
-  applySelection(current, false);
-
-  return { getValue: () => current, setValue };
-}
-
-function setupWheelPopup(
-  trigger: HTMLElement,
-  popup: HTMLElement,
-  viewport: HTMLElement,
-  list: HTMLElement,
-  valSpan: HTMLElement,
-  onPreview: (value: number) => void,
-  onCommit: (value: number) => void,
-  min: number,
-  max: number,
-  step: number,
-  initial: number,
-  labels?: readonly string[],
-): { getValue: () => number; setValue: (v: number, notify?: boolean) => void } {
-  const wheel = createWheel(viewport, list, (value) => {
-    valSpan.textContent = labels ? (labels[value] ?? String(value)) : value.toFixed(1);
-    onPreview(value);
-  }, onCommit, min, max, step, initial, labels);
-
-  let open = false;
-
-  const openPopup = () => {
-    activePopupClose?.();
-    open = true;
-    popup.style.visibility = '';
-    popup.style.pointerEvents = '';
-    const triggerRect = trigger.getBoundingClientRect();
-    popup.style.bottom = `${window.innerHeight - triggerRect.top + 4}px`;
-    popup.style.left = `${triggerRect.left + triggerRect.width / 2}px`;
-    popup.style.transform = 'translateX(-50%)';
-    wheel.setValue(wheel.getValue());
-    activePopupClose = closePopup;
-  };
-
-  const closePopup = () => {
-    open = false;
-    popup.style.visibility = 'hidden';
-    popup.style.pointerEvents = 'none';
-    if (activePopupClose === closePopup) activePopupClose = null;
-  };
-
-  trigger.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (open) closePopup();
-    else openPopup();
-  });
-
-  document.addEventListener('click', () => {
-    if (open) closePopup();
-  });
-
-  popup.addEventListener('click', (e) => {
-    e.stopPropagation();
-  });
-  popup.addEventListener('touchstart', (e) => {
-    e.stopPropagation();
-  });
-
-  valSpan.textContent = labels ? (labels[Math.round(initial)] ?? String(initial)) : initial.toFixed(1);
-
-  return {
-    getValue: wheel.getValue,
-    setValue: (value, notify = false) => {
-      valSpan.textContent = labels ? (labels[Math.round(value)] ?? String(value)) : value.toFixed(1);
-      wheel.setValue(value, notify);
-    },
-  };
-}
-
 async function main(): Promise<void> {
   const app = $('app');
   const statusEl = $('status');
@@ -354,7 +184,7 @@ async function main(): Promise<void> {
   const infoBreakNoexWrap = $('info-break-noex-wrap');
   const infoFps = $('info-fps');
 
-  app.addEventListener('scroll', () => activePopupClose?.(), { passive: true });
+  app.addEventListener('scroll', closeActiveWheelPopup, { passive: true });
 
   const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';

@@ -401,6 +401,27 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 `phigros-chart-preview-screen.test.tsx`、`phira-compatible-chart-download.test.ts` 和
 `chart-preview-screen-shell-contract.test.tsx`。
 
+osu! 的 `features/osu-chart-preview/configuration.ts` 统一路由参数与设置归一化。
+`prepareOsuChartPreviewWebViewSource(target, theme, settings, signal, onProgress?)` 组合
+`osuBeatmapsetDownloadUrl`、`downloadChartResource`、`captureResourceWrites('shared', signal)`、
+公共 session 目录和 `prepareChartPreviewWebviewFromPlan`，每个异步阶段及返回前复核取消和代次。
+只在临时 session 暂存资源，不新增缓存注册、清理分支或共享壳游戏分派。
+原生提取与播放器共用 `selectPreviewOsbPaths`、`selectPreviewResources` 和路径解析；
+按 BeatmapID 精确选择文件，目录相对引用不通过同名文件猜测替代。
+`createChartPreviewInjectors<OsuChartPreviewConfig>` 负责安全注入，音频独立脚本与
+本地图片／视频 URI 避免经桥传输谱包；媒体缺失由播放器给出明确提示并播放可用内容。
+`ChartPreviewScreenShell` 提供 120 秒加载、进度、持久设置、后台释放与原生横屏返回。
+对应合同为 `osu-chart-preview-resources.test.ts`、`osu-chart-preview-prepare.test.tsx`、`osu-chart-preview-screen.test.tsx`、
+`osu-song-detail.test.tsx`、`osu-chart-preview-build.test.ts` 和 `tests/osu-preview/`。
+
+`chart-preview-shared/webview-player/wheel.ts` 的 `setupWheelPopup` 接受元素、即时预览与提交
+回调、范围、初始值、可选文本标签及数值格式，供舞萌与 osu! 使用；返回
+`getValue`、`setValue` 与 `dispose`，`closeActiveWheelPopup` 统一关闭当前浮层。
+`frame-scheduler.ts` 按帧合并最新预览，拨轮停止 120 ms 后提交；领域设置解释留在各播放器。
+共享交互模块不解释音符、模式或游戏 ID，新增设置不得另建持久化入口。
+`chart-preview-wheel.test.ts` 验证预览、提交、格式与销毁，
+`osu-chart-preview-controls.test.ts` 将公共控制器样式和结构与现有播放器直接比较。
+
 ## 跨层硬约束
 
 ### 打包与生成数据
@@ -455,7 +476,8 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
   小节跳转和背景范围；音乐缺失时保留谱尾。音源自然结束不清除公共 `PlaybackClock`，
   剩余谱面继续计时和变速；主动暂停、跳转与退出仍清除时钟。
   `maimai-chart-preview-audio.test.ts` 覆盖歌曲尾奏、长条谱尾、偏移、变 BPM 与 Buddy 范围。
-  `npm run typecheck` 包含 `typecheck:maimai-player` 和 `typecheck:phigros-player`，完整检查两类播放器入口和引擎。
+  `npm run typecheck` 包含 `typecheck:maimai-player`、`typecheck:phigros-player` 和
+  `typecheck:osu-player`，完整检查三类播放器入口和引擎。
   修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的
   `player.bundle` 一致，并完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
   `maimai-chart-preview-webview.test.ts`、`maimai-chart-preview-remote-assets.test.ts`、

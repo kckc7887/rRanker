@@ -353,6 +353,34 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
+### osu! 谱面确认
+
+四模式详情的难度操作统一为练习清单、谱面确认、谱包下载。`/songs/osu-chart-preview`
+使用 `gameId`、`beatmapsetId`、`beatmapId` 定位当前难度，标题仅用于显示。
+`features/osu-chart-preview/` 提供配置、资源选择与原生准备，复用 `ChartPreviewScreenShell`、
+注入工厂和 `prepareChartPreviewWebviewFromPlan`；准备超时为 120 秒。
+播放器普通窗口与横屏全屏均保持 16:9，沿用圆形走带按钮、音符密度时间轴、拨轮和锁定交互。
+舞萌与 osu! 的拨轮共用 `chart-preview-shared/webview-player/wheel.ts`，即时预览按帧合并，
+滚动停止后提交设置；全屏、滚动页面和退出时关闭浮层。
+
+`prepareOsuChartPreviewWebViewSource` 在下载前捕获 shared 资源写入代次，通过
+`osuBeatmapsetDownloadUrl` 与 `downloadChartResource` 下载含视频的完整谱包。
+JSZip 解包后按 BeatmapID 精确匹配，拒绝缺失、匹配歧义、越界路径和可观察的规范化重名。
+原生准备与播放器共用 `resource-plan.ts` 的引用选择：仅读取当前 `.osu`、同目录 `.osb`
+和被引用的媒体，保留目录语义并兼容大小写。UTF-16 文本采用平台无关字节解码。
+图片、视频写入独占 session；音频单独通过 `audio-data.js` 注入并按实际引用去重解码。
+完整谱包不持久缓存，取消、失败、退出与启动维护共用临时目录回收规则；异步恢复与发布前复核代次。
+
+播放器按文件原生模式自动演奏，转谱入口明确提示实际模式；不提供包内难度选择。
+歌曲、打击音、故事板 Sample、视频和谱尾反馈共同决定时间轴，负时间与 AudioLeadIn
+计入前导；关闭故事板或视频不改变总时长。视频静音并交由系统解码。
+设置从 `configuration.ts` 归一化，经公共壳持久化到 `rranker.osu-chart-preview.settings.v1`。
+退出释放音源、视频和位图；本地媒体读取、音画同步及大故事板内存仍需双端真机验收。
+
+`webview-player/engine/source-manifest.json` 固定公开上游提交及逐文件摘要，第三方来源与
+许可见根 `THIRD_PARTY_NOTICES.md` 和 `LICENSES/`。构建审计实际依赖清单，并将完整许可
+写入相同的 `player.js`、`player.bundle`；皮肤由代码生成，音效缺失时使用合成后备音。
+
 ### Simai 谱面确认内核
 
 `features/simai-chart-preview/configuration.ts` 是注入层与播放器的配置类型来源。
@@ -424,8 +452,11 @@ npm test
 
 应用类型检查与独立播放器检查共同组成 `npm run typecheck`：
 `tsconfig.maimai-player.json` 覆盖 Simai 引擎/入口，`tsconfig.phigros-player.json` 覆盖
-Phigros/Phira 及 RPE 入口。播放器源码改动后分别运行 `npm run build:chart-preview`
-或 `npm run build:phigros-chart-preview`；两者共用 `scripts/lib/build-preview.mjs`。
+Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入口及引擎。
+播放器源码改动后按所属功能运行 `npm run build:chart-preview`、
+`npm run build:phigros-chart-preview` 或 `npm run build:osu-chart-preview`；
+三者共用 `scripts/lib/build-preview.mjs`，公共拨轮修改需重建舞萌与 osu!。
+构建器的可选 `licenseBanner` 保留分发许可，`auditModules` 在写出前审计实际依赖。
 `npm run check:generated` 不写文件，从源码重新构建并验证 HTML、player.js、player.bundle
 与交付产物一致。打包成功不代表手机 WebView 播放验收通过。
 
