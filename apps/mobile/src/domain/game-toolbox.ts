@@ -79,7 +79,7 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         id: 'kaleidx-scope',
         href: '/tools/kaleidx-scope',
         title: 'KALEIDX◈SCOPE',
-        detail: '查询国服六色门解锁条件、钥匙曲池与门内挑战内容',
+        detail: '查询国服门曲条件、进度等信息',
         summaryLabel: '万花筒',
       },
       {

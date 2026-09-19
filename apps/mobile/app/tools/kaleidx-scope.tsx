@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { useNotification } from '@/components/AppNotification';
 import { Card } from '@/components/Card';
@@ -7,8 +7,6 @@ import { SongCover } from '@/components/SongCover';
 import { normalizeSongId } from '@/domain/catalog';
 import {
   KALEIDX_GATES,
-  KALEIDX_SCOPE_SOURCES,
-  KALEIDX_SCOPE_VERIFIED_AT,
   resolveKaleidxSchedulePhase,
   type KaleidxGate,
   type KaleidxGateId,
@@ -105,13 +103,10 @@ export default function KaleidxScopeToolScreen() {
       <Stack.Screen options={{ title: 'KALEIDX◈SCOPE' }} />
 
       <Card style={styles.hero} testID="kaleidx-hero">
-        <Text style={[styles.eyebrow, { color: theme.accent }]}>国服 · 六色门</Text>
         <Text style={[styles.heroTitle, { color: theme.text }]}>KALEIDX◈SCOPE</Text>
-        <Text style={[styles.heroDetail, { color: theme.textSecondary }]}>钥匙条件、单局计划、挑战曲池和 LIFE 缓和阶段集中查询</Text>
-        <View style={styles.prismRail} accessibilityLabel="六色门棱镜轨道">
+        <View style={styles.prismRail} accessibilityLabel="门颜色轨道">
           {KALEIDX_GATES.map((item) => <View key={item.id} style={[styles.prismSegment, { backgroundColor: item.color }]} />)}
         </View>
-        <Text style={[styles.sourceNote, { color: theme.textMuted }]}>资料核对于 {KALEIDX_SCOPE_VERIFIED_AT}；手动记录不代表机台真实解锁状态。</Text>
       </Card>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gateTabs}>
@@ -217,16 +212,6 @@ export default function KaleidxScopeToolScreen() {
           <ScheduleBlock schedule={gate.gateSchedule} accent={gateAccent} />
           {gate.perfectSchedule ? <ScheduleBlock schedule={gate.perfectSchedule} accent={gateAccent} /> : null}
         </> : null}
-      </Card>
-
-      <Card style={styles.sourcesCard}>
-        <SectionTitle title="资料来源" />
-        {KALEIDX_SCOPE_SOURCES.map((source) => (
-          <Pressable key={source.url} accessibilityRole="link" onPress={() => void Linking.openURL(source.url)}>
-            <Text style={[styles.sourceLink, { color: theme.accent }]}>{source.label} →</Text>
-          </Pressable>
-        ))}
-        <Text style={[styles.sourceNote, { color: theme.textMuted }]}>条件可能随国服更新调整；若机台显示与本页不同，以机台为准。</Text>
       </Card>
     </ScrollView>
   );
@@ -368,12 +353,9 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { padding: 16, paddingBottom: 32, gap: 12 },
   hero: { gap: 8, padding: 18 },
-  eyebrow: { fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   heroTitle: { fontSize: 25, fontWeight: '900', letterSpacing: 0.4 },
-  heroDetail: { fontSize: 13, lineHeight: 20 },
   prismRail: { flexDirection: 'row', height: 5, borderRadius: 999, overflow: 'hidden', marginVertical: 4 },
   prismSegment: { flex: 1 },
-  sourceNote: { fontSize: 11, lineHeight: 17 },
   gateTabs: { gap: 8, paddingVertical: 2 },
   gateTab: { minWidth: 62, minHeight: 40, borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   gateTabText: { fontSize: 14, fontWeight: '800' },
@@ -433,7 +415,5 @@ const styles = StyleSheet.create({
   scheduleRow: { borderLeftWidth: 3, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   scheduleDate: { fontSize: 10, fontVariant: ['tabular-nums'] },
   scheduleValue: { fontSize: 11, fontWeight: '800' },
-  sourcesCard: { gap: 10 },
-  sourceLink: { fontSize: 13, fontWeight: '700' },
   disabled: { opacity: 0.5 },
 });
