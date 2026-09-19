@@ -81,6 +81,10 @@ describe('KALEIDX◈SCOPE tool screen', () => {
     await fireEvent.press(screen.getByLabelText('红色之门'));
     expect(screen.getByText('FLΛME/FRΦST')).toBeTruthy();
     expect(screen.getByText('开放 2026.08.05')).toBeTruthy();
+    expect(screen.queryByText('国服 · 六色门')).toBeNull();
+    expect(screen.queryByText(/资料核对于/)).toBeNull();
+    expect(screen.queryByText('资料来源')).toBeNull();
+    expect(screen.queryByText('钥匙条件、单局计划、挑战曲池和 LIFE 缓和阶段集中查询')).toBeNull();
   });
 
   it('records progress, status, and routes only catalog-known songs', async () => {

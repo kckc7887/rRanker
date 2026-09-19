@@ -1,10 +1,3 @@
-export const KALEIDX_SCOPE_VERIFIED_AT = '2026-08-10';
-
-export const KALEIDX_SCOPE_SOURCES = [
-  { label: '舞萌 DX 官方 KALEIDXSCOPE 公告', url: 'https://www.bilibili.com/opus/1162048782593949700' },
-  { label: 'AWMC 国服 KALEIDXSCOPE 攻略', url: 'https://github.com/AWMC-TEAM/KALEIDXSCOPE' },
-] as const;
-
 export const KALEIDX_GATE_IDS = ['blue', 'white', 'purple', 'black', 'yellow', 'red'] as const;
 export type KaleidxGateId = typeof KALEIDX_GATE_IDS[number];
 export type KaleidxDifficulty = 'BASIC' | 'EXPERT' | 'MASTER';
