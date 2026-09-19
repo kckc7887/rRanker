@@ -1,6 +1,6 @@
 /**
  * osu! 难度星数主题：osu-web 官方连续色阶完整移植
- * （refer/osu-web-master/resources/js/utils/beatmap-helper.ts 的
+ * （osu-web 的 resources/js/utils/beatmap-helper.ts 中的
  * difficultyColourSpectrum / difficultyTextColourSpectrum / getDiffColour / getDiffTextColour）。
  *
  * - 背景色：星数 <0.1 灰 #AAAAAA；>=9 黑 #000000；其间按 11 个停靠点连续插值；

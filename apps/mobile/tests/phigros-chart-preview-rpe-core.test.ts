@@ -13,7 +13,7 @@ import {
 } from '@/features/phigros-chart-preview/webview-player/rpe-core';
 import { RPE_PRESET_SHADERS } from '@/features/phigros-chart-preview/webview-player/rpe-preset-shaders';
 
-// 与 demo/phira-rpe-chart-preview/tests/rpe-core.test.mjs 同语义的移植测试：
+// 覆盖 RPE 解析语义：
 // 缓动表顺序、速度积分、事件插值、音符归一化、父子线、extra.json/info.yml 解析。
 
 function line(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -59,7 +59,7 @@ function layer(speedEvents: RpeEvent[]): RpeEventLayer {
   };
 }
 
-describe('rpe core（demo 语义移植）', () => {
+describe('rpe core', () => {
   it('BPMList：拍数与多 BPM 段时间/拍互转', () => {
     const b = new BpmList([[0, 120], [4, 60]]);
     expect(Math.abs(b.timeSec(4) - 2)).toBeLessThan(1e-9);
@@ -68,7 +68,7 @@ describe('rpe core（demo 语义移植）', () => {
     expect(Math.abs(b.beat(1) - 2)).toBeLessThan(1e-9);
   });
 
-  it('缓动表以 player-main 顺序：2=SineIn、3=SineOut、4=QuadOut、5=QuadIn、26=BounceOut', () => {
+  it('缓动表以 PhiZone/player 顺序：2=SineIn、3=SineOut、4=QuadOut、5=QuadIn、26=BounceOut', () => {
     expect(Math.abs(easing(1, undefined, 0.5) - 0.5)).toBeLessThan(1e-9);
     expect(Math.abs(easing(2, undefined, 0.5) - Math.sin(Math.PI / 4))).toBeLessThan(1e-9);
     expect(Math.abs(easing(3, undefined, 0.5) - (1 - Math.cos(Math.PI / 4)))).toBeLessThan(1e-9);
@@ -102,7 +102,7 @@ describe('rpe core（demo 语义移植）', () => {
     expect(Math.abs(speedHeightAt(layers, bpm, false, 10) - 54)).toBeLessThan(1e-6);
   });
 
-  it('速度积分：quadOut 事件与 player-main getIntegral 公式一致', () => {
+  it('速度积分：quadOut 事件与 PhiZone/player getIntegral 公式一致', () => {
     const bpm = bpm120();
     const ev = event({ start: 0, end: 18, easingType: 4 });
     // 参考公式（!integrateEasings）：k=(end-start)/(f'(1)-f'(0))，b=start-k·f'(0)，× lengthSec/Δbeats

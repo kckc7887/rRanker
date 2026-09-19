@@ -94,8 +94,7 @@ Copyright bbben, Lezi, Moying, GPL-3.0-or-later. ViewX's NuGet package
 Modifications by rRanker on 2026-09-05: canonical note model, source diagnostics,
 millisecond timing, LXNS difficulty/Buddy slots and browser integration.
 The source archive is pinned by SHA-256 in `scripts/maimai-reference/bootstrap.mjs`;
-the independent C# reference compiles that original source. The source checkout
-is local build data, not a runtime dependency. License text is provided in
+the independent C# reference compiles that original source. License text is provided in
 `LICENSES/MajSimai-GPL-3.0.txt`; the GPL portions retain their terms in the AGPL
 combination. No MajdataPlay source is copied into the runtime.
 
@@ -120,7 +119,6 @@ generated data, generators, independent reference harness, notices and build
 scripts in this repository. Anyone distributing a modified build or operating
 a network-interactive version must make its corresponding modified source
 available under the applicable terms, including [AGPL §13](https://www.gnu.org/licenses/agpl.en.html#section13).
-The local `refer/` directory is not a substitute for providing corresponding source.
 
 ## Phigros / Phira chart-preview player core (phira)
 
@@ -198,7 +196,7 @@ rRanker 仅消费其公开 API 数据并本地缓存，未复制其源码。
 
 ## Majdata Net integration and MajdataPlay scoring reference
 
-Majdata Net 接入按本地 `refer/MajdataNet` 的公开协议实现，使用
+Majdata Net 接入按其公开协议实现，使用
 `https://majdata.net/api3/api`，游戏和来源图标使用用户指定的
 `https://rranker.cn-nb1.rains3.com/assets/images/majdata.png`（1330×1330 PNG）。
 玩家头像来自 Majdata Net 的公开 `account/Icon?username=` 接口。

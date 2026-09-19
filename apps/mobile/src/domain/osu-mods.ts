@@ -1,8 +1,8 @@
 /**
  * osu! 模组元数据：acronym → 模组类型 → 徽章配色。
- * 数据来源 refer/osu-web-master/database/mods.json（osu/taiko/fruits/mania 四规则集
+ * 数据来源 osu-web 的 database/mods.json（osu/taiko/fruits/mania 四规则集
  * UserPlayable 模组 + SV2 成绩可携带的系统模组；同 acronym 跨规则集类型一致，统一映射）。
- * 配色来源 refer/osu-web-master resources/css/bem/mod.less + colors.less：
+ * 配色来源 osu-web 的 resources/css/bem/mod.less + colors.less：
  * 背景 = 六类 osu 官方模组色（hsl(hue,100%,70%) 档 / System 黄），
  * 前景 = color-mix(in srgb-linear, black, 背景 10%)，与 osu-web 徽章文字/图标同色。
  */

@@ -1,6 +1,5 @@
 /**
  * Phigros / Phira 谱面确认 WebView 播放器入口。
- * 谱面解析与渲染移植自 demo/phigros-chart-preview（pgr-core/renderer/hit-sound），
  * 对时、性能与控制面板全部对齐舞萌谱面确认播放器：
  * - 音乐解码为 AudioBuffer，经 AudioBufferSourceNode 在 AudioContext 时钟上播放，
  *   不使用 HTMLMediaElement 时钟（其 currentTime 有延迟抖动，seek/暂停恢复漂移大）；
@@ -501,7 +500,7 @@ function start(): void {
       const source = injectedShaders[effect.shader] ?? injectedShaders[cleaned];
       if (typeof source === 'string') shaders.set(effect.shader, source);
     }
-    // prpr 内置特效预设兜底（内嵌随包分发）：谱面包未提供同名 shader 时使用，与 demo 语义一致。
+    // prpr 内置特效预设兜底（内嵌随包分发）：谱面包未提供同名 shader 时使用。
     for (const [name, source] of Object.entries(RPE_PRESET_SHADERS)) {
       if (!shaders.has(name)) shaders.set(name, source);
     }

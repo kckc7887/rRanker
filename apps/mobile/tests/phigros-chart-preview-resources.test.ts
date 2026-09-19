@@ -26,7 +26,7 @@ const manifest = {
   ],
 };
 
-describe('phigros chart preview resource resolution（移植 demo resource-loader.test.mjs）', () => {
+describe('phigros chart preview resource resolution', () => {
   it('通过 current 的 release 基址解析动态谱面目录和三类资产', () => {
     const result = resolvePhigrosChartPreviewAssetBundle({
       current, catalog, manifest, target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },

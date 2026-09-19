@@ -1,4 +1,4 @@
-/** Phigros 静态资源根路径，结构与 demo/phigros-resource-publisher 发布产物一致。 */
+/** Phigros 静态资源根路径。 */
 export const PHIGROS_OSS_BASE = 'https://rranker-phigros-data.cn-nb1.rains3.com';
 
 /** 落雪咖啡屋舞萌收藏素材根路径。 */

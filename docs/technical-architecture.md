@@ -363,7 +363,7 @@ LXNS 与 Majdata 只提供谱面/音乐 URL，下载在 RN `prepare` 完成后�
 舞萌与 Majdata 的 Simai 语义集中在 `features/simai-chart-preview/engine/`：`SimaiParser` 输出带来源位置、实际时间、HS/SV、
 Each 分组和分支/分段的音符模型；`prepareChart` 预计算路径与判定事件；`buildFrame`
 按指定实际时刻生成有序绘制命令；`MainRenderer` 用 Canvas 2D 执行贴图、三切片与遮罩。
-解析基准是 MajSimai 2.2.2 锁定 commit，表现数据来自本地 MajdataViewX。
+解析基准是 MajSimai 2.2.2 锁定 commit，表现数据来自 MajdataViewX。
 滑条各段书写时长保存在模型；播放按 ViewX 的合并路径总时长与路径长度分配视觉速度。
 `ScrollTimeline` 只影响视觉位置，音乐、正解音、结束和判定使用实际时间。
 播放器通过共享 `PlaybackClock` 重建暂停、跳转和变速状态；变速/跳转取消旧正解音调度。
@@ -391,8 +391,7 @@ Each 金色。Slide 不区分判定时使用六种方向的 `just_*_p.png`，区
 按 S3 `outline.png` 的点径、线宽绘制，坐标复用音符的 `buttonPoint`，判定区叠加同一判定线。
 
 独立参考程序位于 `apps/mobile/scripts/maimai-reference/`；原始 C# 路径输出和
-MajSimai 输出作为 TypeScript 测试的外部基准。素材审计和浏览器截图位于本地被忽略的
-`apps/mobile/build/`。语法范围、素材映射、复现命令与验收限制见
+MajSimai 输出作为 TypeScript 测试的外部基准。语法范围、素材映射、复现命令与验收限制见
 `docs/maimai-chart-preview.md`。八张 ViewX 内置特效贴图及其层级由
 `effectSprites.generated.ts` 随播放器加载，皮肤仍通过 S3/`skin-data.js` 加载。
 特效生成器经 `scripts/lib/recompress-png.mjs` 只重压缩 PNG 的 IDAT，保留其它块、
@@ -434,7 +433,6 @@ Phigros/Phira 及 RPE 入口。播放器源码改动后分别运行 `npm run bui
 命令，覆盖跳转、暂停、变速、镜像、长 Hold、连接 Slide、Each、Mine、Break 和非单调 SV；
 另测 6000 音符场景的 CPU 分布与 5000 首/20000 成绩搜索。Phigros 搜索通过
 `indexSongsById` 一次建立曲库索引，保留首次匹配、别名、排序和筛选合同。
-结果写入被忽略的 `build/optimization-performance.json`，包含基线/候选 SHA 和工作区状态。
 测试中的请求数、数据库调用数和条目重绘次数是受控测量，不代表真机帧率。
 
 本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
@@ -453,8 +451,8 @@ Gradle properties 启用 Release R8 与资源裁剪，将默认 ProGuard 文件�
 决定。插件可重复应用；已有本地原生目录须先运行 `npm run prebuild:android` 才能
 获得更新配置，直接执行 `apk:release:abi` 不会自动运行 prebuild。
 
-双端体积检查使用 `npx expo export --platform android --platform ios --source-maps
---dump-assetmap --output-dir build/size-audit --max-workers 4`，不启动 Expo Web。
+双端体积检查使用 Expo 导出，指定 Android 和 iOS 平台、source map、资源映射及输出目录，
+不启动 Expo Web。
 统计主程序 Hermes、独立播放器和按实际内容 SHA-256 去重的导出资源，source map 不计入交付体积。
 播放器已经包含在资源合计内；gzip 只作压缩参考，不代表 APK/IPA 或安装体积。
 Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 macOS 出包验收。
@@ -473,7 +471,7 @@ lint、typecheck 和全部测试；构建任务使用 Node.js 22、Temurin JDK 1
 prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a`、`arm64-v8a`、
 `x86`、`x86_64` 四份 APK。版本与构建号分别读取 `app.json` 的 `expo.version` 和
 `expo.android.versionCode`，不自动递增。工作流检查 Gradle 输出清单、APK 内部 ABI、
-Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构建号)-ABI.apk` 复制到
-`apps/mobile/build/android-apks/`，上传为保留 14 天的 Actions artifact。
+Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构建号)-ABI.apk` 命名，
+上传为保留 14 天的 Actions artifact。
 当前沿用 Expo 生成工程的默认调试密钥签名，属于 Release 模式测试安装包；流程不发布
 GitHub Release 或上传应用商店。实际云端构建与真机安装需运行工作流后验证。

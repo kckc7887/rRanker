@@ -38,7 +38,7 @@ function line(overrides: Partial<RawLine> = {}): RawLine {
   };
 }
 
-describe('phigros chart preview pgr core（移植 demo pgr-core.test.mjs）', () => {
+describe('phigros chart preview pgr core', () => {
   it('tick 时间按 60 / (32 * bpm) 换算', () => {
     expect(ticksToSeconds(64, 120)).toBe(1);
     expect(ticksToSeconds(32, 60)).toBe(1);
@@ -112,7 +112,7 @@ describe('phigros chart preview pgr core（移植 demo pgr-core.test.mjs）', ()
   });
 });
 
-describe('phigros chart preview hit sounds（移植 demo 打击音用例）', () => {
+describe('phigros chart preview hit sounds', () => {
   it('打击音时间轴为每个音符只建立一次事件且 Hold 只触发 click 头音', () => {
     const chart = {
       lines: [

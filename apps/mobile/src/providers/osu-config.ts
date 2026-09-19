@@ -12,7 +12,7 @@ export const OSU_API_ROOT = 'https://osu.ppy.sh/api/v2';
 export const OSU_BEATMAPSET_DOWNLOAD_ROOT = 'https://dl.sayobot.cn/beatmaps/download';
 /**
  * osu! 模组图标包（圆形徽章用单色 SVG）的远程根路径。
- * refer/osu-mod-icons.zip 内容（67 个 acronym 小写.svg）上传于该 S3 存储桶 mod-icon 路径下；
+ * 图标按小写 acronym 命名，使用 .svg 扩展名；
  * 图标按需下载并缓存到本地，未就绪时徽章回退显示模组缩写文字。
  */
 export const OSU_MOD_ICONS_ROOT = 'https://rranker-osu-data.cn-nb1.rains3.com/mod-icon';

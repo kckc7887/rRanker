@@ -1,5 +1,5 @@
 /**
- * 打击音时间轴移植自 demo/phigros-chart-preview/hit-sound.js。
+ * Phigros 谱面打击音时间轴。
  * Tap 与 Hold 头部使用 click，Drag/Flick 使用同名音效；Hold 持续期间不重复触发。
  *
  * 许可证：打击音分配语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），

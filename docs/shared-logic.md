@@ -526,7 +526,7 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 `majdata-detail-contract.test.tsx`、安全仓库和下载测试，以及完整舞萌解析、预览与共享 UI。
 详情合同使用真实顶部按钮、TagEditor、元数据表及轮播；舞萌原结构与样式基线不变。
 独立 C# 样本来自 MajSimai 与
-MajdataPlay 原始计分方法，普通测试无需 `refer/` 或 .NET；原生账号、保存和播放仍须真机验收。
+MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存和播放仍须真机验收。
 
 ## 新增或修改功能时的检查顺序
 

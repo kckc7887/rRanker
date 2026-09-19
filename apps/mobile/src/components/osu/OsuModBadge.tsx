@@ -1,6 +1,6 @@
 /**
  * osu! 模组圆形徽章：类型色圆形底 + 单色模组图标（远程按需下载，磁盘缓存）。
- * 样式参考 refer/osu-web-master 模组徽章配色（mod.less 六类色 + color-mix 前景），
+ * 样式参考 osu-web 模组徽章配色（mod.less 六类色 + color-mix 前景），
  * 以圆形替代官方六边形（六边形过宽）；图标未就绪/失败时圆内回退显示模组缩写文字
  * （与 osu-web 无图标时 data-acronym 文字回退一致）。
  */

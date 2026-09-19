@@ -1,6 +1,5 @@
 /**
- * PGR 谱面解析与时间轴语义移植自 demo/phigros-chart-preview/pgr-core.js，
- * 语义依据 refer/phira/prpr 的 PGR 解析行为重新编写。
+ * PGR 谱面解析与时间轴，语义依据 TeamFlos/phira 的 prpr 核心的 PGR 解析行为。
  * 该模块保持纯函数、不依赖 DOM，供 WebView 播放器与 Vitest 共用。
  *
  * 许可证：解析语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
