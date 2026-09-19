@@ -1,5 +1,6 @@
 import { SONG_DETAIL_METADATA_STYLES , SONG_DETAIL_CHROME_STYLES } from '@/components/game-content/SongDetailChromeStyles';
 import { useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -551,6 +552,27 @@ function DifficultyCard({
         ]}>
           {chartItem?.kind === 'chart' && chartItem.practice ? '移出练习清单' : '加入练习清单'}
         </Text>
+      </DetailPressable>
+      <DetailPressable
+        accessibilityLabel={`查看谱面确认：${song.title} ${beatmap.version}`}
+        accessibilityRole="button"
+        onPress={() => router.push({
+          pathname: '/songs/osu-chart-preview',
+          params: {
+            gameId,
+            beatmapsetId: String(song.beatmapSetId),
+            beatmapId: String(beatmap.id),
+            title: song.title,
+          },
+        })}
+        style={({ pressed }) => [
+          styles.practiceButton,
+          { backgroundColor: 'transparent', borderColor: starTheme.background },
+          pressed && styles.pressed,
+        ]}
+        testID={`osu-detail-preview-${beatmap.id}`}
+      >
+        <Text style={[styles.practiceButtonText, { color: starTheme.background }]}>查看谱面确认</Text>
       </DetailPressable>
       <DetailPressable
         accessibilityLabel={`下载谱面文件：${song.title}`}

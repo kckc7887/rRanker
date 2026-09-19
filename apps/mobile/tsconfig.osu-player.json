@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.maimai-player.json",
+  "include": [
+    "src/features/osu-chart-preview/webview-player/**/*.ts",
+    "src/types/asset-modules.d.ts"
+  ]
+}
