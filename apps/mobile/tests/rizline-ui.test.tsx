@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import { Animated, InteractionManager, processColor } from 'react-native';
 import { RizlineScoreCard } from '@/components/rizline/RizlineScoreCard';
 import { RizlineSongDetail } from '@/components/rizline/RizlineSongDetail';
+import { RizlineSongRow } from '@/components/rizline/RizlineSongRow';
 import { RizlineDifficultyBadge } from '@/components/rizline/RizlineScoreVisuals';
 import { BADGE_GOLD_BORDER_COLORS } from '@/domain/badge-theme';
 import { RIZLINE_DIFFICULTIES, rizlineDifficultyColors, type RizlineRecord } from '@/domain/rizline';
@@ -135,6 +136,17 @@ describe('Rizline UI', () => {
     const screen = await render(<RizlineDifficultyBadge difficulty={difficulty} level="12" />);
     expect(screen.getByTestId(`rizline-difficulty-${difficulty}`)).toHaveStyle({ borderRadius: 999, height: 24 });
     expect(screen.getByText(`${difficulty} 12`)).toHaveStyle({ color: '#FFFFFF' });
+  });
+
+  it('hides difficulty names on catalog song-row badges', async () => {
+    const screen = await render(<RizlineSongRow song={rizlineSong()} />);
+    expect(screen.getByText('测试歌曲')).toBeTruthy();
+    for (const difficulty of ['EZ', 'HD', 'IN', 'AT'] as const) {
+      expect(screen.queryByText(difficulty)).toBeNull();
+      expect(screen.queryByText(`${difficulty} 12`)).toBeNull();
+      expect(screen.getByTestId(`rizline-difficulty-${difficulty}`).props.accessibilityLabel).toBe(`${difficulty} 12`);
+    }
+    expect(screen.getAllByText('12')).toHaveLength(4);
   });
 
   it.each<{ achievements: number; ahStatus: RizlineRecord['ahStatus']; status: 'ap' | 'ah' | 'normal' }>([
