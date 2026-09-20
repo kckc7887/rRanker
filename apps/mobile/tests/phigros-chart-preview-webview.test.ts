@@ -61,7 +61,7 @@ describe('phigros chart preview webview template', () => {
     expect(html).toContain('body.fullscreen #controls.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }');
   });
 
-  it('下方播放控制器对齐舞萌样式：时间轴/accent 播放钮/transport 图标钮/拨轮/胶囊 toggle，无 demo 残留', () => {
+  it('下方播放控制器对齐舞萌样式：时间轴/accent 播放钮/transport 图标钮/拨轮/胶囊 toggle', () => {
     const html = templateHtml();
     expect(html).toContain('--accent: #5b8cff');
     expect(html).toContain('#play-button {');
@@ -78,7 +78,7 @@ describe('phigros chart preview webview template', () => {
     expect(html).toContain('background: var(--overlay-panel)');
     expect(html).toContain('backdrop-filter: blur(12px)');
     expect(html).toContain('body.fullscreen .controls-settings { display: none; }');
-    // demo 残留清理：无加载面板、无滑块、无打击音效开关
+    // 播放器不包含加载面板、滑块和打击音效开关。
     expect(html).not.toContain('load-panel');
     expect(html).not.toContain('id="seek"');
     expect(html).not.toContain('type="range"');

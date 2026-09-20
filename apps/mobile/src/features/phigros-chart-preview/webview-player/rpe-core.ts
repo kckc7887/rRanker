@@ -1,6 +1,6 @@
 /**
- * RPE（Re:PhiEdit）谱面解析与缓动/速度积分，逐语义移植自 demo/phira-rpe-chart-preview/rpe-core.js，
- * 语义对照 refer/player-main（utils.ts/Line.ts/Game.ts）与 refer/phira/prpr（RPE 路径）：
+ * RPE（Re:PhiEdit）谱面解析与缓动/速度积分，
+ * 语义对照 PhiZone/player（utils.ts/Line.ts/Game.ts）与 TeamFlos/phira 的 prpr 核心（RPE 路径）：
  * - easingType 1..29 直接索引缓动表（prpr RPE_TWEEN_MAP 语义，29 号为真实 elasticInOut）；
  * - 速度高度 = 事件内积分 + 事件结束后恒定 end 速度延伸（getIntegral 语义）；
  * - 多事件层相加；extra.json 的 bpm 覆盖谱面 BPMList；负 alpha 保留（渲染层按 prpr 整线隐藏）；
@@ -54,7 +54,7 @@ const bounceOut = (x: number): number =>
         : 7.5625 * (x -= 2.625 / 2.75) * x + 0.984375;
 const bounceIn = (x: number): number => 1 - bounceOut(1 - x);
 const bounceInOut = (x: number): number => (x < 0.5 ? (1 - bounceOut(1 - 2 * x)) / 2 : (1 + bounceOut(2 * x - 1)) / 2);
-// prpr core/tween.rs：29 号是真实的 elasticInOut（player-main 用 bounceInOut 顶替，此处按 prpr）
+// prpr core/tween.rs：29 号是真实的 elasticInOut（PhiZone/player 用 bounceInOut 顶替，此处按 prpr）
 const elasticInOut = (x: number): number => {
   if (x === 0 || x === 1) return x;
   const t = x * 2;
@@ -132,7 +132,7 @@ function bezierEasing(x1: number, y1: number, x2: number, y2: number): (x: numbe
   return (x) => sampleY(solve(x));
 }
 
-/** 事件缓动进度（player-main easing()） */
+/** 事件缓动进度（PhiZone/player easing()） */
 export function easing(
   type: number,
   bezierPoints: number[] | undefined,
@@ -163,7 +163,7 @@ function derivative(type: number, x: number, easingLeft = 0, easingRight = 1): n
   );
 }
 
-/** 现代积分缓动的数值积分（Gauss，替代 player-main 的解析积分表） */
+/** 现代积分缓动的数值积分（Gauss，替代 PhiZone/player 的解析积分表） */
 function calculateEasingIntegral(type: number, x: number, easingLeft = 0, easingRight = 1): number {
   const p = sanitizeEasingParams(type, x, easingLeft, easingRight);
   const func = EASINGS[p.type - 1]!;
@@ -310,7 +310,7 @@ export interface RpeChart {
   stats: { lineCount: number; noteCount: number; eventCount: number; maxTime: number; kindCounts: Record<RpeNoteKind, number> };
 }
 
-// ---------------- 事件值 / 速度积分（player-main getEventValue / getIntegral） ----------------
+// ---------------- 事件值 / 速度积分（PhiZone/player getEventValue / getIntegral） ----------------
 function interpolateValue(start: RpeEventValue, end: RpeEventValue, progress: number): RpeEventValue {
   // 文本事件值不做插值，直接取当前事件的 start
   if (typeof start === 'string') return start;
@@ -349,7 +349,7 @@ function integrate(type: number, x: number, k: number, b: number, easingLeft: nu
 }
 
 /**
- * 速度事件到 beat 处的积分高度（player-main getIntegral）：
+ * 速度事件到 beat 处的积分高度（PhiZone/player getIntegral）：
  * easing<=1 梯形；>1 时 integrateEasings=false 用 k·f+b 积分、true 用归一化积分；
  * 事件结束后由调用方按恒定 end 速度延伸。
  */
@@ -384,7 +384,7 @@ export function getIntegral(
   return (event.start as number) * progressedSec + ((event.end as number) - (event.start as number)) * integral * lengthSec;
 }
 
-/** 整条速度时间线在 beat 处的高度（player-main Line.handleSpeed + calculateHeight 语义） */
+/** 整条速度时间线在 beat 处的高度（PhiZone/player Line.handleSpeed + calculateHeight 语义） */
 export function speedHeightAt(
   layers: readonly (RpeEventLayer | null | undefined)[],
   bpmList: BpmList,
@@ -424,7 +424,7 @@ function eventIndexAt(events: readonly RpeEvent[], beat: number): number {
   return index;
 }
 
-// ---------------- BPMList（player-main getTimeSec 语义） ----------------
+// ---------------- BPMList（PhiZone/player getTimeSec 语义） ----------------
 interface BpmElement {
   startBeat: number;
   startTimeSec: number;
@@ -573,7 +573,7 @@ export function parseRpeChart(source: string | object, extrasInput: RpeExtrasInp
         kind,
         type: rawNote.type,
         positionX: finite(rawNote.positionX, `判定线 ${lineIndex} 音符 ${noteIndex} positionX`),
-        yOffset: finite(rawNote.yOffset ?? 0, 'yOffset') * speed, // player-main：yOffset *= speed
+        yOffset: finite(rawNote.yOffset ?? 0, 'yOffset') * speed, // PhiZone/player：yOffset *= speed
         yOffsetRaw: finite(rawNote.yOffset ?? 0, 'yOffset'), // prpr ctrl 节点求值用未烘焙值
         above: rawNote.above === 1,
         isFake: rawNote.isFake === 1 || rawNote.isFake === true,
@@ -763,7 +763,7 @@ interface RawRpeNote {
   judgeArea?: number;
 }
 
-// ---------------- extra.json（player-main extra：videos/effects；prpr：bpm 覆盖 BPMList） ----------------
+// ---------------- extra.json（PhiZone/player extra：videos/effects；prpr：bpm 覆盖 BPMList） ----------------
 function normalizeAnimated(value: RpeEventValue | RawRpeEvent[] | undefined): RpeEventValue | RpeEvent[] {
   // 数值/数组 → 常量；事件数组 → 事件列表（值可为数值或数组，逐分量插值）
   if (

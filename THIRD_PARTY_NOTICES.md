@@ -94,8 +94,7 @@ Copyright bbben, Lezi, Moying, GPL-3.0-or-later. ViewX's NuGet package
 Modifications by rRanker on 2026-09-05: canonical note model, source diagnostics,
 millisecond timing, LXNS difficulty/Buddy slots and browser integration.
 The source archive is pinned by SHA-256 in `scripts/maimai-reference/bootstrap.mjs`;
-the independent C# reference compiles that original source. The source checkout
-is local build data, not a runtime dependency. License text is provided in
+the independent C# reference compiles that original source. License text is provided in
 `LICENSES/MajSimai-GPL-3.0.txt`; the GPL portions retain their terms in the AGPL
 combination. No MajdataPlay source is copied into the runtime.
 
@@ -120,7 +119,6 @@ generated data, generators, independent reference harness, notices and build
 scripts in this repository. Anyone distributing a modified build or operating
 a network-interactive version must make its corresponding modified source
 available under the applicable terms, including [AGPL §13](https://www.gnu.org/licenses/agpl.en.html#section13).
-The local `refer/` directory is not a substitute for providing corresponding source.
 
 ## Phigros / Phira chart-preview player core (phira)
 
@@ -161,6 +159,60 @@ notices in their headers (with the Exhibit A text available here and at
 > License, v. 2.0. If a copy of the MPL was not distributed with this
 > file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+## osu! chart-preview engine (replayviewer-js)
+
+The osu! chart-preview player in
+`apps/mobile/src/features/osu-chart-preview/webview-player/` includes the parser,
+four rulesets, autoplay, playback and Canvas rendering code from **replayviewer-js**,
+version 0.1.1, revision
+[`a8e5d93210188a6bfb3a0181419df0cf1e9675e7`](https://github.com/daladal/replayviewer-js/tree/a8e5d93210188a6bfb3a0181419df0cf1e9675e7).
+Its MIT license is **Copyright (c) 2026 bog**; the complete notice is retained at
+[`LICENSES/replayviewer-js-MIT.txt`](LICENSES/replayviewer-js-MIT.txt).
+The engine's `source-manifest.json` records upstream paths and hashes together
+with the integrated source hashes. Upstream source is adapted, not represented
+as an unchanged copy.
+
+Modifications by rRanker, 2026-09-19: shared native resource preparation and
+WebView lifecycle integration; selected-chart loading; fixed-speed audio,
+pause/seek scheduling and storyboard triggers; system fonts; a host background
+layer for video and storyboard; Canvas-drawn flat skin and feedback; indexed
+rendering, mania scroll behavior and track opacity controls. The application
+uses synthesized fallback hitsounds and system-installed fonts. No upstream
+sample skin, default hitsound pack, sample beatmap or replay is redistributed.
+Music, video, storyboard images and custom samples loaded from a beatmap archive
+remain the property of their respective creators; the software licenses below
+do not grant rights to those media.
+
+The upstream's MIT declaration is not treated as replacing the licenses of
+code it identifies as ported from other projects:
+
+- **danser-go**: the included `renderer/URBarRenderer.ts` and
+  `renderer/FollowpointRenderer.ts` explicitly identify danser-go ports.
+  The other osu!standard judgement and rendering references retain their source
+  attribution. danser-go's GPL version 3 license, **Copyright (c) 2018-2024
+  Sebastian Krajewski (mail@wieku.me)**, is preserved in full at
+  [`LICENSES/danser-go-GPL-3.0.txt`](LICENSES/danser-go-GPL-3.0.txt), from audited
+  revision [`8331b0ffb841cc9e0f5e6b756bcf2bba2a9465c0`](https://github.com/Wieku/danser-go/tree/8331b0ffb841cc9e0f5e6b756bcf2bba2a9465c0).
+  Covered adaptations retain GPLv3 terms. GPLv3 section 13 permits their
+  combination with this AGPLv3 application; the AGPL network-source requirements
+  apply to that combination.
+- **ppy/osu**: four-mode autoplay, judgement, conversion, legacy random and
+  rendering semantics retain the MIT attribution for osu! code. The complete
+  license, **Copyright (c) 2025 ppy Pty Ltd <contact@ppy.sh>.**, is included at
+  [`LICENSES/osu-MIT.txt`](LICENSES/osu-MIT.txt), as verified at revision
+  [`ebaf7e9910ef3755308dec2c7950d916aabc545b`](https://github.com/ppy/osu/tree/ebaf7e9910ef3755308dec2c7950d916aabc545b).
+  This audit revision identifies the license reviewed, not a claim that
+  replayviewer-js pinned every adaptation to that revision.
+
+The original copyright and license notices, the modification notice, and the
+application's AGPLv3 license are included in both generated player files.
+Corresponding source includes the integrated TypeScript, source manifest and
+build scripts in this repository; binary distributors must provide the source
+corresponding to their distributed version. The build checks that its module
+closure contains no replay or skin loaders, LZMA, SoundTouch, difficulty-calculator
+WASM or sample assets. osu! is a trademark of ppy Pty Ltd; rRanker is not
+affiliated with or endorsed by ppy.
+
 ## nonebot-plugin-maimaidx / maimaiDX best-image layout
 
 The "game 样式" B50 export in
@@ -198,7 +250,7 @@ rRanker 仅消费其公开 API 数据并本地缓存，未复制其源码。
 
 ## Majdata Net integration and MajdataPlay scoring reference
 
-Majdata Net 接入按本地 `refer/MajdataNet` 的公开协议实现，使用
+Majdata Net 接入按其公开协议实现，使用
 `https://majdata.net/api3/api`，游戏和来源图标使用用户指定的
 `https://rranker.cn-nb1.rains3.com/assets/images/majdata.png`（1330×1330 PNG）。
 玩家头像来自 Majdata Net 的公开 `account/Icon?username=` 接口。

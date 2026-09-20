@@ -1,7 +1,7 @@
 /**
- * PGR 谱面解析与时间轴语义移植自 demo/phigros-chart-preview/pgr-core.js，
- * 语义依据 refer/phira/prpr 的 PGR 解析行为重新编写。
+ * PGR 谱面解析与时间轴，语义依据 TeamFlos/phira 的 prpr 核心的 PGR 解析行为。
  * 该模块保持纯函数、不依赖 DOM，供 WebView 播放器与 Vitest 共用。
+ * 时间倒序或字段无效的判定线事件按 prpr 忽略；缺失的事件/音符数组视为空。
  *
  * 许可证：解析语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
@@ -83,38 +83,52 @@ export function ticksToSeconds(ticks: unknown, bpm: unknown): number {
   return finiteNumber(ticks, '谱面时间') * 60 / (32 * safeBpm);
 }
 
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
+
+function optionalFinite(value: unknown): number | null {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+/** prpr `validate_events!`：时间倒序或字段无效的条目忽略，不中断整谱。 */
+function eventTimes(raw: { startTime?: unknown; endTime?: unknown } | null | undefined, bpm: number): [number, number] | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const startTicks = optionalFinite(raw.startTime);
+  const endTicks = optionalFinite(raw.endTime);
+  if (startTicks === null || endTicks === null) return null;
+  const startTime = ticksToSeconds(startTicks, bpm);
+  const endTime = ticksToSeconds(endTicks, bpm);
+  return startTime <= endTime ? [startTime, endTime] : null;
+}
+
 function normalizeTweenEvents(
-  source: RawTween[],
+  source: unknown,
   bpm: number,
-  label: string,
   transform: (value: number) => number = (value) => value,
 ): PgrTweenEvent[] {
-  if (!Array.isArray(source)) throw new Error(`${label} 缺失`);
-  const events = source.map((raw, index) => {
-    const startTime = ticksToSeconds(raw.startTime, bpm);
-    const endTime = ticksToSeconds(raw.endTime, bpm);
-    if (startTime > endTime) throw new Error(`${label}[${index}] 起始时间晚于结束时间`);
-    return [
-      startTime,
-      endTime,
-      transform(finiteNumber(raw.start, `${label}[${index}].start`)),
-      transform(finiteNumber(raw.end, `${label}[${index}].end`)),
-    ] as PgrTweenEvent;
+  const events = asArray<RawTween>(source).flatMap((raw) => {
+    const times = eventTimes(raw, bpm);
+    const start = optionalFinite(raw?.start);
+    const end = optionalFinite(raw?.end);
+    if (!times || start === null || end === null) return [];
+    return [[times[0], times[1], transform(start), transform(end)] as PgrTweenEvent];
   });
   events.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   return events;
 }
 
-function normalizeMoveEvents(source: RawMove[], bpm: number, formatVersion: number): PgrMoveEvent[] {
-  if (!Array.isArray(source)) throw new Error('判定线移动事件缺失');
-  return source.map((raw, index) => {
-    const startTime = ticksToSeconds(raw.startTime, bpm);
-    const endTime = ticksToSeconds(raw.endTime, bpm);
-    if (startTime > endTime) throw new Error(`移动事件[${index}] 起始时间晚于结束时间`);
-    let startX = finiteNumber(raw.start, `移动事件[${index}].start`);
-    let endX = finiteNumber(raw.end, `移动事件[${index}].end`);
-    let startY = finiteNumber(raw.start2 ?? 0, `移动事件[${index}].start2`);
-    let endY = finiteNumber(raw.end2 ?? 0, `移动事件[${index}].end2`);
+function normalizeMoveEvents(source: unknown, bpm: number, formatVersion: number): PgrMoveEvent[] {
+  return asArray<RawMove>(source).flatMap((raw) => {
+    const times = eventTimes(raw, bpm);
+    const startX0 = optionalFinite(raw?.start);
+    const endX0 = optionalFinite(raw?.end);
+    if (!times || startX0 === null || endX0 === null) return [];
+    let startX = startX0;
+    let endX = endX0;
+    let startY = optionalFinite(raw?.start2) ?? 0;
+    let endY = optionalFinite(raw?.end2) ?? 0;
     if (formatVersion === 1) {
       const sx = Math.trunc(startX / 1000);
       const sy = startX % 1000;
@@ -130,18 +144,18 @@ function normalizeMoveEvents(source: RawMove[], bpm: number, formatVersion: numb
       startY = -1 + startY * 2;
       endY = -1 + endY * 2;
     }
-    return [startTime, endTime, startX, startY, endX, endY] as PgrMoveEvent;
+    return [[times[0], times[1], startX, startY, endX, endY] as PgrMoveEvent];
   }).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 }
 
-function normalizeSpeedEvents(source: RawSpeed[], bpm: number, maxTime: number): PgrHeightEvent[] {
-  if (!Array.isArray(source) || source.length === 0) throw new Error('判定线速度事件缺失');
-  const rawEvents = source.map((raw, index) => {
-    const startTime = ticksToSeconds(raw.startTime, bpm);
-    const endTime = ticksToSeconds(raw.endTime, bpm);
-    if (startTime > endTime) throw new Error(`速度事件[${index}] 起始时间晚于结束时间`);
-    return [startTime, endTime, finiteNumber(raw.value, `速度事件[${index}].value`)];
+function normalizeSpeedEvents(source: unknown, bpm: number, maxTime: number): PgrHeightEvent[] {
+  const rawEvents = asArray<RawSpeed>(source).flatMap((raw) => {
+    const times = eventTimes(raw, bpm);
+    const value = optionalFinite(raw?.value);
+    if (!times || value === null) return [];
+    return [[times[0], times[1], value]];
   }).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (rawEvents.length === 0) throw new Error('判定线速度事件缺失');
   if (rawEvents[0][0] !== 0) rawEvents[0][0] = 0;
 
   const keyframes: number[][] = [];
@@ -213,14 +227,13 @@ export function lowerBoundNotes<T extends { time: number }>(notes: readonly T[],
 }
 
 function normalizeNotes(
-  source: RawNote[],
+  source: unknown,
   bpm: number,
   above: boolean,
   speedEvents: PgrHeightEvent[],
   lineIndex: number,
 ): PgrNote[] {
-  if (!Array.isArray(source)) throw new Error(`判定线 ${lineIndex} 音符列表缺失`);
-  return source.map((raw, noteIndex) => {
+  return asArray<RawNote>(source).map((raw, noteIndex) => {
     const type = finiteNumber(raw.type, `判定线 ${lineIndex} 音符 ${noteIndex} 类型`);
     const kind = NOTE_KINDS[type];
     if (!kind) throw new Error(`判定线 ${lineIndex} 存在未知音符类型 ${type}`);
@@ -263,8 +276,11 @@ export function parsePgrChart(source: string | unknown): PgrChart {
 
   const maxHeadTime = raw.judgeLineList.reduce((maximum, line) => {
     const bpm = finiteNumber(line.bpm, '判定线 BPM');
-    const notes = [...(line.notesAbove ?? []), ...(line.notesBelow ?? [])];
-    return notes.reduce((lineMaximum, note) => Math.max(lineMaximum, ticksToSeconds(note.time, bpm)), maximum);
+    const notes = [...asArray<RawNote>(line.notesAbove), ...asArray<RawNote>(line.notesBelow)];
+    return notes.reduce((lineMaximum, note) => {
+      const time = optionalFinite(note?.time);
+      return time === null ? lineMaximum : Math.max(lineMaximum, ticksToSeconds(time, bpm));
+    }, maximum);
   }, 0);
   const heightTimelineEnd = maxHeadTime + 1;
   let noteCount = 0;
@@ -273,12 +289,15 @@ export function parsePgrChart(source: string | unknown): PgrChart {
   const kindCounts: Record<PgrNoteKind, number> = { tap: 0, drag: 0, hold: 0, flick: 0 };
   const lines = raw.judgeLineList.map((line, lineIndex): PgrLine => {
     const bpm = finiteNumber(line.bpm, `判定线 ${lineIndex} BPM`);
-    const rawEventCount = line.speedEvents.length + line.judgeLineDisappearEvents.length
-      + line.judgeLineRotateEvents.length + line.judgeLineMoveEvents.length;
-    const speedEvents = normalizeSpeedEvents(line.speedEvents, bpm, heightTimelineEnd);
-    const disappearEvents = normalizeTweenEvents(line.judgeLineDisappearEvents, bpm, '透明度事件');
-    const rotateEvents = normalizeTweenEvents(line.judgeLineRotateEvents, bpm, '旋转事件');
-    const moveEvents = normalizeMoveEvents(line.judgeLineMoveEvents, bpm, formatVersion);
+    const speedSource = asArray<RawSpeed>(line.speedEvents);
+    const disappearSource = asArray<RawTween>(line.judgeLineDisappearEvents);
+    const rotateSource = asArray<RawTween>(line.judgeLineRotateEvents);
+    const moveSource = asArray<RawMove>(line.judgeLineMoveEvents);
+    const rawEventCount = speedSource.length + disappearSource.length + rotateSource.length + moveSource.length;
+    const speedEvents = normalizeSpeedEvents(speedSource, bpm, heightTimelineEnd);
+    const disappearEvents = normalizeTweenEvents(disappearSource, bpm);
+    const rotateEvents = normalizeTweenEvents(rotateSource, bpm);
+    const moveEvents = normalizeMoveEvents(moveSource, bpm, formatVersion);
     const notes = [
       ...normalizeNotes(line.notesAbove, bpm, true, speedEvents, lineIndex),
       ...normalizeNotes(line.notesBelow, bpm, false, speedEvents, lineIndex),

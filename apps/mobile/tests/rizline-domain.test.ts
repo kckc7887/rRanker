@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRizlineRecords, formatRizlineAccuracy, formatRizlineRks, inferRizlineAh, rizlineRecordStatus, rizlineTrackId,
+import { buildRizlineRecords, formatRizlineAccuracy, formatRizlineConstant, formatRizlineRks, inferRizlineAh, rizlineRecordStatus, rizlineTrackId,
   selectRizlineBest, sortedRizlineCharts, sortRizlineRecords } from '@/domain/rizline';
 import { rizlinePayloadFromSnapshot } from '@/domain/game-data';
 import { RizlineCatalogSchema } from '@/providers/rizline-catalog-schema';
@@ -36,6 +36,8 @@ describe('Rizline identities and score semantics', () => {
     const withoutBest = buildRizlineRecords({ ...save, myBest: [] });
     expect(withoutBest[0]).toMatchObject({ achievements: null, score: null, ahStatus: 'unknown' });
     expect(formatRizlineAccuracy(null)).toBe('—'); expect(formatRizlineRks(12)).toBe('12.0000');
+    expect(formatRizlineConstant(12)).toBe('12.0'); expect(formatRizlineConstant(12.34)).toBe('12.3');
+    expect(formatRizlineConstant(null)).toBe('—'); expect(formatRizlineConstant(Number.NaN)).toBe('—');
   });
   it('does not infer AH solely from all notes occurring during Riztime', () => {
     const chart = rizlineChart({ hit: 100, riztimeHit: 100 });
@@ -95,6 +97,12 @@ describe('Rizline identities and score semantics', () => {
     expect(RizlineCatalogSchema.safeParse(catalog).success).toBe(false);
     catalog.songs[0].updatedAt = null;
     catalog.songs[0].charts[0].maxScore = 1;
+    expect(RizlineCatalogSchema.safeParse(catalog).success).toBe(false);
+    catalog.songs[0].charts[0].maxScore = 1_002_000;
+    catalog.songs[0].audioPath = 'rizline/releases/r1/audio/Song.A.0.ogg';
+    expect(RizlineCatalogSchema.safeParse(catalog).success).toBe(false);
+    catalog.songs[0].audioPath = 'rizline/releases/r1/audio/Song.A.0.m4a';
+    catalog.songs[0].charts[0].chartPath = 'rizline/releases/r1/charts/Song.A.0.IN.txt';
     expect(RizlineCatalogSchema.safeParse(catalog).success).toBe(false);
   });
 });

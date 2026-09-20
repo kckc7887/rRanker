@@ -1,6 +1,6 @@
 /**
  * Phira 谱面 ZIP 内容定位，语义与 @/services/phira-chart-notes 的 countPhiraChartZip
- * 以及 refer/phira prpr 的 info.yml 读取约定一致：
+ * 以及 TeamFlos/phira 的 prpr 核心的 info.yml 读取约定一致：
  * info.yml 提供 chart/music/illustration/format 键，缺失时按扩展名推断。
  * PGR 与 RPE 谱面支持观赏预览，PEC/PBC 由调用方给出明确提示。
  */

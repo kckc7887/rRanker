@@ -1,5 +1,5 @@
 // 自动生成：B50 game 样式拆包素材清单（来源 Resource CN1.55，上传 rranker-maimai-data/maimai-ui/）。
-// 勿手改；重新打包上传后由 demo/.oss-pack/pack-ui.py 重新生成。
+// 自动生成，请勿手动修改。
 
 export type MaimaiUiManifestEntry = {
   path: string;

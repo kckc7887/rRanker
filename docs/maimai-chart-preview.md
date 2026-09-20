@@ -1,6 +1,6 @@
 # Simai 谱面确认内核与验证
 
-播放器为 TypeScript / Canvas 2D / WebView，音符表现以本地 MajdataViewX 为基准，
+播放器为 TypeScript / Canvas 2D / WebView，音符表现以 MajdataViewX 为基准，
 解析以其 NuGet 锁定的 MajSimai 2.2.2 commit 为基准。舞萌普通和 Buddy 的谱面、音乐
 仍来自 LXNS；Majdata Net 的谱面、音乐、封面与视频由游戏资源适配层提供。
 两者使用同一内核与页面设置协议，通用播放壳不解释 Simai 或构造游戏资源地址。
@@ -87,9 +87,7 @@ RIFF/WAVE 头有效。内容修订为 `83a00350faddc68d`。每个对象的 URL�
 | 判定点与判定线 | 按 S3 `outline.png` 的 6 px 线宽、约 29 px 点径及 100 PPU 绘制；落点复用 `buttonPoint`，圆环半径由落点取得 |
 | 判定区 | 原始 `assets/maimai-chart-preview/sensor.webp`，2048×2048；图案中心为 (1025.5, 997)，197 PPU，八个 E 区中心对齐 `touchPoint` 的 3.1 半径；再叠加同一判定线和判定点 |
 
-`skinSemantics.ts` 是本地别名与锚点/切片契约。四张带文件名对照图位于
-`apps/mobile/build/maimai-skin-audit/contact-1.png` 至 `contact-4.png`，已检查花瓣编号、
-Each、EX、Break、Mine、左右完成提示和 WIFI 原生弯折形状。只排除无调用的
+`skinSemantics.ts` 是别名与锚点/切片契约。只排除无调用的
 `hold_off.png`、`touchhold_off.png`，其余 153 个 S3 贴图随预览暂存。
 
 缓存继续使用共享计划执行器；文件名为 `skin/修订_扁平对象名`，正解音文件名含内容哈希。
@@ -134,12 +132,11 @@ git diff --check
 浏览器脚本使用安装的 Chrome，无 Expo Web、无常驻服务，结束时关闭浏览器。
 省略模块参数时使用当前环境可解析的 `playwright`；它不是应用运行依赖。
 
-`check-maimai-visuals.mjs` 输出七类谱面 × 六个时刻的 42 张截图及连续播放记录，
-覆盖入场、HOLD 本体/EX、花瓣合拢、WIFI、连接转折和 SV。输出在
-`apps/mobile/build/maimai-visual-check/`，`results.json` 记录时刻和叠加统计。
-同一脚本另输出 9 张设置截图，覆盖粉色单双星、移动星星、WIFI、专用星星、JUST 及
+`check-maimai-visuals.mjs` 检查七类谱面 × 六个时刻及连续播放，
+覆盖入场、HOLD 本体/EX、花瓣合拢、WIFI、连接转折和 SV。
+同一脚本检查设置项，覆盖粉色单双星、移动星星、WIFI、专用星星、JUST 及
 金色持续圈；横向、纵向、正方形媒体在 320/540 窗口中各以图片和真实视频帧绘制，
-输出 12 张截图并检查中心、圆外、上下/左右留黑像素，比较图片与视频结果。
+检查中心、圆外、上下/左右留黑像素，比较图片与视频结果。
 `check-maimai-player.mjs` 校验实际 `player.bundle` 与 `player.js` 一致，再检查实际页面的
 播放、暂停、跳转、循环操作、变速、水平镜像、图片背景、全屏与退出停音；包含普通谱面
 和 Buddy，以及 Majdata 已解析第七难度和缺失谱面报错。谱面/音乐请求由测试数据拦截，音频调度使用真实 AudioContext 节点；
@@ -152,15 +149,15 @@ git diff --check
 `maimai-chart-preview-visual-settings.test.ts` 检查粉色资源替换、原占位和 EX 对齐、
 六种方向的判定提示、镜像、背景绘制/缓存及打击特效。HOLD 粒子回归覆盖普通和 Break
 的 HOLD/TOUCH HOLD，验证拖动重建、结束排空和特效开关。共享屏幕、资源、注入与
-生命周期合同随完整单元/UI 测试执行；检查结果以当前命令输出和本地运行记录为准。
+生命周期合同随完整单元/UI 测试执行。
 
 公共入口保持 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?): Promise<ChartPreviewWebviewPlanResult>`，
 新增皮肤仍由现有清单、暂存与 writer 注入，不增加缓存执行器或共享游戏分支。
 
 ## 验收边界
 
-- 已有原始 MajSimai/C# 解析、标准/自定义/连接路径数据对照和本播放器截图；当前环境
-  没有可运行的 Unity/ViewX，尚无同皮肤、同谱面、同一时刻的双端截图差分，不能宣称视觉完全一致。
+- 原始 MajSimai/C# 解析及标准/自定义/连接路径数据对照不能替代视觉验收。
+  视觉一致性须通过同皮肤、同谱面、同一时刻的 Unity/ViewX 与播放器双端画面对照验证。
 - Canvas 烟花采用 512 像素着色缓存与 128 段径向渐变；色相绑定谱面时间以支持拖动重建。
   Canvas 与 Unity 的滤波、混合及粒子相位仍需实际连续画面对照。
 - iOS、Android WebView 真机播放、后台返回、反复循环边界、变速听感、视频背景、

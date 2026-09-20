@@ -25,7 +25,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 
 `apps/mobile/app/_layout.tsx` 是运行时装配中心：
 
-1. 最外层安装 `AppLifecycleProvider`，将 `active`、短暂 `inactive`、后台和内存警告转成统一生命周期状态。
+1. 最外层安装 `AppLifecycleProvider`，将 `active`、短暂 `inactive`、后台和内存警告转成统一生命周期状态。后台中止前台 AbortSignal；从后台经 inactive 回到 `foreground-ready` 时重建可取消信号，短暂 inactive 本身不中止、不换代。
 2. `useAppStartup` 并行恢复主题、图标字体和账号；准备完成前只渲染加载态。`services/account-restoration.ts` 统一安全会话、可选账号档案和旧默认本地玩家快照迁移，真实本地 Rating 延后读取。调试偏好同时恢复，但不阻塞主界面；恢复前示例添加入口关闭。
 3. 准备完成后安装 React Query、应用主题、全局通知和根导航栈。
 4. 根部唯一 `useSyncAccountMetadata` 订阅当前账号结果；页面只读取。`useAppRuntime` 在首帧交互结束后通过 `hydrateAccountDisplayData` 与账号列表共享缩略信息和本地 Rating 恢复，存储维护每次挂载执行一次。
@@ -135,20 +135,27 @@ Easy 与 Phigros HD 复用公共蓝色主题。歌曲信息只含简介、线上
 `assets/images/rizline.png`，由用户提供的 240×240 WebP 保留 RGBA 像素转换为 PNG。
 接入代码的来源、固定提交、修改说明和完整许可索引见根目录 `THIRD_PARTY_NOTICES.md`；
 `LICENSES/` 保留 RizlineGameSaveData、rizline_b40_tool、RizlineSavingTest 与 noble-ciphers 的许可全文。
-`RizlineLoginPanel` 通过公共 `SmsLoginPanel` 接收手机号与验证码，
-复用 `ProviderLoginSheet` 的忙碌状态、关闭和通知出口。验证码只保留在表单状态，关闭或进入
-后台时清空；发送验证码只尝试一次。公共面板按来源保留会话内冷却时间，默认 60 秒，遵守
-服务端更长的 Retry-After，关闭弹层不会重置冷却。验证码按钮位于手机号输入框右侧，
-发送后只保留按钮倒计时，到期显示“重新获取”；实际错误继续通过公共文案出口显示。
+`RizlineLoginPanel` 默认通过公共 `SmsLoginPanel` 接收手机号与验证码，也可切换到公共
+`PasswordLoginPanel` 做账密登录；复用 `ProviderLoginSheet` 的忙碌状态、关闭和通知出口。
+验证码与表单态密码只留在面板状态，关闭或进入后台时清空；发送验证码只尝试一次。
+公共短信面板按来源保留会话内冷却时间，默认 60 秒，遵守服务端更长的 Retry-After，关闭弹层
+不会重置冷却。验证码按钮位于手机号输入框右侧，发送后只保留按钮倒计时，到期显示“重新获取”；
+实际错误继续通过公共文案出口显示。账密登录成功后把密码写入 `LargeSecureValueStore`
+（`rranker.secure.rizline-password.<accountId>`），不进入 `RizlineSession` 或 zustand。
 设备 UUID 通过公共偏好工厂保存在
 `rranker.rizline.device.v1`；账号会话另在 SecureStore 保存手机号、令牌、设备 UUID 和渠道。
 
 `providers/rizline-provider.ts` 的 `RizlineProvider` 通过公共 HTTP 入口和 `expo/fetch`
-请求 `https://rizserver.pigeongames.net` 的发送验证码、登录与 `/game/rn_login`。
-响应存档使用 `@noble/ciphers` AES-256-GCM 校验认证标签后解密，再由 Zod 验证。
-令牌与存档的用户 ID 必须匹配；轮换先通过 `applyRizlineSessionRotation` 持久化，再更新
-内存会话。账号、取消信号、期望旧会话和写入代次共同阻止解绑或重新登录后的迟到写入。
-恢复、删除和账号展示继续走现有安全仓库、`createRizlineBoundAccount` 与中央元数据订阅。
+请求 `https://rizserver.pigeongames.net` 的 `check_phone`、发送验证码、登录与 `/game/rn_login`。
+游戏请求带 Unity `User-Agent` / `X-Unity-Version`、`Accept: */*` 和 `phone`（可从 JWT 补全）。
+新票读取 `set_token`、`set-token` 与 `token`。`rn_login` 仅把 HTTP 401 标为认证失败；
+无存档密码时按 JWT `exp` 预留 60 秒偏斜，过期则不再请求上游。响应存档使用
+`@noble/ciphers` AES-256-GCM 校验认证标签后解密，再由 Zod 验证。
+令牌与存档的用户 ID 必须匹配；轮换按 `mode + token` 比较后通过 `applyRizlineSessionRotation`
+持久化，再更新内存会话。账号、取消信号、期望旧令牌和写入代次共同阻止解绑或重新登录后的迟到写入。
+`loadRizlineFresh` 每次从 Session 读取最新令牌；`rn_login` 被打回后若店里已有新票则重试，
+否则才解密本地密码换票一次，失败则删除密码并要求重新登录。恢复、删除和账号展示继续走
+现有安全仓库、`createRizlineBoundAccount` 与中央元数据订阅；解绑会同时删除加密密码。
 
 `services/rizline-service.ts` 独立保存 `rizline:account:<accountId>` 原始有效成绩快照；
 登录读到的有效存档与后续同步共用 `cacheRizlineSave` 校验账号身份并落盘，首次登录后立即可离线恢复。
@@ -172,13 +179,10 @@ SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱�
 `domain/rizline-filters.ts` 的难度、曲包和定数规则；难度使用彩色横向按钮单选，再次点击
 已选难度取消筛选，选中框与舞萌共用默认胶囊形状。工具箱注册随机歌曲与机厅查找，
 总览保留公共个人曲库卡片。
-总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊，详情练习按钮采用相同
-难度配色。`rizlineRecordStatus` 统一评价展示：原始达成率达到 120% 优先 AP，其余推定 AH 显示 AH；
-AP 使用流金达成率和金色胶囊，AH 使用流动蓝绿达成率和蓝绿渐变胶囊。
-列表与详情复用 `RizlineAccuracyValue`、`RizlineStatusBadge`，通过公共动效组件消费
-`domain/metric-gradient-theme.ts`，与 Phigros 共用色组和时长。成绩卡右侧显示 RKS 小标题。
-详情不展示歌曲信息区，曲库中的成就和更新时间字段仍可维护，歌曲及谱面本地标签分别保留。
-未接入谱面预览、下载或成绩图。
+总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊；曲库行只显示定数、不显示难度名，
+筛选条、成绩卡与详情仍显示难度名。详情练习按钮与谱面确认按钮均采用当前难度实心底色与白色文字，谱面确认位于练习清单下方。
+曲库中的成就和更新时间字段仍可维护，歌曲及谱面本地标签分别保留。
+谱面确认经 `/songs/rizline-chart-preview` 接入公共播放壳，不提供谱面下载或成绩图。
 
 公开资源唯一基址为 `https://rranker-rizline-data.cn-nb1.rains3.com`。独立发布项目位于
 `D:/Projects/rizline-resource-publisher`，其维护说明管理官方导入、人工补充、校验、构建及发布。
@@ -198,7 +202,9 @@ Actions 完整发布归档与报告保留 90 天，S3 不保留回滚版本；�
 
 客户端 `services/rizline-resources.ts` 验证 `/rizline/current.json` 指定的 manifest SHA-256、
 资源路径与修订，再验证完整 catalog 的大小、SHA-256、身份与引用一致性，全部通过后替换。
-`rizline:catalog` 单独持久化最后有效曲库；失败与离线保留旧数据。封面使用版本化地址走公共
+歌曲 `audioPath`（`.m4a`）和谱面 `chartPath`（`.json`）必须出现在清单 `files` 中。
+内存发布对象额外保留 `files`，SQLite `rizline:catalog` 仍只存曲库快照与来源；
+失败与离线保留旧数据。封面使用版本化地址走公共
 图片缓存。`useRizlineCatalog`、`ensureRizlineCatalog` 和 `refreshRizlineCatalog` 共用查询；
 新的元数据只重建账号载荷的派生字段，不重取或改写官方成绩。根部 `useGameResourceSync`
 按注册表在恢复完成及进入相应游戏时检查 Phigros/Rizline 资源，不因普通标签或前后台切换重复检查。
@@ -347,11 +353,80 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 
 ## WebView 与文件型功能
 
-- 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。壳把 native `prepare` 映射到进度条 0～0.9，WebView 解码占 0.9～1，桥接 `ready` 后撤遮罩。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（已有非空文件则跳过下载，`bytes` 只作进度权重），再写入 session。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成；预览曲写入 `music-data.js`，皮肤编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读本地 PNG 或音频。这些文件随共享缓存一并统计和清理。
+- 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。壳把 native `prepare` 映射到进度条 0～0.9，WebView 解码占 0.9～1，桥接 `ready` 后撤遮罩。全屏方向由可选 `fullscreenOrientation` 控制，默认横屏。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（已有非空文件则跳过下载，`bytes` 只作进度权重），再写入 session。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成；预览曲写入 `music-data.js`，皮肤编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读本地 PNG 或音频。这些文件随共享缓存一并统计和清理。
 - 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。`useChartPackageDownload.start` 可接收 `optionalVideoUrl`，将视频可用性检查、选择与下载放在同一重复点击锁、超时与取消生命周期中；后台、卸载和取消后的迟到结果不能再弹窗或启动下载。
 - Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，自定义 `read` 走 `downloadChartResource` 字节进度，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira zip 同样经 `downloadChartResource` 计入进度后再解包。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
+
+公共谱面壳将准备会话与已挂载内容绑定，资源准备默认限时 120 秒，等待播放器 `ready`
+默认限时 60 秒，分别可通过请求的 `timeoutMs`、`readyTimeoutMs` 调整；等待用户选择资源
+时不启动计时。超时直接显示可重试状态，不依赖底层任务响应取消；旧会话的准备结果、
+进度、桥接、设置和内容进程回调不能修改新会话，迟到资源只回收自身。收到 `ready` 前
+进度最多显示 99%。内存警告或内容进程退出后释放资源，显示提示与“重新加载”；重载
+创建新的准备会话并重置进度。短暂 inactive 只暂停，普通后台释放后可在前台重建，
+内存或进程异常的手动重载状态不会因前后台切换而自动解除。
+
+### osu! 谱面确认
+
+四模式详情的难度操作统一为练习清单、谱面确认、谱包下载。`/songs/osu-chart-preview`
+使用 `gameId`、`beatmapsetId`、`beatmapId` 定位当前难度，标题仅用于显示。
+`features/osu-chart-preview/` 提供配置、资源选择与原生准备，复用 `ChartPreviewScreenShell`、
+注入工厂和 `prepareChartPreviewWebviewFromPlan`；准备超时为 120 秒。
+播放器普通窗口与横屏全屏均保持 16:9，沿用圆形走带按钮、音符密度时间轴、拨轮和锁定交互。
+舞萌与 osu! 的拨轮共用 `chart-preview-shared/webview-player/wheel.ts`，即时预览按帧合并，
+滚动停止后提交设置；全屏、滚动页面和退出时关闭浮层。
+
+`prepareOsuChartPreviewWebViewSource` 在下载前捕获 shared 资源写入代次，与谱包保存入口
+共用 `downloadOsuBeatmapsetArchive`。完整包按 Sayobot、osu.direct、Catboy、Nerinyan
+串行尝试，无视频包跳过 Catboy。源切换只发生在下载编排内，页面显示统一加载进度。
+每源连续 15 秒没有新增字节则取消并尝试下一源，外部取消或资源写入代次失效终止整链；
+通过 `subscribeResourceWrites` 同步接收清理失效，静默下载无需等到下一次进度才取消。
+每次尝试使用独立文件，失败及迟到结果只清理自己的文件。公共 `downloadChartResource`
+验证 HTTP 2xx 与非空文件，通过公共错误类型保留失败分类，取消无需等待原生下载结算。
+谱包下载验证 ZIP 结构、CRC 及谱面条目；预览在候选阶段通过 `readOsuChartPreviewArchive`
+完成整包 CRC 校验，再按 BeatmapID 精确匹配，拒绝缺失、匹配歧义、越界路径和可观察的规范化重名，并完成资源提取。
+每候选独占媒体子目录，提取损坏同样触发换源；失败和取消清理目录，成功资源才注入播放器。
+全部候选失败才显示场景错误，不改变 OAuth 授权，也不跳转下载网页。
+原生准备与播放器共用 `resource-plan.ts` 的引用选择：仅读取当前 `.osu`、同目录 `.osb`
+和被引用的媒体，保留目录语义并兼容大小写。UTF-16 文本采用平台无关字节解码。
+图片、视频写入独占 session；音频单独通过 `audio-data.js` 注入并按实际引用去重解码。
+完整谱包不持久缓存，取消、失败、退出与启动维护共用临时目录回收规则；异步恢复与发布前复核代次。
+
+播放器就绪后停在起点，点击播放或重播才恢复音频并按文件原生模式自动演奏；重载后
+保持暂停。转谱入口明确提示实际模式，不提供包内难度选择。
+歌曲、打击音、故事板 Sample、视频和谱尾反馈共同决定时间轴，负时间与 AudioLeadIn
+计入前导；关闭故事板或视频不改变总时长。视频静音并交由系统解码。
+设置从 `configuration.ts` 归一化，经公共壳持久化到 `rranker.osu-chart-preview.settings.v1`。
+catch 的六类音符本体使用约 50% 不透明度的实心圆与不透明同色描边，颜色、尺寸、hyperdash 提示和接盘
+分别保持既有语义。背景图片、视频与底层故事板先合成，再模糊并应用亮度遮罩；音符、
+界面及上层故事板不参与模糊。`PreviewBackgroundBlur` 用微型自绘画布检测实际滤镜能力，
+不支持时采用复用双缓冲的降采样与分离高斯卷积，生产绘制不读取媒体像素。模糊缓存按
+合成修订、半径与输出尺寸失效，暂停调节与跳转会重绘，退出释放辅助画布。
+退出释放音源、视频和位图；本地媒体读取、音画同步及大故事板内存仍需双端真机验收。
+`node scripts/check-osu-player.mjs [Playwright 模块入口]` 提供独立浏览器检查，使用小型样本
+验证四模式静默就绪和显式播放，以及不支持滤镜时的实际模糊像素、图层边界和透明度。
+
+`webview-player/engine/source-manifest.json` 固定公开上游提交及逐文件摘要，第三方来源与
+许可见根 `THIRD_PARTY_NOTICES.md` 和 `LICENSES/`。构建审计实际依赖清单，并将完整许可
+写入相同的 `player.js`、`player.bundle`；皮肤由代码生成，音效缺失时使用合成后备音。
+
+### Rizline 谱面确认
+
+详情难度卡在练习清单下方提供「查看谱面确认」，不提供谱面下载。
+`/songs/rizline-chart-preview` 使用 `songId`、`levelIndex` 定位当前难度，标题仅用于显示。
+`domain/rizline-chart-preview.ts` 通过 `rizlineResources.withRelease` 按发布曲库与清单
+`files` 解析唯一 `.json` 谱面和 `.m4a` 音频；`features/rizline-chart-preview/` 提供配置、
+原生准备与 WebView 播放器，复用 `ChartPreviewScreenShell`、`downloadChartResource`、
+`verifyResourceBytes`、注入工厂、`PlaybackClock` 与公共拨轮。准备超时为 120 秒。
+谱面与音频经 `downloadChartResource` 落盘后，由 writer 写成会话脚本 `chart-data.js` /
+`music-data.js`（`window.__RIZLINE_CHART_PREVIEW_CHART__` /
+`window.__RIZLINE_CHART_PREVIEW_MUSIC__`），供 file:// WebView 以 `<script src>` 加载；
+配置不带资源 URL，也不把谱面正文注入 HTML。会话目录 `rranker-rizline-chart-preview`
+走现有临时缓存回收。
+舞台按剩余空间铺满，渲染把 1080×1920（9:16）完整放下并留边；全屏保持竖屏，
+隐藏设置行、保留时间轴、走带和锁定。设置键为 `rranker.rizline-chart-preview.settings.v1`。
+官方 JSON 解析与 Canvas 绘制留在游戏播放器内。真机 WebView 音画同步无法用单测代替。
 
 ### Simai 谱面确认内核
 
@@ -363,7 +438,7 @@ LXNS 与 Majdata 只提供谱面/音乐 URL，下载在 RN `prepare` 完成后�
 舞萌与 Majdata 的 Simai 语义集中在 `features/simai-chart-preview/engine/`：`SimaiParser` 输出带来源位置、实际时间、HS/SV、
 Each 分组和分支/分段的音符模型；`prepareChart` 预计算路径与判定事件；`buildFrame`
 按指定实际时刻生成有序绘制命令；`MainRenderer` 用 Canvas 2D 执行贴图、三切片与遮罩。
-解析基准是 MajSimai 2.2.2 锁定 commit，表现数据来自本地 MajdataViewX。
+解析基准是 MajSimai 2.2.2 锁定 commit，表现数据来自 MajdataViewX。
 滑条各段书写时长保存在模型；播放按 ViewX 的合并路径总时长与路径长度分配视觉速度。
 `ScrollTimeline` 只影响视觉位置，音乐、正解音、结束和判定使用实际时间。
 播放器通过共享 `PlaybackClock` 重建暂停、跳转和变速状态；变速/跳转取消旧正解音调度。
@@ -391,8 +466,7 @@ Each 金色。Slide 不区分判定时使用六种方向的 `just_*_p.png`，区
 按 S3 `outline.png` 的点径、线宽绘制，坐标复用音符的 `buttonPoint`，判定区叠加同一判定线。
 
 独立参考程序位于 `apps/mobile/scripts/maimai-reference/`；原始 C# 路径输出和
-MajSimai 输出作为 TypeScript 测试的外部基准。素材审计和浏览器截图位于本地被忽略的
-`apps/mobile/build/`。语法范围、素材映射、复现命令与验收限制见
+MajSimai 输出作为 TypeScript 测试的外部基准。语法范围、素材映射、复现命令与验收限制见
 `docs/maimai-chart-preview.md`。八张 ViewX 内置特效贴图及其层级由
 `effectSprites.generated.ts` 随播放器加载，皮肤仍通过 S3/`skin-data.js` 加载。
 特效生成器经 `scripts/lib/recompress-png.mjs` 只重压缩 PNG 的 IDAT，保留其它块、
@@ -425,8 +499,13 @@ npm test
 
 应用类型检查与独立播放器检查共同组成 `npm run typecheck`：
 `tsconfig.maimai-player.json` 覆盖 Simai 引擎/入口，`tsconfig.phigros-player.json` 覆盖
-Phigros/Phira 及 RPE 入口。播放器源码改动后分别运行 `npm run build:chart-preview`
-或 `npm run build:phigros-chart-preview`；两者共用 `scripts/lib/build-preview.mjs`。
+Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入口及引擎，
+`tsconfig.rizline-player.json` 覆盖 Rizline 播放入口。
+播放器源码改动后按所属功能运行 `npm run build:chart-preview`、
+`npm run build:phigros-chart-preview`、`npm run build:osu-chart-preview`
+或 `npm run build:rizline-chart-preview`；
+四者共用 `scripts/lib/build-preview.mjs`，公共拨轮修改需重建舞萌、osu! 与 Rizline。
+构建器的可选 `licenseBanner` 保留分发许可，`auditModules` 在写出前审计实际依赖。
 `npm run check:generated` 不写文件，从源码重新构建并验证 HTML、player.js、player.bundle
 与交付产物一致。打包成功不代表手机 WebView 播放验收通过。
 
@@ -434,7 +513,6 @@ Phigros/Phira 及 RPE 入口。播放器源码改动后分别运行 `npm run bui
 命令，覆盖跳转、暂停、变速、镜像、长 Hold、连接 Slide、Each、Mine、Break 和非单调 SV；
 另测 6000 音符场景的 CPU 分布与 5000 首/20000 成绩搜索。Phigros 搜索通过
 `indexSongsById` 一次建立曲库索引，保留首次匹配、别名、排序和筛选合同。
-结果写入被忽略的 `build/optimization-performance.json`，包含基线/候选 SHA 和工作区状态。
 测试中的请求数、数据库调用数和条目重绘次数是受控测量，不代表真机帧率。
 
 本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
@@ -453,8 +531,8 @@ Gradle properties 启用 Release R8 与资源裁剪，将默认 ProGuard 文件�
 决定。插件可重复应用；已有本地原生目录须先运行 `npm run prebuild:android` 才能
 获得更新配置，直接执行 `apk:release:abi` 不会自动运行 prebuild。
 
-双端体积检查使用 `npx expo export --platform android --platform ios --source-maps
---dump-assetmap --output-dir build/size-audit --max-workers 4`，不启动 Expo Web。
+双端体积检查使用 Expo 导出，指定 Android 和 iOS 平台、source map、资源映射及输出目录，
+不启动 Expo Web。
 统计主程序 Hermes、独立播放器和按实际内容 SHA-256 去重的导出资源，source map 不计入交付体积。
 播放器已经包含在资源合计内；gzip 只作压缩参考，不代表 APK/IPA 或安装体积。
 Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 macOS 出包验收。
@@ -473,7 +551,7 @@ lint、typecheck 和全部测试；构建任务使用 Node.js 22、Temurin JDK 1
 prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a`、`arm64-v8a`、
 `x86`、`x86_64` 四份 APK。版本与构建号分别读取 `app.json` 的 `expo.version` 和
 `expo.android.versionCode`，不自动递增。工作流检查 Gradle 输出清单、APK 内部 ABI、
-Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构建号)-ABI.apk` 复制到
-`apps/mobile/build/android-apks/`，上传为保留 14 天的 Actions artifact。
+Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构建号)-ABI.apk` 命名，
+上传为保留 14 天的 Actions artifact。
 当前沿用 Expo 生成工程的默认调试密钥签名，属于 Release 模式测试安装包；流程不发布
 GitHub Release 或上传应用商店。实际云端构建与真机安装需运行工作流后验证。

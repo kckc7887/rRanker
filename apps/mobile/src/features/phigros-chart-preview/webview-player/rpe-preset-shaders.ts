@@ -1,7 +1,7 @@
 /**
- * prpr 内置后处理特效预设（来源 refer/phira/prpr，GPL-3.0）。
+ * prpr 内置后处理特效预设（来源 TeamFlos/phira 的 prpr 核心，GPL-3.0）。
  * 谱面包内同名 shader 优先；仅当 extra.json 的 effect.shader 引用预设名
- * 且谱面包未提供对应文件时使用，与 demo/phira-rpe-chart-preview 语义一致
+ * 且谱面包未提供对应文件时使用
  * （circleBlur/radialBlur 仅文件名带下划线，shader 名不变）。
  * 内嵌为字符串常量随 player.bundle 分发，不依赖 metro 资源解析。
  * 许可证全文与上游来源说明见仓库根 THIRD_PARTY_NOTICES.md。

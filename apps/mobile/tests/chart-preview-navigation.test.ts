@@ -45,7 +45,7 @@ function phiraChart(id: number): PhiraChart {
   };
 }
 
-describe('Phigros / Phira 谱面确认入口交接 demo', () => {
+describe('Phigros / Phira 谱面确认入口交接', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });

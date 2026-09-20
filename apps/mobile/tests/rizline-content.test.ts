@@ -24,13 +24,14 @@ describe('Rizline catalog and presentation', () => {
   });
 
   it('preserves stable library indices independently of reversed display order', () => {
-    const song = rizlineSong({ charts: [rizlineChart('EZ'), rizlineChart('IN'), rizlineChart('SP')] });
+    const song = rizlineSong({ charts: [rizlineChart('EZ'), rizlineChart('IN'), rizlineChart('SP', null)] });
     const normalized = rizlineContentAdapter.normalizeSong(song);
     expect(normalized.charts.map((chart) => chart.label)).toEqual(['SP', 'IN', 'EZ']);
     expect(normalized.charts.map((chart) => chart.libraryRef)).toEqual([
       { type: 'SD', levelIndex: 4 }, { type: 'SD', levelIndex: 2 }, { type: 'SD', levelIndex: 0 },
     ]);
     expect(presentRizlineSong(song).chartBadges.map((badge) => badge.label)).toEqual(['SP', 'IN', 'EZ']);
+    expect(presentRizlineSong(song).chartBadges.map((badge) => badge.value)).toEqual(['—', '12.0', '12.0']);
   });
 
   it('shows four decimal metrics, AP only from the normalized flag, and missing values as dashes', () => {

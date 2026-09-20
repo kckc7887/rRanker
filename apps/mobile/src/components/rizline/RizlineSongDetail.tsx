@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { InteractionManager, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
+import { router, useNavigation } from 'expo-router';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
 import { RemoteImage } from '@/components/RemoteImage';
@@ -15,9 +16,10 @@ import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { VERTICAL_SONG_DETAIL_STYLES as styles } from '@/components/game-content/SongDetailChromeStyles';
 import { useNotification } from '@/components/AppNotification';
-import { rizlineCoverUrl, rizlineDifficultyColors, rizlineDifficultyIndex, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
+import { formatRizlineConstant, rizlineCoverUrl, rizlineDifficultyColors, rizlineDifficultyIndex, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentRizlineChart } from '@/features/game-content/adapters/rizline';
+import { openRizlineChartPreview } from '@/features/rizline-chart-preview/chart-preview-open';
 import { useGameData } from '@/hooks/use-game-data';
 import { useRizlineCatalog } from '@/hooks/use-rizline-catalog';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -76,7 +78,7 @@ function RizlineSongDetailContent({ song, library, initialLevelIndex }: { song: 
       accessibilityLabel="谱面难度卡片" testID="rizline-chart-carousel" rootStyle={styles.carouselRoot} scrollStyle={styles.carouselScroll}
       contentContainerStyle={styles.carousel} keyExtractor={(chart) => chart.id}
       empty={<Text style={[styles.noCharts, { color: theme.textMuted }]}>暂无谱面</Text>}
-      renderItem={(chart) => <RizlineChartCard chart={chart} record={recordsByChart.get(chart.id)} library={library} cardWidth={cardWidth} />} />
+      renderItem={(chart) => <RizlineChartCard chart={chart} record={recordsByChart.get(chart.id)} library={library} cardWidth={cardWidth} songTitle={song.title} />} />
       <View style={styles.details}><Card><TagEditor testID="rizline-song-tags" tags={songItem?.kind === 'song' ? songItem.tags : []}
         presets={library.tagPresets} historyTags={buildTagHistory(library.data ?? [], songKey, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
         onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card></View>
@@ -84,15 +86,20 @@ function RizlineSongDetailContent({ song, library, initialLevelIndex }: { song: 
   </ScrollView>;
 }
 
-function RizlineChartCard({ chart, record, library, cardWidth }: { chart: RizlineChart; record?: RizlineRecord; library: Library; cardWidth: number }) {
+function RizlineChartCard({ chart, record, library, cardWidth, songTitle }: {
+  chart: RizlineChart; record?: RizlineRecord; library: Library; cardWidth: number; songTitle: string;
+}) {
   const theme = useAppTheme(); const { showNotification } = useNotification();
+  const navigation = useNavigation();
+  const cancelPreviewNavigation = useRef<(() => void) | null>(null);
+  useEffect(() => () => cancelPreviewNavigation.current?.(), []);
   const colors = rizlineDifficultyColors(chart.difficulty, theme.dark); const presentation = presentRizlineChart(chart, record);
   const levelIndex = rizlineDifficultyIndex(chart.difficulty); const key = library.chartKey(chart.songId, 'SD', levelIndex);
   const item = library.data?.find((entry) => entry.key === key); const practice = item?.kind === 'chart' && item.practice;
   return <GameChartResultCard testID={`rizline-chart-${chart.difficulty}`} accessibilityLabel={`${chart.difficulty} 难度卡片`}
     style={[styles.chartCard, { width: cardWidth, backgroundColor: theme.surface, borderColor: colors.bg }]}>
     <View style={styles.chartHeader}><RizlineDifficultyBadge difficulty={chart.difficulty} /><View style={styles.levelBlock}>
-      <Text style={[styles.level, { color: theme.text }]}>{chart.level}</Text><Text style={[styles.constant, { color: theme.textMuted }]}>{chart.constant?.toFixed(1) ?? '—'}</Text>
+      <Text style={[styles.level, { color: theme.text }]}>{chart.level}</Text><Text style={[styles.constant, { color: theme.textMuted }]}>{formatRizlineConstant(chart.constant)}</Text>
     </View></View>
     <View style={styles.resultBlock}><Text style={[styles.resultLabel, { color: theme.textMuted }]}>{presentation.primaryMetric.label}</Text>
       <RizlineAccuracyValue record={record} text={presentation.primaryMetric.text} fontSize={34} lineHeight={40} />
@@ -111,6 +118,28 @@ function RizlineChartCard({ chart, record, library, cardWidth }: { chart: Rizlin
         void library.setChartPractice(chart.songId, 'SD', levelIndex, !practice).catch(() => showNotification({ title: '练习清单保存失败', message: '请重试。', variant: 'error' }));
       }} style={[styles.action, { borderColor: colors.bg, backgroundColor: colors.bg }]}>
       <Text style={[styles.actionText, { color: colors.fg }]}>{practice ? '移出练习清单' : '加入练习清单'}</Text>
+    </DetailPressable></DetailGestureRoot>
+    <DetailGestureRoot><DetailPressable accessibilityRole="button" accessibilityLabel={`查看谱面确认：${songTitle} ${chart.difficulty}`}
+      onPress={() => {
+        cancelPreviewNavigation.current?.();
+        cancelPreviewNavigation.current = openRizlineChartPreview({
+          songId: chart.songId,
+          levelIndex,
+          title: `${songTitle} ${chart.difficulty}`,
+        }, {
+          push: (href) => router.push(href),
+          topRouteName: () => {
+            const state = typeof navigation.getState === 'function' ? navigation.getState() : undefined;
+            return state?.routes[state.index ?? 0]?.name;
+          },
+          onFail: (message) => showNotification({
+            title: '无法打开谱面确认',
+            message,
+            variant: 'error',
+          }),
+        });
+      }} style={[styles.action, styles.chartSearchAction, { borderColor: colors.bg, backgroundColor: colors.bg }]}>
+      <Text style={[styles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
     </DetailPressable></DetailGestureRoot>
     <TagEditor testID={`rizline-chart-tags-${chart.difficulty}`} tags={item?.kind === 'chart' ? item.tags : []} presets={library.tagPresets}
       historyTags={buildTagHistory(library.data ?? [], key, library.tagPresets)} disabled={library.isUpdating || library.isLoading}

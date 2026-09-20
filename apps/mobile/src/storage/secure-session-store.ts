@@ -4,6 +4,7 @@ import Storage from 'expo-sqlite/kv-store';
 import type { GameId, RemoteProviderId } from '@/domain/game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
 import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
+import { deleteRizlinePassword } from '@/storage/rizline-password-store';
 import { startTimer } from '@/utils/startup-timing';
 
 const LEGACY_SESSION_KEY = 'rranker.diving-fish.session.v1';
@@ -148,6 +149,14 @@ function isPersistableSession(session: ProviderSession): session is ProviderSess
       && typeof session.expiresAt === 'number';
   }
   return false;
+}
+
+function sessionMatchesExpected(current: ProviderSession | undefined, expected?: ProviderSession): boolean {
+  if (!expected) return true;
+  if (expected.mode === 'rizline' || current?.mode === 'rizline') {
+    return current?.mode === 'rizline' && expected.mode === 'rizline' && current.token === expected.token;
+  }
+  return JSON.stringify(current) === JSON.stringify(expected);
 }
 
 function credentialIdForLegacyAccount(accountId: string): string {
@@ -642,7 +651,7 @@ export class SecureSessionStore {
       const existing = vault.accounts.find((account) => account.id === accountId);
       if (!existing) return;
       const credential = vault.credentials.find(item => item.id === existing.credentialId);
-      if (options?.expected && JSON.stringify(credential?.session) !== JSON.stringify(options.expected)) return;
+      if (options?.expected && !sessionMatchesExpected(credential?.session, options.expected)) return;
       await this.saveVaultUnlocked({
         ...vault,
         credentials: vault.credentials.map((credential) => (
@@ -685,6 +694,7 @@ export class SecureSessionStore {
         activeAccountId,
         accounts,
       });
+      await deleteRizlinePassword(accountId);
     });
   }
 

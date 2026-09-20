@@ -40,6 +40,12 @@ export const providerLoginSheetStyles = StyleSheet.create({
   secondaryText: { color: '#246BFD', fontWeight: '700' },
   or: { color: '#9CA3AF', textAlign: 'center' },
   hint: { color: '#6B7280', fontSize: 12, lineHeight: 16 },
+  phiQrWrap: {
+    alignSelf: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 12,
+    borderRadius: 12,
+  },
   phiStatus: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
   reuseSection: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 4, paddingTop: 14, gap: 10 },
   reuseList: { gap: 8 },

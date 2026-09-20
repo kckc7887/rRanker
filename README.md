@@ -50,6 +50,7 @@ npm start
 Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict · Zustand · TanStack Query · Expo SQLite · Expo SecureStore
 
 ## 🙏 致谢
+
 - [Score Hub](https://github.com/bakapiano/maimai-score-hub)
 - [水鱼查分器](https://maimai.diving-fish.com)
 - [落雪咖啡屋](https://maimai.lxns.net/)
@@ -61,6 +62,10 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [nearcade](https://nearcade.phizone.cn/)
 - [PhiZone Player](https://github.com/PhiZone/player)
 - [phira](https://github.com/TeamFlos/phira)
+- [replayviewer-js](https://github.com/daladal/replayviewer-js)——osu! 四模式谱面解析、自动演奏与渲染
+- [RizlineGameSaveData](https://github.com/CHCAT1320/RizlineGameSaveData)——Rizline 官方账号登录与云存档协议参考
+- [rizline_b40_tool](https://github.com/REDDRAGON-HL/rizline_b40_tool)——Rizline AH 与最佳成绩分组算法参考
+- [RizlineSavingTest](https://github.com/HiXcc/RizlineSavingTest)——Rizline 满达成率数值格式参考
 
 第三方组件许可证与来源声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 

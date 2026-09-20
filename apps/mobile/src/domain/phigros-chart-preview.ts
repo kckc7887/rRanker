@@ -1,5 +1,5 @@
 /**
- * Phigros 谱面确认资源定位，移植自 demo/phigros-chart-preview/resource-loader.js：
+ * Phigros 谱面确认资源定位：
  * 按 current.json → catalog/manifest → immutable asset URL 动态定位任意歌曲的
  * 谱面、OGG 音乐与曲绘，与发布台对象存储的资产约定保持一致。
  */
