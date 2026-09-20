@@ -6,8 +6,10 @@ const mockDirectories = new Set<string>();
 const mockDownloaded: string[] = [];
 const mockCleaned: string[] = [];
 let mockSequence = 0;
-const mockChartBytes = new Uint8Array([1, 2, 3]);
+const mockChartJson = '{"fileVersion":0}';
+const mockChartBytes = Uint8Array.from(Buffer.from(mockChartJson));
 const mockMusicBytes = new Uint8Array([4, 5, 6, 7]);
+const mockMusicBase64 = Buffer.from(mockMusicBytes).toString('base64');
 
 jest.mock('../assets/rizline-chart-preview/player.bundle', () => 1);
 jest.mock('../assets/rizline-chart-preview/index.html', () => 2);
@@ -36,6 +38,11 @@ jest.mock('expo-file-system', () => {
       const bytes = mockFiles.get(this.uri);
       if (!(bytes instanceof Uint8Array)) throw new Error('missing-bytes');
       return bytes;
+    }
+    async base64() {
+      const bytes = mockFiles.get(this.uri);
+      if (!(bytes instanceof Uint8Array)) throw new Error('missing-bytes');
+      return Buffer.from(bytes).toString('base64');
     }
     delete() { mockFiles.delete(this.uri); }
   }
@@ -92,7 +99,13 @@ jest.mock('@/domain/rizline-chart-preview', () => ({
   },
 }));
 
-const mockPlan = jest.fn(async (plan: { buildHtml: (template: string) => string; directory?: { uri: string } }) => ({
+type PreviewPlan = {
+  buildHtml: (template: string) => string;
+  directory?: { uri: string };
+  writers?: ((directory: { uri: string }, signal?: AbortSignal) => Promise<void>)[];
+};
+
+const mockPlan = jest.fn(async (plan: PreviewPlan) => ({
   uri: `${plan.directory?.uri}/index.html`,
   allowingReadAccessToURL: plan.directory?.uri,
   dispose: jest.fn(),
@@ -107,11 +120,13 @@ describe('Rizline chart preview prepare', () => {
     mockSequence = 0; mockPlan.mockClear();
   });
 
-  it('downloads chart JSON and m4a into the session then injects relative URLs', async () => {
+  it('downloads chart JSON and m4a then wraps them as sibling scripts', async () => {
     const htmlWrites: string[] = [];
-    mockPlan.mockImplementationOnce(async (plan: { buildHtml: (template: string) => string; directory?: { uri: string } }) => {
+    mockPlan.mockImplementationOnce(async (plan: PreviewPlan) => {
+      if (!plan.directory) throw new Error('missing-directory');
+      for (const writer of plan.writers ?? []) await writer(plan.directory);
       htmlWrites.push(plan.buildHtml('<!--RIZLINE_CHART_PREVIEW_CONFIG-->'));
-      return { uri: `${plan.directory?.uri}/index.html`, allowingReadAccessToURL: plan.directory?.uri, dispose: jest.fn() };
+      return { uri: `${plan.directory.uri}/index.html`, allowingReadAccessToURL: plan.directory.uri, dispose: jest.fn() };
     });
     const prepared = await prepareRizlineChartPreviewWebViewSource(
       { songId: 'Song.A.0', levelIndex: 2, title: 'Song IN' },
@@ -120,9 +135,17 @@ describe('Rizline chart preview prepare', () => {
       new AbortController().signal,
     );
     expect(mockDownloaded).toEqual(['https://assets.example/chart.json', 'https://assets.example/audio.m4a']);
-    expect(htmlWrites[0]).toContain('./preview-chart.json');
-    expect(htmlWrites[0]).toContain('./preview-music.m4a');
-    expect(htmlWrites[0]).not.toContain('preview-chart.json contents');
+    const files = [...mockFiles.entries()];
+    const chartScript = files.find(([uri]) => uri.endsWith('/chart-data.js'))?.[1];
+    const musicScript = files.find(([uri]) => uri.endsWith('/music-data.js'))?.[1];
+    expect(chartScript).toBe(`window.__RIZLINE_CHART_PREVIEW_CHART__=${mockChartJson};`);
+    expect(musicScript).toBe(`window.__RIZLINE_CHART_PREVIEW_MUSIC__=${JSON.stringify(mockMusicBase64)};`);
+    expect(files.some(([uri]) => uri.endsWith('/preview-chart.json'))).toBe(false);
+    expect(files.some(([uri]) => uri.endsWith('/preview-music.m4a'))).toBe(false);
+    expect(htmlWrites[0]).toContain('window.__RIZLINE_CHART_PREVIEW_CONFIG__=');
+    expect(htmlWrites[0]).not.toContain('preview-chart.json');
+    expect(htmlWrites[0]).not.toContain('preview-music.m4a');
+    expect(htmlWrites[0]).not.toContain(mockChartJson);
     expect(prepared.uri).toContain('rranker-rizline-chart-preview');
   });
 });

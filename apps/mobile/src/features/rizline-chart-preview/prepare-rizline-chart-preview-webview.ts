@@ -1,4 +1,4 @@
-import { Directory } from 'expo-file-system';
+import { Directory, File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
 import {
@@ -27,6 +27,8 @@ import { applyRizlineChartPreviewConfigToHtml } from './rizline-chart-preview-in
 
 const DIRECTORY_NAME = 'rranker-rizline-chart-preview';
 const PREVIEW_RESOURCE_FILES = ['preview-chart.json', 'preview-music.m4a'] as const;
+const CHART_DATA_FILE = 'chart-data.js';
+const MUSIC_DATA_FILE = 'music-data.js';
 const RESOURCE_END = 0.7;
 
 // Metro 静态资源模块编号只能在运行时 require 取得（模块级常量），
@@ -77,6 +79,29 @@ export function createRizlinePreviewResourceRead(
   };
 }
 
+/** 谱面与音频写成会话目录脚本；iOS file:// 下无法 fetch 本地文件。 */
+async function writeRizlinePreviewDataScripts(directory: Directory, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  const chartFile = new File(directory, PREVIEW_RESOURCE_FILES[0]);
+  const musicFile = new File(directory, PREVIEW_RESOURCE_FILES[1]);
+  const chartText = new TextDecoder('utf-8', { fatal: true }).decode(await chartFile.bytes()).replace(/^\uFEFF/u, '');
+  try {
+    JSON.parse(chartText);
+  } catch {
+    throw new Error('谱面文件无法解析');
+  }
+  const musicBase64 = await musicFile.base64();
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  const chartData = new File(directory, CHART_DATA_FILE);
+  chartData.create({ overwrite: true });
+  chartData.write(`window.__RIZLINE_CHART_PREVIEW_CHART__=${chartText};`);
+  const musicData = new File(directory, MUSIC_DATA_FILE);
+  musicData.create({ overwrite: true });
+  musicData.write(`window.__RIZLINE_CHART_PREVIEW_MUSIC__=${JSON.stringify(musicBase64)};`);
+  if (chartFile.exists) chartFile.delete();
+  if (musicFile.exists) musicFile.delete();
+}
+
 export async function prepareRizlineChartPreviewWebViewSource(
   target: RizlineChartPreviewTarget,
   theme: 'light' | 'dark',
@@ -106,14 +131,13 @@ export async function prepareRizlineChartPreviewWebViewSource(
       stagedAssets: [
         { fileName: 'player.js', moduleId: PLAYER_MODULE },
       ],
+      writers: [writeRizlinePreviewDataScripts],
       htmlModuleId: HTML_MODULE,
       buildHtml: (template) => {
         assertCurrent();
         return applyRizlineChartPreviewConfigToHtml(template, {
           theme,
           title: target.title ?? `${bundle.song.title} ${bundle.chart.difficulty}`,
-          chartUrl: './preview-chart.json',
-          musicUrl: './preview-music.m4a',
           settings: normalizeRizlineChartPreviewSettings(settings),
         });
       },

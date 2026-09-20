@@ -116,17 +116,18 @@ describe('Rizline chart preview configuration', () => {
     });
   });
 
-  it('injects relative resource URLs instead of chart text', () => {
+  it('injects theme and settings without chart text or resource URLs', () => {
     const html = applyRizlineChartPreviewConfigToHtml('<!--RIZLINE_CHART_PREVIEW_CONFIG-->', {
       theme: 'dark',
       title: 'Song IN',
-      chartUrl: './preview-chart.json',
-      musicUrl: './preview-music.m4a',
       settings: normalizeRizlineChartPreviewSettings({}),
     });
     expect(html).toContain('window.__RIZLINE_CHART_PREVIEW_CONFIG__=');
-    expect(html).toContain('./preview-chart.json');
-    expect(html).toContain('./preview-music.m4a');
+    expect(html).toContain('"title":"Song IN"');
+    expect(html).not.toContain('preview-chart.json');
+    expect(html).not.toContain('preview-music.m4a');
+    expect(html).not.toContain('chartUrl');
+    expect(html).not.toContain('musicUrl');
     expect(html).not.toContain('chartText');
   });
 });

@@ -93,6 +93,19 @@ describe('Rizline 谱面确认公共控制器外观合同', () => {
     expect(rules.get('body.fullscreen .stage')!.height).toBe('100%');
   });
 
+  it('在播放器脚本前加载 chart-data.js 与 music-data.js', () => {
+    const html = readFileSync(
+      resolve(process.cwd(), 'src/features/rizline-chart-preview/webview-player/index.html'),
+      'utf8',
+    );
+    expect(html.indexOf('<script src="./chart-data.js"></script>')).toBeLessThan(
+      html.indexOf('<script src="./music-data.js"></script>'),
+    );
+    expect(html.indexOf('<script src="./music-data.js"></script>')).toBeLessThan(
+      html.indexOf('<!--RIZLINE_CHART_PREVIEW_CONFIG-->'),
+    );
+  });
+
   it('设置初始标示与公共规范化配置一致', () => {
     const defaults = normalizeRizlineChartPreviewSettings(undefined);
     expect(rizline.getElementById('user-speed-val')!.textContent).toBe(defaults.userSpeed.toFixed(1));

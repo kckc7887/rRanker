@@ -17,6 +17,8 @@ import { RizlineRenderer } from './renderer';
 declare global {
   interface Window {
     __RIZLINE_CHART_PREVIEW_CONFIG__?: RizlineChartPreviewConfig;
+    __RIZLINE_CHART_PREVIEW_CHART__?: unknown;
+    __RIZLINE_CHART_PREVIEW_MUSIC__?: string | null;
     ReactNativeWebView?: { postMessage(message: string): void };
   }
 }
@@ -345,10 +347,13 @@ document.addEventListener('message', (event) => receiveMessage(event as MessageE
 window.addEventListener('pagehide', dispose);
 document.addEventListener('visibilitychange', () => { if (document.hidden) pauseForLifecycle(); });
 
-async function fetchBytes(url: string): Promise<ArrayBuffer> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`resource ${response.status}`);
-  return response.arrayBuffer();
+function decodeBase64Payload(value: string): ArrayBuffer {
+  const separator = value.indexOf(',');
+  const base64 = separator >= 0 ? value.slice(separator + 1) : value;
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes.buffer;
 }
 
 async function initialize(): Promise<void> {
@@ -359,13 +364,11 @@ async function initialize(): Promise<void> {
   element('title').textContent = config.title || '谱面确认';
   setupSettings();
   post('progress', { value: 0.05, label: '正在准备播放器…' });
-  const [chartJson, musicBytes] = await Promise.all([
-    fetch(config.chartUrl, { headers: { Accept: 'application/json' } }).then(async (response) => {
-      if (!response.ok) throw new Error(`chart ${response.status}`);
-      return response.json() as Promise<unknown>;
-    }),
-    fetchBytes(config.musicUrl),
-  ]);
+  const chartJson = window.__RIZLINE_CHART_PREVIEW_CHART__;
+  const musicData = window.__RIZLINE_CHART_PREVIEW_MUSIC__;
+  if (chartJson == null) throw new Error('missing-chart');
+  if (typeof musicData !== 'string' || musicData.length === 0) throw new Error('missing-music');
+  const musicBytes = decodeBase64Payload(musicData);
   post('progress', { value: 0.55, label: '正在准备播放器…' });
   const prepared = prepareOfficialChart(chartJson);
   const music = await decodeAudio(musicBytes);
@@ -390,6 +393,6 @@ void initialize().catch((error: unknown) => {
   status('无法播放这张谱面，请返回重试');
   post('error', {
     message: '无法播放这张谱面，请返回重试',
-    diagnostic: error instanceof Error ? error.stack : undefined,
+    diagnostic: error instanceof Error ? error.stack ?? error.message : String(error),
   });
 });

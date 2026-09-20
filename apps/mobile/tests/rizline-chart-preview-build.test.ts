@@ -12,6 +12,8 @@ describe('Rizline player distribution', () => {
     expect(player.equals(readFileSync(resolve(mobileRoot, 'assets/rizline-chart-preview/player.bundle')))).toBe(true);
     const html = normalized(resolve(mobileRoot, 'assets/rizline-chart-preview/index.html'));
     expect(html).toContain('<!--RIZLINE_CHART_PREVIEW_CONFIG-->');
+    expect(html.indexOf('src="./chart-data.js"')).toBeLessThan(html.indexOf('src="./music-data.js"'));
+    expect(html.indexOf('src="./music-data.js"')).toBeLessThan(html.indexOf('<!--RIZLINE_CHART_PREVIEW_CONFIG-->'));
     expect(html.indexOf('<!--RIZLINE_CHART_PREVIEW_CONFIG-->')).toBeLessThan(html.indexOf('./player.js'));
     expect(html).not.toContain('<!--PLAYER_SCRIPT-->');
   });
