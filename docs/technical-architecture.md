@@ -179,8 +179,8 @@ SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱�
 `domain/rizline-filters.ts` 的难度、曲包和定数规则；难度使用彩色横向按钮单选，再次点击
 已选难度取消筛选，选中框与舞萌共用默认胶囊形状。工具箱注册随机歌曲与机厅查找，
 总览保留公共个人曲库卡片。
-总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊，详情练习按钮采用相同
-难度配色。`rizlineRecordStatus` 统一评价展示：原始达成率达到 120% 优先 AP，其余推定 AH 显示 AH；
+总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊；曲库行只显示等级、不显示难度名，
+筛选条、成绩卡与详情仍显示难度名。详情练习按钮采用相同难度配色。`rizlineRecordStatus` 统一评价展示：原始达成率达到 120% 优先 AP，其余推定 AH 显示 AH；
 AP 使用流金达成率和金色胶囊，AH 使用流动蓝绿达成率和蓝绿渐变胶囊。
 列表与详情复用 `RizlineAccuracyValue`、`RizlineStatusBadge`，通过公共动效组件消费
 `domain/metric-gradient-theme.ts`，与 Phigros 共用色组和时长。成绩卡右侧显示 RKS 小标题。
