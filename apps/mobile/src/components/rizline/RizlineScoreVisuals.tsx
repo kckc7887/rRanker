@@ -3,17 +3,18 @@ import { AnimatedMetricValue } from '@/components/game-content/AnimatedMetricVal
 import { GameDifficultyBadge } from '@/components/game-content/GameDifficultyBadge';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { METRIC_GRADIENT_THEMES } from '@/domain/metric-gradient-theme';
-import { rizlineDifficultyColors, rizlineRecordStatus, type RizlineDifficulty, type RizlineRecord } from '@/domain/rizline';
+import { formatRizlineConstant, rizlineDifficultyColors, rizlineRecordStatus, type RizlineDifficulty, type RizlineRecord } from '@/domain/rizline';
 import { useAppTheme } from '@/theme/app-theme';
 
-export function RizlineDifficultyBadge({ difficulty, level, showLabel = true }: {
-  difficulty: RizlineDifficulty; level?: string; showLabel?: boolean;
+export function RizlineDifficultyBadge({ difficulty, level, constant, showLabel = true }: {
+  difficulty: RizlineDifficulty; level?: string; constant?: number | null; showLabel?: boolean;
 }) {
   const theme = useAppTheme();
   const colors = rizlineDifficultyColors(difficulty, theme.dark);
-  const text = showLabel ? `${difficulty}${level === undefined ? '' : ` ${level}`}` : (level ?? '—');
+  const compactValue = constant !== undefined ? formatRizlineConstant(constant) : (level ?? '—');
+  const text = showLabel ? `${difficulty}${level === undefined ? '' : ` ${level}`}` : compactValue;
   return <GameDifficultyBadge text={text}
-    accessibilityLabel={showLabel ? undefined : (level === undefined ? difficulty : `${difficulty} ${level}`)}
+    accessibilityLabel={showLabel ? undefined : `${difficulty} ${compactValue}`}
     theme={{ background: colors.bg, border: colors.bg, text: colors.fg }}
     testID={`rizline-difficulty-${difficulty}`} />;
 }

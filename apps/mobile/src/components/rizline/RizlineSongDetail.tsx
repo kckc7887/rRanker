@@ -16,7 +16,7 @@ import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { VERTICAL_SONG_DETAIL_STYLES as styles } from '@/components/game-content/SongDetailChromeStyles';
 import { useNotification } from '@/components/AppNotification';
-import { rizlineCoverUrl, rizlineDifficultyColors, rizlineDifficultyIndex, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
+import { formatRizlineConstant, rizlineCoverUrl, rizlineDifficultyColors, rizlineDifficultyIndex, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentRizlineChart } from '@/features/game-content/adapters/rizline';
 import { openRizlineChartPreview } from '@/features/rizline-chart-preview/chart-preview-open';
@@ -99,7 +99,7 @@ function RizlineChartCard({ chart, record, library, cardWidth, songTitle }: {
   return <GameChartResultCard testID={`rizline-chart-${chart.difficulty}`} accessibilityLabel={`${chart.difficulty} 难度卡片`}
     style={[styles.chartCard, { width: cardWidth, backgroundColor: theme.surface, borderColor: colors.bg }]}>
     <View style={styles.chartHeader}><RizlineDifficultyBadge difficulty={chart.difficulty} /><View style={styles.levelBlock}>
-      <Text style={[styles.level, { color: theme.text }]}>{chart.level}</Text><Text style={[styles.constant, { color: theme.textMuted }]}>{chart.constant?.toFixed(1) ?? '—'}</Text>
+      <Text style={[styles.level, { color: theme.text }]}>{chart.level}</Text><Text style={[styles.constant, { color: theme.textMuted }]}>{formatRizlineConstant(chart.constant)}</Text>
     </View></View>
     <View style={styles.resultBlock}><Text style={[styles.resultLabel, { color: theme.textMuted }]}>{presentation.primaryMetric.label}</Text>
       <RizlineAccuracyValue record={record} text={presentation.primaryMetric.text} fontSize={34} lineHeight={40} />

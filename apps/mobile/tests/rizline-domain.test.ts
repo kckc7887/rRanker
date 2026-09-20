@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRizlineRecords, formatRizlineAccuracy, formatRizlineRks, inferRizlineAh, rizlineRecordStatus, rizlineTrackId,
+import { buildRizlineRecords, formatRizlineAccuracy, formatRizlineConstant, formatRizlineRks, inferRizlineAh, rizlineRecordStatus, rizlineTrackId,
   selectRizlineBest, sortedRizlineCharts, sortRizlineRecords } from '@/domain/rizline';
 import { rizlinePayloadFromSnapshot } from '@/domain/game-data';
 import { RizlineCatalogSchema } from '@/providers/rizline-catalog-schema';
@@ -36,6 +36,8 @@ describe('Rizline identities and score semantics', () => {
     const withoutBest = buildRizlineRecords({ ...save, myBest: [] });
     expect(withoutBest[0]).toMatchObject({ achievements: null, score: null, ahStatus: 'unknown' });
     expect(formatRizlineAccuracy(null)).toBe('—'); expect(formatRizlineRks(12)).toBe('12.0000');
+    expect(formatRizlineConstant(12)).toBe('12.0'); expect(formatRizlineConstant(12.34)).toBe('12.3');
+    expect(formatRizlineConstant(null)).toBe('—'); expect(formatRizlineConstant(Number.NaN)).toBe('—');
   });
   it('does not infer AH solely from all notes occurring during Riztime', () => {
     const chart = rizlineChart({ hit: 100, riztimeHit: 100 });

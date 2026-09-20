@@ -163,7 +163,7 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   `TagEditor` 和 `RandomChartsPage`。`rizline-filters.ts` 同时提供曲库与随机过滤，
   Store 分别复用 `createFilterStore`、`createPersistedRandomChartsFilterStore` 和偏好工厂。
   游戏领域层提供柔和的总览配色和适配白字胶囊的难度配色；
-  曲库行通过 `RizlineDifficultyBadge` 的 `showLabel={false}` 只显示等级，筛选条、成绩卡与详情仍显示难度名；
+  曲库行通过 `RizlineDifficultyBadge` 的 `showLabel={false}` 只显示 `formatRizlineConstant` 的定数，筛选条、成绩卡与详情仍显示难度名；
   `rizlineRecordStatus(record?)` 集中选择评价，与成绩构造共用 `isRizlineAp`；有限的原始达成率
   达到 120 时优先 AP，兼容 `120.00000762939453` 这类满达成率浮点值，不从四位显示值判断。
   其余 AH 相容性推定成绩显示 AH，未知状态不补评价。共享卡片不解释这些字段。

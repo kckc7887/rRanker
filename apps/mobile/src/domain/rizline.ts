@@ -71,6 +71,9 @@ export function sortedRizlineCharts(charts: readonly RizlineChart[]): RizlineCha
 export function formatRizlineRks(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? '—' : value.toFixed(4);
 }
+export function formatRizlineConstant(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? '—' : value.toFixed(1);
+}
 export function formatRizlineAccuracy(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? '—' : `${value.toFixed(4)}%`;
 }
